@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="MyHomeBase">
+  <circle cx="16" cy="16" r="15" fill="#B4772E"/>
+  <path d="M16 7L26 17H6Z" fill="#FFFFFF"/>
+  <rect x="8" y="17" width="16" height="10" rx="1" fill="#FFFFFF"/>
+  <path d="M16 19V25.6M18.3 20C17.9 19.3 17 19 16 19C14.6 19 13.4 19.7 13.4 20.7C13.4 21.7 14.6 22 16 22.2C17.4 22.4 18.6 22.8 18.6 23.9C18.6 25 17.4 25.6 16 25.6C15 25.6 14.1 25.3 13.6 24.7" fill="none" stroke="#B4772E" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M23 5.5L24 7.5L26 8.5L24 9.5L23 11.5L22 9.5L20 8.5L22 7.5Z" fill="#FFFFFF"/>
+</svg>

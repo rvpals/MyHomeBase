@@ -1,0 +1,1 @@
+ALTER TABLE modules ADD COLUMN icon TEXT NOT NULL DEFAULT 'building';
