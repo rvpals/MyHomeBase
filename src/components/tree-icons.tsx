@@ -65,6 +65,15 @@ const History: IconComponent = (props) => (
   </svg>
 );
 
+const Users: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <circle cx="9" cy="8" r="3" />
+    <path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5" />
+    <circle cx="17" cy="9" r="2.2" />
+    <path d="M15.5 14.2c2.3.4 4 2.1 4 4.8" />
+  </svg>
+);
+
 const TREE_ICONS = {
   sliders: Sliders,
   grid: Grid,
@@ -72,6 +81,7 @@ const TREE_ICONS = {
   palette: Palette,
   info: Info,
   history: History,
+  users: Users,
 } as const;
 
 export type TreeIconName = keyof typeof TREE_ICONS;

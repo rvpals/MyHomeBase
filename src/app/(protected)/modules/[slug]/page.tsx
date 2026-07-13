@@ -1,5 +1,8 @@
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
+import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { getModuleBySlug, getModuleCode } from "@/lib/modules";
+import { userHasModuleAccess } from "@/lib/user";
 import { deps } from "@/lib/wiring";
 
 export default async function ModulePage({
@@ -11,6 +14,12 @@ export default async function ModulePage({
   const appModule = getModuleBySlug(deps.moduleRepo, slug);
 
   if (!appModule) notFound();
+
+  const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
+  const currentUser = getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo);
+  // The (protected) layout already guarantees a logged-in user by this point;
+  // this only guards against navigating straight to an unassigned module's URL.
+  if (!currentUser || !userHasModuleAccess(currentUser, appModule.id, deps.userRepo)) notFound();
 
   return (
     <div className="mx-auto max-w-3xl">

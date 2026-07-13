@@ -30,6 +30,13 @@ export const adminNav: TreeNode[] = [
     ],
   },
   {
+    id: "user-management",
+    label: "User Management",
+    href: "/admin/user-management",
+    hint: "Manage users, roles, and module access",
+    icon: "users",
+  },
+  {
     id: "about",
     label: "About",
     href: "/admin/about",

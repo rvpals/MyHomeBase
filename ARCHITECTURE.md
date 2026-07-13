@@ -107,7 +107,12 @@ lines that translate between the framework and `lib/`:
 - **Server Actions (`actions.ts`)**: validate input with a `lib` schema, call a `lib`
   use-case, return its result. The action does not implement the use-case.
 - **Middleware**: routing and auth gating only. Auth *decisions* come from a `lib`
-  function; middleware just enforces the answer.
+  function; middleware just enforces the answer. **Caveat:** Next's default middleware
+  runtime is Edge, which can't load native addons (e.g. `better-sqlite3`) — if a `lib`
+  auth decision needs one, gate in a route-group layout instead (see `src/app/(protected)/layout.tsx`:
+  it reads the session cookie, calls `getCurrentUser`, and `redirect()`s if there's no
+  valid session — same adapter rules as any other Server Component). Prefer real
+  middleware when the decision function has no native dependencies.
 
 ## UI and CLI do the same thing
 

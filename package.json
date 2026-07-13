@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "check:lib-boundary": "! grep -rE \"from '(react|next)\" src/lib",
-    "db:migrate": "tsx scripts/migrate.ts"
+    "db:migrate": "tsx scripts/migrate.ts",
+    "cli": "tsx src/cli/index.ts"
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",

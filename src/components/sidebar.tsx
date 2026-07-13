@@ -26,6 +26,12 @@ export interface SidebarProps {
   links: SidebarLink[];
   /** Application name shown as the sidebar wordmark. */
   appName: string;
+  /** The logged-in user, shown in the footer row. */
+  currentUser: { fullName: string };
+  /** Whether to show the "Administration" link — false for non-admin users. */
+  showAdmin: boolean;
+  /** Server action that ends the current session, wired to the footer's "Log out" button. */
+  logoutAction: () => Promise<void>;
   /** Caller-supplied classes, merged last so they win. */
   className?: string;
 }
@@ -35,7 +41,14 @@ const navRowClasses = (collapsed: boolean, active: boolean) =>
     collapsed ? "justify-center" : ""
   } ${active ? "bg-brass-soft text-brass-dark" : "text-muted hover:bg-line/60 hover:text-ink"}`;
 
-export function Sidebar({ links, appName, className = "" }: SidebarProps) {
+export function Sidebar({
+  links,
+  appName,
+  currentUser,
+  showAdmin,
+  logoutAction,
+  className = "",
+}: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
   const adminActive = pathname.startsWith("/admin");
@@ -91,20 +104,22 @@ export function Sidebar({ links, appName, className = "" }: SidebarProps) {
           <ModuleIcon name="home" className="h-4 w-4 shrink-0 text-brass" />
           {!collapsed && <span className="truncate">Home</span>}
         </Link>
-        <Link
-          href="/admin"
-          title="Administration"
-          className={navRowClasses(collapsed, adminActive)}
-        >
-          <span
-            className={`absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-r-sm bg-brass transition-opacity ${
-              adminActive ? "opacity-100" : "opacity-0"
-            }`}
-            aria-hidden
-          />
-          <AdminIcon className="h-4 w-4 shrink-0 text-brass" />
-          {!collapsed && <span className="truncate">Administration</span>}
-        </Link>
+        {showAdmin && (
+          <Link
+            href="/admin"
+            title="Administration"
+            className={navRowClasses(collapsed, adminActive)}
+          >
+            <span
+              className={`absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-r-sm bg-brass transition-opacity ${
+                adminActive ? "opacity-100" : "opacity-0"
+              }`}
+              aria-hidden
+            />
+            <AdminIcon className="h-4 w-4 shrink-0 text-brass" />
+            {!collapsed && <span className="truncate">Administration</span>}
+          </Link>
+        )}
         <div className="my-1 h-px bg-line" aria-hidden />
         {links.map((link) => {
           const active = pathname === link.href;
@@ -134,6 +149,27 @@ export function Sidebar({ links, appName, className = "" }: SidebarProps) {
           );
         })}
       </nav>
+      <div className="shrink-0 border-t border-line px-2 py-3">
+        <form action={logoutAction}>
+          <button
+            type="submit"
+            title={`Log out (${currentUser.fullName})`}
+            className={`flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-line/60 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
+              collapsed ? "justify-center" : ""
+            }`}
+          >
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brass-soft text-[11px] font-semibold text-brass-dark">
+              {currentUser.fullName.charAt(0).toUpperCase()}
+            </span>
+            {!collapsed && (
+              <>
+                <span className="truncate">{currentUser.fullName}</span>
+                <span className="ml-auto text-xs text-muted">Log out</span>
+              </>
+            )}
+          </button>
+        </form>
+      </div>
     </aside>
   );
 }

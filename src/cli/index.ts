@@ -1,9 +1,13 @@
 // Command router: argv -> command. Peer of src/app — same use-cases, different I/O.
 // Register commands here as they're added; each command is a thin adapter that
 // parses args, validates with the module's zod schema, calls a lib use-case, and prints.
+import { createUserCommand } from "./create-user";
+
 type Command = (args: string[]) => Promise<void> | void;
 
-const commands: Record<string, Command> = {};
+const commands: Record<string, Command> = {
+  "create-user": createUserCommand,
+};
 
 async function main(argv: string[]) {
   const [name, ...args] = argv;
