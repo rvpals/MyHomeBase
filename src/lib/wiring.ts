@@ -3,6 +3,7 @@
 // repository directly in a presentation file.
 import path from "node:path";
 import Database from "better-sqlite3";
+import { SqliteModuleSettingsRepository } from "./module-settings/repository";
 import { SqliteModuleRepository } from "./modules/repository";
 import { SqliteSettingsRepository } from "./settings/repository";
 
@@ -25,4 +26,5 @@ globalForDb.__myhomebaseDb = db;
 export const deps = {
   moduleRepo: new SqliteModuleRepository(db),
   settingsRepo: new SqliteSettingsRepository(db),
+  moduleSettingsRepo: new SqliteModuleSettingsRepository(db),
 };

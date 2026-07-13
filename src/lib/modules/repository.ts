@@ -66,21 +66,43 @@ export class SqliteModuleRepository implements ModuleRepository {
   }
 
   resetToDefaults(defaults: Omit<Module, "id">[]): void {
-    const insert = this.db.prepare(
-      "INSERT INTO modules (slug, short_name, long_name, description, sequence, is_visible, icon) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    );
+    // Upsert by slug rather than delete-then-insert: modules that stay in the
+    // defaults list keep their id, so module_settings rows (keyed by module_id,
+    // no FK) don't get orphaned by a reset. Only modules dropped from the
+    // defaults list are actually deleted.
+    const upsert = this.db.prepare(`
+      INSERT INTO modules (slug, short_name, long_name, description, sequence, is_visible, icon)
+      VALUES (@slug, @shortName, @longName, @description, @sequence, @isVisible, @icon)
+      ON CONFLICT(slug) DO UPDATE SET
+        short_name = excluded.short_name,
+        long_name = excluded.long_name,
+        description = excluded.description,
+        sequence = excluded.sequence,
+        is_visible = excluded.is_visible,
+        icon = excluded.icon
+    `);
+    const deleteBySlug = this.db.prepare("DELETE FROM modules WHERE slug = ?");
+
     const applyReset = this.db.transaction((items: Omit<Module, "id">[]) => {
-      this.db.prepare("DELETE FROM modules").run();
+      const defaultSlugs = new Set(items.map((item) => item.slug));
+      const existingSlugs = (
+        this.db.prepare("SELECT slug FROM modules").all() as { slug: string }[]
+      ).map((row) => row.slug);
+
+      for (const slug of existingSlugs) {
+        if (!defaultSlugs.has(slug)) deleteBySlug.run(slug);
+      }
+
       items.forEach((item, index) => {
-        insert.run(
-          item.slug,
-          item.shortName,
-          item.longName,
-          item.description ?? null,
-          index + 1,
-          item.isVisible ? 1 : 0,
-          item.icon,
-        );
+        upsert.run({
+          slug: item.slug,
+          shortName: item.shortName,
+          longName: item.longName,
+          description: item.description ?? null,
+          sequence: index + 1,
+          isVisible: item.isVisible ? 1 : 0,
+          icon: item.icon,
+        });
       });
     });
     applyReset(defaults);

@@ -2,6 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import {
+  saveModuleSettings,
+  type ModuleSettingEntry,
+} from "@/lib/module-settings";
+import {
   resetModulesToDefaults,
   updateModules,
   type Module,
@@ -14,6 +18,7 @@ export interface SaveAdminSettingsInput {
   modules: ModuleUpdate[];
   applicationName: string;
   colorThemeId: string;
+  moduleSettings: { moduleId: number; entries: ModuleSettingEntry[] }[];
 }
 
 export async function saveAdminSettingsAction(input: SaveAdminSettingsInput): Promise<void> {
@@ -22,6 +27,9 @@ export async function saveAdminSettingsAction(input: SaveAdminSettingsInput): Pr
     { key: "application_name", value: input.applicationName },
     { key: "color_theme", value: input.colorThemeId },
   ]);
+  for (const moduleSetting of input.moduleSettings) {
+    saveModuleSettings(deps.moduleSettingsRepo, moduleSetting);
+  }
 
   revalidatePath("/", "layout");
 }

@@ -33,10 +33,10 @@ different name.
 
 | Name | Import | Purpose | Key props | Notes |
 |------|--------|---------|-----------|-------|
-| `CollapsibleCard` | `@/components/collapsible-card` | Card with a header that expands/collapses its body | `title`, `defaultOpen?`, `children`, `className?` | *Example row — create the file when this component is actually built.* |
+| `CollapsibleCard` | `@/components/collapsible-card` | Card with a header that expands/collapses its body | `title`, `defaultOpen?`, `children`, `className?` | Client component. Used for the "Module Settings [Module Name]" section on the Module Configuration screen. |
 | `ModuleCard` | `@/components/module-card` | Card linking to a module's route | `name`, `description?`, `href`, `code`, `icon`, `className?` | Used on the home screen grid. `code` is a short reference tag (e.g. "REI") shown on the card's tab; `icon` is a key rendered via `ModuleIcon`. |
 | `Sidebar` | `@/components/sidebar` | Collapsible left-hand nav listing module links | `links` (each with `slug`, `name`, `href`, `code`, `icon`, `hint?`), `appName`, `className?` | Client component; persists collapsed state to `localStorage`. Shows icon-only when collapsed. Always includes a "Home" link (`/`) above the module list. `hint` is shown as the link's hover tooltip. Rendered in `src/app/layout.tsx`. |
-| `TreeNav` | `@/components/tree-nav` | Hierarchical parent/child nav tree with hover hints | `nodes` (each with `id`, `label`, `href?`, `hint?`, `children?`), `className?` | Client component. A node without `href` is a group heading only (expand/collapse, not navigable). Used by the Administration section (`src/app/admin`). |
+| `TreeNav` | `@/components/tree-nav` | Hierarchical parent/child nav tree with hover hints | `nodes` (each with `id`, `label`, `href?`, `hint?`, `icon?`, `children?`), `collapsible?`, `className?` | Client component; owns its own width (`w-64`/`w-16`) when `collapsible`, persists collapsed state to `localStorage`. Collapsed view flattens the tree into one icon-only row per node. A node without `href` is a group heading only (expand/collapse, not navigable, when expanded). `icon` is a key rendered via `TreeIcon` (`src/components/tree-icons.tsx`). Used by the Administration section (`src/app/admin`). |
 
 ## Entry template (copy a row when registering)
 

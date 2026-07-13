@@ -1,9 +1,18 @@
 "use client";
 
+import { CollapsibleCard } from "@/components/collapsible-card";
 import { useAdminSettings } from "../../admin-shell";
 
 export default function ModuleConfigurationPage() {
-  const { modules, updateModuleField, moveModule } = useAdminSettings();
+  const {
+    modules,
+    updateModuleField,
+    moveModule,
+    moduleSettings,
+    addModuleSetting,
+    updateModuleSetting,
+    removeModuleSetting,
+  } = useAdminSettings();
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -85,6 +94,77 @@ export default function ModuleConfigurationPage() {
               />
               <span className="text-ink">Visible in sidebar and home screen</span>
             </label>
+
+            <CollapsibleCard title={`Module Settings — ${module.longName}`} className="mt-4">
+              <div className="space-y-3">
+                {(moduleSettings[module.slug] ?? []).map((setting, settingIndex) => (
+                  <div
+                    key={settingIndex}
+                    className="grid gap-2 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end"
+                  >
+                    <label className="block text-sm">
+                      <span className="mb-1 block font-medium text-ink">Key</span>
+                      <input
+                        value={setting.key}
+                        onChange={(event) =>
+                          updateModuleSetting(module.slug, settingIndex, "key", event.target.value)
+                        }
+                        placeholder="e.g. api_key"
+                        className="w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+                      />
+                    </label>
+                    <label className="block text-sm">
+                      <span className="mb-1 block font-medium text-ink">Value</span>
+                      <input
+                        value={setting.value}
+                        onChange={(event) =>
+                          updateModuleSetting(
+                            module.slug,
+                            settingIndex,
+                            "value",
+                            event.target.value,
+                          )
+                        }
+                        className="w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+                      />
+                    </label>
+                    <label className="block text-sm">
+                      <span className="mb-1 block font-medium text-ink">Description</span>
+                      <input
+                        value={setting.description ?? ""}
+                        onChange={(event) =>
+                          updateModuleSetting(
+                            module.slug,
+                            settingIndex,
+                            "description",
+                            event.target.value,
+                          )
+                        }
+                        className="w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => removeModuleSetting(module.slug, settingIndex)}
+                      aria-label={`Remove ${setting.key || "this setting"}`}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-line text-ink hover:border-brass hover:text-brass-dark"
+                    >
+                      &times;
+                    </button>
+                  </div>
+                ))}
+                {(moduleSettings[module.slug] ?? []).length === 0 && (
+                  <p className="text-sm text-muted">No custom settings for this module yet.</p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => addModuleSetting(module.slug)}
+                  className="rounded-md border border-dashed border-line px-3 py-1.5 text-sm text-muted hover:border-brass hover:text-brass-dark"
+                >
+                  + Add setting
+                </button>
+              </div>
+            </CollapsibleCard>
           </div>
         ))}
       </div>

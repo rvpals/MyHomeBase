@@ -3,12 +3,14 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { TreeNav } from "@/components/tree-nav";
+import type { ModuleSetting } from "@/lib/module-settings";
 import type { Module } from "@/lib/modules";
 import { DEFAULT_COLOR_THEME_ID, type Setting } from "@/lib/settings";
 import { adminNav } from "./nav";
 import { resetAdminSettingsAction, saveAdminSettingsAction } from "./actions";
 
 export interface ModuleDraft {
+  id: number;
   slug: string;
   shortName: string;
   longName: string;
@@ -16,16 +18,31 @@ export interface ModuleDraft {
   isVisible: boolean;
 }
 
+export interface ModuleSettingDraft {
+  key: string;
+  value: string;
+  description?: string;
+}
+
 interface AdminContextValue {
   modules: ModuleDraft[];
   applicationName: string;
   colorThemeId: string;
+  moduleSettings: Record<string, ModuleSettingDraft[]>;
   isDirty: boolean;
   isSaving: boolean;
   updateModuleField: (slug: string, field: keyof ModuleDraft, value: string | boolean) => void;
   moveModule: (slug: string, direction: "up" | "down") => void;
   setApplicationName: (value: string) => void;
   setColorThemeId: (id: string) => void;
+  addModuleSetting: (slug: string) => void;
+  updateModuleSetting: (
+    slug: string,
+    index: number,
+    field: keyof ModuleSettingDraft,
+    value: string,
+  ) => void;
+  removeModuleSetting: (slug: string, index: number) => void;
   save: () => Promise<void>;
   reset: () => Promise<void>;
 }
@@ -42,6 +59,7 @@ export function useAdminSettings(): AdminContextValue {
 
 function toDraft(module: Module): ModuleDraft {
   return {
+    id: module.id,
     slug: module.slug,
     shortName: module.shortName,
     longName: module.longName,
@@ -50,14 +68,33 @@ function toDraft(module: Module): ModuleDraft {
   };
 }
 
+function toSettingDraft(setting: ModuleSetting): ModuleSettingDraft {
+  return { key: setting.key, value: setting.value, description: setting.description };
+}
+
+function groupSettingsBySlug(
+  modules: Module[],
+  settings: ModuleSetting[],
+): Record<string, ModuleSettingDraft[]> {
+  const grouped: Record<string, ModuleSettingDraft[]> = {};
+  for (const appModule of modules) {
+    grouped[appModule.slug] = settings
+      .filter((setting) => setting.moduleId === appModule.id)
+      .map(toSettingDraft);
+  }
+  return grouped;
+}
+
 export function AdminShell({
   children,
   initialModules,
   initialSettings,
+  initialModuleSettings,
 }: {
   children: ReactNode;
   initialModules: Module[];
   initialSettings: Setting[];
+  initialModuleSettings: ModuleSetting[];
 }) {
   const router = useRouter();
   const [modules, setModules] = useState<ModuleDraft[]>(() => initialModules.map(toDraft));
@@ -66,6 +103,9 @@ export function AdminShell({
   );
   const [colorThemeId, setColorThemeIdState] = useState(
     () => initialSettings.find((setting) => setting.key === "color_theme")?.value ?? DEFAULT_COLOR_THEME_ID,
+  );
+  const [moduleSettings, setModuleSettings] = useState<Record<string, ModuleSettingDraft[]>>(() =>
+    groupSettingsBySlug(initialModules, initialModuleSettings),
   );
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -99,10 +139,52 @@ export function AdminShell({
     setIsDirty(true);
   }
 
+  function addModuleSetting(slug: string) {
+    setModuleSettings((current) => ({
+      ...current,
+      [slug]: [...(current[slug] ?? []), { key: "", value: "" }],
+    }));
+    setIsDirty(true);
+  }
+
+  function updateModuleSetting(
+    slug: string,
+    index: number,
+    field: keyof ModuleSettingDraft,
+    value: string,
+  ) {
+    setModuleSettings((current) => ({
+      ...current,
+      [slug]: (current[slug] ?? []).map((entry, entryIndex) =>
+        entryIndex === index ? { ...entry, [field]: value } : entry,
+      ),
+    }));
+    setIsDirty(true);
+  }
+
+  function removeModuleSetting(slug: string, index: number) {
+    setModuleSettings((current) => ({
+      ...current,
+      [slug]: (current[slug] ?? []).filter((_, entryIndex) => entryIndex !== index),
+    }));
+    setIsDirty(true);
+  }
+
   async function save() {
     setIsSaving(true);
     try {
-      await saveAdminSettingsAction({ modules, applicationName, colorThemeId });
+      const moduleSettingsPayload = modules.map((module) => ({
+        moduleId: module.id,
+        entries: (moduleSettings[module.slug] ?? []).filter(
+          (entry) => entry.key.trim() !== "" && entry.value.trim() !== "",
+        ),
+      }));
+      await saveAdminSettingsAction({
+        modules,
+        applicationName,
+        colorThemeId,
+        moduleSettings: moduleSettingsPayload,
+      });
       setIsDirty(false);
       router.refresh();
     } finally {
@@ -127,6 +209,15 @@ export function AdminShell({
         result.settings.find((setting) => setting.key === "color_theme")?.value ??
           DEFAULT_COLOR_THEME_ID,
       );
+      // Module settings are left alone by design (no seeded default to revert
+      // to) — just re-key the draft against any new module ids from the reset.
+      setModuleSettings((current) => {
+        const bySlug: Record<string, ModuleSettingDraft[]> = {};
+        for (const appModule of result.modules) {
+          bySlug[appModule.slug] = current[appModule.slug] ?? [];
+        }
+        return bySlug;
+      });
       setIsDirty(false);
       router.refresh();
     } finally {
@@ -140,12 +231,16 @@ export function AdminShell({
         modules,
         applicationName,
         colorThemeId,
+        moduleSettings,
         isDirty,
         isSaving,
         updateModuleField,
         moveModule,
         setApplicationName,
         setColorThemeId,
+        addModuleSetting,
+        updateModuleSetting,
+        removeModuleSetting,
         save,
         reset,
       }}
@@ -153,7 +248,8 @@ export function AdminShell({
       <div className="flex min-h-screen">
         <TreeNav
           nodes={adminNav}
-          className="min-h-screen w-64 shrink-0 border-r border-line bg-paper-raised"
+          collapsible
+          className="min-h-screen shrink-0 border-r border-line bg-paper-raised"
         />
         <div className="relative flex-1 overflow-y-auto p-8 pb-24">{children}</div>
       </div>

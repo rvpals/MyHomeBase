@@ -6,6 +6,7 @@ import type { Module } from "./types";
 // Hand-written fake — no mocking framework, reusable across tests.
 function fakeRepo(seed: Module[]): ModuleRepository {
   let state = [...seed];
+  let nextId = state.reduce((max, module) => Math.max(max, module.id), 0) + 1;
   return {
     listModules({ includeHidden = false } = {}) {
       return state
@@ -31,7 +32,13 @@ function fakeRepo(seed: Module[]): ModuleRepository {
       });
     },
     resetToDefaults(defaults) {
-      state = defaults.map((item, index) => ({ ...item, id: index + 1, sequence: index + 1 }));
+      // Upsert by slug — preserves ids for modules that remain, matching the
+      // real repository (so module_settings rows aren't orphaned by a reset).
+      const bySlug = new Map(state.map((module) => [module.slug, module]));
+      state = defaults.map((item, index) => {
+        const existing = bySlug.get(item.slug);
+        return { ...item, id: existing?.id ?? nextId++, sequence: index + 1 };
+      });
     },
   };
 }
@@ -107,6 +114,15 @@ describe("resetModulesToDefaults", () => {
   it("restores the seeded module list", () => {
     const repo = fakeRepo([]);
     const result = resetModulesToDefaults(repo);
-    expect(result.map((module) => module.slug)).toEqual(["real-estate-investment"]);
+    expect(result.map((module) => module.slug)).toEqual([
+      "real-estate-investment",
+      "stock-etfs",
+    ]);
+  });
+
+  it("preserves the id of a module that remains in the defaults", () => {
+    const repo = fakeRepo([{ ...sample[0], id: 42 }]);
+    const result = resetModulesToDefaults(repo);
+    expect(result.find((module) => module.slug === "real-estate-investment")?.id).toBe(42);
   });
 });
