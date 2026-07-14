@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { SESSION_COOKIE_NAME, getCurrentUser, invalidateSessionsForUser } from "@/lib/auth";
 import {
+  clearUserAvatar,
   createUser,
   deleteUser,
   setUserDisabled,
@@ -99,6 +100,17 @@ export async function setUserGoogleEmailAction(
     return toErrorResult(error, "Failed to update Google account link.");
   }
   revalidatePath("/admin/user-management");
+  return { ok: true };
+}
+
+export async function clearUserAvatarAction(userId: number): Promise<ActionResult> {
+  try {
+    clearUserAvatar(userId, deps.userRepo);
+  } catch (error) {
+    return toErrorResult(error, "Failed to clear avatar.");
+  }
+  revalidatePath("/admin/user-management");
+  revalidatePath("/", "layout");
   return { ok: true };
 }
 

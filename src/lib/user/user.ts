@@ -1,14 +1,16 @@
+import { randomBytes } from "node:crypto";
 import type { Module } from "@/lib/modules";
 import { hashPassword, verifyPassword } from "@/lib/shared/password";
 import type { NewUserRecord, UserRepository } from "./ports";
 import {
   createUserSchema,
   moduleAccessSchema,
+  setAvatarSchema,
   setGoogleEmailSchema,
   setPasswordSchema,
   type CreateUserInput,
 } from "./schema";
-import type { User, UserRole } from "./types";
+import type { User, UserAvatar, UserRole } from "./types";
 
 export class DuplicateUsernameError extends Error {
   constructor(username: string) {
@@ -109,6 +111,31 @@ export function getUserByGoogleEmail(googleEmail: string, repo: UserRepository):
   return repo.getUserByGoogleEmail(googleEmail);
 }
 
+/**
+ * Auto-creates a `user`-role account for a first-time Google sign-in with no
+ * existing link, per the "allow any Google account" policy. The account gets
+ * a random, never-revealed password (password login stays possible but
+ * unusable until an admin sets a real one) and zero module access until an
+ * admin grants some.
+ */
+export function createUserFromGoogle(
+  input: { googleEmail: string; fullName?: string },
+  repo: UserRepository,
+): User {
+  const user = createUser(
+    {
+      username: input.googleEmail,
+      fullName: input.fullName?.trim() || input.googleEmail,
+      description: "Created automatically via Google sign-in.",
+      password: randomBytes(32).toString("hex"),
+      role: "user",
+    },
+    repo,
+  );
+  repo.setGoogleEmail(user.id, input.googleEmail);
+  return { ...user, googleEmail: input.googleEmail };
+}
+
 /** Links (or, with `googleEmail: undefined`, unlinks) a Google account for sign-in. */
 export function setUserGoogleEmail(
   userId: number,
@@ -148,4 +175,18 @@ export function getUserModuleAccess(userId: number, repo: UserRepository): numbe
 export function setUserModuleAccess(userId: number, moduleIds: number[], repo: UserRepository): void {
   const parsed = moduleAccessSchema.parse({ moduleIds });
   repo.setAccessibleModuleIds(userId, parsed.moduleIds);
+}
+
+/** Used only by the avatar-serving route — never by anything that renders a user list. */
+export function getUserAvatar(userId: number, repo: UserRepository): UserAvatar | undefined {
+  return repo.getAvatar(userId);
+}
+
+export function setUserAvatar(userId: number, input: UserAvatar, repo: UserRepository): void {
+  const parsed = setAvatarSchema.parse(input);
+  repo.setAvatar(userId, parsed);
+}
+
+export function clearUserAvatar(userId: number, repo: UserRepository): void {
+  repo.setAvatar(userId, undefined);
 }

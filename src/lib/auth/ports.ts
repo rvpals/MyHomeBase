@@ -11,6 +11,8 @@ export interface SessionRepository {
 export interface GoogleUserInfo {
   email: string;
   emailVerified: boolean;
+  /** Google's display name for the account, if returned — used as the full name on auto-created accounts. */
+  name?: string;
 }
 
 /**

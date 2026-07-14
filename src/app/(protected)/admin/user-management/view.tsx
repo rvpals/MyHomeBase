@@ -2,11 +2,13 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { Avatar } from "@/components/avatar";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import type { Module } from "@/lib/modules";
 import type { User, UserRole } from "@/lib/user";
 import {
+  clearUserAvatarAction,
   createUserAction,
   deleteUserAction,
   setUserDisabledAction,
@@ -389,6 +391,33 @@ export function UserManagementView({
   }
 
   const columns: DataGridColumn<User>[] = [
+    {
+      key: "avatar",
+      header: "Avatar",
+      render: (user) => (
+        <div className="flex items-center gap-2">
+          <Avatar
+            userId={user.id}
+            avatarMimeType={user.avatarMimeType}
+            fallbackText={user.fullName}
+            version={user.updatedAt}
+          />
+          {user.avatarMimeType && (
+            <button
+              type="button"
+              onClick={async () => {
+                const result = await clearUserAvatarAction(user.id);
+                if (result.ok) router.refresh();
+                else window.alert(result.error);
+              }}
+              className="text-xs font-medium text-red-600 hover:underline"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      ),
+    },
     { key: "username", header: "Username", render: (user) => user.username },
     { key: "fullName", header: "Full Name", render: (user) => user.fullName },
     {

@@ -9,8 +9,16 @@ export interface User {
   isDisabled: boolean;
   /** Linked Google account email, if any — set via User Management. Enables "Sign in with Google". */
   googleEmail?: string;
+  /** MIME type of the uploaded avatar, if any. The raw bytes aren't part of this type — see `getUserAvatar`. */
+  avatarMimeType?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+/** A user's avatar image bytes and their MIME type, fetched/set separately from the rest of `User`. */
+export interface UserAvatar {
+  data: Buffer;
+  mimeType: string;
 }
 
 /**

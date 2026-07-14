@@ -1,4 +1,4 @@
-import type { User, UserCredentials, UserRole } from "./types";
+import type { User, UserAvatar, UserCredentials, UserRole } from "./types";
 
 export interface NewUserRecord {
   username: string;
@@ -28,4 +28,8 @@ export interface UserRepository {
   getAccessibleModuleIds(userId: number): number[];
   /** Replaces the full grant list for a user with the given module ids. */
   setAccessibleModuleIds(userId: number, moduleIds: number[]): void;
+  /** Separate from every other read — the only query that touches the `avatar` blob column. */
+  getAvatar(userId: number): UserAvatar | undefined;
+  /** `undefined` clears both the image and its mime type. */
+  setAvatar(userId: number, avatar: UserAvatar | undefined): void;
 }

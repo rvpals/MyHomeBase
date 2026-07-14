@@ -1,8 +1,16 @@
 import type Database from "better-sqlite3";
 import { userSchema } from "./schema";
-import type { User, UserCredentials, UserRole } from "./types";
+import type { User, UserAvatar, UserCredentials, UserRole } from "./types";
 import type { NewUserRecord, UserRepository } from "./ports";
 import { DuplicateGoogleEmailError } from "./user";
+
+// Deliberately excludes `avatar` (the blob) — every normal read goes through
+// this column list so listing/looking up users never pulls image bytes.
+// Only `getAvatar`/`setAvatar` below touch the `avatar` column.
+const USER_COLUMNS_WITHOUT_AVATAR = `
+  id, username, full_name, description, password_hash, role, is_disabled,
+  google_email, avatar_mime_type, created_at, updated_at
+`;
 
 interface UserRow {
   id: number;
@@ -13,6 +21,7 @@ interface UserRow {
   role: UserRole;
   is_disabled: number;
   google_email: string | null;
+  avatar_mime_type: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -26,6 +35,7 @@ function toDomain(row: UserRow): User {
     role: row.role,
     isDisabled: row.is_disabled === 1,
     googleEmail: row.google_email ?? undefined,
+    avatarMimeType: row.avatar_mime_type ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
@@ -46,26 +56,30 @@ export class SqliteUserRepository implements UserRepository {
   constructor(private db: Database.Database) {}
 
   listUsers(): User[] {
-    const rows = this.db.prepare("SELECT * FROM users ORDER BY username ASC").all() as UserRow[];
+    const rows = this.db
+      .prepare(`SELECT ${USER_COLUMNS_WITHOUT_AVATAR} FROM users ORDER BY username ASC`)
+      .all() as UserRow[];
     return rows.map(toDomain);
   }
 
   getUserById(id: number): User | undefined {
-    const row = this.db.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow | undefined;
+    const row = this.db
+      .prepare(`SELECT ${USER_COLUMNS_WITHOUT_AVATAR} FROM users WHERE id = ?`)
+      .get(id) as UserRow | undefined;
     return row ? toDomain(row) : undefined;
   }
 
   getUserByUsername(username: string): User | undefined {
-    const row = this.db.prepare("SELECT * FROM users WHERE username = ?").get(username) as
-      | UserRow
-      | undefined;
+    const row = this.db
+      .prepare(`SELECT ${USER_COLUMNS_WITHOUT_AVATAR} FROM users WHERE username = ?`)
+      .get(username) as UserRow | undefined;
     return row ? toDomain(row) : undefined;
   }
 
   getUserByGoogleEmail(googleEmail: string): User | undefined {
-    const row = this.db.prepare("SELECT * FROM users WHERE google_email = ?").get(googleEmail) as
-      | UserRow
-      | undefined;
+    const row = this.db
+      .prepare(`SELECT ${USER_COLUMNS_WITHOUT_AVATAR} FROM users WHERE google_email = ?`)
+      .get(googleEmail) as UserRow | undefined;
     return row ? toDomain(row) : undefined;
   }
 
@@ -75,9 +89,9 @@ export class SqliteUserRepository implements UserRepository {
   }
 
   findCredentialsByUsername(username: string): UserCredentials | undefined {
-    const row = this.db.prepare("SELECT * FROM users WHERE username = ?").get(username) as
-      | UserRow
-      | undefined;
+    const row = this.db
+      .prepare(`SELECT ${USER_COLUMNS_WITHOUT_AVATAR} FROM users WHERE username = ?`)
+      .get(username) as UserRow | undefined;
     return row ? toCredentials(row) : undefined;
   }
 
@@ -124,6 +138,20 @@ export class SqliteUserRepository implements UserRepository {
       }
       throw error;
     }
+  }
+
+  getAvatar(userId: number): UserAvatar | undefined {
+    const row = this.db
+      .prepare("SELECT avatar, avatar_mime_type FROM users WHERE id = ?")
+      .get(userId) as { avatar: Buffer | null; avatar_mime_type: string | null } | undefined;
+    if (!row || !row.avatar || !row.avatar_mime_type) return undefined;
+    return { data: row.avatar, mimeType: row.avatar_mime_type };
+  }
+
+  setAvatar(userId: number, avatar: UserAvatar | undefined): void {
+    this.db
+      .prepare("UPDATE users SET avatar = ?, avatar_mime_type = ? WHERE id = ?")
+      .run(avatar?.data ?? null, avatar?.mimeType ?? null, userId);
   }
 
   deleteUser(id: number): void {

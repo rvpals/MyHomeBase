@@ -5,8 +5,7 @@ import { AppIcon } from "@/components/app-icon";
 import { loginAction } from "./actions";
 
 const GOOGLE_ERROR_MESSAGES: Record<string, string> = {
-  google_not_linked:
-    "This Google account isn't linked to a MyHomeBase account. Ask an admin to link it in User Management.",
+  google_account_disabled: "This account has been disabled. Contact an admin.",
   google_failed: "Google sign-in failed. Please try again.",
 };
 

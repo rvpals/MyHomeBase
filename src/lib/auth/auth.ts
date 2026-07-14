@@ -1,4 +1,10 @@
-import { getUserByGoogleEmail, verifyCredentials, type User, type UserRepository } from "@/lib/user";
+import {
+  createUserFromGoogle,
+  getUserByGoogleEmail,
+  verifyCredentials,
+  type User,
+  type UserRepository,
+} from "@/lib/user";
 import type { GoogleOAuthClient, SessionRepository } from "./ports";
 import { loginSchema, type LoginInput } from "./schema";
 import type { Session } from "./types";
@@ -64,25 +70,36 @@ export function invalidateSessionsForUser(userId: number, sessionRepo: SessionRe
   sessionRepo.deleteSessionsForUser(userId);
 }
 
+export type GoogleLoginFailureReason = "unverified_email" | "account_disabled";
+
+export type GoogleLoginResult =
+  | { ok: true; session: Session; user: User }
+  | { ok: false; reason: GoogleLoginFailureReason };
+
 /**
- * Completes a Google sign-in: exchanges the authorization code, then
- * requires the returned email to be verified AND already linked (via User
- * Management) to an enabled account — unlinked Google accounts are never
- * auto-registered.
+ * Completes a Google sign-in: exchanges the authorization code, requires a
+ * verified email, then either signs in the user already linked to that
+ * email or — if no account is linked yet — auto-creates a fresh `user`-role
+ * account for it (any Google account may sign in; there's no allow-list).
+ * A linked-but-disabled account is rejected rather than re-enabled.
  */
 export async function completeGoogleLogin(
   code: string,
   googleClient: GoogleOAuthClient,
   userRepo: UserRepository,
   sessionRepo: SessionRepository,
-): Promise<{ session: Session; user: User } | undefined> {
+): Promise<GoogleLoginResult> {
   const info = await googleClient.exchangeCodeForUserInfo(code);
-  if (!info.emailVerified) return undefined;
+  if (!info.emailVerified) return { ok: false, reason: "unverified_email" };
 
-  const user = getUserByGoogleEmail(info.email, userRepo);
-  if (!user || user.isDisabled) return undefined;
+  let user = getUserByGoogleEmail(info.email, userRepo);
+  if (user) {
+    if (user.isDisabled) return { ok: false, reason: "account_disabled" };
+  } else {
+    user = createUserFromGoogle({ googleEmail: info.email, fullName: info.name }, userRepo);
+  }
 
   const expiresAt = new Date(Date.now() + SESSION_DURATION_MS).toISOString();
   const session = sessionRepo.createSession(user.id, expiresAt);
-  return { session, user };
+  return { ok: true, session, user };
 }

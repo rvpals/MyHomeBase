@@ -1,4 +1,4 @@
-export type { User, UserRole, UserCredentials } from "./types";
+export type { User, UserRole, UserCredentials, UserAvatar } from "./types";
 export {
   userSchema,
   userRoleSchema,
@@ -6,10 +6,14 @@ export {
   setPasswordSchema,
   moduleAccessSchema,
   setGoogleEmailSchema,
+  setAvatarSchema,
+  ALLOWED_AVATAR_MIME_TYPES,
+  MAX_AVATAR_BYTES,
   type CreateUserInput,
   type SetPasswordInput,
   type ModuleAccessInput,
   type SetGoogleEmailInput,
+  type SetAvatarInput,
 } from "./schema";
 export type { UserRepository, NewUserRecord } from "./ports";
 export {
@@ -22,11 +26,15 @@ export {
   deleteUser,
   getUserByGoogleEmail,
   setUserGoogleEmail,
+  createUserFromGoogle,
   isAdmin,
   getAccessibleModules,
   userHasModuleAccess,
   getUserModuleAccess,
   setUserModuleAccess,
+  getUserAvatar,
+  setUserAvatar,
+  clearUserAvatar,
   DuplicateUsernameError,
   DuplicateGoogleEmailError,
   SelfLockoutError,

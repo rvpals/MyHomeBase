@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AdminIcon } from "./admin-icon";
 import { AppIcon } from "./app-icon";
+import { Avatar } from "./avatar";
 import { ModuleIcon } from "./module-icons";
 
 const COLLAPSED_STORAGE_KEY = "myhomebase:sidebar-collapsed";
@@ -27,7 +28,7 @@ export interface SidebarProps {
   /** Application name shown as the sidebar wordmark. */
   appName: string;
   /** The logged-in user, shown in the footer row. */
-  currentUser: { fullName: string };
+  currentUser: { id: number; fullName: string; avatarMimeType?: string; updatedAt?: string };
   /** Whether to show the "Administration" link — false for non-admin users. */
   showAdmin: boolean;
   /** Server action that ends the current session, wired to the footer's "Log out" button. */
@@ -150,23 +151,34 @@ export function Sidebar({
         })}
       </nav>
       <div className="shrink-0 border-t border-line px-2 py-3">
+        <Link
+          href="/account"
+          title="My Account"
+          className={`flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-line/60 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
+            collapsed ? "justify-center" : ""
+          }`}
+        >
+          <Avatar
+            userId={currentUser.id}
+            avatarMimeType={currentUser.avatarMimeType}
+            fallbackText={currentUser.fullName}
+            version={currentUser.updatedAt}
+            size="sm"
+          />
+          {!collapsed && <span className="truncate">{currentUser.fullName}</span>}
+        </Link>
         <form action={logoutAction}>
           <button
             type="submit"
-            title={`Log out (${currentUser.fullName})`}
-            className={`flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-line/60 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
+            title="Log out"
+            className={`mt-0.5 flex w-full items-center gap-2.5 rounded-md px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:bg-line/60 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
               collapsed ? "justify-center" : ""
             }`}
           >
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brass-soft text-[11px] font-semibold text-brass-dark">
-              {currentUser.fullName.charAt(0).toUpperCase()}
+            <span className="flex h-4 w-4 shrink-0 items-center justify-center" aria-hidden>
+              ⏻
             </span>
-            {!collapsed && (
-              <>
-                <span className="truncate">{currentUser.fullName}</span>
-                <span className="ml-auto text-xs text-muted">Log out</span>
-              </>
-            )}
+            {!collapsed && <span>Log out</span>}
           </button>
         </form>
       </div>

@@ -17,6 +17,7 @@ interface TokenResponse {
 interface UserInfoResponse {
   email?: string;
   email_verified?: boolean;
+  name?: string;
 }
 
 // The real client. The only file in this module that talks to Google.
@@ -28,7 +29,7 @@ export class GoogleAuthClient implements GoogleOAuthClient {
       client_id: this.config.clientId,
       redirect_uri: this.config.redirectUri,
       response_type: "code",
-      scope: "openid email",
+      scope: "openid email profile",
       state,
       access_type: "online",
       prompt: "select_account",
@@ -64,6 +65,10 @@ export class GoogleAuthClient implements GoogleOAuthClient {
       throw new Error("Google userinfo response did not include an email.");
     }
 
-    return { email: userInfo.email, emailVerified: userInfo.email_verified === true };
+    return {
+      email: userInfo.email,
+      emailVerified: userInfo.email_verified === true,
+      name: userInfo.name,
+    };
   }
 }

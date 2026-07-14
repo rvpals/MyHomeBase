@@ -35,7 +35,12 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
       <Sidebar
         links={links}
         appName={appName}
-        currentUser={{ fullName: currentUser.fullName }}
+        currentUser={{
+          id: currentUser.id,
+          fullName: currentUser.fullName,
+          avatarMimeType: currentUser.avatarMimeType,
+          updatedAt: currentUser.updatedAt,
+        }}
         showAdmin={isAdmin(currentUser)}
         logoutAction={logoutAction}
       />

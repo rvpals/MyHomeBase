@@ -33,8 +33,11 @@ export async function GET(request: NextRequest) {
     return redirectToLogin(request, "google_failed");
   }
 
-  if (!result) {
-    return redirectToLogin(request, "google_not_linked");
+  if (!result.ok) {
+    return redirectToLogin(
+      request,
+      result.reason === "account_disabled" ? "google_account_disabled" : "google_failed",
+    );
   }
 
   const response = NextResponse.redirect(new URL("/", request.url));

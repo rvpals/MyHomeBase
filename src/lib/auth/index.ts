@@ -10,4 +10,6 @@ export {
   getCurrentUser,
   invalidateSessionsForUser,
   completeGoogleLogin,
+  type GoogleLoginResult,
+  type GoogleLoginFailureReason,
 } from "./auth";

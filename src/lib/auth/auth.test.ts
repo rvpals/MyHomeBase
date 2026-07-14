@@ -106,6 +106,12 @@ class FakeUserRepository implements UserRepository {
   }
 
   setAccessibleModuleIds(): void {}
+
+  getAvatar(): undefined {
+    return undefined;
+  }
+
+  setAvatar(): void {}
 }
 
 class FakeGoogleOAuthClient implements GoogleOAuthClient {
@@ -262,16 +268,38 @@ describe("completeGoogleLogin", () => {
     const googleClient = new FakeGoogleOAuthClient({ email: "bob@example.com", emailVerified: true });
 
     const result = await completeGoogleLogin("some-code", googleClient, userRepo, sessionRepo);
-    expect(result?.user.id).toBe(user.id);
-    expect(sessionRepo.getSessionById(result!.session.id)).toBeDefined();
+    if (!result.ok) throw new Error("expected success");
+    expect(result.user.id).toBe(user.id);
+    expect(sessionRepo.getSessionById(result.session.id)).toBeDefined();
   });
 
-  it("rejects an email that isn't linked to any user", async () => {
+  it("auto-creates a user-role account for a verified email with no existing link", async () => {
+    const userRepo = new FakeUserRepository();
+    const sessionRepo = new FakeSessionRepository();
+    const googleClient = new FakeGoogleOAuthClient({
+      email: "stranger@example.com",
+      emailVerified: true,
+      name: "Stranger Person",
+    });
+
+    const result = await completeGoogleLogin("some-code", googleClient, userRepo, sessionRepo);
+    if (!result.ok) throw new Error("expected success");
+    expect(result.user.role).toBe("user");
+    expect(result.user.fullName).toBe("Stranger Person");
+    expect(result.user.googleEmail).toBe("stranger@example.com");
+    expect(sessionRepo.getSessionById(result.session.id)).toBeDefined();
+  });
+
+  it("signs the same auto-created account back in on a second visit rather than creating another", async () => {
     const userRepo = new FakeUserRepository();
     const sessionRepo = new FakeSessionRepository();
     const googleClient = new FakeGoogleOAuthClient({ email: "stranger@example.com", emailVerified: true });
 
-    expect(await completeGoogleLogin("some-code", googleClient, userRepo, sessionRepo)).toBeUndefined();
+    const first = await completeGoogleLogin("code-1", googleClient, userRepo, sessionRepo);
+    const second = await completeGoogleLogin("code-2", googleClient, userRepo, sessionRepo);
+    if (!first.ok || !second.ok) throw new Error("expected success");
+    expect(second.user.id).toBe(first.user.id);
+    expect(userRepo.listUsers()).toHaveLength(1);
   });
 
   it("rejects an unverified email even if it's linked", async () => {
@@ -283,10 +311,11 @@ describe("completeGoogleLogin", () => {
     );
     const googleClient = new FakeGoogleOAuthClient({ email: "bob@example.com", emailVerified: false });
 
-    expect(await completeGoogleLogin("some-code", googleClient, userRepo, sessionRepo)).toBeUndefined();
+    const result = await completeGoogleLogin("some-code", googleClient, userRepo, sessionRepo);
+    expect(result).toEqual({ ok: false, reason: "unverified_email" });
   });
 
-  it("rejects a linked but disabled user", async () => {
+  it("rejects a linked but disabled user without re-enabling them", async () => {
     const userRepo = new FakeUserRepository();
     const sessionRepo = new FakeSessionRepository();
     userRepo.seed(
@@ -295,6 +324,7 @@ describe("completeGoogleLogin", () => {
     );
     const googleClient = new FakeGoogleOAuthClient({ email: "bob@example.com", emailVerified: true });
 
-    expect(await completeGoogleLogin("some-code", googleClient, userRepo, sessionRepo)).toBeUndefined();
+    const result = await completeGoogleLogin("some-code", googleClient, userRepo, sessionRepo);
+    expect(result).toEqual({ ok: false, reason: "account_disabled" });
   });
 });

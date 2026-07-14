@@ -2,16 +2,20 @@ import { describe, expect, it } from "vitest";
 import type { Module } from "@/lib/modules";
 import { hashPassword } from "@/lib/shared/password";
 import type { NewUserRecord, UserRepository } from "./ports";
-import type { User, UserCredentials, UserRole } from "./types";
+import type { User, UserAvatar, UserCredentials, UserRole } from "./types";
 import {
   DuplicateGoogleEmailError,
   DuplicateUsernameError,
   SelfLockoutError,
+  clearUserAvatar,
   createUser,
+  createUserFromGoogle,
   deleteUser,
   getAccessibleModules,
+  getUserAvatar,
   getUserByGoogleEmail,
   isAdmin,
+  setUserAvatar,
   setUserDisabled,
   setUserGoogleEmail,
   setUserModuleAccess,
@@ -24,6 +28,7 @@ import {
 class FakeUserRepository implements UserRepository {
   private users: (User & { passwordHash: string })[] = [];
   private accessByUserId = new Map<number, Set<number>>();
+  private avatarsByUserId = new Map<number, UserAvatar>();
   private nextId = 1;
 
   seed(user: Omit<User, "id" | "createdAt" | "updatedAt">, passwordHash: string): User {
@@ -126,6 +131,15 @@ class FakeUserRepository implements UserRepository {
 
   setAccessibleModuleIds(userId: number, moduleIds: number[]): void {
     this.accessByUserId.set(userId, new Set(moduleIds));
+  }
+
+  getAvatar(userId: number): UserAvatar | undefined {
+    return this.avatarsByUserId.get(userId);
+  }
+
+  setAvatar(userId: number, avatar: UserAvatar | undefined): void {
+    if (avatar) this.avatarsByUserId.set(userId, avatar);
+    else this.avatarsByUserId.delete(userId);
   }
 }
 
@@ -295,5 +309,77 @@ describe("setUserGoogleEmail / getUserByGoogleEmail", () => {
     setUserGoogleEmail(user.id, { googleEmail: "bob@example.com" }, repo);
     setUserGoogleEmail(user.id, {}, repo);
     expect(getUserByGoogleEmail("bob@example.com", repo)).toBeUndefined();
+  });
+});
+
+describe("createUserFromGoogle", () => {
+  it("creates a user-role account already linked to the given Google email", () => {
+    const repo = new FakeUserRepository();
+    const user = createUserFromGoogle({ googleEmail: "new@example.com", fullName: "New Person" }, repo);
+
+    expect(user.role).toBe("user");
+    expect(user.isDisabled).toBe(false);
+    expect(user.fullName).toBe("New Person");
+    expect(user.googleEmail).toBe("new@example.com");
+    expect(getUserByGoogleEmail("new@example.com", repo)?.id).toBe(user.id);
+  });
+
+  it("falls back to the email as the full name when Google doesn't return one", () => {
+    const repo = new FakeUserRepository();
+    const user = createUserFromGoogle({ googleEmail: "new@example.com" }, repo);
+    expect(user.fullName).toBe("new@example.com");
+  });
+
+  it("gives the new account a password nobody knows, so password login stays a no-op until an admin sets one", () => {
+    const repo = new FakeUserRepository();
+    const user = createUserFromGoogle({ googleEmail: "new@example.com" }, repo);
+    expect(repo.findCredentialsByUsername(user.username)?.passwordHash).toBeTruthy();
+  });
+});
+
+describe("setUserAvatar / getUserAvatar / clearUserAvatar", () => {
+  it("round-trips an avatar's bytes and mime type", () => {
+    const repo = new FakeUserRepository();
+    const user = repo.seed(
+      { username: "bob", fullName: "Bob", role: "user", isDisabled: false },
+      hashPassword("x"),
+    );
+    setUserAvatar(user.id, { data: Buffer.from([1, 2, 3]), mimeType: "image/png" }, repo);
+
+    const avatar = getUserAvatar(user.id, repo);
+    expect(avatar?.mimeType).toBe("image/png");
+    expect(avatar?.data).toEqual(Buffer.from([1, 2, 3]));
+  });
+
+  it("rejects a disallowed mime type", () => {
+    const repo = new FakeUserRepository();
+    const user = repo.seed(
+      { username: "bob", fullName: "Bob", role: "user", isDisabled: false },
+      hashPassword("x"),
+    );
+    expect(() =>
+      setUserAvatar(user.id, { data: Buffer.from([1]), mimeType: "image/svg+xml" }, repo),
+    ).toThrow();
+  });
+
+  it("rejects an oversized image", () => {
+    const repo = new FakeUserRepository();
+    const user = repo.seed(
+      { username: "bob", fullName: "Bob", role: "user", isDisabled: false },
+      hashPassword("x"),
+    );
+    const tooLarge = Buffer.alloc(2 * 1024 * 1024 + 1);
+    expect(() => setUserAvatar(user.id, { data: tooLarge, mimeType: "image/png" }, repo)).toThrow();
+  });
+
+  it("clears an avatar", () => {
+    const repo = new FakeUserRepository();
+    const user = repo.seed(
+      { username: "bob", fullName: "Bob", role: "user", isDisabled: false },
+      hashPassword("x"),
+    );
+    setUserAvatar(user.id, { data: Buffer.from([1, 2, 3]), mimeType: "image/png" }, repo);
+    clearUserAvatar(user.id, repo);
+    expect(getUserAvatar(user.id, repo)).toBeUndefined();
   });
 });
