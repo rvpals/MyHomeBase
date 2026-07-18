@@ -1,7 +1,7 @@
 import type { Module } from "./types";
 
-// Mirrors the seed INSERTs in migrations/0001_create_modules.sql and
-// migrations/0005_seed_stock_etfs_module.sql.
+// Mirrors the seed INSERTs in migrations/0001_create_modules.sql,
+// migrations/0005_seed_stock_etfs_module.sql, and migrations/0012_seed_journal_module.sql.
 // "Reset to Default" restores the table to exactly this list — keep both in sync.
 export const DEFAULT_MODULES: Omit<Module, "id">[] = [
   {
@@ -20,5 +20,14 @@ export const DEFAULT_MODULES: Omit<Module, "id">[] = [
     sequence: 2,
     isVisible: true,
     icon: "chart",
+  },
+  {
+    slug: "journal",
+    shortName: "Journal",
+    longName: "My Journal",
+    description: "A place to keep a journal with daily recordings.",
+    sequence: 3,
+    isVisible: true,
+    icon: "book",
   },
 ];

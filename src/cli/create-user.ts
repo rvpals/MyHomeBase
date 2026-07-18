@@ -1,18 +1,6 @@
 import { createUser, type UserRole } from "@/lib/user";
 import { deps } from "@/lib/wiring";
-
-function parseFlags(args: string[]): Record<string, string> {
-  const flags: Record<string, string> = {};
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    if (!arg.startsWith("--")) continue;
-    const key = arg.slice(2);
-    const value = args[index + 1];
-    flags[key] = value ?? "";
-    index += 1;
-  }
-  return flags;
-}
+import { parseFlags } from "./parse-flags";
 
 export async function createUserCommand(args: string[]): Promise<void> {
   const flags = parseFlags(args);

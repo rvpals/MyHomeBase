@@ -37,6 +37,13 @@ export const adminNav: TreeNode[] = [
     icon: "users",
   },
   {
+    id: "sql-explorer",
+    label: "SQL Explorer",
+    href: "/admin/sql-explorer",
+    hint: "Run read-only or ad-hoc SQL against the application database",
+    icon: "database",
+  },
+  {
     id: "about",
     label: "About",
     href: "/admin/about",

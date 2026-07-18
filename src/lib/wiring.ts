@@ -6,9 +6,20 @@ import Database from "better-sqlite3";
 import { SqliteSessionRepository } from "./auth/repository";
 import { GoogleAuthClient } from "./auth/google-client";
 import type { GoogleOAuthClient } from "./auth/ports";
+import { SqliteCsvImportMappingRepository } from "./csv-import/repository";
+import { SqliteInvestmentAccountRepository } from "./investment-accounts/repository";
+import { YahooFinanceClient } from "./market-data/yahoo-finance-client";
 import { SqliteModuleSettingsRepository } from "./module-settings/repository";
 import { SqliteModuleRepository } from "./modules/repository";
+import { RentCastLookupClient } from "./property-watch/rentcast-client";
+import type { PropertyLookupClient } from "./property-watch/ports";
+import { SqliteWatchedPropertyRepository } from "./property-watch/repository";
+import { SqlitePropertyRepository } from "./real-estate/repository";
 import { SqliteSettingsRepository } from "./settings/repository";
+import { SqliteSqlExplorerRepository } from "./sql-explorer/repository";
+import { SqliteStockAnalyticsRepository } from "./stock-analytics/repository";
+import { SqliteStockPositionRepository } from "./stock-positions/repository";
+import { SqliteStockWatchListRepository } from "./stock-watchlist/repository";
 import { SqliteUserRepository } from "./user/repository";
 
 const dbPath = process.env.MYHOMEBASE_DB ?? path.join(process.cwd(), "data", "myhomebase.db");
@@ -39,11 +50,27 @@ const googleOAuthClient: GoogleOAuthClient | undefined =
       })
     : undefined;
 
+// Property lookup (RentCast) is only enabled when an API key is set — every
+// adapter treats `deps.propertyLookupClient === undefined` as "feature off".
+const propertyLookupClient: PropertyLookupClient | undefined = process.env.RENTCAST_API_KEY
+  ? new RentCastLookupClient({ apiKey: process.env.RENTCAST_API_KEY })
+  : undefined;
+
 export const deps = {
   moduleRepo: new SqliteModuleRepository(db),
   settingsRepo: new SqliteSettingsRepository(db),
   moduleSettingsRepo: new SqliteModuleSettingsRepository(db),
   userRepo: new SqliteUserRepository(db),
   sessionRepo: new SqliteSessionRepository(db),
+  propertyRepo: new SqlitePropertyRepository(db),
+  watchedPropertyRepo: new SqliteWatchedPropertyRepository(db),
+  investmentAccountRepo: new SqliteInvestmentAccountRepository(db),
+  csvImportMappingRepo: new SqliteCsvImportMappingRepository(db),
+  stockPositionRepo: new SqliteStockPositionRepository(db),
+  stockWatchListRepo: new SqliteStockWatchListRepository(db),
+  stockAnalyticsRepo: new SqliteStockAnalyticsRepository(db),
+  sqlExplorerRepo: new SqliteSqlExplorerRepository(db),
+  marketDataClient: new YahooFinanceClient(),
+  propertyLookupClient,
   googleOAuthClient,
 };

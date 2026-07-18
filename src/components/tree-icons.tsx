@@ -74,6 +74,14 @@ const Users: IconComponent = (props) => (
   </svg>
 );
 
+const Database: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <ellipse cx="12" cy="6" rx="7" ry="3" />
+    <path d="M5 6v12c0 1.66 3.13 3 7 3s7-1.34 7-3V6" />
+    <path d="M5 12c0 1.66 3.13 3 7 3s7-1.34 7-3" />
+  </svg>
+);
+
 const TREE_ICONS = {
   sliders: Sliders,
   grid: Grid,
@@ -82,6 +90,7 @@ const TREE_ICONS = {
   info: Info,
   history: History,
   users: Users,
+  database: Database,
 } as const;
 
 export type TreeIconName = keyof typeof TREE_ICONS;
