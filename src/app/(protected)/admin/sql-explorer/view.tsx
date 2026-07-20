@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import type { SqlExecutionResult, TableInfo } from "@/lib/sql-explorer";
@@ -69,17 +70,12 @@ export function SqlExplorerView({ tables }: { tables: TableInfo[] }) {
           className="w-full rounded-md border border-line bg-paper px-3 py-2 font-mono text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
         />
         <div>
-          <button
-            type="button"
-            onClick={() => handleExecute(sql)}
-            disabled={isRunning || sql.trim() === ""}
-            className="rounded-full bg-brass px-4 py-2 text-sm font-medium text-white hover:bg-brass-dark disabled:opacity-50"
-          >
+          <Button onClick={() => handleExecute(sql)} disabled={isRunning || sql.trim() === ""}>
             {isRunning ? "Running…" : "Execute"}
-          </button>
+          </Button>
         </div>
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-red-400">{error}</p>}
 
         {result?.kind === "statement" && (
           <p className="text-sm text-ink">{result.changes} row(s) affected.</p>

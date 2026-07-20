@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/button";
 import { TreeNav } from "@/components/tree-nav";
 import type { ModuleSetting } from "@/lib/module-settings";
 import type { Module } from "@/lib/modules";
@@ -254,22 +255,12 @@ export function AdminShell({
         <div className="relative flex-1 overflow-y-auto p-8 pb-24">{children}</div>
       </div>
       <div className="fixed bottom-6 right-6 z-20 flex gap-3">
-        <button
-          type="button"
-          onClick={reset}
-          disabled={isSaving}
-          className="rounded-full border border-line bg-paper-raised px-4 py-2 text-sm font-medium text-ink shadow-lg shadow-ink/10 transition hover:border-brass hover:text-brass-dark disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
-        >
+        <Button variant="secondary" onClick={reset} disabled={isSaving}>
           Reset to Default
-        </button>
-        <button
-          type="button"
-          onClick={save}
-          disabled={isSaving || !isDirty}
-          className="rounded-full bg-brass px-4 py-2 text-sm font-medium text-white shadow-lg shadow-ink/10 transition hover:bg-brass-dark disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
-        >
+        </Button>
+        <Button variant="primary" onClick={save} disabled={isSaving || !isDirty}>
           {isSaving ? "Saving…" : "Save Settings"}
-        </button>
+        </Button>
       </div>
     </AdminContext.Provider>
   );

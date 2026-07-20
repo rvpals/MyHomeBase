@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { Tabs, type TabItem } from "@/components/tabs";
@@ -227,28 +228,19 @@ function PropertyLookup({ enabled }: { enabled: boolean }) {
           placeholder="123 Main St, Anytown, ST 12345"
           className="flex-1 rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
         />
-        <button
-          type="submit"
-          disabled={isLoading || address.trim() === ""}
-          className="rounded-full bg-brass px-4 py-2 text-sm font-medium text-white hover:bg-brass-dark disabled:opacity-50"
-        >
+        <Button type="submit" disabled={isLoading || address.trim() === ""}>
           {isLoading ? "Looking up…" : "Look up"}
-        </button>
+        </Button>
       </form>
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-      {addedMessage && <p className="mt-2 text-sm text-emerald-700">{addedMessage}</p>}
+      {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+      {addedMessage && <p className="mt-2 text-sm text-emerald-400">{addedMessage}</p>}
       {details && (
         <div className="mt-4">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="font-display text-lg text-ink">{details.address}</h3>
-            <button
-              type="button"
-              disabled={isSaving}
-              onClick={handleAddToWatchlist}
-              className="rounded-full border border-line px-3 py-1.5 text-xs font-medium text-brass-dark hover:bg-paper-raised disabled:opacity-50"
-            >
+            <Button size="sm" variant="secondary" disabled={isSaving} onClick={handleAddToWatchlist}>
               {isSaving ? "Adding…" : "Add to Watch List"}
-            </button>
+            </Button>
           </div>
           <PropertyDetailsTabs details={details} />
         </div>
@@ -368,7 +360,7 @@ export function PropertyWatchView({
             type="button"
             disabled={busyId === entry.watchedProperty.id}
             onClick={() => handleRemove(entry)}
-            className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
+            className="text-xs font-medium text-red-400 hover:underline disabled:opacity-50"
           >
             Remove
           </button>

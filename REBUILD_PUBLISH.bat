@@ -69,6 +69,7 @@ if errorlevel 1 (
 
 copy /y ".env.example" "%STAGING%\.env.example" >nul
 copy /y "START_PRD.bat" "%STAGING%\START_PRD.bat" >nul
+copy /y "start_prd.sh" "%STAGING%\start_prd.sh" >nul
 
 echo === Publishing to "%DEST%" ===
 if not exist "%DEST%" mkdir "%DEST%"

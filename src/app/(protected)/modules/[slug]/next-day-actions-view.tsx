@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import type { NextDayActionSignal, NextDayActionThresholds, NextDayActionType } from "@/lib/next-day-actions";
@@ -90,17 +91,12 @@ export function NextDayActionsView({ initialThresholds }: { initialThresholds: N
       </p>
 
       <div className="mt-4">
-        <button
-          type="button"
-          onClick={handleRunScan}
-          disabled={isScanning}
-          className="rounded-full bg-brass px-4 py-2 text-sm font-medium text-white hover:bg-brass-dark disabled:opacity-50"
-        >
+        <Button type="button" onClick={handleRunScan} disabled={isScanning}>
           {isScanning ? "Scanning…" : "Run Scan"}
-        </button>
+        </Button>
       </div>
 
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
 
       {signals && (
         <div className="mt-6 flex flex-col gap-4">

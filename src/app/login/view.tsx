@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { AppIcon } from "@/components/app-icon";
+import { Button } from "@/components/button";
 import { loginAction } from "./actions";
 
 const GOOGLE_ERROR_MESSAGES: Record<string, string> = {
@@ -66,15 +67,11 @@ export function LoginView({ appName, googleLoginEnabled, errorCode }: LoginViewP
           />
         </label>
 
-        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+        {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
 
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="mt-6 w-full rounded-full bg-brass px-4 py-2 text-sm font-medium text-white shadow-lg shadow-ink/10 transition hover:bg-brass-dark disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
-        >
+        <Button type="submit" disabled={isSubmitting} className="mt-6 w-full">
           {isSubmitting ? "Signing in…" : "Sign in"}
-        </button>
+        </Button>
 
         {googleLoginEnabled && (
           <>
@@ -83,12 +80,9 @@ export function LoginView({ appName, googleLoginEnabled, errorCode }: LoginViewP
               <span className="text-xs text-muted">or</span>
               <div className="h-px flex-1 bg-line" aria-hidden />
             </div>
-            <a
-              href="/login/google"
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-full border border-line bg-paper px-4 py-2 text-sm font-medium text-ink transition hover:border-brass hover:text-brass-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
-            >
+            <Button href="/login/google" variant="secondary" className="mt-4 w-full">
               Sign in with Google
-            </a>
+            </Button>
           </>
         )}
       </form>

@@ -1,3 +1,18 @@
+export type FontKey =
+  | "space-grotesk"
+  | "sora"
+  | "familjen-grotesk"
+  | "manrope"
+  | "inter"
+  | "ibm-plex-mono"
+  | "jetbrains-mono";
+
+export interface ColorThemeFonts {
+  display: FontKey;
+  body: FontKey;
+  mono: FontKey;
+}
+
 export interface ColorThemeTokens {
   paper: string;
   paperRaised: string;
@@ -8,6 +23,7 @@ export interface ColorThemeTokens {
   brass: string;
   brassDark: string;
   brassSoft: string;
+  fonts: ColorThemeFonts;
 }
 
 export interface ColorTheme {
@@ -23,168 +39,76 @@ export interface ColorTheme {
 // code changes.
 export const COLOR_THEMES: ColorTheme[] = [
   {
-    id: "brass",
-    name: "Brass",
-    description: "Warm brass on cool paper — the original.",
+    id: "signal-deck",
+    name: "Signal Deck",
+    description: "Graphite console with a teal signal accent.",
     tokens: {
-      paper: "#F7F8FA",
-      paperRaised: "#FFFFFF",
-      ink: "#12161C",
-      line: "#E1E4EA",
-      muted: "#6B7280",
-      mutedInverse: "#9AA3AF",
-      brass: "#B4772E",
-      brassDark: "#8B5A22",
-      brassSoft: "#F1E3CD",
+      paper: "#12161A",
+      paperRaised: "#1A1F26",
+      ink: "#EEF2F3",
+      line: "#2B323B",
+      muted: "#8B96A1",
+      mutedInverse: "#5B6470",
+      brass: "#33E2B8",
+      brassDark: "#1C8A71",
+      brassSoft: "#15332D",
+      fonts: { display: "space-grotesk", body: "manrope", mono: "jetbrains-mono" },
     },
   },
   {
-    id: "sage",
-    name: "Sage",
-    description: "Muted green, calm and grounded.",
+    id: "ember-ledger",
+    name: "Ember Ledger",
+    description: "Ink navy with a warm amber accent.",
     tokens: {
-      paper: "#F5F7F3",
-      paperRaised: "#FFFFFF",
-      ink: "#171C17",
-      line: "#DCE3D8",
-      muted: "#6B7268",
-      mutedInverse: "#9CA79A",
-      brass: "#5C7A5C",
-      brassDark: "#3F5940",
-      brassSoft: "#E1E8DD",
+      paper: "#11131B",
+      paperRaised: "#171A25",
+      ink: "#F4EEE3",
+      line: "#2A2D3D",
+      muted: "#9992A3",
+      mutedInverse: "#655F70",
+      brass: "#E79355",
+      brassDark: "#A35C2B",
+      brassSoft: "#3A2A1C",
+      fonts: { display: "sora", body: "manrope", mono: "ibm-plex-mono" },
     },
   },
   {
-    id: "slate",
-    name: "Slate",
-    description: "Cool blue-gray, quiet and precise.",
+    id: "aurora-deck",
+    name: "Aurora Deck",
+    description: "Near-black with a violet and cyan duo-tone accent.",
     tokens: {
-      paper: "#F4F6FA",
-      paperRaised: "#FFFFFF",
-      ink: "#121820",
-      line: "#DCE2EC",
-      muted: "#667085",
-      mutedInverse: "#9AA6BC",
-      brass: "#4A6FA5",
-      brassDark: "#34517D",
-      brassSoft: "#DCE5F0",
+      paper: "#0D0E14",
+      paperRaised: "#15171F",
+      ink: "#F5F6FA",
+      line: "#262A38",
+      muted: "#8A8EA3",
+      mutedInverse: "#4D5166",
+      brass: "#7C5CFF",
+      brassDark: "#29B6E0",
+      brassSoft: "#1C2036",
+      fonts: { display: "familjen-grotesk", body: "inter", mono: "jetbrains-mono" },
     },
   },
   {
-    id: "terracotta",
-    name: "Terracotta",
-    description: "Warm clay, earthy and inviting.",
+    id: "bms",
+    name: "BMS",
+    description: "Bristol Myers Squibb brand purple on charcoal gray.",
     tokens: {
-      paper: "#FBF6F2",
-      paperRaised: "#FFFFFF",
-      ink: "#1E1712",
-      line: "#EEDFD3",
-      muted: "#7A6A5D",
-      mutedInverse: "#B7A292",
-      brass: "#C1592F",
-      brassDark: "#973F1E",
-      brassSoft: "#F3DDCB",
-    },
-  },
-  {
-    id: "plum",
-    name: "Plum",
-    description: "Deep purple, a little more formal.",
-    tokens: {
-      paper: "#F8F6FA",
-      paperRaised: "#FFFFFF",
-      ink: "#1A1520",
-      line: "#E5DCEA",
-      muted: "#71667A",
-      mutedInverse: "#A99DB2",
-      brass: "#7A4E8C",
-      brassDark: "#593668",
-      brassSoft: "#E9DCEE",
-    },
-  },
-  {
-    id: "teal",
-    name: "Teal",
-    description: "Deep teal, cool and focused.",
-    tokens: {
-      paper: "#F3F9F8",
-      paperRaised: "#FFFFFF",
-      ink: "#0E1E1B",
-      line: "#D4E7E3",
-      muted: "#5F7975",
-      mutedInverse: "#9DB8B3",
-      brass: "#2A7F76",
-      brassDark: "#1C5A53",
-      brassSoft: "#D3EAE6",
-    },
-  },
-  {
-    id: "mustard",
-    name: "Mustard",
-    description: "Warm gold, confident and bright.",
-    tokens: {
-      paper: "#FAF7EF",
-      paperRaised: "#FFFFFF",
-      ink: "#211B0E",
-      line: "#EDE2C3",
-      muted: "#7C7154",
-      mutedInverse: "#B6A87F",
-      brass: "#B98A1F",
-      brassDark: "#8A6714",
-      brassSoft: "#F0E1B8",
-    },
-  },
-  {
-    id: "rose",
-    name: "Rose",
-    description: "Dusty rose, soft but not precious.",
-    tokens: {
-      paper: "#FAF5F5",
-      paperRaised: "#FFFFFF",
-      ink: "#201417",
-      line: "#EBDBDD",
-      muted: "#7C6669",
-      mutedInverse: "#B79DA1",
-      brass: "#A2495A",
-      brassDark: "#78313E",
-      brassSoft: "#F0D8DC",
-    },
-  },
-  {
-    id: "ocean",
-    name: "Ocean",
-    description: "Deep blue, clear and confident.",
-    tokens: {
-      paper: "#F2F7FA",
-      paperRaised: "#FFFFFF",
-      ink: "#0E1A24",
-      line: "#D6E5EE",
-      muted: "#5E7284",
-      mutedInverse: "#9AB2C2",
-      brass: "#2C6E9E",
-      brassDark: "#1E4E71",
-      brassSoft: "#CFE3EF",
-    },
-  },
-  {
-    id: "charcoal",
-    name: "Charcoal",
-    description: "Near-monochrome, minimal and quiet.",
-    tokens: {
-      paper: "#F6F6F6",
-      paperRaised: "#FFFFFF",
-      ink: "#171717",
-      line: "#E2E2E2",
-      muted: "#6B6B6F",
-      mutedInverse: "#A3A3A6",
-      brass: "#52525B",
-      brassDark: "#3A3A40",
-      brassSoft: "#E4E4E7",
+      paper: "#1A1818",
+      paperRaised: "#221F1F",
+      ink: "#F2F0F0",
+      line: "#3A3636",
+      muted: "#9B9494",
+      mutedInverse: "#6B6565",
+      brass: "#BE2BBB",
+      brassDark: "#7D1B7A",
+      brassSoft: "#2A172A",
+      fonts: { display: "sora", body: "manrope", mono: "ibm-plex-mono" },
     },
   },
 ];
 
-export const DEFAULT_COLOR_THEME_ID = "brass";
+export const DEFAULT_COLOR_THEME_ID = "signal-deck";
 
 export function getColorTheme(id: string): ColorTheme {
   return COLOR_THEMES.find((theme) => theme.id === id) ?? COLOR_THEMES[0];

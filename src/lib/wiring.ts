@@ -6,6 +6,7 @@ import Database from "better-sqlite3";
 import { SqliteSessionRepository } from "./auth/repository";
 import { GoogleAuthClient } from "./auth/google-client";
 import type { GoogleOAuthClient } from "./auth/ports";
+import { SqliteCsvAnalyticsRepository } from "./csv-analytics/repository";
 import { SqliteCsvImportMappingRepository } from "./csv-import/repository";
 import { SqliteInvestmentAccountRepository } from "./investment-accounts/repository";
 import { YahooFinanceClient } from "./market-data/yahoo-finance-client";
@@ -20,6 +21,7 @@ import { SqliteSqlExplorerRepository } from "./sql-explorer/repository";
 import { SqliteStockAnalyticsRepository } from "./stock-analytics/repository";
 import { SqliteStockPositionRepository } from "./stock-positions/repository";
 import { SqliteStockWatchListRepository } from "./stock-watchlist/repository";
+import { RealSystemInfoRepository } from "./system-info/repository";
 import { SqliteUserRepository } from "./user/repository";
 
 const dbPath = process.env.MYHOMEBASE_DB ?? path.join(process.cwd(), "data", "myhomebase.db");
@@ -66,10 +68,12 @@ export const deps = {
   watchedPropertyRepo: new SqliteWatchedPropertyRepository(db),
   investmentAccountRepo: new SqliteInvestmentAccountRepository(db),
   csvImportMappingRepo: new SqliteCsvImportMappingRepository(db),
+  csvAnalyticsRepo: new SqliteCsvAnalyticsRepository(db),
   stockPositionRepo: new SqliteStockPositionRepository(db),
   stockWatchListRepo: new SqliteStockWatchListRepository(db),
   stockAnalyticsRepo: new SqliteStockAnalyticsRepository(db),
   sqlExplorerRepo: new SqliteSqlExplorerRepository(db),
+  systemInfoRepo: new RealSystemInfoRepository(),
   marketDataClient: new YahooFinanceClient(),
   propertyLookupClient,
   googleOAuthClient,

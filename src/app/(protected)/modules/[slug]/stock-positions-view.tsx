@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/button";
 import { ChartBar } from "@/components/chart-bar";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
@@ -223,23 +224,15 @@ function PositionForm({
           className="w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
         />
       </label>
-      {error && <p className="text-sm text-red-600 sm:col-span-3">{error}</p>}
+      {error && <p className="text-sm text-red-400 sm:col-span-3">{error}</p>}
       <div className="flex gap-2 sm:col-span-3">
-        <button
-          type="submit"
-          disabled={isSaving}
-          className="rounded-full bg-brass px-4 py-2 text-sm font-medium text-white hover:bg-brass-dark disabled:opacity-50"
-        >
+        <Button type="submit" disabled={isSaving}>
           {isSaving ? "Saving…" : title}
-        </button>
+        </Button>
         {onCancel && (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-full border border-line px-4 py-2 text-sm font-medium text-muted hover:text-ink"
-          >
+          <Button type="button" variant="secondary" onClick={onCancel}>
             Cancel
-          </button>
+          </Button>
         )}
       </div>
     </form>
@@ -344,23 +337,15 @@ function TransactionForm({
           className="w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
         />
       </label>
-      {error && <p className="text-sm text-red-600 sm:col-span-3">{error}</p>}
+      {error && <p className="text-sm text-red-400 sm:col-span-3">{error}</p>}
       <div className="flex gap-2 sm:col-span-3">
-        <button
-          type="submit"
-          disabled={isSaving}
-          className="rounded-full bg-brass px-4 py-2 text-sm font-medium text-white hover:bg-brass-dark disabled:opacity-50"
-        >
+        <Button type="submit" disabled={isSaving}>
           {isSaving ? "Saving…" : title}
-        </button>
+        </Button>
         {onCancel && (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-full border border-line px-4 py-2 text-sm font-medium text-muted hover:text-ink"
-          >
+          <Button type="button" variant="secondary" onClick={onCancel}>
             Cancel
-          </button>
+          </Button>
         )}
       </div>
     </form>
@@ -439,7 +424,7 @@ function PositionsPanel({ positions }: { positions: StockPosition[] }) {
           <button
             type="button"
             onClick={() => handleDelete(position)}
-            className="text-xs font-medium text-red-600 hover:underline"
+            className="text-xs font-medium text-red-400 hover:underline"
           >
             Delete
           </button>
@@ -453,14 +438,14 @@ function PositionsPanel({ positions }: { positions: StockPosition[] }) {
   return (
     <div>
       <div className="mb-4 flex justify-end">
-        <button
+        <Button
           type="button"
+          variant="secondary"
           onClick={handleRefreshAll}
           disabled={isRefreshing || positions.length === 0}
-          className="rounded-full border border-line px-4 py-2 text-sm font-medium text-brass-dark hover:bg-paper-raised disabled:opacity-50"
         >
           {isRefreshing ? "Refreshing…" : "Refresh All"}
-        </button>
+        </Button>
       </div>
 
       <CollapsibleCard title="Add Position">
@@ -541,7 +526,7 @@ function TransactionsPanel({ transactions }: { transactions: StockTransaction[] 
           <button
             type="button"
             onClick={() => handleDelete(transaction)}
-            className="text-xs font-medium text-red-600 hover:underline"
+            className="text-xs font-medium text-red-400 hover:underline"
           >
             Delete
           </button>

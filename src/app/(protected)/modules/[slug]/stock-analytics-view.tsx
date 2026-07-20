@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/button";
 import { ChartLine } from "@/components/chart-line";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { Tabs, type TabItem } from "@/components/tabs";
@@ -66,22 +67,17 @@ function VolatilityTab({ initialResults }: { initialResults: VolatilityResult[] 
   return (
     <div>
       <div className="mb-4 flex justify-end gap-2">
-        <button
+        <Button
           type="button"
+          variant="secondary"
           onClick={handleClear}
           disabled={isBusy || initialResults.length === 0}
-          className="rounded-full border border-line px-4 py-2 text-sm font-medium text-muted hover:text-ink disabled:opacity-50"
         >
           Clear Cache
-        </button>
-        <button
-          type="button"
-          onClick={handleRecompute}
-          disabled={isBusy}
-          className="rounded-full bg-brass px-4 py-2 text-sm font-medium text-white hover:bg-brass-dark disabled:opacity-50"
-        >
+        </Button>
+        <Button type="button" onClick={handleRecompute} disabled={isBusy}>
           {isBusy ? "Computing…" : "Recompute All"}
-        </button>
+        </Button>
       </div>
       <DataGrid columns={columns} rows={initialResults} getRowKey={(item) => item.ticker} emptyMessage="Not yet computed." />
     </div>
@@ -148,24 +144,14 @@ function CorrelationTab({ initialResult }: { initialResult?: CorrelationResult }
   return (
     <div>
       <div className="mb-4 flex justify-end gap-2">
-        <button
-          type="button"
-          onClick={handleClear}
-          disabled={isBusy || !result}
-          className="rounded-full border border-line px-4 py-2 text-sm font-medium text-muted hover:text-ink disabled:opacity-50"
-        >
+        <Button type="button" variant="secondary" onClick={handleClear} disabled={isBusy || !result}>
           Clear Cache
-        </button>
-        <button
-          type="button"
-          onClick={handleCompute}
-          disabled={isBusy}
-          className="rounded-full bg-brass px-4 py-2 text-sm font-medium text-white hover:bg-brass-dark disabled:opacity-50"
-        >
+        </Button>
+        <Button type="button" onClick={handleCompute} disabled={isBusy}>
           {isBusy ? "Computing…" : "Recompute"}
-        </button>
+        </Button>
       </div>
-      {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="mb-2 text-sm text-red-400">{error}</p>}
       {result && result.failedTickers.length > 0 && (
         <p className="mb-2 text-sm text-muted">Skipped (insufficient data): {result.failedTickers.join(", ")}</p>
       )}
@@ -231,15 +217,11 @@ function SharpeTab({ initialResult }: { initialResult?: SharpeResult }) {
             className="w-28 rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
           />
         </label>
-        <button
-          type="submit"
-          disabled={isBusy}
-          className="rounded-full bg-brass px-4 py-2 text-sm font-medium text-white hover:bg-brass-dark disabled:opacity-50"
-        >
+        <Button type="submit" disabled={isBusy}>
           {isBusy ? "Computing…" : "Compute"}
-        </button>
+        </Button>
       </form>
-      {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="mb-2 text-sm text-red-400">{error}</p>}
       {!result ? (
         <p className="text-sm text-muted">Not yet computed.</p>
       ) : (

@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/avatar";
+import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import type { Module } from "@/lib/modules";
@@ -41,7 +42,7 @@ function StatusBadge({ isDisabled }: { isDisabled: boolean }) {
   return (
     <span
       className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-        isDisabled ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"
+        isDisabled ? "bg-red-950/50 text-red-300" : "bg-emerald-950/50 text-emerald-300"
       }`}
     >
       {isDisabled ? "Disabled" : "Enabled"}
@@ -112,8 +113,9 @@ function ModuleAccessEditor({
               {module.shortName}
             </label>
           ))}
-          <button
-            type="button"
+          <Button
+            size="sm"
+            className="mt-1 self-start"
             disabled={isSaving}
             onClick={async () => {
               setIsSaving(true);
@@ -124,10 +126,9 @@ function ModuleAccessEditor({
                 setIsSaving(false);
               }
             }}
-            className="mt-1 self-start rounded-full bg-brass px-3 py-1 text-xs font-medium text-white hover:bg-brass-dark disabled:opacity-50"
           >
             {isSaving ? "Saving…" : "Save"}
-          </button>
+          </Button>
         </div>
       )}
     </div>
@@ -170,10 +171,10 @@ function GoogleEmailEditor({
         placeholder="name@gmail.com"
         className="w-44 rounded-md border border-line bg-paper px-2 py-1 text-xs text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
       />
-      {error && <span className="text-xs text-red-600">{error}</span>}
+      {error && <span className="text-xs text-red-400">{error}</span>}
       <div className="flex gap-2">
-        <button
-          type="button"
+        <Button
+          size="sm"
           disabled={isSaving}
           onClick={async () => {
             setIsSaving(true);
@@ -185,13 +186,13 @@ function GoogleEmailEditor({
               setIsSaving(false);
             }
           }}
-          className="rounded-full bg-brass px-3 py-1 text-xs font-medium text-white hover:bg-brass-dark disabled:opacity-50"
         >
           {isSaving ? "Saving…" : "Save"}
-        </button>
+        </Button>
         {googleEmail && (
-          <button
-            type="button"
+          <Button
+            size="sm"
+            variant="secondary"
             disabled={isSaving}
             onClick={async () => {
               setIsSaving(true);
@@ -202,22 +203,21 @@ function GoogleEmailEditor({
                 setIsSaving(false);
               }
             }}
-            className="rounded-full border border-line px-3 py-1 text-xs font-medium text-muted hover:text-ink disabled:opacity-50"
           >
             Unlink
-          </button>
+          </Button>
         )}
-        <button
-          type="button"
+        <Button
+          size="sm"
+          variant="secondary"
           onClick={() => {
             setOpen(false);
             setValue(googleEmail ?? "");
             setError(undefined);
           }}
-          className="rounded-full border border-line px-3 py-1 text-xs font-medium text-muted hover:text-ink"
         >
           Cancel
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -250,10 +250,10 @@ function PasswordEditor({ onSave }: { onSave: (password: string) => Promise<void
         placeholder="New password"
         className="w-36 rounded-md border border-line bg-paper px-2 py-1 text-xs text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
       />
-      {error && <span className="text-xs text-red-600">{error}</span>}
+      {error && <span className="text-xs text-red-400">{error}</span>}
       <div className="flex gap-2">
-        <button
-          type="button"
+        <Button
+          size="sm"
           disabled={isSaving}
           onClick={async () => {
             setIsSaving(true);
@@ -266,21 +266,20 @@ function PasswordEditor({ onSave }: { onSave: (password: string) => Promise<void
               setIsSaving(false);
             }
           }}
-          className="rounded-full bg-brass px-3 py-1 text-xs font-medium text-white hover:bg-brass-dark disabled:opacity-50"
         >
           {isSaving ? "Saving…" : "Save"}
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
           onClick={() => {
             setOpen(false);
             setPassword("");
             setError(undefined);
           }}
-          className="rounded-full border border-line px-3 py-1 text-xs font-medium text-muted hover:text-ink"
         >
           Cancel
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -361,15 +360,11 @@ function AddUserForm({ onCreate }: { onCreate: (input: Parameters<typeof createU
           <option value="admin">Admin</option>
         </select>
       </label>
-      {error && <p className="text-sm text-red-600 sm:col-span-2">{error}</p>}
+      {error && <p className="text-sm text-red-400 sm:col-span-2">{error}</p>}
       <div className="sm:col-span-2">
-        <button
-          type="submit"
-          disabled={isSaving}
-          className="rounded-full bg-brass px-4 py-2 text-sm font-medium text-white hover:bg-brass-dark disabled:opacity-50"
-        >
+        <Button type="submit" disabled={isSaving}>
           {isSaving ? "Creating…" : "Create user"}
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -410,7 +405,7 @@ export function UserManagementView({
                 if (result.ok) router.refresh();
                 else window.alert(result.error);
               }}
-              className="text-xs font-medium text-red-600 hover:underline"
+              className="text-xs font-medium text-red-400 hover:underline"
             >
               Clear
             </button>
@@ -516,7 +511,7 @@ export function UserManagementView({
                 if (result.ok) router.refresh();
                 else window.alert(result.error);
               }}
-              className="text-xs font-medium text-red-600 hover:underline"
+              className="text-xs font-medium text-red-400 hover:underline"
             >
               Delete
             </button>

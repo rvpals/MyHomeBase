@@ -8,4 +8,5 @@ export {
   getColorTheme,
   type ColorTheme,
   type ColorThemeTokens,
+  type FontKey,
 } from "./themes";

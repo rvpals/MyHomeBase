@@ -1,7 +1,8 @@
 import type { Module } from "./types";
 
 // Mirrors the seed INSERTs in migrations/0001_create_modules.sql,
-// migrations/0005_seed_stock_etfs_module.sql, and migrations/0012_seed_journal_module.sql.
+// migrations/0005_seed_stock_etfs_module.sql, migrations/0012_seed_journal_module.sql,
+// and migrations/0020_seed_csv_analysis_module.sql.
 // "Reset to Default" restores the table to exactly this list — keep both in sync.
 export const DEFAULT_MODULES: Omit<Module, "id">[] = [
   {
@@ -29,5 +30,14 @@ export const DEFAULT_MODULES: Omit<Module, "id">[] = [
     sequence: 3,
     isVisible: true,
     icon: "book",
+  },
+  {
+    slug: "csv-analysis",
+    shortName: "CSV Analysis",
+    longName: "CSV Data Analysis",
+    description: "Import a CSV file for analytics.",
+    sequence: 4,
+    isVisible: true,
+    icon: "folder",
   },
 ];

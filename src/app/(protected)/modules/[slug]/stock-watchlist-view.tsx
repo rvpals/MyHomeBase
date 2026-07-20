@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import type { StockWatchList, StockWatchListItem } from "@/lib/stock-watchlist";
@@ -50,14 +51,10 @@ function NewWatchListForm() {
         placeholder="Watch list name"
         className="flex-1 rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
       />
-      <button
-        type="submit"
-        disabled={isSaving || name.trim() === ""}
-        className="rounded-full bg-brass px-4 py-2 text-sm font-medium text-white hover:bg-brass-dark disabled:opacity-50"
-      >
+      <Button type="submit" disabled={isSaving || name.trim() === ""}>
         {isSaving ? "Creating…" : "New Watch List"}
-      </button>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      </Button>
+      {error && <p className="text-sm text-red-400">{error}</p>}
     </form>
   );
 }
@@ -115,14 +112,10 @@ function AddItemForm({ watchListId }: { watchListId: number }) {
           className="rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
         />
       </label>
-      <button
-        type="submit"
-        disabled={isSaving || ticker.trim() === "" || addedDate.trim() === ""}
-        className="rounded-full bg-brass px-4 py-2 text-sm font-medium text-white hover:bg-brass-dark disabled:opacity-50"
-      >
+      <Button type="submit" disabled={isSaving || ticker.trim() === "" || addedDate.trim() === ""}>
         {isSaving ? "Adding…" : "Add Ticker"}
-      </button>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      </Button>
+      {error && <p className="text-sm text-red-400">{error}</p>}
     </form>
   );
 }
@@ -176,7 +169,7 @@ function WatchListCard({ entry }: { entry: WatchListEntry }) {
         <button
           type="button"
           onClick={() => handleDeleteItem(item)}
-          className="text-xs font-medium text-red-600 hover:underline"
+          className="text-xs font-medium text-red-400 hover:underline"
         >
           Remove
         </button>
@@ -218,7 +211,7 @@ function WatchListCard({ entry }: { entry: WatchListEntry }) {
         <button
           type="button"
           onClick={handleDeleteList}
-          className="text-xs font-medium text-red-600 hover:underline"
+          className="text-xs font-medium text-red-400 hover:underline"
         >
           Delete List
         </button>

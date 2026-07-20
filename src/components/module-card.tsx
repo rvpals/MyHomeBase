@@ -27,7 +27,7 @@ export function ModuleCard({
   return (
     <Link
       href={href}
-      className={`group relative block rounded-xl bg-paper-raised p-5 pt-6 shadow-[0_26px_32px_-8px_rgba(0,0,0,0.45),0_12px_16px_-6px_rgba(0,0,0,0.3)] transition-all hover:-translate-y-1 hover:shadow-[0_40px_48px_-10px_rgba(0,0,0,0.55),0_18px_24px_-8px_rgba(0,0,0,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none motion-reduce:hover:translate-y-0 ${className}`}
+      className={`group relative block rounded-xl border border-line bg-paper-raised p-5 pt-6 transition-all hover:-translate-y-1 hover:border-brass/50 hover:shadow-[0_0_0_1px_var(--brass),0_20px_32px_-12px_rgba(0,0,0,0.5)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:ring-offset-2 focus-visible:ring-offset-paper motion-reduce:transition-none motion-reduce:hover:translate-y-0 ${className}`}
     >
       <span className="absolute -top-2 left-5 rounded-t-md bg-brass-soft px-2 py-0.5 font-mono text-[11px] font-medium tracking-wide text-brass-dark">
         {code}

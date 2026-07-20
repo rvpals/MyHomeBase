@@ -117,6 +117,8 @@ describe("resetModulesToDefaults", () => {
     expect(result.map((module) => module.slug)).toEqual([
       "real-estate-investment",
       "stock-etfs",
+      "journal",
+      "csv-analysis",
     ]);
   });
 

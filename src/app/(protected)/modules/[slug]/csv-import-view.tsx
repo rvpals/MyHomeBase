@@ -2,6 +2,7 @@
 
 import { useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import type { ColumnMapping, CsvPreview, ImportSummary, ImportType, NamedMapping } from "@/lib/csv-import";
 import {
@@ -194,7 +195,7 @@ function CsvImportPanel({
     <div className="rounded-xl border border-line p-4">
       <input type="file" accept=".csv" onChange={handleFileChange} disabled={isBusy} className="text-sm" />
 
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
 
       {preview && (
         <div className="mt-4 flex flex-col gap-4">
@@ -273,14 +274,14 @@ function CsvImportPanel({
                 className="rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
               />
             </label>
-            <button
-              type="button"
+            <Button
+              size="sm"
+              variant="secondary"
               onClick={handleSaveNamedMapping}
               disabled={newMappingName.trim() === ""}
-              className="rounded-full border border-line px-3 py-1.5 text-xs font-medium text-brass-dark hover:bg-paper-raised disabled:opacity-50"
             >
               Save Mapping
-            </button>
+            </Button>
             {namedMappings.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {namedMappings.map((entry) => (
@@ -293,7 +294,7 @@ function CsvImportPanel({
                       type="button"
                       onClick={() => handleDeleteNamedMapping(entry.id)}
                       aria-label={`Delete ${entry.name}`}
-                      className="text-muted hover:text-red-600"
+                      className="text-muted hover:text-red-400"
                     >
                       &times;
                     </button>
@@ -328,27 +329,21 @@ function CsvImportPanel({
                   </div>
                 ))}
               </div>
-              <button
-                type="button"
+              <Button
+                className="mt-3"
                 onClick={() => runImport(accountNameMapping)}
                 disabled={isBusy}
-                className="mt-3 rounded-full bg-brass px-4 py-2 text-sm font-medium text-white hover:bg-brass-dark disabled:opacity-50"
               >
                 {isBusy ? "Importing…" : "Confirm & Import"}
-              </button>
+              </Button>
             </div>
           )}
 
           {!accountStep && (
             <div>
-              <button
-                type="button"
-                onClick={handleImportClick}
-                disabled={isBusy}
-                className="rounded-full bg-brass px-4 py-2 text-sm font-medium text-white hover:bg-brass-dark disabled:opacity-50"
-              >
+              <Button onClick={handleImportClick} disabled={isBusy}>
                 {isBusy ? "Importing…" : "Import"}
-              </button>
+              </Button>
             </div>
           )}
 

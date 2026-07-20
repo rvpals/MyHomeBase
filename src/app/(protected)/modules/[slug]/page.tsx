@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
+import { listEntries as listCsvAnalyticsEntries } from "@/lib/csv-analytics";
 import { listAccounts, listPerformanceRecords } from "@/lib/investment-accounts";
 import { listModuleSettingsFor } from "@/lib/module-settings";
 import { getModuleBySlug, getModuleCode } from "@/lib/modules";
@@ -12,6 +13,7 @@ import { listPositions, listTransactions } from "@/lib/stock-positions";
 import { listItems, listWatchLists } from "@/lib/stock-watchlist";
 import { userHasModuleAccess } from "@/lib/user";
 import { deps } from "@/lib/wiring";
+import { CsvAnalyticsView } from "./csv-analytics-view";
 import { CsvImportView } from "./csv-import-view";
 import { PropertyWatchView, type WatchlistEntry } from "./property-watch-view";
 import { RealEstateView } from "./real-estate-view";
@@ -23,6 +25,7 @@ import { StockWatchlistView, type WatchListEntry } from "./stock-watchlist-view"
 
 const REAL_ESTATE_MODULE_SLUG = "real-estate-investment";
 const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
+const CSV_ANALYSIS_MODULE_SLUG = "csv-analysis";
 
 function RealEstateModuleBody() {
   const watchlist: WatchlistEntry[] = listWatchlist(deps.watchedPropertyRepo).map((watchedProperty) => ({
@@ -82,6 +85,10 @@ function ModuleBody({ slug }: { slug: string }) {
     return <StockEtfsModuleBody />;
   }
 
+  if (slug === CSV_ANALYSIS_MODULE_SLUG) {
+    return <CsvAnalyticsView entries={listCsvAnalyticsEntries(deps.csvAnalyticsRepo)} />;
+  }
+
   return (
     <div className="rounded-xl border border-dashed border-line p-8 text-center">
       <p className="font-display text-lg text-ink">Coming soon</p>
@@ -109,7 +116,7 @@ export default async function ModulePage({
   return (
     <div
       className={
-        slug === REAL_ESTATE_MODULE_SLUG || slug === STOCK_ETFS_MODULE_SLUG
+        slug === REAL_ESTATE_MODULE_SLUG || slug === STOCK_ETFS_MODULE_SLUG || slug === CSV_ANALYSIS_MODULE_SLUG
           ? "mx-auto max-w-6xl"
           : "mx-auto max-w-3xl"
       }

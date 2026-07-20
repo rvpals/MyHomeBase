@@ -3,7 +3,10 @@
 // parses args, validates with the module's zod schema, calls a lib use-case, and prints.
 import { addPropertyCommand } from "./add-property";
 import { computeAnalyticsCommand } from "./compute-analytics";
+import { createCsvAnalyticsEntryCommand } from "./create-csv-analytics-entry";
 import { createUserCommand } from "./create-user";
+import { deleteCsvAnalyticsEntryCommand } from "./delete-csv-analytics-entry";
+import { listCsvAnalyticsCommand } from "./list-csv-analytics";
 import { deletePropertyCommand } from "./delete-property";
 import { listPropertiesCommand } from "./list-properties";
 import { listWatchlistCommand } from "./list-watchlist";
@@ -29,6 +32,9 @@ const commands: Record<string, Command> = {
   "remove-from-watchlist": removeFromWatchlistCommand,
   "refresh-positions": refreshPositionsCommand,
   "compute-analytics": computeAnalyticsCommand,
+  "list-csv-analytics": listCsvAnalyticsCommand,
+  "create-csv-analytics-entry": createCsvAnalyticsEntryCommand,
+  "delete-csv-analytics-entry": deleteCsvAnalyticsEntryCommand,
 };
 
 async function main(argv: string[]) {

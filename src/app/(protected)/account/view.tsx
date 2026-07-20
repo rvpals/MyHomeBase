@@ -3,6 +3,7 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/avatar";
+import { Button } from "@/components/button";
 import type { User } from "@/lib/user";
 import { changeOwnPasswordAction, removeOwnAvatarAction, uploadOwnAvatarAction } from "./actions";
 
@@ -61,26 +62,17 @@ function AvatarSection({ user }: { user: User }) {
             accept="image/png,image/jpeg,image/webp,image/gif"
             className="text-sm text-ink"
           />
-          <button
-            type="submit"
-            disabled={isSaving}
-            className="rounded-full bg-brass px-4 py-1.5 text-sm font-medium text-white hover:bg-brass-dark disabled:opacity-50"
-          >
+          <Button type="submit" size="sm" disabled={isSaving}>
             {isSaving ? "Saving…" : "Upload"}
-          </button>
+          </Button>
           {user.avatarMimeType && (
-            <button
-              type="button"
-              disabled={isSaving}
-              onClick={handleRemove}
-              className="rounded-full border border-line px-4 py-1.5 text-sm font-medium text-muted hover:text-ink disabled:opacity-50"
-            >
+            <Button variant="danger" size="sm" disabled={isSaving} onClick={handleRemove}>
               Remove
-            </button>
+            </Button>
           )}
         </form>
       </div>
-      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
       <p className="mt-3 text-xs text-muted">PNG, JPEG, WEBP, or GIF. Up to 2 MB.</p>
     </div>
   );
@@ -138,16 +130,12 @@ function PasswordSection() {
             className="w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
           />
         </label>
-        {error && <p className="text-sm text-red-600 sm:col-span-2">{error}</p>}
-        {success && <p className="text-sm text-emerald-700 sm:col-span-2">Password updated.</p>}
+        {error && <p className="text-sm text-red-400 sm:col-span-2">{error}</p>}
+        {success && <p className="text-sm text-emerald-400 sm:col-span-2">Password updated.</p>}
         <div className="sm:col-span-2">
-          <button
-            type="submit"
-            disabled={isSaving}
-            className="rounded-full bg-brass px-4 py-2 text-sm font-medium text-white hover:bg-brass-dark disabled:opacity-50"
-          >
+          <Button type="submit" disabled={isSaving}>
             {isSaving ? "Saving…" : "Save password"}
-          </button>
+          </Button>
         </div>
       </form>
     </div>

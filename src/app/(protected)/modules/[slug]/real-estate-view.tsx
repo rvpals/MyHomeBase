@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { summarizePortfolio, type Property } from "@/lib/real-estate";
@@ -115,23 +116,15 @@ function PropertyForm({
           className="w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
         />
       </label>
-      {error && <p className="text-sm text-red-600 sm:col-span-2">{error}</p>}
+      {error && <p className="text-sm text-red-400 sm:col-span-2">{error}</p>}
       <div className="flex gap-2 sm:col-span-2">
-        <button
-          type="submit"
-          disabled={isSaving}
-          className="rounded-full bg-brass px-4 py-2 text-sm font-medium text-white hover:bg-brass-dark disabled:opacity-50"
-        >
+        <Button type="submit" disabled={isSaving}>
           {isSaving ? "Saving…" : title}
-        </button>
+        </Button>
         {onCancel && (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-full border border-line px-4 py-2 text-sm font-medium text-muted hover:text-ink"
-          >
+          <Button type="button" variant="secondary" onClick={onCancel}>
             Cancel
-          </button>
+          </Button>
         )}
       </div>
     </form>
@@ -209,7 +202,7 @@ export function RealEstateView({ properties }: { properties: Property[] }) {
           <button
             type="button"
             onClick={() => handleDelete(property)}
-            className="text-xs font-medium text-red-600 hover:underline"
+            className="text-xs font-medium text-red-400 hover:underline"
           >
             Delete
           </button>
