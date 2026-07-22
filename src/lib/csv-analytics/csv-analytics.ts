@@ -2,12 +2,20 @@ import { parseCsv } from "@/lib/shared/csv";
 import type { CsvAnalyticsRepository } from "./ports";
 import {
   createCsvAnalyticEntrySchema,
+  saveChartPresetSchema,
   updateCsvAnalyticEntrySchema,
   type CreateCsvAnalyticEntryInput,
+  type SaveChartPresetInput,
   type UpdateCsvAnalyticEntryInput,
 } from "./schema";
 import { dedupeColumnNames, inferColumnType } from "./sql-builder";
-import type { CsvAnalyticEntry, CsvColumnDefinition, IngestResult } from "./types";
+import type {
+  CsvAnalyticEntry,
+  CsvChartPreset,
+  CsvColumnDefinition,
+  CsvEntryData,
+  IngestResult,
+} from "./types";
 
 const PREVIEW_ROW_COUNT = 5;
 
@@ -40,6 +48,11 @@ export function listEntries(repo: CsvAnalyticsRepository): CsvAnalyticEntry[] {
 
 export function getEntryById(repo: CsvAnalyticsRepository, id: number): CsvAnalyticEntry | undefined {
   return repo.getEntryById(id);
+}
+
+/** Reads an entry's table data (columns + row values) for viewing in a grid or charting. */
+export function readEntryData(repo: CsvAnalyticsRepository, id: number, limit?: number): CsvEntryData {
+  return repo.readTableData(id, limit);
 }
 
 export function createEntry(
@@ -108,4 +121,18 @@ export function updateEntry(
 
 export function deleteEntry(repo: CsvAnalyticsRepository, id: number): void {
   repo.deleteEntry(id);
+}
+
+export function listChartPresets(repo: CsvAnalyticsRepository, entryId: number): CsvChartPreset[] {
+  return repo.listChartPresets(entryId);
+}
+
+/** Saves (or overwrites by name) a named chart preset for an entry. */
+export function saveChartPreset(repo: CsvAnalyticsRepository, input: SaveChartPresetInput): CsvChartPreset {
+  const validated = saveChartPresetSchema.parse(input);
+  return repo.saveChartPreset(validated);
+}
+
+export function deleteChartPreset(repo: CsvAnalyticsRepository, id: number): void {
+  repo.deleteChartPreset(id);
 }

@@ -23,6 +23,22 @@ export interface CsvAnalyticEntry {
   updatedAt: string;
 }
 
+/** A read of an entry's physical table: its column defs (in order) plus row values as arrays. */
+export interface CsvEntryData {
+  columns: CsvColumnDefinition[];
+  rows: (string | number | null)[][];
+}
+
+/** A named, saved set of chart-builder options for one entry. `optionsJson` is opaque to lib. */
+export interface CsvChartPreset {
+  id: number;
+  entryId: number;
+  name: string;
+  optionsJson: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type IngestMode = "append" | "truncate" | "overwrite";
 
 export interface IngestResult {

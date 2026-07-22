@@ -5,8 +5,11 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
-import { summarizePortfolio, type Property } from "@/lib/real-estate";
+import type { PropertyDetails } from "@/lib/property-watch";
+import { summarizePortfolio, type Property, type RealEstateDisplaySettings } from "@/lib/real-estate";
 import { centsToDollars, formatCents } from "@/lib/shared/money";
+import { lookupPropertyAction } from "./property-watch-actions";
+import { PropertyDetailsTabs } from "./property-watch-view";
 import {
   createPropertyAction,
   deletePropertyAction,
@@ -131,11 +134,47 @@ function PropertyForm({
   );
 }
 
-export function RealEstateView({ properties }: { properties: Property[] }) {
+export function RealEstateView({
+  properties,
+  displaySettings,
+  propertyLookupEnabled,
+}: {
+  properties: Property[];
+  displaySettings: RealEstateDisplaySettings;
+  propertyLookupEnabled: boolean;
+}) {
   const router = useRouter();
   const [editingId, setEditingId] = useState<number | undefined>(undefined);
+  const [showInfo, setShowInfo] = useState(false);
+  const [infoDetails, setInfoDetails] = useState<PropertyDetails | undefined>(undefined);
+  const [infoError, setInfoError] = useState<string | undefined>(undefined);
+  const [isLoadingInfo, setIsLoadingInfo] = useState(false);
 
   const summary = summarizePortfolio(properties);
+
+  const tickerParts = [
+    displaySettings.defaultAddress ? `My Default Address: ${displaySettings.defaultAddress}` : undefined,
+    displaySettings.defaultZipCode ? `Zip: ${displaySettings.defaultZipCode}` : undefined,
+  ].filter((part): part is string => part !== undefined);
+
+  async function handleShowInformation() {
+    if (showInfo) {
+      setShowInfo(false);
+      return;
+    }
+    if (!infoDetails && displaySettings.defaultAddress) {
+      setIsLoadingInfo(true);
+      setInfoError(undefined);
+      try {
+        const result = await lookupPropertyAction(displaySettings.defaultAddress);
+        if (!result.ok || !result.details) setInfoError(result.error ?? "Failed to look up property.");
+        else setInfoDetails(result.details);
+      } finally {
+        setIsLoadingInfo(false);
+      }
+    }
+    setShowInfo(true);
+  }
 
   async function handleCreate(input: PropertyFormInput) {
     const result = await createPropertyAction(input);
@@ -215,6 +254,37 @@ export function RealEstateView({ properties }: { properties: Property[] }) {
 
   return (
     <div>
+      {tickerParts.length > 0 && (
+        <div className="mb-4 rounded-xl border border-line bg-paper-raised px-4 py-2">
+          <div className="flex items-center justify-between gap-3">
+            <p className="font-mono text-xs uppercase tracking-wide text-muted">
+              {tickerParts.join("   •   ")}
+            </p>
+            {displaySettings.defaultAddress && (
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={!propertyLookupEnabled || isLoadingInfo}
+                onClick={handleShowInformation}
+              >
+                {isLoadingInfo ? "Looking up…" : showInfo ? "Hide Information" : "Show Information"}
+              </Button>
+            )}
+          </div>
+          {!propertyLookupEnabled && displaySettings.defaultAddress && (
+            <p className="mt-2 text-xs text-muted">
+              Property lookup isn&apos;t configured. Set <code>RENTCAST_API_KEY</code> to enable it.
+            </p>
+          )}
+          {infoError && <p className="mt-2 text-sm text-red-400">{infoError}</p>}
+          {showInfo && infoDetails && (
+            <div className="mt-3 border-t border-line pt-3">
+              <PropertyDetailsTabs details={infoDetails} />
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <div className="rounded-xl border border-line p-4">
           <p className="text-xs font-medium uppercase tracking-wide text-muted">Properties</p>

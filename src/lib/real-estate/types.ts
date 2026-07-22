@@ -17,3 +17,8 @@ export interface PortfolioSummary {
   totalMortgageBalanceCents: number;
   totalEquityCents: number;
 }
+
+export interface RealEstateDisplaySettings {
+  defaultAddress?: string;
+  defaultZipCode?: string;
+}

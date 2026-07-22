@@ -1,4 +1,4 @@
-export type { Property, PortfolioSummary } from "./types";
+export type { Property, PortfolioSummary, RealEstateDisplaySettings } from "./types";
 export {
   propertySchema,
   createPropertySchema,
@@ -14,4 +14,5 @@ export {
   updateProperty,
   deleteProperty,
   summarizePortfolio,
+  resolveDisplaySettings,
 } from "./real-estate";

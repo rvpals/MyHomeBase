@@ -1,7 +1,8 @@
+import type { ModuleSetting } from "@/lib/module-settings";
 import type { PropertyRepository } from "./ports";
 import { createPropertySchema, updatePropertySchema } from "./schema";
 import type { CreatePropertyInput, UpdatePropertyInput } from "./schema";
-import type { PortfolioSummary, Property } from "./types";
+import type { PortfolioSummary, Property, RealEstateDisplaySettings } from "./types";
 
 export function listProperties(repo: PropertyRepository): Property[] {
   return repo.listProperties();
@@ -48,4 +49,17 @@ export function summarizePortfolio(properties: Property[]): PortfolioSummary {
       totalEquityCents: 0,
     },
   );
+}
+
+function readSetting(settings: ModuleSetting[], key: string): string | undefined {
+  const value = settings.find((entry) => entry.key === key)?.value.trim();
+  return value ? value : undefined;
+}
+
+/** Reads the admin-editable default address/zip shown on the module's summary banner. */
+export function resolveDisplaySettings(settings: ModuleSetting[]): RealEstateDisplaySettings {
+  return {
+    defaultAddress: readSetting(settings, "default_address"),
+    defaultZipCode: readSetting(settings, "default_zip_code"),
+  };
 }

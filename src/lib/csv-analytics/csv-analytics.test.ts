@@ -2,12 +2,26 @@ import { describe, expect, it } from "vitest";
 import type { CsvAnalyticsRepository } from "./ports";
 import type { CreateCsvAnalyticEntryInput } from "./schema";
 import { buildTableName } from "./sql-builder";
-import { createEntry, deleteEntry, listEntries, previewCsvFile, updateEntry } from "./csv-analytics";
-import type { CsvAnalyticEntry } from "./types";
+import {
+  createEntry,
+  deleteChartPreset,
+  deleteEntry,
+  listChartPresets,
+  listEntries,
+  previewCsvFile,
+  readEntryData,
+  saveChartPreset,
+  updateEntry,
+} from "./csv-analytics";
+import type { CsvAnalyticEntry, CsvChartPreset } from "./types";
 
 function fakeRepo(): CsvAnalyticsRepository {
   let nextId = 1;
   const entries = new Map<number, CsvAnalyticEntry>();
+  // Standalone rows per entry so readTableData has something to return in tests.
+  const tableRows = new Map<number, (string | number | null)[][]>();
+  const presets = new Map<number, CsvChartPreset>();
+  let nextPresetId = 1;
   const stamp = "2026-01-01T00:00:00.000Z";
 
   function isTaken(tableName: string, excludingId?: number): boolean {
@@ -18,6 +32,12 @@ function fakeRepo(): CsvAnalyticsRepository {
     listEntries: () => [...entries.values()],
     getEntryById: (id) => entries.get(id),
     isTableNameTaken: (tableName, excludingId) => isTaken(tableName, excludingId),
+    readTableData: (id, limit) => {
+      const entry = entries.get(id);
+      if (!entry) throw new Error(`CSV analytic entry ${id} not found.`);
+      const rows = tableRows.get(id) ?? [];
+      return { columns: entry.columns, rows: limit !== undefined ? rows.slice(0, limit) : rows };
+    },
     createEntry: (input, rows) => {
       const tableName = buildTableName(input.tableBaseName);
       if (isTaken(tableName)) throw new Error(`A CSV analytic entry already uses table name "${tableName}".`);
@@ -34,6 +54,7 @@ function fakeRepo(): CsvAnalyticsRepository {
         updatedAt: stamp,
       };
       entries.set(id, entry);
+      tableRows.set(id, rows);
       return entry;
     },
     appendRows: (id, rows) => {
@@ -72,6 +93,35 @@ function fakeRepo(): CsvAnalyticsRepository {
     },
     deleteEntry: (id) => {
       entries.delete(id);
+      for (const [presetId, preset] of presets) {
+        if (preset.entryId === id) presets.delete(presetId);
+      }
+    },
+    listChartPresets: (entryId) =>
+      [...presets.values()].filter((preset) => preset.entryId === entryId),
+    saveChartPreset: (input) => {
+      const existing = [...presets.values()].find(
+        (preset) => preset.entryId === input.entryId && preset.name === input.name,
+      );
+      if (existing) {
+        const updated = { ...existing, optionsJson: input.optionsJson, updatedAt: stamp };
+        presets.set(existing.id, updated);
+        return updated;
+      }
+      const id = nextPresetId++;
+      const created: CsvChartPreset = {
+        id,
+        entryId: input.entryId,
+        name: input.name,
+        optionsJson: input.optionsJson,
+        createdAt: stamp,
+        updatedAt: stamp,
+      };
+      presets.set(id, created);
+      return created;
+    },
+    deleteChartPreset: (id) => {
+      presets.delete(id);
     },
   };
 }
@@ -197,11 +247,81 @@ describe("updateEntry", () => {
   });
 });
 
+describe("readEntryData", () => {
+  it("returns the entry's columns and row values", () => {
+    const repo = fakeRepo();
+    const entry = createEntry(repo, sampleCreateInput());
+    const data = readEntryData(repo, entry.id);
+    expect(data.columns.map((column) => column.name)).toEqual(["user_id", "event_at", "amount"]);
+    expect(data.rows).toHaveLength(2);
+    expect(data.rows[0]).toEqual(["1", "2026-01-01", "10.5"]);
+  });
+
+  it("honors a row limit", () => {
+    const repo = fakeRepo();
+    const entry = createEntry(repo, sampleCreateInput());
+    expect(readEntryData(repo, entry.id, 1).rows).toHaveLength(1);
+  });
+
+  it("throws for an unknown entry", () => {
+    const repo = fakeRepo();
+    expect(() => readEntryData(repo, 999)).toThrow();
+  });
+});
+
 describe("deleteEntry", () => {
   it("removes the entry", () => {
     const repo = fakeRepo();
     const entry = createEntry(repo, sampleCreateInput());
     deleteEntry(repo, entry.id);
     expect(listEntries(repo)).toHaveLength(0);
+  });
+
+  it("also removes the entry's chart presets", () => {
+    const repo = fakeRepo();
+    const entry = createEntry(repo, sampleCreateInput());
+    saveChartPreset(repo, { entryId: entry.id, name: "By month", optionsJson: "{}" });
+    deleteEntry(repo, entry.id);
+    expect(listChartPresets(repo, entry.id)).toHaveLength(0);
+  });
+});
+
+describe("chart presets", () => {
+  it("saves a named preset and lists it back", () => {
+    const repo = fakeRepo();
+    const entry = createEntry(repo, sampleCreateInput());
+    const preset = saveChartPreset(repo, {
+      entryId: entry.id,
+      name: "Amount over time",
+      optionsJson: JSON.stringify({ chartType: "line", xKey: "event_at", yKeys: ["amount"] }),
+    });
+    expect(preset.name).toBe("Amount over time");
+    expect(listChartPresets(repo, entry.id)).toHaveLength(1);
+  });
+
+  it("overwrites options when saving a repeated name (upsert)", () => {
+    const repo = fakeRepo();
+    const entry = createEntry(repo, sampleCreateInput());
+    saveChartPreset(repo, { entryId: entry.id, name: "Chart A", optionsJson: '{"chartType":"line"}' });
+    saveChartPreset(repo, { entryId: entry.id, name: "Chart A", optionsJson: '{"chartType":"bar"}' });
+    const presets = listChartPresets(repo, entry.id);
+    expect(presets).toHaveLength(1);
+    expect(presets[0].optionsJson).toBe('{"chartType":"bar"}');
+  });
+
+  it("rejects malformed JSON options", () => {
+    const repo = fakeRepo();
+    const entry = createEntry(repo, sampleCreateInput());
+    expect(() =>
+      saveChartPreset(repo, { entryId: entry.id, name: "Bad", optionsJson: "{not json" }),
+    ).toThrow();
+  });
+
+  it("deletes a preset by id", () => {
+    const repo = fakeRepo();
+    const entry = createEntry(repo, sampleCreateInput());
+    const preset = saveChartPreset(repo, { entryId: entry.id, name: "Temp", optionsJson: "{}" });
+    deleteChartPreset(repo, preset.id);
+    expect(listChartPresets(repo, entry.id)).toHaveLength(0);
   });
 });

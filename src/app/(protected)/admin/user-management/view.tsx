@@ -387,6 +387,12 @@ export function UserManagementView({
 
   const columns: DataGridColumn<User>[] = [
     {
+      key: "id",
+      header: "User ID",
+      value: (user) => user.id,
+      render: (user) => <span className="font-mono text-xs">{user.id}</span>,
+    },
+    {
       key: "avatar",
       header: "Avatar",
       render: (user) => (
@@ -413,16 +419,18 @@ export function UserManagementView({
         </div>
       ),
     },
-    { key: "username", header: "Username", render: (user) => user.username },
-    { key: "fullName", header: "Full Name", render: (user) => user.fullName },
+    { key: "username", header: "Username", value: (user) => user.username, render: (user) => user.username },
+    { key: "fullName", header: "Full Name", value: (user) => user.fullName, render: (user) => user.fullName },
     {
       key: "description",
       header: "Description",
+      value: (user) => user.description ?? null,
       render: (user) => <span className="text-muted">{user.description ?? "—"}</span>,
     },
     {
       key: "role",
       header: "Role",
+      value: (user) => user.role,
       render: (user) => (
         <div className="flex items-center gap-2">
           <RoleBadge role={user.role} />
@@ -443,6 +451,7 @@ export function UserManagementView({
     {
       key: "status",
       header: "Status",
+      value: (user) => (user.isDisabled ? "Disabled" : "Active"),
       render: (user) => (
         <div className="flex items-center gap-2">
           <StatusBadge isDisabled={user.isDisabled} />
@@ -463,6 +472,7 @@ export function UserManagementView({
     {
       key: "googleEmail",
       header: "Google Email",
+      value: (user) => user.googleEmail ?? null,
       render: (user) => (
         <GoogleEmailEditor
           googleEmail={user.googleEmail}
@@ -477,6 +487,7 @@ export function UserManagementView({
     {
       key: "modules",
       header: "Modules",
+      value: (user) => (moduleIdsByUserId[user.id] ?? []).length,
       render: (user) => (
         <ModuleAccessEditor
           user={user}
@@ -539,7 +550,13 @@ export function UserManagementView({
       </div>
 
       <div className="mt-6">
-        <DataGrid columns={columns} rows={users} getRowKey={(user) => user.id} emptyMessage="No users yet." />
+        <DataGrid
+          columns={columns}
+          rows={users}
+          getRowKey={(user) => user.id}
+          emptyMessage="No users yet."
+          exportFileName="users"
+        />
       </div>
     </div>
   );

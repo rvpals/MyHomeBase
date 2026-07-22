@@ -7,7 +7,7 @@ import { listModuleSettingsFor } from "@/lib/module-settings";
 import { getModuleBySlug, getModuleCode } from "@/lib/modules";
 import { resolveThresholds } from "@/lib/next-day-actions";
 import { getWatchlistHistory, listWatchlist } from "@/lib/property-watch";
-import { listProperties } from "@/lib/real-estate";
+import { listProperties, resolveDisplaySettings } from "@/lib/real-estate";
 import { getCorrelationCache, getSharpeCache, listVolatilityCache } from "@/lib/stock-analytics";
 import { listPositions, listTransactions } from "@/lib/stock-positions";
 import { listItems, listWatchLists } from "@/lib/stock-watchlist";
@@ -33,10 +33,21 @@ function RealEstateModuleBody() {
     history: getWatchlistHistory(deps.watchedPropertyRepo, watchedProperty.id),
   }));
 
+  const realEstateModule = getModuleBySlug(deps.moduleRepo, REAL_ESTATE_MODULE_SLUG);
+  const displaySettings = resolveDisplaySettings(
+    realEstateModule ? listModuleSettingsFor(deps.moduleSettingsRepo, realEstateModule.id) : [],
+  );
+
+  const propertyLookupEnabled = deps.propertyLookupClient !== undefined;
+
   return (
     <div className="flex flex-col gap-10">
-      <RealEstateView properties={listProperties(deps.propertyRepo)} />
-      <PropertyWatchView watchlist={watchlist} propertyLookupEnabled={deps.propertyLookupClient !== undefined} />
+      <RealEstateView
+        properties={listProperties(deps.propertyRepo)}
+        displaySettings={displaySettings}
+        propertyLookupEnabled={propertyLookupEnabled}
+      />
+      <PropertyWatchView watchlist={watchlist} propertyLookupEnabled={propertyLookupEnabled} />
     </div>
   );
 }

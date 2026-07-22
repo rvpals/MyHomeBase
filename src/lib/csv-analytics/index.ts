@@ -2,6 +2,8 @@ export type {
   CsvColumnType,
   CsvColumnDefinition,
   CsvAnalyticEntry,
+  CsvEntryData,
+  CsvChartPreset,
   IngestMode,
   IngestResult,
 } from "./types";
@@ -11,8 +13,10 @@ export {
   ingestModeSchema,
   createCsvAnalyticEntrySchema,
   updateCsvAnalyticEntrySchema,
+  saveChartPresetSchema,
   type CreateCsvAnalyticEntryInput,
   type UpdateCsvAnalyticEntryInput,
+  type SaveChartPresetInput,
 } from "./schema";
 export type { CsvAnalyticsRepository } from "./ports";
 export {
@@ -26,9 +30,13 @@ export {
   previewCsvFile,
   listEntries,
   getEntryById,
+  readEntryData,
   createEntry,
   updateEntry,
   deleteEntry,
+  listChartPresets,
+  saveChartPreset,
+  deleteChartPreset,
   type CsvAnalyticsPreview,
   type UpdateEntryResult,
 } from "./csv-analytics";

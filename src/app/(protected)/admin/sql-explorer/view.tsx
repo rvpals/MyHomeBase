@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
-import { DataGrid, type DataGridColumn } from "@/components/data-grid";
+import { DataGrid, type CellValue, type DataGridColumn } from "@/components/data-grid";
 import type { SqlExecutionResult, TableInfo } from "@/lib/sql-explorer";
 import { executeSqlAction } from "./actions";
 
@@ -12,10 +12,19 @@ function formatCellValue(value: unknown): string {
   return String(value);
 }
 
+// Narrow a raw SQLite cell (number | string | null | Buffer | bigint) to the
+// grid's sortable/exportable primitive.
+function toCellValue(value: unknown): CellValue {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number" || typeof value === "string") return value;
+  return String(value);
+}
+
 function QueryResultGrid({ result }: { result: Extract<SqlExecutionResult, { kind: "query" }> }) {
   const columns: DataGridColumn<unknown[]>[] = result.columns.map((columnName, columnIndex) => ({
     key: columnName,
     header: columnName,
+    value: (row) => toCellValue(row[columnIndex]),
     render: (row) => formatCellValue(row[columnIndex]),
   }));
 
@@ -25,6 +34,7 @@ function QueryResultGrid({ result }: { result: Extract<SqlExecutionResult, { kin
       rows={result.rows}
       getRowKey={(row) => JSON.stringify(row)}
       emptyMessage="Query returned no rows."
+      exportFileName="query-results"
     />
   );
 }

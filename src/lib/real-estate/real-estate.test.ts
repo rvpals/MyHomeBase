@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
+import type { ModuleSetting } from "@/lib/module-settings";
 import type { CreatePropertyInput, UpdatePropertyInput } from "./schema";
 import {
   createProperty,
   deleteProperty,
   getPropertyById,
   listProperties,
+  resolveDisplaySettings,
   summarizePortfolio,
   updateProperty,
 } from "./real-estate";
@@ -161,6 +163,30 @@ describe("summarizePortfolio", () => {
       totalCurrentValueCents: 0,
       totalMortgageBalanceCents: 0,
       totalEquityCents: 0,
+    });
+  });
+});
+
+describe("resolveDisplaySettings", () => {
+  it("reads the default address and zip code from module settings", () => {
+    const settings: ModuleSetting[] = [
+      { id: 1, moduleId: 2, key: "default_address", value: "123 Main St" },
+      { id: 2, moduleId: 2, key: "default_zip_code", value: "12345" },
+    ];
+    expect(resolveDisplaySettings(settings)).toEqual({
+      defaultAddress: "123 Main St",
+      defaultZipCode: "12345",
+    });
+  });
+
+  it("returns undefined fields when settings are missing or blank", () => {
+    expect(resolveDisplaySettings([])).toEqual({
+      defaultAddress: undefined,
+      defaultZipCode: undefined,
+    });
+    expect(resolveDisplaySettings([{ id: 1, moduleId: 2, key: "default_address", value: "   " }])).toEqual({
+      defaultAddress: undefined,
+      defaultZipCode: undefined,
     });
   });
 });

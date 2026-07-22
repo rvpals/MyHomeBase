@@ -158,7 +158,7 @@ function OwnerTab({ details }: { details: PropertyDetails }) {
   );
 }
 
-function PropertyDetailsTabs({ details }: { details: PropertyDetails }) {
+export function PropertyDetailsTabs({ details }: { details: PropertyDetails }) {
   const items: TabItem[] = [
     { key: "overview", label: "Overview", content: <OverviewTab details={details} /> },
     { key: "tax", label: "Tax & Valuation", content: <TaxAndValuationTab details={details} /> },

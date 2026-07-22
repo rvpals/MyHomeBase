@@ -67,3 +67,23 @@ export const updateCsvAnalyticEntrySchema = z
   );
 
 export type UpdateCsvAnalyticEntryInput = z.infer<typeof updateCsvAnalyticEntrySchema>;
+
+// A saved chart preset. `optionsJson` is stored opaquely by lib, but is validated here
+// as well-formed JSON so a malformed blob never reaches the database.
+export const saveChartPresetSchema = z.object({
+  entryId: z.number().int().positive(),
+  name: z.string().min(1),
+  optionsJson: z.string().refine(
+    (value) => {
+      try {
+        JSON.parse(value);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    { message: "Chart options must be valid JSON." },
+  ),
+});
+
+export type SaveChartPresetInput = z.infer<typeof saveChartPresetSchema>;

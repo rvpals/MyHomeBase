@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 import type { CsvAnalyticsRepository } from "./ports";
-import type { CreateCsvAnalyticEntryInput } from "./schema";
+import type { CreateCsvAnalyticEntryInput, SaveChartPresetInput } from "./schema";
 import {
   buildCreateTableSql,
   buildDropTableSql,
@@ -9,7 +9,16 @@ import {
   coerceCellValue,
   quoteIdentifier,
 } from "./sql-builder";
-import type { CsvAnalyticEntry, CsvColumnDefinition, IngestResult } from "./types";
+import type { CsvAnalyticEntry, CsvChartPreset, CsvColumnDefinition, CsvEntryData, IngestResult } from "./types";
+
+interface CsvChartPresetRow {
+  id: number;
+  entry_id: number;
+  name: string;
+  options_json: string;
+  created_at: string;
+  updated_at: string;
+}
 
 interface CsvAnalyticsEntryRow {
   id: number;
@@ -72,6 +81,23 @@ export class SqliteCsvAnalyticsRepository implements CsvAnalyticsRepository {
       .prepare("SELECT id FROM csv_analytics_entries WHERE table_name = ? AND id != ?")
       .get(tableName, excludingId ?? -1) as { id: number } | undefined;
     return row !== undefined;
+  }
+
+  readTableData(id: number, limit?: number): CsvEntryData {
+    const row = this.getRowById(id);
+    if (!row) throw new Error(`CSV analytic entry ${id} not found.`);
+    const columns = JSON.parse(row.columns_json) as CsvColumnDefinition[];
+
+    // Select columns explicitly in definition order (skips the surrogate _row_id key)
+    // so returned row arrays line up 1:1 with `columns`.
+    const columnList = columns.map((column) => quoteIdentifier(column.name)).join(", ");
+    const limitClause = limit !== undefined && limit > 0 ? ` LIMIT ${Math.floor(limit)}` : "";
+    const rows = this.db
+      .prepare(`SELECT ${columnList} FROM ${quoteIdentifier(row.table_name)}${limitClause}`)
+      .raw()
+      .all() as (string | number | null)[][];
+
+    return { columns, rows };
   }
 
   /** Inserts every row, coercing each cell per its column's type. Returns rows actually written. */
@@ -200,7 +226,46 @@ export class SqliteCsvAnalyticsRepository implements CsvAnalyticsRepository {
     if (!row) return;
     this.db.transaction(() => {
       this.db.exec(buildDropTableSql(row.table_name));
+      this.db.prepare("DELETE FROM csv_chart_presets WHERE entry_id = ?").run(id);
       this.db.prepare("DELETE FROM csv_analytics_entries WHERE id = ?").run(id);
     })();
+  }
+
+  private toPresetDomain(row: CsvChartPresetRow): CsvChartPreset {
+    return {
+      id: row.id,
+      entryId: row.entry_id,
+      name: row.name,
+      optionsJson: row.options_json,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  listChartPresets(entryId: number): CsvChartPreset[] {
+    const rows = this.db
+      .prepare("SELECT * FROM csv_chart_presets WHERE entry_id = ? ORDER BY created_at ASC, id ASC")
+      .all(entryId) as CsvChartPresetRow[];
+    return rows.map((row) => this.toPresetDomain(row));
+  }
+
+  saveChartPreset(input: SaveChartPresetInput): CsvChartPreset {
+    this.db
+      .prepare(
+        `INSERT INTO csv_chart_presets (entry_id, name, options_json)
+         VALUES (@entryId, @name, @optionsJson)
+         ON CONFLICT (entry_id, name) DO UPDATE SET options_json = excluded.options_json`,
+      )
+      .run({ entryId: input.entryId, name: input.name, optionsJson: input.optionsJson });
+
+    const row = this.db
+      .prepare("SELECT * FROM csv_chart_presets WHERE entry_id = ? AND name = ?")
+      .get(input.entryId, input.name) as CsvChartPresetRow | undefined;
+    if (!row) throw new Error("Failed to read back saved chart preset.");
+    return this.toPresetDomain(row);
+  }
+
+  deleteChartPreset(id: number): void {
+    this.db.prepare("DELETE FROM csv_chart_presets WHERE id = ?").run(id);
   }
 }
