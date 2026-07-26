@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Copied production build output (see .gitignore) — lint source, not the bundle.
+    ".publish/**",
     // Standalone reference example with its own package.json/tsconfig — not part of this app.
     "docs/**",
   ]),

@@ -35,6 +35,9 @@ yarn-error.log*
 .env*
 !.env.example
 
+# local secret/credential notes — keep real client IDs & secrets out of the repo
+Google_Client_Info.md
+
 # vercel
 .vercel
 
