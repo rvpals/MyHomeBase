@@ -27,6 +27,13 @@ export const adminNav: TreeNode[] = [
         hint: "Change color theme for the application",
         icon: "palette",
       },
+      {
+        id: "configuration-icons",
+        label: "Icons",
+        href: "/admin/configuration/icons",
+        hint: "Change the module icon set for the application",
+        icon: "shapes",
+      },
     ],
   },
   {

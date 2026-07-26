@@ -28,16 +28,26 @@ Any of these can be swapped at runtime (Admin → Configuration → Color Themes
 component that reaches for a literal color instead of a token will look right in one
 theme and wrong in the others. The shipped themes are **Signal Deck** (default),
 **Ember Ledger**, **Aurora Deck**, and **BMS** (Bristol Myers Squibb brand purple on
-charcoal gray) — all dark. There is no light theme; don't design against a light
-background. Adding another theme is just another entry in `COLOR_THEMES`
+charcoal gray) — all dark — plus **Daybreak**, the one light theme (rose accent on warm
+paper). Adding another theme is just another entry in `COLOR_THEMES`
 (`src/lib/settings/themes.ts`) — no component changes needed.
+
+**Design for both light and dark.** Because Daybreak exists, don't assume a dark page.
+Structural styling must go through the tokens above (they invert correctly), and any
+raw shadow/overlay you add must read acceptably on a light *and* a dark surface — prefer
+a soft, low-opacity black (`rgba(0,0,0,0.2–0.45)`) over a heavy one. In Daybreak,
+`paperRaised` (pure white) is *lighter* than `paper`, the inverse of the dark themes;
+the token roles still hold (raised = one step toward the surface), so token-based code
+needs no branching.
 
 **Exception — semantic red/green stays literal.** Gain/loss (stocks up/down) and
 error/success text use fixed Tailwind colors (`text-red-400`, `text-emerald-400`, and
 `Button`'s `danger` variant), not theme tokens. Red should mean "down/error" and green
 should mean "up/success" the same way in every theme — that's a semantic color, not a
-brand accent. Use shades in the 300–400 range (not 600–700) since every background here
-is dark; a 600–700 shade tuned for a light page will read as low-contrast mud.
+brand accent. Use shades in the 300–400 range (not 600–700): they're tuned for the dark
+themes, and a 600–700 shade would read as low-contrast mud there. (Known trade-off: on
+the Daybreak light theme these 300–400 shades run a little light; acceptable for now —
+don't branch per-theme to fix it unless asked.)
 
 ## Type
 
@@ -47,7 +57,7 @@ selected by the CSS vars `--font-display` / `--font-body` / `--font-mono-code`).
 
 - Headings, module names, page titles → `font-display` (`font-display` Tailwind class).
 - Body copy, labels, buttons → `font-body` (Tailwind default `font-sans`, already applied to `<body>`).
-- Reference codes, ledger-style numbers, tags (e.g. the module card's "REI" tab) → `font-mono` (Tailwind `font-mono`).
+- Reference codes, ledger-style numbers, tags (e.g. the sidebar's per-module "REI" code) → `font-mono` (Tailwind `font-mono`).
 
 Don't reach for a font family outside this trio. If a new theme is added, give it its
 own display/body/mono choice in `themes.ts` rather than hardcoding a font anywhere in
@@ -70,8 +80,40 @@ Don't blur this line by giving a card a hard shadow or a button a soft one.
   hover:underline` for a neutral row action, `text-red-400 hover:underline` for a
   destructive one.
 - **Cards** (`ModuleCard` and any future card) use `border border-line` plus a subtle
-  accent treatment on hover (a soft ring/lift), never a blurred drop shadow — a blurred
-  black shadow was tuned for a light "paper" background and is invisible on a dark one.
+  accent treatment on hover (a soft ring/lift). Keep any hover shadow soft and low-opacity
+  so it reads on both light and dark surfaces (`ModuleCard` pairs a `ring` with a gentle
+  `rgba(0,0,0,0.35)` lift).
+- **Icon badge** — the standard "identity" mark for a card or feature tile is a solid
+  rounded-square accent tile with the glyph knocked out of it: `rounded-xl bg-brass
+  text-paper` with the icon in `text-paper`. This reads correctly in every theme for free
+  — `paper` is the darkest surface in the dark themes (dark glyph on a bright accent) and
+  the lightest in Daybreak (near-white glyph on the rose accent). Don't hardcode a white
+  or black glyph; use `text-paper`. See `ModuleCard`.
+
+## Icon sets are user-selectable
+
+Module icons (the glyphs on the home cards and in the sidebar) are driven by a
+user-chosen **icon set**, the same way colors are driven by a theme — picked at Admin →
+Configuration → Icons, persisted as the `icon_set` setting, and registered in
+`ICON_SETS` (`src/lib/settings/icon-sets.ts`). The active set is read server-side in the
+root layout and supplied through `IconSetProvider`; `ModuleIcon` consumes it, so call
+sites never name a set — they just render `<ModuleIcon name="building" />` and get the
+current set's glyph.
+
+- **Glyph data is baked, not fetched.** The SVG bodies live in
+  `src/components/module-icon-sets.generated.ts`, generated from the `@iconify-json/*`
+  devDependencies by `scripts/gen-icon-glyphs.mjs` (`npm run gen:icons`) — no runtime icon
+  dependency. To add a set: add an entry to `ICON_SETS`, add its source + candidate map to
+  the generator, run `npm run gen:icons`, done.
+- **Monochrome vs. colorful.** A set is either theme-tinted (monochrome — inherits
+  `currentColor`, sits in the solid-accent icon badge) or `colorful: true` (full-color
+  artwork that carries its own fills). Colorful sets **can't** take the accent tint, so
+  `ModuleCard` swaps the accent badge for a neutral `bg-paper` tile behind them. Honor
+  the `colorful` flag from `useIconSet()` anywhere you place a module icon on a tile.
+- **"classic"** is the original hand-drawn set (`module-icons.tsx`) and the fallback for
+  any concept a generated set happens to lack — never let a module icon render nothing.
+- This setting covers *module* icons only. Admin chrome (the `TreeNav` gear/grid/etc.
+  icons and `AdminIcon`) stays on the hand-drawn monochrome glyphs regardless of set.
 
 ## Building a new module's UI
 

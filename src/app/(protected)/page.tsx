@@ -4,7 +4,7 @@ import { AppIcon } from "@/components/app-icon";
 import { Button } from "@/components/button";
 import { ModuleCard } from "@/components/module-card";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
-import { getModuleCode, listModules } from "@/lib/modules";
+import { listModules } from "@/lib/modules";
 import { getSetting } from "@/lib/settings";
 import { getAccessibleModules, isAdmin } from "@/lib/user";
 import { deps } from "@/lib/wiring";
@@ -37,7 +37,6 @@ export default async function Home() {
             name={appModule.longName}
             description={appModule.description}
             href={`/modules/${appModule.slug}`}
-            code={getModuleCode(appModule.slug)}
             icon={appModule.icon}
           />
         ))}

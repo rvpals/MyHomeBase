@@ -18,6 +18,7 @@ export interface SaveAdminSettingsInput {
   modules: ModuleUpdate[];
   applicationName: string;
   colorThemeId: string;
+  iconSetId: string;
   moduleSettings: { moduleId: number; entries: ModuleSettingEntry[] }[];
 }
 
@@ -26,6 +27,7 @@ export async function saveAdminSettingsAction(input: SaveAdminSettingsInput): Pr
   updateSettings(deps.settingsRepo, [
     { key: "application_name", value: input.applicationName },
     { key: "color_theme", value: input.colorThemeId },
+    { key: "icon_set", value: input.iconSetId },
   ]);
   for (const moduleSetting of input.moduleSettings) {
     saveModuleSettings(deps.moduleSettingsRepo, moduleSetting);

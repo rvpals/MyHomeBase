@@ -10,3 +10,4 @@ export {
   type ColorThemeTokens,
   type FontKey,
 } from "./themes";
+export { ICON_SETS, DEFAULT_ICON_SET_ID, getIconSet, type IconSet } from "./icon-sets";

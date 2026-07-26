@@ -3,6 +3,7 @@ export {
   userSchema,
   userRoleSchema,
   createUserSchema,
+  registerUserSchema,
   setPasswordSchema,
   moduleAccessSchema,
   setGoogleEmailSchema,
@@ -10,6 +11,7 @@ export {
   ALLOWED_AVATAR_MIME_TYPES,
   MAX_AVATAR_BYTES,
   type CreateUserInput,
+  type RegisterUserInput,
   type SetPasswordInput,
   type ModuleAccessInput,
   type SetGoogleEmailInput,
@@ -19,6 +21,7 @@ export type { UserRepository, NewUserRecord } from "./ports";
 export {
   listUsers,
   createUser,
+  registerUser,
   verifyCredentials,
   setUserPassword,
   setUserRole,
@@ -38,4 +41,5 @@ export {
   DuplicateUsernameError,
   DuplicateGoogleEmailError,
   SelfLockoutError,
+  InvalidAdminSecretError,
 } from "./user";

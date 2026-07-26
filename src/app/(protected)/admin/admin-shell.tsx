@@ -6,7 +6,7 @@ import { Button } from "@/components/button";
 import { TreeNav } from "@/components/tree-nav";
 import type { ModuleSetting } from "@/lib/module-settings";
 import type { Module } from "@/lib/modules";
-import { DEFAULT_COLOR_THEME_ID, type Setting } from "@/lib/settings";
+import { DEFAULT_COLOR_THEME_ID, DEFAULT_ICON_SET_ID, type Setting } from "@/lib/settings";
 import { adminNav } from "./nav";
 import { resetAdminSettingsAction, saveAdminSettingsAction } from "./actions";
 
@@ -29,6 +29,7 @@ interface AdminContextValue {
   modules: ModuleDraft[];
   applicationName: string;
   colorThemeId: string;
+  iconSetId: string;
   moduleSettings: Record<string, ModuleSettingDraft[]>;
   isDirty: boolean;
   isSaving: boolean;
@@ -36,6 +37,7 @@ interface AdminContextValue {
   moveModule: (slug: string, direction: "up" | "down") => void;
   setApplicationName: (value: string) => void;
   setColorThemeId: (id: string) => void;
+  setIconSetId: (id: string) => void;
   addModuleSetting: (slug: string) => void;
   updateModuleSetting: (
     slug: string,
@@ -105,6 +107,9 @@ export function AdminShell({
   const [colorThemeId, setColorThemeIdState] = useState(
     () => initialSettings.find((setting) => setting.key === "color_theme")?.value ?? DEFAULT_COLOR_THEME_ID,
   );
+  const [iconSetId, setIconSetIdState] = useState(
+    () => initialSettings.find((setting) => setting.key === "icon_set")?.value ?? DEFAULT_ICON_SET_ID,
+  );
   const [moduleSettings, setModuleSettings] = useState<Record<string, ModuleSettingDraft[]>>(() =>
     groupSettingsBySlug(initialModules, initialModuleSettings),
   );
@@ -137,6 +142,11 @@ export function AdminShell({
 
   function setColorThemeId(id: string) {
     setColorThemeIdState(id);
+    setIsDirty(true);
+  }
+
+  function setIconSetId(id: string) {
+    setIconSetIdState(id);
     setIsDirty(true);
   }
 
@@ -184,6 +194,7 @@ export function AdminShell({
         modules,
         applicationName,
         colorThemeId,
+        iconSetId,
         moduleSettings: moduleSettingsPayload,
       });
       setIsDirty(false);
@@ -210,6 +221,9 @@ export function AdminShell({
         result.settings.find((setting) => setting.key === "color_theme")?.value ??
           DEFAULT_COLOR_THEME_ID,
       );
+      setIconSetIdState(
+        result.settings.find((setting) => setting.key === "icon_set")?.value ?? DEFAULT_ICON_SET_ID,
+      );
       // Module settings are left alone by design (no seeded default to revert
       // to) — just re-key the draft against any new module ids from the reset.
       setModuleSettings((current) => {
@@ -232,6 +246,7 @@ export function AdminShell({
         modules,
         applicationName,
         colorThemeId,
+        iconSetId,
         moduleSettings,
         isDirty,
         isSaving,
@@ -239,6 +254,7 @@ export function AdminShell({
         moveModule,
         setApplicationName,
         setColorThemeId,
+        setIconSetId,
         addModuleSetting,
         updateModuleSetting,
         removeModuleSetting,

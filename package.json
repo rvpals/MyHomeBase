@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "check:lib-boundary": "! grep -rE \"from '(react|next)\" src/lib",
+    "gen:icons": "node scripts/gen-icon-glyphs.mjs",
     "db:migrate": "tsx scripts/migrate.ts",
     "cli": "tsx src/cli/index.ts"
   },
@@ -22,6 +23,14 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@iconify-json/flat-color-icons": "^1.2.3",
+    "@iconify-json/fluent-emoji": "^1.2.7",
+    "@iconify-json/fluent-emoji-flat": "^1.2.5",
+    "@iconify-json/hugeicons": "^1.2.31",
+    "@iconify-json/lucide": "^1.2.118",
+    "@iconify-json/ph": "^1.2.2",
+    "@iconify-json/solar": "^1.2.5",
+    "@iconify-json/streamline-color": "^1.2.2",
     "@tailwindcss/postcss": "^4",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",

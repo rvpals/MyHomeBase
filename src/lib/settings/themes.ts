@@ -106,6 +106,29 @@ export const COLOR_THEMES: ColorTheme[] = [
       fonts: { display: "sora", body: "manrope", mono: "ibm-plex-mono" },
     },
   },
+  // The one light theme. Here "raised" reads brighter than "paper" (pure-white cards
+  // on a warm off-white page), the inverse of the dark themes — the paper/paperRaised
+  // relationship still holds (raised is one step toward the light). Because every
+  // component reads these same tokens, the app renders correctly on a light page with
+  // no per-component changes. Caveat: the semantic red/green exception in design.md
+  // (300–400 shades tuned for dark) reads a bit light here; acceptable for now.
+  {
+    id: "daybreak",
+    name: "Daybreak",
+    description: "Warm daylight paper with a rose signal accent.",
+    tokens: {
+      paper: "#F4F1F2",
+      paperRaised: "#FFFFFF",
+      ink: "#232830",
+      line: "#E7E2E4",
+      muted: "#6B7280",
+      mutedInverse: "#9AA1AC",
+      brass: "#F43F5E",
+      brassDark: "#C21E48",
+      brassSoft: "#FCE4EA",
+      fonts: { display: "space-grotesk", body: "manrope", mono: "jetbrains-mono" },
+    },
+  },
 ];
 
 export const DEFAULT_COLOR_THEME_ID = "signal-deck";

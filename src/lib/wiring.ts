@@ -58,6 +58,11 @@ const propertyLookupClient: PropertyLookupClient | undefined = process.env.RENTC
   ? new RentCastLookupClient({ apiKey: process.env.RENTCAST_API_KEY })
   : undefined;
 
+// Self-signup can mint an admin account only when the visitor supplies the
+// secret configured here. Unset (or empty) means "no admin signups possible" —
+// `registerUser` rejects any admin-secret attempt when this is undefined.
+const adminSignupSecret: string | undefined = process.env.ADMIN_SIGNUP_SECRET || undefined;
+
 export const deps = {
   moduleRepo: new SqliteModuleRepository(db),
   settingsRepo: new SqliteSettingsRepository(db),
@@ -77,4 +82,5 @@ export const deps = {
   marketDataClient: new YahooFinanceClient(),
   propertyLookupClient,
   googleOAuthClient,
+  adminSignupSecret,
 };

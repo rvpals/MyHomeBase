@@ -14,9 +14,10 @@ export interface LoginViewProps {
   appName: string;
   googleLoginEnabled: boolean;
   errorCode?: string;
+  justRegistered?: boolean;
 }
 
-export function LoginView({ appName, googleLoginEnabled, errorCode }: LoginViewProps) {
+export function LoginView({ appName, googleLoginEnabled, errorCode, justRegistered }: LoginViewProps) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | undefined>(
@@ -47,6 +48,12 @@ export function LoginView({ appName, googleLoginEnabled, errorCode }: LoginViewP
           <span className="font-display text-lg font-semibold text-ink">{appName}</span>
         </div>
         <p className="mt-2 text-center text-sm text-muted">Sign in to continue</p>
+
+        {justRegistered && (
+          <p className="mt-4 rounded-md border border-line bg-paper px-3 py-2 text-center text-sm text-emerald-500">
+            Account created. You can sign in now.
+          </p>
+        )}
 
         <label className="mt-6 block text-sm">
           <span className="mb-1 block font-medium text-ink">Username</span>
@@ -85,6 +92,13 @@ export function LoginView({ appName, googleLoginEnabled, errorCode }: LoginViewP
             </Button>
           </>
         )}
+
+        <div className="mt-6 border-t border-line pt-4">
+          <p className="mb-2 text-center text-sm text-muted">Don&apos;t have an account?</p>
+          <Button href="/login/register" variant="secondary" className="w-full">
+            Create account
+          </Button>
+        </div>
       </form>
     </div>
   );

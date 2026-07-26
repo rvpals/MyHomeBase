@@ -3,11 +3,33 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SESSION_COOKIE_NAME, login, logout } from "@/lib/auth";
+import { DuplicateUsernameError, InvalidAdminSecretError, registerUser } from "@/lib/user";
 import { deps } from "@/lib/wiring";
 
 export interface LoginResult {
   ok: boolean;
   error?: string;
+}
+
+export interface RegisterInput {
+  username: string;
+  fullName: string;
+  password: string;
+  adminSecretKey?: string;
+}
+
+export async function registerAction(input: RegisterInput): Promise<LoginResult> {
+  try {
+    registerUser(input, deps.userRepo, deps.adminSignupSecret);
+  } catch (error) {
+    if (error instanceof DuplicateUsernameError || error instanceof InvalidAdminSecretError) {
+      return { ok: false, error: error.message };
+    }
+    return { ok: false, error: "Could not create the account. Check your details and try again." };
+  }
+
+  // No session is created — the visitor lands back on the login page to sign in.
+  redirect("/login?registered=1");
 }
 
 export async function loginAction(input: { username: string; password: string }): Promise<LoginResult> {

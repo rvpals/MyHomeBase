@@ -38,9 +38,13 @@ export interface SidebarProps {
 }
 
 const navRowClasses = (collapsed: boolean, active: boolean) =>
-  `relative flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
+  `relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
     collapsed ? "justify-center" : ""
-  } ${active ? "bg-brass-soft text-brass-dark" : "text-muted hover:bg-line/60 hover:text-ink"}`;
+  } ${
+    active
+      ? "bg-brass-soft text-brass-dark shadow-[0_2px_6px_-2px_rgba(0,0,0,0.25)]"
+      : "text-muted hover:bg-line/50 hover:text-ink"
+  }`;
 
 export function Sidebar({
   links,
@@ -68,7 +72,7 @@ export function Sidebar({
 
   return (
     <aside
-      className={`flex min-h-screen flex-col border-r border-line bg-paper-raised transition-[width] motion-reduce:transition-none ${
+      className={`flex min-h-screen flex-col bg-gradient-to-b from-paper-raised to-paper shadow-[inset_-1px_0_0_var(--line),6px_0_24px_-14px_rgba(0,0,0,0.45)] transition-[width] motion-reduce:transition-none ${
         collapsed ? "w-16" : "w-60"
       } ${className}`}
     >
@@ -96,12 +100,6 @@ export function Sidebar({
       </div>
       <nav className="flex flex-1 flex-col gap-1 px-2">
         <Link href="/" title="Home" className={navRowClasses(collapsed, homeActive)}>
-          <span
-            className={`absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-r-sm bg-brass transition-opacity ${
-              homeActive ? "opacity-100" : "opacity-0"
-            }`}
-            aria-hidden
-          />
           <ModuleIcon name="home" className="h-4 w-4 shrink-0 text-brass" />
           {!collapsed && <span className="truncate">Home</span>}
         </Link>
@@ -111,12 +109,6 @@ export function Sidebar({
             title="Administration"
             className={navRowClasses(collapsed, adminActive)}
           >
-            <span
-              className={`absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-r-sm bg-brass transition-opacity ${
-                adminActive ? "opacity-100" : "opacity-0"
-              }`}
-              aria-hidden
-            />
             <AdminIcon className="h-4 w-4 shrink-0 text-brass" />
             {!collapsed && <span className="truncate">Administration</span>}
           </Link>
@@ -131,12 +123,6 @@ export function Sidebar({
               title={link.hint ?? link.name}
               className={navRowClasses(collapsed, active)}
             >
-              <span
-                className={`absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-r-sm bg-brass transition-opacity ${
-                  active ? "opacity-100" : "opacity-0"
-                }`}
-                aria-hidden
-              />
               <ModuleIcon name={link.icon} className="h-4 w-4 shrink-0 text-brass" />
               {!collapsed && (
                 <>

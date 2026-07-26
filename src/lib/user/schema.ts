@@ -28,6 +28,22 @@ export const createUserSchema = z.object({
 
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 
+// Public self-signup. Deliberately has NO `role` field — the role is decided
+// server-side by `registerUser` (never trusted from the form), so a visitor
+// can't self-elevate to admin by posting `role: "admin"`. An optional
+// `adminSecretKey`, if it matches the configured secret, is what grants admin.
+export const registerUserSchema = z.object({
+  username: z.string().min(1),
+  fullName: z.string().min(1),
+  password: z.string().min(8),
+  adminSecretKey: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().min(1).optional(),
+  ),
+});
+
+export type RegisterUserInput = z.infer<typeof registerUserSchema>;
+
 export const setPasswordSchema = z.object({
   password: z.string().min(8),
 });

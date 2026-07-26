@@ -1,5 +1,9 @@
+"use client";
+
 import type { ReactElement, SVGProps } from "react";
 import type { ModuleIconName } from "@/lib/modules";
+import { useIconSet } from "./icon-set-context";
+import { MODULE_ICON_GLYPHS, type ModuleIconSetId } from "./module-icon-sets.generated";
 
 type IconComponent = (props: SVGProps<SVGSVGElement>) => ReactElement;
 
@@ -102,13 +106,45 @@ const ICONS: Record<ModuleIconName, IconComponent> = {
   tool: Tool,
 };
 
-export function ModuleIcon({
+// The original hand-drawn set, kept as the "classic" option and the fallback for any
+// concept a generated set happens to lack.
+function ClassicModuleIcon({ name, className }: { name: string; className?: string }) {
+  const Icon = ICONS[name as ModuleIconName] ?? Building;
+  return <Icon className={className} aria-hidden="true" />;
+}
+
+/**
+ * Renders a module icon in the user-selected icon set (read from `IconSetProvider`).
+ * "classic" (and any missing glyph) falls back to the hand-drawn set above; every other
+ * set is a baked SVG body from `module-icon-sets.generated.ts`. Monochrome sets inherit
+ * `currentColor` from `className`; color sets carry their own fills.
+ */
+export function ModuleIcon({ name, className }: { name: string; className?: string }) {
+  const { id } = useIconSet();
+  return <ModuleIconPreview setId={id} name={name} className={className} />;
+}
+
+/**
+ * Renders a module icon for an explicit set id, ignoring the active-set context. Used by
+ * the Admin icon picker, which must preview every set at once (not just the active one).
+ */
+export function ModuleIconPreview({
+  setId,
   name,
   className,
 }: {
+  setId: ModuleIconSetId;
   name: string;
   className?: string;
 }) {
-  const Icon = ICONS[name as ModuleIconName] ?? Building;
-  return <Icon className={className} aria-hidden="true" />;
+  const glyph = MODULE_ICON_GLYPHS[setId]?.[name];
+  if (!glyph) return <ClassicModuleIcon name={name} className={className} />;
+  return (
+    <svg
+      viewBox={`0 0 ${glyph.w} ${glyph.h}`}
+      className={className}
+      aria-hidden="true"
+      dangerouslySetInnerHTML={{ __html: glyph.body }}
+    />
+  );
 }

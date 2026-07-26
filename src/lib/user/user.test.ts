@@ -6,10 +6,12 @@ import type { User, UserAvatar, UserCredentials, UserRole } from "./types";
 import {
   DuplicateGoogleEmailError,
   DuplicateUsernameError,
+  InvalidAdminSecretError,
   SelfLockoutError,
   clearUserAvatar,
   createUser,
   createUserFromGoogle,
+  registerUser,
   deleteUser,
   getAccessibleModules,
   getUserAvatar,
@@ -172,6 +174,65 @@ describe("createUser", () => {
     expect(() =>
       createUser({ username: "alice", fullName: "Alice 2", password: "supersecret", role: "user" }, repo),
     ).toThrow(DuplicateUsernameError);
+  });
+});
+
+describe("registerUser", () => {
+  it("creates a plain user with no admin secret", () => {
+    const repo = new FakeUserRepository();
+    const user = registerUser(
+      { username: "carol", fullName: "Carol", password: "supersecret" },
+      repo,
+      "the-secret",
+    );
+    expect(user.role).toBe("user");
+    expect(repo.getAccessibleModuleIds(user.id)).toEqual([]);
+  });
+
+  it("creates an admin when the admin secret key matches", () => {
+    const repo = new FakeUserRepository();
+    const user = registerUser(
+      { username: "dave", fullName: "Dave", password: "supersecret", adminSecretKey: "the-secret" },
+      repo,
+      "the-secret",
+    );
+    expect(user.role).toBe("admin");
+  });
+
+  it("rejects a wrong admin secret key instead of downgrading to a user", () => {
+    const repo = new FakeUserRepository();
+    expect(() =>
+      registerUser(
+        { username: "eve", fullName: "Eve", password: "supersecret", adminSecretKey: "wrong" },
+        repo,
+        "the-secret",
+      ),
+    ).toThrow(InvalidAdminSecretError);
+    expect(repo.getUserByUsername("eve")).toBeUndefined();
+  });
+
+  it("rejects any admin secret key when none is configured", () => {
+    const repo = new FakeUserRepository();
+    expect(() =>
+      registerUser(
+        { username: "frank", fullName: "Frank", password: "supersecret", adminSecretKey: "anything" },
+        repo,
+        undefined,
+      ),
+    ).toThrow(InvalidAdminSecretError);
+  });
+
+  it("rejects a duplicate username", () => {
+    const repo = new FakeUserRepository();
+    registerUser({ username: "grace", fullName: "Grace", password: "supersecret" }, repo);
+    expect(() =>
+      registerUser({ username: "grace", fullName: "Grace 2", password: "supersecret" }, repo),
+    ).toThrow(DuplicateUsernameError);
+  });
+
+  it("rejects a password shorter than 8 characters", () => {
+    const repo = new FakeUserRepository();
+    expect(() => registerUser({ username: "heidi", fullName: "Heidi", password: "short" }, repo)).toThrow();
   });
 });
 

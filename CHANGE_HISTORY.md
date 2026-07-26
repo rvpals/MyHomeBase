@@ -1,5 +1,46 @@
 # Change History
 
+## 2026-07-25 22:11 — Self-signup with hidden admin elevation; user-selectable icon sets; Daybreak light theme
+
+Self-signup (this session):
+
+- Added a public "Create account" flow reachable from the login screen. New
+  `registerUser` use-case in `src/lib/user` always creates a `user`-role
+  account with zero module access (mirroring the Google auto-create policy);
+  its schema deliberately has no `role` field so the form can't self-elevate.
+- Optional admin elevation at signup: a matching `adminSecretKey` (compared
+  constant-time via a new `src/lib/shared/secret.ts` `secureCompare`) creates
+  an admin instead. The expected value comes from a new `ADMIN_SIGNUP_SECRET`
+  env var wired in as `deps.adminSignupSecret`; unset means admin signup is
+  off, and a wrong/absent-secret attempt is a hard failure (no silent
+  downgrade). New `InvalidAdminSecretError`.
+- New `/login/register` route (page + view). The "Admin secret key" field is
+  hidden until the visitor types the sequence `a` `d` `m` anywhere on the
+  page. On success the visitor is returned to `/login?registered=1` with a
+  confirmation banner (no session is created). Colocated tests for
+  `registerUser` and `secureCompare`; documented the env var in `.env.example`.
+
+Icon sets + light theme (pre-existing uncommitted work in the tree, described
+from the diff rather than this session's conversation):
+
+- Module icons are now a user-selectable "icon set" (parallel to color
+  themes): new `ICON_SETS` registry in `src/lib/settings/icon-sets.ts`, an
+  `icon_set` app setting (migration `0023`, default `solar-bold-duotone`,
+  mirrored in `DEFAULT_APP_SETTINGS`), an Admin → Configuration → Icons picker
+  screen, and an `IconSetProvider`/`useIconSet` context read once in the root
+  layout. Glyph SVGs are baked into `module-icon-sets.generated.ts` by
+  `scripts/gen-icon-glyphs.mjs` (`npm run gen:icons`) from `@iconify-json/*`
+  devDependencies — no runtime icon dependency.
+- `ModuleCard` redesigned to lead with a prominent icon badge (solid-accent
+  tile for monochrome sets, neutral `bg-paper` tile for colorful sets);
+  registry (`components.md`) and `design.md` updated accordingly.
+- Added **Daybreak**, the first light theme (rose accent on warm paper), plus
+  design.md guidance to design for both light and dark surfaces.
+
+Not committed: `Google_Client_Info.md` — it contains a live Google OAuth
+client secret and is intentionally excluded (recommend rotating it and moving
+the values into a gitignored `.env.local`).
+
 ## 2026-07-12 23:34 — User management, authentication, and Google sign-in
 
 - Added user management: a `users` table (username, full name, description,

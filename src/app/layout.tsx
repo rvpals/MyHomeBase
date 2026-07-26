@@ -8,7 +8,16 @@ import {
   Sora,
   Space_Grotesk,
 } from "next/font/google";
-import { DEFAULT_COLOR_THEME_ID, type FontKey, getColorTheme, getSetting } from "@/lib/settings";
+import { IconSetProvider } from "@/components/icon-set-context";
+import type { ModuleIconSetId } from "@/components/module-icon-sets.generated";
+import {
+  DEFAULT_COLOR_THEME_ID,
+  DEFAULT_ICON_SET_ID,
+  type FontKey,
+  getColorTheme,
+  getIconSet,
+  getSetting,
+} from "@/lib/settings";
 import { deps } from "@/lib/wiring";
 import "./globals.css";
 
@@ -73,6 +82,11 @@ function getActiveTheme() {
   return getColorTheme(themeId);
 }
 
+function getActiveIconSet() {
+  const iconSetId = getSetting(deps.settingsRepo, "icon_set")?.value ?? DEFAULT_ICON_SET_ID;
+  return getIconSet(iconSetId);
+}
+
 export function generateMetadata(): Metadata {
   return { title: getAppName() };
 }
@@ -83,6 +97,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   const theme = getActiveTheme();
+  const iconSet = getActiveIconSet();
 
   // Overrides the default token values declared in globals.css :root — rendered
   // server-side so the selected theme applies with no client-side flash. Lives
@@ -99,7 +114,11 @@ export default function RootLayout({
       <head>
         <style>{themeCss}</style>
       </head>
-      <body className="min-h-full bg-paper">{children}</body>
+      <body className="min-h-full bg-paper">
+        <IconSetProvider value={{ id: iconSet.id as ModuleIconSetId, colorful: iconSet.colorful }}>
+          {children}
+        </IconSetProvider>
+      </body>
     </html>
   );
 }
