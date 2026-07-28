@@ -130,7 +130,7 @@ When scaffolding a new module's `view.tsx`:
    for cancel, `"danger"` for destructive).
 4. Stat tiles / summary numbers: `rounded-xl border border-line p-4` container, label in
    `text-xs font-medium uppercase tracking-wide text-muted`, value in `font-display
-   text-xl text-ink` — see `real-estate-view.tsx`'s summary row.
+   text-xl text-ink` — keep to this container/label/value structure.
 5. Don't introduce a new shadow style, a new font, or a new literal color. If none of
    the existing patterns fit, that's a signal to stop and ask whether it's a new
    reusable component (per `components.md`'s process), not a one-off style.

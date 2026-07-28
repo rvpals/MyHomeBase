@@ -44,6 +44,13 @@ export const adminNav: TreeNode[] = [
     icon: "users",
   },
   {
+    id: "daily-quote",
+    label: "Daily Quote",
+    href: "/admin/daily-quote",
+    hint: "Manage the inspirational quotes shown on the home screen",
+    icon: "quote",
+  },
+  {
     id: "sql-explorer",
     label: "SQL Explorer",
     href: "/admin/sql-explorer",

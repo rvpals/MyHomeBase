@@ -1,4 +1,4 @@
-CREATE TABLE module_settings (
+CREATE TABLE sys_module_settings (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   module_id INTEGER NOT NULL,
   setting_key TEXT NOT NULL,
@@ -10,8 +10,8 @@ CREATE TABLE module_settings (
 );
 
 CREATE TRIGGER module_settings_set_updated_at
-AFTER UPDATE ON module_settings
+AFTER UPDATE ON sys_module_settings
 FOR EACH ROW
 BEGIN
-  UPDATE module_settings SET updated_at = datetime('now') WHERE id = old.id;
+  UPDATE sys_module_settings SET updated_at = datetime('now') WHERE id = old.id;
 END;

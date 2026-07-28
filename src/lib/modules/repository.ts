@@ -33,14 +33,14 @@ export class SqliteModuleRepository implements ModuleRepository {
 
   listModules(options: { includeHidden?: boolean } = {}): Module[] {
     const query = options.includeHidden
-      ? "SELECT * FROM modules ORDER BY sequence ASC"
-      : "SELECT * FROM modules WHERE is_visible = 1 ORDER BY sequence ASC";
+      ? "SELECT * FROM sys_modules ORDER BY sequence ASC"
+      : "SELECT * FROM sys_modules WHERE is_visible = 1 ORDER BY sequence ASC";
     const rows = this.db.prepare(query).all() as ModuleRow[];
     return rows.map(toDomain);
   }
 
   getModuleBySlug(slug: string): Module | undefined {
-    const row = this.db.prepare("SELECT * FROM modules WHERE slug = ?").get(slug) as
+    const row = this.db.prepare("SELECT * FROM sys_modules WHERE slug = ?").get(slug) as
       | ModuleRow
       | undefined;
     return row ? toDomain(row) : undefined;
@@ -48,7 +48,7 @@ export class SqliteModuleRepository implements ModuleRepository {
 
   updateAll(updates: ModuleUpdate[]): void {
     const stmt = this.db.prepare(
-      "UPDATE modules SET short_name = ?, long_name = ?, description = ?, is_visible = ?, sequence = ? WHERE slug = ?",
+      "UPDATE sys_modules SET short_name = ?, long_name = ?, description = ?, is_visible = ?, sequence = ? WHERE slug = ?",
     );
     const applyUpdates = this.db.transaction((items: ModuleUpdate[]) => {
       items.forEach((item, index) => {
@@ -71,7 +71,7 @@ export class SqliteModuleRepository implements ModuleRepository {
     // no FK) don't get orphaned by a reset. Only modules dropped from the
     // defaults list are actually deleted.
     const upsert = this.db.prepare(`
-      INSERT INTO modules (slug, short_name, long_name, description, sequence, is_visible, icon)
+      INSERT INTO sys_modules (slug, short_name, long_name, description, sequence, is_visible, icon)
       VALUES (@slug, @shortName, @longName, @description, @sequence, @isVisible, @icon)
       ON CONFLICT(slug) DO UPDATE SET
         short_name = excluded.short_name,
@@ -81,12 +81,12 @@ export class SqliteModuleRepository implements ModuleRepository {
         is_visible = excluded.is_visible,
         icon = excluded.icon
     `);
-    const deleteBySlug = this.db.prepare("DELETE FROM modules WHERE slug = ?");
+    const deleteBySlug = this.db.prepare("DELETE FROM sys_modules WHERE slug = ?");
 
     const applyReset = this.db.transaction((items: Omit<Module, "id">[]) => {
       const defaultSlugs = new Set(items.map((item) => item.slug));
       const existingSlugs = (
-        this.db.prepare("SELECT slug FROM modules").all() as { slug: string }[]
+        this.db.prepare("SELECT slug FROM sys_modules").all() as { slug: string }[]
       ).map((row) => row.slug);
 
       for (const slug of existingSlugs) {

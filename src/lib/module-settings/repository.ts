@@ -27,22 +27,22 @@ export class SqliteModuleSettingsRepository implements ModuleSettingsRepository 
 
   listByModuleId(moduleId: number): ModuleSetting[] {
     const rows = this.db
-      .prepare("SELECT * FROM module_settings WHERE module_id = ? ORDER BY setting_key ASC")
+      .prepare("SELECT * FROM sys_module_settings WHERE module_id = ? ORDER BY setting_key ASC")
       .all(moduleId) as ModuleSettingRow[];
     return rows.map(toDomain);
   }
 
   listAll(): ModuleSetting[] {
     const rows = this.db
-      .prepare("SELECT * FROM module_settings ORDER BY module_id ASC, setting_key ASC")
+      .prepare("SELECT * FROM sys_module_settings ORDER BY module_id ASC, setting_key ASC")
       .all() as ModuleSettingRow[];
     return rows.map(toDomain);
   }
 
   replaceForModule(moduleId: number, entries: ModuleSettingEntry[]): void {
-    const deleteExisting = this.db.prepare("DELETE FROM module_settings WHERE module_id = ?");
+    const deleteExisting = this.db.prepare("DELETE FROM sys_module_settings WHERE module_id = ?");
     const insert = this.db.prepare(
-      "INSERT INTO module_settings (module_id, setting_key, setting_value, setting_description) VALUES (?, ?, ?, ?)",
+      "INSERT INTO sys_module_settings (module_id, setting_key, setting_value, setting_description) VALUES (?, ?, ?, ?)",
     );
     const apply = this.db.transaction((items: ModuleSettingEntry[]) => {
       deleteExisting.run(moduleId);

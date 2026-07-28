@@ -1,4 +1,4 @@
-CREATE TABLE user_module_access (
+CREATE TABLE sys_user_module_access (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
   module_id INTEGER NOT NULL,
@@ -6,4 +6,4 @@ CREATE TABLE user_module_access (
   UNIQUE (user_id, module_id)
 );
 
-CREATE INDEX user_module_access_user_id_idx ON user_module_access(user_id);
+CREATE INDEX user_module_access_user_id_idx ON sys_user_module_access(user_id);

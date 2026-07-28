@@ -1,4 +1,4 @@
-CREATE TABLE users (
+CREATE TABLE sys_users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   username TEXT NOT NULL UNIQUE,
   full_name TEXT NOT NULL,
@@ -11,8 +11,8 @@ CREATE TABLE users (
 );
 
 CREATE TRIGGER users_set_updated_at
-AFTER UPDATE ON users
+AFTER UPDATE ON sys_users
 FOR EACH ROW
 BEGIN
-  UPDATE users SET updated_at = datetime('now') WHERE id = old.id;
+  UPDATE sys_users SET updated_at = datetime('now') WHERE id = old.id;
 END;

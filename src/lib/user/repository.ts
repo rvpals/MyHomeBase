@@ -57,40 +57,40 @@ export class SqliteUserRepository implements UserRepository {
 
   listUsers(): User[] {
     const rows = this.db
-      .prepare(`SELECT ${USER_COLUMNS_WITHOUT_AVATAR} FROM users ORDER BY username ASC`)
+      .prepare(`SELECT ${USER_COLUMNS_WITHOUT_AVATAR} FROM sys_users ORDER BY username ASC`)
       .all() as UserRow[];
     return rows.map(toDomain);
   }
 
   getUserById(id: number): User | undefined {
     const row = this.db
-      .prepare(`SELECT ${USER_COLUMNS_WITHOUT_AVATAR} FROM users WHERE id = ?`)
+      .prepare(`SELECT ${USER_COLUMNS_WITHOUT_AVATAR} FROM sys_users WHERE id = ?`)
       .get(id) as UserRow | undefined;
     return row ? toDomain(row) : undefined;
   }
 
   getUserByUsername(username: string): User | undefined {
     const row = this.db
-      .prepare(`SELECT ${USER_COLUMNS_WITHOUT_AVATAR} FROM users WHERE username = ?`)
+      .prepare(`SELECT ${USER_COLUMNS_WITHOUT_AVATAR} FROM sys_users WHERE username = ?`)
       .get(username) as UserRow | undefined;
     return row ? toDomain(row) : undefined;
   }
 
   getUserByGoogleEmail(googleEmail: string): User | undefined {
     const row = this.db
-      .prepare(`SELECT ${USER_COLUMNS_WITHOUT_AVATAR} FROM users WHERE google_email = ?`)
+      .prepare(`SELECT ${USER_COLUMNS_WITHOUT_AVATAR} FROM sys_users WHERE google_email = ?`)
       .get(googleEmail) as UserRow | undefined;
     return row ? toDomain(row) : undefined;
   }
 
   existsByUsername(username: string): boolean {
-    const row = this.db.prepare("SELECT 1 FROM users WHERE username = ?").get(username);
+    const row = this.db.prepare("SELECT 1 FROM sys_users WHERE username = ?").get(username);
     return row !== undefined;
   }
 
   findCredentialsByUsername(username: string): UserCredentials | undefined {
     const row = this.db
-      .prepare(`SELECT ${USER_COLUMNS_WITHOUT_AVATAR} FROM users WHERE username = ?`)
+      .prepare(`SELECT ${USER_COLUMNS_WITHOUT_AVATAR} FROM sys_users WHERE username = ?`)
       .get(username) as UserRow | undefined;
     return row ? toCredentials(row) : undefined;
   }
@@ -98,7 +98,7 @@ export class SqliteUserRepository implements UserRepository {
   createUser(record: NewUserRecord): User {
     const result = this.db
       .prepare(
-        `INSERT INTO users (username, full_name, description, password_hash, role)
+        `INSERT INTO sys_users (username, full_name, description, password_hash, role)
          VALUES (@username, @fullName, @description, @passwordHash, @role)`,
       )
       .run({
@@ -115,21 +115,21 @@ export class SqliteUserRepository implements UserRepository {
   }
 
   setPasswordHash(id: number, passwordHash: string): void {
-    this.db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(passwordHash, id);
+    this.db.prepare("UPDATE sys_users SET password_hash = ? WHERE id = ?").run(passwordHash, id);
   }
 
   setRole(id: number, role: UserRole): void {
-    this.db.prepare("UPDATE users SET role = ? WHERE id = ?").run(role, id);
+    this.db.prepare("UPDATE sys_users SET role = ? WHERE id = ?").run(role, id);
   }
 
   setDisabled(id: number, isDisabled: boolean): void {
-    this.db.prepare("UPDATE users SET is_disabled = ? WHERE id = ?").run(isDisabled ? 1 : 0, id);
+    this.db.prepare("UPDATE sys_users SET is_disabled = ? WHERE id = ?").run(isDisabled ? 1 : 0, id);
   }
 
   setGoogleEmail(id: number, googleEmail: string | undefined): void {
     try {
       this.db
-        .prepare("UPDATE users SET google_email = ? WHERE id = ?")
+        .prepare("UPDATE sys_users SET google_email = ? WHERE id = ?")
         .run(googleEmail ?? null, id);
     } catch (error) {
       const message = error instanceof Error ? error.message : "";
@@ -142,7 +142,7 @@ export class SqliteUserRepository implements UserRepository {
 
   getAvatar(userId: number): UserAvatar | undefined {
     const row = this.db
-      .prepare("SELECT avatar, avatar_mime_type FROM users WHERE id = ?")
+      .prepare("SELECT avatar, avatar_mime_type FROM sys_users WHERE id = ?")
       .get(userId) as { avatar: Buffer | null; avatar_mime_type: string | null } | undefined;
     if (!row || !row.avatar || !row.avatar_mime_type) return undefined;
     return { data: row.avatar, mimeType: row.avatar_mime_type };
@@ -150,7 +150,7 @@ export class SqliteUserRepository implements UserRepository {
 
   setAvatar(userId: number, avatar: UserAvatar | undefined): void {
     this.db
-      .prepare("UPDATE users SET avatar = ?, avatar_mime_type = ? WHERE id = ?")
+      .prepare("UPDATE sys_users SET avatar = ?, avatar_mime_type = ? WHERE id = ?")
       .run(avatar?.data ?? null, avatar?.mimeType ?? null, userId);
   }
 
@@ -159,25 +159,25 @@ export class SqliteUserRepository implements UserRepository {
     // invalidateSessionsForUser in src/lib/auth) — sessions is that
     // module's table, not this one's.
     const deleteUserTransaction = this.db.transaction((userId: number) => {
-      this.db.prepare("DELETE FROM user_module_access WHERE user_id = ?").run(userId);
-      this.db.prepare("DELETE FROM users WHERE id = ?").run(userId);
+      this.db.prepare("DELETE FROM sys_user_module_access WHERE user_id = ?").run(userId);
+      this.db.prepare("DELETE FROM sys_users WHERE id = ?").run(userId);
     });
     deleteUserTransaction(id);
   }
 
   getAccessibleModuleIds(userId: number): number[] {
     const rows = this.db
-      .prepare("SELECT module_id FROM user_module_access WHERE user_id = ?")
+      .prepare("SELECT module_id FROM sys_user_module_access WHERE user_id = ?")
       .all(userId) as { module_id: number }[];
     return rows.map((row) => row.module_id);
   }
 
   setAccessibleModuleIds(userId: number, moduleIds: number[]): void {
     const insert = this.db.prepare(
-      "INSERT INTO user_module_access (user_id, module_id) VALUES (?, ?)",
+      "INSERT INTO sys_user_module_access (user_id, module_id) VALUES (?, ?)",
     );
     const applyGrants = this.db.transaction((ids: number[]) => {
-      this.db.prepare("DELETE FROM user_module_access WHERE user_id = ?").run(userId);
+      this.db.prepare("DELETE FROM sys_user_module_access WHERE user_id = ?").run(userId);
       for (const moduleId of ids) insert.run(userId, moduleId);
     });
     applyGrants(moduleIds);

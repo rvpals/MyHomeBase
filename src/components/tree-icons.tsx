@@ -91,8 +91,16 @@ const Shapes: IconComponent = (props) => (
   </svg>
 );
 
+const Quote: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <path d="M10 7H6a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1h3v1c0 1.7-1 3-3 3.7" />
+    <path d="M19 7h-4a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1h3v1c0 1.7-1 3-3 3.7" />
+  </svg>
+);
+
 const TREE_ICONS = {
   sliders: Sliders,
+  quote: Quote,
   grid: Grid,
   window: Window,
   palette: Palette,

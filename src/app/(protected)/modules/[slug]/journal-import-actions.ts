@@ -1,0 +1,115 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import {
+  createNamedMapping,
+  deleteNamedMapping,
+  listNamedMappings,
+  previewCsv,
+  updateNamedMapping,
+  type ColumnMapping,
+  type CsvPreview,
+  type FieldOptionsMap,
+  type ImportSummary,
+  type NamedMapping,
+} from "@/lib/csv-import";
+import { autoMapJournalHeaders, importJournalCsv } from "@/lib/journal";
+import { deps } from "@/lib/wiring";
+
+const JOURNAL_MODULE_PATH = "/modules/journal";
+const JOURNAL_IMPORT_TYPE = "Journal" as const;
+
+export interface ActionResult {
+  ok: boolean;
+  error?: string;
+}
+
+function toErrorResult(error: unknown, fallback: string): ActionResult {
+  return { ok: false, error: error instanceof Error ? error.message : fallback };
+}
+
+export interface JournalPreviewResult extends ActionResult {
+  preview?: CsvPreview;
+  /** Mapping + options guessed from the file's headers, offered as a starting point. */
+  autoMapping?: ColumnMapping;
+  autoFieldOptions?: FieldOptionsMap;
+  namedMappings?: NamedMapping[];
+}
+
+export async function previewJournalCsvAction(fileText: string): Promise<JournalPreviewResult> {
+  try {
+    const preview = previewCsv(fileText);
+    const { columnMapping, fieldOptions } = autoMapJournalHeaders(preview.headers);
+    return {
+      ok: true,
+      preview,
+      autoMapping: columnMapping,
+      autoFieldOptions: fieldOptions,
+      namedMappings: listNamedMappings(deps.csvImportMappingRepo, JOURNAL_IMPORT_TYPE),
+    };
+  } catch (error) {
+    return toErrorResult(error, "Failed to preview CSV.");
+  }
+}
+
+export async function saveJournalMappingAction(
+  name: string,
+  columnMapping: ColumnMapping,
+  fieldOptions: FieldOptionsMap,
+): Promise<ActionResult> {
+  try {
+    createNamedMapping(deps.csvImportMappingRepo, {
+      name,
+      importType: JOURNAL_IMPORT_TYPE,
+      columnMapping,
+      fieldOptions,
+    });
+  } catch (error) {
+    return toErrorResult(error, "Failed to save mapping.");
+  }
+  revalidatePath(JOURNAL_MODULE_PATH);
+  return { ok: true };
+}
+
+export async function updateJournalMappingAction(
+  id: number,
+  name: string,
+  columnMapping: ColumnMapping,
+  fieldOptions: FieldOptionsMap,
+): Promise<ActionResult> {
+  try {
+    updateNamedMapping(deps.csvImportMappingRepo, id, { name, columnMapping, fieldOptions });
+  } catch (error) {
+    return toErrorResult(error, "Failed to update mapping.");
+  }
+  revalidatePath(JOURNAL_MODULE_PATH);
+  return { ok: true };
+}
+
+export async function deleteJournalMappingAction(id: number): Promise<ActionResult> {
+  try {
+    deleteNamedMapping(deps.csvImportMappingRepo, id);
+  } catch (error) {
+    return toErrorResult(error, "Failed to delete mapping.");
+  }
+  revalidatePath(JOURNAL_MODULE_PATH);
+  return { ok: true };
+}
+
+export interface JournalImportResult extends ActionResult {
+  summary?: ImportSummary;
+}
+
+export async function runJournalImportAction(
+  fileText: string,
+  columnMapping: ColumnMapping,
+  fieldOptions: FieldOptionsMap,
+): Promise<JournalImportResult> {
+  try {
+    const summary = importJournalCsv(deps.journalRepo, fileText, columnMapping, fieldOptions);
+    revalidatePath(JOURNAL_MODULE_PATH);
+    return { ok: true, summary };
+  } catch (error) {
+    return toErrorResult(error, "Failed to import CSV.");
+  }
+}

@@ -8,14 +8,12 @@ import { GoogleAuthClient } from "./auth/google-client";
 import type { GoogleOAuthClient } from "./auth/ports";
 import { SqliteCsvAnalyticsRepository } from "./csv-analytics/repository";
 import { SqliteCsvImportMappingRepository } from "./csv-import/repository";
+import { SqliteDailyQuoteRepository } from "./daily-quote/repository";
 import { SqliteInvestmentAccountRepository } from "./investment-accounts/repository";
+import { SqliteJournalRepository } from "./journal/repository";
 import { YahooFinanceClient } from "./market-data/yahoo-finance-client";
 import { SqliteModuleSettingsRepository } from "./module-settings/repository";
 import { SqliteModuleRepository } from "./modules/repository";
-import { RentCastLookupClient } from "./property-watch/rentcast-client";
-import type { PropertyLookupClient } from "./property-watch/ports";
-import { SqliteWatchedPropertyRepository } from "./property-watch/repository";
-import { SqlitePropertyRepository } from "./real-estate/repository";
 import { SqliteSettingsRepository } from "./settings/repository";
 import { SqliteSqlExplorerRepository } from "./sql-explorer/repository";
 import { SqliteStockAnalyticsRepository } from "./stock-analytics/repository";
@@ -52,12 +50,6 @@ const googleOAuthClient: GoogleOAuthClient | undefined =
       })
     : undefined;
 
-// Property lookup (RentCast) is only enabled when an API key is set — every
-// adapter treats `deps.propertyLookupClient === undefined` as "feature off".
-const propertyLookupClient: PropertyLookupClient | undefined = process.env.RENTCAST_API_KEY
-  ? new RentCastLookupClient({ apiKey: process.env.RENTCAST_API_KEY })
-  : undefined;
-
 // Self-signup can mint an admin account only when the visitor supplies the
 // secret configured here. Unset (or empty) means "no admin signups possible" —
 // `registerUser` rejects any admin-secret attempt when this is undefined.
@@ -69,18 +61,17 @@ export const deps = {
   moduleSettingsRepo: new SqliteModuleSettingsRepository(db),
   userRepo: new SqliteUserRepository(db),
   sessionRepo: new SqliteSessionRepository(db),
-  propertyRepo: new SqlitePropertyRepository(db),
-  watchedPropertyRepo: new SqliteWatchedPropertyRepository(db),
   investmentAccountRepo: new SqliteInvestmentAccountRepository(db),
+  journalRepo: new SqliteJournalRepository(db),
   csvImportMappingRepo: new SqliteCsvImportMappingRepository(db),
   csvAnalyticsRepo: new SqliteCsvAnalyticsRepository(db),
+  dailyQuoteRepo: new SqliteDailyQuoteRepository(db),
   stockPositionRepo: new SqliteStockPositionRepository(db),
   stockWatchListRepo: new SqliteStockWatchListRepository(db),
   stockAnalyticsRepo: new SqliteStockAnalyticsRepository(db),
   sqlExplorerRepo: new SqliteSqlExplorerRepository(db),
   systemInfoRepo: new RealSystemInfoRepository(),
   marketDataClient: new YahooFinanceClient(),
-  propertyLookupClient,
   googleOAuthClient,
   adminSignupSecret,
 };

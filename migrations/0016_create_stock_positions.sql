@@ -1,4 +1,4 @@
-CREATE TABLE stock_positions (
+CREATE TABLE stk_stock_positions (
   ticker              TEXT PRIMARY KEY,
   name                TEXT    NOT NULL DEFAULT '',
   type                TEXT    NOT NULL DEFAULT 'Stock',
@@ -14,13 +14,13 @@ CREATE TABLE stock_positions (
 );
 
 CREATE TRIGGER stock_positions_set_updated_at
-AFTER UPDATE ON stock_positions
+AFTER UPDATE ON stk_stock_positions
 FOR EACH ROW
 BEGIN
-  UPDATE stock_positions SET updated_at = datetime('now') WHERE ticker = old.ticker;
+  UPDATE stk_stock_positions SET updated_at = datetime('now') WHERE ticker = old.ticker;
 END;
 
-CREATE TABLE stock_transactions (
+CREATE TABLE stk_stock_transactions (
   id                    INTEGER PRIMARY KEY AUTOINCREMENT,
   transaction_at        TEXT    NOT NULL,
   action                TEXT    NOT NULL DEFAULT 'Buy',
@@ -34,14 +34,14 @@ CREATE TABLE stock_transactions (
 );
 
 CREATE UNIQUE INDEX idx_stock_transactions_unique
-  ON stock_transactions (transaction_at, action, ticker, total_amount_cents);
+  ON stk_stock_transactions (transaction_at, action, ticker, total_amount_cents);
 
 CREATE INDEX idx_stock_transactions_ticker
-  ON stock_transactions (ticker);
+  ON stk_stock_transactions (ticker);
 
 CREATE TRIGGER stock_transactions_set_updated_at
-AFTER UPDATE ON stock_transactions
+AFTER UPDATE ON stk_stock_transactions
 FOR EACH ROW
 BEGIN
-  UPDATE stock_transactions SET updated_at = datetime('now') WHERE id = old.id;
+  UPDATE stk_stock_transactions SET updated_at = datetime('now') WHERE id = old.id;
 END;

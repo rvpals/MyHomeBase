@@ -11,8 +11,8 @@
     "test": "vitest run",
     "check:lib-boundary": "! grep -rE \"from '(react|next)\" src/lib",
     "gen:icons": "node scripts/gen-icon-glyphs.mjs",
-    "db:migrate": "tsx scripts/migrate.ts",
-    "cli": "tsx src/cli/index.ts"
+    "db:migrate": "tsx --env-file-if-exists=.env scripts/migrate.ts",
+    "cli": "tsx --env-file-if-exists=.env src/cli/index.ts"
   },
   "dependencies": {
     "better-sqlite3": "12.9.0",

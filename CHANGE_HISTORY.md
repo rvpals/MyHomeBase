@@ -1,5 +1,52 @@
 # Change History
 
+## 2026-07-27 23:18 — MyJournal module (schema, CSV importer, UI); plus batched pre-existing tree work
+
+MyJournal (this session):
+
+- **Schema** — migration `0027_create_journal_tables`: 8 `jrn_` tables —
+  `jrn_entries` (weather flattened to columns; multiple entries per date
+  allowed), `jrn_categories`, `jrn_tags`, `jrn_entry_categories`,
+  `jrn_entry_tags`, `jrn_entry_locations`, `jrn_entry_images`, `jrn_icons`.
+  INTEGER keys, no DB FKs (cascade handled in the repository), `updated_at`
+  triggers.
+- **Library** `src/lib/journal/` — the entry as an aggregate (its categories,
+  tags, and locations), zod schemas, `SqliteJournalRepository` with
+  transactional create/update/delete cascades, and use-cases (create/update/
+  delete, pin, lock, category & tag management), with colocated tests. Wired as
+  `deps.journalRepo`. Rules: referenced categories/tags auto-register; names
+  trim/de-dupe; a locked entry blocks edit and delete until unlocked.
+- **CSV import** — generalized the shared `csv-import` module: per-column
+  options (`delimiter`, `dateFormat`) held in a parallel map so the Stock
+  importer's `ColumnMapping` was untouched; a `Journal` import type; editable
+  named mappings (`updateNamedMapping`); a 10-random-row preview sample. Fixed
+  `src/lib/shared/csv.ts` with a record-aware `parseCsvRecords` so multi-line
+  quoted cells parse correctly (also benefits Stocks/CSV-Analysis).
+- **Apply-adapter** `src/lib/journal/csv-import.ts` (record → `createEntry`,
+  best-effort with a per-row summary) + `autoMapJournalHeaders`; new
+  `import-journal-csv` CLI command. Verified against a real 785-row export:
+  785 imported, 0 skipped.
+- **Web view** — replaced the journal "Coming soon" placeholder with a
+  read-only entries `DataGrid` plus a CSV import panel (file drop, sample grid,
+  per-column field + option controls, named-mapping load/save/edit/delete,
+  import summary). Deferred: the create/edit/pin/lock entry editor, and the
+  `images`/`icons`/`widgets`/`attachments` features.
+
+Pre-existing uncommitted work batched into this commit (described from the diff,
+not this session's conversation):
+
+- **Real Estate removed** — deleted `src/lib/real-estate/**`,
+  `src/lib/property-watch/**`, their module views/actions, and 8 property CLI
+  commands; dropped migrations 0013/0014 and added `0026_drop_real_estate_module`.
+- **Module-prefixed table names** — every table renamed to a lowercase 3-letter
+  prefix (`sys_`/`stk_`/`csv_`); historical `CREATE` migrations (0001–0023),
+  affected repositories, and `scripts/migrate.ts` updated
+  (`reconcileLegacyTableNames` migrates an existing DB in place). Added
+  `coding-guide.md` and `0024_rename_tables_to_module_prefixes`.
+- **Daily Quote** — `src/lib/daily-quote/**`, an admin management screen, and
+  migration `0025_create_sys_daily_quotes` (seeded starter quotes); plus a
+  `list-users` CLI command and a `show_users.bat` helper.
+
 ## 2026-07-25 22:11 — Self-signup with hidden admin elevation; user-selectable icon sets; Daybreak light theme
 
 Self-signup (this session):

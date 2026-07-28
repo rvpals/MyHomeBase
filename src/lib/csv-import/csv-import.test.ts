@@ -6,6 +6,7 @@ import {
   listNamedMappings,
   previewCsv,
   saveCurrentMapping,
+  updateNamedMapping,
 } from "./csv-import";
 import type { CsvImportMappingRepository } from "./ports";
 import type { ColumnMapping, ImportType, NamedMapping } from "./types";
@@ -22,6 +23,7 @@ function fakeRepo(seedNamed: NamedMapping[] = []): CsvImportMappingRepository {
       current.set(importType, columnMapping);
     },
     listNamedMappings: (importType) => named.filter((mapping) => mapping.importType === importType),
+    getNamedMappingById: (id) => named.find((mapping) => mapping.id === id),
     createNamedMapping: (input) => {
       const created: NamedMapping = {
         id: nextId++,
@@ -31,6 +33,12 @@ function fakeRepo(seedNamed: NamedMapping[] = []): CsvImportMappingRepository {
       };
       named.push(created);
       return created;
+    },
+    updateNamedMapping: (id, input) => {
+      named = named.map((mapping) => (mapping.id === id ? { ...mapping, ...input } : mapping));
+      const updated = named.find((mapping) => mapping.id === id);
+      if (!updated) throw new Error(`Named mapping ${id} not found.`);
+      return updated;
     },
     deleteNamedMapping: (id) => {
       named = named.filter((mapping) => mapping.id !== id);
@@ -81,5 +89,28 @@ describe("named mappings", () => {
     const created = createNamedMapping(repo, { name: "Temp", importType: "Position", columnMapping: {} });
     deleteNamedMapping(repo, created.id);
     expect(listNamedMappings(repo, "Position")).toHaveLength(0);
+  });
+
+  it("updates a named mapping's name, columns, and options", () => {
+    const repo = fakeRepo();
+    const created = createNamedMapping(repo, {
+      name: "Journal v1",
+      importType: "Journal",
+      columnMapping: { "0": "date" },
+    });
+    const updated = updateNamedMapping(repo, created.id, {
+      name: "Journal v2",
+      columnMapping: { "0": "date", "1": "title" },
+      fieldOptions: { "0": { dateFormat: "M/D/YY" } },
+    });
+    expect(updated.name).toBe("Journal v2");
+    expect(updated.columnMapping).toEqual({ "0": "date", "1": "title" });
+    expect(updated.fieldOptions).toEqual({ "0": { dateFormat: "M/D/YY" } });
+  });
+
+  it("rejects updating a non-existent mapping", () => {
+    expect(() =>
+      updateNamedMapping(fakeRepo(), 999, { name: "x", columnMapping: {} }),
+    ).toThrow();
   });
 });

@@ -1,4 +1,4 @@
-CREATE TABLE modules (
+CREATE TABLE sys_modules (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   slug TEXT NOT NULL UNIQUE,
   short_name TEXT NOT NULL,
@@ -11,11 +11,8 @@ CREATE TABLE modules (
 );
 
 CREATE TRIGGER modules_set_updated_at
-AFTER UPDATE ON modules
+AFTER UPDATE ON sys_modules
 FOR EACH ROW
 BEGIN
-  UPDATE modules SET updated_at = datetime('now') WHERE id = old.id;
+  UPDATE sys_modules SET updated_at = datetime('now') WHERE id = old.id;
 END;
-
-INSERT INTO modules (slug, short_name, long_name, description, sequence, is_visible)
-VALUES ('real-estate-investment', 'Real Estate', 'Real Estate Investment', NULL, 1, 1);

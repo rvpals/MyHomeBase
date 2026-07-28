@@ -70,13 +70,13 @@ export class SqliteStockPositionRepository implements StockPositionRepository {
 
   listPositions(): StockPosition[] {
     const rows = this.db
-      .prepare("SELECT * FROM stock_positions ORDER BY ticker ASC")
+      .prepare("SELECT * FROM stk_stock_positions ORDER BY ticker ASC")
       .all() as StockPositionRow[];
     return rows.map(positionToDomain);
   }
 
   getPositionByTicker(ticker: string): StockPosition | undefined {
-    const row = this.db.prepare("SELECT * FROM stock_positions WHERE ticker = ?").get(ticker) as
+    const row = this.db.prepare("SELECT * FROM stk_stock_positions WHERE ticker = ?").get(ticker) as
       | StockPositionRow
       | undefined;
     return row ? positionToDomain(row) : undefined;
@@ -87,7 +87,7 @@ export class SqliteStockPositionRepository implements StockPositionRepository {
   upsertPosition(input: UpsertPositionInput, valueCents: number): StockPosition {
     const row = this.db
       .prepare(
-        `INSERT INTO stock_positions
+        `INSERT INTO stk_stock_positions
            (ticker, name, type, current_price_cents, quantity, day_gain_loss_cents,
             value_cents, day_high_cents, day_low_cents, dividend_rate_cents)
          VALUES
@@ -110,22 +110,22 @@ export class SqliteStockPositionRepository implements StockPositionRepository {
   }
 
   deletePosition(ticker: string): void {
-    this.db.prepare("DELETE FROM stock_positions WHERE ticker = ?").run(ticker);
+    this.db.prepare("DELETE FROM stk_stock_positions WHERE ticker = ?").run(ticker);
   }
 
   listTransactions(ticker?: string): StockTransaction[] {
     const rows = (
       ticker === undefined
-        ? this.db.prepare("SELECT * FROM stock_transactions ORDER BY transaction_at ASC").all()
+        ? this.db.prepare("SELECT * FROM stk_stock_transactions ORDER BY transaction_at ASC").all()
         : this.db
-            .prepare("SELECT * FROM stock_transactions WHERE ticker = ? ORDER BY transaction_at ASC")
+            .prepare("SELECT * FROM stk_stock_transactions WHERE ticker = ? ORDER BY transaction_at ASC")
             .all(ticker)
     ) as StockTransactionRow[];
     return rows.map(transactionToDomain);
   }
 
   getTransactionById(id: number): StockTransaction | undefined {
-    const row = this.db.prepare("SELECT * FROM stock_transactions WHERE id = ?").get(id) as
+    const row = this.db.prepare("SELECT * FROM stk_stock_transactions WHERE id = ?").get(id) as
       | StockTransactionRow
       | undefined;
     return row ? transactionToDomain(row) : undefined;
@@ -134,7 +134,7 @@ export class SqliteStockPositionRepository implements StockPositionRepository {
   createTransaction(input: CreateTransactionInput, totalAmountCents: number): StockTransaction {
     const result = this.db
       .prepare(
-        `INSERT INTO stock_transactions
+        `INSERT INTO stk_stock_transactions
            (transaction_at, action, ticker, number_of_shares, price_per_share_cents, total_amount_cents, note)
          VALUES
            (@transactionAt, @action, @ticker, @numberOfShares, @pricePerShareCents, @totalAmountCents, @note)`,
@@ -153,7 +153,7 @@ export class SqliteStockPositionRepository implements StockPositionRepository {
   ): StockTransaction {
     this.db
       .prepare(
-        `UPDATE stock_transactions
+        `UPDATE stk_stock_transactions
          SET transaction_at = @transactionAt, action = @action, ticker = @ticker,
              number_of_shares = @numberOfShares, price_per_share_cents = @pricePerShareCents,
              total_amount_cents = @totalAmountCents, note = @note
@@ -167,7 +167,7 @@ export class SqliteStockPositionRepository implements StockPositionRepository {
   }
 
   deleteTransaction(id: number): void {
-    this.db.prepare("DELETE FROM stock_transactions WHERE id = ?").run(id);
+    this.db.prepare("DELETE FROM stk_stock_transactions WHERE id = ?").run(id);
   }
 
   insertTransactionIfNotExists(
@@ -176,7 +176,7 @@ export class SqliteStockPositionRepository implements StockPositionRepository {
   ): { inserted: boolean; transaction?: StockTransaction } {
     const row = this.db
       .prepare(
-        `INSERT OR IGNORE INTO stock_transactions
+        `INSERT OR IGNORE INTO stk_stock_transactions
            (transaction_at, action, ticker, number_of_shares, price_per_share_cents, total_amount_cents, note)
          VALUES
            (@transactionAt, @action, @ticker, @numberOfShares, @pricePerShareCents, @totalAmountCents, @note)

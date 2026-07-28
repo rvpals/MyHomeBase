@@ -76,7 +76,7 @@ export function SqlExplorerView({ tables }: { tables: TableInfo[] }) {
           value={sql}
           onChange={(event) => setSql(event.target.value)}
           rows={6}
-          placeholder="SELECT * FROM stock_positions"
+          placeholder="SELECT * FROM stk_stock_positions"
           className="w-full rounded-md border border-line bg-paper px-3 py-2 font-mono text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
         />
         <div>

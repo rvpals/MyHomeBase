@@ -8,6 +8,7 @@ Strict layering: **all logic lives in `src/lib/`; the presentation layers
 - **Before building any UI element:** read `./components.md` (the reusable-component registry) and reuse what already fits.
 - **Before styling any UI (colors, type, buttons, cards) or building a new module's view:** read `./design.md` and follow it — colors and fonts are theme tokens, not literal values.
 - **Creating a new reusable component:** start from `./src/components/_component-template.tsx`.
+- **Before adding a table, column, or schema change:** read `./coding-guide.md` (table naming, migration conventions).
 
 ## Always-on rules (full detail in ARCHITECTURE.md)
 - Business logic goes in `src/lib/` as functions that take data and return data — never in a `.tsx`, a route, or a CLI command.

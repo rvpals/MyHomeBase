@@ -22,19 +22,19 @@ export class SqliteSettingsRepository implements SettingsRepository {
   constructor(private db: Database.Database) {}
 
   listSettings(): Setting[] {
-    const rows = this.db.prepare("SELECT * FROM app_settings ORDER BY key ASC").all() as SettingRow[];
+    const rows = this.db.prepare("SELECT * FROM sys_app_settings ORDER BY key ASC").all() as SettingRow[];
     return rows.map(toDomain);
   }
 
   getSetting(key: string): Setting | undefined {
-    const row = this.db.prepare("SELECT * FROM app_settings WHERE key = ?").get(key) as
+    const row = this.db.prepare("SELECT * FROM sys_app_settings WHERE key = ?").get(key) as
       | SettingRow
       | undefined;
     return row ? toDomain(row) : undefined;
   }
 
   updateAll(updates: SettingUpdate[]): void {
-    const stmt = this.db.prepare("UPDATE app_settings SET value = ? WHERE key = ?");
+    const stmt = this.db.prepare("UPDATE sys_app_settings SET value = ? WHERE key = ?");
     const applyUpdates = this.db.transaction((items: SettingUpdate[]) => {
       items.forEach((item) => stmt.run(item.value, item.key));
     });
@@ -43,10 +43,10 @@ export class SqliteSettingsRepository implements SettingsRepository {
 
   resetToDefaults(defaults: Setting[]): void {
     const insert = this.db.prepare(
-      "INSERT INTO app_settings (key, value, description) VALUES (?, ?, ?)",
+      "INSERT INTO sys_app_settings (key, value, description) VALUES (?, ?, ?)",
     );
     const applyReset = this.db.transaction((items: Setting[]) => {
-      this.db.prepare("DELETE FROM app_settings").run();
+      this.db.prepare("DELETE FROM sys_app_settings").run();
       items.forEach((item) => insert.run(item.key, item.value, item.description ?? null));
     });
     applyReset(defaults);

@@ -26,7 +26,7 @@ export class SqliteSessionRepository implements SessionRepository {
   createSession(userId: number, expiresAt: string): Session {
     const id = randomBytes(32).toString("hex");
     this.db
-      .prepare("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)")
+      .prepare("INSERT INTO sys_sessions (id, user_id, expires_at) VALUES (?, ?, ?)")
       .run(id, userId, expiresAt);
 
     const created = this.getSessionById(id);
@@ -35,17 +35,17 @@ export class SqliteSessionRepository implements SessionRepository {
   }
 
   getSessionById(id: string): Session | undefined {
-    const row = this.db.prepare("SELECT * FROM sessions WHERE id = ?").get(id) as
+    const row = this.db.prepare("SELECT * FROM sys_sessions WHERE id = ?").get(id) as
       | SessionRow
       | undefined;
     return row ? toDomain(row) : undefined;
   }
 
   deleteSession(id: string): void {
-    this.db.prepare("DELETE FROM sessions WHERE id = ?").run(id);
+    this.db.prepare("DELETE FROM sys_sessions WHERE id = ?").run(id);
   }
 
   deleteSessionsForUser(userId: number): void {
-    this.db.prepare("DELETE FROM sessions WHERE user_id = ?").run(userId);
+    this.db.prepare("DELETE FROM sys_sessions WHERE user_id = ?").run(userId);
   }
 }

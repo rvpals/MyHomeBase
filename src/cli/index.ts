@@ -1,40 +1,26 @@
 // Command router: argv -> command. Peer of src/app — same use-cases, different I/O.
 // Register commands here as they're added; each command is a thin adapter that
 // parses args, validates with the module's zod schema, calls a lib use-case, and prints.
-import { addPropertyCommand } from "./add-property";
 import { computeAnalyticsCommand } from "./compute-analytics";
 import { createCsvAnalyticsEntryCommand } from "./create-csv-analytics-entry";
 import { createUserCommand } from "./create-user";
 import { deleteCsvAnalyticsEntryCommand } from "./delete-csv-analytics-entry";
+import { importJournalCsvCommand } from "./import-journal-csv";
 import { listCsvAnalyticsCommand } from "./list-csv-analytics";
-import { deletePropertyCommand } from "./delete-property";
-import { listPropertiesCommand } from "./list-properties";
-import { listWatchlistCommand } from "./list-watchlist";
-import { lookupPropertyCommand } from "./lookup-property";
+import { listUsersCommand } from "./list-users";
 import { refreshPositionsCommand } from "./refresh-positions";
-import { refreshWatchlistCommand } from "./refresh-watchlist";
-import { removeFromWatchlistCommand } from "./remove-from-watchlist";
-import { watchPropertyCommand } from "./watch-property";
-import { watchlistHistoryCommand } from "./watchlist-history";
 
 type Command = (args: string[]) => Promise<void> | void;
 
 const commands: Record<string, Command> = {
   "create-user": createUserCommand,
-  "list-properties": listPropertiesCommand,
-  "add-property": addPropertyCommand,
-  "delete-property": deletePropertyCommand,
-  "lookup-property": lookupPropertyCommand,
-  "watch-property": watchPropertyCommand,
-  "list-watchlist": listWatchlistCommand,
-  "watchlist-history": watchlistHistoryCommand,
-  "refresh-watchlist": refreshWatchlistCommand,
-  "remove-from-watchlist": removeFromWatchlistCommand,
+  "list-users": listUsersCommand,
   "refresh-positions": refreshPositionsCommand,
   "compute-analytics": computeAnalyticsCommand,
   "list-csv-analytics": listCsvAnalyticsCommand,
   "create-csv-analytics-entry": createCsvAnalyticsEntryCommand,
   "delete-csv-analytics-entry": deleteCsvAnalyticsEntryCommand,
+  "import-journal-csv": importJournalCsvCommand,
 };
 
 async function main(argv: string[]) {

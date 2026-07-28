@@ -1,4 +1,4 @@
-CREATE TABLE stock_volatility_cache (
+CREATE TABLE stk_stock_volatility_cache (
   ticker             TEXT PRIMARY KEY,
   company_name       TEXT,
   type               TEXT    NOT NULL DEFAULT '',
@@ -16,7 +16,7 @@ CREATE TABLE stock_volatility_cache (
 
 -- Singleton row (id always 1) — holds the one most-recent portfolio-wide
 -- correlation matrix, not one row per ticker. Recomputed wholesale each time.
-CREATE TABLE stock_correlation_cache (
+CREATE TABLE stk_stock_correlation_cache (
   id                      INTEGER PRIMARY KEY DEFAULT 1,
   tickers_json            TEXT NOT NULL DEFAULT '[]',
   matrix_json             TEXT NOT NULL DEFAULT '[]',
@@ -25,8 +25,8 @@ CREATE TABLE stock_correlation_cache (
   calculated_at           TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Singleton row (id always 1) — same pattern as stock_correlation_cache.
-CREATE TABLE stock_sharpe_cache (
+-- Singleton row (id always 1) — same pattern as stk_stock_correlation_cache.
+CREATE TABLE stk_stock_sharpe_cache (
   id                        INTEGER PRIMARY KEY DEFAULT 1,
   risk_free_rate            REAL    NOT NULL DEFAULT 0,
   lookback_days             INTEGER NOT NULL DEFAULT 0,

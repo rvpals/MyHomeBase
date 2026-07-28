@@ -4,10 +4,10 @@ import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { listEntries as listCsvAnalyticsEntries } from "@/lib/csv-analytics";
 import { listAccounts, listPerformanceRecords } from "@/lib/investment-accounts";
 import { listModuleSettingsFor } from "@/lib/module-settings";
+import { listNamedMappings } from "@/lib/csv-import";
+import { listEntries as listJournalEntries } from "@/lib/journal";
 import { getModuleBySlug, getModuleCode } from "@/lib/modules";
 import { resolveThresholds } from "@/lib/next-day-actions";
-import { getWatchlistHistory, listWatchlist } from "@/lib/property-watch";
-import { listProperties, resolveDisplaySettings } from "@/lib/real-estate";
 import { getCorrelationCache, getSharpeCache, listVolatilityCache } from "@/lib/stock-analytics";
 import { listPositions, listTransactions } from "@/lib/stock-positions";
 import { listItems, listWatchLists } from "@/lib/stock-watchlist";
@@ -15,42 +15,17 @@ import { userHasModuleAccess } from "@/lib/user";
 import { deps } from "@/lib/wiring";
 import { CsvAnalyticsView } from "./csv-analytics-view";
 import { CsvImportView } from "./csv-import-view";
-import { PropertyWatchView, type WatchlistEntry } from "./property-watch-view";
-import { RealEstateView } from "./real-estate-view";
+import { JournalView } from "./journal-view";
 import { NextDayActionsView } from "./next-day-actions-view";
 import { StockAccountsView, type AccountEntry } from "./stock-accounts-view";
 import { StockAnalyticsView } from "./stock-analytics-view";
 import { StockPositionsView } from "./stock-positions-view";
 import { StockWatchlistView, type WatchListEntry } from "./stock-watchlist-view";
 
-const REAL_ESTATE_MODULE_SLUG = "real-estate-investment";
 const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
 const CSV_ANALYSIS_MODULE_SLUG = "csv-analysis";
-
-function RealEstateModuleBody() {
-  const watchlist: WatchlistEntry[] = listWatchlist(deps.watchedPropertyRepo).map((watchedProperty) => ({
-    watchedProperty,
-    history: getWatchlistHistory(deps.watchedPropertyRepo, watchedProperty.id),
-  }));
-
-  const realEstateModule = getModuleBySlug(deps.moduleRepo, REAL_ESTATE_MODULE_SLUG);
-  const displaySettings = resolveDisplaySettings(
-    realEstateModule ? listModuleSettingsFor(deps.moduleSettingsRepo, realEstateModule.id) : [],
-  );
-
-  const propertyLookupEnabled = deps.propertyLookupClient !== undefined;
-
-  return (
-    <div className="flex flex-col gap-10">
-      <RealEstateView
-        properties={listProperties(deps.propertyRepo)}
-        displaySettings={displaySettings}
-        propertyLookupEnabled={propertyLookupEnabled}
-      />
-      <PropertyWatchView watchlist={watchlist} propertyLookupEnabled={propertyLookupEnabled} />
-    </div>
-  );
-}
+const JOURNAL_MODULE_SLUG = "journal";
+const WIDE_LAYOUT_SLUGS = new Set([STOCK_ETFS_MODULE_SLUG, CSV_ANALYSIS_MODULE_SLUG, JOURNAL_MODULE_SLUG]);
 
 function StockEtfsModuleBody() {
   const accountEntries: AccountEntry[] = listAccounts(deps.investmentAccountRepo).map((account) => ({
@@ -88,16 +63,21 @@ function StockEtfsModuleBody() {
 }
 
 function ModuleBody({ slug }: { slug: string }) {
-  if (slug === REAL_ESTATE_MODULE_SLUG) {
-    return <RealEstateModuleBody />;
-  }
-
   if (slug === STOCK_ETFS_MODULE_SLUG) {
     return <StockEtfsModuleBody />;
   }
 
   if (slug === CSV_ANALYSIS_MODULE_SLUG) {
     return <CsvAnalyticsView entries={listCsvAnalyticsEntries(deps.csvAnalyticsRepo)} />;
+  }
+
+  if (slug === JOURNAL_MODULE_SLUG) {
+    return (
+      <JournalView
+        entries={listJournalEntries(deps.journalRepo)}
+        namedMappings={listNamedMappings(deps.csvImportMappingRepo, "Journal")}
+      />
+    );
   }
 
   return (
@@ -125,13 +105,7 @@ export default async function ModulePage({
   if (!currentUser || !userHasModuleAccess(currentUser, appModule.id, deps.userRepo)) notFound();
 
   return (
-    <div
-      className={
-        slug === REAL_ESTATE_MODULE_SLUG || slug === STOCK_ETFS_MODULE_SLUG || slug === CSV_ANALYSIS_MODULE_SLUG
-          ? "mx-auto max-w-6xl"
-          : "mx-auto max-w-3xl"
-      }
-    >
+    <div className={WIDE_LAYOUT_SLUGS.has(slug) ? "mx-auto max-w-6xl" : "mx-auto max-w-3xl"}>
       <p className="font-mono text-xs font-medium uppercase tracking-widest text-brass-dark">
         {getModuleCode(appModule.slug)}
       </p>

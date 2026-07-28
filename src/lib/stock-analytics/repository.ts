@@ -98,14 +98,14 @@ export class SqliteStockAnalyticsRepository implements StockAnalyticsRepository 
 
   listVolatilityCache(): VolatilityResult[] {
     const rows = this.db
-      .prepare("SELECT * FROM stock_volatility_cache ORDER BY type, annualized_vol_pct ASC")
+      .prepare("SELECT * FROM stk_stock_volatility_cache ORDER BY type, annualized_vol_pct ASC")
       .all() as VolatilityRow[];
     return rows.map(volatilityToDomain);
   }
 
   saveVolatilityCache(results: VolatilityResult[]): void {
     const upsert = this.db.prepare(
-      `INSERT INTO stock_volatility_cache
+      `INSERT INTO stk_stock_volatility_cache
          (ticker, company_name, type, shares, current_price_cents, annualized_vol_pct,
           daily_std_dev_pct, volatility_label, low_52w_cents, high_52w_cents,
           range_position_pct, sample_count, calculated_at)
@@ -136,11 +136,11 @@ export class SqliteStockAnalyticsRepository implements StockAnalyticsRepository 
   }
 
   clearVolatilityCache(): void {
-    this.db.prepare("DELETE FROM stock_volatility_cache").run();
+    this.db.prepare("DELETE FROM stk_stock_volatility_cache").run();
   }
 
   getCorrelationCache(): CorrelationResult | undefined {
-    const row = this.db.prepare("SELECT * FROM stock_correlation_cache WHERE id = 1").get() as
+    const row = this.db.prepare("SELECT * FROM stk_stock_correlation_cache WHERE id = 1").get() as
       | CorrelationRow
       | undefined;
     return row ? correlationToDomain(row) : undefined;
@@ -149,7 +149,7 @@ export class SqliteStockAnalyticsRepository implements StockAnalyticsRepository 
   saveCorrelationCache(result: CorrelationResult): void {
     this.db
       .prepare(
-        `INSERT INTO stock_correlation_cache
+        `INSERT INTO stk_stock_correlation_cache
            (id, tickers_json, matrix_json, market_correlation_json, failed_tickers_json, calculated_at)
          VALUES (1, @tickersJson, @matrixJson, @marketCorrelationJson, @failedTickersJson, datetime('now'))
          ON CONFLICT (id) DO UPDATE SET
@@ -168,11 +168,11 @@ export class SqliteStockAnalyticsRepository implements StockAnalyticsRepository 
   }
 
   clearCorrelationCache(): void {
-    this.db.prepare("DELETE FROM stock_correlation_cache").run();
+    this.db.prepare("DELETE FROM stk_stock_correlation_cache").run();
   }
 
   getSharpeCache(): SharpeResult | undefined {
-    const row = this.db.prepare("SELECT * FROM stock_sharpe_cache WHERE id = 1").get() as
+    const row = this.db.prepare("SELECT * FROM stk_stock_sharpe_cache WHERE id = 1").get() as
       | SharpeRow
       | undefined;
     return row ? sharpeToDomain(row) : undefined;
@@ -181,7 +181,7 @@ export class SqliteStockAnalyticsRepository implements StockAnalyticsRepository 
   saveSharpeCache(result: SharpeResult): void {
     this.db
       .prepare(
-        `INSERT INTO stock_sharpe_cache
+        `INSERT INTO stk_stock_sharpe_cache
            (id, risk_free_rate, lookback_days, sharpe_ratio, annualized_return, annualized_volatility,
             aligned_trading_days, mean_daily_return, daily_risk_free_rate, calculation_date,
             ticker_details_json, portfolio_return_series_json, skipped_tickers_json, skip_reasons_json,

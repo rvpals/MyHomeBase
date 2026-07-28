@@ -1,10 +1,20 @@
 import { autoMapHeaders, parseCsv } from "./csv-parser";
+import { sampleRows } from "./mapping";
 import type { CsvImportMappingRepository } from "./ports";
-import { createNamedMappingSchema, saveCurrentMappingSchema } from "./schema";
-import type { CreateNamedMappingInput, SaveCurrentMappingInput } from "./schema";
+import {
+  createNamedMappingSchema,
+  saveCurrentMappingSchema,
+  updateNamedMappingSchema,
+} from "./schema";
+import type {
+  CreateNamedMappingInput,
+  SaveCurrentMappingInput,
+  UpdateNamedMappingInput,
+} from "./schema";
 import type { ColumnMapping, CsvPreview, ImportRowResult, ImportSummary, ImportType, NamedMapping } from "./types";
 
 const PREVIEW_ROW_COUNT = 3;
+const SAMPLE_ROW_COUNT = 10;
 
 /** Parses a CSV and guesses a column mapping — pure, no persistence. */
 export function previewCsv(fileText: string): CsvPreview {
@@ -13,6 +23,7 @@ export function previewCsv(fileText: string): CsvPreview {
     headers,
     totalRows: rows.length,
     previewRows: rows.slice(0, PREVIEW_ROW_COUNT),
+    sampleRows: sampleRows(rows, SAMPLE_ROW_COUNT),
     autoMapping: autoMapHeaders(headers),
   };
 }
@@ -39,6 +50,17 @@ export function createNamedMapping(
 ): NamedMapping {
   const validated = createNamedMappingSchema.parse(input);
   return repo.createNamedMapping(validated);
+}
+
+/** Edits an existing named mapping in place (name, columns, and per-column options). */
+export function updateNamedMapping(
+  repo: CsvImportMappingRepository,
+  id: number,
+  input: UpdateNamedMappingInput,
+): NamedMapping {
+  if (!repo.getNamedMappingById(id)) throw new Error(`No named mapping with id ${id}.`);
+  const validated = updateNamedMappingSchema.parse(input);
+  return repo.updateNamedMapping(id, validated);
 }
 
 export function deleteNamedMapping(repo: CsvImportMappingRepository, id: number): void {
