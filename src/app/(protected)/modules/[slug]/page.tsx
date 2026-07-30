@@ -5,13 +5,19 @@ import { listEntries as listCsvAnalyticsEntries } from "@/lib/csv-analytics";
 import { listAccounts, listPerformanceRecords } from "@/lib/investment-accounts";
 import { listModuleSettingsFor } from "@/lib/module-settings";
 import { listNamedMappings } from "@/lib/csv-import";
-import { listEntries as listJournalEntries } from "@/lib/journal";
+import {
+  listCategories,
+  listRecentEntries,
+  listTags,
+  listTodayInHistory,
+  resolveJournalPreferences,
+} from "@/lib/journal";
 import { getModuleBySlug, getModuleCode } from "@/lib/modules";
 import { resolveThresholds } from "@/lib/next-day-actions";
 import { getCorrelationCache, getSharpeCache, listVolatilityCache } from "@/lib/stock-analytics";
 import { listPositions, listTransactions } from "@/lib/stock-positions";
 import { listItems, listWatchLists } from "@/lib/stock-watchlist";
-import { userHasModuleAccess } from "@/lib/user";
+import { isAdmin, userHasModuleAccess } from "@/lib/user";
 import { deps } from "@/lib/wiring";
 import { CsvAnalyticsView } from "./csv-analytics-view";
 import { CsvImportView } from "./csv-import-view";
@@ -25,6 +31,16 @@ import { StockWatchlistView, type WatchListEntry } from "./stock-watchlist-view"
 const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
 const CSV_ANALYSIS_MODULE_SLUG = "csv-analysis";
 const JOURNAL_MODULE_SLUG = "journal";
+const RECENT_JOURNAL_ENTRY_LIMIT = 25;
+
+// Today's date in the server's local timezone as YYYY-MM-DD. Deliberately not
+// `toISOString()`, which would shift to UTC and pick the wrong day for part of
+// the evening in a negative-offset timezone.
+function todayIsoLocal(): string {
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
 const WIDE_LAYOUT_SLUGS = new Set([STOCK_ETFS_MODULE_SLUG, CSV_ANALYSIS_MODULE_SLUG, JOURNAL_MODULE_SLUG]);
 
 function StockEtfsModuleBody() {
@@ -62,7 +78,7 @@ function StockEtfsModuleBody() {
   );
 }
 
-function ModuleBody({ slug }: { slug: string }) {
+function ModuleBody({ slug, isCurrentUserAdmin }: { slug: string; isCurrentUserAdmin: boolean }) {
   if (slug === STOCK_ETFS_MODULE_SLUG) {
     return <StockEtfsModuleBody />;
   }
@@ -72,10 +88,19 @@ function ModuleBody({ slug }: { slug: string }) {
   }
 
   if (slug === JOURNAL_MODULE_SLUG) {
+    const journalModule = getModuleBySlug(deps.moduleRepo, JOURNAL_MODULE_SLUG);
+    const preferences = resolveJournalPreferences(
+      journalModule ? listModuleSettingsFor(deps.moduleSettingsRepo, journalModule.id) : [],
+    );
     return (
       <JournalView
-        entries={listJournalEntries(deps.journalRepo)}
+        entries={listRecentEntries(deps.journalRepo, RECENT_JOURNAL_ENTRY_LIMIT)}
+        todayInHistory={listTodayInHistory(deps.journalRepo, todayIsoLocal())}
+        categoryOptions={listCategories(deps.journalRepo).map((category) => category.name)}
+        tagOptions={listTags(deps.journalRepo).map((tag) => tag.name)}
+        preferences={preferences}
         namedMappings={listNamedMappings(deps.csvImportMappingRepo, "Journal")}
+        canRunSql={isCurrentUserAdmin}
       />
     );
   }
@@ -112,7 +137,7 @@ export default async function ModulePage({
       <h1 className="mt-2 font-display text-3xl font-semibold text-ink">{appModule.longName}</h1>
       <div className="mt-3 h-px w-full bg-line" />
       <div className="mt-8">
-        <ModuleBody slug={slug} />
+        <ModuleBody slug={slug} isCurrentUserAdmin={isAdmin(currentUser)} />
       </div>
     </div>
   );

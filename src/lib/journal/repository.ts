@@ -7,7 +7,14 @@ import {
   journalTagSchema,
 } from "./schema";
 import type { EntryWriteData, UpsertCategoryInput, UpsertTagInput } from "./schema";
-import type { EntryLocation, JournalCategory, JournalEntry, JournalTag } from "./types";
+import type {
+  EntryLocation,
+  JournalCategory,
+  JournalEntry,
+  JournalEntryNeighbors,
+  JournalEntryRef,
+  JournalTag,
+} from "./types";
 
 interface EntryRow {
   id: number;
@@ -160,6 +167,45 @@ export class SqliteJournalRepository implements JournalRepository {
     );
   }
 
+  listRecentEntries(limit: number): JournalEntry[] {
+    const rows = this.db
+      .prepare(
+        "SELECT * FROM jrn_entries ORDER BY entry_date DESC, entry_time DESC, id DESC LIMIT ?",
+      )
+      .all(limit) as EntryRow[];
+    // Only a handful of rows (the overview list), so per-entry child fetches are fine.
+    return rows.map((row) =>
+      entryToDomain(
+        row,
+        this.categoryNamesFor(row.id),
+        this.tagNamesFor(row.id),
+        this.locationsFor(row.id),
+      ),
+    );
+  }
+
+  listEntriesByMonthDay(monthDay: string): JournalEntry[] {
+    // entry_date is stored as YYYY-MM-DD text, so the month/day is a fixed-offset
+    // substring. This can't use idx_jrn_entries_entry_date (it's not a prefix
+    // match), but the table is small enough that a scan is fine here.
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM jrn_entries
+         WHERE substr(entry_date, 6, 5) = ?
+         ORDER BY entry_date DESC, entry_time DESC, id DESC`,
+      )
+      .all(monthDay) as EntryRow[];
+
+    return rows.map((row) =>
+      entryToDomain(
+        row,
+        this.categoryNamesFor(row.id),
+        this.tagNamesFor(row.id),
+        this.locationsFor(row.id),
+      ),
+    );
+  }
+
   getEntryById(id: number): JournalEntry | undefined {
     const row = this.db.prepare("SELECT * FROM jrn_entries WHERE id = ?").get(id) as
       | EntryRow
@@ -171,6 +217,48 @@ export class SqliteJournalRepository implements JournalRepository {
       this.tagNamesFor(id),
       this.locationsFor(id),
     );
+  }
+
+  getEntryNeighbors(entryId: number): JournalEntryNeighbors {
+    const anchor = this.db
+      .prepare("SELECT id, entry_date, entry_time FROM jrn_entries WHERE id = ?")
+      .get(entryId) as Pick<EntryRow, "id" | "entry_date" | "entry_time"> | undefined;
+    if (!anchor) return {};
+
+    // SQLite row-value comparison ((a,b,c) < (?,?,?)) gives the exact tuple
+    // ordering the list uses, without spelling out the nested OR chain.
+    const older = this.db
+      .prepare(
+        `SELECT id, entry_date, title FROM jrn_entries
+         WHERE (entry_date, entry_time, id) < (?, ?, ?)
+         ORDER BY entry_date DESC, entry_time DESC, id DESC
+         LIMIT 1`,
+      )
+      .get(anchor.entry_date, anchor.entry_time, anchor.id) as
+      | { id: number; entry_date: string; title: string }
+      | undefined;
+
+    const newer = this.db
+      .prepare(
+        `SELECT id, entry_date, title FROM jrn_entries
+         WHERE (entry_date, entry_time, id) > (?, ?, ?)
+         ORDER BY entry_date ASC, entry_time ASC, id ASC
+         LIMIT 1`,
+      )
+      .get(anchor.entry_date, anchor.entry_time, anchor.id) as
+      | { id: number; entry_date: string; title: string }
+      | undefined;
+
+    const toRef = (row: { id: number; entry_date: string; title: string }): JournalEntryRef => ({
+      id: row.id,
+      date: row.entry_date,
+      title: row.title,
+    });
+
+    return {
+      previous: older ? toRef(older) : undefined,
+      next: newer ? toRef(newer) : undefined,
+    };
   }
 
   createEntry(input: EntryWriteData): JournalEntry {

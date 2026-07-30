@@ -9,6 +9,8 @@ import type { GoogleOAuthClient } from "./auth/ports";
 import { SqliteCsvAnalyticsRepository } from "./csv-analytics/repository";
 import { SqliteCsvImportMappingRepository } from "./csv-import/repository";
 import { SqliteDailyQuoteRepository } from "./daily-quote/repository";
+import { NominatimGeocodingClient } from "./geocoding/nominatim-client";
+import { OpenMeteoWeatherClient } from "./weather/open-meteo-client";
 import { SqliteInvestmentAccountRepository } from "./investment-accounts/repository";
 import { SqliteJournalRepository } from "./journal/repository";
 import { YahooFinanceClient } from "./market-data/yahoo-finance-client";
@@ -72,6 +74,8 @@ export const deps = {
   sqlExplorerRepo: new SqliteSqlExplorerRepository(db),
   systemInfoRepo: new RealSystemInfoRepository(),
   marketDataClient: new YahooFinanceClient(),
+  geocodingClient: new NominatimGeocodingClient(),
+  weatherClient: new OpenMeteoWeatherClient(),
   googleOAuthClient,
   adminSignupSecret,
 };

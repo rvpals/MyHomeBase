@@ -11,7 +11,15 @@ import type {
   UpsertCategoryInput,
   UpsertTagInput,
 } from "./schema";
-import type { JournalCategory, JournalEntry, JournalTag } from "./types";
+import type {
+  JournalCategory,
+  JournalEntry,
+  JournalEntryNeighbors,
+  JournalTag,
+  TodayInHistoryEntry,
+} from "./types";
+
+const ISO_DATE_PATTERN = /^(\d{4})-(\d{2}-\d{2})$/;
 
 // Trims, drops blanks, and de-duplicates a list of category/tag names while
 // preserving first-seen order. This is where an importer's raw split result
@@ -32,8 +40,56 @@ export function listEntries(repo: JournalRepository): JournalEntry[] {
   return repo.listEntries();
 }
 
+/** The most recent entries, newest journal date first — for the module's overview list. */
+export function listRecentEntries(repo: JournalRepository, limit = 25): JournalEntry[] {
+  if (!Number.isInteger(limit) || limit <= 0) {
+    throw new Error(`listRecentEntries: limit must be a positive integer, got ${limit}.`);
+  }
+  return repo.listRecentEntries(limit);
+}
+
 export function getEntry(repo: JournalRepository, id: number): JournalEntry | undefined {
   return repo.getEntryById(id);
+}
+
+/**
+ * The entries either side of `id` for previous/next navigation, in the same
+ * order the entries list uses. `previous` is the older neighbour, `next` the
+ * newer one; both are absent for an unknown id or at the ends of the journal.
+ */
+export function getEntryNeighbors(repo: JournalRepository, id: number): JournalEntryNeighbors {
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new Error(`getEntryNeighbors: id must be a positive integer, got ${id}.`);
+  }
+  return repo.getEntryNeighbors(id);
+}
+
+/**
+ * Entries from earlier years that fall on the same month and day as
+ * `referenceDate` ("YYYY-MM-DD"), each paired with how many years ago it was.
+ * The reference date is passed in rather than read from the clock so the result
+ * is deterministic and testable.
+ *
+ * Entries in the reference year itself are excluded ("same month and day, but
+ * not year"), as are any dated after it. Results are newest first, i.e.
+ * ascending in yearsAgo. Note that on Feb 29 only other leap years can match.
+ */
+export function listTodayInHistory(
+  repo: JournalRepository,
+  referenceDate: string,
+): TodayInHistoryEntry[] {
+  const match = ISO_DATE_PATTERN.exec(referenceDate);
+  if (!match) {
+    throw new Error(`listTodayInHistory: referenceDate must be YYYY-MM-DD, got "${referenceDate}".`);
+  }
+  const referenceYear = Number(match[1]);
+  const monthDay = match[2];
+
+  return repo
+    .listEntriesByMonthDay(monthDay)
+    .map((entry) => ({ entry, yearsAgo: referenceYear - Number(entry.date.slice(0, 4)) }))
+    .filter((candidate) => candidate.yearsAgo > 0)
+    .sort((a, b) => a.yearsAgo - b.yearsAgo);
 }
 
 /**

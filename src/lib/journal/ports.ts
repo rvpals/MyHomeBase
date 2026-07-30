@@ -1,5 +1,5 @@
 import type { EntryWriteData, UpsertCategoryInput, UpsertTagInput } from "./schema";
-import type { JournalCategory, JournalEntry, JournalTag } from "./types";
+import type { JournalCategory, JournalEntry, JournalEntryNeighbors, JournalTag } from "./types";
 
 // The interface a journal use-case depends on. The real SQLite implementation
 // is wired in at wiring.ts; tests wire in an in-memory fake. Use-cases never see
@@ -8,7 +8,19 @@ export interface JournalRepository {
   // Entries — each create/update/delete writes the entry and its child rows
   // (categories, tags, locations) in a single transaction.
   listEntries(): JournalEntry[];
+  /** The most recent `limit` entries, newest journal date first. */
+  listRecentEntries(limit: number): JournalEntry[];
+  /**
+   * Every entry whose date falls on the given month and day, in any year,
+   * newest first. `monthDay` is "MM-DD".
+   */
+  listEntriesByMonthDay(monthDay: string): JournalEntry[];
   getEntryById(id: number): JournalEntry | undefined;
+  /**
+   * The entries immediately older and newer than `entryId` in (entry_date,
+   * entry_time, id) order. Both are absent if the entry itself doesn't exist.
+   */
+  getEntryNeighbors(entryId: number): JournalEntryNeighbors;
   createEntry(input: EntryWriteData): JournalEntry;
   updateEntry(id: number, input: EntryWriteData): JournalEntry;
   deleteEntry(id: number): void;

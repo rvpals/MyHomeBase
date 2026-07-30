@@ -4,11 +4,12 @@ import { AppIcon } from "@/components/app-icon";
 import { Button } from "@/components/button";
 import { ModuleCard } from "@/components/module-card";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
-import { getRandomQuote, type DailyQuote } from "@/lib/daily-quote";
+import { getRandomQuote } from "@/lib/daily-quote";
 import { listModules } from "@/lib/modules";
 import { getSetting } from "@/lib/settings";
 import { getAccessibleModules, isAdmin } from "@/lib/user";
 import { deps } from "@/lib/wiring";
+import { DailyQuoteWidget } from "./daily-quote-widget";
 
 export default async function Home() {
   const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
@@ -33,7 +34,7 @@ export default async function Home() {
         )}
       </div>
       <div className="mt-3 h-px w-full bg-line" />
-      {quote && <DailyQuoteWidget quote={quote} />}
+      {quote && <DailyQuoteWidget initialQuote={quote} />}
       <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {modules.map((appModule) => (
           <ModuleCard
@@ -46,26 +47,5 @@ export default async function Home() {
         ))}
       </div>
     </div>
-  );
-}
-
-// One-off home-screen widget (not registered as a shared component). Pure display:
-// it receives the already-picked quote as a prop and renders it.
-function DailyQuoteWidget({ quote }: { quote: DailyQuote }) {
-  return (
-    <figure className="mt-6 rounded-lg border border-line bg-paper-raised p-6 shadow-sm">
-      <p className="font-mono text-xs font-medium uppercase tracking-widest text-brass-dark">
-        Daily Quote
-      </p>
-      <blockquote className="mt-3 font-display text-xl italic leading-relaxed text-ink">
-        &ldquo;{quote.quote}&rdquo;
-      </blockquote>
-      <figcaption className="mt-4 flex items-center justify-between gap-3">
-        <span className="text-sm font-medium text-muted">— {quote.author}</span>
-        <span className="rounded-full bg-brass-soft px-2 py-0.5 text-xs font-semibold text-brass-dark">
-          {quote.category}
-        </span>
-      </figcaption>
-    </figure>
   );
 }

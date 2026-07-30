@@ -5,9 +5,12 @@ import {
   deleteEntry,
   deleteTag,
   getEntry,
+  getEntryNeighbors,
   listCategories,
   listEntries,
+  listRecentEntries,
   listTags,
+  listTodayInHistory,
   setLocked,
   setPinned,
   updateEntry,
@@ -62,8 +65,34 @@ function fakeRepo(): JournalRepository {
     listEntries() {
       return [...entries];
     },
+    listRecentEntries(limit) {
+      return [...entries]
+        .sort((a, b) => (a.date === b.date ? b.id - a.id : a.date < b.date ? 1 : -1))
+        .slice(0, limit);
+    },
+    listEntriesByMonthDay(monthDay) {
+      return entries
+        .filter((entry) => entry.date.slice(5) === monthDay)
+        .sort((a, b) => (a.date < b.date ? 1 : -1));
+    },
     getEntryById(id) {
       return entries.find((entry) => entry.id === id);
+    },
+    getEntryNeighbors(entryId) {
+      // Mirrors the repository: order by (date, time, id) ascending, then take
+      // the entries either side of the anchor.
+      const ordered = [...entries].sort((a, b) =>
+        a.date !== b.date ? a.date.localeCompare(b.date)
+        : a.time !== b.time ? a.time.localeCompare(b.time)
+        : a.id - b.id,
+      );
+      const index = ordered.findIndex((entry) => entry.id === entryId);
+      if (index === -1) return {};
+      const toRef = (entry: JournalEntry) => ({ id: entry.id, date: entry.date, title: entry.title });
+      return {
+        previous: index > 0 ? toRef(ordered[index - 1]) : undefined,
+        next: index < ordered.length - 1 ? toRef(ordered[index + 1]) : undefined,
+      };
     },
     createEntry(input) {
       const entry = assemble(nextEntryId++, input);
@@ -237,6 +266,120 @@ describe("createEntry", () => {
   it("rejects a badly formatted date", () => {
     const repo = fakeRepo();
     expect(() => createEntry(repo, { date: "July 27, 2026" })).toThrow();
+  });
+});
+
+describe("listRecentEntries", () => {
+  it("returns entries newest journal date first, limited to the requested count", () => {
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2026-01-01", title: "oldest" });
+    createEntry(repo, { date: "2026-03-15", title: "newest" });
+    createEntry(repo, { date: "2026-02-10", title: "middle" });
+
+    const recent = listRecentEntries(repo, 2);
+    expect(recent.map((entry) => entry.title)).toEqual(["newest", "middle"]);
+  });
+
+  it("rejects a non-positive limit", () => {
+    expect(() => listRecentEntries(fakeRepo(), 0)).toThrow();
+  });
+});
+
+describe("getEntryNeighbors", () => {
+  it("returns the older entry as previous and the newer as next", () => {
+    const repo = fakeRepo();
+    const oldest = createEntry(repo, { date: "2026-01-01", title: "oldest" });
+    const middle = createEntry(repo, { date: "2026-02-01", title: "middle" });
+    const newest = createEntry(repo, { date: "2026-03-01", title: "newest" });
+
+    const neighbors = getEntryNeighbors(repo, middle.id);
+
+    expect(neighbors.previous?.id).toBe(oldest.id);
+    expect(neighbors.next?.id).toBe(newest.id);
+  });
+
+  it("omits previous for the oldest entry and next for the newest", () => {
+    const repo = fakeRepo();
+    const oldest = createEntry(repo, { date: "2026-01-01" });
+    const newest = createEntry(repo, { date: "2026-03-01" });
+
+    expect(getEntryNeighbors(repo, oldest.id).previous).toBeUndefined();
+    expect(getEntryNeighbors(repo, oldest.id).next?.id).toBe(newest.id);
+    expect(getEntryNeighbors(repo, newest.id).next).toBeUndefined();
+    expect(getEntryNeighbors(repo, newest.id).previous?.id).toBe(oldest.id);
+  });
+
+  it("breaks ties on the same date by time, then id", () => {
+    const repo = fakeRepo();
+    const morning = createEntry(repo, { date: "2026-05-05", time: "08:00:00" });
+    const noonA = createEntry(repo, { date: "2026-05-05", time: "12:00:00" });
+    const noonB = createEntry(repo, { date: "2026-05-05", time: "12:00:00" });
+
+    // noonA and noonB share a timestamp, so id decides their order.
+    expect(getEntryNeighbors(repo, noonA.id).previous?.id).toBe(morning.id);
+    expect(getEntryNeighbors(repo, noonA.id).next?.id).toBe(noonB.id);
+    expect(getEntryNeighbors(repo, noonB.id).previous?.id).toBe(noonA.id);
+  });
+
+  it("returns no neighbours for an unknown entry", () => {
+    expect(getEntryNeighbors(fakeRepo(), 999)).toEqual({});
+  });
+
+  it("rejects a non-positive id", () => {
+    expect(() => getEntryNeighbors(fakeRepo(), 0)).toThrow();
+  });
+});
+
+describe("listTodayInHistory", () => {
+  function seedDates(repo: ReturnType<typeof fakeRepo>, dates: string[]) {
+    dates.forEach((date, index) => createEntry(repo, { date, title: `entry ${index}` }));
+  }
+
+  it("returns same month/day entries from earlier years with the years elapsed", () => {
+    const repo = fakeRepo();
+    seedDates(repo, ["2024-07-29", "2019-07-29", "2023-07-29"]);
+
+    const result = listTodayInHistory(repo, "2026-07-29");
+
+    expect(result.map((item) => item.yearsAgo)).toEqual([2, 3, 7]); // newest first
+    expect(result.map((item) => item.entry.date)).toEqual(["2024-07-29", "2023-07-29", "2019-07-29"]);
+  });
+
+  it("excludes entries from the reference year itself", () => {
+    const repo = fakeRepo();
+    seedDates(repo, ["2026-07-29", "2020-07-29"]);
+
+    const result = listTodayInHistory(repo, "2026-07-29");
+
+    expect(result).toHaveLength(1);
+    expect(result[0].yearsAgo).toBe(6);
+  });
+
+  it("excludes entries dated after the reference year", () => {
+    const repo = fakeRepo();
+    seedDates(repo, ["2030-07-29"]);
+    expect(listTodayInHistory(repo, "2026-07-29")).toEqual([]);
+  });
+
+  it("ignores a different month or day", () => {
+    const repo = fakeRepo();
+    seedDates(repo, ["2020-07-28", "2020-08-29"]);
+    expect(listTodayInHistory(repo, "2026-07-29")).toEqual([]);
+  });
+
+  it("matches only leap years for a Feb 29 reference date", () => {
+    const repo = fakeRepo();
+    seedDates(repo, ["2020-02-29", "2021-02-28"]);
+
+    const result = listTodayInHistory(repo, "2024-02-29");
+
+    expect(result).toHaveLength(1);
+    expect(result[0].entry.date).toBe("2020-02-29");
+    expect(result[0].yearsAgo).toBe(4);
+  });
+
+  it("rejects a malformed reference date", () => {
+    expect(() => listTodayInHistory(fakeRepo(), "July 29, 2026")).toThrow();
   });
 });
 

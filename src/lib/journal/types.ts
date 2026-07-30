@@ -52,3 +52,42 @@ export interface JournalTag {
   createdAt: string;
   updatedAt: string;
 }
+
+// Just enough of an entry to link to it (used for previous/next navigation).
+export interface JournalEntryRef {
+  id: number;
+  date: string;
+  title: string;
+}
+
+/**
+ * The entries adjacent to one entry in the journal's standard order
+ * (entry_date, entry_time, id). `previous` is the **older** neighbour and `next`
+ * the **newer** one; either is absent at the ends of the journal.
+ */
+export interface JournalEntryNeighbors {
+  previous?: JournalEntryRef;
+  next?: JournalEntryRef;
+}
+
+// An entry from a previous year that shares today's month and day, paired with
+// how long ago it was. Because the month/day match exactly, yearsAgo is a whole
+// number of years — no partial-year rounding is involved.
+export interface TodayInHistoryEntry {
+  entry: JournalEntry;
+  yearsAgo: number;
+}
+
+export type JournalTemperatureUnit = "celsius" | "fahrenheit";
+
+export interface JournalDefaultLocation {
+  latitude: number;
+  longitude: number;
+  name: string;
+}
+
+// User preferences for the journal module, persisted as module settings rows.
+export interface JournalPreferences {
+  defaultLocation: JournalDefaultLocation | null;
+  temperatureUnit: JournalTemperatureUnit;
+}

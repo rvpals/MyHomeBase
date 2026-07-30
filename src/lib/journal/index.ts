@@ -1,4 +1,21 @@
-export type { JournalEntry, EntryLocation, Weather, JournalCategory, JournalTag } from "./types";
+export type {
+  JournalEntry,
+  EntryLocation,
+  Weather,
+  JournalCategory,
+  JournalTag,
+  TodayInHistoryEntry,
+  JournalEntryRef,
+  JournalEntryNeighbors,
+  JournalPreferences,
+  JournalDefaultLocation,
+  JournalTemperatureUnit,
+} from "./types";
+export {
+  resolveJournalPreferences,
+  journalPreferencesToEntries,
+  JOURNAL_SETTING_KEYS,
+} from "./preferences";
 export {
   journalEntrySchema,
   entryLocationSchema,
@@ -20,7 +37,10 @@ export type { JournalRepository } from "./ports";
 export { SqliteJournalRepository } from "./repository";
 export {
   listEntries,
+  listRecentEntries,
+  listTodayInHistory,
   getEntry,
+  getEntryNeighbors,
   createEntry,
   updateEntry,
   deleteEntry,

@@ -15,7 +15,10 @@ function fakeRepo(): JournalRepository {
 
   return {
     listEntries: () => [...entries],
+    listRecentEntries: (limit) => [...entries].slice(0, limit),
+    listEntriesByMonthDay: (monthDay) => entries.filter((entry) => entry.date.slice(5) === monthDay),
     getEntryById: (id) => entries.find((entry) => entry.id === id),
+    getEntryNeighbors: () => ({}),
     createEntry(input) {
       const id = nextEntryId++;
       const locations: EntryLocation[] = input.locations.map((location, index) => ({

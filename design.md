@@ -115,6 +115,23 @@ current set's glyph.
 - This setting covers *module* icons only. Admin chrome (the `TreeNav` gear/grid/etc.
   icons and `AdminIcon`) stays on the hand-drawn monochrome glyphs regardless of set.
 
+## Printing (and "Save as PDF")
+
+Printable screens opt in through two classes, defined in the `@media print` block
+in `src/app/globals.css` — don't hand-roll print CSS per view:
+
+- **`print-sheet`** on the element that should be printed. The rule hides
+  everything on the page and then reveals that element's subtree, so it doesn't
+  depend on how the surrounding app chrome is structured. The sheet prints as
+  **black on white** regardless of the active theme (every theme but Daybreak is
+  dark, so inheriting the tokens would waste ink and read poorly).
+- **`no-print`** on anything inside the sheet that shouldn't appear on paper —
+  action buttons, nav links, inline controls.
+
+The caller triggers printing itself (`window.print()`), so a reusable component
+takes an `onPrint` callback rather than reaching for the browser API. See
+`JournalEntryCard` and `/modules/[slug]/entries/[id]`.
+
 ## Building a new module's UI
 
 When scaffolding a new module's `view.tsx`:

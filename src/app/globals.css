@@ -32,3 +32,44 @@ body {
   color: var(--ink);
   font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
 }
+
+/* Printing (and "Save as PDF"): print the `.print-sheet` element alone as a clean
+   ink-on-white page. Hiding everything and then revealing the sheet's subtree is
+   layout-independent, so it doesn't depend on how the app chrome is structured.
+   Every theme is dark (except Daybreak), so colors are forced rather than
+   inherited from the theme tokens. Mark controls inside the sheet `.no-print`. */
+@media print {
+  @page {
+    margin: 16mm;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  .print-sheet,
+  .print-sheet * {
+    visibility: visible !important;
+  }
+
+  .print-sheet {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    border: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+
+  body,
+  .print-sheet,
+  .print-sheet * {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}

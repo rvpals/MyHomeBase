@@ -1,5 +1,67 @@
 # Change History
 
+## 2026-07-30 00:02 — MyJournal: entry authoring, GPS + weather, entry screen, Today In History
+
+Built out the MyJournal module from "list + CSV import" into a full authoring and
+browsing experience.
+
+Entry authoring:
+
+- **New Journal** collapsible card on the module page: a create form (date
+  defaulting to today, time, title, place, categories, tags, content) with
+  autocomplete from existing categories/tags. New `createJournalEntryAction`.
+- The entries list is now the **25 most recent** via a new `listRecentEntries`
+  use-case (ordered `entry_date`/`entry_time`/`id` descending with a SQL `LIMIT`,
+  rather than loading every row to show 25).
+
+Locations and weather (no schema change — `jrn_entry_locations` and the entry's
+weather columns already existed from migration 0027):
+
+- **GPS location picker** built on Leaflet + OpenStreetMap (chosen over Google
+  Maps so no API key or billing is needed): search a place, or click the map to
+  drop a pin, with the name suggested by reverse geocoding and multiple locations
+  per entry. New deps `leaflet`, `react-leaflet`, `@types/leaflet`.
+- New `src/lib/geocoding` module (`GeocodingClient` port + `NominatimGeocodingClient`).
+  Geocoding runs **server-side** through actions because Nominatim's usage policy
+  requires a descriptive `User-Agent`, which a browser `fetch` cannot set.
+- New `src/lib/weather` module (`WeatherClient` port + `OpenMeteoWeatherClient`,
+  plus a WMO weather-code → description map) and a **"Fetch today's weather"**
+  button that uses the entry's first location, falling back to a default location.
+- **Preferences** card storing a default location and °C/°F in the journal's
+  module settings (`resolveJournalPreferences` mirrors the Stocks module's
+  `resolveThresholds`).
+
+Entry screen (new route `/modules/[slug]/entries/[id]`):
+
+- New registered `JournalEntryCard` component showing every stored field, with
+  **Print/Save-PDF**, **Edit**, **Lock/Unlock** and **Delete** (behind an inline
+  confirm). Blank fields are hidden so an entry only shows what it recorded.
+- Printing uses a new `@media print` block in `globals.css` that prints the
+  `.print-sheet` element alone as ink-on-white, independent of the app chrome.
+- **Inline editing** seeds *and* resubmits weather, locations, and the pinned flag,
+  because `updateEntry` replaces the whole aggregate — without that, editing text
+  would silently drop them. Removing weather is an explicit checkbox.
+- **Previous/Next** navigation via a new `getEntryNeighbors` use-case, using
+  SQLite row-value comparison so adjacency matches the list's exact ordering.
+  Previous = older, Next = newer.
+- Per-location **Map** button opens a read-only Leaflet panel plus deep links to
+  OpenStreetMap and Google Maps. `JournalEntryCard` itself stays free of any
+  mapping dependency (it raises the intent; the route renders the map).
+- Rows in both journal grids now open the entry screen — `DataGrid` gained an
+  additive `onRowClick` prop (existing callers unaffected).
+
+Other:
+
+- **Today In History** card: past entries sharing today's month and day (any year
+  but this one), each labelled "N years ago".
+- **Show SQL** on the journal entries grid, admin-only. Added
+  `executeReadOnlyQuery` to `src/lib/sql-explorer`, which accepts only `SELECT` —
+  deliberately stricter than the existing admin `executeStatement`, whose
+  non-read-only path executes writes. The admin check is enforced in the server
+  action, not just by hiding the button.
+- **Daily Quote widget**: a small refresh button draws another random quote
+  without reloading the page.
+
 ## 2026-07-27 23:18 — MyJournal module (schema, CSV importer, UI); plus batched pre-existing tree work
 
 MyJournal (this session):

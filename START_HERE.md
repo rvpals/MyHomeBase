@@ -1,5 +1,11 @@
 # MyHomeBase — start here
 
+> **Historical note:** this file describes the project's original bootstrap, when
+> the repo was empty. The app has since been scaffolded and built out (see
+> `CHANGE_HISTORY.md`), so the scaffolding prompt below is kept for reference
+> only — don't run it against the current repo. For day-to-day work, start from
+> `CLAUDE.md` and the docs it points to.
+
 An empty Next.js project pre-loaded with the conventions Claude Code should follow.
 Nothing is scaffolded yet — that's the first task.
 

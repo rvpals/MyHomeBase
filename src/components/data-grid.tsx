@@ -58,6 +58,11 @@ export interface DataGridProps<T> {
   enableExport?: boolean;
   /** Base filename (without extension) for the exported CSV. Defaults to "export". */
   exportFileName?: string;
+  /**
+   * When set, each row becomes clickable (and keyboard-focusable) and this is
+   * called with the row. Use for "open this record" navigation.
+   */
+  onRowClick?: (row: T) => void;
   /** The SQL that produced these rows. With `onRunSql`, a "Show SQL" button appears. */
   sql?: string;
   /** Called with the edited SQL when the user runs it from the "Show SQL" dialog. */
@@ -86,6 +91,7 @@ export function DataGrid<T>({
   defaultPageSize = SMALLEST_PAGE_SIZE,
   enableExport = true,
   exportFileName = "export",
+  onRowClick,
   sql,
   onRunSql,
 }: DataGridProps<T>) {
@@ -204,7 +210,29 @@ export function DataGrid<T>({
             </tr>
           ) : (
             visibleRows.map((row, index) => (
-              <tr key={getRowKey(row)} className={index % 2 === 1 ? "bg-paper-raised" : "bg-paper"}>
+              // A clickable row keeps its native <tr> semantics (role="button" on a
+              // table row would break the grid for screen readers); it gains
+              // tabIndex + Enter/Space handling so it's still keyboard-reachable.
+              <tr
+                key={getRowKey(row)}
+                onClick={onRowClick ? () => onRowClick(row) : undefined}
+                onKeyDown={
+                  onRowClick
+                    ? (event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          onRowClick(row);
+                        }
+                      }
+                    : undefined
+                }
+                tabIndex={onRowClick ? 0 : undefined}
+                className={`${index % 2 === 1 ? "bg-paper-raised" : "bg-paper"} ${
+                  onRowClick
+                    ? "cursor-pointer hover:bg-brass-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brass"
+                    : ""
+                }`}
+              >
                 {columns.map((column) => (
                   <td key={column.key} className={`border border-line px-4 py-2.5 text-ink ${column.className ?? ""}`}>
                     {column.render(row)}
