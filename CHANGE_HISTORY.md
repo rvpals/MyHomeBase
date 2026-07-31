@@ -1,5 +1,42 @@
 # Change History
 
+## 2026-07-30 22:27 — Result grid: search, filters, sticky header, column control, row selection
+
+Upgraded the shared `DataGrid` (the "result grid") used by User Management,
+Stocks & ETFs, CSV Analytics, SQL Explorer, and MyJournal. Every change is
+additive — no caller needed updating.
+
+- **Mechanics moved into the library.** New `src/lib/shared/table.ts` holds the
+  pure parts (compare/sort, search and per-column matching, page slicing, CSV
+  escaping) with 16 unit tests, so null ordering, numeric-aware text sorting
+  ("item 2" before "item 10"), multi-term search, and page clamping are actually
+  covered. The component now holds only view state.
+- **Search + per-column filters.** A toolbar search box (terms are AND-ed across
+  columns, so extra words narrow the result) plus a "Filters" toggle that reveals
+  a filter input per column. The record count reports "filtered from N", there's
+  a Clear filters action, and a filtered-empty result gets its own message. Sort,
+  pagination, and CSV export all follow the filtered set.
+- **Sticky header and honest page sizes.** The header stays visible while the body
+  scrolls (capped by a new `maxHeight`, default `70vh`). Page sizes are now
+  10/25/50/100/200/500/1000/ALL, and pagination triggers when rows exceed the
+  chosen page size — previously it was hard-wired to 100, so a caller asking for
+  `defaultPageSize={25}` silently got every row on one page.
+- **Column visibility and order.** A "Columns" panel with checkboxes and up/down
+  reordering, plus Reset. An optional `storageKey` remembers the arrangement in
+  `localStorage`. Hiding the last visible column is refused (it would leave an
+  empty grid), and a saved layout naming columns that no longer exist is ignored.
+- **Row selection.** Opt-in `enableSelection` adds a checkbox column with a
+  select-all covering the whole filtered set (indeterminate when partial), and
+  `renderSelectionActions(selectedRows, clearSelection)` supplies bulk actions.
+  Checkbox clicks no longer trigger `onRowClick`.
+- **Status bar is raised, not recessed** — a top highlight plus a cast shadow, the
+  same bevel mechanic as the header bar. The grid container gained
+  `overflow-hidden` so the toolbar/status-bar backgrounds stay inside its rounded
+  corners.
+- **`components.md` restructured** into a fuller registry: an index table, then a
+  per-component section with source link, import line, client/server note, a props
+  table, a usage snippet, and a real call site to copy from.
+
 ## 2026-07-30 00:02 — MyJournal: entry authoring, GPS + weather, entry screen, Today In History
 
 Built out the MyJournal module from "list + CSV import" into a full authoring and

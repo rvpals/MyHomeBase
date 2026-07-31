@@ -5,6 +5,10 @@ read this file first.** If a registered component fits, import it and use it —
 rebuild it, and do not create a second component that does the same thing under a
 different name.
 
+Every entry below gives you: what it's called, where the source lives, how to import and
+call it, its props, and a real module that already uses it — so you can copy a working
+pattern instead of inventing one.
+
 ## How this works
 
 1. **Reuse first.** Search this registry before writing a new presentational component.
@@ -13,45 +17,662 @@ different name.
    line: *"This looks reusable — should we make it a shared component? If so, give it a
    name."* Then wait for the name.
 3. **On a name, create and register.** Put it at `src/components/<kebab-name>.tsx` with a
-   `PascalCase` export, then add a row to the table below. Start from
-   `src/components/_component-template.tsx`, not from scratch.
+   `PascalCase` export, then add a section below. Start from
+   [`src/components/_component-template.tsx`](src/components/_component-template.tsx),
+   not from scratch.
 4. **One-offs stay local.** Page-specific UI that won't be reused lives in the route's
    `view.tsx` and is *not* registered. Don't ask about obviously trivial local markup.
-5. **The table is the index, not the full docs.** Full prop documentation lives in each
-   component's own file (typed props + JSDoc). Keep rows short so this file doesn't rot.
+5. **This file is the index; the source is the contract.** Props here are a working
+   summary — the typed props + JSDoc in each component file are authoritative. If they
+   disagree, the file wins and this entry needs fixing.
 
 ## Rules for every registered component
 
 - Pure presentation: **props in, events out.** No data fetching, no business logic, no
   `lib` imports beyond types. Data arrives as props from the page that fetched it.
-- Accepts a `className` passthrough and forwards unknown props where sensible, so callers
-  can extend it without forking it.
+- Accepts a `className` passthrough, merged last so the caller wins.
+- Colors and fonts are **theme tokens** (`bg-paper`, `text-ink`, `text-brass-dark`,
+  `border-line`, `font-display`…), never literal hex/rgb. See `design.md`.
 - Follows the conventions of the components already listed here (styling approach,
   prop-naming, variant patterns).
 
-## Registered components
+> Imports use the `@/` path alias (`@/* -> src/*`, configured in `tsconfig.json`).
 
-| Name | Import | Purpose | Key props | Notes |
-|------|--------|---------|-----------|-------|
-| `Button` | `@/components/button` | Button with a hard offset shadow that collapses on press, reading as a physical 3D switch | `children`, `variant?` (`"primary" \| "secondary" \| "danger"`), `size?` (`"sm" \| "md"`), `href?`, `type?`, `onClick?`, `disabled?`, `className?` | Renders a `next/link` when `href` is set, else a `<button>`. Shadow/fill color is theme-token-driven for `primary`/`secondary`; `danger` stays a fixed red across every color theme. |
-| `CollapsibleCard` | `@/components/collapsible-card` | Card with a header that expands/collapses its body | `title`, `defaultOpen?`, `children`, `className?` | Client component. Used for the "Module Settings [Module Name]" section on the Module Configuration screen. |
-| `ModuleCard` | `@/components/module-card` | Card linking to a module's route | `name`, `description?`, `href`, `icon`, `className?` | Client component. Used on the home screen grid. Leads with a prominent icon badge (glyph via `ModuleIcon`) beside the name, description below; soft hover lift + brass ring. The badge is a solid-accent tile for monochrome icon sets and a neutral `bg-paper` tile for colorful sets — it reads `useIconSet().colorful` to decide. |
-| `IconSetProvider` | `@/components/icon-set-context` | Supplies the active module icon set (id + `colorful`) to `ModuleIcon` and card/sidebar badges via context | `value` (`{ id, colorful }`), `children` | Client component. Mounted once in the root layout with the server-read `icon_set` setting. Read it with the `useIconSet()` hook. `ModuleIcon` (`@/components/module-icons`) resolves a glyph from the active set, falling back to the hand-drawn "classic" set; `ModuleIconPreview` renders a glyph for an explicit set id (used by the Admin icon picker). |
-| `Sidebar` | `@/components/sidebar` | Collapsible left-hand nav listing module links | `links` (each with `slug`, `name`, `href`, `code`, `icon`, `hint?`), `appName`, `currentUser` (`{ id, fullName, avatarMimeType?, updatedAt? }`), `showAdmin`, `logoutAction`, `className?` | Client component; persists collapsed state to `localStorage`. Shows icon-only when collapsed. Always includes a "Home" link (`/`) above the module list; the "Administration" link only renders when `showAdmin` is true. Footer row is an `Avatar` + `currentUser.fullName` linking to `/account`, plus a separate "Log out" button wired to the `logoutAction` server action prop. `hint` is shown as the link's hover tooltip. Rendered in `src/app/(protected)/layout.tsx`. |
-| `TreeNav` | `@/components/tree-nav` | Hierarchical parent/child nav tree with hover hints | `nodes` (each with `id`, `label`, `href?`, `hint?`, `icon?`, `children?`), `collapsible?`, `className?` | Client component; owns its own width (`w-64`/`w-16`) when `collapsible`, persists collapsed state to `localStorage`. Collapsed view flattens the tree into one icon-only row per node. A node without `href` is a group heading only (expand/collapse, not navigable, when expanded). `icon` is a key rendered via `TreeIcon` (`src/components/tree-icons.tsx`). Used by the Administration section (`src/app/(protected)/admin`). |
-| `FileDropzone` | `@/components/file-dropzone` | Drag-and-drop file picker with a click-to-browse fallback | `onFile`, `accept?`, `label?`, `disabled?`, `className?` | Client component. Hands the caller a raw `File` via `onFile` — does not read its contents itself (the caller does `FileReader.readAsText`/etc). Used by the CSV Analysis module's New/Edit Entry form. |
-| `DataGrid` | `@/components/data-grid` | Generic tabular grid with sortable headers, striped rows, gridlines, and a status-bar footer (count + pagination + optional CSV export + optional "Show SQL" re-run) | `columns` (each with `key`, `header`, `render(row)`, plus optional `value(row)` for sort/export, `sortable?`, `className?`), `rows`, `getRowKey`, `emptyMessage?`, `className?`, `defaultPageSize?`, `enableExport?`, `exportFileName?`, `onRowClick?`, `sql?`, `onRunSql?` | Client component. Headers sit in a raised `bg-brass-soft` bar (centered, bold `text-brass-dark`, with a bevel/drop shadow to pop out) and are click-to-sort (asc→desc→none) for columns that supply `value`; rows alternate `bg-paper`/`bg-paper-raised` with full cell borders. The status-bar footer is recessed (`bg-paper` with an inset shadow). Footer shows total record count, and — when rows exceed 100 — a per-page selector (100/200/500/1000/ALL) with prev/next paging. "Export CSV" appears when any column has `value`; "Show SQL" appears when both `sql` and `onRunSql` are passed, opening an editable-query dialog whose OK calls `onRunSql(editedSql)` (the caller runs it and passes fresh rows back). Passing `onRowClick` makes each row clickable for "open this record" navigation — the row keeps its native `<tr>` semantics and gains `tabIndex` + Enter/Space handling, plus a pointer cursor and hover tint. Backward-compatible with the prior render-only API — existing callers need no changes. Used by User Management, Stocks & ETFs, CSV Analytics, SQL Explorer, and MyJournal (row click opens the entry screen). |
-| `JournalEntryCard` | `@/components/journal-entry-card` | Full-detail sheet for one journal entry — every stored field, plus optional Print / Lock / Delete actions | `entry` (`JournalEntry`), `onPrint?`, `onEdit?`, `onShowLocation?(location)`, `onToggleLock?(nextLocked)`, `onDelete?`, `isBusy?`, `className?` | Client component. Pure presentation. **Blank fields are hidden** — an omitted title/time, empty categories/tags/place/weather/locations, and empty content each drop their row (and the detail list disappears entirely when all of them are blank), so an entry only shows what it recorded. Each action is omitted when its callback isn't passed, and Delete is guarded by an inline confirm step. Edit and Delete are both disabled while `entry.isLocked`, because the `updateEntry`/`deleteEntry` use-cases reject a locked entry. `onShowLocation` adds a per-location "Map" link and keeps this component free of any mapping dependency — the caller renders the map (the journal route shows a read-only Leaflet panel plus an OpenStreetMap deep link). Carries the `print-sheet` class that the `@media print` block in `globals.css` uses to print the card alone as an ink-on-white page (controls are marked `no-print`); the caller supplies `onPrint` (the journal route passes `window.print()`). Used by `/modules/journal/entries/[id]`. |
-| `Avatar` | `@/components/avatar` | A user's profile picture, or an initials-circle fallback | `userId`, `avatarMimeType?`, `fallbackText`, `size?` (`"sm" \| "md"`), `version?`, `className?` | Not client/server-specific. Renders `<img src="/api/users/{userId}/avatar">` when `avatarMimeType` is set (that route is the only place avatar bytes are read/served), else the initial of `fallbackText`. Pass `version` (e.g. the user's `updatedAt`) as a cache-busting query param when the image may have just changed. Used in the `Sidebar` footer, the `/account` self-service page, and the User Management grid. |
-| `Tabs` | `@/components/tabs` | Tabbed panel — one active tab's content shown at a time | `items` (each with `key`, `label`, `content`), `defaultActiveKey?`, `className?` | Client component; owns its own active-tab state. `content` is any `ReactNode` supplied by the caller. Currently unused (previously the Property Lookup result view in the removed Real Estate module) — kept as a generic reusable. |
-| `ChartLine` | `@/components/chart-line` | Time-series line chart (one or more series) | `data`, `series` (each with `key`, `label`, `color?`), `xKey`, `formatValue?`, `formatX?`, `height?`, `className?` | Client component wrapping Recharts. Follows the dataviz skill: fixed 8-hue categorical palette (`@/components/chart-colors`, unregistered helper — not its own row), 2px lines, no legend for a single series, hairline gridlines. Used for account performance history and position price history in the Stocks & ETFs module. |
-| `ChartBar` | `@/components/chart-bar` | Horizontal bar chart for part-to-whole / magnitude comparisons across a few categories | `items` (each with `key`, `label`, `value`, `color?`), `formatValue?`, `height?`, `className?` | Client component wrapping Recharts. Per the dataviz skill, part-to-whole with a handful of categories defaults to a categorical bar, not a pie — each bar is direct-labeled with its value (the required relief for any categorical slot under 3:1 contrast) and the category's own axis tick supplies identity, so no legend box. Used for stock/ETF/other allocation and dividend-income breakdown in the Stocks & ETFs module. |
-| `ChartXY` | `@/components/chart-xy` | Configurable X/Y chart (line / bar / scatter / area) with zoom in/out/reset and optional data-point markers | `type` (`"line" \| "bar" \| "scatter" \| "area"`), `data`, `xKey`, `series` (each `key`, `label`, `color?`), `showDots?`, `formatValue?`, `formatX?`, `height?`, `className?` | Client component wrapping Recharts. Pure presentation — the caller supplies shaped data + chosen encoding. Follows the dataviz skill: single shared y-scale (never dual-axis), fixed categorical palette from `@/components/chart-colors` assigned by series order, legend only for >1 series, 2px marks, recessive grid/axes. Zoom is a windowed slice over the (pre-sorted) data via +/− / Reset buttons. Used by the CSV Analysis module's Chart builder (the axis/type/format pickers live locally in `csv-analytics-view.tsx`). |
+---
 
-## Entry template (copy a row when registering)
+## Index
 
+| Component | Use it for | Source | Client? |
+|-----------|-----------|--------|---------|
+| [`Button`](#button) | Any button or button-styled link | [src/components/button.tsx](src/components/button.tsx) | no |
+| [`DataGrid`](#datagrid) | **Result grid** — any table of records | [src/components/data-grid.tsx](src/components/data-grid.tsx) | yes |
+| [`CollapsibleCard`](#collapsiblecard) | A titled section that expands/collapses | [src/components/collapsible-card.tsx](src/components/collapsible-card.tsx) | yes |
+| [`Tabs`](#tabs) | One-of-N panels in the same space | [src/components/tabs.tsx](src/components/tabs.tsx) | yes |
+| [`ModuleCard`](#modulecard) | A card linking to a module (home grid) | [src/components/module-card.tsx](src/components/module-card.tsx) | yes |
+| [`Sidebar`](#sidebar) | The app's left-hand module nav | [src/components/sidebar.tsx](src/components/sidebar.tsx) | yes |
+| [`TreeNav`](#treenav) | Hierarchical parent/child nav tree | [src/components/tree-nav.tsx](src/components/tree-nav.tsx) | yes |
+| [`Avatar`](#avatar) | A user's picture, or initials fallback | [src/components/avatar.tsx](src/components/avatar.tsx) | no |
+| [`FileDropzone`](#filedropzone) | Drag-and-drop file picker | [src/components/file-dropzone.tsx](src/components/file-dropzone.tsx) | yes |
+| [`ChartLine`](#chartline) | Time-series line chart | [src/components/chart-line.tsx](src/components/chart-line.tsx) | yes |
+| [`ChartBar`](#chartbar) | Category comparison / part-to-whole | [src/components/chart-bar.tsx](src/components/chart-bar.tsx) | yes |
+| [`ChartXY`](#chartxy) | User-configurable line/bar/scatter/area + zoom | [src/components/chart-xy.tsx](src/components/chart-xy.tsx) | yes |
+| [`JournalEntryCard`](#journalentrycard) | Full detail sheet for one journal entry | [src/components/journal-entry-card.tsx](src/components/journal-entry-card.tsx) | yes |
+| [`IconSetProvider`](#iconsetprovider--useiconset) / `useIconSet` | Active module icon set (context) | [src/components/icon-set-context.tsx](src/components/icon-set-context.tsx) | yes |
+| [`ModuleIcon`](#moduleicon--moduleiconpreview) / `ModuleIconPreview` | Render a module glyph | [src/components/module-icons.tsx](src/components/module-icons.tsx) | yes |
+
+Small helpers that are not full components: [see below](#unregistered-helpers).
+
+---
+
+## Button
+
+Button with a hard offset shadow that collapses on press, reading as a physical 3D
+switch. **Every** clickable action uses this — do not hand-roll a `<button className=...>`.
+
+- **Source:** [src/components/button.tsx](src/components/button.tsx)
+- **Import:** `import { Button } from "@/components/button";`
+- **Client component:** no (usable from a server component; it renders no hooks)
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `children` | `ReactNode` | Label/content. |
+| `variant?` | `"primary" \| "secondary" \| "danger"` | Default `"primary"`. |
+| `size?` | `"sm" \| "md"` | Default `"md"`. Use `sm` inside grids/toolbars. |
+| `href?` | `string` | When set, renders a `next/link` instead of a `<button>`. |
+| `type?` | `"button" \| "submit"` | Default `"button"`. Ignored when `href` is set. |
+| `onClick?` | `() => void` | |
+| `disabled?` | `boolean` | |
+| `className?` | `string` | Merged last. |
+
+```tsx
+<Button onClick={handleSave}>Save</Button>
+<Button size="sm" variant="secondary" onClick={() => setPanel(undefined)}>Close</Button>
+<Button variant="danger" onClick={handleDelete}>Delete</Button>
+<Button href="/admin">Administration</Button>
 ```
-| `ComponentName` | `@/components/component-name` | one-line purpose | `propA`, `propB?` | variants / accessibility notes |
+
+**Used by:** nearly every view — e.g. the home page
+[src/app/(protected)/page.tsx](src/app/(protected)/page.tsx), the CSV Analysis view
+[csv-analytics-view.tsx:787](src/app/(protected)/modules/[slug]/csv-analytics-view.tsx#L787).
+
+**Notes:** `primary`/`secondary` take their fill and shadow from theme tokens; `danger`
+stays a fixed semantic red across every color theme. Respects `prefers-reduced-motion`.
+
+---
+
+## DataGrid
+
+**This is the "result grid."** The generic table for any list of records: search,
+per-column filters, sortable sticky headers, show/hide/reorder columns, optional row
+selection with bulk actions, pagination, CSV export, and an optional "Show SQL" re-run
+dialog. Do not build another table.
+
+- **Source:** [src/components/data-grid.tsx](src/components/data-grid.tsx)
+- **Import:** `import { DataGrid, type DataGridColumn } from "@/components/data-grid";`
+  (also exports `type CellValue`, `type PageSize`)
+- **Client component:** yes — the caller must be `"use client"` (or render it from one).
+- **Mechanics live in the lib:** sorting/searching/filtering/paging/CSV are pure functions
+  in [src/lib/shared/table.ts](src/lib/shared/table.ts) (unit-tested). The component holds
+  only view state. Fix table *behaviour* in the lib, not here.
+
+### Column shape — `DataGridColumn<T>`
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `key` | `string` | Unique; React key + sort identity. |
+| `header` | `string` | |
+| `render` | `(row: T) => ReactNode` | The cell UI. |
+| `value?` | `(row: T) => CellValue` | **The important one.** Raw primitive used for sort, search, filter, and CSV export. A column participates in those *only* when this is supplied. |
+| `sortable?` | `boolean` | Set `false` to keep `value` but disable sorting. |
+| `className?` | `string` | Applied to both header and body cells. |
+
+### Grid props — `DataGridProps<T>`
+
+| Prop | Type | Default | Notes |
+|------|------|---------|-------|
+| `columns` | `DataGridColumn<T>[]` | — | |
+| `rows` | `T[]` | — | Already-fetched data. The grid never fetches. |
+| `getRowKey` | `(row: T) => string \| number` | — | Stable row identity (React key + selection). |
+| `emptyMessage?` | `string` | `"No rows to show."` | |
+| `defaultPageSize?` | `number \| "ALL"` | `100` | Paging appears once rows exceed it. |
+| `enableExport?` | `boolean` | `true` | "Export CSV" shows only if some column has `value`. |
+| `exportFileName?` | `string` | `"export"` | Without extension. |
+| `enableSearch?` | `boolean` | `true` | |
+| `enableColumnFilters?` | `boolean` | `true` | Per-column filter row, hidden until opened. |
+| `enableColumnPicker?` | `boolean` | `true` | Show/hide/reorder panel. |
+| `stickyHeader?` | `boolean` | `true` | |
+| `maxHeight?` | `string` | `"70vh"` | Pass `""` to remove the cap. |
+| `enableSelection?` | `boolean` | `false` | Adds a checkbox column. |
+| `renderSelectionActions?` | `(selectedRows: T[], clearSelection: () => void) => ReactNode` | — | Bulk actions in the toolbar. Select-all covers the whole filtered set. |
+| `storageKey?` | `string` | — | Persists column order + hidden columns to `localStorage`. |
+| `onRowClick?` | `(row: T) => void` | — | Makes rows clickable/keyboard-focusable for "open this record". |
+| `sql?` | `string` | — | With `onRunSql`, adds a "Show SQL" button. |
+| `onRunSql?` | `(sql: string) => void \| Promise<void>` | — | Called with the edited query; **the caller runs it** and passes fresh `rows` back. |
+
+```tsx
+"use client";
+import { DataGrid, type DataGridColumn } from "@/components/data-grid";
+
+const columns: DataGridColumn<Quote>[] = [
+  { key: "text", header: "Quote", render: (row) => row.text, value: (row) => row.text },
+  { key: "author", header: "Author", render: (row) => row.author, value: (row) => row.author },
+  {
+    key: "actions",
+    header: "Actions",
+    render: (row) => (
+      <Button size="sm" variant="secondary" onClick={() => setEditing(row)}>Edit</Button>
+    ),
+  },
+];
+
+<DataGrid
+  columns={columns}
+  rows={quotes}
+  getRowKey={(row) => row.id}
+  emptyMessage="No quotes yet."
+  exportFileName="daily-quotes"
+/>;
 ```
 
-> Note: imports use the `@/` path alias (`@/* -> src/*`, configured in `tsconfig.json`).
+Row-click navigation:
+
+```tsx
+<DataGrid
+  columns={columns}
+  rows={entries}
+  getRowKey={(entry) => entry.id}
+  onRowClick={(entry) => router.push(`/modules/journal/entries/${entry.id}`)}
+/>
+```
+
+**Used by:**
+- Daily Quote admin — [daily-quote/view.tsx:209](src/app/(protected)/admin/daily-quote/view.tsx#L209) *(simplest example, start here)*
+- MyJournal — [journal-view.tsx:220](src/app/(protected)/modules/[slug]/journal-view.tsx#L220) *(row click + "Show SQL" re-run)*
+- User Management — [user-management/view.tsx](src/app/(protected)/admin/user-management/view.tsx) *(cells rendering `Avatar`)*
+- CSV Analysis, SQL Explorer, Stocks & ETFs (accounts / positions / watchlist / analytics / next-day actions)
+
+**Notes:** headers sit in a raised `bg-brass-soft` bar and are click-to-sort
+(asc → desc → none) for columns with `value`; rows alternate `bg-paper`/`bg-paper-raised`.
+The footer is a raised status bar: record count (noting "filtered from N"), page-size
+selector (10…1000/ALL), and prev/next. Export reflects the current filter + sort across
+all pages. `enableSelection` is implemented but no view uses it yet — you're the first
+caller if you need bulk actions.
+
+---
+
+## CollapsibleCard
+
+A titled card whose body expands/collapses. The standard wrapper for a secondary section
+(a form, a settings block, a detail panel) that shouldn't dominate the page.
+
+- **Source:** [src/components/collapsible-card.tsx](src/components/collapsible-card.tsx)
+- **Import:** `import { CollapsibleCard } from "@/components/collapsible-card";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `title` | `string` | Always-visible header text. |
+| `defaultOpen?` | `boolean` | Default `false`. |
+| `children` | `ReactNode` | Body. |
+| `className?` | `string` | |
+
+```tsx
+<CollapsibleCard title="Add an entry" defaultOpen>
+  <JournalEntryForm onSubmit={handleCreate} />
+</CollapsibleCard>
+```
+
+**Used by:** Module Configuration
+[admin/configuration/modules/page.tsx](src/app/(protected)/admin/configuration/modules/page.tsx),
+MyJournal, CSV Analysis, SQL Explorer, Stocks & ETFs, User Management.
+
+---
+
+## Tabs
+
+One active panel at a time. Owns its own active-tab state.
+
+- **Source:** [src/components/tabs.tsx](src/components/tabs.tsx)
+- **Import:** `import { Tabs, type TabItem } from "@/components/tabs";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `items` | `TabItem[]` — `{ key, label, content: ReactNode }` | Rendered in order. |
+| `defaultActiveKey?` | `string` | Defaults to the first item. |
+| `className?` | `string` | |
+
+```tsx
+const tabs: TabItem[] = [
+  { key: "positions", label: "Positions", content: <PositionsGrid rows={positions} /> },
+  { key: "history", label: "History", content: <ChartLine data={history} series={series} xKey="date" /> },
+];
+
+<Tabs items={tabs} defaultActiveKey="positions" />
+```
+
+**Used by:** Stocks & ETFs —
+[stock-positions-view.tsx](src/app/(protected)/modules/[slug]/stock-positions-view.tsx),
+[stock-analytics-view.tsx](src/app/(protected)/modules/[slug]/stock-analytics-view.tsx).
+
+---
+
+## ModuleCard
+
+A card linking to a module, leading with a prominent icon badge.
+
+- **Source:** [src/components/module-card.tsx](src/components/module-card.tsx)
+- **Import:** `import { ModuleCard } from "@/components/module-card";`
+- **Client component:** yes (reads `useIconSet()`)
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `name` | `string` | |
+| `description?` | `string` | Shown under the name. |
+| `href` | `string` | Route the whole card links to. |
+| `icon` | `string` | Module icon key, e.g. `"building"`. |
+| `className?` | `string` | |
+
+```tsx
+{modules.map((module) => (
+  <ModuleCard
+    key={module.slug}
+    name={module.name}
+    description={module.description}
+    href={`/modules/${module.slug}`}
+    icon={module.icon}
+  />
+))}
+```
+
+**Used by:** the home screen grid — [src/app/(protected)/page.tsx](src/app/(protected)/page.tsx).
+
+**Notes:** the badge is a solid-accent tile for monochrome icon sets and a neutral
+`bg-paper` tile for colorful sets — it reads `useIconSet().colorful` to decide.
+
+---
+
+## Sidebar
+
+The app's collapsible left-hand nav. Mounted once; you should not need a second instance.
+
+- **Source:** [src/components/sidebar.tsx](src/components/sidebar.tsx)
+- **Import:** `import { Sidebar } from "@/components/sidebar";`
+- **Client component:** yes (persists collapsed state to `localStorage`)
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `links` | `SidebarLink[]` — `{ slug, name, href, code, icon, hint? }` | One per module. `hint` is the hover tooltip. |
+| `appName` | `string` | Wordmark. |
+| `currentUser` | `{ id, fullName, avatarMimeType?, updatedAt? }` | Footer row. |
+| `showAdmin` | `boolean` | Gates the "Administration" link. |
+| `logoutAction` | `() => Promise<void>` | Server action wired to "Log out". |
+| `className?` | `string` | |
+
+```tsx
+<Sidebar
+  links={moduleLinks}
+  appName={appName}
+  currentUser={{ id: user.id, fullName: user.fullName, avatarMimeType: user.avatarMimeType }}
+  showAdmin={user.isAdmin}
+  logoutAction={logoutAction}
+/>
+```
+
+**Used by:** [src/app/(protected)/layout.tsx](src/app/(protected)/layout.tsx).
+
+**Notes:** always renders a "Home" link above the module list; shows icon-only when
+collapsed; the footer is an `Avatar` + name linking to `/account` plus a separate
+"Log out" button.
+
+---
+
+## TreeNav
+
+Hierarchical parent/child nav with hover hints. Use for a section with grouped
+sub-pages (like Administration), not for the top-level module list.
+
+- **Source:** [src/components/tree-nav.tsx](src/components/tree-nav.tsx)
+- **Import:** `import { TreeNav, type TreeNode } from "@/components/tree-nav";`
+- **Client component:** yes (persists collapsed state to `localStorage`)
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `nodes` | `TreeNode[]` — `{ id, label, href?, hint?, icon?, children? }` | A node **without** `href` is a group heading (expand/collapse only). `icon` is a key rendered via `TreeIcon`. |
+| `collapsible?` | `boolean` | Default `false`. When true it owns its width (`w-64`/`w-16`); collapsed flattens to one icon-only row per node. |
+| `className?` | `string` | |
+
+```tsx
+const nodes: TreeNode[] = [
+  {
+    id: "configuration",
+    label: "Configuration",
+    icon: "sliders",
+    children: [
+      { id: "modules", label: "Modules", href: "/admin/configuration/modules", icon: "grid" },
+      { id: "icons", label: "Icons", href: "/admin/configuration/icons", icon: "shapes" },
+    ],
+  },
+];
+
+<TreeNav nodes={nodes} collapsible />
+```
+
+**Used by:** Administration — [admin/admin-shell.tsx](src/app/(protected)/admin/admin-shell.tsx),
+node list in [admin/nav.ts](src/app/(protected)/admin/nav.ts).
+
+---
+
+## Avatar
+
+A user's profile picture, or an initials circle when they have none.
+
+- **Source:** [src/components/avatar.tsx](src/components/avatar.tsx)
+- **Import:** `import { Avatar } from "@/components/avatar";`
+- **Client component:** no
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `userId` | `number` | Builds the image URL. |
+| `avatarMimeType?` | `string` | When set, renders the image; otherwise the initials fallback. |
+| `fallbackText` | `string` | Initial is derived from this (typically the full name). |
+| `size?` | `"sm" \| "md"` | Default `"sm"`. |
+| `version?` | `string` | Cache-buster — pass `updatedAt` when the image may have just changed. |
+| `className?` | `string` | |
+
+```tsx
+<Avatar
+  userId={user.id}
+  avatarMimeType={user.avatarMimeType}
+  fallbackText={user.fullName}
+  size="md"
+  version={user.updatedAt}
+/>
+```
+
+**Used by:** the `Sidebar` footer, [/account](src/app/(protected)/account/view.tsx), and the
+User Management grid.
+
+**Notes:** renders `<img src="/api/users/{userId}/avatar">` — that route is the only place
+avatar bytes are read and served.
+
+---
+
+## FileDropzone
+
+Drag-and-drop file picker with a click-to-browse fallback.
+
+- **Source:** [src/components/file-dropzone.tsx](src/components/file-dropzone.tsx)
+- **Import:** `import { FileDropzone } from "@/components/file-dropzone";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `onFile` | `(file: File) => void` | Called with the first dropped/selected file. |
+| `accept?` | `string` | Forwarded to the input, e.g. `".csv"`. |
+| `label?` | `string` | Default: a generic prompt. |
+| `disabled?` | `boolean` | |
+| `className?` | `string` | |
+
+```tsx
+<FileDropzone
+  accept=".csv"
+  label="Drop a CSV here, or click to browse"
+  onFile={(file) => {
+    const reader = new FileReader();
+    reader.onload = () => handleCsvText(String(reader.result));
+    reader.readAsText(file);
+  }}
+/>
+```
+
+**Used by:** CSV Analysis
+[csv-analytics-view.tsx](src/app/(protected)/modules/[slug]/csv-analytics-view.tsx),
+MyJournal import [journal-import-view.tsx](src/app/(protected)/modules/[slug]/journal-import-view.tsx).
+
+**Notes:** hands you a raw `File` and never reads it — the caller decides how
+(`FileReader.readAsText`, upload, etc.).
+
+---
+
+## ChartLine
+
+Time-series line chart, one or more series.
+
+- **Source:** [src/components/chart-line.tsx](src/components/chart-line.tsx)
+- **Import:** `import { ChartLine, type ChartLineSeries } from "@/components/chart-line";`
+- **Client component:** yes (wraps Recharts)
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `data` | `Record<string, number \| string>[]` | Rows with one `xKey` field + one numeric field per series key. |
+| `series` | `{ key, label, color? }[]` | A single series renders with no legend box. |
+| `xKey` | `string` | Field used for the x-axis. |
+| `formatValue?` | `(value: number) => string` | y-axis ticks + tooltip. |
+| `formatX?` | `(value: string \| number) => string` | x-axis ticks. |
+| `height?` | `number` | Default `280`. |
+| `className?` | `string` | |
+
+```tsx
+<ChartLine
+  data={history}
+  series={[{ key: "totalValue", label: "Total value" }]}
+  xKey="date"
+  formatValue={(value) => formatCurrency(value)}
+/>
+```
+
+**Used by:** Stocks & ETFs — account performance history
+[stock-accounts-view.tsx](src/app/(protected)/modules/[slug]/stock-accounts-view.tsx), position
+price history [stock-analytics-view.tsx](src/app/(protected)/modules/[slug]/stock-analytics-view.tsx).
+
+---
+
+## ChartBar
+
+Horizontal bars for part-to-whole or magnitude comparison across a handful of categories.
+**Use this instead of a pie chart** (per the dataviz skill).
+
+- **Source:** [src/components/chart-bar.tsx](src/components/chart-bar.tsx)
+- **Import:** `import { ChartBar, type ChartBarItem } from "@/components/chart-bar";`
+- **Client component:** yes (wraps Recharts)
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `items` | `{ key, label, value, color? }[]` | One bar each; `label` is the axis tick and the identity. |
+| `formatValue?` | `(value: number) => string` | Also used for the direct bar label. |
+| `height?` | `number` | Defaults to `max(120, items.length * 44)`. |
+| `className?` | `string` | |
+
+```tsx
+<ChartBar
+  items={[
+    { key: "stock", label: "Stocks", value: 62000 },
+    { key: "etf", label: "ETFs", value: 18500 },
+    { key: "other", label: "Other", value: 4200 },
+  ]}
+  formatValue={formatCurrency}
+/>
+```
+
+**Used by:** Stocks & ETFs allocation and dividend-income breakdown —
+[stock-positions-view.tsx](src/app/(protected)/modules/[slug]/stock-positions-view.tsx).
+
+**Notes:** each bar is direct-labeled with its value (the required contrast relief) and the
+axis tick supplies identity, so there is no legend box.
+
+---
+
+## ChartXY
+
+Configurable X/Y chart — line / bar / scatter / area — with zoom in/out/reset and optional
+point markers. Use when the *user* picks the encoding; use `ChartLine`/`ChartBar` when you
+do.
+
+- **Source:** [src/components/chart-xy.tsx](src/components/chart-xy.tsx)
+- **Import:** `import { ChartXY, type ChartType } from "@/components/chart-xy";`
+- **Client component:** yes (wraps Recharts; memoized)
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `type` | `"line" \| "bar" \| "scatter" \| "area"` | |
+| `data` | `Record<string, number \| string \| null>[]` | Pre-sorted by `xKey` (zoom is a windowed slice). |
+| `xKey` | `string` | |
+| `series` | `{ key, label, color? }[]` | Legend only appears for >1 series. |
+| `showDots?` | `boolean` | Default `false` (line/area). |
+| `formatValue?` | `(value: number) => string` | |
+| `formatX?` | `(value: string \| number) => string` | |
+| `height?` | `number` | |
+| `className?` | `string` | |
+
+```tsx
+<ChartXY
+  type={chartType}
+  data={rows}
+  xKey={xKey}
+  series={yKeys.map((key) => ({ key, label: key }))}
+  showDots={showDots}
+/>
+```
+
+**Used by:** the CSV Analysis chart builder —
+[csv-analytics-view.tsx](src/app/(protected)/modules/[slug]/csv-analytics-view.tsx) (the
+axis/type/format pickers stay local to that view).
+
+**Notes:** single shared y-scale, never dual-axis. Colors come from
+`@/components/chart-colors` by series order.
+
+---
+
+## JournalEntryCard
+
+Full-detail sheet for one journal entry — every stored field, plus optional Print / Edit /
+Lock / Delete actions. Journal-specific but registered because the entry screen and any
+future print/export view share it.
+
+- **Source:** [src/components/journal-entry-card.tsx](src/components/journal-entry-card.tsx)
+- **Import:** `import { JournalEntryCard } from "@/components/journal-entry-card";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `entry` | `JournalEntry` (type from `@/lib/journal`) | |
+| `onPrint?` | `() => void` | Omit to hide Print. |
+| `onEdit?` | `() => void` | Omit to hide Edit. Disabled while locked. |
+| `onShowLocation?` | `(location: EntryLocation) => void` | Adds a per-location "Map" button. |
+| `onToggleLock?` | `(nextLocked: boolean) => void` | Omit to hide Lock. |
+| `onDelete?` | `() => void` | Omit to hide Delete. Guarded by an inline confirm. |
+| `isBusy?` | `boolean` | Disables the actions while the caller works. |
+| `className?` | `string` | |
+
+```tsx
+<JournalEntryCard
+  entry={entry}
+  onPrint={() => window.print()}
+  onEdit={() => setEditing(true)}
+  onShowLocation={(location) => setMapLocation(location)}
+  onToggleLock={(nextLocked) => handleToggleLock(nextLocked)}
+  onDelete={handleDelete}
+  isBusy={isPending}
+/>
+```
+
+**Used by:** [/modules/journal/entries/[id]](src/app/(protected)/modules/[slug]/entries/[id]/entry-screen.tsx).
+
+**Notes:** blank fields are hidden, so an entry only shows what it recorded. Edit and Delete
+are disabled while `entry.isLocked` because the `updateEntry`/`deleteEntry` use-cases reject
+a locked entry. It stays free of any mapping dependency — the caller renders the map.
+Carries the `print-sheet` class used by the `@media print` block in `globals.css`.
+
+---
+
+## IconSetProvider / useIconSet
+
+Context supplying the active module icon set to `ModuleIcon` and the card/sidebar badges.
+
+- **Source:** [src/components/icon-set-context.tsx](src/components/icon-set-context.tsx)
+- **Import:** `import { IconSetProvider, useIconSet } from "@/components/icon-set-context";`
+- **Client component:** yes
+
+```tsx
+// Mounted once, in the root layout, with the server-read `icon_set` setting:
+<IconSetProvider value={{ id: iconSetId, colorful }}>{children}</IconSetProvider>
+
+// Anywhere below it:
+const { id, colorful } = useIconSet();
+```
+
+**Used by:** [src/app/layout.tsx](src/app/layout.tsx) (provider); `ModuleIcon` and
+`ModuleCard` (consumers).
+
+**Notes:** the default outside a provider is the `"classic"` set, so anything rendered
+standalone still shows a valid glyph.
+
+---
+
+## ModuleIcon / ModuleIconPreview
+
+Render a module glyph in the active icon set (`ModuleIcon`) or in an explicitly named set
+(`ModuleIconPreview`, for the Admin icon picker that must show every set at once).
+
+- **Source:** [src/components/module-icons.tsx](src/components/module-icons.tsx)
+- **Import:** `import { ModuleIcon, ModuleIconPreview } from "@/components/module-icons";`
+- **Client component:** yes
+
+```tsx
+<ModuleIcon name={module.icon} className="h-6 w-6 text-brass" />
+<ModuleIconPreview setId="classic" name="building" className="h-5 w-5" />
+```
+
+**Used by:** `ModuleCard`, `Sidebar`, and the icon picker at
+[admin/configuration/icons/page.tsx](src/app/(protected)/admin/configuration/icons/page.tsx).
+
+**Notes:** falls back to the hand-drawn "classic" set for any missing glyph. Monochrome
+sets inherit `currentColor` from `className`; color sets carry their own fills.
+
+---
+
+## Unregistered helpers
+
+Small pieces under `src/components/` that support the components above. Reuse them, but
+they don't get their own registry section.
+
+| Helper | Source | What it is |
+|--------|--------|-----------|
+| `CHART_CATEGORICAL_COLORS`, `CHART_STATUS_COLORS`, `CHART_CHROME` | [chart-colors.ts](src/components/chart-colors.ts) | The fixed 8-hue chart palette + grid/axis chrome. All charts read from here. |
+| `TreeIcon` | [tree-icons.tsx](src/components/tree-icons.tsx) | Resolves a `TreeNav` icon key (`sliders`, `quote`, `grid`, `window`, `palette`, `info`, `history`, `users`, `database`, `shapes`) to an SVG. Renders `null` for an unknown key. |
+| `AppIcon` | [app-icon.tsx](src/components/app-icon.tsx) | The app wordmark glyph. Takes raw `SVGProps`. |
+| `AdminIcon` | [admin-icon.tsx](src/components/admin-icon.tsx) | The Administration glyph. Takes raw `SVGProps`. |
+| `MODULE_ICON_GLYPHS`, `ModuleIconSetId` | [module-icon-sets.generated.ts](src/components/module-icon-sets.generated.ts) | Generated — do not hand-edit. |
+| `ComponentName` | [_component-template.tsx](src/components/_component-template.tsx) | The starting point for a new reusable component. |
+
+---
+
+## Registering a new component
+
+1. Create `src/components/<kebab-name>.tsx` from `_component-template.tsx`.
+2. Add a row to the [Index](#index) table.
+3. Add a section below using this shape:
+
+~~~markdown
+## ComponentName
+
+One-line purpose, and when *not* to use it.
+
+- **Source:** [src/components/component-name.tsx](src/components/component-name.tsx)
+- **Import:** `import { ComponentName } from "@/components/component-name";`
+- **Client component:** yes/no
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `propA` | `string` | |
+| `propB?` | `boolean` | Default `false`. |
+
+```tsx
+<ComponentName propA="value" />
+```
+
+**Used by:** [module or route](path).
+
+**Notes:** variants, accessibility, gotchas.
+~~~
