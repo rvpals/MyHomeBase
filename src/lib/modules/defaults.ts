@@ -1,7 +1,8 @@
 import type { Module } from "./types";
 
 // Mirrors the seed INSERTs in migrations/0005_seed_stock_etfs_module.sql,
-// migrations/0012_seed_journal_module.sql, and migrations/0020_seed_csv_analysis_module.sql.
+// migrations/0012_seed_journal_module.sql, migrations/0020_seed_csv_analysis_module.sql,
+// and migrations/0030_seed_expense_module.sql.
 // "Reset to Default" restores the table to exactly this list — keep both in sync.
 export const DEFAULT_MODULES: Omit<Module, "id">[] = [
   {
@@ -30,5 +31,14 @@ export const DEFAULT_MODULES: Omit<Module, "id">[] = [
     sequence: 4,
     isVisible: true,
     icon: "folder",
+  },
+  {
+    slug: "expense",
+    shortName: "Expense",
+    longName: "Expense Tracker",
+    description: "Track credit-card spending by category.",
+    sequence: 5,
+    isVisible: true,
+    icon: "wallet",
   },
 ];

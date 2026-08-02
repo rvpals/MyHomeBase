@@ -5,8 +5,16 @@ export {
   updateQuoteSchema,
   type CreateQuoteInput,
   type UpdateQuoteInput,
+  type QuoteWriteData,
 } from "./schema";
 export type { DailyQuoteRepository } from "./ports";
+export {
+  parseThreeTwoOneNewsletter,
+  parseAttribution,
+  DEFAULT_IMPORT_CATEGORY,
+  type ParsedQuoteCandidate,
+  type ParsedNewsletter,
+} from "./newsletter-parser";
 export {
   listQuotes,
   getQuoteById,

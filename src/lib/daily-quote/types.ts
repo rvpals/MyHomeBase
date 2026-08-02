@@ -18,6 +18,8 @@ export interface DailyQuote {
   quote: string;
   author: string;
   category: QuoteCategory;
+  /** Where the quote came from (book, letter, talk…). Empty when unrecorded. */
+  source: string;
   createdAt: string;
   updatedAt: string;
 }

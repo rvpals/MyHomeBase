@@ -1,6 +1,12 @@
 import { z } from "zod";
 
-export const importTypeSchema = z.enum(["Position", "Transaction", "Performance", "Journal"]);
+export const importTypeSchema = z.enum([
+  "Position",
+  "Transaction",
+  "Performance",
+  "Journal",
+  "Expense",
+]);
 
 // Keys are CSV column indices, serialized as strings by JS object semantics.
 export const columnMappingSchema = z.record(z.string(), z.string());

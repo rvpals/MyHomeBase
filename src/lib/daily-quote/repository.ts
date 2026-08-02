@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { DailyQuoteRepository } from "./ports";
 import { dailyQuoteSchema } from "./schema";
-import type { CreateQuoteInput, UpdateQuoteInput } from "./schema";
+import type { QuoteWriteData } from "./schema";
 import type { DailyQuote } from "./types";
 
 interface DailyQuoteRow {
@@ -9,6 +9,7 @@ interface DailyQuoteRow {
   quote: string;
   author: string;
   category: string;
+  source: string;
   created_at: string;
   updated_at: string;
 }
@@ -19,6 +20,7 @@ function toDomain(row: DailyQuoteRow): DailyQuote {
     quote: row.quote,
     author: row.author,
     category: row.category,
+    source: row.source,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
@@ -49,11 +51,11 @@ export class SqliteDailyQuoteRepository implements DailyQuoteRepository {
     return row ? toDomain(row) : undefined;
   }
 
-  createQuote(input: CreateQuoteInput): DailyQuote {
+  createQuote(input: QuoteWriteData): DailyQuote {
     const result = this.db
       .prepare(
-        `INSERT INTO sys_daily_quotes (quote, author, category)
-         VALUES (@quote, @author, @category)`,
+        `INSERT INTO sys_daily_quotes (quote, author, category, source)
+         VALUES (@quote, @author, @category, @source)`,
       )
       .run(input);
 
@@ -62,11 +64,11 @@ export class SqliteDailyQuoteRepository implements DailyQuoteRepository {
     return created;
   }
 
-  updateQuote(id: number, input: UpdateQuoteInput): DailyQuote {
+  updateQuote(id: number, input: QuoteWriteData): DailyQuote {
     this.db
       .prepare(
         `UPDATE sys_daily_quotes
-         SET quote = @quote, author = @author, category = @category
+         SET quote = @quote, author = @author, category = @category, source = @source
          WHERE id = @id`,
       )
       .run({ ...input, id });

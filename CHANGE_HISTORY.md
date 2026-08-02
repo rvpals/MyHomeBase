@@ -1,5 +1,61 @@
 # Change History
 
+## 2026-08-02 09:19 — Expense tracker module; newsletter→quotes importer
+
+### Expense — a new module
+
+A credit-card expense tracker: record or import transactions, categorise them,
+and let fuzzy vendor rules do most of the categorising.
+
+- **Schema** (migrations `0029`, `0030`, `0031`): four `exp_` tables —
+  `exp_transactions` (transaction/posting dates, account, raw description, one
+  category, `amount_cents`, note, status, `created_by_user_id`),
+  `exp_creditcard_accounts`, `exp_categories`, and `exp_category_rules` — plus
+  the module's own row in `sys_modules` and a card image on each account.
+  Charges are positive and refunds negative; money is INTEGER cents throughout.
+- **Fuzzy auto-categorisation.** A rule matches the raw statement description
+  with a case-insensitive glob (`AMAZON*` → `online-purchase`, optionally also
+  setting a status). `*` is a wildcard, a pattern with no `*` matches anywhere,
+  and every other character is literal — card descriptions are full of `*`, `#`
+  and brackets, so patterns are never treated as regular expressions. Lowest
+  `priority` wins. Rules only fill a **blank** category, so they never overwrite
+  a manual choice and re-running them is safe; "Apply rules now" backfills
+  existing rows.
+- **CSV import**, plugged into the existing `csv-import` module as a new
+  `Expense` type: save a column mapping per card company and pick it next time.
+  Reads `$20.33`, `1,234.56`, `(45.00)` and trailing-minus amounts, supports a
+  single amount column or separate debit/credit columns, offers a sign flip, and
+  **skips rows already imported** (same card, date, description and amount),
+  reporting them in the summary.
+- **Card images.** A small BLOB per account (PNG/JPEG/WebP/GIF, ≤512 KB, SVG
+  rejected as it can carry script), served by an auth-gated route exactly like
+  user avatars. Account reads now list columns explicitly so the bytes never
+  load with a list. The thumbnail identifies the card in the accounts list and
+  the grid's Account column.
+- **UI**: summary tiles, transactions grid with inline edit, spend-by-category,
+  cards & categories, rules with a pattern help box and a "test this pattern"
+  match count, statement import, and a collapsed **Instruction** card
+  documenting the non-obvious behaviour (sign convention, duplicate matching,
+  delete semantics).
+- Guard rails: deleting a card is refused while transactions reference it;
+  deleting a category keeps the transactions and just uncategorises them.
+
+### Daily Quote — import from a newsletter
+
+- Parses a pasted James Clear "3-2-1" issue into quote candidates **without an
+  LLM** — the format is regular enough to read deterministically (numbered
+  headings, Roman-numeral items, quoted passages, `Source:` footers).
+- Blocks are sliced by section and numeral rather than by quote marks, because a
+  passage can quote something internally; the closing mark is only stripped when
+  the quote marks balance. Tests run against a real issue verbatim, zero-width
+  characters included.
+- Paste → **Parse** → review and edit each candidate (quote, author, source,
+  category, include/skip) → **Import**. Parsing happens in the browser, so
+  nothing is written until approved, and unrecognised sections are reported as
+  warnings rather than guessed at.
+- Migration `0028` adds `source` to `sys_daily_quotes` so citations survive; the
+  add/edit form and grid gained the field.
+
 ## 2026-07-30 22:27 — Result grid: search, filters, sticky header, column control, row selection
 
 Upgraded the shared `DataGrid` (the "result grid") used by User Management,

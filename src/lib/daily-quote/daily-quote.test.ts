@@ -1,14 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { createQuote, deleteQuote, getRandomQuote, listQuotes, updateQuote } from "./daily-quote";
 import type { DailyQuoteRepository } from "./ports";
-import type { CreateQuoteInput, UpdateQuoteInput } from "./schema";
+import type { QuoteWriteData } from "./schema";
 import type { DailyQuote } from "./types";
 
 // In-memory fake implementing the port — lets us test use-cases with no real DB.
+// Takes QuoteWriteData (the parsed shape a repository receives), not the looser
+// caller-facing input type.
 class FakeDailyQuoteRepository implements DailyQuoteRepository {
   private rows: DailyQuote[] = [];
   private nextId = 1;
-  public createCalls: CreateQuoteInput[] = [];
+  public createCalls: QuoteWriteData[] = [];
 
   listQuotes(): DailyQuote[] {
     return [...this.rows];
@@ -20,20 +22,21 @@ class FakeDailyQuoteRepository implements DailyQuoteRepository {
     if (this.rows.length === 0) return undefined;
     return this.rows[Math.floor(Math.random() * this.rows.length)];
   }
-  createQuote(input: CreateQuoteInput): DailyQuote {
+  createQuote(input: QuoteWriteData): DailyQuote {
     this.createCalls.push(input);
     const row: DailyQuote = {
       id: this.nextId++,
       quote: input.quote,
       author: input.author,
       category: input.category,
+      source: input.source,
       createdAt: "2026-07-26",
       updatedAt: "2026-07-26",
     };
     this.rows.push(row);
     return row;
   }
-  updateQuote(id: number, input: UpdateQuoteInput): DailyQuote {
+  updateQuote(id: number, input: QuoteWriteData): DailyQuote {
     const row = this.getQuoteById(id);
     if (!row) throw new Error(`No quote ${id}`);
     Object.assign(row, input);

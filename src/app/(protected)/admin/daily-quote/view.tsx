@@ -3,9 +3,11 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
+import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import type { CreateQuoteInput, DailyQuote, QuoteCategory } from "@/lib/daily-quote";
 import { createQuoteAction, deleteQuoteAction, updateQuoteAction } from "./actions";
+import { NewsletterImport } from "./newsletter-import";
 
 export interface DailyQuoteViewProps {
   quotes: DailyQuote[];
@@ -30,6 +32,7 @@ function QuoteForm({
 }) {
   const [quote, setQuote] = useState(initial?.quote ?? "");
   const [author, setAuthor] = useState(initial?.author ?? "");
+  const [source, setSource] = useState(initial?.source ?? "");
   const [category, setCategory] = useState<QuoteCategory>(initial?.category ?? categories[0]);
   const [error, setError] = useState<string | undefined>(undefined);
   const [isSaving, setIsSaving] = useState(false);
@@ -39,7 +42,7 @@ function QuoteForm({
     setIsSaving(true);
     setError(undefined);
     try {
-      const failure = await onSubmit({ quote, author, category });
+      const failure = await onSubmit({ quote, author, category, source });
       if (failure) {
         setError(failure);
         return;
@@ -47,6 +50,7 @@ function QuoteForm({
       if (!initial) {
         setQuote("");
         setAuthor("");
+        setSource("");
         setCategory(categories[0]);
       }
     } finally {
@@ -91,6 +95,15 @@ function QuoteForm({
           </select>
         </label>
       </div>
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium text-ink">Source</span>
+        <input
+          value={source}
+          onChange={(event) => setSource(event.target.value)}
+          className={inputClass}
+          placeholder="Optional — book, letter, talk…"
+        />
+      </label>
       {error && <p className="text-sm text-red-400">{error}</p>}
       <div className="flex gap-3">
         <Button type="submit" disabled={isSaving}>
@@ -137,6 +150,12 @@ export function DailyQuoteView({ quotes, categories }: DailyQuoteViewProps) {
       header: "Author",
       value: (row) => row.author,
       render: (row) => <span className="text-muted">{row.author}</span>,
+    },
+    {
+      key: "source",
+      header: "Source",
+      value: (row) => row.source,
+      render: (row) => <span className="text-xs text-muted">{row.source}</span>,
     },
     {
       key: "category",
@@ -203,6 +222,12 @@ export function DailyQuoteView({ quotes, categories }: DailyQuoteViewProps) {
           onSubmit={(input) => (editing ? handleUpdate(editing.id, input) : handleCreate(input))}
           onCancel={() => setEditing(null)}
         />
+      </div>
+
+      <div className="mt-6">
+        <CollapsibleCard title="Import from newsletter">
+          <NewsletterImport categories={categories} />
+        </CollapsibleCard>
       </div>
 
       <div className="mt-6">

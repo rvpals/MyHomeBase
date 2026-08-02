@@ -6,6 +6,7 @@ export const dailyQuoteSchema = z.object({
   quote: z.string().min(1),
   author: z.string().min(1),
   category: z.enum(QUOTE_CATEGORIES),
+  source: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -21,10 +22,17 @@ export const createQuoteSchema = z.object({
   quote: z.string().trim().min(1, "Quote text is required."),
   author: authorPreprocess,
   category: z.enum(QUOTE_CATEGORIES),
+  // Optional for callers (a hand-entered quote often has no citation); parse
+  // fills in "" so the repository always has a value to write.
+  source: z.string().trim().default(""),
 });
 
-export type CreateQuoteInput = z.infer<typeof createQuoteSchema>;
+// Input type (what callers pass): `source` may be omitted.
+export type CreateQuoteInput = z.input<typeof createQuoteSchema>;
 
 export const updateQuoteSchema = createQuoteSchema;
 
-export type UpdateQuoteInput = z.infer<typeof updateQuoteSchema>;
+export type UpdateQuoteInput = z.input<typeof updateQuoteSchema>;
+
+// Output type (post-parse): every field present. This is what the repository writes.
+export type QuoteWriteData = z.output<typeof createQuoteSchema>;

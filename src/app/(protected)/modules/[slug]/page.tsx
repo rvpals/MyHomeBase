@@ -6,6 +6,13 @@ import { listAccounts, listPerformanceRecords } from "@/lib/investment-accounts"
 import { listModuleSettingsFor } from "@/lib/module-settings";
 import { listNamedMappings } from "@/lib/csv-import";
 import {
+  listAccounts as listCardAccounts,
+  listCategories as listExpenseCategories,
+  listRules as listExpenseRules,
+  listTransactions as listExpenseTransactions,
+  totalsByCategory,
+} from "@/lib/expense";
+import {
   listCategories,
   listRecentEntries,
   listTags,
@@ -21,6 +28,7 @@ import { isAdmin, userHasModuleAccess } from "@/lib/user";
 import { deps } from "@/lib/wiring";
 import { CsvAnalyticsView } from "./csv-analytics-view";
 import { CsvImportView } from "./csv-import-view";
+import { ExpenseView } from "./expense-view";
 import { JournalView } from "./journal-view";
 import { NextDayActionsView } from "./next-day-actions-view";
 import { StockAccountsView, type AccountEntry } from "./stock-accounts-view";
@@ -31,6 +39,7 @@ import { StockWatchlistView, type WatchListEntry } from "./stock-watchlist-view"
 const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
 const CSV_ANALYSIS_MODULE_SLUG = "csv-analysis";
 const JOURNAL_MODULE_SLUG = "journal";
+const EXPENSE_MODULE_SLUG = "expense";
 const RECENT_JOURNAL_ENTRY_LIMIT = 25;
 
 // Today's date in the server's local timezone as YYYY-MM-DD. Deliberately not
@@ -41,7 +50,12 @@ function todayIsoLocal(): string {
   const pad = (value: number) => String(value).padStart(2, "0");
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
-const WIDE_LAYOUT_SLUGS = new Set([STOCK_ETFS_MODULE_SLUG, CSV_ANALYSIS_MODULE_SLUG, JOURNAL_MODULE_SLUG]);
+const WIDE_LAYOUT_SLUGS = new Set([
+  STOCK_ETFS_MODULE_SLUG,
+  CSV_ANALYSIS_MODULE_SLUG,
+  JOURNAL_MODULE_SLUG,
+  EXPENSE_MODULE_SLUG,
+]);
 
 function StockEtfsModuleBody() {
   const accountEntries: AccountEntry[] = listAccounts(deps.investmentAccountRepo).map((account) => ({
@@ -101,6 +115,19 @@ function ModuleBody({ slug, isCurrentUserAdmin }: { slug: string; isCurrentUserA
         preferences={preferences}
         namedMappings={listNamedMappings(deps.csvImportMappingRepo, "Journal")}
         canRunSql={isCurrentUserAdmin}
+      />
+    );
+  }
+
+  if (slug === EXPENSE_MODULE_SLUG) {
+    return (
+      <ExpenseView
+        transactions={listExpenseTransactions(deps.expenseRepo)}
+        accounts={listCardAccounts(deps.expenseRepo)}
+        categories={listExpenseCategories(deps.expenseRepo)}
+        rules={listExpenseRules(deps.expenseRepo)}
+        totals={totalsByCategory(deps.expenseRepo)}
+        namedMappings={listNamedMappings(deps.csvImportMappingRepo, "Expense")}
       />
     );
   }

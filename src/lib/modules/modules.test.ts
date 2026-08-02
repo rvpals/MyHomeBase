@@ -118,6 +118,7 @@ describe("resetModulesToDefaults", () => {
       "stock-etfs",
       "journal",
       "csv-analysis",
+      "expense",
     ]);
   });
 
