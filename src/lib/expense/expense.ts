@@ -2,14 +2,18 @@ import type { ExpenseRepository, TransactionFilter } from "./ports";
 import { matchesPattern, planRuleApplication } from "./rules";
 import {
   MAX_CARD_IMAGE_BYTES,
-  cardImageSchema,
+  MAX_CATEGORY_ICON_BYTES,
+  bulkTransactionEditSchema,
+  expenseImageUploadSchema,
   saveAccountSchema,
   saveCategorySchema,
   savePostImportRuleSchema,
   saveTransactionSchema,
+  transactionIdsSchema,
 } from "./schema";
 import type {
-  CardImageInput,
+  BulkTransactionEditInput,
+  ExpenseImageUploadInput,
   PostImportRuleWriteData,
   SaveAccountInput,
   SaveCategoryInput,
@@ -18,6 +22,7 @@ import type {
 } from "./schema";
 import type {
   CardImage,
+  CategoryIcon,
   CategoryTotal,
   CreditCardAccount,
   ExpenseCategory,
@@ -25,6 +30,27 @@ import type {
   PostImportRule,
   RuleActionField,
 } from "./types";
+
+/**
+ * Decodes a browser-supplied base64 upload into bytes, refusing anything that
+ * isn't an allowed image type or that busts the caller's size cap. Shared by card
+ * art and category icons so both get the same guarantees however they're called
+ * (web, CLI, test) — the cap is a parameter because the two differ there.
+ */
+function decodeImageUpload(
+  input: ExpenseImageUploadInput,
+  maxBytes: number,
+): { data: Buffer; mimeType: string } {
+  const { mimeType, base64Data } = expenseImageUploadSchema.parse(input);
+
+  const data = Buffer.from(base64Data, "base64");
+  if (data.length === 0) throw new Error("The image could not be read.");
+  if (data.length > maxBytes) {
+    throw new Error(`Image is too large — keep it under ${Math.round(maxBytes / 1024)} KB.`);
+  }
+
+  return { data, mimeType };
+}
 
 // --- Credit-card accounts ---------------------------------------------------
 
@@ -63,26 +89,17 @@ export function deleteAccount(repo: ExpenseRepository, id: number): void {
 }
 
 /**
- * Stores a small image for a card. Decodes the browser-supplied base64, then
- * enforces the type allowlist and size cap here rather than in the UI, so the
- * limits hold however the use-case is called (web, CLI, test).
+ * Stores a small image for a card. The type allowlist and size cap are enforced
+ * here rather than in the UI, so the limits hold however the use-case is called
+ * (web, CLI, test).
  */
 export function setAccountImage(
   repo: ExpenseRepository,
   id: number,
-  input: CardImageInput,
+  input: ExpenseImageUploadInput,
 ): void {
   if (!repo.getAccountById(id)) throw new Error(`No credit-card account with id ${id}.`);
-  const { mimeType, base64Data } = cardImageSchema.parse(input);
-
-  const data = Buffer.from(base64Data, "base64");
-  if (data.length === 0) throw new Error("The image could not be read.");
-  if (data.length > MAX_CARD_IMAGE_BYTES) {
-    const limitKb = Math.round(MAX_CARD_IMAGE_BYTES / 1024);
-    throw new Error(`Image is too large — keep it under ${limitKb} KB.`);
-  }
-
-  repo.setAccountImage(id, { data, mimeType });
+  repo.setAccountImage(id, decodeImageUpload(input, MAX_CARD_IMAGE_BYTES));
 }
 
 /** Removes a card's image, leaving the account itself untouched. */
@@ -112,6 +129,34 @@ export function upsertCategory(
 /** Removes the category and clears it from every transaction that used it. */
 export function deleteCategory(repo: ExpenseRepository, name: string): void {
   repo.deleteCategory(name);
+}
+
+/**
+ * Stores the icon shown beside a category in the pickers and the grid. The
+ * category must already exist — creating one as a side effect of an upload would
+ * let a typo add a category nobody asked for.
+ */
+export function setCategoryIcon(
+  repo: ExpenseRepository,
+  name: string,
+  input: ExpenseImageUploadInput,
+): void {
+  if (!repo.getCategoryByName(name)) throw new Error(`No category named "${name}".`);
+  repo.setCategoryIcon(name, decodeImageUpload(input, MAX_CATEGORY_ICON_BYTES));
+}
+
+/** Removes a category's icon, leaving the category itself untouched. */
+export function clearCategoryIcon(repo: ExpenseRepository, name: string): void {
+  if (!repo.getCategoryByName(name)) throw new Error(`No category named "${name}".`);
+  repo.setCategoryIcon(name, undefined);
+}
+
+/** Used only by the icon-serving route — never by anything rendering a list. */
+export function getCategoryIcon(
+  repo: ExpenseRepository,
+  name: string,
+): CategoryIcon | undefined {
+  return repo.getCategoryIcon(name);
 }
 
 // --- Transactions -----------------------------------------------------------
@@ -163,6 +208,53 @@ export function updateTransaction(
 
 export function deleteTransaction(repo: ExpenseRepository, id: number): void {
   repo.deleteTransaction(id);
+}
+
+/**
+ * Deletes a whole selection at once, returning how many rows went. Ids that no
+ * longer exist are simply not counted — a stale selection (someone else deleted
+ * the row first) shouldn't fail the rest of the batch.
+ */
+export function deleteTransactions(repo: ExpenseRepository, ids: number[]): number {
+  return repo.deleteTransactions(dedupe(transactionIdsSchema.parse(ids)));
+}
+
+/**
+ * Applies the same value to the same field across a selection.
+ *
+ * Only the fields named in `changes` are written; everything else on each row is
+ * left alone, so this can't clobber the parts of a transaction the caller wasn't
+ * editing. Which fields are eligible is decided by the schema (notably *not*
+ * date or amount), so the rule holds for the CLI as much as the web app.
+ *
+ * Returns the number of rows changed.
+ */
+export function bulkEditTransactions(
+  repo: ExpenseRepository,
+  ids: number[],
+  changes: BulkTransactionEditInput,
+): number {
+  const validatedIds = dedupe(transactionIdsSchema.parse(ids));
+  const validated = bulkTransactionEditSchema.parse(changes);
+
+  // Same guarantees a single-row update gives: the target card must exist, and a
+  // category typed in here joins the managed list.
+  if (
+    validated.transactionAccountId !== undefined &&
+    !repo.getAccountById(validated.transactionAccountId)
+  ) {
+    throw new Error(`No credit-card account with id ${validated.transactionAccountId}.`);
+  }
+  if (validated.categoryName !== undefined && validated.categoryName !== "") {
+    repo.registerCategoriesIfMissing([validated.categoryName]);
+  }
+
+  return repo.bulkUpdateTransactions(validatedIds, validated);
+}
+
+/** A selection can repeat an id; the SQL `IN (…)` shouldn't. */
+function dedupe(ids: number[]): number[] {
+  return [...new Set(ids)];
 }
 
 // --- Rules ------------------------------------------------------------------

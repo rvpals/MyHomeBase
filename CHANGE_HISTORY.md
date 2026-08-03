@@ -1,5 +1,64 @@
 # Change History
 
+## 2026-08-03 15:24 — Category icons, ticker logos, grid filters/aggregates, three more themes
+
+Four independent pieces of work that were in the tree together at this checkpoint.
+
+### Expense: category icons (migration 0034)
+
+- Each category can carry a small uploaded image, shown wherever the category
+  appears: the picker on the transaction form and the bulk-edit dialog, the
+  Category column of the grid, the post-import rules (editor and list), the
+  dashboard rollup and the charts totals.
+- `exp_categories` gains `icon_image` (BLOB) + `icon_image_mime_type`, both
+  nullable — "no icon" is a real state. Same pattern as
+  `exp_creditcard_accounts.card_image` (0031) and `sys_users.avatar`: bytes are
+  served by `/api/expense/categories/[name]/icon`, never inlined in a page
+  payload, with `updatedAt` as a cache-buster.
+- **`listCategories` / `getCategoryByName` changed from `SELECT *` to an explicit
+  column list.** Without this, adding a BLOB to that table would drag every
+  category's icon bytes into every page render.
+- One upload schema now covers both images: `CARD_IMAGE_MIME_TYPES` →
+  `EXPENSE_IMAGE_MIME_TYPES`, `cardImageSchema`/`CardImageInput` →
+  `expenseImageUploadSchema`/`ExpenseImageUploadInput`, sharing a
+  `decodeImageUpload` helper. Caps stay distinct: 512 KB for card art,
+  **128 KB** for icons. Uploading to a category that doesn't exist is refused.
+- The category list under Meta Data is now a row per category rather than chips —
+  a chip had no room for the icon controls.
+
+### New component: `IconSelect`
+
+- A combobox whose options carry an image, because neither `<select>` nor
+  `<datalist>` can render one — which is what the three category pickers needed.
+  Keyboard-driven (arrows/Enter/Esc), closes on outside click, and by default
+  typing still filters *and* commits, so naming a brand-new category on a
+  transaction or a rule keeps auto-registering it. Registered in `components.md`.
+
+### Stocks: ticker logos (migration 0033)
+
+- `stk_ticker_logos` caches logo bytes in the DB; `/api/stocks/tickers/[ticker]/logo`
+  downloads on first request and serves from cache afterwards. A "nothing found"
+  result is cached too, so a symbol isn't re-requested on every render.
+- New `TickerLogo` component (monogram fallback — a missing logo is the normal
+  case for ETFs), used across the positions, transactions, watch list, analytics
+  and next-day-actions grids.
+
+### DataGrid: filter expressions, aggregates, and a shared `Modal`
+
+- Column filters understand comparison and range expressions
+  (`parseFilterExpression` in `src/lib/shared/table.ts`).
+- Columns can declare an `aggregate` (`sum`/`avg`/`min`/`max`/`count`) with a
+  footer total that follows the current filters — used for net spend in the
+  Expense grid.
+- Dialog markup extracted into a registered `Modal` component (overlay, Esc and
+  focus handling) and adopted by the views that had hand-rolled it.
+
+### Three more themes, three more icon sets
+
+- Themes: **Sea Glass** (second light theme), **Midnight Slate**, **Copper Vault**.
+- Icon sets: **Tabler**, **Material Symbols**, **MingCute**, with glyphs baked by
+  `npm run gen:icons`.
+
 ## 2026-08-02 23:28 — Expense: automatic CSV import, post-import processing, tree-nav overhaul
 
 ### Automatic CSV import

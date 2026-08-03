@@ -1,11 +1,13 @@
 import type {
   AccountWriteData,
+  BulkTransactionEditData,
   CategoryWriteData,
   PostImportRuleWriteData,
   TransactionWriteData,
 } from "./schema";
 import type {
   CardImage,
+  CategoryIcon,
   CategoryTotal,
   CreditCardAccount,
   ExpenseCategory,
@@ -46,6 +48,10 @@ export interface ExpenseRepository {
   deleteCategory(name: string): void;
   /** Insert-if-absent, so a name used on a transaction always exists. */
   registerCategoriesIfMissing(names: string[]): void;
+  /** Reads the icon bytes. Only the icon-serving route calls this. */
+  getCategoryIcon(name: string): CategoryIcon | undefined;
+  /** Passing undefined clears the icon. */
+  setCategoryIcon(name: string, icon: CategoryIcon | undefined): void;
 
   // Transactions
   listTransactions(filter?: TransactionFilter): ExpenseTransaction[];
@@ -53,6 +59,14 @@ export interface ExpenseRepository {
   createTransaction(input: TransactionWriteData, createdByUserId: number): ExpenseTransaction;
   updateTransaction(id: number, input: TransactionWriteData): ExpenseTransaction;
   deleteTransaction(id: number): void;
+  /** Deletes many rows in one go, returning how many actually went. */
+  deleteTransactions(ids: number[]): number;
+  /**
+   * Writes the same values to every listed row, all in one statement. Fields
+   * absent from `changes` keep their current values. Returns the row count
+   * affected.
+   */
+  bulkUpdateTransactions(ids: number[], changes: BulkTransactionEditData): number;
   /** True when an identical row already exists — used to skip re-imports. */
   transactionExists(input: {
     transactionAccountId: number;

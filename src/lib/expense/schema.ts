@@ -19,22 +19,36 @@ export const creditCardAccountSchema = z.object({
 });
 
 /**
- * What a card image may be. SVG is excluded on purpose — it can carry script and
- * would be served from the app's own origin. The cap keeps these to the small
- * "tell the cards apart" images they're meant to be.
+ * What an uploaded image in this module may be — card art and category icons
+ * alike. SVG is excluded on purpose: it can carry script and would be served from
+ * the app's own origin.
  */
-export const CARD_IMAGE_MIME_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
-export const MAX_CARD_IMAGE_BYTES = 512 * 1024;
+export const EXPENSE_IMAGE_MIME_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+] as const;
 
-export const cardImageSchema = z.object({
-  mimeType: z.enum(CARD_IMAGE_MIME_TYPES, {
+/** Cap for card art — enough for readable card artwork, not for a photo. */
+export const MAX_CARD_IMAGE_BYTES = 512 * 1024;
+/** Cap for a category icon: a quarter of the card cap, since it renders tiny. */
+export const MAX_CATEGORY_ICON_BYTES = 128 * 1024;
+
+/**
+ * One image on its way in from a browser. Shared by card art and category icons —
+ * the shape and the type allowlist are identical; only the size cap differs, and
+ * that is enforced by the use-case that stores it.
+ */
+export const expenseImageUploadSchema = z.object({
+  mimeType: z.enum(EXPENSE_IMAGE_MIME_TYPES, {
     message: "Use a PNG, JPEG, WebP or GIF image.",
   }),
   /** Base64 of the file, as read in the browser. */
   base64Data: z.string().min(1, "The image is empty."),
 });
 
-export type CardImageInput = z.infer<typeof cardImageSchema>;
+export type ExpenseImageUploadInput = z.infer<typeof expenseImageUploadSchema>;
 
 export const saveAccountSchema = z.object({
   name: z.string().trim().min(1, "Account name is required."),
@@ -48,6 +62,7 @@ export type AccountWriteData = z.output<typeof saveAccountSchema>;
 export const expenseCategorySchema = z.object({
   name: z.string().min(1),
   description: z.string(),
+  iconMimeType: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -94,6 +109,38 @@ export const saveTransactionSchema = z.object({
 
 export type SaveTransactionInput = z.input<typeof saveTransactionSchema>;
 export type TransactionWriteData = z.output<typeof saveTransactionSchema>;
+
+/**
+ * The fields a bulk edit may set, and the only ones. Transaction date and amount
+ * are absent on purpose: they identify a transaction against the statement it
+ * came from, so applying one value across a selection could only ever corrupt
+ * the ledger. Leaving them out of the schema means no caller — web, CLI or
+ * test — can reach them, rather than relying on the UI to hide them.
+ *
+ * Every field is optional; an omitted field is left untouched. A field that *is*
+ * present is written verbatim, so passing an empty string clears it.
+ */
+export const bulkTransactionEditSchema = z
+  .object({
+    transactionAccountId: z.number().int().positive("Pick the card this belongs to.").optional(),
+    transactionDescription: z.string().trim().optional(),
+    categoryName: z.string().trim().optional(),
+    vendor: z.string().trim().optional(),
+    note: z.string().trim().optional(),
+    status: transactionStatusSchema.optional(),
+    processed: z.boolean().optional(),
+  })
+  .refine((changes) => Object.values(changes).some((value) => value !== undefined), {
+    message: "Enable at least one field to change.",
+  });
+
+export type BulkTransactionEditInput = z.input<typeof bulkTransactionEditSchema>;
+export type BulkTransactionEditData = z.output<typeof bulkTransactionEditSchema>;
+
+/** The ids a bulk delete or bulk edit applies to. */
+export const transactionIdsSchema = z
+  .array(z.number().int().positive())
+  .min(1, "Select at least one transaction.");
 
 export const ruleActionFieldSchema = z.enum(RULE_ACTION_FIELDS);
 

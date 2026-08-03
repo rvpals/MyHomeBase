@@ -15,7 +15,9 @@ import {
   type NamedMapping,
 } from "@/lib/csv-import";
 import {
+  bulkEditTransactions,
   clearAccountImage,
+  clearCategoryIcon,
   countUnprocessed,
   createAccount,
   createRule,
@@ -25,17 +27,20 @@ import {
   deleteCategory,
   deleteRule,
   deleteTransaction,
+  deleteTransactions,
   importExpenseCsv,
   previewPatternMatches,
   resetProcessedFlags,
   runCleanupBatch,
   setAccountImage,
+  setCategoryIcon,
   updateAccount,
   updateRule,
   updateTransaction,
   upsertCategory,
   type AutoImportRunSummary,
-  type CardImageInput,
+  type BulkTransactionEditInput,
+  type ExpenseImageUploadInput,
   type CleanupBatchResult,
   type ExpenseImportSummary,
   type ExpenseSettings,
@@ -94,7 +99,7 @@ export async function saveAccountImageAction(
   base64Data: string,
 ): Promise<ActionResult> {
   try {
-    setAccountImage(deps.expenseRepo, id, { mimeType, base64Data } as CardImageInput);
+    setAccountImage(deps.expenseRepo, id, { mimeType, base64Data } as ExpenseImageUploadInput);
   } catch (error) {
     return toErrorResult(error, "Failed to save the card image.");
   }
@@ -144,6 +149,38 @@ export async function deleteCategoryAction(name: string): Promise<ActionResult> 
   return { ok: true };
 }
 
+/**
+ * Stores a category's icon. Base64 rather than raw bytes for the same reason as
+ * the card image: it survives server-action serialization cleanly, and the
+ * use-case decodes it and enforces the type and size limits.
+ */
+export async function saveCategoryIconAction(
+  name: string,
+  mimeType: string,
+  base64Data: string,
+): Promise<ActionResult> {
+  try {
+    setCategoryIcon(deps.expenseRepo, name, {
+      mimeType,
+      base64Data,
+    } as ExpenseImageUploadInput);
+  } catch (error) {
+    return toErrorResult(error, "Failed to save the category icon.");
+  }
+  revalidatePath(EXPENSE_MODULE_PATH);
+  return { ok: true };
+}
+
+export async function clearCategoryIconAction(name: string): Promise<ActionResult> {
+  try {
+    clearCategoryIcon(deps.expenseRepo, name);
+  } catch (error) {
+    return toErrorResult(error, "Failed to remove the category icon.");
+  }
+  revalidatePath(EXPENSE_MODULE_PATH);
+  return { ok: true };
+}
+
 // --- transactions -----------------------------------------------------------
 
 export async function saveTransactionAction(
@@ -173,6 +210,34 @@ export async function deleteTransactionAction(id: number): Promise<ActionResult>
   }
   revalidatePath(EXPENSE_MODULE_PATH);
   return { ok: true };
+}
+
+/** How many rows a bulk operation touched, so the view can report it. */
+export interface BulkActionResult extends ActionResult {
+  count?: number;
+}
+
+export async function deleteTransactionsAction(ids: number[]): Promise<BulkActionResult> {
+  try {
+    const count = deleteTransactions(deps.expenseRepo, ids);
+    revalidatePath(EXPENSE_MODULE_PATH);
+    return { ok: true, count };
+  } catch (error) {
+    return toErrorResult(error, "Failed to delete the transactions.");
+  }
+}
+
+export async function bulkEditTransactionsAction(
+  ids: number[],
+  changes: BulkTransactionEditInput,
+): Promise<BulkActionResult> {
+  try {
+    const count = bulkEditTransactions(deps.expenseRepo, ids, changes);
+    revalidatePath(EXPENSE_MODULE_PATH);
+    return { ok: true, count };
+  } catch (error) {
+    return toErrorResult(error, "Failed to apply the changes.");
+  }
 }
 
 // --- rules ------------------------------------------------------------------

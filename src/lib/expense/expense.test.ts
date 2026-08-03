@@ -1,23 +1,29 @@
 import { describe, expect, it } from "vitest";
 import {
+  bulkEditTransactions,
   clearAccountImage,
+  clearCategoryIcon,
   countUnprocessed,
   createAccount,
   createRule,
   createTransaction,
   deleteAccount,
   deleteCategory,
+  deleteTransactions,
   listCategories,
   listTransactions,
   getAccountImage,
+  getCategoryIcon,
   previewPatternMatches,
   resetProcessedFlags,
   runCleanupBatch,
   setAccountImage,
+  setCategoryIcon,
   totalsByCategory,
   updateTransaction,
+  upsertCategory,
 } from "./expense";
-import { MAX_CARD_IMAGE_BYTES } from "./schema";
+import { MAX_CARD_IMAGE_BYTES, MAX_CATEGORY_ICON_BYTES } from "./schema";
 import type { ExpenseRepository, TransactionFilter } from "./ports";
 import type {
   AccountWriteData,
@@ -27,6 +33,7 @@ import type {
 } from "./schema";
 import type {
   CardImage,
+  CategoryIcon,
   CategoryTotal,
   CreditCardAccount,
   ExpenseCategory,
@@ -41,6 +48,7 @@ function fakeRepo(): ExpenseRepository {
   let transactions: ExpenseTransaction[] = [];
   let rules: PostImportRule[] = [];
   const images = new Map<number, CardImage>();
+  const categoryIcons = new Map<string, CategoryIcon>();
   let nextAccountId = 1;
   let nextTransactionId = 1;
   let nextRuleId = 1;
@@ -112,6 +120,14 @@ function fakeRepo(): ExpenseRepository {
         }
       }
     },
+    getCategoryIcon: (name) => categoryIcons.get(name),
+    setCategoryIcon(name, icon) {
+      if (icon) categoryIcons.set(name, icon);
+      else categoryIcons.delete(name);
+      categories = categories.map((category) =>
+        category.name === name ? { ...category, iconMimeType: icon?.mimeType } : category,
+      );
+    },
 
     listTransactions: (filter) => transactions.filter((t) => matchesFilter(t, filter)),
     getTransactionById: (id) => transactions.find((transaction) => transaction.id === id),
@@ -134,6 +150,21 @@ function fakeRepo(): ExpenseRepository {
     },
     deleteTransaction(id) {
       transactions = transactions.filter((transaction) => transaction.id !== id);
+    },
+    deleteTransactions(ids) {
+      const before = transactions.length;
+      transactions = transactions.filter((transaction) => !ids.includes(transaction.id));
+      return before - transactions.length;
+    },
+    bulkUpdateTransactions(ids, changes) {
+      let changed = 0;
+      transactions = transactions.map((transaction) => {
+        if (!ids.includes(transaction.id)) return transaction;
+        changed += 1;
+        // Only the named fields are written; zod has already stripped the rest.
+        return { ...transaction, ...changes };
+      });
+      return changed;
     },
     transactionExists: (input) =>
       transactions.some(
@@ -367,6 +398,73 @@ describe("card images", () => {
     expect(() =>
       setAccountImage(repo, 999, { mimeType: "image/png", base64Data: tinyPngBase64 }),
     ).toThrow(/No credit-card account/);
+  });
+});
+
+describe("category icons", () => {
+  const tinyPngBase64 = Buffer.from("fake png bytes").toString("base64");
+
+  it("stores an icon and records its mime type on the category", () => {
+    const repo = fakeRepo();
+    upsertCategory(repo, { name: "groceries" });
+
+    setCategoryIcon(repo, "groceries", { mimeType: "image/png", base64Data: tinyPngBase64 });
+
+    expect(getCategoryIcon(repo, "groceries")?.mimeType).toBe("image/png");
+    expect(repo.getCategoryByName("groceries")?.iconMimeType).toBe("image/png");
+  });
+
+  it("clears the icon again", () => {
+    const repo = fakeRepo();
+    upsertCategory(repo, { name: "groceries" });
+    setCategoryIcon(repo, "groceries", { mimeType: "image/png", base64Data: tinyPngBase64 });
+
+    clearCategoryIcon(repo, "groceries");
+
+    expect(getCategoryIcon(repo, "groceries")).toBeUndefined();
+    expect(repo.getCategoryByName("groceries")?.iconMimeType).toBeUndefined();
+  });
+
+  it("rejects a disallowed type, including SVG", () => {
+    const repo = fakeRepo();
+    upsertCategory(repo, { name: "groceries" });
+    expect(() =>
+      setCategoryIcon(repo, "groceries", {
+        mimeType: "image/svg+xml" as never,
+        base64Data: tinyPngBase64,
+      }),
+    ).toThrow();
+  });
+
+  it("rejects an icon over the size cap", () => {
+    const repo = fakeRepo();
+    upsertCategory(repo, { name: "groceries" });
+    const tooBig = Buffer.alloc(MAX_CATEGORY_ICON_BYTES + 1).toString("base64");
+
+    expect(() =>
+      setCategoryIcon(repo, "groceries", { mimeType: "image/png", base64Data: tooBig }),
+    ).toThrow(/too large/);
+  });
+
+  it("caps icons tighter than card art", () => {
+    const repo = fakeRepo();
+    upsertCategory(repo, { name: "groceries" });
+    // Comfortably inside the card cap, over the icon cap — proves the two limits
+    // are actually distinct rather than both reading the same constant.
+    const cardSized = Buffer.alloc(MAX_CATEGORY_ICON_BYTES + 1024).toString("base64");
+    expect(MAX_CATEGORY_ICON_BYTES).toBeLessThan(MAX_CARD_IMAGE_BYTES);
+
+    expect(() =>
+      setCategoryIcon(repo, "groceries", { mimeType: "image/png", base64Data: cardSized }),
+    ).toThrow(/too large/);
+  });
+
+  it("refuses an icon for a category that doesn't exist", () => {
+    const repo = fakeRepo();
+    expect(() =>
+      setCategoryIcon(repo, "nope", { mimeType: "image/png", base64Data: tinyPngBase64 }),
+    ).toThrow(/No category named/);
+    expect(() => clearCategoryIcon(repo, "nope")).toThrow(/No category named/);
   });
 });
 
@@ -626,5 +724,182 @@ describe("updateTransaction", () => {
         amountCents: 1,
       }),
     ).toThrow();
+  });
+});
+
+// --- bulk operations --------------------------------------------------------
+
+/** Three transactions on one card, so a selection can be a strict subset. */
+function seedThree(repo: ExpenseRepository) {
+  const account = seedAccount(repo);
+  const transactions = ["ALPHA", "BETA", "GAMMA"].map((description, index) =>
+    createTransaction(
+      repo,
+      {
+        transactionDate: "2026-07-15",
+        transactionAccountId: account.id,
+        transactionDescription: description,
+        amountCents: (index + 1) * 1000,
+        vendor: `vendor ${description}`,
+        note: `note ${description}`,
+      },
+      1,
+    ),
+  );
+  return { account, transactions };
+}
+
+describe("deleteTransactions", () => {
+  it("deletes only the selected rows and reports the count", () => {
+    const repo = fakeRepo();
+    const { transactions } = seedThree(repo);
+
+    const deleted = deleteTransactions(repo, [transactions[0].id, transactions[2].id]);
+
+    expect(deleted).toBe(2);
+    expect(listTransactions(repo).map((t) => t.transactionDescription)).toEqual(["BETA"]);
+  });
+
+  it("counts a repeated id once", () => {
+    const repo = fakeRepo();
+    const { transactions } = seedThree(repo);
+
+    expect(deleteTransactions(repo, [transactions[0].id, transactions[0].id])).toBe(1);
+    expect(listTransactions(repo)).toHaveLength(2);
+  });
+
+  it("ignores an id that no longer exists rather than failing the batch", () => {
+    const repo = fakeRepo();
+    const { transactions } = seedThree(repo);
+
+    const deleted = deleteTransactions(repo, [transactions[0].id, 9999]);
+
+    expect(deleted).toBe(1);
+    expect(listTransactions(repo)).toHaveLength(2);
+  });
+
+  it("rejects an empty selection", () => {
+    expect(() => deleteTransactions(fakeRepo(), [])).toThrow(/at least one transaction/);
+  });
+});
+
+describe("bulkEditTransactions", () => {
+  it("applies one value to the named field across the selection", () => {
+    const repo = fakeRepo();
+    const { transactions } = seedThree(repo);
+
+    const changed = bulkEditTransactions(repo, [transactions[0].id, transactions[1].id], {
+      categoryName: "Restaurant",
+      status: "reconciled",
+    });
+
+    expect(changed).toBe(2);
+    const saved = listTransactions(repo);
+    expect(saved[0]).toMatchObject({ categoryName: "Restaurant", status: "reconciled" });
+    expect(saved[1]).toMatchObject({ categoryName: "Restaurant", status: "reconciled" });
+    // Untouched row keeps its own values.
+    expect(saved[2]).toMatchObject({ categoryName: "", status: "new" });
+  });
+
+  it("leaves fields it wasn't given alone", () => {
+    const repo = fakeRepo();
+    const { transactions } = seedThree(repo);
+
+    bulkEditTransactions(repo, [transactions[0].id], { vendor: "TGI Friday" });
+
+    expect(repo.getTransactionById(transactions[0].id)).toMatchObject({
+      vendor: "TGI Friday",
+      note: "note ALPHA", // untouched
+      transactionDescription: "ALPHA", // untouched
+      amountCents: 1000, // untouched
+    });
+  });
+
+  it("clears a field when the value given is empty", () => {
+    const repo = fakeRepo();
+    const { transactions } = seedThree(repo);
+
+    bulkEditTransactions(repo, [transactions[0].id], { note: "" });
+
+    expect(repo.getTransactionById(transactions[0].id)?.note).toBe("");
+  });
+
+  it("can re-queue rows for the clean-up run by clearing processed", () => {
+    const repo = fakeRepo();
+    const { transactions } = seedThree(repo);
+    bulkEditTransactions(repo, transactions.map((t) => t.id), { processed: true });
+    expect(countUnprocessed(repo)).toBe(0);
+
+    bulkEditTransactions(repo, [transactions[0].id], { processed: false });
+
+    expect(countUnprocessed(repo)).toBe(1);
+  });
+
+  it("moves the selection to another card", () => {
+    const repo = fakeRepo();
+    const { transactions } = seedThree(repo);
+    const other = createAccount(repo, { name: "Amex", creditLineCents: 100000 });
+
+    bulkEditTransactions(repo, [transactions[0].id], { transactionAccountId: other.id });
+
+    expect(repo.getTransactionById(transactions[0].id)?.transactionAccountId).toBe(other.id);
+  });
+
+  it("auto-registers a category the bulk edit introduces", () => {
+    const repo = fakeRepo();
+    const { transactions } = seedThree(repo);
+
+    bulkEditTransactions(repo, [transactions[0].id], { categoryName: "Utilities" });
+
+    expect(listCategories(repo).map((category) => category.name)).toContain("Utilities");
+  });
+
+  it("rejects an unknown account", () => {
+    const repo = fakeRepo();
+    const { transactions } = seedThree(repo);
+
+    expect(() =>
+      bulkEditTransactions(repo, [transactions[0].id], { transactionAccountId: 999 }),
+    ).toThrow(/No credit-card account/);
+  });
+
+  it("rejects a change set with nothing enabled", () => {
+    const repo = fakeRepo();
+    const { transactions } = seedThree(repo);
+
+    expect(() => bulkEditTransactions(repo, [transactions[0].id], {})).toThrow(
+      /at least one field/,
+    );
+  });
+
+  it("rejects an empty selection", () => {
+    expect(() => bulkEditTransactions(fakeRepo(), [], { vendor: "x" })).toThrow(
+      /at least one transaction/,
+    );
+  });
+
+  it("rejects an unknown status", () => {
+    const repo = fakeRepo();
+    const { transactions } = seedThree(repo);
+
+    expect(() =>
+      bulkEditTransactions(repo, [transactions[0].id], { status: "paid" as never }),
+    ).toThrow();
+  });
+
+  it("never writes the transaction date or the amount, even if asked", () => {
+    const repo = fakeRepo();
+    const { transactions } = seedThree(repo);
+
+    bulkEditTransactions(repo, [transactions[0].id], {
+      vendor: "TGI Friday",
+      transactionDate: "1999-01-01",
+      amountCents: 1,
+    } as never);
+
+    expect(repo.getTransactionById(transactions[0].id)).toMatchObject({
+      transactionDate: "2026-07-15",
+      amountCents: 1000,
+    });
   });
 });

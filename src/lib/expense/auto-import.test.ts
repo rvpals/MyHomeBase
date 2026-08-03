@@ -210,6 +210,7 @@ const EXPENSE_MIGRATIONS = [
   "0029_create_expense_tables.sql",
   "0031_add_card_image_to_expense_accounts.sql",
   "0032_post_import_processing.sql",
+  "0034_add_icon_image_to_expense_categories.sql",
 ];
 
 function memoryExpenseRepo(): { repo: ExpenseRepository; db: Database.Database } {

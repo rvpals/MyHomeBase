@@ -1,7 +1,12 @@
-// Static reference for the Expense module — how the pieces fit together and the
-// behaviours that aren't obvious from the UI (sign convention, duplicate
-// detection, how rules decide). Pure content, no state; rendered inside a
-// collapsed CollapsibleCard so it's there when wanted and out of the way when not.
+// Per-section reference for the Expense module — how the pieces fit together and
+// the behaviours that aren't obvious from the UI (sign convention, duplicate
+// detection, how rules decide).
+//
+// Each section shows only the part that applies to it; Main carries the
+// module-wide overview. Pure content, no state, rendered inside a collapsed
+// CollapsibleCard so it's there when wanted and out of the way when not.
+
+import type { ExpenseSection } from "./expense-sections";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -16,15 +21,14 @@ function Code({ children }: { children: React.ReactNode }) {
   return <code className="font-mono text-xs text-brass-dark">{children}</code>;
 }
 
-export function ExpenseInstructions() {
+function MainInstructions() {
   return (
-    <div className="flex flex-col gap-5">
+    <>
       <p className="text-sm text-muted">
         This module tracks credit-card spending: you add cards, import statements (or type
         transactions by hand), and categorise them — with rules doing most of the categorising for
         you.
       </p>
-
       <Section title="How this module is laid out">
         <p>Use the tree on the left. Each section does one job:</p>
         <ul className="flex list-disc flex-col gap-1 pl-5">
@@ -103,13 +107,26 @@ export function ExpenseInstructions() {
           </li>
         </ul>
       </Section>
+    </>
+  );
+}
 
+function TransactionsInstructions() {
+  return (
+    <>
       <Section title="Transactions">
         <ul className="flex list-disc flex-col gap-1 pl-5">
           <li>
-            <strong className="text-ink">Transaction date</strong> is when the purchase happened;{" "}
-            <strong className="text-ink">posting date</strong> is when the card posted it. The
-            posting date is optional — plenty of statements don&apos;t include one.
+            <strong className="text-ink">Transaction date</strong> is when the purchase happened, and
+            it&apos;s the date this module works from: sorting, the date filters, the charts and
+            duplicate detection all use it.
+          </li>
+          <li>
+            <strong className="text-ink">Posting date</strong> (the <em>Posted</em> column) is when
+            the card posted the charge — usually a day or three later. It&apos;s optional, and{" "}
+            <strong className="text-ink">kept for reference only</strong>: nothing is calculated from
+            it, and rules can&apos;t set it. Blank shows as <Code>—</Code>, which is normal — plenty
+            of statements don&apos;t include one.
           </li>
           <li>
             <strong className="text-ink">Description</strong> is the raw vendor text from the
@@ -148,7 +165,110 @@ export function ExpenseInstructions() {
           </li>
         </ul>
       </Section>
+      <Section title="The transactions grid">
+        <ul className="flex list-disc flex-col gap-1 pl-5">
+          <li>
+            Search across every column, or open <strong className="text-ink">Filters</strong> for
+            per-column filtering. Click a header to sort.
+          </li>
+          <li>
+            <strong className="text-ink">Columns</strong> lets you hide and reorder columns; your
+            arrangement is remembered on this device. Alongside the usual fields there are{" "}
+            <strong className="text-ink">Vendor</strong> and{" "}
+            <strong className="text-ink">Processed</strong> columns — filter Processed to{" "}
+            <Code>no</Code> to see exactly what the next clean-up will touch.
+          </li>
+          <li>
+            <strong className="text-ink">Export CSV</strong> exports what you&apos;re currently
+            looking at — filters and sort included, across all pages.
+          </li>
+        </ul>
+      </Section>
+    </>
+  );
+}
 
+function MetaDataInstructions() {
+  return (
+      <Section title="Cards and categories">
+        <ul className="flex list-disc flex-col gap-1 pl-5">
+          <li>
+            A card records a name, description and credit line. Deleting one is{" "}
+            <strong className="text-ink">refused while transactions still reference it</strong>, so
+            rows can never be orphaned from the statement they came from.
+          </li>
+          <li>
+            <strong className="text-ink">Add image</strong> attaches a small picture — card art or
+            the issuer&apos;s logo — shown beside the card everywhere it appears, including the
+            Account column of the grid, so cards are easy to tell apart. PNG, JPEG, WebP or GIF, up
+            to 512&nbsp;KB.
+          </li>
+          <li>
+            <strong className="text-ink">Add icon</strong> on a category attaches a small image shown
+            beside that category everywhere it appears — the category picker on the transaction form
+            and the bulk edit, the Category column of the grid, the rules, and the spend rollups.
+            PNG, JPEG, WebP or GIF, up to 128&nbsp;KB.
+          </li>
+          <li>
+            Deleting a category <strong className="text-ink">keeps the transactions</strong> — they
+            simply become uncategorised again.
+          </li>
+        </ul>
+      </Section>
+  );
+}
+
+function ImportInstructions() {
+  return (
+    <>
+      <Section title="Importing a statement">
+        <ul className="flex list-disc flex-col gap-1 pl-5">
+          <li>
+            Every card company formats its export differently, so you map the columns once and{" "}
+            <strong className="text-ink">save the mapping under that company&apos;s name</strong>{" "}
+            (&ldquo;Chase Sapphire&rdquo;). Next time, pick it from the dropdown — you can also
+            update or delete a saved mapping.
+          </li>
+          <li>
+            Map each column to a field, or leave it as <em>Ignore</em>. Date columns get a{" "}
+            <strong className="text-ink">format box</strong> — enter the shape your statement uses,
+            e.g. <Code>MM/DD/YYYY</Code> or <Code>YYYY-MM-DD</Code>. Each date column has its own
+            box, so a statement that writes its two dates differently is fine.
+          </li>
+          <li>
+            A format that doesn&apos;t match the data{" "}
+            <strong className="text-ink">rejects the whole row</strong>, amount included — not just
+            that one field. So if you&apos;re unsure about an optional column like posting date, leave
+            it as <em>Ignore</em> rather than guessing. Any rejected rows are listed in the summary
+            with the reason, and this is worth double-checking when a saved mapping is being used for
+            automatic imports.
+          </li>
+          <li>
+            If the statement has one amount column, map it to{" "}
+            <strong className="text-ink">Amount</strong>. If it splits charges and credits into two
+            columns, map them to <strong className="text-ink">debit</strong> and{" "}
+            <strong className="text-ink">credit</strong> instead.
+          </li>
+          <li>
+            Amounts like <Code>$20.33</Code>, <Code>1,234.56</Code>, <Code>(45.00)</Code> and{" "}
+            <Code>45.00-</Code> are all understood; the last two count as negative.
+          </li>
+          <li>
+            <strong className="text-ink">Flip the sign</strong> if your card writes purchases as
+            negative — this module&apos;s convention is charges positive.
+          </li>
+          <li>
+            <strong className="text-ink">Skip rows already imported</strong> compares card,{" "}
+            <em>transaction</em> date, description and amount — the posting date isn&apos;t part of
+            it — so re-importing an overlapping statement won&apos;t duplicate anything. The summary
+            reports how many were skipped for that reason.
+          </li>
+          <li>
+            Nothing is imported silently: the summary shows how many rows were imported, skipped
+            (with the reason for each) and auto-categorised.
+          </li>
+        </ul>
+      </Section>
       <Section title="Post Import Processing">
         <ul className="flex list-disc flex-col gap-1 pl-5">
           <li>
@@ -218,47 +338,12 @@ export function ExpenseInstructions() {
           </li>
         </ul>
       </Section>
+    </>
+  );
+}
 
-
-      <Section title="Importing a statement">
-        <ul className="flex list-disc flex-col gap-1 pl-5">
-          <li>
-            Every card company formats its export differently, so you map the columns once and{" "}
-            <strong className="text-ink">save the mapping under that company&apos;s name</strong>{" "}
-            (&ldquo;Chase Sapphire&rdquo;). Next time, pick it from the dropdown — you can also
-            update or delete a saved mapping.
-          </li>
-          <li>
-            Map each column to a field, or leave it as <em>Ignore</em>. Date columns get a{" "}
-            <strong className="text-ink">format box</strong> — enter the shape your statement uses,
-            e.g. <Code>MM/DD/YYYY</Code> or <Code>YYYY-MM-DD</Code>.
-          </li>
-          <li>
-            If the statement has one amount column, map it to{" "}
-            <strong className="text-ink">Amount</strong>. If it splits charges and credits into two
-            columns, map them to <strong className="text-ink">debit</strong> and{" "}
-            <strong className="text-ink">credit</strong> instead.
-          </li>
-          <li>
-            Amounts like <Code>$20.33</Code>, <Code>1,234.56</Code>, <Code>(45.00)</Code> and{" "}
-            <Code>45.00-</Code> are all understood; the last two count as negative.
-          </li>
-          <li>
-            <strong className="text-ink">Flip the sign</strong> if your card writes purchases as
-            negative — this module&apos;s convention is charges positive.
-          </li>
-          <li>
-            <strong className="text-ink">Skip rows already imported</strong> compares card, date,
-            description and amount, so re-importing an overlapping statement won&apos;t duplicate
-            anything. The summary reports how many were skipped for that reason.
-          </li>
-          <li>
-            Nothing is imported silently: the summary shows how many rows were imported, skipped
-            (with the reason for each) and auto-categorised.
-          </li>
-        </ul>
-      </Section>
-
+function SettingsInstructions() {
+  return (
       <Section title="Automatic import (optional)">
         <ul className="flex list-disc flex-col gap-1 pl-5">
           <li>
@@ -288,46 +373,42 @@ export function ExpenseInstructions() {
           </li>
         </ul>
       </Section>
+  );
+}
 
-      <Section title="Cards and categories">
-        <ul className="flex list-disc flex-col gap-1 pl-5">
-          <li>
-            A card records a name, description and credit line. Deleting one is{" "}
-            <strong className="text-ink">refused while transactions still reference it</strong>, so
-            rows can never be orphaned from the statement they came from.
-          </li>
-          <li>
-            <strong className="text-ink">Add image</strong> attaches a small picture — card art or
-            the issuer&apos;s logo — shown beside the card everywhere it appears, including the
-            Account column of the grid, so cards are easy to tell apart. PNG, JPEG, WebP or GIF, up
-            to 512&nbsp;KB.
-          </li>
-          <li>
-            Deleting a category <strong className="text-ink">keeps the transactions</strong> — they
-            simply become uncategorised again.
-          </li>
-        </ul>
-      </Section>
+function ChartsInstructions() {
+  return (
+    <Section title="Charts and Analysis">
+      <ul className="flex list-disc flex-col gap-1 pl-5">
+        <li>
+          Spend is grouped by <strong className="text-ink">category</strong>, so a transaction with
+          no category is counted under <span className="italic">uncategorised</span> — clear those
+          up and the picture sharpens.
+        </li>
+        <li>
+          Only categories with a <strong className="text-ink">positive</strong> total are charted:
+          a category that nets out as a refund can&apos;t be drawn meaningfully alongside spend.
+          The table underneath lists everything, credits included.
+        </li>
+        <li>
+          The figures cover <strong className="text-ink">every transaction</strong>, not a date
+          range — narrow by date under Transactions if you need a period view.
+        </li>
+      </ul>
+    </Section>
+  );
+}
 
-      <Section title="The transactions grid">
-        <ul className="flex list-disc flex-col gap-1 pl-5">
-          <li>
-            Search across every column, or open <strong className="text-ink">Filters</strong> for
-            per-column filtering. Click a header to sort.
-          </li>
-          <li>
-            <strong className="text-ink">Columns</strong> lets you hide and reorder columns; your
-            arrangement is remembered on this device. Alongside the usual fields there are{" "}
-            <strong className="text-ink">Vendor</strong> and{" "}
-            <strong className="text-ink">Processed</strong> columns — filter Processed to{" "}
-            <Code>no</Code> to see exactly what the next clean-up will touch.
-          </li>
-          <li>
-            <strong className="text-ink">Export CSV</strong> exports what you&apos;re currently
-            looking at — filters and sort included, across all pages.
-          </li>
-        </ul>
-      </Section>
+/** The instruction content for one section. */
+export function ExpenseInstructions({ section }: { section: ExpenseSection }) {
+  return (
+    <div className="flex flex-col gap-5">
+      {section === "main" && <MainInstructions />}
+      {section === "transactions" && <TransactionsInstructions />}
+      {section === "meta-data" && <MetaDataInstructions />}
+      {section === "charts" && <ChartsInstructions />}
+      {section === "import" && <ImportInstructions />}
+      {section === "settings" && <SettingsInstructions />}
     </div>
   );
 }

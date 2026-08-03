@@ -4,21 +4,24 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import {
-  CARD_IMAGE_MIME_TYPES,
+  EXPENSE_IMAGE_MIME_TYPES,
   MAX_CARD_IMAGE_BYTES,
+  MAX_CATEGORY_ICON_BYTES,
   parseMoneyToCents,
   type CreditCardAccount,
   type ExpenseCategory,
 } from "@/lib/expense";
 import {
   clearAccountImageAction,
+  clearCategoryIconAction,
   deleteAccountAction,
   deleteCategoryAction,
   saveAccountAction,
   saveAccountImageAction,
   saveCategoryAction,
+  saveCategoryIconAction,
 } from "./expense-actions";
-import { CardThumbnail, formatCents } from "./expense-shared";
+import { CardThumbnail, CategoryIconThumbnail, categoryIconUrl, formatCents } from "./expense-shared";
 
 const INPUT_CLASS =
   "w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
@@ -72,7 +75,7 @@ function CardImageControls({
         {account.imageMimeType ? "Replace image" : "Add image"}
         <input
           type="file"
-          accept={CARD_IMAGE_MIME_TYPES.join(",")}
+          accept={EXPENSE_IMAGE_MIME_TYPES.join(",")}
           disabled={isBusy}
           className="hidden"
           onChange={(event) => {
@@ -225,6 +228,77 @@ function AccountsPanel({ accounts }: { accounts: CreditCardAccount[] }) {
   );
 }
 
+/**
+ * Upload / replace / remove the icon shown beside this category everywhere it
+ * appears. Same shape as CardImageControls, but its own component because the
+ * subject is a category (keyed by name) and the size cap is tighter.
+ */
+function CategoryIconControls({
+  category,
+  onError,
+}: {
+  category: ExpenseCategory;
+  onError: (message: string | undefined) => void;
+}) {
+  const router = useRouter();
+  const [isBusy, setIsBusy] = useState(false);
+
+  async function handleFile(file: File) {
+    onError(undefined);
+    // Checked here too so an oversized file fails instantly, without a round
+    // trip; the use-case enforces the same limit server-side.
+    if (file.size > MAX_CATEGORY_ICON_BYTES) {
+      onError(
+        `"${file.name}" is too large — keep it under ${Math.round(MAX_CATEGORY_ICON_BYTES / 1024)} KB.`,
+      );
+      return;
+    }
+    setIsBusy(true);
+    try {
+      const base64Data = await readFileAsBase64(file);
+      const result = await saveCategoryIconAction(category.name, file.type, base64Data);
+      if (!result.ok) onError(result.error);
+      else router.refresh();
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  return (
+    <span className="flex items-center gap-3">
+      <label className="cursor-pointer text-xs font-medium text-brass-dark hover:underline">
+        {category.iconMimeType ? "Replace icon" : "Add icon"}
+        <input
+          type="file"
+          accept={EXPENSE_IMAGE_MIME_TYPES.join(",")}
+          disabled={isBusy}
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) handleFile(file);
+            event.target.value = "";
+          }}
+        />
+      </label>
+      {category.iconMimeType && (
+        <button
+          type="button"
+          disabled={isBusy}
+          onClick={async () => {
+            onError(undefined);
+            const result = await clearCategoryIconAction(category.name);
+            if (result.ok) router.refresh();
+            else onError(result.error);
+          }}
+          className="text-xs text-muted hover:text-red-400"
+        >
+          Remove icon
+        </button>
+      )}
+    </span>
+  );
+}
+
 function CategoriesPanel({ categories }: { categories: ExpenseCategory[] }) {
   const router = useRouter();
   const [name, setName] = useState("");
@@ -248,7 +322,8 @@ function CategoriesPanel({ categories }: { categories: ExpenseCategory[] }) {
       <h3 className="font-display text-lg text-ink">Categories</h3>
       <p className="text-sm text-muted">
         Categories are created automatically when you use a new name on a transaction or a rule —
-        add one here to give it a description up front.
+        add one here to give it a description up front, or an icon that shows up wherever the
+        category appears.
       </p>
       {error && <p className="text-sm text-red-400">{error}</p>}
 
@@ -272,32 +347,39 @@ function CategoriesPanel({ categories }: { categories: ExpenseCategory[] }) {
       {categories.length === 0 ? (
         <p className="text-sm text-muted">No categories yet.</p>
       ) : (
-        <ul className="flex flex-wrap gap-2">
+        // A row per category rather than the chips this used to be: each one now
+        // carries its own icon controls, which a chip has no room for.
+        <ul className="flex flex-col gap-1">
           {categories.map((category) => (
             <li
               key={category.name}
-              className="flex items-center gap-1 rounded-full bg-line/60 px-2 py-0.5 text-xs text-ink"
-              title={category.description}
+              className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-paper px-3 py-1.5 text-sm"
             >
-              {category.name}
-              <button
-                type="button"
-                onClick={async () => {
-                  if (
-                    !window.confirm(
-                      `Delete "${category.name}"? Transactions keep their history but become uncategorised.`,
+              <CategoryIconThumbnail iconUrl={categoryIconUrl(category)} />
+              <span className="text-ink">{category.name}</span>
+              {category.description !== "" && (
+                <span className="text-xs text-muted">{category.description}</span>
+              )}
+              <span className="ml-auto flex items-center gap-3">
+                <CategoryIconControls category={category} onError={setError} />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (
+                      !window.confirm(
+                        `Delete "${category.name}"? Transactions keep their history but become uncategorised.`,
+                      )
                     )
-                  )
-                    return;
-                  const result = await deleteCategoryAction(category.name);
-                  if (result.ok) router.refresh();
-                  else window.alert(result.error);
-                }}
-                aria-label={`Delete ${category.name}`}
-                className="text-muted hover:text-red-400"
-              >
-                &times;
-              </button>
+                      return;
+                    const result = await deleteCategoryAction(category.name);
+                    if (result.ok) router.refresh();
+                    else window.alert(result.error);
+                  }}
+                  className="text-xs font-medium text-red-400 hover:underline"
+                >
+                  Delete
+                </button>
+              </span>
             </li>
           ))}
         </ul>

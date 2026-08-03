@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
+import { IconSelect } from "@/components/icon-select";
 import {
   DEFAULT_CLEANUP_BATCH_SIZE,
   RULE_ACTION_FIELDS,
@@ -22,6 +23,11 @@ import {
   runCleanupBatchAction,
   saveRuleAction,
 } from "./expense-actions";
+import {
+  CategoryIconThumbnail,
+  categoryIconSelectOptions,
+  categoryIconUrlsByName,
+} from "./expense-shared";
 
 const INPUT_CLASS =
   "w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
@@ -211,9 +217,20 @@ function RuleForm({
                   </option>
                 ))}
               </select>
+            ) : action.fieldName === "categoryName" ? (
+              // A rule may name a category that doesn't exist yet — it's created
+              // when the rule first assigns it — so free text stays allowed here.
+              <div className="w-56">
+                <IconSelect
+                  options={categoryIconSelectOptions(categories)}
+                  value={action.fieldValue}
+                  onChange={(fieldValue) => updateAction(index, { fieldValue })}
+                  placeholder="Restaurant"
+                  ariaLabel="Category to set"
+                />
+              </div>
             ) : (
               <input
-                list={action.fieldName === "categoryName" ? "expense-rule-category-options" : undefined}
                 value={action.fieldValue}
                 onChange={(event) => updateAction(index, { fieldValue: event.target.value })}
                 placeholder={action.fieldName === "vendor" ? "TGI Friday" : "value"}
@@ -247,12 +264,6 @@ function RuleForm({
         />
         Enabled
       </label>
-
-      <datalist id="expense-rule-category-options">
-        {categories.map((category) => (
-          <option key={category.name} value={category.name} />
-        ))}
-      </datalist>
 
       <div className="flex flex-wrap items-center gap-2">
         <Button
@@ -442,6 +453,8 @@ export function ExpenseRulesView({
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState<PostImportRule | undefined>(undefined);
+  // A rule action stores a category *name*, so its icon is looked up once here.
+  const categoryIconUrls = categoryIconUrlsByName(categories);
 
   return (
     <div className="flex flex-col gap-4">
@@ -475,13 +488,18 @@ export function ExpenseRulesView({
             >
               <span className="font-mono text-xs text-brass-dark">{rule.pattern}</span>
               <span className="text-muted">&rarr;</span>
-              <span className="flex flex-wrap gap-1">
+              <span className="flex flex-wrap items-center gap-1">
                 {rule.actions.map((action) => (
-                  <span
-                    key={action.id}
-                    className="rounded-full bg-brass-soft px-2 py-0.5 text-xs text-brass-dark"
-                  >
-                    {RULE_ACTION_FIELD_LABELS[action.fieldName]} = {action.fieldValue || "(blank)"}
+                  <span key={action.id} className="flex items-center gap-1">
+                    {action.fieldName === "categoryName" && (
+                      <CategoryIconThumbnail
+                        iconUrl={categoryIconUrls.get(action.fieldValue)}
+                        className="h-4 w-4"
+                      />
+                    )}
+                    <span className="rounded-full bg-brass-soft px-2 py-0.5 text-xs text-brass-dark">
+                      {RULE_ACTION_FIELD_LABELS[action.fieldName]} = {action.fieldValue || "(blank)"}
+                    </span>
                   </span>
                 ))}
               </span>

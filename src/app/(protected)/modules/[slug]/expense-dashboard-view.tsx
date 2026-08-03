@@ -1,7 +1,7 @@
 import Link from "next/link";
-import type { CategoryTotal } from "@/lib/expense";
+import type { CategoryTotal, ExpenseCategory } from "@/lib/expense";
 import { expenseSectionHref } from "./expense-sections";
-import { formatCents } from "./expense-shared";
+import { CategoryIconThumbnail, categoryIconUrlsByName, formatCents } from "./expense-shared";
 
 /** One headline number. Highlighted when it represents outstanding work. */
 function Tile({
@@ -42,6 +42,7 @@ export function ExpenseDashboardView({
   uncategorisedCount,
   toReconcileCount,
   topCategories,
+  categories,
 }: {
   totalCents: number;
   transactionCount: number;
@@ -49,7 +50,11 @@ export function ExpenseDashboardView({
   uncategorisedCount: number;
   toReconcileCount: number;
   topCategories: CategoryTotal[];
+  /** Only for their icons — a rollup carries a category name, not its icon. */
+  categories: ExpenseCategory[];
 }) {
+  const categoryIconUrls = categoryIconUrlsByName(categories);
+
   return (
     <div className="flex flex-col gap-8">
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -90,13 +95,16 @@ export function ExpenseDashboardView({
                   key={total.categoryName || "uncategorised"}
                   className="flex items-center justify-between rounded-md border border-line bg-paper px-3 py-1.5 text-sm"
                 >
-                  <span className="text-ink">
+                  <span className="flex items-center gap-2 text-ink">
                     {total.categoryName === "" ? (
                       <span className="text-muted">uncategorised</span>
                     ) : (
-                      total.categoryName
+                      <>
+                        <CategoryIconThumbnail iconUrl={categoryIconUrls.get(total.categoryName)} />
+                        {total.categoryName}
+                      </>
                     )}
-                    <span className="ml-2 text-xs text-muted">
+                    <span className="text-xs text-muted">
                       {total.transactionCount} transaction(s)
                     </span>
                   </span>

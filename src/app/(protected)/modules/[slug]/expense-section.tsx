@@ -53,6 +53,7 @@ function SectionBody({ section }: { section: ExpenseSection }) {
           uncategorisedCount={transactions.filter((t) => t.categoryName === "").length}
           toReconcileCount={transactions.filter((t) => t.status === "new").length}
           topCategories={totalsByCategory(deps.expenseRepo).slice(0, TOP_CATEGORY_COUNT)}
+          categories={listCategories(deps.expenseRepo)}
         />
       );
     }
@@ -75,7 +76,12 @@ function SectionBody({ section }: { section: ExpenseSection }) {
       );
 
     case "charts":
-      return <ExpenseChartsView totals={totalsByCategory(deps.expenseRepo)} />;
+      return (
+        <ExpenseChartsView
+          totals={totalsByCategory(deps.expenseRepo)}
+          categories={listCategories(deps.expenseRepo)}
+        />
+      );
 
     case "import":
       return (
@@ -127,11 +133,12 @@ export function ExpenseSection({ section }: { section: ExpenseSection }) {
         <p className="mt-1 text-sm text-muted">{info.description}</p>
         <div className="mt-3 h-px w-full bg-line" />
 
-        {/* Available from every section rather than only the dashboard — it's
-            reference material you want wherever you happen to be stuck. */}
+        {/* Each section gets only the guidance that applies to it — the whole
+            document above every screen was noise between the heading and the
+            content. */}
         <div className="mt-6">
           <CollapsibleCard title="Instruction">
-            <ExpenseInstructions />
+            <ExpenseInstructions section={section} />
           </CollapsibleCard>
         </div>
 

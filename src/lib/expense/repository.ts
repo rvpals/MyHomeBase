@@ -8,12 +8,14 @@ import {
 } from "./schema";
 import type {
   AccountWriteData,
+  BulkTransactionEditData,
   CategoryWriteData,
   PostImportRuleWriteData,
   TransactionWriteData,
 } from "./schema";
 import type {
   CardImage,
+  CategoryIcon,
   CategoryTotal,
   CreditCardAccount,
   ExpenseCategory,
@@ -41,9 +43,15 @@ const ACCOUNT_COLUMNS =
 interface CategoryRow {
   name: string;
   description: string;
+  icon_image_mime_type: string | null;
   created_at: string;
   updated_at: string;
 }
+
+// Same discipline as ACCOUNT_COLUMNS: every normal category read names its columns
+// and omits `icon_image`, so the icon bytes never ride along with a list or a page
+// render. Only getCategoryIcon/setCategoryIcon touch that column.
+const CATEGORY_COLUMNS = "name, description, icon_image_mime_type, created_at, updated_at";
 
 interface TransactionRow {
   id: number;
@@ -95,6 +103,7 @@ function categoryToDomain(row: CategoryRow): ExpenseCategory {
   return expenseCategorySchema.parse({
     name: row.name,
     description: row.description,
+    iconMimeType: row.icon_image_mime_type ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
@@ -135,6 +144,41 @@ function ruleToDomain(row: RuleRow, actionRows: RuleActionRow[]): PostImportRule
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
+}
+
+/**
+ * Domain field -> column for the fields a bulk edit may set. Iteration order
+ * here decides the order of the SET clause, which is why it's a plain object
+ * literal rather than being derived from the schema.
+ */
+const BULK_EDITABLE_COLUMNS: Record<keyof BulkTransactionEditData, string> = {
+  transactionAccountId: "transaction_account_id",
+  transactionDescription: "transaction_description",
+  categoryName: "category_name",
+  vendor: "vendor",
+  note: "note",
+  status: "status",
+  processed: "processed",
+};
+
+/**
+ * How many ids go into one statement. SQLite caps the bound parameters per
+ * statement, and "select all" over a long grid can easily exceed it, so a bulk
+ * operation is split into chunks run inside a single transaction — either the
+ * whole selection lands or none of it does.
+ */
+const ID_CHUNK_SIZE = 500;
+
+function chunkIds(ids: number[]): number[][] {
+  const chunks: number[][] = [];
+  for (let index = 0; index < ids.length; index += ID_CHUNK_SIZE) {
+    chunks.push(ids.slice(index, index + ID_CHUNK_SIZE));
+  }
+  return chunks;
+}
+
+function placeholders(count: number): string {
+  return new Array(count).fill("?").join(", ");
 }
 
 /** Builds the shared WHERE clause for the transaction list and its totals. */
@@ -245,16 +289,32 @@ export class SqliteExpenseRepository implements ExpenseRepository {
 
   listCategories(): ExpenseCategory[] {
     const rows = this.db
-      .prepare("SELECT * FROM exp_categories ORDER BY name ASC")
+      .prepare(`SELECT ${CATEGORY_COLUMNS} FROM exp_categories ORDER BY name ASC`)
       .all() as CategoryRow[];
     return rows.map(categoryToDomain);
   }
 
   getCategoryByName(name: string): ExpenseCategory | undefined {
-    const row = this.db.prepare("SELECT * FROM exp_categories WHERE name = ?").get(name) as
-      | CategoryRow
-      | undefined;
+    const row = this.db
+      .prepare(`SELECT ${CATEGORY_COLUMNS} FROM exp_categories WHERE name = ?`)
+      .get(name) as CategoryRow | undefined;
     return row ? categoryToDomain(row) : undefined;
+  }
+
+  getCategoryIcon(name: string): CategoryIcon | undefined {
+    const row = this.db
+      .prepare("SELECT icon_image, icon_image_mime_type FROM exp_categories WHERE name = ?")
+      .get(name) as { icon_image: Buffer | null; icon_image_mime_type: string | null } | undefined;
+    if (!row || !row.icon_image || !row.icon_image_mime_type) return undefined;
+    return { data: row.icon_image, mimeType: row.icon_image_mime_type };
+  }
+
+  setCategoryIcon(name: string, icon: CategoryIcon | undefined): void {
+    this.db
+      .prepare(
+        "UPDATE exp_categories SET icon_image = ?, icon_image_mime_type = ? WHERE name = ?",
+      )
+      .run(icon?.data ?? null, icon?.mimeType ?? null, name);
   }
 
   upsertCategory(input: CategoryWriteData): ExpenseCategory {
@@ -348,6 +408,48 @@ export class SqliteExpenseRepository implements ExpenseRepository {
 
   deleteTransaction(id: number): void {
     this.db.prepare("DELETE FROM exp_transactions WHERE id = ?").run(id);
+  }
+
+  deleteTransactions(ids: number[]): number {
+    return this.db.transaction(() => {
+      let deleted = 0;
+      for (const chunk of chunkIds(ids)) {
+        const result = this.db
+          .prepare(`DELETE FROM exp_transactions WHERE id IN (${placeholders(chunk.length)})`)
+          .run(chunk);
+        deleted += result.changes;
+      }
+      return deleted;
+    })();
+  }
+
+  bulkUpdateTransactions(ids: number[], changes: BulkTransactionEditData): number {
+    // Built dynamically so a field the caller didn't name keeps its value —
+    // the same approach as applyProcessingResult, but over a set of rows.
+    const setClauses: string[] = [];
+    const values: (string | number)[] = [];
+
+    for (const [field, column] of Object.entries(BULK_EDITABLE_COLUMNS)) {
+      const value = changes[field as keyof BulkTransactionEditData];
+      if (value === undefined) continue;
+      setClauses.push(`${column} = ?`);
+      values.push(typeof value === "boolean" ? (value ? 1 : 0) : value);
+    }
+    if (setClauses.length === 0) return 0;
+
+    return this.db.transaction(() => {
+      let changed = 0;
+      for (const chunk of chunkIds(ids)) {
+        const result = this.db
+          .prepare(
+            `UPDATE exp_transactions SET ${setClauses.join(", ")}
+             WHERE id IN (${placeholders(chunk.length)})`,
+          )
+          .run(...values, ...chunk);
+        changed += result.changes;
+      }
+      return changed;
+    })();
   }
 
   transactionExists(input: {

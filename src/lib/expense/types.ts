@@ -30,8 +30,20 @@ export interface CardImage {
 export interface ExpenseCategory {
   name: string;
   description: string;
+  /**
+   * Mime type of the category icon, or undefined when none is set. The bytes
+   * themselves are fetched separately (see CategoryIcon) so they never travel
+   * with a category list.
+   */
+  iconMimeType?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Raw icon bytes for one category, read only by the icon-serving route. */
+export interface CategoryIcon {
+  data: Buffer;
+  mimeType: string;
 }
 
 export interface ExpenseTransaction {

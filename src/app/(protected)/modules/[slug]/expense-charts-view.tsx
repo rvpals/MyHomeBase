@@ -1,12 +1,21 @@
 "use client";
 
 import { ChartBar } from "@/components/chart-bar";
-import type { CategoryTotal } from "@/lib/expense";
-import { formatCents } from "./expense-shared";
+import type { CategoryTotal, ExpenseCategory } from "@/lib/expense";
+import { CategoryIconThumbnail, categoryIconUrlsByName, formatCents } from "./expense-shared";
 
 const UNCATEGORISED_LABEL = "uncategorised";
 
-export function ExpenseChartsView({ totals }: { totals: CategoryTotal[] }) {
+export function ExpenseChartsView({
+  totals,
+  categories,
+}: {
+  totals: CategoryTotal[];
+  /** Only for their icons — a rollup carries a category name, not its icon. */
+  categories: ExpenseCategory[];
+}) {
+  const categoryIconUrls = categoryIconUrlsByName(categories);
+
   if (totals.length === 0) {
     return (
       <p className="text-sm text-muted">
@@ -54,13 +63,16 @@ export function ExpenseChartsView({ totals }: { totals: CategoryTotal[] }) {
               key={total.categoryName || UNCATEGORISED_LABEL}
               className="flex items-center justify-between rounded-md border border-line bg-paper px-3 py-1.5 text-sm"
             >
-              <span className="text-ink">
+              <span className="flex items-center gap-2 text-ink">
                 {total.categoryName === "" ? (
                   <span className="text-muted">{UNCATEGORISED_LABEL}</span>
                 ) : (
-                  total.categoryName
+                  <>
+                    <CategoryIconThumbnail iconUrl={categoryIconUrls.get(total.categoryName)} />
+                    {total.categoryName}
+                  </>
                 )}
-                <span className="ml-2 text-xs text-muted">
+                <span className="text-xs text-muted">
                   {total.transactionCount} transaction(s)
                 </span>
               </span>

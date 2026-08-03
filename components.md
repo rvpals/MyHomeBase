@@ -46,13 +46,16 @@ pattern instead of inventing one.
 |-----------|-----------|--------|---------|
 | [`Button`](#button) | Any button or button-styled link | [src/components/button.tsx](src/components/button.tsx) | no |
 | [`DataGrid`](#datagrid) | **Result grid** — any table of records | [src/components/data-grid.tsx](src/components/data-grid.tsx) | yes |
+| [`Modal`](#modal) | **Any dialog** — overlay, panel, Esc/focus handling | [src/components/modal.tsx](src/components/modal.tsx) | yes |
 | [`CollapsibleCard`](#collapsiblecard) | A titled section that expands/collapses | [src/components/collapsible-card.tsx](src/components/collapsible-card.tsx) | yes |
 | [`Tabs`](#tabs) | One-of-N panels in the same space | [src/components/tabs.tsx](src/components/tabs.tsx) | yes |
 | [`ModuleCard`](#modulecard) | A card linking to a module (home grid) | [src/components/module-card.tsx](src/components/module-card.tsx) | yes |
 | [`Sidebar`](#sidebar) | The app's left-hand module nav | [src/components/sidebar.tsx](src/components/sidebar.tsx) | yes |
 | [`TreeNav`](#treenav) | Hierarchical parent/child nav tree | [src/components/tree-nav.tsx](src/components/tree-nav.tsx) | yes |
 | [`Avatar`](#avatar) | A user's picture, or initials fallback | [src/components/avatar.tsx](src/components/avatar.tsx) | no |
+| [`TickerLogo`](#tickerlogo) | A stock/ETF logo, or a monogram fallback | [src/components/ticker-logo.tsx](src/components/ticker-logo.tsx) | yes |
 | [`FileDropzone`](#filedropzone) | Drag-and-drop file picker | [src/components/file-dropzone.tsx](src/components/file-dropzone.tsx) | yes |
+| [`IconSelect`](#iconselect) | A dropdown whose options carry an image | [src/components/icon-select.tsx](src/components/icon-select.tsx) | yes |
 | [`ChartLine`](#chartline) | Time-series line chart | [src/components/chart-line.tsx](src/components/chart-line.tsx) | yes |
 | [`ChartBar`](#chartbar) | Category comparison / part-to-whole | [src/components/chart-bar.tsx](src/components/chart-bar.tsx) | yes |
 | [`ChartXY`](#chartxy) | User-configurable line/bar/scatter/area + zoom | [src/components/chart-xy.tsx](src/components/chart-xy.tsx) | yes |
@@ -103,13 +106,14 @@ stays a fixed semantic red across every color theme. Respects `prefers-reduced-m
 ## DataGrid
 
 **This is the "result grid."** The generic table for any list of records: search,
-per-column filters, sortable sticky headers, show/hide/reorder columns, optional row
-selection with bulk actions, pagination, CSV export, and an optional "Show SQL" re-run
-dialog. Do not build another table.
+per-column filters with comparison operators, sortable sticky headers,
+show/hide/reorder/resize columns, a row-density control, per-column footer totals,
+optional row selection with bulk actions, a single-record modal, pagination, CSV export,
+and an optional "Show SQL" re-run dialog. Do not build another table.
 
 - **Source:** [src/components/data-grid.tsx](src/components/data-grid.tsx)
 - **Import:** `import { DataGrid, type DataGridColumn } from "@/components/data-grid";`
-  (also exports `type CellValue`, `type PageSize`)
+  (also exports `type CellValue`, `type PageSize`, `type Density`, `type AggregateKind`)
 - **Client component:** yes — the caller must be `"use client"` (or render it from one).
 - **Mechanics live in the lib:** sorting/searching/filtering/paging/CSV are pure functions
   in [src/lib/shared/table.ts](src/lib/shared/table.ts) (unit-tested). The component holds
@@ -122,9 +126,13 @@ dialog. Do not build another table.
 | `key` | `string` | Unique; React key + sort identity. |
 | `header` | `string` | |
 | `render` | `(row: T) => ReactNode` | The cell UI. |
-| `value?` | `(row: T) => CellValue` | **The important one.** Raw primitive used for sort, search, filter, and CSV export. A column participates in those *only* when this is supplied. |
+| `value?` | `(row: T) => CellValue` | **The important one.** Raw primitive used for sort, search, filter, CSV export and the footer total. A column participates in those *only* when this is supplied. |
 | `sortable?` | `boolean` | Set `false` to keep `value` but disable sorting. |
 | `className?` | `string` | Applied to both header and body cells. |
+| `aggregate?` | `"sum" \| "avg" \| "min" \| "max" \| "count"` | Show a rollup in the table footer. Requires `value`. |
+| `formatAggregate?` | `(result: number) => ReactNode` | Formats that total, e.g. `(cents) => formatCents(cents)`. Defaults to `toLocaleString()`. |
+| `minWidth?` | `number` | Resize floor in pixels. Default `64`. |
+| `excludeFromRecordView?` | `boolean` | Keep this column out of the record modal. **Set it on action columns** — a row's Edit/Delete buttons don't belong in a read-out of the record. |
 
 ### Grid props — `DataGridProps<T>`
 
@@ -140,11 +148,16 @@ dialog. Do not build another table.
 | `enableSearch?` | `boolean` | `true` | |
 | `enableColumnFilters?` | `boolean` | `true` | Per-column filter row, hidden until opened. |
 | `enableColumnPicker?` | `boolean` | `true` | Show/hide/reorder panel. |
+| `enableColumnResize?` | `boolean` | `true` | Drag a header's right edge; double-click it to restore auto width. |
+| `enableDensity?` | `boolean` | `true` | Compact/normal/comfortable row-height control. |
+| `defaultDensity?` | `Density` | `"normal"` | |
 | `stickyHeader?` | `boolean` | `true` | |
 | `maxHeight?` | `string` | `"70vh"` | Pass `""` to remove the cap. |
 | `enableSelection?` | `boolean` | `false` | Adds a checkbox column. |
 | `renderSelectionActions?` | `(selectedRows: T[], clearSelection: () => void) => ReactNode` | — | Bulk actions in the toolbar. Select-all covers the whole filtered set. |
-| `storageKey?` | `string` | — | Persists column order + hidden columns to `localStorage`. |
+| `enableRecordView?` | `boolean` | `true` | Per-row button opening the whole record in a `Modal`. |
+| `recordViewTitle?` | `(row: T) => string` | `"Record"` | Heading for that modal. |
+| `storageKey?` | `string` | — | Persists the view (order, hidden, widths, density, sort, page size) to `localStorage`. **Not** search/filters. |
 | `onRowClick?` | `(row: T) => void` | — | Makes rows clickable/keyboard-focusable for "open this record". |
 | `sql?` | `string` | — | With `onRunSql`, adds a "Show SQL" button. |
 | `onRunSql?` | `(sql: string) => void \| Promise<void>` | — | Called with the edited query; **the caller runs it** and passes fresh `rows` back. |
@@ -189,14 +202,92 @@ Row-click navigation:
 - Daily Quote admin — [daily-quote/view.tsx:209](src/app/(protected)/admin/daily-quote/view.tsx#L209) *(simplest example, start here)*
 - MyJournal — [journal-view.tsx:220](src/app/(protected)/modules/[slug]/journal-view.tsx#L220) *(row click + "Show SQL" re-run)*
 - User Management — [user-management/view.tsx](src/app/(protected)/admin/user-management/view.tsx) *(cells rendering `Avatar`)*
+- Expense transactions — [expense-transactions-view.tsx](src/app/(protected)/modules/[slug]/expense-transactions-view.tsx) *(row selection + bulk edit/delete)*
 - CSV Analysis, SQL Explorer, Stocks & ETFs (accounts / positions / watchlist / analytics / next-day actions)
+
+**Filter operators.** A column filter box is a substring match by default, and also
+understands `>100`, `>=100`, `<50`, `<=50`, `!=new`, `=new` (exact) and `100..200` /
+`2026-07-01..2026-07-31` ranges (inclusive, and open-ended as `100..` or `..100`). Bounds
+compare numerically when both sides look numeric and as text otherwise, which is what
+makes the operators work on ISO dates for free. A half-typed operator (`>` alone) matches
+everything rather than blanking the grid. The parsing is
+[`parseFilterExpression`](src/lib/shared/table.ts) — extend it there, with tests, not here.
+
+**Footer totals.** Set `aggregate` on a column to get a `<tfoot>` rollup, computed over the
+filtered set across **all pages** (the same scope Export CSV uses), not just the page on
+screen. `aggregate` skips nulls rather than treating them as zero, and ignores values that
+aren't numeric, so one stray `"n/a"` can't turn a total into `NaN`.
+
+**Resizing.** Fixed table layout is applied **only once a grid has stored widths**, so a
+grid nobody has dragged still auto-sizes to its content exactly as before. The first drag
+measures every column's current width and pins them all, so pinning one column doesn't
+re-flow the rest. "Reset" in the Columns panel clears widths, order and hidden together.
 
 **Notes:** headers sit in a raised `bg-brass-soft` bar and are click-to-sort
 (asc → desc → none) for columns with `value`; rows alternate `bg-paper`/`bg-paper-raised`.
 The footer is a raised status bar: record count (noting "filtered from N"), page-size
-selector (10…1000/ALL), and prev/next. Export reflects the current filter + sort across
-all pages. `enableSelection` is implemented but no view uses it yet — you're the first
-caller if you need bulk actions.
+selector (10…1000/ALL, plus whatever `defaultPageSize` is set to), and prev/next. Export
+reflects the current filter + sort across all pages. Selection is **pruned to the filtered
+set** — changing the search or a filter drops ticks for rows that no longer match, so
+"12 selected" always equals what a bulk action will touch. For `enableSelection`, copy the
+Expense transactions grid
+([expense-transactions-view.tsx](src/app/(protected)/modules/[slug]/expense-transactions-view.tsx)):
+`renderSelectionActions` gets the selected rows plus a `clearSelection` callback — keep
+hold of that callback if the action opens a dialog, and call it once the write lands so
+the ticks don't outlive the rows they referred to.
+
+---
+
+## Modal
+
+**Any dialog.** The dimmed overlay, the centred panel, the title, and the keyboard and
+focus behaviour every dialog needs. Do not hand-roll another `fixed inset-0` overlay —
+that's what this was extracted from.
+
+- **Source:** [src/components/modal.tsx](src/components/modal.tsx)
+- **Import:** `import { Modal } from "@/components/modal";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `title` | `string` | Heading, and the dialog's accessible name. |
+| `description?` | `ReactNode` | Sub-heading under the title — context, not actions. |
+| `children` | `ReactNode` | The body. The only part that scrolls. |
+| `footer?` | `ReactNode` | Bottom-right action bar; pass `Button`s in reading order. |
+| `onClose` | `() => void` | Fired by Escape, an overlay click, and the ✕. |
+| `size?` | `"sm" \| "md" \| "lg"` | Default `"md"` (`max-w-2xl`). |
+| `isBusy?` | `boolean` | Suppresses Escape / overlay-click / ✕ while a write is in flight. |
+| `className?` | `string` | Applied to the panel, merged last. |
+
+```tsx
+{isEditing && (
+  <Modal
+    title="Bulk edit 12 transaction(s)"
+    description="Ticked fields are applied to every selected row."
+    onClose={() => setIsEditing(false)}
+    isBusy={isSaving}
+    footer={
+      <>
+        <Button variant="secondary" onClick={() => setIsEditing(false)} disabled={isSaving}>Cancel</Button>
+        <Button onClick={handleApply} disabled={isSaving}>Apply</Button>
+      </>
+    }
+  >
+    <FieldList />
+  </Modal>
+)}
+```
+
+**Used by:** `DataGrid`'s record view and "Show SQL" dialog
+[data-grid.tsx](src/components/data-grid.tsx), and the Expense bulk-edit dialog
+[expense-transactions-view.tsx](src/app/(protected)/modules/[slug]/expense-transactions-view.tsx).
+
+**Notes:** it owns **no** open/closed state — the caller decides whether to render it, so
+guard it with `{isOpen && <Modal …>}`. On mount it focuses the first focusable element in
+the panel and restores focus to whatever was focused before on unmount; Tab cycles inside
+the panel; `body` scrolling is locked while it's up. An overlay click only dismisses when
+the click both starts and ends on the overlay, so dragging a text selection out of the
+panel doesn't close it.
 
 ---
 
@@ -370,6 +461,47 @@ See [expense-sections.ts](src/app/(protected)/modules/[slug]/expense-sections.ts
 
 ---
 
+## TickerLogo
+
+A stock or ETF's logo beside its symbol, falling back to the symbol's initials.
+
+- **Source:** [src/components/ticker-logo.tsx](src/components/ticker-logo.tsx)
+- **Import:** `import { TickerLogo } from "@/components/ticker-logo";`
+- **Client component:** yes (it swaps to the fallback on the image's `onError`)
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `ticker` | `string` | Upper-cased internally; only `A-Z0-9.-` symbols resolve. |
+| `size?` | `number` | Pixel square. Default `24`; use `20` in dense grids. |
+| `className?` | `string` | Merged last. |
+
+```tsx
+{
+  key: "ticker",
+  header: "Ticker",
+  value: (row) => row.ticker,
+  render: (row) => (
+    <span className="flex items-center gap-2">
+      <TickerLogo ticker={row.ticker} />
+      {row.ticker}
+    </span>
+  ),
+}
+```
+
+**Used by:** the Stocks & ETFs grids — positions and transactions
+[stock-positions-view.tsx](src/app/(protected)/modules/[slug]/stock-positions-view.tsx),
+plus the watch list, analytics and next-day-actions views.
+
+**Notes:** points at `/api/stocks/tickers/<ticker>/logo`, which downloads the logo on
+first request and caches it in `stk_ticker_logos` (bytes in the DB, never in a page
+payload). **A missing logo is the normal case** — most ETFs have none — so the route
+answers 404 and the component draws the monogram; a "nothing found" result is cached so
+the same ticker isn't re-requested on every render. Images are `loading="lazy"`, so a
+long grid only fetches what's on screen.
+
+---
+
 ## Avatar
 
 A user's profile picture, or an initials circle when they have none.
@@ -439,6 +571,56 @@ MyJournal import [journal-import-view.tsx](src/app/(protected)/modules/[slug]/jo
 
 **Notes:** hands you a raw `File` and never reads it — the caller decides how
 (`FileReader.readAsText`, upload, etc.).
+
+---
+
+## IconSelect
+
+A dropdown whose options carry a small image beside the label. **This is why it
+exists:** neither a native `<select>` nor a `<datalist>` can render an image in its
+options, so any picker that needs one uses this instead of hand-rolling a combobox.
+By default it's a *combobox*, not a strict picker — typing filters the list and also
+commits what you type, so a value that isn't in the list is still allowed.
+
+- **Source:** [src/components/icon-select.tsx](src/components/icon-select.tsx)
+- **Import:** `import { IconSelect, type IconSelectOption } from "@/components/icon-select";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `options` | `IconSelectOption[]` — `{ value, label, iconUrl? }` | An option with no `iconUrl` still indents, so labels stay aligned. |
+| `value` | `string` | Matched against `options` to show the label + leading icon. |
+| `onChange` | `(value: string) => void` | Raises the value itself, not a change event — it can't take a plain input's handler. |
+| `allowFreeText?` | `boolean` | Default `true` (typing filters *and* commits). `false` makes it a strict picker: typing only filters. |
+| `clearLabel?` | `string` | Adds a first row that sets `""`, e.g. `"— uncategorised —"`. Omit when empty isn't a real choice. |
+| `placeholder?` | `string` | |
+| `disabled?` | `boolean` | |
+| `id?` / `ariaLabel?` | `string` | `id` when a `<label htmlFor>` points at it, `ariaLabel` when there's no visible label. |
+| `className?` | `string` | Merged last onto the input (e.g. a width). |
+
+```tsx
+<IconSelect
+  options={categoryIconSelectOptions(categories)}
+  value={form.categoryName}
+  onChange={(categoryName) => update("categoryName", categoryName)}
+  clearLabel="— uncategorised —"
+  placeholder="Leave blank to categorise later"
+  ariaLabel="Category"
+/>
+```
+
+**Used by:** the Expense category pickers — the transaction form and bulk-edit dialog
+[expense-transactions-view.tsx](src/app/(protected)/modules/[slug]/expense-transactions-view.tsx)
+and the post-import rule editor
+[expense-rules-view.tsx](src/app/(protected)/modules/[slug]/expense-rules-view.tsx).
+Options are built by `categoryIconSelectOptions` in
+[expense-shared.tsx](src/app/(protected)/modules/[slug]/expense-shared.tsx).
+
+**Notes:** keyboard-driven — ArrowUp/ArrowDown move the highlight, Enter picks it
+(without submitting the form), Escape/Tab close. A click outside closes it; the
+listener is only registered while open. Icons are plain `<img loading="lazy">`, so
+the caller passes a URL (typically a DB-backed route like
+`/api/expense/categories/<name>/icon`) rather than image bytes.
 
 ---
 
