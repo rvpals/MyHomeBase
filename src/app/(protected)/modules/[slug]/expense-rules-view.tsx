@@ -4,67 +4,74 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import {
+  DEFAULT_CLEANUP_BATCH_SIZE,
+  RULE_ACTION_FIELDS,
+  RULE_ACTION_FIELD_LABELS,
   TRANSACTION_STATUSES,
-  type CategoryRule,
+  type CleanupLogEntry,
   type ExpenseCategory,
-  type TransactionStatus,
+  type PostImportRule,
+  type RuleActionField,
 } from "@/lib/expense";
 import {
-  applyRulesAction,
+  countUnprocessedAction,
   deleteRuleAction,
   previewPatternAction,
+  refreshExpenseViewAction,
+  resetProcessedAction,
+  runCleanupBatchAction,
   saveRuleAction,
 } from "./expense-actions";
 
 const INPUT_CLASS =
   "w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
 
-/**
- * How the matching works, in the user's terms. Kept next to the pattern field
- * because the rules only pay off if it's obvious what a pattern will catch.
- */
+/** How the matching works, in the user's terms. */
 function PatternHelp() {
   return (
     <div className="rounded-md border border-line bg-paper p-3 text-xs text-muted">
-      <p className="font-medium text-ink">How patterns work</p>
+      <p className="font-medium text-ink">How rules work</p>
       <ul className="mt-2 flex list-disc flex-col gap-1 pl-4">
+        <li>
+          A rule is <strong className="text-ink">one condition</strong> on the statement description
+          plus <strong className="text-ink">any number of fields to set</strong>. For example{" "}
+          <code className="font-mono text-brass-dark">*TGI*</code> &rarr; Vendor ={" "}
+          <span className="font-mono">TGI Friday</span>, Category ={" "}
+          <span className="font-mono">Restaurant</span>.
+        </li>
         <li>
           <code className="font-mono text-brass-dark">*</code> stands for &ldquo;anything&rdquo;.{" "}
           <code className="font-mono text-brass-dark">AMAZON*</code> matches descriptions that{" "}
-          <em>start with</em> AMAZON — e.g. <span className="font-mono">AMAZON MKTPL*2X4Y9</span>.
+          <em>start with</em> AMAZON; <code className="font-mono text-brass-dark">*UBER*</code>{" "}
+          matches it anywhere. A pattern with <strong>no</strong>{" "}
+          <code className="font-mono text-brass-dark">*</code> matches anywhere by default, so{" "}
+          <code className="font-mono text-brass-dark">TGI</code> is the same as{" "}
+          <code className="font-mono text-brass-dark">*TGI*</code>.
+        </li>
+        <li>Matching ignores case, and every other character is taken literally.</li>
+        <li>
+          When several rules match, the lowest <strong>priority</strong> number wins — put specific
+          patterns above general ones.
         </li>
         <li>
-          Wrap it in stars to match anywhere:{" "}
-          <code className="font-mono text-brass-dark">*UBER*</code> catches{" "}
-          <span className="font-mono">SQ *UBER TRIP</span>.
-        </li>
-        <li>
-          A pattern with <strong>no</strong> <code className="font-mono text-brass-dark">*</code>{" "}
-          matches anywhere by default — typing{" "}
-          <code className="font-mono text-brass-dark">COSTCO</code> is the same as{" "}
-          <code className="font-mono text-brass-dark">*COSTCO*</code>.
-        </li>
-        <li>Matching ignores upper/lower case, and every other character is taken literally.</li>
-        <li>
-          When several rules match, the one with the lowest <strong>priority</strong> number wins —
-          so put specific patterns (<span className="font-mono">AMAZON PRIME*</span>) above general
-          ones (<span className="font-mono">AMAZON*</span>).
-        </li>
-        <li>
-          Rules only fill in a <strong>blank</strong> category, so they never overwrite something you
-          set yourself, and re-running them is safe.
+          A rule only fills in a field that is <strong>still blank</strong> (or, for status, still{" "}
+          <span className="font-mono">new</span>), so it never overwrites something you set by hand.
         </li>
       </ul>
     </div>
   );
 }
 
+interface ActionDraft {
+  fieldName: RuleActionField;
+  fieldValue: string;
+}
+
 const emptyRule = {
   pattern: "",
-  categoryName: "",
-  applyStatus: "" as TransactionStatus | "",
   priority: 0,
   isEnabled: true,
+  actions: [{ fieldName: "categoryName" as RuleActionField, fieldValue: "" }] as ActionDraft[],
 };
 
 function RuleForm({
@@ -73,7 +80,7 @@ function RuleForm({
   onDone,
 }: {
   categories: ExpenseCategory[];
-  editing?: CategoryRule;
+  editing?: PostImportRule;
   onDone: () => void;
 }) {
   const router = useRouter();
@@ -81,19 +88,40 @@ function RuleForm({
     editing
       ? {
           pattern: editing.pattern,
-          categoryName: editing.categoryName,
-          applyStatus: editing.applyStatus,
           priority: editing.priority,
           isEnabled: editing.isEnabled,
+          actions: editing.actions.map((action) => ({
+            fieldName: action.fieldName,
+            fieldValue: action.fieldValue,
+          })),
         }
       : emptyRule,
   );
-  const [preview, setPreview] = useState<{ matchCount: number; samples: string[] } | undefined>(
-    undefined,
-  );
+  const [preview, setPreview] = useState<{ matchCount: number; samples: string[] } | undefined>();
   const [isChecking, setIsChecking] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [isSaving, setIsSaving] = useState(false);
+
+  function updateAction(index: number, patch: Partial<ActionDraft>) {
+    setForm((current) => ({
+      ...current,
+      actions: current.actions.map((action, i) => (i === index ? { ...action, ...patch } : action)),
+    }));
+  }
+
+  function addAction() {
+    setForm((current) => ({
+      ...current,
+      actions: [...current.actions, { fieldName: "vendor", fieldValue: "" }],
+    }));
+  }
+
+  function removeAction(index: number) {
+    setForm((current) => ({
+      ...current,
+      actions: current.actions.filter((_, i) => i !== index),
+    }));
+  }
 
   async function handlePreview() {
     setIsChecking(true);
@@ -128,42 +156,15 @@ function RuleForm({
       <p className="text-sm font-medium text-ink">{editing ? `Edit rule #${editing.id}` : "New rule"}</p>
       {error && <p className="text-sm text-red-400">{error}</p>}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <label className="block text-sm">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <label className="block text-sm sm:col-span-2">
           <span className="mb-1 block font-medium text-ink">When the description matches</span>
           <input
             value={form.pattern}
             onChange={(event) => setForm({ ...form, pattern: event.target.value })}
-            placeholder="AMAZON*"
+            placeholder="*TGI*"
             className={`${INPUT_CLASS} font-mono`}
           />
-        </label>
-        <label className="block text-sm">
-          <span className="mb-1 block font-medium text-ink">Assign this category</span>
-          <input
-            list="expense-rule-category-options"
-            value={form.categoryName}
-            onChange={(event) => setForm({ ...form, categoryName: event.target.value })}
-            placeholder="online-purchase"
-            className={INPUT_CLASS}
-          />
-        </label>
-        <label className="block text-sm">
-          <span className="mb-1 block font-medium text-ink">And set the status to</span>
-          <select
-            value={form.applyStatus}
-            onChange={(event) =>
-              setForm({ ...form, applyStatus: event.target.value as TransactionStatus | "" })
-            }
-            className={INPUT_CLASS}
-          >
-            <option value="">Leave the status alone</option>
-            {TRANSACTION_STATUSES.map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
-          </select>
         </label>
         <label className="block text-sm">
           <span className="mb-1 block font-medium text-ink">Priority</span>
@@ -173,8 +174,69 @@ function RuleForm({
             onChange={(event) => setForm({ ...form, priority: Number(event.target.value) })}
             className={INPUT_CLASS}
           />
-          <span className="mt-1 block text-xs text-muted">Lower numbers are checked first</span>
         </label>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <span className="text-sm font-medium text-ink">Then set</span>
+        {form.actions.map((action, index) => (
+          <div key={index} className="flex flex-wrap items-center gap-2">
+            <select
+              value={action.fieldName}
+              onChange={(event) =>
+                updateAction(index, {
+                  fieldName: event.target.value as RuleActionField,
+                  // Seed a valid status so the field is never saved empty.
+                  fieldValue: event.target.value === "status" ? "reconciled" : "",
+                })
+              }
+              className={`${INPUT_CLASS} w-32`}
+            >
+              {RULE_ACTION_FIELDS.map((field) => (
+                <option key={field} value={field}>
+                  {RULE_ACTION_FIELD_LABELS[field]}
+                </option>
+              ))}
+            </select>
+            <span className="text-muted">=</span>
+            {action.fieldName === "status" ? (
+              <select
+                value={action.fieldValue}
+                onChange={(event) => updateAction(index, { fieldValue: event.target.value })}
+                className={`${INPUT_CLASS} w-40`}
+              >
+                {TRANSACTION_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                list={action.fieldName === "categoryName" ? "expense-rule-category-options" : undefined}
+                value={action.fieldValue}
+                onChange={(event) => updateAction(index, { fieldValue: event.target.value })}
+                placeholder={action.fieldName === "vendor" ? "TGI Friday" : "value"}
+                className={`${INPUT_CLASS} w-56`}
+              />
+            )}
+            {form.actions.length > 1 && (
+              <button
+                type="button"
+                onClick={() => removeAction(index)}
+                aria-label="Remove this assignment"
+                className="text-xs text-muted hover:text-red-400"
+              >
+                Remove
+              </button>
+            )}
+          </div>
+        ))}
+        <div>
+          <Button size="sm" variant="secondary" onClick={addAction}>
+            + Add another field
+          </Button>
+        </div>
       </div>
 
       <label className="flex items-center gap-2 text-sm text-ink">
@@ -228,47 +290,172 @@ function RuleForm({
   );
 }
 
-export function ExpenseRulesView({
-  rules,
-  categories,
-}: {
-  rules: CategoryRule[];
-  categories: ExpenseCategory[];
-}) {
-  const router = useRouter();
-  const [editing, setEditing] = useState<CategoryRule | undefined>(undefined);
-  const [runMessage, setRunMessage] = useState<string | undefined>(undefined);
-  const [isRunning, setIsRunning] = useState(false);
+/** Formats one processed row for the run log. */
+function logLine(entry: CleanupLogEntry, index: number, total: number): string {
+  const head = `Processing ${index} of ${total} — #${entry.transactionId} ${entry.description}`;
+  if (!entry.pattern) return `${head} — no rule matched`;
+  if (entry.changes.length === 0) return `${head} — rule "${entry.pattern}" matched, nothing to change`;
+  const changes = entry.changes
+    .map((change) => `${RULE_ACTION_FIELD_LABELS[change.fieldName].toLowerCase()} set to "${change.value}"`)
+    .join(", ");
+  return `${head} — rule "${entry.pattern}" used, ${changes}`;
+}
 
-  async function handleApplyRules() {
+function CleanupRunner({ unprocessedCount }: { unprocessedCount: number }) {
+  const router = useRouter();
+  const [isRunning, setIsRunning] = useState(false);
+  const [total, setTotal] = useState(0);
+  const [done, setDone] = useState(0);
+  const [changed, setChanged] = useState(0);
+  const [log, setLog] = useState<string[]>([]);
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  async function handleRun() {
     setIsRunning(true);
-    setRunMessage(undefined);
+    setError(undefined);
+    setLog([]);
+    setDone(0);
+    setChanged(0);
+
     try {
-      const result = await applyRulesAction();
-      if (!result.ok || !result.summary) {
-        setRunMessage(result.error ?? "Failed to apply the rules.");
+      const countResult = await countUnprocessedAction();
+      const queueSize = countResult.count ?? 0;
+      setTotal(queueSize);
+      if (queueSize === 0) {
+        setLog(["Nothing to process — every transaction has already been through the rules."]);
         return;
       }
-      const { categorisedCount, examinedCount } = result.summary;
-      setRunMessage(
-        `Categorised ${categorisedCount} of ${examinedCount} uncategorised transaction(s).`,
-      );
+
+      let completed = 0;
+      let changedSoFar = 0;
+
+      // Loop a batch at a time so the bar and log can move; the processed flag
+      // is the queue, so an interrupted run simply resumes next time.
+      for (;;) {
+        const result = await runCleanupBatchAction(DEFAULT_CLEANUP_BATCH_SIZE);
+        if (!result.ok || !result.result) {
+          setError(result.error ?? "Clean-up failed.");
+          return;
+        }
+
+        const batch = result.result;
+        const lines = batch.entries.map((entry, index) =>
+          logLine(entry, completed + index + 1, queueSize),
+        );
+        completed += batch.processedCount;
+        changedSoFar += batch.changedCount;
+
+        setLog((current) => [...current, ...lines]);
+        setDone(completed);
+        setChanged(changedSoFar);
+
+        // processedCount of 0 means the queue is empty — stop rather than spin.
+        if (batch.remainingCount === 0 || batch.processedCount === 0) break;
+      }
+
+      setLog((current) => [
+        ...current,
+        `Done. Processed ${completed} transaction(s); ${changedSoFar} changed by a rule.`,
+      ]);
+      await refreshExpenseViewAction();
       router.refresh();
     } finally {
       setIsRunning(false);
     }
   }
 
+  async function handleReset() {
+    if (
+      !window.confirm(
+        "Re-queue every transaction so the rules run over them again? Existing values are still never overwritten.",
+      )
+    ) {
+      return;
+    }
+    const result = await resetProcessedAction();
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    setLog([`Re-queued ${result.count ?? 0} transaction(s). Run the clean-up to process them.`]);
+    router.refresh();
+  }
+
+  const percent = total === 0 ? 0 : Math.round((done / total) * 100);
+
+  return (
+    <div className="flex flex-col gap-3 rounded-md border border-line bg-paper p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm" onClick={handleRun} disabled={isRunning}>
+          {isRunning ? "Running…" : "Manually Run Import Clean up"}
+        </Button>
+        <Button size="sm" variant="secondary" onClick={handleReset} disabled={isRunning}>
+          Re-queue all
+        </Button>
+        <span className="text-xs text-muted">
+          {unprocessedCount} transaction(s) awaiting processing
+        </span>
+      </div>
+
+      {(isRunning || done > 0) && total > 0 && (
+        <div>
+          <div className="flex items-center justify-between text-xs text-muted">
+            <span>
+              Processing {done} of {total} ({changed} changed)
+            </span>
+            <span>{percent}%</span>
+          </div>
+          <div
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={total}
+            aria-valuenow={done}
+            className="mt-1 h-2 w-full overflow-hidden rounded-full bg-line"
+          >
+            <div
+              className="h-full bg-brass transition-[width] duration-200"
+              style={{ width: `${percent}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {error && <p className="text-sm text-red-400">{error}</p>}
+
+      {log.length > 0 && (
+        <pre className="max-h-64 overflow-auto rounded-md border border-line bg-paper-raised p-2 font-mono text-[11px] leading-5 text-ink">
+          {log.join("\n")}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+export function ExpenseRulesView({
+  rules,
+  categories,
+  unprocessedCount,
+}: {
+  rules: PostImportRule[];
+  categories: ExpenseCategory[];
+  unprocessedCount: number;
+}) {
+  const router = useRouter();
+  const [editing, setEditing] = useState<PostImportRule | undefined>(undefined);
+
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted">
-        Rules read the raw description from your statement and fill in the category automatically —
-        for example <span className="font-mono">AMAZON*</span> →{" "}
-        <span className="font-mono">online-purchase</span>. They run during import and whenever you
-        press &ldquo;Apply rules now&rdquo;.
+        Rules read the raw description from your statement and fill in the fields for you — for
+        example <span className="font-mono">*TGI*</span> setting the vendor to{" "}
+        <span className="font-mono">TGI Friday</span> and the category to{" "}
+        <span className="font-mono">Restaurant</span>. They run during import, and whenever you run
+        the clean-up below.
       </p>
 
       <PatternHelp />
+
+      <CleanupRunner unprocessedCount={unprocessedCount} />
 
       <RuleForm
         key={editing?.id ?? "new"}
@@ -276,13 +463,6 @@ export function ExpenseRulesView({
         editing={editing}
         onDone={() => setEditing(undefined)}
       />
-
-      <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="secondary" onClick={handleApplyRules} disabled={isRunning}>
-          {isRunning ? "Applying…" : "Apply rules now"}
-        </Button>
-        {runMessage && <span className="text-xs text-muted">{runMessage}</span>}
-      </div>
 
       {rules.length === 0 ? (
         <p className="text-sm text-muted">No rules yet.</p>
@@ -294,11 +474,17 @@ export function ExpenseRulesView({
               className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-paper px-3 py-1.5 text-sm"
             >
               <span className="font-mono text-xs text-brass-dark">{rule.pattern}</span>
-              <span className="text-muted">→</span>
-              <span className="text-ink">{rule.categoryName}</span>
-              {rule.applyStatus !== "" && (
-                <span className="text-xs text-muted">+ status: {rule.applyStatus}</span>
-              )}
+              <span className="text-muted">&rarr;</span>
+              <span className="flex flex-wrap gap-1">
+                {rule.actions.map((action) => (
+                  <span
+                    key={action.id}
+                    className="rounded-full bg-brass-soft px-2 py-0.5 text-xs text-brass-dark"
+                  >
+                    {RULE_ACTION_FIELD_LABELS[action.fieldName]} = {action.fieldValue || "(blank)"}
+                  </span>
+                ))}
+              </span>
               <span className="text-xs text-muted">priority {rule.priority}</span>
               {!rule.isEnabled && <span className="text-xs text-red-400">disabled</span>}
               <span className="ml-auto flex gap-3">

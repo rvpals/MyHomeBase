@@ -18,7 +18,7 @@ import {
   saveAccountImageAction,
   saveCategoryAction,
 } from "./expense-actions";
-import { CardThumbnail, formatCents } from "./expense-view";
+import { CardThumbnail, formatCents } from "./expense-shared";
 
 const INPUT_CLASS =
   "w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";

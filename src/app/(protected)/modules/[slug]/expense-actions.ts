@@ -15,30 +15,38 @@ import {
   type NamedMapping,
 } from "@/lib/csv-import";
 import {
-  applyRulesToExistingTransactions,
   clearAccountImage,
+  countUnprocessed,
   createAccount,
   createRule,
   createTransaction,
   deleteAccount,
+  expenseSettingsToEntries,
   deleteCategory,
   deleteRule,
   deleteTransaction,
   importExpenseCsv,
   previewPatternMatches,
+  resetProcessedFlags,
+  runCleanupBatch,
   setAccountImage,
   updateAccount,
   updateRule,
   updateTransaction,
   upsertCategory,
+  type AutoImportRunSummary,
   type CardImageInput,
+  type CleanupBatchResult,
   type ExpenseImportSummary,
-  type RuleRunSummary,
+  type ExpenseSettings,
   type SaveAccountInput,
   type SaveCategoryInput,
-  type SaveCategoryRuleInput,
+  type SavePostImportRuleInput,
   type SaveTransactionInput,
 } from "@/lib/expense";
+import { runExpenseAutoImport } from "@/lib/expense/auto-import-runner";
+import { getModuleBySlug } from "@/lib/modules";
+import { saveModuleSettings } from "@/lib/module-settings";
 import { deps } from "@/lib/wiring";
 
 const EXPENSE_MODULE_PATH = "/modules/expense";
@@ -171,7 +179,7 @@ export async function deleteTransactionAction(id: number): Promise<ActionResult>
 
 export async function saveRuleAction(
   id: number | undefined,
-  input: SaveCategoryRuleInput,
+  input: SavePostImportRuleInput,
 ): Promise<ActionResult> {
   try {
     if (id === undefined) createRule(deps.expenseRepo, input);
@@ -193,18 +201,83 @@ export async function deleteRuleAction(id: number): Promise<ActionResult> {
   return { ok: true };
 }
 
-export interface RuleRunResult extends ActionResult {
-  summary?: RuleRunSummary;
+export async function saveExpenseSettingsAction(
+  settings: ExpenseSettings,
+): Promise<ActionResult> {
+  try {
+    const expenseModule = getModuleBySlug(deps.moduleRepo, "expense");
+    if (!expenseModule) return { ok: false, error: "Expense module not found." };
+    saveModuleSettings(deps.moduleSettingsRepo, {
+      moduleId: expenseModule.id,
+      entries: expenseSettingsToEntries(settings),
+    });
+  } catch (error) {
+    return toErrorResult(error, "Failed to save the settings.");
+  }
+  revalidatePath(EXPENSE_MODULE_PATH);
+  return { ok: true };
 }
 
-export async function applyRulesAction(): Promise<RuleRunResult> {
+export interface AutoImportResult extends ActionResult {
+  summary?: AutoImportRunSummary;
+}
+
+/** Runs the auto-import immediately, rather than waiting for the next tick. */
+export async function runAutoImportNowAction(): Promise<AutoImportResult> {
   try {
-    const summary = applyRulesToExistingTransactions(deps.expenseRepo);
+    const summary = runExpenseAutoImport();
     revalidatePath(EXPENSE_MODULE_PATH);
     return { ok: true, summary };
   } catch (error) {
-    return toErrorResult(error, "Failed to apply the rules.");
+    return toErrorResult(error, "Failed to run the auto-import.");
   }
+}
+
+export interface CleanupBatchActionResult extends ActionResult {
+  result?: CleanupBatchResult;
+}
+
+/**
+ * Processes one batch of unprocessed transactions. The client calls this in a
+ * loop so it can show progress and a live log — a single long call couldn't
+ * report anything until it finished.
+ */
+export async function runCleanupBatchAction(batchSize: number): Promise<CleanupBatchActionResult> {
+  try {
+    return { ok: true, result: runCleanupBatch(deps.expenseRepo, batchSize) };
+  } catch (error) {
+    return toErrorResult(error, "Failed to run the clean-up.");
+  }
+}
+
+export interface UnprocessedCountResult extends ActionResult {
+  count?: number;
+}
+
+/** The size of the queue, read before a run so the progress bar has a total. */
+export async function countUnprocessedAction(): Promise<UnprocessedCountResult> {
+  try {
+    return { ok: true, count: countUnprocessed(deps.expenseRepo) };
+  } catch (error) {
+    return toErrorResult(error, "Failed to count unprocessed transactions.");
+  }
+}
+
+/** Re-queues everything, so a newly added rule can reach older transactions. */
+export async function resetProcessedAction(): Promise<UnprocessedCountResult> {
+  try {
+    const count = resetProcessedFlags(deps.expenseRepo);
+    revalidatePath(EXPENSE_MODULE_PATH);
+    return { ok: true, count };
+  } catch (error) {
+    return toErrorResult(error, "Failed to reset the processed flags.");
+  }
+}
+
+/** Called once at the end of a run so the page picks up every change. */
+export async function refreshExpenseViewAction(): Promise<ActionResult> {
+  revalidatePath(EXPENSE_MODULE_PATH);
+  return { ok: true };
 }
 
 export interface PatternPreviewResult extends ActionResult {

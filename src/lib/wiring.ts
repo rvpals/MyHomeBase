@@ -9,6 +9,7 @@ import type { GoogleOAuthClient } from "./auth/ports";
 import { SqliteCsvAnalyticsRepository } from "./csv-analytics/repository";
 import { SqliteCsvImportMappingRepository } from "./csv-import/repository";
 import { SqliteDailyQuoteRepository } from "./daily-quote/repository";
+import { NodeCsvFolder } from "./expense/csv-folder";
 import { SqliteExpenseRepository } from "./expense/repository";
 import { NominatimGeocodingClient } from "./geocoding/nominatim-client";
 import { OpenMeteoWeatherClient } from "./weather/open-meteo-client";
@@ -67,6 +68,7 @@ export const deps = {
   investmentAccountRepo: new SqliteInvestmentAccountRepository(db),
   journalRepo: new SqliteJournalRepository(db),
   expenseRepo: new SqliteExpenseRepository(db),
+  csvFolder: new NodeCsvFolder(),
   csvImportMappingRepo: new SqliteCsvImportMappingRepository(db),
   csvAnalyticsRepo: new SqliteCsvAnalyticsRepository(db),
   dailyQuoteRepo: new SqliteDailyQuoteRepository(db),

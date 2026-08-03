@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  applyRulesToExistingTransactions,
   clearAccountImage,
+  countUnprocessed,
   createAccount,
   createRule,
   createTransaction,
@@ -11,6 +11,8 @@ import {
   listTransactions,
   getAccountImage,
   previewPatternMatches,
+  resetProcessedFlags,
+  runCleanupBatch,
   setAccountImage,
   totalsByCategory,
   updateTransaction,
@@ -19,17 +21,17 @@ import { MAX_CARD_IMAGE_BYTES } from "./schema";
 import type { ExpenseRepository, TransactionFilter } from "./ports";
 import type {
   AccountWriteData,
-  CategoryRuleWriteData,
   CategoryWriteData,
+  PostImportRuleWriteData,
   TransactionWriteData,
 } from "./schema";
 import type {
   CardImage,
-  CategoryRule,
   CategoryTotal,
   CreditCardAccount,
   ExpenseCategory,
   ExpenseTransaction,
+  PostImportRule,
 } from "./types";
 
 // Hand-written in-memory fake implementing the port.
@@ -37,7 +39,7 @@ function fakeRepo(): ExpenseRepository {
   let accounts: CreditCardAccount[] = [];
   let categories: ExpenseCategory[] = [];
   let transactions: ExpenseTransaction[] = [];
-  let rules: CategoryRule[] = [];
+  let rules: PostImportRule[] = [];
   const images = new Map<number, CardImage>();
   let nextAccountId = 1;
   let nextTransactionId = 1;
@@ -141,23 +143,62 @@ function fakeRepo(): ExpenseRepository {
           transaction.transactionDescription === input.transactionDescription &&
           transaction.amountCents === input.amountCents,
       ),
-    setTransactionCategoryAndStatus(id, categoryName, status) {
+    listUnprocessed: (limit) =>
+      transactions.filter((transaction) => !transaction.processed).slice(0, limit),
+    countUnprocessed: () => transactions.filter((transaction) => !transaction.processed).length,
+    applyProcessingResult(id, assignments) {
       transactions = transactions.map((transaction) =>
         transaction.id === id
-          ? { ...transaction, categoryName, status: status as ExpenseTransaction["status"] }
+          ? ({ ...transaction, ...assignments, processed: true } as ExpenseTransaction)
           : transaction,
       );
+    },
+    resetProcessedFlags() {
+      const count = transactions.length;
+      transactions = transactions.map((transaction) => ({ ...transaction, processed: false }));
+      return count;
     },
 
     listRules: () => [...rules].sort((a, b) => (a.priority === b.priority ? a.id - b.id : a.priority - b.priority)),
     getRuleById: (id) => rules.find((rule) => rule.id === id),
-    createRule(input: CategoryRuleWriteData) {
-      const created: CategoryRule = { id: nextRuleId++, ...input, createdAt: now, updatedAt: now };
+    createRule(input: PostImportRuleWriteData) {
+      const id = nextRuleId++;
+      const created: PostImportRule = {
+        id,
+        pattern: input.pattern,
+        priority: input.priority,
+        isEnabled: input.isEnabled,
+        actions: input.actions.map((action, index) => ({
+          id: index + 1,
+          ruleId: id,
+          fieldName: action.fieldName,
+          fieldValue: action.fieldValue,
+          sortOrder: index,
+        })),
+        createdAt: now,
+        updatedAt: now,
+      };
       rules.push(created);
       return created;
     },
     updateRule(id, input) {
-      rules = rules.map((rule) => (rule.id === id ? { ...rule, ...input } : rule));
+      rules = rules.map((rule) =>
+        rule.id === id
+          ? {
+              ...rule,
+              pattern: input.pattern,
+              priority: input.priority,
+              isEnabled: input.isEnabled,
+              actions: input.actions.map((action, index) => ({
+                id: index + 1,
+                ruleId: id,
+                fieldName: action.fieldName,
+                fieldValue: action.fieldValue,
+                sortOrder: index,
+              })),
+            }
+          : rule,
+      );
       return rules.find((rule) => rule.id === id)!;
     },
     deleteRule(id) {
@@ -351,8 +392,137 @@ describe("deleteCategory", () => {
   });
 });
 
-describe("applyRulesToExistingTransactions", () => {
+describe("runCleanupBatch", () => {
   function setup() {
+    const repo = fakeRepo();
+    const account = seedAccount(repo);
+    const add = (transactionDescription: string) =>
+      createTransaction(
+        repo,
+        {
+          transactionDate: "2026-07-15",
+          transactionAccountId: account.id,
+          transactionDescription,
+          amountCents: 2033,
+        },
+        1,
+      );
+    add("SQ *TGI FRIDAYS #221");
+    add("LOCAL BAKERY");
+    return { repo, account };
+  }
+
+  const tgiRule = {
+    pattern: "*TGI*",
+    actions: [
+      { fieldName: "vendor" as const, fieldValue: "TGI Friday" },
+      { fieldName: "categoryName" as const, fieldValue: "Restaurant" },
+    ],
+  };
+
+  it("sets every field the matching rule specifies", () => {
+    const { repo } = setup();
+    createRule(repo, tgiRule);
+
+    const result = runCleanupBatch(repo);
+
+    expect(result.processedCount).toBe(2);
+    expect(result.changedCount).toBe(1);
+    const tgi = listTransactions(repo).find((t) => t.transactionDescription.includes("TGI"));
+    expect(tgi).toMatchObject({ vendor: "TGI Friday", categoryName: "Restaurant" });
+  });
+
+  it("marks every row processed, including ones no rule matched", () => {
+    const { repo } = setup();
+    createRule(repo, tgiRule);
+
+    runCleanupBatch(repo);
+
+    expect(listTransactions(repo).every((t) => t.processed)).toBe(true);
+    expect(countUnprocessed(repo)).toBe(0);
+  });
+
+  it("reports each row in the log, naming the rule and what it changed", () => {
+    const { repo } = setup();
+    createRule(repo, tgiRule);
+
+    const { entries } = runCleanupBatch(repo);
+
+    const tgiEntry = entries.find((entry) => entry.description.includes("TGI"));
+    expect(tgiEntry?.pattern).toBe("*TGI*");
+    expect(tgiEntry?.changes).toEqual([
+      { fieldName: "vendor", value: "TGI Friday" },
+      { fieldName: "categoryName", value: "Restaurant" },
+    ]);
+
+    const bakeryEntry = entries.find((entry) => entry.description === "LOCAL BAKERY");
+    expect(bakeryEntry?.pattern).toBeUndefined();
+    expect(bakeryEntry?.changes).toEqual([]);
+  });
+
+  it("works through the queue in batches, reporting what is left", () => {
+    const { repo } = setup();
+    createRule(repo, tgiRule);
+
+    const first = runCleanupBatch(repo, 1);
+    expect(first.processedCount).toBe(1);
+    expect(first.remainingCount).toBe(1);
+
+    const second = runCleanupBatch(repo, 1);
+    expect(second.processedCount).toBe(1);
+    expect(second.remainingCount).toBe(0);
+
+    const third = runCleanupBatch(repo, 1);
+    expect(third.processedCount).toBe(0); // queue empty, so the client loop stops
+  });
+
+  it("is a no-op on a second run, because the queue is empty", () => {
+    const { repo } = setup();
+    createRule(repo, tgiRule);
+
+    runCleanupBatch(repo);
+    const second = runCleanupBatch(repo);
+
+    expect(second.processedCount).toBe(0);
+    expect(second.changedCount).toBe(0);
+  });
+
+  it("never overwrites a value entered by hand", () => {
+    const { repo, account } = setup();
+    const manual = createTransaction(
+      repo,
+      {
+        transactionDate: "2026-07-16",
+        transactionAccountId: account.id,
+        transactionDescription: "SQ *TGI FRIDAYS #999",
+        amountCents: 100,
+        vendor: "My Own Vendor",
+      },
+      1,
+    );
+    createRule(repo, tgiRule);
+
+    runCleanupBatch(repo);
+
+    const saved = repo.getTransactionById(manual.id);
+    expect(saved?.vendor).toBe("My Own Vendor");
+    expect(saved?.categoryName).toBe("Restaurant"); // the free field is still filled
+  });
+
+  it("registers a category a rule introduces", () => {
+    const { repo } = setup();
+    createRule(repo, tgiRule);
+    runCleanupBatch(repo);
+    expect(listCategories(repo).map((category) => category.name)).toContain("Restaurant");
+  });
+
+  it("rejects a non-positive batch size", () => {
+    expect(() => runCleanupBatch(fakeRepo(), 0)).toThrow();
+  });
+});
+
+describe("resetProcessedFlags", () => {
+  it("re-queues everything so a new rule can reach older rows", () => {
     const repo = fakeRepo();
     const account = seedAccount(repo);
     createTransaction(
@@ -360,85 +530,23 @@ describe("applyRulesToExistingTransactions", () => {
       {
         transactionDate: "2026-07-15",
         transactionAccountId: account.id,
-        transactionDescription: "AMAZON MKTPL*2X4Y9",
-        amountCents: 2033,
+        transactionDescription: "SQ *TGI FRIDAYS",
+        amountCents: 100,
       },
       1,
     );
-    createTransaction(
-      repo,
-      {
-        transactionDate: "2026-07-16",
-        transactionAccountId: account.id,
-        transactionDescription: "LOCAL BAKERY",
-        amountCents: 750,
-      },
-      1,
-    );
-    return { repo, account };
-  }
+    runCleanupBatch(repo);
+    expect(countUnprocessed(repo)).toBe(0);
 
-  it("categorises matching uncategorised rows and reports what changed", () => {
-    const { repo } = setup();
-    createRule(repo, { pattern: "AMAZON*", categoryName: "online-purchase" });
-
-    const summary = applyRulesToExistingTransactions(repo);
-
-    expect(summary.categorisedCount).toBe(1);
-    expect(summary.examinedCount).toBe(2);
-    expect(summary.byRule[0]).toMatchObject({ pattern: "AMAZON*", categoryName: "online-purchase", count: 1 });
-    expect(listTransactions(repo).find((t) => t.transactionDescription.startsWith("AMAZON"))?.categoryName)
-      .toBe("online-purchase");
-  });
-
-  it("applies the rule's status when it sets one", () => {
-    const { repo } = setup();
     createRule(repo, {
-      pattern: "AMAZON*",
-      categoryName: "online-purchase",
-      applyStatus: "reconciled",
+      pattern: "*TGI*",
+      actions: [{ fieldName: "vendor", fieldValue: "TGI Friday" }],
     });
+    resetProcessedFlags(repo);
+    expect(countUnprocessed(repo)).toBe(1);
 
-    applyRulesToExistingTransactions(repo);
-
-    const amazon = listTransactions(repo).find((t) => t.transactionDescription.startsWith("AMAZON"));
-    expect(amazon?.status).toBe("reconciled");
-  });
-
-  it("is idempotent — a second run changes nothing", () => {
-    const { repo } = setup();
-    createRule(repo, { pattern: "AMAZON*", categoryName: "online-purchase" });
-
-    applyRulesToExistingTransactions(repo);
-    const second = applyRulesToExistingTransactions(repo);
-
-    expect(second.categorisedCount).toBe(0);
-  });
-
-  it("leaves a manually categorised row alone", () => {
-    const { repo, account } = setup();
-    const manual = createTransaction(
-      repo,
-      {
-        transactionDate: "2026-07-17",
-        transactionAccountId: account.id,
-        transactionDescription: "AMAZON MKTPL*ZZZ",
-        amountCents: 500,
-        categoryName: "gift",
-      },
-      1,
-    );
-    createRule(repo, { pattern: "AMAZON*", categoryName: "online-purchase" });
-
-    applyRulesToExistingTransactions(repo);
-
-    expect(repo.getTransactionById(manual.id)?.categoryName).toBe("gift");
-  });
-
-  it("registers the rule's category so the managed list stays complete", () => {
-    const { repo } = setup();
-    createRule(repo, { pattern: "AMAZON*", categoryName: "online-purchase" });
-    expect(listCategories(repo).map((c) => c.name)).toContain("online-purchase");
+    runCleanupBatch(repo);
+    expect(listTransactions(repo)[0].vendor).toBe("TGI Friday");
   });
 });
 

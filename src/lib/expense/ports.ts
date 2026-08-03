@@ -1,16 +1,17 @@
 import type {
   AccountWriteData,
-  CategoryRuleWriteData,
   CategoryWriteData,
+  PostImportRuleWriteData,
   TransactionWriteData,
 } from "./schema";
 import type {
   CardImage,
-  CategoryRule,
   CategoryTotal,
   CreditCardAccount,
   ExpenseCategory,
   ExpenseTransaction,
+  PostImportRule,
+  RuleActionField,
 } from "./types";
 
 /** Narrows the transaction list. Omitted fields mean "no constraint". */
@@ -59,14 +60,28 @@ export interface ExpenseRepository {
     transactionDescription: string;
     amountCents: number;
   }): boolean;
-  /** Applies a rule's outcome to one transaction without touching other fields. */
-  setTransactionCategoryAndStatus(id: number, categoryName: string, status: string): void;
+  /**
+   * The next `limit` transactions still awaiting post-import processing,
+   * oldest first — the clean-up queue.
+   */
+  listUnprocessed(limit: number): ExpenseTransaction[];
+  countUnprocessed(): number;
+  /**
+   * Writes a rule's assignments and marks the row processed, in one statement.
+   * An empty `assignments` map just marks it processed.
+   */
+  applyProcessingResult(
+    id: number,
+    assignments: Partial<Record<RuleActionField, string>>,
+  ): void;
+  /** Clears the processed flag so the rules can be run over rows again. */
+  resetProcessedFlags(): number;
 
   // Rules
-  listRules(): CategoryRule[];
-  getRuleById(id: number): CategoryRule | undefined;
-  createRule(input: CategoryRuleWriteData): CategoryRule;
-  updateRule(id: number, input: CategoryRuleWriteData): CategoryRule;
+  listRules(): PostImportRule[];
+  getRuleById(id: number): PostImportRule | undefined;
+  createRule(input: PostImportRuleWriteData): PostImportRule;
+  updateRule(id: number, input: PostImportRuleWriteData): PostImportRule;
   deleteRule(id: number): void;
 
   // Reporting

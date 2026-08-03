@@ -1,10 +1,14 @@
 export {
   TRANSACTION_STATUSES,
+  RULE_ACTION_FIELDS,
+  RULE_ACTION_FIELD_LABELS,
   type TransactionStatus,
   type CreditCardAccount,
   type ExpenseCategory,
   type ExpenseTransaction,
-  type CategoryRule,
+  type PostImportRule,
+  type RuleAction,
+  type RuleActionField,
   type CategoryTotal,
   type CardImage,
 } from "./types";
@@ -16,8 +20,11 @@ export {
   saveCategorySchema,
   expenseTransactionSchema,
   saveTransactionSchema,
-  categoryRuleSchema,
-  saveCategoryRuleSchema,
+  postImportRuleSchema,
+  savePostImportRuleSchema,
+  ruleActionSchema,
+  saveRuleActionSchema,
+  ruleActionFieldSchema,
   cardImageSchema,
   CARD_IMAGE_MIME_TYPES,
   MAX_CARD_IMAGE_BYTES,
@@ -25,11 +32,11 @@ export {
   type SaveAccountInput,
   type SaveCategoryInput,
   type SaveTransactionInput,
-  type SaveCategoryRuleInput,
+  type SavePostImportRuleInput,
   type AccountWriteData,
   type CategoryWriteData,
   type TransactionWriteData,
-  type CategoryRuleWriteData,
+  type PostImportRuleWriteData,
 } from "./schema";
 export type { ExpenseRepository, TransactionFilter } from "./ports";
 export { SqliteExpenseRepository } from "./repository";
@@ -38,7 +45,9 @@ export {
   matchesPattern,
   findMatchingRule,
   planRuleApplication,
-  type RuleApplication,
+  applyAssignments,
+  type RulePlan,
+  type PlannedAssignment,
 } from "./rules";
 export {
   listAccounts,
@@ -60,11 +69,37 @@ export {
   createRule,
   updateRule,
   deleteRule,
-  applyRulesToExistingTransactions,
+  runCleanupBatch,
+  countUnprocessed,
+  resetProcessedFlags,
   previewPatternMatches,
   totalsByCategory,
-  type RuleRunSummary,
+  DEFAULT_CLEANUP_BATCH_SIZE,
+  type CleanupBatchResult,
+  type CleanupLogEntry,
 } from "./expense";
+export {
+  EXPENSE_SETTING_KEYS,
+  DEFAULT_AUTO_IMPORT_INTERVAL_MINUTES,
+  resolveExpenseSettings,
+  expenseSettingsToEntries,
+  isAutoImportEnabled,
+  shouldRunNow,
+  type ExpenseSettings,
+} from "./settings";
+// Only the interface: the Node implementation imports node:fs, and this barrel
+// is reachable from client components (they import the domain types from it),
+// which would drag a filesystem module into the browser bundle. wiring.ts
+// imports NodeCsvFolder from "./expense/csv-folder" directly instead.
+export type { CsvFolderPort } from "./csv-folder";
+export {
+  runAutoImport,
+  accountNameFromFolderName,
+  findMappingForAccount,
+  type AutoImportRunSummary,
+  type AutoImportFileResult,
+  type AutoImportDependencies,
+} from "./auto-import";
 export {
   importExpenseCsv,
   parseMoneyToCents,

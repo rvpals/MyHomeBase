@@ -17,7 +17,7 @@ import type {
 } from "@/lib/csv-import";
 import { createTransaction } from "./expense";
 import type { ExpenseRepository } from "./ports";
-import { planRuleApplication } from "./rules";
+import { applyAssignments, planRuleApplication } from "./rules";
 import type { SaveTransactionInput } from "./schema";
 
 /** The expense fields a CSV column can be mapped to, for the mapping UI. */
@@ -196,28 +196,30 @@ export function importExpenseCsv(
         return;
       }
 
-      // Rules run before the insert so the row lands categorised in one write.
-      let categoryName = input.categoryName ?? "";
-      let status = input.status ?? "new";
-      if (shouldApplyRules && categoryName === "") {
-        const plan = planRuleApplication(
-          {
-            transactionDescription: input.transactionDescription ?? "",
-            categoryName: "",
-            status: "new",
-          },
-          rules,
-        );
-        if (plan) {
-          categoryName = plan.categoryName;
-          status = plan.status;
+      // Post-import rules run before the insert so the row lands complete in a
+      // single write. A row that's been through them is marked processed, so the
+      // manual clean-up doesn't revisit it.
+      let fields = {
+        transactionDescription: input.transactionDescription ?? "",
+        categoryName: input.categoryName ?? "",
+        vendor: input.vendor ?? "",
+        note: input.note ?? "",
+        status: input.status ?? ("new" as const),
+      };
+      let processed = false;
+
+      if (shouldApplyRules) {
+        const plan = planRuleApplication(fields, rules);
+        if (plan && plan.assignments.length > 0) {
+          fields = applyAssignments(fields, plan.assignments);
           categorisedCount += 1;
         }
+        processed = true;
       }
 
       // Through the use-case, so the row gets the same validation and
       // category registration as one typed in by hand.
-      createTransaction(repo, { ...input, categoryName, status }, createdByUserId);
+      createTransaction(repo, { ...input, ...fields, processed }, createdByUserId);
       results.push({ rowNumber, status: "imported" });
     } catch (error) {
       results.push({

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TRANSACTION_STATUSES } from "./types";
+import { RULE_ACTION_FIELDS, TRANSACTION_STATUSES } from "./types";
 
 // zod is the single source of truth for every shape crossing a boundary (server
 // actions, CLI, CSV import).
@@ -67,9 +67,11 @@ export const expenseTransactionSchema = z.object({
   transactionAccountId: z.number().int().positive(),
   transactionDescription: z.string(),
   categoryName: z.string(),
+  vendor: z.string(),
   amountCents: z.number().int(),
   note: z.string(),
   status: transactionStatusSchema,
+  processed: z.boolean(),
   createdByUserId: z.number().int(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -82,34 +84,63 @@ export const saveTransactionSchema = z.object({
   transactionAccountId: z.number().int().positive("Pick the card this belongs to."),
   transactionDescription: z.string().trim().default(""),
   categoryName: z.string().trim().default(""),
+  vendor: z.string().trim().default(""),
   // Negative is legitimate — refunds and payments are credits.
   amountCents: z.number().int(),
   note: z.string().trim().default(""),
   status: transactionStatusSchema.default("new"),
+  processed: z.boolean().default(false),
 });
 
 export type SaveTransactionInput = z.input<typeof saveTransactionSchema>;
 export type TransactionWriteData = z.output<typeof saveTransactionSchema>;
 
-export const saveCategoryRuleSchema = z.object({
-  pattern: z.string().trim().min(1, "A pattern is required."),
-  categoryName: z.string().trim().min(1, "Pick the category to assign."),
-  // "" means "don't touch the status" — distinct from any real status value.
-  applyStatus: z.union([transactionStatusSchema, z.literal("")]).default(""),
-  priority: z.number().int().default(0),
-  isEnabled: z.boolean().default(true),
+export const ruleActionFieldSchema = z.enum(RULE_ACTION_FIELDS);
+
+export const ruleActionSchema = z.object({
+  id: z.number().int().positive(),
+  ruleId: z.number().int().positive(),
+  fieldName: ruleActionFieldSchema,
+  fieldValue: z.string(),
+  sortOrder: z.number().int().nonnegative(),
 });
 
-export type SaveCategoryRuleInput = z.input<typeof saveCategoryRuleSchema>;
-export type CategoryRuleWriteData = z.output<typeof saveCategoryRuleSchema>;
+// One assignment as the editor supplies it. A `status` action is checked against
+// the real status list here, so a typo is refused at save time instead of
+// writing a value nothing else understands.
+export const saveRuleActionSchema = z
+  .object({
+    fieldName: ruleActionFieldSchema,
+    fieldValue: z.string().trim().default(""),
+  })
+  .refine(
+    (action) =>
+      action.fieldName !== "status" ||
+      (TRANSACTION_STATUSES as readonly string[]).includes(action.fieldValue),
+    { message: `A status action must be one of: ${TRANSACTION_STATUSES.join(", ")}.` },
+  )
+  .refine((action) => action.fieldName === "note" || action.fieldValue !== "", {
+    message: "Give the value this rule should set (only a note may be blank).",
+  });
 
-export const categoryRuleSchema = z.object({
+export const savePostImportRuleSchema = z.object({
+  pattern: z.string().trim().min(1, "A pattern is required."),
+  priority: z.number().int().default(0),
+  isEnabled: z.boolean().default(true),
+  actions: z
+    .array(saveRuleActionSchema)
+    .min(1, "Add at least one field for this rule to set."),
+});
+
+export type SavePostImportRuleInput = z.input<typeof savePostImportRuleSchema>;
+export type PostImportRuleWriteData = z.output<typeof savePostImportRuleSchema>;
+
+export const postImportRuleSchema = z.object({
   id: z.number().int().positive(),
   pattern: z.string().min(1),
-  categoryName: z.string().min(1),
-  applyStatus: z.union([transactionStatusSchema, z.literal("")]),
   priority: z.number().int(),
   isEnabled: z.boolean(),
+  actions: z.array(ruleActionSchema),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

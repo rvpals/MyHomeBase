@@ -1,24 +1,25 @@
 import type Database from "better-sqlite3";
 import type { ExpenseRepository, TransactionFilter } from "./ports";
 import {
-  categoryRuleSchema,
   creditCardAccountSchema,
   expenseCategorySchema,
   expenseTransactionSchema,
+  postImportRuleSchema,
 } from "./schema";
 import type {
   AccountWriteData,
-  CategoryRuleWriteData,
   CategoryWriteData,
+  PostImportRuleWriteData,
   TransactionWriteData,
 } from "./schema";
 import type {
   CardImage,
-  CategoryRule,
   CategoryTotal,
   CreditCardAccount,
   ExpenseCategory,
   ExpenseTransaction,
+  PostImportRule,
+  RuleActionField,
 } from "./types";
 
 interface AccountRow {
@@ -51,9 +52,11 @@ interface TransactionRow {
   transaction_account_id: number;
   transaction_description: string;
   category_name: string;
+  vendor: string;
   amount_cents: number;
   note: string;
   status: string;
+  processed: number;
   created_by_user_id: number;
   created_at: string;
   updated_at: string;
@@ -62,12 +65,18 @@ interface TransactionRow {
 interface RuleRow {
   id: number;
   pattern: string;
-  category_name: string;
-  apply_status: string;
   priority: number;
   is_enabled: number;
   created_at: string;
   updated_at: string;
+}
+
+interface RuleActionRow {
+  id: number;
+  rule_id: number;
+  field_name: string;
+  field_value: string;
+  sort_order: number;
 }
 
 function accountToDomain(row: AccountRow): CreditCardAccount {
@@ -99,23 +108,30 @@ function transactionToDomain(row: TransactionRow): ExpenseTransaction {
     transactionAccountId: row.transaction_account_id,
     transactionDescription: row.transaction_description,
     categoryName: row.category_name,
+    vendor: row.vendor,
     amountCents: row.amount_cents,
     note: row.note,
     status: row.status,
+    processed: row.processed === 1,
     createdByUserId: row.created_by_user_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
 }
 
-function ruleToDomain(row: RuleRow): CategoryRule {
-  return categoryRuleSchema.parse({
+function ruleToDomain(row: RuleRow, actionRows: RuleActionRow[]): PostImportRule {
+  return postImportRuleSchema.parse({
     id: row.id,
     pattern: row.pattern,
-    categoryName: row.category_name,
-    applyStatus: row.apply_status,
     priority: row.priority,
     isEnabled: row.is_enabled === 1,
+    actions: actionRows.map((action) => ({
+      id: action.id,
+      ruleId: action.rule_id,
+      fieldName: action.field_name,
+      fieldValue: action.field_value,
+      sortOrder: action.sort_order,
+    })),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
@@ -297,12 +313,12 @@ export class SqliteExpenseRepository implements ExpenseRepository {
       .prepare(
         `INSERT INTO exp_transactions
            (transaction_date, posting_date, transaction_account_id, transaction_description,
-            category_name, amount_cents, note, status, created_by_user_id)
+            category_name, vendor, amount_cents, note, status, processed, created_by_user_id)
          VALUES
            (@transactionDate, @postingDate, @transactionAccountId, @transactionDescription,
-            @categoryName, @amountCents, @note, @status, @createdByUserId)`,
+            @categoryName, @vendor, @amountCents, @note, @status, @processed, @createdByUserId)`,
       )
-      .run({ ...input, createdByUserId });
+      .run({ ...input, processed: input.processed ? 1 : 0, createdByUserId });
     const created = this.getTransactionById(Number(result.lastInsertRowid));
     if (!created) throw new Error("Failed to read back the new transaction.");
     return created;
@@ -317,12 +333,14 @@ export class SqliteExpenseRepository implements ExpenseRepository {
            transaction_account_id = @transactionAccountId,
            transaction_description = @transactionDescription,
            category_name = @categoryName,
+           vendor = @vendor,
            amount_cents = @amountCents,
            note = @note,
-           status = @status
+           status = @status,
+           processed = @processed
          WHERE id = @id`,
       )
-      .run({ ...input, id });
+      .run({ ...input, processed: input.processed ? 1 : 0, id });
     const updated = this.getTransactionById(id);
     if (!updated) throw new Error(`Failed to read back transaction ${id}.`);
     return updated;
@@ -351,57 +369,150 @@ export class SqliteExpenseRepository implements ExpenseRepository {
     return row !== undefined;
   }
 
-  setTransactionCategoryAndStatus(id: number, categoryName: string, status: string): void {
+  listUnprocessed(limit: number): ExpenseTransaction[] {
+    const rows = this.db
+      .prepare("SELECT * FROM exp_transactions WHERE processed = 0 ORDER BY id ASC LIMIT ?")
+      .all(limit) as TransactionRow[];
+    return rows.map(transactionToDomain);
+  }
+
+  countUnprocessed(): number {
+    const row = this.db
+      .prepare("SELECT COUNT(*) AS count FROM exp_transactions WHERE processed = 0")
+      .get() as { count: number };
+    return row.count;
+  }
+
+  applyProcessingResult(
+    id: number,
+    assignments: Partial<Record<RuleActionField, string>>,
+  ): void {
+    // Built dynamically so untouched columns keep their values, and always
+    // marking processed in the same statement — a row can't end up changed but
+    // still queued.
+    const columnByField: Record<RuleActionField, string> = {
+      categoryName: "category_name",
+      vendor: "vendor",
+      status: "status",
+      note: "note",
+    };
+
+    const setClauses: string[] = ["processed = 1"];
+    const params: Record<string, string | number> = { id };
+
+    for (const [field, value] of Object.entries(assignments)) {
+      if (value === undefined) continue;
+      const column = columnByField[field as RuleActionField];
+      setClauses.push(`${column} = @${field}`);
+      params[field] = value;
+    }
+
     this.db
-      .prepare("UPDATE exp_transactions SET category_name = ?, status = ? WHERE id = ?")
-      .run(categoryName, status, id);
+      .prepare(`UPDATE exp_transactions SET ${setClauses.join(", ")} WHERE id = @id`)
+      .run(params);
+  }
+
+  resetProcessedFlags(): number {
+    const result = this.db.prepare("UPDATE exp_transactions SET processed = 0").run();
+    return result.changes;
   }
 
   // --- rules ----------------------------------------------------------------
 
-  listRules(): CategoryRule[] {
+  listRules(): PostImportRule[] {
     // Evaluation order: lowest priority first, then insertion order.
     const rows = this.db
-      .prepare("SELECT * FROM exp_category_rules ORDER BY priority ASC, id ASC")
+      .prepare("SELECT * FROM exp_post_import_rules ORDER BY priority ASC, id ASC")
       .all() as RuleRow[];
-    return rows.map(ruleToDomain);
+    if (rows.length === 0) return [];
+
+    // One query for every action, grouped in memory, rather than a query per rule.
+    const actionRows = this.db
+      .prepare("SELECT * FROM exp_post_import_rule_actions ORDER BY rule_id ASC, sort_order ASC, id ASC")
+      .all() as RuleActionRow[];
+    const byRuleId = new Map<number, RuleActionRow[]>();
+    for (const action of actionRows) {
+      const existing = byRuleId.get(action.rule_id) ?? [];
+      existing.push(action);
+      byRuleId.set(action.rule_id, existing);
+    }
+
+    return rows.map((row) => ruleToDomain(row, byRuleId.get(row.id) ?? []));
   }
 
-  getRuleById(id: number): CategoryRule | undefined {
-    const row = this.db.prepare("SELECT * FROM exp_category_rules WHERE id = ?").get(id) as
+  getRuleById(id: number): PostImportRule | undefined {
+    const row = this.db.prepare("SELECT * FROM exp_post_import_rules WHERE id = ?").get(id) as
       | RuleRow
       | undefined;
-    return row ? ruleToDomain(row) : undefined;
+    if (!row) return undefined;
+    const actionRows = this.db
+      .prepare(
+        "SELECT * FROM exp_post_import_rule_actions WHERE rule_id = ? ORDER BY sort_order ASC, id ASC",
+      )
+      .all(id) as RuleActionRow[];
+    return ruleToDomain(row, actionRows);
   }
 
-  createRule(input: CategoryRuleWriteData): CategoryRule {
-    const result = this.db
-      .prepare(
-        `INSERT INTO exp_category_rules (pattern, category_name, apply_status, priority, is_enabled)
-         VALUES (@pattern, @categoryName, @applyStatus, @priority, @isEnabled)`,
-      )
-      .run({ ...input, isEnabled: input.isEnabled ? 1 : 0 });
-    const created = this.getRuleById(Number(result.lastInsertRowid));
+  /** Replaces a rule's action rows. Called inside a transaction by its callers. */
+  private replaceRuleActions(ruleId: number, input: PostImportRuleWriteData): void {
+    this.db.prepare("DELETE FROM exp_post_import_rule_actions WHERE rule_id = ?").run(ruleId);
+    const insert = this.db.prepare(
+      `INSERT INTO exp_post_import_rule_actions (rule_id, field_name, field_value, sort_order)
+       VALUES (?, ?, ?, ?)`,
+    );
+    input.actions.forEach((action, index) => {
+      insert.run(ruleId, action.fieldName, action.fieldValue, index);
+    });
+  }
+
+  createRule(input: PostImportRuleWriteData): PostImportRule {
+    const insertRule = this.db.prepare(
+      `INSERT INTO exp_post_import_rules (pattern, priority, is_enabled)
+       VALUES (@pattern, @priority, @isEnabled)`,
+    );
+
+    const ruleId = this.db.transaction(() => {
+      const result = insertRule.run({
+        pattern: input.pattern,
+        priority: input.priority,
+        isEnabled: input.isEnabled ? 1 : 0,
+      });
+      const newId = Number(result.lastInsertRowid);
+      this.replaceRuleActions(newId, input);
+      return newId;
+    })();
+
+    const created = this.getRuleById(ruleId);
     if (!created) throw new Error("Failed to read back the new rule.");
     return created;
   }
 
-  updateRule(id: number, input: CategoryRuleWriteData): CategoryRule {
-    this.db
-      .prepare(
-        `UPDATE exp_category_rules SET
-           pattern = @pattern, category_name = @categoryName, apply_status = @applyStatus,
-           priority = @priority, is_enabled = @isEnabled
-         WHERE id = @id`,
-      )
-      .run({ ...input, isEnabled: input.isEnabled ? 1 : 0, id });
+  updateRule(id: number, input: PostImportRuleWriteData): PostImportRule {
+    const updateRule = this.db.prepare(
+      `UPDATE exp_post_import_rules SET pattern = @pattern, priority = @priority, is_enabled = @isEnabled
+       WHERE id = @id`,
+    );
+
+    this.db.transaction(() => {
+      updateRule.run({
+        id,
+        pattern: input.pattern,
+        priority: input.priority,
+        isEnabled: input.isEnabled ? 1 : 0,
+      });
+      this.replaceRuleActions(id, input);
+    })();
+
     const updated = this.getRuleById(id);
     if (!updated) throw new Error(`Failed to read back rule ${id}.`);
     return updated;
   }
 
   deleteRule(id: number): void {
-    this.db.prepare("DELETE FROM exp_category_rules WHERE id = ?").run(id);
+    this.db.transaction(() => {
+      this.db.prepare("DELETE FROM exp_post_import_rule_actions WHERE rule_id = ?").run(id);
+      this.db.prepare("DELETE FROM exp_post_import_rules WHERE id = ?").run(id);
+    })();
   }
 
   // --- reporting ------------------------------------------------------------

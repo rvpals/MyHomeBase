@@ -98,8 +98,36 @@ const Quote: IconComponent = (props) => (
   </svg>
 );
 
+const ListRows: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <line x1="4" y1="7" x2="20" y2="7" />
+    <line x1="4" y1="12" x2="20" y2="12" />
+    <line x1="4" y1="17" x2="14" y2="17" />
+  </svg>
+);
+
+const Chart: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <path d="M4 20V4" />
+    <path d="M4 20h16" />
+    <rect x="8" y="12" width="3" height="5" />
+    <rect x="14" y="8" width="3" height="9" />
+  </svg>
+);
+
+const Upload: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <path d="M12 16V5" />
+    <path d="M8 9l4-4 4 4" />
+    <path d="M5 19h14" />
+  </svg>
+);
+
 const TREE_ICONS = {
   sliders: Sliders,
+  list: ListRows,
+  chart: Chart,
+  upload: Upload,
   quote: Quote,
   grid: Grid,
   window: Window,

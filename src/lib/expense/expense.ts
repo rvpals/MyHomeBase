@@ -4,24 +4,26 @@ import {
   MAX_CARD_IMAGE_BYTES,
   cardImageSchema,
   saveAccountSchema,
-  saveCategoryRuleSchema,
   saveCategorySchema,
+  savePostImportRuleSchema,
   saveTransactionSchema,
 } from "./schema";
 import type {
   CardImageInput,
+  PostImportRuleWriteData,
   SaveAccountInput,
   SaveCategoryInput,
-  SaveCategoryRuleInput,
+  SavePostImportRuleInput,
   SaveTransactionInput,
 } from "./schema";
 import type {
   CardImage,
-  CategoryRule,
   CategoryTotal,
   CreditCardAccount,
   ExpenseCategory,
   ExpenseTransaction,
+  PostImportRule,
+  RuleActionField,
 } from "./types";
 
 // --- Credit-card accounts ---------------------------------------------------
@@ -165,27 +167,35 @@ export function deleteTransaction(repo: ExpenseRepository, id: number): void {
 
 // --- Rules ------------------------------------------------------------------
 
-export function listRules(repo: ExpenseRepository): CategoryRule[] {
+export function listRules(repo: ExpenseRepository): PostImportRule[] {
   return repo.listRules();
+}
+
+/** Any category a rule assigns is registered, so the managed list stays complete. */
+function registerRuleCategories(repo: ExpenseRepository, input: PostImportRuleWriteData): void {
+  const categories = input.actions
+    .filter((action) => action.fieldName === "categoryName")
+    .map((action) => action.fieldValue);
+  if (categories.length > 0) repo.registerCategoriesIfMissing(categories);
 }
 
 export function createRule(
   repo: ExpenseRepository,
-  input: SaveCategoryRuleInput,
-): CategoryRule {
-  const validated = saveCategoryRuleSchema.parse(input);
-  repo.registerCategoriesIfMissing([validated.categoryName]);
+  input: SavePostImportRuleInput,
+): PostImportRule {
+  const validated = savePostImportRuleSchema.parse(input);
+  registerRuleCategories(repo, validated);
   return repo.createRule(validated);
 }
 
 export function updateRule(
   repo: ExpenseRepository,
   id: number,
-  input: SaveCategoryRuleInput,
-): CategoryRule {
+  input: SavePostImportRuleInput,
+): PostImportRule {
   if (!repo.getRuleById(id)) throw new Error(`No rule with id ${id}.`);
-  const validated = saveCategoryRuleSchema.parse(input);
-  repo.registerCategoriesIfMissing([validated.categoryName]);
+  const validated = savePostImportRuleSchema.parse(input);
+  registerRuleCategories(repo, validated);
   return repo.updateRule(id, validated);
 }
 
@@ -193,56 +203,98 @@ export function deleteRule(repo: ExpenseRepository, id: number): void {
   repo.deleteRule(id);
 }
 
-export interface RuleRunSummary {
-  /** How many transactions were given a category. */
-  categorisedCount: number;
-  /** How many were looked at (uncategorised ones only). */
-  examinedCount: number;
-  /** Per-rule tally, so you can see which patterns are earning their keep. */
-  byRule: { ruleId: number; pattern: string; categoryName: string; count: number }[];
+/** One line of the clean-up run log, shaped for display. */
+export interface CleanupLogEntry {
+  transactionId: number;
+  description: string;
+  /** The rule that matched, or undefined when nothing did. */
+  pattern?: string;
+  /** e.g. [{ fieldName: "vendor", value: "TGI Friday" }] — empty if nothing changed. */
+  changes: { fieldName: RuleActionField; value: string }[];
 }
 
+export interface CleanupBatchResult {
+  /** How many rows this batch handled. */
+  processedCount: number;
+  /** How many of those a rule actually changed. */
+  changedCount: number;
+  /** Still queued after this batch — drives the progress bar. */
+  remainingCount: number;
+  entries: CleanupLogEntry[];
+}
+
+export const DEFAULT_CLEANUP_BATCH_SIZE = 25;
+
 /**
- * Runs the enabled rules over transactions that have no category yet, and
- * returns what changed. Already-categorised rows are left alone, so this is
- * safe to run repeatedly and after adding a rule it backfills older rows.
+ * Runs the post-import rules over the next batch of unprocessed transactions.
+ *
+ * Batching (rather than one long call) is what makes a progress bar and a live
+ * log possible over ordinary server actions, and makes the run resumable: the
+ * `processed` flag *is* the queue, so stopping half way just leaves the rest.
+ *
+ * Every row in the batch is marked processed, including ones no rule matched —
+ * they've been through the rules, so they don't need looking at again. Use
+ * `resetProcessedFlags` after adding a rule to sweep the back catalogue.
  */
-export function applyRulesToExistingTransactions(
+export function runCleanupBatch(
   repo: ExpenseRepository,
-  filter?: TransactionFilter,
-): RuleRunSummary {
+  batchSize = DEFAULT_CLEANUP_BATCH_SIZE,
+): CleanupBatchResult {
+  if (!Number.isInteger(batchSize) || batchSize <= 0) {
+    throw new Error(`runCleanupBatch: batchSize must be a positive integer, got ${batchSize}.`);
+  }
+
   const rules = repo.listRules();
-  const transactions = repo.listTransactions(filter);
-  const tally = new Map<number, { pattern: string; categoryName: string; count: number }>();
+  const batch = repo.listUnprocessed(batchSize);
+  const entries: CleanupLogEntry[] = [];
+  let changedCount = 0;
 
-  let categorisedCount = 0;
-  let examinedCount = 0;
-
-  for (const transaction of transactions) {
-    if (transaction.categoryName.trim() !== "") continue;
-    examinedCount += 1;
-
+  for (const transaction of batch) {
     const plan = planRuleApplication(transaction, rules);
-    if (!plan) continue;
+    const assignments: Partial<Record<RuleActionField, string>> = {};
 
-    repo.setTransactionCategoryAndStatus(transaction.id, plan.categoryName, plan.status);
-    categorisedCount += 1;
+    for (const assignment of plan?.assignments ?? []) {
+      assignments[assignment.fieldName] = assignment.value;
+    }
+    if (Object.keys(assignments).length > 0) changedCount += 1;
 
-    const existing = tally.get(plan.rule.id);
-    if (existing) existing.count += 1;
-    else
-      tally.set(plan.rule.id, {
-        pattern: plan.rule.pattern,
-        categoryName: plan.categoryName,
-        count: 1,
-      });
+    // Also marks the row processed, in the same statement.
+    repo.applyProcessingResult(transaction.id, assignments);
+
+    // A category a rule introduced must exist in the managed list.
+    if (assignments.categoryName) repo.registerCategoriesIfMissing([assignments.categoryName]);
+
+    entries.push({
+      transactionId: transaction.id,
+      description: transaction.transactionDescription,
+      pattern: plan?.rule.pattern,
+      changes: (plan?.assignments ?? []).map((assignment) => ({
+        fieldName: assignment.fieldName,
+        value: assignment.value,
+      })),
+    });
   }
 
   return {
-    categorisedCount,
-    examinedCount,
-    byRule: [...tally.entries()].map(([ruleId, entry]) => ({ ruleId, ...entry })),
+    processedCount: batch.length,
+    changedCount,
+    remainingCount: repo.countUnprocessed(),
+    entries,
   };
+}
+
+/** How many transactions are still waiting to be processed. */
+export function countUnprocessed(repo: ExpenseRepository): number {
+  return repo.countUnprocessed();
+}
+
+/**
+ * Clears every processed flag so the rules run over the whole history again —
+ * what you want after adding a rule that should reach older transactions.
+ * Existing field values are still never overwritten.
+ */
+export function resetProcessedFlags(repo: ExpenseRepository): number {
+  return repo.resetProcessedFlags();
 }
 
 /**

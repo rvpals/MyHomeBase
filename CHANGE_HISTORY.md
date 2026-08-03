@@ -1,5 +1,74 @@
 # Change History
 
+## 2026-08-02 23:28 — Expense: automatic CSV import, post-import processing, tree-nav overhaul
+
+### Automatic CSV import
+
+- Two module settings (`csv_autoimport_path`, `csv_autoimport_interval_minutes`)
+  and a background runner armed from `src/instrumentation.ts` at server startup.
+- The runner ticks on a fixed 60-second heartbeat and re-reads the settings each
+  time, importing only once the configured interval has elapsed — so changing the
+  interval takes effect without a restart, and a slow import can't overlap the
+  next one. Guarded against dev-mode hot reload arming it twice, and it never
+  throws into the server.
+- The watched folder holds **one sub-folder per card, named after it**
+  (`/csv_import/Visa Gold/*.csv`), which selects both the account and its saved
+  column mapping; files inside can be named anything. Processed files are renamed
+  `<name>_<timestamp>.backup` (which also takes them out of the `*.csv` scan) and
+  failures `<name>_<timestamp>.failed`, so nothing is retried forever. A CSV left
+  loose at the top level is reported rather than silently ignored.
+- File access sits behind a `CsvFolderPort`, so the whole flow is tested with an
+  in-memory folder against a real in-memory SQLite built from the migrations.
+
+### Post Import Processing (migration 0032)
+
+- Transactions gain **`vendor`** (the tidy name) and **`processed`** (the
+  clean-up queue, indexed).
+- Rules go from *pattern → category* to **one condition → any number of field
+  assignments**: `*TGI*` can set Vendor, Category, Status and Note at once.
+  `exp_category_rules` is replaced by `exp_post_import_rules` +
+  `exp_post_import_rule_actions`, with existing rules migrated across (ids
+  preserved) rather than discarded.
+- **"Manually Run Import Clean up"** with a real progress bar and log
+  (`Processing 41 of 216 — rule "*TGI*" used, vendor set to "TGI Friday"…`). It
+  runs in client-driven batches, because one long server action can't report
+  progress; since `processed` *is* the queue, an interrupted run resumes.
+  **Re-queue all** sweeps history after adding a rule.
+- A rule only fills a field that's still blank (status: still `new`), so manual
+  edits are never overwritten and re-running is safe. Rows nothing matched are
+  still marked processed.
+
+### Interface overhaul
+
+- The module is now a **`TreeNav` of six sections**, each a real bookmarkable
+  route: Main (Dashboard), Transactions, Meta Data, Charts and Analysis, Import
+  Transaction, Settings — each with a one-line description. Sections live under
+  `[slug]/[section]` so a static `expense/` folder can't shadow `/modules/[slug]`.
+- Data is loaded **per section**, so the dashboard no longer reads every
+  transaction, rule and mapping. The 600-line `expense-view.tsx` is gone.
+- New Charts and Analysis section (spend-by-category `ChartBar` + totals table),
+  a **To processed** counter, and dashboard counters that link to the section
+  where the work is. Page width widened to 120rem — the old 6xl cap left most of
+  a large display as empty margin.
+- Added `list`, `chart` and `upload` glyphs to `tree-icons.tsx`.
+
+### Fix: client/server boundary crash
+
+- Section constants were exported from the `"use client"` nav module and read by
+  server components, which receive **client-reference proxies** rather than real
+  values — so `EXPENSE_SECTION_INFO[section]` was `undefined` and `.label` threw
+  during serialization. Moved to a plain `expense-sections.ts` that both sides
+  import. Typecheck, lint and build all passed while this was broken; only
+  running the app surfaced it.
+
+### Also
+
+- `START_PRD_SYN.bat` — a Synology/DSM production start script (bash, despite the
+  name, for consistency with `START_PRD.bat`): finds node when Task Scheduler
+  gives it a bare PATH, loads `.env` itself, binds `0.0.0.0`, checks the database
+  path before starting, frees the port, and rotates its log. Both publish scripts
+  now copy it into the deployment folder.
+
 ## 2026-08-02 09:19 — Expense tracker module; newsletter→quotes importer
 
 ### Expense — a new module

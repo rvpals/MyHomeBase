@@ -338,7 +338,7 @@ sub-pages (like Administration), not for the top-level module list.
 
 | Prop | Type | Notes |
 |------|------|-------|
-| `nodes` | `TreeNode[]` — `{ id, label, href?, hint?, icon?, children? }` | A node **without** `href` is a group heading (expand/collapse only). `icon` is a key rendered via `TreeIcon`. |
+| `nodes` | `TreeNode[]` — `{ id, label, href?, hint?, icon?, children? }` | A node **without** `href` is a group heading (expand/collapse only). `icon` is a key rendered via `TreeIcon` — currently `sliders`, `list`, `chart`, `upload`, `quote`, `grid`, `window`, `palette`, `info`, `history`, `users`, `database`, `shapes`. |
 | `collapsible?` | `boolean` | Default `false`. When true it owns its width (`w-64`/`w-16`); collapsed flattens to one icon-only row per node. |
 | `className?` | `string` | |
 
@@ -359,7 +359,14 @@ const nodes: TreeNode[] = [
 ```
 
 **Used by:** Administration — [admin/admin-shell.tsx](src/app/(protected)/admin/admin-shell.tsx),
-node list in [admin/nav.ts](src/app/(protected)/admin/nav.ts).
+node list in [admin/nav.ts](src/app/(protected)/admin/nav.ts); and the Expense module's
+six sections — [expense-nav.tsx](src/app/(protected)/modules/[slug]/expense-nav.tsx).
+
+**Note:** the active node is matched on `pathname`, so each node needs a real route —
+a query parameter or client-side state won't highlight. Keep the node list and any
+labels in a **plain** module (not the `"use client"` nav file) if server components
+read them too; exports of a client module reach the server as unusable references.
+See [expense-sections.ts](src/app/(protected)/modules/[slug]/expense-sections.ts).
 
 ---
 

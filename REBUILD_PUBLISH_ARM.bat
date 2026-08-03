@@ -80,6 +80,7 @@ if errorlevel 1 (
 copy /y ".env.example" "%STAGING%\.env.example" >nul
 copy /y "START_PRD.bat" "%STAGING%\START_PRD.bat" >nul
 copy /y "start_prd.sh" "%STAGING%\start_prd.sh" >nul
+copy /y "START_PRD_SYN.bat" "%STAGING%\START_PRD_SYN.bat" >nul
 
 echo === Publishing to "%DEST%" ===
 if not exist "%DEST%" mkdir "%DEST%"
@@ -137,7 +138,9 @@ if not exist "%DEST%\.env" (
     echo NOTE: no .env found in the destination yet. Copy .env.example to .env
     echo       there and fill in real values before starting the server.
 )
-echo To start the server on the NAS:
+echo To start the server on the NAS (Synology/DSM):
+echo     bash "%DEST%\START_PRD_SYN.bat" [port]     (default port 5200)
+echo Generic Linux alternative:
 echo     sh "%DEST%\start_prd.sh" [port]
 exit /b 0
 

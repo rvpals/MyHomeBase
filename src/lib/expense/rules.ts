@@ -1,7 +1,13 @@
-// Fuzzy vendor matching for auto-categorisation. Pure: patterns and text in,
-// decisions out. No I/O, so every matching quirk is unit-testable.
+// Post-import processing: matching a statement description against a rule, and
+// working out which fields that rule would set. Pure — patterns and rows in,
+// decisions out — so every quirk is unit-testable.
 
-import type { CategoryRule, ExpenseTransaction, TransactionStatus } from "./types";
+import type {
+  ExpenseTransaction,
+  PostImportRule,
+  RuleActionField,
+  TransactionStatus,
+} from "./types";
 
 /**
  * Compiles a user-written pattern into a matcher against a card's raw vendor
@@ -11,7 +17,7 @@ import type { CategoryRule, ExpenseTransaction, TransactionStatus } from "./type
  *  - **With `*`** the pattern is anchored and `*` matches any run of characters,
  *    so `AMAZON*` matches "AMAZON MKTPL*2X4Y" but not "PRIME AMAZON".
  *  - **Without any `*`** the pattern matches anywhere in the description, so a
- *    bare `UBER` behaves like `*UBER*`. Typing a vendor name and getting no
+ *    bare `TGI` behaves like `*TGI*`. Typing a vendor name and getting no
  *    matches would be a trap.
  *
  * Matching is case-insensitive, and every other regex metacharacter is escaped —
@@ -40,33 +46,90 @@ export function matchesPattern(description: string, pattern: string): boolean {
  */
 export function findMatchingRule(
   description: string,
-  rules: CategoryRule[],
-): CategoryRule | undefined {
+  rules: PostImportRule[],
+): PostImportRule | undefined {
   return rules.find((rule) => rule.isEnabled && matchesPattern(description, rule.pattern));
 }
 
-export interface RuleApplication {
-  categoryName: string;
-  status: TransactionStatus;
-  /** The rule that decided this, for reporting what changed and why. */
-  rule: CategoryRule;
+/** One field the rule will change, with the value it will be set to. */
+export interface PlannedAssignment {
+  fieldName: RuleActionField;
+  value: string;
+}
+
+export interface RulePlan {
+  rule: PostImportRule;
+  /** Only the fields that will actually change — may be empty. */
+  assignments: PlannedAssignment[];
 }
 
 /**
- * Works out what a rule would do to one transaction, or undefined if nothing
- * would change. A rule only fills in a *blank* category — an existing
- * categorisation (yours, or an earlier rule's) is never overwritten, so
- * re-running rules is safe and repeatable.
+ * Whether a field is free for a rule to fill in. Rules only populate *blank*
+ * fields so they never overwrite something entered by hand, which is what makes
+ * re-running them safe. For status, "new" is the blank equivalent — it's the
+ * default every row starts on.
+ */
+function isFieldUnset(transaction: TransactionFieldsForRules, fieldName: RuleActionField): boolean {
+  switch (fieldName) {
+    case "categoryName":
+      return transaction.categoryName.trim() === "";
+    case "vendor":
+      return transaction.vendor.trim() === "";
+    case "note":
+      return transaction.note.trim() === "";
+    case "status":
+      return transaction.status === "new";
+    default:
+      return false;
+  }
+}
+
+/** The parts of a transaction the rules look at. */
+export type TransactionFieldsForRules = Pick<
+  ExpenseTransaction,
+  "transactionDescription" | "categoryName" | "vendor" | "note" | "status"
+>;
+
+/**
+ * Works out what the first matching rule would change on this transaction.
+ * Returns undefined when nothing matches; returns a plan with an empty
+ * `assignments` list when a rule matches but every field it sets is already
+ * filled in — the caller still counts that as processed.
  */
 export function planRuleApplication(
-  transaction: Pick<ExpenseTransaction, "transactionDescription" | "categoryName" | "status">,
-  rules: CategoryRule[],
-): RuleApplication | undefined {
-  if (transaction.categoryName.trim() !== "") return undefined;
-
+  transaction: TransactionFieldsForRules,
+  rules: PostImportRule[],
+): RulePlan | undefined {
   const rule = findMatchingRule(transaction.transactionDescription, rules);
   if (!rule) return undefined;
 
-  const status = rule.applyStatus === "" ? transaction.status : rule.applyStatus;
-  return { categoryName: rule.categoryName, status, rule };
+  const assignments: PlannedAssignment[] = [];
+  const seen = new Set<RuleActionField>();
+
+  for (const action of [...rule.actions].sort((a, b) => a.sortOrder - b.sortOrder)) {
+    // A rule listing the same field twice uses the first one, so the outcome
+    // doesn't depend on row order in the database.
+    if (seen.has(action.fieldName)) continue;
+    seen.add(action.fieldName);
+    if (!isFieldUnset(transaction, action.fieldName)) continue;
+    assignments.push({ fieldName: action.fieldName, value: action.fieldValue });
+  }
+
+  return { rule, assignments };
+}
+
+/** Applies planned assignments to a copy of the row's rule-visible fields. */
+export function applyAssignments<T extends TransactionFieldsForRules>(
+  transaction: T,
+  assignments: PlannedAssignment[],
+): T {
+  const next = { ...transaction };
+  for (const assignment of assignments) {
+    if (assignment.fieldName === "status") {
+      next.status = assignment.value as TransactionStatus;
+    } else {
+      next[assignment.fieldName] = assignment.value;
+    }
+  }
+  return next;
 }
