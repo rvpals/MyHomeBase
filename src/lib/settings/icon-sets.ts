@@ -30,6 +30,24 @@ export const ICON_SETS: IconSet[] = [
     colorful: false,
   },
   {
+    id: "tabler",
+    name: "Tabler",
+    description: "Uniform 2px outline icons. Tinted to the theme accent.",
+    colorful: false,
+  },
+  {
+    id: "material-symbols",
+    name: "Material Symbols",
+    description: "Google's icons in the solid filled style. Tinted to the theme accent.",
+    colorful: false,
+  },
+  {
+    id: "mingcute",
+    name: "MingCute",
+    description: "Rounded, friendly filled icons. Tinted to the theme accent.",
+    colorful: false,
+  },
+  {
     id: "phosphor-duotone",
     name: "Phosphor Duotone",
     description: "Outline icons with a soft second-tone fill. Tinted to the theme accent.",

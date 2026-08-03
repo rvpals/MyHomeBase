@@ -129,6 +129,60 @@ export const COLOR_THEMES: ColorTheme[] = [
       fonts: { display: "space-grotesk", body: "manrope", mono: "jetbrains-mono" },
     },
   },
+  // The second light theme. Same inverted paper/paperRaised relationship as
+  // Daybreak; the teal accent is dark enough to stay legible as text on the pale
+  // page (brassDark is the text-on-brassSoft shade, so it has to be darker still).
+  {
+    id: "sea-glass",
+    name: "Sea Glass",
+    description: "Cool off-white paper with a deep teal accent.",
+    tokens: {
+      paper: "#F5F7F6",
+      paperRaised: "#FFFFFF",
+      ink: "#17262B",
+      line: "#D6DEDC",
+      muted: "#5F7377",
+      mutedInverse: "#93A5A8",
+      brass: "#0F766E",
+      brassDark: "#0B534E",
+      brassSoft: "#D3E9E5",
+      fonts: { display: "familjen-grotesk", body: "inter", mono: "ibm-plex-mono" },
+    },
+  },
+  {
+    id: "midnight-slate",
+    name: "Midnight Slate",
+    description: "Deep blue-slate console with a cool ice-blue accent.",
+    tokens: {
+      paper: "#0F141C",
+      paperRaised: "#171E28",
+      ink: "#E8EEF5",
+      line: "#28303D",
+      muted: "#8794A5",
+      mutedInverse: "#5A6675",
+      brass: "#5AB3F0",
+      brassDark: "#2E7DB4",
+      brassSoft: "#12293B",
+      fonts: { display: "sora", body: "inter", mono: "jetbrains-mono" },
+    },
+  },
+  {
+    id: "copper-vault",
+    name: "Copper Vault",
+    description: "Near-black ledger with a polished copper accent.",
+    tokens: {
+      paper: "#14100E",
+      paperRaised: "#1D1815",
+      ink: "#F2EBE4",
+      line: "#33291F",
+      muted: "#9C8B7C",
+      mutedInverse: "#6B5D51",
+      brass: "#C87F4A",
+      brassDark: "#9A5B2E",
+      brassSoft: "#33210F",
+      fonts: { display: "space-grotesk", body: "manrope", mono: "ibm-plex-mono" },
+    },
+  },
 ];
 
 export const DEFAULT_COLOR_THEME_ID = "signal-deck";

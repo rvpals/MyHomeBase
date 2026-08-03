@@ -27,12 +27,15 @@ properties defined in `src/lib/settings/themes.ts` and exposed as Tailwind utili
 Any of these can be swapped at runtime (Admin → Configuration → Color Themes), so a
 component that reaches for a literal color instead of a token will look right in one
 theme and wrong in the others. The shipped themes are **Signal Deck** (default),
-**Ember Ledger**, **Aurora Deck**, and **BMS** (Bristol Myers Squibb brand purple on
-charcoal gray) — all dark — plus **Daybreak**, the one light theme (rose accent on warm
-paper). Adding another theme is just another entry in `COLOR_THEMES`
-(`src/lib/settings/themes.ts`) — no component changes needed.
+**Ember Ledger**, **Aurora Deck**, **BMS** (Bristol Myers Squibb brand purple on charcoal
+gray), **Midnight Slate** (blue-slate with an ice-blue accent) and **Copper Vault**
+(near-black with a copper accent) — all dark — plus two light themes, **Daybreak** (rose
+on warm paper) and **Sea Glass** (deep teal on cool off-white). Adding another theme is
+just another entry in `COLOR_THEMES` (`src/lib/settings/themes.ts`) — no component
+changes needed, as long as it reuses an existing `FontKey` (a new font also needs wiring
+in `src/app/layout.tsx`).
 
-**Design for both light and dark.** Because Daybreak exists, don't assume a dark page.
+**Design for both light and dark.** Because light themes exist, don't assume a dark page.
 Structural styling must go through the tokens above (they invert correctly), and any
 raw shadow/overlay you add must read acceptably on a light *and* a dark surface — prefer
 a soft, low-opacity black (`rgba(0,0,0,0.2–0.45)`) over a heavy one. In Daybreak,

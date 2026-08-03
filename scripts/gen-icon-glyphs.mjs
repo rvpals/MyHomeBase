@@ -18,6 +18,9 @@ const load = (pkg) => require(`${pkg}/icons.json`);
 
 const RAW = {
   lucide: load("@iconify-json/lucide"),
+  tabler: load("@iconify-json/tabler"),
+  ms: load("@iconify-json/material-symbols"),
+  mingcute: load("@iconify-json/mingcute"),
   ph: load("@iconify-json/ph"),
   solar: load("@iconify-json/solar"),
   hugeicons: load("@iconify-json/hugeicons"),
@@ -51,6 +54,13 @@ function kw(c) {
 
 const CAND = {
   lucide: { building: ["building-2"], home: ["house", "home"], briefcase: ["briefcase"], wallet: ["wallet"], chart: ["bar-chart-3", "chart-column"], folder: ["folder"], shield: ["shield-check"], heart: ["heart"], book: ["book-open"], tool: ["wrench"] },
+  // Names below were checked against the installed packages — tabler has no
+  // "wrench" (it's "tools"), and mingcute's are all "-fill" suffixed.
+  tabler: { building: ["building"], home: ["home"], briefcase: ["briefcase"], wallet: ["wallet"], chart: ["chart-bar"], folder: ["folder"], shield: ["shield-check"], heart: ["heart"], book: ["book"], tool: ["tools"] },
+  // Material Symbols' unsuffixed names are the filled variants ("-outline" is the
+  // outline), which is the point of adding this set.
+  ms: { building: ["apartment"], home: ["home"], briefcase: ["work", "business-center"], wallet: ["wallet"], chart: ["bar-chart"], folder: ["folder"], shield: ["shield"], heart: ["favorite"], book: ["book-2"], tool: ["build", "handyman"] },
+  mingcute: { building: ["building-2-fill"], home: ["home-3-fill"], briefcase: ["briefcase-fill"], wallet: ["wallet-fill"], chart: ["chart-bar-fill"], folder: ["folder-fill"], shield: ["shield-fill"], heart: ["heart-fill"], book: ["book-2-fill"], tool: ["tool-fill"] },
   ph: (c) => [`${{ building: "buildings", home: "house", briefcase: "briefcase", wallet: "wallet", chart: "chart-bar", folder: "folder", shield: "shield-check", heart: "heart", book: "book-open", tool: "wrench" }[c]}-duotone`],
   solarLine: (c) => ({ building: ["buildings-2-line-duotone"], home: ["home-2-line-duotone", "home-line-duotone"], briefcase: ["case-line-duotone"], wallet: ["wallet-line-duotone"], chart: ["chart-2-line-duotone"], folder: ["folder-line-duotone"], shield: ["shield-check-line-duotone"], heart: ["heart-line-duotone"], book: ["book-2-line-duotone", "book-line-duotone"], tool: ["settings-line-duotone", "wrench-line-duotone"] }[c]),
   solarBold: (c) => ({ building: ["buildings-2-bold-duotone"], home: ["home-2-bold-duotone", "home-bold-duotone"], briefcase: ["case-bold-duotone"], wallet: ["wallet-bold-duotone"], chart: ["chart-2-bold-duotone"], folder: ["folder-bold-duotone"], shield: ["shield-check-bold-duotone"], heart: ["heart-bold-duotone"], book: ["book-2-bold-duotone", "book-bold-duotone"], tool: ["settings-bold-duotone", "wrench-bold-duotone"] }[c]),
@@ -66,6 +76,9 @@ const CAND = {
 const SETS = [
   { id: "classic", raw: null, colorful: false },
   { id: "lucide", raw: "lucide", colorful: false, cand: (c) => CAND.lucide[c] },
+  { id: "tabler", raw: "tabler", colorful: false, cand: (c) => CAND.tabler[c] },
+  { id: "material-symbols", raw: "ms", colorful: false, cand: (c) => CAND.ms[c] },
+  { id: "mingcute", raw: "mingcute", colorful: false, cand: (c) => CAND.mingcute[c] },
   { id: "phosphor-duotone", raw: "ph", colorful: false, cand: (c) => CAND.ph(c) },
   { id: "solar-line-duotone", raw: "solar", colorful: false, cand: (c) => CAND.solarLine(c) },
   { id: "solar-bold-duotone", raw: "solar", colorful: false, cand: (c) => CAND.solarBold(c) },
