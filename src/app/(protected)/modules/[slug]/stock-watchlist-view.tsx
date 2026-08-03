@@ -6,6 +6,7 @@ import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import type { StockWatchList, StockWatchListItem } from "@/lib/stock-watchlist";
+import { TickerLogo } from "@/components/ticker-logo";
 import { formatCents } from "@/lib/shared/money";
 import {
   addWatchListItemAction,
@@ -149,7 +150,17 @@ function WatchListCard({ entry }: { entry: WatchListEntry }) {
   }
 
   const columns: DataGridColumn<StockWatchListItem>[] = [
-    { key: "ticker", header: "Ticker", render: (item) => item.ticker },
+    {
+      key: "ticker",
+      header: "Ticker",
+      value: (item) => item.ticker,
+      render: (item) => (
+        <span className="flex items-center gap-2">
+          <TickerLogo ticker={item.ticker} />
+          {item.ticker}
+        </span>
+      ),
+    },
     { key: "shares", header: "Shares", render: (item) => item.shares },
     {
       key: "priceWhenAdded",
@@ -165,6 +176,7 @@ function WatchListCard({ entry }: { entry: WatchListEntry }) {
     {
       key: "actions",
       header: "Actions",
+      excludeFromRecordView: true,
       render: (item) => (
         <button
           type="button"

@@ -24,6 +24,8 @@ import { SqliteStockAnalyticsRepository } from "./stock-analytics/repository";
 import { SqliteStockPositionRepository } from "./stock-positions/repository";
 import { SqliteStockWatchListRepository } from "./stock-watchlist/repository";
 import { RealSystemInfoRepository } from "./system-info/repository";
+import { FmpTickerLogoClient } from "./ticker-logos/fmp-logo-client";
+import { SqliteTickerLogoRepository } from "./ticker-logos/repository";
 import { SqliteUserRepository } from "./user/repository";
 
 const dbPath = process.env.MYHOMEBASE_DB ?? path.join(process.cwd(), "data", "myhomebase.db");
@@ -78,6 +80,8 @@ export const deps = {
   sqlExplorerRepo: new SqliteSqlExplorerRepository(db),
   systemInfoRepo: new RealSystemInfoRepository(),
   marketDataClient: new YahooFinanceClient(),
+  tickerLogoRepo: new SqliteTickerLogoRepository(db),
+  tickerLogoClient: new FmpTickerLogoClient(),
   geocodingClient: new NominatimGeocodingClient(),
   weatherClient: new OpenMeteoWeatherClient(),
   googleOAuthClient,

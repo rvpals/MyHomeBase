@@ -5,6 +5,7 @@ import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import type { NextDayActionSignal, NextDayActionThresholds, NextDayActionType } from "@/lib/next-day-actions";
+import { TickerLogo } from "@/components/ticker-logo";
 import { formatCents } from "@/lib/shared/money";
 import { runNextDayActionsScanAction } from "./next-day-actions-actions";
 
@@ -55,7 +56,17 @@ export function NextDayActionsView({ initialThresholds }: { initialThresholds: N
   }, {});
 
   const columns: DataGridColumn<NextDayActionSignal>[] = [
-    { key: "ticker", header: "Ticker", render: (signal) => signal.ticker },
+    {
+      key: "ticker",
+      header: "Ticker",
+      value: (signal) => signal.ticker,
+      render: (signal) => (
+        <span className="flex items-center gap-2">
+          <TickerLogo ticker={signal.ticker} />
+          {signal.ticker}
+        </span>
+      ),
+    },
     { key: "shares", header: "Shares", render: (signal) => signal.shares },
     { key: "price", header: "Price", render: (signal) => formatCents(signal.currentPriceCents) },
     { key: "value", header: "Value", render: (signal) => formatCents(signal.positionValueCents) },

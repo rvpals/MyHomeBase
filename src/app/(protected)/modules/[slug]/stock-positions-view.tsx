@@ -14,6 +14,7 @@ import {
   type StockTransaction,
   type TransactionAction,
 } from "@/lib/stock-positions";
+import { TickerLogo } from "@/components/ticker-logo";
 import { centsToDollars, formatCents } from "@/lib/shared/money";
 import {
   createTransactionAction,
@@ -93,6 +94,9 @@ function PositionForm({
   const [error, setError] = useState<string | undefined>(undefined);
   const [isSaving, setIsSaving] = useState(false);
   const [isFetchingQuote, setIsFetchingQuote] = useState(false);
+  // Which symbol we've already looked up, so leaving and re-entering the field
+  // doesn't fire the same request again.
+  const [autoFetchedTicker, setAutoFetchedTicker] = useState<string | undefined>(undefined);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -108,6 +112,20 @@ function PositionForm({
     } finally {
       setIsSaving(false);
     }
+  }
+
+  /**
+   * Looks the ticker up as soon as you leave the field, so the usual case needs
+   * no extra click. Deliberately only when the name is still blank — it must
+   * never overwrite something typed by hand — and once per symbol. The Fetch
+   * button remains for a deliberate re-fetch.
+   */
+  async function handleTickerBlur() {
+    const ticker = form.ticker.trim();
+    if (lockTicker || ticker === "" || form.name.trim() !== "") return;
+    if (isFetchingQuote || autoFetchedTicker === ticker) return;
+    setAutoFetchedTicker(ticker);
+    await handleFetchQuote();
   }
 
   async function handleFetchQuote() {
@@ -142,6 +160,7 @@ function PositionForm({
             value={form.ticker}
             disabled={lockTicker}
             onChange={(event) => setForm({ ...form, ticker: event.target.value.toUpperCase() })}
+            onBlur={handleTickerBlur}
             className="w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass disabled:opacity-60"
           />
           <button
@@ -394,24 +413,47 @@ function PositionsPanel({ positions }: { positions: StockPosition[] }) {
   }
 
   const columns: DataGridColumn<StockPosition>[] = [
-    { key: "ticker", header: "Ticker", render: (position) => position.ticker },
+    {
+      key: "ticker",
+      header: "Ticker",
+      value: (position) => position.ticker,
+      render: (position) => (
+        <span className="flex items-center gap-2">
+          <TickerLogo ticker={position.ticker} />
+          {position.ticker}
+        </span>
+      ),
+    },
     { key: "name", header: "Name", render: (position) => position.name || "—" },
     { key: "type", header: "Type", render: (position) => position.type },
     { key: "price", header: "Price", render: (position) => formatCents(position.currentPriceCents) },
     { key: "quantity", header: "Qty", render: (position) => position.quantity },
-    { key: "value", header: "Value", render: (position) => formatCents(position.valueCents) },
+    {
+      key: "value",
+      header: "Value",
+      // `value` earns this column sorting, search and CSV export as well as the
+      // footer total — the total is what needed it.
+      value: (position) => position.valueCents,
+      render: (position) => formatCents(position.valueCents),
+      aggregate: "sum",
+      formatAggregate: (cents) => formatCents(cents),
+    },
     {
       key: "dayGainLoss",
       header: "Day G/L",
+      value: (position) => position.dayGainLossCents,
       render: (position) => (
         <span className={position.dayGainLossCents < 0 ? "text-[#d03b3b]" : "text-[#0ca30c]"}>
           {formatCents(position.dayGainLossCents)}
         </span>
       ),
+      aggregate: "sum",
+      formatAggregate: (cents) => formatCents(cents),
     },
     {
       key: "actions",
       header: "Actions",
+      excludeFromRecordView: true,
       render: (position) => (
         <div className="flex gap-2">
           <button
@@ -502,7 +544,17 @@ function TransactionsPanel({ transactions }: { transactions: StockTransaction[] 
   const columns: DataGridColumn<StockTransaction>[] = [
     { key: "transactionAt", header: "Date", render: (transaction) => transaction.transactionAt },
     { key: "action", header: "Action", render: (transaction) => transaction.action },
-    { key: "ticker", header: "Ticker", render: (transaction) => transaction.ticker },
+    {
+      key: "ticker",
+      header: "Ticker",
+      value: (transaction) => transaction.ticker,
+      render: (transaction) => (
+        <span className="flex items-center gap-2">
+          <TickerLogo ticker={transaction.ticker} size={20} />
+          {transaction.ticker}
+        </span>
+      ),
+    },
     { key: "shares", header: "Shares", render: (transaction) => transaction.numberOfShares },
     { key: "price", header: "Price/Share", render: (transaction) => formatCents(transaction.pricePerShareCents) },
     { key: "total", header: "Total", render: (transaction) => formatCents(transaction.totalAmountCents) },
@@ -514,6 +566,7 @@ function TransactionsPanel({ transactions }: { transactions: StockTransaction[] 
     {
       key: "actions",
       header: "Actions",
+      excludeFromRecordView: true,
       render: (transaction) => (
         <div className="flex gap-2">
           <button

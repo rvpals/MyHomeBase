@@ -7,6 +7,7 @@ import { ChartLine } from "@/components/chart-line";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { Tabs, type TabItem } from "@/components/tabs";
 import type { CorrelationResult, SharpeResult, VolatilityResult } from "@/lib/stock-analytics";
+import { TickerLogo } from "@/components/ticker-logo";
 import { formatCents } from "@/lib/shared/money";
 import {
   clearCorrelationCacheAction,
@@ -51,7 +52,17 @@ function VolatilityTab({ initialResults }: { initialResults: VolatilityResult[] 
   }
 
   const columns: DataGridColumn<VolatilityResult>[] = [
-    { key: "ticker", header: "Ticker", render: (item) => item.ticker },
+    {
+      key: "ticker",
+      header: "Ticker",
+      value: (item) => item.ticker,
+      render: (item) => (
+        <span className="flex items-center gap-2">
+          <TickerLogo ticker={item.ticker} />
+          {item.ticker}
+        </span>
+      ),
+    },
     { key: "company", header: "Company", render: (item) => item.companyName || "—" },
     { key: "type", header: "Type", render: (item) => item.type },
     { key: "price", header: "Price", render: (item) => formatCents(item.currentPriceCents) },
@@ -119,7 +130,16 @@ function CorrelationTab({ initialResult }: { initialResult?: CorrelationResult }
 
   const columns: DataGridColumn<{ ticker: string; correlations: number[]; marketCorrelation: number | null }>[] = result
     ? [
-        { key: "ticker", header: "", render: (row) => <span className="font-medium text-ink">{row.ticker}</span> },
+        {
+          key: "ticker",
+          header: "",
+          render: (row) => (
+            <span className="flex items-center gap-2 font-medium text-ink">
+              <TickerLogo ticker={row.ticker} size={20} />
+              {row.ticker}
+            </span>
+          ),
+        },
         ...result.tickers.map((ticker, columnIndex) => ({
           key: ticker,
           header: ticker,
@@ -186,7 +206,17 @@ function SharpeTab({ initialResult }: { initialResult?: SharpeResult }) {
   }
 
   const detailColumns: DataGridColumn<NonNullable<SharpeResult["tickerDetails"]>[number]>[] = [
-    { key: "ticker", header: "Ticker", render: (row) => row.ticker },
+    {
+      key: "ticker",
+      header: "Ticker",
+      value: (row) => row.ticker,
+      render: (row) => (
+        <span className="flex items-center gap-2">
+          <TickerLogo ticker={row.ticker} size={20} />
+          {row.ticker}
+        </span>
+      ),
+    },
     { key: "weight", header: "Weight", render: (row) => formatPct(row.weight * 100) },
     { key: "return", header: "Ann. Return", render: (row) => formatPct(row.annualizedReturn * 100) },
     { key: "vol", header: "Ann. Volatility", render: (row) => formatPct(row.annualizedVolatility * 100) },
