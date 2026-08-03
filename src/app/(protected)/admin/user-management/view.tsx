@@ -504,6 +504,7 @@ export function UserManagementView({
     {
       key: "actions",
       header: "Actions",
+      excludeFromRecordView: true,
       render: (user) => (
         <div className="flex flex-col gap-2">
           <PasswordEditor

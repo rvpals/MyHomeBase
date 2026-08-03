@@ -698,6 +698,7 @@ export function CsvAnalyticsView({ entries }: { entries: CsvAnalyticEntry[] }) {
     {
       key: "actions",
       header: "Actions",
+      excludeFromRecordView: true,
       render: (entry) => (
         <div className="flex flex-wrap gap-2">
           <button

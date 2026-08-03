@@ -170,6 +170,7 @@ export function DailyQuoteView({ quotes, categories }: DailyQuoteViewProps) {
     {
       key: "actions",
       header: "Actions",
+      excludeFromRecordView: true,
       render: (row) => (
         <div className="flex gap-3">
           <button

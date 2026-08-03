@@ -192,6 +192,7 @@ function AccountHistory({ entry }: { entry: AccountEntry }) {
     {
       key: "actions",
       header: "Actions",
+      excludeFromRecordView: true,
       render: (record) => (
         <button
           type="button"
@@ -276,6 +277,7 @@ export function StockAccountsView({ entries }: { entries: AccountEntry[] }) {
     {
       key: "actions",
       header: "Actions",
+      excludeFromRecordView: true,
       render: (entry) => (
         <div className="flex flex-wrap gap-2">
           <button
