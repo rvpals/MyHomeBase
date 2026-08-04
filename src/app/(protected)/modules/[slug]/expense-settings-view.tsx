@@ -11,6 +11,7 @@ const INPUT_CLASS =
 
 export function ExpenseSettingsView({ settings }: { settings: ExpenseSettings }) {
   const router = useRouter();
+  const [autoImportEnabled, setAutoImportEnabled] = useState(settings.autoImportEnabled);
   const [path, setPath] = useState(settings.autoImportPath);
   const [intervalText, setIntervalText] = useState(String(settings.autoImportIntervalMinutes));
   const [isSaving, setIsSaving] = useState(false);
@@ -20,7 +21,8 @@ export function ExpenseSettingsView({ settings }: { settings: ExpenseSettings })
   const [lastRun, setLastRun] = useState<AutoImportRunSummary | undefined>(undefined);
 
   const intervalMinutes = Number(intervalText);
-  const isEnabled = path.trim() !== "" && Number.isFinite(intervalMinutes) && intervalMinutes > 0;
+  const isConfigured = path.trim() !== "" && Number.isFinite(intervalMinutes) && intervalMinutes > 0;
+  const isEnabled = autoImportEnabled && isConfigured;
 
   async function handleSave() {
     setIsSaving(true);
@@ -28,6 +30,7 @@ export function ExpenseSettingsView({ settings }: { settings: ExpenseSettings })
     setMessage(undefined);
     try {
       const result = await saveExpenseSettingsAction({
+        autoImportEnabled,
         autoImportPath: path,
         autoImportIntervalMinutes: Number.isFinite(intervalMinutes) ? intervalMinutes : 0,
       });
@@ -94,12 +97,32 @@ export function ExpenseSettingsView({ settings }: { settings: ExpenseSettings })
           <li>
             Imports are attributed to the first administrator account, since no one is signed in.
           </li>
-          <li>Set the interval to 0, or clear the folder, to turn auto-import off.</li>
+          <li>
+            Turn the switch below off to stop the background service. Clearing the folder or setting
+            the interval to 0 also stops it.
+          </li>
         </ul>
       </div>
 
       {error && <p className="text-sm text-red-400">{error}</p>}
       {message && <p className="text-sm text-emerald-400">{message}</p>}
+
+      <label className="flex items-start gap-3 rounded-md border border-line bg-paper p-3 text-sm">
+        <input
+          type="checkbox"
+          checked={autoImportEnabled}
+          onChange={(event) => setAutoImportEnabled(event.target.checked)}
+          className="mt-0.5 h-4 w-4 shrink-0 rounded border-line text-brass focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+        />
+        <span>
+          <span className="block font-medium text-ink">Automatic importing csv from folder</span>
+          <span className="mt-1 block text-xs text-muted">
+            The master switch for the background service. Off means the server never imports on its
+            own, whatever the folder and interval below say — <strong className="text-ink">Run
+            import now</strong> still works, so you can test the folder before switching this on.
+          </span>
+        </span>
+      </label>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <label className="block text-sm">
@@ -128,14 +151,17 @@ export function ExpenseSettingsView({ settings }: { settings: ExpenseSettings })
       </div>
 
       <p className="text-xs text-muted">
-        Status:{" "}
+        Background service:{" "}
         {isEnabled ? (
           <span className="text-emerald-400">
             on — every {intervalMinutes} minute(s), checked once a minute
           </span>
         ) : (
-          <span className="text-muted">off</span>
+          <span className="text-muted">
+            off{!autoImportEnabled ? " — switched off above" : " — no folder or interval set"}
+          </span>
         )}
+        . Takes effect within a minute of saving; no restart needed.
       </p>
 
       <div className="flex flex-wrap gap-2">

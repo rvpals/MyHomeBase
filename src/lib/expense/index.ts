@@ -10,6 +10,7 @@ export {
   type RuleAction,
   type RuleActionField,
   type CategoryTotal,
+  type VendorTotal,
   type CardImage,
   type CategoryIcon,
 } from "./types";
@@ -90,10 +91,17 @@ export {
   type CleanupLogEntry,
 } from "./expense";
 export {
+  totalsByVendor,
+  vendorTotals,
+  vendorGroupKey,
+  vendorKeyFromDescription,
+} from "./vendors";
+export {
   EXPENSE_SETTING_KEYS,
   DEFAULT_AUTO_IMPORT_INTERVAL_MINUTES,
   resolveExpenseSettings,
   expenseSettingsToEntries,
+  isAutoImportConfigured,
   isAutoImportEnabled,
   shouldRunNow,
   type ExpenseSettings,

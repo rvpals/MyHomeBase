@@ -24,5 +24,14 @@ export function ExpenseNav() {
     icon: EXPENSE_SECTION_ICONS[section],
   }));
 
-  return <TreeNav nodes={nodes} />;
+  // Its own storageKey: the collapsed state is per-tree, so folding this one
+  // away doesn't fold the Administration tree too.
+  return (
+    <TreeNav
+      nodes={nodes}
+      collapsible
+      storageKey="myhomebase:expense-nav-collapsed"
+      className="rounded-xl border border-line bg-paper-raised"
+    />
+  );
 }

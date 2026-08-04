@@ -6,6 +6,7 @@
 // `render` (formatted display) so the grids sort and export correctly.
 
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
+import { PAGE_CONTAINER } from "../../page-container";
 
 interface StatItem {
   label: string;
@@ -80,7 +81,7 @@ export function AboutView({
   ];
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className={PAGE_CONTAINER}>
       <p className="font-mono text-xs font-medium uppercase tracking-widest text-brass-dark">
         Administration
       </p>

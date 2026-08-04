@@ -15,6 +15,7 @@ import {
   listTransactions,
   resolveExpenseSettings,
   totalsByCategory,
+  vendorTotals,
 } from "@/lib/expense";
 import { listModuleSettingsFor } from "@/lib/module-settings";
 import { getModuleBySlug } from "@/lib/modules";
@@ -32,7 +33,7 @@ import { ExpenseTransactionsView } from "./expense-transactions-view";
 import { CollapsibleCard } from "@/components/collapsible-card";
 
 const EXPENSE_MODULE_SLUG = "expense";
-const TOP_CATEGORY_COUNT = 5;
+const TOP_SPENDER_COUNT = 5;
 
 function loadSettings() {
   const expenseModule = getModuleBySlug(deps.moduleRepo, EXPENSE_MODULE_SLUG);
@@ -52,7 +53,10 @@ function SectionBody({ section }: { section: ExpenseSection }) {
           unprocessedCount={countUnprocessed(deps.expenseRepo)}
           uncategorisedCount={transactions.filter((t) => t.categoryName === "").length}
           toReconcileCount={transactions.filter((t) => t.status === "new").length}
-          topCategories={totalsByCategory(deps.expenseRepo).slice(0, TOP_CATEGORY_COUNT)}
+          // The rows are already in hand, so roll them up here rather than
+          // re-reading the table through totalsByVendor — same pure core either way.
+          topVendors={vendorTotals(transactions).slice(0, TOP_SPENDER_COUNT)}
+          topCategories={totalsByCategory(deps.expenseRepo).slice(0, TOP_SPENDER_COUNT)}
           categories={listCategories(deps.expenseRepo)}
         />
       );
@@ -124,7 +128,9 @@ export function ExpenseSection({ section }: { section: ExpenseSection }) {
 
   return (
     <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-      <div className="lg:sticky lg:top-6 lg:w-64 lg:shrink-0">
+      {/* No width here — a collapsible TreeNav owns its own (w-64 / w-16), and a
+          fixed width on the wrapper would stop the collapsed rail shrinking. */}
+      <div className="lg:sticky lg:top-6 lg:shrink-0">
         <ExpenseNav />
       </div>
 

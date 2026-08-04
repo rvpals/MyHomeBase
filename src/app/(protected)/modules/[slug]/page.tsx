@@ -19,10 +19,10 @@ import { listPositions, listTransactions } from "@/lib/stock-positions";
 import { listItems, listWatchLists } from "@/lib/stock-watchlist";
 import { isAdmin, userHasModuleAccess } from "@/lib/user";
 import { deps } from "@/lib/wiring";
+import { PAGE_CONTAINER } from "../../page-container";
 import { CsvAnalyticsView } from "./csv-analytics-view";
 import { CsvImportView } from "./csv-import-view";
 import { ExpenseSection } from "./expense-section";
-import { EXPENSE_PAGE_CONTAINER } from "./expense-sections";
 import { JournalView } from "./journal-view";
 import { NextDayActionsView } from "./next-day-actions-view";
 import { StockAccountsView, type AccountEntry } from "./stock-accounts-view";
@@ -44,21 +44,6 @@ function todayIsoLocal(): string {
   const pad = (value: number) => String(value).padStart(2, "0");
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
-const WIDE_LAYOUT_SLUGS = new Set([
-  STOCK_ETFS_MODULE_SLUG,
-  CSV_ANALYSIS_MODULE_SLUG,
-  JOURNAL_MODULE_SLUG,
-]);
-
-/**
- * Expense gets a much wider container than the other modules — it has a nav
- * column plus wide tables, so the 6xl cap left most of a large display empty.
- */
-function containerClassFor(slug: string): string {
-  if (slug === EXPENSE_MODULE_SLUG) return EXPENSE_PAGE_CONTAINER;
-  return WIDE_LAYOUT_SLUGS.has(slug) ? "mx-auto max-w-6xl" : "mx-auto max-w-3xl";
-}
-
 function StockEtfsModuleBody() {
   const accountEntries: AccountEntry[] = listAccounts(deps.investmentAccountRepo).map((account) => ({
     account,
@@ -152,7 +137,7 @@ export default async function ModulePage({
   if (!currentUser || !userHasModuleAccess(currentUser, appModule.id, deps.userRepo)) notFound();
 
   return (
-    <div className={containerClassFor(slug)}>
+    <div className={PAGE_CONTAINER}>
       <p className="font-mono text-xs font-medium uppercase tracking-widest text-brass-dark">
         {getModuleCode(appModule.slug)}
       </p>

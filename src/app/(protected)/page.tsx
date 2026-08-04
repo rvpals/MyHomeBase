@@ -10,6 +10,7 @@ import { getSetting } from "@/lib/settings";
 import { getAccessibleModules, isAdmin } from "@/lib/user";
 import { deps } from "@/lib/wiring";
 import { DailyQuoteWidget } from "./daily-quote-widget";
+import { PAGE_CONTAINER } from "./page-container";
 
 export default async function Home() {
   const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
@@ -22,7 +23,7 @@ export default async function Home() {
   const quote = getRandomQuote(deps.dailyQuoteRepo);
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className={PAGE_CONTAINER}>
       <div className="flex items-center justify-center gap-4">
         <AppIcon className="h-14 w-14 shrink-0" />
         <h1 className="font-display text-3xl font-semibold text-ink">{appName}</h1>

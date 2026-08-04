@@ -30,8 +30,12 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
     hint: appModule.description,
   }));
 
+  // The Sidebar is `fixed`, so it's out of the flow: `main` reserves only the
+  // *collapsed* rail (4rem) plus a gutter, and an expanded sidebar floats over
+  // the content instead of squeezing it. That's what gives a module the full
+  // width of the screen — see src/components/sidebar.tsx.
   return (
-    <div className="flex min-h-screen">
+    <div className="min-h-screen">
       <Sidebar
         links={links}
         appName={appName}
@@ -44,7 +48,8 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
         showAdmin={isAdmin(currentUser)}
         logoutAction={logoutAction}
       />
-      <main className="flex-1 p-8">{children}</main>
+      {/* pl-24 = the 4rem rail + a 2rem gutter, so content clears the raised edge. */}
+      <main className="min-h-screen py-8 pl-24 pr-8">{children}</main>
     </div>
   );
 }

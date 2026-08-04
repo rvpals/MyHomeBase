@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { TreeIcon } from "./tree-icons";
 
-const COLLAPSED_STORAGE_KEY = "myhomebase:tree-nav-collapsed";
+const DEFAULT_COLLAPSED_STORAGE_KEY = "myhomebase:tree-nav-collapsed";
 
 export interface TreeNode {
   id: string;
@@ -23,6 +23,11 @@ export interface TreeNavProps {
   nodes: TreeNode[];
   /** Show a collapse toggle; collapsed state shows one icon-only row per node (flattened). */
   collapsible?: boolean;
+  /**
+   * Where the collapsed state is remembered. Two collapsible trees on different
+   * screens need different keys, or collapsing one collapses the other.
+   */
+  storageKey?: string;
   className?: string;
 }
 
@@ -126,22 +131,27 @@ function TreeItem({
   );
 }
 
-export function TreeNav({ nodes, collapsible = false, className = "" }: TreeNavProps) {
+export function TreeNav({
+  nodes,
+  collapsible = false,
+  storageKey = DEFAULT_COLLAPSED_STORAGE_KEY,
+  className = "",
+}: TreeNavProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
     if (!collapsible) return;
-    const stored = window.localStorage.getItem(COLLAPSED_STORAGE_KEY);
+    const stored = window.localStorage.getItem(storageKey);
     // Syncing from an external system (localStorage) on mount, not reacting to React state.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (stored !== null) setCollapsed(stored === "true");
-  }, [collapsible]);
+  }, [collapsible, storageKey]);
 
   useEffect(() => {
     if (!collapsible) return;
-    window.localStorage.setItem(COLLAPSED_STORAGE_KEY, String(collapsed));
-  }, [collapsible, collapsed]);
+    window.localStorage.setItem(storageKey, String(collapsed));
+  }, [collapsible, collapsed, storageKey]);
 
   return (
     <nav
@@ -155,9 +165,19 @@ export function TreeNav({ nodes, collapsible = false, className = "" }: TreeNavP
             type="button"
             onClick={() => setCollapsed((value) => !value)}
             aria-label={collapsed ? "Expand panel" : "Collapse panel"}
+            title={collapsed ? "Expand panel" : "Collapse panel"}
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-line/60 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
           >
-            {collapsed ? "»" : "«"}
+            {/* The same chevron the node rows and CollapsibleCard use, pointing
+                left to collapse and right to expand. */}
+            <span
+              className={`inline-block transition-transform motion-reduce:transition-none ${
+                collapsed ? "" : "rotate-180"
+              }`}
+              aria-hidden
+            >
+              &rsaquo;
+            </span>
           </button>
         </div>
       )}

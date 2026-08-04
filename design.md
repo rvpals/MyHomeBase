@@ -86,6 +86,13 @@ Don't blur this line by giving a card a hard shadow or a button a soft one.
   accent treatment on hover (a soft ring/lift). Keep any hover shadow soft and low-opacity
   so it reads on both light and dark surfaces (`ModuleCard` pairs a `ring` with a gentle
   `rgba(0,0,0,0.35)` lift).
+- **The one surface that does take the button treatment is the `Sidebar`.** It's a raised
+  slab floating over the page, so it carries the same hard offset shadow a `Button` does —
+  rotated to point right (`shadow-[5px_0_0_0_var(--brass-dark),…]`), because a
+  floor-to-ceiling rail has no bottom edge to cast from — plus a soft second shadow for the
+  lift. It does **not** take the press/translate mechanic: it isn't a button, and moving the
+  whole nav on hover would be awful. This is a deliberate exception, not a precedent — don't
+  give another panel a hard shadow without asking.
 - **Icon badge** — the standard "identity" mark for a card or feature tile is a solid
   rounded-square accent tile with the glyph knocked out of it: `rounded-xl bg-brass
   text-paper` with the icon in `text-paper`. This reads correctly in every theme for free
@@ -135,6 +142,26 @@ The caller triggers printing itself (`window.print()`), so a reusable component
 takes an `onPrint` callback rather than reaching for the browser API. See
 `JournalEntryCard` and `/modules/[slug]/entries/[id]`.
 
+## Page width and the sidebar
+
+Every full-page screen — module, Administration, or the home grid — is laid out in **one**
+container: `PAGE_CONTAINER` from
+[`src/app/(protected)/page-container.ts`](src/app/(protected)/page-container.ts)
+(`mx-auto w-full max-w-[160rem]`). Don't invent a per-screen `max-w-*`. Screens used to pick
+their own (`3xl` for most modules, `4xl` for the admin forms, `6xl` for the wide ones), which
+left most of a large display as empty margin either side of the content. The 160rem cap sits
+past a 2560px monitor on purpose so it doesn't bind on one; it's there only to stop a table
+spanning a 3440px ultrawide.
+
+The `Sidebar` is `fixed` and floats **over** the page at `z-40`, so the `(protected)` layout
+reserves only the collapsed rail's width (`pl-24` = 4rem rail + 2rem gutter) and a module gets
+everything else. Two consequences worth knowing:
+
+- Anything else that needs to sit above page content must stay under `z-40`, and any dialog
+  must stay at `z-50` (`Modal`) so its overlay still covers the sidebar.
+- The expanded sidebar overlaps content rather than pushing it. That's intended — it's a
+  mini-drawer, not a column.
+
 ## Building a new module's UI
 
 When scaffolding a new module's `view.tsx`:
@@ -142,6 +169,7 @@ When scaffolding a new module's `view.tsx`:
 1. Read `components.md` first and reuse what's there (`CollapsibleCard`, `DataGrid`,
    `Tabs`, `ChartLine`/`ChartBar`, `Button`, etc.) — most module UIs are composed
    entirely from existing components plus a form.
+   Wrap the page itself in `PAGE_CONTAINER` (above), not a hand-picked width.
 2. Form inputs: `rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink
    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass` — copy this
    exact className (see any `*-view.tsx` for a live example) rather than inventing a new

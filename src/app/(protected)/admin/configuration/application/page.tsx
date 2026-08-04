@@ -1,12 +1,13 @@
 "use client";
 
 import { useAdminSettings } from "../../admin-shell";
+import { PAGE_CONTAINER } from "../../../page-container";
 
 export default function ApplicationConfigurationPage() {
   const { applicationName, setApplicationName } = useAdminSettings();
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className={PAGE_CONTAINER}>
       <p className="font-mono text-xs font-medium uppercase tracking-widest text-brass-dark">
         Configuration
       </p>

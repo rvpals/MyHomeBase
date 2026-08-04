@@ -59,14 +59,6 @@ export const EXPENSE_SECTION_ICONS: Record<ExpenseSection, string> = {
   settings: "sliders",
 };
 
-/**
- * Page container for the Expense screens. Much wider than the 6xl (1152px) the
- * other modules use: this one has a nav column plus wide tables, so capping it
- * narrow left most of a large display as empty margin. The 120rem cap still
- * stops lines running the full width of an ultrawide monitor.
- */
-export const EXPENSE_PAGE_CONTAINER = "mx-auto w-full max-w-[120rem]";
-
 const BASE_PATH = "/modules/expense";
 
 /** The dashboard is the module root; every other section is a child route. */

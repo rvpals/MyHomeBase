@@ -6,6 +6,10 @@
 //     time and only imports when the configured interval has elapsed. Changing
 //     the interval in the UI therefore takes effect without a restart, and no
 //     timer has to be torn down and rebuilt.
+//   * The "Automatic importing csv from folder" switch is checked on every tick
+//     rather than at startup, for the same reason: flipping it takes effect
+//     within a minute either way, with no restart. A tick with the switch off
+//     does nothing beyond reading the settings, so an idle scheduler is cheap.
 //   * A globalThis flag keeps dev-mode hot reload from stacking up timers.
 //   * `unref()` lets the process exit normally instead of being held open by a
 //     pending timer.
@@ -32,6 +36,7 @@ export async function register() {
   const tick = () => {
     try {
       const settings = loadExpenseSettings();
+      // False when the switch is off, or when there's no folder/interval to work from.
       if (!isAutoImportEnabled(settings)) return;
 
       if (

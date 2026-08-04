@@ -5,6 +5,7 @@ import type { CsvFolderPort } from "./csv-folder";
 import {
   EXPENSE_SETTING_KEYS,
   expenseSettingsToEntries,
+  isAutoImportConfigured,
   isAutoImportEnabled,
   resolveExpenseSettings,
   shouldRunNow,
@@ -24,7 +25,12 @@ function setting(key: string, value: string): ModuleSetting {
 describe("resolveExpenseSettings", () => {
   it("defaults to disabled when nothing is set", () => {
     const settings = resolveExpenseSettings([]);
-    expect(settings).toEqual({ autoImportPath: "", autoImportIntervalMinutes: 0 });
+    expect(settings).toEqual({
+      autoImportEnabled: true,
+      autoImportPath: "",
+      autoImportIntervalMinutes: 0,
+    });
+    // The switch defaults on, but with no folder or interval nothing runs.
     expect(isAutoImportEnabled(settings)).toBe(false);
   });
 
@@ -34,6 +40,7 @@ describe("resolveExpenseSettings", () => {
       setting(EXPENSE_SETTING_KEYS.autoImportIntervalMinutes, "30"),
     ]);
     expect(settings).toEqual({
+      autoImportEnabled: true,
       autoImportPath: "/volume1/statements",
       autoImportIntervalMinutes: 30,
     });
@@ -63,25 +70,82 @@ describe("resolveExpenseSettings", () => {
   });
 
   it("round-trips through the serializer", () => {
-    const original: ExpenseSettings = {
-      autoImportPath: "/volume1/statements",
-      autoImportIntervalMinutes: 45,
-    };
-    const rebuilt = resolveExpenseSettings(
-      expenseSettingsToEntries(original).map((entry, index) => ({
-        id: index + 1,
-        moduleId: 5,
-        key: entry.key,
-        value: entry.value,
-      })),
-    );
-    expect(rebuilt).toEqual(original);
+    for (const autoImportEnabled of [true, false]) {
+      const original: ExpenseSettings = {
+        autoImportEnabled,
+        autoImportPath: "/volume1/statements",
+        autoImportIntervalMinutes: 45,
+      };
+      const rebuilt = resolveExpenseSettings(
+        expenseSettingsToEntries(original).map((entry, index) => ({
+          id: index + 1,
+          moduleId: 5,
+          key: entry.key,
+          value: entry.value,
+        })),
+      );
+      expect(rebuilt).toEqual(original);
+    }
   });
 
   it("omits a blank path, since module-setting values must be non-empty", () => {
-    const entries = expenseSettingsToEntries({ autoImportPath: "", autoImportIntervalMinutes: 5 });
+    const entries = expenseSettingsToEntries({
+      autoImportEnabled: true,
+      autoImportPath: "",
+      autoImportIntervalMinutes: 5,
+    });
     expect(entries.every((entry) => entry.value !== "")).toBe(true);
     expect(entries.some((entry) => entry.key === EXPENSE_SETTING_KEYS.autoImportPath)).toBe(false);
+  });
+});
+
+describe("the automatic-import switch", () => {
+  const configured = [
+    setting(EXPENSE_SETTING_KEYS.autoImportPath, "/volume1/statements"),
+    setting(EXPENSE_SETTING_KEYS.autoImportIntervalMinutes, "30"),
+  ];
+
+  it("holds the background service off while the switch is off", () => {
+    const settings = resolveExpenseSettings([
+      ...configured,
+      setting(EXPENSE_SETTING_KEYS.autoImportEnabled, "false"),
+    ]);
+    expect(settings.autoImportEnabled).toBe(false);
+    expect(isAutoImportEnabled(settings)).toBe(false);
+    // Still configured, so a manual "Run import now" is allowed.
+    expect(isAutoImportConfigured(settings)).toBe(true);
+  });
+
+  it("runs the background service when the switch is on and it's configured", () => {
+    const settings = resolveExpenseSettings([
+      ...configured,
+      setting(EXPENSE_SETTING_KEYS.autoImportEnabled, "true"),
+    ]);
+    expect(isAutoImportEnabled(settings)).toBe(true);
+  });
+
+  it("stays off when switched on but not configured", () => {
+    const settings = resolveExpenseSettings([
+      setting(EXPENSE_SETTING_KEYS.autoImportEnabled, "true"),
+    ]);
+    expect(isAutoImportConfigured(settings)).toBe(false);
+    expect(isAutoImportEnabled(settings)).toBe(false);
+  });
+
+  it("treats a missing row as on, so an existing setup keeps importing", () => {
+    expect(resolveExpenseSettings(configured).autoImportEnabled).toBe(true);
+    expect(isAutoImportEnabled(resolveExpenseSettings(configured))).toBe(true);
+  });
+
+  it("reads the stored value case-insensitively, and anything else as off", () => {
+    const enabledOf = (raw: string) =>
+      resolveExpenseSettings([setting(EXPENSE_SETTING_KEYS.autoImportEnabled, raw)])
+        .autoImportEnabled;
+    expect(enabledOf("TRUE")).toBe(true);
+    expect(enabledOf(" true ")).toBe(true);
+    expect(enabledOf("false")).toBe(false);
+    expect(enabledOf("1")).toBe(false);
+    expect(enabledOf("yes")).toBe(false);
   });
 });
 
@@ -236,6 +300,7 @@ const STATEMENT = `Date,Description,Amount
 07/16/2026,LOCAL BAKERY,7.50`;
 
 const ENABLED: ExpenseSettings = {
+  autoImportEnabled: true,
   autoImportPath: "/watch",
   autoImportIntervalMinutes: 30,
 };
@@ -246,7 +311,7 @@ describe("runAutoImport", () => {
   it("does nothing when auto-import isn't configured", () => {
     const { repo } = memoryExpenseRepo();
     const summary = runAutoImport(
-      { autoImportPath: "", autoImportIntervalMinutes: 0 },
+      { autoImportEnabled: true, autoImportPath: "", autoImportIntervalMinutes: 0 },
       {
         expenseRepo: repo,
         mappingRepo: fakeMappingRepo([]),
@@ -256,6 +321,26 @@ describe("runAutoImport", () => {
     );
     expect(summary.ran).toBe(false);
     expect(summary.reason).toMatch(/not configured/);
+  });
+
+  it("still runs with the background switch off — that only gates the scheduler", () => {
+    const { repo } = memoryExpenseRepo();
+    repo.createAccount({ name: "Visa Gold", description: "", creditLineCents: 0 });
+    const folder = fakeFolder({ "/watch/Visa Gold/statement.csv": STATEMENT });
+
+    const summary = runAutoImport(
+      { ...ENABLED, autoImportEnabled: false },
+      {
+        expenseRepo: repo,
+        mappingRepo: fakeMappingRepo([CHASE_MAPPING]),
+        folder,
+        createdByUserId: 1,
+        now: FIXED_NOW,
+      },
+    );
+
+    expect(summary.ran).toBe(true);
+    expect(repo.listTransactions()).toHaveLength(2);
   });
 
   it("reports a missing folder rather than throwing", () => {

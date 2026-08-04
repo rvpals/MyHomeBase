@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { ReactNode } from "react";
+import { PAGE_CONTAINER } from "../../page-container";
 
 // One-off: reading a single known file for display. Not worth a lib repository
 // for this — promote if a second consumer needs CHANGE_HISTORY.md content.
@@ -79,7 +80,7 @@ export default function ChangeHistoryPage() {
   const content = readChangeHistory();
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className={PAGE_CONTAINER}>
       <p className="font-mono text-xs font-medium uppercase tracking-widest text-brass-dark">
         Administration
       </p>

@@ -71,19 +71,32 @@ export function Sidebar({
   }, [collapsed]);
 
   return (
+    // Fixed and raised above the page rather than a column in the flow: the
+    // layout only reserves the collapsed rail's width, so a module gets the
+    // rest of the screen and the expanded sidebar floats over it.
+    //
+    // z-40 is "on top of everything" — above the DataGrid's sticky header (z-10),
+    // its resize handles (z-20), IconSelect's dropdown (z-30) and Admin's floating
+    // save bar (z-20) — but deliberately below Modal (z-50), so a dialog's overlay
+    // still covers it and the sidebar isn't clickable mid-dialog.
+    //
+    // The hard offset shadow is Button's 3D treatment rotated to point right,
+    // since a full-height slab has no bottom edge to cast from; the soft second
+    // shadow is what makes it read as floating over the content.
     <aside
-      className={`flex min-h-screen flex-col bg-gradient-to-b from-paper-raised to-paper shadow-[inset_-1px_0_0_var(--line),6px_0_24px_-14px_rgba(0,0,0,0.45)] transition-[width] motion-reduce:transition-none ${
+      className={`fixed inset-y-0 left-0 z-40 flex flex-col rounded-r-2xl border-r border-line bg-gradient-to-b from-paper-raised to-paper shadow-[5px_0_0_0_var(--brass-dark),14px_0_30px_-10px_rgba(0,0,0,0.45)] transition-[width] motion-reduce:transition-none ${
         collapsed ? "w-16" : "w-60"
       } ${className}`}
     >
       <div
-        className={`flex shrink-0 items-center px-4 ${
-          collapsed ? "flex-col gap-2 py-3" : "h-14 justify-between"
+        className={`flex shrink-0 items-center ${
+          collapsed ? "justify-center px-2 py-3" : "h-14 justify-between px-4"
         }`}
       >
-        {collapsed ? (
-          <AppIcon className="h-6 w-6 shrink-0" />
-        ) : (
+        {/* Collapsed, the header is just the toggle. The app glyph on its own did
+            nothing — it isn't a link, and it read as a duplicate of the Home icon
+            directly below it. It comes back with the wordmark when expanded. */}
+        {!collapsed && (
           <div className="flex min-w-0 items-center gap-2">
             <AppIcon className="h-6 w-6 shrink-0" />
             <span className="truncate font-display text-sm font-semibold text-ink">{appName}</span>
@@ -93,12 +106,23 @@ export function Sidebar({
           type="button"
           onClick={() => setCollapsed((value) => !value)}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-line/60 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
         >
-          {collapsed ? "»" : "«"}
+          {/* Same chevron as TreeNav and CollapsibleCard. */}
+          <span
+            className={`inline-block transition-transform motion-reduce:transition-none ${
+              collapsed ? "" : "rotate-180"
+            }`}
+            aria-hidden
+          >
+            &rsaquo;
+          </span>
         </button>
       </div>
-      <nav className="flex flex-1 flex-col gap-1 px-2">
+      {/* Scrolls on its own now the rail is a fixed, viewport-height slab — a long
+          module list can no longer just make the page taller. */}
+      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-2">
         <Link href="/" title="Home" className={navRowClasses(collapsed, homeActive)}>
           <ModuleIcon name="home" className="h-4 w-4 shrink-0 text-brass" />
           {!collapsed && <span className="truncate">Home</span>}

@@ -18,6 +18,7 @@ import {
   setUserPasswordAction,
   setUserRoleAction,
 } from "./actions";
+import { PAGE_CONTAINER } from "../../page-container";
 
 export interface UserManagementViewProps {
   users: User[];
@@ -534,7 +535,7 @@ export function UserManagementView({
   ];
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className={PAGE_CONTAINER}>
       <p className="font-mono text-xs font-medium uppercase tracking-widest text-brass-dark">
         Administration
       </p>

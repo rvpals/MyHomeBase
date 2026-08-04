@@ -2,12 +2,13 @@
 
 import { COLOR_THEMES } from "@/lib/settings";
 import { useAdminSettings } from "../../admin-shell";
+import { PAGE_CONTAINER } from "../../../page-container";
 
 export default function ColorThemesPage() {
   const { colorThemeId, setColorThemeId } = useAdminSettings();
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className={PAGE_CONTAINER}>
       <p className="font-mono text-xs font-medium uppercase tracking-widest text-brass-dark">
         Configuration
       </p>

@@ -33,8 +33,9 @@ function MainInstructions() {
         <p>Use the tree on the left. Each section does one job:</p>
         <ul className="flex list-disc flex-col gap-1 pl-5">
           <li>
-            <strong className="text-ink">Main (Dashboard)</strong> — the headline numbers and your
-            biggest categories. The counters link through to wherever the work is.
+            <strong className="text-ink">Main (Dashboard)</strong> — the headline numbers, plus
+            &ldquo;Interesting stats&rdquo;: your biggest vendors and biggest categories. The
+            counters link through to wherever the work is.
           </li>
           <li>
             <strong className="text-ink">Transactions</strong> — the full list, plus the form for
@@ -104,6 +105,31 @@ function MainInstructions() {
           <li>
             <strong className="text-ink">To reconcile</strong> — rows still on status{" "}
             <Code>new</Code>.
+          </li>
+        </ul>
+      </Section>
+
+      <Section title="Interesting stats">
+        <p>
+          Two rollups of the same transactions, biggest spend first. Refunds count as negative, so a
+          returned purchase pulls its vendor&apos;s total back down.
+        </p>
+        <ul className="flex list-disc flex-col gap-1 pl-5">
+          <li>
+            <strong className="text-ink">By vendor</strong> groups on the tidy{" "}
+            <strong className="text-ink">Vendor</strong> name when a row has one. Rows that don&apos;t
+            fall back to the leading brand word of the raw description, with store numbers, order
+            references and processor prefixes stripped — so <Code>COSTCO WHSE #1017</Code> and{" "}
+            <Code>COSTCO GAS #1017</Code> both count as <Code>COSTCO</Code>, and{" "}
+            <Code>AMAZON.COM*2A34B5C6</Code> as <Code>AMAZON</Code>. That one word is a guess, so a
+            few names read rough (<Code>THE HOME DEPOT</Code> becomes <Code>HOME</Code>). Add a{" "}
+            <strong className="text-ink">Post Import Processing</strong> rule that sets{" "}
+            <strong className="text-ink">Vendor</strong> and the real name takes over.
+          </li>
+          <li>
+            <strong className="text-ink">By category</strong> is the same breakdown{" "}
+            <strong className="text-ink">Charts and Analysis</strong> shows in full, trimmed to the
+            top five. Rows with no category are pooled as <Code>uncategorised</Code>.
           </li>
         </ul>
       </Section>
@@ -347,10 +373,16 @@ function SettingsInstructions() {
       <Section title="Automatic import (optional)">
         <ul className="flex list-disc flex-col gap-1 pl-5">
           <li>
+            <strong className="text-ink">Automatic importing csv from folder</strong> is the master
+            switch for the background service. With it off the server never imports on its own, no
+            matter what the folder and interval say. Saving takes effect within a minute — the
+            service re-reads this every tick, so nothing needs restarting.
+          </li>
+          <li>
             Set a <strong className="text-ink">folder</strong> and an{" "}
-            <strong className="text-ink">interval in minutes</strong> under &ldquo;Automatic CSV
-            import&rdquo;, and the server imports statements on that timer. Set the interval to 0 to
-            turn it off.
+            <strong className="text-ink">interval in minutes</strong>, and the server imports
+            statements on that timer. Clearing the folder or setting the interval to 0 also stops
+            it, switch or no switch.
           </li>
           <li>
             Inside the folder, create <strong className="text-ink">one sub-folder per card, named
@@ -368,8 +400,10 @@ function SettingsInstructions() {
             to the first administrator account.
           </li>
           <li>
-            <strong className="text-ink">Run import now</strong> does the same pass immediately,
-            which is the quickest way to check your folder layout is right.
+            <strong className="text-ink">Run import now</strong> does the same pass immediately, and
+            works even with the switch off — it&apos;s an explicit request, not a background job.
+            That makes it the quickest way to check your folder layout before switching the service
+            on.
           </li>
         </ul>
       </Section>

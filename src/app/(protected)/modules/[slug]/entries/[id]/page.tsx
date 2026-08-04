@@ -6,6 +6,7 @@ import { getModuleBySlug, getModuleCode } from "@/lib/modules";
 import { userHasModuleAccess } from "@/lib/user";
 import { deps } from "@/lib/wiring";
 import { JournalEntryScreen } from "./entry-screen";
+import { PAGE_CONTAINER } from "../../../../page-container";
 
 const JOURNAL_MODULE_SLUG = "journal";
 
@@ -35,7 +36,7 @@ export default async function JournalEntryPage({
   if (!entry) notFound();
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className={PAGE_CONTAINER}>
       <p className="font-mono text-xs font-medium uppercase tracking-widest text-brass-dark">
         {getModuleCode(appModule.slug)}
       </p>

@@ -1,5 +1,110 @@
 # Change History
 
+## 2026-08-03 23:18 — Full-width layout, floating sidebar, Expense spend stats + auto-import switch
+
+No schema changes in this release — every DB-backed piece rides on existing tables.
+
+### Layout: one page width, and the sidebar floats over it
+
+- **Every full-page screen now shares one container**, `PAGE_CONTAINER` in
+  `src/app/(protected)/page-container.ts` (`mx-auto w-full max-w-[160rem]`).
+  Screens used to pick their own cap — `max-w-3xl` for most modules, `4xl` for the
+  admin forms, `6xl` for the wide ones, and a bespoke `EXPENSE_PAGE_CONTAINER` —
+  which left most of a large display as empty margin either side of the content.
+  All 12 screens under `(protected)` were converted; `containerClassFor` and
+  `WIDE_LAYOUT_SLUGS` are gone. The 160rem cap deliberately sits past a 2560px
+  monitor so it doesn't bind on one; it exists only to stop a table spanning a
+  3440px ultrawide.
+- **`Sidebar` is `fixed` and raised above the page** (`z-40`) instead of being a
+  column in the flow, so the layout reserves only its *collapsed* width
+  (`pl-24` = 4rem rail + 2rem gutter) and a module gets the rest of the screen.
+  Expanding it overlays content rather than reflowing it.
+  - `z-40` is chosen: above `DataGrid`'s sticky header (z-10), its resize handles
+    (z-20), `IconSelect`'s dropdown (z-30) and Admin's floating save bar (z-20),
+    but **below `Modal` (z-50)** so a dialog's overlay still covers it. Anything
+    new that stacks has to respect that ceiling.
+  - It carries `Button`'s hard offset shadow **rotated to point right** — a
+    floor-to-ceiling slab has no bottom edge to cast from — plus a soft second
+    shadow for the lift, and `rounded-r-2xl`. No press/translate mechanic: it
+    isn't a button. This is a deliberate exception to "surfaces never take the
+    offset-shadow treatment", now recorded in `design.md`.
+  - Its `nav` scrolls independently, since a fixed viewport-height rail can no
+    longer just make the page taller.
+  - Collapsed, the header is only the toggle. The app glyph on its own did
+    nothing — not a link, and it read as a duplicate of the Home icon below it.
+
+### Chevrons, and per-tree collapse state
+
+- `TreeNav`'s panel toggle and `Sidebar`'s were `«`/`»`; both are now the same
+  `&rsaquo;` chevron the node rows and `CollapsibleCard` already use, rotated 180°
+  when expanded.
+- **The Expense section tree is collapsible.** That needed a fix first:
+  `TreeNav` persisted its collapsed state under one module-level constant, so a
+  second collapsible tree would have shared state with Administration's —
+  collapse one, the other collapses too. New `storageKey?` prop, defaulting to the
+  old key so Admin's remembered state is untouched; Expense passes its own.
+- The Expense nav wrapper lost its `lg:w-64`: a collapsible `TreeNav` owns its
+  width (`w-64` → `w-16`), and a fixed width on the wrapper pins the rail open.
+
+### Expense: "Interesting stats" on the dashboard
+
+- New collapsible card showing **top 5 spenders by vendor** and **top 5 by
+  category**, side by side. It replaces the standalone "Top categories" section,
+  which was the same top-5 list.
+- New `src/lib/expense/vendors.ts`. A statement line carries two names for the
+  same shop — the tidied `vendor` post-import processing sets, and the raw
+  `transaction_description` — and only some rows have the first, so grouping on
+  `vendor` alone hides most of the spend. `vendorKeyFromDescription` derives a
+  brand key from the description when `vendor` is blank: upper-cases, strips
+  payment-processor prefixes (`SQ *`, `TST*`, `PAYPAL *`), cuts the per-order
+  reference after a `*`, drops punctuation and store numbers, skips leading filler
+  (`THE`), and takes the leading brand word — so `COSTCO WHSE #1017 SEATTLE WA`
+  and `COSTCO GAS #1017` roll up as `COSTCO`, and `AMAZON.COM*2A34B5C6` as
+  `AMAZON`. Vendor names are upper-cased for grouping, so a tidied `Costco` and
+  derived `COSTCO` rows merge, and the tidied spelling wins as the label
+  (`isDerived` records which you got).
+- `vendorTotals` is pure (the dashboard already holds the rows, so it doesn't
+  re-read the table); `totalsByVendor` is the repo-backed use-case. No new port
+  method — the fuzzy match is text work, not SQL. 15 colocated tests.
+
+### Expense: "Automatic importing csv from folder" switch
+
+- A master switch for the background importer, stored as the module setting
+  `csv_autoimport_enabled`. Off means the scheduler never imports, whatever the
+  folder and interval say.
+- **A missing row reads as on**, so an install already auto-importing keeps doing
+  it after this deploys. It still needs a folder and interval, so a fresh install
+  is off regardless.
+- The two questions were conflated in one predicate and are now split:
+  `isAutoImportConfigured` (folder + positive interval — what one pass needs, and
+  the guard on `runAutoImport`) versus `isAutoImportEnabled` (configured **and**
+  switched on — what the scheduler asks). Consequence: **"Run import now" still
+  works with the switch off**, which is how you test a folder before arming the
+  service.
+- No `instrumentation.ts` logic change — the 60s heartbeat already gated on
+  `isAutoImportEnabled`, and it re-reads settings every tick, so flipping the
+  switch takes effect within a minute with no restart.
+
+### Two CLI commands
+
+- `npm run cli expense-top-spenders -- --limit 10` — the same two rollups the
+  dashboard card shows, for eyeballing the vendor grouping against real data.
+- `npm run cli explain-rule -- --id <n>` / `-- --description <text>` — why a
+  post-import rule did or didn't fire: the description JSON-quoted (so invisible
+  characters show), the current field values, the `processed` flag, every rule in
+  evaluation order with match/no-match, which one wins, and per field either the
+  assignment or the reason it was skipped. Calls the same `listRules` /
+  `planRuleApplication` the real clean-up does, so its verdict is the run's.
+
+### Known issues, unchanged by this release
+
+- `npm run check:lib-boundary` fails on Windows for any tree: the script is
+  `! grep -rE ...` and `!` isn't a cmd builtin. The check itself passes when the
+  grep is run directly.
+- 5 pre-existing lint errors in files this release doesn't touch:
+  `csv-analytics-view.tsx` (2× `set-state-in-effect`), `csv-import-view.tsx`
+  (2× unescaped `"`), `chart-xy.tsx` (1× `set-state-in-effect`).
+
 ## 2026-08-03 15:24 — Category icons, ticker logos, grid filters/aggregates, three more themes
 
 Four independent pieces of work that were in the tree together at this checkpoint.

@@ -6,6 +6,7 @@ import { Avatar } from "@/components/avatar";
 import { Button } from "@/components/button";
 import type { User } from "@/lib/user";
 import { changeOwnPasswordAction, removeOwnAvatarAction, uploadOwnAvatarAction } from "./actions";
+import { PAGE_CONTAINER } from "../page-container";
 
 function AvatarSection({ user }: { user: User }) {
   const router = useRouter();
@@ -144,7 +145,7 @@ function PasswordSection() {
 
 export function AccountView({ user }: { user: User }) {
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className={PAGE_CONTAINER}>
       <p className="font-mono text-xs font-medium uppercase tracking-widest text-brass-dark">
         {user.username}
       </p>

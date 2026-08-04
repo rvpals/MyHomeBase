@@ -4,8 +4,9 @@ import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { getModuleBySlug, getModuleCode } from "@/lib/modules";
 import { userHasModuleAccess } from "@/lib/user";
 import { deps } from "@/lib/wiring";
+import { PAGE_CONTAINER } from "../../../page-container";
 import { ExpenseSection } from "../expense-section";
-import { EXPENSE_PAGE_CONTAINER, isExpenseSection } from "../expense-sections";
+import { isExpenseSection } from "../expense-sections";
 
 const EXPENSE_MODULE_SLUG = "expense";
 
@@ -34,7 +35,7 @@ export default async function ModuleSectionPage({
   if (!currentUser || !userHasModuleAccess(currentUser, appModule.id, deps.userRepo)) notFound();
 
   return (
-    <div className={EXPENSE_PAGE_CONTAINER}>
+    <div className={PAGE_CONTAINER}>
       <p className="font-mono text-xs font-medium uppercase tracking-widest text-brass-dark">
         {getModuleCode(appModule.slug)}
       </p>

@@ -8,6 +8,7 @@ import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import type { CreateQuoteInput, DailyQuote, QuoteCategory } from "@/lib/daily-quote";
 import { createQuoteAction, deleteQuoteAction, updateQuoteAction } from "./actions";
 import { NewsletterImport } from "./newsletter-import";
+import { PAGE_CONTAINER } from "../../page-container";
 
 export interface DailyQuoteViewProps {
   quotes: DailyQuote[];
@@ -202,7 +203,7 @@ export function DailyQuoteView({ quotes, categories }: DailyQuoteViewProps) {
   ];
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className={PAGE_CONTAINER}>
       <p className="font-mono text-xs font-medium uppercase tracking-widest text-brass-dark">
         Administration
       </p>

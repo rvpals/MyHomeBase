@@ -115,3 +115,20 @@ export interface CategoryTotal {
   totalCents: number;
   transactionCount: number;
 }
+
+/** Per-vendor rollup for the summary panel. See `vendors.ts` for how rows are grouped. */
+export interface VendorTotal {
+  /**
+   * Display name: the tidied `vendor` when any row in the group carried one,
+   * otherwise the brand key derived from the raw statement description. Empty
+   * when neither yielded anything.
+   */
+  vendor: string;
+  totalCents: number;
+  transactionCount: number;
+  /**
+   * True when no row in the group had a `vendor`, so the name came from the raw
+   * description and may read a little rough.
+   */
+  isDerived: boolean;
+}

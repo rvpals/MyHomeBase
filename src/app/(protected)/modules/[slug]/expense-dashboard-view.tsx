@@ -1,5 +1,7 @@
 import Link from "next/link";
-import type { CategoryTotal, ExpenseCategory } from "@/lib/expense";
+import type { ReactNode } from "react";
+import { CollapsibleCard } from "@/components/collapsible-card";
+import type { CategoryTotal, ExpenseCategory, VendorTotal } from "@/lib/expense";
 import { expenseSectionHref } from "./expense-sections";
 import { CategoryIconThumbnail, categoryIconUrlsByName, formatCents } from "./expense-shared";
 
@@ -35,12 +37,67 @@ function Tile({
   );
 }
 
+/** One "name — n transaction(s) — $total" row. Shared by both rollup lists. */
+function SpendRow({
+  label,
+  isPlaceholder = false,
+  iconUrl,
+  transactionCount,
+  totalCents,
+}: {
+  label: string;
+  /** Renders the name greyed out — it stands in for a missing value. */
+  isPlaceholder?: boolean;
+  iconUrl?: string;
+  transactionCount: number;
+  totalCents: number;
+}) {
+  return (
+    <li className="flex items-center justify-between gap-3 rounded-md border border-line bg-paper px-3 py-1.5 text-sm">
+      <span className="flex min-w-0 items-center gap-2 text-ink">
+        <CategoryIconThumbnail iconUrl={iconUrl} />
+        <span className={`truncate ${isPlaceholder ? "text-muted" : ""}`}>{label}</span>
+        <span className="shrink-0 text-xs text-muted">{transactionCount} transaction(s)</span>
+      </span>
+      <span className="shrink-0 font-mono text-ink">{formatCents(totalCents)}</span>
+    </li>
+  );
+}
+
+/** A titled rollup list, or the reason there's nothing in it yet. */
+function SpendList({
+  title,
+  hint,
+  isEmpty,
+  emptyMessage,
+  children,
+}: {
+  title: string;
+  hint: ReactNode;
+  isEmpty: boolean;
+  emptyMessage: string;
+  children: ReactNode;
+}) {
+  return (
+    <div>
+      <h3 className="font-display text-base text-ink">{title}</h3>
+      <p className="mt-1 text-xs text-muted">{hint}</p>
+      {isEmpty ? (
+        <p className="mt-3 text-sm text-muted">{emptyMessage}</p>
+      ) : (
+        <ul className="mt-3 flex flex-col gap-1">{children}</ul>
+      )}
+    </div>
+  );
+}
+
 export function ExpenseDashboardView({
   totalCents,
   transactionCount,
   unprocessedCount,
   uncategorisedCount,
   toReconcileCount,
+  topVendors,
   topCategories,
   categories,
 }: {
@@ -49,11 +106,13 @@ export function ExpenseDashboardView({
   unprocessedCount: number;
   uncategorisedCount: number;
   toReconcileCount: number;
+  topVendors: VendorTotal[];
   topCategories: CategoryTotal[];
   /** Only for their icons — a rollup carries a category name, not its icon. */
   categories: ExpenseCategory[];
 }) {
   const categoryIconUrls = categoryIconUrlsByName(categories);
+  const noTransactions = transactionCount === 0;
 
   return (
     <div className="flex flex-col gap-8">
@@ -74,47 +133,62 @@ export function ExpenseDashboardView({
         <Tile label="To reconcile" value={String(toReconcileCount)} />
       </section>
 
-      <section>
-        <h2 className="font-display text-xl text-ink">Top categories</h2>
-        {topCategories.length === 0 ? (
-          <p className="mt-1 text-sm text-muted">
-            Nothing to show yet — {transactionCount === 0 ? "add or import some transactions" : "categorise a few transactions"} to see a breakdown.
-          </p>
-        ) : (
-          <>
-            <p className="mt-1 text-sm text-muted">
-              The five biggest, out of {transactionCount} transaction(s).{" "}
-              <Link href={expenseSectionHref("charts")} className="text-brass-dark hover:underline">
-                See all
-              </Link>
-              .
-            </p>
-            <ul className="mt-3 flex flex-col gap-1">
-              {topCategories.map((total) => (
-                <li
-                  key={total.categoryName || "uncategorised"}
-                  className="flex items-center justify-between rounded-md border border-line bg-paper px-3 py-1.5 text-sm"
-                >
-                  <span className="flex items-center gap-2 text-ink">
-                    {total.categoryName === "" ? (
-                      <span className="text-muted">uncategorised</span>
-                    ) : (
-                      <>
-                        <CategoryIconThumbnail iconUrl={categoryIconUrls.get(total.categoryName)} />
-                        {total.categoryName}
-                      </>
-                    )}
-                    <span className="text-xs text-muted">
-                      {total.transactionCount} transaction(s)
-                    </span>
-                  </span>
-                  <span className="font-mono text-ink">{formatCents(total.totalCents)}</span>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-      </section>
+      <CollapsibleCard title="Interesting stats" defaultOpen>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <SpendList
+            title="Top 5 biggest spenders by vendor"
+            hint={
+              <>
+                Grouped on the vendor that post-import processing set, falling back to the leading
+                brand word of the statement description — so COSTCO* and AMAZON* lines roll up
+                together.
+              </>
+            }
+            isEmpty={topVendors.length === 0}
+            emptyMessage="Nothing to show yet — add or import some transactions to see a breakdown."
+          >
+            {topVendors.map((total) => (
+              <SpendRow
+                key={total.vendor || "unknown"}
+                label={total.vendor === "" ? "unknown" : total.vendor}
+                isPlaceholder={total.vendor === ""}
+                transactionCount={total.transactionCount}
+                totalCents={total.totalCents}
+              />
+            ))}
+          </SpendList>
+
+          <SpendList
+            title="Top 5 biggest spenders by category"
+            hint={
+              <>
+                Out of {transactionCount} transaction(s).{" "}
+                <Link href={expenseSectionHref("charts")} className="text-brass-dark hover:underline">
+                  See all
+                </Link>
+                .
+              </>
+            }
+            isEmpty={topCategories.length === 0}
+            emptyMessage={
+              noTransactions
+                ? "Nothing to show yet — add or import some transactions to see a breakdown."
+                : "Nothing to show yet — categorise a few transactions to see a breakdown."
+            }
+          >
+            {topCategories.map((total) => (
+              <SpendRow
+                key={total.categoryName || "uncategorised"}
+                label={total.categoryName === "" ? "uncategorised" : total.categoryName}
+                isPlaceholder={total.categoryName === ""}
+                iconUrl={categoryIconUrls.get(total.categoryName)}
+                transactionCount={total.transactionCount}
+                totalCents={total.totalCents}
+              />
+            ))}
+          </SpendList>
+        </div>
+      </CollapsibleCard>
     </div>
   );
 }

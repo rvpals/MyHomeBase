@@ -15,7 +15,7 @@ import type { CsvImportMappingRepository, NamedMapping } from "@/lib/csv-import"
 import type { CsvFolderPort } from "./csv-folder";
 import { importExpenseCsv } from "./csv-import";
 import type { ExpenseRepository } from "./ports";
-import { isAutoImportEnabled, type ExpenseSettings } from "./settings";
+import { isAutoImportConfigured, type ExpenseSettings } from "./settings";
 import type { CreditCardAccount } from "./types";
 
 export interface AutoImportFileResult {
@@ -105,7 +105,9 @@ export function runAutoImport(
   const { expenseRepo, mappingRepo, folder, createdByUserId } = dependencies;
   const now = dependencies.now ?? (() => new Date());
 
-  if (!isAutoImportEnabled(settings)) {
+  // Deliberately the *configured* check, not the enabled one: turning the
+  // background switch off must not disable "Run import now".
+  if (!isAutoImportConfigured(settings)) {
     return { ran: false, reason: "Auto-import is not configured.", files: [] };
   }
   if (!folder.directoryExists(settings.autoImportPath)) {

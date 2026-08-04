@@ -4,6 +4,7 @@ import { ModuleIconPreview } from "@/components/module-icons";
 import type { ModuleIconSetId } from "@/components/module-icon-sets.generated";
 import { ICON_SETS } from "@/lib/settings";
 import { useAdminSettings } from "../../admin-shell";
+import { PAGE_CONTAINER } from "../../../page-container";
 
 // A representative handful of module concepts to preview each set with.
 const PREVIEW_ICONS = ["building", "wallet", "chart", "shield", "book"];
@@ -12,7 +13,7 @@ export default function IconsPage() {
   const { iconSetId, setIconSetId } = useAdminSettings();
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className={PAGE_CONTAINER}>
       <p className="font-mono text-xs font-medium uppercase tracking-widest text-brass-dark">
         Configuration
       </p>

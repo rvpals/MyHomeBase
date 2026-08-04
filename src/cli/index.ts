@@ -5,6 +5,8 @@ import { computeAnalyticsCommand } from "./compute-analytics";
 import { createCsvAnalyticsEntryCommand } from "./create-csv-analytics-entry";
 import { createUserCommand } from "./create-user";
 import { deleteCsvAnalyticsEntryCommand } from "./delete-csv-analytics-entry";
+import { expenseTopSpendersCommand } from "./expense-top-spenders";
+import { explainRuleCommand } from "./explain-rule";
 import { importJournalCsvCommand } from "./import-journal-csv";
 import { listCsvAnalyticsCommand } from "./list-csv-analytics";
 import { listUsersCommand } from "./list-users";
@@ -21,6 +23,8 @@ const commands: Record<string, Command> = {
   "create-csv-analytics-entry": createCsvAnalyticsEntryCommand,
   "delete-csv-analytics-entry": deleteCsvAnalyticsEntryCommand,
   "import-journal-csv": importJournalCsvCommand,
+  "expense-top-spenders": expenseTopSpendersCommand,
+  "explain-rule": explainRuleCommand,
 };
 
 async function main(argv: string[]) {

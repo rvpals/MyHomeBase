@@ -6,6 +6,7 @@ import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type CellValue, type DataGridColumn } from "@/components/data-grid";
 import type { SqlExecutionResult, TableInfo } from "@/lib/sql-explorer";
 import { executeSqlAction } from "./actions";
+import { PAGE_CONTAINER } from "../../page-container";
 
 function formatCellValue(value: unknown): string {
   if (value === null || value === undefined) return "—";
@@ -62,7 +63,7 @@ export function SqlExplorerView({ tables }: { tables: TableInfo[] }) {
   }
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className={PAGE_CONTAINER}>
       <p className="font-mono text-xs font-medium uppercase tracking-widest text-brass-dark">Administration</p>
       <h1 className="mt-2 font-display text-3xl font-semibold text-ink">SQL Explorer</h1>
       <p className="mt-2 text-sm text-muted">

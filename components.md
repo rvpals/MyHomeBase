@@ -414,7 +414,15 @@ The app's collapsible left-hand nav. Mounted once; you should not need a second 
 
 **Notes:** always renders a "Home" link above the module list; shows icon-only when
 collapsed; the footer is an `Avatar` + name linking to `/account` plus a separate
-"Log out" button.
+"Log out" button. The collapse toggle is the same `&rsaquo;` chevron `TreeNav` and
+`CollapsibleCard` use.
+
+**It is `fixed`, not a column.** The rail floats over the page at `z-40` with `Button`'s hard
+offset shadow turned to point right (see `design.md`), so the layout reserves only its
+*collapsed* width (`pl-24`) and module content fills the rest of the screen; expanding it
+overlaps content rather than reflowing it. Because of that, keep every other stacked element
+below `z-40` and dialogs at `Modal`'s `z-50`, or a dialog overlay won't cover the sidebar. Its
+`nav` scrolls independently — a long module list can't make the page taller any more.
 
 ---
 
@@ -430,7 +438,8 @@ sub-pages (like Administration), not for the top-level module list.
 | Prop | Type | Notes |
 |------|------|-------|
 | `nodes` | `TreeNode[]` — `{ id, label, href?, hint?, icon?, children? }` | A node **without** `href` is a group heading (expand/collapse only). `icon` is a key rendered via `TreeIcon` — currently `sliders`, `list`, `chart`, `upload`, `quote`, `grid`, `window`, `palette`, `info`, `history`, `users`, `database`, `shapes`. |
-| `collapsible?` | `boolean` | Default `false`. When true it owns its width (`w-64`/`w-16`); collapsed flattens to one icon-only row per node. |
+| `collapsible?` | `boolean` | Default `false`. When true it owns its width (`w-64`/`w-16`) and shows a chevron toggle in its header; collapsed flattens to one icon-only row per node. |
+| `storageKey?` | `string` | Where the collapsed state is remembered. Defaults to `"myhomebase:tree-nav-collapsed"`. **Pass a distinct key for every collapsible tree** — two trees sharing the default collapse together. |
 | `className?` | `string` | |
 
 ```tsx
@@ -451,7 +460,13 @@ const nodes: TreeNode[] = [
 
 **Used by:** Administration — [admin/admin-shell.tsx](src/app/(protected)/admin/admin-shell.tsx),
 node list in [admin/nav.ts](src/app/(protected)/admin/nav.ts); and the Expense module's
-six sections — [expense-nav.tsx](src/app/(protected)/modules/[slug]/expense-nav.tsx).
+six sections — [expense-nav.tsx](src/app/(protected)/modules/[slug]/expense-nav.tsx). Both are
+`collapsible`, each with its own `storageKey`.
+
+**Collapsing.** The toggle is the same `&rsaquo;` chevron the node rows and `CollapsibleCard`
+use, rotated 180° when expanded, and it respects `prefers-reduced-motion`. Because a
+collapsible tree sets its own width at every breakpoint, don't put a width on its wrapper —
+that pins the collapsed rail open (see [expense-section.tsx](src/app/(protected)/modules/[slug]/expense-section.tsx)).
 
 **Note:** the active node is matched on `pathname`, so each node needs a real route —
 a query parameter or client-side state won't highlight. Keep the node list and any
