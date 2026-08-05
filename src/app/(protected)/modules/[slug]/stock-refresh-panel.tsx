@@ -11,6 +11,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
+import { CollapsibleCard } from "@/components/collapsible-card";
 import { formatCents } from "@/lib/shared/money";
 import {
   listRefreshTargetsAction,
@@ -26,6 +27,9 @@ interface LogLine {
 
 export function StockRefreshPanel({ lastSnapshotDate }: { lastSnapshotDate?: string }) {
   const router = useRouter();
+  // Collapsed by default — the card is a control, not something you read. It opens
+  // itself when a run starts, or the progress and result would land out of sight.
+  const [isOpen, setIsOpen] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [status, setStatus] = useState<string | undefined>(undefined);
   const [log, setLog] = useState<LogLine[]>([]);
@@ -34,6 +38,7 @@ export function StockRefreshPanel({ lastSnapshotDate }: { lastSnapshotDate?: str
   const [progress, setProgress] = useState({ current: 0, total: 0 });
 
   async function handleRefreshAll() {
+    setIsOpen(true);
     setIsRunning(true);
     setLog([]);
     setDone(undefined);
@@ -97,20 +102,21 @@ export function StockRefreshPanel({ lastSnapshotDate }: { lastSnapshotDate?: str
   const pct = progress.total === 0 ? 0 : Math.round((progress.current / progress.total) * 100);
 
   return (
-    <div className="rounded-xl border border-line p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h3 className="font-display text-lg text-ink">Refresh &amp; snapshot</h3>
-          <p className="mt-1 text-sm text-muted">
-            Fetches a live price for every position, then files today&apos;s totals in the history.
-            Running it again today updates today&apos;s row rather than adding a second one.
-            {lastSnapshotDate ? ` Last captured ${lastSnapshotDate}.` : " Nothing captured yet."}
-          </p>
-        </div>
-        <Button onClick={handleRefreshAll} disabled={isRunning}>
+    <CollapsibleCard
+      title="Refresh & snapshot"
+      open={isOpen}
+      onOpenChange={setIsOpen}
+      headerAction={
+        <Button size="sm" onClick={handleRefreshAll} disabled={isRunning}>
           {isRunning ? "Refreshing…" : "Refresh All"}
         </Button>
-      </div>
+      }
+    >
+      <p className="text-sm text-muted">
+        Fetches a live price for every position, then files today&apos;s totals in the history.
+        Running it again today updates today&apos;s row rather than adding a second one.
+        {lastSnapshotDate ? ` Last captured ${lastSnapshotDate}.` : " Nothing captured yet."}
+      </p>
 
       {(isRunning || log.length > 0) && (
         <div className="mt-4">
@@ -139,9 +145,16 @@ export function StockRefreshPanel({ lastSnapshotDate }: { lastSnapshotDate?: str
           </div>
 
           {log.length > 0 && (
-            <ul className="mt-3 flex max-h-56 flex-col gap-0.5 overflow-y-auto font-mono text-xs">
+            /* Exactly five lines tall: `leading-5` pins each row at 1.25rem and no
+               gap between them, so 5 × 1.25rem = 6.25rem shows five and scrolls the
+               rest. Stated in rem rather than a `max-h-*` step so the arithmetic is
+               checkable. */
+            <ul className="mt-3 max-h-[6.25rem] overflow-y-auto font-mono text-xs">
               {log.map((line, index) => (
-                <li key={`${line.ticker}-${index}`} className={line.failed ? "text-red-400" : "text-muted"}>
+                <li
+                  key={`${line.ticker}-${index}`}
+                  className={`truncate leading-5 ${line.failed ? "text-red-400" : "text-muted"}`}
+                >
                   <span className="text-ink">{line.ticker}</span> — {line.text}
                 </li>
               ))}
@@ -152,6 +165,6 @@ export function StockRefreshPanel({ lastSnapshotDate }: { lastSnapshotDate?: str
 
       {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
       {done && <p className="mt-3 text-sm text-emerald-400">{done}</p>}
-    </div>
+    </CollapsibleCard>
   );
 }

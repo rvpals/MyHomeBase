@@ -13,6 +13,7 @@ import { getModuleBySlug } from "@/lib/modules";
 import { resolveThresholds } from "@/lib/next-day-actions";
 import { startOfYearIso, todayIsoLocal } from "@/lib/shared/date";
 import { getCorrelationCache, getSharpeCache, listVolatilityCache } from "@/lib/stock-analytics";
+import { resolveDashboardWidgets, visibleDashboardWidgets } from "@/lib/stock-dashboard";
 import { listSnapshots, summarizeToDate } from "@/lib/stock-daily-snapshot";
 import {
   computeAllocation,
@@ -54,11 +55,18 @@ function loadAccountOptions() {
   }));
 }
 
-function loadThresholds() {
+/** This module's settings rows, or none when the module row is somehow missing. */
+function loadModuleSettings() {
   const stockModule = getModuleBySlug(deps.moduleRepo, STOCK_ETFS_MODULE_SLUG);
-  return resolveThresholds(
-    stockModule ? listModuleSettingsFor(deps.moduleSettingsRepo, stockModule.id) : [],
-  );
+  return stockModule ? listModuleSettingsFor(deps.moduleSettingsRepo, stockModule.id) : [];
+}
+
+function loadThresholds() {
+  return resolveThresholds(loadModuleSettings());
+}
+
+function loadDashboardWidgets() {
+  return resolveDashboardWidgets(loadModuleSettings());
 }
 
 function SectionBody({ section }: { section: StockSection }) {
@@ -90,6 +98,7 @@ function SectionBody({ section }: { section: StockSection }) {
           }
           snapshots={snapshots}
           toDate={summarizeToDate(snapshots, today)}
+          widgets={visibleDashboardWidgets(loadDashboardWidgets())}
         />
       );
     }
@@ -138,7 +147,12 @@ function SectionBody({ section }: { section: StockSection }) {
       return <StockImportView accounts={loadAccountOptions()} />;
 
     case "settings":
-      return <StockConfigurationView thresholds={loadThresholds()} />;
+      return (
+        <StockConfigurationView
+          thresholds={loadThresholds()}
+          widgets={loadDashboardWidgets()}
+        />
+      );
 
     default:
       return null;

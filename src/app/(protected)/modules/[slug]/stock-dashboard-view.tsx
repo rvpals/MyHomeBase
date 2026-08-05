@@ -4,9 +4,12 @@
 // what it has returned since you bought in, and how the value is spread. Every
 // number arrives already computed by the lib — this file only formats and lays out.
 
+import type { ReactNode } from "react";
 import { ChartBar } from "@/components/chart-bar";
 import { ChartLine } from "@/components/chart-line";
+import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
+import type { DashboardWidgetId } from "@/lib/stock-dashboard";
 import { snapshotChangePct } from "@/lib/stock-daily-snapshot";
 import type { DailySnapshot, PeriodSummary, ToDateSummaries } from "@/lib/stock-daily-snapshot";
 import type {
@@ -257,6 +260,7 @@ export function StockDashboardView({
   unassignedCount,
   snapshots,
   toDate,
+  widgets,
 }: {
   summary: PortfolioSummary;
   byType: AllocationSlice[];
@@ -272,29 +276,81 @@ export function StockDashboardView({
   /** This year's captured snapshots, oldest first. */
   snapshots: DailySnapshot[];
   toDate: ToDateSummaries;
+  /** Which widgets to draw and in what order — from Configuration → Dashboard widgets. */
+  widgets: DashboardWidgetId[];
 }) {
   const hasCostBasis = summary.totalCostCents > 0;
 
   const lastSnapshotDate = snapshots[snapshots.length - 1]?.snapshotDate;
 
+  /**
+   * Every widget, keyed by id, so the render is a lookup over the user's order
+   * rather than a fixed sequence of JSX. Building the map costs nothing — these are
+   * elements, not renders — and it keeps "what a widget is" in one place.
+   */
+  const widgetContent: Record<DashboardWidgetId, ReactNode> = {
+    refresh: <StockRefreshPanel lastSnapshotDate={lastSnapshotDate} />,
+    summary: <PortfolioSummaryCard summary={summary} snapshots={snapshots} />,
+    glance: <StockDailyGlance moves={dayMoves} tickerMoves={tickerMoves} />,
+    statistics: (
+      <CollapsibleCard title="Statistics">
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <PeriodTile label="Week to date" summary={toDate.week} />
+            <PeriodTile label="Month to date" summary={toDate.month} />
+            <PeriodTile label="Year to date" summary={toDate.year} />
+          </div>
+
+          {/* Total Value and Day Change deliberately absent — the Portfolio Summary
+              card leads with both, and the same figure twice on one screen reads as
+              two different measurements. */}
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+            <StatTiles
+              summary={summary}
+              hasCostBasis={hasCostBasis}
+              transactionCount={transactionCount}
+              accountCount={accountCount}
+              unassignedCount={unassignedCount}
+            />
+          </div>
+        </div>
+      </CollapsibleCard>
+    ),
+    allocationType: <AllocationChart title="Allocation by type" slices={byType} />,
+    allocationStrategy: <AllocationChart title="Allocation by strategy" slices={byStrategy} />,
+  };
+
   return (
     <div className="flex flex-col gap-8">
-      <StockRefreshPanel lastSnapshotDate={lastSnapshotDate} />
+      {widgets.map((id) => (
+        <div key={id}>{widgetContent[id]}</div>
+      ))}
+      {widgets.length === 0 && (
+        <p className="rounded-xl border border-dashed border-line p-8 text-center text-sm text-muted">
+          Every dashboard widget is hidden. Turn one back on under{" "}
+          <span className="text-ink">Configuration &rarr; Dashboard widgets</span>.
+        </p>
+      )}
+    </div>
+  );
+}
 
-      <PortfolioSummaryCard summary={summary} snapshots={snapshots} />
-
-      <StockDailyGlance moves={dayMoves} tickerMoves={tickerMoves} />
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <PeriodTile label="Week to date" summary={toDate.week} />
-        <PeriodTile label="Month to date" summary={toDate.month} />
-        <PeriodTile label="Year to date" summary={toDate.year} />
-      </div>
-
-      {/* Total Value and Day Change deliberately absent — the Portfolio Summary
-          card above leads with both, and the same figure twice on one screen reads
-          as two different measurements. */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+/** Kept out of the component body only to stop the widget map running long. */
+function StatTiles({
+  summary,
+  hasCostBasis,
+  transactionCount,
+  accountCount,
+  unassignedCount,
+}: {
+  summary: PortfolioSummary;
+  hasCostBasis: boolean;
+  transactionCount: number;
+  accountCount: number;
+  unassignedCount: number;
+}) {
+  return (
+    <>
         <StatTile label="Positions" value={String(summary.positionCount)} hint={`${accountCount} account(s)`} />
         <StatTile
           label="Total Return"
@@ -321,13 +377,6 @@ export function StockDashboardView({
           hint={unassignedCount > 0 ? "positions with no account" : "every position has an account"}
           valueClassName={unassignedCount > 0 ? "text-brass-dark" : "text-ink"}
         />
-      </div>
-
-      <div className="grid grid-cols-1 gap-8 xl:grid-cols-2">
-        <AllocationChart title="Allocation by type" slices={byType} />
-        <AllocationChart title="Allocation by strategy" slices={byStrategy} />
-      </div>
-
-    </div>
+    </>
   );
 }

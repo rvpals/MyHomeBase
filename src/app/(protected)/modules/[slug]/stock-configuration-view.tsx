@@ -8,7 +8,16 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
+import { CollapsibleCard } from "@/components/collapsible-card";
 import type { NextDayActionThresholds } from "@/lib/next-day-actions";
+import {
+  DASHBOARD_WIDGET_INFO,
+  defaultDashboardWidgets,
+  moveDashboardWidget,
+  toggleDashboardWidget,
+  type DashboardWidgetPreference,
+} from "@/lib/stock-dashboard";
+import { saveDashboardWidgetsAction } from "./stock-dashboard-actions";
 import { saveNextDayThresholdsAction } from "./next-day-actions-actions";
 
 const INPUT_CLASS =
@@ -39,7 +48,131 @@ function PercentField({
   );
 }
 
-export function StockConfigurationView({ thresholds }: { thresholds: NextDayActionThresholds }) {
+/**
+ * Which dashboard widgets are drawn, and in what order.
+ *
+ * Reorder is up/down buttons rather than drag-and-drop: six rows don't need a drag
+ * library, and buttons are keyboard-operable and screen-reader-legible for free.
+ */
+function DashboardWidgetsCard({ widgets }: { widgets: DashboardWidgetPreference[] }) {
+  const router = useRouter();
+  // Local until saved, so reordering half a dozen rows is one write, not six.
+  const [draft, setDraft] = useState(widgets);
+  const [isSaving, setIsSaving] = useState(false);
+  const [message, setMessage] = useState<string | undefined>(undefined);
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  const isDirty = JSON.stringify(draft) !== JSON.stringify(widgets);
+  const hiddenCount = draft.filter((widget) => !widget.visible).length;
+
+  function update(next: DashboardWidgetPreference[]) {
+    setDraft(next);
+    setMessage(undefined);
+    setError(undefined);
+  }
+
+  async function handleSave() {
+    setIsSaving(true);
+    setError(undefined);
+    setMessage(undefined);
+    try {
+      const result = await saveDashboardWidgetsAction(draft);
+      if (!result.ok) {
+        setError(result.error ?? "Failed to save the layout.");
+        return;
+      }
+      setMessage("Dashboard layout saved.");
+      router.refresh();
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <CollapsibleCard title="Dashboard widgets">
+      <p className="text-sm text-muted">
+        Untick a widget to keep it off the dashboard, and use the arrows to set the order they
+        appear in. Hiding a widget doesn&apos;t stop anything being recorded — it only changes what
+        the Dashboard section draws.
+      </p>
+
+      <ul className="mt-4 flex flex-col gap-2">
+        {draft.map((widget, index) => {
+          const info = DASHBOARD_WIDGET_INFO[widget.id];
+          return (
+            <li
+              key={widget.id}
+              className={`flex items-start gap-3 rounded-md border border-line p-3 ${
+                widget.visible ? "" : "opacity-60"
+              }`}
+            >
+              <span className="mt-0.5 flex shrink-0 flex-col gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => update(moveDashboardWidget(draft, widget.id, "up"))}
+                  disabled={index === 0}
+                  aria-label={`Move ${info.label} up`}
+                  className="rounded border border-line px-1.5 text-xs leading-4 text-brass-dark hover:bg-paper-raised disabled:opacity-30"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  onClick={() => update(moveDashboardWidget(draft, widget.id, "down"))}
+                  disabled={index === draft.length - 1}
+                  aria-label={`Move ${info.label} down`}
+                  className="rounded border border-line px-1.5 text-xs leading-4 text-brass-dark hover:bg-paper-raised disabled:opacity-30"
+                >
+                  ↓
+                </button>
+              </span>
+
+              <span className="mt-0.5 shrink-0 font-mono text-xs text-muted">{index + 1}</span>
+
+              <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={widget.visible}
+                  onChange={() => update(toggleDashboardWidget(draft, widget.id))}
+                  className="mt-1"
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-ink">{info.label}</span>
+                  <span className="block text-xs text-muted">{info.description}</span>
+                </span>
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+
+      {hiddenCount === draft.length && (
+        <p className="mt-3 text-sm text-brass-dark">
+          Every widget is hidden — the Dashboard section will be empty.
+        </p>
+      )}
+      {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+      {message && <p className="mt-3 text-sm text-emerald-400">{message}</p>}
+
+      <div className="mt-4 flex gap-2">
+        <Button onClick={handleSave} disabled={isSaving || !isDirty}>
+          {isSaving ? "Saving…" : "Save layout"}
+        </Button>
+        <Button variant="secondary" onClick={() => update(defaultDashboardWidgets())} disabled={isSaving}>
+          Reset to default
+        </Button>
+      </div>
+    </CollapsibleCard>
+  );
+}
+
+export function StockConfigurationView({
+  thresholds,
+  widgets,
+}: {
+  thresholds: NextDayActionThresholds;
+  widgets: DashboardWidgetPreference[];
+}) {
   const router = useRouter();
   const [profitTarget, setProfitTarget] = useState(String(thresholds.profitTargetPct));
   const [stockCap, setStockCap] = useState(String(thresholds.stockConcentrationCapPct));
@@ -73,6 +206,8 @@ export function StockConfigurationView({ thresholds }: { thresholds: NextDayActi
 
   return (
     <div className="flex flex-col gap-6">
+      <DashboardWidgetsCard widgets={widgets} />
+
       <div className="rounded-xl border border-line p-4">
         <h3 className="font-display text-lg text-ink">Next-day scan thresholds</h3>
         <p className="mt-1 text-sm text-muted">
