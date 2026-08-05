@@ -61,6 +61,58 @@ function MainInstructions() {
           </li>
         </ul>
       </Section>
+      <Section title="Click a ticker for its full viewer">
+        <p>
+          Any <strong className="text-ink">ticker</strong> — in Positions, Transactions, a watch
+          list, or a Daily Glance mover row — opens a dialog holding everything the app knows about
+          that symbol. It is split into two groups, and the split is the point.
+        </p>
+        <p>
+          <strong className="text-ink">Our data</strong> is what MyHomeBase recorded:{" "}
+          <strong className="text-ink">Holdings</strong> (the position in each account, with the
+          totals across them), <strong className="text-ink">Transactions</strong> (the trade history
+          for that symbol, with the weighted average buy price), and{" "}
+          <strong className="text-ink">Watchlist &amp; income</strong> (dividend rate, yield on cost,
+          and how far the price has drifted since you added it to a list).
+        </p>
+        <p>
+          The Transactions tab also carries{" "}
+          <strong className="text-ink">My past performance</strong> — every trade plotted against
+          the market&apos;s closing price on the trading day either side of it, ending at the
+          latest close, so you can see whether a fill was a good one. Weekends and holidays are
+          skipped, so &ldquo;day before&rdquo; means the previous <em>trading</em> day.
+        </p>
+        <p>
+          <strong className="text-ink">Dividends, splits and reported quarters</strong> are marked
+          on the same line as a second series, and spelled out in the table&apos;s{" "}
+          <strong className="text-ink">Note</strong> column alongside whatever you typed against
+          the trade itself. An earnings chip shows reported EPS against the estimate, green for a
+          beat and red for a miss. An event dated to a day the market was shut is shown against
+          the last close on or before it, so every row&apos;s price is a real one; anything
+          falling outside the fetched price history is counted under the table rather than
+          plotted at a guessed price.
+        </p>
+        <p>
+          The <strong className="text-ink">News</strong> button on a row opens that day&apos;s
+          stories for the ticker. Expect it to be empty on older rows: the news provider only
+          indexes recent coverage, so a trade from a year ago has nothing attached — which is not
+          the same as a quiet day, and the panel says so rather than leaving you guessing. Events
+          have no such limit and go back as far as the price history does.
+        </p>
+        <p>
+          <strong className="text-ink">Market</strong> is what the price provider returns right
+          now: <strong className="text-ink">Quote</strong>,{" "}
+          <strong className="text-ink">Price history</strong> over 1M to 5Y,{" "}
+          <strong className="text-ink">Risk</strong> (annualized volatility, the 52-week range and
+          where today sits in it, correlation to SPY) and{" "}
+          <strong className="text-ink">News</strong>. Nothing under Market is stored — a tab fetches
+          when you open it, so the dialog costs one database read until you ask for more.
+        </p>
+        <p>
+          A symbol you only watch and never held opens too: the holding figures read as empty
+          rather than zero, which is the honest answer.
+        </p>
+      </Section>
       <Section title="Refresh All, and the daily history">
         <p>
           <strong className="text-ink">Refresh All</strong> fetches a live price for every position,
@@ -72,6 +124,14 @@ function MainInstructions() {
         <p>
           A ticker that can&apos;t be priced is listed in red and skipped; the rest still refresh and
           the snapshot still saves, so one delisted symbol can&apos;t cost you the day&apos;s record.
+        </p>
+      </Section>
+      <Section title="Rearranging this screen">
+        <p>
+          Which cards appear here, and in what order, is set under{" "}
+          <strong className="text-ink">Configuration &rarr; Dashboard widgets</strong>. The{" "}
+          <strong className="text-ink">Statistics</strong> card holds the week/month/year rollups and
+          the counters; it starts collapsed, since those are numbers you look up rather than watch.
         </p>
       </Section>
       <Section title="Daily Glance, and the News button">
@@ -320,9 +380,12 @@ function ImportInstructions() {
             partial export can&apos;t wipe a field it doesn&apos;t include.
           </li>
           <li>
-            <strong className="text-ink">Transactions</strong> — a row matching an existing
-            date/action/ticker/total is skipped as a duplicate. If your dates are ambiguous, set the
-            date format on that column and they&apos;re read strictly by it instead of guessed.
+            <strong className="text-ink">Transactions</strong> — see &ldquo;Importing the same
+            trades twice&rdquo; below for how duplicates are judged. If your dates are ambiguous, set
+            the date format on that column and they&apos;re read strictly by it instead of guessed.
+            Map either <strong className="text-ink">Price / share</strong> or{" "}
+            <strong className="text-ink">Total amount</strong>: given only a total, the per-share
+            price is worked back out of it. An explicit price wins if you map both.
           </li>
           <li>
             <strong className="text-ink">Account Performance</strong> — one value per account per
@@ -330,6 +393,26 @@ function ImportInstructions() {
             asked to match the names in the file to your accounts before anything is written.
           </li>
         </ul>
+      </Section>
+      <Section title="Importing the same trades twice">
+        <p>
+          If your export has a{" "}
+          <strong className="text-ink">Broker reference / confirmation #</strong>, map it. That
+          identifies a trade exactly: a row whose reference is already stored is skipped, and nothing
+          else can be confused for it.
+        </p>
+        <p>
+          Without one, duplicates are judged by <em>how many</em>. A transaction&apos;s date has no
+          time on it, so buying the same ticker in three lots through one day gives three rows that
+          look identical — and all three are real. So the importer counts the copies in your file
+          against the copies already stored and adds only the shortfall: three in the file against
+          none stored imports three, and re-importing that file imports nothing. If a later export
+          shows five lots where you&apos;d imported three, it adds the two new ones.
+        </p>
+        <p>
+          <strong className="text-ink">Brokerage firm</strong> is part of that comparison, so the
+          same trade at two firms is two transactions rather than one being mistaken for the other.
+        </p>
       </Section>
       <Section title="Derived fields">
         <p>
@@ -350,13 +433,32 @@ function ImportInstructions() {
 
 function SettingsInstructions() {
   return (
-    <Section title="Where these are stored">
-      <p>
-        These three thresholds are module settings — the same values Administration &rarr; Module
-        Configuration edits. Changing them here changes them there. They take effect on the next scan;
-        results already on screen aren&apos;t re-judged.
-      </p>
-    </Section>
+    <>
+      <Section title="Dashboard widgets">
+        <p>
+          Ticks decide what the Dashboard section draws; the arrows decide the order. Nothing is
+          saved until you press <strong className="text-ink">Save layout</strong>, so you can shuffle
+          several rows and write them once.
+        </p>
+        <p>
+          Hiding a widget only changes what&apos;s drawn — nothing stops being recorded. The one to
+          think about is <strong className="text-ink">Refresh &amp; snapshot</strong>: hide it and
+          there&apos;s no button left to capture a daily snapshot, so the value history stops growing.
+        </p>
+        <p>
+          A widget added to the app in a later release appears at the bottom, visible, rather than
+          being silently missing from a layout saved before it existed.
+        </p>
+      </Section>
+      <Section title="Where these are stored">
+        <p>
+          Both the layout and the three thresholds are module settings — the thresholds are the same
+          values Administration &rarr; Module Configuration edits, so changing them here changes them
+          there. Thresholds take effect on the next scan; results already on screen aren&apos;t
+          re-judged.
+        </p>
+      </Section>
+    </>
   );
 }
 

@@ -61,6 +61,7 @@ pattern instead of inventing one.
 | [`ChartBar`](#chartbar) | Category comparison / part-to-whole | [src/components/chart-bar.tsx](src/components/chart-bar.tsx) | yes |
 | [`ChartXY`](#chartxy) | User-configurable line/bar/scatter/area + zoom | [src/components/chart-xy.tsx](src/components/chart-xy.tsx) | yes |
 | [`JournalEntryCard`](#journalentrycard) | Full detail sheet for one journal entry | [src/components/journal-entry-card.tsx](src/components/journal-entry-card.tsx) | yes |
+| [`TickerViewer`](#tickerviewer) | Full record dialog for one ticker, in tabs | [src/components/ticker-viewer.tsx](src/components/ticker-viewer.tsx) | yes |
 | [`IconSetProvider`](#iconsetprovider--useiconset) / `useIconSet` | Active module icon set (context) | [src/components/icon-set-context.tsx](src/components/icon-set-context.tsx) | yes |
 | [`ModuleIcon`](#moduleicon--moduleiconpreview) / `ModuleIconPreview` | Render a module glyph | [src/components/module-icons.tsx](src/components/module-icons.tsx) | yes |
 
@@ -256,7 +257,7 @@ that's what this was extracted from.
 | `children` | `ReactNode` | The body. The only part that scrolls. |
 | `footer?` | `ReactNode` | Bottom-right action bar; pass `Button`s in reading order. |
 | `onClose` | `() => void` | Fired by Escape, an overlay click, and the ✕. |
-| `size?` | `"sm" \| "md" \| "lg"` | Default `"md"` (`max-w-2xl`). |
+| `size?` | `"sm" \| "md" \| "lg" \| "full"` | Default `"md"` (`max-w-2xl`). `"full"` fills the viewport edge to edge. |
 | `isBusy?` | `boolean` | Suppresses Escape / overlay-click / ✕ while a write is in flight. |
 | `className?` | `string` | Applied to the panel, merged last. |
 
@@ -283,6 +284,12 @@ that's what this was extracted from.
 [data-grid.tsx](src/components/data-grid.tsx), and the Expense bulk-edit dialog
 [expense-transactions-view.tsx](src/app/(protected)/modules/[slug]/expense-transactions-view.tsx).
 
+`size="full"` drops the overlay's gutter and the panel's rounding so nothing of the page
+shows around it. It is still a dialog — Escape, the ✕, the focus trap and the body-scroll
+lock all behave identically — so it returns the reader to the screen underneath rather than
+being a route they have to navigate back from. Use it for a whole-record viewer
+(`TickerViewer`), not for a form.
+
 **Notes:** it owns **no** open/closed state — the caller decides whether to render it, so
 guard it with `{isOpen && <Modal …>}`. On mount it focuses the first focusable element in
 the panel and restores focus to whatever was focused before on unmount; Tab cycles inside
@@ -303,8 +310,11 @@ A titled card whose body expands/collapses. The standard wrapper for a secondary
 
 | Prop | Type | Notes |
 |------|------|-------|
-| `title` | `string` | Always-visible header text. |
-| `defaultOpen?` | `boolean` | Default `false`. |
+| `title` | `string` | Always-visible header text. **Plain text, not HTML** — write `&` not `&amp;`. |
+| `defaultOpen?` | `boolean` | Default `false`. Ignored when `open` is supplied. |
+| `open?` | `boolean` | Supply with `onOpenChange` for controlled use; omit both to let the card own its state. |
+| `onOpenChange?` | `(open: boolean) => void` | Called with the state being moved to. |
+| `headerAction?` | `ReactNode` | Rendered on the title line, left of the chevron, **always visible**. Clicking it does not toggle the card. |
 | `children` | `ReactNode` | Body. |
 | `className?` | `string` | |
 
@@ -314,9 +324,31 @@ A titled card whose body expands/collapses. The standard wrapper for a secondary
 </CollapsibleCard>
 ```
 
+Controlled, with an action that stays reachable while collapsed:
+
+```tsx
+<CollapsibleCard
+  title="Refresh & snapshot"
+  open={isOpen}
+  onOpenChange={setIsOpen}
+  headerAction={<Button size="sm" onClick={handleRun}>Refresh All</Button>}
+>
+  <RunProgress />
+</CollapsibleCard>
+```
+
 **Used by:** Module Configuration
 [admin/configuration/modules/page.tsx](src/app/(protected)/admin/configuration/modules/page.tsx),
-MyJournal, CSV Analysis, SQL Explorer, Stocks & ETFs, User Management.
+MyJournal, CSV Analysis, SQL Explorer, Stocks & ETFs, User Management. The controlled +
+`headerAction` combination is the Stocks dashboard's refresh card
+[stock-refresh-panel.tsx](src/app/(protected)/modules/[slug]/stock-refresh-panel.tsx).
+
+**Notes:** `headerAction` exists as a slot because the header used to be one big
+`<button>`, and a button can't nest inside a button. The header is now a flex row: a
+toggle button that takes the free space (so the chevron still sits right when there's no
+action) plus the action beside it. **A card that starts collapsed but owns a
+long-running action should be controlled and open itself when that action starts** —
+otherwise the progress and result render out of sight.
 
 ---
 
@@ -865,6 +897,64 @@ future print/export view share it.
 are disabled while `entry.isLocked` because the `updateEntry`/`deleteEntry` use-cases reject
 a locked entry. It stays free of any mapping dependency — the caller renders the map.
 Carries the `print-sheet` class used by the `@media print` block in `globals.css`.
+
+---
+
+## TickerViewer
+
+**Everything about one ticker, in one dialog.** Seven tabs in two groups: **Our data**
+(Holdings / Transactions / Watchlist & income) is what MyHomeBase recorded, **Market** (Quote
+/ Price history / Risk / News) is what the provider returned. The grouping is the feature —
+a reader should never have to guess whether a number came from their broker export or from
+Yahoo. The one place the two meet is the **My past performance** chart inside Transactions,
+which plots your trades against the market's close either side of each one, marks dividends,
+splits and reported quarters on the same line, and lists every plotted point in a table with
+a Note column and a per-row News button. It is labelled as such and loads on demand like a
+Market panel.
+
+- **Source:** [src/components/ticker-viewer.tsx](src/components/ticker-viewer.tsx)
+- **Import:** `import { TickerViewer, type TickerPanelKey, type TickerPanelState } from "@/components/ticker-viewer";`
+- **Client component:** yes
+- **Data comes from the lib:** the panel shapes are `@/lib/ticker-overview`'s return types;
+  this file renders them and computes nothing.
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `ticker` | `string` | Header, logo, and the accessible dialog name. |
+| `activePanel` | `TickerPanelKey` | Controlled — `"own:holdings"`, `"market:chart"`, … |
+| `onSelectPanel` | `(panel: TickerPanelKey) => void` | Fired by both tab strips. |
+| `onClose` | `() => void` | Passed through to `Modal`. |
+| `ownData` | `TickerPanelState<TickerOwnData>` | Feeds all three "Our data" panels. |
+| `tradeTimeline` | `TickerPanelState<TickerTradeTimeline>` | The "My past performance" chart inside Transactions — trades, bracket closes, and dividend/split/earnings markers. Market data, so it loads on demand. |
+| `quote` / `priceSeries` / `risk` / `news` | `TickerPanelState<…>` | One per Market panel. |
+| `range` | `TickerHistoryRange` | The chart window currently selected. |
+| `onSelectRange` | `(range: TickerHistoryRange) => void` | Fired by the 1M/3M/6M/1Y/5Y buttons. |
+| `ranges?` | `readonly TickerHistoryRange[]` | Windows to offer. Defaults to all five. |
+| `className?` | `string` | Applied to the `Modal` panel, merged last. |
+
+`TickerPanelState<T>` is `{ data?: T; error?: string; isLoading?: boolean }` — one shape for
+all four states, so every panel's loading and error treatment is identical.
+
+```tsx
+{openTicker && (
+  <TickerViewerHost ticker={openTicker} onClose={() => setOpenTicker(undefined)} />
+)}
+```
+
+**Used by:** Stocks & ETFs — positions, transactions, watchlist, Daily Glance and all three
+Chart & Analysis grids, all through the route-local host
+[ticker-viewer-host.tsx](src/app/(protected)/modules/[slug]/ticker-viewer-host.tsx). That host
+owns the fetching and the lazy-load policy; `TickerViewer` itself fetches nothing. Call sites
+render `TickerCell` (also in the host file) for the clickable logo-plus-symbol grid cell.
+
+**Notes:** it does **not** use `Tabs`, which owns its own active-tab state — the panel
+selection has to be controlled so the host can start a fetch when a tab is first opened. The
+internal strip copies `Tabs`' styling exactly so it still reads as the same system; if you
+need a third strip somewhere, reach for `Tabs` first. It opens at `Modal` `size="full"` —
+the tables, the chart and the news column need the whole viewport, and Escape or the ✕
+returns the reader to the grid they came from. Gain/loss
+is `text-emerald-400` / `text-red-400` per design.md's semantic-color exception, and zero
+stays `text-muted` so a flat day doesn't read as a win.
 
 ---
 

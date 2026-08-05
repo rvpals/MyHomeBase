@@ -20,7 +20,9 @@ import {
 } from "./stats";
 import type { CorrelationResult, SharpeResult, SharpeTickerDetail, VolatilityResult } from "./types";
 
-const MARKET_BENCHMARK_TICKER = "SPY";
+/** The market proxy every correlation in the app is measured against. Exported so
+ * a per-ticker correlation elsewhere compares to the same benchmark. */
+export const MARKET_BENCHMARK_TICKER = "SPY";
 const MINIMUM_RETURN_OBSERVATIONS = 30;
 const HISTORY_RANGE_1Y = "1y";
 const HISTORY_INTERVAL_1D = "1d";

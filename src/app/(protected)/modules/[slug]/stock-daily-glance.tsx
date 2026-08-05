@@ -8,7 +8,6 @@
 // this file only decides what's on screen.
 
 import { useState } from "react";
-import { TickerLogo } from "@/components/ticker-logo";
 import { formatCents } from "@/lib/shared/money";
 import {
   topGainers,
@@ -20,6 +19,7 @@ import {
 } from "@/lib/stock-positions";
 import type { TopNewsStory } from "@/lib/ticker-news";
 import { fetchTopStoryAction } from "./stock-news-actions";
+import { TickerCell, TickerViewerHost } from "./ticker-viewer-host";
 
 const MOVER_COUNT = 5;
 
@@ -111,11 +111,13 @@ function MoverRow({
   measure,
   news,
   onLoadNews,
+  onOpenTicker,
 }: {
   move: TickerDayMove;
   measure: MoverMeasure;
   news?: NewsState;
   onLoadNews: () => void;
+  onOpenTicker: (ticker: string) => void;
 }) {
   const leadCents = measure === "total" ? move.gainLossCents : move.perShareGainLossCents;
   // The measure that isn't leading, shown quietly underneath — the two answer
@@ -128,13 +130,12 @@ function MoverRow({
   return (
     <li className="border-b border-line py-2 last:border-b-0">
       <div className="flex items-center gap-3">
-        <TickerLogo ticker={move.ticker} size={20} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-ink">
-            {move.ticker}
-            <span className="ml-2 text-xs font-normal text-muted">{move.type}</span>
+          <p className="flex items-center gap-2 truncate text-sm font-medium text-ink">
+            <TickerCell ticker={move.ticker} onOpen={onOpenTicker} size={20} />
+            <span className="text-xs font-normal text-muted">{move.type}</span>
             {move.accountCount > 1 && (
-              <span className="ml-2 text-xs font-normal text-muted">
+              <span className="text-xs font-normal text-muted">
                 across {move.accountCount} accounts
               </span>
             )}
@@ -172,6 +173,7 @@ function MoverList({
   emptyMessage,
   news,
   onLoadNews,
+  onOpenTicker,
 }: {
   title: string;
   moves: TickerDayMove[];
@@ -179,6 +181,7 @@ function MoverList({
   emptyMessage: string;
   news: Record<string, NewsState>;
   onLoadNews: (ticker: string) => void;
+  onOpenTicker: (ticker: string) => void;
 }) {
   return (
     <div>
@@ -196,6 +199,7 @@ function MoverList({
               measure={measure}
               news={news[move.ticker]}
               onLoadNews={() => onLoadNews(move.ticker)}
+              onOpenTicker={onOpenTicker}
             />
           ))}
         </ul>
@@ -214,6 +218,8 @@ export function StockDailyGlance({
 }) {
   const [measure, setMeasure] = useState<MoverMeasure>("total");
   const [news, setNews] = useState<Record<string, NewsState>>({});
+  /** The symbol whose full viewer is open, if any. */
+  const [openTicker, setOpenTicker] = useState<string | undefined>(undefined);
 
   async function handleLoadNews(ticker: string) {
     setNews((current) => ({ ...current, [ticker]: { status: "loading" } }));
@@ -287,6 +293,7 @@ export function StockDailyGlance({
           emptyMessage="Nothing is up today."
           news={news}
           onLoadNews={handleLoadNews}
+          onOpenTicker={setOpenTicker}
         />
         <MoverList
           title={`Top ${MOVER_COUNT} losers`}
@@ -295,6 +302,7 @@ export function StockDailyGlance({
           emptyMessage="Nothing is down today."
           news={news}
           onLoadNews={handleLoadNews}
+          onOpenTicker={setOpenTicker}
         />
       </div>
 
@@ -304,8 +312,12 @@ export function StockDailyGlance({
         share, so a big position and a small one in the same stock rank the same. The percentage is
         identical either way. Stocks and ETFs rank together, and a ticker held in more than one
         account is counted once. Press <span className="text-ink">News</span> on a row for the story
-        most likely to explain its move.
+        most likely to explain its move, or the ticker itself for its full viewer.
       </p>
+
+      {openTicker && (
+        <TickerViewerHost ticker={openTicker} onClose={() => setOpenTicker(undefined)} />
+      )}
     </div>
   );
 }

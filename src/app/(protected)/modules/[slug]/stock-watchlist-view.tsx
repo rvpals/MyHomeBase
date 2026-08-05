@@ -6,8 +6,8 @@ import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import type { StockWatchList, StockWatchListItem } from "@/lib/stock-watchlist";
-import { TickerLogo } from "@/components/ticker-logo";
 import { formatCents } from "@/lib/shared/money";
+import { TickerCell, TickerViewerHost } from "./ticker-viewer-host";
 import {
   addWatchListItemAction,
   createWatchListAction,
@@ -121,7 +121,13 @@ function AddItemForm({ watchListId }: { watchListId: number }) {
   );
 }
 
-function WatchListCard({ entry }: { entry: WatchListEntry }) {
+function WatchListCard({
+  entry,
+  onOpenTicker,
+}: {
+  entry: WatchListEntry;
+  onOpenTicker: (ticker: string) => void;
+}) {
   const router = useRouter();
   const [isRenaming, setIsRenaming] = useState(false);
   const [name, setName] = useState(entry.list.name);
@@ -154,12 +160,7 @@ function WatchListCard({ entry }: { entry: WatchListEntry }) {
       key: "ticker",
       header: "Ticker",
       value: (item) => item.ticker,
-      render: (item) => (
-        <span className="flex items-center gap-2">
-          <TickerLogo ticker={item.ticker} />
-          {item.ticker}
-        </span>
-      ),
+      render: (item) => <TickerCell ticker={item.ticker} onOpen={onOpenTicker} />,
     },
     { key: "shares", header: "Shares", render: (item) => item.shares },
     {
@@ -235,6 +236,9 @@ function WatchListCard({ entry }: { entry: WatchListEntry }) {
 }
 
 export function StockWatchlistView({ entries }: { entries: WatchListEntry[] }) {
+  // Held here rather than per card so one dialog serves every list on the page.
+  const [openTicker, setOpenTicker] = useState<string | undefined>(undefined);
+
   return (
     <div>
       <h2 className="font-display text-xl text-ink">Watch Lists</h2>
@@ -245,9 +249,15 @@ export function StockWatchlistView({ entries }: { entries: WatchListEntry[] }) {
         {entries.length === 0 ? (
           <p className="text-sm text-muted">No watch lists yet.</p>
         ) : (
-          entries.map((entry) => <WatchListCard key={entry.list.id} entry={entry} />)
+          entries.map((entry) => (
+            <WatchListCard key={entry.list.id} entry={entry} onOpenTicker={setOpenTicker} />
+          ))
         )}
       </div>
+
+      {openTicker && (
+        <TickerViewerHost ticker={openTicker} onClose={() => setOpenTicker(undefined)} />
+      )}
     </div>
   );
 }

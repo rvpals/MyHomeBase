@@ -8,6 +8,7 @@ export type {
 export { computeSharpeInputSchema, type ComputeSharpeInput } from "./schema";
 export type { StockAnalyticsRepository } from "./ports";
 export {
+  MARKET_BENCHMARK_TICKER,
   computeVolatility,
   listVolatilityCache,
   saveVolatilityCache,

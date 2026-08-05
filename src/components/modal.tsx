@@ -12,7 +12,7 @@
 
 import { useEffect, useId, useRef, type ReactNode } from "react";
 
-type Size = "sm" | "md" | "lg";
+type Size = "sm" | "md" | "lg" | "full";
 
 export interface ModalProps {
   /** Heading text, announced as the dialog's accessible name. */
@@ -47,6 +47,11 @@ const sizeClasses: Record<Size, string> = {
   sm: "max-w-md",
   md: "max-w-2xl",
   lg: "max-w-4xl",
+  // Edge to edge: no width cap, no rounding, and the overlay drops its gutter
+  // below so nothing of the page shows around it. Still a dialog — Escape, the
+  // ✕ and the focus trap all behave the same, so it returns you to the screen
+  // underneath rather than being a route you have to navigate back from.
+  full: "h-full max-w-none rounded-none",
 };
 
 /** Elements that can hold focus inside the panel, for the focus trap. */
@@ -117,7 +122,9 @@ export function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 ${
+        size === "full" ? "p-0" : "p-4"
+      }`}
       // A click that starts inside the panel and ends on the overlay (a drag off
       // a text selection) shouldn't dismiss, so this only fires for the overlay
       // itself, not for anything bubbling out of the panel.

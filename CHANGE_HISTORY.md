@@ -1,5 +1,117 @@
 # Change History
 
+## 2026-08-05 11:40 — Ticker viewer, trade-performance chart, brokerage firm on trades, and a verification gate
+
+Four separate bodies of work, released together.
+
+**Migration 0038 is in this release and has already been applied to production.**
+It adds two columns to `stk_stock_transactions` and replaces that table's unique
+index.
+
+### The ticker viewer — everything about one symbol, in one dialog
+
+Clicking a ticker anywhere in the module — Positions, Transactions, a watch list, a
+Daily Glance mover, or any of the three Chart & Analysis grids — opens a full-screen
+dialog with seven tabs in two groups.
+
+**The grouping is the feature.** *Our data* (Holdings / Transactions / Watchlist &
+income) is what MyHomeBase recorded; *Market* (Quote / Price history / Risk / News) is
+what the provider returned. A reader should never have to guess whether a number came
+from their broker export or from Yahoo, and the new `src/lib/ticker-overview` module
+enforces that split in code: `getTickerOwnData` never touches the network, and the
+market use-cases never touch the database.
+
+- **Cost:** one database read when the dialog opens. Each market panel is a provider
+  round-trip paid for only when that tab is first opened, then kept while the dialog
+  is up. Switching the price-history range refetches without blanking the chart.
+- **A watched-but-never-held symbol opens too** — the holding figures read as empty
+  rather than zero, which is the honest answer rather than a missing one.
+- Reachable from the CLI as well: `npm run cli ticker-overview -- AAPL [--market]`.
+
+### My past performance — trades against the market around them
+
+Inside the Transactions tab, every trade is plotted against the provider's closing
+price on the trading day **either side** of it, ending at the latest close. A trade
+price on its own says nothing about whether it was a good fill; the bracket closes are
+what make the chart worth reading.
+
+- **"Day before" means the previous *trading* day.** A Monday purchase is bracketed by
+  the previous Friday and the Tuesday. Weekends and holidays are skipped rather than
+  assumed away.
+- **Dividends, splits and reported quarters are marked on the same line** as a second
+  series, and spelled out in the table's Note column beside whatever you typed against
+  the trade. An earnings chip shows reported EPS against the estimate — green for a
+  beat, red for a miss.
+- An event dated to a day the market was shut is shown against the last close on or
+  before it, so **every row's price is a real print**. Events falling outside the
+  fetched history are counted under the table rather than plotted at a guessed price.
+- A per-row **News** button opens that day's stories. Expect it to be empty on older
+  rows — the provider's search only indexes recent coverage — and the panel says so
+  rather than leaving an empty cell to read as "quiet day". Events have no such limit,
+  which is exactly why they were added.
+- One history call, one news call and one events call, however many trades there are.
+  Both extras fail independently; neither loses you the chart.
+
+### Migration 0038 — brokerage firm, broker reference, and honest duplicate detection
+
+Adds `brokerage_firm` and `external_id` to `stk_stock_transactions`, both
+`TEXT NOT NULL DEFAULT ''`.
+
+**The old unique index was losing data.** It spanned
+`(transaction_at, action, ticker, total_amount_cents)`, and `transaction_at` is a
+*date*. Two buys of the same ticker for the same amount on the same day were identical
+on all four columns, so the second was rejected as a duplicate — silently dropping
+every lot after the first. Buying a position in several lots through a day is
+completely ordinary.
+
+Appending `brokerage_firm` (the original plan) would not have helped: both lots are at
+the same firm. No column fixes it, because at date granularity the rows really are
+identical. So uniqueness now applies only where the broker gave a reference to be
+unique on (`UNIQUE (external_id) WHERE external_id <> ''`), and duplicate detection for
+everything else moved into the importer, which counts how many matching rows the file
+holds against how many are stored and inserts the shortfall.
+
+**What this gives up:** adding the same transaction twice by hand now succeeds. That's
+intended — the app can't know whether you meant it. Production held 0 transaction rows,
+so nothing was back-filled. Generalised into `coding-guide.md` as a rule: never put a
+DATE column in a unique index.
+
+### A verification gate
+
+`npm run verify` (or `/verify`) runs every quality gate in order, cheapest first:
+typecheck → lint + library boundary → unit tests → migration dry-run against a *copy*
+of the dev DB → a Playwright sweep of every route on a fresh dev server with `.next`
+cleared.
+
+- **No gate touches the real database.** Copies live in `.verify/`, and the copy step
+  aborts if `MYHOMEBASE_DB` is unset or points inside the repo's `data/` folder.
+- `check:lib-boundary` is now `scripts/check-lib-boundary.mjs` rather than a bare
+  `grep`, which missed `import "react"` and couldn't name the offending file.
+- A UI change that "isn't taking effect" is a stale `.next` cache until proven
+  otherwise — the gate clears it rather than leaving it to memory.
+
+### Stocks dashboard widgets
+
+New `src/lib/stock-dashboard` module: which cards appear on the module's dashboard and
+in what order, as a persisted per-user preference, configured under Configuration →
+Dashboard widgets.
+
+### Also in this release
+
+- **`Modal` gained `size="full"`** — edge to edge, no gutter, no rounding, for a dialog
+  that is a screen in its own right. Escape, the ✕, the focus trap and the body-scroll
+  lock all behave identically, so it returns you to what's underneath.
+- **A second `market-data` port, `MarketEventsClient`**, for dividends/splits/earnings,
+  rather than a third method on `MarketDataClient` — prices and events are fetched
+  independently, and folding it in would force every existing fake to implement a
+  method it never calls. `YahooFinanceClient` implements both, and the crumb/cookie
+  dance was factored out so the earnings call reuses it.
+- `ChartXY` no longer resets its zoom window in an effect, which was committing one
+  frame of the old window against new data.
+- `MARKET_BENCHMARK_TICKER` is exported from `stock-analytics`, so the viewer's
+  per-ticker correlation measures against the same SPY the portfolio matrix does
+  instead of duplicating the constant.
+
 ## 2026-08-05 00:05 — Stocks & ETFs: section tree, cost basis, daily snapshots, per-ticker news, rebuilt CSV import
 
 The largest change to this module since it was ported. Three migrations, and the

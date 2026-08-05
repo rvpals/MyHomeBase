@@ -159,6 +159,12 @@ everything else. Two consequences worth knowing:
 
 - Anything else that needs to sit above page content must stay under `z-40`, and any dialog
   must stay at `z-50` (`Modal`) so its overlay still covers the sidebar.
+- **A whole-record viewer goes full-bleed, not wide.** `Modal`'s `size="full"` drops the
+  overlay gutter and the panel's rounding so the dialog fills the viewport — the right
+  treatment when the content is a screen in its own right (several tables, a chart, a news
+  column), as in `TickerViewer`. It is still a dialog, so Escape and the ✕ return the reader
+  to what's underneath. Don't reach for it for a form: a `sm`/`md` panel reads as "answer
+  this and get back", and a full-bleed one reads as "you have gone somewhere".
 - The expanded sidebar overlaps content rather than pushing it. That's intended — it's a
   mini-drawer, not a column.
 

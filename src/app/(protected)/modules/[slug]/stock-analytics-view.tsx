@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { ChartLine } from "@/components/chart-line";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
+import { TickerCell, TickerViewerHost } from "./ticker-viewer-host";
 import { Tabs, type TabItem } from "@/components/tabs";
 import type { CorrelationResult, SharpeResult, VolatilityResult } from "@/lib/stock-analytics";
-import { TickerLogo } from "@/components/ticker-logo";
 import { formatCents } from "@/lib/shared/money";
 import {
   clearCorrelationCacheAction,
@@ -24,6 +24,8 @@ function formatPct(value: number): string {
 function VolatilityTab({ initialResults }: { initialResults: VolatilityResult[] }) {
   const router = useRouter();
   const [isBusy, setIsBusy] = useState(false);
+  /** The symbol whose full viewer is open, if any. */
+  const [openTicker, setOpenTicker] = useState<string | undefined>(undefined);
 
   async function handleRecompute() {
     setIsBusy(true);
@@ -56,12 +58,7 @@ function VolatilityTab({ initialResults }: { initialResults: VolatilityResult[] 
       key: "ticker",
       header: "Ticker",
       value: (item) => item.ticker,
-      render: (item) => (
-        <span className="flex items-center gap-2">
-          <TickerLogo ticker={item.ticker} />
-          {item.ticker}
-        </span>
-      ),
+      render: (item) => <TickerCell ticker={item.ticker} onOpen={setOpenTicker} />,
     },
     { key: "company", header: "Company", render: (item) => item.companyName || "—" },
     { key: "type", header: "Type", render: (item) => item.type },
@@ -91,6 +88,10 @@ function VolatilityTab({ initialResults }: { initialResults: VolatilityResult[] 
         </Button>
       </div>
       <DataGrid columns={columns} rows={initialResults} getRowKey={(item) => item.ticker} emptyMessage="Not yet computed." />
+
+      {openTicker && (
+        <TickerViewerHost ticker={openTicker} onClose={() => setOpenTicker(undefined)} />
+      )}
     </div>
   );
 }
@@ -100,6 +101,8 @@ function CorrelationTab({ initialResult }: { initialResult?: CorrelationResult }
   const [result, setResult] = useState(initialResult);
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
+  /** The symbol whose full viewer is open, if any. */
+  const [openTicker, setOpenTicker] = useState<string | undefined>(undefined);
 
   async function handleCompute() {
     setIsBusy(true);
@@ -133,12 +136,7 @@ function CorrelationTab({ initialResult }: { initialResult?: CorrelationResult }
         {
           key: "ticker",
           header: "",
-          render: (row) => (
-            <span className="flex items-center gap-2 font-medium text-ink">
-              <TickerLogo ticker={row.ticker} size={20} />
-              {row.ticker}
-            </span>
-          ),
+          render: (row) => <TickerCell ticker={row.ticker} onOpen={setOpenTicker} size={20} />,
         },
         ...result.tickers.map((ticker, columnIndex) => ({
           key: ticker,
@@ -176,6 +174,10 @@ function CorrelationTab({ initialResult }: { initialResult?: CorrelationResult }
         <p className="mb-2 text-sm text-muted">Skipped (insufficient data): {result.failedTickers.join(", ")}</p>
       )}
       <DataGrid columns={columns} rows={rows} getRowKey={(row) => row.ticker} emptyMessage="Not yet computed." />
+
+      {openTicker && (
+        <TickerViewerHost ticker={openTicker} onClose={() => setOpenTicker(undefined)} />
+      )}
     </div>
   );
 }
@@ -187,6 +189,8 @@ function SharpeTab({ initialResult }: { initialResult?: SharpeResult }) {
   const [lookbackDays, setLookbackDays] = useState(String(initialResult?.lookbackDays ?? 365));
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
+  /** The symbol whose full viewer is open, if any. */
+  const [openTicker, setOpenTicker] = useState<string | undefined>(undefined);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -210,12 +214,7 @@ function SharpeTab({ initialResult }: { initialResult?: SharpeResult }) {
       key: "ticker",
       header: "Ticker",
       value: (row) => row.ticker,
-      render: (row) => (
-        <span className="flex items-center gap-2">
-          <TickerLogo ticker={row.ticker} size={20} />
-          {row.ticker}
-        </span>
-      ),
+      render: (row) => <TickerCell ticker={row.ticker} onOpen={setOpenTicker} size={20} />,
     },
     { key: "weight", header: "Weight", render: (row) => formatPct(row.weight * 100) },
     { key: "return", header: "Ann. Return", render: (row) => formatPct(row.annualizedReturn * 100) },
@@ -288,6 +287,10 @@ function SharpeTab({ initialResult }: { initialResult?: SharpeResult }) {
             <DataGrid columns={detailColumns} rows={result.tickerDetails} getRowKey={(row) => row.ticker} />
           )}
         </div>
+      )}
+
+      {openTicker && (
+        <TickerViewerHost ticker={openTicker} onClose={() => setOpenTicker(undefined)} />
       )}
     </div>
   );

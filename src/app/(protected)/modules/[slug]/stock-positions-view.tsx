@@ -9,10 +9,10 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
-import { TickerLogo } from "@/components/ticker-logo";
 // Route-local, not a registered shared component: it's an <img> with a monogram
 // fallback used by exactly these two sibling views.
 import { AccountIconImage } from "./stock-accounts-view";
+import { TickerCell, TickerViewerHost } from "./ticker-viewer-host";
 import {
   POSITION_TYPES,
   UNASSIGNED_ACCOUNT_ID,
@@ -339,6 +339,8 @@ export function StockPositionsView({
   const router = useRouter();
   const [editingKey, setEditingKey] = useState<string | undefined>(undefined);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  /** The symbol whose full viewer is open, if any. */
+  const [openTicker, setOpenTicker] = useState<string | undefined>(undefined);
 
   const accountOptions: PositionAccountOption[] = [
     { id: UNASSIGNED_ACCOUNT_ID, name: "Unassigned" },
@@ -397,12 +399,7 @@ export function StockPositionsView({
       key: "ticker",
       header: "Ticker",
       value: (position) => position.ticker,
-      render: (position) => (
-        <span className="flex items-center gap-2">
-          <TickerLogo ticker={position.ticker} />
-          {position.ticker}
-        </span>
-      ),
+      render: (position) => <TickerCell ticker={position.ticker} onOpen={setOpenTicker} />,
     },
     { key: "name", header: "Name", value: (position) => position.name, render: (position) => position.name || "—" },
     {
@@ -584,6 +581,10 @@ export function StockPositionsView({
           recordViewTitle={(position) => `${position.ticker} — ${position.name}`}
         />
       </div>
+
+      {openTicker && (
+        <TickerViewerHost ticker={openTicker} onClose={() => setOpenTicker(undefined)} />
+      )}
     </div>
   );
 }
