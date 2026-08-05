@@ -9,7 +9,7 @@
 // re-derived), a legend only for >1 series, thin 2px marks, and recessive
 // grid/axis chrome. Zoom is a windowed slice over the (pre-sorted) data.
 
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -72,10 +72,16 @@ function ChartXYComponent({
   const [zoomWindow, setZoomWindow] = useState<{ start: number; end: number }>({ start: 0, end: total });
 
   // Reset the zoom window whenever the dataset or encoding changes shape.
-  const seriesKeys = series.map((item) => item.key).join(",");
-  useEffect(() => {
+  //
+  // Adjusted during render rather than in an effect: an effect would commit one frame
+  // showing the previous window against the new data before correcting itself, and
+  // React flags a synchronous setState in an effect for exactly that reason.
+  const shape = `${total}|${xKey}|${series.map((item) => item.key).join(",")}`;
+  const [renderedShape, setRenderedShape] = useState(shape);
+  if (renderedShape !== shape) {
+    setRenderedShape(shape);
     setZoomWindow({ start: 0, end: total });
-  }, [total, xKey, seriesKeys]);
+  }
 
   const visibleData = useMemo(
     () => data.slice(zoomWindow.start, zoomWindow.end),

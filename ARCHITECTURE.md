@@ -304,8 +304,11 @@ router, no database.
 
 - ESLint `no-restricted-imports` scoped to `src/lib/**` banning `react`, `next`,
   `next/*` — turns the hard rule into a failing lint.
-- A CI grep as a backstop:
-  `! grep -rE "from '(react|next)" src/lib`
+- A backstop script as well as the lint rule: `npm run check:lib-boundary`
+  (`scripts/check-lib-boundary.mjs`). It replaced a bare
+  `! grep -rE "from '(react|next)" src/lib`, which missed `import "react"` and
+  `require("next/…")` and couldn't say *which* import in which file was at fault.
+  It runs as a stage of `npm run verify`.
 - Keep this file at the repo root and reference it from `CLAUDE.md` so the agent reads
   it before scaffolding. Reference `components.md` from `CLAUDE.md` too, so the registry
   is consulted before any UI is built.

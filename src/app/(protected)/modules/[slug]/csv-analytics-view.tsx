@@ -96,7 +96,9 @@ function ChartBuilder({ entry }: { entry: CsvAnalyticEntry }) {
   const [rowLimit, setRowLimit] = useState<RowLimit>(5000);
 
   const [data, setData] = useState<CsvEntryData | undefined>(undefined);
-  const [loading, setLoading] = useState(false);
+  // Starts true: a fetch is always in flight from first mount, so false would render
+  // one frame of "no rows" before the loading indicator appeared.
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | undefined>(undefined);
 
   const [presets, setPresets] = useState<CsvChartPreset[]>([]);
@@ -104,10 +106,20 @@ function ChartBuilder({ entry }: { entry: CsvAnalyticEntry }) {
   const [selectedPresetId, setSelectedPresetId] = useState<number | undefined>(undefined);
   const [presetError, setPresetError] = useState<string | undefined>(undefined);
 
-  useEffect(() => {
-    let cancelled = false;
+  // Entering the loading state is a reaction to the request key changing, so it is
+  // adjusted during render rather than in the effect below. Doing it in the effect
+  // committed one frame of the previous table's rows with no loading indicator, and
+  // React flags a synchronous setState in an effect for that reason.
+  const requestKey = `${entry.id}|${rowLimit}`;
+  const [requestedKey, setRequestedKey] = useState(requestKey);
+  if (requestedKey !== requestKey) {
+    setRequestedKey(requestKey);
     setLoading(true);
     setError(undefined);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
     readCsvAnalyticsDataAction(entry.id, rowLimit === "ALL" ? undefined : rowLimit).then((result) => {
       if (cancelled) return;
       if (!result.ok || !result.data) setError(result.error ?? "Failed to read table data.");
@@ -124,9 +136,19 @@ function ChartBuilder({ entry }: { entry: CsvAnalyticEntry }) {
     if (result.ok && result.presets) setPresets(result.presets);
   }, [entry.id]);
 
+  // The initial load goes through a promise callback rather than calling the async
+  // `loadPresets` directly: React flags a setState it can reach synchronously from an
+  // effect body. `loadPresets` stays for the imperative reloads after a save or delete.
   useEffect(() => {
-    loadPresets();
-  }, [loadPresets]);
+    let cancelled = false;
+    listChartPresetsAction(entry.id).then((result) => {
+      if (cancelled) return;
+      if (result.ok && result.presets) setPresets(result.presets);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [entry.id]);
 
   function applyOptions(raw: unknown) {
     if (!raw || typeof raw !== "object") return;

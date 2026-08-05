@@ -46,6 +46,14 @@ Google_Client_Info.md
 /data/*.db-*
 /data/*.bak-*
 
+# verification gates: throwaway database copies and browser-test artifacts
+/.verify/
+/playwright-report/
+/test-results/
+/e2e/.auth/
+/blob-report/
+/playwright/.cache/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
