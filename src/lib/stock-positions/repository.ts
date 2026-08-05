@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import type { StockPositionRepository } from "./ports";
+import type { StockPositionRepository, TransactionMatchKey } from "./ports";
 import { stockPositionSchema, stockTransactionSchema } from "./schema";
 import type { CreateTransactionInput, UpdateTransactionInput, UpsertPositionInput } from "./schema";
 import type { PositionKey, StockPosition, StockTransaction } from "./types";
@@ -38,6 +38,8 @@ interface StockTransactionRow {
   number_of_shares: number;
   price_per_share_cents: number;
   total_amount_cents: number;
+  brokerage_firm: string;
+  external_id: string;
   note: string;
   created_at: string;
   updated_at: string;
@@ -80,6 +82,8 @@ function transactionToDomain(row: StockTransactionRow): StockTransaction {
     numberOfShares: row.number_of_shares,
     pricePerShareCents: row.price_per_share_cents,
     totalAmountCents: row.total_amount_cents,
+    brokerageFirm: row.brokerage_firm,
+    externalId: row.external_id,
     note: row.note,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -188,9 +192,11 @@ export class SqliteStockPositionRepository implements StockPositionRepository {
     const result = this.db
       .prepare(
         `INSERT INTO stk_stock_transactions
-           (transaction_at, action, ticker, number_of_shares, price_per_share_cents, total_amount_cents, note)
+           (transaction_at, action, ticker, number_of_shares, price_per_share_cents,
+            total_amount_cents, brokerage_firm, external_id, note)
          VALUES
-           (@transactionAt, @action, @ticker, @numberOfShares, @pricePerShareCents, @totalAmountCents, @note)`,
+           (@transactionAt, @action, @ticker, @numberOfShares, @pricePerShareCents,
+            @totalAmountCents, @brokerageFirm, @externalId, @note)`,
       )
       .run({ ...input, totalAmountCents });
 
@@ -209,7 +215,8 @@ export class SqliteStockPositionRepository implements StockPositionRepository {
         `UPDATE stk_stock_transactions
          SET transaction_at = @transactionAt, action = @action, ticker = @ticker,
              number_of_shares = @numberOfShares, price_per_share_cents = @pricePerShareCents,
-             total_amount_cents = @totalAmountCents, note = @note
+             total_amount_cents = @totalAmountCents, brokerage_firm = @brokerageFirm,
+             external_id = @externalId, note = @note
          WHERE id = @id`,
       )
       .run({ ...input, totalAmountCents, id });
@@ -223,20 +230,32 @@ export class SqliteStockPositionRepository implements StockPositionRepository {
     this.db.prepare("DELETE FROM stk_stock_transactions WHERE id = ?").run(id);
   }
 
-  insertTransactionIfNotExists(
-    input: CreateTransactionInput,
-    totalAmountCents: number,
-  ): { inserted: boolean; transaction?: StockTransaction } {
+  hasTransactionWithExternalId(externalId: string): boolean {
+    const trimmed = externalId.trim();
+    // A blank id means "the broker gave us none", which is not an identity — every
+    // such row would otherwise look like a duplicate of every other.
+    if (trimmed === "") return false;
+
+    return (
+      this.db
+        .prepare("SELECT 1 FROM stk_stock_transactions WHERE external_id = ?")
+        .get(trimmed) !== undefined
+    );
+  }
+
+  countMatchingTransactions(key: TransactionMatchKey): number {
+    // Rides idx_stock_transactions_natural_key on its leading columns.
     const row = this.db
       .prepare(
-        `INSERT OR IGNORE INTO stk_stock_transactions
-           (transaction_at, action, ticker, number_of_shares, price_per_share_cents, total_amount_cents, note)
-         VALUES
-           (@transactionAt, @action, @ticker, @numberOfShares, @pricePerShareCents, @totalAmountCents, @note)
-         RETURNING *`,
+        `SELECT COUNT(*) AS matches FROM stk_stock_transactions
+         WHERE transaction_at = @transactionAt
+           AND ticker = @ticker
+           AND action = @action
+           AND number_of_shares = @numberOfShares
+           AND price_per_share_cents = @pricePerShareCents
+           AND brokerage_firm = @brokerageFirm`,
       )
-      .get({ ...input, totalAmountCents }) as StockTransactionRow | undefined;
-
-    return row ? { inserted: true, transaction: transactionToDomain(row) } : { inserted: false };
+      .get(key) as { matches: number };
+    return row.matches;
   }
 }

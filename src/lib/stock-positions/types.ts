@@ -52,6 +52,14 @@ export interface StockTransaction {
   numberOfShares: number;
   pricePerShareCents: number;
   totalAmountCents: number;
+  /** Where the trade was executed, e.g. "Chase". Empty means not recorded. */
+  brokerageFirm: string;
+  /**
+   * The broker's own reference number, when the export gave one. Empty means none —
+   * and an empty id is what puts a row under the importer's count-based duplicate
+   * detection rather than the database's unique index.
+   */
+  externalId: string;
   note: string;
   createdAt: string;
   updatedAt: string;

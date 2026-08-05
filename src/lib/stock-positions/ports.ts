@@ -27,13 +27,25 @@ export interface StockPositionRepository {
     totalAmountCents: number,
   ): StockTransaction;
   deleteTransaction(id: number): void;
+  /** True when a transaction already carries this broker reference. Blank is never found. */
+  hasTransactionWithExternalId(externalId: string): boolean;
   /**
-   * Inserts unless a row already matches the (transaction_at, action, ticker,
-   * total_amount_cents) unique index — used by CSV import so re-importing the
-   * same export is a safe no-op instead of creating duplicates.
+   * How many stored transactions match this trade exactly, ignoring note and id.
+   *
+   * The importer needs a **count**, not a yes/no: `transaction_at` is a date, so
+   * three identical intraday lots are three legitimate rows that look the same. Only
+   * by comparing how many the file holds against how many are stored can it insert
+   * the shortfall and stay idempotent on re-import.
    */
-  insertTransactionIfNotExists(
-    input: CreateTransactionInput,
-    totalAmountCents: number,
-  ): { inserted: boolean; transaction?: StockTransaction };
+  countMatchingTransactions(key: TransactionMatchKey): number;
+}
+
+/** The fields that make two transactions the same trade, absent a broker reference. */
+export interface TransactionMatchKey {
+  transactionAt: string;
+  action: string;
+  ticker: string;
+  numberOfShares: number;
+  pricePerShareCents: number;
+  brokerageFirm: string;
 }

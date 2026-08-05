@@ -80,6 +80,8 @@ export const stockTransactionSchema = z.object({
   numberOfShares: z.number().nonnegative(),
   pricePerShareCents: z.number().int().nonnegative(),
   totalAmountCents: z.number().int().nonnegative(),
+  brokerageFirm: z.string(),
+  externalId: z.string(),
   note: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -93,6 +95,8 @@ export const createTransactionSchema = z.object({
   ticker: z.string().min(1),
   numberOfShares: z.number().positive(),
   pricePerShareCents: z.number().int().nonnegative(),
+  brokerageFirm: z.string().trim().default(""),
+  externalId: z.string().trim().default(""),
   note: z.string().default(""),
 });
 

@@ -137,25 +137,21 @@ function fakeRepo(
       if (!updated) throw new Error(`Transaction ${id} not found.`);
       return updated;
     },
-    insertTransactionIfNotExists(input, totalAmountCents) {
-      const duplicate = transactions.some(
+    hasTransactionWithExternalId(externalId) {
+      const trimmed = externalId.trim();
+      if (trimmed === "") return false;
+      return transactions.some((transaction) => transaction.externalId === trimmed);
+    },
+    countMatchingTransactions(key) {
+      return transactions.filter(
         (transaction) =>
-          transaction.transactionAt === input.transactionAt &&
-          transaction.action === input.action &&
-          transaction.ticker === input.ticker &&
-          transaction.totalAmountCents === totalAmountCents,
-      );
-      if (duplicate) return { inserted: false };
-
-      const created: StockTransaction = {
-        id: nextTransactionId++,
-        ...input,
-        totalAmountCents,
-        createdAt: "2026-01-01T00:00:00.000Z",
-        updatedAt: "2026-01-01T00:00:00.000Z",
-      };
-      transactions.push(created);
-      return { inserted: true, transaction: created };
+          transaction.transactionAt === key.transactionAt &&
+          transaction.action === key.action &&
+          transaction.ticker === key.ticker &&
+          transaction.numberOfShares === key.numberOfShares &&
+          transaction.pricePerShareCents === key.pricePerShareCents &&
+          transaction.brokerageFirm === key.brokerageFirm,
+      ).length;
     },
     deleteTransaction(id) {
       transactions = transactions.filter((transaction) => transaction.id !== id);
@@ -438,6 +434,8 @@ describe("createTransaction", () => {
     ticker: "AAPL",
     numberOfShares: 5,
     pricePerShareCents: 15000,
+    brokerageFirm: "",
+    externalId: "",
     note: "",
   };
 
@@ -469,6 +467,8 @@ describe("updateTransaction and deleteTransaction", () => {
     numberOfShares: 5,
     pricePerShareCents: 15000,
     totalAmountCents: 75000,
+    brokerageFirm: "",
+    externalId: "",
     note: "",
     createdAt: "2026-01-15T00:00:00.000Z",
     updatedAt: "2026-01-15T00:00:00.000Z",
@@ -482,6 +482,8 @@ describe("updateTransaction and deleteTransaction", () => {
       ticker: "AAPL",
       numberOfShares: 5,
       pricePerShareCents: 15500,
+      brokerageFirm: "",
+      externalId: "",
       note: "sold early",
     });
     expect(updated.action).toBe("Sell");
@@ -864,6 +866,8 @@ describe("computeTransactionStats", () => {
       numberOfShares: 5,
       pricePerShareCents: 15000,
       totalAmountCents: 75000,
+      brokerageFirm: "",
+      externalId: "",
       note: "",
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
@@ -876,6 +880,8 @@ describe("computeTransactionStats", () => {
       numberOfShares: 5,
       pricePerShareCents: 17000,
       totalAmountCents: 85000,
+      brokerageFirm: "",
+      externalId: "",
       note: "",
       createdAt: "2026-02-01T00:00:00.000Z",
       updatedAt: "2026-02-01T00:00:00.000Z",
@@ -911,6 +917,8 @@ describe("computeAverageCostBasisCents", () => {
       numberOfShares: 1,
       pricePerShareCents: 10000,
       totalAmountCents: 10000,
+      brokerageFirm: "",
+      externalId: "",
       note: "",
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
@@ -1406,6 +1414,218 @@ describe("importTransactionsFromCsv", () => {
       "0": { dateFormat: "   " },
     });
     expect(listTransactions(repo)[0].transactionAt).toBe("2026-01-15");
+  });
+
+  describe("brokerage firm and duplicate detection", () => {
+    const columns = {
+      "0": "date",
+      "1": "action",
+      "2": "ticker",
+      "3": "numberOfShares",
+      "4": "pricePerShare",
+      "5": "brokerageFirm",
+    };
+    const line = (firm: string) => `2026-01-15,Buy,AAPL,5,150.00,${firm}`;
+    const header = "Date,Action,Symbol,Shares,Price,Firm";
+
+    it("records the firm", () => {
+      const repo = fakeRepo();
+      importTransactionsFromCsv(repo, `${header}\n${line("Chase")}`, columns);
+      expect(listTransactions(repo)[0].brokerageFirm).toBe("Chase");
+    });
+
+    it("keeps the same trade at two firms as two transactions", () => {
+      const repo = fakeRepo();
+      importTransactionsFromCsv(repo, [header, line("Chase"), line("Fidelity")].join("\n"), columns);
+      expect(listTransactions(repo).map((t) => t.brokerageFirm)).toEqual(["Chase", "Fidelity"]);
+    });
+
+    /**
+     * The case that broke the old unique index: `transaction_at` is a date, so three
+     * lots bought through one day are identical on every stored column. They are
+     * three real trades and all three must land.
+     */
+    it("imports several identical intraday lots, not just the first", () => {
+      const repo = fakeRepo();
+      const summary = importTransactionsFromCsv(
+        repo,
+        [header, line("Chase"), line("Chase"), line("Chase")].join("\n"),
+        columns,
+      );
+      expect(summary.importedCount).toBe(3);
+      expect(listTransactions(repo)).toHaveLength(3);
+    });
+
+    it("re-importing the same file adds nothing", () => {
+      const repo = fakeRepo();
+      const csv = [header, line("Chase"), line("Chase"), line("Chase")].join("\n");
+      importTransactionsFromCsv(repo, csv, columns);
+      const second = importTransactionsFromCsv(repo, csv, columns);
+      expect(second.importedCount).toBe(0);
+      expect(second.skippedCount).toBe(3);
+      expect(listTransactions(repo)).toHaveLength(3);
+    });
+
+    it("inserts only the shortfall when the file has grown", () => {
+      const repo = fakeRepo();
+      importTransactionsFromCsv(repo, [header, line("Chase")].join("\n"), columns);
+      // A later export of the same day now shows three lots; two are new.
+      const summary = importTransactionsFromCsv(
+        repo,
+        [header, line("Chase"), line("Chase"), line("Chase")].join("\n"),
+        columns,
+      );
+      expect(summary.importedCount).toBe(2);
+      expect(listTransactions(repo)).toHaveLength(3);
+    });
+
+    it("counts firms separately, so two lots at each firm gives four rows", () => {
+      const repo = fakeRepo();
+      importTransactionsFromCsv(
+        repo,
+        [header, line("Chase"), line("Chase"), line("Fidelity"), line("Fidelity")].join("\n"),
+        columns,
+      );
+      expect(listTransactions(repo)).toHaveLength(4);
+    });
+
+    it("treats a differing price as a different trade", () => {
+      const repo = fakeRepo();
+      importTransactionsFromCsv(
+        repo,
+        [header, line("Chase"), "2026-01-15,Buy,AAPL,5,151.00,Chase"].join("\n"),
+        columns,
+      );
+      expect(listTransactions(repo)).toHaveLength(2);
+    });
+  });
+
+  describe("broker reference (external id)", () => {
+    const columns = {
+      "0": "date",
+      "1": "action",
+      "2": "ticker",
+      "3": "numberOfShares",
+      "4": "pricePerShare",
+      "5": "externalId",
+    };
+    const header = "Date,Action,Symbol,Shares,Price,Reference Number";
+
+    it("records the reference", () => {
+      const repo = fakeRepo();
+      importTransactionsFromCsv(repo, `${header}\n2026-01-15,Buy,AAPL,5,150.00,REF-1`, columns);
+      expect(listTransactions(repo)[0].externalId).toBe("REF-1");
+    });
+
+    it("keeps two identical lots that carry different references", () => {
+      const repo = fakeRepo();
+      importTransactionsFromCsv(
+        repo,
+        [header, "2026-01-15,Buy,AAPL,5,150.00,REF-1", "2026-01-15,Buy,AAPL,5,150.00,REF-2"].join("\n"),
+        columns,
+      );
+      expect(listTransactions(repo).map((t) => t.externalId)).toEqual(["REF-1", "REF-2"]);
+    });
+
+    it("skips a row whose reference is already stored, naming it in the reason", () => {
+      const repo = fakeRepo();
+      const csv = `${header}\n2026-01-15,Buy,AAPL,5,150.00,REF-1`;
+      importTransactionsFromCsv(repo, csv, columns);
+      const second = importTransactionsFromCsv(repo, csv, columns);
+      expect(second.results[0]).toEqual({
+        rowNumber: 1,
+        status: "skipped",
+        reason: "Already imported (reference REF-1)",
+      });
+    });
+
+    /** A reference identifies the trade even if the broker restated the price. */
+    it("skips on reference alone, even when the other fields changed", () => {
+      const repo = fakeRepo();
+      importTransactionsFromCsv(repo, `${header}\n2026-01-15,Buy,AAPL,5,150.00,REF-1`, columns);
+      const second = importTransactionsFromCsv(
+        repo,
+        `${header}\n2026-01-16,Buy,AAPL,9,999.00,REF-1`,
+        columns,
+      );
+      expect(second.importedCount).toBe(0);
+      expect(listTransactions(repo)).toHaveLength(1);
+    });
+
+    it("falls back to counting when the reference column is blank for a row", () => {
+      const repo = fakeRepo();
+      const csv = [header, "2026-01-15,Buy,AAPL,5,150.00,", "2026-01-15,Buy,AAPL,5,150.00,"].join("\n");
+      importTransactionsFromCsv(repo, csv, columns);
+      expect(listTransactions(repo)).toHaveLength(2);
+      expect(importTransactionsFromCsv(repo, csv, columns).importedCount).toBe(0);
+    });
+  });
+
+  describe("total amount", () => {
+    const withTotal = { "0": "date", "1": "action", "2": "ticker", "3": "numberOfShares", "4": "totalAmount" };
+
+    it("derives the per-share price from a total when the file has no price column", () => {
+      const repo = fakeRepo();
+      importTransactionsFromCsv(
+        repo,
+        "Date,Action,Symbol,Shares,Amount\n2026-01-15,Buy,AAPL,5,750.00",
+        withTotal,
+      );
+      const transaction = listTransactions(repo)[0];
+      expect(transaction.pricePerShareCents).toBe(15000);
+      expect(transaction.totalAmountCents).toBe(75000);
+    });
+
+    it("prefers an explicit price/share over the total", () => {
+      const repo = fakeRepo();
+      // The total disagrees with shares × price; the printed price wins.
+      importTransactionsFromCsv(
+        repo,
+        "Date,Action,Symbol,Shares,Price,Amount\n2026-01-15,Buy,AAPL,5,150.00,999.00",
+        { ...mapping, "5": "totalAmount" },
+      );
+      const transaction = listTransactions(repo)[0];
+      expect(transaction.pricePerShareCents).toBe(15000);
+      expect(transaction.totalAmountCents).toBe(75000);
+    });
+
+    it("keeps the stored total consistent with shares × price for a fractional holding", () => {
+      const repo = fakeRepo();
+      // $1,000 over 3 shares is $333.333…/share, which rounds to 33333 cents and
+      // recomputes to $999.99 — a cent off the stated total, by design.
+      importTransactionsFromCsv(
+        repo,
+        "Date,Action,Symbol,Shares,Amount\n2026-01-15,Buy,AAPL,3,1000.00",
+        withTotal,
+      );
+      const transaction = listTransactions(repo)[0];
+      expect(transaction.pricePerShareCents).toBe(33333);
+      expect(transaction.totalAmountCents).toBe(99999);
+    });
+
+    it("still skips a row with neither a price nor a total", () => {
+      const repo = fakeRepo();
+      const summary = importTransactionsFromCsv(
+        repo,
+        "Date,Action,Symbol,Shares,Amount\n2026-01-15,Buy,AAPL,5,",
+        withTotal,
+      );
+      // pricePerShareCents 0 is allowed by the schema, so the row imports at zero
+      // rather than failing — but it can't invent a price it wasn't given.
+      expect(summary.importedCount).toBe(1);
+      expect(listTransactions(repo)[0].totalAmountCents).toBe(0);
+    });
+
+    it("ignores a total when the share count is missing, rather than dividing by zero", () => {
+      const repo = fakeRepo();
+      const summary = importTransactionsFromCsv(
+        repo,
+        "Date,Action,Symbol,Shares,Amount\n2026-01-15,Buy,AAPL,0,750.00",
+        withTotal,
+      );
+      // Zero shares is rejected by the schema, as it was before.
+      expect(summary.skippedCount).toBe(1);
+    });
   });
 
   it("stamps every row with a fixed action when the export doesn't say Buy or Sell", () => {

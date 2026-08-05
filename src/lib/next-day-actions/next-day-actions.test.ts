@@ -43,6 +43,8 @@ function makeTransaction(overrides: Partial<StockTransaction>): StockTransaction
     numberOfShares: 10,
     pricePerShareCents: 14000,
     totalAmountCents: 140000,
+    brokerageFirm: "",
+    externalId: "",
     note: "",
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
@@ -70,9 +72,8 @@ function fakeRepo(positions: StockPosition[], transactionsByTicker: Record<strin
       throw new Error("not used in this test");
     },
     deleteTransaction: () => {},
-    insertTransactionIfNotExists: () => {
-      throw new Error("not used in this test");
-    },
+    hasTransactionWithExternalId: () => false,
+    countMatchingTransactions: () => 0,
   };
 }
 

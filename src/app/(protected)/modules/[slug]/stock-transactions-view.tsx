@@ -9,8 +9,8 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
-import { TickerLogo } from "@/components/ticker-logo";
 import type { StockTransaction, TransactionAction } from "@/lib/stock-positions";
+import { TickerCell, TickerViewerHost } from "./ticker-viewer-host";
 import { centsToDollars, formatCents } from "@/lib/shared/money";
 import {
   createTransactionAction,
@@ -30,6 +30,8 @@ const EMPTY_TRANSACTION_FORM: TransactionFormInput = {
   ticker: "",
   numberOfShares: "",
   pricePerShare: "",
+  brokerageFirm: "",
+  externalId: "",
   note: "",
 };
 
@@ -40,6 +42,8 @@ function toTransactionFormInput(transaction: StockTransaction): TransactionFormI
     ticker: transaction.ticker,
     numberOfShares: String(transaction.numberOfShares),
     pricePerShare: centsToDollars(transaction.pricePerShareCents).toFixed(2),
+    brokerageFirm: transaction.brokerageFirm,
+    externalId: transaction.externalId,
     note: transaction.note,
   };
 }
@@ -134,6 +138,24 @@ function TransactionForm({
           className="w-full rounded-md border border-line bg-paper-raised px-3 py-1.5 text-sm text-muted"
         />
       </label>
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium text-ink">Brokerage firm</span>
+        <input
+          value={form.brokerageFirm ?? ""}
+          onChange={(event) => setForm({ ...form, brokerageFirm: event.target.value })}
+          placeholder="e.g. Chase"
+          className={INPUT_CLASS}
+        />
+      </label>
+      <label className="block text-sm sm:col-span-2">
+        <span className="mb-1 block font-medium text-ink">Broker reference (optional)</span>
+        <input
+          value={form.externalId ?? ""}
+          onChange={(event) => setForm({ ...form, externalId: event.target.value })}
+          placeholder="confirmation # — makes re-imports exact"
+          className={INPUT_CLASS}
+        />
+      </label>
       <label className="block text-sm sm:col-span-3">
         <span className="mb-1 block font-medium text-ink">Note</span>
         <input
@@ -160,6 +182,8 @@ function TransactionForm({
 export function StockTransactionsView({ transactions }: { transactions: StockTransaction[] }) {
   const router = useRouter();
   const [editingId, setEditingId] = useState<number | undefined>(undefined);
+  /** The symbol whose full viewer is open, if any. */
+  const [openTicker, setOpenTicker] = useState<string | undefined>(undefined);
 
   async function handleCreate(input: TransactionFormInput) {
     const result = await createTransactionAction(input);
@@ -201,11 +225,14 @@ export function StockTransactionsView({ transactions }: { transactions: StockTra
       header: "Ticker",
       value: (transaction) => transaction.ticker,
       render: (transaction) => (
-        <span className="flex items-center gap-2">
-          <TickerLogo ticker={transaction.ticker} size={20} />
-          {transaction.ticker}
-        </span>
+        <TickerCell ticker={transaction.ticker} onOpen={setOpenTicker} size={20} />
       ),
+    },
+    {
+      key: "brokerageFirm",
+      header: "Firm",
+      value: (transaction) => transaction.brokerageFirm,
+      render: (transaction) => transaction.brokerageFirm || "—",
     },
     {
       key: "shares",
@@ -226,6 +253,14 @@ export function StockTransactionsView({ transactions }: { transactions: StockTra
       render: (transaction) => formatCents(transaction.totalAmountCents),
       aggregate: "sum",
       formatAggregate: (cents) => formatCents(cents),
+    },
+    {
+      key: "externalId",
+      header: "Reference",
+      value: (transaction) => transaction.externalId,
+      render: (transaction) => (
+        <span className="font-mono text-xs text-muted">{transaction.externalId || "—"}</span>
+      ),
     },
     {
       key: "note",
@@ -293,6 +328,10 @@ export function StockTransactionsView({ transactions }: { transactions: StockTra
           storageKey="myhomebase:stock-transactions-grid"
         />
       </div>
+
+      {openTicker && (
+        <TickerViewerHost ticker={openTicker} onClose={() => setOpenTicker(undefined)} />
+      )}
     </div>
   );
 }

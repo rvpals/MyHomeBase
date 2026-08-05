@@ -54,6 +54,9 @@ export interface TransactionFormInput {
   ticker: string;
   numberOfShares: string;
   pricePerShare: string;
+  brokerageFirm?: string;
+  /** The broker's reference number, when you have one. Blank is fine. */
+  externalId?: string;
   note?: string;
 }
 
@@ -110,6 +113,8 @@ export async function createTransactionAction(input: TransactionFormInput): Prom
       ticker: input.ticker,
       numberOfShares: Number(input.numberOfShares || "0"),
       pricePerShareCents: dollarsToCents(input.pricePerShare || "0"),
+      brokerageFirm: input.brokerageFirm ?? "",
+      externalId: input.externalId ?? "",
       note: input.note ?? "",
     });
   } catch (error) {
@@ -130,6 +135,8 @@ export async function updateTransactionAction(
       ticker: input.ticker,
       numberOfShares: Number(input.numberOfShares || "0"),
       pricePerShareCents: dollarsToCents(input.pricePerShare || "0"),
+      brokerageFirm: input.brokerageFirm ?? "",
+      externalId: input.externalId ?? "",
       note: input.note ?? "",
     });
   } catch (error) {

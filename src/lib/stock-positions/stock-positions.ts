@@ -11,7 +11,7 @@ import {
 } from "@/lib/csv-import";
 import type { FieldOptionsMap, ImportRowResult, ImportSummary } from "@/lib/csv-import";
 import type { MarketDataClient } from "@/lib/market-data";
-import type { StockPositionRepository } from "./ports";
+import type { StockPositionRepository, TransactionMatchKey } from "./ports";
 import {
   createTransactionSchema,
   positionKeySchema,
@@ -663,8 +663,27 @@ export const TRANSACTION_IMPORT_FIELDS: readonly {
   { value: "ticker", label: "Ticker" },
   { value: "numberOfShares", label: "Shares" },
   { value: "pricePerShare", label: "Price / share" },
+  { value: "totalAmount", label: "Total amount ($)" },
+  { value: "brokerageFirm", label: "Brokerage firm" },
+  { value: "externalId", label: "Broker reference / confirmation #" },
   { value: "note", label: "Note" },
 ];
+
+/**
+ * The fields that make two transactions the same trade when no broker reference is
+ * available. Note and external id are excluded: a differing note doesn't make it a
+ * different trade.
+ */
+function matchKeyFor(input: CreateTransactionInput): TransactionMatchKey {
+  return {
+    transactionAt: input.transactionAt,
+    action: input.action,
+    ticker: input.ticker,
+    numberOfShares: input.numberOfShares,
+    pricePerShareCents: input.pricePerShareCents,
+    brokerageFirm: input.brokerageFirm,
+  };
+}
 
 /** The source date format the user set for the mapped date column, if any. */
 function mappedDateFormat(
@@ -684,6 +703,11 @@ function mappedDateFormat(
  * When `fieldOptions` gives the date column a format, dates are read strictly by
  * it — the right call for an ambiguous export like "03/04/2026", where guessing
  * silently picks a month. Without a format, dates are parsed loosely as before.
+ *
+ * Either `pricePerShare` or `totalAmount` will do: given only a total, the
+ * per-share price is derived from it. The stored total is always recomputed from
+ * shares × price so it can never contradict its own parts — which means a fractional
+ * holding can land a cent away from the total the file stated.
  */
 export function importTransactionsFromCsv(
   repo: StockPositionRepository,
@@ -696,6 +720,13 @@ export function importTransactionsFromCsv(
   const dateFormat = mappedDateFormat(columnMapping, fieldOptions);
   const constants = constantValuesByField(columnMapping, fieldOptions);
 
+  // How many copies of each trade this file has produced so far, and how many the
+  // table held before the import began. `storedByKey` is read once per distinct trade
+  // and then reused — rows this run inserts must not inflate the stored baseline, or
+  // the second identical lot in a file would look like a duplicate of the first.
+  const seenByKey = new Map<string, number>();
+  const storedByKey = new Map<string, number>();
+
   const results: ImportRowResult[] = selectImportRows(rows, excludedRowIndexes).map(
     ({ row, rowNumber }) => {
       const record = { ...mapRow(row, columnMapping), ...constants };
@@ -704,7 +735,20 @@ export function importTransactionsFromCsv(
 
       const ticker = rawTicker.split(" - ")[0].trim().toUpperCase();
       const numberOfShares = parseNumeric(record.numberOfShares);
-      const pricePerShareCents = Math.round(parseNumeric(record.pricePerShare) * 100);
+
+      // Plenty of exports give a row's total but no per-share price. Back the price
+      // out of the total rather than importing a zero, so a file with only Shares +
+      // Total is usable. An explicit price/share always wins — it's the figure the
+      // broker actually printed, and the stored total stays derived from it, which is
+      // what keeps `total = shares × price` true for every row.
+      const mappedPriceCents = Math.round(parseNumeric(record.pricePerShare) * 100);
+      const totalFromFileCents = Math.round(parseNumeric(record.totalAmount) * 100);
+      const pricePerShareCents =
+        mappedPriceCents > 0
+          ? mappedPriceCents
+          : totalFromFileCents > 0 && numberOfShares > 0
+            ? Math.round(totalFromFileCents / numberOfShares)
+            : 0;
 
       try {
         const validated = createTransactionSchema.parse({
@@ -716,19 +760,50 @@ export function importTransactionsFromCsv(
           ticker,
           numberOfShares,
           pricePerShareCents,
+          brokerageFirm: record.brokerageFirm ?? "",
+          externalId: record.externalId ?? "",
           note: record.note ?? "",
         });
-        const totalAmountCents = Math.round(
-          validated.numberOfShares * validated.pricePerShareCents,
-        );
-        const { inserted } = repo.insertTransactionIfNotExists(validated, totalAmountCents);
-        return inserted
-          ? { rowNumber, status: "imported" }
-          : {
+
+        // With a broker reference, identity is exact and one lookup settles it.
+        if (validated.externalId !== "") {
+          if (repo.hasTransactionWithExternalId(validated.externalId)) {
+            return {
+              rowNumber,
+              status: "skipped",
+              reason: `Already imported (reference ${validated.externalId})`,
+            };
+          }
+        } else {
+          // Without one, identity is a count, not a yes/no. `transaction_at` is a
+          // date, so several identical lots in one day are several real trades. Insert
+          // this row only if the file's copies so far outnumber what's already stored;
+          // re-importing the same file therefore inserts nothing.
+          const key = matchKeyFor(validated);
+          const keyText = JSON.stringify(key);
+          const seenInFile = (seenByKey.get(keyText) ?? 0) + 1;
+          seenByKey.set(keyText, seenInFile);
+
+          let storedCount = storedByKey.get(keyText);
+          if (storedCount === undefined) {
+            storedCount = repo.countMatchingTransactions(key);
+            storedByKey.set(keyText, storedCount);
+          }
+
+          if (seenInFile <= storedCount) {
+            return {
               rowNumber,
               status: "skipped",
               reason: "Duplicate of an existing transaction",
             };
+          }
+        }
+
+        const totalAmountCents = Math.round(
+          validated.numberOfShares * validated.pricePerShareCents,
+        );
+        repo.createTransaction(validated, totalAmountCents);
+        return { rowNumber, status: "imported" };
       } catch (error) {
         return {
           rowNumber,

@@ -12,7 +12,7 @@ module is obvious from the name alone. New tables must follow this.
 | Prefix | Module | Example tables |
 |---|---|---|
 | `sys_` | Platform — not a feature module | `sys_modules`, `sys_app_settings`, `sys_module_settings`, `sys_users`, `sys_user_module_access`, `sys_sessions`, `sys_schema_migrations`, `sys_daily_quotes` |
-| `stk_` | Stocks & ETFs (brokerage accounts **and** per-stock tables — one prefix) | `stk_investment_accounts`, `stk_stock_positions`, `stk_stock_watch_lists`, `stk_stock_volatility_cache`, `stk_ticker_logos`, `stk_daily_snapshots` |
+| `stk_` | Stocks & ETFs (brokerage accounts **and** per-stock tables — one prefix) | `stk_investment_accounts`, `stk_stock_positions`, `stk_stock_transactions`, `stk_stock_watch_lists`, `stk_stock_volatility_cache`, `stk_ticker_logos`, `stk_daily_snapshots` |
 | `csv_` | CSV Analysis (incl. user-generated per-entry tables from `buildTableName`) | `csv_analytics_entries`, `csv_chart_presets`, `csv_govee` |
 | `jrn_` | MyJournal | `jrn_entries`, `jrn_categories`, `jrn_tags`, `jrn_entry_categories`, `jrn_entry_tags`, `jrn_entry_locations`, `jrn_entry_images`, `jrn_icons` |
 | `exp_` | Expense tracker | `exp_transactions`, `exp_creditcard_accounts`, `exp_categories`, `exp_post_import_rules`, `exp_post_import_rule_actions` |
@@ -64,6 +64,33 @@ both worked through in `migrations/0035_add_cost_basis_and_account_to_stock_posi
 The runner wraps each migration in a transaction (`scripts/migrate.ts`), so a rebuild
 that fails part way rolls back rather than leaving a half-built table. Rehearse it
 against a **copy** of the production DB before running it for real.
+
+### Never put a DATE column in a unique index
+
+`stk_stock_transactions` carried
+`UNIQUE (transaction_at, action, ticker, total_amount_cents)` so that re-importing a
+broker CSV was a safe no-op. **`transaction_at` is a date, not a timestamp**, so two
+buys of the same ticker for the same amount on the same day were identical on all four
+columns and the second was rejected — silently dropping every lot after the first.
+Buying a position in several lots through one day is completely ordinary.
+
+Adding a column doesn't fix this. At date granularity the rows genuinely *are*
+identical, so no combination of columns can separate them. The rule that generalises:
+**a unique index may only span columns that identify the row exactly.** Where the
+source system gives a reference number, be unique on that and nothing else, with a
+partial index so rows lacking one aren't all colliding on a shared empty string:
+
+```sql
+CREATE UNIQUE INDEX idx_stock_transactions_external_id
+  ON stk_stock_transactions (external_id)
+  WHERE external_id <> '';
+```
+
+Where it doesn't, duplicate detection belongs in the **importer**, which can see the
+whole file at once: count how many matching rows the file holds against how many are
+stored, and insert the shortfall. The database can't make that call — it can't tell a
+real second lot from an accidental re-import. Worked through in
+`migrations/0038_add_brokerage_firm_to_stock_transactions.md`.
 
 ### Per-row images
 
