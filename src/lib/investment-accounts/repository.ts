@@ -7,7 +7,7 @@ import type {
   UpdateInvestmentAccountInput,
   UpdatePerformanceRecordInput,
 } from "./schema";
-import type { InvestmentAccount, PerformanceRecord } from "./types";
+import type { AccountIcon, InvestmentAccount, PerformanceRecord } from "./types";
 
 interface InvestmentAccountRow {
   id: number;
@@ -16,9 +16,17 @@ interface InvestmentAccountRow {
   initial_value_cents: number;
   last_value_cents: number | null;
   last_updated_at: string | null;
+  icon_image_mime_type: string | null;
   created_at: string;
   updated_at: string;
 }
+
+// Every normal account read names its columns and omits `icon_image`, so the icon
+// bytes never ride along with a list or a page render (migration 0037). Only
+// getAccountIcon/setAccountIcon touch that column.
+const ACCOUNT_COLUMNS =
+  "id, name, description, initial_value_cents, last_value_cents, last_updated_at, " +
+  "icon_image_mime_type, created_at, updated_at";
 
 interface PerformanceRecordRow {
   id: number;
@@ -38,6 +46,7 @@ function accountToDomain(row: InvestmentAccountRow): InvestmentAccount {
     initialValueCents: row.initial_value_cents,
     lastValueCents: row.last_value_cents ?? undefined,
     lastUpdatedAt: row.last_updated_at ?? undefined,
+    iconMimeType: row.icon_image_mime_type ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
@@ -61,16 +70,37 @@ export class SqliteInvestmentAccountRepository implements InvestmentAccountRepos
 
   listAccounts(): InvestmentAccount[] {
     const rows = this.db
-      .prepare("SELECT * FROM stk_investment_accounts ORDER BY created_at ASC")
+      .prepare(`SELECT ${ACCOUNT_COLUMNS} FROM stk_investment_accounts ORDER BY created_at ASC`)
       .all() as InvestmentAccountRow[];
     return rows.map(accountToDomain);
   }
 
   getAccountById(id: number): InvestmentAccount | undefined {
-    const row = this.db.prepare("SELECT * FROM stk_investment_accounts WHERE id = ?").get(id) as
-      | InvestmentAccountRow
-      | undefined;
+    const row = this.db
+      .prepare(`SELECT ${ACCOUNT_COLUMNS} FROM stk_investment_accounts WHERE id = ?`)
+      .get(id) as InvestmentAccountRow | undefined;
     return row ? accountToDomain(row) : undefined;
+  }
+
+  getAccountIcon(id: number): AccountIcon | undefined {
+    const row = this.db
+      .prepare("SELECT icon_image, icon_image_mime_type FROM stk_investment_accounts WHERE id = ?")
+      .get(id) as { icon_image: Buffer | null; icon_image_mime_type: string | null } | undefined;
+
+    if (!row?.icon_image || !row.icon_image_mime_type) return undefined;
+    return { data: row.icon_image, mimeType: row.icon_image_mime_type };
+  }
+
+  setAccountIcon(id: number, icon: AccountIcon | undefined): void {
+    // Both columns move together: a stored blob with no type would be unservable,
+    // and a type with no blob would render a broken image.
+    this.db
+      .prepare(
+        `UPDATE stk_investment_accounts
+         SET icon_image = @data, icon_image_mime_type = @mimeType
+         WHERE id = @id`,
+      )
+      .run({ id, data: icon?.data ?? null, mimeType: icon?.mimeType ?? null });
   }
 
   createAccount(input: CreateInvestmentAccountInput): InvestmentAccount {

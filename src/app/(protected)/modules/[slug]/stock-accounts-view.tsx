@@ -7,12 +7,15 @@ import { ChartLine } from "@/components/chart-line";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import type { InvestmentAccount, PerformanceRecord } from "@/lib/investment-accounts";
+import { IMAGE_UPLOAD_MIME_TYPES } from "@/lib/shared/image-upload";
 import { centsToDollars, formatCents } from "@/lib/shared/money";
 import {
   addPerformanceRecordAction,
+  clearAccountIconAction,
   createAccountAction,
   deleteAccountAction,
   deletePerformanceRecordAction,
+  saveAccountIconAction,
   updateAccountAction,
   type AccountFormInput,
   type PerformanceRecordFormInput,
@@ -25,6 +28,119 @@ export interface AccountEntry {
 
 const EMPTY_ACCOUNT_FORM: AccountFormInput = { name: "", description: "", initialValue: "" };
 const EMPTY_RECORD_FORM: PerformanceRecordFormInput = { recordDate: "", totalValue: "", note: "" };
+
+/** Reads a File as bare base64 (no data-URL prefix), which is what the action wants. */
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result ?? "");
+      resolve(result.slice(result.indexOf(",") + 1));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read the image."));
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * The account's icon, or its initial in a tile when it has none. `updatedAt` is
+ * the cache-buster: the route sends a 5-minute max-age, so without it a replaced
+ * icon would keep showing the old bytes.
+ */
+export function AccountIconImage({
+  account,
+  size = 24,
+}: {
+  // Only what's needed to render, so the Positions view can pass its lighter
+  // account option rather than a whole InvestmentAccount.
+  account: { id: number; name: string; iconMimeType?: string; updatedAt?: string };
+  size?: number;
+}) {
+  if (!account.iconMimeType) {
+    return (
+      <span
+        aria-hidden
+        style={{ width: size, height: size }}
+        className="flex shrink-0 items-center justify-center rounded-md bg-brass-soft text-xs font-medium text-brass-dark"
+      >
+        {account.name.trim().charAt(0).toUpperCase() || "?"}
+      </span>
+    );
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- DB-backed route, not a static asset next/image can optimize.
+    <img
+      src={`/api/stocks/accounts/${account.id}/icon?v=${encodeURIComponent(account.updatedAt ?? "")}`}
+      alt=""
+      width={size}
+      height={size}
+      loading="lazy"
+      className="shrink-0 rounded-md object-contain"
+      style={{ width: size, height: size }}
+    />
+  );
+}
+
+/** Upload / replace / remove the icon that distinguishes this account. */
+function AccountIconControls({
+  account,
+  onError,
+}: {
+  account: InvestmentAccount;
+  onError: (message: string | undefined) => void;
+}) {
+  const router = useRouter();
+  const [isBusy, setIsBusy] = useState(false);
+
+  async function handleFile(file: File) {
+    onError(undefined);
+    setIsBusy(true);
+    try {
+      const base64Data = await readFileAsBase64(file);
+      const result = await saveAccountIconAction(account.id, file.type, base64Data);
+      if (!result.ok) onError(result.error);
+      else router.refresh();
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      <label className="cursor-pointer text-xs font-medium text-brass-dark hover:underline">
+        {account.iconMimeType ? "Replace icon" : "Add icon"}
+        <input
+          type="file"
+          accept={IMAGE_UPLOAD_MIME_TYPES.join(",")}
+          disabled={isBusy}
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) handleFile(file);
+            // Clear it, or picking the same file twice in a row fires no change event.
+            event.target.value = "";
+          }}
+        />
+      </label>
+      {account.iconMimeType && (
+        <button
+          type="button"
+          disabled={isBusy}
+          onClick={async () => {
+            onError(undefined);
+            const result = await clearAccountIconAction(account.id);
+            if (result.ok) router.refresh();
+            else onError(result.error);
+          }}
+          className="text-xs text-muted hover:text-red-400"
+        >
+          Remove
+        </button>
+      )}
+    </span>
+  );
+}
 
 function toAccountFormInput(account: InvestmentAccount): AccountFormInput {
   return {
@@ -228,6 +344,9 @@ export function StockAccountsView({ entries }: { entries: AccountEntry[] }) {
   const router = useRouter();
   const [editingId, setEditingId] = useState<number | undefined>(undefined);
   const [expandedId, setExpandedId] = useState<number | undefined>(undefined);
+  // Icon upload failures surface here rather than in a per-row alert: the file
+  // picker is in a grid cell, and an alert() would interrupt a bulk tidy-up.
+  const [error, setError] = useState<string | undefined>(undefined);
 
   async function handleCreate(input: AccountFormInput) {
     const result = await createAccountAction(input);
@@ -252,7 +371,17 @@ export function StockAccountsView({ entries }: { entries: AccountEntry[] }) {
   }
 
   const columns: DataGridColumn<AccountEntry>[] = [
-    { key: "name", header: "Name", render: (entry) => entry.account.name },
+    {
+      key: "name",
+      header: "Name",
+      value: (entry) => entry.account.name,
+      render: (entry) => (
+        <span className="flex items-center gap-2">
+          <AccountIconImage account={entry.account} size={20} />
+          {entry.account.name}
+        </span>
+      ),
+    },
     {
       key: "description",
       header: "Description",
@@ -273,6 +402,12 @@ export function StockAccountsView({ entries }: { entries: AccountEntry[] }) {
       key: "lastUpdated",
       header: "Last Updated",
       render: (entry) => entry.account.lastUpdatedAt ?? "—",
+    },
+    {
+      key: "icon",
+      header: "Icon",
+      excludeFromRecordView: true,
+      render: (entry) => <AccountIconControls account={entry.account} onError={setError} />,
     },
     {
       key: "actions",
@@ -312,6 +447,8 @@ export function StockAccountsView({ entries }: { entries: AccountEntry[] }) {
   return (
     <div>
       <h2 className="font-display text-xl text-ink">Accounts</h2>
+
+      {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
 
       <div className="mt-4">
         <CollapsibleCard title="Add Account">

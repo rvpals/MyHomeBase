@@ -1,0 +1,384 @@
+// Per-section reference for the Stocks & ETFs module — how the pieces fit
+// together and the behaviours that aren't obvious from the UI (what "Unassigned"
+// means, why a cost basis can read "—", how re-importing behaves).
+//
+// Each section shows only the part that applies to it; the dashboard carries the
+// module-wide overview. Pure content, no state, rendered inside a collapsed
+// CollapsibleCard so it's there when wanted and out of the way when not.
+
+import type { StockSection } from "./stock-sections";
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section>
+      <h3 className="font-display text-base text-ink">{title}</h3>
+      <div className="mt-1 flex flex-col gap-2 text-sm text-muted">{children}</div>
+    </section>
+  );
+}
+
+function MainInstructions() {
+  return (
+    <>
+      <p className="text-sm text-muted">
+        This module tracks what you hold, what you paid, and what it&apos;s worth. Positions can be
+        typed in by hand or imported from a broker CSV; prices come from a live quote feed on demand.
+      </p>
+      <Section title="How this module is laid out">
+        <p>Use the tree on the left. Each section does one job:</p>
+        <ul className="flex list-disc flex-col gap-1 pl-5">
+          <li>
+            <strong className="text-ink">Dashboard</strong> — headline value, today&apos;s move,
+            total return, allocation, and the day&apos;s biggest movers.
+          </li>
+          <li>
+            <strong className="text-ink">Positions</strong> — every holding with its cost basis and
+            gain, plus the form to add or edit one and the Refresh All button.
+          </li>
+          <li>
+            <strong className="text-ink">Transactions</strong> — the buy/sell history. Kept separate
+            from positions on purpose: a position is a current state, a transaction is a past event.
+          </li>
+          <li>
+            <strong className="text-ink">Account Performance</strong> — your brokerage accounts and
+            their total value over time.
+          </li>
+          <li>
+            <strong className="text-ink">Actionables</strong> — watch lists, and the next-day scan
+            that flags positions worth a decision.
+          </li>
+          <li>
+            <strong className="text-ink">Chart &amp; Analysis</strong> — volatility, correlation and
+            Sharpe ratio, computed from price history.
+          </li>
+          <li>
+            <strong className="text-ink">CSV Import</strong> — define a column mapping per broker
+            export, save it under that broker&apos;s name, and reuse it.
+          </li>
+          <li>
+            <strong className="text-ink">Configuration</strong> — the thresholds the next-day scan
+            uses.
+          </li>
+        </ul>
+      </Section>
+      <Section title="Refresh All, and the daily history">
+        <p>
+          <strong className="text-ink">Refresh All</strong> fetches a live price for every position,
+          naming each ticker as it goes, then files today&apos;s totals — Stock, ETF, Other and Total
+          — in the value history. There is <strong className="text-ink">one row per day</strong>:
+          press it again this afternoon and today&apos;s row is recalculated and overwritten, not
+          duplicated.
+        </p>
+        <p>
+          A ticker that can&apos;t be priced is listed in red and skipped; the rest still refresh and
+          the snapshot still saves, so one delisted symbol can&apos;t cost you the day&apos;s record.
+        </p>
+      </Section>
+      <Section title="Daily Glance, and the News button">
+        <p>
+          Shows how Stock and ETF each moved today, then the five biggest risers and fallers.
+          Stocks and ETFs are ranked <strong className="text-ink">together</strong> — the question is
+          which holdings moved, not which kind they are — and a ticker held in two accounts is
+          counted once, summed.
+        </p>
+        <p>
+          The <strong className="text-ink">Measure by</strong> selector switches the two lists
+          between <strong className="text-ink">Total value</strong> — shares × the price move, i.e.
+          what the holding made or lost <em>you</em> — and{" "}
+          <strong className="text-ink">Per share</strong>, the move on a single share regardless of
+          how much you hold. A thousand shares up a penny beats two shares up $200 on total value,
+          and loses badly on per share. Whichever is showing, the other is repeated in grey beneath
+          it, and the percentage is the same under both — a percentage doesn&apos;t care how many
+          shares you own.
+        </p>
+        <p>
+          The selector governs the mover lists only. The Stock and ETF figures above them are always
+          totals, because a per-share figure across a basket of securities at different prices
+          wouldn&apos;t mean anything.
+        </p>
+        <p>
+          <strong className="text-ink">News</strong> on any row fetches the story most likely to
+          explain that move. Providers tag stories loosely — a piece headlined &ldquo;AMD
+          tumbles&rdquo; is often tagged NVDA too — so a story that only mentions the ticker rather
+          than being about it is labelled as such, and one published before today says so instead of
+          pretending to explain this morning.
+        </p>
+      </Section>
+      <Section title="Week / month / year to date">
+        <p>
+          These <strong className="text-ink">sum each day&apos;s move</strong> rather than comparing
+          the first and last day&apos;s value. That matters: if you paid $10,000 in on Wednesday,
+          comparing values would call it a $10,000 gain. Summing daily moves counts only price
+          changes, so these are performance, not cash flow.
+        </p>
+        <p>
+          Each tile shows how many days it actually had — a day you never pressed Refresh All is a
+          day whose move is missing from the total, so the count is there to make that visible
+          instead of silently under-reporting.
+        </p>
+      </Section>
+      <Section title="Why some numbers read “—”">
+        <p>
+          A dash means <em>not known</em>, not zero. Cost basis, total return and annual income only
+          appear once something has supplied them — a broker CSV, or the fields on the position form.
+          A position added by hand with just a ticker and a quantity has a value but no return, and
+          the dashboard says so rather than printing a fake 0%.
+        </p>
+        <p>
+          The value history starts the first day you press Refresh All. Earlier days can&apos;t be
+          back-filled — the app stores each position&apos;s current price, not a per-day price series
+          for whatever you held back then.
+        </p>
+      </Section>
+    </>
+  );
+}
+
+function PositionsInstructions() {
+  return (
+    <>
+      <Section title="A position belongs to an account">
+        <p>
+          A holding is identified by <strong className="text-ink">account + ticker</strong>, so 75
+          shares of MSFT at one broker and 69 at another are two rows that add up, not one that
+          overwrites the other. Positions that predate any account — or that you import without
+          choosing one — sit in <strong className="text-ink">Unassigned</strong>. That&apos;s a real,
+          supported state; set up accounts under Account Performance when you want them separated.
+        </p>
+        <p>
+          Because account + ticker is the identity, both are locked when editing. To move a holding to
+          another account, delete it and add it there.
+        </p>
+      </Section>
+      <Section title="Cost basis, and the fields under the fold">
+        <p>
+          The collapsed &ldquo;Cost basis, income and identifiers&rdquo; panel holds what a broker
+          export fills in: total cost, unit cost, unrealized gain, CUSIP/ISIN, asset class and asset
+          strategy. Adding a position by hand you can ignore all of it — but entering a cost basis is
+          what turns on the Total Return figures here and on the dashboard.
+        </p>
+        <p>
+          <strong className="text-ink">Asset strategy</strong> (e.g. &ldquo;US Large Cap&rdquo;) is a
+          separate axis from <strong className="text-ink">Type</strong> (Stock/ETF/Bond). Type drives
+          the allocation split; strategy is the broker&apos;s own cap-size bucket.
+        </p>
+      </Section>
+      <Section title="Refresh All">
+        <p>
+          Pulls a live quote for every position and updates price, day range, day gain/loss and
+          dividend rate. Your cost basis and the broker&apos;s classification are left alone — a quote
+          feed knows today&apos;s price, not what you paid — but the unrealized gain is recomputed
+          against the stored basis so it can&apos;t sit stale beside a fresh price. A ticker that
+          can&apos;t be quoted (delisted, renamed) is reported and skipped; the rest still refresh.
+        </p>
+      </Section>
+    </>
+  );
+}
+
+function TransactionsInstructions() {
+  return (
+    <Section title="Transactions are the history, not the holding">
+      <p>
+        Recording a buy here does <em>not</em> change a position&apos;s quantity — the two are kept
+        independent so an imported broker snapshot is never contradicted by a hand-typed trade. What
+        transactions do feed is the average cost basis the next-day scan uses when a position
+        doesn&apos;t carry one of its own.
+      </p>
+      <p>
+        Total is computed from shares &times; price/share, so it can&apos;t disagree with its parts.
+      </p>
+    </Section>
+  );
+}
+
+function AccountsInstructions() {
+  return (
+    <Section title="Accounts and their history">
+      <p>
+        An account is a brokerage account. Its performance records are point-in-time total values —
+        one per date — which is what the history chart plots. Adding an account here also makes it
+        selectable when you import a positions CSV, which is how positions stop being
+        &ldquo;Unassigned&rdquo;.
+      </p>
+    </Section>
+  );
+}
+
+function ActionablesInstructions() {
+  return (
+    <>
+      <Section title="Watch lists">
+        <p>
+          Tickers you&apos;re following but don&apos;t own. Nothing here affects the portfolio totals.
+        </p>
+      </Section>
+      <Section title="The next-day scan">
+        <p>
+          Runs over every position with shares and flags four things: <strong className="text-ink">Stop
+          Loss</strong> (price below the 20-day SMA), <strong className="text-ink">Trim Profit</strong>{" "}
+          (return above your profit target), <strong className="text-ink">Rebalance</strong>{" "}
+          (allocation over its concentration cap) and{" "}
+          <strong className="text-ink">Strong Buy</strong> (a 1.5&times; volume spike). Anything else
+          is a Hold.
+        </p>
+        <p>
+          It fetches a month of price history per ticker, so a scan over a large portfolio takes a
+          moment. The thresholds live under Configuration.
+        </p>
+      </Section>
+    </>
+  );
+}
+
+function ChartsInstructions() {
+  return (
+    <Section title="What's computed here">
+      <p>
+        Volatility, correlation and Sharpe ratio, from downloaded price history rather than from your
+        cost basis — so these describe the securities you hold, not your particular entry prices.
+        Results are cached; re-run them when you want them refreshed.
+      </p>
+    </Section>
+  );
+}
+
+function ImportInstructions() {
+  return (
+    <>
+      <Section title="Map once, reuse forever">
+        <p>
+          Pick the kind of file, drop the CSV in, and the columns are guessed from their headers.
+          Correct anything wrong, then save the mapping under the broker&apos;s name — next quarter&apos;s
+          export is one dropdown away. A mapping belongs to one import type, so switching the type
+          re-reads the file rather than carrying a mapping that can&apos;t apply.
+        </p>
+        <p>
+          Columns left on <strong className="text-ink">Ignore</strong> are skipped. Every column you
+          don&apos;t need can stay ignored — a broker export with 70 columns is normal.
+        </p>
+      </Section>
+      <Section title="Dropping rows you don't want">
+        <p>
+          The grid lists <strong className="text-ink">every</strong> row in the file, numbered.
+          Press <strong className="text-ink">&times;</strong> on any row to leave it out — it stays
+          visible, dimmed and struck through, so the numbering still lines up with your file, and{" "}
+          <strong className="text-ink">Undo</strong> puts it back. The Import button counts what will
+          actually go in.
+        </p>
+        <p>
+          A removed row isn&apos;t reported as a skip afterwards. Skips are rows the importer
+          choked on and you may want to look at; a row you deliberately dropped isn&apos;t news.
+          Removals apply to this file only and reset when you load another.
+        </p>
+      </Section>
+      <Section title="Setting Type per row">
+        <p>
+          A positions import gets a <strong className="text-ink">Type</strong> column of its own,
+          before the file&apos;s columns — a dropdown per row. It starts on whatever the file implies
+          (an &ldquo;Equity&rdquo; asset class reads as Stock, a money-market line as Other), and you
+          change the rows that are wrong. That&apos;s the answer for an export that mixes ETFs and
+          stocks without saying which is which.
+        </p>
+        <p>
+          <strong className="text-ink">Set all…</strong> in that column&apos;s header stamps every
+          row at once, so a mostly-ETF file is one click plus a few corrections rather than 34
+          dropdowns.
+        </p>
+        <p>
+          A per-row choice beats the column-wide fixed value below, because it&apos;s the more
+          specific thing you said. Like row removals, these are per-file and reset when you load
+          another.
+        </p>
+      </Section>
+      <Section title="Fixed values, for what the file doesn't say">
+        <p>
+          Under each mapped column there&apos;s a <strong className="text-ink">= fixed value</strong>{" "}
+          box. Type something in it and every row gets that literal, ignoring the column&apos;s own
+          cells. It&apos;s how you set a field the export has no column for: pick any spare column,
+          map it to <strong className="text-ink">Type</strong>, and type{" "}
+          <strong className="text-ink">ETF</strong> — the whole file imports as ETFs.
+        </p>
+        <p>
+          A fixed value <em>beats</em> the cell, so it also works as an override: a column reading
+          &ldquo;Equity&rdquo; would normally infer Stock, and fixing it to ETF wins. Anything fixed
+          is listed in a banner under the table before you import, so it can&apos;t be a surprise.
+          Clear the box and the cells are read again.
+        </p>
+        <p>
+          Fixed values are <strong className="text-ink">saved with the mapping</strong> — a mapping
+          named &ldquo;Chase ETFs&rdquo; carries its Type = ETF along with its columns, so next
+          quarter&apos;s file is one dropdown away.
+        </p>
+      </Section>
+      <Section title="What each type does on re-import">
+        <ul className="flex list-disc flex-col gap-1 pl-5">
+          <li>
+            <strong className="text-ink">Positions</strong> — updates the matching account + ticker in
+            place, so re-importing refreshes rather than duplicates. Choose the account first: without
+            one, everything lands in Unassigned. A blank or zero cell keeps whatever was stored, so a
+            partial export can&apos;t wipe a field it doesn&apos;t include.
+          </li>
+          <li>
+            <strong className="text-ink">Transactions</strong> — a row matching an existing
+            date/action/ticker/total is skipped as a duplicate. If your dates are ambiguous, set the
+            date format on that column and they&apos;re read strictly by it instead of guessed.
+          </li>
+          <li>
+            <strong className="text-ink">Account Performance</strong> — one value per account per
+            date; a repeat of the same pair replaces it. Map an Account Name column and you&apos;ll be
+            asked to match the names in the file to your accounts before anything is written.
+          </li>
+        </ul>
+      </Section>
+      <Section title="Derived fields">
+        <p>
+          If an export gives a total cost but no per-share cost, unit cost is worked out from cost
+          &divide; quantity. If it gives a cost but no unrealized gain, that&apos;s worked out from
+          value &minus; cost. Mapping the broker&apos;s own column always wins over the derivation —
+          its figure accounts for adjusted basis that value &minus; cost cannot.
+        </p>
+        <p>
+          When there&apos;s no Type column, the type is inferred from the asset class: Equity becomes
+          Stock, a money-market or cash line becomes Other. An unrecognised class leaves the existing
+          type alone.
+        </p>
+      </Section>
+    </>
+  );
+}
+
+function SettingsInstructions() {
+  return (
+    <Section title="Where these are stored">
+      <p>
+        These three thresholds are module settings — the same values Administration &rarr; Module
+        Configuration edits. Changing them here changes them there. They take effect on the next scan;
+        results already on screen aren&apos;t re-judged.
+      </p>
+    </Section>
+  );
+}
+
+export function StockInstructions({ section }: { section: StockSection }) {
+  switch (section) {
+    case "main":
+      return <MainInstructions />;
+    case "positions":
+      return <PositionsInstructions />;
+    case "transactions":
+      return <TransactionsInstructions />;
+    case "accounts":
+      return <AccountsInstructions />;
+    case "actionables":
+      return <ActionablesInstructions />;
+    case "charts":
+      return <ChartsInstructions />;
+    case "import":
+      return <ImportInstructions />;
+    case "settings":
+      return <SettingsInstructions />;
+    default:
+      return null;
+  }
+}

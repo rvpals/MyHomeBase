@@ -1,5 +1,6 @@
-export type { InvestmentAccount, PerformanceRecord } from "./types";
+export type { AccountIcon, InvestmentAccount, PerformanceRecord } from "./types";
 export {
+  MAX_ACCOUNT_ICON_BYTES,
   investmentAccountSchema,
   createInvestmentAccountSchema,
   updateInvestmentAccountSchema,
@@ -18,10 +19,14 @@ export {
   createAccount,
   updateAccount,
   deleteAccount,
+  setAccountIcon,
+  clearAccountIcon,
+  getAccountIcon,
   listPerformanceRecords,
   addPerformanceRecord,
   updatePerformanceRecord,
   deletePerformanceRecord,
   extractCsvAccountNames,
   importPerformanceFromCsv,
+  PERFORMANCE_IMPORT_FIELDS,
 } from "./investment-accounts";

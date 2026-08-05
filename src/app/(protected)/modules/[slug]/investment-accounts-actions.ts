@@ -3,9 +3,11 @@
 import { revalidatePath } from "next/cache";
 import {
   addPerformanceRecord,
+  clearAccountIcon,
   createAccount,
   deleteAccount,
   deletePerformanceRecord,
+  setAccountIcon,
   updateAccount,
 } from "@/lib/investment-accounts";
 import { dollarsToCents } from "@/lib/shared/money";
@@ -98,6 +100,39 @@ export async function deletePerformanceRecordAction(recordId: number): Promise<A
     deletePerformanceRecord(deps.investmentAccountRepo, recordId);
   } catch (error) {
     return toErrorResult(error, "Failed to delete performance record.");
+  }
+  revalidatePath(STOCK_ETFS_MODULE_PATH);
+  return { ok: true };
+}
+
+/**
+ * Stores an account's icon. The browser sends bare base64 plus the file's own
+ * mime type; the lib validates both — this adapter never inspects the bytes.
+ */
+export async function saveAccountIconAction(
+  accountId: number,
+  mimeType: string,
+  base64Data: string,
+): Promise<ActionResult> {
+  try {
+    setAccountIcon(deps.investmentAccountRepo, accountId, {
+      // Cast because the value came off a File and is unvalidated until the lib
+      // schema narrows it to the allowed set.
+      mimeType: mimeType as never,
+      base64Data,
+    });
+  } catch (error) {
+    return toErrorResult(error, "Failed to save the icon.");
+  }
+  revalidatePath(STOCK_ETFS_MODULE_PATH);
+  return { ok: true };
+}
+
+export async function clearAccountIconAction(accountId: number): Promise<ActionResult> {
+  try {
+    clearAccountIcon(deps.investmentAccountRepo, accountId);
+  } catch (error) {
+    return toErrorResult(error, "Failed to remove the icon.");
   }
   revalidatePath(STOCK_ETFS_MODULE_PATH);
   return { ok: true };

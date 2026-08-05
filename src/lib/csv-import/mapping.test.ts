@@ -1,5 +1,112 @@
 import { describe, expect, it } from "vitest";
-import { applyMapping, parseDateWithFormat, sampleRows, splitDelimited } from "./mapping";
+import {
+  applyMapping,
+  constantValuesByField,
+  parseDateWithFormat,
+  restrictMapping,
+  sampleRows,
+  selectImportRows,
+  splitDelimited,
+} from "./mapping";
+
+describe("selectImportRows", () => {
+  const rows = [["a"], ["b"], ["c"], ["d"]];
+
+  it("returns every row with both a 0-based index and a 1-based number", () => {
+    expect(selectImportRows(rows)).toEqual([
+      { row: ["a"], rowIndex: 0, rowNumber: 1 },
+      { row: ["b"], rowIndex: 1, rowNumber: 2 },
+      { row: ["c"], rowIndex: 2, rowNumber: 3 },
+      { row: ["d"], rowIndex: 3, rowNumber: 4 },
+    ]);
+  });
+
+  it("drops the excluded indexes", () => {
+    expect(selectImportRows(rows, [1]).map((entry) => entry.row[0])).toEqual(["a", "c", "d"]);
+  });
+
+  /**
+   * The whole reason this helper exists. A plain filter would renumber the
+   * survivors, so a failure on the file's row 4 would be reported as row 3.
+   */
+  it("keeps each surviving row's original index and number after an earlier row is dropped", () => {
+    expect(selectImportRows(rows, [0, 1])).toEqual([
+      { row: ["c"], rowIndex: 2, rowNumber: 3 },
+      { row: ["d"], rowIndex: 3, rowNumber: 4 },
+    ]);
+  });
+
+  it("handles out-of-order and duplicated exclusions", () => {
+    expect(selectImportRows(rows, [3, 0, 3]).map((entry) => entry.rowNumber)).toEqual([2, 3]);
+  });
+
+  it("ignores an index that isn't in the file", () => {
+    expect(selectImportRows(rows, [99])).toHaveLength(4);
+  });
+
+  it("returns nothing when every row is excluded", () => {
+    expect(selectImportRows(rows, [0, 1, 2, 3])).toEqual([]);
+  });
+
+  it("returns nothing for no rows", () => {
+    expect(selectImportRows([], [0])).toEqual([]);
+  });
+});
+
+describe("constantValuesByField", () => {
+  const mapping = { "0": "ticker", "1": "type", "2": "quantity" };
+
+  it("collects a column's fixed value under the field it maps to", () => {
+    expect(constantValuesByField(mapping, { "1": { constantValue: "ETF" } })).toEqual({ type: "ETF" });
+  });
+
+  it("returns nothing when no column has one", () => {
+    expect(constantValuesByField(mapping, {})).toEqual({});
+    expect(constantValuesByField(mapping, { "1": { dateFormat: "MM/DD/YYYY" } })).toEqual({});
+  });
+
+  it("treats a blank or whitespace-only value as no constant, so clearing the box works", () => {
+    expect(constantValuesByField(mapping, { "1": { constantValue: "" } })).toEqual({});
+    expect(constantValuesByField(mapping, { "1": { constantValue: "   " } })).toEqual({});
+  });
+
+  it("trims the value", () => {
+    expect(constantValuesByField(mapping, { "1": { constantValue: "  ETF  " } })).toEqual({
+      type: "ETF",
+    });
+  });
+
+  it("ignores options on a column that isn't mapped to anything", () => {
+    expect(constantValuesByField(mapping, { "9": { constantValue: "ETF" } })).toEqual({});
+  });
+
+  it("collects several fixed values at once", () => {
+    expect(
+      constantValuesByField(mapping, {
+        "1": { constantValue: "ETF" },
+        "2": { constantValue: "1" },
+      }),
+    ).toEqual({ type: "ETF", quantity: "1" });
+  });
+});
+
+describe("restrictMapping", () => {
+  it("keeps only columns targeting an allowed field", () => {
+    expect(restrictMapping({ "0": "ticker", "1": "totalValue", "2": "quantity" }, ["ticker", "quantity"])).toEqual({
+      "0": "ticker",
+      "2": "quantity",
+    });
+  });
+
+  it("returns an empty mapping when nothing is allowed", () => {
+    expect(restrictMapping({ "0": "ticker" }, [])).toEqual({});
+  });
+
+  it("leaves an already-valid mapping untouched", () => {
+    const mapping = { "0": "ticker", "1": "quantity" };
+    expect(restrictMapping(mapping, ["ticker", "quantity", "name"])).toEqual(mapping);
+  });
+});
 
 describe("applyMapping", () => {
   it("resolves mapped columns to their fields with options", () => {

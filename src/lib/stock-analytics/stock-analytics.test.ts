@@ -57,6 +57,7 @@ function fakeMarketDataClient(
 
 function makePosition(overrides: Partial<StockPosition>): StockPosition {
   return {
+    accountId: 0,
     ticker: "AAPL",
     name: "Apple Inc.",
     type: "Stock",
@@ -67,6 +68,16 @@ function makePosition(overrides: Partial<StockPosition>): StockPosition {
     dayHighCents: 0,
     dayLowCents: 0,
     dividendRateCents: 0,
+    costCents: 0,
+    unitCostCents: 0,
+    unrealizedGainLossCents: 0,
+    unrealizedGainLossPct: 0,
+    cusip: "",
+    isin: "",
+    assetClass: "",
+    assetStrategy: "",
+    estAnnualIncomeCents: 0,
+    incomeEarnedCents: 0,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...overrides,

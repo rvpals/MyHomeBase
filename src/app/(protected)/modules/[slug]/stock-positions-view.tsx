@@ -1,37 +1,48 @@
 "use client";
 
+// The Positions section: the holdings grid, the add/edit form, and Refresh All.
+// Transactions moved to their own section (stock-transactions-view.tsx) when the
+// module gained a tree nav — they were tabs in one view before that.
+
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
-import { ChartBar } from "@/components/chart-bar";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
-import { Tabs, type TabItem } from "@/components/tabs";
+import { TickerLogo } from "@/components/ticker-logo";
+// Route-local, not a registered shared component: it's an <img> with a monogram
+// fallback used by exactly these two sibling views.
+import { AccountIconImage } from "./stock-accounts-view";
 import {
-  computePortfolioSummary,
+  POSITION_TYPES,
+  UNASSIGNED_ACCOUNT_ID,
   type PositionType,
   type StockPosition,
-  type StockTransaction,
-  type TransactionAction,
 } from "@/lib/stock-positions";
-import { TickerLogo } from "@/components/ticker-logo";
 import { centsToDollars, formatCents } from "@/lib/shared/money";
 import {
-  createTransactionAction,
   deletePositionAction,
-  deleteTransactionAction,
   fetchQuoteAction,
   refreshAllPositionsAction,
-  updateTransactionAction,
   upsertPositionAction,
   type PositionFormInput,
-  type TransactionFormInput,
 } from "./stock-positions-actions";
 
-const POSITION_TYPES: PositionType[] = ["Stock", "ETF", "Bond", "MutualFund", "Crypto", "Other"];
-const TRANSACTION_ACTIONS: TransactionAction[] = ["Buy", "Sell"];
+const INPUT_CLASS =
+  "w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
+
+/** An account a position can belong to. `id` 0 is the Unassigned pseudo-account. */
+export interface PositionAccountOption {
+  id: number;
+  name: string;
+  /** Set when the account has an icon; drives the Account column's thumbnail. */
+  iconMimeType?: string;
+  /** Cache-buster for the icon route, so a replaced icon isn't served stale. */
+  updatedAt?: string;
+}
 
 const EMPTY_POSITION_FORM: PositionFormInput = {
+  accountId: UNASSIGNED_ACCOUNT_ID,
   ticker: "",
   name: "",
   type: "Stock",
@@ -41,19 +52,21 @@ const EMPTY_POSITION_FORM: PositionFormInput = {
   dayHigh: "0",
   dayLow: "0",
   dividendRate: "0",
-};
-
-const EMPTY_TRANSACTION_FORM: TransactionFormInput = {
-  transactionAt: "",
-  action: "Buy",
-  ticker: "",
-  numberOfShares: "",
-  pricePerShare: "",
-  note: "",
+  cost: "0",
+  unitCost: "0",
+  unrealizedGainLoss: "0",
+  unrealizedGainLossPct: "0",
+  estAnnualIncome: "0",
+  incomeEarned: "0",
+  cusip: "",
+  isin: "",
+  assetClass: "",
+  assetStrategy: "",
 };
 
 function toPositionFormInput(position: StockPosition): PositionFormInput {
   return {
+    accountId: position.accountId,
     ticker: position.ticker,
     name: position.name,
     type: position.type,
@@ -63,32 +76,63 @@ function toPositionFormInput(position: StockPosition): PositionFormInput {
     dayHigh: centsToDollars(position.dayHighCents).toFixed(2),
     dayLow: centsToDollars(position.dayLowCents).toFixed(2),
     dividendRate: centsToDollars(position.dividendRateCents).toFixed(2),
+    cost: centsToDollars(position.costCents).toFixed(2),
+    unitCost: centsToDollars(position.unitCostCents).toFixed(2),
+    unrealizedGainLoss: centsToDollars(position.unrealizedGainLossCents).toFixed(2),
+    unrealizedGainLossPct: String(position.unrealizedGainLossPct),
+    estAnnualIncome: centsToDollars(position.estAnnualIncomeCents).toFixed(2),
+    incomeEarned: centsToDollars(position.incomeEarnedCents).toFixed(2),
+    cusip: position.cusip,
+    isin: position.isin,
+    assetClass: position.assetClass,
+    assetStrategy: position.assetStrategy,
   };
 }
 
-function toTransactionFormInput(transaction: StockTransaction): TransactionFormInput {
-  return {
-    transactionAt: transaction.transactionAt,
-    action: transaction.action,
-    ticker: transaction.ticker,
-    numberOfShares: String(transaction.numberOfShares),
-    pricePerShare: centsToDollars(transaction.pricePerShareCents).toFixed(2),
-    note: transaction.note,
-  };
+/** A position's identity in a React key or a grid row. */
+function positionRowKey(position: StockPosition): string {
+  return `${position.accountId}:${position.ticker}`;
+}
+
+function TextField({
+  label,
+  value,
+  onChange,
+  disabled = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label className="block text-sm">
+      <span className="mb-1 block font-medium text-ink">{label}</span>
+      <input
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        className={`${INPUT_CLASS} disabled:opacity-60`}
+      />
+    </label>
+  );
 }
 
 function PositionForm({
   title,
   initialValue,
+  accounts,
   onSave,
   onCancel,
-  lockTicker = false,
+  lockIdentity = false,
 }: {
   title: string;
   initialValue: PositionFormInput;
+  accounts: PositionAccountOption[];
   onSave: (input: PositionFormInput) => Promise<string | undefined>;
   onCancel?: () => void;
-  lockTicker?: boolean;
+  /** On edit, the account + ticker are the primary key — changing them would move the row, not edit it. */
+  lockIdentity?: boolean;
 }) {
   const [form, setForm] = useState(initialValue);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -97,6 +141,10 @@ function PositionForm({
   // Which symbol we've already looked up, so leaving and re-entering the field
   // doesn't fire the same request again.
   const [autoFetchedTicker, setAutoFetchedTicker] = useState<string | undefined>(undefined);
+
+  function update<Key extends keyof PositionFormInput>(key: Key, value: PositionFormInput[Key]) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -108,21 +156,23 @@ function PositionForm({
         setError(failure);
         return;
       }
-      setForm(EMPTY_POSITION_FORM);
+      // Keep the chosen account so adding several holdings to one account doesn't
+      // reset the picker between each.
+      setForm({ ...EMPTY_POSITION_FORM, accountId: form.accountId });
     } finally {
       setIsSaving(false);
     }
   }
 
   /**
-   * Looks the ticker up as soon as you leave the field, so the usual case needs
-   * no extra click. Deliberately only when the name is still blank — it must
-   * never overwrite something typed by hand — and once per symbol. The Fetch
-   * button remains for a deliberate re-fetch.
+   * Looks the ticker up as soon as you leave the field, so the usual case needs no
+   * extra click. Deliberately only when the name is still blank — it must never
+   * overwrite something typed by hand — and once per symbol. The Fetch button
+   * remains for a deliberate re-fetch.
    */
   async function handleTickerBlur() {
     const ticker = form.ticker.trim();
-    if (lockTicker || ticker === "" || form.name.trim() !== "") return;
+    if (lockIdentity || ticker === "" || form.name.trim() !== "") return;
     if (isFetchingQuote || autoFetchedTicker === ticker) return;
     setAutoFetchedTicker(ticker);
     await handleFetchQuote();
@@ -138,113 +188,133 @@ function PositionForm({
         setError(result.error ?? "Failed to fetch a live quote.");
         return;
       }
-      setForm({
-        ...form,
-        name: result.name || form.name,
-        currentPrice: result.currentPrice ?? form.currentPrice,
-        dayHigh: result.dayHigh ?? form.dayHigh,
-        dayLow: result.dayLow ?? form.dayLow,
-        dividendRate: result.dividendRate ?? form.dividendRate,
-      });
+      setForm((current) => ({
+        ...current,
+        name: result.name || current.name,
+        currentPrice: result.currentPrice ?? current.currentPrice,
+        dayHigh: result.dayHigh ?? current.dayHigh,
+        dayLow: result.dayLow ?? current.dayLow,
+        dividendRate: result.dividendRate ?? current.dividendRate,
+      }));
     } finally {
       setIsFetchingQuote(false);
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-      <label className="block text-sm">
-        <span className="mb-1 block font-medium text-ink">Ticker</span>
-        <div className="flex gap-2">
-          <input
-            value={form.ticker}
-            disabled={lockTicker}
-            onChange={(event) => setForm({ ...form, ticker: event.target.value.toUpperCase() })}
-            onBlur={handleTickerBlur}
-            className="w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass disabled:opacity-60"
-          />
-          <button
-            type="button"
-            onClick={handleFetchQuote}
-            disabled={isFetchingQuote || form.ticker.trim() === ""}
-            className="shrink-0 rounded-md border border-line px-2 py-1.5 text-xs font-medium text-brass-dark hover:bg-paper-raised disabled:opacity-50"
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-ink">Account</span>
+          <select
+            value={form.accountId}
+            disabled={lockIdentity}
+            onChange={(event) => update("accountId", Number(event.target.value))}
+            className={`${INPUT_CLASS} disabled:opacity-60`}
           >
-            {isFetchingQuote ? "Fetching…" : "Fetch"}
-          </button>
-        </div>
-      </label>
-      <label className="block text-sm sm:col-span-2">
-        <span className="mb-1 block font-medium text-ink">Name</span>
-        <input
-          value={form.name}
-          onChange={(event) => setForm({ ...form, name: event.target.value })}
-          className="w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
-        />
-      </label>
-      <label className="block text-sm">
-        <span className="mb-1 block font-medium text-ink">Type</span>
-        <select
-          value={form.type}
-          onChange={(event) => setForm({ ...form, type: event.target.value as PositionType })}
-          className="w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
-        >
-          {POSITION_TYPES.map((type) => (
-            <option key={type} value={type}>
-              {type}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="block text-sm">
-        <span className="mb-1 block font-medium text-ink">Current price ($)</span>
-        <input
+            {accounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-ink">Ticker</span>
+          <div className="flex gap-2">
+            <input
+              value={form.ticker}
+              disabled={lockIdentity}
+              onChange={(event) => update("ticker", event.target.value.toUpperCase())}
+              onBlur={handleTickerBlur}
+              className={`${INPUT_CLASS} disabled:opacity-60`}
+            />
+            <button
+              type="button"
+              onClick={handleFetchQuote}
+              disabled={isFetchingQuote || form.ticker.trim() === ""}
+              className="shrink-0 rounded-md border border-line px-2 py-1.5 text-xs font-medium text-brass-dark hover:bg-paper-raised disabled:opacity-50"
+            >
+              {isFetchingQuote ? "Fetching…" : "Fetch"}
+            </button>
+          </div>
+        </label>
+        <TextField label="Name" value={form.name} onChange={(value) => update("name", value)} />
+
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-ink">Type</span>
+          <select
+            value={form.type}
+            onChange={(event) => update("type", event.target.value as PositionType)}
+            className={INPUT_CLASS}
+          >
+            {POSITION_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {type}
+              </option>
+            ))}
+          </select>
+        </label>
+        <TextField
+          label="Current price ($)"
           value={form.currentPrice}
-          onChange={(event) => setForm({ ...form, currentPrice: event.target.value })}
-          className="w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+          onChange={(value) => update("currentPrice", value)}
         />
-      </label>
-      <label className="block text-sm">
-        <span className="mb-1 block font-medium text-ink">Quantity</span>
-        <input
-          value={form.quantity}
-          onChange={(event) => setForm({ ...form, quantity: event.target.value })}
-          className="w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
-        />
-      </label>
-      <label className="block text-sm">
-        <span className="mb-1 block font-medium text-ink">Day high ($)</span>
-        <input
-          value={form.dayHigh}
-          onChange={(event) => setForm({ ...form, dayHigh: event.target.value })}
-          className="w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
-        />
-      </label>
-      <label className="block text-sm">
-        <span className="mb-1 block font-medium text-ink">Day low ($)</span>
-        <input
-          value={form.dayLow}
-          onChange={(event) => setForm({ ...form, dayLow: event.target.value })}
-          className="w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
-        />
-      </label>
-      <label className="block text-sm">
-        <span className="mb-1 block font-medium text-ink">Day gain/loss ($)</span>
-        <input
+        <TextField label="Quantity" value={form.quantity} onChange={(value) => update("quantity", value)} />
+
+        <TextField label="Day high ($)" value={form.dayHigh} onChange={(value) => update("dayHigh", value)} />
+        <TextField label="Day low ($)" value={form.dayLow} onChange={(value) => update("dayLow", value)} />
+        <TextField
+          label="Day gain/loss ($)"
           value={form.dayGainLoss}
-          onChange={(event) => setForm({ ...form, dayGainLoss: event.target.value })}
-          className="w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+          onChange={(value) => update("dayGainLoss", value)}
         />
-      </label>
-      <label className="block text-sm">
-        <span className="mb-1 block font-medium text-ink">Annual dividend/share ($)</span>
-        <input
-          value={form.dividendRate}
-          onChange={(event) => setForm({ ...form, dividendRate: event.target.value })}
-          className="w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
-        />
-      </label>
-      {error && <p className="text-sm text-red-400 sm:col-span-3">{error}</p>}
-      <div className="flex gap-2 sm:col-span-3">
+      </div>
+
+      {/* Collapsed by default: a hand-entered position rarely knows its CUSIP.
+          These are the fields a broker CSV fills in. */}
+      <CollapsibleCard title="Cost basis, income and identifiers">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <TextField label="Cost basis ($ total)" value={form.cost} onChange={(value) => update("cost", value)} />
+          <TextField label="Unit cost ($/share)" value={form.unitCost} onChange={(value) => update("unitCost", value)} />
+          <TextField
+            label="Unrealized gain/loss ($)"
+            value={form.unrealizedGainLoss}
+            onChange={(value) => update("unrealizedGainLoss", value)}
+          />
+          <TextField
+            label="Unrealized gain/loss (%)"
+            value={form.unrealizedGainLossPct}
+            onChange={(value) => update("unrealizedGainLossPct", value)}
+          />
+          <TextField
+            label="Annual dividend/share ($)"
+            value={form.dividendRate}
+            onChange={(value) => update("dividendRate", value)}
+          />
+          <TextField
+            label="Est. annual income ($)"
+            value={form.estAnnualIncome}
+            onChange={(value) => update("estAnnualIncome", value)}
+          />
+          <TextField
+            label="Income earned to date ($)"
+            value={form.incomeEarned}
+            onChange={(value) => update("incomeEarned", value)}
+          />
+          <TextField label="CUSIP" value={form.cusip} onChange={(value) => update("cusip", value)} />
+          <TextField label="ISIN" value={form.isin} onChange={(value) => update("isin", value)} />
+          <TextField label="Asset class" value={form.assetClass} onChange={(value) => update("assetClass", value)} />
+          <TextField
+            label="Asset strategy"
+            value={form.assetStrategy}
+            onChange={(value) => update("assetStrategy", value)}
+          />
+        </div>
+      </CollapsibleCard>
+
+      {error && <p className="text-sm text-red-400">{error}</p>}
+      <div className="flex gap-2">
         <Button type="submit" disabled={isSaving}>
           {isSaving ? "Saving…" : title}
         </Button>
@@ -258,123 +328,28 @@ function PositionForm({
   );
 }
 
-function TransactionForm({
-  title,
-  initialValue,
-  onSave,
-  onCancel,
+export function StockPositionsView({
+  positions,
+  accounts,
 }: {
-  title: string;
-  initialValue: TransactionFormInput;
-  onSave: (input: TransactionFormInput) => Promise<string | undefined>;
-  onCancel?: () => void;
+  positions: StockPosition[];
+  /** Real brokerage accounts; the Unassigned option is added here, not by the caller. */
+  accounts: PositionAccountOption[];
 }) {
-  const [form, setForm] = useState(initialValue);
-  const [error, setError] = useState<string | undefined>(undefined);
-  const [isSaving, setIsSaving] = useState(false);
-
-  const totalAmount = (Number(form.numberOfShares || "0") * Number(form.pricePerShare || "0")).toFixed(2);
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsSaving(true);
-    setError(undefined);
-    try {
-      const failure = await onSave(form);
-      if (failure) {
-        setError(failure);
-        return;
-      }
-      setForm(EMPTY_TRANSACTION_FORM);
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-      <label className="block text-sm">
-        <span className="mb-1 block font-medium text-ink">Date</span>
-        <input
-          type="date"
-          value={form.transactionAt}
-          onChange={(event) => setForm({ ...form, transactionAt: event.target.value })}
-          className="w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
-        />
-      </label>
-      <label className="block text-sm">
-        <span className="mb-1 block font-medium text-ink">Action</span>
-        <select
-          value={form.action}
-          onChange={(event) => setForm({ ...form, action: event.target.value as TransactionAction })}
-          className="w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
-        >
-          {TRANSACTION_ACTIONS.map((action) => (
-            <option key={action} value={action}>
-              {action}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="block text-sm">
-        <span className="mb-1 block font-medium text-ink">Ticker</span>
-        <input
-          value={form.ticker}
-          onChange={(event) => setForm({ ...form, ticker: event.target.value.toUpperCase() })}
-          className="w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
-        />
-      </label>
-      <label className="block text-sm">
-        <span className="mb-1 block font-medium text-ink">Shares</span>
-        <input
-          value={form.numberOfShares}
-          onChange={(event) => setForm({ ...form, numberOfShares: event.target.value })}
-          className="w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
-        />
-      </label>
-      <label className="block text-sm">
-        <span className="mb-1 block font-medium text-ink">Price/share ($)</span>
-        <input
-          value={form.pricePerShare}
-          onChange={(event) => setForm({ ...form, pricePerShare: event.target.value })}
-          className="w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
-        />
-      </label>
-      <label className="block text-sm">
-        <span className="mb-1 block font-medium text-ink">Total (computed)</span>
-        <input
-          value={`$${totalAmount}`}
-          readOnly
-          className="w-full rounded-md border border-line bg-paper-raised px-3 py-1.5 text-sm text-muted"
-        />
-      </label>
-      <label className="block text-sm sm:col-span-3">
-        <span className="mb-1 block font-medium text-ink">Note</span>
-        <input
-          value={form.note}
-          onChange={(event) => setForm({ ...form, note: event.target.value })}
-          className="w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
-        />
-      </label>
-      {error && <p className="text-sm text-red-400 sm:col-span-3">{error}</p>}
-      <div className="flex gap-2 sm:col-span-3">
-        <Button type="submit" disabled={isSaving}>
-          {isSaving ? "Saving…" : title}
-        </Button>
-        {onCancel && (
-          <Button type="button" variant="secondary" onClick={onCancel}>
-            Cancel
-          </Button>
-        )}
-      </div>
-    </form>
-  );
-}
-
-function PositionsPanel({ positions }: { positions: StockPosition[] }) {
   const router = useRouter();
-  const [editingTicker, setEditingTicker] = useState<string | undefined>(undefined);
+  const [editingKey, setEditingKey] = useState<string | undefined>(undefined);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const accountOptions: PositionAccountOption[] = [
+    { id: UNASSIGNED_ACCOUNT_ID, name: "Unassigned" },
+    ...accounts,
+  ];
+  const accountFor = (accountId: number) =>
+    accountOptions.find((account) => account.id === accountId) ?? {
+      id: accountId,
+      name: `Account ${accountId}`,
+    };
+  const accountName = (accountId: number) => accountFor(accountId).name;
 
   async function handleRefreshAll() {
     setIsRefreshing(true);
@@ -400,14 +375,19 @@ function PositionsPanel({ positions }: { positions: StockPosition[] }) {
   async function handleSave(input: PositionFormInput) {
     const result = await upsertPositionAction(input);
     if (!result.ok) return result.error ?? "Failed to save position.";
-    setEditingTicker(undefined);
+    setEditingKey(undefined);
     router.refresh();
     return undefined;
   }
 
   async function handleDelete(position: StockPosition) {
-    if (!window.confirm(`Delete "${position.ticker}"? This cannot be undone.`)) return;
-    const result = await deletePositionAction(position.ticker);
+    if (
+      !window.confirm(
+        `Delete "${position.ticker}" from ${accountName(position.accountId)}? This cannot be undone.`,
+      )
+    )
+      return;
+    const result = await deletePositionAction(position.accountId, position.ticker);
     if (result.ok) router.refresh();
     else window.alert(result.error);
   }
@@ -424,10 +404,32 @@ function PositionsPanel({ positions }: { positions: StockPosition[] }) {
         </span>
       ),
     },
-    { key: "name", header: "Name", render: (position) => position.name || "—" },
-    { key: "type", header: "Type", render: (position) => position.type },
-    { key: "price", header: "Price", render: (position) => formatCents(position.currentPriceCents) },
-    { key: "quantity", header: "Qty", render: (position) => position.quantity },
+    { key: "name", header: "Name", value: (position) => position.name, render: (position) => position.name || "—" },
+    {
+      key: "account",
+      header: "Account",
+      value: (position) => accountName(position.accountId),
+      render: (position) => (
+        <span className="flex items-center gap-2">
+          <AccountIconImage account={accountFor(position.accountId)} size={18} />
+          {accountName(position.accountId)}
+        </span>
+      ),
+    },
+    { key: "type", header: "Type", value: (position) => position.type, render: (position) => position.type },
+    {
+      key: "strategy",
+      header: "Strategy",
+      value: (position) => position.assetStrategy,
+      render: (position) => position.assetStrategy || "—",
+    },
+    {
+      key: "price",
+      header: "Price",
+      value: (position) => position.currentPriceCents,
+      render: (position) => formatCents(position.currentPriceCents),
+    },
+    { key: "quantity", header: "Qty", value: (position) => position.quantity, render: (position) => position.quantity },
     {
       key: "value",
       header: "Value",
@@ -439,17 +441,71 @@ function PositionsPanel({ positions }: { positions: StockPosition[] }) {
       formatAggregate: (cents) => formatCents(cents),
     },
     {
+      key: "unitCost",
+      header: "Unit Cost",
+      value: (position) => position.unitCostCents,
+      render: (position) => (position.unitCostCents > 0 ? formatCents(position.unitCostCents) : "—"),
+    },
+    {
+      key: "cost",
+      header: "Cost Basis",
+      value: (position) => position.costCents,
+      render: (position) => (position.costCents > 0 ? formatCents(position.costCents) : "—"),
+      aggregate: "sum",
+      formatAggregate: (cents) => formatCents(cents),
+    },
+    {
+      key: "unrealized",
+      header: "Total G/L",
+      value: (position) => position.unrealizedGainLossCents,
+      render: (position) =>
+        position.costCents > 0 ? (
+          <span className={position.unrealizedGainLossCents < 0 ? "text-red-400" : "text-emerald-400"}>
+            {formatCents(position.unrealizedGainLossCents)}
+          </span>
+        ) : (
+          "—"
+        ),
+      aggregate: "sum",
+      formatAggregate: (cents) => formatCents(cents),
+    },
+    {
+      key: "unrealizedPct",
+      header: "Total G/L %",
+      value: (position) => position.unrealizedGainLossPct,
+      render: (position) =>
+        position.costCents > 0 ? (
+          <span className={position.unrealizedGainLossPct < 0 ? "text-red-400" : "text-emerald-400"}>
+            {position.unrealizedGainLossPct >= 0 ? "+" : ""}
+            {position.unrealizedGainLossPct.toFixed(2)}%
+          </span>
+        ) : (
+          "—"
+        ),
+    },
+    {
       key: "dayGainLoss",
       header: "Day G/L",
       value: (position) => position.dayGainLossCents,
       render: (position) => (
-        <span className={position.dayGainLossCents < 0 ? "text-[#d03b3b]" : "text-[#0ca30c]"}>
+        <span className={position.dayGainLossCents < 0 ? "text-red-400" : "text-emerald-400"}>
           {formatCents(position.dayGainLossCents)}
         </span>
       ),
       aggregate: "sum",
       formatAggregate: (cents) => formatCents(cents),
     },
+    {
+      key: "estAnnualIncome",
+      header: "Annual Income",
+      value: (position) => position.estAnnualIncomeCents,
+      render: (position) =>
+        position.estAnnualIncomeCents > 0 ? formatCents(position.estAnnualIncomeCents) : "—",
+      aggregate: "sum",
+      formatAggregate: (cents) => formatCents(cents),
+    },
+    { key: "cusip", header: "CUSIP", value: (position) => position.cusip, render: (position) => position.cusip || "—" },
+    { key: "isin", header: "ISIN", value: (position) => position.isin, render: (position) => position.isin || "—" },
     {
       key: "actions",
       header: "Actions",
@@ -458,7 +514,7 @@ function PositionsPanel({ positions }: { positions: StockPosition[] }) {
         <div className="flex gap-2">
           <button
             type="button"
-            onClick={() => setEditingTicker(position.ticker)}
+            onClick={() => setEditingKey(positionRowKey(position))}
             className="text-xs font-medium text-brass-dark hover:underline"
           >
             Edit
@@ -475,7 +531,7 @@ function PositionsPanel({ positions }: { positions: StockPosition[] }) {
     },
   ];
 
-  const editingPosition = positions.find((position) => position.ticker === editingTicker);
+  const editingPosition = positions.find((position) => positionRowKey(position) === editingKey);
 
   return (
     <div>
@@ -491,187 +547,42 @@ function PositionsPanel({ positions }: { positions: StockPosition[] }) {
       </div>
 
       <CollapsibleCard title="Add Position">
-        <PositionForm title="Add position" initialValue={EMPTY_POSITION_FORM} onSave={handleSave} />
+        <PositionForm
+          title="Add position"
+          initialValue={EMPTY_POSITION_FORM}
+          accounts={accountOptions}
+          onSave={handleSave}
+        />
       </CollapsibleCard>
 
       {editingPosition && (
         <div className="mt-4">
-          <CollapsibleCard title={`Edit: ${editingPosition.ticker}`} defaultOpen>
+          <CollapsibleCard
+            title={`Edit: ${editingPosition.ticker} — ${accountName(editingPosition.accountId)}`}
+            defaultOpen
+          >
             <PositionForm
               title="Save changes"
               initialValue={toPositionFormInput(editingPosition)}
+              accounts={accountOptions}
               onSave={handleSave}
-              onCancel={() => setEditingTicker(undefined)}
-              lockTicker
+              onCancel={() => setEditingKey(undefined)}
+              lockIdentity
             />
           </CollapsibleCard>
         </div>
       )}
 
       <div className="mt-4">
-        <DataGrid columns={columns} rows={positions} getRowKey={(position) => position.ticker} emptyMessage="No positions yet." />
-      </div>
-    </div>
-  );
-}
-
-function TransactionsPanel({ transactions }: { transactions: StockTransaction[] }) {
-  const router = useRouter();
-  const [editingId, setEditingId] = useState<number | undefined>(undefined);
-
-  async function handleCreate(input: TransactionFormInput) {
-    const result = await createTransactionAction(input);
-    if (!result.ok) return result.error ?? "Failed to record transaction.";
-    router.refresh();
-    return undefined;
-  }
-
-  async function handleUpdate(transactionId: number, input: TransactionFormInput) {
-    const result = await updateTransactionAction(transactionId, input);
-    if (!result.ok) return result.error ?? "Failed to update transaction.";
-    setEditingId(undefined);
-    router.refresh();
-    return undefined;
-  }
-
-  async function handleDelete(transaction: StockTransaction) {
-    if (!window.confirm(`Delete this ${transaction.action} of ${transaction.ticker}?`)) return;
-    const result = await deleteTransactionAction(transaction.id);
-    if (result.ok) router.refresh();
-    else window.alert(result.error);
-  }
-
-  const columns: DataGridColumn<StockTransaction>[] = [
-    { key: "transactionAt", header: "Date", render: (transaction) => transaction.transactionAt },
-    { key: "action", header: "Action", render: (transaction) => transaction.action },
-    {
-      key: "ticker",
-      header: "Ticker",
-      value: (transaction) => transaction.ticker,
-      render: (transaction) => (
-        <span className="flex items-center gap-2">
-          <TickerLogo ticker={transaction.ticker} size={20} />
-          {transaction.ticker}
-        </span>
-      ),
-    },
-    { key: "shares", header: "Shares", render: (transaction) => transaction.numberOfShares },
-    { key: "price", header: "Price/Share", render: (transaction) => formatCents(transaction.pricePerShareCents) },
-    { key: "total", header: "Total", render: (transaction) => formatCents(transaction.totalAmountCents) },
-    {
-      key: "note",
-      header: "Note",
-      render: (transaction) => <span className="text-muted">{transaction.note || "—"}</span>,
-    },
-    {
-      key: "actions",
-      header: "Actions",
-      excludeFromRecordView: true,
-      render: (transaction) => (
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setEditingId(transaction.id)}
-            className="text-xs font-medium text-brass-dark hover:underline"
-          >
-            Edit
-          </button>
-          <button
-            type="button"
-            onClick={() => handleDelete(transaction)}
-            className="text-xs font-medium text-red-400 hover:underline"
-          >
-            Delete
-          </button>
-        </div>
-      ),
-    },
-  ];
-
-  const editingTransaction = transactions.find((transaction) => transaction.id === editingId);
-
-  return (
-    <div>
-      <CollapsibleCard title="Record Transaction">
-        <TransactionForm title="Record transaction" initialValue={EMPTY_TRANSACTION_FORM} onSave={handleCreate} />
-      </CollapsibleCard>
-
-      {editingTransaction && (
-        <div className="mt-4">
-          <CollapsibleCard title={`Edit: ${editingTransaction.action} ${editingTransaction.ticker}`} defaultOpen>
-            <TransactionForm
-              title="Save changes"
-              initialValue={toTransactionFormInput(editingTransaction)}
-              onSave={(input) => handleUpdate(editingTransaction.id, input)}
-              onCancel={() => setEditingId(undefined)}
-            />
-          </CollapsibleCard>
-        </div>
-      )}
-
-      <div className="mt-4">
-        <DataGrid columns={columns} rows={transactions} getRowKey={(transaction) => transaction.id} emptyMessage="No transactions yet." />
-      </div>
-    </div>
-  );
-}
-
-export function StockPositionsView({
-  positions,
-  transactions,
-}: {
-  positions: StockPosition[];
-  transactions: StockTransaction[];
-}) {
-  const summary = computePortfolioSummary(positions);
-
-  const allocationItems = [
-    { key: "stock", label: "Stock", value: centsToDollars(summary.stockValueCents) },
-    { key: "etf", label: "ETF", value: centsToDollars(summary.etfValueCents) },
-    { key: "other", label: "Other", value: centsToDollars(summary.otherValueCents) },
-  ].filter((item) => item.value > 0);
-
-  const tabs: TabItem[] = [
-    { key: "positions", label: "Positions", content: <PositionsPanel positions={positions} /> },
-    { key: "transactions", label: "Transactions", content: <TransactionsPanel transactions={transactions} /> },
-  ];
-
-  return (
-    <div>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <div className="rounded-xl border border-line p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted">Positions</p>
-          <p className="mt-1 font-display text-xl text-ink">{summary.positionCount}</p>
-        </div>
-        <div className="rounded-xl border border-line p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted">Total Value</p>
-          <p className="mt-1 font-display text-xl text-ink">{formatCents(summary.totalValueCents)}</p>
-        </div>
-        <div className="rounded-xl border border-line p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted">Day Change</p>
-          <p
-            className={`mt-1 font-display text-xl ${
-              summary.totalDayGainLossCents < 0 ? "text-[#d03b3b]" : "text-[#0ca30c]"
-            }`}
-          >
-            {formatCents(summary.totalDayGainLossCents)} ({summary.dayChangePct.toFixed(2)}%)
-          </p>
-        </div>
-        <div className="rounded-xl border border-line p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted">Annual Dividend Income</p>
-          <p className="mt-1 font-display text-xl text-ink">{formatCents(summary.annualDividendIncomeCents)}</p>
-        </div>
-      </div>
-
-      {allocationItems.length > 0 && (
-        <div className="mt-6">
-          <h2 className="font-display text-lg text-ink">Allocation</h2>
-          <ChartBar items={allocationItems} formatValue={(value) => formatCents(Math.round(value * 100))} className="mt-2" />
-        </div>
-      )}
-
-      <div className="mt-6">
-        <Tabs items={tabs} />
+        <DataGrid
+          columns={columns}
+          rows={positions}
+          getRowKey={positionRowKey}
+          emptyMessage="No positions yet."
+          exportFileName="stock-positions"
+          storageKey="myhomebase:stock-positions-grid"
+          recordViewTitle={(position) => `${position.ticker} — ${position.name}`}
+        />
       </div>
     </div>
   );

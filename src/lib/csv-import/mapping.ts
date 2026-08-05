@@ -30,6 +30,85 @@ export function applyMapping(
   return cells;
 }
 
+/** One data row paired with where it came from. */
+export interface IndexedCsvRow {
+  row: string[];
+  /** 0-based index into the parsed rows — the key `excludedRowIndexes` and
+   *  per-row overrides are stated in. */
+  rowIndex: number;
+  /** 1-based, matching `ImportRowResult.rowNumber`. Both are carried so no caller
+   *  has to remember which convention it's holding and do its own ±1. */
+  rowNumber: number;
+}
+
+/**
+ * The rows an import should actually process, dropping any the user excluded.
+ *
+ * Crucially this **keeps each surviving row's original number**. Filtering with a
+ * plain `.filter()` and then using the array index would renumber everything after
+ * the first exclusion, so a later "row 7 was skipped" message would point at the
+ * wrong line of the user's file.
+ *
+ * Excluded rows are dropped entirely rather than reported as skips: a skip is
+ * something that surprised the importer, and a row the user deliberately removed
+ * isn't. The caller reports the exclusion count separately.
+ */
+export function selectImportRows(
+  rows: string[][],
+  excludedRowIndexes: readonly number[] = [],
+): IndexedCsvRow[] {
+  const excluded = new Set(excludedRowIndexes);
+  const selected: IndexedCsvRow[] = [];
+  rows.forEach((row, index) => {
+    if (!excluded.has(index)) selected.push({ row, rowIndex: index, rowNumber: index + 1 });
+  });
+  return selected;
+}
+
+/**
+ * The fixed values a mapping declares, as `field -> literal`.
+ *
+ * A column whose options carry a non-blank `constantValue` supplies that literal
+ * for every row instead of its own cells. This is how a field with no column in the
+ * export gets a value at all — map any spare column to it and fix the value, e.g.
+ * Type = "ETF" for a file that never says so.
+ *
+ * Computed once per import rather than per row: the answer depends only on the
+ * mapping, and a 34-row file would otherwise rebuild it 34 times.
+ *
+ * A whitespace-only entry is treated as absent, so clearing the box in the UI
+ * genuinely turns the constant off rather than blanking every row. Values that are
+ * intentionally padded aren't supported — no importer wants them.
+ */
+export function constantValuesByField(
+  columnMapping: ColumnMapping,
+  fieldOptions: FieldOptionsMap = {},
+): Record<string, string> {
+  const constants: Record<string, string> = {};
+  for (const [columnIndex, field] of Object.entries(columnMapping)) {
+    const value = fieldOptions[columnIndex]?.constantValue?.trim();
+    if (value) constants[field] = value;
+  }
+  return constants;
+}
+
+/**
+ * Drops any column whose target field isn't in `allowedFields`. Auto-mapping
+ * guesses from header text alone and doesn't know which import type it's guessing
+ * for, so a positions CSV with a "Value" column can come back mapped to a field
+ * only the performance importer understands. Restricting the guess keeps a saved
+ * mapping from carrying a target the importer will never read.
+ */
+export function restrictMapping(
+  columnMapping: ColumnMapping,
+  allowedFields: readonly string[],
+): ColumnMapping {
+  const allowed = new Set(allowedFields);
+  return Object.fromEntries(
+    Object.entries(columnMapping).filter(([, field]) => allowed.has(field)),
+  );
+}
+
 /**
  * Splits one cell into a list of values. A blank or whitespace delimiter splits
  * on runs of whitespace (e.g. space-separated tags); any other delimiter is used

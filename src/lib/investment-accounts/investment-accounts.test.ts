@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   addPerformanceRecord,
+  clearAccountIcon,
   createAccount,
   deleteAccount,
   deletePerformanceRecord,
   extractCsvAccountNames,
   getAccountById,
+  getAccountIcon,
   importPerformanceFromCsv,
   listAccounts,
   listPerformanceRecords,
+  setAccountIcon,
   updateAccount,
   updatePerformanceRecord,
 } from "./investment-accounts";
@@ -18,7 +21,7 @@ import type {
   CreatePerformanceRecordInput,
   UpdateInvestmentAccountInput,
 } from "./schema";
-import type { InvestmentAccount, PerformanceRecord } from "./types";
+import type { AccountIcon, InvestmentAccount, PerformanceRecord } from "./types";
 
 // Hand-written fake — no mocking framework, reusable across tests. Mirrors the
 // real repository's "sync last value on every performance-record mutation" behavior.
@@ -30,6 +33,9 @@ function fakeRepo(
   let records = [...seedRecords];
   let nextAccountId = accounts.reduce((max, account) => Math.max(max, account.id), 0) + 1;
   let nextRecordId = records.reduce((max, record) => Math.max(max, record.id), 0) + 1;
+  // Icon bytes live outside the account rows, matching the real repository, where
+  // they're a column no normal read selects.
+  const icons = new Map<number, AccountIcon>();
 
   function syncLastValue(accountId: number): void {
     const latest = records
@@ -52,6 +58,22 @@ function fakeRepo(
     },
     getAccountById(id) {
       return accounts.find((account) => account.id === id);
+    },
+    getAccountIcon(id) {
+      return icons.get(id);
+    },
+    setAccountIcon(id, icon) {
+      if (icon) {
+        icons.set(id, icon);
+        accounts = accounts.map((account) =>
+          account.id === id ? { ...account, iconMimeType: icon.mimeType } : account,
+        );
+      } else {
+        icons.delete(id);
+        accounts = accounts.map((account) =>
+          account.id === id ? { ...account, iconMimeType: undefined } : account,
+        );
+      }
     },
     createAccount(input) {
       const created: InvestmentAccount = {
@@ -171,6 +193,82 @@ describe("getAccountById", () => {
 
   it("returns undefined when no account matches", () => {
     expect(getAccountById(fakeRepo(sampleAccounts), 999)).toBeUndefined();
+  });
+});
+
+describe("account icons", () => {
+  // 1x1 transparent PNG — a real image, small enough that size assertions test the
+  // cap rather than the fixture.
+  const tinyPng =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
+  it("stores an icon and reads it back", () => {
+    const repo = fakeRepo(sampleAccounts);
+    setAccountIcon(repo, 1, { mimeType: "image/png", base64Data: tinyPng });
+    const icon = getAccountIcon(repo, 1);
+    expect(icon?.mimeType).toBe("image/png");
+    expect(icon?.data.length).toBeGreaterThan(0);
+  });
+
+  it("advertises the icon's type on the account, without the bytes", () => {
+    const repo = fakeRepo(sampleAccounts);
+    setAccountIcon(repo, 1, { mimeType: "image/png", base64Data: tinyPng });
+    const account = getAccountById(repo, 1)!;
+    expect(account.iconMimeType).toBe("image/png");
+    // The list must never carry image bytes — that's the whole point of the route.
+    expect(Object.keys(account)).not.toContain("iconImage");
+  });
+
+  it("clears an icon without touching the account", () => {
+    const repo = fakeRepo(sampleAccounts);
+    setAccountIcon(repo, 1, { mimeType: "image/png", base64Data: tinyPng });
+    clearAccountIcon(repo, 1);
+    expect(getAccountIcon(repo, 1)).toBeUndefined();
+    expect(getAccountById(repo, 1)?.name).toBe("Brokerage");
+    expect(getAccountById(repo, 1)?.iconMimeType).toBeUndefined();
+  });
+
+  it("replaces an existing icon rather than keeping both", () => {
+    const repo = fakeRepo(sampleAccounts);
+    setAccountIcon(repo, 1, { mimeType: "image/png", base64Data: tinyPng });
+    setAccountIcon(repo, 1, { mimeType: "image/gif", base64Data: tinyPng });
+    expect(getAccountIcon(repo, 1)?.mimeType).toBe("image/gif");
+  });
+
+  it("leaves other accounts' icons alone", () => {
+    const repo = fakeRepo(sampleAccounts);
+    setAccountIcon(repo, 1, { mimeType: "image/png", base64Data: tinyPng });
+    setAccountIcon(repo, 2, { mimeType: "image/gif", base64Data: tinyPng });
+    clearAccountIcon(repo, 1);
+    expect(getAccountIcon(repo, 2)?.mimeType).toBe("image/gif");
+  });
+
+  it("returns undefined for an account that never had one", () => {
+    expect(getAccountIcon(fakeRepo(sampleAccounts), 2)).toBeUndefined();
+  });
+
+  it("rejects an upload for an account that doesn't exist", () => {
+    const repo = fakeRepo(sampleAccounts);
+    expect(() => setAccountIcon(repo, 999, { mimeType: "image/png", base64Data: tinyPng })).toThrow(
+      /no investment account/i,
+    );
+    expect(() => clearAccountIcon(repo, 999)).toThrow(/no investment account/i);
+  });
+
+  it("rejects an SVG, which could carry script and would be served from our origin", () => {
+    const repo = fakeRepo(sampleAccounts);
+    expect(() =>
+      setAccountIcon(repo, 1, { mimeType: "image/svg+xml" as never, base64Data: tinyPng }),
+    ).toThrow();
+    expect(getAccountIcon(repo, 1)).toBeUndefined();
+  });
+
+  it("rejects an icon over the 128 KB cap", () => {
+    const repo = fakeRepo(sampleAccounts);
+    const tooBig = Buffer.alloc(200 * 1024, 1).toString("base64");
+    expect(() => setAccountIcon(repo, 1, { mimeType: "image/png", base64Data: tooBig })).toThrow(
+      /too large/i,
+    );
   });
 });
 

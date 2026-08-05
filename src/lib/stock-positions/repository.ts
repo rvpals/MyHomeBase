@@ -2,9 +2,10 @@ import type Database from "better-sqlite3";
 import type { StockPositionRepository } from "./ports";
 import { stockPositionSchema, stockTransactionSchema } from "./schema";
 import type { CreateTransactionInput, UpdateTransactionInput, UpsertPositionInput } from "./schema";
-import type { StockPosition, StockTransaction } from "./types";
+import type { PositionKey, StockPosition, StockTransaction } from "./types";
 
 interface StockPositionRow {
+  account_id: number;
   ticker: string;
   name: string;
   type: string;
@@ -15,6 +16,16 @@ interface StockPositionRow {
   day_high_cents: number;
   day_low_cents: number;
   dividend_rate_cents: number;
+  cost_cents: number;
+  unit_cost_cents: number;
+  unrealized_gain_loss_cents: number;
+  unrealized_gain_loss_pct: number;
+  cusip: string;
+  isin: string;
+  asset_class: string;
+  asset_strategy: string;
+  est_annual_income_cents: number;
+  income_earned_cents: number;
   created_at: string;
   updated_at: string;
 }
@@ -34,6 +45,7 @@ interface StockTransactionRow {
 
 function positionToDomain(row: StockPositionRow): StockPosition {
   return stockPositionSchema.parse({
+    accountId: row.account_id,
     ticker: row.ticker,
     name: row.name,
     type: row.type,
@@ -44,6 +56,16 @@ function positionToDomain(row: StockPositionRow): StockPosition {
     dayHighCents: row.day_high_cents,
     dayLowCents: row.day_low_cents,
     dividendRateCents: row.dividend_rate_cents,
+    costCents: row.cost_cents,
+    unitCostCents: row.unit_cost_cents,
+    unrealizedGainLossCents: row.unrealized_gain_loss_cents,
+    unrealizedGainLossPct: row.unrealized_gain_loss_pct,
+    cusip: row.cusip,
+    isin: row.isin,
+    assetClass: row.asset_class,
+    assetStrategy: row.asset_strategy,
+    estAnnualIncomeCents: row.est_annual_income_cents,
+    incomeEarnedCents: row.income_earned_cents,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
@@ -68,18 +90,31 @@ function transactionToDomain(row: StockTransactionRow): StockTransaction {
 export class SqliteStockPositionRepository implements StockPositionRepository {
   constructor(private db: Database.Database) {}
 
-  listPositions(): StockPosition[] {
-    const rows = this.db
-      .prepare("SELECT * FROM stk_stock_positions ORDER BY ticker ASC")
-      .all() as StockPositionRow[];
+  listPositions(accountId?: number): StockPosition[] {
+    const rows = (
+      accountId === undefined
+        ? this.db.prepare("SELECT * FROM stk_stock_positions ORDER BY ticker ASC").all()
+        : this.db
+            .prepare("SELECT * FROM stk_stock_positions WHERE account_id = ? ORDER BY ticker ASC")
+            .all(accountId)
+    ) as StockPositionRow[];
     return rows.map(positionToDomain);
   }
 
-  getPositionByTicker(ticker: string): StockPosition | undefined {
-    const row = this.db.prepare("SELECT * FROM stk_stock_positions WHERE ticker = ?").get(ticker) as
-      | StockPositionRow
-      | undefined;
+  getPosition(key: PositionKey): StockPosition | undefined {
+    const row = this.db
+      .prepare("SELECT * FROM stk_stock_positions WHERE account_id = ? AND ticker = ?")
+      .get(key.accountId, key.ticker) as StockPositionRow | undefined;
     return row ? positionToDomain(row) : undefined;
+  }
+
+  // Rides idx_stock_positions_ticker — account_id leads the primary key, so a
+  // ticker-only lookup has no usable key prefix without that index.
+  listPositionsByTicker(ticker: string): StockPosition[] {
+    const rows = this.db
+      .prepare("SELECT * FROM stk_stock_positions WHERE ticker = ? ORDER BY account_id ASC")
+      .all(ticker) as StockPositionRow[];
+    return rows.map(positionToDomain);
   }
 
   // valueCents is computed by the use-case (currentPriceCents * quantity) and
@@ -88,12 +123,18 @@ export class SqliteStockPositionRepository implements StockPositionRepository {
     const row = this.db
       .prepare(
         `INSERT INTO stk_stock_positions
-           (ticker, name, type, current_price_cents, quantity, day_gain_loss_cents,
-            value_cents, day_high_cents, day_low_cents, dividend_rate_cents)
+           (account_id, ticker, name, type, current_price_cents, quantity, day_gain_loss_cents,
+            value_cents, day_high_cents, day_low_cents, dividend_rate_cents,
+            cost_cents, unit_cost_cents, unrealized_gain_loss_cents, unrealized_gain_loss_pct,
+            cusip, isin, asset_class, asset_strategy,
+            est_annual_income_cents, income_earned_cents)
          VALUES
-           (@ticker, @name, @type, @currentPriceCents, @quantity, @dayGainLossCents,
-            @valueCents, @dayHighCents, @dayLowCents, @dividendRateCents)
-         ON CONFLICT (ticker) DO UPDATE SET
+           (@accountId, @ticker, @name, @type, @currentPriceCents, @quantity, @dayGainLossCents,
+            @valueCents, @dayHighCents, @dayLowCents, @dividendRateCents,
+            @costCents, @unitCostCents, @unrealizedGainLossCents, @unrealizedGainLossPct,
+            @cusip, @isin, @assetClass, @assetStrategy,
+            @estAnnualIncomeCents, @incomeEarnedCents)
+         ON CONFLICT (account_id, ticker) DO UPDATE SET
            name = excluded.name,
            type = excluded.type,
            current_price_cents = excluded.current_price_cents,
@@ -102,15 +143,27 @@ export class SqliteStockPositionRepository implements StockPositionRepository {
            value_cents = excluded.value_cents,
            day_high_cents = excluded.day_high_cents,
            day_low_cents = excluded.day_low_cents,
-           dividend_rate_cents = excluded.dividend_rate_cents
+           dividend_rate_cents = excluded.dividend_rate_cents,
+           cost_cents = excluded.cost_cents,
+           unit_cost_cents = excluded.unit_cost_cents,
+           unrealized_gain_loss_cents = excluded.unrealized_gain_loss_cents,
+           unrealized_gain_loss_pct = excluded.unrealized_gain_loss_pct,
+           cusip = excluded.cusip,
+           isin = excluded.isin,
+           asset_class = excluded.asset_class,
+           asset_strategy = excluded.asset_strategy,
+           est_annual_income_cents = excluded.est_annual_income_cents,
+           income_earned_cents = excluded.income_earned_cents
          RETURNING *`,
       )
       .get({ ...input, valueCents }) as StockPositionRow;
     return positionToDomain(row);
   }
 
-  deletePosition(ticker: string): void {
-    this.db.prepare("DELETE FROM stk_stock_positions WHERE ticker = ?").run(ticker);
+  deletePosition(key: PositionKey): void {
+    this.db
+      .prepare("DELETE FROM stk_stock_positions WHERE account_id = ? AND ticker = ?")
+      .run(key.accountId, key.ticker);
   }
 
   listTransactions(ticker?: string): StockTransaction[] {

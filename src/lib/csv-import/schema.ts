@@ -14,6 +14,7 @@ export const columnMappingSchema = z.record(z.string(), z.string());
 export const fieldOptionsSchema = z.object({
   delimiter: z.string().optional(),
   dateFormat: z.string().optional(),
+  constantValue: z.string().optional(),
 });
 
 // Per-column options, keyed by the same column index as columnMappingSchema.

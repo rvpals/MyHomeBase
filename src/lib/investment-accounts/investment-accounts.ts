@@ -1,7 +1,18 @@
-import { type ColumnMapping, mapRow, parseCsv, parseNumeric, parseDateToIso, summarizeImportResults } from "@/lib/csv-import";
-import type { ImportRowResult, ImportSummary } from "@/lib/csv-import";
+import {
+  type ColumnMapping,
+  constantValuesByField,
+  mapRow,
+  parseCsv,
+  parseNumeric,
+  parseDateToIso,
+  selectImportRows,
+  summarizeImportResults,
+} from "@/lib/csv-import";
+import type { FieldOptionsMap, ImportRowResult, ImportSummary } from "@/lib/csv-import";
+import { decodeImageUpload, type ImageUploadInput } from "@/lib/shared/image-upload";
 import type { InvestmentAccountRepository } from "./ports";
 import {
+  MAX_ACCOUNT_ICON_BYTES,
   createInvestmentAccountSchema,
   createPerformanceRecordSchema,
   updateInvestmentAccountSchema,
@@ -13,7 +24,7 @@ import type {
   UpdateInvestmentAccountInput,
   UpdatePerformanceRecordInput,
 } from "./schema";
-import type { InvestmentAccount, PerformanceRecord } from "./types";
+import type { AccountIcon, InvestmentAccount, PerformanceRecord } from "./types";
 
 export function listAccounts(repo: InvestmentAccountRepository): InvestmentAccount[] {
   return repo.listAccounts();
@@ -78,9 +89,48 @@ export function deletePerformanceRecord(repo: InvestmentAccountRepository, id: n
   repo.deletePerformanceRecord(id);
 }
 
+/**
+ * Stores the icon shown beside an account. The account must already exist —
+ * creating one as a side effect of an upload would let a stale id add an account
+ * nobody asked for.
+ */
+export function setAccountIcon(
+  repo: InvestmentAccountRepository,
+  id: number,
+  input: ImageUploadInput,
+): void {
+  if (!repo.getAccountById(id)) throw new Error(`No investment account with id ${id}.`);
+  repo.setAccountIcon(id, decodeImageUpload(input, MAX_ACCOUNT_ICON_BYTES));
+}
+
+/** Removes an account's icon, leaving the account itself untouched. */
+export function clearAccountIcon(repo: InvestmentAccountRepository, id: number): void {
+  if (!repo.getAccountById(id)) throw new Error(`No investment account with id ${id}.`);
+  repo.setAccountIcon(id, undefined);
+}
+
+/** Used only by the icon-serving route — never by anything rendering a list. */
+export function getAccountIcon(
+  repo: InvestmentAccountRepository,
+  id: number,
+): AccountIcon | undefined {
+  return repo.getAccountIcon(id);
+}
+
+/** The fields an Account Performance CSV column can be mapped to. */
+export const PERFORMANCE_IMPORT_FIELDS: readonly { value: string; label: string }[] = [
+  { value: "date", label: "Date" },
+  { value: "accountName", label: "Account name" },
+  { value: "accountId", label: "Account ID" },
+  { value: "totalValue", label: "Total value ($)" },
+  { value: "note", label: "Note" },
+];
+
 /** Distinct, trimmed account-name values from a CSV's mapped "accountName" column, sorted. */
 export function extractCsvAccountNames(fileText: string, columnMapping: ColumnMapping): string[] {
-  const accountNameColumn = Object.entries(columnMapping).find(([, field]) => field === "accountName")?.[0];
+  const accountNameColumn = Object.entries(columnMapping).find(
+    ([, field]) => field === "accountName",
+  )?.[0];
   if (accountNameColumn === undefined) return [];
 
   const { rows } = parseCsv(fileText);
@@ -104,49 +154,58 @@ export function importPerformanceFromCsv(
   fileText: string,
   columnMapping: ColumnMapping,
   accountNameMapping: Record<string, number>,
+  fieldOptions: FieldOptionsMap = {},
+  excludedRowIndexes: readonly number[] = [],
 ): ImportSummary {
   const { rows } = parseCsv(fileText);
   const accounts = repo.listAccounts();
+  // Fixed values override whatever the mapped cell said, so they're spread last.
+  const constants = constantValuesByField(columnMapping, fieldOptions);
 
-  const results: ImportRowResult[] = rows.map((row, index) => {
-    const rowNumber = index + 1;
-    const record = mapRow(row, columnMapping);
+  const results: ImportRowResult[] = selectImportRows(rows, excludedRowIndexes).map(
+    ({ row, rowNumber }) => {
+      const record = { ...mapRow(row, columnMapping), ...constants };
 
-    let accountId: number | undefined;
-    const rawAccountId = parseNumeric(record.accountId);
-    if (rawAccountId > 0) {
-      accountId = rawAccountId;
-    } else if (record.accountName?.trim()) {
-      const csvName = record.accountName.trim();
-      accountId =
-        accountNameMapping[csvName] ??
-        accounts.find((account) => account.name.toLowerCase() === csvName.toLowerCase())?.id;
-      if (accountId === undefined) {
-        return { rowNumber, status: "skipped", reason: `No matching account for "${csvName}"` };
+      let accountId: number | undefined;
+      const rawAccountId = parseNumeric(record.accountId);
+      if (rawAccountId > 0) {
+        accountId = rawAccountId;
+      } else if (record.accountName?.trim()) {
+        const csvName = record.accountName.trim();
+        accountId =
+          accountNameMapping[csvName] ??
+          accounts.find((account) => account.name.toLowerCase() === csvName.toLowerCase())?.id;
+        if (accountId === undefined) {
+          return { rowNumber, status: "skipped", reason: `No matching account for "${csvName}"` };
+        }
+      } else {
+        return { rowNumber, status: "skipped", reason: "Missing account" };
       }
-    } else {
-      return { rowNumber, status: "skipped", reason: "Missing account" };
-    }
 
-    if (!repo.getAccountById(accountId)) {
-      return { rowNumber, status: "skipped", reason: `Account ${accountId} not found` };
-    }
+      if (!repo.getAccountById(accountId)) {
+        return { rowNumber, status: "skipped", reason: `Account ${accountId} not found` };
+      }
 
-    try {
-      const validated = createPerformanceRecordSchema.parse({
-        accountId,
-        totalValueCents: Math.round(parseNumeric(record.totalValue) * 100),
-        recordDate: parseDateToIso(record.date),
-        note: record.note ?? "",
-      });
-      const { inserted } = repo.addPerformanceRecordIfNotExists(validated);
-      return inserted
-        ? { rowNumber, status: "imported" }
-        : { rowNumber, status: "skipped", reason: "Duplicate of an existing performance record" };
-    } catch (error) {
-      return { rowNumber, status: "skipped", reason: error instanceof Error ? error.message : "Invalid row" };
-    }
-  });
+      try {
+        const validated = createPerformanceRecordSchema.parse({
+          accountId,
+          totalValueCents: Math.round(parseNumeric(record.totalValue) * 100),
+          recordDate: parseDateToIso(record.date),
+          note: record.note ?? "",
+        });
+        const { inserted } = repo.addPerformanceRecordIfNotExists(validated);
+        return inserted
+          ? { rowNumber, status: "imported" }
+          : { rowNumber, status: "skipped", reason: "Duplicate of an existing performance record" };
+      } catch (error) {
+        return {
+          rowNumber,
+          status: "skipped",
+          reason: error instanceof Error ? error.message : "Invalid row",
+        };
+      }
+    },
+  );
 
   return summarizeImportResults(results);
 }

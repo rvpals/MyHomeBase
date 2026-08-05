@@ -6,7 +6,9 @@ import {
   createTransaction,
   deletePosition,
   deleteTransaction,
+  listPositions,
   refreshAllPositions,
+  refreshPosition,
   updateTransaction,
   upsertPosition,
 } from "@/lib/stock-positions";
@@ -21,7 +23,10 @@ export interface ActionResult {
   error?: string;
 }
 
+/** Every numeric field is the raw string from its input; the action parses them. */
 export interface PositionFormInput {
+  /** 0 = Unassigned. */
+  accountId: number;
   ticker: string;
   name: string;
   type: PositionType;
@@ -31,6 +36,16 @@ export interface PositionFormInput {
   dayHigh: string;
   dayLow: string;
   dividendRate: string;
+  cost: string;
+  unitCost: string;
+  unrealizedGainLoss: string;
+  unrealizedGainLossPct: string;
+  estAnnualIncome: string;
+  incomeEarned: string;
+  cusip: string;
+  isin: string;
+  assetClass: string;
+  assetStrategy: string;
 }
 
 export interface TransactionFormInput {
@@ -49,6 +64,7 @@ function toErrorResult(error: unknown, fallback: string): ActionResult {
 export async function upsertPositionAction(input: PositionFormInput): Promise<ActionResult> {
   try {
     upsertPosition(deps.stockPositionRepo, {
+      accountId: input.accountId,
       ticker: input.ticker,
       name: input.name,
       type: input.type,
@@ -58,6 +74,16 @@ export async function upsertPositionAction(input: PositionFormInput): Promise<Ac
       dayHighCents: dollarsToCents(input.dayHigh || "0"),
       dayLowCents: dollarsToCents(input.dayLow || "0"),
       dividendRateCents: dollarsToCents(input.dividendRate || "0"),
+      costCents: dollarsToCents(input.cost || "0"),
+      unitCostCents: dollarsToCents(input.unitCost || "0"),
+      unrealizedGainLossCents: dollarsToCents(input.unrealizedGainLoss || "0"),
+      unrealizedGainLossPct: Number(input.unrealizedGainLossPct || "0"),
+      estAnnualIncomeCents: dollarsToCents(input.estAnnualIncome || "0"),
+      incomeEarnedCents: dollarsToCents(input.incomeEarned || "0"),
+      cusip: input.cusip,
+      isin: input.isin,
+      assetClass: input.assetClass,
+      assetStrategy: input.assetStrategy,
     });
   } catch (error) {
     return toErrorResult(error, "Failed to save position.");
@@ -66,9 +92,9 @@ export async function upsertPositionAction(input: PositionFormInput): Promise<Ac
   return { ok: true };
 }
 
-export async function deletePositionAction(ticker: string): Promise<ActionResult> {
+export async function deletePositionAction(accountId: number, ticker: string): Promise<ActionResult> {
   try {
-    deletePosition(deps.stockPositionRepo, ticker);
+    deletePosition(deps.stockPositionRepo, { accountId, ticker });
   } catch (error) {
     return toErrorResult(error, "Failed to delete position.");
   }
@@ -142,6 +168,62 @@ export async function fetchQuoteAction(ticker: string): Promise<QuoteResult> {
 export interface RefreshAllResult extends ActionResult {
   refreshedCount?: number;
   failed?: { ticker: string; error: string }[];
+}
+
+export interface RefreshTarget {
+  accountId: number;
+  ticker: string;
+  name: string;
+}
+
+/**
+ * The positions a progressive refresh will walk, in order. The dashboard reads
+ * this first so it can show "3 of 34" and name each ticker before fetching it —
+ * a single all-in-one action can't report progress, because a server action
+ * returns once.
+ */
+export async function listRefreshTargetsAction(): Promise<RefreshTarget[]> {
+  return listPositions(deps.stockPositionRepo).map((position) => ({
+    accountId: position.accountId,
+    ticker: position.ticker,
+    name: position.name,
+  }));
+}
+
+export interface RefreshOneResult extends ActionResult {
+  ticker: string;
+  /** Formatted price, e.g. "220.15". Absent when the fetch failed. */
+  price?: string;
+  name?: string;
+}
+
+/**
+ * Refreshes one position. Never throws: a delisted or renamed ticker comes back as
+ * `ok: false` so the caller's loop can note it and carry on, the same tolerance
+ * `refreshAllPositions` applies internally.
+ */
+export async function refreshOnePositionAction(
+  accountId: number,
+  ticker: string,
+): Promise<RefreshOneResult> {
+  try {
+    const position = await refreshPosition(deps.stockPositionRepo, deps.marketDataClient, {
+      accountId,
+      ticker,
+    });
+    return {
+      ok: true,
+      ticker,
+      price: centsToDollars(position.currentPriceCents).toFixed(2),
+      name: position.name,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      ticker,
+      error: error instanceof Error ? error.message : "Failed to refresh.",
+    };
+  }
 }
 
 export async function refreshAllPositionsAction(): Promise<RefreshAllResult> {

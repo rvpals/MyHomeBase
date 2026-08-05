@@ -24,7 +24,17 @@ export type { CsvImportMappingRepository } from "./ports";
 export { SqliteCsvImportMappingRepository } from "./repository";
 export { parseCsvLine, parseNumeric, parseCsv, autoMapHeaders, mapRow, parseDateToIso } from "./csv-parser";
 export { parseCsvRecords } from "@/lib/shared/csv";
-export { applyMapping, splitDelimited, parseDateWithFormat, sampleRows, type AppliedCell } from "./mapping";
+export {
+  applyMapping,
+  constantValuesByField,
+  selectImportRows,
+  type IndexedCsvRow,
+  restrictMapping,
+  splitDelimited,
+  parseDateWithFormat,
+  sampleRows,
+  type AppliedCell,
+} from "./mapping";
 export {
   previewCsv,
   getCurrentMapping,

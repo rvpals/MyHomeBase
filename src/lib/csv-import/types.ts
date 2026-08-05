@@ -15,6 +15,12 @@ export interface FieldOptions {
   delimiter?: string;
   /** For date fields: the source date format, e.g. "M/D/YY" or "YYYY-MM-DD". */
   dateFormat?: string;
+  /**
+   * Ignore this column's cells and use this literal for every row instead — e.g.
+   * mapping a column to Type and fixing the value at "ETF" when the export has no
+   * column that says so. Blank or absent means "read the cells" as normal.
+   */
+  constantValue?: string;
 }
 
 /** CSV column index (as a string key) -> options for that column. */
@@ -27,6 +33,12 @@ export interface CsvPreview {
   previewRows: string[][];
   /** Up to 10 rows chosen at random, to help a user recognize the column layout. */
   sampleRows: string[][];
+  /**
+   * Every data row, in file order. Needed by an importer that lets the user drop
+   * individual rows before importing — you can't exclude a row you can't see.
+   * Index here is the row's identity: it's what `excludedRowIndexes` refers to.
+   */
+  rows: string[][];
   autoMapping: ColumnMapping;
 }
 

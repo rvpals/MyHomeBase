@@ -2,8 +2,6 @@ import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { listEntries as listCsvAnalyticsEntries } from "@/lib/csv-analytics";
-import { listAccounts, listPerformanceRecords } from "@/lib/investment-accounts";
-import { listModuleSettingsFor } from "@/lib/module-settings";
 import { listNamedMappings } from "@/lib/csv-import";
 import {
   listCategories,
@@ -12,23 +10,16 @@ import {
   listTodayInHistory,
   resolveJournalPreferences,
 } from "@/lib/journal";
+import { listModuleSettingsFor } from "@/lib/module-settings";
 import { getModuleBySlug, getModuleCode } from "@/lib/modules";
-import { resolveThresholds } from "@/lib/next-day-actions";
-import { getCorrelationCache, getSharpeCache, listVolatilityCache } from "@/lib/stock-analytics";
-import { listPositions, listTransactions } from "@/lib/stock-positions";
-import { listItems, listWatchLists } from "@/lib/stock-watchlist";
+import { todayIsoLocal } from "@/lib/shared/date";
 import { isAdmin, userHasModuleAccess } from "@/lib/user";
 import { deps } from "@/lib/wiring";
 import { PAGE_CONTAINER } from "../../page-container";
 import { CsvAnalyticsView } from "./csv-analytics-view";
-import { CsvImportView } from "./csv-import-view";
 import { ExpenseSection } from "./expense-section";
 import { JournalView } from "./journal-view";
-import { NextDayActionsView } from "./next-day-actions-view";
-import { StockAccountsView, type AccountEntry } from "./stock-accounts-view";
-import { StockAnalyticsView } from "./stock-analytics-view";
-import { StockPositionsView } from "./stock-positions-view";
-import { StockWatchlistView, type WatchListEntry } from "./stock-watchlist-view";
+import { StockSection } from "./stock-section";
 
 const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
 const CSV_ANALYSIS_MODULE_SLUG = "csv-analysis";
@@ -36,52 +27,11 @@ const JOURNAL_MODULE_SLUG = "journal";
 const EXPENSE_MODULE_SLUG = "expense";
 const RECENT_JOURNAL_ENTRY_LIMIT = 25;
 
-// Today's date in the server's local timezone as YYYY-MM-DD. Deliberately not
-// `toISOString()`, which would shift to UTC and pick the wrong day for part of
-// the evening in a negative-offset timezone.
-function todayIsoLocal(): string {
-  const now = new Date();
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-}
-function StockEtfsModuleBody() {
-  const accountEntries: AccountEntry[] = listAccounts(deps.investmentAccountRepo).map((account) => ({
-    account,
-    history: listPerformanceRecords(deps.investmentAccountRepo, account.id),
-  }));
-
-  const watchListEntries: WatchListEntry[] = listWatchLists(deps.stockWatchListRepo).map((list) => ({
-    list,
-    items: listItems(deps.stockWatchListRepo, list.id),
-  }));
-
-  const stockEtfsModule = getModuleBySlug(deps.moduleRepo, STOCK_ETFS_MODULE_SLUG);
-  const thresholds = resolveThresholds(
-    stockEtfsModule ? listModuleSettingsFor(deps.moduleSettingsRepo, stockEtfsModule.id) : [],
-  );
-
-  return (
-    <div className="flex flex-col gap-10">
-      <StockPositionsView
-        positions={listPositions(deps.stockPositionRepo)}
-        transactions={listTransactions(deps.stockPositionRepo)}
-      />
-      <StockWatchlistView entries={watchListEntries} />
-      <NextDayActionsView initialThresholds={thresholds} />
-      <StockAnalyticsView
-        volatilityResults={listVolatilityCache(deps.stockAnalyticsRepo)}
-        correlationResult={getCorrelationCache(deps.stockAnalyticsRepo)}
-        sharpeResult={getSharpeCache(deps.stockAnalyticsRepo)}
-      />
-      <StockAccountsView entries={accountEntries} />
-      <CsvImportView />
-    </div>
-  );
-}
-
 function ModuleBody({ slug, isCurrentUserAdmin }: { slug: string; isCurrentUserAdmin: boolean }) {
+  // Stocks & ETFs and Expense both use a tree nav: the module root is their
+  // dashboard, and every other section is its own route under [slug]/[section].
   if (slug === STOCK_ETFS_MODULE_SLUG) {
-    return <StockEtfsModuleBody />;
+    return <StockSection section="main" />;
   }
 
   if (slug === CSV_ANALYSIS_MODULE_SLUG) {
@@ -106,8 +56,6 @@ function ModuleBody({ slug, isCurrentUserAdmin }: { slug: string; isCurrentUserA
     );
   }
 
-  // The module root is the dashboard; every other section is its own route
-  // under [slug]/[section].
   if (slug === EXPENSE_MODULE_SLUG) {
     return <ExpenseSection section="main" />;
   }

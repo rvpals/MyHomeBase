@@ -24,6 +24,7 @@ export function previewCsv(fileText: string): CsvPreview {
     totalRows: rows.length,
     previewRows: rows.slice(0, PREVIEW_ROW_COUNT),
     sampleRows: sampleRows(rows, SAMPLE_ROW_COUNT),
+    rows,
     autoMapping: autoMapHeaders(headers),
   };
 }

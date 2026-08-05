@@ -3,10 +3,11 @@ import type { MarketDataClient, PricePoint, Quote } from "@/lib/market-data";
 import type { ModuleSetting } from "@/lib/module-settings";
 import type { StockPositionRepository } from "@/lib/stock-positions";
 import type { StockPosition, StockTransaction } from "@/lib/stock-positions";
-import { resolveThresholds, runScan } from "./next-day-actions";
+import { resolveThresholds, runScan, thresholdsToEntries } from "./next-day-actions";
 
 function makePosition(overrides: Partial<StockPosition>): StockPosition {
   return {
+    accountId: 0,
     ticker: "AAPL",
     name: "Apple Inc.",
     type: "Stock",
@@ -17,6 +18,16 @@ function makePosition(overrides: Partial<StockPosition>): StockPosition {
     dayHighCents: 0,
     dayLowCents: 0,
     dividendRateCents: 0,
+    costCents: 0,
+    unitCostCents: 0,
+    unrealizedGainLossCents: 0,
+    unrealizedGainLossPct: 0,
+    cusip: "",
+    isin: "",
+    assetClass: "",
+    assetStrategy: "",
+    estAnnualIncomeCents: 0,
+    incomeEarnedCents: 0,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
@@ -41,8 +52,11 @@ function makeTransaction(overrides: Partial<StockTransaction>): StockTransaction
 
 function fakeRepo(positions: StockPosition[], transactionsByTicker: Record<string, StockTransaction[]> = {}): StockPositionRepository {
   return {
-    listPositions: () => positions,
-    getPositionByTicker: (ticker) => positions.find((p) => p.ticker === ticker),
+    listPositions: (accountId) =>
+      accountId === undefined ? positions : positions.filter((p) => p.accountId === accountId),
+    getPosition: ({ accountId, ticker }) =>
+      positions.find((p) => p.accountId === accountId && p.ticker === ticker),
+    listPositionsByTicker: (ticker) => positions.filter((p) => p.ticker === ticker),
     upsertPosition: () => {
       throw new Error("not used in this test");
     },
@@ -154,5 +168,32 @@ describe("resolveThresholds", () => {
       stockConcentrationCapPct: 10,
       etfConcentrationCapPct: 25,
     });
+  });
+});
+
+describe("thresholdsToEntries", () => {
+  const valid = { profitTargetPct: 15, stockConcentrationCapPct: 8, etfConcentrationCapPct: 30 };
+
+  it("writes the same setting keys resolveThresholds reads", () => {
+    expect(thresholdsToEntries(valid)).toEqual([
+      { key: "profit_target_pct", value: "15" },
+      { key: "stock_concentration_cap", value: "8" },
+      { key: "etf_concentration_cap", value: "30" },
+    ]);
+  });
+
+  it("round-trips through resolveThresholds", () => {
+    const settings: ModuleSetting[] = thresholdsToEntries(valid).map((entry, index) => ({
+      id: index + 1,
+      moduleId: 3,
+      ...entry,
+    }));
+    expect(resolveThresholds(settings)).toEqual(valid);
+  });
+
+  it("rejects a zero, negative, or over-100 percentage", () => {
+    expect(() => thresholdsToEntries({ ...valid, profitTargetPct: 0 })).toThrow();
+    expect(() => thresholdsToEntries({ ...valid, stockConcentrationCapPct: -5 })).toThrow();
+    expect(() => thresholdsToEntries({ ...valid, etfConcentrationCapPct: 101 })).toThrow();
   });
 });

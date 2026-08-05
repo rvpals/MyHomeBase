@@ -1,5 +1,234 @@
 # Change History
 
+## 2026-08-05 00:05 — Stocks & ETFs: section tree, cost basis, daily snapshots, per-ticker news, rebuilt CSV import
+
+The largest change to this module since it was ported. Three migrations, and the
+module's single scrolling page becomes eight routed sections.
+
+**Migrations in this release — 0035, 0036 and 0037 must be applied before the app
+is served**, or the affected screens fail with "no such column".
+
+### Migration 0035 — cost basis, identifiers, and an owning account on positions
+
+`stk_stock_positions` is rebuilt (not `ALTER`ed): its primary key moves from
+`ticker` to **`(account_id, ticker)`**, and ten columns are added.
+
+- **Why the key changed.** `ticker` alone meant one row per symbol for the whole
+  app, so importing a second broker's export silently overwrote the first instead
+  of adding to it. Now "75 MSFT at Chase" and "69 MSFT at Fidelity" are two rows
+  that sum. `account_id = 0` is a real, supported value meaning **Unassigned** —
+  which is the state the production DB was in (4 positions, 0 accounts), so nothing
+  had to be invented for existing rows.
+- **New columns:** `cost_cents`, `unit_cost_cents`,
+  `unrealized_gain_loss_cents`, `unrealized_gain_loss_pct`, `cusip`, `isin`,
+  `asset_class`, `asset_strategy`, `est_annual_income_cents`,
+  `income_earned_cents`.
+- The module previously had **no cost-basis field at all**, so it could only ever
+  show a day's change and never a total return. That was the gap this started from.
+- `unrealized_gain_loss_pct` is stored rather than derived: a broker's own figure
+  accounts for adjusted basis (wash sales, corporate actions) that
+  `unrealized / cost` on stored cents can't reproduce.
+- `asset_strategy` ("US Large Cap") is deliberately **not** folded into `type`
+  (Stock/ETF/Bond). `type` drives the allocation split; strategy is the broker's
+  cap-size bucket. Different questions, different columns.
+- A rebuild forced the trigger to be dropped *before* the table and recreated
+  against the compound key, and added `idx_stock_positions_ticker` — with
+  `account_id` leading the primary key, "who holds NVDA" no longer has a usable key
+  prefix.
+
+### Migration 0036 — daily portfolio snapshots
+
+New `stk_daily_snapshots`, one row per calendar day, `snapshot_date` as the primary
+key so a capture **upserts**: pressing Refresh All twice in a day recalculates that
+day rather than appending.
+
+- Stores **both value and gain/loss**, per bucket (stock / ETF / other / total),
+  because neither derives correctly from the other. Differencing two days' values
+  isn't performance — pay $10k in on Wednesday and the diff reads as a $10k gain.
+  Day gain/loss (price move × shares held that day) excludes contributions, but
+  can't be reconstructed from stored values for that same reason.
+- `other_*` is stored so the parts sum to the total; the portfolio holds a
+  money-market sweep line, and stock + ETF alone wouldn't add up.
+- **No back-fill and no gap-filling.** History starts at the first Refresh All —
+  the app stores each position's *current* price, not a per-day series for whatever
+  was held back then — and a day with no capture has no row. The period rollups
+  report the day count they actually had rather than inventing a flat day.
+
+### Migration 0037 — an icon per investment account
+
+`stk_investment_accounts` gains `icon_image` (BLOB) + `icon_image_mime_type`,
+following `sys_users.avatar` (0011), `exp_creditcard_accounts.card_image` (0031)
+and `exp_categories.icon_image` (0034).
+
+- Bytes are served by `/api/stocks/accounts/[id]/icon`, never inlined as a base64
+  data URL. **`listAccounts` / `getAccountById` were switched from `SELECT *` to a
+  named column list** in the same change — otherwise the icon bytes would ride
+  along in every account list, positions page and CSV-import render.
+- 128 KB cap, PNG/JPEG/WebP/GIF only. **SVG is excluded**: it can carry script and
+  these bytes are served from the app's own origin.
+
+### The module is now eight routed sections
+
+`TreeNav` down the left, exactly like Expense — each section a real route, so it's
+bookmarkable and highlights on `pathname`:
+
+Dashboard · Positions · Transactions · Account Performance · Actionables ·
+Chart & Analysis · CSV Import · Configuration
+
+- New `stock-sections.ts` (a **plain** module, not `"use client"`, so server
+  components read the labels as real values rather than client-reference proxies),
+  `stock-nav.tsx`, `stock-section.tsx`, and `stock-instructions.tsx` with per-section
+  guidance.
+- `[section]/page.tsx` was hardcoded to Expense; it now dispatches per module, and
+  each validates **its own** section names so an Expense section can't be reached
+  under the Stocks slug.
+- Data is loaded **per section**, so opening the dashboard no longer reads every
+  watch list and analytics cache the way the old single page did.
+- **Actionables** holds the watch lists and the next-day scan. **Configuration** got
+  real content: the three scan thresholds are now editable in-module, writing the
+  same module settings Administration → Module Configuration writes.
+
+### Dashboard: Portfolio Summary, Daily Glance, and Refresh All
+
+- **Refresh All** walks positions one at a time *from the client*, showing a live
+  line per ticker ("NVDA — today's price is $220.15") and a progress bar. A single
+  server action returns once and so can't report progress; the upstream quote fetch
+  dominates either way, so this costs nothing but buys the running commentary. A
+  ticker that can't be priced goes red and the loop continues. When it finishes it
+  captures the day's snapshot.
+- **Portfolio Summary** card — total value, today's move, the value-over-time line
+  chart (total / stock / ETF), and the full snapshot history as a `DataGrid`. Its
+  Day G/L column footer sums over the *filtered* set, so filtering the date column
+  to one month turns the footer into that month's P&L.
+- **Daily Glance** card — Stock and ETF gain/loss with percentages, then Top 5
+  gainers and losers with stocks and ETFs ranked **together** and a ticker held in
+  two accounts counted once. A **Measure by Total value / Per share** selector
+  switches both lists: a thousand shares up a penny beats two shares up $200 on
+  total value and loses badly per share. The percentage is identical under both.
+- **Week / month / year to date** tiles **sum each day's move** rather than
+  differencing endpoint values, for the contribution reason above. Each shows its
+  day count, so a day you never captured is visible rather than silently
+  under-reported.
+- Headline numbers come from the live positions, not the newest snapshot, so the
+  card is right even before today's Refresh All.
+- Numbers that aren't known read **"—", not 0** — a position with no imported cost
+  basis has a value but no return, and the dashboard says so rather than printing a
+  fake 0.00%.
+
+### Per-ticker news
+
+New `src/lib/ticker-news/`, over Yahoo Finance's unauthenticated search endpoint
+(same host as the existing quote client, no API key).
+
+- A **News** button on each mover row fetches the story most likely to explain the
+  move. Fetched on click, not prefetched: prefetching meant ten upstream calls per
+  page load for stories nobody opened.
+- Providers tag stories loosely — a piece headlined "AMD Stock Tumbles" comes back
+  tagged `["AMD", "SPCX", "NVDA"]`, and served raw that becomes NVDA's explanation
+  for the day. `pickTopStory` prefers today's stories, then ones the ticker *leads*
+  or is named in the headline, then newest. When the ticker is only a passing
+  mention, or nothing was published today, **the UI says so** instead of implying
+  the headline explains this morning.
+- Word-boundary matching, so Cloudflare (`NET`) isn't matched by "NETWORK".
+- Tickers are validated against `^[A-Za-z0-9.\-^]+$` before reaching the provider
+  URL.
+
+### CSV import, rebuilt
+
+One screen with a type selector (Positions / Transactions / Account Performance)
+replacing three stacked panels. `ImportType` already had all three values, so no
+enum change was needed.
+
+- The mapping table is now the shared **`CsvMappingTable`** component; the Expense
+  statement importer was refactored onto it.
+- **Every row is listed, numbered and in file order** — not the 10 random samples
+  the preview showed before — and each row has a **×** to leave it out. Removed
+  rows stay visible, dimmed and struck through, so the numbering keeps matching the
+  file. `CsvPreview` gained `rows` for this.
+- **Per-row Type dropdown** on a positions import, in an importer-owned column
+  before the file's own. It starts on what the file implies and you correct the
+  rows that are wrong — the answer for an export that mixes ETFs and stocks without
+  saying which is which. **Set all…** in its header stamps every row at once.
+- **`= fixed value`** box under each mapped column: type a literal and every row
+  gets it, ignoring the cells. Map any spare column to Type, type `ETF`, and the
+  file imports as ETFs. Saved with the named mapping, so next quarter's export is
+  one dropdown away.
+- Precedence is three deep, least to most specific: **cell → column-wide fixed
+  value → per-row override**.
+- **Save-as-new *and* update-selected** (the old stock importer could only create).
+- The **date-format box now actually works** — `importTransactionsFromCsv` honours
+  it, so `03/04/2026` is read strictly rather than guessed. It was decorative
+  before.
+- New `restrictMapping`: auto-mapping guesses from header text without knowing the
+  import type, so a positions file's "Value" column came back aimed at a
+  performance-only field. Now filtered per type.
+- Chase header aliases added — the sample export auto-maps 14 columns on drop.
+- **Excluded rows are dropped, not reported as skips.** A skip is something that
+  surprised the importer; a row you removed deliberately isn't. The count is
+  reported separately. The shared `selectImportRows` helper preserves each surviving
+  row's **original** number — filtering and re-indexing would have reported a
+  failure on the file's row 4 as "row 2".
+
+### Refactors this pulled in
+
+- **`src/lib/shared/image-upload.ts`** — `decodeImageUpload` and the mime allowlist
+  were private to `lib/expense`; the account icon made them a second caller.
+  Promoted with tests, and Expense re-exports the old names so its surface is
+  unchanged. The allowlist is a security boundary (no SVG), and two copies were one
+  edit away from drifting. The cap is checked against *decoded* length, not the
+  base64 string, which is ~33% longer.
+- **`src/lib/shared/date.ts`** — `todayIsoLocal` was defined inline in a page file.
+  Now shared with `startOfWeekIso` / `startOfMonthIso` / `startOfYearIso` and 15
+  tests. The one that matters: at 23:30 local, `toISOString()` files an evening
+  snapshot under *tomorrow*.
+- **`POSITION_TYPES` moved into the lib**, derived from `positionTypeSchema.options`
+  rather than hand-written, so a new instrument type can't exist in the schema and
+  be missing from a picker.
+- **`resolvePositionType`** extracted from the importer so the per-row Type dropdown
+  shows what will actually be stored; duplicating the rules in the view would have
+  drifted.
+- `importPositionsFromCsv` takes an **options object** — it was heading for seven
+  positional parameters, and `import(repo, csv, m, 0, {}, [1], {})` told a reader
+  nothing.
+
+### Behaviour worth knowing
+
+- **Refresh All replaces `value_cents`.** It's always `currentPriceCents ×
+  quantity`, recomputed server-side and never accepted from a caller. Also replaced:
+  price, day range, day gain/loss, dividend rate, and `name` when the quote supplies
+  a `shortName`. **Untouched:** quantity, cost basis, unit cost, CUSIP/ISIN, asset
+  class/strategy, income. Anything a quote feed legitimately knows is replaced;
+  anything only you or your broker knows survives.
+- The unrealized gain **is** recomputed against the stored basis on refresh, so a
+  fresh price can't sit next to a stale gain figure.
+- `dividend_rate_cents` is overwritten from the quote, which is often 0 even for a
+  payer. This doesn't affect the dashboard's Annual Income, which prefers the
+  broker's `est_annual_income_cents`.
+- Footnote blocks a broker appends after the data (`FOOTNOTES`, `W,"…wash sale…"`)
+  are dropped by `parseCsv`'s "fewer than half the header's fields" rule. That
+  threshold scales with the header, so it handles a wide export like Chase's 71
+  columns but would not detect footnotes on a narrow file.
+
+### Known issues in this release
+
+- `src/lib/stock-positions/stock-positions.ts` carries more formatting churn than
+  its logic changes warrant: `prettier` was run on it to fix indentation after a
+  scripted edit, and the repo has **no checked-in prettier config**, so it
+  reformatted at the default 80 columns. It was re-run at 100 to match the codebase
+  (siblings run to ~110), and the code is unchanged in behaviour — but the diff is
+  noisy. **The repo should get a `.prettierrc`.**
+- Three pre-existing lint errors remain, all `react-hooks/set-state-in-effect` in
+  `csv-analytics-view.tsx` and `chart-xy.tsx` — untouched by this work, and two
+  fewer than before it.
+- The CSV-import account picker is a native `<select>` and so can't show an account
+  icon; that would mean swapping it for `IconSelect`.
+- News results are not cached, so pressing News twice re-fetches.
+
+Verification: 736 tests pass, typecheck clean. All three migrations were applied to
+a **copy** of the production DB and checked before being run for real — row counts
+preserved, compound key and trigger working, the same ticker coexisting across two
+accounts, `integrity_check` ok.
+
 ## 2026-08-03 23:18 — Full-width layout, floating sidebar, Expense spend stats + auto-import switch
 
 No schema changes in this release — every DB-backed piece rides on existing tables.

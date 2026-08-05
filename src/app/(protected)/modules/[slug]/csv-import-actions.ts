@@ -7,18 +7,48 @@ import {
   getCurrentMapping,
   listNamedMappings,
   previewCsv,
+  restrictMapping,
   saveCurrentMapping,
+  updateNamedMapping,
   type ColumnMapping,
   type CsvPreview,
+  type FieldOptionsMap,
   type ImportSummary,
-  type ImportType,
   type NamedMapping,
 } from "@/lib/csv-import";
-import { extractCsvAccountNames, importPerformanceFromCsv, listAccounts } from "@/lib/investment-accounts";
-import { importPositionsFromCsv, importTransactionsFromCsv } from "@/lib/stock-positions";
+import {
+  extractCsvAccountNames,
+  importPerformanceFromCsv,
+  listAccounts,
+  PERFORMANCE_IMPORT_FIELDS,
+} from "@/lib/investment-accounts";
+import {
+  importPositionsFromCsv,
+  importTransactionsFromCsv,
+  POSITION_IMPORT_FIELDS,
+  TRANSACTION_IMPORT_FIELDS,
+} from "@/lib/stock-positions";
 import { deps } from "@/lib/wiring";
 
 const STOCK_ETFS_MODULE_PATH = "/modules/stock-etfs";
+
+/**
+ * The three import types this module offers — a narrowing of the shared
+ * `ImportType`, which also covers Journal and Expense. Naming them here keeps the
+ * Stocks importer from being handed a Journal mapping.
+ */
+export type StockImportType = "Position" | "Transaction" | "Performance";
+
+/** Which target fields each type's importer actually reads. */
+const FIELDS_BY_TYPE: Record<StockImportType, readonly { value: string }[]> = {
+  Position: POSITION_IMPORT_FIELDS,
+  Transaction: TRANSACTION_IMPORT_FIELDS,
+  Performance: PERFORMANCE_IMPORT_FIELDS,
+};
+
+function allowedFields(importType: StockImportType): string[] {
+  return FIELDS_BY_TYPE[importType].map((field) => field.value);
+}
 
 export interface ActionResult {
   ok: boolean;
@@ -35,11 +65,19 @@ export interface PreviewResult extends ActionResult {
   namedMappings?: NamedMapping[];
 }
 
-export async function previewCsvAction(importType: ImportType, fileText: string): Promise<PreviewResult> {
+export async function previewCsvAction(
+  importType: StockImportType,
+  fileText: string,
+): Promise<PreviewResult> {
   try {
+    const preview = previewCsv(fileText);
+    const allowed = allowedFields(importType);
     return {
       ok: true,
-      preview: previewCsv(fileText),
+      // Auto-mapping guesses from header text without knowing the import type, so a
+      // positions file's "Value" column comes back aimed at a performance-only
+      // field. Drop anything this type's importer wouldn't read.
+      preview: { ...preview, autoMapping: restrictMapping(preview.autoMapping, allowed) },
       currentMapping: getCurrentMapping(deps.csvImportMappingRepo, importType),
       namedMappings: listNamedMappings(deps.csvImportMappingRepo, importType),
     };
@@ -48,15 +86,26 @@ export async function previewCsvAction(importType: ImportType, fileText: string)
   }
 }
 
+/**
+ * Creates a named mapping, or overwrites `mappingId` when one is given. One action
+ * for both so the view's "Save as new" / "Update selected" buttons don't need two
+ * near-identical round trips.
+ */
 export async function saveNamedMappingAction(
+  mappingId: number | undefined,
   name: string,
-  importType: ImportType,
+  importType: StockImportType,
   columnMapping: ColumnMapping,
+  fieldOptions: FieldOptionsMap = {},
 ): Promise<ActionResult> {
   try {
-    createNamedMapping(deps.csvImportMappingRepo, { name, importType, columnMapping });
+    if (mappingId === undefined) {
+      createNamedMapping(deps.csvImportMappingRepo, { name, importType, columnMapping, fieldOptions });
+    } else {
+      updateNamedMapping(deps.csvImportMappingRepo, mappingId, { name, columnMapping, fieldOptions });
+    }
   } catch (error) {
-    return toErrorResult(error, "Failed to save named mapping.");
+    return toErrorResult(error, "Failed to save the mapping.");
   }
   revalidatePath(STOCK_ETFS_MODULE_PATH);
   return { ok: true };
@@ -97,21 +146,51 @@ export interface ExecuteImportResult extends ActionResult {
 }
 
 export async function executeImportAction(
-  importType: ImportType,
+  importType: StockImportType,
   fileText: string,
   columnMapping: ColumnMapping,
+  fieldOptions: FieldOptionsMap = {},
+  /** Which account a Positions import writes into. 0 = Unassigned. Ignored by the other types. */
+  targetAccountId = 0,
   accountNameMapping: Record<string, number> = {},
+  /** Row indexes (0-based, over the file's data rows) the user removed from the grid. */
+  excludedRowIndexes: number[] = [],
+  /**
+   * Values set per row in the grid — `rowIndex -> field -> value`. Only Positions
+   * offers this today (the per-row Type dropdown); the other importers ignore it.
+   */
+  rowValueOverrides: Record<number, Record<string, string>> = {},
 ): Promise<ExecuteImportResult> {
   try {
     let summary: ImportSummary;
     if (importType === "Position") {
-      summary = importPositionsFromCsv(deps.stockPositionRepo, fileText, columnMapping);
+      summary = importPositionsFromCsv(deps.stockPositionRepo, fileText, columnMapping, {
+        accountId: targetAccountId,
+        fieldOptions,
+        excludedRowIndexes,
+        rowValueOverrides,
+      });
     } else if (importType === "Transaction") {
-      summary = importTransactionsFromCsv(deps.stockPositionRepo, fileText, columnMapping);
+      summary = importTransactionsFromCsv(
+        deps.stockPositionRepo,
+        fileText,
+        columnMapping,
+        fieldOptions,
+        excludedRowIndexes,
+      );
     } else {
-      summary = importPerformanceFromCsv(deps.investmentAccountRepo, fileText, columnMapping, accountNameMapping);
+      summary = importPerformanceFromCsv(
+        deps.investmentAccountRepo,
+        fileText,
+        columnMapping,
+        accountNameMapping,
+        fieldOptions,
+        excludedRowIndexes,
+      );
     }
 
+    // Remembered as this type's default mapping, so the next file of the same kind
+    // opens pre-mapped even if it was never saved under a name.
     saveCurrentMapping(deps.csvImportMappingRepo, { importType, columnMapping });
     revalidatePath(STOCK_ETFS_MODULE_PATH);
     return { ok: true, summary };

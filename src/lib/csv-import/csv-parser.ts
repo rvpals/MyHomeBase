@@ -50,6 +50,29 @@ const HEADER_ALIASES: Record<string, string> = {
   "Total Value": "totalValue",
   Value: "totalValue",
   "Market Value": "totalValue",
+
+  // Cost basis / identifiers / classification, as spelled by J.P. Morgan Chase,
+  // Fidelity and Schwab position exports.
+  Cost: "cost",
+  "Cost Basis": "cost",
+  "Total Cost": "cost",
+  "Unit Cost": "unitCost",
+  "Average Cost Basis": "unitCost",
+  "Cost Basis Per Share": "unitCost",
+  "Unrealized G/L Amt.": "unrealizedGainLoss",
+  "Unrealized Gain/Loss": "unrealizedGainLoss",
+  "Total Gain/Loss Dollar": "unrealizedGainLoss",
+  "Unrealized Gain/Loss (%)": "unrealizedGainLossPct",
+  "Total Gain/Loss Percent": "unrealizedGainLossPct",
+  "Today's Value Change": "dayGainLoss",
+  "Day Gain/Loss": "dayGainLoss",
+  "Est. Annual Income": "estAnnualIncome",
+  "Estimated Annual Income": "estAnnualIncome",
+  "Accrued/Income Earned": "incomeEarned",
+  CUSIP: "cusip",
+  ISIN: "isin",
+  "Asset Class": "assetClass",
+  "Asset Strategy": "assetStrategy",
 };
 
 /** Best-effort column-index -> field-name guess from common header spellings. */

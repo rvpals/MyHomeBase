@@ -1,10 +1,10 @@
+import { decodeImageUpload } from "@/lib/shared/image-upload";
 import type { ExpenseRepository, TransactionFilter } from "./ports";
 import { matchesPattern, planRuleApplication } from "./rules";
 import {
   MAX_CARD_IMAGE_BYTES,
   MAX_CATEGORY_ICON_BYTES,
   bulkTransactionEditSchema,
-  expenseImageUploadSchema,
   saveAccountSchema,
   saveCategorySchema,
   savePostImportRuleSchema,
@@ -30,27 +30,6 @@ import type {
   PostImportRule,
   RuleActionField,
 } from "./types";
-
-/**
- * Decodes a browser-supplied base64 upload into bytes, refusing anything that
- * isn't an allowed image type or that busts the caller's size cap. Shared by card
- * art and category icons so both get the same guarantees however they're called
- * (web, CLI, test) — the cap is a parameter because the two differ there.
- */
-function decodeImageUpload(
-  input: ExpenseImageUploadInput,
-  maxBytes: number,
-): { data: Buffer; mimeType: string } {
-  const { mimeType, base64Data } = expenseImageUploadSchema.parse(input);
-
-  const data = Buffer.from(base64Data, "base64");
-  if (data.length === 0) throw new Error("The image could not be read.");
-  if (data.length > maxBytes) {
-    throw new Error(`Image is too large — keep it under ${Math.round(maxBytes / 1024)} KB.`);
-  }
-
-  return { data, mimeType };
-}
 
 // --- Credit-card accounts ---------------------------------------------------
 

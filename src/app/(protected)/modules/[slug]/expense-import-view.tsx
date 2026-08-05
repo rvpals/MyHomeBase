@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
+import { CSV_MAPPING_OPTION_INPUT_CLASS, CsvMappingTable } from "@/components/csv-mapping-table";
 import { FileDropzone } from "@/components/file-dropzone";
 import type { ColumnMapping, CsvPreview, FieldOptionsMap, NamedMapping } from "@/lib/csv-import";
 import { EXPENSE_IMPORT_FIELDS, type CreditCardAccount, type ExpenseImportSummary } from "@/lib/expense";
@@ -15,9 +16,6 @@ import {
 
 const INPUT_CLASS =
   "rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
-const SMALL_INPUT_CLASS =
-  "w-full rounded-md border border-line bg-paper px-2 py-1 text-xs text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
-
 /** Fields whose column needs a date format. */
 const DATE_FIELDS = new Set(["transactionDate", "postingDate"]);
 
@@ -207,77 +205,32 @@ export function ExpenseImportView({
             )}
           </div>
 
-          <div className="overflow-x-auto rounded-md border border-line">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-line bg-paper-raised">
-                  {preview.headers.map((header) => (
-                    <th key={header} className="px-3 py-2 font-medium text-muted">
-                      {header}
-                    </th>
-                  ))}
-                </tr>
-                <tr className="border-b border-line">
-                  {preview.headers.map((header, index) => (
-                    <th key={header} className="px-3 py-2 align-top">
-                      <select
-                        value={mapping[String(index)] ?? ""}
-                        onChange={(event) => updateMapping(index, event.target.value)}
-                        className={SMALL_INPUT_CLASS}
-                      >
-                        <option value="">Ignore</option>
-                        {EXPENSE_IMPORT_FIELDS.map((field) => (
-                          <option key={field.value} value={field.value}>
-                            {field.label}
-                          </option>
-                        ))}
-                      </select>
-                    </th>
-                  ))}
-                </tr>
-                <tr className="border-b border-line">
-                  {preview.headers.map((header, index) => {
-                    const field = mapping[String(index)];
-                    return (
-                      <th key={header} className="px-3 py-2 align-top font-normal">
-                        {field && DATE_FIELDS.has(field) && (
-                          <input
-                            value={fieldOptions[String(index)]?.dateFormat ?? ""}
-                            onChange={(event) =>
-                              setFieldOptions((current) => ({
-                                ...current,
-                                [String(index)]: {
-                                  ...current[String(index)],
-                                  dateFormat: event.target.value,
-                                },
-                              }))
-                            }
-                            placeholder="MM/DD/YYYY"
-                            className={SMALL_INPUT_CLASS}
-                          />
-                        )}
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {preview.sampleRows.map((row, rowIndex) => (
-                  <tr key={rowIndex} className="border-b border-line align-top last:border-b-0">
-                    {preview.headers.map((_, cellIndex) => (
-                      <td
-                        key={cellIndex}
-                        className="max-w-xs truncate px-3 py-2 text-ink"
-                        title={row[cellIndex] ?? ""}
-                      >
-                        {row[cellIndex] ?? ""}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <CsvMappingTable
+            headers={preview.headers}
+            sampleRows={preview.sampleRows}
+            fields={EXPENSE_IMPORT_FIELDS}
+            mapping={mapping}
+            onMappingChange={updateMapping}
+            renderFieldOptions={(index, field) =>
+              DATE_FIELDS.has(field) ? (
+                <input
+                  value={fieldOptions[String(index)]?.dateFormat ?? ""}
+                  onChange={(event) =>
+                    setFieldOptions((current) => ({
+                      ...current,
+                      [String(index)]: {
+                        ...current[String(index)],
+                        dateFormat: event.target.value,
+                      },
+                    }))
+                  }
+                  placeholder="MM/DD/YYYY"
+                  aria-label="Date format"
+                  className={CSV_MAPPING_OPTION_INPUT_CLASS}
+                />
+              ) : null
+            }
+          />
 
           <div className="flex flex-col gap-2 rounded-md border border-line bg-paper p-3 text-sm">
             <label className="flex items-center gap-2 text-ink">

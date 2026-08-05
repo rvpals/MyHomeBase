@@ -7,6 +7,7 @@ export const investmentAccountSchema = z.object({
   initialValueCents: z.number().int().nonnegative(),
   lastValueCents: z.number().int().nonnegative().optional(),
   lastUpdatedAt: z.string().optional(),
+  iconMimeType: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -22,6 +23,12 @@ export type CreateInvestmentAccountInput = z.infer<typeof createInvestmentAccoun
 export const updateInvestmentAccountSchema = createInvestmentAccountSchema;
 
 export type UpdateInvestmentAccountInput = z.infer<typeof updateInvestmentAccountSchema>;
+
+/**
+ * Cap for an account icon. Matches the expense category icon: both render at
+ * ~20-24px, so anything larger is bytes nobody sees.
+ */
+export const MAX_ACCOUNT_ICON_BYTES = 128 * 1024;
 
 export const performanceRecordSchema = z.object({
   id: z.number().int().positive(),

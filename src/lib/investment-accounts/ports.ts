@@ -4,7 +4,7 @@ import type {
   UpdateInvestmentAccountInput,
   UpdatePerformanceRecordInput,
 } from "./schema";
-import type { InvestmentAccount, PerformanceRecord } from "./types";
+import type { AccountIcon, InvestmentAccount, PerformanceRecord } from "./types";
 
 export interface InvestmentAccountRepository {
   listAccounts(): InvestmentAccount[];
@@ -12,6 +12,10 @@ export interface InvestmentAccountRepository {
   createAccount(input: CreateInvestmentAccountInput): InvestmentAccount;
   updateAccount(id: number, input: UpdateInvestmentAccountInput): InvestmentAccount;
   deleteAccount(id: number): void;
+  /** Reads the icon bytes. Only the icon-serving route calls this. */
+  getAccountIcon(id: number): AccountIcon | undefined;
+  /** Stores the icon, or clears it when given undefined. */
+  setAccountIcon(id: number, icon: AccountIcon | undefined): void;
 
   listPerformanceRecords(accountId?: number): PerformanceRecord[];
   getPerformanceRecordById(id: number): PerformanceRecord | undefined;

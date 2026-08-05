@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  IMAGE_UPLOAD_MIME_TYPES,
+  imageUploadSchema,
+  type ImageUploadInput,
+} from "@/lib/shared/image-upload";
 import { RULE_ACTION_FIELDS, TRANSACTION_STATUSES } from "./types";
 
 // zod is the single source of truth for every shape crossing a boundary (server
@@ -18,37 +23,17 @@ export const creditCardAccountSchema = z.object({
   updatedAt: z.string(),
 });
 
-/**
- * What an uploaded image in this module may be — card art and category icons
- * alike. SVG is excluded on purpose: it can carry script and would be served from
- * the app's own origin.
- */
-export const EXPENSE_IMAGE_MIME_TYPES = [
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-  "image/gif",
-] as const;
-
 /** Cap for card art — enough for readable card artwork, not for a photo. */
 export const MAX_CARD_IMAGE_BYTES = 512 * 1024;
 /** Cap for a category icon: a quarter of the card cap, since it renders tiny. */
 export const MAX_CATEGORY_ICON_BYTES = 128 * 1024;
 
-/**
- * One image on its way in from a browser. Shared by card art and category icons —
- * the shape and the type allowlist are identical; only the size cap differs, and
- * that is enforced by the use-case that stores it.
- */
-export const expenseImageUploadSchema = z.object({
-  mimeType: z.enum(EXPENSE_IMAGE_MIME_TYPES, {
-    message: "Use a PNG, JPEG, WebP or GIF image.",
-  }),
-  /** Base64 of the file, as read in the browser. */
-  base64Data: z.string().min(1, "The image is empty."),
-});
-
-export type ExpenseImageUploadInput = z.infer<typeof expenseImageUploadSchema>;
+// The upload shape and its type allowlist live in @/lib/shared/image-upload, which
+// every module storing image bytes shares. Re-exported under the old names so this
+// module's public surface is unchanged; only the size caps above are expense's own.
+export const EXPENSE_IMAGE_MIME_TYPES = IMAGE_UPLOAD_MIME_TYPES;
+export const expenseImageUploadSchema = imageUploadSchema;
+export type ExpenseImageUploadInput = ImageUploadInput;
 
 export const saveAccountSchema = z.object({
   name: z.string().trim().min(1, "Account name is required."),

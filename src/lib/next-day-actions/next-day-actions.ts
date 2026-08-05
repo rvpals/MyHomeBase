@@ -1,6 +1,8 @@
 import type { MarketDataClient } from "@/lib/market-data";
 import type { ModuleSetting } from "@/lib/module-settings";
 import { computeAverageCostBasisCents, type StockPositionRepository } from "@/lib/stock-positions";
+import { nextDayActionThresholdsSchema } from "./schema";
+import type { NextDayActionThresholdsInput } from "./schema";
 import { computeScanStats, evaluatePosition } from "./stats";
 import type { NextDayActionSignal, NextDayActionThresholds, NextDayActionType } from "./types";
 
@@ -31,6 +33,22 @@ export function resolveThresholds(settings: ModuleSetting[]): NextDayActionThres
       DEFAULT_THRESHOLDS.etfConcentrationCapPct,
     ),
   };
+}
+
+/**
+ * The inverse of `resolveThresholds`: validated thresholds back to the
+ * module-setting key/value rows they're stored as. Keeps the setting keys in one
+ * place so the reader and the writer can't drift apart.
+ */
+export function thresholdsToEntries(
+  input: NextDayActionThresholdsInput,
+): { key: string; value: string }[] {
+  const thresholds = nextDayActionThresholdsSchema.parse(input);
+  return [
+    { key: "profit_target_pct", value: String(thresholds.profitTargetPct) },
+    { key: "stock_concentration_cap", value: String(thresholds.stockConcentrationCapPct) },
+    { key: "etf_concentration_cap", value: String(thresholds.etfConcentrationCapPct) },
+  ];
 }
 
 const SCAN_HISTORY_RANGE = "1mo";

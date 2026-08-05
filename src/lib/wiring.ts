@@ -21,9 +21,11 @@ import { SqliteModuleRepository } from "./modules/repository";
 import { SqliteSettingsRepository } from "./settings/repository";
 import { SqliteSqlExplorerRepository } from "./sql-explorer/repository";
 import { SqliteStockAnalyticsRepository } from "./stock-analytics/repository";
+import { SqliteDailySnapshotRepository } from "./stock-daily-snapshot/repository";
 import { SqliteStockPositionRepository } from "./stock-positions/repository";
 import { SqliteStockWatchListRepository } from "./stock-watchlist/repository";
 import { RealSystemInfoRepository } from "./system-info/repository";
+import { YahooTickerNewsClient } from "./ticker-news/yahoo-news-client";
 import { FmpTickerLogoClient } from "./ticker-logos/fmp-logo-client";
 import { SqliteTickerLogoRepository } from "./ticker-logos/repository";
 import { SqliteUserRepository } from "./user/repository";
@@ -75,11 +77,13 @@ export const deps = {
   csvAnalyticsRepo: new SqliteCsvAnalyticsRepository(db),
   dailyQuoteRepo: new SqliteDailyQuoteRepository(db),
   stockPositionRepo: new SqliteStockPositionRepository(db),
+  stockDailySnapshotRepo: new SqliteDailySnapshotRepository(db),
   stockWatchListRepo: new SqliteStockWatchListRepository(db),
   stockAnalyticsRepo: new SqliteStockAnalyticsRepository(db),
   sqlExplorerRepo: new SqliteSqlExplorerRepository(db),
   systemInfoRepo: new RealSystemInfoRepository(),
   marketDataClient: new YahooFinanceClient(),
+  tickerNewsClient: new YahooTickerNewsClient(),
   tickerLogoRepo: new SqliteTickerLogoRepository(db),
   tickerLogoClient: new FmpTickerLogoClient(),
   geocodingClient: new NominatimGeocodingClient(),

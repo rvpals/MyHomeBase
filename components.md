@@ -55,6 +55,7 @@ pattern instead of inventing one.
 | [`Avatar`](#avatar) | A user's picture, or initials fallback | [src/components/avatar.tsx](src/components/avatar.tsx) | no |
 | [`TickerLogo`](#tickerlogo) | A stock/ETF logo, or a monogram fallback | [src/components/ticker-logo.tsx](src/components/ticker-logo.tsx) | yes |
 | [`FileDropzone`](#filedropzone) | Drag-and-drop file picker | [src/components/file-dropzone.tsx](src/components/file-dropzone.tsx) | yes |
+| [`CsvMappingTable`](#csvmappingtable) | Map a CSV's columns to target fields | [src/components/csv-mapping-table.tsx](src/components/csv-mapping-table.tsx) | yes |
 | [`IconSelect`](#iconselect) | A dropdown whose options carry an image | [src/components/icon-select.tsx](src/components/icon-select.tsx) | yes |
 | [`ChartLine`](#chartline) | Time-series line chart | [src/components/chart-line.tsx](src/components/chart-line.tsx) | yes |
 | [`ChartBar`](#chartbar) | Category comparison / part-to-whole | [src/components/chart-bar.tsx](src/components/chart-bar.tsx) | yes |
@@ -459,9 +460,10 @@ const nodes: TreeNode[] = [
 ```
 
 **Used by:** Administration — [admin/admin-shell.tsx](src/app/(protected)/admin/admin-shell.tsx),
-node list in [admin/nav.ts](src/app/(protected)/admin/nav.ts); and the Expense module's
-six sections — [expense-nav.tsx](src/app/(protected)/modules/[slug]/expense-nav.tsx). Both are
-`collapsible`, each with its own `storageKey`.
+node list in [admin/nav.ts](src/app/(protected)/admin/nav.ts); the Expense module's six
+sections — [expense-nav.tsx](src/app/(protected)/modules/[slug]/expense-nav.tsx); and the
+Stocks & ETFs module's eight — [stock-nav.tsx](src/app/(protected)/modules/[slug]/stock-nav.tsx).
+All three are `collapsible`, each with its own `storageKey`.
 
 **Collapsing.** The toggle is the same `&rsaquo;` chevron the node rows and `CollapsibleCard`
 use, rotated 180° when expanded, and it respects `prefers-reduced-motion`. Because a
@@ -472,7 +474,8 @@ that pins the collapsed rail open (see [expense-section.tsx](src/app/(protected)
 a query parameter or client-side state won't highlight. Keep the node list and any
 labels in a **plain** module (not the `"use client"` nav file) if server components
 read them too; exports of a client module reach the server as unusable references.
-See [expense-sections.ts](src/app/(protected)/modules/[slug]/expense-sections.ts).
+See [expense-sections.ts](src/app/(protected)/modules/[slug]/expense-sections.ts) and
+[stock-sections.ts](src/app/(protected)/modules/[slug]/stock-sections.ts).
 
 ---
 
@@ -586,6 +589,81 @@ MyJournal import [journal-import-view.tsx](src/app/(protected)/modules/[slug]/jo
 
 **Notes:** hands you a raw `File` and never reads it — the caller decides how
 (`FileReader.readAsText`, upload, etc.).
+
+---
+
+## CsvMappingTable
+
+The table you map a CSV's columns in: one column per CSV header, a target-field
+dropdown under each, an optional per-column options row, and sample data below so you
+can see what you're mapping. Any importer that asks the user to line up columns uses
+this — don't hand-roll a second header/select/sample table.
+
+- **Source:** [src/components/csv-mapping-table.tsx](src/components/csv-mapping-table.tsx)
+- **Import:** `import { CsvMappingTable, CSV_MAPPING_OPTION_INPUT_CLASS, type CsvMappingField } from "@/components/csv-mapping-table";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `headers` | `string[]` | CSV header cells in file order. **Their index is the mapping key.** |
+| `sampleRows` | `string[][]` | Rows shown under the controls. Short rows are fine — cells are read by header index, not row position. |
+| `fields` | `readonly CsvMappingField[]` — `{ value, label }` | The selectable target fields. An "Ignore" option is added for you. |
+| `mapping` | `Record<string, string>` | Column index (as a string) → target field. Absent = ignored. |
+| `onMappingChange` | `(columnIndex: number, field: string) => void` | An empty `field` means "ignore this column". |
+| `renderFieldOptions?` | `(columnIndex: number, field: string) => ReactNode` | Extra control under a mapped column (date format, delimiter…). Return `null` for fields with no options; **omit the prop entirely** to hide the row. |
+| `excludedRowIndexes?` | `ReadonlySet<number>` | Rows the user has dropped. Supply this **and** `onToggleRowExcluded` to turn on per-row exclusion; omit both and there are no row controls. |
+| `onToggleRowExcluded?` | `(rowIndex: number) => void` | Raised by a row's ×/Undo control. |
+| `rowNumberHeader?` | `string` | Header for the row-number column. Default `"#"`. Only shown with exclusion on. |
+| `extraColumn?` | `{ header, renderHeaderControl?, renderCell }` | One importer-owned column before the CSV's own — for a per-row decision made at import time rather than read from the file. `renderCell(rowIndex, row)`. |
+| `className?` | `string` | Merged last. Use it to cap height (`max-h-[32rem]`) when passing every row. |
+
+```tsx
+<CsvMappingTable
+  headers={preview.headers}
+  sampleRows={preview.sampleRows}
+  fields={POSITION_IMPORT_FIELDS}
+  mapping={mapping}
+  onMappingChange={updateMapping}
+  renderFieldOptions={(index, field) =>
+    DATE_FIELDS.has(field) ? (
+      <input
+        value={fieldOptions[String(index)]?.dateFormat ?? ""}
+        onChange={(event) => setDateFormat(index, event.target.value)}
+        placeholder="MM/DD/YYYY"
+        aria-label="Date format"
+        className={CSV_MAPPING_OPTION_INPUT_CLASS}
+      />
+    ) : null
+  }
+/>
+```
+
+**Used by:** the Expense statement importer
+[expense-import-view.tsx](src/app/(protected)/modules/[slug]/expense-import-view.tsx) and the
+Stocks & ETFs importer
+[stock-import-view.tsx](src/app/(protected)/modules/[slug]/stock-import-view.tsx). The field
+lists come from the lib (`EXPENSE_IMPORT_FIELDS`, `POSITION_IMPORT_FIELDS`,
+`TRANSACTION_IMPORT_FIELDS`, `PERFORMANCE_IMPORT_FIELDS`), not from the view.
+
+**Notes:** it holds **no** mapping or exclusion state — a mapping is domain data that gets
+saved, so the caller owns `mapping`/`excludedRowIndexes` and applies every change. Cells and
+controls are keyed by column index rather than header text, because broker exports genuinely
+do repeat a header and ship blank ones, which would collide on a text key. Use
+`CSV_MAPPING_OPTION_INPUT_CLASS` for anything in the options row so it matches the
+dropdowns above it.
+
+**`extraColumn`.** Not a CSV column — a decision column the importer owns. The Stocks
+positions import uses it for a per-row **Type** dropdown (a broker export that mixes ETFs and
+stocks rarely says which is which), with a "Set all…" picker in `renderHeaderControl`. Keep the
+control's styling matched to the field dropdowns above it.
+
+**Row exclusion.** `sampleRows` is whatever you choose to show. The Expense importer passes
+`preview.sampleRows` (10 random rows, a visual check only) and leaves exclusion off; the
+Stocks importer passes `preview.rows` — every row — plus the two exclusion props, because you
+can't remove a row you can't see. Excluded rows render dimmed and struck through rather than
+disappearing, so the row numbers keep matching the file. The index a row is keyed by is its
+index in `sampleRows`, which is why the caller must pass rows in file order when exclusion is
+on.
 
 ---
 
