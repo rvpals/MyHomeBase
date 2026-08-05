@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactElement } from "react";
 import {
   CartesianGrid,
   Legend,
@@ -12,6 +13,19 @@ import {
 } from "recharts";
 import { CHART_CATEGORICAL_COLORS, CHART_CHROME } from "./chart-colors";
 
+/** What a custom dot renderer is told about the point it's drawing. */
+export interface ChartLineDotContext {
+  /** Centre of the point, in SVG user units. */
+  cx: number;
+  cy: number;
+  /** Position in `data`, so a renderer can key off the row it came from. */
+  index: number;
+  /** The whole row this point was read from — carry extra fields on it to switch on. */
+  payload: Record<string, number | string>;
+  /** The series' resolved colour, so a custom mark can match its line by default. */
+  color: string;
+}
+
 export interface ChartLineSeries {
   /** Key into each row of `data`. */
   key: string;
@@ -19,6 +33,16 @@ export interface ChartLineSeries {
   label: string;
   /** Overrides the default categorical slot for this series' position. */
   color?: string;
+  /**
+   * Draws this series' points yourself, instead of the default filled circle.
+   * Return an SVG element, or `null` to draw nothing at that point.
+   *
+   * Use it when the *shape* of a point carries meaning the line can't — a buy
+   * against a sell, say. Prefer a second series when the extra thing is its own
+   * quantity; a shape is for annotating the points you already have. Recharts
+   * needs an element back, so a plain fragment won't do.
+   */
+  renderDot?: (context: ChartLineDotContext) => ReactElement | null;
 }
 
 export interface ChartLineProps {
@@ -72,18 +96,47 @@ export function ChartLine({
             cursor={{ stroke: CHART_CHROME.axis, strokeWidth: 1 }}
           />
           {series.length > 1 && <Legend />}
-          {series.map((item, index) => (
-            <Line
-              key={item.key}
-              type="monotone"
-              dataKey={item.key}
-              name={item.label}
-              stroke={item.color ?? CHART_CATEGORICAL_COLORS[index % CHART_CATEGORICAL_COLORS.length]}
-              strokeWidth={2}
-              dot={{ r: 4, strokeWidth: 0 }}
-              activeDot={{ r: 6 }}
-            />
-          ))}
+          {series.map((item, index) => {
+            const color =
+              item.color ?? CHART_CATEGORICAL_COLORS[index % CHART_CATEGORICAL_COLORS.length];
+
+            return (
+              <Line
+                key={item.key}
+                type="monotone"
+                dataKey={item.key}
+                name={item.label}
+                stroke={color}
+                strokeWidth={2}
+                dot={
+                  item.renderDot
+                    ? // Recharts hands the renderer its own props and expects an
+                      // element back; the cast narrows those to the fields a caller
+                      // should care about rather than leaking the library's shape.
+                      (props: unknown) => {
+                        const dot = props as {
+                          cx?: number;
+                          cy?: number;
+                          index?: number;
+                          payload?: Record<string, number | string>;
+                        };
+                        if (dot.cx == null || dot.cy == null) return <g key="empty" />;
+                        return (
+                          item.renderDot?.({
+                            cx: dot.cx,
+                            cy: dot.cy,
+                            index: dot.index ?? 0,
+                            payload: dot.payload ?? {},
+                            color,
+                          }) ?? <g key="empty" />
+                        );
+                      }
+                    : { r: 4, strokeWidth: 0 }
+                }
+                activeDot={{ r: 6 }}
+              />
+            );
+          })}
         </LineChart>
       </ResponsiveContainer>
     </div>

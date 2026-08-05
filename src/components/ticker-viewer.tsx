@@ -508,6 +508,85 @@ function PastPerformance({ state }: { state: TickerPanelState<TickerTradeTimelin
   );
 }
 
+// ---------------------------------------------------------------------------
+// Chart marks. A generic circle wastes the one channel a scatter of points has
+// going spare: its shape. Each point on the performance chart says what kind of
+// thing it was without needing the tooltip.
+// ---------------------------------------------------------------------------
+
+/**
+ * Which mark a point gets. One per point, so the shapes stay readable — a point
+ * can be several of these at once (a buy on an earnings day that made the news),
+ * and the row in the table below carries the full picture.
+ *
+ * Order is by how much the point is *about you*: your own trade first, then what
+ * the company did, then what was written about it, then a plain close.
+ */
+type ChartMark = "buy" | "sell" | "event" | "news" | "close";
+
+function markFor(point: TickerTimelinePoint): ChartMark {
+  if (point.kind === "trade") return point.action === "Sell" ? "sell" : "buy";
+  if (point.events.length > 0) return "event";
+  if (point.stories.length > 0) return "news";
+  return "close";
+}
+
+/** Tailwind text colour per mark; the shapes fill from `currentColor`. */
+const MARK_CLASS: Record<ChartMark, string> = {
+  // Semantic red/green, per design.md — a buy and a sell are not two brand hues.
+  buy: "text-emerald-400",
+  sell: "text-red-400",
+  event: "text-brass",
+  news: "text-brass-dark",
+  close: "text-muted",
+};
+
+/**
+ * The mark's geometry, centred on the origin. Drawn as a path so every shape is
+ * one element and the caller only has to position a `<g>`.
+ */
+function MarkShape({ mark }: { mark: ChartMark }) {
+  if (mark === "buy") {
+    // Pointing up: you added to the position.
+    return <path d="M0,-5.5 L5,3.5 L-5,3.5 Z" fill="currentColor" />;
+  }
+  if (mark === "sell") {
+    return <path d="M0,5.5 L5,-3.5 L-5,-3.5 Z" fill="currentColor" />;
+  }
+  if (mark === "event") {
+    return <path d="M0,-5.5 L5.5,0 L0,5.5 L-5.5,0 Z" fill="currentColor" />;
+  }
+  if (mark === "news") {
+    // Hollow, so it reads as commentary on the price rather than an action.
+    return <circle r={4} fill="none" stroke="currentColor" strokeWidth={2} />;
+  }
+  return <circle r={2.5} fill="currentColor" />;
+}
+
+/** The shape key, since the marks carry meaning the chart legend can't express. */
+function MarkLegend() {
+  const items: { mark: ChartMark; label: string }[] = [
+    { mark: "buy", label: "Buy" },
+    { mark: "sell", label: "Sell" },
+    { mark: "event", label: "Dividend / split / earnings" },
+    { mark: "news", label: "News that day" },
+    { mark: "close", label: "Close" },
+  ];
+
+  return (
+    <ul className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
+      {items.map((item) => (
+        <li key={item.mark} className="flex items-center gap-1.5">
+          <svg viewBox="-8 -8 16 16" className={`h-3.5 w-3.5 ${MARK_CLASS[item.mark]}`} aria-hidden="true">
+            <MarkShape mark={item.mark} />
+          </svg>
+          {item.label}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /**
  * The per-row news control.
  *
@@ -588,34 +667,43 @@ function PastPerformanceBody({ timeline }: { timeline: TickerTradeTimeline }) {
   // Two series over the same points: the price line, and a second that only
   // carries a value where something happened, so Recharts draws it as isolated
   // markers on the line rather than a second trend.
-  // The `event` key is omitted, not nulled, on ordinary points — Recharts reads a
-  // missing key as a gap, which is what makes the second series render as bare
-  // markers sitting on the price line instead of a line of its own.
-  const chartData = timeline.points.map((point) => {
-    const price = centsToDollars(point.pricePerShareCents);
-    const row: Record<string, number | string> = { date: point.date, price };
-    if (point.events.length > 0) row.event = price;
-    return row;
-  });
-
-  const hasEvents = timeline.points.some((point) => point.events.length > 0);
+  // One series, with the kind carried on each row so the dot renderer can shape
+  // it. This replaced a second "event" series of duplicated y-values: that drew
+  // markers, but it also put a meaningless second entry in the legend and told
+  // you nothing about buys, sells or news.
+  const chartData = timeline.points.map((point) => ({
+    date: point.date,
+    price: centsToDollars(point.pricePerShareCents),
+    mark: markFor(point),
+  }));
 
   return (
     <div>
       <ChartLine
         data={chartData}
-        series={
-          hasEvents
-            ? [
-                { key: "price", label: "Price per share" },
-                { key: "event", label: "Dividend / split / earnings" },
-              ]
-            : [{ key: "price", label: "Price per share" }]
-        }
+        series={[
+          {
+            key: "price",
+            label: "Price per share",
+            renderDot: ({ cx, cy, index, payload }) => {
+              const mark = (payload.mark as ChartMark) ?? "close";
+              return (
+                <g
+                  key={`${payload.date}:${index}`}
+                  transform={`translate(${cx}, ${cy})`}
+                  className={MARK_CLASS[mark]}
+                >
+                  <MarkShape mark={mark} />
+                </g>
+              );
+            },
+          },
+        ]}
         xKey="date"
         formatValue={(value) => `$${value.toFixed(2)}`}
         formatX={(value) => String(value).slice(5)}
       />
+      <MarkLegend />
 
       {timeline.datesWithoutCloses.length > 0 && (
         <p className="mt-3 text-xs text-muted">

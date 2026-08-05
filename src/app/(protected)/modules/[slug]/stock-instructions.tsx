@@ -83,10 +83,17 @@ function MainInstructions() {
           skipped, so &ldquo;day before&rdquo; means the previous <em>trading</em> day.
         </p>
         <p>
-          <strong className="text-ink">Dividends, splits and reported quarters</strong> are marked
-          on the same line as a second series, and spelled out in the table&apos;s{" "}
-          <strong className="text-ink">Note</strong> column alongside whatever you typed against
-          the trade itself. An earnings chip shows reported EPS against the estimate, green for a
+          <strong className="text-ink">Every point is shaped by what it is</strong> — an
+          upward triangle for a buy, a downward one for a sell, a diamond where the company
+          did something (dividend, split, earnings), a hollow ring where there was news, and a
+          small dot for a plain close. The key sits under the chart. A point can be several of
+          these at once, so it takes the most personal one — your own trade before the
+          company&apos;s action before the commentary — and the table row carries the rest.
+        </p>
+        <p>
+          <strong className="text-ink">Dividends, splits and reported quarters</strong> are also
+          spelled out in the table&apos;s <strong className="text-ink">Note</strong> column
+          alongside whatever you typed against the trade itself. An earnings chip shows reported EPS against the estimate, green for a
           beat and red for a miss. An event dated to a day the market was shut is shown against
           the last close on or before it, so every row&apos;s price is a real one; anything
           falling outside the fetched price history is counted under the table rather than

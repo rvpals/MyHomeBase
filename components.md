@@ -759,8 +759,8 @@ Time-series line chart, one or more series.
 
 | Prop | Type | Notes |
 |------|------|-------|
-| `data` | `Record<string, number \| string>[]` | Rows with one `xKey` field + one numeric field per series key. |
-| `series` | `{ key, label, color? }[]` | A single series renders with no legend box. |
+| `data` | `Record<string, number \| string>[]` | Rows with one `xKey` field + one numeric field per series key. Carry extra fields on a row for `renderDot` to switch on. |
+| `series` | `{ key, label, color?, renderDot? }[]` | A single series renders with no legend box. |
 | `xKey` | `string` | Field used for the x-axis. |
 | `formatValue?` | `(value: number) => string` | y-axis ticks + tooltip. |
 | `formatX?` | `(value: string \| number) => string` | x-axis ticks. |
@@ -776,9 +776,42 @@ Time-series line chart, one or more series.
 />
 ```
 
+**Custom point marks.** `series[].renderDot` replaces that series' filled circle with
+whatever SVG you return, given `{ cx, cy, index, payload, color }` — `payload` is the whole
+row, so put a discriminator on it and switch:
+
+```tsx
+const data = points.map((point) => ({ date: point.date, price: point.price, mark: markFor(point) }));
+
+<ChartLine
+  data={data}
+  xKey="date"
+  series={[{
+    key: "price",
+    label: "Price per share",
+    renderDot: ({ cx, cy, index, payload }) => (
+      <g key={`${payload.date}:${index}`} transform={`translate(${cx}, ${cy})`}
+         className={MARK_CLASS[payload.mark as ChartMark]}>
+        <MarkShape mark={payload.mark as ChartMark} />
+      </g>
+    ),
+  }]}
+/>
+```
+
+Reach for it when the **shape** of a point carries meaning the line can't (a buy against a
+sell). Prefer a second series when the extra thing is its own quantity — a shape annotates
+points you already have. Recharts needs an element back, so return `<g />`, not a fragment
+or `undefined`. Fill from `currentColor` and set the colour with a Tailwind text class on
+the wrapping `<g>`, so the marks stay theme-driven. The built-in legend names series, not
+shapes, so a shape vocabulary needs its own key next to the chart (see `MarkLegend` in
+`TickerViewer`).
+
 **Used by:** Stocks & ETFs — account performance history
 [stock-accounts-view.tsx](src/app/(protected)/modules/[slug]/stock-accounts-view.tsx), position
-price history [stock-analytics-view.tsx](src/app/(protected)/modules/[slug]/stock-analytics-view.tsx).
+price history [stock-analytics-view.tsx](src/app/(protected)/modules/[slug]/stock-analytics-view.tsx),
+and the "My past performance" chart in
+[ticker-viewer.tsx](src/components/ticker-viewer.tsx) *(the `renderDot` example)*.
 
 ---
 
