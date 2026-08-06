@@ -24,7 +24,14 @@ import type {
   UpdateInvestmentAccountInput,
   UpdatePerformanceRecordInput,
 } from "./schema";
-import type { AccountIcon, InvestmentAccount, PerformanceRecord } from "./types";
+import type {
+  AccountIcon,
+  AccountPerformanceHistory,
+  AccountPerformancePoint,
+  AccountPerformanceSeries,
+  InvestmentAccount,
+  PerformanceRecord,
+} from "./types";
 
 export function listAccounts(repo: InvestmentAccountRepository): InvestmentAccount[] {
   return repo.listAccounts();
@@ -208,4 +215,72 @@ export function importPerformanceFromCsv(
   );
 
   return summarizeImportResults(results);
+}
+
+/**
+ * Aligns every account's performance records onto one date axis for the
+ * combined chart and its table.
+ *
+ * Accounts are recorded on their own schedules — a 401k quarterly, a brokerage
+ * monthly — so the axis is the union of every date anyone recorded, and an
+ * account simply has no entry on a date it didn't report. That absence is
+ * preserved rather than filled: a zero would read as "the account was empty",
+ * and carrying the previous value forward would assert a balance on a day it
+ * was never checked. The chart draws a line across the gap, which is a visible
+ * interpolation; the data underneath stays honest about what was recorded.
+ *
+ * Accounts with no records at all are dropped — there is no line to draw and a
+ * dead entry in the legend is just noise.
+ */
+export function buildAccountPerformanceHistory(
+  entries: readonly {
+    account: Pick<InvestmentAccount, "id" | "name">;
+    history: readonly PerformanceRecord[];
+  }[],
+): AccountPerformanceHistory {
+  const byDate = new Map<string, Record<number, number>>();
+
+  const series: AccountPerformanceSeries[] = [];
+  for (const { account, history } of entries) {
+    if (history.length === 0) continue;
+
+    const ordered = [...history].sort((a, b) => a.recordDate.localeCompare(b.recordDate));
+    for (const record of ordered) {
+      const forDate = byDate.get(record.recordDate) ?? {};
+      // Last write wins if a date somehow holds two records for one account —
+      // the repository upserts on (accountId, recordDate), so this is defensive.
+      forDate[account.id] = record.totalValueCents;
+      byDate.set(record.recordDate, forDate);
+    }
+
+    const first = ordered[0];
+    const last = ordered[ordered.length - 1];
+    const changeCents = last.totalValueCents - first.totalValueCents;
+    series.push({
+      accountId: account.id,
+      accountName: account.name,
+      recordCount: ordered.length,
+      firstDate: first.recordDate,
+      lastDate: last.recordDate,
+      firstValueCents: first.totalValueCents,
+      lastValueCents: last.totalValueCents,
+      changeCents,
+      changePct:
+        first.totalValueCents > 0 ? (changeCents / first.totalValueCents) * 100 : 0,
+    });
+  }
+
+  const points: AccountPerformancePoint[] = [...byDate.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, valueCentsByAccountId]) => {
+      const values = Object.values(valueCentsByAccountId);
+      return {
+        date,
+        valueCentsByAccountId,
+        totalCents: values.reduce((sum, value) => sum + value, 0),
+        reportingAccountCount: values.length,
+      };
+    });
+
+  return { points, series };
 }

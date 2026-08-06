@@ -6,7 +6,13 @@ import { Button } from "@/components/button";
 import { ChartLine } from "@/components/chart-line";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
-import type { InvestmentAccount, PerformanceRecord } from "@/lib/investment-accounts";
+import { CHART_CATEGORICAL_COLORS } from "@/components/chart-colors";
+import {
+  buildAccountPerformanceHistory,
+  type AccountPerformancePoint,
+  type InvestmentAccount,
+  type PerformanceRecord,
+} from "@/lib/investment-accounts";
 import { IMAGE_UPLOAD_MIME_TYPES } from "@/lib/shared/image-upload";
 import { centsToDollars, formatCents } from "@/lib/shared/money";
 import {
@@ -340,6 +346,194 @@ function AccountHistory({ entry }: { entry: AccountEntry }) {
   );
 }
 
+
+/**
+ * Every account's recorded value on one axis, with the lines switchable.
+ *
+ * Colour is assigned by the account's *stable* position, not by where it lands
+ * in the filtered series array — otherwise hiding one line recolours the rest
+ * and the toggles stop meaning anything.
+ */
+function AccountPerformanceOverTime({ entries }: { entries: AccountEntry[] }) {
+  const [hidden, setHidden] = useState<Set<number>>(new Set());
+  // Off by default: straight segments between recorded dates. A smoothed curve
+  // reads as intermediate movement, and for a balance recorded quarterly there
+  // is no such reading in the data — it's an interpolation either way, but the
+  // straight one looks like one.
+  const [smooth, setSmooth] = useState(false);
+
+  const history = buildAccountPerformanceHistory(entries);
+  const colorByAccountId = new Map(
+    history.series.map((entry, index) => [
+      entry.accountId,
+      CHART_CATEGORICAL_COLORS[index % CHART_CATEGORICAL_COLORS.length],
+    ]),
+  );
+
+  if (history.series.length === 0) {
+    return (
+      <p className="rounded-lg border border-dashed border-line p-6 text-center text-sm text-muted">
+        No performance records yet. Add one against an account below, or bring a broker export in
+        through CSV Import.
+      </p>
+    );
+  }
+
+  const visible = history.series.filter((entry) => !hidden.has(entry.accountId));
+
+  // Recharts reads each series by key, and a key simply absent from a row is the
+  // gap `connectNulls` draws through — so unrecorded dates are left out rather
+  // than written as 0.
+  const chartData = history.points.map((point) => {
+    const row: Record<string, number | string> = { date: point.date };
+    for (const entry of visible) {
+      const cents = point.valueCentsByAccountId[entry.accountId];
+      if (cents !== undefined) row[`a${entry.accountId}`] = centsToDollars(cents);
+    }
+    return row;
+  });
+
+  const columns: DataGridColumn<AccountPerformancePoint>[] = [
+    { key: "date", header: "Date", value: (point) => point.date, render: (point) => point.date },
+    ...visible.map((entry) => ({
+      key: `a${entry.accountId}`,
+      header: entry.accountName,
+      value: (point: AccountPerformancePoint) =>
+        point.valueCentsByAccountId[entry.accountId] ?? 0,
+      render: (point: AccountPerformancePoint) => {
+        const cents = point.valueCentsByAccountId[entry.accountId];
+        // A dash, not $0.00 — nothing was recorded, which is not a zero balance.
+        return cents === undefined ? <span className="text-muted">—</span> : formatCents(cents);
+      },
+    })),
+    {
+      key: "total",
+      header: "Total recorded",
+      value: (point) => visibleTotalCents(point, visible),
+      render: (point) => {
+        // No visible account reported on this date, so there is no total to
+        // show. $0.00 would read as "the portfolio was empty" — it isn't a
+        // total of nothing, it's the absence of one.
+        const reporting = visible.some(
+          (entry) => point.valueCentsByAccountId[entry.accountId] !== undefined,
+        );
+        return reporting ? (
+          formatCents(visibleTotalCents(point, visible))
+        ) : (
+          <span className="text-muted">—</span>
+        );
+      },
+    },
+  ];
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* The legend is the control: ChartLine's own is switched off so there
+          aren't two, one of which does nothing. */}
+      <div className="flex flex-wrap gap-2">
+        {history.series.map((entry) => {
+          const isHidden = hidden.has(entry.accountId);
+          return (
+            <button
+              key={entry.accountId}
+              type="button"
+              aria-pressed={!isHidden}
+              title={
+                isHidden
+                  ? `Show ${entry.accountName}`
+                  : `Hide ${entry.accountName} — ${entry.recordCount} record(s)`
+              }
+              onClick={() =>
+                setHidden((current) => {
+                  const next = new Set(current);
+                  if (!next.delete(entry.accountId)) next.add(entry.accountId);
+                  return next;
+                })
+              }
+              className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
+                isHidden
+                  ? "border-line text-muted hover:text-ink"
+                  : "border-brass bg-brass-soft text-brass-dark"
+              }`}
+            >
+              <span
+                aria-hidden
+                style={{ backgroundColor: colorByAccountId.get(entry.accountId) }}
+                className={`h-2.5 w-2.5 rounded-full ${isHidden ? "opacity-30" : ""}`}
+              />
+              {entry.accountName}
+              <span className="text-muted">
+                {entry.changeCents === 0 && entry.recordCount < 2
+                  ? `${entry.recordCount} record`
+                  : `${entry.changeCents >= 0 ? "+" : "−"}${formatCents(Math.abs(entry.changeCents))}`}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <label className="flex w-fit items-center gap-2 text-xs text-muted">
+        <input
+          type="checkbox"
+          checked={smooth}
+          onChange={(event) => setSmooth(event.target.checked)}
+          className="h-3.5 w-3.5 accent-[var(--brass)]"
+        />
+        Smooth the line
+      </label>
+
+      {visible.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-line p-6 text-center text-sm text-muted">
+          Every account is hidden — pick one above to plot it.
+        </p>
+      ) : (
+        <>
+          <ChartLine
+            data={chartData}
+            xKey="date"
+            connectNulls
+            curve={smooth ? "monotone" : "linear"}
+            showLegend={false}
+            height={320}
+            series={visible.map((entry) => ({
+              key: `a${entry.accountId}`,
+              label: entry.accountName,
+              color: colorByAccountId.get(entry.accountId),
+            }))}
+            formatValue={(value) => formatCents(Math.round(value * 100))}
+          />
+          <p className="text-xs text-muted">
+            Accounts are recorded on their own schedules, so a line is drawn straight between the
+            dates that account actually reported — the dots are the real records. A blank cell in
+            the table means nothing was recorded that day, which is not the same as a zero balance,
+            and <span className="text-ink">Total recorded</span> only sums the accounts that
+            reported on that date.
+          </p>
+          <DataGrid
+            columns={columns}
+            rows={[...history.points].reverse()}
+            getRowKey={(point) => point.date}
+            emptyMessage="No performance records yet."
+            exportFileName="account-performance-over-time"
+            storageKey="myhomebase:account-performance-grid"
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Sums only the accounts currently plotted, so the table agrees with the chart. */
+function visibleTotalCents(
+  point: AccountPerformancePoint,
+  visible: readonly { accountId: number }[],
+): number {
+  return visible.reduce(
+    (sum, entry) => sum + (point.valueCentsByAccountId[entry.accountId] ?? 0),
+    0,
+  );
+}
+
 export function StockAccountsView({ entries }: { entries: AccountEntry[] }) {
   const router = useRouter();
   const [editingId, setEditingId] = useState<number | undefined>(undefined);
@@ -449,6 +643,12 @@ export function StockAccountsView({ entries }: { entries: AccountEntry[] }) {
       <h2 className="font-display text-xl text-ink">Accounts</h2>
 
       {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+
+      <div className="mt-4">
+        <CollapsibleCard title="Account Performance Over Time" defaultOpen>
+          <AccountPerformanceOverTime entries={entries} />
+        </CollapsibleCard>
+      </div>
 
       <div className="mt-4">
         <CollapsibleCard title="Add Account">

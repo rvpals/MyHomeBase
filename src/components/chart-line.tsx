@@ -57,6 +57,30 @@ export interface ChartLineProps {
   /** Formats an x-axis tick. */
   formatX?: (value: string | number) => string;
   height?: number;
+  /**
+   * Draw a series straight through rows where its key is missing, instead of
+   * breaking the line. For a sparse series — accounts recorded on different
+   * schedules — the join is the readable answer, and the dots still mark the
+   * rows that hold real data. Default `false`, which is the honest default for
+   * a series that genuinely stops and starts.
+   */
+  connectNulls?: boolean;
+  /**
+   * How the line is drawn between points. `monotone` (the default) smooths it;
+   * `linear` joins the points with straight segments.
+   *
+   * Prefer `linear` when the gap between two points is an interpolation the
+   * reader shouldn't over-read — a smoothed curve implies intermediate movement
+   * the data doesn't record, which matters for a sparse series like periodic
+   * account balances.
+   */
+  curve?: "monotone" | "linear";
+  /**
+   * Overrides the "legend only when there's more than one series" default. Set
+   * `false` when the caller renders its own legend — e.g. one that also toggles
+   * series — so the chart doesn't show a second, dead one.
+   */
+  showLegend?: boolean;
   className?: string;
 }
 
@@ -67,6 +91,9 @@ export function ChartLine({
   formatValue = (value) => String(value),
   formatX = (value) => String(value),
   height = 280,
+  connectNulls = false,
+  curve = "monotone",
+  showLegend,
   className = "",
 }: ChartLineProps) {
   return (
@@ -95,7 +122,7 @@ export function ChartLine({
             labelFormatter={(label) => formatX(label as string | number)}
             cursor={{ stroke: CHART_CHROME.axis, strokeWidth: 1 }}
           />
-          {series.length > 1 && <Legend />}
+          {(showLegend ?? series.length > 1) && <Legend />}
           {series.map((item, index) => {
             const color =
               item.color ?? CHART_CATEGORICAL_COLORS[index % CHART_CATEGORICAL_COLORS.length];
@@ -103,11 +130,12 @@ export function ChartLine({
             return (
               <Line
                 key={item.key}
-                type="monotone"
+                type={curve}
                 dataKey={item.key}
                 name={item.label}
                 stroke={color}
                 strokeWidth={2}
+                connectNulls={connectNulls}
                 dot={
                   item.renderDot
                     ? // Recharts hands the renderer its own props and expects an

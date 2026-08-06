@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addPerformanceRecord,
+  buildAccountPerformanceHistory,
   clearAccountIcon,
   createAccount,
   deleteAccount,
@@ -477,5 +478,98 @@ describe("importPerformanceFromCsv", () => {
     const repo = fakeRepo(sampleAccounts);
     const summary = importPerformanceFromCsv(repo, "Date,Value\n2026-01-15,11000.00", { "0": "date", "1": "totalValue" }, {});
     expect(summary.results[0]).toEqual({ rowNumber: 1, status: "skipped", reason: "Missing account" });
+  });
+});
+
+describe("buildAccountPerformanceHistory", () => {
+  const record = (id: number, accountId: number, recordDate: string, cents: number) => ({
+    id,
+    accountId,
+    recordDate,
+    totalValueCents: cents,
+    note: "",
+    createdAt: "",
+    updatedAt: "",
+  });
+
+  const fidelity = { id: 1, name: "Fidelity HSA" };
+  const chase = { id: 2, name: "Chase Joint" };
+
+  it("unions the dates and keeps each account's values against them", () => {
+    const result = buildAccountPerformanceHistory([
+      // Quarterly.
+      { account: fidelity, history: [record(1, 1, "2026-01-31", 10_000), record(2, 1, "2026-03-31", 12_000)] },
+      // Monthly, so February exists for Chase alone.
+      {
+        account: chase,
+        history: [
+          record(3, 2, "2026-01-31", 50_000),
+          record(4, 2, "2026-02-28", 55_000),
+          record(5, 2, "2026-03-31", 60_000),
+        ],
+      },
+    ]);
+
+    expect(result.points.map((point) => point.date)).toEqual([
+      "2026-01-31",
+      "2026-02-28",
+      "2026-03-31",
+    ]);
+
+    // February has no Fidelity entry at all — absent, not zero.
+    const february = result.points[1];
+    expect(february.valueCentsByAccountId).toEqual({ 2: 55_000 });
+    expect(1 in february.valueCentsByAccountId).toBe(false);
+    expect(february.reportingAccountCount).toBe(1);
+    expect(february.totalCents).toBe(55_000);
+
+    expect(result.points[2].totalCents).toBe(72_000);
+    expect(result.points[2].reportingAccountCount).toBe(2);
+  });
+
+  it("summarizes each account's first and last recorded value", () => {
+    const result = buildAccountPerformanceHistory([
+      { account: fidelity, history: [record(2, 1, "2026-03-31", 12_500), record(1, 1, "2026-01-31", 10_000)] },
+    ]);
+
+    expect(result.series).toHaveLength(1);
+    expect(result.series[0]).toMatchObject({
+      accountId: 1,
+      accountName: "Fidelity HSA",
+      recordCount: 2,
+      // Sorted regardless of the order the records arrived in.
+      firstDate: "2026-01-31",
+      lastDate: "2026-03-31",
+      firstValueCents: 10_000,
+      lastValueCents: 12_500,
+      changeCents: 2_500,
+    });
+    expect(result.series[0].changePct).toBeCloseTo(25, 6);
+  });
+
+  it("drops an account with no records rather than charting an empty line", () => {
+    const result = buildAccountPerformanceHistory([
+      { account: fidelity, history: [record(1, 1, "2026-01-31", 10_000)] },
+      { account: chase, history: [] },
+    ]);
+    expect(result.series.map((entry) => entry.accountId)).toEqual([1]);
+  });
+
+  it("reports no change, and no divide by zero, for a single record or a zero start", () => {
+    const single = buildAccountPerformanceHistory([
+      { account: fidelity, history: [record(1, 1, "2026-01-31", 10_000)] },
+    ]);
+    expect(single.series[0].changeCents).toBe(0);
+    expect(single.series[0].changePct).toBe(0);
+
+    const fromZero = buildAccountPerformanceHistory([
+      { account: fidelity, history: [record(1, 1, "2026-01-31", 0), record(2, 1, "2026-02-28", 500)] },
+    ]);
+    expect(fromZero.series[0].changeCents).toBe(500);
+    expect(fromZero.series[0].changePct).toBe(0);
+  });
+
+  it("returns nothing at all for no accounts", () => {
+    expect(buildAccountPerformanceHistory([])).toEqual({ points: [], series: [] });
   });
 });

@@ -422,7 +422,7 @@ The app's collapsible left-hand nav. Mounted once; you should not need a second 
 
 - **Source:** [src/components/sidebar.tsx](src/components/sidebar.tsx)
 - **Import:** `import { Sidebar } from "@/components/sidebar";`
-- **Client component:** yes (persists collapsed state to `localStorage`)
+- **Client component:** yes (persists its state to `localStorage`)
 
 | Prop | Type | Notes |
 |------|------|-------|
@@ -445,17 +445,33 @@ The app's collapsible left-hand nav. Mounted once; you should not need a second 
 
 **Used by:** [src/app/(protected)/layout.tsx](src/app/(protected)/layout.tsx).
 
-**Notes:** always renders a "Home" link above the module list; shows icon-only when
-collapsed; the footer is an `Avatar` + name linking to `/account` plus a separate
-"Log out" button. The collapse toggle is the same `&rsaquo;` chevron `TreeNav` and
-`CollapsibleCard` use.
+**Three states, two controls.** `full` (15rem, labels) → `rail` (4rem, icons only) →
+`strip` (0.75rem, just the accent edge). The `&rsaquo;` chevron — the same one `TreeNav`
+and `CollapsibleCard` use — moves between full and rail; a `&laquo;` button hides to the
+strip; clicking the strip returns to the rail. Two controls rather than one cycling
+through three, because a single control can only go one way and overshooting would mean
+going all the way round. In `strip` the slab isn't rendered at all, not merely narrowed —
+a hidden sidebar you can still Tab into is worse than no sidebar.
+
+**Notes:** always renders a "Home" link above the module list; the footer is an `Avatar` +
+name linking to `/account` plus a separate "Log out" button.
 
 **It is `fixed`, not a column.** The rail floats over the page at `z-40` with `Button`'s hard
 offset shadow turned to point right (see `design.md`), so the layout reserves only its
-*collapsed* width (`pl-24`) and module content fills the rest of the screen; expanding it
-overlaps content rather than reflowing it. Because of that, keep every other stacked element
-below `z-40` and dialogs at `Modal`'s `z-50`, or a dialog overlay won't cover the sidebar. Its
-`nav` scrolls independently — a long module list can't make the page taller any more.
+*rail* width (`pl-24` on `main.app-main`) and module content fills the rest of the screen;
+expanding it overlaps content rather than reflowing it. Because of that, keep every other
+stacked element below `z-40` and dialogs at `Modal`'s `z-50`, or a dialog overlay won't cover
+the sidebar. Its `nav` scrolls independently — a long module list can't make the page taller
+any more.
+
+**How the shell reacts to it.** `(protected)/layout.tsx` is a *server* component and this
+state is client-side, so they meet through an attribute rather than a prop: `Sidebar` mirrors
+its state onto `<html data-sidebar>`, and rules in `globals.css` drop `.app-main`'s padding in
+`strip`. A small script in the root layout applies the stored value **before first paint** —
+without it every page renders at the full gutter and then shoves sideways when the mount
+effect reads `localStorage`. That script mutates `<html>`, which is why the root layout sets
+`suppressHydrationWarning` on it. If you change `WIDTH_CLASS`, change the matching widths in
+`globals.css` too.
 
 ---
 
@@ -466,7 +482,7 @@ sub-pages (like Administration), not for the top-level module list.
 
 - **Source:** [src/components/tree-nav.tsx](src/components/tree-nav.tsx)
 - **Import:** `import { TreeNav, type TreeNode } from "@/components/tree-nav";`
-- **Client component:** yes (persists collapsed state to `localStorage`)
+- **Client component:** yes (persists its state to `localStorage`)
 
 | Prop | Type | Notes |
 |------|------|-------|
@@ -765,6 +781,9 @@ Time-series line chart, one or more series.
 | `formatValue?` | `(value: number) => string` | y-axis ticks + tooltip. |
 | `formatX?` | `(value: string \| number) => string` | x-axis ticks. |
 | `height?` | `number` | Default `280`. |
+| `connectNulls?` | `boolean` | Draw a series through rows where its key is missing instead of breaking. Default `false`. |
+| `curve?` | `"monotone" \| "linear"` | Default `"monotone"` (smoothed). `"linear"` joins points with straight segments. |
+| `showLegend?` | `boolean` | Overrides the "legend only when >1 series" default. Set `false` when the caller renders its own. |
 | `className?` | `string` | |
 
 ```tsx
@@ -775,6 +794,14 @@ Time-series line chart, one or more series.
   formatValue={(value) => formatCurrency(value)}
 />
 ```
+
+**Sparse multi-series.** When series are recorded on different schedules, omit the key on
+rows that have no value — *don't* write `0`, which reads as a real reading of zero — and set
+`connectNulls` so each line joins across its gaps. Pair it with `curve="linear"`: a smoothed
+curve through a sparse series implies intermediate movement the data doesn't record. Assign
+each series an explicit `color` from its **stable** index, not its position in a filtered
+array, or hiding one series recolours the rest. See the Account Performance Over Time card in
+[stock-accounts-view.tsx](src/app/(protected)/modules/[slug]/stock-accounts-view.tsx).
 
 **Custom point marks.** `series[].renderDot` replaces that series' filled circle with
 whatever SVG you return, given `{ cx, cy, index, payload, color }` — `payload` is the whole
