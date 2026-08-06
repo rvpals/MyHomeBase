@@ -1,6 +1,13 @@
 import type Database from "better-sqlite3";
+import { parseStoredMapping, serializeNamedMapping } from "./mapping";
 import type { CsvImportMappingRepository } from "./ports";
-import type { ColumnMapping, FieldOptionsMap, ImportType, NamedMapping } from "./types";
+import type {
+  AccountNameMapping,
+  ColumnMapping,
+  FieldOptionsMap,
+  ImportType,
+  NamedMapping,
+} from "./types";
 
 interface CurrentMappingRow {
   import_type: string;
@@ -16,34 +23,17 @@ interface NamedMappingRow {
   updated_at: string;
 }
 
-// A named mapping's JSON column holds one of two shapes:
-//   legacy: { "0": "ticker", "1": "name" }              (columns only)
-//   current: { columns: {...}, options: {...} }         (columns + per-column options)
-// Reading tolerates both so mappings saved before per-column options keep working.
-function parseStoredMapping(json: string): {
-  columnMapping: ColumnMapping;
-  fieldOptions: FieldOptionsMap;
-} {
-  const parsed = JSON.parse(json) as unknown;
-  if (parsed && typeof parsed === "object" && "columns" in parsed) {
-    const wrapped = parsed as { columns?: ColumnMapping; options?: FieldOptionsMap };
-    return { columnMapping: wrapped.columns ?? {}, fieldOptions: wrapped.options ?? {} };
-  }
-  return { columnMapping: (parsed as ColumnMapping) ?? {}, fieldOptions: {} };
-}
-
-function serializeNamedMapping(columnMapping: ColumnMapping, fieldOptions: FieldOptionsMap): string {
-  return JSON.stringify({ columns: columnMapping, options: fieldOptions });
-}
-
 function namedMappingToDomain(row: NamedMappingRow): NamedMapping {
-  const { columnMapping, fieldOptions } = parseStoredMapping(row.column_mapping_json);
+  const { columnMapping, fieldOptions, accountNameMapping } = parseStoredMapping(
+    row.column_mapping_json,
+  );
   return {
     id: row.id,
     name: row.name,
     importType: row.import_type as ImportType,
     columnMapping,
     fieldOptions,
+    accountNameMapping,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -90,6 +80,7 @@ export class SqliteCsvImportMappingRepository implements CsvImportMappingReposit
     importType: ImportType;
     columnMapping: ColumnMapping;
     fieldOptions: FieldOptionsMap;
+    accountNameMapping: AccountNameMapping;
   }): NamedMapping {
     const result = this.db
       .prepare(
@@ -99,7 +90,11 @@ export class SqliteCsvImportMappingRepository implements CsvImportMappingReposit
       .run({
         name: input.name,
         importType: input.importType,
-        columnMappingJson: serializeNamedMapping(input.columnMapping, input.fieldOptions),
+        columnMappingJson: serializeNamedMapping(
+          input.columnMapping,
+          input.fieldOptions,
+          input.accountNameMapping,
+        ),
       });
 
     const created = this.getNamedMappingById(Number(result.lastInsertRowid));
@@ -109,7 +104,12 @@ export class SqliteCsvImportMappingRepository implements CsvImportMappingReposit
 
   updateNamedMapping(
     id: number,
-    input: { name: string; columnMapping: ColumnMapping; fieldOptions: FieldOptionsMap },
+    input: {
+      name: string;
+      columnMapping: ColumnMapping;
+      fieldOptions: FieldOptionsMap;
+      accountNameMapping: AccountNameMapping;
+    },
   ): NamedMapping {
     this.db
       .prepare(
@@ -120,7 +120,11 @@ export class SqliteCsvImportMappingRepository implements CsvImportMappingReposit
       .run({
         id,
         name: input.name,
-        columnMappingJson: serializeNamedMapping(input.columnMapping, input.fieldOptions),
+        columnMappingJson: serializeNamedMapping(
+          input.columnMapping,
+          input.fieldOptions,
+          input.accountNameMapping,
+        ),
       });
 
     const updated = this.getNamedMappingById(id);

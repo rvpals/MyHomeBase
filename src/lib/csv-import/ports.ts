@@ -1,4 +1,10 @@
-import type { ColumnMapping, FieldOptionsMap, ImportType, NamedMapping } from "./types";
+import type {
+  AccountNameMapping,
+  ColumnMapping,
+  FieldOptionsMap,
+  ImportType,
+  NamedMapping,
+} from "./types";
 
 export interface CsvImportMappingRepository {
   getCurrentMapping(importType: ImportType): ColumnMapping | undefined;
@@ -11,10 +17,16 @@ export interface CsvImportMappingRepository {
     importType: ImportType;
     columnMapping: ColumnMapping;
     fieldOptions: FieldOptionsMap;
+    accountNameMapping: AccountNameMapping;
   }): NamedMapping;
   updateNamedMapping(
     id: number,
-    input: { name: string; columnMapping: ColumnMapping; fieldOptions: FieldOptionsMap },
+    input: {
+      name: string;
+      columnMapping: ColumnMapping;
+      fieldOptions: FieldOptionsMap;
+      accountNameMapping: AccountNameMapping;
+    },
   ): NamedMapping;
   deleteNamedMapping(id: number): void;
 }

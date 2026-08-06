@@ -26,6 +26,30 @@ export interface FieldOptions {
 /** CSV column index (as a string key) -> options for that column. */
 export type FieldOptionsMap = Record<string, FieldOptions>;
 
+/**
+ * Which account a CSV's own account label refers to.
+ *
+ * Both halves are stored because each survives a different edit: the id holds
+ * up when an account is renamed, and the name holds up when an account is
+ * deleted and recreated (which gives it a new id). Resolving prefers the id and
+ * falls back to the name — see `resolveAccountNameMapping`.
+ */
+export interface AccountNameMatch {
+  accountId: number;
+  /** The account's name at the time the match was saved. */
+  accountName: string;
+}
+
+/**
+ * A broker's account label as it appears in the CSV -> the account it means,
+ * e.g. `"Fidelity HSA"` -> Fidelity Health Savings Account.
+ *
+ * Keyed by the raw cell text, trimmed. Matching is exact (case-insensitively);
+ * for anything fuzzier, the Expense module's rules engine is the thing to copy
+ * rather than growing a second matcher here.
+ */
+export type AccountNameMapping = Record<string, AccountNameMatch>;
+
 export interface CsvPreview {
   headers: string[];
   totalRows: number;
@@ -48,6 +72,13 @@ export interface NamedMapping {
   importType: ImportType;
   columnMapping: ColumnMapping;
   fieldOptions: FieldOptionsMap;
+  /**
+   * Account labels this broker's exports use. Empty for every import type but
+   * Performance, and for mappings saved before this was recorded — the point of
+   * keeping it is that "map once, reuse forever" should cover *which account a
+   * row belongs to*, not only which column it came from.
+   */
+  accountNameMapping: AccountNameMapping;
   createdAt: string;
   updatedAt: string;
 }

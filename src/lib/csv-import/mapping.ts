@@ -1,7 +1,13 @@
 // Generic, option-aware mapping helpers shared by any importer. Pure — no I/O.
 // The domain-specific meaning of a field name lives in each consuming module's
 // apply-adapter; these functions just interpret a cell given its options.
-import type { ColumnMapping, FieldOptions, FieldOptionsMap } from "./types";
+import type {
+  AccountNameMapping,
+  AccountNameMatch,
+  ColumnMapping,
+  FieldOptions,
+  FieldOptionsMap,
+} from "./types";
 
 /** One CSV cell resolved to its target field, with that column's options. */
 export interface AppliedCell {
@@ -189,4 +195,95 @@ export function sampleRows<Row>(rows: Row[], count: number, random: () => number
     .slice(0, count)
     .sort((a, b) => a - b)
     .map((index) => rows[index]);
+}
+
+/**
+ * Turns a saved account-name mapping into the `csvName -> accountId` map an
+ * importer wants, against the accounts that exist *now*.
+ *
+ * A saved match can go stale two ways, and each is recoverable from the other
+ * half of the pair: the account was renamed (the id still resolves) or it was
+ * deleted and recreated (the id is gone, the name still matches). An entry that
+ * resolves neither way is dropped rather than guessed at — the importer then
+ * treats that CSV label as unrecognised and asks, which is the honest outcome.
+ */
+export function resolveAccountNameMapping(
+  saved: AccountNameMapping,
+  accounts: readonly { id: number; name: string }[],
+): Record<string, number> {
+  const byId = new Map(accounts.map((account) => [account.id, account]));
+  const byName = new Map(accounts.map((account) => [account.name.trim().toLowerCase(), account]));
+
+  const resolved: Record<string, number> = {};
+  for (const [csvName, match] of Object.entries(saved)) {
+    const account =
+      byId.get(match.accountId) ?? byName.get(match.accountName.trim().toLowerCase());
+    if (account) resolved[csvName] = account.id;
+  }
+  return resolved;
+}
+
+/**
+ * Builds the savable form from what the match dialog produced, pairing each
+ * chosen id with that account's current name so the match can survive either
+ * being changed later. Ids with no matching account are dropped.
+ */
+export function toAccountNameMapping(
+  chosen: Record<string, number>,
+  accounts: readonly { id: number; name: string }[],
+): AccountNameMapping {
+  const byId = new Map(accounts.map((account) => [account.id, account]));
+
+  const mapping: AccountNameMapping = {};
+  for (const [csvName, accountId] of Object.entries(chosen)) {
+    const account = byId.get(accountId);
+    if (!account) continue;
+    const match: AccountNameMatch = { accountId: account.id, accountName: account.name };
+    mapping[csvName.trim()] = match;
+  }
+  return mapping;
+}
+
+// A named mapping's JSON column is a widening envelope, which is why adding to
+// it has never needed a migration:
+//   legacy:  { "0": "ticker", "1": "name" }                    (columns only)
+//   +options:{ columns: {...}, options: {...} }
+//   current: { columns: {...}, options: {...}, accounts: {...} }
+// Every key is read defensively, so a mapping saved under any earlier shape
+// still loads and simply reports {} for what it predates.
+export function parseStoredMapping(json: string): {
+  columnMapping: ColumnMapping;
+  fieldOptions: FieldOptionsMap;
+  accountNameMapping: AccountNameMapping;
+} {
+  const parsed = JSON.parse(json) as unknown;
+  if (parsed && typeof parsed === "object" && "columns" in parsed) {
+    const wrapped = parsed as {
+      columns?: ColumnMapping;
+      options?: FieldOptionsMap;
+      accounts?: AccountNameMapping;
+    };
+    return {
+      columnMapping: wrapped.columns ?? {},
+      fieldOptions: wrapped.options ?? {},
+      accountNameMapping: wrapped.accounts ?? {},
+    };
+  }
+  return {
+    columnMapping: (parsed as ColumnMapping) ?? {},
+    fieldOptions: {},
+    accountNameMapping: {},
+  };
+}
+
+export function serializeNamedMapping(
+  columnMapping: ColumnMapping,
+  fieldOptions: FieldOptionsMap,
+  accountNameMapping: AccountNameMapping,
+): string {
+  return JSON.stringify({
+    columns: columnMapping,
+    options: fieldOptions,
+    accounts: accountNameMapping,
+  });
 }

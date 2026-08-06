@@ -3,6 +3,10 @@ import {
   applyMapping,
   constantValuesByField,
   parseDateWithFormat,
+  parseStoredMapping,
+  resolveAccountNameMapping,
+  serializeNamedMapping,
+  toAccountNameMapping,
   restrictMapping,
   sampleRows,
   selectImportRows,
@@ -195,5 +199,96 @@ describe("sampleRows", () => {
     // Order preserved: each selected row appears in the same relative order as input.
     const positions = result.map((row) => rows.indexOf(row));
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
+  });
+});
+
+describe("toAccountNameMapping", () => {
+  const accounts = [
+    { id: 3, name: "Fidelity Health Savings Account" },
+    { id: 7, name: "Chase Joint Stock Account" },
+  ];
+
+  it("pairs each chosen id with that account's current name", () => {
+    expect(toAccountNameMapping({ "Fidelity HSA": 3, "Chase Joint": 7 }, accounts)).toEqual({
+      "Fidelity HSA": { accountId: 3, accountName: "Fidelity Health Savings Account" },
+      "Chase Joint": { accountId: 7, accountName: "Chase Joint Stock Account" },
+    });
+  });
+
+  it("trims the CSV label and drops a choice with no such account", () => {
+    expect(toAccountNameMapping({ "  Fidelity HSA  ": 3, Ghost: 99 }, accounts)).toEqual({
+      "Fidelity HSA": { accountId: 3, accountName: "Fidelity Health Savings Account" },
+    });
+  });
+});
+
+describe("resolveAccountNameMapping", () => {
+  const saved = {
+    "Fidelity HSA": { accountId: 3, accountName: "Fidelity Health Savings Account" },
+  };
+
+  it("resolves by id when the account still exists", () => {
+    const accounts = [{ id: 3, name: "Fidelity Health Savings Account" }];
+    expect(resolveAccountNameMapping(saved, accounts)).toEqual({ "Fidelity HSA": 3 });
+  });
+
+  it("still resolves by id after the account was renamed", () => {
+    const accounts = [{ id: 3, name: "Fidelity HSA (renamed)" }];
+    expect(resolveAccountNameMapping(saved, accounts)).toEqual({ "Fidelity HSA": 3 });
+  });
+
+  it("falls back to the name after the account was deleted and recreated", () => {
+    // Same account, new id — the id is stale but the name still identifies it.
+    const accounts = [{ id: 42, name: "fidelity health savings account" }];
+    expect(resolveAccountNameMapping(saved, accounts)).toEqual({ "Fidelity HSA": 42 });
+  });
+
+  it("drops an entry that resolves neither way rather than guessing", () => {
+    expect(resolveAccountNameMapping(saved, [{ id: 9, name: "Something Else" }])).toEqual({});
+  });
+
+  it("round-trips through toAccountNameMapping unchanged", () => {
+    const accounts = [{ id: 3, name: "Fidelity Health Savings Account" }];
+    const chosen = { "Fidelity HSA": 3 };
+    expect(resolveAccountNameMapping(toAccountNameMapping(chosen, accounts), accounts)).toEqual(chosen);
+  });
+});
+
+describe("parseStoredMapping", () => {
+  // The stored envelope has widened twice without a migration. Every shape ever
+  // written must still load, or someone's saved broker mappings vanish silently.
+  it("reads the original columns-only shape", () => {
+    const parsed = parseStoredMapping(JSON.stringify({ "0": "ticker", "1": "name" }));
+    expect(parsed.columnMapping).toEqual({ "0": "ticker", "1": "name" });
+    expect(parsed.fieldOptions).toEqual({});
+    expect(parsed.accountNameMapping).toEqual({});
+  });
+
+  it("reads the columns+options shape, before account matches existed", () => {
+    const parsed = parseStoredMapping(
+      JSON.stringify({ columns: { "0": "date" }, options: { "0": { dateFormat: "M/D/YY" } } }),
+    );
+    expect(parsed.columnMapping).toEqual({ "0": "date" });
+    expect(parsed.fieldOptions).toEqual({ "0": { dateFormat: "M/D/YY" } });
+    expect(parsed.accountNameMapping).toEqual({});
+  });
+
+  it("reads the current shape", () => {
+    const accounts = { "Fidelity HSA": { accountId: 3, accountName: "Fidelity HSA Account" } };
+    const parsed = parseStoredMapping(
+      JSON.stringify({ columns: { "0": "date" }, options: {}, accounts }),
+    );
+    expect(parsed.accountNameMapping).toEqual(accounts);
+  });
+
+  it("round-trips what serializeNamedMapping writes", () => {
+    const columns = { "0": "accountName", "1": "totalValue" };
+    const options = { "1": { constantValue: "0" } };
+    const accounts = { "Fidelity HSA": { accountId: 3, accountName: "Fidelity HSA Account" } };
+    expect(parseStoredMapping(serializeNamedMapping(columns, options, accounts))).toEqual({
+      columnMapping: columns,
+      fieldOptions: options,
+      accountNameMapping: accounts,
+    });
   });
 });

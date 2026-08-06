@@ -20,6 +20,14 @@ export const fieldOptionsSchema = z.object({
 // Per-column options, keyed by the same column index as columnMappingSchema.
 export const fieldOptionsMapSchema = z.record(z.string(), fieldOptionsSchema);
 
+export const accountNameMatchSchema = z.object({
+  accountId: z.number().int().positive(),
+  accountName: z.string().trim().min(1),
+});
+
+/** Keyed by the CSV's own account label, trimmed. */
+export const accountNameMappingSchema = z.record(z.string(), accountNameMatchSchema);
+
 export const saveCurrentMappingSchema = z.object({
   importType: importTypeSchema,
   columnMapping: columnMappingSchema,
@@ -35,6 +43,10 @@ export const createNamedMappingSchema = z.object({
   // means "no per-column options". z.input keeps it optional for callers while
   // parse() fills the {} default before it reaches the repository.
   fieldOptions: fieldOptionsMapSchema.default({}),
+  // Same reasoning as fieldOptions: optional for callers that have no account
+  // labels to remember (every import type but Performance), defaulted before it
+  // reaches the repository.
+  accountNameMapping: accountNameMappingSchema.default({}),
 });
 
 export type CreateNamedMappingInput = z.input<typeof createNamedMappingSchema>;
@@ -43,6 +55,7 @@ export const updateNamedMappingSchema = z.object({
   name: z.string().min(1),
   columnMapping: columnMappingSchema,
   fieldOptions: fieldOptionsMapSchema.default({}),
+  accountNameMapping: accountNameMappingSchema.default({}),
 });
 
 export type UpdateNamedMappingInput = z.input<typeof updateNamedMappingSchema>;

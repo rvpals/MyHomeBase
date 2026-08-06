@@ -181,6 +181,7 @@ describe("findMappingForAccount", () => {
     importType: "Expense",
     columnMapping: {},
     fieldOptions: {},
+    accountNameMapping: {},
     createdAt: "",
     updatedAt: "",
   });
@@ -291,6 +292,7 @@ const CHASE_MAPPING: NamedMapping = {
   importType: "Expense",
   columnMapping: { "0": "transactionDate", "1": "transactionDescription", "2": "amount" },
   fieldOptions: { "0": { dateFormat: "MM/DD/YYYY" } },
+  accountNameMapping: {},
   createdAt: "",
   updatedAt: "",
 };

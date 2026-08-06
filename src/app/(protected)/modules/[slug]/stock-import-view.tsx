@@ -15,6 +15,7 @@ import { CSV_MAPPING_OPTION_INPUT_CLASS, CsvMappingTable } from "@/components/cs
 import { FileDropzone } from "@/components/file-dropzone";
 import { constantValuesByField, mapRow } from "@/lib/csv-import";
 import type {
+  AccountNameMapping,
   ColumnMapping,
   CsvPreview,
   FieldOptionsMap,
@@ -90,6 +91,47 @@ function readFileAsText(file: File): Promise<string> {
   });
 }
 
+/**
+ * Where a row's currently-selected account came from, so the match step can say
+ * so rather than presenting a guess and a saved choice as the same thing.
+ *
+ * Derived at render from the selection rather than stored, so it updates the
+ * moment the dropdown is touched — a guess you accepted unchanged is still a
+ * guess, and should keep saying so until you confirm the import.
+ */
+function accountMatchSource(
+  csvName: string,
+  chosen: number | undefined,
+  step: { remembered: Record<string, number>; guessed: Record<string, number> },
+): { label: string; className: string; hint: string } {
+  if (chosen === undefined) {
+    return {
+      label: "Skipped",
+      className: "bg-line/60 text-muted",
+      hint: `Rows naming "${csvName}" will not be imported.`,
+    };
+  }
+  if (step.remembered[csvName] === chosen) {
+    return {
+      label: "Remembered",
+      className: "bg-brass-soft text-brass-dark",
+      hint: "What you chose last time, saved with this mapping.",
+    };
+  }
+  if (step.guessed[csvName] === chosen) {
+    return {
+      label: "Guessed",
+      className: "bg-line/60 text-ink",
+      hint: "Worked out from the text — check it before importing.",
+    };
+  }
+  return {
+    label: "Your choice",
+    className: "bg-brass-soft text-brass-dark",
+    hint: "Set by you just now. Save the mapping to reuse it next time.",
+  };
+}
+
 function guessAccountId(csvName: string, accounts: ImportAccountOption[]): number | undefined {
   const lower = csvName.toLowerCase();
   const exact = accounts.find((account) => account.name.toLowerCase() === lower);
@@ -113,9 +155,21 @@ export function StockImportView({ accounts }: { accounts: ImportAccountOption[] 
   const [mappingName, setMappingName] = useState("");
   const [targetAccountId, setTargetAccountId] = useState<number>(UNASSIGNED_ACCOUNT_ID);
   const [accountStep, setAccountStep] = useState<
-    { csvAccountNames: string[]; accounts: ImportAccountOption[] } | undefined
+    | {
+        csvAccountNames: string[];
+        accounts: ImportAccountOption[];
+        /** Matches the saved mapping supplied, `csvName -> accountId`. */
+        remembered: Record<string, number>;
+        /** Matches worked out from the text, which are only ever a suggestion. */
+        guessed: Record<string, number>;
+      }
+    | undefined
   >(undefined);
   const [accountNameMapping, setAccountNameMapping] = useState<Record<string, number>>({});
+  // What the applied named mapping remembers, kept raw until import time: the
+  // saved matches can only be resolved against the accounts that exist now, and
+  // those aren't fetched until the account step runs.
+  const [savedAccountMatches, setSavedAccountMatches] = useState<AccountNameMapping>({});
   // Row indexes the user has removed from this file. Reset whenever the file or
   // type changes — an index only means something against one parse.
   const [excludedRows, setExcludedRows] = useState<Set<number>>(new Set());
@@ -141,6 +195,7 @@ export function StockImportView({ accounts }: { accounts: ImportAccountOption[] 
     setMappingName("");
     setAccountStep(undefined);
     setAccountNameMapping({});
+    setSavedAccountMatches({});
     setExcludedRows(new Set());
     setRowTypes({});
     setSummary(undefined);
@@ -243,6 +298,7 @@ export function StockImportView({ accounts }: { accounts: ImportAccountOption[] 
     if (!named) return;
     setMapping(named.columnMapping);
     setFieldOptions(named.fieldOptions);
+    setSavedAccountMatches(named.accountNameMapping);
     setSelectedMappingId(named.id);
     setMappingName(named.name);
   }
@@ -263,6 +319,7 @@ export function StockImportView({ accounts }: { accounts: ImportAccountOption[] 
       importType,
       mapping,
       fieldOptions,
+      accountNameMapping,
     );
     if (!result.ok) {
       setError(result.error);
@@ -318,22 +375,33 @@ export function StockImportView({ accounts }: { accounts: ImportAccountOption[] 
     if (importType === "Performance" && accountNameIsMapped && !accountStep) {
       setIsBusy(true);
       try {
-        const result = await previewAccountNamesAction(fileText, mapping);
+        const result = await previewAccountNamesAction(fileText, mapping, savedAccountMatches);
         if (!result.ok) {
           setError(result.error);
           return;
         }
         const csvAccountNames = result.csvAccountNames ?? [];
         const csvAccounts = result.accounts ?? [];
+        const remembered = result.remembered ?? {};
         if (csvAccountNames.length > 0 && csvAccounts.length > 0) {
+          // Every label is preselected but nothing is decided: the step always
+          // shows, so what the app worked out is on screen and adjustable before
+          // any row is written. Auto-importing on a confident guess would put
+          // money against the wrong account without anyone having seen it.
+          const guessed: Record<string, number> = {};
           const preselect: Record<string, number> = {};
           for (const csvName of csvAccountNames) {
             const guess = guessAccountId(csvName, csvAccounts);
-            if (guess !== undefined) preselect[csvName] = guess;
+            if (guess !== undefined) guessed[csvName] = guess;
+            // A remembered match wins: it's what you chose last time for this
+            // broker, where the guess is only ever a heuristic on the text.
+            const resolved = remembered[csvName] ?? guess;
+            if (resolved !== undefined) preselect[csvName] = resolved;
           }
-          setAccountStep({ csvAccountNames, accounts: csvAccounts });
+
+          setAccountStep({ csvAccountNames, accounts: csvAccounts, remembered, guessed });
           setAccountNameMapping(preselect);
-          return; // wait for the user to confirm the account mapping below
+          return; // wait for the user to confirm the account matches below
         }
       } finally {
         setIsBusy(false);
@@ -593,32 +661,62 @@ export function StockImportView({ accounts }: { accounts: ImportAccountOption[] 
 
           {accountStep && (
             <div className="rounded-md border border-line bg-paper p-3">
-              <p className="mb-2 text-sm font-medium text-ink">Match CSV account names to your accounts</p>
+              <p className="text-sm font-medium text-ink">Match CSV account names to your accounts</p>
+              <p className="mb-3 mt-1 text-xs text-muted">
+                Every name in the file is listed with what this import will do with it. Nothing is
+                written until you confirm, and each row can be changed &mdash; including to{" "}
+                <span className="text-ink">Skip this name</span>, which leaves those rows out.
+              </p>
               <div className="flex flex-col gap-2">
-                {accountStep.csvAccountNames.map((csvName) => (
-                  <div key={csvName} className="flex items-center gap-2 text-sm">
-                    <span className="flex-1 font-medium text-ink">{csvName}</span>
-                    <span className="text-muted">&rarr;</span>
-                    <select
-                      value={accountNameMapping[csvName] ?? ""}
-                      onChange={(event) =>
-                        setAccountNameMapping((current) => ({
-                          ...current,
-                          [csvName]: Number(event.target.value),
-                        }))
-                      }
-                      className="flex-1 rounded-md border border-line bg-paper px-2 py-1 text-sm text-ink"
-                    >
-                      <option value="">Skip this name</option>
-                      {accountStep.accounts.map((account) => (
-                        <option key={account.id} value={account.id}>
-                          {account.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ))}
+                {accountStep.csvAccountNames.map((csvName) => {
+                  const chosen = accountNameMapping[csvName];
+                  const source = accountMatchSource(csvName, chosen, accountStep);
+                  return (
+                    <div key={csvName} className="flex items-center gap-2 text-sm">
+                      <span className="flex-1 truncate font-mono text-xs text-ink" title={csvName}>
+                        {csvName}
+                      </span>
+                      <span className="text-muted">&rarr;</span>
+                      <select
+                        value={chosen ?? ""}
+                        onChange={(event) =>
+                          setAccountNameMapping((current) => {
+                            const next = { ...current };
+                            // "" is a real choice — leave the name out entirely —
+                            // so it deletes the entry rather than storing NaN.
+                            if (event.target.value === "") delete next[csvName];
+                            else next[csvName] = Number(event.target.value);
+                            return next;
+                          })
+                        }
+                        className="flex-1 rounded-md border border-line bg-paper px-2 py-1 text-sm text-ink"
+                      >
+                        <option value="">Skip this name</option>
+                        {accountStep.accounts.map((account) => (
+                          <option key={account.id} value={account.id}>
+                            {account.name}
+                          </option>
+                        ))}
+                      </select>
+                      <span
+                        title={source.hint}
+                        className={`w-28 shrink-0 rounded px-1.5 py-0.5 text-center text-xs font-medium ${source.className}`}
+                      >
+                        {source.label}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
+              {/* Skipping is a legitimate choice, but it silently drops rows, so
+                  say how many names it applies to before the button is pressed. */}
+              {accountStep.csvAccountNames.some((csvName) => accountNameMapping[csvName] === undefined) && (
+                <p className="mt-3 text-xs text-muted">
+                  {accountStep.csvAccountNames.filter((csvName) => accountNameMapping[csvName] === undefined).length}{" "}
+                  of {accountStep.csvAccountNames.length} name(s) are set to skip — rows naming them
+                  will not be imported.
+                </p>
+              )}
               <Button className="mt-3" onClick={() => runImport(accountNameMapping)} disabled={isBusy}>
                 {isBusy ? "Importing…" : "Confirm & Import"}
               </Button>

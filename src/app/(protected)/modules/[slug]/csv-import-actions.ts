@@ -7,9 +7,12 @@ import {
   getCurrentMapping,
   listNamedMappings,
   previewCsv,
+  resolveAccountNameMapping,
   restrictMapping,
   saveCurrentMapping,
+  toAccountNameMapping,
   updateNamedMapping,
+  type AccountNameMapping,
   type ColumnMapping,
   type CsvPreview,
   type FieldOptionsMap,
@@ -97,12 +100,33 @@ export async function saveNamedMappingAction(
   importType: StockImportType,
   columnMapping: ColumnMapping,
   fieldOptions: FieldOptionsMap = {},
+  /**
+   * The account-matching dialog's choices, `csvAccountName -> accountId`. Paired
+   * with each account's current *name* here rather than in the view, because
+   * only this side can read the accounts — see `toAccountNameMapping`.
+   */
+  accountNameChoices: Record<string, number> = {},
 ): Promise<ActionResult> {
   try {
+    const accountNameMapping = toAccountNameMapping(
+      accountNameChoices,
+      listAccounts(deps.investmentAccountRepo),
+    );
     if (mappingId === undefined) {
-      createNamedMapping(deps.csvImportMappingRepo, { name, importType, columnMapping, fieldOptions });
+      createNamedMapping(deps.csvImportMappingRepo, {
+        name,
+        importType,
+        columnMapping,
+        fieldOptions,
+        accountNameMapping,
+      });
     } else {
-      updateNamedMapping(deps.csvImportMappingRepo, mappingId, { name, columnMapping, fieldOptions });
+      updateNamedMapping(deps.csvImportMappingRepo, mappingId, {
+        name,
+        columnMapping,
+        fieldOptions,
+        accountNameMapping,
+      });
     }
   } catch (error) {
     return toErrorResult(error, "Failed to save the mapping.");
@@ -124,17 +148,26 @@ export async function deleteNamedMappingAction(id: number): Promise<ActionResult
 export interface AccountNamesResult extends ActionResult {
   csvAccountNames?: string[];
   accounts?: { id: number; name: string }[];
+  /** Matches the applied named mapping already knows, `csvAccountName -> accountId`. */
+  remembered?: Record<string, number>;
 }
 
 export async function previewAccountNamesAction(
   fileText: string,
   columnMapping: ColumnMapping,
+  /** What the loaded named mapping remembered, if one is applied. */
+  savedAccountNameMapping: AccountNameMapping = {},
 ): Promise<AccountNamesResult> {
   try {
+    const accounts = listAccounts(deps.investmentAccountRepo);
     return {
       ok: true,
       csvAccountNames: extractCsvAccountNames(fileText, columnMapping),
-      accounts: listAccounts(deps.investmentAccountRepo).map((account) => ({ id: account.id, name: account.name })),
+      accounts: accounts.map((account) => ({ id: account.id, name: account.name })),
+      // Resolved here rather than in the view: a saved match can be stale two
+      // ways (renamed account, recreated account), and only this side can see
+      // the accounts to work out which.
+      remembered: resolveAccountNameMapping(savedAccountNameMapping, accounts),
     };
   } catch (error) {
     return toErrorResult(error, "Failed to scan account names.");
