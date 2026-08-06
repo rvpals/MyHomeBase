@@ -33,6 +33,33 @@ body {
   font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
 }
 
+/* The page shell reserves room for the sidebar's *collapsed* rail (Tailwind's
+   `pl-24` on `.app-main` = 4rem rail + a 2rem gutter). When the sidebar is
+   hidden to its accent strip there is no rail to clear, so the shell takes that
+   space back.
+
+   This lives in CSS rather than as a prop because the two halves sit on opposite
+   sides of the client/server line: `(protected)/layout.tsx` is a server
+   component, and the sidebar's state is client-side in localStorage. `Sidebar`
+   mirrors its state onto `<html data-sidebar>`, and the rule below reads it —
+   no context provider, and the shell stays a server component. */
+html[data-sidebar="strip"] .app-main {
+  padding-left: 2.5rem;
+}
+
+/* The same attribute also sizes the slab for the first paint. React renders the
+   default state until its mount effect reads localStorage, so without these the
+   sidebar itself flashes at full width for a frame even though the gutter is
+   already correct. Widths must match WIDTH_CLASS in sidebar.tsx. */
+html[data-sidebar="rail"] .app-sidebar {
+  width: 4rem;
+}
+
+html[data-sidebar="strip"] .app-sidebar {
+  width: 0.75rem;
+  overflow: hidden;
+}
+
 /* Printing (and "Save as PDF"): print the `.print-sheet` element alone as a clean
    ink-on-white page. Hiding everything and then revealing the sheet's subtree is
    layout-independent, so it doesn't depend on how the app chrome is structured.

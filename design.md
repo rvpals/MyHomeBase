@@ -154,8 +154,11 @@ past a 2560px monitor on purpose so it doesn't bind on one; it's there only to s
 spanning a 3440px ultrawide.
 
 The `Sidebar` is `fixed` and floats **over** the page at `z-40`, so the `(protected)` layout
-reserves only the collapsed rail's width (`pl-24` = 4rem rail + 2rem gutter) and a module gets
-everything else. Two consequences worth knowing:
+reserves only the icon rail's width (`pl-24` = 4rem rail + 2rem gutter) and a module gets
+everything else. It has three states — `full` (labels), `rail` (icons), and `strip`, where
+the slab is gone and only its accent edge is left; in `strip` the shell takes that reserved
+gutter back, via `html[data-sidebar]` rules in `globals.css` rather than a prop, since the
+layout is a server component. Two consequences worth knowing:
 
 - Anything else that needs to sit above page content must stay under `z-40`, and any dialog
   must stay at `z-50` (`Modal`) so its overlay still covers the sidebar.

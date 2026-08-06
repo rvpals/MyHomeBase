@@ -109,10 +109,36 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      // The pre-paint script below sets `data-sidebar` on this element, so the
+      // DOM React hydrates against already differs from the HTML it sent. That
+      // is the whole point of the script — suppress the warning here rather
+      // than letting a real mismatch hide in the noise. Only affects this
+      // element's own attributes, not the tree beneath it.
+      suppressHydrationWarning
       className={`${spaceGrotesk.variable} ${sora.variable} ${familjenGrotesk.variable} ${manrope.variable} ${inter.variable} ${plexMono.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <head>
         <style>{themeCss}</style>
+        {/* Applies the stored sidebar state before first paint. Without it the
+            page renders with the full sidebar and its 6rem gutter, then jumps
+            when the client effect reads localStorage — a visible shove of every
+            page's content on every navigation.
+
+            The key strings are duplicated from src/components/sidebar.tsx on
+            purpose: that file is "use client", and importing a constant from it
+            into this server component yields an undefined client-reference
+            proxy rather than the string, with nothing to catch it at build
+            time. Keep the two in step. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              'try{var k="myhomebase:sidebar-state",s=localStorage.getItem(k);' +
+              'if(s!=="full"&&s!=="rail"&&s!=="strip"){' +
+              'var c=localStorage.getItem("myhomebase:sidebar-collapsed");' +
+              's=c==="true"?"rail":"full";}' +
+              'document.documentElement.dataset.sidebar=s;}catch(e){}',
+          }}
+        />
       </head>
       <body className="min-h-full bg-paper">
         <IconSetProvider value={{ id: iconSet.id as ModuleIconSetId, colorful: iconSet.colorful }}>

@@ -48,8 +48,11 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
         showAdmin={isAdmin(currentUser)}
         logoutAction={logoutAction}
       />
-      {/* pl-24 = the 4rem rail + a 2rem gutter, so content clears the raised edge. */}
-      <main className="min-h-screen py-8 pl-24 pr-8">{children}</main>
+      {/* pl-24 = the 4rem rail + a 2rem gutter, so content clears the raised edge.
+          `app-main` is the hook globals.css uses to drop that padding when the
+          sidebar is hidden to its strip — this stays a server component, so the
+          reaction to that client-side state has to happen in CSS. */}
+      <main className="app-main min-h-screen py-8 pl-24 pr-8">{children}</main>
     </div>
   );
 }

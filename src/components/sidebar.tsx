@@ -8,7 +8,39 @@ import { AppIcon } from "./app-icon";
 import { Avatar } from "./avatar";
 import { ModuleIcon } from "./module-icons";
 
-const COLLAPSED_STORAGE_KEY = "myhomebase:sidebar-collapsed";
+const STATE_STORAGE_KEY = "myhomebase:sidebar-state";
+/** The pre-3-state key. Read once on mount so an existing preference survives. */
+const LEGACY_COLLAPSED_KEY = "myhomebase:sidebar-collapsed";
+
+/**
+ * How much of the sidebar is showing.
+ *
+ * `strip` is the accent edge on its own — the slab is gone and the page gets the
+ * space back. It stays clickable, and clicking it returns to `rail`, so the
+ * sidebar is never unreachable.
+ */
+export type SidebarState = "full" | "rail" | "strip";
+
+const WIDTH_CLASS: Record<SidebarState, string> = {
+  full: "w-60",
+  rail: "w-16",
+  // Wide enough to hit, and it reads as the hard accent shadow the other two
+  // states cast — the slab appears to slide out from behind its own edge.
+  strip: "w-3",
+};
+
+function isSidebarState(value: string | null): value is SidebarState {
+  return value === "full" || value === "rail" || value === "strip";
+}
+
+/**
+ * Mirrors the state onto `<html>` so the page shell can reclaim the reserved
+ * gutter in CSS. The layout is a server component and this state is a client
+ * concern, so an attribute is the seam between them — see globals.css.
+ */
+function publishState(state: SidebarState): void {
+  document.documentElement.dataset.sidebar = state;
+}
 
 export interface SidebarLink {
   slug: string;
@@ -54,21 +86,46 @@ export function Sidebar({
   logoutAction,
   className = "",
 }: SidebarProps) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [state, setState] = useState<SidebarState>("full");
   const pathname = usePathname();
   const adminActive = pathname.startsWith("/admin");
   const homeActive = pathname === "/";
+  const collapsed = state === "rail";
 
   useEffect(() => {
-    const stored = window.localStorage.getItem(COLLAPSED_STORAGE_KEY);
-    // Syncing from an external system (localStorage) on mount, not reacting to React state.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (stored !== null) setCollapsed(stored === "true");
+    const stored = window.localStorage.getItem(STATE_STORAGE_KEY);
+    if (isSidebarState(stored)) {
+      // Syncing from an external system (localStorage) on mount, not reacting to React state.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setState(stored);
+      return;
+    }
+    // Carry over the old boolean rather than resetting anyone who had it collapsed.
+    const legacy = window.localStorage.getItem(LEGACY_COLLAPSED_KEY);
+    if (legacy !== null) setState(legacy === "true" ? "rail" : "full");
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem(COLLAPSED_STORAGE_KEY, String(collapsed));
-  }, [collapsed]);
+    window.localStorage.setItem(STATE_STORAGE_KEY, state);
+    publishState(state);
+  }, [state]);
+
+  // Hidden: the slab is gone and only its accent edge is left, as a full-height
+  // target that brings back the rail. Rendered as its own branch rather than a
+  // zero-width version of the nav so nothing offscreen stays focusable — a
+  // hidden sidebar you can still Tab into is worse than no sidebar.
+  if (state === "strip") {
+    return (
+      <button
+        type="button"
+        onClick={() => setState("rail")}
+        aria-label="Show sidebar"
+        aria-expanded={false}
+        title="Show sidebar"
+        className={`fixed inset-y-0 left-0 z-40 ${WIDTH_CLASS.strip} cursor-pointer border-0 bg-brass-dark shadow-[8px_0_24px_-12px_rgba(0,0,0,0.45)] transition-[width,background-color] hover:bg-brass focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:ring-offset-0 motion-reduce:transition-none ${className}`}
+      />
+    );
+  }
 
   return (
     // Fixed and raised above the page rather than a column in the flow: the
@@ -84,8 +141,10 @@ export function Sidebar({
     // since a full-height slab has no bottom edge to cast from; the soft second
     // shadow is what makes it read as floating over the content.
     <aside
-      className={`fixed inset-y-0 left-0 z-40 flex flex-col rounded-r-2xl border-r border-line bg-gradient-to-b from-paper-raised to-paper shadow-[5px_0_0_0_var(--brass-dark),14px_0_30px_-10px_rgba(0,0,0,0.45)] transition-[width] motion-reduce:transition-none ${
-        collapsed ? "w-16" : "w-60"
+      // `app-sidebar` lets globals.css size the slab from `<html data-sidebar>`
+      // for the first paint, before the mount effect has read localStorage.
+      className={`app-sidebar fixed inset-y-0 left-0 z-40 flex flex-col rounded-r-2xl border-r border-line bg-gradient-to-b from-paper-raised to-paper shadow-[5px_0_0_0_var(--brass-dark),14px_0_30px_-10px_rgba(0,0,0,0.45)] transition-[width] motion-reduce:transition-none ${
+        WIDTH_CLASS[state]
       } ${className}`}
     >
       <div
@@ -102,23 +161,39 @@ export function Sidebar({
             <span className="truncate font-display text-sm font-semibold text-ink">{appName}</span>
           </div>
         )}
-        <button
-          type="button"
-          onClick={() => setCollapsed((value) => !value)}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-line/60 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
-        >
-          {/* Same chevron as TreeNav and CollapsibleCard. */}
-          <span
-            className={`inline-block transition-transform motion-reduce:transition-none ${
-              collapsed ? "" : "rotate-180"
-            }`}
-            aria-hidden
+        {/* Two controls, each reversible on its own: the chevron moves between
+            full and rail, and « drops to the strip. A single control cycling
+            three states can only go one way, so overshooting would mean going
+            all the way round. */}
+        <div className={`flex shrink-0 items-center ${collapsed ? "flex-col gap-0.5" : "gap-0.5"}`}>
+          <button
+            type="button"
+            onClick={() => setState(collapsed ? "full" : "rail")}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar to icons"}
+            aria-expanded={!collapsed}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar to icons"}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-line/60 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
           >
-            &rsaquo;
-          </span>
-        </button>
+            {/* Same chevron as TreeNav and CollapsibleCard. */}
+            <span
+              className={`inline-block transition-transform motion-reduce:transition-none ${
+                collapsed ? "" : "rotate-180"
+              }`}
+              aria-hidden
+            >
+              &rsaquo;
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setState("strip")}
+            aria-label="Hide sidebar"
+            title="Hide sidebar — click the edge to bring it back"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-line/60 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+          >
+            <span aria-hidden>&laquo;</span>
+          </button>
+        </div>
       </div>
       {/* Scrolls on its own now the rail is a fixed, viewport-height slab — a long
           module list can no longer just make the page taller. */}
