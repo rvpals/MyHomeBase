@@ -23,8 +23,14 @@ import { TickerCell, TickerViewerHost } from "./ticker-viewer-host";
 
 const MOVER_COUNT = 5;
 
+/**
+ * Red down, green up — and **neutral at zero**. A flat day is not a win, and a
+ * bucket you hold nothing in shouldn't render "+$0.00" in gain-green.
+ */
 function gainClass(cents: number): string {
-  return cents < 0 ? "text-red-400" : "text-emerald-400";
+  if (cents < 0) return "text-red-400";
+  if (cents > 0) return "text-emerald-400";
+  return "text-muted";
 }
 
 function signed(cents: number): string {
@@ -46,18 +52,65 @@ function relativeTime(isoInstant: string): string {
   return `${Math.round(minutes / (60 * 24))}d ago`;
 }
 
-function BucketRow({ label, move }: { label: string; move: DayMove }) {
+function BucketTableRow({
+  label,
+  move,
+  isTotal = false,
+}: {
+  label: string;
+  move: DayMove;
+  isTotal?: boolean;
+}) {
   return (
-    <div className="rounded-xl border border-line p-4">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted">{label}</p>
-      <p className={`mt-1 font-display text-xl ${gainClass(move.gainLossCents)}`}>
+    <tr className={isTotal ? "border-t-2 border-line" : ""}>
+      <td className={`py-1.5 pr-2 text-left ${isTotal ? "font-medium text-ink" : "text-muted"}`}>
+        {label}
+      </td>
+      <td className="py-1.5 pl-2 text-right font-mono text-ink">{formatCents(move.valueCents)}</td>
+      <td className={`py-1.5 pl-2 text-right font-mono ${gainClass(move.gainLossCents)}`}>
         {signed(move.gainLossCents)}
-      </p>
-      <p className={`mt-0.5 text-sm font-medium ${gainClass(move.gainLossCents)}`}>
+      </td>
+      <td className={`py-1.5 pl-2 text-right font-mono ${gainClass(move.gainLossCents)}`}>
         {signedPct(move.changePct)}
-      </p>
-      <p className="mt-1 text-xs text-muted">on {formatCents(move.valueCents)}</p>
-    </div>
+      </td>
+    </tr>
+  );
+}
+
+/**
+ * The three buckets and their total, as one table.
+ *
+ * A table rather than a row of tiles because these four numbers are the same
+ * measurement of different slices — reading them down a column is the whole
+ * point, and tiles made you scan sideways to compare. The total was already
+ * computed and simply wasn't shown before.
+ */
+function BucketTable({ moves }: { moves: DayMovesByType }) {
+  return (
+    <table className="w-full border-collapse text-sm">
+      <thead>
+        <tr>
+          {["Type", "Value", "Today", "%"].map((heading, index) => (
+            <th
+              key={heading}
+              className={`border-b border-line py-1.5 text-xs font-medium uppercase tracking-wide text-muted ${
+                index === 0 ? "pr-2 text-left" : "pl-2 text-right"
+              }`}
+            >
+              {heading}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        <BucketTableRow label="Stock" move={moves.stock} />
+        <BucketTableRow label="ETF" move={moves.etf} />
+        {/* Only when it exists — most portfolios have no third bucket, and an
+            empty "Other $0.00" row is noise. */}
+        {moves.other.valueCents > 0 && <BucketTableRow label="Other" move={moves.other} />}
+        <BucketTableRow label="Total" move={moves.total} isTotal />
+      </tbody>
+    </table>
   );
 }
 
@@ -241,18 +294,9 @@ export function StockDailyGlance({
     <div className="rounded-xl border border-line p-4">
       <h3 className="font-display text-lg text-ink">Daily Glance</h3>
 
-      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <BucketRow label="Stock today" move={moves.stock} />
-        <BucketRow label="ETF today" move={moves.etf} />
+      <div className="mt-4 rounded-xl border border-line p-4">
+        <BucketTable moves={moves} />
       </div>
-
-      {/* Only when it exists — most portfolios have no third bucket, and an empty
-          "Other $0.00" tile is noise. */}
-      {moves.other.valueCents > 0 && (
-        <div className="mt-4">
-          <BucketRow label="Other today" move={moves.other} />
-        </div>
-      )}
 
       {/* The selector governs the mover lists only. Per-share is meaningless for
           the buckets above, which mix securities at different prices. */}
