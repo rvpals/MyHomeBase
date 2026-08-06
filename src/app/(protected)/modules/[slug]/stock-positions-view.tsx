@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
+import { Tabs, type TabItem } from "@/components/tabs";
 // Route-local, not a registered shared component: it's an <img> with a monogram
 // fallback used by exactly these two sibling views.
 import { AccountIconImage } from "./stock-accounts-view";
@@ -19,6 +20,7 @@ import {
   type PositionType,
   type StockPosition,
 } from "@/lib/stock-positions";
+import { snapshotBucketFor, type SnapshotBucket } from "@/lib/stock-daily-snapshot";
 import { centsToDollars, formatCents } from "@/lib/shared/money";
 import {
   deletePositionAction,
@@ -530,6 +532,48 @@ export function StockPositionsView({
 
   const editingPosition = positions.find((position) => positionRowKey(position) === editingKey);
 
+  // Split by the same three buckets the Dashboard's Daily Glance table uses —
+  // `snapshotBucketFor` is the one place that decides what counts as "other",
+  // so the tabs and the dashboard can't drift apart.
+  const byBucket: Record<SnapshotBucket, StockPosition[]> = { stock: [], etf: [], other: [] };
+  for (const position of positions) byBucket[snapshotBucketFor(position)].push(position);
+
+  const positionTabs: TabItem[] = (
+    [
+      { bucket: "stock", label: "Stocks", empty: "No stock positions yet." },
+      { bucket: "etf", label: "ETF", empty: "No ETF positions yet." },
+      {
+        bucket: "other",
+        label: "Others",
+        empty: "No bond, fund, crypto or other positions yet.",
+      },
+    ] as const
+  ).map(({ bucket, label, empty }) => ({
+    key: bucket,
+    label: `${label} (${byBucket[bucket].length})`,
+    content: (
+      <DataGrid
+        // Type is dropped where the tab already says it. Not on Others, which
+        // collapses Bond, MutualFund, Crypto and Other into one list — there
+        // it's the only thing telling them apart.
+        columns={bucket === "other" ? columns : columns.filter((column) => column.key !== "type")}
+        rows={byBucket[bucket]}
+        getRowKey={positionRowKey}
+        emptyMessage={empty}
+        exportFileName={`stock-positions-${bucket}`}
+        // Stocks and ETF share a layout because their columns are identical;
+        // Others keeps its own, since a stored layout spanning a different set
+        // of columns is how you get a column resurrected in the wrong tab.
+        storageKey={
+          bucket === "other"
+            ? "myhomebase:stock-positions-grid-other"
+            : "myhomebase:stock-positions-grid"
+        }
+        recordViewTitle={(position) => `${position.ticker} — ${position.name}`}
+      />
+    ),
+  }));
+
   return (
     <div>
       <div className="mb-4 flex justify-end">
@@ -571,15 +615,7 @@ export function StockPositionsView({
       )}
 
       <div className="mt-4">
-        <DataGrid
-          columns={columns}
-          rows={positions}
-          getRowKey={positionRowKey}
-          emptyMessage="No positions yet."
-          exportFileName="stock-positions"
-          storageKey="myhomebase:stock-positions-grid"
-          recordViewTitle={(position) => `${position.ticker} — ${position.name}`}
-        />
+        <Tabs items={positionTabs} />
       </div>
 
       {openTicker && (

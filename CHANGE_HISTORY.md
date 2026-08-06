@@ -1,5 +1,103 @@
 # Change History
 
+## 2026-08-05 23:39 — Sidebar strip, remembered account matching, and three new views
+
+Five separate pieces. **No migration in this release** — the one schema-shaped change
+needed none, for the reason below.
+
+### The sidebar hides to its accent strip
+
+A third state. `full` (labels) → `rail` (icons) → **`strip`**, where the slab is gone
+and only its 12px accent edge is left; clicking the edge brings the rail back. The
+chevron still moves between full and rail; a new `«` button hides. Two controls
+rather than one cycling three, because a single control can only go one way and
+overshooting would mean going all the way round.
+
+**The page actually reclaims the space** — 96px of reserved gutter down to 40px. That
+needed a seam: `(protected)/layout.tsx` is a *server* component and the state is
+client-side `localStorage`, so `Sidebar` mirrors it onto `<html data-sidebar>` and
+rules in `globals.css` read it. No context provider, and the shell stays a server
+component.
+
+A script in the root layout applies the stored state **before first paint**; without
+it every page loads at the full gutter and shoves sideways when the mount effect
+runs. That script mutates `<html>`, which is why the root layout now sets
+`suppressHydrationWarning` on it — caught by running the app, not by typecheck.
+
+In `strip` the slab isn't rendered at all, merely narrowed to zero: a hidden sidebar
+you can still Tab into is worse than no sidebar.
+
+### CSV import remembers which account a label means
+
+The account-matching dialog already existed; what was missing was memory. A saved
+mapping now stores it, so `Fidelity HSA` → *Fidelity Health Savings Account* is
+answered once per broker instead of every import.
+
+**No migration needed.** `csv_named_mappings.column_mapping_json` is a widening
+envelope that had already grown once without one — `{columns}` → `{columns, options}`
+→ `{columns, options, accounts}`. Every key is read defensively, so mappings saved
+under either earlier shape still load. That codec moved from the repository into
+`mapping.ts` purely so the backward-compatibility guarantee is unit-testable; losing
+someone's saved broker mappings silently is the failure mode that matters.
+
+Each match stores **both the account id and its name at the time**, because each
+survives a different edit: renaming the account keeps the id valid, deleting and
+recreating it keeps the name valid. Resolving neither way drops the entry and the
+label is treated as unrecognised — never attached to the wrong account.
+
+**The match step now always shows.** An earlier revision auto-imported when every
+label was already known; that was wrong for financial data. Every name is listed with
+a badge saying where its selection came from — **Remembered**, **Guessed**, **Your
+choice**, **Skipped** — and a count of how many names are set to skip, since skipping
+silently drops rows. Worth knowing: `Fidelity HSA` does **not** guess to *Fidelity
+Health Savings Account*; HSA is an initialism, not a substring. That is exactly the
+case remembering exists for, and an honest "Skipped" beats a confident wrong guess.
+
+### Account Performance Over Time
+
+A new card in Account Performance: every account's recorded value on one set of axes,
+with a chip per account that drops its line. The table and the **Total recorded**
+column follow the same selection, so what you read matches what you see.
+
+Accounts are recorded on their own schedules, so the axis is the union of every date
+anyone reported and an account has **no entry** on a date it didn't — not a zero, not
+a carried-forward value. The chart joins across the gap, which is a visible
+interpolation; the data underneath stays honest. A blank table cell means "not
+recorded", and the total only sums accounts that reported that date. Toggling a line
+off surfaced the corollary: rows where no *visible* account reported now read `—`
+rather than `$0.00`, which would assert an empty portfolio.
+
+Colour comes from each account's **stable** index, not its position in the filtered
+array — otherwise hiding one line recolours the rest and the chips stop meaning
+anything.
+
+**Smooth the line** is off by default. A curve through quarterly balances looks like
+it knows what happened in between.
+
+`ChartLine` gained `connectNulls`, `curve` and `showLegend` to support this, all
+defaulting to the previous behaviour so no existing chart changed.
+
+### Daily Glance: one table instead of three tiles
+
+Stock, ETF and Other are now rows in a single table — Value, Today, % — with the
+portfolio **Total** row that was already computed and simply wasn't shown. Reading
+the same measurement down a column is the point; tiles made you scan sideways.
+
+Also fixed: `gainClass` treated `0` as a gain, so an empty bucket rendered `+$0.00`
+in gain-green. Zero is now neutral.
+
+### Positions: split by instrument type
+
+Three tabs with counts — `Stocks` / `ETF` / `Others`. The split reuses
+`snapshotBucketFor`, the same function behind the Daily Glance table and the daily
+value history, so the tabs can't drift on what counts as "Other".
+
+The **Type** column is dropped from Stocks and ETF where the tab already says it, but
+**kept on Others**, which collapses Bond, MutualFund, Crypto and Other into one list
+— there it's the only thing telling them apart. That gives Others a genuinely
+different column set, so it keeps its own `storageKey`; sharing one across differing
+sets is how a column reappears in the wrong tab. Column footers total per tab.
+
 ## 2026-08-05 11:40 — Ticker viewer, trade-performance chart, brokerage firm on trades, and a verification gate
 
 Four separate bodies of work, released together.

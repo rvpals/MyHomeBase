@@ -143,7 +143,10 @@ function MainInstructions() {
       </Section>
       <Section title="Daily Glance, and the News button">
         <p>
-          Shows how Stock and ETF each moved today, then the five biggest risers and fallers.
+          The table at the top is today by instrument type — what each bucket is worth, what it
+          moved in dollars, and what that is as a percentage — with the portfolio total on the last
+          row. <strong className="text-ink">Other</strong> (bonds, funds, crypto, cash) only appears
+          when you hold something in it. Below that are the five biggest risers and fallers.
           Stocks and ETFs are ranked <strong className="text-ink">together</strong> — the question is
           which holdings moved, not which kind they are — and a ticker held in two accounts is
           counted once, summed.
@@ -159,9 +162,9 @@ function MainInstructions() {
           shares you own.
         </p>
         <p>
-          The selector governs the mover lists only. The Stock and ETF figures above them are always
-          totals, because a per-share figure across a basket of securities at different prices
-          wouldn&apos;t mean anything.
+          The selector governs the mover lists only. The table above is always totals, because a
+          per-share figure across a basket of securities at different prices wouldn&apos;t mean
+          anything.
         </p>
         <p>
           <strong className="text-ink">News</strong> on any row fetches the story most likely to
@@ -204,6 +207,24 @@ function MainInstructions() {
 function PositionsInstructions() {
   return (
     <>
+      <Section title="Stocks, ETF and Others">
+        <p>
+          The grid is split into three tabs by instrument type, with a count on each.{" "}
+          <strong className="text-ink">Others</strong> is everything that isn&apos;t a stock or an
+          ETF — bonds, mutual funds, crypto, cash. That is the same three-way split the
+          dashboard&apos;s Daily Glance table and the daily value history use, so the tabs and those
+          totals can never disagree about what counts as what.
+        </p>
+        <p>
+          Each tab totals its own column footers, so switching tabs re-totals for what&apos;s in
+          front of you rather than the whole portfolio. There is no{" "}
+          <strong className="text-ink">Type</strong> column on Stocks or ETF — the tab already says
+          it — but Others keeps one, because that tab holds bonds, funds, crypto and cash together
+          and the type is the only thing separating them. Stocks and ETF share a column layout;
+          Others has its own. A position&apos;s type is set on the row itself, so correcting one
+          moves it between tabs.
+        </p>
+      </Section>
       <Section title="A position belongs to an account">
         <p>
           A holding is identified by <strong className="text-ink">account + ticker</strong>, so 75
@@ -261,14 +282,38 @@ function TransactionsInstructions() {
 
 function AccountsInstructions() {
   return (
-    <Section title="Accounts and their history">
-      <p>
-        An account is a brokerage account. Its performance records are point-in-time total values —
-        one per date — which is what the history chart plots. Adding an account here also makes it
-        selectable when you import a positions CSV, which is how positions stop being
-        &ldquo;Unassigned&rdquo;.
-      </p>
-    </Section>
+    <>
+      <Section title="Accounts and their history">
+        <p>
+          An account is a brokerage account. Its performance records are point-in-time total values —
+          one per date — which is what the history chart plots. Adding an account here also makes it
+          selectable when you import a positions CSV, which is how positions stop being
+          &ldquo;Unassigned&rdquo;.
+        </p>
+      </Section>
+      <Section title="Account Performance Over Time">
+        <p>
+          Every account&apos;s recorded value on one set of axes. Click an account&apos;s chip to
+          drop its line from the chart — the table below and the{" "}
+          <strong className="text-ink">Total recorded</strong> column follow the same selection, so
+          what you read always matches what you see.
+        </p>
+        <p>
+          Accounts are usually recorded on their own schedules — a 401k quarterly, a brokerage
+          monthly. The axis is every date <em>any</em> account reported, and a line is drawn
+          straight between the dates that account actually reported. The dots are the real records;
+          the segment between them is joining them up, not data. A blank cell in the table means
+          nothing was recorded that day, which is <strong className="text-ink">not</strong> the same
+          as a zero balance, and the total only sums the accounts that reported on that date.
+        </p>
+        <p>
+          <strong className="text-ink">Smooth the line</strong> is off by default on purpose. A
+          curve through periodic balances looks like it knows what happened in between, and it
+          doesn&apos;t — straight segments look like the interpolation they are. Turn it on when
+          you want the shape of the trend rather than the individual readings.
+        </p>
+      </Section>
+    </>
   );
 }
 
@@ -323,6 +368,21 @@ function ImportInstructions() {
         <p>
           Columns left on <strong className="text-ink">Ignore</strong> are skipped. Every column you
           don&apos;t need can stay ignored — a broker export with 70 columns is normal.
+        </p>
+        <p>
+          A saved mapping also remembers{" "}
+          <strong className="text-ink">which account each label in the file means</strong>. On an{" "}
+          <strong className="text-ink">Account Performance</strong> import, whatever the file calls
+          an account — <span className="font-mono text-xs">Fidelity HSA</span> — is matched once to
+          the account you actually keep here (Fidelity Health Savings Account), and saved with the
+          mapping. Re-import next quarter and it goes straight through; you&apos;re only asked again
+          when the file contains a label the mapping hasn&apos;t seen.
+        </p>
+        <p>
+          The match survives editing the account afterwards. It stores both the account and the
+          name it had, so renaming the account keeps working, and so does deleting and recreating
+          it. If neither still exists the label is treated as unrecognised and you&apos;re asked —
+          rather than the row being silently attached to the wrong account.
         </p>
       </Section>
       <Section title="Dropping rows you don't want">
