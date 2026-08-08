@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { Sidebar } from "@/components/sidebar";
+import { AppChrome } from "@/components/app-chrome";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
+import { VIEWPORT_PINNED_COOKIE } from "@/lib/viewport";
 import { getModuleCode, listModules } from "@/lib/modules";
 import { getSetting } from "@/lib/settings";
 import { getAccessibleModules, isAdmin } from "@/lib/user";
@@ -14,9 +15,12 @@ function getAppName(): string {
 }
 
 export default async function ProtectedLayout({ children }: { children: ReactNode }) {
-  const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
+  const cookieStore = await cookies();
+  const sessionId = cookieStore.get(SESSION_COOKIE_NAME)?.value;
   const currentUser = getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo);
   if (!currentUser) redirect("/login");
+
+  const viewportPinned = cookieStore.get(VIEWPORT_PINNED_COOKIE)?.value === "1";
 
   const appName = getAppName();
   const allModules = listModules(deps.moduleRepo);
@@ -30,13 +34,13 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
     hint: appModule.description,
   }));
 
-  // The Sidebar is `fixed`, so it's out of the flow: `main` reserves only the
-  // *collapsed* rail (4rem) plus a gutter, and an expanded sidebar floats over
-  // the content instead of squeezing it. That's what gives a module the full
-  // width of the screen — see src/components/sidebar.tsx.
+  // Both bars are `fixed`, so they're out of the flow and content gets the full
+  // width. `app-main` is the hook globals.css uses to pad for whichever bars are
+  // showing — this stays a server component, so reacting to that client-side
+  // state has to happen in CSS.
   return (
     <div className="min-h-screen">
-      <Sidebar
+      <AppChrome
         links={links}
         appName={appName}
         currentUser={{
@@ -47,12 +51,9 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
         }}
         showAdmin={isAdmin(currentUser)}
         logoutAction={logoutAction}
+        viewportPinned={viewportPinned}
       />
-      {/* pl-24 = the 4rem rail + a 2rem gutter, so content clears the raised edge.
-          `app-main` is the hook globals.css uses to drop that padding when the
-          sidebar is hidden to its strip — this stays a server component, so the
-          reaction to that client-side state has to happen in CSS. */}
-      <main className="app-main min-h-screen py-8 pl-24 pr-8">{children}</main>
+      <main className="app-main min-h-screen px-8 pb-8 max-lg:px-4">{children}</main>
     </div>
   );
 }

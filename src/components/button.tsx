@@ -21,6 +21,17 @@ export interface ButtonProps {
   type?: "button" | "submit";
   onClick?: () => void;
   disabled?: boolean;
+  /** Native tooltip. Use it when the label is an icon or a glyph. */
+  title?: string;
+  /**
+   * Accessible name — **required when `children` is only an icon or glyph**, which
+   * gives a screen reader nothing to read.
+   */
+  ariaLabel?: string;
+  /** For a button that opens a panel or popover: whether it's currently open. */
+  ariaExpanded?: boolean;
+  /** `id` of the element this button controls, paired with `ariaExpanded`. */
+  ariaControls?: string;
   /** Caller-supplied classes, merged last so they win. */
   className?: string;
 }
@@ -53,20 +64,33 @@ export function Button({
   type = "button",
   onClick,
   disabled,
+  title,
+  ariaLabel,
+  ariaExpanded,
+  ariaControls,
   className = "",
 }: ButtonProps) {
   const classes = `${baseClasses} ${sizeClasses[size]} ${variantClasses[variant]} ${className}`;
 
   if (href) {
     return (
-      <Link href={href} className={classes} onClick={onClick}>
+      <Link href={href} className={classes} onClick={onClick} title={title} aria-label={ariaLabel}>
         {children}
       </Link>
     );
   }
 
   return (
-    <button type={type} onClick={onClick} disabled={disabled} className={classes}>
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      className={classes}
+      title={title}
+      aria-label={ariaLabel}
+      aria-expanded={ariaExpanded}
+      aria-controls={ariaControls}
+    >
       {children}
     </button>
   );

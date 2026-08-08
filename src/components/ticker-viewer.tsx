@@ -711,6 +711,10 @@ function PastPerformanceBody({ timeline }: { timeline: TickerTradeTimeline }) {
         xKey="date"
         formatValue={(value) => `$${value.toFixed(2)}`}
         formatX={(value) => String(value).slice(5)}
+        // The best and worst price in the window. The buy/sell shapes already
+        // carry the story of the individual trades.
+        pointLabels="extremes"
+        displayStorageKey="myhomebase:chart:ticker-my-performance"
       />
       <MarkLegend />
 
@@ -1037,6 +1041,10 @@ function ChartPanel({
             xKey="date"
             formatValue={(value) => `$${value.toFixed(2)}`}
             formatX={(value) => String(value).slice(5)}
+            // A price window reads by its high and low; the period change is
+            // spelled out in the stat tiles below.
+            pointLabels="extremes"
+            displayStorageKey="myhomebase:chart:ticker-market-history"
           />
           <div className="mt-4">
             <StatGrid>

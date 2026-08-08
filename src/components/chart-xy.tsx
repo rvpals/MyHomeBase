@@ -16,6 +16,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  LabelList,
   Legend,
   Line,
   LineChart,
@@ -28,6 +29,9 @@ import {
 } from "recharts";
 import { Button } from "@/components/button";
 import { CHART_CATEGORICAL_COLORS, CHART_CHROME } from "./chart-colors";
+import { pointLabelContent } from "./chart-point-labels";
+import { ChartToolbar, useChartDisplay } from "./chart-toolbar";
+import { selectLabeledIndexes, type ChartDisplayDefaults } from "@/lib/shared/chart-options";
 
 export type ChartType = "line" | "bar" | "scatter" | "area";
 
@@ -40,17 +44,17 @@ export interface ChartXYSeries {
   color?: string;
 }
 
-export interface ChartXYProps {
+export interface ChartXYProps extends ChartDisplayDefaults {
   type: ChartType;
   /** Rows sharing one `xKey` field plus one numeric field per series key. */
   data: Record<string, number | string | null>[];
   xKey: string;
   series: ChartXYSeries[];
-  /** Draw a marker at each data point (line/area). Default false. */
-  showDots?: boolean;
   formatValue?: (value: number) => string;
   formatX?: (value: string | number) => string;
   height?: number;
+  /** How a line/area is drawn between points. Default `monotone` (smoothed). */
+  curve?: "monotone" | "linear";
   className?: string;
 }
 
@@ -62,12 +66,22 @@ function ChartXYComponent({
   data,
   xKey,
   series,
-  showDots = false,
   formatValue = (value) => String(value),
   formatX = (value) => String(value),
   height = 320,
+  curve = "monotone",
+  pointLabels,
+  showDots = false,
+  showLegend,
+  showGrid,
+  showToolbar = true,
+  displayStorageKey,
   className = "",
 }: ChartXYProps) {
+  const { display, setDisplay, maxPointLabels } = useChartDisplay(
+    { pointLabels, showDots, showLegend: showLegend ?? series.length > 1, showGrid },
+    displayStorageKey,
+  );
   const total = data.length;
   const [zoomWindow, setZoomWindow] = useState<{ start: number; end: number }>({ start: 0, end: total });
 
@@ -114,7 +128,9 @@ function ChartXYComponent({
   function commonChildren(xAxisDataKey: string, yAxisDataKey?: string) {
     return (
       <>
-        <CartesianGrid stroke={CHART_CHROME.grid} vertical={type === "scatter"} />
+        {display.showGrid && (
+          <CartesianGrid stroke={CHART_CHROME.grid} vertical={type === "scatter"} />
+        )}
         <XAxis
           dataKey={xAxisDataKey}
           type={type === "scatter" ? "number" : "category"}
@@ -135,20 +151,51 @@ function ChartXYComponent({
           labelFormatter={(label) => formatX(label as string | number)}
           cursor={{ stroke: CHART_CHROME.axis, strokeWidth: 1 }}
         />
-        {series.length > 1 && <Legend />}
+        {display.showLegend && <Legend />}
       </>
     );
   }
 
+  // The value labels for one series, over the zoom window that's actually drawn —
+  // so zooming in re-picks the visible extremes rather than pointing off-screen.
+  // Scatter is excluded: its marks are the points, with no free end to print on.
+  function labelsFor(key: string) {
+    if (type === "scatter") return null;
+    const indexes = selectLabeledIndexes(
+      visibleData.map((row) => row[key]),
+      display.pointLabels,
+      maxPointLabels,
+    );
+    if (indexes.length === 0) return null;
+
+    return (
+      <LabelList
+        dataKey={key}
+        content={pointLabelContent({
+          indexes,
+          formatValue,
+          placement: type === "bar" ? "cap" : "above",
+          lastIndex: visibleData.length - 1,
+          matchField: xKey,
+          allowedKeys: indexes
+            .map((index) => visibleData[index][xKey])
+            .filter((value): value is string | number => value != null),
+        })}
+      />
+    );
+  }
+
   function renderChart() {
-    const margin = { top: 8, right: 16, bottom: 0, left: 0 };
+    const margin = { top: 14, right: 24, bottom: 0, left: 0 };
     switch (type) {
       case "bar":
         return (
           <BarChart data={visibleData} margin={margin}>
             {commonChildren(xKey)}
             {series.map((item, index) => (
-              <Bar key={item.key} dataKey={item.key} name={item.label} fill={colorFor(index, item.color)} radius={[4, 4, 0, 0]} isAnimationActive={false} />
+              <Bar key={item.key} dataKey={item.key} name={item.label} fill={colorFor(index, item.color)} radius={[4, 4, 0, 0]} isAnimationActive={false}>
+                {labelsFor(item.key)}
+              </Bar>
             ))}
           </BarChart>
         );
@@ -159,17 +206,21 @@ function ChartXYComponent({
             {series.map((item, index) => (
               <Area
                 key={item.key}
-                type="monotone"
+                type={curve}
                 dataKey={item.key}
                 name={item.label}
                 stroke={colorFor(index, item.color)}
                 fill={colorFor(index, item.color)}
                 fillOpacity={0.2}
                 strokeWidth={2}
-                dot={showDots ? { r: 4, strokeWidth: 0 } : false}
+                // Explicit fill: Recharts defaults a dot to white, which reads as a
+                // dashed line once the points are dense.
+                dot={display.showDots ? { r: 4, strokeWidth: 0, fill: colorFor(index, item.color) } : false}
                 activeDot={{ r: 6 }}
                 isAnimationActive={false}
-              />
+              >
+                {labelsFor(item.key)}
+              </Area>
             ))}
           </AreaChart>
         );
@@ -196,15 +247,19 @@ function ChartXYComponent({
             {series.map((item, index) => (
               <Line
                 key={item.key}
-                type="monotone"
+                type={curve}
                 dataKey={item.key}
                 name={item.label}
                 stroke={colorFor(index, item.color)}
                 strokeWidth={2}
-                dot={showDots ? { r: 4, strokeWidth: 0 } : false}
+                // Explicit fill: Recharts defaults a dot to white, which reads as a
+                // dashed line once the points are dense.
+                dot={display.showDots ? { r: 4, strokeWidth: 0, fill: colorFor(index, item.color) } : false}
                 activeDot={{ r: 6 }}
                 isAnimationActive={false}
-              />
+              >
+                {labelsFor(item.key)}
+              </Line>
             ))}
           </LineChart>
         );
@@ -213,7 +268,19 @@ function ChartXYComponent({
 
   return (
     <div className={className}>
-      <div className="mb-2 flex items-center justify-end gap-2">
+      {/* The zoom controls ride in the shared toolbar rather than a row of their
+          own, so a chart has one strip of controls instead of two stacked. */}
+      <ChartToolbar
+        className="mb-2"
+        value={display}
+        onChange={setDisplay}
+        showOptions={showToolbar}
+        labelModes={type === "scatter" ? ["none"] : undefined}
+        canToggleDots={type === "line" || type === "area"}
+        canToggleLegend={series.length > 1}
+        pointCount={visibleData.length}
+        maxPointLabels={maxPointLabels}
+      >
         <span className="mr-auto text-xs text-muted">
           Showing {visibleData.length.toLocaleString()} of {total.toLocaleString()} points
         </span>
@@ -226,7 +293,7 @@ function ChartXYComponent({
         <Button size="sm" variant="secondary" disabled={width === total} onClick={() => setZoomWindow({ start: 0, end: total })}>
           Reset
         </Button>
-      </div>
+      </ChartToolbar>
       <div style={{ height }}>
         <ResponsiveContainer width="100%" height="100%">
           {renderChart()}

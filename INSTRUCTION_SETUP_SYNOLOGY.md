@@ -382,6 +382,10 @@ Control Panel → **Task Scheduler → Create**, both **User: root**, both runni
 
 ## Updating to a new release
 
+> Day-to-day operator steps — deploy, restart, stop — live in
+> [ADMIN_MANUAL.md](ADMIN_MANUAL.md). This section is the reference for what the
+> publish actually does.
+
 ### The one-command way (SMB)
 
 ```powershell

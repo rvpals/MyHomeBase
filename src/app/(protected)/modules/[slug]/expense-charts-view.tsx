@@ -48,7 +48,11 @@ export function ExpenseChartsView({
         </p>
         {spendItems.length > 0 ? (
           <div className="mt-3">
-            <ChartBar items={spendItems} formatValue={(value) => `$${value.toFixed(2)}`} />
+            <ChartBar
+              items={spendItems}
+              formatValue={(value) => `$${value.toFixed(2)}`}
+              displayStorageKey="myhomebase:chart:expense-spend-by-category"
+            />
           </div>
         ) : (
           <p className="mt-3 text-sm text-muted">No positive spend to chart.</p>

@@ -54,7 +54,8 @@ pattern instead of inventing one.
 | [`CollapsibleCard`](#collapsiblecard) | A titled section that expands/collapses | [src/components/collapsible-card.tsx](src/components/collapsible-card.tsx) | yes |
 | [`Tabs`](#tabs) | One-of-N panels in the same space | [src/components/tabs.tsx](src/components/tabs.tsx) | yes |
 | [`ModuleCarousel`](#modulecarousel) | The home screen's module picker (coverflow) | [src/components/module-carousel.tsx](src/components/module-carousel.tsx) | yes |
-| [`Sidebar`](#sidebar) | The app's left-hand module nav | [src/components/sidebar.tsx](src/components/sidebar.tsx) | yes |
+| [`AppChrome`](#appchrome) | The app's nav shell — top bar + compact module tabs | [src/components/app-chrome.tsx](src/components/app-chrome.tsx) | yes |
+| [`ViewportSwitch`](#viewportswitch) | The global compact/full switch | [src/components/viewport-switch.tsx](src/components/viewport-switch.tsx) | yes |
 | [`TreeNav`](#treenav) | Hierarchical parent/child nav tree | [src/components/tree-nav.tsx](src/components/tree-nav.tsx) | yes |
 | [`Avatar`](#avatar) | A user's picture, or initials fallback | [src/components/avatar.tsx](src/components/avatar.tsx) | no |
 | [`TickerLogo`](#tickerlogo) | A stock/ETF logo, or a monogram fallback | [src/components/ticker-logo.tsx](src/components/ticker-logo.tsx) | yes |
@@ -64,6 +65,7 @@ pattern instead of inventing one.
 | [`ChartLine`](#chartline) | Time-series line chart | [src/components/chart-line.tsx](src/components/chart-line.tsx) | yes |
 | [`ChartBar`](#chartbar) | Category comparison / part-to-whole | [src/components/chart-bar.tsx](src/components/chart-bar.tsx) | yes |
 | [`ChartXY`](#chartxy) | User-configurable line/bar/scatter/area + zoom | [src/components/chart-xy.tsx](src/components/chart-xy.tsx) | yes |
+| [`ChartToolbar`](#chartoolbar) | A chart's gear control — **not called directly** | [src/components/chart-toolbar.tsx](src/components/chart-toolbar.tsx) | yes |
 | [`JournalEntryCard`](#journalentrycard) | Full detail sheet for one journal entry | [src/components/journal-entry-card.tsx](src/components/journal-entry-card.tsx) | yes |
 | [`TickerViewer`](#tickerviewer) | Full record dialog for one ticker — 3 tabs of cards | [src/components/ticker-viewer.tsx](src/components/ticker-viewer.tsx) | yes |
 | [`IconSetProvider`](#iconsetprovider--useiconset) / `useIconSet` | Active module icon set (context) | [src/components/icon-set-context.tsx](src/components/icon-set-context.tsx) | yes |
@@ -92,6 +94,9 @@ switch. **Every** clickable action uses this — do not hand-roll a `<button cla
 | `type?` | `"button" \| "submit"` | Default `"button"`. Ignored when `href` is set. |
 | `onClick?` | `() => void` | |
 | `disabled?` | `boolean` | |
+| `title?` | `string` | Native tooltip. Use it when the label is an icon or glyph. |
+| `ariaLabel?` | `string` | **Required when `children` is only an icon or glyph** — a screen reader has nothing else to read. |
+| `ariaExpanded?` / `ariaControls?` | `boolean` / `string` | For a button that opens a panel: its state, and the `id` it controls. `ChartToolbar`'s gear uses both. |
 | `className?` | `string` | Merged last. |
 
 ```tsx
@@ -528,62 +533,64 @@ tinting somebody's artwork would be wrong.
 
 ---
 
-## Sidebar
+## AppChrome
 
-The app's collapsible left-hand nav. Mounted once; you should not need a second instance.
+**The app's navigation shell.** A top bar always, plus a bottom module bar on the compact
+layout. Mounted once by `(protected)/layout.tsx`; you should not need a second instance.
 
-- **Source:** [src/components/sidebar.tsx](src/components/sidebar.tsx)
-- **Import:** `import { Sidebar } from "@/components/sidebar";`
-- **Client component:** yes (persists its state to `localStorage`)
+- **Source:** [src/components/app-chrome.tsx](src/components/app-chrome.tsx)
+- **Import:** `import { AppChrome } from "@/components/app-chrome";`
+- **Client component:** yes (persists its minimise state to `localStorage`)
 
 | Prop | Type | Notes |
 |------|------|-------|
-| `links` | `SidebarLink[]` — `{ slug, name, href, code, icon, hint? }` | One per module. `hint` is the hover tooltip. |
-| `appName` | `string` | Wordmark. |
-| `currentUser` | `{ id, fullName, avatarMimeType?, updatedAt? }` | Footer row. |
-| `showAdmin` | `boolean` | Gates the "Administration" link. |
-| `logoutAction` | `() => Promise<void>` | Server action wired to "Log out". |
+| `links` | `AppChromeLink[]` — `{ slug, name, href, code, icon, hint? }` | One per module. |
+| `appName` | `string` | Wordmark; hidden below `lg` to leave room. |
+| `currentUser` | `{ id, fullName, avatarMimeType?, updatedAt? }` | The avatar, linking to `/account`. |
+| `showAdmin` | `boolean` | Gates the Administration button. |
+| `logoutAction` | `() => Promise<void>` | Server action behind the log-out button. |
+| `viewportPinned` | `boolean` | Passed to `ViewportSwitch` so it can show the pin. |
 | `className?` | `string` | |
 
-```tsx
-<Sidebar
-  links={moduleLinks}
-  appName={appName}
-  currentUser={{ id: user.id, fullName: user.fullName, avatarMimeType: user.avatarMimeType }}
-  showAdmin={user.isAdmin}
-  logoutAction={logoutAction}
-/>
-```
+**It replaced `Sidebar`.** A 240px slab down the left is a desktop pattern that cost a
+phone 62% of its screen and, being `fixed` above the content, swallowed taps meant for the
+page underneath. Navigation moved to the edges so every layout gets the full width.
 
-**Used by:** [src/app/(protected)/layout.tsx](src/app/(protected)/layout.tsx).
+**Where the modules live is the only thing that differs by layout.** On `full` they sit in
+the top bar beside everything else; on `compact` there is no room, so they move to a bottom
+bar — **icons only**, and within thumb reach rather than in the corner hardest to hit
+one-handed. Everything else (app name, view switch, admin, account, log out) is identical.
 
-**Three states, two controls.** `full` (15rem, labels) → `rail` (4rem, icons only) →
-`strip` (0.75rem, just the accent edge). The `&rsaquo;` chevron — the same one `TreeNav`
-and `CollapsibleCard` use — moves between full and rail; a `&laquo;` button hides to the
-strip; clicking the strip returns to the rail. Two controls rather than one cycling
-through three, because a single control can only go one way and overshooting would mean
-going all the way round. In `strip` the slab isn't rendered at all, not merely narrowed —
-a hidden sidebar you can still Tab into is worse than no sidebar.
-
-**Notes:** always renders a "Home" link above the module list; the footer is an `Avatar` +
-name linking to `/account` plus a separate "Log out" button.
-
-**It is `fixed`, not a column.** The rail floats over the page at `z-40` with `Button`'s hard
-offset shadow turned to point right (see `design.md`), so the layout reserves only its
-*rail* width (`pl-24` on `main.app-main`) and module content fills the rest of the screen;
-expanding it overlaps content rather than reflowing it. Because of that, keep every other
-stacked element below `z-40` and dialogs at `Modal`'s `z-50`, or a dialog overlay won't cover
-the sidebar. Its `nav` scrolls independently — a long module list can't make the page taller
-any more.
+**Both bars minimise** to a small floating puck — top-left for the bar, bottom-right for
+the tabs — and the state is remembered.
 
 **How the shell reacts to it.** `(protected)/layout.tsx` is a *server* component and this
-state is client-side, so they meet through an attribute rather than a prop: `Sidebar` mirrors
-its state onto `<html data-sidebar>`, and rules in `globals.css` drop `.app-main`'s padding in
-`strip`. A small script in the root layout applies the stored value **before first paint** —
-without it every page renders at the full gutter and then shoves sideways when the mount
-effect reads `localStorage`. That script mutates `<html>`, which is why the root layout sets
-`suppressHydrationWarning` on it. If you change `WIDTH_CLASS`, change the matching widths in
-`globals.css` too.
+state is client-side, so they meet through attributes rather than props: `AppChrome`
+mirrors onto `<html data-appbar>` / `<html data-moduletabs>`, and `globals.css` pads
+`.app-main` accordingly. A script in the root layout applies the stored values **before
+first paint** — without it every page renders padded for both bars and then shoves when the
+mount effect reads `localStorage`. That script mutates `<html>`, which is why the root
+layout sets `suppressHydrationWarning`.
+
+The bottom bar's allowance is keyed to `html[data-viewport="compact"]`, **not** a media
+query — the layout can be pinned, so a 1440px window can legitimately be in compact, and a
+`max-width` rule would render the bar with no room reserved for it.
+
+---
+
+## ViewportSwitch
+
+**The one control that drives the whole UI's layout**, in the top bar. `full` is the
+original desktop treatment; `compact` swaps in the components customised for a narrow
+screen (`DataGridCompact`, the bottom module bar, tighter carousel artwork).
+
+- **Source:** [src/components/viewport-switch.tsx](src/components/viewport-switch.tsx)
+- **Client component:** yes
+
+Choosing **pins** the layout, so `ViewportCorrector` stops second-guessing it and the choice
+sticks across devices and sessions. Right-click unpins and goes back to matching the screen.
+The Account page describes the current state but has no control of its own — two controls
+for one setting only invite them to disagree.
 
 ---
 
@@ -627,7 +634,7 @@ All three are `collapsible`, each with its own `storageKey`.
 
 **Collapsing — three states, two controls.** `full` (`w-64`, icon + label, the tree
 nested) → `rail` (`w-16`, icons only, flattened to one row per node) → `strip` (`w-3`,
-just the accent edge). Deliberately the same model as [`Sidebar`](#sidebar), down to the
+just the accent edge). The model the retired `Sidebar` used, down to the
 controls: the `&rsaquo;` chevron — the same one the node rows and `CollapsibleCard` use,
 rotated 180° when expanded — moves between `full` and `rail`, a `&laquo;` button drops to
 `strip`, and clicking the strip returns to `rail`. **Two controls rather than one cycling
@@ -645,9 +652,8 @@ wrapper — that pins the rail open (see
 collapsed) and now holds the state name. `TreeNav` reads the legacy boolean and maps it to
 `rail`/`full`, so an existing preference survives — don't drop that branch.
 
-**Known overlap:** `Sidebar` is `fixed` at `z-40` and floats *over* page content, so an
-expanded sidebar can sit on top of a section tree's collapse controls at narrow viewports.
-Pre-existing, and not specific to these controls.
+**Nav overlap:** `AppChrome`'s bars are `fixed` at `z-40`. Keep other stacked elements
+below that, and dialogs at `Modal`'s `z-50`, or an overlay won't cover them.
 
 **Note:** the active node is matched on `pathname`, so each node needs a real route —
 a query parameter or client-side state won't highlight. Keep the node list and any
@@ -726,7 +732,7 @@ A user's profile picture, or an initials circle when they have none.
 />
 ```
 
-**Used by:** the `Sidebar` footer, [/account](src/app/(protected)/account/view.tsx), and the
+**Used by:** the `AppChrome` top bar, [/account](src/app/(protected)/account/view.tsx), and the
 User Management grid.
 
 **Notes:** renders `<img src="/api/users/{userId}/avatar">` — that route is the only place
@@ -896,6 +902,44 @@ the caller passes a URL (typically a DB-backed route like
 
 ---
 
+## Shared chart display props
+
+**Every chart component accepts these four display props, and they mean the same thing on
+each.** Defined once as `ChartDisplayDefaults` in
+[src/lib/shared/chart-options.ts](src/lib/shared/chart-options.ts); each chart's props
+interface `extends` it, so a new option added there reaches all of them and the
+typechecker enforces the vocabulary. **Don't add a chart-specific alias for one of these**
+(no `showValues`, no `labelPoints`) — extend the shared interface instead.
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `pointLabels?` | `"none" \| "last" \| "extremes" \| "all"` | Which points print their value. `"none"` for lines/areas, `"all"` for `ChartBar`. |
+| `showDots?` | `boolean` | Marker at each point. |
+| `showLegend?` | `boolean` | Defaults to "only when there's more than one series". |
+| `showGrid?` | `boolean` | |
+| `showToolbar?` | `boolean` | Default `true`. `false` drops the reader's gear control. |
+| `displayStorageKey?` | `string` | Remembers this chart's display choices in `localStorage`. **Give every chart its own key.** |
+
+**These are starting values, not settings.** The reader changes any of them from the
+chart's own [`ChartToolbar`](#chartoolbar); the prop chooses what they see first. With a
+`displayStorageKey` their choice outlives the page.
+
+**`pointLabels` is a mode, not a boolean, on purpose.** The dataviz skill's rule is
+*"label selectively — never a number on every point"*: a value beside all 500 dots of a
+price history is unreadable. So `"all"` is honoured only up to a cap
+(`DEFAULT_MAX_POINT_LABELS`, 12; `COMPACT_MAX_POINT_LABELS`, 4, below 1024px — six labels
+across a 390px phone was measured and they touch) and past it draws the high and low
+instead, with the toolbar saying so rather than appearing to ignore the choice.
+`ChartBar` is exempt: one label per *bar* at its free end is the endorsed treatment.
+
+Which points get labelled is **decided in the lib** —
+[`selectLabeledIndexes`](src/lib/shared/chart-options.ts) — not in the components, and it
+skips gaps rather than reading a missing reading as `0`. Change labelling *behaviour*
+there, with tests. The components only draw, via the shared renderer
+[chart-point-labels.tsx](src/components/chart-point-labels.tsx).
+
+---
+
 ## ChartLine
 
 Time-series line chart, one or more series.
@@ -903,13 +947,14 @@ Time-series line chart, one or more series.
 - **Source:** [src/components/chart-line.tsx](src/components/chart-line.tsx)
 - **Import:** `import { ChartLine, type ChartLineSeries } from "@/components/chart-line";`
 - **Client component:** yes (wraps Recharts)
+- **Also accepts** every [shared chart display prop](#shared-chart-display-props).
 
 | Prop | Type | Notes |
 |------|------|-------|
 | `data` | `Record<string, number \| string>[]` | Rows with one `xKey` field + one numeric field per series key. Carry extra fields on a row for `renderDot` to switch on. |
 | `series` | `{ key, label, color?, renderDot? }[]` | A single series renders with no legend box. |
 | `xKey` | `string` | Field used for the x-axis. |
-| `formatValue?` | `(value: number) => string` | y-axis ticks + tooltip. |
+| `formatValue?` | `(value: number) => string` | y-axis ticks, tooltip **and any point label**. |
 | `formatX?` | `(value: string \| number) => string` | x-axis ticks. |
 | `height?` | `number` | Default `280`. |
 | `connectNulls?` | `boolean` | Draw a series through rows where its key is missing instead of breaking. Default `false`. |
@@ -981,6 +1026,7 @@ Horizontal bars for part-to-whole or magnitude comparison across a handful of ca
 - **Source:** [src/components/chart-bar.tsx](src/components/chart-bar.tsx)
 - **Import:** `import { ChartBar, type ChartBarItem } from "@/components/chart-bar";`
 - **Client component:** yes (wraps Recharts)
+- **Also accepts** every [shared chart display prop](#shared-chart-display-props).
 
 | Prop | Type | Notes |
 |------|------|-------|
@@ -1006,6 +1052,12 @@ Horizontal bars for part-to-whole or magnitude comparison across a handful of ca
 **Notes:** each bar is direct-labeled with its value (the required contrast relief) and the
 axis tick supplies identity, so there is no legend box.
 
+**It's the one chart that labels every mark by default** (`pointLabels="all"`), and the only
+one whose label density isn't capped: a bar has a free end to print on and there are only
+ever a handful. Its toolbar therefore offers just None / Every bar — "latest" and
+"high & low" are time-series ideas, and categories have no order to have a latest.
+It also has a **tooltip** now, which it went without.
+
 ---
 
 ## ChartXY
@@ -1017,6 +1069,7 @@ do.
 - **Source:** [src/components/chart-xy.tsx](src/components/chart-xy.tsx)
 - **Import:** `import { ChartXY, type ChartType } from "@/components/chart-xy";`
 - **Client component:** yes (wraps Recharts; memoized)
+- **Also accepts** every [shared chart display prop](#shared-chart-display-props).
 
 | Prop | Type | Notes |
 |------|------|-------|
@@ -1024,10 +1077,11 @@ do.
 | `data` | `Record<string, number \| string \| null>[]` | Pre-sorted by `xKey` (zoom is a windowed slice). |
 | `xKey` | `string` | |
 | `series` | `{ key, label, color? }[]` | Legend only appears for >1 series. |
-| `showDots?` | `boolean` | Default `false` (line/area). |
+| `showDots?` | `boolean` | Default `false` (line/area). Shared prop; now also reader-toggleable. |
 | `formatValue?` | `(value: number) => string` | |
 | `formatX?` | `(value: string \| number) => string` | |
 | `height?` | `number` | |
+| `curve?` | `"monotone" \| "linear"` | Default `"monotone"`. |
 | `className?` | `string` | |
 
 ```tsx
@@ -1036,7 +1090,7 @@ do.
   data={rows}
   xKey={xKey}
   series={yKeys.map((key) => ({ key, label: key }))}
-  showDots={showDots}
+  displayStorageKey="myhomebase:chart:csv-analytics"
 />
 ```
 
@@ -1044,8 +1098,59 @@ do.
 [csv-analytics-view.tsx](src/app/(protected)/modules/[slug]/csv-analytics-view.tsx) (the
 axis/type/format pickers stay local to that view).
 
+**Its zoom controls ride in the shared `ChartToolbar`** rather than a row of their own, so
+the chart has one strip of controls instead of two stacked. They're passed as `children`;
+`showToolbar={false}` hides the gear but keeps them.
+
+**Point labels follow the zoom window,** not the whole dataset — zooming in re-picks the
+visible high and low instead of pointing off-screen. Scatter draws none: its marks *are* the
+points, with no free end to print on.
+
 **Notes:** single shared y-scale, never dual-axis. Colors come from
 `@/components/chart-colors` by series order.
+
+---
+
+## ChartToolbar
+
+**A chart's own gear control** — value labels, point markers, legend, gridlines. You do not
+call this: all three chart components mount one, so every chart in the app offers the same
+options in the same place. It's registered because it's the contract for what a reader can
+change, and because a fourth chart type must reuse it rather than invent a control strip.
+
+- **Source:** [src/components/chart-toolbar.tsx](src/components/chart-toolbar.tsx)
+- **Import:** `import { ChartToolbar, useChartDisplay } from "@/components/chart-toolbar";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `value` / `onChange` | `ChartDisplay` / `(next) => void` | The chart owns the state; this only edits it. |
+| `labelModes?` | `readonly PointLabelMode[]` | Which modes to offer. Defaults to all four; `ChartBar` passes `["none", "all"]`. |
+| `canToggleDots?` / `canToggleLegend?` / `canToggleGrid?` | `boolean` | Hide a toggle that can't apply — a single series has no legend, a bar chart no markers. |
+| `pointCount?` / `maxPointLabels?` | `number` | Only used to explain a capped `"all"`. |
+| `children?` | `ReactNode` | Extra controls left of the gear — `ChartXY`'s zoom buttons. |
+| `showOptions?` | `boolean` | `false` drops the gear but keeps `children`. |
+| `className?` | `string` | |
+
+**A gear popover, not a visible control row.** A dashboard stacks several charts, and a
+permanent strip of checkboxes above each one competes with the data — and wraps to two lines
+on a phone. One icon reads the same at 390px as at 1920px, which is also **how this behaves
+narrow**: unchanged, it's already small. Escape and an outside click close it; the listener
+is only registered while open.
+
+**`useChartDisplay(defaults, storageKey)`** is the other half — it holds the state, seeds it
+from the call site's props, persists it per chart, and returns the label cap (halved when
+`useIsCompact()`). A chart component calls it; a *view* shouldn't need to.
+
+Stored preferences are read in an effect, not during render, because `localStorage` doesn't
+exist on the server — so a chart draws once with the call site's defaults before a stored
+choice lands. That's the same trade `DataGrid` makes for its saved view, and the alternative
+is a hydration mismatch.
+
+**A toggle never hides data.** A series drawing custom marks (`ChartLine`'s `renderDot`) is
+exempt from the markers toggle, because those shapes carry meaning the line doesn't — hiding
+them would lose data rather than reduce clutter. The tooltip is deliberately **not**
+toggleable for the same reason: it carries the values the labels don't.
 
 ---
 
@@ -1206,7 +1311,7 @@ as a Mac) and phones in desktop-request mode.
 
 ## IconSetProvider / useIconSet
 
-Context supplying the active module icon set to `ModuleIcon` and the card/sidebar badges.
+Context supplying the active module icon set to `ModuleIcon` and the card/nav badges.
 
 - **Source:** [src/components/icon-set-context.tsx](src/components/icon-set-context.tsx)
 - **Import:** `import { IconSetProvider, useIconSet } from "@/components/icon-set-context";`
@@ -1242,7 +1347,7 @@ Render a module glyph in the active icon set (`ModuleIcon`) or in an explicitly 
 <ModuleIconPreview setId="classic" name="building" className="h-5 w-5" />
 ```
 
-**Used by:** `ModuleCarousel`, `Sidebar`, and the icon picker at
+**Used by:** `ModuleCarousel`, `AppChrome`, and the icon picker at
 [admin/configuration/icons/page.tsx](src/app/(protected)/admin/configuration/icons/page.tsx).
 
 **Notes:** falls back to the hand-drawn "classic" set for any missing glyph. Monochrome
@@ -1258,6 +1363,7 @@ they don't get their own registry section.
 | Helper | Source | What it is |
 |--------|--------|-----------|
 | `CHART_CATEGORICAL_COLORS`, `CHART_STATUS_COLORS`, `CHART_CHROME` | [chart-colors.ts](src/components/chart-colors.ts) | The fixed 8-hue chart palette + grid/axis chrome. All charts read from here. |
+| `pointLabelContent` | [chart-point-labels.tsx](src/components/chart-point-labels.tsx) | Builds the `<LabelList content>` renderer every chart uses for value labels, so a labelled point looks identical on a line, a column and a bar. Labels wear the muted **text** token, never the series colour. |
 | `TreeIcon` | [tree-icons.tsx](src/components/tree-icons.tsx) | Resolves a `TreeNav` icon key (`sliders`, `quote`, `grid`, `window`, `palette`, `info`, `history`, `users`, `database`, `shapes`) to an SVG. Renders `null` for an unknown key. |
 | `AppIcon` | [app-icon.tsx](src/components/app-icon.tsx) | The app wordmark glyph. Takes raw `SVGProps`. |
 | `AdminIcon` | [admin-icon.tsx](src/components/admin-icon.tsx) | The Administration glyph. Takes raw `SVGProps`. |

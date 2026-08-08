@@ -19,9 +19,10 @@ yet, run that first.
 | **Synology NAS** (primary) | `/volume1/app/myhomebase` on `NAS_DS223`, reachable over HTTPS from phones | `REBUILD_PUBLISH_NAS.bat` |
 | **Windows** | `C:\webapp\MHB` | `REBUILD_PUBLISH.bat <dest>` |
 
-They run against **separate databases** and can be on different versions. The full NAS
-runbook — DSM certificate, reverse proxy, SSH, autostart, troubleshooting — is
-`INSTRUCTION_SETUP_SYNOLOGY.md`.
+They run against **separate databases** and can be on different versions. First-time NAS
+setup — DSM certificate, reverse proxy, SSH, autostart, troubleshooting — is
+`INSTRUCTION_SETUP_SYNOLOGY.md`; the day-to-day deploy/restart/stop steps are
+`ADMIN_MANUAL.md`.
 
 ## 1. Ask which target(s), and confirm the publish
 

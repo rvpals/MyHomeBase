@@ -1,5 +1,105 @@
 # Change History
 
+## 2026-08-08 15:20 — Navigation moved to the edges, and every chart got a gear
+
+**No migration in this release.**
+
+Two bodies of work. The phone release before this one shrank the sidebar until it fit;
+this one accepts that a 240px slab down the left is a desktop pattern and retires it. And
+the charts stopped being fixed pictures — the reader now decides what a chart shows.
+
+### [Changed] `AppChrome` replaces `Sidebar`
+
+Navigation is now a **fixed top bar**, plus a **bottom module bar** on the compact layout.
+The left slab is gone: it cost a phone 62% of its screen and, being `fixed` above the
+content, swallowed taps meant for the page underneath. Moving the nav to the edges gives
+every page the full width at every size — the `pl-24` gutter the shell used to reserve for
+the icon rail is gone with it.
+
+**The only thing that differs by layout is where the modules sit.** On `full` they're in
+the top bar beside everything else; on `compact` there's no room, so they move to a bottom
+bar, icons only, within thumb reach rather than in the corner hardest to hit one-handed.
+App name, view switch, admin, account and log out are identical in both.
+
+That bottom bar's spacing allowance keys off `html[data-viewport="compact"]` and **not** a
+media query, deliberately: the layout can be pinned, so a 1440px window can legitimately
+be in compact, and a `max-width` rule would draw the bar with no room reserved for it.
+
+Both bars minimise to a small floating puck — top-left for the bar, bottom-right for the
+tabs — and the state is remembered. As with the old sidebar, the `(protected)` layout is a
+server component and the minimise state is client-side, so they meet through
+`<html data-appbar>` / `<html data-moduletabs>` attributes and `globals.css` padding
+rules, with a pre-paint script in the root layout applying the stored values before first
+paint. Without that script every page renders padded for both bars and then shoves on
+mount.
+
+The design exception went with it: the sidebar was the one surface allowed `Button`'s hard
+offset shadow. The nav bars are quiet — a hairline border and a soft shadow. `design.md`
+now says no surface takes the button treatment.
+
+### [Changed] The layout switch moved to the top bar
+
+`ViewportSwitch` — compact/full — is now in the top bar, because it's the one control that
+drives the whole UI's layout and belongs where it's always reachable. Choosing **pins** the
+layout so `ViewportCorrector` stops second-guessing it; right-click unpins.
+
+The Account page **lost its copy of the control** and now only describes the current state
+("currently the compact layout, pinned by you"). Two controls for one setting only invite
+them to disagree.
+
+### [Added] Every chart carries its own display controls
+
+A gear in the corner of each chart opens `ChartToolbar`: value labels, point markers,
+legend, gridlines. Pass `displayStorageKey` and the reader's choices outlive the page.
+
+The four options are declared **once**, as `ChartDisplayDefaults` in
+`src/lib/shared/chart-options.ts`, and each chart's props interface `extends` it — so one
+option means one thing on a line, an area and a bar, and the typechecker enforces the
+vocabulary rather than letting a `showValues` alias appear on one chart and a `labelPoints`
+on another.
+
+**`pointLabels` is a mode, not a boolean.** The dataviz rule is *label selectively — never
+a number on every point*, so `"all"` is honoured only up to a cap (12 by default, **4**
+below 1024px) and past it draws the high and low instead, with the toolbar *saying* it
+downgraded rather than appearing to ignore the choice. Four rather than six on a phone was
+measured, not guessed: at six across 390px, `$40.33` and `$44.10` ran together.
+
+Which points get labelled is decided in the lib (`selectLabeledIndexes`), not in the
+components, with 24 tests. It **skips gaps rather than reading a missing value as `0`** —
+the account series are sparse, and labelling a gap `$0.00` would state a balance that was
+never recorded. "Latest" therefore means the last real number, not the last index.
+
+Each chart in the app was given a starting mode chosen for what its reader is actually
+looking for: `"last"` for balance and account histories (latest value at each line's end —
+not every point, since the series are overlaid and labels would land on a neighbouring
+line), `"extremes"` for the returns series (the best and worst day), `"all"` for bars.
+
+`ChartBar` is exempt from the cap — a bar has a free end to print on and there are only
+ever a handful — and its toolbar offers only None / Every bar, since "latest" and "high &
+low" are time-series ideas and categories have no order. It also gained a tooltip, which
+it went without.
+
+### [Changed] Chart-builder presets no longer store display options
+
+`showDots` used to be saved into a preset's `optionsJson`. Display options are the
+*reader's*, not the preset's, so they moved to the gear control and persist per-chart in
+`localStorage` instead. An older preset that still carries `showDots` is ignored rather
+than being an error.
+
+### [Added] `Button` accepts `title`, `ariaLabel`, `ariaExpanded`, `ariaControls`
+
+Forced by the above: a bar of icon-only buttons and a gear that opens a panel had nothing
+for a screen reader to read and no way to announce open/closed. `ariaLabel` is now
+**required** when the children are only an icon or glyph.
+
+### [Added] `ADMIN_MANUAL.md`
+
+The day-to-day operator reference — deploy, restart, stop, switch builds — split out from
+`INSTRUCTION_SETUP_SYNOLOGY.md`, which stays the first-time setup runbook and now links to
+it. It documents the thing that catches people out: copying a build to the NAS does not
+restart anything, so the old build keeps serving until `deploy.trigger` exists or the
+process dies.
+
 ## 2026-08-07 23:23 — The app works on a phone, and installs to the home screen
 
 **No migration in this release.**

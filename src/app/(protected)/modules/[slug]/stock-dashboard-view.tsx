@@ -59,6 +59,7 @@ function AllocationChart({ title, slices }: { title: string; slices: AllocationS
         }))}
         formatValue={(value) => formatCents(Math.round(value * 100))}
         className="mt-2"
+        displayStorageKey={`myhomebase:chart:stock-allocation:${title}`}
       />
     </div>
   );
@@ -188,6 +189,10 @@ function PortfolioSummaryCard({
               ]}
               xKey="date"
               formatValue={(value) => formatCents(Math.round(value * 100))}
+              // Three overlaid series: the latest value of each, at its own line's
+              // end, and nothing in between.
+              pointLabels="last"
+              displayStorageKey="myhomebase:chart:stock-dashboard-history"
             />
             <p className="mt-1 text-xs text-muted">
               One point per day you pressed Refresh All. A day with no capture is absent rather than

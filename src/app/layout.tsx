@@ -168,16 +168,20 @@ export default async function RootLayout({
       // than letting a real mismatch hide in the noise. Only affects this
       // element's own attributes, not the tree beneath it.
       suppressHydrationWarning
+      // Set server-side from the same cookie `AppChrome` reads, so globals.css
+      // can reserve room for the bottom module bar. Deliberately not a media
+      // query: the layout can be pinned, so a wide window can be in compact.
+      data-viewport={viewport}
       className={`${spaceGrotesk.variable} ${sora.variable} ${familjenGrotesk.variable} ${manrope.variable} ${inter.variable} ${plexMono.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <head>
         <style>{themeCss}</style>
-        {/* Applies the stored sidebar state before first paint. Without it the
-            page renders with the full sidebar and its 6rem gutter, then jumps
-            when the client effect reads localStorage — a visible shove of every
-            page's content on every navigation.
+        {/* Applies the stored nav-bar state before first paint. Without it the
+            page renders padded for both bars and then jumps when the client
+            effect reads localStorage — a visible shove of every page's content
+            on every navigation.
 
-            The key strings are duplicated from src/components/sidebar.tsx on
+            The key strings are duplicated from src/components/app-chrome.tsx on
             purpose: that file is "use client", and importing a constant from it
             into this server component yields an undefined client-reference
             proxy rather than the string, with nothing to catch it at build
@@ -185,14 +189,10 @@ export default async function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html:
-              'try{var k="myhomebase:sidebar-state",s=localStorage.getItem(k);' +
-              'if(s!=="full"&&s!=="rail"&&s!=="strip"){' +
-              'var c=localStorage.getItem("myhomebase:sidebar-collapsed");' +
-              // No stored preference: match the sidebar's own default, which is
-              // the rail below 1024px. Without this the gutter paints at 6rem
-              // and snaps to 4rem on a phone at every navigation.
-              's=c!==null?(c==="true"?"rail":"full"):(window.innerWidth<1024?"rail":"full");}' +
-              'document.documentElement.dataset.sidebar=s;}catch(e){}',
+              "try{var d=document.documentElement.dataset;" +
+              'd.appbar=localStorage.getItem("myhomebase:appbar")==="min"?"min":"open";' +
+              'd.moduletabs=localStorage.getItem("myhomebase:moduletabs")==="min"?"min":"open";' +
+              "}catch(e){}",
           }}
         />
       </head>

@@ -60,7 +60,7 @@ selected by the CSS vars `--font-display` / `--font-body` / `--font-mono-code`).
 
 - Headings, module names, page titles → `font-display` (`font-display` Tailwind class).
 - Body copy, labels, buttons → `font-body` (Tailwind default `font-sans`, already applied to `<body>`).
-- Reference codes, ledger-style numbers, tags (e.g. the sidebar's per-module "REI" code) → `font-mono` (Tailwind `font-mono`).
+- Reference codes, ledger-style numbers, tags (e.g. a module's "REI" code) → `font-mono` (Tailwind `font-mono`).
 
 Don't reach for a font family outside this trio. If a new theme is added, give it its
 own display/body/mono choice in `themes.ts` rather than hardcoding a font anywhere in
@@ -86,23 +86,21 @@ Don't blur this line by giving a card a hard shadow or a button a soft one.
   accent treatment on hover (a soft ring/lift). Keep any hover shadow soft and low-opacity
   so it reads on both light and dark surfaces — a gentle `rgba(0,0,0,0.35)` lift, never
   the hard offset shadow that marks a `Button`.
-- **The one surface that does take the button treatment is the `Sidebar`.** It's a raised
-  slab floating over the page, so it carries the same hard offset shadow a `Button` does —
-  rotated to point right (`shadow-[5px_0_0_0_var(--brass-dark),…]`), because a
-  floor-to-ceiling rail has no bottom edge to cast from — plus a soft second shadow for the
-  lift. It does **not** take the press/translate mechanic: it isn't a button, and moving the
-  whole nav on hover would be awful. This is a deliberate exception, not a precedent — don't
-  give another panel a hard shadow without asking.
+- **No surface takes the button treatment.** The old left `Sidebar` was the one exception —
+  a raised slab with `Button`'s hard offset shadow rotated to point right. It was retired
+  with the move to `AppChrome`, and the exception went with it. The nav bars are quiet
+  surfaces: a hairline border and a soft low-opacity shadow, nothing more. Don't give a
+  panel a hard shadow without asking.
 - **Icon badge** — the standard "identity" mark for a card or feature tile is a solid
   rounded-square accent tile with the glyph knocked out of it: `rounded-xl bg-brass
   text-paper` with the icon in `text-paper`. This reads correctly in every theme for free
   — `paper` is the darkest surface in the dark themes (dark glyph on a bright accent) and
   the lightest in Daybreak (near-white glyph on the rose accent). Don't hardcode a white
-  or black glyph; use `text-paper`. See `ModuleCarousel` and `Sidebar`.
+  or black glyph; use `text-paper`. See `ModuleCarousel`.
 
 ## Icon sets are user-selectable
 
-Module icons (the graphics on the home carousel and the glyphs in the sidebar) are driven by a
+Module icons (the graphics on the home carousel and the glyphs in the nav bars) are driven by a
 user-chosen **icon set**, the same way colors are driven by a theme — picked at Admin →
 Configuration → Icons, persisted as the `icon_set` setting, and registered in
 `ICON_SETS` (`src/lib/settings/icon-sets.ts`). The active set is read server-side in the
@@ -145,7 +143,7 @@ The caller triggers printing itself (`window.print()`), so a reusable component
 takes an `onPrint` callback rather than reaching for the browser API. See
 `JournalEntryCard` and `/modules/[slug]/entries/[id]`.
 
-## Page width and the sidebar
+## Page width and the nav bars
 
 Every full-page screen — module, Administration, or the home grid — is laid out in **one**
 container: `PAGE_CONTAINER` from
@@ -156,15 +154,18 @@ left most of a large display as empty margin either side of the content. The 160
 past a 2560px monitor on purpose so it doesn't bind on one; it's there only to stop a table
 spanning a 3440px ultrawide.
 
-The `Sidebar` is `fixed` and floats **over** the page at `z-40`, so the `(protected)` layout
-reserves only the icon rail's width (`pl-24` = 4rem rail + 2rem gutter) and a module gets
-everything else. It has three states — `full` (labels), `rail` (icons), and `strip`, where
-the slab is gone and only its accent edge is left; in `strip` the shell takes that reserved
-gutter back, via `html[data-sidebar]` rules in `globals.css` rather than a prop, since the
-layout is a server component. Two consequences worth knowing:
+**Navigation lives on the edges, not down the side.** `AppChrome` renders a `fixed` top bar
+at `z-40`, plus a bottom module bar on the compact layout, so a page gets the full width at
+every size. The `(protected)` layout pads `.app-main` for whichever bars are showing — via
+`html[data-appbar]` / `html[data-moduletabs]` rules in `globals.css` rather than props,
+since the layout is a server component and the minimise state is client-side.
+
+The bottom bar's allowance keys off `html[data-viewport="compact"]`, **not** a media query:
+the layout can be pinned, so a wide window can be in compact, and a `max-width` rule would
+draw the bar with no room reserved for it.
 
 - Anything else that needs to sit above page content must stay under `z-40`, and any dialog
-  must stay at `z-50` (`Modal`) so its overlay still covers the sidebar.
+  must stay at `z-50` (`Modal`) so its overlay still covers the bars.
 - **A whole-record viewer is a floating window, not a wide panel.** `Modal`'s
   `size="window"` gives it 80% of the viewport, rounded and centred, draggable by its
   header, with a maximize button that swaps to full-bleed and back — the right treatment
@@ -175,8 +176,6 @@ layout is a server component. Two consequences worth knowing:
   `size="full"` is still there for the maximized state and for anything that genuinely
   wants every pixel. Don't reach for either on a form — a `sm`/`md` panel reads as "answer
   this and get back".
-- The expanded sidebar overlaps content rather than pushing it. That's intended — it's a
-  mini-drawer, not a column.
 
 ## Phone and desktop
 

@@ -60,3 +60,6 @@ next-env.d.ts
 
 # NAS deployment package built by scripts/publish-nas.mjs (~40 MB, disposable).
 /dist-nas/
+
+# Session logs written by /end_chat. A human record only — never committed.
+/chat_md/

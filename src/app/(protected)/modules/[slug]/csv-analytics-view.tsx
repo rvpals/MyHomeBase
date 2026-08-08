@@ -67,12 +67,19 @@ function DataPanel({ data, exportName }: { data: CsvEntryData; exportName: strin
 const ROW_LIMIT_OPTIONS = [5000, 10000, 40000] as const;
 type RowLimit = number | "ALL";
 
-/** The full chart-builder configuration persisted in a saved preset's optionsJson. */
+/**
+ * The full chart-builder configuration persisted in a saved preset's optionsJson.
+ *
+ * Encoding and data only. Display options — point markers, value labels, legend,
+ * gridlines — are the reader's and live in `ChartXY`'s own gear control, remembered
+ * in `localStorage` across sessions, so they're deliberately not part of a preset.
+ * `showDots` used to be saved here; an older preset that still carries it is
+ * ignored rather than being an error.
+ */
 interface ChartOptions {
   chartType: ChartType;
   xKey: string;
   yKeys: string[];
-  showDots: boolean;
   showTable: boolean;
   decimals: number;
   rowLimit: RowLimit;
@@ -90,7 +97,6 @@ function ChartBuilder({ entry }: { entry: CsvAnalyticEntry }) {
   const [chartType, setChartType] = useState<ChartType>("line");
   const [xKey, setXKey] = useState(entry.columns[0]?.name ?? "");
   const [yKeys, setYKeys] = useState<string[]>(numericColumns.slice(0, 1).map((column) => column.name));
-  const [showDots, setShowDots] = useState(false);
   const [showTable, setShowTable] = useState(false);
   const [decimals, setDecimals] = useState(2);
   const [rowLimit, setRowLimit] = useState<RowLimit>(5000);
@@ -165,7 +171,6 @@ function ChartBuilder({ entry }: { entry: CsvAnalyticEntry }) {
           .slice(0, MAX_Y_SERIES),
       );
     }
-    if (typeof options.showDots === "boolean") setShowDots(options.showDots);
     if (typeof options.showTable === "boolean") setShowTable(options.showTable);
     if (typeof options.decimals === "number") setDecimals(options.decimals);
     if (options.rowLimit === "ALL" || typeof options.rowLimit === "number") setRowLimit(options.rowLimit);
@@ -187,7 +192,7 @@ function ChartBuilder({ entry }: { entry: CsvAnalyticEntry }) {
     const name = presetName.trim();
     if (name === "") return;
     setPresetError(undefined);
-    const optionsJson = JSON.stringify({ chartType, xKey, yKeys, showDots, showTable, decimals, rowLimit });
+    const optionsJson = JSON.stringify({ chartType, xKey, yKeys, showTable, decimals, rowLimit });
     const result = await saveChartPresetAction(entry.id, name, optionsJson);
     if (!result.ok) {
       setPresetError(result.error ?? "Failed to save chart.");
@@ -364,11 +369,10 @@ function ChartBuilder({ entry }: { entry: CsvAnalyticEntry }) {
         </div>
       </div>
 
+      {/* "Show data points" used to live here; it's now the chart's own gear
+          control, alongside value labels, the legend and the gridlines, so every
+          chart in the app offers it the same way. */}
       <div className="flex flex-wrap gap-4">
-        <label className="flex items-center gap-2 text-sm text-ink">
-          <input type="checkbox" checked={showDots} onChange={(event) => setShowDots(event.target.checked)} className="h-4 w-4 rounded border-line text-brass" />
-          <span>Show data points</span>
-        </label>
         <label className="flex items-center gap-2 text-sm text-ink">
           <input type="checkbox" checked={showTable} onChange={(event) => setShowTable(event.target.checked)} className="h-4 w-4 rounded border-line text-brass" />
           <span>Show data table</span>
@@ -387,8 +391,8 @@ function ChartBuilder({ entry }: { entry: CsvAnalyticEntry }) {
           data={records}
           xKey={xKey}
           series={series}
-          showDots={showDots}
           formatValue={formatValue}
+          displayStorageKey="myhomebase:chart:csv-analytics"
         />
       )}
 

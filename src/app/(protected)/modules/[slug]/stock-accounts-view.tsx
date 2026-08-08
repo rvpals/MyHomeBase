@@ -338,6 +338,9 @@ function AccountHistory({ entry }: { entry: AccountEntry }) {
           series={[{ key: "value", label: entry.account.name }]}
           xKey="date"
           formatValue={(value) => formatCents(Math.round(value * 100))}
+          // The current balance is the number being looked for.
+          pointLabels="last"
+          displayStorageKey="myhomebase:chart:stock-account-history"
         />
       )}
       <PerformanceRecordForm onSave={handleAddRecord} />
@@ -501,6 +504,11 @@ function AccountPerformanceOverTime({ entries }: { entries: AccountEntry[] }) {
               color: colorByAccountId.get(entry.accountId),
             }))}
             formatValue={(value) => formatCents(Math.round(value * 100))}
+            // Each account's latest balance, at the end of its own line. Not
+            // "every point": these series are sparse and overlaid, so a label per
+            // reading would sit on top of the neighbouring account's line.
+            pointLabels="last"
+            displayStorageKey="myhomebase:chart:stock-accounts-overlay"
           />
           <p className="text-xs text-muted">
             Accounts are recorded on their own schedules, so a line is drawn straight between the

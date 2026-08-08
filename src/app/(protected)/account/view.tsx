@@ -4,7 +4,6 @@ import { useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/avatar";
 import { Button } from "@/components/button";
-import { ViewportToggle } from "@/components/viewport-toggle";
 import type { User } from "@/lib/user";
 import type { Viewport } from "@/lib/viewport";
 import { changeOwnPasswordAction, removeOwnAvatarAction, uploadOwnAvatarAction } from "./actions";
@@ -166,20 +165,21 @@ export function AccountView({
         <AvatarSection user={user} />
         {!user.googleEmail && <PasswordSection />}
 
-        {/* A per-user preference like a theme, and a rare one — it exists for
-            the cases automatic detection gets wrong (an iPad reporting itself
-            as a Mac, a phone in desktop-request mode). Deliberately not in the
-            sidebar: that collapses on small screens, so the escape hatch would
-            be hidden exactly when it is needed. */}
+        {/* Read-only here. The switch itself lives in the top bar, because it
+            is the one control that drives the whole UI's layout and belongs
+            where it is always reachable — two controls for one setting would
+            only invite them to disagree. This says what the current state is
+            and how to change it. */}
         <section className="mt-8">
           <h2 className="font-display text-lg text-ink">Layout</h2>
           <p className="mt-1 text-sm text-muted">
-            MyHomeBase uses a compact layout on narrow screens and the full one on wide
-            screens. Override it here if the automatic choice is wrong for your device.
+            Currently the <span className="font-medium text-ink">{viewport}</span> layout
+            {viewportPinned
+              ? ", pinned by you — it stays this way on every device until you change it."
+              : ", chosen automatically from your screen width."}{" "}
+            Switch it with the layout button in the toolbar
+            {viewportPinned ? "; right-click it to go back to matching your screen." : "."}
           </p>
-          <div className="mt-3">
-            <ViewportToggle current={viewport} pinned={viewportPinned} />
-          </div>
         </section>
       </div>
     </div>

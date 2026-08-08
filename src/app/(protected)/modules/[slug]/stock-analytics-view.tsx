@@ -281,6 +281,10 @@ function SharpeTab({ initialResult }: { initialResult?: SharpeResult }) {
               series={[{ key: "return", label: "Daily portfolio return (%)" }]}
               xKey="date"
               formatValue={(value) => `${value.toFixed(2)}%`}
+              // The best and worst day are what a reader looks for in a return
+              // series; the axis carries the rest.
+              pointLabels="extremes"
+              displayStorageKey="myhomebase:chart:stock-analytics-returns"
             />
           )}
           {result.tickerDetails.length > 0 && (
