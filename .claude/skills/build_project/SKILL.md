@@ -33,7 +33,46 @@ together).
 - Write a short summary (a handful of bullets, not a wall of text) and
   prepend it to `CHANGE_HISTORY.md` as a new dated entry, newest first. If the
   file doesn't exist yet, create it with a `# Change History` heading.
+- **Tag every change** with `[Added]`, `[Changed]` or `[Fixed]` — see the
+  convention below. Admin → About counts these, so an untagged change is an
+  uncounted change.
 - Display the new entry to the user.
+
+#### The change-kind tag
+
+Each change in the log carries a kind tag directly after its `### ` heading or
+`- ` bullet marker:
+
+```markdown
+## 2026-08-06 23:54 — Release title
+
+### [Added] Yahoo Finance Detail — six sections, one request
+
+Prose about it. Indented sub-bullets are supporting detail, not changes:
+
+  - not counted, no tag needed
+
+### [Fixed] Two silent bugs in the Yahoo client
+
+### Also in this release
+
+- [Added] `Modal` gained `size="full"`
+- [Fixed] `ChartXY` no longer resets its zoom window in an effect
+```
+
+- **`[Added]`** — something that didn't exist now does (a screen, card, tab,
+  column, component, CLI command, capability).
+- **`[Changed]`** — something that existed now behaves or looks different.
+  Removals count as changes.
+- **`[Fixed]`** — a defect corrected.
+
+Two rules the parser (`src/lib/change-history`) depends on:
+
+- **Only tagged lines are counted**, so a heading that's a container
+  ("Also in this release") or a note ("Known issues in this release") is left
+  untagged deliberately — don't tag it to be tidy.
+- **Only `### ` headings and column-zero `- ` bullets count.** Indented bullets
+  are detail belonging to the item above them.
 
 ### 2. Verify
 

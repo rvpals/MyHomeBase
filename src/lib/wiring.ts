@@ -6,6 +6,7 @@ import Database from "better-sqlite3";
 import { SqliteSessionRepository } from "./auth/repository";
 import { GoogleAuthClient } from "./auth/google-client";
 import type { GoogleOAuthClient } from "./auth/ports";
+import { FileChangeHistoryRepository } from "./change-history/repository";
 import { SqliteCsvAnalyticsRepository } from "./csv-analytics/repository";
 import { SqliteCsvImportMappingRepository } from "./csv-import/repository";
 import { SqliteDailyQuoteRepository } from "./daily-quote/repository";
@@ -28,6 +29,7 @@ import { RealSystemInfoRepository } from "./system-info/repository";
 import { YahooTickerNewsClient } from "./ticker-news/yahoo-news-client";
 import { FmpTickerLogoClient } from "./ticker-logos/fmp-logo-client";
 import { SqliteTickerLogoRepository } from "./ticker-logos/repository";
+import { SqliteTickerRiskCacheRepository } from "./ticker-overview/repository";
 import { SqliteUserRepository } from "./user/repository";
 
 const dbPath = process.env.MYHOMEBASE_DB ?? path.join(process.cwd(), "data", "myhomebase.db");
@@ -82,10 +84,12 @@ export const deps = {
   stockAnalyticsRepo: new SqliteStockAnalyticsRepository(db),
   sqlExplorerRepo: new SqliteSqlExplorerRepository(db),
   systemInfoRepo: new RealSystemInfoRepository(),
+  changeHistoryRepo: new FileChangeHistoryRepository(),
   marketDataClient: new YahooFinanceClient(),
   tickerNewsClient: new YahooTickerNewsClient(),
   tickerLogoRepo: new SqliteTickerLogoRepository(db),
   tickerLogoClient: new FmpTickerLogoClient(),
+  tickerRiskCacheRepo: new SqliteTickerRiskCacheRepository(db),
   geocodingClient: new NominatimGeocodingClient(),
   weatherClient: new OpenMeteoWeatherClient(),
   googleOAuthClient,

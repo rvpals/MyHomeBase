@@ -25,6 +25,17 @@ export const tickerPriceSeriesSchema = tickerOverviewSchema.extend({
 
 export type TickerPriceSeriesInput = z.infer<typeof tickerPriceSeriesSchema>;
 
+export const tickerRiskSchema = tickerOverviewSchema.extend({
+  /**
+   * Skip the stored figures and recompute from the provider. False by default:
+   * a cached row is served however old it is, and only a reader pressing
+   * Recalculate spends the two provider round-trips.
+   */
+  refresh: z.boolean().default(false),
+});
+
+export type TickerRiskInput = z.infer<typeof tickerRiskSchema>;
+
 export const tickerNewsFeedSchema = tickerOverviewSchema.extend({
   /** Capped because the panel is a reading list, not an archive. */
   limit: z.number().int().min(1).max(25).default(10),

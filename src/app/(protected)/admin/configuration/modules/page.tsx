@@ -3,6 +3,7 @@
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { useAdminSettings } from "../../admin-shell";
 import { PAGE_CONTAINER } from "../../../page-container";
+import { CarouselImageControl } from "./carousel-image-control";
 
 export default function ModuleConfigurationPage() {
   const {
@@ -95,6 +96,13 @@ export default function ModuleConfigurationPage() {
               />
               <span className="text-ink">Visible in sidebar and home screen</span>
             </label>
+
+            {/* Saves on pick, not on the page's Save button — see the control. */}
+            <CarouselImageControl
+              slug={module.slug}
+              moduleName={module.longName}
+              hasImage={module.hasCarouselImage}
+            />
 
             <CollapsibleCard title={`Module Settings — ${module.longName}`} className="mt-4">
               <div className="space-y-3">

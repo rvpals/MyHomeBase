@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   applyMapping,
+  assignFieldToColumn,
   constantValuesByField,
+  findDuplicateFieldMappings,
+  restrictMappingToColumns,
   parseDateWithFormat,
   parseStoredMapping,
   resolveAccountNameMapping,
@@ -290,5 +293,82 @@ describe("parseStoredMapping", () => {
       fieldOptions: options,
       accountNameMapping: accounts,
     });
+  });
+});
+
+// Regression cover for the Fidelity import that read "Last price change" as the
+// share count. A 70-column Chase mapping was applied to a 16-column Fidelity
+// export; its out-of-range entries were invisible in the UI but still applied,
+// and two columns ended up claiming one field.
+describe("restrictMappingToColumns", () => {
+  const chaseShaped = { "4": "quantity", "6": "quantity", "20": "unitCost", "70": "isin" };
+
+  it("drops entries pointing past the end of this file", () => {
+    expect(restrictMappingToColumns(chaseShaped, 16)).toEqual({ "4": "quantity", "6": "quantity" });
+  });
+
+  it("keeps everything when the file is wide enough", () => {
+    expect(restrictMappingToColumns(chaseShaped, 71)).toEqual(chaseShaped);
+  });
+
+  it("rejects negative and non-integer keys rather than trusting them", () => {
+    expect(restrictMappingToColumns({ "-1": "a", "1.5": "b", x: "c", "2": "d" }, 16)).toEqual({
+      "2": "d",
+    });
+  });
+});
+
+describe("findDuplicateFieldMappings", () => {
+  it("names each field claimed by more than one column, columns in order", () => {
+    expect(
+      findDuplicateFieldMappings({ "4": "quantity", "6": "quantity", "5": "currentPrice" }),
+    ).toEqual([{ field: "quantity", columnIndexes: [4, 6] }]);
+  });
+
+  it("finds nothing in a clean mapping", () => {
+    expect(findDuplicateFieldMappings({ "4": "quantity", "5": "currentPrice" })).toEqual([]);
+  });
+
+  it("catches the exact production mapping that corrupted the import", () => {
+    const corrupt = {
+      "0": "assetClass", "2": "ticker", "3": "name", "4": "quantity", "5": "currentPrice",
+      "6": "quantity", "7": "currentPrice", "8": "dayGainLoss", "13": "cost", "16": "dayGainLoss",
+      "19": "cost",
+    };
+    expect(findDuplicateFieldMappings(corrupt).map((d) => d.field).sort()).toEqual([
+      "cost",
+      "currentPrice",
+      "dayGainLoss",
+      "quantity",
+    ]);
+  });
+});
+
+describe("assignFieldToColumn", () => {
+  it("releases the field from the column that held it", () => {
+    // Choosing Quantity on column 4 must take it away from column 6.
+    expect(assignFieldToColumn({ "6": "quantity", "5": "currentPrice" }, 4, "quantity")).toEqual({
+      "5": "currentPrice",
+      "4": "quantity",
+    });
+  });
+
+  it("replaces whatever that column pointed at before", () => {
+    expect(assignFieldToColumn({ "4": "name" }, 4, "quantity")).toEqual({ "4": "quantity" });
+  });
+
+  it("clears the column when given an empty field, touching nothing else", () => {
+    expect(assignFieldToColumn({ "4": "quantity", "5": "currentPrice" }, 4, "")).toEqual({
+      "5": "currentPrice",
+    });
+  });
+
+  it("can never produce a duplicate, however it is driven", () => {
+    let mapping = {};
+    for (const [column, field] of [[4, "quantity"], [6, "quantity"], [5, "quantity"]] as const) {
+      mapping = assignFieldToColumn(mapping, column, field);
+    }
+    expect(mapping).toEqual({ "5": "quantity" });
+    expect(findDuplicateFieldMappings(mapping)).toEqual([]);
   });
 });

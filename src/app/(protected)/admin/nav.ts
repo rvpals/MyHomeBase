@@ -61,14 +61,7 @@ export const adminNav: TreeNode[] = [
     id: "about",
     label: "About",
     href: "/admin/about",
-    hint: "Version and information about this application",
+    hint: "Version, system information, and the project's change log",
     icon: "info",
-  },
-  {
-    id: "change-history",
-    label: "Change History",
-    href: "/admin/history",
-    hint: "View the project's change log",
-    icon: "history",
   },
 ];

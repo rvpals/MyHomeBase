@@ -21,7 +21,6 @@ const ADMIN_ROUTES = [
   "/admin/user-management",
   "/admin/sql-explorer",
   "/admin/daily-quote",
-  "/admin/history",
   "/admin/configuration/application",
   "/admin/configuration/modules",
   "/admin/configuration/themes",

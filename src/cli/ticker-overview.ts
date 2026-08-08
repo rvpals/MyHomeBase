@@ -1,11 +1,13 @@
 // Prints what the ticker viewer shows, for one symbol. Thin adapter: parse argv,
 // call the same use-cases the web dialog calls, format for a terminal.
 //
-//   npm run cli -- ticker-overview AAPL            (our records only)
-//   npm run cli -- ticker-overview AAPL --market   (also hit the provider)
+//   npm run cli -- ticker-overview AAPL                      (our records only)
+//   npm run cli -- ticker-overview AAPL --market             (also hit the provider)
+//   npm run cli -- ticker-overview AAPL --market --refresh   (recompute the risk cache)
 
 import { formatCents } from "@/lib/shared/money";
 import {
+  getTickerEvents,
   getTickerNewsFeed,
   getTickerOwnData,
   getTickerQuote,
@@ -21,10 +23,13 @@ export async function tickerOverviewCommand(args: string[]): Promise<void> {
   // `--market` is a boolean switch, so `parseFlags` (which reads `--key value`
   // pairs) isn't the right tool here — the ticker is a bare positional.
   const withMarket = args.includes("--market");
+  // Risk is served from `stk_ticker_risk_cache` at any age; this is the CLI's
+  // equivalent of the Recalculate button.
+  const refreshRisk = args.includes("--refresh");
   const ticker = args.find((arg) => !arg.startsWith("--"));
 
   if (!ticker) {
-    console.error("Usage: ticker-overview <TICKER> [--market]");
+    console.error("Usage: ticker-overview <TICKER> [--market] [--refresh]");
     process.exitCode = 1;
     return;
   }
@@ -88,9 +93,13 @@ export async function tickerOverviewCommand(args: string[]): Promise<void> {
   console.log("MARKET");
 
   // Each leg is reported independently: a news outage shouldn't hide the quote.
-  const [quote, risk, news] = await Promise.allSettled([
+  const [quote, risk, events, news] = await Promise.allSettled([
     getTickerQuote(deps.marketDataClient, { ticker }),
-    getTickerRisk(deps.marketDataClient, { ticker }),
+    getTickerRisk(deps.marketDataClient, deps.tickerRiskCacheRepo, {
+      ticker,
+      refresh: refreshRisk,
+    }),
+    getTickerEvents(deps.marketDataClient, deps.marketDataClient, { ticker }),
     getTickerNewsFeed(deps.tickerNewsClient, { ticker }),
   ]);
 
@@ -114,8 +123,22 @@ export async function tickerOverviewCommand(args: string[]): Promise<void> {
       `  Correlation to ${risk.value.marketBenchmarkTicker}: ` +
         (risk.value.marketCorrelation?.toFixed(2) ?? "n/a"),
     );
+    // Printed because the figures are cached indefinitely — without the date
+    // there is no way to tell a fresh calculation from a year-old one.
+    console.log(`  Calculated ${risk.value.calculatedAt} (--refresh to recompute)`);
   } else {
     console.error(`  Risk unavailable: ${risk.reason}`);
+  }
+
+  if (events.status === "fulfilled") {
+    console.log("  Events (last year):");
+    for (const event of events.value.events.slice(0, 10)) {
+      const close = event.closeCents != null ? ` · close ${formatCents(event.closeCents)}` : "";
+      console.log(`    ${event.date}  ${event.summary}${close}`);
+    }
+    if (events.value.events.length === 0) console.log("    None.");
+  } else {
+    console.error(`  Events unavailable: ${events.reason}`);
   }
 
   if (news.status === "fulfilled") {

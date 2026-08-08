@@ -1,5 +1,8 @@
 export type {
   TickerClosePoint,
+  TickerEvent,
+  TickerEventFeed,
+  TickerEventOutcome,
   TickerHistoryRange,
   TickerHolding,
   TickerHoldingTotals,
@@ -22,20 +25,27 @@ export {
   tickerNewsFeedSchema,
   tickerOverviewSchema,
   tickerPriceSeriesSchema,
+  tickerRiskSchema,
   type TickerNewsFeedInput,
   type TickerOverviewInput,
   type TickerPriceSeriesInput,
+  type TickerRiskInput,
 } from "./schema";
-export type { TickerOwnDataDeps } from "./ports";
+export type { TickerOwnDataDeps, TickerRiskCacheRepository } from "./ports";
+export { SqliteTickerRiskCacheRepository } from "./repository";
 export {
+  getTickerEvents,
   getTickerNewsFeed,
   getTickerOwnData,
   getTickerPriceSeries,
   getTickerQuote,
   getTickerRisk,
   getTickerTradeTimeline,
+  buildTickerEvents,
   buildTradeTimeline,
+  closeOnOrBefore,
   computeWatchDrift,
+  describeMarketEvent,
   historyRangeCovering,
   rankStories,
   summarizeHoldings,

@@ -1,3 +1,4 @@
+import { getChangeHistory } from "@/lib/change-history";
 import { formatBytes, getSystemInfo } from "@/lib/system-info";
 import { deps } from "@/lib/wiring";
 import packageJson from "../../../../../package.json";
@@ -12,6 +13,7 @@ function formatUptime(seconds: number): string {
 
 export default function AboutPage() {
   const systemInfo = getSystemInfo(deps.systemInfoRepo);
+  const changeHistory = getChangeHistory(deps.changeHistoryRepo);
 
   const stats = [
     { label: "Hostname", value: systemInfo.server.hostname },
@@ -52,6 +54,8 @@ export default function AboutPage() {
       databaseRows={databaseRows}
       envFilePath={systemInfo.envFilePath}
       envRows={envRows}
+      changeHistoryMarkdown={changeHistory.markdown}
+      changeHistorySummary={changeHistory.summary}
     />
   );
 }

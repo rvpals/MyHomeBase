@@ -29,6 +29,23 @@ checkpoint.
   inside uncommitted work you didn't write, say what broke and where, and ask before
   changing it.
 
+## 0. Clear `.next` — first, not last
+
+```
+npm run clean:next
+```
+
+`npm run verify` does this **before** the typecheck, not just before the browser sweep.
+
+`tsconfig.json` includes `.next/dev/types/**/*.ts`, so `tsc` typechecks route types the
+**dev server** generated. Those files are not cleaned up when a route is deleted, so a
+long-dead page can fail the very first stage with an error naming a file that no longer
+exists — `Cannot find module '.../admin/history/page.js'`. The same leftovers break
+`next build`, which is why `npm run build` now clears `.next` too.
+
+Nothing between here and stage 4 writes to `.next`, so one clean at the front covers
+both the typecheck and the smoke test.
+
 ## 1. Typecheck
 
 ```
@@ -66,7 +83,6 @@ untouched either way.
 ```
 npm run verify:preflight
 npm run verify:prepare-db
-npm run clean:next
 npm run test:e2e
 ```
 
@@ -78,9 +94,9 @@ npm run test:e2e
 - `verify:prepare-db` builds `.verify/smoke.db`: a migrated copy of the dev database
   plus an admin account (`verify-smoke-user`) with access to every module. The smoke
   test writes rows, which is why it gets a copy.
-- `clean:next` deletes `.next`. This is not optional — a stale dev cache has been
-  mistaken for a real bug more than once, and clearing it here is what makes the smoke
-  result trustworthy.
+- `.next` was already deleted in stage 0, which is what makes the smoke result
+  trustworthy — a stale dev cache has been mistaken for a real bug more than once. If
+  you're running these stages by hand rather than via `npm run verify`, clear it first.
 - `test:e2e` boots a **fresh** dev server on port **3100** (not 3000, so it can't
   attach to a dev server you already have running) pointed at the copy, signs in once,
   and sweeps:

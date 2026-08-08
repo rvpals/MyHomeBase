@@ -14,6 +14,15 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Copied production build output (see .gitignore) — lint source, not the bundle.
     ".publish/**",
+    // NAS deployment package built by scripts/publish-nas.mjs (see .gitignore).
+    // Same reasoning as .publish: it's minified bundles plus vendored
+    // node_modules, and linting it drowns the real findings in ~14k reports.
+    "dist-nas/**",
+    // Playwright's own output (see .gitignore). Its bundled trace viewer is
+    // minified JS that trips rules-of-hooks, so a failed browser stage would
+    // otherwise fail the *lint* stage on the next `npm run verify`.
+    "playwright-report/**",
+    "test-results/**",
     // Standalone reference example with its own package.json/tsconfig — not part of this app.
     "docs/**",
   ]),

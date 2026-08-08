@@ -39,14 +39,17 @@ After any multi-file change, run **`/verify`** (or `npm run verify`) and fix wha
 reports, looping until every stage is green. **Do not report a change as complete while
 a gate is red** — say what's failing instead.
 
-The stages, cheapest first: typecheck → lint + library boundary → unit tests →
-migration dry-run against a *copy* of the dev DB → Playwright sweep of every route on a
-fresh dev server with `.next` cleared. Details in `./.claude/commands/verify.md`.
+The stages: clear `.next` → then cheapest first — typecheck → lint + library boundary →
+unit tests → migration dry-run against a *copy* of the dev DB → Playwright sweep of every
+route on a fresh dev server. Details in `./.claude/commands/verify.md`.
 
 Two things that have wasted real time and are now handled by the gate rather than by
 memory:
 - **A UI change that "isn't taking effect" is a stale `.next` cache until proven
   otherwise.** Clear it (`npm run clean:next`) and hard-reload before hunting for a bug.
+  The same cache also breaks *builds*: `tsconfig.json` typechecks `.next/dev/types/**`,
+  and those dev-generated route types outlive a deleted page — so a build can fail
+  naming a file that no longer exists. `verify` and `build` both clear `.next` first now.
 - **No gate may touch the real database.** Copies live in `.verify/`; the copy step
   aborts if `MYHOMEBASE_DB` is unset or points inside the repo's `data/` folder.
 

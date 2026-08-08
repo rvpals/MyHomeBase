@@ -25,6 +25,146 @@ export interface MarketEvent {
   epsEstimateCents?: number;
 }
 
+// ---------------------------------------------------------------------------
+// quoteSummary — the provider's own shapes, deliberately left raw.
+//
+// These live here, with the adapter that fetches them, rather than in the module
+// that renders them: this is "what Yahoo said", and normalising it into domain
+// types is a separate job (see `src/lib/ticker-detail`). Only the fields we
+// actually read are typed; the rest of each module is ignored, so a new field
+// appearing upstream is not a breaking change.
+// ---------------------------------------------------------------------------
+
+/** Yahoo wraps most numbers as `{ raw, fmt }`. `raw` is the one to trust. */
+export interface RawValue {
+  raw?: number;
+  fmt?: string;
+  longFmt?: string;
+}
+
+/** A number that may arrive wrapped, bare, or not at all. */
+export type MaybeNumber = RawValue | number | undefined;
+
+export interface RawQuoteSummary {
+  price?: {
+    regularMarketPrice?: MaybeNumber;
+    regularMarketPreviousClose?: MaybeNumber;
+    regularMarketOpen?: MaybeNumber;
+    regularMarketDayLow?: MaybeNumber;
+    regularMarketDayHigh?: MaybeNumber;
+    regularMarketVolume?: MaybeNumber;
+    marketCap?: MaybeNumber;
+    currency?: string;
+    exchangeName?: string;
+    longName?: string;
+    quoteType?: string;
+    preMarketPrice?: MaybeNumber;
+    preMarketChangePercent?: MaybeNumber;
+    postMarketPrice?: MaybeNumber;
+    postMarketChangePercent?: MaybeNumber;
+  };
+  summaryDetail?: {
+    fiftyTwoWeekLow?: MaybeNumber;
+    fiftyTwoWeekHigh?: MaybeNumber;
+    averageVolume?: MaybeNumber;
+    trailingPE?: MaybeNumber;
+    forwardPE?: MaybeNumber;
+    beta?: MaybeNumber;
+    dividendYield?: MaybeNumber;
+    payoutRatio?: MaybeNumber;
+    priceToSalesTrailing12Months?: MaybeNumber;
+  };
+  assetProfile?: {
+    sector?: string;
+    industry?: string;
+    country?: string;
+    city?: string;
+    state?: string;
+    website?: string;
+    fullTimeEmployees?: number;
+    longBusinessSummary?: string;
+    companyOfficers?: {
+      name?: string;
+      title?: string;
+      age?: number;
+      totalPay?: MaybeNumber;
+    }[];
+  };
+  defaultKeyStatistics?: {
+    enterpriseValue?: MaybeNumber;
+    forwardPE?: MaybeNumber;
+    pegRatio?: MaybeNumber;
+    priceToBook?: MaybeNumber;
+    enterpriseToRevenue?: MaybeNumber;
+    enterpriseToEbitda?: MaybeNumber;
+    sharesOutstanding?: MaybeNumber;
+    floatShares?: MaybeNumber;
+    heldPercentInsiders?: MaybeNumber;
+    heldPercentInstitutions?: MaybeNumber;
+    sharesShort?: MaybeNumber;
+    shortRatio?: MaybeNumber;
+    shortPercentOfFloat?: MaybeNumber;
+    bookValue?: MaybeNumber;
+    "52WeekChange"?: MaybeNumber;
+    SandP52WeekChange?: MaybeNumber;
+    lastFiscalYearEnd?: MaybeNumber;
+    mostRecentQuarter?: MaybeNumber;
+    lastSplitFactor?: string;
+    lastSplitDate?: MaybeNumber;
+  };
+  financialData?: {
+    recommendationKey?: string;
+    recommendationMean?: MaybeNumber;
+    numberOfAnalystOpinions?: MaybeNumber;
+    targetLowPrice?: MaybeNumber;
+    targetMeanPrice?: MaybeNumber;
+    targetMedianPrice?: MaybeNumber;
+    targetHighPrice?: MaybeNumber;
+    totalRevenue?: MaybeNumber;
+    grossProfits?: MaybeNumber;
+    ebitda?: MaybeNumber;
+    totalCash?: MaybeNumber;
+    totalDebt?: MaybeNumber;
+    debtToEquity?: MaybeNumber;
+    currentRatio?: MaybeNumber;
+    freeCashflow?: MaybeNumber;
+    profitMargins?: MaybeNumber;
+    operatingMargins?: MaybeNumber;
+    returnOnEquity?: MaybeNumber;
+    returnOnAssets?: MaybeNumber;
+    revenueGrowth?: MaybeNumber;
+    earningsGrowth?: MaybeNumber;
+  };
+  recommendationTrend?: {
+    trend?: {
+      period?: string;
+      strongBuy?: number;
+      buy?: number;
+      hold?: number;
+      sell?: number;
+      strongSell?: number;
+    }[];
+  };
+  upgradeDowngradeHistory?: {
+    history?: {
+      epochGradeDate?: number;
+      firm?: string;
+      toGrade?: string;
+      fromGrade?: string;
+      action?: string;
+    }[];
+  };
+  incomeStatementHistory?: {
+    incomeStatementHistory?: {
+      endDate?: MaybeNumber;
+      totalRevenue?: MaybeNumber;
+      grossProfit?: MaybeNumber;
+      operatingIncome?: MaybeNumber;
+      netIncome?: MaybeNumber;
+    }[];
+  };
+}
+
 /** One daily close, used as the raw series for volatility/correlation/Sharpe/scan stats. */
 export interface PricePoint {
   /** Epoch seconds. */

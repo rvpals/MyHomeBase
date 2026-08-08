@@ -1,5 +1,20 @@
-import type { MarketDataClient, MarketEventsClient } from "./ports";
-import type { MarketEvent, PricePoint, Quote } from "./types";
+import type { MarketDataClient, MarketEventsClient, QuoteSummaryClient } from "./ports";
+import type { MarketEvent, PricePoint, Quote, RawQuoteSummary } from "./types";
+
+/**
+ * The quoteSummary modules the detail tab reads, fetched as one request.
+ * Verified against the live endpoint — every one of these returns data.
+ */
+const DETAIL_MODULES = [
+  "price",
+  "summaryDetail",
+  "assetProfile",
+  "defaultKeyStatistics",
+  "financialData",
+  "recommendationTrend",
+  "upgradeDowngradeHistory",
+  "incomeStatementHistory",
+] as const;
 
 // Yahoo Finance's unofficial, unauthenticated chart/quoteSummary endpoints — no API
 // key, but no SLA either. The v10 quoteSummary calls (the dividend-rate fallback and
@@ -55,13 +70,30 @@ interface QuoteSummaryResponse {
   quoteSummary?: { result?: QuoteSummaryResult[] };
 }
 
-export class YahooFinanceClient implements MarketDataClient, MarketEventsClient {
+/**
+ * Sent on every request to Yahoo.
+ *
+ * Not cosmetic: without a browser User-Agent, `v1/test/getcrumb` answers **429
+ * Too Many Requests** on the very first call of a session. No crumb means the
+ * v10 quoteSummary endpoints 401, and both callers swallow that — so earnings
+ * history came back empty and the dividend-rate fallback silently returned 0,
+ * with nothing in the logs to say why. Node's default `undici` agent string is
+ * what trips it; any normal browser string is accepted.
+ */
+const USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+export class YahooFinanceClient
+  implements MarketDataClient, MarketEventsClient, QuoteSummaryClient
+{
   private crumb: string | null = null;
   private cookie = "";
+  /** In-flight crumb refresh, if any. See `refreshCrumb`. */
+  private crumbRefresh: Promise<void> | null = null;
 
   async getQuote(ticker: string): Promise<Quote> {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=1d&interval=1m`;
-    const response = await fetch(url);
+    const response = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
     if (!response.ok) throw new Error(`Yahoo quote ${ticker}: HTTP ${response.status}`);
 
     const data = (await response.json()) as ChartResponse;
@@ -88,7 +120,7 @@ export class YahooFinanceClient implements MarketDataClient, MarketEventsClient 
 
   async getHistory(ticker: string, range: string, interval: string): Promise<PricePoint[]> {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=${range}&interval=${interval}`;
-    const response = await fetch(url);
+    const response = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
     if (!response.ok) throw new Error(`Yahoo history ${ticker}: HTTP ${response.status}`);
 
     const data = (await response.json()) as ChartResponse;
@@ -110,6 +142,19 @@ export class YahooFinanceClient implements MarketDataClient, MarketEventsClient 
   }
 
   /**
+   * The whole reference record in **one** request.
+   *
+   * quoteSummary takes a comma-separated module list, so twelve sections cost
+   * the same round-trip as one — which is why the detail tab is a single fetch
+   * rather than six. Absent modules are normal and left to the caller.
+   */
+  async getQuoteSummary(ticker: string): Promise<RawQuoteSummary> {
+    const result = await this.fetchQuoteSummary(ticker, DETAIL_MODULES.join(","));
+    if (!result) throw new Error(`Yahoo detail ${ticker}: the provider returned nothing.`);
+    return result as RawQuoteSummary;
+  }
+
+  /**
    * Dividends and splits ride along with the price bars, so they cost nothing
    * extra; earnings need a separate quoteSummary call. Every leg is best-effort
    * — an events strip is a nice-to-have on a chart, not a reason to fail the
@@ -126,7 +171,7 @@ export class YahooFinanceClient implements MarketDataClient, MarketEventsClient 
 
   private async fetchCorporateActions(ticker: string, range: string): Promise<MarketEvent[]> {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=${range}&interval=1d&events=div,split`;
-    const response = await fetch(url);
+    const response = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
     if (!response.ok) return [];
 
     const data = (await response.json()) as ChartResponse;
@@ -212,7 +257,11 @@ export class YahooFinanceClient implements MarketDataClient, MarketEventsClient 
       ? `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encoded}?${query}&crumb=${encodeURIComponent(this.crumb ?? "")}`
       : `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encoded}?${query}`;
 
-    const response = await fetch(url, withCrumb ? { headers: { Cookie: this.cookie } } : undefined);
+    const response = await fetch(url, {
+      headers: withCrumb
+        ? { Cookie: this.cookie, "User-Agent": USER_AGENT }
+        : { "User-Agent": USER_AGENT },
+    });
     if (response.status === 401 || response.status === 403) {
       // The crumb went stale. Refresh it for next time and let the caller retry
       // anonymously rather than looping here.
@@ -227,16 +276,38 @@ export class YahooFinanceClient implements MarketDataClient, MarketEventsClient 
     return data.quoteSummary?.result?.[0];
   }
 
-  private async refreshCrumb(): Promise<void> {
+  /**
+   * Refresh the cookie/crumb pair, **at most once at a time**.
+   *
+   * The single-flight matters: opening the ticker dialog fires several
+   * use-cases at once, and two of them reach quoteSummary (the quote's
+   * dividend-rate fallback, and the earnings history). Both would find no crumb
+   * and both would refresh — the second overwriting `cookie` while the first
+   * was still using the crumb minted for the old one. Yahoo pairs the two, so
+   * the mismatch 401s and both callers fall back to an anonymous request that
+   * also 401s. The symptom was an earnings list that worked in isolation and
+   * was empty whenever anything else ran alongside it.
+   */
+  private refreshCrumb(): Promise<void> {
+    this.crumbRefresh ??= this.performCrumbRefresh().finally(() => {
+      this.crumbRefresh = null;
+    });
+    return this.crumbRefresh;
+  }
+
+  private async performCrumbRefresh(): Promise<void> {
     try {
-      const cookieResponse = await fetch("https://fc.yahoo.com/cupcake", { redirect: "manual" });
+      const cookieResponse = await fetch("https://fc.yahoo.com/cupcake", {
+        redirect: "manual",
+        headers: { "User-Agent": USER_AGENT },
+      });
       // Node's undici Headers exposes getSetCookie() for multi-value Set-Cookie;
       // fall back to the single-value get() if it's ever unavailable.
       const headers = cookieResponse.headers as Headers & { getSetCookie?: () => string[] };
       this.cookie = headers.getSetCookie ? headers.getSetCookie().join("; ") : headers.get("set-cookie") ?? "";
 
       const crumbResponse = await fetch("https://query2.finance.yahoo.com/v1/test/getcrumb", {
-        headers: { Cookie: this.cookie },
+        headers: { Cookie: this.cookie, "User-Agent": USER_AGENT },
       });
       if (!crumbResponse.ok) {
         this.crumb = null;

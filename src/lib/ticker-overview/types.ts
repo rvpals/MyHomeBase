@@ -4,7 +4,7 @@
 // the viewer groups its tabs the same way, so a number's provenance is never a
 // guess. Nothing here mixes the two sources into a single blended figure.
 
-import type { MarketEvent } from "@/lib/market-data";
+import type { MarketEvent, MarketEventKind } from "@/lib/market-data";
 import type {
   PositionType,
   StockTransaction,
@@ -198,6 +198,59 @@ export interface TickerRisk {
   /** How many closes the figures were computed from. */
   sampleCount: number;
   calculatedAt: string;
+}
+
+/** Whether a reported quarter came in above, below or on the estimate. */
+export type TickerEventOutcome = "beat" | "miss" | "inline";
+
+/**
+ * One dated corporate action or reported quarter, worked up for display.
+ *
+ * A `MarketEvent` with the arithmetic already done — the surprise against the
+ * estimate, and the close the market printed that day. Both are what turn "EPS
+ * was $9.15" into something a reader can judge.
+ */
+export interface TickerEvent {
+  /** Local-calendar "YYYY-MM-DD". */
+  date: string;
+  kind: MarketEventKind;
+  /** The one-line phrasing, e.g. "Earnings $10.20 EPS vs $9.80 est." */
+  summary: string;
+  /** Dividend per share. Only on `dividend`. */
+  amountCents?: number;
+  /** Split ratio as the provider words it. Only on `split`. */
+  ratio?: string;
+  epsActualCents?: number;
+  epsEstimateCents?: number;
+  /** Reported less estimate. Present only when both figures are known. */
+  epsSurpriseCents?: number;
+  /** The surprise against the estimate's magnitude. Absent when the estimate is 0. */
+  epsSurprisePct?: number;
+  /** Present only when both EPS figures are known. */
+  outcome?: TickerEventOutcome;
+  /**
+   * What the stock closed at on this event's date. Undefined when no fetched
+   * close covers it — an event older than the window, or a history failure.
+   */
+  closeCents?: number;
+  /**
+   * Where that close actually came from, set only when it isn't `date` itself.
+   * An event dated to a weekend or holiday takes the last close before it, and
+   * saying so is more honest than printing a price against a shut market.
+   */
+  closeDate?: string;
+}
+
+/** Every event for one ticker over the window, newest first. */
+export interface TickerEventFeed {
+  ticker: string;
+  /** Newest first — the latest quarter is what the card is opened for. */
+  events: TickerEvent[];
+  /**
+   * True when the closes leg failed, so no event carries a price. The events
+   * themselves are still worth showing, so this is reported, not thrown.
+   */
+  closesUnavailable: boolean;
 }
 
 /** A story with the same relevance flags the single-story picker attaches. */

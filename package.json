@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run clean:next && next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
@@ -13,11 +13,12 @@
     "check:lib-boundary": "node scripts/check-lib-boundary.mjs",
     "clean:next": "node -e \"require('node:fs').rmSync('.next', { recursive: true, force: true })\"",
     "gen:icons": "node scripts/gen-icon-glyphs.mjs",
+    "publish:nas": "node scripts/publish-nas.mjs",
     "db:migrate": "tsx --env-file-if-exists=.env scripts/migrate.ts",
     "db:migrate:dry-run": "tsx --env-file-if-exists=.env scripts/migration-dry-run.ts",
     "verify:prepare-db": "tsx --env-file-if-exists=.env scripts/prepare-smoke-db.ts",
     "verify:preflight": "node scripts/verify-preflight.mjs",
-    "verify": "npm run typecheck && npm run lint && npm run check:lib-boundary && npm test && npm run db:migrate:dry-run && npm run verify:preflight && npm run verify:prepare-db && npm run clean:next && npm run test:e2e",
+    "verify": "npm run clean:next && npm run typecheck && npm run lint && npm run check:lib-boundary && npm test && npm run db:migrate:dry-run && npm run verify:preflight && npm run verify:prepare-db && npm run test:e2e",
     "cli": "tsx --env-file-if-exists=.env src/cli/index.ts"
   },
   "dependencies": {

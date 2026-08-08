@@ -49,7 +49,7 @@ pattern instead of inventing one.
 | [`Modal`](#modal) | **Any dialog** — overlay, panel, Esc/focus handling | [src/components/modal.tsx](src/components/modal.tsx) | yes |
 | [`CollapsibleCard`](#collapsiblecard) | A titled section that expands/collapses | [src/components/collapsible-card.tsx](src/components/collapsible-card.tsx) | yes |
 | [`Tabs`](#tabs) | One-of-N panels in the same space | [src/components/tabs.tsx](src/components/tabs.tsx) | yes |
-| [`ModuleCard`](#modulecard) | A card linking to a module (home grid) | [src/components/module-card.tsx](src/components/module-card.tsx) | yes |
+| [`ModuleCarousel`](#modulecarousel) | The home screen's module picker (coverflow) | [src/components/module-carousel.tsx](src/components/module-carousel.tsx) | yes |
 | [`Sidebar`](#sidebar) | The app's left-hand module nav | [src/components/sidebar.tsx](src/components/sidebar.tsx) | yes |
 | [`TreeNav`](#treenav) | Hierarchical parent/child nav tree | [src/components/tree-nav.tsx](src/components/tree-nav.tsx) | yes |
 | [`Avatar`](#avatar) | A user's picture, or initials fallback | [src/components/avatar.tsx](src/components/avatar.tsx) | no |
@@ -61,7 +61,7 @@ pattern instead of inventing one.
 | [`ChartBar`](#chartbar) | Category comparison / part-to-whole | [src/components/chart-bar.tsx](src/components/chart-bar.tsx) | yes |
 | [`ChartXY`](#chartxy) | User-configurable line/bar/scatter/area + zoom | [src/components/chart-xy.tsx](src/components/chart-xy.tsx) | yes |
 | [`JournalEntryCard`](#journalentrycard) | Full detail sheet for one journal entry | [src/components/journal-entry-card.tsx](src/components/journal-entry-card.tsx) | yes |
-| [`TickerViewer`](#tickerviewer) | Full record dialog for one ticker, in tabs | [src/components/ticker-viewer.tsx](src/components/ticker-viewer.tsx) | yes |
+| [`TickerViewer`](#tickerviewer) | Full record dialog for one ticker — 3 tabs of cards | [src/components/ticker-viewer.tsx](src/components/ticker-viewer.tsx) | yes |
 | [`IconSetProvider`](#iconsetprovider--useiconset) / `useIconSet` | Active module icon set (context) | [src/components/icon-set-context.tsx](src/components/icon-set-context.tsx) | yes |
 | [`ModuleIcon`](#moduleicon--moduleiconpreview) / `ModuleIconPreview` | Render a module glyph | [src/components/module-icons.tsx](src/components/module-icons.tsx) | yes |
 
@@ -257,7 +257,7 @@ that's what this was extracted from.
 | `children` | `ReactNode` | The body. The only part that scrolls. |
 | `footer?` | `ReactNode` | Bottom-right action bar; pass `Button`s in reading order. |
 | `onClose` | `() => void` | Fired by Escape, an overlay click, and the ✕. |
-| `size?` | `"sm" \| "md" \| "lg" \| "full"` | Default `"md"` (`max-w-2xl`). `"full"` fills the viewport edge to edge. |
+| `size?` | `"sm" \| "md" \| "lg" \| "full" \| "window"` | Default `"md"` (`max-w-2xl`). `"full"` fills the viewport edge to edge; `"window"` is the draggable 80% floating variant (below). |
 | `isBusy?` | `boolean` | Suppresses Escape / overlay-click / ✕ while a write is in flight. |
 | `className?` | `string` | Applied to the panel, merged last. |
 
@@ -281,14 +281,38 @@ that's what this was extracted from.
 ```
 
 **Used by:** `DataGrid`'s record view and "Show SQL" dialog
-[data-grid.tsx](src/components/data-grid.tsx), and the Expense bulk-edit dialog
-[expense-transactions-view.tsx](src/app/(protected)/modules/[slug]/expense-transactions-view.tsx).
+[data-grid.tsx](src/components/data-grid.tsx), the Expense bulk-edit dialog
+[expense-transactions-view.tsx](src/app/(protected)/modules/[slug]/expense-transactions-view.tsx),
+and the ticker viewer [ticker-viewer.tsx](src/components/ticker-viewer.tsx) — the only
+caller of `size="window"`.
 
 `size="full"` drops the overlay's gutter and the panel's rounding so nothing of the page
 shows around it. It is still a dialog — Escape, the ✕, the focus trap and the body-scroll
 lock all behave identically — so it returns the reader to the screen underneath rather than
-being a route they have to navigate back from. Use it for a whole-record viewer
-(`TickerViewer`), not for a form.
+being a route they have to navigate back from. Don't use it for a form.
+
+**`size="window"` — the floating variant.** 80vw × 80vh, centred, rounded, **draggable by
+its header**, with a maximize button beside the ✕ that swaps it to the `full` treatment and
+back. This is the one to reach for on a whole-record viewer (`TickerViewer`): a reader
+comparing the dialog against the page behind it can now shove it aside instead of closing
+and reopening.
+
+It is **still a modal** — the dimmed overlay, Escape, the focus trap, `aria-modal` and the
+scroll lock are all unchanged, so the page behind stays visible but inert. Three details
+worth knowing before reusing it:
+
+- **The drag is clamped** so at least 140px of the panel and the full height of the header
+  stay on screen, and the header can never go above the top edge. The header is the only
+  handle, so a window dragged clean off the viewport would be unrecoverable.
+- **Position and maximized-ness reset every time it mounts.** Nothing is persisted.
+- **Presses on the header's buttons aren't drags** — the handler ignores any pointerdown
+  landing on a `button`/`a`/input, so put header controls in freely.
+
+```tsx
+<Modal title={ticker} size="window" onClose={onClose}>
+  <TickerBody />
+</Modal>
+```
 
 **Notes:** it owns **no** open/closed state — the caller decides whether to render it, so
 guard it with `{isOpen && <Modal …>}`. On mount it focuses the first focusable element in
@@ -339,9 +363,19 @@ Controlled, with an action that stays reachable while collapsed:
 
 **Used by:** Module Configuration
 [admin/configuration/modules/page.tsx](src/app/(protected)/admin/configuration/modules/page.tsx),
-MyJournal, CSV Analysis, SQL Explorer, Stocks & ETFs, User Management. The controlled +
+MyJournal, CSV Analysis, SQL Explorer, Stocks & ETFs, User Management, and the About
+screen's "Application & System Info" card
+[admin/about/view.tsx](src/app/(protected)/admin/about/view.tsx). The controlled +
 `headerAction` combination is the Stocks dashboard's refresh card
 [stock-refresh-panel.tsx](src/app/(protected)/modules/[slug]/stock-refresh-panel.tsx).
+
+Also both tabs of the ticker viewer
+[ticker-viewer.tsx](src/components/ticker-viewer.tsx) — three cards on "Our data",
+four on "Market", all `defaultOpen`. That dialog used to nest a second tab strip
+inside the first; **a stack of open cards replaced it** because the sub-tabs hid
+sections a reader wanted side by side and gave no clue which ones had anything in
+them. Its Risks card is the uncontrolled counterpart to the refresh card above:
+`headerAction` holds Recalculate, which stays clickable while the card is shut.
 
 **Notes:** `headerAction` exists as a slot because the header used to be one big
 `<button>`, and a button can't nest inside a button. The header is now a flex row: a
@@ -377,42 +411,81 @@ const tabs: TabItem[] = [
 
 **Used by:** Stocks & ETFs —
 [stock-positions-view.tsx](src/app/(protected)/modules/[slug]/stock-positions-view.tsx),
-[stock-analytics-view.tsx](src/app/(protected)/modules/[slug]/stock-analytics-view.tsx).
+[stock-analytics-view.tsx](src/app/(protected)/modules/[slug]/stock-analytics-view.tsx);
+the About screen's Application / Change History split
+[admin/about/view.tsx](src/app/(protected)/admin/about/view.tsx).
 
 ---
 
-## ModuleCard
+## ModuleCarousel
 
-A card linking to a module, leading with a prominent icon badge.
+**The home screen's module picker.** A coverflow of large module graphics: the selected
+module centred and full size, its neighbours scaled down and dimmed either side. The
+**title sits above the graphic and the description below it**, and the centred graphic is
+the launch target.
 
-- **Source:** [src/components/module-card.tsx](src/components/module-card.tsx)
-- **Import:** `import { ModuleCard } from "@/components/module-card";`
-- **Client component:** yes (reads `useIconSet()`)
+- **Source:** [src/components/module-carousel.tsx](src/components/module-carousel.tsx)
+- **Import:** `import { ModuleCarousel, type CarouselModule } from "@/components/module-carousel";`
+- **Client component:** yes (selection state, keyboard and touch handling, `useIconSet()`)
 
 | Prop | Type | Notes |
 |------|------|-------|
-| `name` | `string` | |
-| `description?` | `string` | Shown under the name. |
-| `href` | `string` | Route the whole card links to. |
-| `icon` | `string` | Module icon key, e.g. `"building"`. |
+| `modules` | `CarouselModule[]` — `{ slug, name, description?, icon, href, hasImage?, imageVersion? }` | Plain data, not module records: the page is a server component and this is a client island. |
+| `initialIndex?` | `number` | Which starts selected. Clamped. Defaults to the first. |
 | `className?` | `string` | |
 
 ```tsx
-{modules.map((module) => (
-  <ModuleCard
-    key={module.slug}
-    name={module.name}
-    description={module.description}
-    href={`/modules/${module.slug}`}
-    icon={module.icon}
-  />
-))}
+<ModuleCarousel
+  className="mt-8"
+  modules={modules.map((appModule) => ({
+    slug: appModule.slug,
+    name: appModule.longName,
+    description: appModule.description,
+    icon: appModule.icon,
+    href: `/modules/${appModule.slug}`,
+  }))}
+/>
 ```
 
-**Used by:** the home screen grid — [src/app/(protected)/page.tsx](src/app/(protected)/page.tsx).
+**Used by:** the home screen — [src/app/(protected)/page.tsx](src/app/(protected)/page.tsx).
+It replaced a grid of `ModuleCard`s, which was deleted with its last caller.
 
-**Notes:** the badge is a solid-accent tile for monochrome icon sets and a neutral
-`bg-paper` tile for colorful sets — it reads `useIconSet().colorful` to decide.
+**Rotating.** Prev/next buttons, ← / → while the carousel has focus, clicking a neighbour,
+tapping a dot, or swiping. It **wraps** — with only a handful of modules a dead arrow at
+either end reads as a bug. It does **not** auto-advance: nav that moves on its own steals
+focus and slides the click target out from under the cursor.
+
+**Only the centre is a link.** It's a real `<Link>`, so middle-click and ⌘-click still
+work; the neighbours are buttons that only change the selection, and they're `tabIndex={-1}`
+because the arrows and dots already cover keyboard selection.
+
+**Three geometry decisions worth keeping:**
+- Ring offsets are **pixels, not percentages**. A percentage `translateX` resolves against
+  the element's own width, which made the gap change with the tile size and let the
+  neighbours overlap the centre.
+- On an **even** wheel the item directly opposite the selection isn't drawn. It's
+  equidistant both ways, so it can't be placed on a side without sitting alone and
+  lopsided — with four modules it stranded one icon out to the right. Not applied below
+  four, where it would leave a two-module carousel showing one module.
+- Title and description have a fixed `min-height`, so a one-line and a two-line name don't
+  shunt the artwork up and down as you rotate.
+
+**The graphic, in priority order.** An **uploaded image** if the module has one
+(`hasImage`), otherwise the module's **icon glyph** at ~200px.
+
+- Upload one per module at **Admin → Configuration → Modules**. Stored in
+  `sys_modules.carousel_image` and fetched by the browser from
+  `/api/modules/<slug>/carousel-image` — `hasImage` is a boolean and `imageVersion` a
+  timestamp, so **no page ever carries the bytes**. `imageVersion` is the cache-buster;
+  without it a replaced image lingers for the route's 5-minute `max-age`.
+- With no upload, how good the glyph looks depends on the icon set: pick `fluent-3d` or
+  `flat-color` in Admin → Configuration → Icons and it renders as real artwork rather than
+  a blown-up line icon.
+
+**Notes:** the tile behind a *glyph* is a solid-accent square for monochrome icon sets and
+a neutral `bg-paper` one for colorful sets (`useIconSet().colorful`, the same rule the
+sidebar badge uses). An uploaded image always gets the neutral tile and `object-cover` —
+tinting somebody's artwork would be wrong.
 
 ---
 
@@ -487,8 +560,8 @@ sub-pages (like Administration), not for the top-level module list.
 | Prop | Type | Notes |
 |------|------|-------|
 | `nodes` | `TreeNode[]` — `{ id, label, href?, hint?, icon?, children? }` | A node **without** `href` is a group heading (expand/collapse only). `icon` is a key rendered via `TreeIcon` — currently `sliders`, `list`, `chart`, `upload`, `quote`, `grid`, `window`, `palette`, `info`, `history`, `users`, `database`, `shapes`. |
-| `collapsible?` | `boolean` | Default `false`. When true it owns its width (`w-64`/`w-16`) and shows a chevron toggle in its header; collapsed flattens to one icon-only row per node. |
-| `storageKey?` | `string` | Where the collapsed state is remembered. Defaults to `"myhomebase:tree-nav-collapsed"`. **Pass a distinct key for every collapsible tree** — two trees sharing the default collapse together. |
+| `collapsible?` | `boolean` | Default `false`. When true it owns its width and shows the two collapse controls — three states, see below. |
+| `storageKey?` | `string` | Where the state is remembered. Defaults to `"myhomebase:tree-nav-collapsed"`. **Pass a distinct key for every collapsible tree** — two trees sharing the default collapse together. |
 | `className?` | `string` | |
 
 ```tsx
@@ -513,10 +586,29 @@ sections — [expense-nav.tsx](src/app/(protected)/modules/[slug]/expense-nav.ts
 Stocks & ETFs module's eight — [stock-nav.tsx](src/app/(protected)/modules/[slug]/stock-nav.tsx).
 All three are `collapsible`, each with its own `storageKey`.
 
-**Collapsing.** The toggle is the same `&rsaquo;` chevron the node rows and `CollapsibleCard`
-use, rotated 180° when expanded, and it respects `prefers-reduced-motion`. Because a
-collapsible tree sets its own width at every breakpoint, don't put a width on its wrapper —
-that pins the collapsed rail open (see [expense-section.tsx](src/app/(protected)/modules/[slug]/expense-section.tsx)).
+**Collapsing — three states, two controls.** `full` (`w-64`, icon + label, the tree
+nested) → `rail` (`w-16`, icons only, flattened to one row per node) → `strip` (`w-3`,
+just the accent edge). Deliberately the same model as [`Sidebar`](#sidebar), down to the
+controls: the `&rsaquo;` chevron — the same one the node rows and `CollapsibleCard` use,
+rotated 180° when expanded — moves between `full` and `rail`, a `&laquo;` button drops to
+`strip`, and clicking the strip returns to `rail`. **Two controls rather than one cycling
+through three**, because a single control can only go one way and overshooting would mean
+going all the way round.
+
+In `strip` the tree isn't merely narrowed — it isn't rendered at all, replaced by the
+clickable edge. A hidden tree you can still Tab into is worse than no tree.
+
+Because a collapsible tree sets its own width at every breakpoint, don't put a width on its
+wrapper — that pins the rail open (see
+[expense-section.tsx](src/app/(protected)/modules/[slug]/expense-section.tsx)).
+
+**Migrating the stored value.** The `storageKey` used to hold a boolean (`"true"` =
+collapsed) and now holds the state name. `TreeNav` reads the legacy boolean and maps it to
+`rail`/`full`, so an existing preference survives — don't drop that branch.
+
+**Known overlap:** `Sidebar` is `fixed` at `z-40` and floats *over* page content, so an
+expanded sidebar can sit on top of a section tree's collapse controls at narrow viewports.
+Pre-existing, and not specific to these controls.
 
 **Note:** the active node is matched on `pathname`, so each node needs a real route —
 a query parameter or client-side state won't highlight. Keep the node list and any
@@ -962,34 +1054,42 @@ Carries the `print-sheet` class used by the `@media print` block in `globals.css
 
 ## TickerViewer
 
-**Everything about one ticker, in one dialog.** Seven tabs in two groups: **Our data**
-(Holdings / Transactions / Watchlist & income) is what MyHomeBase recorded, **Market** (Quote
-/ Price history / Risk / News) is what the provider returned. The grouping is the feature —
-a reader should never have to guess whether a number came from their broker export or from
-Yahoo. The one place the two meet is the **My past performance** chart inside Transactions,
-which plots your trades against the market's close either side of each one, marks dividends,
-splits and reported quarters on the same line, and lists every plotted point in a table with
-a Note column and a per-row News button. It is labelled as such and loads on demand like a
-Market panel.
+**Everything about one ticker, in one dialog.** **Three tabs, each a stack of
+`CollapsibleCard`s** — not nested tabs:
+
+| Tab | Cards | Source |
+|---|---|---|
+| **Our data** | Holdings · Transactions · Watchlist & income | what MyHomeBase recorded |
+| **Market** | Quote · Price History · Events · Risks · News | the market-data provider |
+| **Yahoo Finance Detail** | Market Data · Company Profile · Analysis recommendations · Valuation & Trading · Financials · Key statistics | the provider's reference record |
+
+The grouping is the feature — a reader should never have to guess whether a number came from
+their broker export or from Yahoo. The one place the two meet is the **My past performance**
+chart inside Transactions, which plots your trades against the market's close either side of
+each one, marks dividends, splits and reported quarters on the same line, and lists every
+plotted point with a Note column and a per-row News button.
 
 - **Source:** [src/components/ticker-viewer.tsx](src/components/ticker-viewer.tsx)
-- **Import:** `import { TickerViewer, type TickerPanelKey, type TickerPanelState } from "@/components/ticker-viewer";`
+- **Import:** `import { TickerViewer, type TickerPanelGroup, type TickerPanelState } from "@/components/ticker-viewer";`
 - **Client component:** yes
-- **Data comes from the lib:** the panel shapes are `@/lib/ticker-overview`'s return types;
-  this file renders them and computes nothing.
+- **Data comes from the lib:** panel shapes are `@/lib/ticker-overview`'s and
+  `@/lib/ticker-detail`'s return types; this file renders them and computes nothing beyond
+  display formatting.
 
 | Prop | Type | Notes |
 |------|------|-------|
 | `ticker` | `string` | Header, logo, and the accessible dialog name. |
-| `activePanel` | `TickerPanelKey` | Controlled — `"own:holdings"`, `"market:chart"`, … |
-| `onSelectPanel` | `(panel: TickerPanelKey) => void` | Fired by both tab strips. |
+| `activeGroup` | `TickerPanelGroup` | Controlled — `"own"`, `"market"`, `"yahoo"`. Controlled so the host can start that tab's fetches on entry. |
+| `onSelectGroup` | `(group: TickerPanelGroup) => void` | Fired by the tab strip. |
 | `onClose` | `() => void` | Passed through to `Modal`. |
-| `ownData` | `TickerPanelState<TickerOwnData>` | Feeds all three "Our data" panels. |
-| `tradeTimeline` | `TickerPanelState<TickerTradeTimeline>` | The "My past performance" chart inside Transactions — trades, bracket closes, and dividend/split/earnings markers. Market data, so it loads on demand. |
-| `quote` / `priceSeries` / `risk` / `news` | `TickerPanelState<…>` | One per Market panel. |
+| `ownData` | `TickerPanelState<TickerOwnData>` | Feeds all three "Our data" cards. |
+| `tradeTimeline` | `TickerPanelState<TickerTradeTimeline>` | The "My past performance" chart inside Transactions. A provider call, so the table renders first and the chart fills in. |
+| `quote` / `priceSeries` / `events` / `risk` / `news` | `TickerPanelState<…>` | One per Market card. |
+| `detail` | `TickerPanelState<TickerYahooDetail>` | Feeds **all six** Yahoo cards from one fetch. |
 | `range` | `TickerHistoryRange` | The chart window currently selected. |
 | `onSelectRange` | `(range: TickerHistoryRange) => void` | Fired by the 1M/3M/6M/1Y/5Y buttons. |
 | `ranges?` | `readonly TickerHistoryRange[]` | Windows to offer. Defaults to all five. |
+| `onRecalculateRisk` | `() => void` | The Risks card's header action. Risk is cached indefinitely, so this is the only thing that refreshes it. |
 | `className?` | `string` | Applied to the `Modal` panel, merged last. |
 
 `TickerPanelState<T>` is `{ data?: T; error?: string; isLoading?: boolean }` — one shape for
@@ -1007,14 +1107,29 @@ Chart & Analysis grids, all through the route-local host
 owns the fetching and the lazy-load policy; `TickerViewer` itself fetches nothing. Call sites
 render `TickerCell` (also in the host file) for the clickable logo-plus-symbol grid cell.
 
-**Notes:** it does **not** use `Tabs`, which owns its own active-tab state — the panel
-selection has to be controlled so the host can start a fetch when a tab is first opened. The
-internal strip copies `Tabs`' styling exactly so it still reads as the same system; if you
-need a third strip somewhere, reach for `Tabs` first. It opens at `Modal` `size="full"` —
-the tables, the chart and the news column need the whole viewport, and Escape or the ✕
-returns the reader to the grid they came from. Gain/loss
-is `text-emerald-400` / `text-red-400` per design.md's semantic-color exception, and zero
-stays `text-muted` so a flat day doesn't read as a win.
+**Notes:** it does **not** use `Tabs`, which owns its own active-tab state — the group has to
+be controlled so the host can start that tab's fetches on entry. The internal strip copies
+`Tabs`' styling exactly so it still reads as the same system.
+
+**Sections are cards, not sub-tabs.** Every tab used to hold a second tab strip; that was
+replaced because sub-tabs hid sections a reader wanted side by side and gave no clue which
+ones had anything in them. Don't reintroduce one.
+
+**Loading is per tab, not per card.** Entering a tab loads everything on it, so scrolling
+never meets a card that hasn't started. Two consequences worth knowing: the Yahoo tab is a
+**single** request (`quoteSummary` takes a module list, so six sections cost one round-trip),
+and Risks reads a cached row rather than recomputing.
+
+**Card open-state.** Our data and Market open all their cards; the Yahoo tab opens only
+**Market Data** — six expanded reference tables is a very long page, and the rest are looked
+up deliberately. Yahoo coverage varies wildly by symbol, so each section renders only the
+fields that came back and says "the provider reports no …" for a whole missing module rather
+than drawing a grid of dashes (verified against an ETF: zero dashes on screen).
+
+It opens at `Modal` `size="window"` — the draggable 80% floating variant, with a maximize
+button for the full-bleed treatment. Gain/loss is `text-emerald-400` / `text-red-400` per
+design.md's semantic-color exception, and zero stays `text-muted` so a flat day doesn't read
+as a win.
 
 ---
 
@@ -1035,7 +1150,7 @@ const { id, colorful } = useIconSet();
 ```
 
 **Used by:** [src/app/layout.tsx](src/app/layout.tsx) (provider); `ModuleIcon` and
-`ModuleCard` (consumers).
+`ModuleCarousel` (consumers).
 
 **Notes:** the default outside a provider is the `"classic"` set, so anything rendered
 standalone still shows a valid glyph.
@@ -1056,7 +1171,7 @@ Render a module glyph in the active icon set (`ModuleIcon`) or in an explicitly 
 <ModuleIconPreview setId="classic" name="building" className="h-5 w-5" />
 ```
 
-**Used by:** `ModuleCard`, `Sidebar`, and the icon picker at
+**Used by:** `ModuleCarousel`, `Sidebar`, and the icon picker at
 [admin/configuration/icons/page.tsx](src/app/(protected)/admin/configuration/icons/page.tsx).
 
 **Notes:** falls back to the hand-drawn "classic" set for any missing glyph. Monochrome

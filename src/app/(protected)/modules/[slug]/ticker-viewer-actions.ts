@@ -6,13 +6,16 @@
 // panel is a provider round-trip the reader pays for by opening that tab.
 
 import { listTransactions } from "@/lib/stock-positions";
+import { getTickerDetail, type TickerYahooDetail } from "@/lib/ticker-detail";
 import {
+  getTickerEvents,
   getTickerNewsFeed,
   getTickerOwnData,
   getTickerPriceSeries,
   getTickerQuote,
   getTickerRisk,
   getTickerTradeTimeline,
+  type TickerEventFeed,
   type TickerHistoryRange,
   type TickerNewsFeed,
   type TickerOwnData,
@@ -73,11 +76,57 @@ export async function fetchTickerPriceSeriesAction(
   }
 }
 
-export async function fetchTickerRiskAction(ticker: string): Promise<PanelResult<TickerRisk>> {
+/**
+ * Risk figures. Reads the cache table unless `refresh` is set, so the usual open
+ * is a local row rather than two provider round-trips; `refresh: true` is the
+ * card's Recalculate button.
+ */
+export async function fetchTickerRiskAction(
+  ticker: string,
+  refresh = false,
+): Promise<PanelResult<TickerRisk>> {
   try {
-    return { ok: true, data: await getTickerRisk(deps.marketDataClient, { ticker }) };
+    return {
+      ok: true,
+      data: await getTickerRisk(deps.marketDataClient, deps.tickerRiskCacheRepo, {
+        ticker,
+        refresh,
+      }),
+    };
   } catch (error) {
     return failed(error, "Could not compute the risk figures.");
+  }
+}
+
+/**
+ * Dividends, splits and reported quarters over the last year. The same Yahoo
+ * client covers both legs — it implements the events port as well as the price
+ * one, so this costs a wiring line rather than another dependency.
+ */
+export async function fetchTickerEventsAction(
+  ticker: string,
+): Promise<PanelResult<TickerEventFeed>> {
+  try {
+    return {
+      ok: true,
+      data: await getTickerEvents(deps.marketDataClient, deps.marketDataClient, { ticker }),
+    };
+  } catch (error) {
+    return failed(error, "Could not load this ticker's events.");
+  }
+}
+
+/**
+ * The whole Yahoo reference record — all six detail sections in one call, since
+ * quoteSummary takes a module list.
+ */
+export async function fetchTickerDetailAction(
+  ticker: string,
+): Promise<PanelResult<TickerYahooDetail>> {
+  try {
+    return { ok: true, data: await getTickerDetail(deps.marketDataClient, { ticker }) };
+  } catch (error) {
+    return failed(error, "Could not load the Yahoo Finance detail.");
   }
 }
 

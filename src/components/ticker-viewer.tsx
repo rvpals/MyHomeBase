@@ -1,25 +1,38 @@
 // The full-record dialog for one ticker: everything the app knows about a
-// symbol, in tabs.
+// symbol, on two tabs.
 //
-// The tabs are in two groups, and the grouping is the point — "Our data" is what
-// MyHomeBase recorded (holdings, trades, watchlists), "Market" is what the
-// provider said (quote, chart, risk, news). A reader should never have to guess
-// whether a number came from their broker export or from Yahoo.
+// The two tabs are the point — "Our data" is what MyHomeBase recorded (holdings,
+// trades, watchlists), "Market" is what the provider said (quote, chart, risk,
+// news). A reader should never have to guess whether a number came from their
+// broker export or from Yahoo.
+//
+// Within a tab, each section is a `CollapsibleCard` rather than a nested tab.
+// Sub-tabs hid things a reader wanted side by side — holdings against the trade
+// history, the price chart against the quote — and made you click through four
+// panels to find out whether anything was there at all. Cards open by default,
+// so entering a tab shows everything it has and collapsing is the reader's
+// choice rather than the default state.
 //
 // Pure presentation. It fetches nothing: every panel arrives as a
-// `TickerPanelState` and the host decides when to load it, which is what lets
-// the market panels stay lazy — a provider round-trip happens when a reader
-// opens that tab, not when the dialog opens.
+// `TickerPanelState` and the host decides when to load it.
 
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { Modal } from "@/components/modal";
+import { Button } from "@/components/button";
 import { ChartLine } from "@/components/chart-line";
+import { CollapsibleCard } from "@/components/collapsible-card";
 import { TickerLogo } from "@/components/ticker-logo";
 import type { MarketEvent } from "@/lib/market-data";
 import { centsToDollars, formatCents } from "@/lib/shared/money";
+// The event phrasing is shared with the Events card rather than written twice —
+// the same dividend must not read two ways in one dialog.
+import { describeMarketEvent } from "@/lib/ticker-overview";
+import type { TickerYahooDetail } from "@/lib/ticker-detail";
 import type {
+  TickerEvent,
+  TickerEventFeed,
   TickerHistoryRange,
   TickerNewsFeed,
   TickerOwnData,
@@ -30,17 +43,8 @@ import type {
   TickerTradeTimeline,
 } from "@/lib/ticker-overview";
 
-/** Which panel is showing. The prefix is the group it belongs to. */
-export type TickerPanelKey =
-  | "own:holdings"
-  | "own:trades"
-  | "own:watch"
-  | "market:quote"
-  | "market:chart"
-  | "market:risk"
-  | "market:news";
-
-export type TickerPanelGroup = "own" | "market";
+/** Which tab is showing. Each holds a stack of cards, not further tabs. */
+export type TickerPanelGroup = "own" | "market" | "yahoo";
 
 /** One panel's load state. The host owns it; the viewer just renders it. */
 export interface TickerPanelState<T> {
@@ -51,9 +55,9 @@ export interface TickerPanelState<T> {
 
 export interface TickerViewerProps {
   ticker: string;
-  /** Controlled — the host switches panels so it can load one on first open. */
-  activePanel: TickerPanelKey;
-  onSelectPanel: (panel: TickerPanelKey) => void;
+  /** Controlled — the host switches tabs so it can load a tab's data on entry. */
+  activeGroup: TickerPanelGroup;
+  onSelectGroup: (group: TickerPanelGroup) => void;
   onClose: () => void;
 
   ownData: TickerPanelState<TickerOwnData>;
@@ -65,14 +69,24 @@ export interface TickerViewerProps {
   tradeTimeline: TickerPanelState<TickerTradeTimeline>;
   quote: TickerPanelState<TickerQuote>;
   priceSeries: TickerPanelState<TickerPriceSeries>;
+  events: TickerPanelState<TickerEventFeed>;
   risk: TickerPanelState<TickerRisk>;
   news: TickerPanelState<TickerNewsFeed>;
+  /** Powers all six cards on the Yahoo Finance Detail tab, from one fetch. */
+  detail: TickerPanelState<TickerYahooDetail>;
 
   /** The chart window currently selected. */
   range: TickerHistoryRange;
   onSelectRange: (range: TickerHistoryRange) => void;
   /** Windows to offer. Defaults to the full set. */
   ranges?: readonly TickerHistoryRange[];
+
+  /**
+   * Recompute the risk figures from the provider and overwrite the stored row.
+   * Risk is cached indefinitely, so this button is the *only* thing that
+   * refreshes it — see `migrations/0039_create_ticker_risk_cache.md`.
+   */
+  onRecalculateRisk: () => void;
 
   /** Caller-supplied classes, merged last so they win. */
   className?: string;
@@ -82,17 +96,14 @@ const DEFAULT_RANGES: readonly TickerHistoryRange[] = ["1mo", "3mo", "6mo", "1y"
 
 const GROUPS: { key: TickerPanelGroup; label: string; hint: string }[] = [
   { key: "own", label: "Our data", hint: "Recorded in MyHomeBase" },
-  { key: "market", label: "Market", hint: "Live from the market-data provider" },
-];
-
-const PANELS: { key: TickerPanelKey; group: TickerPanelGroup; label: string }[] = [
-  { key: "own:holdings", group: "own", label: "Holdings" },
-  { key: "own:trades", group: "own", label: "Transactions" },
-  { key: "own:watch", group: "own", label: "Watchlist & income" },
-  { key: "market:quote", group: "market", label: "Quote" },
-  { key: "market:chart", group: "market", label: "Price history" },
-  { key: "market:risk", group: "market", label: "Risk" },
-  { key: "market:news", group: "market", label: "News" },
+  // Not "live": the Risks card is served from a stored calculation, and says
+  // when it was made. Overclaiming freshness here would undercut that.
+  { key: "market", label: "Market", hint: "From the market-data provider" },
+  {
+    key: "yahoo",
+    label: "Yahoo Finance Detail",
+    hint: "The provider's full reference record — one fetch, six sections",
+  },
 ];
 
 const RANGE_LABELS: Record<TickerHistoryRange, string> = {
@@ -142,6 +153,22 @@ function formatDateTime(value?: string): string {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+/**
+ * How old a stored risk calculation gets before the card says so in amber.
+ *
+ * Nothing expires the cache — a row is served at any age — so the date is the
+ * only thing standing between a reader and a figure from last year. A week is
+ * roughly when "volatility over the trailing year" stops being this week's
+ * answer.
+ */
+const RISK_STALE_AFTER_DAYS = 7;
+
+function isOlderThanDays(value: string, days: number): boolean {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return false;
+  return Date.now() - parsed.getTime() > days * 24 * 60 * 60 * 1000;
 }
 
 /**
@@ -384,24 +411,6 @@ const TIMELINE_LABELS: Record<TickerTimelinePoint["kind"], string> = {
   event: "Close",
 };
 
-/** A corporate action or reported quarter, in one short phrase. */
-function describeEvent(event: MarketEvent): string {
-  if (event.kind === "dividend") {
-    return event.amountCents != null
-      ? `Dividend ${formatCents(event.amountCents)}`
-      : "Dividend";
-  }
-  if (event.kind === "split") {
-    return event.ratio ? `Split ${event.ratio}` : "Split";
-  }
-  if (event.epsActualCents == null) return "Earnings";
-  const beat =
-    event.epsEstimateCents != null
-      ? ` vs ${formatCents(event.epsEstimateCents)} est.`
-      : "";
-  return `Earnings ${formatCents(event.epsActualCents)} EPS${beat}`;
-}
-
 /** Colours an event chip by whether the quarter beat, missed, or is neutral news. */
 function eventToneClass(event: MarketEvent): string {
   if (event.kind !== "earnings") return "bg-brass-soft text-brass-dark";
@@ -431,7 +440,7 @@ function NoteCell({ point }: { point: TickerTimelinePoint }) {
               key={`${event.kind}:${event.timestamp}:${index}`}
               className={`rounded px-1.5 py-0.5 text-xs font-medium ${eventToneClass(event)}`}
             >
-              {describeEvent(event)}
+              {describeMarketEvent(event)}
             </span>
           ))}
         </span>
@@ -1097,7 +1106,217 @@ function RiskPanel({ data }: { data: TickerRisk }) {
         </p>
       </div>
 
-      <p className="mt-4 text-xs text-muted">Calculated {formatDateTime(data.calculatedAt)}.</p>
+      {/* These figures are stored and reused indefinitely, so the date is not a
+          footnote — it's the only signal that a number might be months old.
+          Amber past a week; Recalculate lives in the card header. */}
+      <p
+        className={`mt-4 text-xs ${
+          isOlderThanDays(data.calculatedAt, RISK_STALE_AFTER_DAYS) ? "text-brass-dark" : "text-muted"
+        }`}
+      >
+        Calculated {formatDateTime(data.calculatedAt)}
+        {isOlderThanDays(data.calculatedAt, RISK_STALE_AFTER_DAYS) &&
+          " — over a week old. Recalculate to refresh."}
+      </p>
+    </div>
+  );
+}
+
+/** Colour and wording for a quarter's outcome. Semantic, not a theme accent. */
+const OUTCOME_STYLE: Record<
+  NonNullable<TickerEvent["outcome"]>,
+  { label: string; className: string }
+> = {
+  beat: { label: "Beat", className: "text-emerald-400" },
+  miss: { label: "Miss", className: "text-red-400" },
+  inline: { label: "In line", className: "text-muted" },
+};
+
+/** The kind chip on each row, so the list scans by type without reading it. */
+function EventKindChip({ kind }: { kind: TickerEvent["kind"] }) {
+  const labels: Record<TickerEvent["kind"], string> = {
+    earnings: "Earnings",
+    dividend: "Dividend",
+    split: "Split",
+  };
+  return (
+    <span className="rounded bg-brass-soft px-1.5 py-0.5 text-xs font-medium text-brass-dark">
+      {labels[kind]}
+    </span>
+  );
+}
+
+/** One key/value line inside an expanded event. */
+function EventDetail({
+  label,
+  value,
+  className = "text-ink",
+}: {
+  label: string;
+  value: string;
+  className?: string;
+}) {
+  return (
+    <div>
+      <dt className="text-xs uppercase tracking-wide text-muted">{label}</dt>
+      <dd className={`font-mono text-sm ${className}`}>{value}</dd>
+    </div>
+  );
+}
+
+/**
+ * What one event unfolds to.
+ *
+ * Everything we hold, spelled out — the row above is a summary and this is the
+ * whole record. The Yahoo link is per-*ticker*, not per-event, because the
+ * provider gives no per-event page; the wording says so rather than implying a
+ * deep link.
+ */
+function EventDetails({ event, ticker }: { event: TickerEvent; ticker: string }) {
+  const outcome = event.outcome ? OUTCOME_STYLE[event.outcome] : undefined;
+
+  return (
+    <div className="rounded-lg border border-line bg-paper p-4">
+      <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <EventDetail label="Date" value={formatDate(event.date)} />
+
+        {event.kind === "earnings" && (
+          <>
+            <EventDetail
+              label="Reported EPS"
+              value={event.epsActualCents != null ? formatCents(event.epsActualCents) : "Not yet reported"}
+            />
+            <EventDetail
+              label="Estimate"
+              value={event.epsEstimateCents != null ? formatCents(event.epsEstimateCents) : "—"}
+            />
+            {event.epsSurpriseCents != null && outcome && (
+              <EventDetail
+                label="Surprise"
+                className={`font-mono text-sm ${outcome.className}`}
+                value={
+                  `${signedCents(event.epsSurpriseCents)}` +
+                  (event.epsSurprisePct != null ? ` (${formatPct(event.epsSurprisePct, 1)})` : "") +
+                  ` · ${outcome.label}`
+                }
+              />
+            )}
+          </>
+        )}
+
+        {event.kind === "dividend" && (
+          <EventDetail
+            label="Amount / share"
+            value={event.amountCents != null ? formatCents(event.amountCents) : "—"}
+          />
+        )}
+
+        {event.kind === "split" && <EventDetail label="Ratio" value={event.ratio ?? "—"} />}
+
+        {event.closeCents != null && (
+          <EventDetail
+            label={event.closeDate ? `Close, ${formatDate(event.closeDate)}` : "Close that day"}
+            value={formatCents(event.closeCents)}
+          />
+        )}
+      </dl>
+
+      {/* Stated when the price is borrowed from an earlier session, so nobody
+          reads it as the print on the event's own date. */}
+      {event.closeDate && (
+        <p className="mt-3 text-xs text-muted">
+          The market was shut on {formatDate(event.date)}, so this is the last close before it.
+        </p>
+      )}
+
+      <p className="mt-3 text-xs">
+        <a
+          href={`https://finance.yahoo.com/quote/${encodeURIComponent(ticker)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-brass-dark hover:underline"
+        >
+          View {ticker} on Yahoo Finance
+        </a>
+        <span className="text-muted"> — the provider has no page for a single event.</span>
+      </p>
+    </div>
+  );
+}
+
+function EventsPanel({ data }: { data: TickerEventFeed }) {
+  // One open at a time, like the timeline's News column: a column of expanded
+  // detail blocks is a wall, and these are read one at a time anyway.
+  const [openKey, setOpenKey] = useState<string | undefined>(undefined);
+
+  if (data.events.length === 0) {
+    return (
+      <Empty>
+        No dividends, splits or reported quarters for {data.ticker} in the last year.
+      </Empty>
+    );
+  }
+
+  return (
+    <div>
+      <Table head={["Date", "Event", "What happened", "Close"]}>
+        {data.events.map((event, index) => {
+          const key = `${event.date}:${event.kind}:${index}`;
+          const isOpen = openKey === key;
+          const outcome = event.outcome ? OUTCOME_STYLE[event.outcome] : undefined;
+
+          return (
+            <Fragment key={key}>
+              <tr>
+                <Cell align="left">
+                  <button
+                    type="button"
+                    onClick={() => setOpenKey(isOpen ? undefined : key)}
+                    aria-expanded={isOpen}
+                    className="flex items-center gap-1.5 text-brass-dark hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+                  >
+                    <span
+                      className={`text-muted transition-transform motion-reduce:transition-none ${
+                        isOpen ? "rotate-90" : ""
+                      }`}
+                      aria-hidden
+                    >
+                      &rsaquo;
+                    </span>
+                    {formatDate(event.date)}
+                  </button>
+                </Cell>
+                <Cell align="left">
+                  <EventKindChip kind={event.kind} />
+                </Cell>
+                <Cell align="left">
+                  {event.summary}
+                  {outcome && (
+                    <span className={`ml-2 text-xs font-medium ${outcome.className}`}>
+                      {outcome.label}
+                    </span>
+                  )}
+                </Cell>
+                <Cell>{event.closeCents != null ? formatCents(event.closeCents) : "—"}</Cell>
+              </tr>
+              {isOpen && (
+                <tr>
+                  <td colSpan={4} className="border-b border-line px-2 pb-3 pt-1">
+                    <EventDetails event={event} ticker={data.ticker} />
+                  </td>
+                </tr>
+              )}
+            </Fragment>
+          );
+        })}
+      </Table>
+
+      {data.closesUnavailable && (
+        <p className="mt-3 text-xs text-muted">
+          The price history could not be fetched, so no event shows the close it happened
+          against.
+        </p>
+      )}
     </div>
   );
 }
@@ -1143,6 +1362,360 @@ function NewsPanel({ data }: { data: TickerNewsFeed }) {
 }
 
 // ---------------------------------------------------------------------------
+// Panels — the Yahoo reference record.
+//
+// Every field on every section is optional (see `lib/ticker-detail/types.ts`),
+// so each of these renders only what came back. `Facts` drops its own undefined
+// rows, which is what keeps an ETF's Profile card from being a grid of dashes.
+// ---------------------------------------------------------------------------
+
+/** A large money figure as $4.56T / $391.0B / $12.3M. Cents in, compact out. */
+function formatBigCents(cents?: number): string | undefined {
+  if (cents == null) return undefined;
+  const dollars = cents / 100;
+  const magnitude = Math.abs(dollars);
+  const sign = dollars < 0 ? "−" : "";
+
+  if (magnitude >= 1e12) return `${sign}$${(magnitude / 1e12).toFixed(2)}T`;
+  if (magnitude >= 1e9) return `${sign}$${(magnitude / 1e9).toFixed(2)}B`;
+  if (magnitude >= 1e6) return `${sign}$${(magnitude / 1e6).toFixed(1)}M`;
+  return formatCents(cents);
+}
+
+/** A large share/unit count as 48.2M / 15.1B. Not money, so no currency. */
+function formatBigCount(value?: number): string | undefined {
+  if (value == null) return undefined;
+  const magnitude = Math.abs(value);
+  if (magnitude >= 1e9) return `${(value / 1e9).toFixed(2)}B`;
+  if (magnitude >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
+  if (magnitude >= 1e3) return `${(value / 1e3).toFixed(1)}K`;
+  return formatCount(value);
+}
+
+function ratio(value?: number, digits = 2): string | undefined {
+  return value == null ? undefined : value.toFixed(digits);
+}
+
+function optionalPct(value?: number, digits = 2): string | undefined {
+  return value == null ? undefined : formatPlainPct(value, digits);
+}
+
+/**
+ * A definition grid that silently skips anything the provider didn't report.
+ *
+ * Passing `undefined` for a value removes the row entirely rather than printing
+ * a dash — with coverage this patchy, a card of dashes says nothing, and a short
+ * card of real figures says exactly what is known.
+ */
+function Facts({
+  items,
+  columns = 3,
+}: {
+  items: [label: string, value: string | undefined][];
+  columns?: 2 | 3;
+}) {
+  const present = items.filter((item): item is [string, string] => Boolean(item[1]));
+  if (present.length === 0) {
+    return <p className="text-sm text-muted">The provider reported none of these.</p>;
+  }
+
+  return (
+    <dl className={`grid grid-cols-2 gap-3 ${columns === 3 ? "sm:grid-cols-3" : ""}`}>
+      {present.map(([label, value]) => (
+        <div key={label}>
+          <dt className="text-xs uppercase tracking-wide text-muted">{label}</dt>
+          <dd className="font-mono text-sm text-ink">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** Shown in place of a card's body when the provider omitted that whole module. */
+function NotReported({ what }: { what: string }) {
+  return <Empty>The provider reports no {what} for this symbol.</Empty>;
+}
+
+function MarketDataSection({ data }: { data: TickerYahooDetail }) {
+  const section = data.marketData;
+  if (!section) return <NotReported what="market data" />;
+
+  const range =
+    section.dayLowCents != null && section.dayHighCents != null
+      ? `${formatCents(section.dayLowCents)} – ${formatCents(section.dayHighCents)}`
+      : undefined;
+  const range52 =
+    section.fiftyTwoWeekLowCents != null && section.fiftyTwoWeekHighCents != null
+      ? `${formatCents(section.fiftyTwoWeekLowCents)} – ${formatCents(section.fiftyTwoWeekHighCents)}`
+      : undefined;
+
+  return (
+    <Facts
+      items={[
+        ["Price", section.priceCents != null ? formatCents(section.priceCents) : undefined],
+        ["Previous close", section.previousCloseCents != null ? formatCents(section.previousCloseCents) : undefined],
+        ["Open", section.openCents != null ? formatCents(section.openCents) : undefined],
+        ["Day range", range],
+        ["52-week range", range52],
+        ["Market cap", formatBigCents(section.marketCapCents)],
+        ["Volume", formatBigCount(section.volume)],
+        ["Average volume", formatBigCount(section.averageVolume)],
+        ["Exchange", section.exchangeName],
+        ["Currency", section.currency],
+        ["Type", section.quoteType],
+        // Only present outside regular hours, which is exactly when it matters.
+        ["Pre-market", section.preMarketPriceCents != null ? formatCents(section.preMarketPriceCents) : undefined],
+        ["Pre-market move", optionalPct(section.preMarketChangePct)],
+        ["Post-market", section.postMarketPriceCents != null ? formatCents(section.postMarketPriceCents) : undefined],
+        ["Post-market move", optionalPct(section.postMarketChangePct)],
+      ]}
+    />
+  );
+}
+
+function CompanyProfileSection({ data }: { data: TickerYahooDetail }) {
+  const section = data.profile;
+  if (!section) return <NotReported what="company profile" />;
+
+  const location = [section.city, section.state, section.country].filter(Boolean).join(", ");
+  const identity: [string, string | undefined][] = [
+    ["Sector", section.sector],
+    ["Industry", section.industry],
+    ["Employees", section.employees != null ? formatCount(section.employees) : undefined],
+    ["Headquarters", location || undefined],
+  ];
+
+  return (
+    <div>
+      {/* Skipped entirely when none of the four are known, rather than printing
+          "reported none of these" above a summary that plainly reports plenty.
+          A fund has a description but no sector, industry or staff. */}
+      {identity.some(([, value]) => value) && <Facts items={identity} />}
+
+      {section.website && (
+        <p className="mt-3 text-sm">
+          <a
+            href={section.website}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-brass-dark hover:underline"
+          >
+            {section.website}
+          </a>
+        </p>
+      )}
+
+      {section.summary && (
+        <>
+          <SectionTitle>Business summary</SectionTitle>
+          <p className="text-sm leading-relaxed text-ink">{section.summary}</p>
+        </>
+      )}
+
+      {section.officers.length > 0 && (
+        <>
+          <SectionTitle>Officers</SectionTitle>
+          <Table head={["Name", "Title", "Age", "Total pay"]}>
+            {section.officers.map((officer) => (
+              <tr key={`${officer.name}:${officer.title}`}>
+                <Cell align="left">{officer.name}</Cell>
+                <Cell align="left">{officer.title || "—"}</Cell>
+                <Cell>{officer.age ?? "—"}</Cell>
+                <Cell>{formatBigCents(officer.totalPayCents) ?? "—"}</Cell>
+              </tr>
+            ))}
+          </Table>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Yahoo's period keys, said in words. "0m" is the current month. */
+const TREND_PERIOD_LABELS: Record<string, string> = {
+  "0m": "Now",
+  "-1m": "1 month ago",
+  "-2m": "2 months ago",
+  "-3m": "3 months ago",
+};
+
+/** Colours a rating action: an upgrade is good news, a downgrade isn't. */
+function actionClass(action?: string): string {
+  if (action === "up") return "text-emerald-400";
+  if (action === "down") return "text-red-400";
+  return "text-muted";
+}
+
+function AnalysisSection({ data }: { data: TickerYahooDetail }) {
+  const section = data.analysis;
+  if (!section) return <NotReported what="analyst coverage" />;
+
+  const targetRange =
+    section.targetLowCents != null && section.targetHighCents != null
+      ? `${formatCents(section.targetLowCents)} – ${formatCents(section.targetHighCents)}`
+      : undefined;
+
+  return (
+    <div>
+      <Facts
+        items={[
+          ["Consensus", section.recommendationKey?.replace(/_/g, " ")],
+          // 1 = strong buy, 5 = strong sell. Said here so the number is readable.
+          ["Rating (1 buy – 5 sell)", ratio(section.recommendationMean)],
+          ["Analysts", section.analystCount != null ? formatCount(section.analystCount) : undefined],
+          ["Mean target", section.targetMeanCents != null ? formatCents(section.targetMeanCents) : undefined],
+          ["Median target", section.targetMedianCents != null ? formatCents(section.targetMedianCents) : undefined],
+          ["Target range", targetRange],
+        ]}
+      />
+
+      {section.trend.length > 0 && (
+        <>
+          <SectionTitle>Recommendation trend</SectionTitle>
+          <Table head={["Period", "Strong buy", "Buy", "Hold", "Sell", "Strong sell", "Total"]}>
+            {section.trend.map((period) => (
+              <tr key={period.period}>
+                <Cell align="left">{TREND_PERIOD_LABELS[period.period] ?? period.period}</Cell>
+                <Cell className="text-emerald-400">{period.strongBuy}</Cell>
+                <Cell className="text-emerald-400">{period.buy}</Cell>
+                <Cell>{period.hold}</Cell>
+                <Cell className="text-red-400">{period.sell}</Cell>
+                <Cell className="text-red-400">{period.strongSell}</Cell>
+                <Cell>{period.total}</Cell>
+              </tr>
+            ))}
+          </Table>
+        </>
+      )}
+
+      {section.ratingChanges.length > 0 && (
+        <>
+          <SectionTitle>Recent rating changes</SectionTitle>
+          <Table head={["Date", "Firm", "Action", "From", "To"]}>
+            {section.ratingChanges.map((change) => (
+              <tr key={`${change.date}:${change.firm}:${change.toGrade}`}>
+                <Cell align="left">{formatDate(change.date)}</Cell>
+                <Cell align="left">{change.firm}</Cell>
+                <Cell align="left" className={actionClass(change.action)}>
+                  {change.action ?? "—"}
+                </Cell>
+                <Cell align="left">{change.fromGrade || "—"}</Cell>
+                <Cell align="left">{change.toGrade}</Cell>
+              </tr>
+            ))}
+          </Table>
+          {/* The provider keeps the full archive; this is the recent slice. */}
+          {section.totalRatingChanges > section.ratingChanges.length && (
+            <p className="mt-3 text-xs text-muted">
+              Showing the {section.ratingChanges.length} most recent of{" "}
+              {formatCount(section.totalRatingChanges)} the provider holds.
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function ValuationSection({ data }: { data: TickerYahooDetail }) {
+  const section = data.valuation;
+  if (!section) return <NotReported what="valuation figures" />;
+
+  return (
+    <Facts
+      items={[
+        ["Trailing P/E", ratio(section.trailingPE)],
+        ["Forward P/E", ratio(section.forwardPE)],
+        ["PEG ratio", ratio(section.pegRatio)],
+        ["Price / book", ratio(section.priceToBook)],
+        ["Price / sales", ratio(section.priceToSales)],
+        ["Enterprise value", formatBigCents(section.enterpriseValueCents)],
+        ["EV / revenue", ratio(section.enterpriseToRevenue)],
+        ["EV / EBITDA", ratio(section.enterpriseToEbitda)],
+        ["Beta", ratio(section.beta)],
+        ["Dividend yield", optionalPct(section.dividendYieldPct)],
+        ["Payout ratio", optionalPct(section.payoutRatioPct)],
+      ]}
+    />
+  );
+}
+
+function FinancialsSection({ data }: { data: TickerYahooDetail }) {
+  const section = data.financials;
+  if (!section) return <NotReported what="financials" />;
+
+  return (
+    <div>
+      <Facts
+        items={[
+          ["Revenue (TTM)", formatBigCents(section.totalRevenueCents)],
+          ["Gross profit", formatBigCents(section.grossProfitsCents)],
+          ["EBITDA", formatBigCents(section.ebitdaCents)],
+          ["Free cash flow", formatBigCents(section.freeCashflowCents)],
+          ["Total cash", formatBigCents(section.totalCashCents)],
+          ["Total debt", formatBigCents(section.totalDebtCents)],
+          ["Debt / equity", ratio(section.debtToEquity)],
+          ["Current ratio", ratio(section.currentRatio)],
+          ["Profit margin", optionalPct(section.profitMarginPct)],
+          ["Operating margin", optionalPct(section.operatingMarginPct)],
+          ["Return on equity", optionalPct(section.returnOnEquityPct)],
+          ["Return on assets", optionalPct(section.returnOnAssetsPct)],
+          ["Revenue growth", optionalPct(section.revenueGrowthPct)],
+          ["Earnings growth", optionalPct(section.earningsGrowthPct)],
+        ]}
+      />
+
+      {section.incomeStatements.length > 0 && (
+        <>
+          <SectionTitle>Income statement, by year</SectionTitle>
+          <Table head={["Period end", "Revenue", "Gross profit", "Operating income", "Net income"]}>
+            {section.incomeStatements.map((row) => (
+              <tr key={row.endDate}>
+                <Cell align="left">{formatDate(row.endDate)}</Cell>
+                <Cell>{formatBigCents(row.totalRevenueCents) ?? "—"}</Cell>
+                <Cell>{formatBigCents(row.grossProfitCents) ?? "—"}</Cell>
+                <Cell>{formatBigCents(row.operatingIncomeCents) ?? "—"}</Cell>
+                <Cell>{formatBigCents(row.netIncomeCents) ?? "—"}</Cell>
+              </tr>
+            ))}
+          </Table>
+        </>
+      )}
+    </div>
+  );
+}
+
+function KeyStatisticsSection({ data }: { data: TickerYahooDetail }) {
+  const section = data.keyStatistics;
+  if (!section) return <NotReported what="key statistics" />;
+
+  const split =
+    section.lastSplitFactor && section.lastSplitDate
+      ? `${section.lastSplitFactor} on ${formatDate(section.lastSplitDate)}`
+      : section.lastSplitFactor;
+
+  return (
+    <Facts
+      items={[
+        ["Shares outstanding", formatBigCount(section.sharesOutstanding)],
+        ["Float", formatBigCount(section.floatShares)],
+        ["Held by insiders", optionalPct(section.heldPercentInsidersPct)],
+        ["Held by institutions", optionalPct(section.heldPercentInstitutionsPct)],
+        ["Shares short", formatBigCount(section.sharesShort)],
+        ["Short ratio", ratio(section.shortRatio)],
+        ["Short % of float", optionalPct(section.shortPercentOfFloatPct)],
+        ["Book value / share", section.bookValuePerShareCents != null ? formatCents(section.bookValuePerShareCents) : undefined],
+        ["52-week change", optionalPct(section.fiftyTwoWeekChangePct)],
+        ["S&P 52-week change", optionalPct(section.benchmark52WeekChangePct)],
+        ["Fiscal year end", section.lastFiscalYearEnd ? formatDate(section.lastFiscalYearEnd) : undefined],
+        ["Most recent quarter", section.mostRecentQuarter ? formatDate(section.mostRecentQuarter) : undefined],
+        ["Last split", split],
+      ]}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
 // The dialog
 // ---------------------------------------------------------------------------
 
@@ -1183,23 +1756,23 @@ function TabStrip<K extends string>({
 
 export function TickerViewer({
   ticker,
-  activePanel,
-  onSelectPanel,
+  activeGroup,
+  onSelectGroup,
   onClose,
   ownData,
   tradeTimeline,
   quote,
   priceSeries,
+  events,
   risk,
   news,
+  detail,
   range,
   onSelectRange,
   ranges = DEFAULT_RANGES,
+  onRecalculateRisk,
   className = "",
 }: TickerViewerProps) {
-  const activeGroup: TickerPanelGroup = activePanel.startsWith("market") ? "market" : "own";
-  const groupPanels = PANELS.filter((panel) => panel.group === activeGroup);
-
   // The header price prefers the live quote and falls back to our own recorded
   // price, so the dialog still says what a share is worth before the Market tab
   // has ever been opened.
@@ -1210,7 +1783,7 @@ export function TickerViewer({
   return (
     <Modal
       title={ticker}
-      size="full"
+      size="window"
       onClose={onClose}
       className={className}
       description={
@@ -1235,65 +1808,132 @@ export function TickerViewer({
         label="Data source"
         items={GROUPS}
         activeKey={activeGroup}
-        onSelect={(group) => {
-          // Switching group lands on that group's first panel rather than
-          // remembering where you were — the groups are read start-to-end.
-          const first = PANELS.find((panel) => panel.group === group);
-          if (first) onSelectPanel(first.key);
-        }}
+        onSelect={onSelectGroup}
       />
 
-      <div className="mt-1">
-        <TabStrip
-          label={activeGroup === "own" ? "Our data panels" : "Market panels"}
-          items={groupPanels}
-          activeKey={activePanel}
-          onSelect={onSelectPanel}
-        />
-      </div>
+      {/* One card per section, all open. The inactive tab's cards are unmounted
+          rather than hidden, so switching tabs doesn't leave two charts
+          measuring themselves against a container they can't see. */}
+      <div className="space-y-3 pt-4">
+        {activeGroup === "own" && (
+          <>
+            <CollapsibleCard title="Holdings" defaultOpen>
+              <Panel state={ownData} loadingLabel="Reading your records…">
+                {(data) => <HoldingsPanel data={data} />}
+              </Panel>
+            </CollapsibleCard>
 
-      <div className="pt-4">
-        {activePanel === "own:holdings" && (
-          <Panel state={ownData} loadingLabel="Reading your records…">
-            {(data) => <HoldingsPanel data={data} />}
-          </Panel>
+            <CollapsibleCard title="Transactions" defaultOpen>
+              <Panel state={ownData} loadingLabel="Reading your records…">
+                {(data) => <TradesPanel data={data} timeline={tradeTimeline} />}
+              </Panel>
+            </CollapsibleCard>
+
+            <CollapsibleCard title="Watchlist & income" defaultOpen>
+              <Panel state={ownData} loadingLabel="Reading your records…">
+                {(data) => <WatchAndIncomePanel data={data} />}
+              </Panel>
+            </CollapsibleCard>
+          </>
         )}
-        {activePanel === "own:trades" && (
-          <Panel state={ownData} loadingLabel="Reading your records…">
-            {(data) => <TradesPanel data={data} timeline={tradeTimeline} />}
-          </Panel>
+
+        {activeGroup === "market" && (
+          <>
+            <CollapsibleCard title="Quote" defaultOpen>
+              <Panel state={quote} loadingLabel="Fetching the quote…">
+                {(data) => <QuotePanel data={data} />}
+              </Panel>
+            </CollapsibleCard>
+
+            <CollapsibleCard title="Price History" defaultOpen>
+              <Panel state={priceSeries} loadingLabel="Fetching the price history…">
+                {(data) => (
+                  <ChartPanel
+                    data={data}
+                    range={range}
+                    ranges={ranges}
+                    onSelectRange={onSelectRange}
+                    isLoading={priceSeries.isLoading}
+                  />
+                )}
+              </Panel>
+            </CollapsibleCard>
+
+            {/* Sits under the chart because it explains its shape: the step down
+                in March was the ex-dividend date, the gap up was the beat. */}
+            <CollapsibleCard title="Events" defaultOpen>
+              <Panel state={events} loadingLabel="Fetching dividends, splits and earnings…">
+                {(data) => <EventsPanel data={data} />}
+              </Panel>
+            </CollapsibleCard>
+
+            {/* Recalculate goes in `headerAction` so it stays reachable with the
+                card shut — this is the only way to refresh a stored row, and a
+                reader shouldn't have to expand the card to reach it. */}
+            <CollapsibleCard
+              title="Risks"
+              defaultOpen
+              headerAction={
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={onRecalculateRisk}
+                  disabled={risk.isLoading}
+                >
+                  {risk.isLoading ? "Recalculating…" : "Recalculate"}
+                </Button>
+              }
+            >
+              <Panel state={risk} loadingLabel="Computing the risk figures…">
+                {(data) => <RiskPanel data={data} />}
+              </Panel>
+            </CollapsibleCard>
+
+            <CollapsibleCard title="News" defaultOpen>
+              <Panel state={news} loadingLabel="Fetching recent stories…">
+                {(data) => <NewsPanel data={data} />}
+              </Panel>
+            </CollapsibleCard>
+          </>
         )}
-        {activePanel === "own:watch" && (
-          <Panel state={ownData} loadingLabel="Reading your records…">
-            {(data) => <WatchAndIncomePanel data={data} />}
-          </Panel>
-        )}
-        {activePanel === "market:quote" && (
-          <Panel state={quote} loadingLabel="Fetching the quote…">
-            {(data) => <QuotePanel data={data} />}
-          </Panel>
-        )}
-        {activePanel === "market:chart" && (
-          <Panel state={priceSeries} loadingLabel="Fetching the price history…">
+
+        {activeGroup === "yahoo" && (
+          <Panel state={detail} loadingLabel="Fetching the Yahoo Finance record…">
             {(data) => (
-              <ChartPanel
-                data={data}
-                range={range}
-                ranges={ranges}
-                onSelectRange={onSelectRange}
-                isLoading={priceSeries.isLoading}
-              />
+              <>
+                {/* Only Market Data starts open. Six expanded cards of reference
+                    tables is a very long page, and this is the section a reader
+                    lands here for; the rest are looked up deliberately. */}
+                <CollapsibleCard title="Market Data" defaultOpen className="mb-3">
+                  <MarketDataSection data={data} />
+                </CollapsibleCard>
+
+                <CollapsibleCard title="Company Profile" className="mb-3">
+                  <CompanyProfileSection data={data} />
+                </CollapsibleCard>
+
+                <CollapsibleCard title="Analysis recommendations" className="mb-3">
+                  <AnalysisSection data={data} />
+                </CollapsibleCard>
+
+                <CollapsibleCard title="Valuation & Trading" className="mb-3">
+                  <ValuationSection data={data} />
+                </CollapsibleCard>
+
+                <CollapsibleCard title="Financials" className="mb-3">
+                  <FinancialsSection data={data} />
+                </CollapsibleCard>
+
+                <CollapsibleCard title="Key statistics" className="mb-3">
+                  <KeyStatisticsSection data={data} />
+                </CollapsibleCard>
+
+                <p className="text-xs text-muted">
+                  All six sections come from one request to the provider, fetched{" "}
+                  {formatDateTime(data.fetchedAt)}.
+                </p>
+              </>
             )}
-          </Panel>
-        )}
-        {activePanel === "market:risk" && (
-          <Panel state={risk} loadingLabel="Computing the risk figures…">
-            {(data) => <RiskPanel data={data} />}
-          </Panel>
-        )}
-        {activePanel === "market:news" && (
-          <Panel state={news} loadingLabel="Fetching recent stories…">
-            {(data) => <NewsPanel data={data} />}
           </Panel>
         )}
       </div>

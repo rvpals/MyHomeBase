@@ -128,8 +128,9 @@ export function ExpenseSection({ section }: { section: ExpenseSection }) {
 
   return (
     <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-      {/* No width here — a collapsible TreeNav owns its own (w-64 / w-16), and a
-          fixed width on the wrapper would stop the collapsed rail shrinking. */}
+      {/* No width here — a collapsible TreeNav owns its own (w-64 full / w-16
+          rail / w-3 strip), and a fixed width on the wrapper would stop it
+          shrinking. */}
       <div className="lg:sticky lg:top-6 lg:shrink-0">
         <ExpenseNav />
       </div>

@@ -12,7 +12,7 @@ module is obvious from the name alone. New tables must follow this.
 | Prefix | Module | Example tables |
 |---|---|---|
 | `sys_` | Platform — not a feature module | `sys_modules`, `sys_app_settings`, `sys_module_settings`, `sys_users`, `sys_user_module_access`, `sys_sessions`, `sys_schema_migrations`, `sys_daily_quotes` |
-| `stk_` | Stocks & ETFs (brokerage accounts **and** per-stock tables — one prefix) | `stk_investment_accounts`, `stk_stock_positions`, `stk_stock_transactions`, `stk_stock_watch_lists`, `stk_stock_volatility_cache`, `stk_ticker_logos`, `stk_daily_snapshots` |
+| `stk_` | Stocks & ETFs (brokerage accounts **and** per-stock tables — one prefix) | `stk_investment_accounts`, `stk_stock_positions`, `stk_stock_transactions`, `stk_stock_watch_lists`, `stk_stock_volatility_cache`, `stk_ticker_risk_cache`, `stk_ticker_logos`, `stk_daily_snapshots` |
 | `csv_` | CSV Analysis (incl. user-generated per-entry tables from `buildTableName`) | `csv_analytics_entries`, `csv_chart_presets`, `csv_govee` |
 | `jrn_` | MyJournal | `jrn_entries`, `jrn_categories`, `jrn_tags`, `jrn_entry_categories`, `jrn_entry_tags`, `jrn_entry_locations`, `jrn_entry_images`, `jrn_icons` |
 | `exp_` | Expense tracker | `exp_transactions`, `exp_creditcard_accounts`, `exp_categories`, `exp_post_import_rules`, `exp_post_import_rule_actions` |
@@ -95,9 +95,10 @@ real second lot from an accidental re-import. Worked through in
 ### Per-row images
 
 A per-row image is a `BLOB` column plus a `<name>_mime_type` column, served by a
-dedicated route — never inlined as a base64 data URL. Four tables do this:
+dedicated route — never inlined as a base64 data URL. Five tables do this:
 `sys_users.avatar` (0011), `exp_creditcard_accounts.card_image` (0031),
-`exp_categories.icon_image` (0034), `stk_investment_accounts.icon_image` (0037).
+`exp_categories.icon_image` (0034), `stk_investment_accounts.icon_image` (0037),
+`sys_modules.carousel_image` (0040).
 
 Adding one carries a **non-obvious obligation**: every normal read of that table must
 switch from `SELECT *` to an explicit column list that omits the blob, or the bytes
@@ -105,3 +106,28 @@ ride along in every list and page render. Decoding and the mime allowlist live i
 `src/lib/shared/image-upload.ts` — use it rather than re-deriving the rules, and note
 that SVG is excluded on purpose (it can carry script, and these bytes are served from
 the app's own origin).
+
+**Expose presence, not bytes.** A caller usually only needs to know *whether* there is
+an image, to choose between the artwork and a fallback. Derive that in SQL
+(`carousel_image IS NOT NULL AS has_carousel_image`) and put the boolean on the domain
+type; the bytes then have exactly one reader, the serving route. This matters most on
+`sys_modules`, which is read on every authenticated page — see
+`migrations/0040_add_carousel_image_to_modules.md`.
+
+### Uploading one: send a File, not a base64 string
+
+The early image uploads pass base64 as a plain server-action argument. That works for a
+128 KB icon and **breaks for anything larger**, in two ways that both surface as
+confusing framework errors rather than validation messages:
+
+- Base64 inflates a file by ~33%, and Next's server-action body limit defaults to 1 MB —
+  so an 800 KB image failed before any of our own code ran. `next.config.ts` now sets
+  `experimental.serverActions.bodySizeLimit` to `4mb`.
+- Next serialises a long string argument into nested arrays and rejects it outright:
+  *"Maximum array nesting exceeded."* Raising the body limit does not help.
+
+**Put the `File` in a `FormData` and pass that to the action** — it streams as ordinary
+multipart with neither problem, and needs no `FileReader` in the browser. Convert to
+base64 server-side if the use-case wants it. `saveModuleCarouselImageAction` is the
+worked example. Also check the size **client-side** before uploading, so an oversized
+file is refused instantly with the app's own wording instead of a 500.

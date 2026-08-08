@@ -1,10 +1,10 @@
-import type { Module } from "./types";
+import type { ModuleSeed } from "./types";
 
 // Mirrors the seed INSERTs in migrations/0005_seed_stock_etfs_module.sql,
 // migrations/0012_seed_journal_module.sql, migrations/0020_seed_csv_analysis_module.sql,
 // and migrations/0030_seed_expense_module.sql.
 // "Reset to Default" restores the table to exactly this list — keep both in sync.
-export const DEFAULT_MODULES: Omit<Module, "id">[] = [
+export const DEFAULT_MODULES: ModuleSeed[] = [
   {
     slug: "stock-etfs",
     shortName: "Stocks & ETFs",

@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { AdminIcon } from "@/components/admin-icon";
 import { AppIcon } from "@/components/app-icon";
 import { Button } from "@/components/button";
-import { ModuleCard } from "@/components/module-card";
+import { ModuleCarousel } from "@/components/module-carousel";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { getRandomQuote } from "@/lib/daily-quote";
 import { listModules } from "@/lib/modules";
@@ -36,17 +36,22 @@ export default async function Home() {
       </div>
       <div className="mt-3 h-px w-full bg-line" />
       {quote && <DailyQuoteWidget initialQuote={quote} />}
-      <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        {modules.map((appModule) => (
-          <ModuleCard
-            key={appModule.slug}
-            name={appModule.longName}
-            description={appModule.description}
-            href={`/modules/${appModule.slug}`}
-            icon={appModule.icon}
-          />
-        ))}
-      </div>
+      {/* Plain data across the boundary — the carousel is a client island and
+          can't be handed the module records themselves. */}
+      <ModuleCarousel
+        className="mt-8"
+        modules={modules.map((appModule) => ({
+          slug: appModule.slug,
+          name: appModule.longName,
+          description: appModule.description,
+          icon: appModule.icon,
+          href: `/modules/${appModule.slug}`,
+          // A flag and a timestamp, never the bytes — the browser fetches the
+          // artwork from the image route.
+          hasImage: appModule.hasCarouselImage,
+          imageVersion: appModule.updatedAt,
+        }))}
+      />
     </div>
   );
 }

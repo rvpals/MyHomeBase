@@ -34,14 +34,17 @@ import {
   type StockTransaction,
 } from "@/lib/stock-positions";
 import { isPrimarySubject, type RawNewsStory, type TickerNewsClient } from "@/lib/ticker-news";
-import type { TickerOwnDataDeps } from "./ports";
+import type { TickerOwnDataDeps, TickerRiskCacheRepository } from "./ports";
 import {
   tickerNewsFeedSchema,
   tickerOverviewSchema,
   tickerPriceSeriesSchema,
+  tickerRiskSchema,
 } from "./schema";
 import type {
   TickerClosePoint,
+  TickerEvent,
+  TickerEventFeed,
   TickerHistoryRange,
   TickerHolding,
   TickerHoldingTotals,
@@ -216,6 +219,27 @@ export function toClosePoints(history: PricePoint[]): TickerClosePoint[] {
       closeCents: point.closeCents,
       volume: point.volume,
     }));
+}
+
+/**
+ * The close to date something to: the one on `date` itself, or failing that the
+ * last one before it.
+ *
+ * Corporate actions and reported quarters land on days the market was shut often
+ * enough that this can't be an exact match. Taking the previous close keeps every
+ * price shown against an event a real print, and returning undefined (rather than
+ * reaching *forward*) keeps it one that existed when the event did.
+ *
+ * `closes` must be oldest first — `toClosePoints` guarantees that.
+ */
+export function closeOnOrBefore(
+  closes: TickerClosePoint[],
+  date: string,
+): TickerClosePoint | undefined {
+  return (
+    closes.find((point) => point.date === date) ??
+    [...closes].reverse().find((point) => point.date <= date)
+  );
 }
 
 /** Turns provider closes into a chartable series with its window summary. */
@@ -424,17 +448,48 @@ export async function getTickerPriceSeries(
  * Volatility, the 52-week range, and correlation to the benchmark, over a year
  * of daily closes.
  *
- * The benchmark leg is best-effort: if that fetch fails the rest of the panel is
- * still worth showing, so `marketCorrelation` comes back null rather than the
- * whole call throwing. A failure to fetch the *ticker's* own history does throw —
- * there'd be nothing left to report.
+ * **Served from `cache` whenever a row exists, at any age.** Computing this costs
+ * two provider round-trips (a year of the ticker's closes, plus a year of the
+ * benchmark's), and it is not a figure that moves meaningfully between two
+ * glances at the same dialog. Nothing expires it on a timer — pass
+ * `refresh: true`, which is what the card's Recalculate button does.
+ *
+ * A refresh that fails leaves the stored row alone and returns it, so a network
+ * blip shows yesterday's answer rather than an empty card. Only a first-ever
+ * calculation, with nothing to fall back on, propagates the error.
+ *
+ * The benchmark leg is best-effort even on a successful run: if that fetch fails
+ * the rest is still worth showing, so `marketCorrelation` comes back null rather
+ * than the whole call throwing. A failure to fetch the *ticker's* own history
+ * does throw — there'd be nothing left to report.
  */
 export async function getTickerRisk(
   client: MarketDataClient,
-  input: { ticker: string },
+  cache: TickerRiskCacheRepository,
+  input: { ticker: string; refresh?: boolean },
 ): Promise<TickerRisk> {
-  const { ticker } = tickerOverviewSchema.parse(input);
+  const { ticker, refresh } = tickerRiskSchema.parse(input);
 
+  const stored = cache.get(ticker);
+  if (stored && !refresh) return stored;
+
+  try {
+    const computed = await computeTickerRisk(client, ticker);
+    cache.save(computed);
+    return computed;
+  } catch (error) {
+    // Keeping a readable old answer beats blanking the card. With no stored row
+    // there is nothing to keep, so the caller still hears about the failure.
+    if (stored) return stored;
+    throw error;
+  }
+}
+
+/** The provider round-trips and the arithmetic, with no cache in the picture. */
+async function computeTickerRisk(
+  client: MarketDataClient,
+  ticker: string,
+): Promise<TickerRisk> {
   const [history, benchmarkHistory] = await Promise.all([
     client.getHistory(ticker, RISK_RANGE, DAILY_INTERVAL),
     client
@@ -480,6 +535,133 @@ export async function getTickerRisk(
     sampleCount: closes.length,
     calculatedAt: new Date().toISOString(),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Events — the dated things that moved the price.
+// ---------------------------------------------------------------------------
+
+/** The window the Events card covers. Fixed, not tied to the chart's range. */
+const EVENTS_RANGE = "1y";
+
+/**
+ * One event in a sentence.
+ *
+ * Lives here rather than in the viewer because two places render the same
+ * events — the Events card and the trade timeline's Note column — and two
+ * copies of this phrasing would drift.
+ */
+export function describeMarketEvent(event: MarketEvent): string {
+  if (event.kind === "dividend") {
+    return event.amountCents != null
+      ? `Dividend ${formatEventCents(event.amountCents)} / share`
+      : "Dividend";
+  }
+  if (event.kind === "split") {
+    return event.ratio ? `Split ${event.ratio}` : "Split";
+  }
+  // An upcoming or unreported quarter has a date but no figures yet. Saying
+  // "Earnings" alone is the honest answer; inventing a 0 EPS is not.
+  if (event.epsActualCents == null) return "Earnings";
+  const estimate =
+    event.epsEstimateCents != null
+      ? ` vs ${formatEventCents(event.epsEstimateCents)} est.`
+      : "";
+  return `Earnings ${formatEventCents(event.epsActualCents)} EPS${estimate}`;
+}
+
+/** Cents as plain dollars. Local to the phrasing above, and sign-aware. */
+function formatEventCents(cents: number): string {
+  return `${cents < 0 ? "−" : ""}$${(Math.abs(cents) / 100).toFixed(2)}`;
+}
+
+/**
+ * Provider events worked up for display: the surprise against the estimate, and
+ * the close that day. Pure — the caller does the fetching.
+ *
+ * Newest first, which is the opposite of how the provider hands them over and of
+ * how the chart wants them. The card is read top-down for "what happened
+ * lately?", so the latest quarter belongs at the top.
+ */
+export function buildTickerEvents(
+  ticker: string,
+  events: MarketEvent[],
+  closes: TickerClosePoint[],
+): TickerEventFeed {
+  const built = events.map<TickerEvent>((event) => {
+    const date = toIsoDateLocal(new Date(event.timestamp * 1000));
+    const close = closeOnOrBefore(closes, date);
+
+    return {
+      date,
+      kind: event.kind,
+      summary: describeMarketEvent(event),
+      amountCents: event.amountCents,
+      ratio: event.ratio,
+      epsActualCents: event.epsActualCents,
+      epsEstimateCents: event.epsEstimateCents,
+      ...earningsSurprise(event),
+      closeCents: close?.closeCents,
+      // Only worth saying when the close came from a different day.
+      closeDate: close && close.date !== date ? close.date : undefined,
+    };
+  });
+
+  return {
+    ticker,
+    events: built.sort((a, b) => b.date.localeCompare(a.date)),
+    closesUnavailable: closes.length === 0,
+  };
+}
+
+/** The beat/miss arithmetic, for an earnings event that has both figures. */
+function earningsSurprise(
+  event: MarketEvent,
+): Pick<TickerEvent, "epsSurpriseCents" | "epsSurprisePct" | "outcome"> {
+  if (
+    event.kind !== "earnings" ||
+    event.epsActualCents == null ||
+    event.epsEstimateCents == null
+  ) {
+    return {};
+  }
+
+  const epsSurpriseCents = event.epsActualCents - event.epsEstimateCents;
+
+  return {
+    epsSurpriseCents,
+    // Against the estimate's *magnitude*, so a beat against a forecast loss
+    // reads as positive rather than having its sign flipped by the divisor.
+    epsSurprisePct:
+      event.epsEstimateCents !== 0
+        ? (epsSurpriseCents / Math.abs(event.epsEstimateCents)) * 100
+        : undefined,
+    outcome: epsSurpriseCents > 0 ? "beat" : epsSurpriseCents < 0 ? "miss" : "inline",
+  };
+}
+
+/**
+ * Dividends, splits and reported quarters over the last year, each with the
+ * close it happened against.
+ *
+ * Two legs, and the closes one is best-effort: an event list with no prices
+ * beside it is still worth reading, so a history failure sets
+ * `closesUnavailable` rather than throwing. An empty list is a normal answer —
+ * plenty of tickers pay nothing and never split.
+ */
+export async function getTickerEvents(
+  events: MarketEventsClient,
+  marketData: MarketDataClient,
+  input: { ticker: string },
+): Promise<TickerEventFeed> {
+  const { ticker } = tickerOverviewSchema.parse(input);
+
+  const [eventList, history] = await Promise.all([
+    events.getEvents(ticker, EVENTS_RANGE),
+    marketData.getHistory(ticker, EVENTS_RANGE, DAILY_INTERVAL).catch((): PricePoint[] => []),
+  ]);
+
+  return buildTickerEvents(ticker, eventList, toClosePoints(history));
 }
 
 /**
@@ -639,9 +821,7 @@ export function buildTradeTimeline(
     const eventDate = toIsoDateLocal(new Date(event.timestamp * 1000));
     // The exact day where possible; otherwise the last close on or before it,
     // so an event dated to a holiday still lands somewhere true.
-    const close =
-      ordered.find((point) => point.date === eventDate) ??
-      [...ordered].reverse().find((point) => point.date <= eventDate);
+    const close = closeOnOrBefore(ordered, eventDate);
 
     if (!close) {
       unplottedEventCount += 1;

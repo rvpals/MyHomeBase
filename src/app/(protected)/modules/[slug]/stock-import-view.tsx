@@ -13,7 +13,13 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { CSV_MAPPING_OPTION_INPUT_CLASS, CsvMappingTable } from "@/components/csv-mapping-table";
 import { FileDropzone } from "@/components/file-dropzone";
-import { constantValuesByField, mapRow } from "@/lib/csv-import";
+import {
+  assignFieldToColumn,
+  constantValuesByField,
+  findDuplicateFieldMappings,
+  mapRow,
+  restrictMappingToColumns,
+} from "@/lib/csv-import";
 import type {
   AccountNameMapping,
   ColumnMapping,
@@ -153,6 +159,8 @@ export function StockImportView({ accounts }: { accounts: ImportAccountOption[] 
   const [namedMappings, setNamedMappings] = useState<NamedMapping[]>([]);
   const [selectedMappingId, setSelectedMappingId] = useState<number | undefined>(undefined);
   const [mappingName, setMappingName] = useState("");
+  /** Set when a remembered mapping didn't fit this file, so the reader is told. */
+  const [mappingNotice, setMappingNotice] = useState<string | undefined>(undefined);
   const [targetAccountId, setTargetAccountId] = useState<number>(UNASSIGNED_ACCOUNT_ID);
   const [accountStep, setAccountStep] = useState<
     | {
@@ -193,6 +201,7 @@ export function StockImportView({ accounts }: { accounts: ImportAccountOption[] 
     setNamedMappings([]);
     setSelectedMappingId(undefined);
     setMappingName("");
+    setMappingNotice(undefined);
     setAccountStep(undefined);
     setAccountNameMapping({});
     setSavedAccountMatches({});
@@ -216,9 +225,26 @@ export function StockImportView({ accounts }: { accounts: ImportAccountOption[] 
       setFileText(text);
       setFileName(name);
       setPreview(result.preview);
-      // The saved mapping for this type wins over the header guess; the guess is
-      // already filtered to fields this type understands.
-      setMapping(result.currentMapping ?? result.preview.autoMapping);
+
+      // The remembered default is only usable if it was built for a file this
+      // shape. A mapping is stored as column *index* -> field, so one made for a
+      // 70-column export points at columns this file doesn't have — invisible in
+      // the table below, but still applied. Fall back to the header guess and
+      // say so, rather than silently reading the wrong columns.
+      const columnCount = result.preview.headers.length;
+      const remembered = result.currentMapping;
+      const fitted = remembered ? restrictMappingToColumns(remembered, columnCount) : undefined;
+      const fits =
+        remembered !== undefined &&
+        fitted !== undefined &&
+        Object.keys(fitted).length === Object.keys(remembered).length;
+
+      setMapping(fits ? (fitted as ColumnMapping) : result.preview.autoMapping);
+      setMappingNotice(
+        remembered && !fits
+          ? "The remembered mapping was built for a file with different columns, so the header guess is being used instead. Check it before importing."
+          : undefined,
+      );
       setNamedMappings(result.namedMappings ?? []);
       setSelectedMappingId(undefined);
       setMappingName("");
@@ -260,12 +286,10 @@ export function StockImportView({ accounts }: { accounts: ImportAccountOption[] 
 
   function updateMapping(columnIndex: number, field: string) {
     const key = String(columnIndex);
-    setMapping((current) => {
-      const next = { ...current };
-      if (field === "") delete next[key];
-      else next[key] = field;
-      return next;
-    });
+    // Claiming a field releases it from wherever else it was pointed. Two
+    // columns feeding one field is never intended and fails silently — mapRow
+    // writes in ascending column order, so the higher index just wins.
+    setMapping((current) => assignFieldToColumn(current, columnIndex, field));
     // The old field's options are meaningless under a new field.
     setFieldOptions((current) => {
       const next = { ...current };
@@ -296,7 +320,17 @@ export function StockImportView({ accounts }: { accounts: ImportAccountOption[] 
   function loadMapping(id: number) {
     const named = namedMappings.find((entry) => entry.id === id);
     if (!named) return;
-    setMapping(named.columnMapping);
+    // Same guard as a fresh preview: a saved mapping can outlive the export
+    // shape it was made for.
+    const columnCount = preview?.headers.length ?? 0;
+    const fitted = restrictMappingToColumns(named.columnMapping, columnCount);
+    const droppedCount = Object.keys(named.columnMapping).length - Object.keys(fitted).length;
+    setMapping(fitted);
+    setMappingNotice(
+      droppedCount > 0
+        ? `"${named.name}" refers to ${droppedCount} column(s) this file doesn't have; those were dropped. Check the mapping before importing.`
+        : undefined,
+    );
     setFieldOptions(named.fieldOptions);
     setSavedAccountMatches(named.accountNameMapping);
     setSelectedMappingId(named.id);
@@ -412,6 +446,7 @@ export function StockImportView({ accounts }: { accounts: ImportAccountOption[] 
   }
 
   const mappedFieldCount = Object.keys(mapping).length;
+  const duplicateFields = findDuplicateFieldMappings(mapping);
   const rowsToImport = (preview?.totalRows ?? 0) - excludedRows.size;
 
   // The per-row Type column only makes sense for a positions import.
@@ -519,6 +554,29 @@ export function StockImportView({ accounts }: { accounts: ImportAccountOption[] 
               </label>
             )}
           </div>
+
+          {mappingNotice && (
+            <p className="mb-3 rounded-md border border-line bg-brass-soft p-3 text-sm text-brass-dark">
+              {mappingNotice}
+            </p>
+          )}
+
+          {/* Belt and braces behind assignFieldToColumn: if a duplicate ever
+              reaches this state again, it is named and the import is blocked,
+              because the failure is a plausible number from the wrong column. */}
+          {duplicateFields.length > 0 && (
+            <p className="mb-3 rounded-md border border-red-400 p-3 text-sm text-red-400">
+              {duplicateFields
+                .map(
+                  (duplicate) =>
+                    `"${duplicate.field}" is mapped from ${duplicate.columnIndexes.length} columns (${duplicate.columnIndexes
+                      .map((index) => preview?.headers[index] ?? `column ${index}`)
+                      .join(", ")})`,
+                )
+                .join("; ")}
+              . Each field must come from exactly one column — fix this before importing.
+            </p>
+          )}
 
           <CsvMappingTable
             className="max-h-[32rem]"
@@ -742,7 +800,9 @@ export function StockImportView({ accounts }: { accounts: ImportAccountOption[] 
             <div>
               <Button
                 onClick={handleImportClick}
-                disabled={isBusy || mappedFieldCount === 0 || rowsToImport === 0}
+                disabled={
+                  isBusy || mappedFieldCount === 0 || rowsToImport === 0 || duplicateFields.length > 0
+                }
               >
                 {isBusy ? "Importing…" : `Import ${rowsToImport} row(s)`}
               </Button>

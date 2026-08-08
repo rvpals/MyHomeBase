@@ -116,6 +116,70 @@ export function restrictMapping(
 }
 
 /**
+ * Drops entries pointing at columns this file doesn't have.
+ *
+ * A mapping is stored as *column index* -> field, with no record of the file it
+ * was built against. Applied to a narrower export, the out-of-range entries are
+ * invisible — the mapping table only draws a control per column that exists — but
+ * they are still applied, still saved, and still silently claim fields. That is
+ * how a 70-column mapping quietly rewrote a 16-column import.
+ */
+export function restrictMappingToColumns(
+  columnMapping: ColumnMapping,
+  columnCount: number,
+): ColumnMapping {
+  return Object.fromEntries(
+    Object.entries(columnMapping).filter(([columnIndex]) => {
+      const index = Number(columnIndex);
+      return Number.isInteger(index) && index >= 0 && index < columnCount;
+    }),
+  );
+}
+
+/**
+ * Fields claimed by more than one column, with the columns that claim them.
+ *
+ * Two columns feeding one field is never intentional, and it fails in the worst
+ * way: `mapRow` writes them in ascending column order, so the *higher* index
+ * silently wins and the reader sees a plausible number from the wrong column.
+ */
+export function findDuplicateFieldMappings(
+  columnMapping: ColumnMapping,
+): { field: string; columnIndexes: number[] }[] {
+  const columnsByField = new Map<string, number[]>();
+  for (const [columnIndex, field] of Object.entries(columnMapping)) {
+    columnsByField.set(field, [...(columnsByField.get(field) ?? []), Number(columnIndex)]);
+  }
+
+  return [...columnsByField.entries()]
+    .filter(([, columnIndexes]) => columnIndexes.length > 1)
+    .map(([field, columnIndexes]) => ({ field, columnIndexes: [...columnIndexes].sort((a, b) => a - b) }));
+}
+
+/**
+ * Points `field` at `columnIndex` and at nothing else.
+ *
+ * A target field can only be read from one column, so choosing it somewhere new
+ * has to release it everywhere else — otherwise the two coexist and the higher
+ * index wins by accident. Passing an empty `field` just clears the column.
+ */
+export function assignFieldToColumn(
+  columnMapping: ColumnMapping,
+  columnIndex: number | string,
+  field: string,
+): ColumnMapping {
+  const key = String(columnIndex);
+  const next: ColumnMapping = {};
+  for (const [existingKey, existingField] of Object.entries(columnMapping)) {
+    if (existingKey === key) continue;
+    if (field !== "" && existingField === field) continue;
+    next[existingKey] = existingField;
+  }
+  if (field !== "") next[key] = field;
+  return next;
+}
+
+/**
  * Splits one cell into a list of values. A blank or whitespace delimiter splits
  * on runs of whitespace (e.g. space-separated tags); any other delimiter is used
  * literally (e.g. "," for comma-separated categories). Result values are trimmed

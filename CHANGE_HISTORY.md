@@ -1,11 +1,193 @@
 # Change History
 
+## 2026-08-06 23:54 — Ticker viewer rebuilt as cards, a home carousel, and two silent Yahoo bugs
+
+**Two migrations in this release**, both already applied to production:
+`0039_create_ticker_risk_cache` and `0040_add_carousel_image_to_modules`.
+
+### [Changed] The ticker dialog is three tabs of cards, not nested tabs
+
+Every tab used to hold a second tab strip. Sub-tabs hid sections a reader wanted side
+by side — holdings against the trade history, the chart against the quote — and gave no
+clue which ones had anything in them. Each tab is now a stack of `CollapsibleCard`s:
+**Our data** (Holdings / Transactions / Watchlist & income), **Market** (Quote / Price
+History / Events / Risks / News), and a new **Yahoo Finance Detail**.
+
+Loading moved with it: it's per *tab*, not per card, so scrolling never meets a card
+that hasn't started. One consequence worth knowing — the trade-timeline chart now loads
+on dialog open rather than on a tab click, since it lives on the default tab. Nothing
+blocks on it, but it is one provider round-trip per open that wasn't paid before.
+
+### [Added] Events — what actually moved the price
+
+Dividends, splits and reported quarters over the trailing year, newest first, each with
+the close it happened against and a beat/miss verdict against the estimate. A row
+expands in place to the full record. An event dated to a closed market takes the last
+close before it, and says so, so every price shown is a real print.
+
+### [Changed] Risk is cached, and only Recalculate refreshes it
+
+`getTickerRisk` made **two** provider round-trips every single time the panel was shown
+— a year of the ticker's closes plus a year of the benchmark's — and kept nothing.
+Reopening the same ticker three times in a morning paid for it three times.
+
+Now stored in `stk_ticker_risk_cache` (0039) and served **at any age**. Nothing expires
+it; the only thing that refetches is the **Recalculate** button in the card header. That
+was a deliberate choice over a TTL — provider traffic is fully predictable — and the
+cost is that the card must state its age, so it prints `Calculated <date>` and turns
+amber past a week. A failed recalculation keeps the stored row rather than blanking a
+readable answer.
+
+Deliberately **not** `stk_stock_volatility_cache`, which looks like the same thing: that
+table is cleared wholesale by the analytics dashboard, so a per-ticker write there would
+vanish on the next refresh.
+
+### [Added] Yahoo Finance Detail — six sections, one request
+
+Market Data, Company Profile, Analysis recommendations, Valuation & Trading, Financials
+and Key statistics. `quoteSummary` takes a module list, so all six cost a single
+round-trip. Coverage varies enormously by symbol, so each section renders only the
+fields that came back and says "the provider reports no …" for a whole missing module
+rather than drawing a grid of dashes — checked against an ETF, which has no company and
+no income statement.
+
+### [Fixed] Two silent bugs in the Yahoo client
+
+Found while building Events, which came back with **no earnings at all**. Both failed
+quietly because the earnings leg is `.catch(() => [])`:
+
+- **No `User-Agent`.** Yahoo's crumb endpoint answers **429** to Node's default agent
+  string. No crumb means the v10 `quoteSummary` endpoints 401.
+- **A race on the crumb refresh.** Opening the dialog fires several use-cases at once,
+  two of which reach `quoteSummary`. Both found no crumb, both refreshed, and the second
+  overwrote the cookie the first was mid-flight with — Yahoo pairs the two, so both
+  401'd. This is why earnings worked when probed alone and vanished whenever anything
+  ran alongside. `refreshCrumb` is now single-flight.
+
+The dividend-rate fallback was silently returning 0 for the same reason. Covered by the
+module's first adapter-level tests, against a stubbed `fetch`.
+
+### [Added] The dialog is a floating window
+
+`Modal` gained `size="window"`: 80% of the viewport, draggable by its header, with a
+maximize button that swaps to the old full-bleed treatment and back. Still a modal —
+overlay, Escape, focus trap and scroll lock unchanged. The drag is clamped so the header
+can never leave the screen, since it is the only handle.
+
+### [Added] The section tree hides to a strip
+
+`TreeNav` now has the same three states as `Sidebar`: `full` (icon + label) → `rail`
+(icons) → `strip` (an accent edge you click to bring it back), with the same two
+controls. Its stored value used to be a boolean, so the reader maps the legacy value
+rather than springing every collapsed tree open on first load.
+
+### [Changed] The home screen is a carousel
+
+The grid of `ModuleCard`s is gone, replaced by a coverflow: the selected module's
+graphic large and centred, neighbours scaled down either side, **title above the image
+and description below**, and the centred graphic as the launch target. It rotates by
+arrow, keyboard, dot, neighbour click or swipe, and wraps. It does not auto-advance.
+
+`ModuleCard` was deleted with its last caller.
+
+### [Added] Modules can carry their own artwork
+
+`sys_modules.carousel_image` (0040), uploaded per module at Admin → Configuration →
+Modules, falling back to the icon glyph when unset.
+
+**This table is read on every authenticated page** — `listModules` in the protected
+layout, `getModuleBySlug` on every module route — and both were `SELECT *`. A BLOB there
+would have loaded a multi-megabyte image into every page render in the app for a value
+no page uses. Both now name their columns, and presence is derived in SQL
+(`carousel_image IS NOT NULL AS has_carousel_image`) so a boolean crosses the boundary
+and the bytes have exactly one reader: the serving route.
+
+### [Fixed] Image uploads: send a File, not a base64 argument
+
+The existing image uploads pass base64 as a server-action argument. That works for a
+128 KB icon and breaks for anything larger, in two ways that both surfaced as framework
+errors rather than validation messages: base64 inflates a file ~33% against Next's 1 MB
+body limit (an **800 KB** image already failed), and Next rejects long string arguments
+outright with *"Maximum array nesting exceeded"* — raising the body limit doesn't help.
+
+The module upload puts the `File` in `FormData`, which streams as ordinary multipart
+with neither problem. `bodySizeLimit` is now 4 MB, and the size is checked client-side
+so an oversized file is refused instantly in the app's own words. Written up in
+`coding-guide.md`, since the four earlier uploads will hit the same wall.
+
+### [Fixed] A stale `.next` could fail the build
+
+`npm run build` inherited dev artifacts: `tsconfig.json` typechecks
+`.next/dev/types/**`, and those generated route types outlive a deleted page — so a
+build failed importing `admin/history/page.js`, a route removed in this same release.
+`build` and `verify` both clear `.next` first now, and `verify` does it *before* the
+typecheck rather than before the browser sweep, where the same artifact could fail
+stage one.
+
+### [Fixed] CSV import can no longer claim columns a file doesn't have
+
+A mapping is stored as *column index → field* with no record of the file it was built
+against. Applied to a narrower export, out-of-range entries were invisible — the mapping
+table only draws a control per column that exists — but still applied and still saved.
+That is how a 70-column mapping quietly rewrote a 16-column import.
+`restrictMappingToColumns` drops them, and `findDuplicateFieldMappings` catches two
+columns feeding one field, which fails in the worst way: `mapRow` writes in ascending
+column order, so the higher index silently wins and the reader sees a plausible number
+from the wrong column.
+
+### [Changed] Change History moved into About
+
+`/admin/history` is gone; **About** now reads and renders `CHANGE_HISTORY.md` itself, so
+there is one page about the application rather than two. The file read moved behind a
+`src/lib/change-history` repository rather than sitting in the page.
+
+### [Added] The app runs on a Synology NAS
+
+`npm run publish:nas` builds a copy-only deployment package, and
+`INSTRUCTION_SETUP_SYNOLOGY.md` is the runbook — DSM certificate and reverse proxy, SSH
+user, data move, boot/keepalive tasks, and the six failures the first install actually
+hit.
+
+Everything is built on Windows because the target is a DS223: 2 GB of RAM, a quad
+Cortex-A55, already swapping at idle. `next build` there would thrash and be OOM-killed.
+That works because the app has exactly **one** native module that matters —
+`better-sqlite3`, whose arm64 binary is a published prebuild, so it is downloaded rather
+than compiled. (`sharp` is in the tree but never loads: nothing imports `next/image`,
+and it isn't even a declared dependency.) The migration runner is bundled to plain CJS
+so the NAS needs no `tsx`, which would have dragged in esbuild's own platform binary.
+
+Two things the script has to do that aren't obvious. Turbopack rewrites
+`require("better-sqlite3")` to a hash-suffixed name and satisfies it with a **symlink to
+an absolute Windows path** — dead the moment the folder leaves the machine, and the
+cause of a `Cannot find module 'better-sqlite3-<hash>'` crash on first boot. And the
+driver exists in **two** places in the tree, both needing the arm64 swap. The script
+materialises every symlink, patches every copy, verifies each is an AArch64 ELF, and
+refuses to finish otherwise.
+
+**HTTPS is a prerequisite, not a nicety.** The session cookie is `Secure` in production,
+and browsers reject those from a non-trustworthy origin — so over `http://<lan-ip>` you
+log in, land on the home page, and bounce back to the login screen on the first tap.
+Measured both ways before writing any of it down.
+
+### [Fixed] The build was shipping a database and a .env
+
+`.next/standalone` contains `data/myhomebase.db` and `.env` after every build. Next
+traces them because the build opens the database while collecting page data, and
+`outputFileTracingExcludes` does **not** stop it — verified on Next 16.2, with and
+without a leading `**/` on the patterns.
+
+The size is not the problem. `wiring.ts` falls back to `./data/myhomebase.db` when
+`MYHOMEBASE_DB` is unset, so a shipped database means a misconfigured deploy silently
+serves stale data instead of failing loudly. `publish:nas` deletes both from the
+assembled output; the note in `next.config.ts` now says the exclusion doesn't work
+rather than implying it does.
+
 ## 2026-08-05 23:39 — Sidebar strip, remembered account matching, and three new views
 
 Five separate pieces. **No migration in this release** — the one schema-shaped change
 needed none, for the reason below.
 
-### The sidebar hides to its accent strip
+### [Added] The sidebar hides to its accent strip
 
 A third state. `full` (labels) → `rail` (icons) → **`strip`**, where the slab is gone
 and only its 12px accent edge is left; clicking the edge brings the rail back. The
@@ -27,7 +209,7 @@ runs. That script mutates `<html>`, which is why the root layout now sets
 In `strip` the slab isn't rendered at all, merely narrowed to zero: a hidden sidebar
 you can still Tab into is worse than no sidebar.
 
-### CSV import remembers which account a label means
+### [Added] CSV import remembers which account a label means
 
 The account-matching dialog already existed; what was missing was memory. A saved
 mapping now stores it, so `Fidelity HSA` → *Fidelity Health Savings Account* is
@@ -53,7 +235,7 @@ silently drops rows. Worth knowing: `Fidelity HSA` does **not** guess to *Fideli
 Health Savings Account*; HSA is an initialism, not a substring. That is exactly the
 case remembering exists for, and an honest "Skipped" beats a confident wrong guess.
 
-### Account Performance Over Time
+### [Added] Account Performance Over Time
 
 A new card in Account Performance: every account's recorded value on one set of axes,
 with a chip per account that drops its line. The table and the **Total recorded**
@@ -77,7 +259,7 @@ it knows what happened in between.
 `ChartLine` gained `connectNulls`, `curve` and `showLegend` to support this, all
 defaulting to the previous behaviour so no existing chart changed.
 
-### Daily Glance: one table instead of three tiles
+### [Changed] Daily Glance: one table instead of three tiles
 
 Stock, ETF and Other are now rows in a single table — Value, Today, % — with the
 portfolio **Total** row that was already computed and simply wasn't shown. Reading
@@ -86,7 +268,7 @@ the same measurement down a column is the point; tiles made you scan sideways.
 Also fixed: `gainClass` treated `0` as a gain, so an empty bucket rendered `+$0.00`
 in gain-green. Zero is now neutral.
 
-### Positions: split by instrument type
+### [Changed] Positions: split by instrument type
 
 Three tabs with counts — `Stocks` / `ETF` / `Others`. The split reuses
 `snapshotBucketFor`, the same function behind the Daily Glance table and the daily
@@ -106,7 +288,7 @@ Four separate bodies of work, released together.
 It adds two columns to `stk_stock_transactions` and replaces that table's unique
 index.
 
-### The ticker viewer — everything about one symbol, in one dialog
+### [Added] The ticker viewer — everything about one symbol, in one dialog
 
 Clicking a ticker anywhere in the module — Positions, Transactions, a watch list, a
 Daily Glance mover, or any of the three Chart & Analysis grids — opens a full-screen
@@ -126,7 +308,7 @@ market use-cases never touch the database.
   rather than zero, which is the honest answer rather than a missing one.
 - Reachable from the CLI as well: `npm run cli ticker-overview -- AAPL [--market]`.
 
-### My past performance — trades against the market around them
+### [Added] My past performance — trades against the market around them
 
 Inside the Transactions tab, every trade is plotted against the provider's closing
 price on the trading day **either side** of it, ending at the latest close. A trade
@@ -150,7 +332,7 @@ what make the chart worth reading.
 - One history call, one news call and one events call, however many trades there are.
   Both extras fail independently; neither loses you the chart.
 
-### Migration 0038 — brokerage firm, broker reference, and honest duplicate detection
+### [Fixed] Migration 0038 — brokerage firm, broker reference, and honest duplicate detection
 
 Adds `brokerage_firm` and `external_id` to `stk_stock_transactions`, both
 `TEXT NOT NULL DEFAULT ''`.
@@ -174,7 +356,7 @@ intended — the app can't know whether you meant it. Production held 0 transact
 so nothing was back-filled. Generalised into `coding-guide.md` as a rule: never put a
 DATE column in a unique index.
 
-### A verification gate
+### [Added] A verification gate
 
 `npm run verify` (or `/verify`) runs every quality gate in order, cheapest first:
 typecheck → lint + library boundary → unit tests → migration dry-run against a *copy*
@@ -188,7 +370,7 @@ cleared.
 - A UI change that "isn't taking effect" is a stale `.next` cache until proven
   otherwise — the gate clears it rather than leaving it to memory.
 
-### Stocks dashboard widgets
+### [Added] Stocks dashboard widgets
 
 New `src/lib/stock-dashboard` module: which cards appear on the module's dashboard and
 in what order, as a persisted per-user preference, configured under Configuration →
@@ -196,17 +378,17 @@ Dashboard widgets.
 
 ### Also in this release
 
-- **`Modal` gained `size="full"`** — edge to edge, no gutter, no rounding, for a dialog
+- [Added] **`Modal` gained `size="full"`** — edge to edge, no gutter, no rounding, for a dialog
   that is a screen in its own right. Escape, the ✕, the focus trap and the body-scroll
   lock all behave identically, so it returns you to what's underneath.
-- **A second `market-data` port, `MarketEventsClient`**, for dividends/splits/earnings,
+- [Added] **A second `market-data` port, `MarketEventsClient`**, for dividends/splits/earnings,
   rather than a third method on `MarketDataClient` — prices and events are fetched
   independently, and folding it in would force every existing fake to implement a
   method it never calls. `YahooFinanceClient` implements both, and the crumb/cookie
   dance was factored out so the earnings call reuses it.
-- `ChartXY` no longer resets its zoom window in an effect, which was committing one
+- [Fixed] `ChartXY` no longer resets its zoom window in an effect, which was committing one
   frame of the old window against new data.
-- `MARKET_BENCHMARK_TICKER` is exported from `stock-analytics`, so the viewer's
+- [Changed] `MARKET_BENCHMARK_TICKER` is exported from `stock-analytics`, so the viewer's
   per-ticker correlation measures against the same SPY the portfolio matrix does
   instead of duplicating the constant.
 
@@ -218,7 +400,7 @@ module's single scrolling page becomes eight routed sections.
 **Migrations in this release — 0035, 0036 and 0037 must be applied before the app
 is served**, or the affected screens fail with "no such column".
 
-### Migration 0035 — cost basis, identifiers, and an owning account on positions
+### [Added] Migration 0035 — cost basis, identifiers, and an owning account on positions
 
 `stk_stock_positions` is rebuilt (not `ALTER`ed): its primary key moves from
 `ticker` to **`(account_id, ticker)`**, and ten columns are added.
@@ -246,7 +428,7 @@ is served**, or the affected screens fail with "no such column".
   `account_id` leading the primary key, "who holds NVDA" no longer has a usable key
   prefix.
 
-### Migration 0036 — daily portfolio snapshots
+### [Added] Migration 0036 — daily portfolio snapshots
 
 New `stk_daily_snapshots`, one row per calendar day, `snapshot_date` as the primary
 key so a capture **upserts**: pressing Refresh All twice in a day recalculates that
@@ -264,7 +446,7 @@ day rather than appending.
   was held back then — and a day with no capture has no row. The period rollups
   report the day count they actually had rather than inventing a flat day.
 
-### Migration 0037 — an icon per investment account
+### [Added] Migration 0037 — an icon per investment account
 
 `stk_investment_accounts` gains `icon_image` (BLOB) + `icon_image_mime_type`,
 following `sys_users.avatar` (0011), `exp_creditcard_accounts.card_image` (0031)
@@ -277,7 +459,7 @@ and `exp_categories.icon_image` (0034).
 - 128 KB cap, PNG/JPEG/WebP/GIF only. **SVG is excluded**: it can carry script and
   these bytes are served from the app's own origin.
 
-### The module is now eight routed sections
+### [Changed] The module is now eight routed sections
 
 `TreeNav` down the left, exactly like Expense — each section a real route, so it's
 bookmarkable and highlights on `pathname`:
@@ -298,7 +480,7 @@ Chart & Analysis · CSV Import · Configuration
   real content: the three scan thresholds are now editable in-module, writing the
   same module settings Administration → Module Configuration writes.
 
-### Dashboard: Portfolio Summary, Daily Glance, and Refresh All
+### [Added] Dashboard: Portfolio Summary, Daily Glance, and Refresh All
 
 - **Refresh All** walks positions one at a time *from the client*, showing a live
   line per ticker ("NVDA — today's price is $220.15") and a progress bar. A single
@@ -325,7 +507,7 @@ Chart & Analysis · CSV Import · Configuration
   basis has a value but no return, and the dashboard says so rather than printing a
   fake 0.00%.
 
-### Per-ticker news
+### [Added] Per-ticker news
 
 New `src/lib/ticker-news/`, over Yahoo Finance's unauthenticated search endpoint
 (same host as the existing quote client, no API key).
@@ -343,7 +525,7 @@ New `src/lib/ticker-news/`, over Yahoo Finance's unauthenticated search endpoint
 - Tickers are validated against `^[A-Za-z0-9.\-^]+$` before reaching the provider
   URL.
 
-### CSV import, rebuilt
+### [Changed] CSV import, rebuilt
 
 One screen with a type selector (Positions / Transactions / Account Performance)
 replacing three stacked panels. `ImportType` already had all three values, so no
@@ -379,7 +561,7 @@ enum change was needed.
   row's **original** number — filtering and re-indexing would have reported a
   failure on the file's row 4 as "row 2".
 
-### Refactors this pulled in
+### [Changed] Refactors this pulled in
 
 - **`src/lib/shared/image-upload.ts`** — `decodeImageUpload` and the mime allowlist
   were private to `lib/expense`; the account icon made them a second caller.
@@ -443,7 +625,7 @@ accounts, `integrity_check` ok.
 
 No schema changes in this release — every DB-backed piece rides on existing tables.
 
-### Layout: one page width, and the sidebar floats over it
+### [Changed] Layout: one page width, and the sidebar floats over it
 
 - **Every full-page screen now shares one container**, `PAGE_CONTAINER` in
   `src/app/(protected)/page-container.ts` (`mx-auto w-full max-w-[160rem]`).
@@ -472,7 +654,7 @@ No schema changes in this release — every DB-backed piece rides on existing ta
   - Collapsed, the header is only the toggle. The app glyph on its own did
     nothing — not a link, and it read as a duplicate of the Home icon below it.
 
-### Chevrons, and per-tree collapse state
+### [Changed] Chevrons, and per-tree collapse state
 
 - `TreeNav`'s panel toggle and `Sidebar`'s were `«`/`»`; both are now the same
   `&rsaquo;` chevron the node rows and `CollapsibleCard` already use, rotated 180°
@@ -485,7 +667,7 @@ No schema changes in this release — every DB-backed piece rides on existing ta
 - The Expense nav wrapper lost its `lg:w-64`: a collapsible `TreeNav` owns its
   width (`w-64` → `w-16`), and a fixed width on the wrapper pins the rail open.
 
-### Expense: "Interesting stats" on the dashboard
+### [Added] Expense: "Interesting stats" on the dashboard
 
 - New collapsible card showing **top 5 spenders by vendor** and **top 5 by
   category**, side by side. It replaces the standalone "Top categories" section,
@@ -506,7 +688,7 @@ No schema changes in this release — every DB-backed piece rides on existing ta
   re-read the table); `totalsByVendor` is the repo-backed use-case. No new port
   method — the fuzzy match is text work, not SQL. 15 colocated tests.
 
-### Expense: "Automatic importing csv from folder" switch
+### [Added] Expense: "Automatic importing csv from folder" switch
 
 - A master switch for the background importer, stored as the module setting
   `csv_autoimport_enabled`. Off means the scheduler never imports, whatever the
@@ -524,7 +706,7 @@ No schema changes in this release — every DB-backed piece rides on existing ta
   `isAutoImportEnabled`, and it re-reads settings every tick, so flipping the
   switch takes effect within a minute with no restart.
 
-### Two CLI commands
+### [Added] Two CLI commands
 
 - `npm run cli expense-top-spenders -- --limit 10` — the same two rollups the
   dashboard card shows, for eyeballing the vendor grouping against real data.
@@ -548,7 +730,7 @@ No schema changes in this release — every DB-backed piece rides on existing ta
 
 Four independent pieces of work that were in the tree together at this checkpoint.
 
-### Expense: category icons (migration 0034)
+### [Added] Expense: category icons (migration 0034)
 
 - Each category can carry a small uploaded image, shown wherever the category
   appears: the picker on the transaction form and the bulk-edit dialog, the
@@ -570,7 +752,7 @@ Four independent pieces of work that were in the tree together at this checkpoin
 - The category list under Meta Data is now a row per category rather than chips —
   a chip had no room for the icon controls.
 
-### New component: `IconSelect`
+### [Added] New component: `IconSelect`
 
 - A combobox whose options carry an image, because neither `<select>` nor
   `<datalist>` can render one — which is what the three category pickers needed.
@@ -578,7 +760,7 @@ Four independent pieces of work that were in the tree together at this checkpoin
   typing still filters *and* commits, so naming a brand-new category on a
   transaction or a rule keeps auto-registering it. Registered in `components.md`.
 
-### Stocks: ticker logos (migration 0033)
+### [Added] Stocks: ticker logos (migration 0033)
 
 - `stk_ticker_logos` caches logo bytes in the DB; `/api/stocks/tickers/[ticker]/logo`
   downloads on first request and serves from cache afterwards. A "nothing found"
@@ -587,7 +769,7 @@ Four independent pieces of work that were in the tree together at this checkpoin
   case for ETFs), used across the positions, transactions, watch list, analytics
   and next-day-actions grids.
 
-### DataGrid: filter expressions, aggregates, and a shared `Modal`
+### [Added] DataGrid: filter expressions, aggregates, and a shared `Modal`
 
 - Column filters understand comparison and range expressions
   (`parseFilterExpression` in `src/lib/shared/table.ts`).
@@ -597,7 +779,7 @@ Four independent pieces of work that were in the tree together at this checkpoin
 - Dialog markup extracted into a registered `Modal` component (overlay, Esc and
   focus handling) and adopted by the views that had hand-rolled it.
 
-### Three more themes, three more icon sets
+### [Added] Three more themes, three more icon sets
 
 - Themes: **Sea Glass** (second light theme), **Midnight Slate**, **Copper Vault**.
 - Icon sets: **Tabler**, **Material Symbols**, **MingCute**, with glyphs baked by
@@ -605,7 +787,7 @@ Four independent pieces of work that were in the tree together at this checkpoin
 
 ## 2026-08-02 23:28 — Expense: automatic CSV import, post-import processing, tree-nav overhaul
 
-### Automatic CSV import
+### [Added] Automatic CSV import
 
 - Two module settings (`csv_autoimport_path`, `csv_autoimport_interval_minutes`)
   and a background runner armed from `src/instrumentation.ts` at server startup.
@@ -623,7 +805,7 @@ Four independent pieces of work that were in the tree together at this checkpoin
 - File access sits behind a `CsvFolderPort`, so the whole flow is tested with an
   in-memory folder against a real in-memory SQLite built from the migrations.
 
-### Post Import Processing (migration 0032)
+### [Added] Post Import Processing (migration 0032)
 
 - Transactions gain **`vendor`** (the tidy name) and **`processed`** (the
   clean-up queue, indexed).
@@ -641,7 +823,7 @@ Four independent pieces of work that were in the tree together at this checkpoin
   edits are never overwritten and re-running is safe. Rows nothing matched are
   still marked processed.
 
-### Interface overhaul
+### [Changed] Interface overhaul
 
 - The module is now a **`TreeNav` of six sections**, each a real bookmarkable
   route: Main (Dashboard), Transactions, Meta Data, Charts and Analysis, Import
@@ -655,7 +837,7 @@ Four independent pieces of work that were in the tree together at this checkpoin
   a large display as empty margin.
 - Added `list`, `chart` and `upload` glyphs to `tree-icons.tsx`.
 
-### Fix: client/server boundary crash
+### [Fixed] Fix: client/server boundary crash
 
 - Section constants were exported from the `"use client"` nav module and read by
   server components, which receive **client-reference proxies** rather than real
@@ -666,7 +848,7 @@ Four independent pieces of work that were in the tree together at this checkpoin
 
 ### Also
 
-- `START_PRD_SYN.bat` — a Synology/DSM production start script (bash, despite the
+- [Added] `START_PRD_SYN.bat` — a Synology/DSM production start script (bash, despite the
   name, for consistency with `START_PRD.bat`): finds node when Task Scheduler
   gives it a bare PATH, loads `.env` itself, binds `0.0.0.0`, checks the database
   path before starting, frees the port, and rotates its log. Both publish scripts
@@ -674,7 +856,7 @@ Four independent pieces of work that were in the tree together at this checkpoin
 
 ## 2026-08-02 09:19 — Expense tracker module; newsletter→quotes importer
 
-### Expense — a new module
+### [Added] Expense — a new module
 
 A credit-card expense tracker: record or import transactions, categorise them,
 and let fuzzy vendor rules do most of the categorising.
@@ -712,7 +894,7 @@ and let fuzzy vendor rules do most of the categorising.
 - Guard rails: deleting a card is refused while transactions reference it;
   deleting a category keeps the transactions and just uncategorises them.
 
-### Daily Quote — import from a newsletter
+### [Added] Daily Quote — import from a newsletter
 
 - Parses a pasted James Clear "3-2-1" issue into quote candidates **without an
   LLM** — the format is regular enough to read deterministically (numbered
@@ -734,34 +916,34 @@ Upgraded the shared `DataGrid` (the "result grid") used by User Management,
 Stocks & ETFs, CSV Analytics, SQL Explorer, and MyJournal. Every change is
 additive — no caller needed updating.
 
-- **Mechanics moved into the library.** New `src/lib/shared/table.ts` holds the
+- [Changed] **Mechanics moved into the library.** New `src/lib/shared/table.ts` holds the
   pure parts (compare/sort, search and per-column matching, page slicing, CSV
   escaping) with 16 unit tests, so null ordering, numeric-aware text sorting
   ("item 2" before "item 10"), multi-term search, and page clamping are actually
   covered. The component now holds only view state.
-- **Search + per-column filters.** A toolbar search box (terms are AND-ed across
+- [Added] **Search + per-column filters.** A toolbar search box (terms are AND-ed across
   columns, so extra words narrow the result) plus a "Filters" toggle that reveals
   a filter input per column. The record count reports "filtered from N", there's
   a Clear filters action, and a filtered-empty result gets its own message. Sort,
   pagination, and CSV export all follow the filtered set.
-- **Sticky header and honest page sizes.** The header stays visible while the body
+- [Added] **Sticky header and honest page sizes.** The header stays visible while the body
   scrolls (capped by a new `maxHeight`, default `70vh`). Page sizes are now
   10/25/50/100/200/500/1000/ALL, and pagination triggers when rows exceed the
   chosen page size — previously it was hard-wired to 100, so a caller asking for
   `defaultPageSize={25}` silently got every row on one page.
-- **Column visibility and order.** A "Columns" panel with checkboxes and up/down
+- [Added] **Column visibility and order.** A "Columns" panel with checkboxes and up/down
   reordering, plus Reset. An optional `storageKey` remembers the arrangement in
   `localStorage`. Hiding the last visible column is refused (it would leave an
   empty grid), and a saved layout naming columns that no longer exist is ignored.
-- **Row selection.** Opt-in `enableSelection` adds a checkbox column with a
+- [Added] **Row selection.** Opt-in `enableSelection` adds a checkbox column with a
   select-all covering the whole filtered set (indeterminate when partial), and
   `renderSelectionActions(selectedRows, clearSelection)` supplies bulk actions.
   Checkbox clicks no longer trigger `onRowClick`.
-- **Status bar is raised, not recessed** — a top highlight plus a cast shadow, the
+- [Changed] **Status bar is raised, not recessed** — a top highlight plus a cast shadow, the
   same bevel mechanic as the header bar. The grid container gained
   `overflow-hidden` so the toolbar/status-bar backgrounds stay inside its rounded
   corners.
-- **`components.md` restructured** into a fuller registry: an index table, then a
+- [Changed] **`components.md` restructured** into a fuller registry: an index table, then a
   per-component section with source link, import line, client/server note, a props
   table, a usage snippet, and a real call site to copy from.
 
@@ -772,88 +954,88 @@ browsing experience.
 
 Entry authoring:
 
-- **New Journal** collapsible card on the module page: a create form (date
+- [Added] **New Journal** collapsible card on the module page: a create form (date
   defaulting to today, time, title, place, categories, tags, content) with
   autocomplete from existing categories/tags. New `createJournalEntryAction`.
-- The entries list is now the **25 most recent** via a new `listRecentEntries`
+- [Changed] The entries list is now the **25 most recent** via a new `listRecentEntries`
   use-case (ordered `entry_date`/`entry_time`/`id` descending with a SQL `LIMIT`,
   rather than loading every row to show 25).
 
 Locations and weather (no schema change — `jrn_entry_locations` and the entry's
 weather columns already existed from migration 0027):
 
-- **GPS location picker** built on Leaflet + OpenStreetMap (chosen over Google
+- [Added] **GPS location picker** built on Leaflet + OpenStreetMap (chosen over Google
   Maps so no API key or billing is needed): search a place, or click the map to
   drop a pin, with the name suggested by reverse geocoding and multiple locations
   per entry. New deps `leaflet`, `react-leaflet`, `@types/leaflet`.
-- New `src/lib/geocoding` module (`GeocodingClient` port + `NominatimGeocodingClient`).
+- [Added] New `src/lib/geocoding` module (`GeocodingClient` port + `NominatimGeocodingClient`).
   Geocoding runs **server-side** through actions because Nominatim's usage policy
   requires a descriptive `User-Agent`, which a browser `fetch` cannot set.
-- New `src/lib/weather` module (`WeatherClient` port + `OpenMeteoWeatherClient`,
+- [Added] New `src/lib/weather` module (`WeatherClient` port + `OpenMeteoWeatherClient`,
   plus a WMO weather-code → description map) and a **"Fetch today's weather"**
   button that uses the entry's first location, falling back to a default location.
-- **Preferences** card storing a default location and °C/°F in the journal's
+- [Added] **Preferences** card storing a default location and °C/°F in the journal's
   module settings (`resolveJournalPreferences` mirrors the Stocks module's
   `resolveThresholds`).
 
 Entry screen (new route `/modules/[slug]/entries/[id]`):
 
-- New registered `JournalEntryCard` component showing every stored field, with
+- [Added] New registered `JournalEntryCard` component showing every stored field, with
   **Print/Save-PDF**, **Edit**, **Lock/Unlock** and **Delete** (behind an inline
   confirm). Blank fields are hidden so an entry only shows what it recorded.
-- Printing uses a new `@media print` block in `globals.css` that prints the
+- [Added] Printing uses a new `@media print` block in `globals.css` that prints the
   `.print-sheet` element alone as ink-on-white, independent of the app chrome.
-- **Inline editing** seeds *and* resubmits weather, locations, and the pinned flag,
+- [Added] **Inline editing** seeds *and* resubmits weather, locations, and the pinned flag,
   because `updateEntry` replaces the whole aggregate — without that, editing text
   would silently drop them. Removing weather is an explicit checkbox.
-- **Previous/Next** navigation via a new `getEntryNeighbors` use-case, using
+- [Added] **Previous/Next** navigation via a new `getEntryNeighbors` use-case, using
   SQLite row-value comparison so adjacency matches the list's exact ordering.
   Previous = older, Next = newer.
-- Per-location **Map** button opens a read-only Leaflet panel plus deep links to
+- [Added] Per-location **Map** button opens a read-only Leaflet panel plus deep links to
   OpenStreetMap and Google Maps. `JournalEntryCard` itself stays free of any
   mapping dependency (it raises the intent; the route renders the map).
-- Rows in both journal grids now open the entry screen — `DataGrid` gained an
+- [Changed] Rows in both journal grids now open the entry screen — `DataGrid` gained an
   additive `onRowClick` prop (existing callers unaffected).
 
 Other:
 
-- **Today In History** card: past entries sharing today's month and day (any year
+- [Added] **Today In History** card: past entries sharing today's month and day (any year
   but this one), each labelled "N years ago".
-- **Show SQL** on the journal entries grid, admin-only. Added
+- [Added] **Show SQL** on the journal entries grid, admin-only. Added
   `executeReadOnlyQuery` to `src/lib/sql-explorer`, which accepts only `SELECT` —
   deliberately stricter than the existing admin `executeStatement`, whose
   non-read-only path executes writes. The admin check is enforced in the server
   action, not just by hiding the button.
-- **Daily Quote widget**: a small refresh button draws another random quote
+- [Added] **Daily Quote widget**: a small refresh button draws another random quote
   without reloading the page.
 
 ## 2026-07-27 23:18 — MyJournal module (schema, CSV importer, UI); plus batched pre-existing tree work
 
 MyJournal (this session):
 
-- **Schema** — migration `0027_create_journal_tables`: 8 `jrn_` tables —
+- [Added] **Schema** — migration `0027_create_journal_tables`: 8 `jrn_` tables —
   `jrn_entries` (weather flattened to columns; multiple entries per date
   allowed), `jrn_categories`, `jrn_tags`, `jrn_entry_categories`,
   `jrn_entry_tags`, `jrn_entry_locations`, `jrn_entry_images`, `jrn_icons`.
   INTEGER keys, no DB FKs (cascade handled in the repository), `updated_at`
   triggers.
-- **Library** `src/lib/journal/` — the entry as an aggregate (its categories,
+- [Added] **Library** `src/lib/journal/` — the entry as an aggregate (its categories,
   tags, and locations), zod schemas, `SqliteJournalRepository` with
   transactional create/update/delete cascades, and use-cases (create/update/
   delete, pin, lock, category & tag management), with colocated tests. Wired as
   `deps.journalRepo`. Rules: referenced categories/tags auto-register; names
   trim/de-dupe; a locked entry blocks edit and delete until unlocked.
-- **CSV import** — generalized the shared `csv-import` module: per-column
+- [Changed] **CSV import** — generalized the shared `csv-import` module: per-column
   options (`delimiter`, `dateFormat`) held in a parallel map so the Stock
   importer's `ColumnMapping` was untouched; a `Journal` import type; editable
   named mappings (`updateNamedMapping`); a 10-random-row preview sample. Fixed
   `src/lib/shared/csv.ts` with a record-aware `parseCsvRecords` so multi-line
   quoted cells parse correctly (also benefits Stocks/CSV-Analysis).
-- **Apply-adapter** `src/lib/journal/csv-import.ts` (record → `createEntry`,
+- [Added] **Apply-adapter** `src/lib/journal/csv-import.ts` (record → `createEntry`,
   best-effort with a per-row summary) + `autoMapJournalHeaders`; new
   `import-journal-csv` CLI command. Verified against a real 785-row export:
   785 imported, 0 skipped.
-- **Web view** — replaced the journal "Coming soon" placeholder with a
+- [Added] **Web view** — replaced the journal "Coming soon" placeholder with a
   read-only entries `DataGrid` plus a CSV import panel (file drop, sample grid,
   per-column field + option controls, named-mapping load/save/edit/delete,
   import summary). Deferred: the create/edit/pin/lock entry editor, and the
@@ -862,15 +1044,15 @@ MyJournal (this session):
 Pre-existing uncommitted work batched into this commit (described from the diff,
 not this session's conversation):
 
-- **Real Estate removed** — deleted `src/lib/real-estate/**`,
+- [Changed] **Real Estate removed** — deleted `src/lib/real-estate/**`,
   `src/lib/property-watch/**`, their module views/actions, and 8 property CLI
   commands; dropped migrations 0013/0014 and added `0026_drop_real_estate_module`.
-- **Module-prefixed table names** — every table renamed to a lowercase 3-letter
+- [Changed] **Module-prefixed table names** — every table renamed to a lowercase 3-letter
   prefix (`sys_`/`stk_`/`csv_`); historical `CREATE` migrations (0001–0023),
   affected repositories, and `scripts/migrate.ts` updated
   (`reconcileLegacyTableNames` migrates an existing DB in place). Added
   `coding-guide.md` and `0024_rename_tables_to_module_prefixes`.
-- **Daily Quote** — `src/lib/daily-quote/**`, an admin management screen, and
+- [Added] **Daily Quote** — `src/lib/daily-quote/**`, an admin management screen, and
   migration `0025_create_sys_daily_quotes` (seeded starter quotes); plus a
   `list-users` CLI command and a `show_users.bat` helper.
 
@@ -878,17 +1060,17 @@ not this session's conversation):
 
 Self-signup (this session):
 
-- Added a public "Create account" flow reachable from the login screen. New
+- [Added] Added a public "Create account" flow reachable from the login screen. New
   `registerUser` use-case in `src/lib/user` always creates a `user`-role
   account with zero module access (mirroring the Google auto-create policy);
   its schema deliberately has no `role` field so the form can't self-elevate.
-- Optional admin elevation at signup: a matching `adminSecretKey` (compared
+- [Added] Optional admin elevation at signup: a matching `adminSecretKey` (compared
   constant-time via a new `src/lib/shared/secret.ts` `secureCompare`) creates
   an admin instead. The expected value comes from a new `ADMIN_SIGNUP_SECRET`
   env var wired in as `deps.adminSignupSecret`; unset means admin signup is
   off, and a wrong/absent-secret attempt is a hard failure (no silent
   downgrade). New `InvalidAdminSecretError`.
-- New `/login/register` route (page + view). The "Admin secret key" field is
+- [Added] New `/login/register` route (page + view). The "Admin secret key" field is
   hidden until the visitor types the sequence `a` `d` `m` anywhere on the
   page. On success the visitor is returned to `/login?registered=1` with a
   confirmation banner (no session is created). Colocated tests for
@@ -897,7 +1079,7 @@ Self-signup (this session):
 Icon sets + light theme (pre-existing uncommitted work in the tree, described
 from the diff rather than this session's conversation):
 
-- Module icons are now a user-selectable "icon set" (parallel to color
+- [Added] Module icons are now a user-selectable "icon set" (parallel to color
   themes): new `ICON_SETS` registry in `src/lib/settings/icon-sets.ts`, an
   `icon_set` app setting (migration `0023`, default `solar-bold-duotone`,
   mirrored in `DEFAULT_APP_SETTINGS`), an Admin → Configuration → Icons picker
@@ -905,10 +1087,10 @@ from the diff rather than this session's conversation):
   layout. Glyph SVGs are baked into `module-icon-sets.generated.ts` by
   `scripts/gen-icon-glyphs.mjs` (`npm run gen:icons`) from `@iconify-json/*`
   devDependencies — no runtime icon dependency.
-- `ModuleCard` redesigned to lead with a prominent icon badge (solid-accent
+- [Changed] `ModuleCard` redesigned to lead with a prominent icon badge (solid-accent
   tile for monochrome sets, neutral `bg-paper` tile for colorful sets);
   registry (`components.md`) and `design.md` updated accordingly.
-- Added **Daybreak**, the first light theme (rose accent on warm paper), plus
+- [Added] Added **Daybreak**, the first light theme (rose accent on warm paper), plus
   design.md guidance to design for both light and dark surfaces.
 
 Not committed: `Google_Client_Info.md` — it contains a live Google OAuth
@@ -917,54 +1099,54 @@ the values into a gitignored `.env.local`).
 
 ## 2026-07-12 23:34 — User management, authentication, and Google sign-in
 
-- Added user management: a `users` table (username, full name, description,
+- [Added] Added user management: a `users` table (username, full name, description,
   hashed password via Node's `scrypt`, role, disabled flag), a
   `user_module_access` grant table, and a `sessions` table backing a
   cookie-based login flow. New `src/lib/user` and `src/lib/auth` domain
   modules, plus a `create-user` CLI command to bootstrap the first admin.
-- Gated the whole app behind login: moved the existing routes into a new
+- [Added] Gated the whole app behind login: moved the existing routes into a new
   `src/app/(protected)/` route group whose layout redirects to `/login` for
   anyone without a valid session. The sidebar now shows the logged-in user's
   name and a logout button, hides "Administration" for non-admins, and only
   lists modules the user has been granted (admins implicitly get every
   module, including future ones).
-- Added a "User Management" screen (new top-level Administration node) built
+- [Added] Added a "User Management" screen (new top-level Administration node) built
   on a new reusable `DataGrid` component: create users, elevate/demote,
   enable/disable, reset passwords, edit per-user module access, and delete —
   with guards preventing an admin from locking themselves out.
-- Added "Sign in with Google" as an additional login method, hand-rolled
+- [Added] Added "Sign in with Google" as an additional login method, hand-rolled
   (no new dependency): a `google_email` column links an existing account to
   a Google address; unlinked/unverified Google accounts are rejected, never
   auto-registered. Feature is off by default and only appears once
   `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_REDIRECT_URI` are set
   (see new `.env.example`).
-- Fixed a relative-import bug in `admin/about/page.tsx` (`../../package.json`)
+- [Fixed] Fixed a relative-import bug in `admin/about/page.tsx` (`../../package.json`)
   left over from the route-group move — it needed one more `../` to still
   reach the repo root.
-- Fixed `.gitignore`: the blanket `.env*` rule was also swallowing
+- [Fixed] Fixed `.gitignore`: the blanket `.env*` rule was also swallowing
   `.env.example`, which is meant to be committed; added `!.env.example`.
 
 ## 2026-07-12 22:10 — Administration section, Module Settings, and visual polish
 
-- Added a full Administration section: tree nav with a distinct SVG icon per
+- [Added] Added a full Administration section: tree nav with a distinct SVG icon per
   node, a collapsible tree panel (flattens to icon-only when collapsed),
   Module/Application Configuration, 10 color themes, About, and a Change
   History page that renders this file.
-- Added the Module Settings feature: a new `module_settings` table (per-module
+- [Added] Added the Module Settings feature: a new `module_settings` table (per-module
   key/value store), a `src/lib/module-settings` domain module, and a
   `CollapsibleCard`-based editor per module, wired into the existing Save
   Settings / Reset to Default flow.
-- Fixed a data-integrity bug: `resetToDefaults` on `modules` now upserts by
+- [Fixed] Fixed a data-integrity bug: `resetToDefaults` on `modules` now upserts by
   slug instead of delete-then-insert, so a module's id (and its settings)
   survives "Reset to Default" instead of being silently orphaned.
-- Added a second module, Stock & ETFs, and a combined home/AI-magic/finance
+- [Added] Added a second module, Stock & ETFs, and a combined home/AI-magic/finance
   themed SVG app icon (favicon + in-app branding, next to the wordmark).
-- Sidebar/home screen visual pass: restyled the sidebar from dark to light per
+- [Changed] Sidebar/home screen visual pass: restyled the sidebar from dark to light per
   feedback, added Home and Administration as their own nav rows (own icons,
   out of the cramped header), centered the home screen header row, and gave
   the Administration button and module cards deeper, more separated 3D drop
   shadows.
-- Rewrote the `build_project` skill into a full release checkpoint (log →
+- [Changed] Rewrote the `build_project` skill into a full release checkpoint (log →
   verify → sync docs → commit).
-- Initialized git and linked the GitHub remote
+- [Added] Initialized git and linked the GitHub remote
   (`https://github.com/rvpals/MyHomeBase.git`).

@@ -82,10 +82,10 @@ Don't blur this line by giving a card a hard shadow or a button a soft one.
   inside every table row is visually loud and out of place. Use `text-brass-dark
   hover:underline` for a neutral row action, `text-red-400 hover:underline` for a
   destructive one.
-- **Cards** (`ModuleCard` and any future card) use `border border-line` plus a subtle
+- **Cards** (`CollapsibleCard` and any future card) use `border border-line` plus a subtle
   accent treatment on hover (a soft ring/lift). Keep any hover shadow soft and low-opacity
-  so it reads on both light and dark surfaces (`ModuleCard` pairs a `ring` with a gentle
-  `rgba(0,0,0,0.35)` lift).
+  so it reads on both light and dark surfaces — a gentle `rgba(0,0,0,0.35)` lift, never
+  the hard offset shadow that marks a `Button`.
 - **The one surface that does take the button treatment is the `Sidebar`.** It's a raised
   slab floating over the page, so it carries the same hard offset shadow a `Button` does —
   rotated to point right (`shadow-[5px_0_0_0_var(--brass-dark),…]`), because a
@@ -98,11 +98,11 @@ Don't blur this line by giving a card a hard shadow or a button a soft one.
   text-paper` with the icon in `text-paper`. This reads correctly in every theme for free
   — `paper` is the darkest surface in the dark themes (dark glyph on a bright accent) and
   the lightest in Daybreak (near-white glyph on the rose accent). Don't hardcode a white
-  or black glyph; use `text-paper`. See `ModuleCard`.
+  or black glyph; use `text-paper`. See `ModuleCarousel` and `Sidebar`.
 
 ## Icon sets are user-selectable
 
-Module icons (the glyphs on the home cards and in the sidebar) are driven by a
+Module icons (the graphics on the home carousel and the glyphs in the sidebar) are driven by a
 user-chosen **icon set**, the same way colors are driven by a theme — picked at Admin →
 Configuration → Icons, persisted as the `icon_set` setting, and registered in
 `ICON_SETS` (`src/lib/settings/icon-sets.ts`). The active set is read server-side in the
@@ -118,8 +118,11 @@ current set's glyph.
 - **Monochrome vs. colorful.** A set is either theme-tinted (monochrome — inherits
   `currentColor`, sits in the solid-accent icon badge) or `colorful: true` (full-color
   artwork that carries its own fills). Colorful sets **can't** take the accent tint, so
-  `ModuleCard` swaps the accent badge for a neutral `bg-paper` tile behind them. Honor
+  `ModuleCarousel` swaps the accent tile for a neutral `bg-paper` one behind them. Honor
   the `colorful` flag from `useIconSet()` anywhere you place a module icon on a tile.
+  **The set choice matters most on the home carousel**, where the glyph is rendered at
+  ~200px: a monochrome set reads as a large flat symbol, while `fluent-3d` or `flat-color`
+  reads as artwork.
 - **"classic"** is the original hand-drawn set (`module-icons.tsx`) and the fallback for
   any concept a generated set happens to lack — never let a module icon render nothing.
 - This setting covers *module* icons only. Admin chrome (the `TreeNav` gear/grid/etc.
@@ -162,12 +165,16 @@ layout is a server component. Two consequences worth knowing:
 
 - Anything else that needs to sit above page content must stay under `z-40`, and any dialog
   must stay at `z-50` (`Modal`) so its overlay still covers the sidebar.
-- **A whole-record viewer goes full-bleed, not wide.** `Modal`'s `size="full"` drops the
-  overlay gutter and the panel's rounding so the dialog fills the viewport — the right
-  treatment when the content is a screen in its own right (several tables, a chart, a news
-  column), as in `TickerViewer`. It is still a dialog, so Escape and the ✕ return the reader
-  to what's underneath. Don't reach for it for a form: a `sm`/`md` panel reads as "answer
-  this and get back", and a full-bleed one reads as "you have gone somewhere".
+- **A whole-record viewer is a floating window, not a wide panel.** `Modal`'s
+  `size="window"` gives it 80% of the viewport, rounded and centred, draggable by its
+  header, with a maximize button that swaps to full-bleed and back — the right treatment
+  when the content is a screen in its own right (several tables, a chart, a news column),
+  as in `TickerViewer`. Leaving a margin of dimmed page on every side is the point: it says
+  "this is on top of where you were", where edge-to-edge says "you have gone somewhere",
+  and the reader can drag it aside to check the page underneath instead of closing it.
+  `size="full"` is still there for the maximized state and for anything that genuinely
+  wants every pixel. Don't reach for either on a form — a `sm`/`md` panel reads as "answer
+  this and get back".
 - The expanded sidebar overlaps content rather than pushing it. That's intended — it's a
   mini-drawer, not a column.
 

@@ -17,6 +17,12 @@ export interface ModuleDraft {
   longName: string;
   description?: string;
   isVisible: boolean;
+  /**
+   * Read-only here. The carousel image is saved the moment it's picked rather
+   * than through this form's Save button, so it isn't an editable draft field —
+   * it's carried only so the control can show the current state on first render.
+   */
+  hasCarouselImage: boolean;
 }
 
 export interface ModuleSettingDraft {
@@ -68,6 +74,7 @@ function toDraft(module: Module): ModuleDraft {
     longName: module.longName,
     description: module.description,
     isVisible: module.isVisible,
+    hasCarouselImage: module.hasCarouselImage,
   };
 }
 

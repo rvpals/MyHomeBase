@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { InvestmentAccount, InvestmentAccountRepository } from "@/lib/investment-accounts";
-import type { MarketDataClient, PricePoint, Quote } from "@/lib/market-data";
+import type {
+  MarketDataClient,
+  MarketEvent,
+  MarketEventsClient,
+  PricePoint,
+  Quote,
+} from "@/lib/market-data";
 import type {
   StockPosition,
   StockPositionRepository,
@@ -14,8 +20,10 @@ import type {
 } from "@/lib/stock-watchlist";
 import type { TickerOwnDataDeps } from "./ports";
 import {
+  buildTickerEvents,
   buildTradeTimeline,
   computeWatchDrift,
+  getTickerEvents,
   getTickerNewsFeed,
   getTickerOwnData,
   getTickerPriceSeries,
@@ -30,7 +38,7 @@ import {
   summarizeTrades,
   transactionDate,
 } from "./ticker-overview";
-import type { TickerHolding } from "./types";
+import type { TickerClosePoint, TickerHolding, TickerRisk } from "./types";
 
 const TIMESTAMPS = "2026-01-01T00:00:00.000Z";
 
@@ -465,13 +473,51 @@ describe("getTickerPriceSeries", () => {
 });
 
 describe("getTickerRisk", () => {
+  /** An in-memory stand-in for `stk_ticker_risk_cache`, counting its writes. */
+  function fakeRiskCache(seed?: TickerRisk) {
+    const rows = new Map<string, TickerRisk>();
+    if (seed) rows.set(seed.ticker, seed);
+    let saveCount = 0;
+
+    return {
+      get: (ticker: string) => rows.get(ticker),
+      save: (risk: TickerRisk) => {
+        saveCount += 1;
+        rows.set(risk.ticker, risk);
+      },
+      get saveCount() {
+        return saveCount;
+      },
+    };
+  }
+
+  /** A stored row, distinguishable from anything the fake provider computes. */
+  function storedRisk(overrides: Partial<TickerRisk> = {}): TickerRisk {
+    return {
+      ticker: "AAPL",
+      annualizedVolPct: 11.5,
+      dailyStdDevPct: 0.72,
+      volatilityLabel: "Low",
+      low52wCents: 1_000,
+      high52wCents: 2_000,
+      currentPriceCents: 1_500,
+      rangePositionPct: 50,
+      marketCorrelation: 0.42,
+      marketBenchmarkTicker: "SPY",
+      annualizedReturnPct: 7.5,
+      sampleCount: 250,
+      calculatedAt: "2020-01-01T00:00:00.000Z",
+      ...overrides,
+    };
+  }
+
   it("computes volatility, the 52-week range and the benchmark correlation", async () => {
     const client = fakeMarketClient({
       AAPL: series(10_000, 100, 60),
       SPY: series(40_000, 200, 60),
     });
 
-    const risk = await getTickerRisk(client, { ticker: "AAPL" });
+    const risk = await getTickerRisk(client, fakeRiskCache(), { ticker: "AAPL" });
 
     expect(risk.sampleCount).toBe(60);
     expect(risk.low52wCents).toBe(10_000);
@@ -487,15 +533,255 @@ describe("getTickerRisk", () => {
 
   it("still reports the ticker's own figures when the benchmark leg fails", async () => {
     const client = fakeMarketClient({ AAPL: series(10_000, 100, 60) });
-    const risk = await getTickerRisk(client, { ticker: "AAPL" });
+    const risk = await getTickerRisk(client, fakeRiskCache(), { ticker: "AAPL" });
 
     expect(risk.marketCorrelation).toBeNull();
     expect(risk.annualizedVolPct).toBeGreaterThan(0);
   });
 
   it("throws when the ticker's own history cannot be fetched", async () => {
-    await expect(getTickerRisk(fakeMarketClient({ SPY: series(1, 1, 60) }), { ticker: "AAPL" }))
-      .rejects.toThrow(/No history/);
+    await expect(
+      getTickerRisk(fakeMarketClient({ SPY: series(1, 1, 60) }), fakeRiskCache(), {
+        ticker: "AAPL",
+      }),
+    ).rejects.toThrow(/No history/);
+  });
+
+  it("stores what it computes on a cache miss", async () => {
+    const cache = fakeRiskCache();
+    const client = fakeMarketClient({ AAPL: series(10_000, 100, 60) });
+
+    const risk = await getTickerRisk(client, cache, { ticker: "AAPL" });
+
+    expect(cache.saveCount).toBe(1);
+    expect(cache.get("AAPL")).toEqual(risk);
+  });
+
+  it("serves a stored row without touching the provider, however old it is", async () => {
+    const cache = fakeRiskCache(storedRisk());
+    // No history for any ticker: any provider call at all would throw.
+    const client = fakeMarketClient({});
+
+    const risk = await getTickerRisk(client, cache, { ticker: "AAPL" });
+
+    expect(risk.calculatedAt).toBe("2020-01-01T00:00:00.000Z");
+    expect(risk.annualizedVolPct).toBe(11.5);
+    expect(cache.saveCount).toBe(0);
+  });
+
+  it("recomputes and overwrites the stored row when refresh is set", async () => {
+    const cache = fakeRiskCache(storedRisk());
+    const client = fakeMarketClient({ AAPL: series(10_000, 100, 60) });
+
+    const risk = await getTickerRisk(client, cache, { ticker: "AAPL", refresh: true });
+
+    expect(risk.sampleCount).toBe(60);
+    expect(risk.calculatedAt).not.toBe("2020-01-01T00:00:00.000Z");
+    expect(cache.saveCount).toBe(1);
+    expect(cache.get("AAPL")?.sampleCount).toBe(60);
+  });
+
+  it("keeps the stored row when a refresh fails, rather than blanking the card", async () => {
+    const cache = fakeRiskCache(storedRisk());
+    const client = fakeMarketClient({});
+
+    const risk = await getTickerRisk(client, cache, { ticker: "AAPL", refresh: true });
+
+    expect(risk.calculatedAt).toBe("2020-01-01T00:00:00.000Z");
+    expect(cache.saveCount).toBe(0);
+  });
+
+  it("looks the cache up by the upper-cased ticker", async () => {
+    const cache = fakeRiskCache(storedRisk());
+    const risk = await getTickerRisk(fakeMarketClient({}), cache, { ticker: " aapl " });
+
+    expect(risk.ticker).toBe("AAPL");
+    expect(cache.saveCount).toBe(0);
+  });
+});
+
+describe("buildTickerEvents", () => {
+  /** Epoch seconds for a local-calendar date, so `toIsoDateLocal` round-trips. */
+  function at(date: string): number {
+    const [year, month, day] = date.split("-").map(Number);
+    return new Date(year, month - 1, day, 12).getTime() / 1000;
+  }
+
+  function closes(entries: [string, number][]): TickerClosePoint[] {
+    return entries.map(([date, closeCents]) => ({ date, closeCents }));
+  }
+
+  it("works out the surprise on a beat and phrases it", () => {
+    const feed = buildTickerEvents(
+      "AAPL",
+      [
+        {
+          timestamp: at("2026-08-01"),
+          kind: "earnings",
+          epsActualCents: 1_020,
+          epsEstimateCents: 980,
+        },
+      ],
+      closes([["2026-08-01", 18_744]]),
+    );
+
+    const [event] = feed.events;
+    expect(event.summary).toBe("Earnings $10.20 EPS vs $9.80 est.");
+    expect(event.epsSurpriseCents).toBe(40);
+    expect(event.epsSurprisePct).toBeCloseTo(4.08, 2);
+    expect(event.outcome).toBe("beat");
+    expect(event.closeCents).toBe(18_744);
+    expect(event.closeDate).toBeUndefined();
+  });
+
+  it("marks a miss and an in-line quarter", () => {
+    const feed = buildTickerEvents(
+      "AAPL",
+      [
+        {
+          timestamp: at("2026-05-02"),
+          kind: "earnings",
+          epsActualCents: 915,
+          epsEstimateCents: 940,
+        },
+        {
+          timestamp: at("2026-02-02"),
+          kind: "earnings",
+          epsActualCents: 800,
+          epsEstimateCents: 800,
+        },
+      ],
+      [],
+    );
+
+    expect(feed.events.map((event) => event.outcome)).toEqual(["miss", "inline"]);
+    expect(feed.events[0].epsSurpriseCents).toBe(-25);
+  });
+
+  it("leaves the surprise off a quarter that has no reported EPS yet", () => {
+    const feed = buildTickerEvents(
+      "AAPL",
+      [{ timestamp: at("2026-11-01"), kind: "earnings", epsEstimateCents: 1_100 }],
+      [],
+    );
+
+    const [event] = feed.events;
+    expect(event.summary).toBe("Earnings");
+    expect(event.outcome).toBeUndefined();
+    expect(event.epsSurpriseCents).toBeUndefined();
+  });
+
+  it("describes dividends and splits", () => {
+    const feed = buildTickerEvents(
+      "AAPL",
+      [
+        { timestamp: at("2026-02-08"), kind: "dividend", amountCents: 25 },
+        { timestamp: at("2026-01-05"), kind: "split", ratio: "4:1" },
+      ],
+      [],
+    );
+
+    expect(feed.events.map((event) => event.summary)).toEqual([
+      "Dividend $0.25 / share",
+      "Split 4:1",
+    ]);
+  });
+
+  it("dates an event on a closed market to the last close before it, and says so", () => {
+    // 2026-08-02 is a Sunday; the previous print is the Friday.
+    const feed = buildTickerEvents(
+      "AAPL",
+      [{ timestamp: at("2026-08-02"), kind: "dividend", amountCents: 25 }],
+      closes([
+        ["2026-07-31", 18_700],
+        ["2026-08-03", 18_900],
+      ]),
+    );
+
+    const [event] = feed.events;
+    expect(event.date).toBe("2026-08-02");
+    expect(event.closeCents).toBe(18_700);
+    expect(event.closeDate).toBe("2026-07-31");
+  });
+
+  it("leaves the price off an event older than any close it has", () => {
+    const feed = buildTickerEvents(
+      "AAPL",
+      [{ timestamp: at("2020-01-02"), kind: "dividend", amountCents: 20 }],
+      closes([["2026-08-03", 18_900]]),
+    );
+
+    expect(feed.events[0].closeCents).toBeUndefined();
+    // A close *after* the event is not a price the event happened against.
+    expect(feed.events[0].closeDate).toBeUndefined();
+  });
+
+  it("returns events newest first", () => {
+    const feed = buildTickerEvents(
+      "AAPL",
+      [
+        { timestamp: at("2026-01-05"), kind: "dividend", amountCents: 20 },
+        { timestamp: at("2026-08-01"), kind: "dividend", amountCents: 25 },
+        { timestamp: at("2026-05-02"), kind: "dividend", amountCents: 22 },
+      ],
+      [],
+    );
+
+    expect(feed.events.map((event) => event.date)).toEqual([
+      "2026-08-01",
+      "2026-05-02",
+      "2026-01-05",
+    ]);
+  });
+
+  it("flags that closes are missing rather than pretending the events are priced", () => {
+    const feed = buildTickerEvents(
+      "AAPL",
+      [{ timestamp: at("2026-08-01"), kind: "dividend", amountCents: 25 }],
+      [],
+    );
+
+    expect(feed.closesUnavailable).toBe(true);
+    expect(feed.events).toHaveLength(1);
+  });
+});
+
+describe("getTickerEvents", () => {
+  function fakeEventsClient(events: MarketEvent[]): MarketEventsClient {
+    return { async getEvents() { return events; } };
+  }
+
+  it("still returns the events when the closes leg fails", async () => {
+    const feed = await getTickerEvents(
+      fakeEventsClient([{ timestamp: 1_767_225_600, kind: "dividend", amountCents: 25 }]),
+      // No history for AAPL, so `getHistory` throws.
+      fakeMarketClient({}),
+      { ticker: "AAPL" },
+    );
+
+    expect(feed.events).toHaveLength(1);
+    expect(feed.closesUnavailable).toBe(true);
+  });
+
+  it("treats a ticker with no events as a success, not a failure", async () => {
+    const feed = await getTickerEvents(fakeEventsClient([]), fakeMarketClient({}), {
+      ticker: "AAPL",
+    });
+
+    expect(feed.ticker).toBe("AAPL");
+    expect(feed.events).toEqual([]);
+  });
+
+  it("propagates a failure of the events leg itself", async () => {
+    const client: MarketEventsClient = {
+      async getEvents() {
+        throw new Error("Yahoo events: HTTP 503");
+      },
+    };
+
+    await expect(
+      getTickerEvents(client, fakeMarketClient({}), { ticker: "AAPL" }),
+    ).rejects.toThrow(/503/);
   });
 });
 

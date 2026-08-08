@@ -154,6 +154,7 @@ function makeModule(id: number, slug: string): Module {
     sequence: id,
     isVisible: true,
     icon: "home",
+    hasCarouselImage: false,
   };
 }
 

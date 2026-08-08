@@ -5,19 +5,23 @@
 // fetched it" half of the pair, and it knows about this module's actions, which
 // a shared component must not.
 //
-// Our own records load as soon as the dialog opens. Each market panel is a
-// provider round-trip, so it loads the first time that tab is opened and is then
-// kept for as long as the dialog is up.
+// Loading is per *tab*, not per card: entering a tab loads everything on it, so
+// a reader scrolling its cards never meets one that hasn't started. Each result
+// is then kept for as long as the dialog is up. Risk is the cheap one despite
+// being the heaviest to compute — it comes from `stk_ticker_risk_cache` and only
+// hits the provider on a first-ever calculation or an explicit Recalculate.
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   TickerViewer,
-  type TickerPanelKey,
+  type TickerPanelGroup,
   type TickerPanelState,
 } from "@/components/ticker-viewer";
 import { TickerLogo } from "@/components/ticker-logo";
 import type { TickerHistoryRange } from "@/lib/ticker-overview";
 import {
+  fetchTickerDetailAction,
+  fetchTickerEventsAction,
   fetchTickerNewsFeedAction,
   fetchTickerOwnDataAction,
   fetchTickerPriceSeriesAction,
@@ -113,44 +117,58 @@ function useLazyPanel<T>(
 }
 
 function TickerViewerHostInner({ ticker, onClose }: TickerViewerHostProps) {
-  const [activePanel, setActivePanel] = useState<TickerPanelKey>("own:holdings");
+  const [activeGroup, setActiveGroup] = useState<TickerPanelGroup>("own");
   const [range, setRange] = useState<TickerHistoryRange>("1y");
+  // Bumped by Recalculate. It's part of the risk panel's request key, so the
+  // hook treats each press as a new request and refetches — while keeping the
+  // figures already on screen until the new ones land.
+  const [riskRecalculations, setRiskRecalculations] = useState(0);
+
+  const onOwnTab = activeGroup === "own";
+  const onMarketTab = activeGroup === "market";
 
   const ownData = useLazyPanel(true, ticker, () => fetchTickerOwnDataAction(ticker));
-  // Lives under "Our data" but is a provider call, so it waits for the tab like
-  // the Market panels do rather than being paid for on open.
-  const tradeTimeline = useLazyPanel(activePanel === "own:trades", ticker, () =>
+  // A provider call that lives on the "Our data" tab. It loads with the rest of
+  // that tab — i.e. on open — but nothing waits for it: the trade table renders
+  // from `ownData` immediately and the chart below fills in when this arrives.
+  const tradeTimeline = useLazyPanel(onOwnTab, ticker, () =>
     fetchTickerTradeTimelineAction(ticker),
   );
-  const quote = useLazyPanel(activePanel === "market:quote", ticker, () =>
-    fetchTickerQuoteAction(ticker),
+  const quote = useLazyPanel(onMarketTab, ticker, () => fetchTickerQuoteAction(ticker));
+  const priceSeries = useLazyPanel(onMarketTab, `${ticker}:${range}`, () =>
+    fetchTickerPriceSeriesAction(ticker, range),
   );
-  const priceSeries = useLazyPanel(
-    activePanel === "market:chart",
-    `${ticker}:${range}`,
-    () => fetchTickerPriceSeriesAction(ticker, range),
+  const events = useLazyPanel(onMarketTab, ticker, () => fetchTickerEventsAction(ticker));
+  const risk = useLazyPanel(onMarketTab, `${ticker}:${riskRecalculations}`, () =>
+    // Only a press of Recalculate asks the provider for new figures; the first
+    // load reads whatever is stored, at any age.
+    fetchTickerRiskAction(ticker, riskRecalculations > 0),
   );
-  const risk = useLazyPanel(activePanel === "market:risk", ticker, () =>
-    fetchTickerRiskAction(ticker),
+  const news = useLazyPanel(onMarketTab, ticker, () => fetchTickerNewsFeedAction(ticker));
+  // One call feeds all six cards on the Yahoo tab, so there's nothing to stagger.
+  const detail = useLazyPanel(activeGroup === "yahoo", ticker, () =>
+    fetchTickerDetailAction(ticker),
   );
-  const news = useLazyPanel(activePanel === "market:news", ticker, () =>
-    fetchTickerNewsFeedAction(ticker),
-  );
+
+  const recalculateRisk = useCallback(() => setRiskRecalculations((count) => count + 1), []);
 
   return (
     <TickerViewer
       ticker={ticker}
-      activePanel={activePanel}
-      onSelectPanel={setActivePanel}
+      activeGroup={activeGroup}
+      onSelectGroup={setActiveGroup}
       onClose={onClose}
       ownData={ownData}
       tradeTimeline={tradeTimeline}
       quote={quote}
       priceSeries={priceSeries}
+      events={events}
       risk={risk}
       news={news}
+      detail={detail}
       range={range}
       onSelectRange={setRange}
+      onRecalculateRisk={recalculateRisk}
     />
   );
 }
