@@ -35,6 +35,9 @@ pattern instead of inventing one.
   `border-line`, `font-display`…), never literal hex/rgb. See `design.md`.
 - Follows the conventions of the components already listed here (styling approach,
   prop-naming, variant patterns).
+- **Works below 1024px as well as above.** Say which in the entry — "responsive via
+  `max-lg:`", or "has a compact mode", or "unchanged, it's small already". A component
+  that only works wide isn't finished. See `design.md` → *Phone and desktop*.
 
 > Imports use the `@/` path alias (`@/* -> src/*`, configured in `tsconfig.json`).
 
@@ -46,6 +49,7 @@ pattern instead of inventing one.
 |-----------|-----------|--------|---------|
 | [`Button`](#button) | Any button or button-styled link | [src/components/button.tsx](src/components/button.tsx) | no |
 | [`DataGrid`](#datagrid) | **Result grid** — any table of records | [src/components/data-grid.tsx](src/components/data-grid.tsx) | yes |
+| [`DataGridCompact`](#datagridcompact) | `DataGrid`'s card list below 1024px — **not called directly** | [src/components/data-grid-compact.tsx](src/components/data-grid-compact.tsx) | yes |
 | [`Modal`](#modal) | **Any dialog** — overlay, panel, Esc/focus handling | [src/components/modal.tsx](src/components/modal.tsx) | yes |
 | [`CollapsibleCard`](#collapsiblecard) | A titled section that expands/collapses | [src/components/collapsible-card.tsx](src/components/collapsible-card.tsx) | yes |
 | [`Tabs`](#tabs) | One-of-N panels in the same space | [src/components/tabs.tsx](src/components/tabs.tsx) | yes |
@@ -63,6 +67,7 @@ pattern instead of inventing one.
 | [`JournalEntryCard`](#journalentrycard) | Full detail sheet for one journal entry | [src/components/journal-entry-card.tsx](src/components/journal-entry-card.tsx) | yes |
 | [`TickerViewer`](#tickerviewer) | Full record dialog for one ticker — 3 tabs of cards | [src/components/ticker-viewer.tsx](src/components/ticker-viewer.tsx) | yes |
 | [`IconSetProvider`](#iconsetprovider--useiconset) / `useIconSet` | Active module icon set (context) | [src/components/icon-set-context.tsx](src/components/icon-set-context.tsx) | yes |
+| [`ViewportProvider`](#viewportprovider--useviewport) / `useViewport` | Compact vs full layout (context) | [src/components/viewport-context.tsx](src/components/viewport-context.tsx) | yes |
 | [`ModuleIcon`](#moduleicon--moduleiconpreview) / `ModuleIconPreview` | Render a module glyph | [src/components/module-icons.tsx](src/components/module-icons.tsx) | yes |
 
 Small helpers that are not full components: [see below](#unregistered-helpers).
@@ -237,6 +242,40 @@ Expense transactions grid
 `renderSelectionActions` gets the selected rows plus a `clearSelection` callback — keep
 hold of that callback if the action opens a dialog, and call it once the write lands so
 the ticks don't outlive the rows they referred to.
+
+**Below 1024px it isn't a table.** `DataGrid` is a thin dispatcher: it reads
+`useIsCompact()` and renders either the full table or [`DataGridCompact`](#datagridcompact).
+Call sites are unchanged and don't choose.
+
+---
+
+## DataGridCompact
+
+**`DataGrid`'s compact form — one card per row.** You do not call this; `DataGrid`
+delegates to it below 1024px, so every grid in the app gets it for free.
+
+- **Source:** [src/components/data-grid-compact.tsx](src/components/data-grid-compact.tsx)
+- **Client component:** yes
+
+Not a narrower table — a different shape. The Positions grid is **1498px wide**; on a
+390px phone that is four screens of horizontal dragging to read one row, and restyling
+can't fix it, because a table's premise is that columns line up across rows and there is
+room for them to. A card drops that premise: the first column becomes the heading (the
+thing that identifies the record) and the rest become label/value pairs.
+
+**It implements a deliberate subset** — search, sort and row click. Column
+reorder/resize, per-column filters, CSV export, density and selection stay on the full
+layout: they need a pointer and a wide screen, and cramming them in would recreate the
+problem.
+
+**Two things worth knowing if you touch it:**
+- It renders **50 cards at a time** with a "Show more" button. The full grid paginates;
+  without a cap a few thousand expense rows would become a few thousand cards, freezing
+  exactly the hardware least able to absorb it.
+- `DataGrid` dispatches to it as a **sibling component, not an early return**. The full
+  implementation calls fifteen-odd hooks, and returning before them would change the hook
+  count when the viewport flips — which it does, once, when the width corrector overrules
+  the User-Agent guess.
 
 ---
 
@@ -1130,6 +1169,38 @@ It opens at `Modal` `size="window"` — the draggable 80% floating variant, with
 button for the full-bleed treatment. Gain/loss is `text-emerald-400` / `text-red-400` per
 design.md's semantic-color exception, and zero stays `text-muted` so a flat day doesn't read
 as a win.
+
+---
+
+## ViewportProvider / useViewport
+
+Tells a client component whether the app is drawing the **compact** layout (below 1024px)
+or the **full** one.
+
+- **Source:** [src/components/viewport-context.tsx](src/components/viewport-context.tsx)
+- **Import:** `import { useIsCompact, useViewport } from "@/components/viewport-context";`
+- **Client component:** yes. Mounted once in [src/app/layout.tsx](src/app/layout.tsx), so
+  `/login` gets it too.
+
+```tsx
+const isCompact = useIsCompact();
+return isCompact ? <PositionCards rows={rows} /> : <DataGrid rows={rows} />;
+```
+
+**Try `max-lg:` first.** This exists for the cases where the small screen needs a
+genuinely *different component*, not a restyled one — a 1498px table becoming a card
+list. Restyling costs nothing and can't regress desktop; forking costs a second
+component to maintain. See `design.md` → *Phone and desktop*.
+
+**Where the value comes from.** Decided on the server so the first paint is already
+right, from three signals in `src/lib/viewport` — a layout the reader pinned on the
+Account page, then the measured width, then a User-Agent guess in `proxy.ts`. The
+guess is what makes the first request work before any JavaScript runs; `ViewportCorrector`
+replaces it with the real width on mount, which is what fixes iPads (Safari reports them
+as a Mac) and phones in desktop-request mode.
+
+**Related pieces:** `ViewportCorrector` (measures and corrects, renders nothing) and
+`ViewportToggle` (the Account-page override). Neither is meant to be used elsewhere.
 
 ---
 

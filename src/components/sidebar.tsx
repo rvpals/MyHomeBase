@@ -7,6 +7,7 @@ import { AdminIcon } from "./admin-icon";
 import { AppIcon } from "./app-icon";
 import { Avatar } from "./avatar";
 import { ModuleIcon } from "./module-icons";
+import { useIsCompact } from "./viewport-context";
 
 const STATE_STORAGE_KEY = "myhomebase:sidebar-state";
 /** The pre-3-state key. Read once on mount so an existing preference survives. */
@@ -86,7 +87,16 @@ export function Sidebar({
   logoutAction,
   className = "",
 }: SidebarProps) {
-  const [state, setState] = useState<SidebarState>("full");
+  // On a narrow screen the full slab is 240px of a 390px display — it covers the
+  // page and, because it is `fixed` above the content, swallows taps meant for
+  // whatever is underneath. So compact starts at the rail: icons still visible,
+  // nav still discoverable, content usable.
+  //
+  // Taken from the viewport rather than measured here so the server renders the
+  // same thing the client hydrates — the value comes from the cookie on both
+  // sides. A stored preference still wins, in the effect below.
+  const isCompact = useIsCompact();
+  const [state, setState] = useState<SidebarState>(isCompact ? "rail" : "full");
   const pathname = usePathname();
   const adminActive = pathname.startsWith("/admin");
   const homeActive = pathname === "/";

@@ -178,6 +178,75 @@ layout is a server component. Two consequences worth knowing:
 - The expanded sidebar overlaps content rather than pushing it. That's intended — it's a
   mini-drawer, not a column.
 
+## Phone and desktop
+
+**Every screen has to work at both.** There is one boundary — **1024px** — and two
+names for what sits either side of it:
+
+| | |
+|---|---|
+| `compact` | below 1024px — a phone, a tablet in portrait, a half-width window |
+| `full` | 1024px and up |
+
+They're named after the *layout*, not the device, deliberately. An iPad in portrait is
+810px and wants the compact layout whatever it calls itself; so does a browser window
+dragged to half a 27" monitor. Calling it "phone" would make both read as bugs.
+
+1024 is not a new number: it's `lg`, the breakpoint every side-by-side layout here
+already uses (the module section trees are `lg:flex-row`).
+
+### Reach for CSS first — `max-lg:`, not `lg:`
+
+Tailwind is mobile-first, so `lg:flex-row` means "≥1024px". Restyling a screen that way
+means rewriting the classes desktop depends on. Use the **max-width** variants instead,
+which only apply *below* the boundary:
+
+```tsx
+// every existing class keeps its meaning at desktop width
+<div className="flex gap-6 lg:items-start max-lg:flex-col max-lg:gap-3">
+```
+
+Nothing above 1024px can change, because `max-lg:` doesn't exist up there. That property
+is the whole point: it makes "I didn't break the desktop" provable rather than hopeful.
+This covers the large majority of the work — stacking, spacing, hiding chrome, growing
+tap targets.
+
+### Fork a component only when restyling genuinely can't do it
+
+Some things aren't a narrower version of themselves. A 1498px table isn't a table on a
+390px screen, it's a card list. For those, read the layout on the server:
+
+```tsx
+const isCompact = useIsCompact();          // client
+// or, in a server component:
+const viewport = resolveViewport({ cookieValue: cookieStore.get(VIEWPORT_COOKIE)?.value });
+```
+
+Prefer forking a **shared component** over forking a page — a compact mode inside
+`DataGrid` fixes every grid in the app at once, where forking Positions fixes one screen.
+
+**How the value is decided** (`src/lib/viewport`, three signals, strictly ordered):
+
+1. **A layout the reader pinned** on the Account page — never overruled.
+2. **The measured width**, applied by `ViewportCorrector` on mount.
+3. **The User-Agent**, guessed in `proxy.ts` — the only thing available before any
+   JavaScript runs, so it decides the first paint and is then corrected.
+
+Signal 3 is wrong more often than it looks: iPadOS Safari reports itself as a Mac, and
+"Request Desktop Website" sends a desktop string from a phone. That's why 2 exists, and
+why 1 has to exist as an escape hatch.
+
+### Don't render both and hide one
+
+```tsx
+<DesktopThing className="max-lg:hidden" />   {/* tempting */}
+<CompactThing className="lg:hidden" />
+```
+
+Fine for small static markup. **Not** for grids or charts: both trees mount, so Recharts
+measures a zero-width hidden container and any data the hidden one loads is fetched
+twice. Pick one with `useIsCompact()` instead.
+
 ## Building a new module's UI
 
 When scaffolding a new module's `view.tsx`:

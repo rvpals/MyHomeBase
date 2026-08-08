@@ -32,6 +32,12 @@ those in a sentence and get on with it.
 - Every use-case must be callable identically from the web app and the CLI. Validate boundary input with the module's zod schema.
 - New library logic ships with a colocated Vitest test (success + failure paths) — except flagged one-offs.
 - UI is reuse-first. If something looks reusable and isn't in `components.md`, ask *"should this be reusable? give it a name,"* then create it in `src/components/` and register it.
+- **Every UI change must work on a phone and on a desktop.** One boundary,
+  1024px. Restyle with `max-lg:` variants first — they leave the desktop classes
+  untouched, so wide screens provably can't regress. Only when the small screen
+  needs a genuinely *different component* (not a restyled one) read the layout
+  from `useViewport()` / `useIsCompact()`. Full rules in `./design.md`; don't
+  ship a new screen without saying how it behaves narrow.
 - Don't gold-plate a one-off: write the simple version and say so in one line.
 
 ## Verify before reporting done

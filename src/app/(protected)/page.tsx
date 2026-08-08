@@ -24,7 +24,9 @@ export default async function Home() {
 
   return (
     <div className={PAGE_CONTAINER}>
-      <div className="flex items-center justify-center gap-4">
+      {/* Wraps below `lg`: icon + title + the Administration button come to
+          ~447px, which scrolls a 390px screen sideways. */}
+      <div className="flex flex-wrap items-center justify-center gap-4 max-lg:gap-2">
         <AppIcon className="h-14 w-14 shrink-0" />
         <h1 className="font-display text-3xl font-semibold text-ink">{appName}</h1>
         {currentUser && isAdmin(currentUser) && (

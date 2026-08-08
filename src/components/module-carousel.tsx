@@ -16,6 +16,7 @@ import Link from "next/link";
 import { useCallback, useRef, useState } from "react";
 import { ModuleIcon } from "./module-icons";
 import { useIconSet } from "./icon-set-context";
+import { useIsCompact } from "./viewport-context";
 
 export interface CarouselModule {
   /** Stable key, and the key the image route is addressed by. */
@@ -60,6 +61,19 @@ const RING = [
   { offset: 0, scale: 1, opacity: 1, blur: false },
   { offset: 170, scale: 0.6, opacity: 0.6, blur: true },
   { offset: 285, scale: 0.4, opacity: 0.28, blur: true },
+] as const;
+
+/**
+ * Ring offsets sized for the tile, which is smaller on a compact layout.
+ *
+ * These are pixels, so unlike the Tailwind classes around them they don't adapt
+ * on their own — at 390px the full-size offsets pushed the neighbours past the
+ * edge and gave the whole page 57px of horizontal scroll.
+ */
+const COMPACT_RING = [
+  { offset: 0, scale: 1, opacity: 1, blur: false },
+  { offset: 104, scale: 0.55, opacity: 0.55, blur: true },
+  { offset: 168, scale: 0.36, opacity: 0.24, blur: true },
 ] as const;
 
 /** Signed distance from `index` to `selected`, taking the short way round. */
@@ -120,6 +134,8 @@ export function ModuleCarousel({ modules, initialIndex = 0, className = "" }: Mo
   // second render pass and a cascading-update lint error.
   const selected = count === 0 ? 0 : Math.min(selectedIndex, count - 1);
   const { colorful } = useIconSet();
+  const isCompact = useIsCompact();
+  const rings = isCompact ? COMPACT_RING : RING;
   const touchStartX = useRef<number | undefined>(undefined);
 
   // Wraps, because with a handful of modules you hit an end almost immediately
@@ -191,10 +207,10 @@ export function ModuleCarousel({ modules, initialIndex = 0, className = "" }: Mo
 
         {/* The stage. Fixed height because its children are absolutely
             positioned — without it the row would collapse. */}
-        <div className="relative h-56 flex-1 overflow-hidden sm:h-64">
+        <div className="relative h-56 flex-1 overflow-hidden sm:h-64 max-lg:h-40">
           {modules.map((appModule, index) => {
             const distance = ringDistance(index, selected, count);
-            const ring = RING[Math.abs(distance)];
+            const ring = rings[Math.abs(distance)];
             // Beyond the second ring, or round the back, it isn't drawn at all —
             // offscreen nodes that are still focusable are worse than absent ones.
             if (!ring || isBackOfWheel(distance, count)) return null;
@@ -211,7 +227,7 @@ export function ModuleCarousel({ modules, initialIndex = 0, className = "" }: Mo
             // tinting somebody's artwork would be wrong.
             const graphic = (
               <span
-                className={`flex h-40 w-40 items-center justify-center overflow-hidden rounded-3xl sm:h-48 sm:w-48 ${
+                className={`flex h-40 w-40 items-center justify-center overflow-hidden rounded-3xl sm:h-48 sm:w-48 max-lg:h-28 max-lg:w-28 ${
                   appModule.hasImage ? "border border-line bg-paper" : tileClass
                 } ${
                   isActive
@@ -230,7 +246,10 @@ export function ModuleCarousel({ modules, initialIndex = 0, className = "" }: Mo
                     className="h-full w-full object-cover"
                   />
                 ) : (
-                  <ModuleIcon name={appModule.icon} className="h-24 w-24 sm:h-28 sm:w-28" />
+                  <ModuleIcon
+                    name={appModule.icon}
+                    className="h-24 w-24 sm:h-28 sm:w-28 max-lg:h-16 max-lg:w-16"
+                  />
                 )}
               </span>
             );

@@ -20,7 +20,9 @@
 
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { Button } from "@/components/button";
+import { DataGridCompact } from "@/components/data-grid-compact";
 import { Modal } from "@/components/modal";
+import { useIsCompact } from "@/components/viewport-context";
 import {
   aggregate,
   computePageSlice,
@@ -216,7 +218,39 @@ function RecordViewIcon() {
   );
 }
 
-export function DataGrid<T>({
+/**
+ * Picks the table or the card list, by layout.
+ *
+ * A thin dispatcher rather than an early return inside the implementation
+ * below: that one calls fifteen-odd hooks, and returning before them would
+ * change the hook count when the viewport flips (which it does, once, when the
+ * width corrector overrules the User-Agent guess) — React would throw. Two
+ * sibling components mount and unmount cleanly instead.
+ *
+ * Callers never choose. Every grid in the app gets the compact treatment
+ * without touching a single call site.
+ */
+export function DataGrid<T>(props: DataGridProps<T>) {
+  const isCompact = useIsCompact();
+
+  if (isCompact) {
+    return (
+      <DataGridCompact
+        columns={props.columns}
+        rows={props.rows}
+        getRowKey={props.getRowKey}
+        emptyMessage={props.emptyMessage}
+        enableSearch={props.enableSearch}
+        onRowClick={props.onRowClick}
+        className={props.className}
+      />
+    );
+  }
+
+  return <DataGridFull {...props} />;
+}
+
+function DataGridFull<T>({
   columns,
   rows,
   getRowKey,

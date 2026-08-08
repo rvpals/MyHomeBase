@@ -31,7 +31,11 @@ export default function ModuleConfigurationPage() {
         {modules.map((module, index) => (
           <div key={module.slug} className="rounded-xl border border-line bg-paper-raised p-5">
             <div className="flex items-start justify-between gap-4">
-              <div className="grid flex-1 gap-3 sm:grid-cols-2">
+              {/* `min-w-0` is what stops this overflowing: a flex child defaults
+                  to min-width:auto, so the grid refused to shrink below its
+                  inputs' intrinsic width and shoved the reorder buttons 135px
+                  past the right edge of a phone. */}
+              <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2">
                 <label className="block text-sm">
                   <span className="mb-1 block font-medium text-ink">Short name</span>
                   <input

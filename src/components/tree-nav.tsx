@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { TreeIcon } from "./tree-icons";
+import { useIsCompact } from "./viewport-context";
 
 const DEFAULT_COLLAPSED_STORAGE_KEY = "myhomebase:tree-nav-collapsed";
 
@@ -65,7 +66,7 @@ function CollapsedRow({ node, pathname }: { node: TreeNode; pathname: string }) 
 
   if (!node.href) {
     return (
-      <div title={node.hint ?? node.label} className="flex items-center justify-center py-2 text-muted">
+      <div title={node.hint ?? node.label} className="flex items-center justify-center px-3 py-2 text-muted">
         {icon}
       </div>
     );
@@ -75,7 +76,7 @@ function CollapsedRow({ node, pathname }: { node: TreeNode; pathname: string }) 
     <Link
       href={node.href}
       title={node.hint ?? node.label}
-      className={`flex items-center justify-center rounded-md py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
+      className={`flex items-center justify-center rounded-md px-3 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
         active ? "bg-brass-soft" : "hover:bg-line/60"
       }`}
     >
@@ -162,8 +163,17 @@ export function TreeNav({
   className = "",
 }: TreeNavProps) {
   const pathname = usePathname();
-  const [state, setState] = useState<TreeNavState>("full");
+  // Same reasoning as `Sidebar`: at 256px the full tree leaves a 390px screen
+  // 134px of content, less than the admin shell's own padding. Compact starts
+  // at the rail; a stored preference still wins, in the effect below.
+  const isCompact = useIsCompact();
+  const [state, setState] = useState<TreeNavState>(isCompact ? "rail" : "full");
   const isRail = state === "rail";
+
+  // Below `lg` the section wrappers stack, so the tree sits *above* the content
+  // rather than beside it. A vertical rail there is a 64px-wide column burning
+  // ~350px of height for eight icons; turned on its side it costs one row.
+  const isCompactRail = isCompact && isRail;
 
   useEffect(() => {
     if (!collapsible) return;
@@ -195,7 +205,11 @@ export function TreeNav({
   if (collapsible && state === "strip") {
     return (
       <nav
-        className={`flex min-h-24 ${WIDTH_CLASS.strip} flex-col self-stretch overflow-hidden transition-[width] motion-reduce:transition-none ${className}`}
+        // Stacked, the edge has to lie on its side too — a 12px-wide sliver
+        // above the content would be a target nobody finds.
+        className={`flex overflow-hidden transition-[width] motion-reduce:transition-none ${
+          isCompact ? "h-3 w-full" : `min-h-24 ${WIDTH_CLASS.strip} flex-col self-stretch`
+        } ${className}`}
       >
         <button
           type="button"
@@ -211,14 +225,18 @@ export function TreeNav({
 
   return (
     <nav
-      className={`flex flex-col transition-[width] motion-reduce:transition-none ${
-        collapsible ? WIDTH_CLASS[state] : ""
+      className={`flex transition-[width] motion-reduce:transition-none ${
+        isCompactRail
+          ? "w-full flex-row items-stretch"
+          : `flex-col ${collapsible ? WIDTH_CLASS[state] : ""}`
       } ${className}`}
     >
       {collapsible && (
         <div
-          className={`flex items-center border-b border-line p-2 ${
-            isRail ? "flex-col gap-0.5" : "justify-end gap-0.5"
+          className={`flex items-center p-2 ${
+            isCompactRail
+              ? "shrink-0 gap-0.5 border-r border-line"
+              : `border-b border-line ${isRail ? "flex-col gap-0.5" : "justify-end gap-0.5"}`
           }`}
         >
           {/* Two controls, each reversible on its own: the chevron moves between
@@ -255,9 +273,18 @@ export function TreeNav({
         </div>
       )}
       {collapsible && isRail ? (
-        <ul className="flex flex-col gap-0.5 p-2">
+        <ul
+          className={
+            isCompactRail
+              ? // Scrolls sideways rather than wrapping: a module with a dozen
+                // sections would otherwise become three rows of icons and cost
+                // back the height this arrangement just saved.
+                "flex flex-1 flex-row gap-1 overflow-x-auto p-2"
+              : "flex flex-col gap-0.5 p-2"
+          }
+        >
           {flatten(nodes).map((node) => (
-            <li key={node.id}>
+            <li key={node.id} className={isCompactRail ? "shrink-0" : undefined}>
               <CollapsedRow node={node} pathname={pathname} />
             </li>
           ))}

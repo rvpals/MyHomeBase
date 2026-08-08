@@ -275,7 +275,7 @@ export function AdminShell({
           collapsible
           className="min-h-screen shrink-0 border-r border-line bg-paper-raised"
         />
-        <div className="relative flex-1 overflow-y-auto p-8 pb-24">{children}</div>
+        <div className="relative flex-1 overflow-y-auto p-8 pb-24 max-lg:p-4 max-lg:pb-24">{children}</div>
       </div>
       <div className="fixed bottom-6 right-6 z-20 flex gap-3">
         <Button variant="secondary" onClick={reset} disabled={isSaving}>

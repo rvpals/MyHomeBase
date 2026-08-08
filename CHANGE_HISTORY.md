@@ -1,5 +1,108 @@
 # Change History
 
+## 2026-08-07 23:23 — The app works on a phone, and installs to the home screen
+
+**No migration in this release.**
+
+Measured first. On an iPhone-sized viewport the sidebar took **240px of 390** — 62% of
+the screen — and, being `fixed` above the content, it *swallowed taps* meant for the
+page underneath; a Playwright click on a ticker failed with "aside subtree intercepts
+pointer events". The Positions table was **1498px wide**, the Expense one 1027px. Two
+pages scrolled sideways. That is what got fixed.
+
+### [Added] One layout boundary, decided on the server
+
+`src/lib/viewport` and `src/proxy.ts`. Everything below **1024px** gets the `compact`
+layout, everything above gets `full`.
+
+Named after the layout rather than the device on purpose: an iPad in portrait is 810px
+and wants the compact one whatever it calls itself, and so does a half-width window on a
+27" monitor. Calling it "phone" would make both read as bugs.
+
+Three signals, strictly ordered — a layout **pinned** by the reader on the Account page,
+then the **measured width**, then a **User-Agent guess**. The guess exists only because
+the server has to render *something* before any JavaScript runs; `ViewportCorrector`
+replaces it on mount. That matters more than it sounds: iPadOS Safari reports itself as
+a Mac, and "Request Desktop Website" sends a desktop string from a phone. Verified all
+three tiers in a browser, including that a pin survives navigation.
+
+The layout is read from a cookie on the server, so the first paint is already right —
+no desktop-then-phone flip after hydration.
+
+### [Fixed] The sidebar and section trees no longer cover the page
+
+Both now start at their rail below 1024px, taking the default from the viewport rather
+than measuring, so server and client agree and there is no flash. A stored preference
+still wins.
+
+The section tree also **turns on its side** when it stacks: below `lg` the wrappers
+stack, so a vertical rail was a 64px-wide column burning ~350px of height for eight
+icons. It is now 262 × 50 and scrolls horizontally rather than wrapping — wrapping would
+give the height straight back.
+
+### [Added] `DataGridCompact` — one card per row
+
+A 1498px table isn't a narrow table on a 390px screen, it's the wrong shape: a table's
+premise is that columns line up across rows and there is room for them to. Each row is
+now a card led by the column that identifies the record.
+
+`DataGrid` **dispatches** to it, so no call site changed and every grid in the app got
+it at once. That dispatch is a sibling component rather than an early return on purpose:
+the full implementation calls fifteen-odd hooks, and returning before them would change
+the hook count when the viewport flips — which it does, once, when the corrector
+overrules the guess. React would throw.
+
+It implements a deliberate subset — search, sort, row click — and caps at 50 cards with
+a "Show more" button. The full grid paginates; without a cap a few thousand expense rows
+would become a few thousand cards on exactly the hardware least able to absorb it.
+
+### [Fixed] Two pages scrolled sideways
+
+Neither was what it looked like. **Home** was the *Administration button* — icon, title
+and button came to 447px in a row that couldn't wrap. **Admin → Modules** was the
+section tree leaving the content area 64px, less than its own padding, plus a `flex-1`
+grid without `min-w-0` shoving the reorder buttons 135px past the edge (a flex child
+defaults to `min-width:auto` and refuses to shrink below its content).
+
+Both now measure 390px on a 390px screen.
+
+### [Added] Installable to the home screen
+
+`src/app/manifest.ts`, served as `/manifest.webmanifest`. Dynamic rather than a static
+file so the splash screen and status bar follow the **active colour theme** instead of
+flashing a hardcoded one. Icons generated from `icon.svg`, including a separate
+**maskable** variant — Android crops icons to its own shape and an `any` icon used as a
+mask loses its edges.
+
+Next emits the standardised `mobile-web-app-capable`, which **iOS only honours from
+16.4**; the Apple-prefixed tag is set explicitly so older iOS still launches full screen
+rather than inside Safari chrome.
+
+Installing needs HTTPS, which the Synology reverse proxy already provides.
+
+### [Changed] Every UI change now has to answer for both widths
+
+The rule is in `CLAUDE.md` (loaded every session), the detail is in `design.md`, and
+`components.md` requires a new component to state its narrow behaviour — that file is
+already mandatory reading before building any UI.
+
+The convention is `max-lg:` variants rather than `lg:`. Restyling that way leaves every
+desktop class untouched, which makes "I didn't break the wide layout" **provable** rather
+than hopeful. Proven here: identical geometry on all four sampled routes at 1440px,
+before and after.
+
+### [Added] `REBUILD_PUBLISH_NAS.bat`
+
+Build and mirror to the NAS over SMB in one command, with `data\`, `.env`, `start.sh`,
+`app.log` and `app.pid` excluded — `robocopy /MIR` never deletes what it is told to
+skip, so the live database, the secrets and the boot script survive every republish.
+Tested against a seeded destination: all five preserved, a stale file purged.
+
+`REBUILD_PUBLISH_ARM.bat` and `START_PRD_SYN.bat` are gone, along with the line in
+`REBUILD_PUBLISH.bat` that copied the latter into staging.
+
+`/release_myhomebase` now covers both deployment targets rather than assuming Windows.
+
 ## 2026-08-06 23:54 — Ticker viewer rebuilt as cards, a home carousel, and two silent Yahoo bugs
 
 **Two migrations in this release**, both already applied to production:

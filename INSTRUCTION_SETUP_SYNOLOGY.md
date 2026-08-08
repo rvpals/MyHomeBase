@@ -381,11 +381,27 @@ Control Panel → **Task Scheduler → Create**, both **User: root**, both runni
 
 ## Updating to a new release
 
+### The one-command way (SMB)
+
 ```powershell
 cd E:\Code\Claude_Project\MyHomeBase
-npm run publish:nas
-scp -r dist-nas/. ssh_user@NAS_DS223:/volume1/app/myhomebase/
+.\REBUILD_PUBLISH_NAS.bat
 ```
+
+Builds the package and mirrors it to `\\NAS_DS223\app\myhomebase` — the share DSM
+exports for `/volume1/app/myhomebase`. The destination is the `NAS_PATH` variable at the
+top of the script; pass a path as an argument to override it for a one-off.
+
+It uses `robocopy /MIR` so files removed in a release disappear rather than piling up,
+**with `data\`, `.env`, `start.sh`, `app.log` and `app.pid` excluded** — robocopy never
+deletes what it is told to skip, so the live database, your secrets and the NAS-side
+launcher survive every republish. Verified against a seeded destination: all five
+preserved, a stale file purged.
+
+It deliberately does **not** run migrations. The destination is a Linux box and the
+runner has to execute there.
+
+### Then restart it, over SSH
 
 ```bash
 cd /volume1/app/myhomebase
@@ -394,11 +410,22 @@ node --env-file-if-exists=.env migrate.cjs      # only if the release adds migra
 ./start.sh
 ```
 
-The copy overwrites in place; `data/`, `.env`, `app.log` and `start.sh` are untouched
-because the package deliberately contains none of them.
+**The NAS keeps serving the old build until you do this.**
 
 **If a release adds a migration, run `migrate.cjs` before starting** — otherwise the
 affected screens fail with "no such column".
+
+### The manual way (scp)
+
+If the share isn't mounted:
+
+```powershell
+npm run publish:nas
+scp -r dist-nas/. ssh_user@NAS_DS223:/volume1/app/myhomebase/
+```
+
+Note `dist-nas/.`, not `dist-nas/*`. Unlike the batch file this only overwrites — it
+never removes files a release has dropped.
 
 ---
 
@@ -480,4 +507,6 @@ It's running detached — look in `/volume1/app/myhomebase/app.log`.
 | Node | `/usr/local/bin/node` — Package Center v20, **ABI 115** |
 | Env vars | `MYHOMEBASE_DB`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `ADMIN_SIGNUP_SECRET` |
 | Build command | `npm run publish:nas` in `E:\Code\Claude_Project\MyHomeBase` → `dist-nas/` |
-| Deploy command | `scp -r dist-nas/. ssh_user@NAS_DS223:/volume1/app/myhomebase/` |
+| Build + deploy | `.\REBUILD_PUBLISH_NAS.bat` (SMB, preserves data/env/start.sh) |
+| Deploy only (manual) | `scp -r dist-nas/. ssh_user@NAS_DS223:/volume1/app/myhomebase/` |
+| SMB share | `\\NAS_DS223\app\myhomebase` |

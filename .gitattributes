@@ -1,0 +1,4 @@
+# Shell scripts must stay LF even though the repo is edited on Windows. A CRLF
+# `start.sh` fails on the Synology with a bad-interpreter error that names the
+# right file and gives no useful reason.
+*.sh text eol=lf

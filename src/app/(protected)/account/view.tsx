@@ -4,7 +4,9 @@ import { useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/avatar";
 import { Button } from "@/components/button";
+import { ViewportToggle } from "@/components/viewport-toggle";
 import type { User } from "@/lib/user";
+import type { Viewport } from "@/lib/viewport";
 import { changeOwnPasswordAction, removeOwnAvatarAction, uploadOwnAvatarAction } from "./actions";
 import { PAGE_CONTAINER } from "../page-container";
 
@@ -143,7 +145,15 @@ function PasswordSection() {
   );
 }
 
-export function AccountView({ user }: { user: User }) {
+export function AccountView({
+  user,
+  viewport,
+  viewportPinned,
+}: {
+  user: User;
+  viewport: Viewport;
+  viewportPinned: boolean;
+}) {
   return (
     <div className={PAGE_CONTAINER}>
       <p className="font-mono text-xs font-medium uppercase tracking-widest text-brass-dark">
@@ -155,6 +165,22 @@ export function AccountView({ user }: { user: User }) {
       <div className="mt-8">
         <AvatarSection user={user} />
         {!user.googleEmail && <PasswordSection />}
+
+        {/* A per-user preference like a theme, and a rare one — it exists for
+            the cases automatic detection gets wrong (an iPad reporting itself
+            as a Mac, a phone in desktop-request mode). Deliberately not in the
+            sidebar: that collapses on small screens, so the escape hatch would
+            be hidden exactly when it is needed. */}
+        <section className="mt-8">
+          <h2 className="font-display text-lg text-ink">Layout</h2>
+          <p className="mt-1 text-sm text-muted">
+            MyHomeBase uses a compact layout on narrow screens and the full one on wide
+            screens. Override it here if the automatic choice is wrong for your device.
+          </p>
+          <div className="mt-3">
+            <ViewportToggle current={viewport} pinned={viewportPinned} />
+          </div>
+        </section>
       </div>
     </div>
   );
