@@ -17,7 +17,7 @@
 // Usage:  npm run publish:nas
 // Output: dist-nas/  — copy the whole folder to the NAS.
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import {
   chmodSync,
   cpSync,
@@ -56,7 +56,11 @@ function step(message) {
 // ---------------------------------------------------------------------------
 
 step("Building (clears .next first)");
-execFileSync("npm", ["run", "build"], { stdio: "inherit", shell: true });
+// `execSync` with one command string, not `execFileSync(..., { shell: true })`:
+// the latter emits Node's DEP0190 warning on every publish (args concatenated
+// rather than escaped). Passing `npm.cmd` to execFileSync without a shell is
+// not an alternative — Node refuses to spawn `.cmd` directly since 20.12.
+execSync("npm run build", { stdio: "inherit" });
 
 step("Assembling dist-nas/");
 rmSync(OUT, { recursive: true, force: true });

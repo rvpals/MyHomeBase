@@ -327,22 +327,23 @@ load `https://mhb.yourname.synology.me` and sign in.
 ## Part 6 — Start on boot, restart on crash
 
 Without Docker there is no restart policy, so this is built from a script plus two
-scheduled tasks.
+scheduled tasks. The same script does three jobs — start at boot, restart after a crash,
+and switch to a new build when a publish leaves a `deploy.trigger` behind.
 
+**Copy it from the repo** (`start.sh` at the root) rather than retyping, then:
+
+```powershell
+# from Windows
+scp start.sh ssh_user@NAS_DS223:/volume1/app/myhomebase/
+```
 ```bash
-cat > /volume1/app/myhomebase/start.sh <<'EOF'
-#!/bin/sh
-APP=/volume1/app/myhomebase
-PIDFILE=$APP/app.pid
-cd "$APP" || exit 1
-# Already up? `kill -0` is a shell builtin — DSM has no pgrep.
-if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then exit 0; fi
-export NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0
-nohup /usr/local/bin/node --env-file-if-exists="$APP/.env" "$APP/server.js" >> "$APP/app.log" 2>&1 &
-echo $! > "$PIDFILE"
-EOF
 chmod +x /volume1/app/myhomebase/start.sh
 ```
+
+> Keep the repo copy as the source of truth — it is **excluded from the publish** on
+> purpose, so a republish can't overwrite the file the boot task runs or strip its `+x`
+> bit. Re-copy it by hand on the rare occasion it changes.
+
 
 Start it and confirm:
 
@@ -363,7 +364,7 @@ Control Panel → **Task Scheduler → Create**, both **User: root**, both runni
 | Task | Type | Schedule |
 |---|---|---|
 | `MyHomeBase start` | Triggered Task → User-defined script | Event: **Boot-up** |
-| `MyHomeBase keepalive` | Scheduled Task → User-defined script | Daily, repeat every **5 minutes** |
+| `MyHomeBase keepalive` | Scheduled Task → User-defined script | Daily, repeat every **1 minute** |
 
 **Test it for real: reboot the NAS** and confirm the site returns unaided.
 
@@ -401,19 +402,33 @@ preserved, a stale file purged.
 It deliberately does **not** run migrations. The destination is a Linux box and the
 runner has to execute there.
 
-### Then restart it, over SSH
+### The restart happens by itself
+
+The batch file drops a `deploy.trigger` file into the app folder after the copy lands.
+`start.sh` checks for it on every scheduled run: if it's there, it stops the old process,
+deletes the trigger and starts the new build. **A release needs no SSH.**
+
+- **Automatic:** within one keepalive interval (see Part 6).
+- **Immediately:** DSM → **Task Scheduler** → select **MyHomeBase keepalive** → **Run**.
+
+The trigger is written *last*, after the copy has fully landed, so the app can never come
+back up on a half-copied build. It's also excluded from the mirror, so a second publish
+can't delete a pending one.
+
+**If a release adds a migration, apply it before the restart** — otherwise the affected
+screens fail with "no such column":
+
+```bash
+cd /volume1/app/myhomebase && node --env-file-if-exists=.env migrate.cjs
+```
+
+Doing it by hand instead:
 
 ```bash
 cd /volume1/app/myhomebase
 kill "$(cat app.pid)" 2>/dev/null; sleep 2
-node --env-file-if-exists=.env migrate.cjs      # only if the release adds migrations
 ./start.sh
 ```
-
-**The NAS keeps serving the old build until you do this.**
-
-**If a release adds a migration, run `migrate.cjs` before starting** — otherwise the
-affected screens fail with "no such column".
 
 ### The manual way (scp)
 

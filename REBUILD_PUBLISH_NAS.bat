@@ -66,8 +66,22 @@ REM /MIR so removed files disappear from the destination instead of piling up
 REM across releases -- but robocopy never deletes anything matched by /XD or
 REM /XF, which is what keeps the live database, the secrets and the NAS-side
 REM launcher safe. Same pattern REBUILD_PUBLISH.bat relies on.
-robocopy "%STAGING%" "%NAS_PATH%" /MIR /XD data /XF .env start.sh app.log app.pid /R:2 /W:2 >nul
+robocopy "%STAGING%" "%NAS_PATH%" /MIR /XD data /XF .env start.sh app.log app.pid deploy.trigger /R:2 /W:2 >nul
 if errorlevel 8 goto :robocopy_failed
+
+REM Ask the NAS to restart itself. start.sh checks for this file on every
+REM scheduled run, cycles the process and deletes it -- so a release needs no
+REM SSH. Written last, after the copy has fully landed, or the app could come
+REM back up on a half-copied build.
+echo %DATE% %TIME%> "%NAS_PATH%\deploy.trigger"
+REM Checked by existence, not by errorlevel: robocopy above exits 1 for "files
+REM were copied" (a success), and `echo` doesn't clear that, so an errorlevel
+REM test here reports a failure on every successful publish.
+if not exist "%NAS_PATH%\deploy.trigger" (
+    echo.
+    echo WARNING: could not write deploy.trigger. The new build is in place but
+    echo          the NAS will keep serving the old one until it is restarted.
+)
 
 echo.
 echo Published to %NAS_PATH%
@@ -84,12 +98,14 @@ if not exist "%NAS_PATH%\start.sh" (
     echo       Part 6 -- it is created once on the NAS, not shipped by this build.
 )
 echo.
-echo The NAS is still running the OLD build until it is restarted. Over SSH:
+echo Restart requested. The "MyHomeBase keepalive" task picks up deploy.trigger
+echo on its next run and switches to the new build -- no SSH needed.
 echo.
-echo     cd /volume1/app/myhomebase
-echo     kill "$(cat app.pid)" 2^>/dev/null; sleep 2
-echo     node --env-file-if-exists=.env migrate.cjs    # only if this release adds migrations
-echo     ./start.sh
+echo To switch over immediately: DSM -^> Task Scheduler -^> select
+echo "MyHomeBase keepalive" -^> Run.
+echo.
+echo IF THIS RELEASE ADDS A MIGRATION, apply it over SSH before the restart:
+echo     cd /volume1/app/myhomebase ^&^& node --env-file-if-exists=.env migrate.cjs
 echo.
 exit /b 0
 
