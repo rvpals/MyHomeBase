@@ -4,6 +4,7 @@ import { createContext, useContext, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { TreeNav } from "@/components/tree-nav";
+import { useIsCompact } from "@/components/viewport-context";
 import type { ModuleSetting } from "@/lib/module-settings";
 import type { Module } from "@/lib/modules";
 import { DEFAULT_COLOR_THEME_ID, DEFAULT_ICON_SET_ID, type Setting } from "@/lib/settings";
@@ -107,6 +108,12 @@ export function AdminShell({
   initialModuleSettings: ModuleSetting[];
 }) {
   const router = useRouter();
+  // The shell has to stack, not just restyle: compact turns the tree into a
+  // full-width bar, and a full-width bar left as a flex *row* item gets squashed
+  // against the content beside it. `useIsCompact` rather than `max-lg:` because
+  // the layout can be pinned — a 1400px window can legitimately be in compact,
+  // and a media query would still lay it out side by side.
+  const isCompact = useIsCompact();
   const [modules, setModules] = useState<ModuleDraft[]>(() => initialModules.map(toDraft));
   const [applicationName, setApplicationNameState] = useState(
     () => initialSettings.find((setting) => setting.key === "application_name")?.value ?? "",
@@ -269,12 +276,17 @@ export function AdminShell({
         reset,
       }}
     >
-      <div className="flex min-h-screen">
-        <TreeNav
-          nodes={adminNav}
-          collapsible
-          className="min-h-screen shrink-0 border-r border-line bg-paper-raised"
-        />
+      <div className={`flex min-h-screen ${isCompact ? "flex-col" : ""}`}>
+        {/* The sticky lives on this wrapper, not on TreeNav — a sticky element
+            only travels inside its parent's box, and a wrapper sized to the nav
+            would give it nowhere to go. */}
+        <div className="tree-nav-sticky shrink-0">
+          <TreeNav
+            nodes={adminNav}
+            collapsible
+            className="min-h-screen border-r border-line bg-paper-raised"
+          />
+        </div>
         <div className="relative flex-1 overflow-y-auto p-8 pb-24 max-lg:p-4 max-lg:pb-24">{children}</div>
       </div>
       <div className="fixed bottom-6 right-6 z-20 flex gap-3">

@@ -1,17 +1,18 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/avatar";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import type { Module } from "@/lib/modules";
-import type { User, UserRole } from "@/lib/user";
+import { ALLOWED_AVATAR_MIME_TYPES, MAX_AVATAR_BYTES, type User, type UserRole } from "@/lib/user";
 import {
   clearUserAvatarAction,
   createUserAction,
   deleteUserAction,
+  setUserAvatarAction,
   setUserDisabledAction,
   setUserGoogleEmailAction,
   setUserModuleAccessAction,
@@ -48,6 +49,103 @@ function StatusBadge({ isDisabled }: { isDisabled: boolean }) {
     >
       {isDisabled ? "Disabled" : "Enabled"}
     </span>
+  );
+}
+
+// Picture for one row. An admin can set an avatar for any account — a user can
+// only reach their own via My Account, so without this there was no way to give
+// someone a picture on their behalf.
+//
+// The file input is hidden and driven by the button: a bare file input's own
+// chrome is wide and unstyleable, and this has to sit inside a grid cell.
+function AvatarEditor({ user }: { user: User }) {
+  const router = useRouter();
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState<string | undefined>(undefined);
+  const [isBusy, setIsBusy] = useState(false);
+
+  async function handleFile(file: File | undefined) {
+    if (!file) return;
+
+    // Checked here as well as in the action, so an oversized file is refused
+    // before it's uploaded — otherwise what comes back is a framework
+    // body-limit error rather than something a reader can act on.
+    if (file.size > MAX_AVATAR_BYTES) {
+      setError(
+        `That image is ${Math.round(file.size / 1024)} KB — keep it under ${Math.round(
+          MAX_AVATAR_BYTES / 1024,
+        )} KB.`,
+      );
+      if (fileInput.current) fileInput.current.value = "";
+      return;
+    }
+
+    setIsBusy(true);
+    setError(undefined);
+    try {
+      const body = new FormData();
+      body.set("userId", String(user.id));
+      body.set("avatar", file);
+
+      const result = await setUserAvatarAction(body);
+      if (result.ok) router.refresh();
+      else setError(result.error);
+    } finally {
+      setIsBusy(false);
+      // Cleared so re-picking the *same* file still fires a change event.
+      if (fileInput.current) fileInput.current.value = "";
+    }
+  }
+
+  async function handleClear() {
+    setIsBusy(true);
+    setError(undefined);
+    try {
+      const result = await clearUserAvatarAction(user.id);
+      if (result.ok) router.refresh();
+      else setError(result.error);
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <Avatar
+        userId={user.id}
+        avatarMimeType={user.avatarMimeType}
+        fallbackText={user.fullName}
+        version={user.updatedAt}
+      />
+      <input
+        ref={fileInput}
+        type="file"
+        accept={ALLOWED_AVATAR_MIME_TYPES.join(",")}
+        onChange={(event) => void handleFile(event.target.files?.[0])}
+        className="hidden"
+      />
+      <div className="flex flex-col items-start">
+        <button
+          type="button"
+          disabled={isBusy}
+          onClick={() => fileInput.current?.click()}
+          className="text-xs font-medium text-brass-dark hover:underline disabled:opacity-50"
+        >
+          {isBusy ? "Working…" : user.avatarMimeType ? "Replace" : "Upload"}
+        </button>
+        {user.avatarMimeType && (
+          <button
+            type="button"
+            disabled={isBusy}
+            onClick={() => void handleClear()}
+            className="text-xs font-medium text-red-400 hover:underline disabled:opacity-50"
+          >
+            Clear
+          </button>
+        )}
+        {error && <span className="mt-0.5 max-w-40 text-xs text-red-400">{error}</span>}
+      </div>
+    </div>
   );
 }
 
@@ -396,29 +494,7 @@ export function UserManagementView({
     {
       key: "avatar",
       header: "Avatar",
-      render: (user) => (
-        <div className="flex items-center gap-2">
-          <Avatar
-            userId={user.id}
-            avatarMimeType={user.avatarMimeType}
-            fallbackText={user.fullName}
-            version={user.updatedAt}
-          />
-          {user.avatarMimeType && (
-            <button
-              type="button"
-              onClick={async () => {
-                const result = await clearUserAvatarAction(user.id);
-                if (result.ok) router.refresh();
-                else window.alert(result.error);
-              }}
-              className="text-xs font-medium text-red-400 hover:underline"
-            >
-              Clear
-            </button>
-          )}
-        </div>
-      ),
+      render: (user) => <AvatarEditor user={user} />,
     },
     { key: "username", header: "Username", value: (user) => user.username, render: (user) => user.username },
     { key: "fullName", header: "Full Name", value: (user) => user.fullName, render: (user) => user.fullName },

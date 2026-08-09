@@ -53,7 +53,10 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
         logoutAction={logoutAction}
         viewportPinned={viewportPinned}
       />
-      <main className="app-main min-h-screen px-8 pb-8 max-lg:px-4">{children}</main>
+      {/* No `px-*` here — `.app-main` sets the side gutter from `--app-gutter`,
+          so the compact section-tree bar can cancel exactly that much and run
+          edge to edge. */}
+      <main className="app-main min-h-screen pb-8">{children}</main>
     </div>
   );
 }

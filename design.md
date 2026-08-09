@@ -164,6 +164,24 @@ The bottom bar's allowance keys off `html[data-viewport="compact"]`, **not** a m
 the layout can be pinned, so a wide window can be in compact, and a `max-width` rule would
 draw the bar with no room reserved for it.
 
+**On compact there's a third bar: the section tree.** A module's `TreeNav` turns on its
+side below 1024px and pins under the top bar as a row of chips — the switcher is chrome,
+not content, so it shouldn't scroll away three screens down. Be clear-eyed about what that
+buys: it costs the same row either way. It doesn't reclaim space, it makes the row *useful
+all the time*. If a screen genuinely needs the height back, one `−` minimises the bar to a
+puck. Details and the pieces that have to line up:
+[`components.md` → TreeNav → Compact](components.md#compact--the-section-bar).
+
+**Three bars, three pucks, three corners.** Every bar in the compact chrome minimises the
+same way — to a [`Puck`](components.md#puck), a 44px circle you press to get it back. They
+are all `fixed`, so each needs its own corner (top-left for the toolbar, bottom-right for
+the module bar, top-right under the toolbar for the section bar): two sharing one would
+stack invisibly and only the top one could ever be pressed.
+
+`.app-main` owns the page's side gutter as `--app-gutter` rather than `px-8 max-lg:px-4`,
+so a bar inside it can cancel exactly that much and run edge to edge (`.tree-nav-bleed`).
+Don't put the padding utilities back on it.
+
 - Anything else that needs to sit above page content must stay under `z-40`, and any dialog
   must stay at `z-50` (`Modal`) so its overlay still covers the bars.
 - **A whole-record viewer is a floating window, not a wide panel.** `Modal`'s

@@ -56,6 +56,7 @@ pattern instead of inventing one.
 | [`ModuleCarousel`](#modulecarousel) | The home screen's module picker (coverflow) | [src/components/module-carousel.tsx](src/components/module-carousel.tsx) | yes |
 | [`AppChrome`](#appchrome) | The app's nav shell — top bar + compact module tabs | [src/components/app-chrome.tsx](src/components/app-chrome.tsx) | yes |
 | [`ViewportSwitch`](#viewportswitch) | The global compact/full switch | [src/components/viewport-switch.tsx](src/components/viewport-switch.tsx) | yes |
+| [`Puck`](#puck) | The round target a minimised bar leaves behind | [src/components/puck.tsx](src/components/puck.tsx) | yes |
 | [`TreeNav`](#treenav) | Hierarchical parent/child nav tree | [src/components/tree-nav.tsx](src/components/tree-nav.tsx) | yes |
 | [`Avatar`](#avatar) | A user's picture, or initials fallback | [src/components/avatar.tsx](src/components/avatar.tsx) | no |
 | [`TickerLogo`](#tickerlogo) | A stock/ETF logo, or a monogram fallback | [src/components/ticker-logo.tsx](src/components/ticker-logo.tsx) | yes |
@@ -594,6 +595,42 @@ for one setting only invite them to disagree.
 
 ---
 
+## Puck
+
+The small round target a minimised bar leaves behind — press it to bring the bar back.
+Use it for **chrome that hides itself**, not as a general floating action button; a puck
+says "something is folded away here", so one that opens a dialog reads as a broken promise.
+
+- **Source:** [src/components/puck.tsx](src/components/puck.tsx)
+- **Import:** `import { Puck } from "@/components/puck";`
+- **Client component:** yes (it's a button with an `onClick`)
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `onClick` | `() => void` | Restores whatever was minimised. |
+| `label` | `string` | Both `title` and `aria-label` — it's icon-only, so this is its whole accessible name. |
+| `position` | `string` | Placement **and stacking**, e.g. `"left-3 top-3 z-40"`. There's no default `z-*`: without `tailwind-merge` a caller's `z-30` wouldn't reliably beat a built-in `z-40`. |
+| `children` | `ReactNode` | The glyph. 20px (`h-5 w-5`) inside the 44px circle. |
+| `className?` | `string` | Merged last. |
+
+```tsx
+<Puck onClick={() => setBarOpen(true)} label="Show the toolbar" position="left-3 top-3 z-40">
+  <AppIcon className="h-5 w-5" />
+</Puck>
+```
+
+**Used by:** [app-chrome.tsx](src/components/app-chrome.tsx) — the top bar (`left-3 top-3`)
+and the compact module bar (`bottom-4 right-4`); and [tree-nav.tsx](src/components/tree-nav.tsx)
+for the compact section bar (`tree-nav-puck right-3`, under the top bar on the right).
+
+**Notes:** 44px square, which is the minimum comfortable tap target — don't shrink it for a
+denser look. **Give each one its own corner.** Three pucks are in play and they're all
+`fixed`; two sharing a corner stack invisibly and the reader can only ever press the top
+one. It's `fixed`, so it doesn't need a compact variant — it's the same size at both
+layouts, which is why `TreeNav` can hand it a class that positions it and nothing else.
+
+---
+
 ## TreeNav
 
 Hierarchical parent/child nav with hover hints. Use for a section with grouped
@@ -608,7 +645,7 @@ sub-pages (like Administration), not for the top-level module list.
 | `nodes` | `TreeNode[]` — `{ id, label, href?, hint?, icon?, children? }` | A node **without** `href` is a group heading (expand/collapse only). `icon` is a key rendered via `TreeIcon` — currently `sliders`, `list`, `chart`, `upload`, `quote`, `grid`, `window`, `palette`, `info`, `history`, `users`, `database`, `shapes`. |
 | `collapsible?` | `boolean` | Default `false`. When true it owns its width and shows the two collapse controls — three states, see below. |
 | `storageKey?` | `string` | Where the state is remembered. Defaults to `"myhomebase:tree-nav-collapsed"`. **Pass a distinct key for every collapsible tree** — two trees sharing the default collapse together. |
-| `className?` | `string` | |
+| `className?` | `string` | The desktop panel's surface. **Not applied to the compact bar** — see below. |
 
 ```tsx
 const nodes: TreeNode[] = [
@@ -647,6 +684,51 @@ clickable edge. A hidden tree you can still Tab into is worse than no tree.
 Because a collapsible tree sets its own width at every breakpoint, don't put a width on its
 wrapper — that pins the rail open (see
 [expense-section.tsx](src/app/(protected)/modules/[slug]/expense-section.tsx)).
+
+### Compact — the section bar
+
+**On `compact`, `rail` is a bar, not a column.** The shells stack below 1024px, so the
+tree sits *above* the content; a 64px column would burn ~350px of height on eight icons.
+Turned on its side it costs one row: a horizontally scrolling strip of chips, pinned
+directly under the app bar, edge to edge.
+
+- **Only the active chip is labelled.** Eight labels is ~900px of row on a 390px phone, so
+  most of the tree would start offscreen. Naming the current one keeps the row near-fitting
+  and answers the thing an icon row can't — *where am I?* The rest carry `title` +
+  `aria-label`, and widen when they become active.
+- **Group headings are dropped**, not flattened in beside their children. `Configuration`
+  isn't somewhere you can go, so as a chip it's a dead target taking room from real ones.
+  (The `full` state still nests them — that's how you reach a group in compact.)
+- **One control, not two.** The bar has a single `−` that minimises it to a [`Puck`](#puck)
+  wearing the current section's icon; tapping that gives the row back. Compact has two
+  states — bar or puck — where desktop has three. `full` is a 256px column on a 390px
+  screen, and the chips already reach every leaf the nested tree does, so a chevron down
+  here would be a control with nowhere useful to go.
+- **`isCompactRail` deliberately doesn't test `isRail`.** A `full` inherited from the
+  desktop preference would otherwise strand the reader in that 256px column with no
+  control to press.
+
+Three pieces have to line up, and two of them are **not** in this component:
+
+| Piece | Where | Why it can't live in `TreeNav` |
+|-------|-------|-------------------------------|
+| `tree-nav-sticky` | on the **wrapper** each shell puts round `TreeNav` | `position: sticky` only travels inside its parent's box. A wrapper sized to the nav gives it nowhere to go, so the nav can't sticky itself. |
+| `top` offset | `globals.css`, keyed to `html[data-appbar]` | Only `AppChrome` knows whether the bar is showing, and it mirrors that onto `<html>`. |
+| `tree-nav-bleed` | `globals.css`, `margin-inline: calc(-1 * var(--app-gutter))` | `.app-main` owns the page gutter as a variable so the bleed can't drift out of step with it. Don't put `px-*` back on `.app-main`. **No `w-full` on the bar** — `width: 100%` resolves against the wrapper, so the negative margins would shift the box rather than widen it and leave it a gutter short on the right. |
+| `tree-nav-puck` | `globals.css`, also keyed to `html[data-appbar]` | Where the minimised puck sits — under the top bar, right side, clear of `AppChrome`'s own two. |
+
+Both CSS rules key off `html[data-viewport="compact"]`, **not** a media query — the layout
+can be pinned, so a 1400px window can be in compact.
+
+**`className` is not applied to the compact bar.** It's the desktop panel's surface — a
+rounded card border, or Admin's `border-r` — and rounded corners on something spanning the
+full width read wrong. There's no `tailwind-merge` in this project, so an override would
+come down to which rule Tailwind emitted last; dropping it is the honest version. Anything
+structural the *wrapper* needs (`shrink-0`) goes on the wrapper.
+
+**A shell that puts the tree in a flex row must stack in compact** — a full-width bar left
+as a row item gets squashed against the content beside it. Fork on `useIsCompact()`, not
+`max-lg:`, for the pinning reason above ([admin-shell.tsx](src/app/(protected)/admin/admin-shell.tsx)).
 
 **Migrating the stored value.** The `storageKey` used to hold a boolean (`"true"` =
 collapsed) and now holds the state name. `TreeNav` reads the legacy boolean and maps it to
@@ -1364,7 +1446,7 @@ they don't get their own registry section.
 |--------|--------|-----------|
 | `CHART_CATEGORICAL_COLORS`, `CHART_STATUS_COLORS`, `CHART_CHROME` | [chart-colors.ts](src/components/chart-colors.ts) | The fixed 8-hue chart palette + grid/axis chrome. All charts read from here. |
 | `pointLabelContent` | [chart-point-labels.tsx](src/components/chart-point-labels.tsx) | Builds the `<LabelList content>` renderer every chart uses for value labels, so a labelled point looks identical on a line, a column and a bar. Labels wear the muted **text** token, never the series colour. |
-| `TreeIcon` | [tree-icons.tsx](src/components/tree-icons.tsx) | Resolves a `TreeNav` icon key (`sliders`, `quote`, `grid`, `window`, `palette`, `info`, `history`, `users`, `database`, `shapes`) to an SVG. Renders `null` for an unknown key. |
+| `TreeIcon`, `hasTreeIcon` | [tree-icons.tsx](src/components/tree-icons.tsx) | Resolves a `TreeNav` icon key (`sliders`, `list`, `chart`, `upload`, `quote`, `grid`, `window`, `palette`, `info`, `history`, `users`, `database`, `shapes`) to an SVG. Renders `null` for an unknown key — fine in a row where the label carries the meaning, so check `hasTreeIcon` first anywhere the icon is the *only* content (the compact puck) or an unknown key is a blank button. |
 | `AppIcon` | [app-icon.tsx](src/components/app-icon.tsx) | The app wordmark glyph. Takes raw `SVGProps`. |
 | `AdminIcon` | [admin-icon.tsx](src/components/admin-icon.tsx) | The Administration glyph. Takes raw `SVGProps`. |
 | `MODULE_ICON_GLYPHS`, `ModuleIconSetId` | [module-icon-sets.generated.ts](src/components/module-icon-sets.generated.ts) | Generated — do not hand-edit. |

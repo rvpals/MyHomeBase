@@ -25,6 +25,7 @@ import { AdminIcon } from "./admin-icon";
 import { AppIcon } from "./app-icon";
 import { Avatar } from "./avatar";
 import { ModuleIcon } from "./module-icons";
+import { Puck } from "./puck";
 import { useIsCompact } from "./viewport-context";
 import { ViewportSwitch } from "./viewport-switch";
 
@@ -57,31 +58,6 @@ const TABS_KEY = "myhomebase:moduletabs";
 
 const iconButton =
   "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-brass-soft hover:text-brass-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
-
-/** The small round target a minimised bar leaves behind. */
-function Puck({
-  onClick,
-  label,
-  position,
-  children,
-}: {
-  onClick: () => void;
-  label: string;
-  position: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      className={`fixed ${position} z-40 flex h-11 w-11 items-center justify-center rounded-full border border-line bg-paper-raised text-brass-dark shadow-[0_6px_18px_-6px_rgba(0,0,0,0.45)] transition-colors hover:bg-brass-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass`}
-    >
-      {children}
-    </button>
-  );
-}
 
 export function AppChrome({
   links,
@@ -204,7 +180,7 @@ export function AppChrome({
           </div>
         </header>
       ) : (
-        <Puck onClick={() => setBarOpen(true)} label="Show the toolbar" position="left-3 top-3">
+        <Puck onClick={() => setBarOpen(true)} label="Show the toolbar" position="left-3 top-3 z-40">
           <AppIcon className="h-5 w-5" />
         </Puck>
       )}
@@ -243,7 +219,7 @@ export function AppChrome({
           <Puck
             onClick={() => setTabsOpen(true)}
             label="Show the module bar"
-            position="bottom-4 right-4"
+            position="bottom-4 right-4 z-40"
           >
             <svg
               viewBox="0 0 24 24"

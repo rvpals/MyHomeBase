@@ -130,8 +130,10 @@ export function ExpenseSection({ section }: { section: ExpenseSection }) {
     <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
       {/* No width here — a collapsible TreeNav owns its own (w-64 full / w-16
           rail / w-3 strip), and a fixed width on the wrapper would stop it
-          shrinking. */}
-      <div className="lg:sticky lg:top-6 lg:shrink-0">
+          shrinking. `tree-nav-sticky` is what pins the compact bar under the app
+          bar; it has to sit on this wrapper rather than inside TreeNav, because
+          a sticky element only travels within its parent's box. */}
+      <div className="tree-nav-sticky lg:sticky lg:top-6 lg:shrink-0">
         <ExpenseNav />
       </div>
 

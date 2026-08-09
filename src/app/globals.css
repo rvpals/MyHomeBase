@@ -40,6 +40,18 @@ body {
    what the pre-paint script in src/app/layout.tsx also assumes. */
 .app-main {
   padding-top: 4.5rem; /* 3.5rem bar + gutter */
+  /* The side gutter lives here rather than as `px-8 max-lg:px-4` on the element,
+     because things inside it need to *cancel* it to run edge to edge — see
+     `.tree-nav-bleed`. One variable means the bleed can't drift out of step with
+     the padding it's undoing. */
+  --app-gutter: 2rem;
+  padding-inline: var(--app-gutter);
+}
+
+@media (max-width: 1023.98px) {
+  .app-main {
+    --app-gutter: 1rem;
+  }
 }
 
 html[data-appbar="min"] .app-main {
@@ -57,6 +69,48 @@ html[data-viewport="compact"] .app-main {
 
 html[data-viewport="compact"][data-moduletabs="min"] .app-main {
   padding-bottom: 2rem;
+}
+
+/* The section tree's compact form: a bar under the app bar rather than a card in
+   the content flow.
+
+   Keyed to `data-viewport`, not a media query, for the same reason the bottom
+   bar allowance above is — the layout can be pinned, so a wide window can be in
+   compact.
+
+   `sticky` goes on the wrapper each section shell puts round `TreeNav`, never on
+   the nav itself: a sticky element only travels inside its parent's box, and a
+   wrapper sized to the nav gives it nowhere to go. `top` tracks whether the app
+   bar is showing, which only `AppChrome` knows — it mirrors that onto <html>. */
+html[data-viewport="compact"] .tree-nav-sticky {
+  position: sticky;
+  /* Under AppChrome's z-40 bars and Modal's z-50, over ordinary content. */
+  z-index: 30;
+  top: 3.5rem;
+}
+
+html[data-viewport="compact"][data-appbar="min"] .tree-nav-sticky {
+  top: 0.5rem;
+}
+
+/* Cancels the page gutter so the bar runs edge to edge. Applied by `TreeNav`
+   only in the shapes that want it, so it needs no viewport condition of its
+   own. The fallback covers a tree rendered outside `.app-main`. */
+.tree-nav-bleed {
+  margin-inline: calc(-1 * var(--app-gutter, 0px));
+}
+
+/* Where the bar's puck sits once it's minimised: tucked just under the top bar
+   on the right, clear of AppChrome's own two pucks (top-left, bottom-right).
+   Tracks the same `data-appbar` state the sticky offset above does, so it
+   doesn't float in dead space when the top bar is minimised too. Rendered only
+   on compact, so unlike `.tree-nav-sticky` it needs no viewport condition. */
+.tree-nav-puck {
+  top: 4rem;
+}
+
+html[data-appbar="min"] .tree-nav-puck {
+  top: 1rem;
 }
 
 /* Printing (and "Save as PDF"): print the `.print-sheet` element alone as a clean

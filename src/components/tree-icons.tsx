@@ -141,6 +141,18 @@ const TREE_ICONS = {
 
 export type TreeIconName = keyof typeof TREE_ICONS;
 
+/**
+ * Whether `TreeIcon` will actually draw something for this key.
+ *
+ * `TreeIcon` renders `null` for an unknown one, which is right inside a row — the
+ * label still carries the meaning. Somewhere the icon is the *only* content (the
+ * compact puck) that same `null` is a blank button, so the caller needs to be
+ * able to check first and fall back.
+ */
+export function hasTreeIcon(name?: string): name is TreeIconName {
+  return name !== undefined && name in TREE_ICONS;
+}
+
 export function TreeIcon({
   name,
   className,
