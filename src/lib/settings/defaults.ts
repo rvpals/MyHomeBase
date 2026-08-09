@@ -22,4 +22,11 @@ export const DEFAULT_APP_SETTINGS: Setting[] = [
     value: DEFAULT_ICON_SET_ID,
     description: "Selected module icon set for the application.",
   },
+  {
+    // Blank means "nothing to show" — see migrations/0041.
+    key: "STARTUP_MESSAGE",
+    value: "",
+    description:
+      "If the value is not blank, display this message when the application home screen is reached.",
+  },
 ];

@@ -6,11 +6,12 @@ import { ModuleCarousel } from "@/components/module-carousel";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { getRandomQuote } from "@/lib/daily-quote";
 import { listModules } from "@/lib/modules";
-import { getSetting } from "@/lib/settings";
+import { getSetting, getStartupMessage } from "@/lib/settings";
 import { getAccessibleModules, isAdmin } from "@/lib/user";
 import { deps } from "@/lib/wiring";
 import { DailyQuoteWidget } from "./daily-quote-widget";
 import { PAGE_CONTAINER } from "./page-container";
+import { StartupMessage } from "./startup-message";
 
 export default async function Home() {
   const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
@@ -21,9 +22,13 @@ export default async function Home() {
   const appName = getSetting(deps.settingsRepo, "application_name")?.value ?? "MyHomeBase";
   // A fresh random quote is picked on every landing on the home screen.
   const quote = getRandomQuote(deps.dailyQuoteRepo);
+  // Set by a deployment; blank once someone has clicked OK. Read here rather than
+  // in the layout so it appears on the home screen specifically.
+  const startupMessage = getStartupMessage(deps.settingsRepo);
 
   return (
     <div className={PAGE_CONTAINER}>
+      {startupMessage && <StartupMessage message={startupMessage} />}
       {/* Wraps below `lg`: icon + title + the Administration button come to
           ~447px, which scrolls a 390px screen sideways. */}
       <div className="flex flex-wrap items-center justify-center gap-4 max-lg:gap-2">

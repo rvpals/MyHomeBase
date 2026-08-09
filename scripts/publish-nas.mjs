@@ -163,6 +163,20 @@ await build({
   logLevel: "warning",
 });
 
+step("Bundling the startup-message setter");
+// Same reasoning as the migration runner: plain CJS so the NAS needs no tsx. It
+// imports from src/lib/, so the `@/` path alias has to be resolved at bundle time.
+await build({
+  entryPoints: [path.join(ROOT, "scripts", "set-startup-message.ts")],
+  outfile: path.join(OUT, "set-startup-message.cjs"),
+  bundle: true,
+  platform: "node",
+  target: "node20",
+  format: "cjs",
+  external: ["better-sqlite3"],
+  logLevel: "warning",
+});
+
 step("Verifying the folder is actually portable");
 // Any surviving symlink points at a path on this machine and will be broken on
 // the NAS — which is how the hash-named better-sqlite3 module failed the first
@@ -189,8 +203,9 @@ step("Done");
 console.log(`  ${OUT}`);
 console.log(`  ${(directorySize(OUT) / 1024 / 1024).toFixed(1)} MB`);
 console.log("\nOn the NAS:");
-console.log("  node migrate.cjs      # apply any pending migrations");
-console.log("  node server.js        # start the app");
+console.log("  node migrate.cjs               # apply any pending migrations");
+console.log("  node server.js                 # start the app");
+console.log("  node set-startup-message.cjs   # announce the deployment (start.sh does this)");
 
 // ---------------------------------------------------------------------------
 

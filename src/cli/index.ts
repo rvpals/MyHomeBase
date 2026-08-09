@@ -11,6 +11,7 @@ import { importJournalCsvCommand } from "./import-journal-csv";
 import { listCsvAnalyticsCommand } from "./list-csv-analytics";
 import { listUsersCommand } from "./list-users";
 import { refreshPositionsCommand } from "./refresh-positions";
+import { setStartupMessageCommand } from "./set-startup-message";
 import { tickerOverviewCommand } from "./ticker-overview";
 
 type Command = (args: string[]) => Promise<void> | void;
@@ -27,6 +28,7 @@ const commands: Record<string, Command> = {
   "expense-top-spenders": expenseTopSpendersCommand,
   "explain-rule": explainRuleCommand,
   "ticker-overview": tickerOverviewCommand,
+  "set-startup-message": setStartupMessageCommand,
 };
 
 async function main(argv: string[]) {

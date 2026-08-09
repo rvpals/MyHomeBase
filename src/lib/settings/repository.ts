@@ -41,6 +41,17 @@ export class SqliteSettingsRepository implements SettingsRepository {
     applyUpdates(updates);
   }
 
+  setValue(key: string, value: string): void {
+    // Upsert, not UPDATE: a database that predates migration 0041 has no
+    // STARTUP_MESSAGE row, and a plain UPDATE would silently do nothing.
+    this.db
+      .prepare(
+        `INSERT INTO sys_app_settings (key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      )
+      .run(key, value);
+  }
+
   resetToDefaults(defaults: Setting[]): void {
     const insert = this.db.prepare(
       "INSERT INTO sys_app_settings (key, value, description) VALUES (?, ?, ?)",

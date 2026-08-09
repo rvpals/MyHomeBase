@@ -51,6 +51,14 @@ These are one-time, from setup, and a release quietly does nothing without them:
   `grep -c deploy.trigger /volume1/app/myhomebase/start.sh` — `0` means it is the
   old one, and copying a build in will change nothing. Re-copy it from the repo
   root and `chmod +x` it.
+
+  The same applies to **any** later edit of `start.sh`, and the file has grown a
+  second job: after a trigger-driven restart it runs `set-startup-message.cjs`,
+  which puts "A new deployment is published on …" in front of the next person to
+  reach the home screen. Check that half with
+  `grep -c set-startup-message /volume1/app/myhomebase/start.sh` — `0` means
+  publishes will go out silently. Nothing else breaks; the banner just never
+  appears.
 - **The keepalive task must be running every minute.** That interval *is* how
   long a release takes to go live.
 
@@ -63,6 +71,10 @@ restarts the app if — and only if:
    PID, waits 3 seconds for port 3000 to be released, deletes the trigger, and
    starts the new build.
 2. **The process is gone** — no `app.pid`, or the PID in it is dead.
+
+Only the first of those announces a deployment. `start.sh` sets the home-screen
+banner from inside the trigger branch, so a crash-restart brings the app back
+without claiming a release happened.
 
 ### Copying a new build in is *not* one of those reasons
 

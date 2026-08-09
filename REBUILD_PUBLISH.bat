@@ -67,6 +67,16 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM The startup-message setter imports from src\lib\, so it is bundled with
+REM esbuild rather than compiled with tsc -- tsc would emit a nested src\ tree
+REM alongside it and leave the @/ path alias unresolved.
+echo === Bundling startup-message setter ===
+call npx esbuild scripts\set-startup-message.ts --bundle --platform=node --target=node20 --format=cjs --external:better-sqlite3 --outfile="%STAGING%\set-startup-message.cjs" --log-level=warning
+if errorlevel 1 (
+    echo Failed to bundle scripts\set-startup-message.ts. Aborting publish.
+    exit /b 1
+)
+
 copy /y ".env.example" "%STAGING%\.env.example" >nul
 copy /y "START_PRD.bat" "%STAGING%\START_PRD.bat" >nul
 copy /y "start_prd.sh" "%STAGING%\start_prd.sh" >nul
@@ -96,6 +106,12 @@ if errorlevel 1 (
     echo changes were attempted -- restore from there if needed.
     exit /b 1
 )
+REM Announce the deployment on the home screen. Runs after the migration so the
+REM STARTUP_MESSAGE row from 0041 definitely exists, and inside the destination
+REM so it writes that deployment's own database. Never fails the publish -- the
+REM script warns and exits 0 if it can't write.
+echo === Announcing the deployment ===
+call node set-startup-message.cjs
 popd
 
 echo.

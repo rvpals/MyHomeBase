@@ -92,6 +92,25 @@ stored, and insert the shortfall. The database can't make that call — it can't
 real second lot from an accidental re-import. Worked through in
 `migrations/0038_add_brokerage_firm_to_stock_transactions.md`.
 
+### A settings value is blank, never NULL
+
+`sys_app_settings.value` is `TEXT NOT NULL` (migration 0002), so a setting that means
+"nothing set" stores the **empty string**, not NULL. `STARTUP_MESSAGE` (0041) is the
+first one that needs the distinction: blank means there is no message to show.
+
+Making the column nullable to model that honestly would mean the full
+create-copy-drop-rename rebuild — SQLite can't relax a `NOT NULL` in place — for no
+behavioural gain. So the sentinel is blank, and **the mapping to `undefined` happens
+once, in the use-case** (`getStartupMessage` trims and returns `undefined` for a blank
+or whitespace-only value). Callers never compare against `""`; if you find that test
+in a component, the use-case is missing.
+
+One consequence worth knowing: `settingUpdateSchema` still requires `.min(1)`, because
+it is what the admin Application Configuration screen posts and blanking
+`application_name` there would leave the UI with no wordmark. A setting that is
+legitimately blankable gets its own schema and its own repository write
+(`setValue`, an upsert) rather than loosening the shared one for everything.
+
 ### Per-row images
 
 A per-row image is a `BLOB` column plus a `<name>_mime_type` column, served by a

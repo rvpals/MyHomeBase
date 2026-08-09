@@ -33,6 +33,7 @@ if [ -f "$TRIGGER" ]; then
     sleep 3
   fi
   rm -f "$PIDFILE"
+  DEPLOYED=1
 fi
 
 # Already up? `kill -0` is a shell builtin — DSM has no pgrep.
@@ -41,3 +42,17 @@ if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then exit 0; fi
 export NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0
 nohup /usr/local/bin/node --env-file-if-exists="$APP/.env" "$APP/server.js" >> "$APP/app.log" 2>&1 &
 echo $! > "$PIDFILE"
+
+# Announce the new build on the home screen — but only after a publish, never
+# after a crash-restart, which isn't a deployment and shouldn't claim to be.
+#
+# This runs here rather than in REBUILD_PUBLISH_NAS.bat on purpose: the batch
+# file reaches the NAS only over SMB, and writing a live SQLite database across
+# a network share risks corrupting it. Here the write is local to the running
+# app. It also means the timestamp is when the build actually went live.
+#
+# The setter never exits non-zero, so a failure can't stop the app coming up.
+if [ "$DEPLOYED" = "1" ] && [ -f "$APP/set-startup-message.cjs" ]; then
+  /usr/local/bin/node --env-file-if-exists="$APP/.env" "$APP/set-startup-message.cjs" \
+    >> "$APP/app.log" 2>&1
+fi

@@ -251,7 +251,11 @@ that are easy to get wrong:
   `outputFileTracingExcludes` says otherwise. The database matters most: `wiring.ts`
   falls back to `./data/myhomebase.db` when `MYHOMEBASE_DB` is unset, so shipping one
   means a misconfigured deploy silently serves stale data instead of failing loudly.
-- **Bundles `migrate.cjs`** so migrations run without `tsx`.
+- **Bundles `migrate.cjs`** so migrations run without `tsx`, and
+  **`set-startup-message.cjs`** the same way — `start.sh` runs it after a
+  trigger-driven restart to announce the new deployment on the home screen. It
+  imports from `src/lib/`, so it is bundled rather than compiled: the `@/` path
+  alias has to be resolved at build time.
 
 It refuses to finish if any symlink survives or any driver copy isn't AArch64.
 
@@ -273,7 +277,8 @@ Verify on the NAS with `ls -a` (plain `ls` hides `.next`):
 
 ```bash
 ls -a /volume1/app/myhomebase
-# .next  CHANGE_HISTORY.md  data  migrate.cjs  migrations  node_modules  package.json  public  server.js
+# .next  CHANGE_HISTORY.md  data  migrate.cjs  migrations  node_modules  package.json
+# public  server.js  set-startup-message.cjs
 ```
 
 ### 5.2 Configure
@@ -328,7 +333,9 @@ load `https://mhb.yourname.synology.me` and sign in.
 
 Without Docker there is no restart policy, so this is built from a script plus two
 scheduled tasks. The same script does three jobs — start at boot, restart after a crash,
-and switch to a new build when a publish leaves a `deploy.trigger` behind.
+and switch to a new build when a publish leaves a `deploy.trigger` behind. After that
+last one it also runs `set-startup-message.cjs`, so the next visitor to the home screen
+is told a new deployment is live; a crash-restart deliberately skips that.
 
 **Copy it from the repo** (`start.sh` at the root) rather than retyping, then:
 

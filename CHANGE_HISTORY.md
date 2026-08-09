@@ -1,5 +1,112 @@
 # Change History
 
+## 2026-08-08 22:29 — The app tells you when it has just been redeployed
+
+**Adds migration `0041_seed_startup_message_setting`.** Seed data only — no schema change.
+
+Three bodies of work: a deployment notice on the home screen, the finish of the compact
+section bar the last release started, and a server-action authorization fix in user
+management.
+
+Publishing to the NAS is silent. The files land, the keepalive task cycles the process
+within the minute, and anyone already looking at the app has no idea they're now on a new
+build. This adds a one-shot notice: the first person to reach the home screen after a
+deployment gets a modal saying so, clicks OK, and it's gone.
+
+### [Added] `STARTUP_MESSAGE`, a one-shot home-screen notice
+
+A new key in `sys_app_settings`. Non-blank means "show this on the home screen"; the OK
+button clears it. A deployment writes `A new deployment is published on <timestamp>`, but
+the mechanism is general — set it to anything and the next visitor sees it once.
+
+**Dismissal is app-wide, not per-user.** It's one settings row, so whoever clicks OK
+clears it for everyone. That's the intent for a deployment notice — it's an announcement,
+not something personal — but it does mean dismissing on a desktop means the phone never
+sees it. Per-user would need its own table.
+
+**The value is blank, never NULL.** `sys_app_settings.value` is `TEXT NOT NULL`, and
+relaxing that in SQLite means a full table rebuild for no behavioural gain, so blank is
+the "nothing to show" sentinel. `getStartupMessage()` maps blank *and* whitespace-only to
+`undefined`, so nothing outside the library ever compares against `""`. Written up in
+`coding-guide.md`, since the next blankable setting will face the same choice.
+
+`settingUpdateSchema` stays strict (`.min(1)`) — it's what the admin Application
+Configuration screen posts, and blanking `application_name` there would leave the UI with
+no wordmark. The blankable path got its own schema and its own upsert (`setValue`) rather
+than loosening the shared one for every setting.
+
+### [Added] The deploy writes the key on the target, never across SMB
+
+`REBUILD_PUBLISH_NAS.bat` reaches the NAS only over a network share, and writing a live
+SQLite database across SMB risks corrupting it — the app holds it open in WAL mode. So the
+batch file doesn't touch the database at all. Instead:
+
+- `publish-nas.mjs` bundles **`set-startup-message.cjs`** next to `migrate.cjs`, plain CJS
+  so the NAS still needs no `tsx`. It's bundled rather than `tsc`-compiled because it
+  imports from `src/lib/` and the `@/` alias has to resolve at build time.
+- **`start.sh` runs it after a trigger-driven restart** — gated on `deploy.trigger`, so a
+  crash-restart brings the app back without claiming a release happened. The timestamp is
+  therefore when the build actually went live, not when the files were copied.
+
+The setter **never exits non-zero.** Opening the database is inside the try block, so an
+unreachable or missing DB warns and exits 0 rather than failing the publish — the new build
+is already serving by then, and a missing banner is not a failed release.
+
+`start.sh` is excluded from the publish on purpose, so **this one needs a manual
+`scp` to the NAS** before it takes effect. `ADMIN_MANUAL.md` gains a
+`grep -c set-startup-message` check alongside the existing `deploy.trigger` one.
+
+### [Added] `set-startup-message` CLI command
+
+The use-case is reachable from the terminal as well as the web app, per the architecture
+rule: `--show`, `--clear`, a custom message, or no argument for the standard deployment
+wording. `formatDeploymentMessage()` lives in the library so the CLI, the NAS and the
+Windows publish all emit the same sentence instead of three drifting variants.
+
+### [Changed] Windows publish, then retired
+
+`REBUILD_PUBLISH.bat` also bundles and runs the setter, after its migration step and from
+inside the destination folder. It was verified working — but the Windows target is being
+retired in favour of the NAS, so this is likely its last release. `C:\webapp\MHB` is
+untouched by this one.
+
+### [Added] `Puck`, and the compact section bar finished
+
+The previous release turned a module's `TreeNav` on its side below 1024px; this one
+completes it. The round target a minimised bar leaves behind is now a registered
+component — three of them are in play (top bar, module tabs, section bar) and they were
+being rebuilt each time.
+
+**Give each puck its own corner.** They're all `fixed`, so two sharing one stack
+invisibly and only the top is ever pressable. `position` carries stacking as well as
+placement because there's no `tailwind-merge` here — a built-in `z-40` couldn't be
+reliably overridden by a caller's `z-30`.
+
+The supporting CSS landed too: `tree-nav-sticky`, `tree-nav-bleed` and `tree-nav-puck` in
+`globals.css`, all keyed to `html[data-viewport="compact"]` rather than a media query,
+because the layout can be pinned and a 1400px window can legitimately be compact.
+`TreeIcon` gained a `hasTreeIcon` companion — an unknown key renders `null`, which is fine
+in a labelled row and a blank button on an icon-only puck.
+
+### [Fixed] User-management actions checked authentication but not admin
+
+Every action on that screen acts on *someone else's* account, and each one verified only
+that the caller was signed in. The route layout redirects non-admins, so the screen was
+unreachable — but **a server action is its own endpoint**, callable directly without ever
+rendering the page. Any signed-in user could have driven them.
+
+`getActingUserId` is now `getActingAdminId` and asserts `isAdmin`. The lesson generalises:
+gating the page that renders a control is not gating the control.
+
+### [Added] Admins can set another user's avatar
+
+From the user list, using the same multipart `FormData` path as the module carousel image
+— a couple of megabytes shouldn't be base64-encoded in the browser and inflated by a third
+on the way over, and Next rejects a long string argument outright with "Maximum array
+nesting exceeded."
+
+---
+
 ## 2026-08-08 15:20 — Navigation moved to the edges, and every chart got a gear
 
 **No migration in this release.**
