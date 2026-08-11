@@ -6,6 +6,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/button";
+import { CollapsibleCard } from "@/components/collapsible-card";
 import type { DailyQuote } from "@/lib/daily-quote";
 import { drawRandomQuoteAction } from "./daily-quote-actions";
 
@@ -27,7 +28,16 @@ function RefreshIcon({ className = "" }: { className?: string }) {
   );
 }
 
-export function DailyQuoteWidget({ initialQuote }: { initialQuote: DailyQuote }) {
+export function DailyQuoteWidget({
+  initialQuote,
+  isAdmin,
+  className,
+}: {
+  initialQuote: DailyQuote;
+  isAdmin?: boolean;
+  /** Spacing is the caller's call — the widget's position on the page moved once already. */
+  className?: string;
+}) {
   const [quote, setQuote] = useState(initialQuote);
   const [isDrawing, setIsDrawing] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -48,30 +58,41 @@ export function DailyQuoteWidget({ initialQuote }: { initialQuote: DailyQuote })
   }
 
   return (
-    <figure className="mt-6 rounded-lg border border-line bg-paper-raised p-6 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <p className="font-mono text-xs font-medium uppercase tracking-widest text-brass-dark">
-          Daily Quote
-        </p>
-        <Button size="sm" variant="secondary" onClick={handleRefresh} disabled={isDrawing}>
-          <RefreshIcon className={`h-4 w-4 ${isDrawing ? "animate-spin" : ""}`} />
-          {/* Icon-only control, so the accessible name comes from this label. */}
-          <span className="sr-only">Draw a new quote</span>
-        </Button>
-      </div>
+    // Collapsed by default — the quote is a grace note, so it shouldn't push the
+    // module carousel down the page. The two actions live in `headerAction` so
+    // they stay reachable (and don't toggle the card) while it's shut.
+    <CollapsibleCard
+      title="Daily Quote"
+      className={className}
+      headerAction={
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <Button size="sm" variant="secondary" href="/admin/daily-quote">
+              Quotes Editor
+            </Button>
+          )}
+          <Button size="sm" variant="secondary" onClick={handleRefresh} disabled={isDrawing}>
+            <RefreshIcon className={`h-4 w-4 ${isDrawing ? "animate-spin" : ""}`} />
+            {/* Icon-only control, so the accessible name comes from this label. */}
+            <span className="sr-only">Draw a new quote</span>
+          </Button>
+        </div>
+      }
+    >
+      <figure>
+        <blockquote className="font-display text-xl italic leading-relaxed text-ink">
+          &ldquo;{quote.quote}&rdquo;
+        </blockquote>
 
-      <blockquote className="mt-3 font-display text-xl italic leading-relaxed text-ink">
-        &ldquo;{quote.quote}&rdquo;
-      </blockquote>
+        <figcaption className="mt-4 flex items-center justify-between gap-3">
+          <span className="text-sm font-medium text-muted">— {quote.author}</span>
+          <span className="rounded-full bg-brass-soft px-2 py-0.5 text-xs font-semibold text-brass-dark">
+            {quote.category}
+          </span>
+        </figcaption>
 
-      <figcaption className="mt-4 flex items-center justify-between gap-3">
-        <span className="text-sm font-medium text-muted">— {quote.author}</span>
-        <span className="rounded-full bg-brass-soft px-2 py-0.5 text-xs font-semibold text-brass-dark">
-          {quote.category}
-        </span>
-      </figcaption>
-
-      {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
-    </figure>
+        {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+      </figure>
+    </CollapsibleCard>
   );
 }

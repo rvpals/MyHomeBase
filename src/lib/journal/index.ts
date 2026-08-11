@@ -4,6 +4,7 @@ export type {
   Weather,
   JournalCategory,
   JournalTag,
+  JournalTaxonomyCount,
   TodayInHistoryEntry,
   JournalEntryRef,
   JournalEntryNeighbors,
@@ -52,5 +53,7 @@ export {
   listTags,
   upsertTag,
   deleteTag,
+  listTopTags,
+  listTopCategories,
 } from "./journal";
 export { importJournalCsv, autoMapJournalHeaders, JOURNAL_IMPORT_FIELDS } from "./csv-import";

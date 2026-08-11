@@ -16,6 +16,7 @@ import type {
   JournalEntry,
   JournalEntryNeighbors,
   JournalTag,
+  JournalTaxonomyCount,
   TodayInHistoryEntry,
 } from "./types";
 
@@ -185,4 +186,20 @@ export function upsertTag(repo: JournalRepository, input: UpsertTagInput): Journ
 // Removing a tag from the managed list also detaches it from every entry.
 export function deleteTag(repo: JournalRepository, name: string): void {
   repo.deleteTag(name);
+}
+
+/** The most-used tags across all entries, highest count first, up to `limit`. */
+export function listTopTags(repo: JournalRepository, limit = 10): JournalTaxonomyCount[] {
+  if (!Number.isInteger(limit) || limit <= 0) {
+    throw new Error(`listTopTags: limit must be a positive integer, got ${limit}.`);
+  }
+  return repo.listTopTags(limit);
+}
+
+/** The most-used categories across all entries, highest count first, up to `limit`. */
+export function listTopCategories(repo: JournalRepository, limit = 10): JournalTaxonomyCount[] {
+  if (!Number.isInteger(limit) || limit <= 0) {
+    throw new Error(`listTopCategories: limit must be a positive integer, got ${limit}.`);
+  }
+  return repo.listTopCategories(limit);
 }

@@ -2,15 +2,18 @@ import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { getModuleBySlug } from "@/lib/modules";
-import { userHasModuleAccess } from "@/lib/user";
+import { isAdmin, userHasModuleAccess } from "@/lib/user";
 import { deps } from "@/lib/wiring";
 import { PAGE_CONTAINER } from "../../../page-container";
 import { ExpenseSection } from "../expense-section";
 import { isExpenseSection } from "../expense-sections";
+import { isJournalSection } from "../journal-sections";
+import { JournalSection } from "../journal-section";
 import { StockSection } from "../stock-section";
 import { isStockSection } from "../stock-sections";
 
 const EXPENSE_MODULE_SLUG = "expense";
+const JOURNAL_MODULE_SLUG = "journal";
 const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
 
 /**
@@ -25,9 +28,12 @@ const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
  * reached under the Stocks slug (or vice versa) — that would render a nav pointing
  * at routes the other module doesn't have.
  */
-function renderSection(slug: string, section: string) {
+function renderSection(slug: string, section: string, isAdmin: boolean) {
   if (slug === EXPENSE_MODULE_SLUG && isExpenseSection(section)) {
     return <ExpenseSection section={section} />;
+  }
+  if (slug === JOURNAL_MODULE_SLUG && isJournalSection(section)) {
+    return <JournalSection section={section} isAdmin={isAdmin} />;
   }
   if (slug === STOCK_ETFS_MODULE_SLUG && isStockSection(section)) {
     return <StockSection section={section} />;
@@ -45,14 +51,14 @@ export default async function ModuleSectionPage({
   const appModule = getModuleBySlug(deps.moduleRepo, slug);
   if (!appModule) notFound();
 
-  const body = renderSection(slug, section);
-  if (!body) notFound();
-
   const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
   const currentUser = getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo);
   // Same guard as the module page — a section must not be reachable by someone
   // who hasn't been granted the module.
   if (!currentUser || !userHasModuleAccess(currentUser, appModule.id, deps.userRepo)) notFound();
+
+  const body = renderSection(slug, section, isAdmin(currentUser));
+  if (!body) notFound();
 
   return (
     <div className={PAGE_CONTAINER}>

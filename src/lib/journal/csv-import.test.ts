@@ -90,6 +90,12 @@ function fakeRepo(): JournalRepository {
         }
       }
     },
+    listTopTags: () => {
+      throw new Error("not used");
+    },
+    listTopCategories: () => {
+      throw new Error("not used");
+    },
   };
 }
 

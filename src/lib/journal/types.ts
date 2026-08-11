@@ -53,6 +53,15 @@ export interface JournalTag {
   updatedAt: string;
 }
 
+/**
+ * A tag or category paired with how many entries carry it — the shape behind
+ * the "Top Tags" / "Top Categories" lists on the journal home screen.
+ */
+export interface JournalTaxonomyCount {
+  name: string;
+  entryCount: number;
+}
+
 // Just enough of an entry to link to it (used for previous/next navigation).
 export interface JournalEntryRef {
   id: number;

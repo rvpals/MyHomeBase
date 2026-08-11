@@ -2,7 +2,7 @@
 // initials circle. Pure presentation — the image src is just a URL built
 // from `userId`; no fetching or business logic here.
 
-type Size = "sm" | "md";
+type Size = "sm" | "md" | "lg";
 
 export interface AvatarProps {
   userId: number;
@@ -18,6 +18,7 @@ export interface AvatarProps {
 const sizeClasses: Record<Size, string> = {
   sm: "h-6 w-6 text-[11px]",
   md: "h-10 w-10 text-sm",
+  lg: "h-14 w-14 text-lg",
 };
 
 export function Avatar({

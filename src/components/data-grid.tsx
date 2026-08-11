@@ -130,6 +130,11 @@ export interface DataGridProps<T> {
   defaultPageSize?: PageSize;
   /** Show the "Export CSV" button (only appears when a column supplies `value`). Default true. */
   enableExport?: boolean;
+  /**
+   * Show the status bar (record count, per-page selector, pagination, Export CSV
+   * and Show SQL). Default true. Set false for a bare grid with no footer bar.
+   */
+  showStatusBar?: boolean;
   /** Base filename (without extension) for the exported CSV. Defaults to "export". */
   exportFileName?: string;
   /** Show the search box. Default true (needs at least one column with `value`). */
@@ -258,6 +263,7 @@ function DataGridFull<T>({
   className = "",
   defaultPageSize = DEFAULT_PAGE_SIZE,
   enableExport = true,
+  showStatusBar = true,
   exportFileName = "export",
   enableSearch = true,
   enableColumnFilters = true,
@@ -987,81 +993,83 @@ function DataGridFull<T>({
         </table>
       </div>
 
-      {/* Raised status bar: a top highlight plus a cast shadow lifts it off the
-          table, the same bevel mechanic the header bar uses (rather than the
-          recessed inset it had before). */}
-      <div className="relative z-10 border-t border-line bg-paper-raised px-4 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_-3px_6px_-2px_rgba(0,0,0,0.5)]">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-3 text-xs text-muted">
-            <span>
-              {rangeLabel}
-              {filteredNote}
-            </span>
-            <label className="flex items-center gap-1">
-              <span>Per page</span>
-              <select
-                value={String(pageSize)}
-                onChange={(event) => {
-                  setPageSize(event.target.value === "ALL" ? "ALL" : Number(event.target.value));
-                  setPage(0);
-                }}
-                className={CONTROL_CLASS}
-              >
-                {pageSizeOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-                <option value="ALL">ALL</option>
-              </select>
-            </label>
-            {slice.totalPages > 1 && (
-              <span className="flex items-center gap-2">
-                <button
-                  type="button"
-                  disabled={slice.page === 0}
-                  onClick={() => setPage((current) => Math.max(0, current - 1))}
-                  className="rounded-md border border-line px-2 py-1 text-ink disabled:opacity-40"
-                >
-                  Prev
-                </button>
-                <span>
-                  Page {slice.page + 1} of {slice.totalPages}
-                </span>
-                <button
-                  type="button"
-                  disabled={slice.page >= slice.totalPages - 1}
-                  onClick={() => setPage((current) => Math.min(slice.totalPages - 1, current + 1))}
-                  className="rounded-md border border-line px-2 py-1 text-ink disabled:opacity-40"
-                >
-                  Next
-                </button>
+      {showStatusBar && (
+        /* Raised status bar: a top highlight plus a cast shadow lifts it off the
+           table, the same bevel mechanic the header bar uses (rather than the
+           recessed inset it had before). */
+        <div className="relative z-10 border-t border-line bg-paper-raised px-4 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_-3px_6px_-2px_rgba(0,0,0,0.5)]">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3 text-xs text-muted">
+              <span>
+                {rangeLabel}
+                {filteredNote}
               </span>
-            )}
-          </div>
-          {(showExport || showSql) && (
-            <div className="flex items-center gap-2">
-              {showExport && (
-                <Button size="sm" variant="secondary" onClick={handleExport}>
-                  Export CSV
-                </Button>
-              )}
-              {showSql && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => {
-                    setSqlDraft(sql ?? "");
-                    setShowSqlDialog(true);
+              <label className="flex items-center gap-1">
+                <span>Per page</span>
+                <select
+                  value={String(pageSize)}
+                  onChange={(event) => {
+                    setPageSize(event.target.value === "ALL" ? "ALL" : Number(event.target.value));
+                    setPage(0);
                   }}
+                  className={CONTROL_CLASS}
                 >
-                  Show SQL
-                </Button>
+                  {pageSizeOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                  <option value="ALL">ALL</option>
+                </select>
+              </label>
+              {slice.totalPages > 1 && (
+                <span className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={slice.page === 0}
+                    onClick={() => setPage((current) => Math.max(0, current - 1))}
+                    className="rounded-md border border-line px-2 py-1 text-ink disabled:opacity-40"
+                  >
+                    Prev
+                  </button>
+                  <span>
+                    Page {slice.page + 1} of {slice.totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={slice.page >= slice.totalPages - 1}
+                    onClick={() => setPage((current) => Math.min(slice.totalPages - 1, current + 1))}
+                    className="rounded-md border border-line px-2 py-1 text-ink disabled:opacity-40"
+                  >
+                    Next
+                  </button>
+                </span>
               )}
             </div>
-          )}
+            {(showExport || showSql) && (
+              <div className="flex items-center gap-2">
+                {showExport && (
+                  <Button size="sm" variant="secondary" onClick={handleExport}>
+                    Export CSV
+                  </Button>
+                )}
+                {showSql && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      setSqlDraft(sql ?? "");
+                      setShowSqlDialog(true);
+                    }}
+                  >
+                    Show SQL
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {recordRow !== undefined && recordIndex !== undefined && (
         <Modal

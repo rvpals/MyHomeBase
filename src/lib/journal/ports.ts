@@ -1,5 +1,11 @@
 import type { EntryWriteData, UpsertCategoryInput, UpsertTagInput } from "./schema";
-import type { JournalCategory, JournalEntry, JournalEntryNeighbors, JournalTag } from "./types";
+import type {
+  JournalCategory,
+  JournalEntry,
+  JournalEntryNeighbors,
+  JournalTag,
+  JournalTaxonomyCount,
+} from "./types";
 
 // The interface a journal use-case depends on. The real SQLite implementation
 // is wired in at wiring.ts; tests wire in an in-memory fake. Use-cases never see
@@ -46,4 +52,9 @@ export interface JournalRepository {
   // (descriptions are preserved).
   registerCategoriesIfMissing(names: string[]): void;
   registerTagsIfMissing(names: string[]): void;
+
+  // The most-used tags/categories across all entries, highest count first, up to
+  // `limit` — for the "Top Tags" / "Top Categories" lists.
+  listTopTags(limit: number): JournalTaxonomyCount[];
+  listTopCategories(limit: number): JournalTaxonomyCount[];
 }

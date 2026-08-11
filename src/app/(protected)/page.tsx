@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { AdminIcon } from "@/components/admin-icon";
 import { AppIcon } from "@/components/app-icon";
+import { Avatar } from "@/components/avatar";
 import { Button } from "@/components/button";
 import { ModuleCarousel } from "@/components/module-carousel";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
@@ -29,20 +30,38 @@ export default async function Home() {
   return (
     <div className={PAGE_CONTAINER}>
       {startupMessage && <StartupMessage message={startupMessage} />}
-      {/* Wraps below `lg`: icon + title + the Administration button come to
-          ~447px, which scrolls a 390px screen sideways. */}
       <div className="flex flex-wrap items-center justify-center gap-4 max-lg:gap-2">
-        <AppIcon className="h-14 w-14 shrink-0" />
-        <h1 className="font-display text-3xl font-semibold text-ink">{appName}</h1>
-        {currentUser && isAdmin(currentUser) && (
-          <Button href="/admin" variant="primary">
-            <AdminIcon className="h-4 w-4" />
-            Administration
-          </Button>
+        {currentUser?.avatarMimeType ? (
+          <Avatar
+            userId={currentUser.id}
+            avatarMimeType={currentUser.avatarMimeType}
+            fallbackText={currentUser.fullName}
+            size="lg"
+            version={currentUser.updatedAt}
+          />
+        ) : (
+          <AppIcon className="h-14 w-14 shrink-0" />
         )}
+        <div className="flex flex-wrap items-center justify-center gap-3 max-lg:gap-2">
+          <h1 className="font-display text-3xl font-semibold text-ink">{appName}</h1>
+          {currentUser && isAdmin(currentUser) && (
+            // Compact drops the label for a square gear puck: the full button
+            // put icon + title + label at ~447px, which scrolled a 390px screen
+            // sideways. `max-lg:` overrides only, so desktop can't regress.
+            <Button
+              href="/admin"
+              variant="primary"
+              title="Administration"
+              ariaLabel="Administration"
+              className="max-lg:h-9 max-lg:w-9 max-lg:p-0"
+            >
+              <AdminIcon className="h-4 w-4 max-lg:h-5 max-lg:w-5" />
+              <span className="max-lg:hidden">Administration</span>
+            </Button>
+          )}
+        </div>
       </div>
       <div className="mt-3 h-px w-full bg-line" />
-      {quote && <DailyQuoteWidget initialQuote={quote} />}
       {/* Plain data across the boundary — the carousel is a client island and
           can't be handed the module records themselves. */}
       <ModuleCarousel
@@ -59,6 +78,13 @@ export default async function Home() {
           imageVersion: appModule.updatedAt,
         }))}
       />
+      {quote && (
+        <DailyQuoteWidget
+          className="mt-8"
+          initialQuote={quote}
+          isAdmin={currentUser ? isAdmin(currentUser) : false}
+        />
+      )}
     </div>
   );
 }

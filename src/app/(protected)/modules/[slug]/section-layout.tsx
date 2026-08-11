@@ -19,13 +19,14 @@ import { useCallback, useState, type ReactNode } from "react";
 import type { TreeNavState } from "@/components/tree-nav";
 import { useIsCompact } from "@/components/viewport-context";
 import { ExpenseNav } from "./expense-nav";
+import { JournalNav } from "./journal-nav";
 import { StockNav } from "./stock-nav";
 
 export function SectionLayout({
   nav,
   children,
 }: {
-  nav: "expense" | "stock";
+  nav: "expense" | "journal" | "stock";
   children: ReactNode;
 }) {
   // `useIsCompact` rather than `max-lg:` because the layout can be pinned — a
@@ -49,6 +50,8 @@ export function SectionLayout({
       <div className={`tree-nav-sticky ${isNavStacked ? "" : "sticky top-6 shrink-0"}`}>
         {nav === "expense" ? (
           <ExpenseNav onStateChange={handleNavStateChange} />
+        ) : nav === "journal" ? (
+          <JournalNav onStateChange={handleNavStateChange} />
         ) : (
           <StockNav onStateChange={handleNavStateChange} />
         )}

@@ -2,34 +2,24 @@ import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { listEntries as listCsvAnalyticsEntries } from "@/lib/csv-analytics";
-import { listNamedMappings } from "@/lib/csv-import";
-import {
-  listCategories,
-  listRecentEntries,
-  listTags,
-  listTodayInHistory,
-  resolveJournalPreferences,
-} from "@/lib/journal";
-import { listModuleSettingsFor } from "@/lib/module-settings";
 import { getModuleBySlug } from "@/lib/modules";
-import { todayIsoLocal } from "@/lib/shared/date";
 import { isAdmin, userHasModuleAccess } from "@/lib/user";
 import { deps } from "@/lib/wiring";
 import { PAGE_CONTAINER } from "../../page-container";
 import { CsvAnalyticsView } from "./csv-analytics-view";
 import { ExpenseSection } from "./expense-section";
-import { JournalView } from "./journal-view";
+import { JournalSection } from "./journal-section";
 import { StockSection } from "./stock-section";
 
 const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
 const CSV_ANALYSIS_MODULE_SLUG = "csv-analysis";
 const JOURNAL_MODULE_SLUG = "journal";
 const EXPENSE_MODULE_SLUG = "expense";
-const RECENT_JOURNAL_ENTRY_LIMIT = 25;
 
 function ModuleBody({ slug, isCurrentUserAdmin }: { slug: string; isCurrentUserAdmin: boolean }) {
-  // Stocks & ETFs and Expense both use a tree nav: the module root is their
-  // dashboard, and every other section is its own route under [slug]/[section].
+  // Stocks & ETFs, My Journal, and Expense all use a tree nav: the module root
+  // is their home/dashboard, and every other section is its own route under
+  // [slug]/[section].
   if (slug === STOCK_ETFS_MODULE_SLUG) {
     return <StockSection section="main" />;
   }
@@ -39,21 +29,7 @@ function ModuleBody({ slug, isCurrentUserAdmin }: { slug: string; isCurrentUserA
   }
 
   if (slug === JOURNAL_MODULE_SLUG) {
-    const journalModule = getModuleBySlug(deps.moduleRepo, JOURNAL_MODULE_SLUG);
-    const preferences = resolveJournalPreferences(
-      journalModule ? listModuleSettingsFor(deps.moduleSettingsRepo, journalModule.id) : [],
-    );
-    return (
-      <JournalView
-        entries={listRecentEntries(deps.journalRepo, RECENT_JOURNAL_ENTRY_LIMIT)}
-        todayInHistory={listTodayInHistory(deps.journalRepo, todayIsoLocal())}
-        categoryOptions={listCategories(deps.journalRepo).map((category) => category.name)}
-        tagOptions={listTags(deps.journalRepo).map((tag) => tag.name)}
-        preferences={preferences}
-        namedMappings={listNamedMappings(deps.csvImportMappingRepo, "Journal")}
-        canRunSql={isCurrentUserAdmin}
-      />
-    );
+    return <JournalSection section="main" isAdmin={isCurrentUserAdmin} />;
   }
 
   if (slug === EXPENSE_MODULE_SLUG) {

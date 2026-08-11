@@ -11,6 +11,8 @@ import {
   listRecentEntries,
   listTags,
   listTodayInHistory,
+  listTopCategories,
+  listTopTags,
   setLocked,
   setPinned,
   updateEntry,
@@ -190,6 +192,26 @@ function fakeRepo(): JournalRepository {
           tags.push({ name, description: "", createdAt: now, updatedAt: now });
         }
       }
+    },
+    listTopTags(limit) {
+      const counts = new Map<string, number>();
+      for (const entry of entries) {
+        for (const tag of entry.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
+      return [...counts.entries()]
+        .map(([name, entryCount]) => ({ name, entryCount }))
+        .sort((a, b) => b.entryCount - a.entryCount || a.name.localeCompare(b.name))
+        .slice(0, limit);
+    },
+    listTopCategories(limit) {
+      const counts = new Map<string, number>();
+      for (const entry of entries) {
+        for (const category of entry.categories) counts.set(category, (counts.get(category) ?? 0) + 1);
+      }
+      return [...counts.entries()]
+        .map(([name, entryCount]) => ({ name, entryCount }))
+        .sort((a, b) => b.entryCount - a.entryCount || a.name.localeCompare(b.name))
+        .slice(0, limit);
     },
   };
 }
@@ -470,5 +492,59 @@ describe("tag management", () => {
     deleteTag(repo, "daily");
     expect(listTags(repo).map((tag) => tag.name)).not.toContain("daily");
     expect(getEntry(repo, entry.id)?.tags).toEqual(["personal"]);
+  });
+});
+
+describe("listTopTags", () => {
+  it("returns the most-used tags, highest count first, limited to the requested count", () => {
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2026-01-01", tags: ["a", "b"] });
+    createEntry(repo, { date: "2026-01-02", tags: ["a", "c"] });
+    createEntry(repo, { date: "2026-01-03", tags: ["a"] });
+
+    const top = listTopTags(repo, 2);
+    expect(top).toEqual([
+      { name: "a", entryCount: 3 },
+      { name: "b", entryCount: 1 },
+    ]);
+  });
+
+  it("defaults to a limit of 10", () => {
+    const repo = fakeRepo();
+    for (let i = 0; i < 12; i++) {
+      createEntry(repo, { date: `2026-01-${String(i + 1).padStart(2, "0")}`, tags: [`tag${i}`] });
+    }
+    expect(listTopTags(repo)).toHaveLength(10);
+  });
+
+  it("rejects a non-positive limit", () => {
+    expect(() => listTopTags(fakeRepo(), 0)).toThrow();
+  });
+});
+
+describe("listTopCategories", () => {
+  it("returns the most-used categories, highest count first, limited to the requested count", () => {
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2026-01-01", categories: ["Work", "Travel"] });
+    createEntry(repo, { date: "2026-01-02", categories: ["Work"] });
+    createEntry(repo, { date: "2026-01-03", categories: ["Work", "Travel"] });
+
+    const top = listTopCategories(repo, 2);
+    expect(top).toEqual([
+      { name: "Work", entryCount: 3 },
+      { name: "Travel", entryCount: 2 },
+    ]);
+  });
+
+  it("defaults to a limit of 10", () => {
+    const repo = fakeRepo();
+    for (let i = 0; i < 12; i++) {
+      createEntry(repo, { date: `2026-01-${String(i + 1).padStart(2, "0")}`, categories: [`cat${i}`] });
+    }
+    expect(listTopCategories(repo)).toHaveLength(10);
+  });
+
+  it("rejects a non-positive limit", () => {
+    expect(() => listTopCategories(fakeRepo(), 0)).toThrow();
   });
 });

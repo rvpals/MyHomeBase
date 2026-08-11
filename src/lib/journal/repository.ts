@@ -14,6 +14,7 @@ import type {
   JournalEntryNeighbors,
   JournalEntryRef,
   JournalTag,
+  JournalTaxonomyCount,
 } from "./types";
 
 interface EntryRow {
@@ -412,6 +413,30 @@ export class SqliteJournalRepository implements JournalRepository {
     this.db.transaction(() => {
       for (const name of names) insert.run(name);
     })();
+  }
+
+  listTopTags(limit: number): JournalTaxonomyCount[] {
+    return this.db
+      .prepare(
+        `SELECT tag_name AS name, COUNT(*) AS entryCount
+         FROM jrn_entry_tags
+         GROUP BY tag_name
+         ORDER BY entryCount DESC, name ASC
+         LIMIT ?`,
+      )
+      .all(limit) as JournalTaxonomyCount[];
+  }
+
+  listTopCategories(limit: number): JournalTaxonomyCount[] {
+    return this.db
+      .prepare(
+        `SELECT category_name AS name, COUNT(*) AS entryCount
+         FROM jrn_entry_categories
+         GROUP BY category_name
+         ORDER BY entryCount DESC, name ASC
+         LIMIT ?`,
+      )
+      .all(limit) as JournalTaxonomyCount[];
   }
 
   // --- internal helpers -----------------------------------------------------

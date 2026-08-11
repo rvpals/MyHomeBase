@@ -6,10 +6,14 @@ import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import type { NamedMapping } from "@/lib/csv-import";
-import type { JournalEntry, JournalPreferences, TodayInHistoryEntry } from "@/lib/journal";
+import type {
+  JournalEntry,
+  JournalPreferences,
+  JournalTaxonomyCount,
+  TodayInHistoryEntry,
+} from "@/lib/journal";
 import { JournalEntryForm } from "./journal-entry-form";
 import { JournalImportView } from "./journal-import-view";
-import { JournalPreferencesView } from "./journal-preferences-view";
 import { runJournalSqlAction } from "./journal-actions";
 
 const COLUMNS: DataGridColumn<JournalEntry>[] = [
@@ -56,18 +60,6 @@ const TODAY_IN_HISTORY_COLUMNS: DataGridColumn<TodayInHistoryEntry>[] = [
     value: (item) => item.entry.categories.join(", "),
     render: (item) => item.entry.categories.join(", "),
   },
-  {
-    key: "tags",
-    header: "Tags",
-    value: (item) => item.entry.tags.join(", "),
-    render: (item) => item.entry.tags.join(", "),
-  },
-  {
-    key: "place",
-    header: "Place",
-    value: (item) => item.entry.placeName,
-    render: (item) => item.entry.placeName,
-  },
 ];
 
 // The single-query equivalent of what listRecentEntries produces. The real read
@@ -104,6 +96,8 @@ function cellToText(value: unknown): string {
 export function JournalView({
   entries,
   todayInHistory,
+  topTags,
+  topCategories,
   categoryOptions,
   tagOptions,
   preferences,
@@ -112,6 +106,8 @@ export function JournalView({
 }: {
   entries: JournalEntry[];
   todayInHistory: TodayInHistoryEntry[];
+  topTags: JournalTaxonomyCount[];
+  topCategories: JournalTaxonomyCount[];
   categoryOptions: string[];
   tagOptions: string[];
   preferences: JournalPreferences;
@@ -161,6 +157,48 @@ export function JournalView({
         <JournalEntryForm categoryOptions={categoryOptions} tagOptions={tagOptions} preferences={preferences} />
       </CollapsibleCard>
 
+      <div className="grid gap-8 lg:grid-cols-2">
+        <CollapsibleCard title="Top Tags" defaultOpen={topTags.length > 0}>
+          {topTags.length === 0 ? (
+            <p className="text-sm text-muted">No tags yet.</p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {topTags.map((tag, index) => (
+                <li key={tag.name} className="flex items-center justify-between gap-3 text-sm">
+                  <span className="flex items-center gap-2 text-ink">
+                    <span className="w-5 text-right font-mono text-xs text-muted">{index + 1}.</span>
+                    {tag.name}
+                  </span>
+                  <span className="rounded-full bg-brass-soft px-2 py-0.5 text-xs font-semibold text-brass-dark">
+                    {tag.entryCount} {tag.entryCount === 1 ? "entry" : "entries"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CollapsibleCard>
+
+        <CollapsibleCard title="Top Categories" defaultOpen={topCategories.length > 0}>
+          {topCategories.length === 0 ? (
+            <p className="text-sm text-muted">No categories yet.</p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {topCategories.map((category, index) => (
+                <li key={category.name} className="flex items-center justify-between gap-3 text-sm">
+                  <span className="flex items-center gap-2 text-ink">
+                    <span className="w-5 text-right font-mono text-xs text-muted">{index + 1}.</span>
+                    {category.name}
+                  </span>
+                  <span className="rounded-full bg-brass-soft px-2 py-0.5 text-xs font-semibold text-brass-dark">
+                    {category.entryCount} {category.entryCount === 1 ? "entry" : "entries"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CollapsibleCard>
+      </div>
+
       <CollapsibleCard title="Today In History" defaultOpen={todayInHistory.length > 0}>
         <p className="mb-3 text-sm text-muted">
           {todayInHistory.length > 0
@@ -174,6 +212,7 @@ export function JournalView({
           emptyMessage="No entries from earlier years on today's date."
           enableExport
           exportFileName="journal-today-in-history"
+          showStatusBar={false}
           onRowClick={(item) => openEntry(item.entry.id)}
         />
       </CollapsibleCard>
@@ -182,7 +221,7 @@ export function JournalView({
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <div>
             <h2 className="font-display text-xl text-ink">
-              {sqlResult ? "Query result" : "Entries"}
+              {sqlResult ? "Query result" : "Latest Entries"}
             </h2>
             <p className="mt-1 text-sm text-muted">
               {sqlResult
@@ -223,10 +262,6 @@ export function JournalView({
           )}
         </div>
       </section>
-
-      <CollapsibleCard title="Preferences">
-        <JournalPreferencesView preferences={preferences} />
-      </CollapsibleCard>
 
       <CollapsibleCard title="Import from CSV">
         <JournalImportView namedMappings={namedMappings} />

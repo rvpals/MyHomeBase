@@ -1,5 +1,12 @@
 # Change History
 
+## 2026-08-11 14:51 - Manual release
+
+Manual release on 2026-08-11 14:51. Published to: NAS.
+
+No described entry: this release was shipped with `scripts\manual-release.ps1`.
+Run `/release` instead when the changes deserve a written summary.
+
 ## 2026-08-10 21:48 — The section tree became a bar, and surfaces learned to lift
 
 **No migration in this release.**
