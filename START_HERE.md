@@ -13,6 +13,7 @@ Nothing is scaffolded yet — that's the first task.
 - `CLAUDE.md` — read automatically by Claude Code every session; points to the docs below.
 - `ARCHITECTURE.md` — the architecture contract (logic in `lib/`, thin presentation, UI/CLI parity, testing, one-offs).
 - `components.md` — the reusable-UI-component registry, checked before building any UI.
+- `CLI_registry.md` — the terminal commands that exist today, and the library use-cases they don't cover yet.
 - `_component-template.tsx` — the starting point for new reusable components.
 - `docs/reference/create-user-example/` — a small runnable example of the pattern.
   **Illustrative only — not part of the app.** Keep it as a reference or delete it.

@@ -7,7 +7,7 @@
 // Only the component lives here. The section list and its metadata are in
 // expense-sections.ts so server components can read them as real values.
 
-import { TreeNav, type TreeNode } from "@/components/tree-nav";
+import { TreeNav, type TreeNavState, type TreeNode } from "@/components/tree-nav";
 import {
   EXPENSE_SECTIONS,
   EXPENSE_SECTION_ICONS,
@@ -15,7 +15,7 @@ import {
   expenseSectionHref,
 } from "./expense-sections";
 
-export function ExpenseNav() {
+export function ExpenseNav({ onStateChange }: { onStateChange?: (state: TreeNavState) => void }) {
   const nodes: TreeNode[] = EXPENSE_SECTIONS.map((section) => ({
     id: section,
     label: EXPENSE_SECTION_INFO[section].label,
@@ -31,6 +31,9 @@ export function ExpenseNav() {
       nodes={nodes}
       collapsible
       storageKey="myhomebase:expense-nav-collapsed"
+      onStateChange={onStateChange}
+      // The rail's card surface. TreeNav drops it for either bar, where
+      // rounded corners on a full-width strip read wrong.
       className="rounded-xl border border-line bg-paper-raised"
     />
   );

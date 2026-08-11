@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { AppChrome } from "@/components/app-chrome";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { VIEWPORT_PINNED_COOKIE } from "@/lib/viewport";
-import { getModuleCode, listModules } from "@/lib/modules";
+import { listModules } from "@/lib/modules";
 import { getSetting } from "@/lib/settings";
 import { getAccessibleModules, isAdmin } from "@/lib/user";
 import { deps } from "@/lib/wiring";
@@ -29,7 +29,6 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
     slug: appModule.slug,
     name: appModule.shortName,
     href: `/modules/${appModule.slug}`,
-    code: getModuleCode(appModule.slug),
     icon: appModule.icon,
     hint: appModule.description,
   }));

@@ -7,7 +7,7 @@
 // Only the component lives here. The section list and its metadata are in
 // stock-sections.ts so server components can read them as real values.
 
-import { TreeNav, type TreeNode } from "@/components/tree-nav";
+import { TreeNav, type TreeNavState, type TreeNode } from "@/components/tree-nav";
 import {
   STOCK_SECTIONS,
   STOCK_SECTION_ICONS,
@@ -15,7 +15,7 @@ import {
   stockSectionHref,
 } from "./stock-sections";
 
-export function StockNav() {
+export function StockNav({ onStateChange }: { onStateChange?: (state: TreeNavState) => void }) {
   const nodes: TreeNode[] = STOCK_SECTIONS.map((section) => ({
     id: section,
     label: STOCK_SECTION_INFO[section].label,
@@ -31,6 +31,9 @@ export function StockNav() {
       nodes={nodes}
       collapsible
       storageKey="myhomebase:stock-nav-collapsed"
+      onStateChange={onStateChange}
+      // The rail's card surface. TreeNav drops it for either bar, where
+      // rounded corners on a full-width strip read wrong.
       className="rounded-xl border border-line bg-paper-raised"
     />
   );

@@ -2,7 +2,8 @@
 description: Release MyHomeBase — pick the target (Synology NAS and/or Windows), back up the production DB, sync the docs, ship the changelog, then commit and push.
 ---
 
-# Release MyHomeBase
+# Release
+# Only used by MyHomeBase Project
 
 The release checkpoint for this project. Run the steps in order; each one depends on
 the one before it. Stop at any step that can't be completed and say why rather than

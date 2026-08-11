@@ -17,4 +17,3 @@ export {
   removeModuleCarouselImage,
   getModuleCarouselImage,
 } from "./modules";
-export { getModuleCode } from "./format";

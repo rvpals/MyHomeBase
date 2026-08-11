@@ -91,6 +91,33 @@ Don't blur this line by giving a card a hard shadow or a button a soft one.
   with the move to `AppChrome`, and the exception went with it. The nav bars are quiet
   surfaces: a hairline border and a soft low-opacity shadow, nothing more. Don't give a
   panel a hard shadow without asking.
+
+### The four elevation classes — reuse these, don't hand-roll a shadow
+
+The lifts above are named classes in `globals.css`, not arbitrary values at the call site.
+Reach for one of these before writing a new `shadow-[...]`:
+
+| Class | For | Shape |
+|---|---|---|
+| `.nav-raised-top` | A bar pinned at the **top**, casting down over content — app bar, section bar | inset 1px highlight + soft wide cast, downward |
+| `.nav-raised-bottom` | A bar pinned at the **bottom** — the compact module tabs | the same, cast **upward** |
+| `.card-raised` | A card's resting lift — `CollapsibleCard` | inset highlight + hairline ring + tight cast |
+| `.card-raised-hover` | The same card's `:hover` | the cast grows and softens |
+
+Two things they encode that are easy to get wrong:
+
+- **A cast shadow falls away from the light**, so a bottom-pinned bar's must point *up*, at
+  the content it overlaps — not down off the screen. That's the only difference between the
+  two `nav-raised-*` classes, and it's why they're a pair rather than one class.
+- **The ring goes outside the border, not instead of it.** `border-line` is deliberately
+  low-contrast in every theme (Daybreak's is `#E7E2E4` on white), so definition comes from
+  stacking a soft dark ring around it. Replacing the token with a literal would kill the
+  theme inversion.
+
+All alphas stay inside the safe range above (white ≤ 0.12, black ≤ 0.45), so every one of
+these reads on Daybreak as well as on the dark themes. Hover **grows the shadow rather than
+translating the element** — a card whose whole header is a toggle must not move out from
+under the pointer mid-click.
 - **Icon badge** — the standard "identity" mark for a card or feature tile is a solid
   rounded-square accent tile with the glyph knocked out of it: `rounded-xl bg-brass
   text-paper` with the icon in `text-paper`. This reads correctly in every theme for free
@@ -164,13 +191,18 @@ The bottom bar's allowance keys off `html[data-viewport="compact"]`, **not** a m
 the layout can be pinned, so a wide window can be in compact, and a `max-width` rule would
 draw the bar with no room reserved for it.
 
-**On compact there's a third bar: the section tree.** A module's `TreeNav` turns on its
-side below 1024px and pins under the top bar as a row of chips — the switcher is chrome,
-not content, so it shouldn't scroll away three screens down. Be clear-eyed about what that
-buys: it costs the same row either way. It doesn't reclaim space, it makes the row *useful
-all the time*. If a screen genuinely needs the height back, one `−` minimises the bar to a
-puck. Details and the pieces that have to line up:
-[`components.md` → TreeNav → Compact](components.md#compact--the-section-bar).
+**There's a third bar: the section tree.** A module's `TreeNav` is a row of chips across
+the top of the section at *both* sizes — on compact it also pins under the top bar, because
+the switcher is chrome, not content, and shouldn't scroll away three screens down. Be
+clear-eyed about what pinning buys: it costs the same row either way. It doesn't reclaim
+space, it makes the row *useful all the time*. If a screen genuinely needs the height back,
+one `−` minimises the bar to a puck.
+
+**The nav changes orientation with its state**, which is the part that catches people: it's
+a bar in `full` and a column in `rail`/`strip`. A shell can't decide its own direction from
+the viewport alone — it has to listen to `onStateChange` and stack whenever the nav is a
+bar. Details and the pieces that have to line up:
+[`components.md` → TreeNav](components.md#treenav).
 
 **Three bars, three pucks, three corners.** Every bar in the compact chrome minimises the
 same way — to a [`Puck`](components.md#puck), a 44px circle you press to get it back. They
@@ -210,7 +242,9 @@ They're named after the *layout*, not the device, deliberately. An iPad in portr
 dragged to half a 27" monitor. Calling it "phone" would make both read as bugs.
 
 1024 is not a new number: it's `lg`, the breakpoint every side-by-side layout here
-already uses (the module section trees are `lg:flex-row`).
+already uses. (The module section shells are the exception that proves the rule — they fork
+on `useIsCompact()` *and* the nav's state rather than on `lg:`, because the layout can be
+pinned and because a `full` nav is a bar at any width. See `SectionLayout`.)
 
 ### Reach for CSS first — `max-lg:`, not `lg:`
 

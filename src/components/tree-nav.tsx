@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Puck } from "./puck";
 import { hasTreeIcon, TreeIcon } from "./tree-icons";
 import { useIsCompact } from "./viewport-context";
@@ -16,11 +16,20 @@ const DEFAULT_COLLAPSED_STORAGE_KEY = "myhomebase:tree-nav-collapsed";
  * is useful, then useful-but-in-the-way, then in-the-way. `strip` is the accent
  * edge on its own — the panel is gone and the section content gets the width
  * back. It stays clickable and returns to `rail`.
+ *
+ * **`full` is a horizontal bar, not a column.** It runs across the top of the
+ * section as labelled chips; `rail` and `strip` are still columns down the
+ * side. So the *orientation* changes with the state, which is why a shell has
+ * to be told about it — see `onStateChange`.
  */
 export type TreeNavState = "full" | "rail" | "strip";
 
-const WIDTH_CLASS: Record<TreeNavState, string> = {
-  full: "w-64",
+/**
+ * Only the column states have a width. `full` is a bar and sizes itself from
+ * the row it bleeds across, so pinning a width on it would fight the bleed —
+ * the same reason the compact bar has none.
+ */
+const WIDTH_CLASS: Record<Exclude<TreeNavState, "full">, string> = {
   rail: "w-16",
   strip: "w-3",
 };
@@ -54,6 +63,17 @@ export interface TreeNavProps {
    * need different keys, or collapsing one collapses the other.
    */
   storageKey?: string;
+  /**
+   * Raised whenever the state changes, and once on mount after the stored
+   * preference is read.
+   *
+   * A shell needs this because the nav changes *orientation*, not just width:
+   * `full` is a bar across the top, `rail`/`strip` are columns down the side. A
+   * shell laying both out in one flex row would squash the bar against the
+   * content beside it, so it has to stack for `full` and go side-by-side
+   * otherwise — and only the nav knows which it currently is.
+   */
+  onStateChange?: (state: TreeNavState) => void;
   className?: string;
 }
 
@@ -76,13 +96,150 @@ function CompactChip({ node, active }: { node: TreeNode; active: boolean }) {
       title={node.hint ?? node.label}
       aria-label={node.label}
       aria-current={active ? "page" : undefined}
-      className={`flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
-        active ? "bg-brass-soft font-medium text-brass-dark" : "text-muted hover:bg-line/60"
-      }`}
+      className={chipClass(active)}
     >
       <TreeIcon name={node.icon} className="h-4 w-4 shrink-0" />
       {active && <span className="truncate">{node.label}</span>}
     </Link>
+  );
+}
+
+/**
+ * Shared chip shape, so `CompactChip` and `FullChip` can't drift apart.
+ * `active` carries the accent; everything else is the resting state.
+ */
+function chipClass(active: boolean): string {
+  return `flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
+    active ? "bg-brass-soft font-medium text-brass-dark" : "text-muted hover:bg-line/60"
+  }`;
+}
+
+/**
+ * One destination in the full bar — icon *and* label, always.
+ *
+ * The difference from `CompactChip` is the whole point of the state: desktop
+ * has the width to name every section, so it does. Nothing is hidden behind a
+ * tooltip that a pointer has to find.
+ */
+function FullChip({ node, active }: { node: TreeNode; active: boolean }) {
+  return (
+    <Link
+      href={node.href!}
+      title={node.hint ?? node.label}
+      aria-current={active ? "page" : undefined}
+      className={chipClass(active)}
+    >
+      <TreeIcon name={node.icon} className="h-4 w-4 shrink-0" />
+      <span className="whitespace-nowrap">{node.label}</span>
+    </Link>
+  );
+}
+
+/**
+ * A group heading in the full bar: a chip that opens its children beneath it.
+ *
+ * A bar can't nest, and the two other ways out are both worse. Dropping the
+ * heading (what the compact bar does) is fine when the children are leaves you
+ * can also reach elsewhere, but Administration's `Configuration` is the *only*
+ * route to four screens. Flattening the children in alongside the top-level
+ * chips loses the grouping and makes the row half again as long.
+ *
+ * Closed on outside click, Escape, and on picking a child — a menu that
+ * outlived the navigation would hang over the page it just opened.
+ */
+function GroupChip({ node, pathname }: { node: TreeNode; pathname: string }) {
+  const menuId = useId();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const children = node.children ?? [];
+  // The heading isn't a destination, so it takes the accent from whichever
+  // child is current — otherwise the bar gives no clue which group you're in.
+  const active = children.some((child) => child.href === pathname);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handlePointerDown(event: MouseEvent) {
+      if (!containerRef.current?.contains(event.target as Node)) setIsOpen(false);
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setIsOpen(false);
+    }
+
+    // Only while open — a listener per group chip on every page would be four
+    // handlers running on every click in Administration.
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setIsOpen((value) => !value)}
+        title={node.hint ?? node.label}
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        aria-controls={isOpen ? menuId : undefined}
+        className={chipClass(active)}
+      >
+        <TreeIcon name={node.icon} className="h-4 w-4 shrink-0" />
+        <span className="whitespace-nowrap">{node.label}</span>
+        {/* The same chevron as everywhere else, pointing down because the menu
+            opens downward rather than the row expanding sideways. */}
+        <span
+          className={`inline-block transition-transform motion-reduce:transition-none ${
+            isOpen ? "-rotate-90" : "rotate-90"
+          }`}
+          aria-hidden
+        >
+          &rsaquo;
+        </span>
+      </button>
+      {isOpen && (
+        <div
+          id={menuId}
+          role="menu"
+          aria-label={node.label}
+          // z-30: under AppChrome's z-40 bars and Modal's z-50, over content.
+          className="absolute left-0 top-full z-30 mt-1 min-w-full rounded-lg border border-line bg-paper-raised p-1 shadow-lg"
+        >
+          {children.map((child) =>
+            child.href ? (
+              <Link
+                key={child.id}
+                href={child.href}
+                role="menuitem"
+                title={child.hint ?? child.label}
+                aria-current={child.href === pathname ? "page" : undefined}
+                onClick={() => setIsOpen(false)}
+                className={`flex items-center gap-2 whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
+                  child.href === pathname
+                    ? "bg-brass-soft font-medium text-brass-dark"
+                    : "text-ink hover:bg-line/60"
+                }`}
+              >
+                <TreeIcon name={child.icon} className="h-4 w-4 shrink-0 text-brass" />
+                {child.label}
+              </Link>
+            ) : (
+              // A heading nested inside a heading. Rare enough that a second
+              // level of menu would be gold-plating; it reads as a label.
+              <div
+                key={child.id}
+                className="px-2.5 py-1.5 text-xs font-medium uppercase tracking-wide text-muted"
+              >
+                {child.label}
+              </div>
+            ),
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -186,12 +343,12 @@ export function TreeNav({
   nodes,
   collapsible = false,
   storageKey = DEFAULT_COLLAPSED_STORAGE_KEY,
+  onStateChange,
   className = "",
 }: TreeNavProps) {
   const pathname = usePathname();
-  // Same reasoning as `Sidebar`: at 256px the full tree leaves a 390px screen
-  // 134px of content, less than the admin shell's own padding. Compact starts
-  // at the rail; a stored preference still wins, in the effect below.
+  // Compact starts at the rail, which down there means the bar. A stored
+  // preference still wins, in the effect below.
   const isCompact = useIsCompact();
   const [state, setState] = useState<TreeNavState>(isCompact ? "rail" : "full");
   const isRail = state === "rail";
@@ -216,12 +373,23 @@ export function TreeNav({
   // would otherwise strand the reader in a 256px column with nothing to press.
   const isCompactRail = collapsible && isCompact && state !== "strip";
 
-  // The bar owns its own surface, so the caller's `className` — a rounded card
-  // border for the desktop panel — is deliberately *not* applied to it. Rounded
-  // corners and a left border read wrong on something spanning the full width,
-  // and with no `tailwind-merge` here an override would come down to which rule
-  // Tailwind happened to emit last.
-  const surface = isCompactRail ? "" : className;
+  // `full` is a bar on the wide layout too, for the same reason the compact one
+  // is: a row of labelled chips across the top reaches every section without
+  // taking 256px of width off the content for the whole visit. Unlike compact
+  // it has the room to name all of them, so it does — see `FullChip`.
+  //
+  // Not gated on `collapsible`: a plain tree has no controls and no stored
+  // state, so `full` is the only state it will ever be in, and it should read
+  // the same there as anywhere else.
+  const isFullBar = !isCompact && state === "full";
+
+  // Either bar owns its own surface, so the caller's `className` — a rounded
+  // card border for the old side panel, or Admin's `border-r` — is deliberately
+  // *not* applied. Rounded corners and a left border read wrong on something
+  // spanning the full width, and with no `tailwind-merge` here an override
+  // would come down to which rule Tailwind happened to emit last.
+  const isBar = isCompactRail || isFullBar;
+  const surface = isBar ? "" : className;
 
   useEffect(() => {
     if (!collapsible) return;
@@ -246,6 +414,14 @@ export function TreeNav({
     if (!collapsible) return;
     window.localStorage.setItem(storageKey, state);
   }, [collapsible, state, storageKey]);
+
+  // Tell the shell which way to lay itself out. In an effect rather than inside
+  // the click handlers so it also fires for the state restored from storage on
+  // mount — a shell that only heard about *changes* would render side-by-side
+  // for one paint and then jump when a stored `full` came back.
+  useEffect(() => {
+    onStateChange?.(state);
+  }, [onStateChange, state]);
 
   // Hidden: only the accent edge is left, as a target that brings the rail back.
   // Its own branch rather than a zero-width nav so nothing offscreen stays
@@ -295,21 +471,27 @@ export function TreeNav({
   return (
     <nav
       className={`flex transition-[width] motion-reduce:transition-none ${
-        isCompactRail
+        isBar
           ? // No `w-full` — `width: 100%` would resolve against the wrapper and
             // then the negative margins would just shift the box left instead of
             // widening it, leaving the bar a gutter short on the right. Letting
             // width stay `auto` is what makes the bleed actually bleed.
-            "tree-nav-bleed flex-row items-stretch border-y border-line bg-paper-raised"
-          : `flex-col ${collapsible ? WIDTH_CLASS[state] : ""}`
+            // `nav-raised-top`: the bar sits above the section content and casts
+            // down over it, so it reads as a layer above it.
+            "tree-nav-bleed nav-raised-top relative z-10 flex-row items-stretch border-y border-line bg-paper-raised"
+            // The remaining column. For a collapsible tree that's the rail —
+            // `strip` returned above and `full` is a bar. A non-collapsible one
+            // has no state to be in and no width of its own, so it renders the
+            // nested tree at whatever width its wrapper gives it.
+          : `flex-col ${collapsible ? WIDTH_CLASS.rail : ""}`
       } ${surface}`}
     >
       {collapsible && (
         <div
           className={`flex items-center ${
-            isCompactRail
+            isBar
               ? "shrink-0 gap-0.5 border-r border-line px-1.5"
-              : `border-b border-line p-2 ${isRail ? "flex-col gap-0.5" : "justify-end gap-0.5"}`
+              : `flex-col gap-0.5 border-b border-line p-2`
           }`}
         >
           {/* Desktop keeps two controls, each reversible on its own: the chevron
@@ -317,23 +499,25 @@ export function TreeNav({
               as Sidebar — a single control cycling three states can only go one
               way, so overshooting would mean going all the way round.
 
-              The bar has one, because it only has somewhere to go. Three states
+              Compact has one, because it only has somewhere to go. Three states
               in a row of chips was two controls answering a question compact
-              doesn't ask: `full` is a 256px column on a 390px screen, and the
-              chips already reach every leaf the nested tree does. */}
+              doesn't ask: the chips already reach every leaf the tree does, and
+              the bar is the widest it can usefully be on a 390px screen. */}
           {!isCompactRail && (
             <button
               type="button"
               onClick={() => setState(isRail ? "full" : "rail")}
-              aria-label={isRail ? "Expand the section tree" : "Collapse the section tree to icons"}
+              aria-label={isRail ? "Expand the section bar" : "Collapse the section bar to icons"}
               aria-expanded={!isRail}
-              title={isRail ? "Expand the section tree" : "Collapse the section tree to icons"}
+              title={isRail ? "Expand the section bar" : "Collapse the section bar to icons"}
               className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-line/60 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
             >
-              {/* The same chevron the node rows, CollapsibleCard and Sidebar use. */}
+              {/* The same chevron the node rows and CollapsibleCard use. It
+                  points the way the nav will go: down from the bar into the
+                  side rail, and back up again from the rail. */}
               <span
                 className={`inline-block transition-transform motion-reduce:transition-none ${
-                  isRail ? "" : "rotate-180"
+                  isRail ? "-rotate-90" : "rotate-90"
                 }`}
                 aria-hidden
               >
@@ -344,11 +528,13 @@ export function TreeNav({
           <button
             type="button"
             onClick={() => setState("strip")}
-            aria-label={isCompactRail ? "Hide the section bar" : "Hide the section tree"}
+            aria-label={isBar ? "Hide the section bar" : "Hide the section tree"}
             title={
               isCompactRail
                 ? "Hide the section bar"
-                : "Hide the section tree — click the edge to bring it back"
+                : isFullBar
+                  ? "Hide the section bar — click the edge to bring it back"
+                  : "Hide the section tree — click the edge to bring it back"
             }
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-line/60 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
           >
@@ -366,7 +552,9 @@ export function TreeNav({
         <ul className="flex flex-1 flex-row items-center gap-1 overflow-x-auto px-2 py-1.5">
           {/* Group headings are dropped rather than flattened in beside their
               own children. `Configuration` isn't a place you can go, so as a
-              chip it's a dead target taking room from seven real ones. */}
+              chip it's a dead target taking room from seven real ones. The full
+              bar keeps them, as dropdowns — it has the width for the affordance
+              and compact doesn't. */}
           {flatten(nodes)
             .filter((node) => node.href)
             .map((node) => (
@@ -374,6 +562,31 @@ export function TreeNav({
                 <CompactChip node={node} active={node.href === pathname} />
               </li>
             ))}
+        </ul>
+      ) : isFullBar ? (
+        // **Wraps rather than scrolling sideways, unlike the compact bar.** A
+        // scroll container clips in *both* axes — setting `overflow-x` computes
+        // `overflow-y` to `auto` too — so a scrolling row would cut the group
+        // dropdown off at the bar's bottom edge, which is where it has to hang.
+        //
+        // Wrapping costs a second row only on a genuinely narrow desktop
+        // window; clipping would break the dropdown on every window. Compact
+        // has no groups to open, so it keeps the scroll and its saved height.
+        <ul className="flex flex-1 flex-row flex-wrap items-center gap-1 px-2 py-1.5">
+          {nodes.map((node) => (
+            <li key={node.id}>
+              {node.children?.length ? (
+                <GroupChip node={node} pathname={pathname} />
+              ) : node.href ? (
+                <FullChip node={node} active={node.href === pathname} />
+              ) : (
+                // A childless heading: nowhere to go and nothing to open. Kept
+                // visible as a label rather than dropped, so a caller who added
+                // one can see it's there.
+                <span className="px-2.5 text-sm text-muted">{node.label}</span>
+              )}
+            </li>
+          ))}
         </ul>
       ) : collapsible && isRail ? (
         <ul className="flex flex-col gap-0.5 p-2">

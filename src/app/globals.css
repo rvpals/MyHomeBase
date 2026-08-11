@@ -100,6 +100,65 @@ html[data-viewport="compact"][data-appbar="min"] .tree-nav-sticky {
   margin-inline: calc(-1 * var(--app-gutter, 0px));
 }
 
+/* Elevation for the navigation bars: a raised surface, not a button.
+   `design.md` keeps nav bars as quiet surfaces, so the lift comes from light
+   rather than from a hard offset edge — a 1px inset highlight on the lit edge
+   plus a soft, wide cast shadow. Same idiom as `DataGrid`'s status bar.
+
+   White at 0.12 and black at 0.45 both sit in the range `design.md` calls safe
+   for either polarity, so these read on a light theme (Daybreak, where
+   `paperRaised` is pure white) as well as a dark one.
+
+   Two classes because a bar is lit from above whichever edge it's pinned to:
+   the cast shadow falls *away* from the light, so a bottom bar's must point up
+   at the content it overlaps, not down off the screen. Defined here rather than
+   inline at the three call sites so the pair can't drift apart. */
+.nav-raised-top {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 6px 16px -6px rgba(0, 0, 0, 0.45);
+}
+
+.nav-raised-bottom {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 -6px 16px -6px rgba(0, 0, 0, 0.45);
+}
+
+/* `CollapsibleCard`'s resting elevation — a *card* lift, deliberately softer and
+   flatter than `.nav-raised-*` above and nothing like `Button`'s hard offset
+   edge (`design.md`: cards stay calm; never the switch treatment).
+
+   Three layers, outermost last:
+     1. inset top highlight — the lit edge, same cue the nav bars use
+     2. a hairline ring that deepens the border. `border-line` is a very
+        low-contrast token in every theme (Daybreak's is #E7E2E4 on white), so
+        the definition comes from stacking a soft dark ring *outside* the border
+        rather than from replacing the token with a literal — the border stays
+        theme-driven and still inverts.
+     3. the cast shadow, tight and close so the card sits just off the page.
+
+   Black at 0.10–0.30 stays inside the range `design.md` calls safe for either
+   polarity: on a light theme it reads as a grey edge, on a dark one it deepens
+   the seam already there. */
+.card-raised {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 0 1px rgba(0, 0, 0, 0.22),
+    0 4px 12px -4px rgba(0, 0, 0, 0.3);
+}
+
+/* The hover lift. `CollapsibleCard` is often clickable in effect (its whole
+   header toggles), and `design.md` allows a card "a soft ring/lift on hover" —
+   so the shadow grows and softens rather than the card translating, which would
+   shift the toggle out from under the pointer mid-click. */
+.card-raised-hover:hover {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 0 1px rgba(0, 0, 0, 0.26),
+    0 8px 20px -6px rgba(0, 0, 0, 0.38);
+}
+
 /* Where the bar's puck sits once it's minimised: tucked just under the top bar
    on the right, clear of AppChrome's own two pucks (top-left, bottom-right).
    Tracks the same `data-appbar` state the sticky offset above does, so it

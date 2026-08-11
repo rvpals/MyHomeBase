@@ -1,5 +1,101 @@
 # Change History
 
+## 2026-08-10 21:48 — The section tree became a bar, and surfaces learned to lift
+
+**No migration in this release.**
+
+Two bodies of work, both about the desktop layout. The section nav stopped being a column
+down the side and became a bar across the top — finishing the direction the last two
+releases set on the phone. And the nav bars and cards picked up a real elevation, so a
+layered screen reads as layers rather than as flat panels butted together.
+
+### [Changed] `TreeNav`'s `full` state is a horizontal bar, not a 256px column
+
+The compact layout has been a bar since the release before last. Desktop kept the nested
+tree in a `w-64` column — which meant a quarter of a 1024px window was spent, for the
+whole visit, on navigation that gets read once on arrival. `full` is now the same shape as
+the compact bar: a row of chips across the top of the section, with the content taking the
+full width beneath it.
+
+**Every chip is labelled here**, unlike compact, which names only the active one. That's
+the whole reason the two states differ — a desktop row has room for eight labels and a
+390px phone doesn't.
+
+`rail` and `strip` are unchanged and still columns, which is the interesting consequence:
+**the nav now changes orientation with its state, not just its width.** A shell laying nav
+and content out in one flex row would squash a full-width bar against the content beside
+it, so a shell has to stack for `full` and go side-by-side otherwise — and only the nav
+knows which it currently is. Hence a new `onStateChange` prop, raised on every change *and
+once on mount* after the stored preference is read; a shell told only about *changes*
+would render side-by-side for one paint and jump when a stored `full` came back. It has to
+be memoized — it's raised from an effect keyed on the callback.
+
+### [Added] `GroupChip` — group headings became dropdowns
+
+A bar can't nest, and the compact bar's answer (drop the headings) wasn't available on
+desktop: Administration's `Configuration` is the **only** route to four screens. So a
+heading is now a chip that opens its children beneath it — closed on outside click,
+Escape, and on picking a child, and taking the accent when one of its children is current.
+The listeners are attached only while open, rather than four handlers running on every
+click in Administration.
+
+**The full bar wraps; the compact bar still scrolls sideways.** A scroll container clips in
+*both* axes — setting `overflow-x` computes `overflow-y` to `auto` — so a scrolling row
+would cut the dropdown off at the bar's own bottom edge, which is exactly where it hangs.
+Wrapping costs a second row only on a genuinely narrow desktop window. Compact has no
+groups to open, so it keeps the scroll.
+
+The flip side, stated plainly: **compact can't reach a grouped leaf that has no other
+route**, because a dropdown affordance doesn't fit a 390px row.
+
+### [Added] `SectionLayout`, shared by the two module shells
+
+`ExpenseSection` and `StockSection` are *server* components — they read `deps` directly —
+so neither can hold the nav's state. Both now hand their already-loaded body to a small
+client component that owns the row/column decision. It takes the nav as a **slug**
+(`"expense" | "stock"`) rather than the element, because a render prop wouldn't survive the
+server/client boundary; it imports both navs and picks one. Admin does the same thing
+inline, since it has one nav and already had the state.
+
+### [Added] Elevation for nav bars and cards, as four CSS classes
+
+`AppChrome`'s two bars had a hard-coded `shadow-[...]` arbitrary value each; `CollapsibleCard`
+had no lift at all. Both now use named classes in `globals.css`:
+
+- **`.nav-raised-top` / `.nav-raised-bottom`** — a 1px inset highlight on the lit edge plus
+  a soft wide cast shadow. Two classes because the cast falls *away* from the light, so a
+  bottom-pinned bar's shadow has to point up at the content it overlaps rather than off the
+  screen. Used by the app bar, the module tabs and the section bar.
+- **`.card-raised` / `.card-raised-hover`** — softer and flatter than the nav bars, and
+  nothing like `Button`'s hard offset edge; `design.md` keeps cards calm. Three layers: the
+  inset highlight, a hairline ring that deepens `border-line` from *outside* so the token
+  still inverts per theme, and a tight cast shadow. Hover grows the shadow rather than
+  translating the card, which would shift `CollapsibleCard`'s toggle out from under the
+  pointer mid-click.
+
+All the alphas sit in the range `design.md` calls safe for either polarity, so they read on
+Daybreak (where `paperRaised` is pure white) as well as on the dark themes. Defined once
+rather than inline at the call sites, so the pairs can't drift apart.
+
+### [Removed] `getModuleCode` and the three-letter module code
+
+Every module page printed a derived code — `REI`, `EXP` — above its title in brass
+monospace. It was decoration: the heading directly beneath it already names the module, and
+the code appeared nowhere else after the collapsed sidebar that once used it was retired.
+`src/lib/modules/format.ts` and its test are gone, along with the now-unused `code` field on
+`AppChromeLink`.
+
+### [Added] `CLI_registry.md`
+
+A reference for driving the app from a terminal: the 12 commands that exist today, the full
+inventory of library use-cases a command *could* call, and the gap between them. Derived
+from source rather than from running anything. Useful because discovery is currently by
+failure — `npm run cli` with no arguments prints the list and exits 1.
+
+`.claude/commands/release_myhomebase.md` was renamed to `.claude/commands/release.md`.
+
+---
+
 ## 2026-08-08 22:29 — The app tells you when it has just been redeployed
 
 **Adds migration `0041_seed_startup_message_setting`.** Seed data only — no schema change.

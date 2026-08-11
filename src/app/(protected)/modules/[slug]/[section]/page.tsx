@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
-import { getModuleBySlug, getModuleCode } from "@/lib/modules";
+import { getModuleBySlug } from "@/lib/modules";
 import { userHasModuleAccess } from "@/lib/user";
 import { deps } from "@/lib/wiring";
 import { PAGE_CONTAINER } from "../../../page-container";
@@ -56,10 +56,7 @@ export default async function ModuleSectionPage({
 
   return (
     <div className={PAGE_CONTAINER}>
-      <p className="font-mono text-xs font-medium uppercase tracking-widest text-brass-dark">
-        {getModuleCode(appModule.slug)}
-      </p>
-      <h1 className="mt-2 font-display text-3xl font-semibold text-ink">{appModule.longName}</h1>
+      <h1 className="font-display text-3xl font-semibold text-ink">{appModule.longName}</h1>
       <div className="mt-3 h-px w-full bg-line" />
       <div className="mt-8">{body}</div>
     </div>

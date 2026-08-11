@@ -10,7 +10,7 @@ the one after it, so a failure should be found as early as possible.
 `npm run verify` chains all of it. Run the stages individually when you need to see
 where something breaks, or when iterating on one failure.
 
-This is the verification counterpart to `/release_myhomebase` (deploy) and overlaps
+This is the verification counterpart to `/release` (deploy) and overlaps
 `/build_project` (which also runs typecheck / lint / test, plus a production build and
 the changelog ritual). Use `/verify` while working; use `/build_project` at a release
 checkpoint.

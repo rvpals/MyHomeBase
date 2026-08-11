@@ -642,10 +642,11 @@ sub-pages (like Administration), not for the top-level module list.
 
 | Prop | Type | Notes |
 |------|------|-------|
-| `nodes` | `TreeNode[]` — `{ id, label, href?, hint?, icon?, children? }` | A node **without** `href` is a group heading (expand/collapse only). `icon` is a key rendered via `TreeIcon` — currently `sliders`, `list`, `chart`, `upload`, `quote`, `grid`, `window`, `palette`, `info`, `history`, `users`, `database`, `shapes`. |
-| `collapsible?` | `boolean` | Default `false`. When true it owns its width and shows the two collapse controls — three states, see below. |
+| `nodes` | `TreeNode[]` — `{ id, label, href?, hint?, icon?, children? }` | A node **without** `href` is a group heading (a dropdown in the bar, expand/collapse in the tree). `icon` is a key rendered via `TreeIcon` — currently `sliders`, `list`, `chart`, `upload`, `quote`, `grid`, `window`, `palette`, `info`, `history`, `users`, `database`, `shapes`. |
+| `collapsible?` | `boolean` | Default `false`. When true it owns its size and shows the two collapse controls — three states, see below. |
 | `storageKey?` | `string` | Where the state is remembered. Defaults to `"myhomebase:tree-nav-collapsed"`. **Pass a distinct key for every collapsible tree** — two trees sharing the default collapse together. |
-| `className?` | `string` | The desktop panel's surface. **Not applied to the compact bar** — see below. |
+| `onStateChange?` | `(state: TreeNavState) => void` | Raised on every change **and once on mount**, after the stored preference is read. A shell needs it to know whether to stack — see below. **Memoize it** (`useCallback`); it's raised from an effect keyed on the callback, so a fresh function each render loops. |
+| `className?` | `string` | The side column's surface. **Not applied to either bar** — see below. |
 
 ```tsx
 const nodes: TreeNode[] = [
@@ -669,28 +670,50 @@ sections — [expense-nav.tsx](src/app/(protected)/modules/[slug]/expense-nav.ts
 Stocks & ETFs module's eight — [stock-nav.tsx](src/app/(protected)/modules/[slug]/stock-nav.tsx).
 All three are `collapsible`, each with its own `storageKey`.
 
-**Collapsing — three states, two controls.** `full` (`w-64`, icon + label, the tree
-nested) → `rail` (`w-16`, icons only, flattened to one row per node) → `strip` (`w-3`,
-just the accent edge). The model the retired `Sidebar` used, down to the
-controls: the `&rsaquo;` chevron — the same one the node rows and `CollapsibleCard` use,
-rotated 180° when expanded — moves between `full` and `rail`, a `&laquo;` button drops to
-`strip`, and clicking the strip returns to `rail`. **Two controls rather than one cycling
-through three**, because a single control can only go one way and overshooting would mean
-going all the way round.
+**Collapsing — three states, two controls.** `full` (a **horizontal bar** across the top
+of the section: icon + label chips) → `rail` (`w-16`, a column down the side, icons only,
+flattened to one row per node) → `strip` (`w-3`, just the accent edge). The `&rsaquo;`
+chevron — the same one the node rows and `CollapsibleCard` use — moves between `full` and
+`rail`, a `&laquo;` button drops to `strip`, and clicking the strip returns to `rail`.
+**Two controls rather than one cycling through three**, because a single control can only
+go one way and overshooting would mean going all the way round.
+
+**`full` is a bar, not a 256px column**, so the section content keeps the full page width
+for the whole visit instead of surrendering a quarter of it to nav that's read once. It's
+the same shape as the compact bar and shares its surface, with one deliberate difference:
+**every chip is labelled**, because a desktop has the room to name all of them. Compact
+labels only the active one.
+
+Consequences worth knowing:
+
+- **The nav changes orientation with its state**, so a shell can't lay it out from the
+  viewport alone — a full-width bar left as a flex *row* item gets squashed against the
+  content beside it. Hence `onStateChange`: the shell stacks for `full` and goes
+  side-by-side for `rail`/`strip`. Memoize the handler.
+- **Group headings become dropdowns.** A bar can't nest. A heading renders as a chip that
+  opens its children below it (closed by outside click, Escape, or picking a child), and
+  takes the accent when one of them is current. Dropping them the way the compact bar does
+  wasn't available here: Administration's `Configuration` is the *only* route to four
+  screens. The nested tree is gone from desktop, so this is how you reach a group.
+- **The full bar wraps; the compact bar scrolls sideways.** A scroll container clips in
+  *both* axes — setting `overflow-x` computes `overflow-y` to `auto` too — so a scrolling
+  row would cut the dropdown off at the bar's bottom edge. Compact has no groups to open,
+  so it keeps the scroll and the height that buys.
 
 In `strip` the tree isn't merely narrowed — it isn't rendered at all, replaced by the
 clickable edge. A hidden tree you can still Tab into is worse than no tree.
 
-Because a collapsible tree sets its own width at every breakpoint, don't put a width on its
-wrapper — that pins the rail open (see
-[expense-section.tsx](src/app/(protected)/modules/[slug]/expense-section.tsx)).
+Because a collapsible tree sets its own size, don't put a width on its wrapper — that pins
+the rail open (see [section-layout.tsx](src/app/(protected)/modules/[slug]/section-layout.tsx)).
 
 ### Compact — the section bar
 
-**On `compact`, `rail` is a bar, not a column.** The shells stack below 1024px, so the
-tree sits *above* the content; a 64px column would burn ~350px of height on eight icons.
-Turned on its side it costs one row: a horizontally scrolling strip of chips, pinned
-directly under the app bar, edge to edge.
+**On `compact`, `rail` is a bar too** — compact has two states (bar or puck) where desktop
+has three. The shells stack below 1024px, so the tree sits *above* the content; a 64px
+column would burn ~350px of height on eight icons. Turned on its side it costs one row: a
+horizontally scrolling strip of chips, pinned directly under the app bar, edge to edge.
+It shares its surface with the `full` bar above; the differences are labelling, groups and
+overflow, all covered there.
 
 - **Only the active chip is labelled.** Eight labels is ~900px of row on a 390px phone, so
   most of the tree would start offscreen. Naming the current one keeps the row near-fitting
@@ -698,15 +721,16 @@ directly under the app bar, edge to edge.
   `aria-label`, and widen when they become active.
 - **Group headings are dropped**, not flattened in beside their children. `Configuration`
   isn't somewhere you can go, so as a chip it's a dead target taking room from real ones.
-  (The `full` state still nests them — that's how you reach a group in compact.)
+  Compact therefore can't reach a grouped leaf that has no other route — the desktop bar
+  opens those as dropdowns, which is an affordance a 390px row has no width for.
 - **One control, not two.** The bar has a single `−` that minimises it to a [`Puck`](#puck)
   wearing the current section's icon; tapping that gives the row back. Compact has two
-  states — bar or puck — where desktop has three. `full` is a 256px column on a 390px
-  screen, and the chips already reach every leaf the nested tree does, so a chevron down
-  here would be a control with nowhere useful to go.
-- **`isCompactRail` deliberately doesn't test `isRail`.** A `full` inherited from the
-  desktop preference would otherwise strand the reader in that 256px column with no
-  control to press.
+  states — bar or puck — where desktop has three. The chips already reach every leaf, and
+  the bar is as wide as it usefully gets on a phone, so a chevron down here would be a
+  control with nowhere to go.
+- **`isCompactRail` deliberately doesn't test `isRail`.** Both `full` and `rail` render as
+  the bar on compact, so a state inherited from the desktop preference can't strand the
+  reader in a layout with no control to press.
 
 Three pieces have to line up, and two of them are **not** in this component:
 
@@ -720,15 +744,23 @@ Three pieces have to line up, and two of them are **not** in this component:
 Both CSS rules key off `html[data-viewport="compact"]`, **not** a media query — the layout
 can be pinned, so a 1400px window can be in compact.
 
-**`className` is not applied to the compact bar.** It's the desktop panel's surface — a
-rounded card border, or Admin's `border-r` — and rounded corners on something spanning the
-full width read wrong. There's no `tailwind-merge` in this project, so an override would
-come down to which rule Tailwind emitted last; dropping it is the honest version. Anything
-structural the *wrapper* needs (`shrink-0`) goes on the wrapper.
+**`className` is not applied to either bar.** It's the side column's surface — a rounded
+card border, or Admin's `border-r` — and rounded corners on something spanning the full
+width read wrong. There's no `tailwind-merge` in this project, so an override would come
+down to which rule Tailwind emitted last; dropping it is the honest version. It still
+reaches `rail` and `strip`. Anything structural the *wrapper* needs (`shrink-0`) goes on
+the wrapper.
 
-**A shell that puts the tree in a flex row must stack in compact** — a full-width bar left
-as a row item gets squashed against the content beside it. Fork on `useIsCompact()`, not
-`max-lg:`, for the pinning reason above ([admin-shell.tsx](src/app/(protected)/admin/admin-shell.tsx)).
+**A shell that puts the tree in a flex row must stack whenever it's a bar** — in compact,
+and in `full` at any width. Fork on `useIsCompact()` plus `onStateChange`, not `max-lg:`,
+for the pinning reason above. The two module shells share
+[section-layout.tsx](src/app/(protected)/modules/[slug]/section-layout.tsx) for this;
+Admin does it inline in [admin-shell.tsx](src/app/(protected)/admin/admin-shell.tsx).
+
+`SectionLayout` takes a `nav` **slug** (`"expense" | "stock"`) rather than the nav element,
+because its callers (`ExpenseSection`, `StockSection`) are *server* components — a render
+prop or a callback wouldn't survive the boundary, so the client component imports both navs
+and picks one.
 
 **Migrating the stored value.** The `storageKey` used to hold a boolean (`"true"` =
 collapsed) and now holds the state name. `TreeNav` reads the legacy boolean and maps it to

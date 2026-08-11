@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { getEntry, getEntryNeighbors } from "@/lib/journal";
-import { getModuleBySlug, getModuleCode } from "@/lib/modules";
+import { getModuleBySlug } from "@/lib/modules";
 import { userHasModuleAccess } from "@/lib/user";
 import { deps } from "@/lib/wiring";
 import { JournalEntryScreen } from "./entry-screen";
@@ -37,10 +37,7 @@ export default async function JournalEntryPage({
 
   return (
     <div className={PAGE_CONTAINER}>
-      <p className="font-mono text-xs font-medium uppercase tracking-widest text-brass-dark">
-        {getModuleCode(appModule.slug)}
-      </p>
-      <h1 className="mt-2 font-display text-3xl font-semibold text-ink">Journal Entry</h1>
+      <h1 className="font-display text-3xl font-semibold text-ink">Journal Entry</h1>
       <div className="mt-3 h-px w-full bg-line" />
       <div className="mt-8">
         <JournalEntryScreen entry={entry} neighbors={getEntryNeighbors(deps.journalRepo, entryId)} />

@@ -33,7 +33,6 @@ export interface AppChromeLink {
   slug: string;
   name: string;
   href: string;
-  code: string;
   icon: string;
   hint?: string;
 }
@@ -97,7 +96,7 @@ export function AppChrome({
   return (
     <div className={className}>
       {barOpen ? (
-        <header className="app-bar fixed inset-x-0 top-0 z-40 flex h-14 items-center gap-2 border-b border-line bg-paper-raised px-3 shadow-[0_2px_10px_-6px_rgba(0,0,0,0.45)]">
+        <header className="app-bar nav-raised-top fixed inset-x-0 top-0 z-40 flex h-14 items-center gap-2 border-b border-line bg-paper-raised px-3">
           <Link
             href="/"
             title="Home"
@@ -190,7 +189,7 @@ export function AppChrome({
         (tabsOpen ? (
           <nav
             aria-label="Modules"
-            className="app-tabs fixed inset-x-0 bottom-0 z-40 flex items-center gap-1 overflow-x-auto border-t border-line bg-paper-raised px-2 py-1.5 shadow-[0_-2px_10px_-6px_rgba(0,0,0,0.45)]"
+            className="app-tabs nav-raised-bottom fixed inset-x-0 bottom-0 z-40 flex items-center gap-1 overflow-x-auto border-t border-line bg-paper-raised px-2 py-1.5"
           >
             {links.map((link) => (
               <Link

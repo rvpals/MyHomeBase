@@ -1,5 +1,5 @@
-// Composes one Expense section: the tree nav down the side, a heading with the
-// section's description, and the section's own view. Data is loaded per section
+// Composes one Expense section: the section nav, a heading with the section's
+// description, and the section's own view. Data is loaded per section
 // rather than all at once, so opening the dashboard doesn't read every
 // transaction, rule and mapping.
 //
@@ -25,8 +25,8 @@ import { ExpenseChartsView } from "./expense-charts-view";
 import { ExpenseDashboardView } from "./expense-dashboard-view";
 import { ExpenseImportView } from "./expense-import-view";
 import { ExpenseInstructions } from "./expense-instructions";
-import { ExpenseNav } from "./expense-nav";
 import { EXPENSE_SECTION_INFO, type ExpenseSection } from "./expense-sections";
+import { SectionLayout } from "./section-layout";
 import { ExpenseRulesView } from "./expense-rules-view";
 import { ExpenseSettingsView } from "./expense-settings-view";
 import { ExpenseTransactionsView } from "./expense-transactions-view";
@@ -127,34 +127,26 @@ export function ExpenseSection({ section }: { section: ExpenseSection }) {
   const info = EXPENSE_SECTION_INFO[section] ?? EXPENSE_SECTION_INFO.main;
 
   return (
-    <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-      {/* No width here — a collapsible TreeNav owns its own (w-64 full / w-16
-          rail / w-3 strip), and a fixed width on the wrapper would stop it
-          shrinking. `tree-nav-sticky` is what pins the compact bar under the app
-          bar; it has to sit on this wrapper rather than inside TreeNav, because
-          a sticky element only travels within its parent's box. */}
-      <div className="tree-nav-sticky lg:sticky lg:top-6 lg:shrink-0">
-        <ExpenseNav />
+    // The nav/body split lives in SectionLayout: it's a bar in `full` and a
+    // column in `rail`/`strip`, so which way this lays out is client state that
+    // a server component can't hold.
+    <SectionLayout nav="expense">
+      <h2 className="font-display text-2xl font-semibold text-ink">{info.label}</h2>
+      <p className="mt-1 text-sm text-muted">{info.description}</p>
+      <div className="mt-3 h-px w-full bg-line" />
+
+      {/* Each section gets only the guidance that applies to it — the whole
+          document above every screen was noise between the heading and the
+          content. */}
+      <div className="mt-6">
+        <CollapsibleCard title="Instruction">
+          <ExpenseInstructions section={section} />
+        </CollapsibleCard>
       </div>
 
-      <div className="min-w-0 flex-1">
-        <h2 className="font-display text-2xl font-semibold text-ink">{info.label}</h2>
-        <p className="mt-1 text-sm text-muted">{info.description}</p>
-        <div className="mt-3 h-px w-full bg-line" />
-
-        {/* Each section gets only the guidance that applies to it — the whole
-            document above every screen was noise between the heading and the
-            content. */}
-        <div className="mt-6">
-          <CollapsibleCard title="Instruction">
-            <ExpenseInstructions section={section} />
-          </CollapsibleCard>
-        </div>
-
-        <div className="mt-6">
-          <SectionBody section={section} />
-        </div>
+      <div className="mt-6">
+        <SectionBody section={section} />
       </div>
-    </div>
+    </SectionLayout>
   );
 }

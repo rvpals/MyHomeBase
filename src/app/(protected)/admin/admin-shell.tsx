@@ -1,9 +1,9 @@
 "use client";
 
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
-import { TreeNav } from "@/components/tree-nav";
+import { TreeNav, type TreeNavState } from "@/components/tree-nav";
 import { useIsCompact } from "@/components/viewport-context";
 import type { ModuleSetting } from "@/lib/module-settings";
 import type { Module } from "@/lib/modules";
@@ -108,12 +108,19 @@ export function AdminShell({
   initialModuleSettings: ModuleSetting[];
 }) {
   const router = useRouter();
-  // The shell has to stack, not just restyle: compact turns the tree into a
-  // full-width bar, and a full-width bar left as a flex *row* item gets squashed
-  // against the content beside it. `useIsCompact` rather than `max-lg:` because
-  // the layout can be pinned — a 1400px window can legitimately be in compact,
-  // and a media query would still lay it out side by side.
+  // The shell has to stack, not just restyle: a full-width bar left as a flex
+  // *row* item gets squashed against the content beside it. `useIsCompact`
+  // rather than `max-lg:` because the layout can be pinned — a 1400px window
+  // can legitimately be in compact, and a media query would still lay it out
+  // side by side.
   const isCompact = useIsCompact();
+  // The nav is a bar in `full` and a column in `rail`/`strip`, so which way
+  // this shell lays out follows the nav's state rather than the viewport
+  // alone. `useCallback` because TreeNav raises this from an effect keyed on
+  // the callback — a fresh function each render would loop.
+  const [navState, setNavState] = useState<TreeNavState>("full");
+  const handleNavStateChange = useCallback((state: TreeNavState) => setNavState(state), []);
+  const isNavStacked = isCompact || navState === "full";
   const [modules, setModules] = useState<ModuleDraft[]>(() => initialModules.map(toDraft));
   const [applicationName, setApplicationNameState] = useState(
     () => initialSettings.find((setting) => setting.key === "application_name")?.value ?? "",
@@ -276,7 +283,7 @@ export function AdminShell({
         reset,
       }}
     >
-      <div className={`flex min-h-screen ${isCompact ? "flex-col" : ""}`}>
+      <div className={`flex min-h-screen ${isNavStacked ? "flex-col" : ""}`}>
         {/* The sticky lives on this wrapper, not on TreeNav — a sticky element
             only travels inside its parent's box, and a wrapper sized to the nav
             would give it nowhere to go. */}
@@ -284,6 +291,11 @@ export function AdminShell({
           <TreeNav
             nodes={adminNav}
             collapsible
+            onStateChange={handleNavStateChange}
+            // Only reaches the rail and strip — TreeNav drops the caller's
+            // surface for either bar, where a right border spanning the full
+            // width would read as a stray line. `min-h-screen` is what makes
+            // the rail's border run the height of the page.
             className="min-h-screen border-r border-line bg-paper-raised"
           />
         </div>

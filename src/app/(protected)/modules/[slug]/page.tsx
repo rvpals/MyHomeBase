@@ -11,7 +11,7 @@ import {
   resolveJournalPreferences,
 } from "@/lib/journal";
 import { listModuleSettingsFor } from "@/lib/module-settings";
-import { getModuleBySlug, getModuleCode } from "@/lib/modules";
+import { getModuleBySlug } from "@/lib/modules";
 import { todayIsoLocal } from "@/lib/shared/date";
 import { isAdmin, userHasModuleAccess } from "@/lib/user";
 import { deps } from "@/lib/wiring";
@@ -86,10 +86,7 @@ export default async function ModulePage({
 
   return (
     <div className={PAGE_CONTAINER}>
-      <p className="font-mono text-xs font-medium uppercase tracking-widest text-brass-dark">
-        {getModuleCode(appModule.slug)}
-      </p>
-      <h1 className="mt-2 font-display text-3xl font-semibold text-ink">{appModule.longName}</h1>
+      <h1 className="font-display text-3xl font-semibold text-ink">{appModule.longName}</h1>
       <div className="mt-3 h-px w-full bg-line" />
       <div className="mt-8">
         <ModuleBody slug={slug} isCurrentUserAdmin={isAdmin(currentUser)} />

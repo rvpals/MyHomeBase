@@ -39,7 +39,7 @@ In full:
    startup output if it didn't.
 
 Committing and pushing the source is a separate ritual — see
-`/release_myhomebase`, which also covers the Windows target.
+`/release`, which also covers the Windows target.
 
 ### Two things that must be true first
 

@@ -48,7 +48,12 @@ export function CollapsibleCard({
   }
 
   return (
-    <div className={`rounded-xl border border-line bg-paper-raised ${className}`}>
+    // `card-raised` (globals.css) supplies the lift: an inset top highlight, a
+    // hairline ring that deepens `border-line`, and a soft cast shadow. The
+    // caller's `className` still comes last, so a card can opt out.
+    <div
+      className={`card-raised card-raised-hover rounded-xl border border-line bg-paper-raised transition-shadow motion-reduce:transition-none ${className}`}
+    >
       {/* A row rather than one big button, so `headerAction` can hold a real button. */}
       <div className="flex items-center gap-2 px-4 py-3">
         <button
