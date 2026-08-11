@@ -13,6 +13,13 @@ This is the deploy-side counterpart to `/build_project`, which handles the
 verification side (typecheck / lint / test / build). If the code hasn't been verified
 yet, run that first.
 
+**There is a no-Claude version of the mechanical steps:** `manual_release.bat`
+(→ `scripts/manual-release.ps1`) does the backup, changelog stamp, changelog ship,
+commit and push without a session. It writes a placeholder changelog entry rather than
+a described one, so it's for releases not worth narrating — a dependency bump, a config
+tweak. Prefer this command when the changes deserve a real entry. Keep the two in step:
+a change to the steps below should be reflected in the script, and vice versa.
+
 ## Two deployment targets
 
 | | Where | Published by |

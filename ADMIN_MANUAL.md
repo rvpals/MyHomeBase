@@ -39,7 +39,8 @@ In full:
    startup output if it didn't.
 
 Committing and pushing the source is a separate ritual — see
-`/release`, which also covers the Windows target.
+`/release`, which also covers the Windows target, or `manual_release.bat` for a
+no-Claude version of the same mechanical steps.
 
 ### Two things that must be true first
 
@@ -130,6 +131,75 @@ launcher after a deploy. To stop it outright, Ctrl-C the console window, or:
 netstat -aon | findstr ":5200 " | findstr LISTENING
 taskkill /F /PID <pid>
 ```
+
+## Scripts you can run without Claude
+
+Both of these exist to keep routine work out of a Claude session — the gates and
+the release mechanics are deterministic, and streaming their output through a
+model costs tokens for nothing. Each is a `.bat` wrapper at the repo root over a
+`.ps1` in `scripts/`; the wrapper picks `pwsh` and falls back to `powershell`,
+and passes every argument straight through, so use whichever you prefer.
+
+| File | What it does |
+|---|---|
+| `full_test.bat` → `scripts/full-test.ps1` | Every quality gate from `/verify`, in the same order |
+| `manual_release.bat` → `scripts/manual-release.ps1` | The mechanical steps of `/release` — backup, changelog, commit, push |
+
+### `full_test.bat` — the whole quality gate
+
+Runs the stages from `.claude/commands/verify.md`: clear `.next` → typecheck →
+lint → library boundary → unit tests → migration dry-run → Playwright sweep.
+
+Unlike `npm run verify`, **a failing stage does not stop the ones after it**, so
+one run reports every problem instead of just the first. Full transcripts land in
+`.verify/logs/`, and the summary prints the first few error lines per failure so
+the cause is visible without opening a log. Exit code is 0 only if every stage
+that ran passed.
+
+```powershell
+.\full_test.bat                  # everything
+.\full_test.bat -SkipE2e         # skip the browser sweep (the slow stage)
+.\full_test.bat -StopOnFirst     # classic fail-fast, like `npm run verify`
+```
+
+### `manual_release.bat` — release without a Claude session
+
+The five mechanical steps of `/release`: confirm the publish → back up the
+production database → stamp `CHANGE_HISTORY.md` → ship that file to the deployed
+app → commit and push. Prints a pass/fail summary; exit code 0 only if every step
+passed.
+
+```powershell
+.\manual_release.bat                    # NAS (default)
+.\manual_release.bat -Target Windows    # or -Target Both
+.\manual_release.bat -DryRun            # print every action, change nothing
+.\manual_release.bat -NoPush            # commit but don't push
+.\manual_release.bat -Yes               # no confirmation prompts
+```
+
+**It never publishes.** Step 1 stops and asks you to run
+`REBUILD_PUBLISH_NAS.bat` yourself, then waits for confirmation — same as
+`/release`, and for the same reason: the publish is a manual step outside this
+repo, and the NAS serves the old build until it restarts.
+
+Two things it does that are easy to get wrong by hand:
+
+- **The backup copies `-wal` and `-shm`, not just the `.db`.** The app runs in
+  WAL mode, so committed rows can still be in the WAL and not yet in the `.db` —
+  a `.db`-only copy of a running server can miss the newest writes. It reads the
+  NAS data folder over SMB (`\\NAS_DS223\app\myhomebase\data`), so no SSH is
+  needed. A failed backup aborts before anything is committed.
+- **The changelog is shipped *after* it's stamped.** The publish in step 1
+  happens before the stamp in step 3, so the deployed copy is one entry stale;
+  step 4 copies the single file over. The About page reads it from the running
+  app's working directory.
+
+**What it deliberately doesn't do:** write a real changelog entry. It inserts a
+placeholder — `## <date> - Manual release` — and nothing else. That's the right
+trade for a dependency bump or a config tweak, and the wrong one for a release
+worth describing: the *why* behind a change isn't recoverable from the diff
+later. Use `/release` when the release deserves a written entry. It also doesn't
+run any gates — run `full_test.bat` first.
 
 ## What a publish never overwrites
 
