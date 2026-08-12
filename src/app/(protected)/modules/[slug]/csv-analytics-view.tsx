@@ -427,6 +427,12 @@ function EntryForm({ entry, onDone }: { entry?: CsvAnalyticEntry; onDone: () => 
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [status, setStatus] = useState<string | undefined>(undefined);
+  // Track which columns were in the original CSV headers (for append/truncate mode)
+  const [originalColumnSourceHeaders, setOriginalColumnSourceHeaders] = useState<Set<string>>(
+    new Set(entry?.columns.map((c) => c.sourceHeader) ?? [])
+  );
+  // Values for new columns when appending/truncating (applied to all CSV rows)
+  const [newColumnValues, setNewColumnValues] = useState<Record<string, string>>({});
 
   const hasNewFile = fileText !== undefined;
   const canEditSchema = !entry || ingestMode === "overwrite";
@@ -454,6 +460,10 @@ function EntryForm({ entry, onDone }: { entry?: CsvAnalyticEntry; onDone: () => 
       if (!entry || ingestMode === "overwrite") {
         setColumns(result.preview.suggestedColumns);
         setPrimaryKeyFields([]);
+        setOriginalColumnSourceHeaders(new Set(result.preview.headers));
+      } else {
+        // For append/truncate, track which columns came from the CSV
+        setOriginalColumnSourceHeaders(new Set(result.preview.headers));
       }
     } finally {
       setIsBusy(false);
@@ -468,6 +478,22 @@ function EntryForm({ entry, onDone }: { entry?: CsvAnalyticEntry; onDone: () => 
     setPrimaryKeyFields((current) =>
       current.includes(columnName) ? current.filter((name) => name !== columnName) : [...current, columnName],
     );
+  }
+
+  function addColumn() {
+    setColumns((current) => [
+      ...current,
+      { name: "new_column", sourceHeader: "New Column", type: "text" as CsvColumnType },
+    ]);
+  }
+
+  function removeColumn(index: number) {
+    setColumns((current) => current.filter((_, i) => i !== index));
+    // Also remove from primary key if it was selected
+    const columnName = columns[index]?.name;
+    if (columnName) {
+      setPrimaryKeyFields((current) => current.filter((name) => name !== columnName));
+    }
   }
 
   async function handleSubmit() {
@@ -493,6 +519,18 @@ function EntryForm({ entry, onDone }: { entry?: CsvAnalyticEntry; onDone: () => 
           return;
         }
       } else {
+        // For append/truncate, check that all new columns have values
+        if (hasNewFile && ingestMode !== "overwrite") {
+          const newColumns = columns.filter((col) => !originalColumnSourceHeaders.has(col.sourceHeader));
+          const missingValues = newColumns.filter((col) => !newColumnValues[col.name]?.trim());
+          if (missingValues.length > 0) {
+            setError(
+              `Please enter a value for all new columns: ${missingValues.map((col) => col.sourceHeader).join(", ")}`
+            );
+            return;
+          }
+        }
+
         const result = await updateCsvAnalyticsEntryAction(entry.id, {
           name,
           description: description || undefined,
@@ -503,6 +541,10 @@ function EntryForm({ entry, onDone }: { entry?: CsvAnalyticEntry; onDone: () => 
                 tableBaseName: ingestMode === "overwrite" ? tableBaseName : undefined,
                 columns: ingestMode === "overwrite" ? columns : undefined,
                 primaryKeyFields: ingestMode === "overwrite" ? primaryKeyFields : undefined,
+                newColumnValues:
+                  ingestMode !== "overwrite" && Object.keys(newColumnValues).length > 0
+                    ? newColumnValues
+                    : undefined,
               }
             : undefined,
         });
@@ -579,55 +621,84 @@ function EntryForm({ entry, onDone }: { entry?: CsvAnalyticEntry; onDone: () => 
       )}
 
       {displayedColumns.length > 0 && (
-        <div className="overflow-x-auto rounded-md border border-line">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-line bg-paper text-left text-xs uppercase tracking-wide text-muted">
-                <th className="px-3 py-2">Source header</th>
-                <th className="px-3 py-2">Column name</th>
-                <th className="px-3 py-2">Type</th>
-                <th className="px-3 py-2">Primary key</th>
-              </tr>
-            </thead>
-            <tbody>
-              {displayedColumns.map((column, index) => (
-                <tr key={column.sourceHeader} className="border-b border-line last:border-b-0">
-                  <td className="px-3 py-2 text-muted">{column.sourceHeader}</td>
-                  <td className="px-3 py-2">
-                    <input
-                      value={column.name}
-                      disabled={!canEditSchema}
-                      onChange={(event) => updateColumn(index, "name", event.target.value)}
-                      className="w-full rounded-md border border-line bg-paper px-2 py-1 text-ink disabled:opacity-50"
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <select
-                      value={column.type}
-                      disabled={!canEditSchema}
-                      onChange={(event) => updateColumn(index, "type", event.target.value)}
-                      className="w-full rounded-md border border-line bg-paper px-2 py-1 text-ink disabled:opacity-50"
-                    >
-                      {COLUMN_TYPE_OPTIONS.map((type) => (
-                        <option key={type} value={type}>
-                          {type}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      type="checkbox"
-                      disabled={!canEditSchema}
-                      checked={displayedPrimaryKeyFields.includes(column.name)}
-                      onChange={() => togglePrimaryKey(column.name)}
-                      className="h-4 w-4 rounded border-line text-brass disabled:opacity-50"
-                    />
-                  </td>
+        <div className="flex flex-col gap-3">
+          <div className="overflow-x-auto rounded-md border border-line">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-line bg-paper text-left text-xs uppercase tracking-wide text-muted">
+                  <th className="px-3 py-2">Source header</th>
+                  <th className="px-3 py-2">Column name</th>
+                  <th className="px-3 py-2">Type</th>
+                  <th className="px-3 py-2">Primary key</th>
+                  {canEditSchema && <th className="px-3 py-2 w-10"></th>}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {displayedColumns.map((column, index) => {
+                  const isNewColumn = !originalColumnSourceHeaders.has(column.sourceHeader);
+                  return (
+                    <tr
+                      key={`${column.sourceHeader}-${index}`}
+                      className={`border-b border-line last:border-b-0 ${isNewColumn ? "bg-paper-raised" : ""}`}
+                    >
+                      <td className={`px-3 py-2 ${isNewColumn ? "text-brass font-medium" : "text-muted"}`}>
+                        {isNewColumn ? `${column.sourceHeader} (new)` : column.sourceHeader}
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          value={column.name}
+                          disabled={!canEditSchema}
+                          onChange={(event) => updateColumn(index, "name", event.target.value)}
+                          className="w-full rounded-md border border-line bg-paper px-2 py-1 text-ink disabled:opacity-50"
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <select
+                          value={column.type}
+                          disabled={!canEditSchema}
+                          onChange={(event) => updateColumn(index, "type", event.target.value)}
+                          className="w-full rounded-md border border-line bg-paper px-2 py-1 text-ink disabled:opacity-50"
+                        >
+                          {COLUMN_TYPE_OPTIONS.map((type) => (
+                            <option key={type} value={type}>
+                              {type}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="checkbox"
+                          disabled={!canEditSchema}
+                          checked={displayedPrimaryKeyFields.includes(column.name)}
+                          onChange={() => togglePrimaryKey(column.name)}
+                          className="h-4 w-4 rounded border-line text-brass disabled:opacity-50"
+                        />
+                      </td>
+                      {canEditSchema && (
+                        <td className="px-3 py-2">
+                          {isNewColumn && (
+                            <button
+                              type="button"
+                              onClick={() => removeColumn(index)}
+                              className="text-xs font-medium text-red-400 hover:underline"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {canEditSchema && (
+            <Button size="sm" variant="secondary" onClick={addColumn}>
+              Add Column
+            </Button>
+          )}
         </div>
       )}
 
@@ -656,6 +727,35 @@ function EntryForm({ entry, onDone }: { entry?: CsvAnalyticEntry; onDone: () => 
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* When appending/truncating with new columns, prompt for values for each new column */}
+      {entry && hasNewFile && ingestMode !== "overwrite" && displayedColumns.length > 0 && (
+        (() => {
+          const newColumns = displayedColumns.filter((col) => !originalColumnSourceHeaders.has(col.sourceHeader));
+          return newColumns.length > 0 ? (
+            <div className="rounded-md border border-brass bg-paper-raised p-4">
+              <p className="mb-3 text-sm font-medium text-ink">
+                New columns detected. Enter a value for each new column — it will be applied to every row being imported:
+              </p>
+              <div className="flex flex-col gap-3">
+                {newColumns.map((column) => (
+                  <label key={column.name} className="block text-sm">
+                    <span className="mb-1 block font-medium text-ink">{column.sourceHeader}</span>
+                    <input
+                      value={newColumnValues[column.name] ?? ""}
+                      onChange={(event) =>
+                        setNewColumnValues((current) => ({ ...current, [column.name]: event.target.value }))
+                      }
+                      placeholder={`Enter value for ${column.name}`}
+                      className="w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
+          ) : null;
+        })()
       )}
 
       {error && <p className="text-sm text-red-400">{error}</p>}

@@ -40,7 +40,8 @@ export type CreateCsvAnalyticEntryInput = z.infer<typeof createCsvAnalyticEntryS
 
 // Editing always updates name/description; `ingest` is only present when the user drops
 // a new file, and only "overwrite" needs columns/primaryKeyFields (append/truncate reuse
-// the entry's existing schema untouched).
+// the entry's existing schema untouched). For append/truncate with new columns,
+// `newColumnValues` provides the value to apply to each new column for every row.
 export const updateCsvAnalyticEntrySchema = z
   .object({
     name: z.string().min(1),
@@ -52,6 +53,7 @@ export const updateCsvAnalyticEntrySchema = z
         tableBaseName: z.string().min(1).optional(),
         columns: z.array(csvColumnDefinitionSchema).optional(),
         primaryKeyFields: z.array(z.string()).optional(),
+        newColumnValues: z.record(z.string(), z.string()).optional(),
       })
       .optional(),
   })

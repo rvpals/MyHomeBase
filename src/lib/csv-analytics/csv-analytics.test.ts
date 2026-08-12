@@ -245,6 +245,30 @@ describe("updateEntry", () => {
       }),
     ).toThrow();
   });
+
+  it("injects new column values into appended rows", () => {
+    const repo = fakeRepo();
+    const entry = createEntry(repo, sampleCreateInput());
+    // Simulate adding a new column "category" (not in the CSV file)
+    const entryWithNewColumn = {
+      ...entry,
+      columns: [...entry.columns, { name: "category", sourceHeader: "Category", type: "text" as const }],
+    };
+    repo.getEntryById = () => entryWithNewColumn;
+
+    const moreRows = "User ID,Event At,Amount\n3,2026-01-03,5";
+    const result = updateEntry(repo, entry.id, {
+      name: entry.name,
+      description: undefined,
+      ingest: {
+        mode: "append",
+        fileText: moreRows,
+        newColumnValues: { category: "premium" },
+      },
+    });
+
+    expect(result.ingestResult).toEqual({ inserted: 1, skipped: 0 });
+  });
 });
 
 describe("readEntryData", () => {

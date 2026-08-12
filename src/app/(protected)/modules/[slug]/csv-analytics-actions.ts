@@ -56,6 +56,7 @@ export interface UpdateEntryInput {
     tableBaseName?: string;
     columns?: CsvColumnDefinition[];
     primaryKeyFields?: string[];
+    newColumnValues?: Record<string, string>;
   };
 }
 

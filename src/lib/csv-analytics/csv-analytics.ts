@@ -113,9 +113,41 @@ export function updateEntry(
     return { entry: overwritten };
   }
 
+  // For append/truncate: the CSV headers must match existing columns.
+  // If newColumnValues are provided, add those columns' values to each row.
   assertHeadersMatchEntry(entry, headers);
+
+  let rowsToIngest = rows;
+  if (ingest.newColumnValues && Object.keys(ingest.newColumnValues).length > 0) {
+    // Find the indices of new columns in entry.columns to know where to inject values
+    const newColumnEntries = Object.entries(ingest.newColumnValues);
+    const newColumnIndices = newColumnEntries.map(([name]) =>
+      entry.columns.findIndex((col) => col.name === name)
+    );
+
+    // Inject the new column values into each row
+    // Rows are arrays matching entry.columns.length in order, with new columns at the end
+    rowsToIngest = rows.map((row) => {
+      const expandedRow = [...row];
+      // Ensure the row array is large enough for new columns
+      while (expandedRow.length < entry.columns.length) {
+        expandedRow.push("");
+      }
+      // Place new column values at their column positions
+      newColumnEntries.forEach(([name, value]) => {
+        const idx = entry.columns.findIndex((col) => col.name === name);
+        if (idx >= 0) {
+          expandedRow[idx] = value;
+        }
+      });
+      return expandedRow;
+    });
+  }
+
   const ingestResult: IngestResult =
-    ingest.mode === "append" ? repo.appendRows(id, rows) : repo.truncateAndReload(id, rows);
+    ingest.mode === "append"
+      ? repo.appendRows(id, rowsToIngest)
+      : repo.truncateAndReload(id, rowsToIngest);
   return { entry: repo.getEntryById(id) ?? entry, ingestResult };
 }
 
