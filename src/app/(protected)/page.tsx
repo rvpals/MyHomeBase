@@ -6,13 +6,16 @@ import { Button } from "@/components/button";
 import { ModuleCarousel } from "@/components/module-carousel";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { getRandomQuote } from "@/lib/daily-quote";
+import { listTodayInHistory } from "@/lib/journal";
 import { listModules } from "@/lib/modules";
 import { getSetting, getStartupMessage } from "@/lib/settings";
+import { todayIsoLocal } from "@/lib/shared/date";
 import { getAccessibleModules, isAdmin } from "@/lib/user";
 import { deps } from "@/lib/wiring";
 import { DailyQuoteWidget } from "./daily-quote-widget";
 import { PAGE_CONTAINER } from "./page-container";
 import { StartupMessage } from "./startup-message";
+import { TodayInHistoryWidget } from "./today-in-history-widget";
 
 export default async function Home() {
   const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
@@ -23,6 +26,7 @@ export default async function Home() {
   const appName = getSetting(deps.settingsRepo, "application_name")?.value ?? "MyHomeBase";
   // A fresh random quote is picked on every landing on the home screen.
   const quote = getRandomQuote(deps.dailyQuoteRepo);
+  const todayInHistory = listTodayInHistory(deps.journalRepo, todayIsoLocal());
   // Set by a deployment; blank once someone has clicked OK. Read here rather than
   // in the layout so it appears on the home screen specifically.
   const startupMessage = getStartupMessage(deps.settingsRepo);
@@ -85,6 +89,7 @@ export default async function Home() {
           isAdmin={currentUser ? isAdmin(currentUser) : false}
         />
       )}
+      <TodayInHistoryWidget className="mt-8" todayInHistory={todayInHistory} />
     </div>
   );
 }

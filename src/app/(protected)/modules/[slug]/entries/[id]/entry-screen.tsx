@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
-import { JournalEntryCard } from "@/components/journal-entry-card";
+import { JournalViewer } from "@/components/journal-viewer";
 import type { EntryLocation, JournalEntry, JournalEntryNeighbors } from "@/lib/journal";
 import {
   deleteJournalEntryAction,
@@ -44,7 +44,7 @@ function googleMapsUrl(location: EntryLocation): string {
   return `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
 }
 
-// Route-local adapter: wires the reusable JournalEntryCard's events to the
+// Route-local adapter: wires the reusable JournalViewer's events to the
 // journal server actions and handles navigation after a delete.
 export function JournalEntryScreen({
   entry,
@@ -100,27 +100,11 @@ export function JournalEntryScreen({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="no-print flex flex-wrap items-center justify-between gap-3">
+      <div className="no-print">
         <Link href={JOURNAL_MODULE_PATH} className="text-sm text-brass-dark hover:underline">
           &larr; Back to My Journal
         </Link>
-        <div className="flex items-center gap-2">
-          {/* With no neighbour, href is undefined so Button renders a real
-              disabled <button> (its base classes dim it and block clicks). */}
-          <Button size="sm" variant="secondary" href={previousHref} disabled={!previousHref}>
-            &larr; Previous
-          </Button>
-          <Button size="sm" variant="secondary" href={nextHref} disabled={!nextHref}>
-            Next &rarr;
-          </Button>
-        </div>
       </div>
-
-      <p className="no-print text-xs text-muted">
-        {neighbors.previous ? `Previous (older): ${neighbors.previous.date}` : "This is the oldest entry."}
-        {" · "}
-        {neighbors.next ? `Next (newer): ${neighbors.next.date}` : "This is the newest entry."}
-      </p>
 
       {error && <p className="no-print text-sm text-red-400">{error}</p>}
 
@@ -134,13 +118,17 @@ export function JournalEntryScreen({
           }}
         />
       ) : (
-        <JournalEntryCard
+        <JournalViewer
           entry={entry}
           onPrint={() => window.print()}
           onEdit={() => setIsEditing(true)}
           onShowLocation={setMapLocation}
           onToggleLock={handleToggleLock}
           onDelete={handleDelete}
+          previousHref={previousHref}
+          previousDate={neighbors.previous?.date}
+          nextHref={nextHref}
+          nextDate={neighbors.next?.date}
           isBusy={isBusy}
         />
       )}

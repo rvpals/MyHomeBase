@@ -21,6 +21,12 @@ export interface JournalRepository {
    * newest first. `monthDay` is "MM-DD".
    */
   listEntriesByMonthDay(monthDay: string): JournalEntry[];
+  /**
+   * Entries whose date, time, title, content, place, categories, or tags match
+   * `term` as a case-insensitive substring, newest journal date first, up to
+   * `limit`. Empty/blank terms return [].
+   */
+  searchEntries(term: string, limit: number): JournalEntry[];
   getEntryById(id: number): JournalEntry | undefined;
   /**
    * The entries immediately older and newer than `entryId` in (entry_date,

@@ -3,6 +3,10 @@
 // caller owns what Lock and Delete actually do (server actions); this component
 // only raises the intent and guards Delete behind a confirm step.
 //
+// This is the shared viewer for a journal entry — the single registered
+// component to reach for anywhere an entry is shown, the way `TickerViewer` is
+// for a ticker. The entry screen and any future print/export view share it.
+//
 // Carries the `print-sheet` class, which the print stylesheet in globals.css
 // uses to print this card alone as a clean ink-on-white page.
 
@@ -10,9 +14,10 @@
 
 import { useState } from "react";
 import { Button } from "@/components/button";
+import { CollapsibleCard } from "@/components/collapsible-card";
 import type { EntryLocation, JournalEntry } from "@/lib/journal";
 
-export interface JournalEntryCardProps {
+export interface JournalViewerProps {
   entry: JournalEntry;
   /** Omit to hide the Print button. */
   onPrint?: () => void;
@@ -28,6 +33,16 @@ export interface JournalEntryCardProps {
   onToggleLock?: (nextLocked: boolean) => void;
   /** Called after the user confirms. Omit to hide the Delete button. */
   onDelete?: () => void;
+  /**
+   * Link to the previous (older) entry, and its date for the caption below the
+   * button. Omit both to hide the Previous button — the caller computes the
+   * href so this component stays free of routing knowledge.
+   */
+  previousHref?: string;
+  previousDate?: string;
+  /** Link to the next (newer) entry, and its date. Omit both to hide the Next button. */
+  nextHref?: string;
+  nextDate?: string;
   /** Disables the actions while the caller is working. */
   isBusy?: boolean;
   /** Caller-supplied classes, merged last so they win. */
@@ -60,37 +75,100 @@ function Chips({ values }: { values: string[] }) {
   );
 }
 
+function CalendarIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M8 3v4M16 3v4M3 10h18" />
+    </svg>
+  );
+}
 
-export function JournalEntryCard({
+function ClockIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3.5 2" />
+    </svg>
+  );
+}
+
+export function JournalViewer({
   entry,
   onPrint,
   onEdit,
   onShowLocation,
   onToggleLock,
   onDelete,
+  previousHref,
+  previousDate,
+  nextHref,
+  nextDate,
   isBusy = false,
   className = "",
-}: JournalEntryCardProps) {
+}: JournalViewerProps) {
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
   const hasActions = Boolean(onPrint || onEdit || onToggleLock || onDelete);
+  const hasNeighborNav = Boolean(previousHref || nextHref);
 
   // Blank fields are omitted rather than shown as an empty placeholder, so an
   // entry only displays what it actually recorded. The detail list itself is
   // dropped when none of its fields have a value.
-  const hasCategories = entry.categories.length > 0;
-  const hasTags = entry.tags.length > 0;
   const hasPlaceName = entry.placeName !== "";
   const hasLocations = entry.locations.length > 0;
-  const hasDetails = hasCategories || hasTags || hasPlaceName || Boolean(entry.weather) || hasLocations;
+  const hasDetails = hasPlaceName || Boolean(entry.weather) || hasLocations;
 
   return (
     <article className={`print-sheet rounded-xl border border-line bg-paper-raised p-6 ${className}`}>
       <header className="border-b border-line pb-4">
+        {hasNeighborNav && (
+          <div className="no-print mb-4 flex flex-wrap items-center gap-4 border-b border-line pb-4">
+            <div className="flex shrink-0 items-center gap-2">
+              {/* With no neighbour, href is undefined so Button renders a real
+                  disabled <button> (its base classes dim it and block clicks). */}
+              <Button size="sm" variant="secondary" href={previousHref} disabled={!previousHref}>
+                &larr; Previous
+              </Button>
+              <Button size="sm" variant="secondary" href={nextHref} disabled={!nextHref}>
+                Next &rarr;
+              </Button>
+            </div>
+            <p className="min-w-0 flex-1 text-xs text-muted">
+              {previousHref ? `Previous (older): ${previousDate}` : "This is the oldest entry."}
+              {" · "}
+              {nextHref ? `Next (newer): ${nextDate}` : "This is the newest entry."}
+            </p>
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-3">
-          <span className="font-mono text-sm text-brass-dark">
+          <span className="flex items-center gap-2 font-mono text-xl text-brass-dark">
+            <CalendarIcon className="h-5 w-5 shrink-0" />
             {entry.date}
-            {entry.time !== "" && ` · ${entry.time}`}
+            {entry.time !== "" && (
+              <>
+                <ClockIcon className="ml-1 h-5 w-5 shrink-0" />
+                {entry.time}
+              </>
+            )}
           </span>
           {entry.isPinned && (
             <span className="rounded-full bg-brass-soft px-2 py-0.5 text-xs font-semibold text-brass-dark">
@@ -110,16 +188,6 @@ export function JournalEntryCard({
 
       {hasDetails && (
         <dl className="flex flex-col gap-3 py-4">
-          {hasCategories && (
-            <Field label="Categories">
-              <Chips values={entry.categories} />
-            </Field>
-          )}
-          {hasTags && (
-            <Field label="Tags">
-              <Chips values={entry.tags} />
-            </Field>
-          )}
           {hasPlaceName && <Field label="Place">{entry.placeName}</Field>}
           {entry.weather && (
             <Field label="Weather">
@@ -164,13 +232,31 @@ export function JournalEntryCard({
         </div>
       )}
 
-      <footer className="border-t border-line pt-4">
-        <p className="font-mono text-xs text-muted">
-          Entry #{entry.id} · created {entry.createdAt} · updated {entry.updatedAt}
-        </p>
+      <div className="border-t border-line py-4">
+        <CollapsibleCard title="Misc Info">
+          <dl className="flex flex-col gap-3">
+            {entry.categories.length > 0 && (
+              <Field label="Categories">
+                <Chips values={entry.categories} />
+              </Field>
+            )}
+            {entry.tags.length > 0 && (
+              <Field label="Tags">
+                <Chips values={entry.tags} />
+              </Field>
+            )}
+            <Field label="Entry #">
+              <span className="font-mono text-xs text-muted">
+                {entry.id} · created {entry.createdAt} · updated {entry.updatedAt}
+              </span>
+            </Field>
+          </dl>
+        </CollapsibleCard>
+      </div>
 
-        {hasActions && (
-          <div className="no-print mt-4 flex flex-wrap items-center gap-2">
+      {hasActions && (
+        <footer className="border-t border-line pt-4">
+          <div className="no-print flex flex-wrap items-center gap-2">
             {onPrint && (
               <Button size="sm" variant="secondary" onClick={onPrint} disabled={isBusy}>
                 Print / Save PDF
@@ -215,8 +301,8 @@ export function JournalEntryCard({
               <span className="text-xs text-muted">Unlock the entry to edit or delete it.</span>
             )}
           </div>
-        )}
-      </footer>
+        </footer>
+      )}
     </article>
   );
 }

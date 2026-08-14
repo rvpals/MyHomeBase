@@ -680,6 +680,7 @@ All take `deps.journalRepo`. Everything JSON-serializable apart from the repo.
 |---|---|---|---|
 | `listEntries` | `(repo) => JournalEntry[]` | — | web only |
 | `listRecentEntries` | `(repo, limit = 25) => JournalEntry[]` | — | web only |
+| `searchEntries` | `(repo, term, limit = 25) => JournalEntry[]` — case-insensitive substring match on date, time, title, content, place, category, tag | — | web only |
 | `listTodayInHistory` | `(repo, referenceDate: string) => TodayInHistoryEntry[]` | manual regex | web only |
 | `getEntry` | `(repo, id) => JournalEntry \| undefined` | — | web only |
 | `getEntryNeighbors` | `(repo, id) => JournalEntryNeighbors` | — | web only |

@@ -37,11 +37,7 @@ export default async function JournalEntryPage({
 
   return (
     <div className={PAGE_CONTAINER}>
-      <h1 className="font-display text-3xl font-semibold text-ink">Journal Entry</h1>
-      <div className="mt-3 h-px w-full bg-line" />
-      <div className="mt-8">
-        <JournalEntryScreen entry={entry} neighbors={getEntryNeighbors(deps.journalRepo, entryId)} />
-      </div>
+      <JournalEntryScreen entry={entry} neighbors={getEntryNeighbors(deps.journalRepo, entryId)} />
     </div>
   );
 }

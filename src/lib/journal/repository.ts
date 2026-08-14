@@ -207,6 +207,40 @@ export class SqliteJournalRepository implements JournalRepository {
     );
   }
 
+  searchEntries(term: string, limit: number): JournalEntry[] {
+    // LIKE is ASCII case-insensitive by default. The term is escaped so a user
+    // typing "%", "_", or "\" searches for the literal character rather than a
+    // wildcard — and the ESCAPE clause tells SQLite that "\" is the escape char.
+    const escaped = term.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+    const pattern = `%${escaped}%`;
+    const rows = this.db
+      .prepare(
+        `SELECT e.*
+         FROM jrn_entries e
+         WHERE e.entry_date LIKE ? ESCAPE '\\'
+            OR e.entry_time LIKE ? ESCAPE '\\'
+            OR e.title LIKE ? ESCAPE '\\'
+            OR e.content LIKE ? ESCAPE '\\'
+            OR e.place_name LIKE ? ESCAPE '\\'
+            OR EXISTS (SELECT 1 FROM jrn_entry_categories c
+                       WHERE c.entry_id = e.id AND c.category_name LIKE ? ESCAPE '\\')
+            OR EXISTS (SELECT 1 FROM jrn_entry_tags t
+                       WHERE t.entry_id = e.id AND t.tag_name LIKE ? ESCAPE '\\')
+         ORDER BY e.entry_date DESC, e.entry_time DESC, e.id DESC
+         LIMIT ?`,
+      )
+      .all(pattern, pattern, pattern, pattern, pattern, pattern, pattern, limit) as EntryRow[];
+
+    return rows.map((row) =>
+      entryToDomain(
+        row,
+        this.categoryNamesFor(row.id),
+        this.tagNamesFor(row.id),
+        this.locationsFor(row.id),
+      ),
+    );
+  }
+
   getEntryById(id: number): JournalEntry | undefined {
     const row = this.db.prepare("SELECT * FROM jrn_entries WHERE id = ?").get(id) as
       | EntryRow

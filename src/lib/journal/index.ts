@@ -39,6 +39,7 @@ export { SqliteJournalRepository } from "./repository";
 export {
   listEntries,
   listRecentEntries,
+  searchEntries,
   listTodayInHistory,
   getEntry,
   getEntryNeighbors,

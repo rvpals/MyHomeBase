@@ -10,16 +10,15 @@ import {
   listCategories,
   listRecentEntries,
   listTags,
-  listTodayInHistory,
   listTopCategories,
   listTopTags,
   resolveJournalPreferences,
 } from "@/lib/journal";
 import { listModuleSettingsFor } from "@/lib/module-settings";
 import { getModuleBySlug } from "@/lib/modules";
-import { todayIsoLocal } from "@/lib/shared/date";
 import { deps } from "@/lib/wiring";
 import { JOURNAL_SECTION_INFO, type JournalSection } from "./journal-sections";
+import { JournalHomeHeader } from "./journal-search-view";
 import { JournalPreferencesView } from "./journal-preferences-view";
 import { JournalView } from "./journal-view";
 import { SectionLayout } from "./section-layout";
@@ -38,7 +37,6 @@ function SectionBody({ section, isAdmin }: { section: JournalSection; isAdmin: b
       return (
         <JournalView
           entries={listRecentEntries(deps.journalRepo, RECENT_JOURNAL_ENTRY_LIMIT)}
-          todayInHistory={listTodayInHistory(deps.journalRepo, todayIsoLocal())}
           topTags={listTopTags(deps.journalRepo, TOP_TAXONOMY_LIMIT)}
           topCategories={listTopCategories(deps.journalRepo, TOP_TAXONOMY_LIMIT)}
           categoryOptions={listCategories(deps.journalRepo).map((category) => category.name)}
@@ -78,9 +76,15 @@ export function JournalSection({ section, isAdmin }: { section: JournalSection; 
     // column in `rail`/`strip`, so which way this lays out is client state that
     // a server component can't hold.
     <SectionLayout nav="journal">
-      <h2 className="font-display text-2xl font-semibold text-ink">{info.label}</h2>
-      <p className="mt-1 text-sm text-muted">{info.description}</p>
-      <div className="mt-3 h-px w-full bg-line" />
+      {section === "main" ? (
+        <JournalHomeHeader label={info.label} description={info.description} />
+      ) : (
+        <>
+          <h2 className="font-display text-2xl font-semibold text-ink">{info.label}</h2>
+          <p className="mt-1 text-sm text-muted">{info.description}</p>
+          <div className="mt-3 h-px w-full bg-line" />
+        </>
+      )}
 
       <div className="mt-6">
         <SectionBody section={section} isAdmin={isAdmin} />

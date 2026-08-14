@@ -49,6 +49,21 @@ export function listRecentEntries(repo: JournalRepository, limit = 25): JournalE
   return repo.listRecentEntries(limit);
 }
 
+/**
+ * Entries matching `term`, newest journal date first, up to `limit`. The term is
+ * matched case-insensitively as a substring of an entry's date, time, title,
+ * content, place, categories, or tags — the search box on the home screen.
+ * A blank term matches nothing rather than dumping the whole journal.
+ */
+export function searchEntries(repo: JournalRepository, term: string, limit = 25): JournalEntry[] {
+  const trimmed = term.trim();
+  if (trimmed === "") return [];
+  if (!Number.isInteger(limit) || limit <= 0) {
+    throw new Error(`searchEntries: limit must be a positive integer, got ${limit}.`);
+  }
+  return repo.searchEntries(trimmed, limit);
+}
+
 export function getEntry(repo: JournalRepository, id: number): JournalEntry | undefined {
   return repo.getEntryById(id);
 }

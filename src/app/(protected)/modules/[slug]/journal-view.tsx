@@ -6,12 +6,7 @@ import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import type { NamedMapping } from "@/lib/csv-import";
-import type {
-  JournalEntry,
-  JournalPreferences,
-  JournalTaxonomyCount,
-  TodayInHistoryEntry,
-} from "@/lib/journal";
+import type { JournalEntry, JournalPreferences, JournalTaxonomyCount } from "@/lib/journal";
 import { JournalEntryForm } from "./journal-entry-form";
 import { JournalImportView } from "./journal-import-view";
 import { runJournalSqlAction } from "./journal-actions";
@@ -38,27 +33,6 @@ const COLUMNS: DataGridColumn<JournalEntry>[] = [
     header: "Locations",
     value: (entry) => entry.locations.length,
     render: (entry) => (entry.locations.length > 0 ? String(entry.locations.length) : ""),
-  },
-];
-
-function yearsAgoLabel(yearsAgo: number): string {
-  return yearsAgo === 1 ? "1 year ago" : `${yearsAgo} years ago`;
-}
-
-const TODAY_IN_HISTORY_COLUMNS: DataGridColumn<TodayInHistoryEntry>[] = [
-  {
-    key: "yearsAgo",
-    header: "When",
-    value: (item) => item.yearsAgo,
-    render: (item) => yearsAgoLabel(item.yearsAgo),
-  },
-  { key: "date", header: "Date", value: (item) => item.entry.date, render: (item) => item.entry.date },
-  { key: "title", header: "Title", value: (item) => item.entry.title, render: (item) => item.entry.title },
-  {
-    key: "categories",
-    header: "Categories",
-    value: (item) => item.entry.categories.join(", "),
-    render: (item) => item.entry.categories.join(", "),
   },
 ];
 
@@ -95,7 +69,6 @@ function cellToText(value: unknown): string {
 
 export function JournalView({
   entries,
-  todayInHistory,
   topTags,
   topCategories,
   categoryOptions,
@@ -105,7 +78,6 @@ export function JournalView({
   canRunSql = false,
 }: {
   entries: JournalEntry[];
-  todayInHistory: TodayInHistoryEntry[];
   topTags: JournalTaxonomyCount[];
   topCategories: JournalTaxonomyCount[];
   categoryOptions: string[];
@@ -198,24 +170,6 @@ export function JournalView({
           )}
         </CollapsibleCard>
       </div>
-
-      <CollapsibleCard title="Today In History" defaultOpen={todayInHistory.length > 0}>
-        <p className="mb-3 text-sm text-muted">
-          {todayInHistory.length > 0
-            ? `${todayInHistory.length} past ${todayInHistory.length === 1 ? "entry" : "entries"} on this month and day. Click a row to open it.`
-            : "Nothing recorded on this month and day in an earlier year."}
-        </p>
-        <DataGrid
-          columns={TODAY_IN_HISTORY_COLUMNS}
-          rows={todayInHistory}
-          getRowKey={(item) => item.entry.id}
-          emptyMessage="No entries from earlier years on today's date."
-          enableExport
-          exportFileName="journal-today-in-history"
-          showStatusBar={false}
-          onRowClick={(item) => openEntry(item.entry.id)}
-        />
-      </CollapsibleCard>
 
       <section>
         <div className="flex flex-wrap items-baseline justify-between gap-2">

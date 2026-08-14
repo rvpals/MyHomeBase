@@ -9,6 +9,7 @@ import {
   listCategories,
   listEntries,
   listRecentEntries,
+  searchEntries,
   listTags,
   listTodayInHistory,
   listTopCategories,
@@ -76,6 +77,22 @@ function fakeRepo(): JournalRepository {
       return entries
         .filter((entry) => entry.date.slice(5) === monthDay)
         .sort((a, b) => (a.date < b.date ? 1 : -1));
+    },
+    searchEntries(term, limit) {
+      const needle = term.toLowerCase();
+      return entries
+        .filter(
+          (entry) =>
+            entry.date.toLowerCase().includes(needle) ||
+            entry.time.toLowerCase().includes(needle) ||
+            entry.title.toLowerCase().includes(needle) ||
+            entry.content.toLowerCase().includes(needle) ||
+            entry.placeName.toLowerCase().includes(needle) ||
+            entry.categories.some((name) => name.toLowerCase().includes(needle)) ||
+            entry.tags.some((name) => name.toLowerCase().includes(needle)),
+        )
+        .sort((a, b) => (a.date === b.date ? b.id - a.id : a.date < b.date ? 1 : -1))
+        .slice(0, limit);
     },
     getEntryById(id) {
       return entries.find((entry) => entry.id === id);
@@ -402,6 +419,56 @@ describe("listTodayInHistory", () => {
 
   it("rejects a malformed reference date", () => {
     expect(() => listTodayInHistory(fakeRepo(), "July 29, 2026")).toThrow();
+  });
+});
+
+describe("searchEntries", () => {
+  it("returns entries matching the term, newest journal date first", () => {
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2026-02-10", title: "Trips" });
+    createEntry(repo, { date: "2026-05-01", title: "Recipe ideas" });
+    createEntry(repo, { date: "2026-01-05", title: "Groceries" });
+
+    const results = searchEntries(repo, "recipe");
+
+    expect(results.map((entry) => entry.title)).toEqual(["Recipe ideas"]);
+  });
+
+  it("matches case-insensitively and across multiple exposed fields", () => {
+    const repo = fakeRepo();
+    createEntry(repo, {
+      date: "2026-07-27",
+      title: "Beach day",
+      content: "We saw a dolphin near the shore.",
+      tags: ["holiday"],
+    });
+    createEntry(repo, { date: "2026-06-30", title: "Shopping", content: "Groceries", categories: ["food"] });
+
+    // content
+    expect(searchEntries(repo, "DOLPHIN").map((e) => e.title)).toEqual(["Beach day"]);
+    // tag
+    expect(searchEntries(repo, "holiday").map((e) => e.title)).toEqual(["Beach day"]);
+    // category
+    expect(searchEntries(repo, "food").map((e) => e.title)).toEqual(["Shopping"]);
+    // date
+    expect(searchEntries(repo, "2026-07-27").map((e) => e.title)).toEqual(["Beach day"]);
+  });
+
+  it("returns nothing for a blank term rather than dumping the journal", () => {
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2026-07-27", title: "Anything" });
+    expect(searchEntries(repo, "   ")).toEqual([]);
+  });
+
+  it("respects the limit", () => {
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2026-07-27", title: "one", content: "shared" });
+    createEntry(repo, { date: "2026-07-28", title: "two", content: "shared" });
+    expect(searchEntries(repo, "shared", 1)).toHaveLength(1);
+  });
+
+  it("rejects a non-positive limit", () => {
+    expect(() => searchEntries(fakeRepo(), "term", 0)).toThrow();
   });
 });
 

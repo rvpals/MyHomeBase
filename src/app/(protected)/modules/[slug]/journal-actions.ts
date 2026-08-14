@@ -10,8 +10,10 @@ import {
   createEntry,
   deleteEntry,
   journalPreferencesToEntries,
+  searchEntries,
   setLocked,
   updateEntry,
+  type JournalEntry,
   type JournalPreferences,
 } from "@/lib/journal";
 import { getModuleBySlug } from "@/lib/modules";
@@ -21,6 +23,7 @@ import { deps } from "@/lib/wiring";
 
 const JOURNAL_MODULE_PATH = "/modules/journal";
 const JOURNAL_MODULE_SLUG = "journal";
+const SEARCH_RESULT_LIMIT = 50;
 
 export interface ActionResult {
   ok: boolean;
@@ -137,6 +140,19 @@ export async function deleteJournalEntryAction(id: number): Promise<ActionResult
 
 export interface WeatherResult extends ActionResult {
   weather?: CurrentWeather;
+}
+
+export interface JournalSearchResult extends ActionResult {
+  entries?: JournalEntry[];
+}
+
+/** The home screen's search: matches date, time, title, content, place, category, and tag. */
+export async function searchJournalEntriesAction(term: string): Promise<JournalSearchResult> {
+  try {
+    return { ok: true, entries: searchEntries(deps.journalRepo, term, SEARCH_RESULT_LIMIT) };
+  } catch (error) {
+    return toErrorResult(error, "Search failed.");
+  }
 }
 
 export async function fetchWeatherAction(

@@ -17,6 +17,9 @@ function fakeRepo(): JournalRepository {
     listEntries: () => [...entries],
     listRecentEntries: (limit) => [...entries].slice(0, limit),
     listEntriesByMonthDay: (monthDay) => entries.filter((entry) => entry.date.slice(5) === monthDay),
+    searchEntries: () => {
+      throw new Error("not used");
+    },
     getEntryById: (id) => entries.find((entry) => entry.id === id),
     getEntryNeighbors: () => ({}),
     createEntry(input) {
