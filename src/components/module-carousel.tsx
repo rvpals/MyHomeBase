@@ -145,9 +145,10 @@ export function ModuleCarousel({ modules, initialIndex = 0, className = "" }: Mo
     [count],
   );
 
-  // Left/right anywhere on the strip. Scoped to the container rather than the
+  // Left/right anywhere on the strip (compact view only). Scoped to the container rather than the
   // document so it can't steal the arrow keys from a focused control elsewhere.
   const onKeyDown = (event: React.KeyboardEvent) => {
+    if (!isCompact) return;
     if (event.key === "ArrowLeft") {
       event.preventDefault();
       rotate(-1);
@@ -162,6 +163,51 @@ export function ModuleCarousel({ modules, initialIndex = 0, className = "" }: Mo
       <p className="rounded-lg border border-dashed border-line p-8 text-center text-sm text-muted">
         No modules are available to you yet.
       </p>
+    );
+  }
+
+  // Full view: show grid layout
+  if (!isCompact) {
+    return (
+      <section aria-label="Modules" className={`${className}`}>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+          {modules.map((appModule) => {
+            const tileClass = colorful
+              ? "bg-paper border border-line"
+              : "bg-brass text-paper border border-brass-dark/40";
+
+            return (
+              <Link
+                key={appModule.slug}
+                href={appModule.href}
+                className="flex flex-col items-center gap-3 p-4 rounded-2xl hover:bg-paper-raised transition-colors"
+              >
+                <span
+                  className={`flex h-32 w-32 items-center justify-center overflow-hidden rounded-2xl ${
+                    appModule.hasImage ? "border border-line bg-paper" : tileClass
+                  } shadow-md hover:shadow-lg transition-shadow`}
+                >
+                  {appModule.hasImage ? (
+                    <img
+                      src={`/api/modules/${encodeURIComponent(appModule.slug)}/carousel-image?v=${encodeURIComponent(appModule.imageVersion ?? "")}`}
+                      alt={appModule.name}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <ModuleIcon name={appModule.icon} className="h-16 w-16" />
+                  )}
+                </span>
+                <div className="text-center">
+                  <h3 className="font-semibold text-sm text-ink">{appModule.name}</h3>
+                  {appModule.description && (
+                    <p className="text-xs text-muted mt-1">{appModule.description}</p>
+                  )}
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </section>
     );
   }
 
@@ -195,9 +241,17 @@ export function ModuleCarousel({ modules, initialIndex = 0, className = "" }: Mo
     >
       {/* Title above the graphic. Keyed so it re-renders per module, and given a
           fixed min-height so a one-line name and a two-line name don't shunt
-          the artwork up and down as you rotate. */}
-      <h2 className="flex min-h-[2.5rem] items-end text-center font-display text-2xl font-semibold text-ink">
-        {active.name}
+          the artwork up and down as you rotate. 3D perspective with drop shadow. */}
+      <h2 className="flex min-h-[2.5rem] items-end text-center font-display text-2xl font-semibold text-ink transform-gpu" style={{ perspective: "1000px", transformStyle: "preserve-3d" }}>
+        <span
+          className="drop-shadow-lg"
+          style={{
+            transform: "translateZ(20px) rotateX(2deg)",
+            transformStyle: "preserve-3d",
+          }}
+        >
+          {active.name}
+        </span>
       </h2>
 
       {/* Capped so the arrows sit either side of the artwork rather than out at
