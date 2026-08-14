@@ -636,7 +636,7 @@ function DataGridFull<T>({
   const leadingColumnCount = (enableSelection ? 1 : 0) + (enableRecordView ? 1 : 0);
   const columnCount = visibleColumns.length + leadingColumnCount;
   const pad = densityClasses[density];
-  const headerCellClass = `relative z-10 border border-line bg-brass-soft ${pad.header} text-center font-bold text-brass-dark shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_3px_5px_-1px_rgba(0,0,0,0.45)] ${
+  const headerCellClass = `relative z-10 border border-line bg-brass-soft ${pad.header} text-center font-bold text-brass-dark shadow-[inset_0_1px_0_rgba(255,255,255,0.18),inset_0_-1px_0_rgba(0,0,0,0.10),0_8px_20px_-6px_rgba(0,0,0,0.65),0_2px_8px_-2px_rgba(0,0,0,0.45)] ${
     stickyHeader ? "sticky top-0" : ""
   }`;
 
