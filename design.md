@@ -168,7 +168,7 @@ in `src/app/globals.css` — don't hand-roll print CSS per view:
 
 The caller triggers printing itself (`window.print()`), so a reusable component
 takes an `onPrint` callback rather than reaching for the browser API. See
-`JournalEntryCard` and `/modules/[slug]/entries/[id]`.
+`JournalViewer` and `/modules/[slug]/entries/[id]`.
 
 ## Page width and the nav bars
 
@@ -182,21 +182,23 @@ past a 2560px monitor on purpose so it doesn't bind on one; it's there only to s
 spanning a 3440px ultrawide.
 
 **Navigation lives on the edges, not down the side.** `AppChrome` renders a `fixed` top bar
-at `z-40`, plus a bottom module bar on the compact layout, so a page gets the full width at
-every size. The `(protected)` layout pads `.app-main` for whichever bars are showing — via
-`html[data-appbar]` / `html[data-moduletabs]` rules in `globals.css` rather than props,
-since the layout is a server component and the minimise state is client-side.
+at `z-40`, at every screen size, so a page gets the full width regardless. The `(protected)`
+layout pads `.app-main` for it via an `html[data-appbar]` rule in `globals.css` rather than
+a prop, since the layout is a server component and the minimise state is client-side.
 
-The bottom bar's allowance keys off `html[data-viewport="compact"]`, **not** a media query:
-the layout can be pinned, so a wide window can be in compact, and a `max-width` rule would
-draw the bar with no room reserved for it.
+**Modules collapse into a menu on compact rather than a second bar.** There used to be a
+bottom bar just for module icons; it's gone. On `compact`, the top bar's module list becomes
+a single button that opens the same links as a dropdown — the bottom edge is worth more to
+the module's own section switcher (below) than to a row of icons that's read once per visit.
 
-**There's a third bar: the section tree.** A module's `TreeNav` is a row of chips across
-the top of the section at *both* sizes — on compact it also pins under the top bar, because
-the switcher is chrome, not content, and shouldn't scroll away three screens down. Be
-clear-eyed about what pinning buys: it costs the same row either way. It doesn't reclaim
-space, it makes the row *useful all the time*. If a screen genuinely needs the height back,
-one `−` minimises the bar to a puck.
+**There's a second bar: the section tree — and it lives on the bottom edge, at every size.**
+A module's `TreeNav` is a row of chips, pinned to the bottom of the viewport whenever it's in
+its bar form (`full` state on desktop, and always on compact), because the switcher is
+chrome, not content, and shouldn't scroll away three screens down. Be clear-eyed about what
+pinning buys: it costs the same row either way. It doesn't reclaim space, it makes the row
+*useful all the time*. If a screen genuinely needs the height back, one `−` minimises the
+bar to a puck. On desktop, `rail`/`strip` are still a side column, not a bar — only the
+`full` state pins to the bottom.
 
 **The nav changes orientation with its state**, which is the part that catches people: it's
 a bar in `full` and a column in `rail`/`strip`. A shell can't decide its own direction from
@@ -204,11 +206,10 @@ the viewport alone — it has to listen to `onStateChange` and stack whenever th
 bar. Details and the pieces that have to line up:
 [`components.md` → TreeNav](components.md#treenav).
 
-**Three bars, three pucks, three corners.** Every bar in the compact chrome minimises the
-same way — to a [`Puck`](components.md#puck), a 44px circle you press to get it back. They
-are all `fixed`, so each needs its own corner (top-left for the toolbar, bottom-right for
-the module bar, top-right under the toolbar for the section bar): two sharing one would
-stack invisibly and only the top one could ever be pressed.
+**Two bars, two pucks, two corners.** Both fixed bars minimise the same way — to a
+[`Puck`](components.md#puck), a 44px circle you press to get it back. Each needs its own
+corner (top-left for the toolbar, bottom-left for the section bar): sharing one would stack
+them invisibly and only the top one could ever be pressed.
 
 `.app-main` owns the page's side gutter as `--app-gutter` rather than `px-8 max-lg:px-4`,
 so a bar inside it can cancel exactly that much and run edge to edge (`.tree-nav-bleed`).

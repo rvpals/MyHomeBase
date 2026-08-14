@@ -353,15 +353,16 @@ export function TreeNav({
   const [state, setState] = useState<TreeNavState>(isCompact ? "rail" : "full");
   const isRail = state === "rail";
 
-  // Below `lg` the section wrappers stack, so the tree sits *above* the content
-  // rather than beside it. A vertical rail there is a 64px-wide column burning
-  // ~350px of height for eight icons; turned on its side it costs one row.
+  // Below `lg` the section wrappers stack, so the tree sits *above or below*
+  // the content rather than beside it. A vertical rail there is a 64px-wide
+  // column burning ~350px of height for eight icons; turned on its side it
+  // costs one row.
   //
   // That row is then a *bar*, not a card in the content flow: `tree-nav-bleed`
   // cancels the page gutter so it runs edge to edge, and the wrapper each shell
-  // gives it (`tree-nav-sticky`, in globals.css) pins it under the app bar. It
-  // costs the same row either way — what it buys is a switcher that's still
-  // there three screens down, instead of one that scrolled away.
+  // gives it (`tree-nav-sticky`, in globals.css) pins it to the bottom of the
+  // viewport. It costs the same row either way — what it buys is a switcher
+  // that's still there three screens down, instead of one that scrolled away.
   //
   // `collapsible` is part of the condition because without it `rail` is just the
   // initial state nobody can leave — the bar's control wouldn't render, and the
@@ -390,6 +391,28 @@ export function TreeNav({
   // would come down to which rule Tailwind happened to emit last.
   const isBar = isCompactRail || isFullBar;
   const surface = isBar ? "" : className;
+
+  // Whether the bar (or the puck it minimises to) is currently on screen.
+  // `strip` on desktop is neither — it's a side edge, not pinned to the bottom.
+  const isPuck = collapsible && state === "strip" && isCompact;
+  const bottomPinState = isBar ? "bar" : isPuck ? "puck" : null;
+
+  // Mirrored onto <html> so globals.css can pad `.app-main` and position the
+  // sticky wrapper — the bar is bottom-pinned now, in both layouts, and only
+  // this component knows whether it (or its puck) is actually rendering on the
+  // current page. Pages with no TreeNav (the home grid, Administration's side
+  // layout) never set the attribute, so they reserve no space for it.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (bottomPinState) {
+      root.dataset.treenav = bottomPinState;
+    } else {
+      delete root.dataset.treenav;
+    }
+    return () => {
+      delete root.dataset.treenav;
+    };
+  }, [bottomPinState]);
 
   useEffect(() => {
     if (!collapsible) return;
@@ -439,9 +462,10 @@ export function TreeNav({
         <Puck
           onClick={() => setState("rail")}
           label="Show the section bar"
-          // Under AppChrome's z-40 bars, and clear of both their pucks
-          // (top-left, bottom-right). `tree-nav-puck` tracks the top bar.
-          position="tree-nav-puck right-3 z-30"
+          // Under AppChrome's z-40 bar, bottom-left — clear of its top-left
+          // puck. `tree-nav-puck` is the fixed position; `data-treenav="puck"`
+          // (mirrored above) is what tells `.app-main` to leave room for it.
+          position="tree-nav-puck z-30"
         >
           {active && hasTreeIcon(active.icon) ? (
             <TreeIcon name={active.icon} className="h-5 w-5" />
@@ -476,9 +500,10 @@ export function TreeNav({
             // then the negative margins would just shift the box left instead of
             // widening it, leaving the bar a gutter short on the right. Letting
             // width stay `auto` is what makes the bleed actually bleed.
-            // `nav-raised-top`: the bar sits above the section content and casts
-            // down over it, so it reads as a layer above it.
-            "tree-nav-bleed nav-raised-top relative z-10 flex-row items-stretch border-y border-line bg-paper-raised"
+            // `nav-raised-bottom`: the bar is pinned to the bottom edge and
+            // casts *up* over the section content, so it reads as a layer above
+            // it rather than a shadow falling off the bottom of the screen.
+            "tree-nav-bleed nav-raised-bottom relative z-10 flex-row items-stretch border-y border-line bg-paper-raised"
             // The remaining column. For a collapsible tree that's the rail —
             // `strip` returned above and `full` is a bar. A non-collapsible one
             // has no state to be in and no width of its own, so it renders the

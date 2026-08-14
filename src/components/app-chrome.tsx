@@ -1,7 +1,6 @@
 "use client";
 
-// The app's navigation shell: a top bar always, plus a bottom module bar on the
-// compact layout.
+// The app's navigation shell: one top bar, at every screen size.
 //
 // Replaced the left `Sidebar`. A 240px slab down the side is a desktop pattern
 // that cost a phone 62% of its screen and, being `fixed` above the content,
@@ -9,18 +8,20 @@
 // gives every layout the full width.
 //
 // **Where the modules live is the one thing that differs by layout.** On `full`
-// they sit in the top bar, next to everything else. On `compact` there isn't
-// room, so they move to a bottom bar — icons only, and within thumb reach rather
-// than up in the corner that is hardest to hit one-handed.
+// they sit inline in the top bar, next to everything else. On `compact` there
+// isn't room for that, so they collapse behind a single menu button that opens
+// the same list as a dropdown — freeing the bottom edge for the current
+// module's own section bar (`TreeNav`) rather than splitting it between two
+// bars.
 //
-// Both bars minimise to a small floating puck (top-left, bottom-right). The
-// state is persisted, and mirrored onto `<html>` so `globals.css` can set the
-// page's padding — `(protected)/layout.tsx` is a server component and can't read
+// The bar minimises to a small floating puck (top-left). The state is
+// persisted, and mirrored onto `<html>` so `globals.css` can set the page's
+// padding — `(protected)/layout.tsx` is a server component and can't read
 // client state, the same seam the old sidebar worked around.
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AdminIcon } from "./admin-icon";
 import { AppIcon } from "./app-icon";
 import { Avatar } from "./avatar";
@@ -53,10 +54,92 @@ export interface AppChromeProps {
 // there yields an undefined client-reference proxy rather than the string, with
 // nothing to catch it at build time. Keep the two in step.
 const BAR_KEY = "myhomebase:appbar";
-const TABS_KEY = "myhomebase:moduletabs";
 
 const iconButton =
   "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-brass-soft hover:text-brass-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
+
+/**
+ * Compact's stand-in for the inline module list: one button that opens the
+ * same links as a dropdown. There's no room to lay them out inline down here,
+ * and the old alternative — a second bar pinned to the bottom — would have had
+ * to fight the current module's own section bar (`TreeNav`) for the same edge.
+ */
+function ModuleMenu({ links, isActive }: { links: AppChromeLink[]; isActive: (href: string) => boolean }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isOpen, setIsOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handlePointerDown(event: MouseEvent) {
+      if (!containerRef.current?.contains(event.target as Node)) setIsOpen(false);
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setIsOpen(false);
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen]);
+
+  return (
+    <div ref={containerRef} className="relative min-w-0 flex-1">
+      <button
+        type="button"
+        onClick={() => setIsOpen((value) => !value)}
+        title="Modules"
+        aria-label="Modules"
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        className={iconButton}
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-4 w-4"
+          aria-hidden
+        >
+          <rect x="3" y="3" width="7" height="7" rx="1.5" />
+          <rect x="14" y="3" width="7" height="7" rx="1.5" />
+          <rect x="3" y="14" width="7" height="7" rx="1.5" />
+          <rect x="14" y="14" width="7" height="7" rx="1.5" />
+        </svg>
+      </button>
+      {isOpen && (
+        <div
+          role="menu"
+          aria-label="Modules"
+          // z-30: under this bar's own z-40, over ordinary content.
+          className="absolute left-0 top-full z-30 mt-1 min-w-48 rounded-lg border border-line bg-paper-raised p-1 shadow-lg"
+        >
+          {links.map((link) => (
+            <Link
+              key={link.slug}
+              href={link.href}
+              role="menuitem"
+              title={link.hint ?? link.name}
+              onClick={() => setIsOpen(false)}
+              className={`flex items-center gap-2 whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
+                isActive(link.href) ? "bg-brass-soft font-medium text-brass-dark" : "text-ink hover:bg-line/60"
+              }`}
+            >
+              <ModuleIcon name={link.icon} className="h-4 w-4 shrink-0" />
+              {link.name}
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function AppChrome({
   links,
@@ -70,26 +153,20 @@ export function AppChrome({
   const pathname = usePathname();
   const isCompact = useIsCompact();
   const [barOpen, setBarOpen] = useState(true);
-  const [tabsOpen, setTabsOpen] = useState(true);
 
   useEffect(() => {
     // Syncing from an external system (localStorage) on mount, not reacting to
-    // React state. Both are set unconditionally so the linter sees one
-    // setState per call rather than a conditional pair.
+    // React state.
     /* eslint-disable-next-line react-hooks/set-state-in-effect */
     setBarOpen(window.localStorage.getItem(BAR_KEY) !== "min");
-    setTabsOpen(window.localStorage.getItem(TABS_KEY) !== "min");
   }, []);
 
   // Mirrored onto <html> so globals.css can pad `.app-main`. The page shell is a
   // server component, so this is the only way it can react to client state.
   useEffect(() => {
-    const root = document.documentElement;
-    root.dataset.appbar = barOpen ? "open" : "min";
-    root.dataset.moduletabs = tabsOpen ? "open" : "min";
+    document.documentElement.dataset.appbar = barOpen ? "open" : "min";
     window.localStorage.setItem(BAR_KEY, barOpen ? "open" : "min");
-    window.localStorage.setItem(TABS_KEY, tabsOpen ? "open" : "min");
-  }, [barOpen, tabsOpen]);
+  }, [barOpen]);
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
@@ -108,9 +185,15 @@ export function AppChrome({
             </span>
           </Link>
 
-          {/* Modules live here on the full layout. On compact they're the bottom
-              bar instead — there is no room for them beside everything else. */}
-          {!isCompact && (
+          {/* Modules live inline here on the full layout. On compact there
+              isn't room, so they collapse behind one menu button instead — see
+              `ModuleMenu`. Freeing the bottom edge is the point: the current
+              module's own section bar (`TreeNav`) pins there now, and it
+              wouldn't have anywhere to go if a module bar still lived there
+              too. */}
+          {isCompact ? (
+            <ModuleMenu links={links} isActive={isActive} />
+          ) : (
             <nav aria-label="Modules" className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
               {links.map((link) => (
                 <Link
@@ -183,56 +266,6 @@ export function AppChrome({
           <AppIcon className="h-5 w-5" />
         </Puck>
       )}
-
-      {/* Compact only: the modules, icons alone, within thumb reach. */}
-      {isCompact &&
-        (tabsOpen ? (
-          <nav
-            aria-label="Modules"
-            className="app-tabs nav-raised-bottom fixed inset-x-0 bottom-0 z-40 flex items-center gap-1 overflow-x-auto border-t border-line bg-paper-raised px-2 py-1.5"
-          >
-            {links.map((link) => (
-              <Link
-                key={link.slug}
-                href={link.href}
-                title={link.name}
-                aria-label={link.name}
-                className={`flex h-11 flex-1 shrink-0 basis-0 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
-                  isActive(link.href) ? "bg-brass-soft text-brass-dark" : "text-muted"
-                }`}
-              >
-                <ModuleIcon name={link.icon} className="h-5 w-5" />
-              </Link>
-            ))}
-            <button
-              type="button"
-              onClick={() => setTabsOpen(false)}
-              title="Hide the module bar"
-              aria-label="Hide the module bar"
-              className="flex h-11 w-9 shrink-0 items-center justify-center rounded-lg text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
-            >
-              <span aria-hidden>&minus;</span>
-            </button>
-          </nav>
-        ) : (
-          <Puck
-            onClick={() => setTabsOpen(true)}
-            label="Show the module bar"
-            position="bottom-4 right-4 z-40"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              className="h-5 w-5"
-              aria-hidden
-            >
-              <path d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </Puck>
-        ))}
     </div>
   );
 }

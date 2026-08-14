@@ -60,11 +60,5 @@ export default async function ModuleSectionPage({
   const body = renderSection(slug, section, isAdmin(currentUser));
   if (!body) notFound();
 
-  return (
-    <div className={PAGE_CONTAINER}>
-      <h1 className="font-display text-3xl font-semibold text-ink">{appModule.longName}</h1>
-      <div className="mt-3 h-px w-full bg-line" />
-      <div className="mt-8">{body}</div>
-    </div>
-  );
+  return <div className={PAGE_CONTAINER}>{body}</div>;
 }

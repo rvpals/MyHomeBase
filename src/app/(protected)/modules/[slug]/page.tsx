@@ -62,11 +62,7 @@ export default async function ModulePage({
 
   return (
     <div className={PAGE_CONTAINER}>
-      <h1 className="font-display text-3xl font-semibold text-ink">{appModule.longName}</h1>
-      <div className="mt-3 h-px w-full bg-line" />
-      <div className="mt-8">
-        <ModuleBody slug={slug} isCurrentUserAdmin={isAdmin(currentUser)} />
-      </div>
+      <ModuleBody slug={slug} isCurrentUserAdmin={isAdmin(currentUser)} />
     </div>
   );
 }

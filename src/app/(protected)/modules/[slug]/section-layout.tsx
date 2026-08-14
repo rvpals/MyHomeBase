@@ -43,10 +43,11 @@ export function SectionLayout({
     <div className={`flex gap-6 ${isNavStacked ? "flex-col" : "flex-row items-start"}`}>
       {/* No width here — a collapsible TreeNav owns its own (w-16 rail / w-3
           strip, and the bar sizes itself), and a fixed width on the wrapper
-          would stop it shrinking. `tree-nav-sticky` is what pins the compact
-          bar under the app bar; it has to sit on this wrapper rather than
-          inside TreeNav, because a sticky element only travels within its
-          parent's box. */}
+          would stop it shrinking. `tree-nav-sticky` (despite the name, actually
+          `position: fixed` — see globals.css) is what pins the bar form
+          (full's `full` state, and all of compact) to the bottom of the
+          viewport. It sits on this wrapper rather than inside TreeNav so
+          TreeNav itself doesn't need to know where on the page it landed. */}
       <div className={`tree-nav-sticky ${isNavStacked ? "" : "sticky top-6 shrink-0"}`}>
         {nav === "expense" ? (
           <ExpenseNav onStateChange={handleNavStateChange} />

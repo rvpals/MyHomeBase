@@ -284,9 +284,9 @@ export function AdminShell({
       }}
     >
       <div className={`flex min-h-screen ${isNavStacked ? "flex-col" : ""}`}>
-        {/* The sticky lives on this wrapper, not on TreeNav — a sticky element
-            only travels inside its parent's box, and a wrapper sized to the nav
-            would give it nowhere to go. */}
+        {/* `tree-nav-sticky` (actually `position: fixed` — see globals.css)
+            lives on this wrapper, not on TreeNav, so TreeNav doesn't need to
+            know where on the page it landed. */}
         <div className="tree-nav-sticky shrink-0">
           <TreeNav
             nodes={adminNav}

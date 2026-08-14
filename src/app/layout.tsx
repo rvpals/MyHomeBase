@@ -168,20 +168,21 @@ export default async function RootLayout({
       // than letting a real mismatch hide in the noise. Only affects this
       // element's own attributes, not the tree beneath it.
       suppressHydrationWarning
-      // Set server-side from the same cookie `AppChrome` reads, so globals.css
-      // can reserve room for the bottom module bar. Deliberately not a media
-      // query: the layout can be pinned, so a wide window can be in compact.
+      // Set server-side from the same cookie the client corrects, so
+      // globals.css can reserve room for the bottom-pinned section bar
+      // (`TreeNav`) a module renders. Deliberately not a media query: the
+      // layout can be pinned, so a wide window can be in compact.
       data-viewport={viewport}
       className={`${spaceGrotesk.variable} ${sora.variable} ${familjenGrotesk.variable} ${manrope.variable} ${inter.variable} ${plexMono.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <head>
         <style>{themeCss}</style>
-        {/* Applies the stored nav-bar state before first paint. Without it the
-            page renders padded for both bars and then jumps when the client
+        {/* Applies the stored top-bar state before first paint. Without it the
+            page renders padded for the bar and then jumps when the client
             effect reads localStorage — a visible shove of every page's content
             on every navigation.
 
-            The key strings are duplicated from src/components/app-chrome.tsx on
+            The key string is duplicated from src/components/app-chrome.tsx on
             purpose: that file is "use client", and importing a constant from it
             into this server component yields an undefined client-reference
             proxy rather than the string, with nothing to catch it at build
@@ -189,9 +190,8 @@ export default async function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html:
-              "try{var d=document.documentElement.dataset;" +
-              'd.appbar=localStorage.getItem("myhomebase:appbar")==="min"?"min":"open";' +
-              'd.moduletabs=localStorage.getItem("myhomebase:moduletabs")==="min"?"min":"open";' +
+              "try{document.documentElement.dataset.appbar=" +
+              'localStorage.getItem("myhomebase:appbar")==="min"?"min":"open";' +
               "}catch(e){}",
           }}
         />
