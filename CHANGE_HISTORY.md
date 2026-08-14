@@ -1,5 +1,89 @@
 # Change History
 
+## 2026-08-14 — CSV Analytics: add columns without re-importing a file
+
+Follow-up to the custom-columns feature (`058e8ef`): adding a new column during
+append/truncate no longer requires dropping a new CSV file first — a new
+`addColumns` repository method runs `ALTER TABLE ... ADD COLUMN` against the
+entry's per-entry table directly (existing rows get SQLite's default `NULL`) and
+updates its stored `columns_json`. This is a raw `ALTER TABLE`, not the
+copy-rename-drop migration pattern, because it targets one of CSV Analysis's
+user-generated per-entry tables (`csv_` prefix, created at runtime by
+`buildCreateTableSql`) rather than one of the app's own fixed-schema tables — the
+same runtime-DDL treatment those tables already get from create/drop.
+`createEntry`'s new-column handling also had a bug fixed: it was reading new
+columns' typed values by header, which doesn't exist for a column with no file
+header — now reads by the column's `name`. Zod schemas for both create and
+update gained a `.refine` requiring every new column to have a non-blank typed
+value before submission.
+
+## 2026-08-14 — ModuleCarousel: a grid on desktop, coverflow stays on phones
+
+`ModuleCarousel` (the home screen's module picker) now renders two different shapes
+depending on `useIsCompact()`, not one: **on `full` it's a wrapping grid** of every
+module's tile (image/icon, name, description) shown at once, and **on `compact` it
+keeps the coverflow** (selected tile centred and scaled up, neighbours dimmed either
+side, arrow keys / swipe / dots to rotate). Desktop has the width to show every
+module without asking the reader to click through one at a time, so the coverflow's
+reveal-one-at-a-time affordance no longer earns its keep there; a phone doesn't have
+that width, so it keeps the original interaction. The rotate keydown handler is now a
+no-op on `full`, since there's no selection to rotate. Also fixed two doc comments
+that had drifted to say "height"/"vertical scroll" for values that are still used as
+horizontal pixel offsets in the (still-present) coverflow code. `components.md`
+updated to describe both shapes.
+
+## 2026-08-14 00:03 — Today In History moved to the landing page
+
+Moved the **Today In History** card off My Journal's home screen and onto the
+app's landing page (`(protected)/page.tsx`), placed right after the Daily Quote
+card. Extracted it into a new one-off `TodayInHistoryWidget`
+(`(protected)/today-in-history-widget.tsx`), mirroring `DailyQuoteWidget`'s
+pattern (a route-local widget, not a registered component) — it fetches via the
+existing `listTodayInHistory` use-case, unchanged, and clicking a row still opens
+that journal entry. My Journal's `JournalView` and `JournalSection` no longer
+fetch or render it.
+
+## 2026-08-12 — DataGrid: column headers popped up into a 3D bar
+
+Gave the shared `DataGrid`'s column-header row a more pronounced, modern lifted look so it
+reads as a raised bar floating above the scrolling rows (it affects every grid — User
+Management, Stocks & ETFs, CSV Analytics, SQL Explorer, and MyJournal, since they share the
+one component). Each header cell now casts a layered drop shadow — a brighter inset top
+bevel for the lit edge, a faint inset bottom shade for depth, a deep diffuse cast shadow and
+a tight grounding shadow — on top of the existing `bg-brass-soft` bar and sticky `top-0`
+positioning. No markup, layout, or API changes; styling only.
+
+## 2026-08-12 — My Journal: home-screen entry search
+
+Added a **Search** card to the journal home screen. A small **Search** button on the card's
+title line (always visible, even collapsed) opens the card to an inline input; submitting
+searches the full journal text and shows a 3-column result grid — **Date/time, Title,
+Content** — with the keyword **highlighted** (`<mark>`) wherever it appears. Clicking a row
+opens that entry.
+
+- New `searchEntries` use-case in `src/lib/journal/` (use-case → port → SQLite repo): a
+  case-insensitive substring match across an entry's date, time, title, content, place,
+  categories, and tags, newest journal date first, capped at 50 results. LIKE wildcards
+  (`%`, `_`, `\`) typed by the user are escaped so they search literally. Blank terms return
+  nothing rather than dumping the journal.
+- New `searchJournalEntriesAction` server action and a route-local
+  `JournalSearchView` (`journal-search-view.tsx`) wired into `JournalView` at the top of
+  the home screen. The grid reuses the registered `DataGrid` (export + status bar), with its
+  built-in search disabled so the card's own input is the only search box.
+- The result content cell is clamped to 3 lines so a long entry doesn't explode the row;
+  the highlight still shows where the keyword matched.
+
+## 2026-08-12 — The journal entry viewer became `JournalViewer`
+
+Renamed the registered `JournalEntryCard` component to `JournalViewer`
+(`src/components/journal-viewer.tsx`), the journal counterpart to `TickerViewer` — the
+single shared component for displaying a journal entry wherever it's viewed (currently the
+entry screen at `/modules/journal/entries/[id]`; any future print/export view shares it).
+No API change: same props, same behavior. Updated the one call site
+(`entry-screen.tsx`), `components.md`, and `design.md`. The git history keeps the original
+file via a rename, so `JournalViewer` is the same component under its new name, not a
+duplicate.
+
 ## 2026-08-11 14:51 - Manual release
 
 Manual release on 2026-08-11 14:51. Published to: NAS.

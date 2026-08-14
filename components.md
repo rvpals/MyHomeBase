@@ -53,8 +53,8 @@ pattern instead of inventing one.
 | [`Modal`](#modal) | **Any dialog** — overlay, panel, Esc/focus handling | [src/components/modal.tsx](src/components/modal.tsx) | yes |
 | [`CollapsibleCard`](#collapsiblecard) | A titled section that expands/collapses | [src/components/collapsible-card.tsx](src/components/collapsible-card.tsx) | yes |
 | [`Tabs`](#tabs) | One-of-N panels in the same space | [src/components/tabs.tsx](src/components/tabs.tsx) | yes |
-| [`ModuleCarousel`](#modulecarousel) | The home screen's module picker (coverflow) | [src/components/module-carousel.tsx](src/components/module-carousel.tsx) | yes |
-| [`AppChrome`](#appchrome) | The app's nav shell — top bar + compact module tabs | [src/components/app-chrome.tsx](src/components/app-chrome.tsx) | yes |
+| [`ModuleCarousel`](#modulecarousel) | The home screen's module picker (grid on desktop, coverflow on phones) | [src/components/module-carousel.tsx](src/components/module-carousel.tsx) | yes |
+| [`AppChrome`](#appchrome) | The app's nav shell — one top bar, at every screen size | [src/components/app-chrome.tsx](src/components/app-chrome.tsx) | yes |
 | [`ViewportSwitch`](#viewportswitch) | The global compact/full switch | [src/components/viewport-switch.tsx](src/components/viewport-switch.tsx) | yes |
 | [`Puck`](#puck) | The round target a minimised bar leaves behind | [src/components/puck.tsx](src/components/puck.tsx) | yes |
 | [`TreeNav`](#treenav) | Hierarchical parent/child nav tree | [src/components/tree-nav.tsx](src/components/tree-nav.tsx) | yes |
@@ -67,7 +67,7 @@ pattern instead of inventing one.
 | [`ChartBar`](#chartbar) | Category comparison / part-to-whole | [src/components/chart-bar.tsx](src/components/chart-bar.tsx) | yes |
 | [`ChartXY`](#chartxy) | User-configurable line/bar/scatter/area + zoom | [src/components/chart-xy.tsx](src/components/chart-xy.tsx) | yes |
 | [`ChartToolbar`](#chartoolbar) | A chart's gear control — **not called directly** | [src/components/chart-toolbar.tsx](src/components/chart-toolbar.tsx) | yes |
-| [`JournalEntryCard`](#journalentrycard) | Full detail sheet for one journal entry | [src/components/journal-entry-card.tsx](src/components/journal-entry-card.tsx) | yes |
+| [`JournalViewer`](#journalviewer) | Full detail sheet for one journal entry | [src/components/journal-viewer.tsx](src/components/journal-viewer.tsx) | yes |
 | [`TickerViewer`](#tickerviewer) | Full record dialog for one ticker — 3 tabs of cards | [src/components/ticker-viewer.tsx](src/components/ticker-viewer.tsx) | yes |
 | [`IconSetProvider`](#iconsetprovider--useiconset) / `useIconSet` | Active module icon set (context) | [src/components/icon-set-context.tsx](src/components/icon-set-context.tsx) | yes |
 | [`ViewportProvider`](#viewportprovider--useviewport) / `useViewport` | Compact vs full layout (context) | [src/components/viewport-context.tsx](src/components/viewport-context.tsx) | yes |
@@ -464,10 +464,12 @@ the About screen's Application / Change History split
 
 ## ModuleCarousel
 
-**The home screen's module picker.** A coverflow of large module graphics: the selected
-module centred and full size, its neighbours scaled down and dimmed either side. The
-**title sits above the graphic and the description below it**, and the centred graphic is
-the launch target.
+**The home screen's module picker.** On `full` (desktop) it's a **wrapping grid** of every
+module's tile — name above, description below, image or icon glyph in the tile, and the
+whole tile is the launch target. Below 1024px it switches to a **coverflow**: the selected
+module centred and full size, its neighbours scaled down and dimmed either side, with the
+title above the graphic and the description below it and the centred graphic as the launch
+target. Which one renders is `useIsCompact()`, not a prop — callers don't choose.
 
 - **Source:** [src/components/module-carousel.tsx](src/components/module-carousel.tsx)
 - **Import:** `import { ModuleCarousel, type CarouselModule } from "@/components/module-carousel";`
@@ -493,12 +495,16 @@ the launch target.
 ```
 
 **Used by:** the home screen — [src/app/(protected)/page.tsx](src/app/(protected)/page.tsx).
-It replaced a grid of `ModuleCard`s, which was deleted with its last caller.
+It replaced a grid of `ModuleCard`s, which was deleted with its last caller — and then grew
+its own grid back for `full`, once the coverflow's one-at-a-time reveal turned out to cost a
+desktop visitor more clicks than it saved: with the width to show every module at once,
+scaling one up and dimming the rest bought nothing.
 
-**Rotating.** Prev/next buttons, ← / → while the carousel has focus, clicking a neighbour,
-tapping a dot, or swiping. It **wraps** — with only a handful of modules a dead arrow at
-either end reads as a bug. It does **not** auto-advance: nav that moves on its own steals
-focus and slides the click target out from under the cursor.
+**Rotating (compact only).** Prev/next buttons, ← / → while the carousel has focus, clicking
+a neighbour, tapping a dot, or swiping. It **wraps** — with only a handful of modules a dead
+arrow at either end reads as a bug. It does **not** auto-advance: nav that moves on its own
+steals focus and slides the click target out from under the cursor. The grid has no
+selection to rotate, so the keydown handler is a no-op on `full`.
 
 **Only the centre is a link.** It's a real `<Link>`, so middle-click and ⌘-click still
 work; the neighbours are buttons that only change the selection, and they're `tabIndex={-1}`
@@ -530,14 +536,20 @@ because the arrows and dots already cover keyboard selection.
 **Notes:** the tile behind a *glyph* is a solid-accent square for monochrome icon sets and
 a neutral `bg-paper` one for colorful sets (`useIconSet().colorful`, the same rule the
 sidebar badge uses). An uploaded image always gets the neutral tile and `object-cover` —
-tinting somebody's artwork would be wrong.
+tinting somebody's artwork would be wrong. The grid's tiles follow the same rule.
+
+**The `full` grid** is `grid-cols-2 sm:grid-cols-3 lg:grid-cols-4`, each tile a 128px square
+image/glyph over a centred name and description, the whole card a `<Link>` (so middle-click
+and ⌘-click work, same as the coverflow's centre tile) with a hover background. The active
+module's name in the coverflow header additionally gets a slight `rotateX` + `translateZ`
+under `perspective`, purely decorative — it has no effect on hit-testing or layout.
 
 ---
 
 ## AppChrome
 
-**The app's navigation shell.** A top bar always, plus a bottom module bar on the compact
-layout. Mounted once by `(protected)/layout.tsx`; you should not need a second instance.
+**The app's navigation shell.** One top bar, at every screen size. Mounted once by
+`(protected)/layout.tsx`; you should not need a second instance.
 
 - **Source:** [src/components/app-chrome.tsx](src/components/app-chrome.tsx)
 - **Import:** `import { AppChrome } from "@/components/app-chrome";`
@@ -557,25 +569,22 @@ layout. Mounted once by `(protected)/layout.tsx`; you should not need a second i
 phone 62% of its screen and, being `fixed` above the content, swallowed taps meant for the
 page underneath. Navigation moved to the edges so every layout gets the full width.
 
-**Where the modules live is the only thing that differs by layout.** On `full` they sit in
-the top bar beside everything else; on `compact` there is no room, so they move to a bottom
-bar — **icons only**, and within thumb reach rather than in the corner hardest to hit
-one-handed. Everything else (app name, view switch, admin, account, log out) is identical.
+**Where the modules live is the only thing that differs by layout.** On `full` they sit
+inline in the top bar beside everything else. On `compact` there isn't room for that, so
+they collapse behind a single menu button (a grid icon) that opens the same list as a
+dropdown — closed by outside click, Escape, or picking a module, the same pattern
+`TreeNav`'s `GroupChip` uses. There used to be a second bar pinned to the bottom for this;
+it's gone, because that edge now belongs to the current module's own section bar
+(`TreeNav`, in its bar form) — see `TreeNav` below.
 
-**Both bars minimise** to a small floating puck — top-left for the bar, bottom-right for
-the tabs — and the state is remembered.
+**The bar minimises** to a small floating puck, top-left, and the state is remembered.
 
 **How the shell reacts to it.** `(protected)/layout.tsx` is a *server* component and this
-state is client-side, so they meet through attributes rather than props: `AppChrome`
-mirrors onto `<html data-appbar>` / `<html data-moduletabs>`, and `globals.css` pads
-`.app-main` accordingly. A script in the root layout applies the stored values **before
-first paint** — without it every page renders padded for both bars and then shoves when the
-mount effect reads `localStorage`. That script mutates `<html>`, which is why the root
-layout sets `suppressHydrationWarning`.
-
-The bottom bar's allowance is keyed to `html[data-viewport="compact"]`, **not** a media
-query — the layout can be pinned, so a 1440px window can legitimately be in compact, and a
-`max-width` rule would render the bar with no room reserved for it.
+state is client-side, so they meet through an attribute rather than a prop: `AppChrome`
+mirrors onto `<html data-appbar>`, and `globals.css` pads `.app-main` accordingly. A script
+in the root layout applies the stored value **before first paint** — without it every page
+renders padded for the bar and then shoves when the mount effect reads `localStorage`. That
+script mutates `<html>`, which is why the root layout sets `suppressHydrationWarning`.
 
 ---
 
@@ -583,7 +592,7 @@ query — the layout can be pinned, so a 1440px window can legitimately be in co
 
 **The one control that drives the whole UI's layout**, in the top bar. `full` is the
 original desktop treatment; `compact` swaps in the components customised for a narrow
-screen (`DataGridCompact`, the bottom module bar, tighter carousel artwork).
+screen (`DataGridCompact`, the collapsed module menu, tighter carousel artwork).
 
 - **Source:** [src/components/viewport-switch.tsx](src/components/viewport-switch.tsx)
 - **Client component:** yes
@@ -619,15 +628,16 @@ says "something is folded away here", so one that opens a dialog reads as a brok
 </Puck>
 ```
 
-**Used by:** [app-chrome.tsx](src/components/app-chrome.tsx) — the top bar (`left-3 top-3`)
-and the compact module bar (`bottom-4 right-4`); and [tree-nav.tsx](src/components/tree-nav.tsx)
-for the compact section bar (`tree-nav-puck right-3`, under the top bar on the right).
+**Used by:** [app-chrome.tsx](src/components/app-chrome.tsx) — the top bar (`left-3 top-3`);
+and [tree-nav.tsx](src/components/tree-nav.tsx) for the section bar's compact/minimised form
+(`tree-nav-puck`, bottom-left).
 
 **Notes:** 44px square, which is the minimum comfortable tap target — don't shrink it for a
-denser look. **Give each one its own corner.** Three pucks are in play and they're all
-`fixed`; two sharing a corner stack invisibly and the reader can only ever press the top
-one. It's `fixed`, so it doesn't need a compact variant — it's the same size at both
-layouts, which is why `TreeNav` can hand it a class that positions it and nothing else.
+denser look. **Give each one its own corner.** Two pucks are in play and they're both
+`fixed`, on opposite corners (top-left, bottom-left); sharing a corner would stack them
+invisibly and the reader could only ever press the top one. It's `fixed`, so it doesn't need
+a compact variant — it's the same size at both layouts, which is why `TreeNav` can hand it a
+class that positions it and nothing else.
 
 ---
 
@@ -670,9 +680,9 @@ sections — [expense-nav.tsx](src/app/(protected)/modules/[slug]/expense-nav.ts
 Stocks & ETFs module's eight — [stock-nav.tsx](src/app/(protected)/modules/[slug]/stock-nav.tsx).
 All three are `collapsible`, each with its own `storageKey`.
 
-**Collapsing — three states, two controls.** `full` (a **horizontal bar** across the top
-of the section: icon + label chips) → `rail` (`w-16`, a column down the side, icons only,
-flattened to one row per node) → `strip` (`w-3`, just the accent edge). The `&rsaquo;`
+**Collapsing — three states, two controls.** `full` (a **horizontal bar** pinned to the
+bottom of the viewport: icon + label chips) → `rail` (`w-16`, a column down the side, icons
+only, flattened to one row per node) → `strip` (`w-3`, just the accent edge). The `&rsaquo;`
 chevron — the same one the node rows and `CollapsibleCard` use — moves between `full` and
 `rail`, a `&laquo;` button drops to `strip`, and clicking the strip returns to `rail`.
 **Two controls rather than one cycling through three**, because a single control can only
@@ -709,11 +719,15 @@ the rail open (see [section-layout.tsx](src/app/(protected)/modules/[slug]/secti
 ### Compact — the section bar
 
 **On `compact`, `rail` is a bar too** — compact has two states (bar or puck) where desktop
-has three. The shells stack below 1024px, so the tree sits *above* the content; a 64px
-column would burn ~350px of height on eight icons. Turned on its side it costs one row: a
-horizontally scrolling strip of chips, pinned directly under the app bar, edge to edge.
+has three. The shells stack below 1024px, so the tree sits *above or below* the content; a
+64px column would burn ~350px of height on eight icons. Turned on its side it costs one row:
+a horizontally scrolling strip of chips, pinned to the bottom of the viewport, edge to edge.
 It shares its surface with the `full` bar above; the differences are labelling, groups and
 overflow, all covered there.
+
+The bottom edge used to be split with `AppChrome`'s module tabs. It isn't anymore — compact
+collapses the module list into a menu button in the top bar instead (see `AppChrome`), which
+is what frees this edge for the section bar alone.
 
 - **Only the active chip is labelled.** Eight labels is ~900px of row on a 390px phone, so
   most of the tree would start offscreen. Naming the current one keeps the row near-fitting
@@ -736,13 +750,14 @@ Three pieces have to line up, and two of them are **not** in this component:
 
 | Piece | Where | Why it can't live in `TreeNav` |
 |-------|-------|-------------------------------|
-| `tree-nav-sticky` | on the **wrapper** each shell puts round `TreeNav` | `position: sticky` only travels inside its parent's box. A wrapper sized to the nav gives it nowhere to go, so the nav can't sticky itself. |
-| `top` offset | `globals.css`, keyed to `html[data-appbar]` | Only `AppChrome` knows whether the bar is showing, and it mirrors that onto `<html>`. |
+| `tree-nav-sticky` | on the **wrapper** each shell puts round `TreeNav` | Despite the name it's `position: fixed`, not `sticky` — `sticky` only engages once scrolling carries the element past its natural position, which would leave a bar near the top of a tall section stuck there until the reader scrolled to the very bottom. `fixed` pins it to the viewport's bottom edge unconditionally, the same as the top app bar. |
+| `position: fixed; bottom: 0` | `globals.css`, keyed to `html[data-treenav="bar"]` | Only `TreeNav` knows whether its bar is currently rendering, and it mirrors that onto `<html>` — the same seam `AppChrome` uses for its own bar. |
 | `tree-nav-bleed` | `globals.css`, `margin-inline: calc(-1 * var(--app-gutter))` | `.app-main` owns the page gutter as a variable so the bleed can't drift out of step with it. Don't put `px-*` back on `.app-main`. **No `w-full` on the bar** — `width: 100%` resolves against the wrapper, so the negative margins would shift the box rather than widen it and leave it a gutter short on the right. |
-| `tree-nav-puck` | `globals.css`, also keyed to `html[data-appbar]` | Where the minimised puck sits — under the top bar, right side, clear of `AppChrome`'s own two. |
+| `tree-nav-puck` | `globals.css`, keyed to `html[data-treenav="puck"]` for `.app-main`'s padding, and just a fixed `bottom-left` position for the puck itself | Bottom-left, clear of `AppChrome`'s own top-left puck. |
 
-Both CSS rules key off `html[data-viewport="compact"]`, **not** a media query — the layout
-can be pinned, so a 1400px window can be in compact.
+The `bottom`/padding rules key off `html[data-treenav]`, which `TreeNav` sets whenever its
+bar or puck form is actually on screen — not off a `data-viewport` media-style condition, so
+a page with no `TreeNav` at all (the home grid) never reserves the space.
 
 **`className` is not applied to either bar.** It's the side column's surface — a rounded
 card border, or Admin's `border-r` — and rounded corners on something spanning the full
@@ -766,8 +781,9 @@ and picks one.
 collapsed) and now holds the state name. `TreeNav` reads the legacy boolean and maps it to
 `rail`/`full`, so an existing preference survives — don't drop that branch.
 
-**Nav overlap:** `AppChrome`'s bars are `fixed` at `z-40`. Keep other stacked elements
-below that, and dialogs at `Modal`'s `z-50`, or an overlay won't cover them.
+**Nav overlap:** `AppChrome`'s top bar is `fixed` at `z-40`; `TreeNav`'s bottom bar sits at
+`z-30` via `.tree-nav-sticky`. Keep other stacked elements below that, and dialogs at
+`Modal`'s `z-50`, or an overlay won't cover them.
 
 **Note:** the active node is matched on `pathname`, so each node needs a real route —
 a query parameter or client-side state won't highlight. Keep the node list and any
@@ -1268,14 +1284,15 @@ toggleable for the same reason: it carries the values the labels don't.
 
 ---
 
-## JournalEntryCard
+## JournalViewer
 
 Full-detail sheet for one journal entry — every stored field, plus optional Print / Edit /
-Lock / Delete actions. Journal-specific but registered because the entry screen and any
-future print/export view share it.
+Lock / Delete actions. Journal-specific but registered because it's the shared viewer for an
+entry (the journal counterpart to `TickerViewer`): the entry screen and any future
+print/export view share it.
 
-- **Source:** [src/components/journal-entry-card.tsx](src/components/journal-entry-card.tsx)
-- **Import:** `import { JournalEntryCard } from "@/components/journal-entry-card";`
+- **Source:** [src/components/journal-viewer.tsx](src/components/journal-viewer.tsx)
+- **Import:** `import { JournalViewer } from "@/components/journal-viewer";`
 - **Client component:** yes
 
 | Prop | Type | Notes |
@@ -1286,17 +1303,23 @@ future print/export view share it.
 | `onShowLocation?` | `(location: EntryLocation) => void` | Adds a per-location "Map" button. |
 | `onToggleLock?` | `(nextLocked: boolean) => void` | Omit to hide Lock. |
 | `onDelete?` | `() => void` | Omit to hide Delete. Guarded by an inline confirm. |
+| `previousHref?` / `previousDate?` | `string` | Adds a Previous button, left of the date/time, linking to the older neighbour. `previousDate` fills the caption below it. Omit both to hide the button. The caller computes the href — this component stays free of routing knowledge. |
+| `nextHref?` / `nextDate?` | `string` | Same, for the newer neighbour. |
 | `isBusy?` | `boolean` | Disables the actions while the caller works. |
 | `className?` | `string` | |
 
 ```tsx
-<JournalEntryCard
+<JournalViewer
   entry={entry}
   onPrint={() => window.print()}
   onEdit={() => setEditing(true)}
   onShowLocation={(location) => setMapLocation(location)}
   onToggleLock={(nextLocked) => handleToggleLock(nextLocked)}
   onDelete={handleDelete}
+  previousHref={previousHref}
+  previousDate={neighbors.previous?.date}
+  nextHref={nextHref}
+  nextDate={neighbors.next?.date}
   isBusy={isPending}
 />
 ```
@@ -1307,6 +1330,13 @@ future print/export view share it.
 are disabled while `entry.isLocked` because the `updateEntry`/`deleteEntry` use-cases reject
 a locked entry. It stays free of any mapping dependency — the caller renders the map.
 Carries the `print-sheet` class used by the `@media print` block in `globals.css`.
+
+The date/time is the visually dominant element in the header (`text-xl`, a calendar icon
+before the date and a clock icon before the time), with Previous/Next — when supplied —
+in their own row above it, left-aligned, with the neighbour-date caption filling the
+remaining width. Categories, Tags, and the `Entry #/created/updated` line live inside a
+`CollapsibleCard` titled "Misc Info", collapsed by default — secondary metadata the reader
+doesn't need on first look, same rationale `CollapsibleCard` uses everywhere else.
 
 ---
 
