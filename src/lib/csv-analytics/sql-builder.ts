@@ -76,6 +76,11 @@ export function buildDropTableSql(tableName: string): string {
   return `DROP TABLE IF EXISTS ${quoteIdentifier(tableName)}`;
 }
 
+/** Builds one ALTER TABLE ... ADD COLUMN statement. Existing rows get NULL for the new column. */
+export function buildAddColumnSql(tableName: string, column: CsvColumnDefinition): string {
+  return `ALTER TABLE ${quoteIdentifier(tableName)} ADD COLUMN ${quoteIdentifier(column.name)} ${SQLITE_TYPE_BY_COLUMN_TYPE[column.type]}`;
+}
+
 /** Named-parameter INSERT — param keys match column.name exactly, for better-sqlite3's object binding. */
 export function buildInsertSql(
   tableName: string,

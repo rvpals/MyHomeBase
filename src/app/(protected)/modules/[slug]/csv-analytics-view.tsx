@@ -436,9 +436,12 @@ function EntryForm({ entry, onDone }: { entry?: CsvAnalyticEntry; onDone: () => 
 
   const hasNewFile = fileText !== undefined;
   const canEditSchema = !entry || ingestMode === "overwrite";
-  // For append/truncate, the schema shown must be the entry's real existing schema —
-  // not whatever the just-dropped file's headers happened to suggest.
-  const displayedColumns = entry && hasNewFile && ingestMode !== "overwrite" ? entry.columns : columns;
+  // Append/truncate can't redefine existing columns, but the user can still add brand-new
+  // ones (with a per-row typed value applied to every imported row) — see addColumn/removeColumn.
+  const canAddColumns = canEditSchema || hasNewFile;
+  // For append/truncate, `columns` state is seeded from entry.columns and only ever grows by
+  // appending new columns (see addColumn) — so it already holds "existing + new" in order.
+  const displayedColumns = columns;
   const displayedPrimaryKeyFields =
     entry && hasNewFile && ingestMode !== "overwrite" ? entry.primaryKeyFields : primaryKeyFields;
 
@@ -471,7 +474,16 @@ function EntryForm({ entry, onDone }: { entry?: CsvAnalyticEntry; onDone: () => 
   }
 
   function updateColumn(index: number, field: "name" | "type", value: string) {
-    setColumns((current) => current.map((column, i) => (i === index ? { ...column, [field]: value } : column)));
+    setColumns((current) =>
+      current.map((column, i) => {
+        if (i !== index) return column;
+        // A brand-new column has no real file header — sourceHeader is just its display
+        // label, so keep it in sync with the name the user types.
+        const isNewColumn = !originalColumnSourceHeaders.has(column.sourceHeader);
+        const sourceHeader = field === "name" && isNewColumn ? value : column.sourceHeader;
+        return { ...column, [field]: value, sourceHeader };
+      }),
+    );
   }
 
   function togglePrimaryKey(columnName: string) {
@@ -501,6 +513,23 @@ function EntryForm({ entry, onDone }: { entry?: CsvAnalyticEntry; onDone: () => 
     setStatus(undefined);
     setIsBusy(true);
     try {
+      // Columns the user added locally that have no header in the file — one typed value is
+      // applied to every imported row for these. Not applicable to overwrite of an existing
+      // entry, which redefines the whole schema from the dropped file instead.
+      const newColumns =
+        entry && ingestMode === "overwrite"
+          ? []
+          : columns.filter((col) => !originalColumnSourceHeaders.has(col.sourceHeader));
+      if (newColumns.length > 0) {
+        const missingValues = newColumns.filter((col) => !newColumnValues[col.name]?.trim());
+        if (missingValues.length > 0) {
+          setError(
+            `Please enter a value for all new columns: ${missingValues.map((col) => col.sourceHeader).join(", ")}`
+          );
+          return;
+        }
+      }
+
       if (!entry) {
         if (!fileText) {
           setError("Drop a CSV file first.");
@@ -513,24 +542,13 @@ function EntryForm({ entry, onDone }: { entry?: CsvAnalyticEntry; onDone: () => 
           columns,
           primaryKeyFields,
           fileText,
+          newColumnValues: Object.keys(newColumnValues).length > 0 ? newColumnValues : undefined,
         });
         if (!result.ok) {
           setError(result.error ?? "Failed to create entry.");
           return;
         }
       } else {
-        // For append/truncate, check that all new columns have values
-        if (hasNewFile && ingestMode !== "overwrite") {
-          const newColumns = columns.filter((col) => !originalColumnSourceHeaders.has(col.sourceHeader));
-          const missingValues = newColumns.filter((col) => !newColumnValues[col.name]?.trim());
-          if (missingValues.length > 0) {
-            setError(
-              `Please enter a value for all new columns: ${missingValues.map((col) => col.sourceHeader).join(", ")}`
-            );
-            return;
-          }
-        }
-
         const result = await updateCsvAnalyticsEntryAction(entry.id, {
           name,
           description: description || undefined,
@@ -539,7 +557,7 @@ function EntryForm({ entry, onDone }: { entry?: CsvAnalyticEntry; onDone: () => 
                 mode: ingestMode,
                 fileText: fileText!,
                 tableBaseName: ingestMode === "overwrite" ? tableBaseName : undefined,
-                columns: ingestMode === "overwrite" ? columns : undefined,
+                columns: ingestMode === "overwrite" ? columns : newColumns,
                 primaryKeyFields: ingestMode === "overwrite" ? primaryKeyFields : undefined,
                 newColumnValues:
                   ingestMode !== "overwrite" && Object.keys(newColumnValues).length > 0
@@ -630,12 +648,13 @@ function EntryForm({ entry, onDone }: { entry?: CsvAnalyticEntry; onDone: () => 
                   <th className="px-3 py-2">Column name</th>
                   <th className="px-3 py-2">Type</th>
                   <th className="px-3 py-2">Primary key</th>
-                  {canEditSchema && <th className="px-3 py-2 w-10"></th>}
+                  {(canEditSchema || canAddColumns) && <th className="px-3 py-2 w-10"></th>}
                 </tr>
               </thead>
               <tbody>
                 {displayedColumns.map((column, index) => {
                   const isNewColumn = !originalColumnSourceHeaders.has(column.sourceHeader);
+                  const canEditRow = canEditSchema || isNewColumn;
                   return (
                     <tr
                       key={`${column.sourceHeader}-${index}`}
@@ -647,7 +666,7 @@ function EntryForm({ entry, onDone }: { entry?: CsvAnalyticEntry; onDone: () => 
                       <td className="px-3 py-2">
                         <input
                           value={column.name}
-                          disabled={!canEditSchema}
+                          disabled={!canEditRow}
                           onChange={(event) => updateColumn(index, "name", event.target.value)}
                           className="w-full rounded-md border border-line bg-paper px-2 py-1 text-ink disabled:opacity-50"
                         />
@@ -655,7 +674,7 @@ function EntryForm({ entry, onDone }: { entry?: CsvAnalyticEntry; onDone: () => 
                       <td className="px-3 py-2">
                         <select
                           value={column.type}
-                          disabled={!canEditSchema}
+                          disabled={!canEditRow}
                           onChange={(event) => updateColumn(index, "type", event.target.value)}
                           className="w-full rounded-md border border-line bg-paper px-2 py-1 text-ink disabled:opacity-50"
                         >
@@ -675,7 +694,7 @@ function EntryForm({ entry, onDone }: { entry?: CsvAnalyticEntry; onDone: () => 
                           className="h-4 w-4 rounded border-line text-brass disabled:opacity-50"
                         />
                       </td>
-                      {canEditSchema && (
+                      {(canEditSchema || canAddColumns) && (
                         <td className="px-3 py-2">
                           {isNewColumn && (
                             <button
@@ -694,7 +713,7 @@ function EntryForm({ entry, onDone }: { entry?: CsvAnalyticEntry; onDone: () => 
               </tbody>
             </table>
           </div>
-          {canEditSchema && (
+          {canAddColumns && (
             <Button size="sm" variant="secondary" onClick={addColumn}>
               Add Column
             </Button>
@@ -729,8 +748,8 @@ function EntryForm({ entry, onDone }: { entry?: CsvAnalyticEntry; onDone: () => 
         </div>
       )}
 
-      {/* When appending/truncating with new columns, prompt for values for each new column */}
-      {entry && hasNewFile && ingestMode !== "overwrite" && displayedColumns.length > 0 && (
+      {/* When creating, or appending/truncating, with new columns, prompt for a value for each */}
+      {hasNewFile && (!entry || ingestMode !== "overwrite") && displayedColumns.length > 0 && (
         (() => {
           const newColumns = displayedColumns.filter((col) => !originalColumnSourceHeaders.has(col.sourceHeader));
           return newColumns.length > 0 ? (

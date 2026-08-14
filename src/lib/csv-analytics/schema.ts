@@ -30,18 +30,29 @@ export const createCsvAnalyticEntrySchema = z
     columns: z.array(csvColumnDefinitionSchema).min(1),
     primaryKeyFields: z.array(z.string()).default([]),
     fileText: z.string().min(1),
+    // Columns in `columns` that have no header in the file at all — the user types one
+    // literal value here, applied to every imported row, keyed by that column's `name`.
+    newColumnValues: z.record(z.string(), z.string()).optional(),
   })
   .refine((input) => primaryKeyFieldsMatchColumns(input.primaryKeyFields, input.columns), {
     message: "Every primary key field must match a defined column.",
     path: ["primaryKeyFields"],
-  });
+  })
+  .refine(
+    (input) => {
+      const values = input.newColumnValues ?? {};
+      return Object.keys(values).every((name) => values[name]?.trim());
+    },
+    { message: "Every new column needs a value to apply to each row.", path: ["newColumnValues"] },
+  );
 
 export type CreateCsvAnalyticEntryInput = z.infer<typeof createCsvAnalyticEntrySchema>;
 
 // Editing always updates name/description; `ingest` is only present when the user drops
-// a new file, and only "overwrite" needs columns/primaryKeyFields (append/truncate reuse
-// the entry's existing schema untouched). For append/truncate with new columns,
-// `newColumnValues` provides the value to apply to each new column for every row.
+// a new file. "overwrite" needs columns/primaryKeyFields for the whole redefined schema.
+// For append/truncate, `columns` is only the NEW columns being added (the entry's existing
+// schema is otherwise reused untouched), and `newColumnValues` provides the value to apply
+// to each new column for every row, keyed by that column's `name`.
 export const updateCsvAnalyticEntrySchema = z
   .object({
     name: z.string().min(1),
@@ -66,6 +77,15 @@ export const updateCsvAnalyticEntrySchema = z
       input.ingest?.mode !== "overwrite" ||
       primaryKeyFieldsMatchColumns(input.ingest.primaryKeyFields ?? [], input.ingest.columns ?? []),
     { message: "Every primary key field must match a defined column.", path: ["ingest", "primaryKeyFields"] },
+  )
+  .refine(
+    (input) => {
+      if (!input.ingest || input.ingest.mode === "overwrite") return true;
+      const newColumns = input.ingest.columns ?? [];
+      const values = input.ingest.newColumnValues ?? {};
+      return newColumns.every((column) => values[column.name]?.trim());
+    },
+    { message: "Every new column needs a value to apply to each row.", path: ["ingest", "newColumnValues"] },
   );
 
 export type UpdateCsvAnalyticEntryInput = z.infer<typeof updateCsvAnalyticEntrySchema>;

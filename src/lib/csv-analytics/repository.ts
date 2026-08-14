@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import type { CsvAnalyticsRepository } from "./ports";
 import type { CreateCsvAnalyticEntryInput, SaveChartPresetInput } from "./schema";
 import {
+  buildAddColumnSql,
   buildCreateTableSql,
   buildDropTableSql,
   buildInsertSql,
@@ -173,6 +174,26 @@ export class SqliteCsvAnalyticsRepository implements CsvAnalyticsRepository {
       return this.insertRows(row.table_name, columns, rows, true);
     })();
     return { inserted, skipped: rows.length - inserted };
+  }
+
+  addColumns(id: number, newColumns: CsvColumnDefinition[]): CsvAnalyticEntry {
+    const row = this.getRowById(id);
+    if (!row) throw new Error(`CSV analytic entry ${id} not found.`);
+    const columns = JSON.parse(row.columns_json) as CsvColumnDefinition[];
+    const mergedColumns = [...columns, ...newColumns];
+
+    this.db.transaction(() => {
+      for (const column of newColumns) {
+        this.db.exec(buildAddColumnSql(row.table_name, column));
+      }
+      this.db
+        .prepare(`UPDATE csv_analytics_entries SET columns_json = @columnsJson WHERE id = @id`)
+        .run({ id, columnsJson: JSON.stringify(mergedColumns) });
+    })();
+
+    const updated = this.getEntryById(id);
+    if (!updated) throw new Error(`Failed to read back CSV analytic entry ${id} after adding columns.`);
+    return updated;
   }
 
   overwriteEntry(id: number, input: CreateCsvAnalyticEntryInput, rows: string[][]): CsvAnalyticEntry {

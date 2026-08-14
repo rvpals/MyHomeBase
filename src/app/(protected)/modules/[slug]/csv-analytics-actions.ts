@@ -45,6 +45,7 @@ export interface CreateEntryInput {
   columns: CsvColumnDefinition[];
   primaryKeyFields: string[];
   fileText: string;
+  newColumnValues?: Record<string, string>;
 }
 
 export interface UpdateEntryInput {

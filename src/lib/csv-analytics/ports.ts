@@ -1,5 +1,5 @@
 import type { CreateCsvAnalyticEntryInput, SaveChartPresetInput, UpdateCsvAnalyticEntryInput } from "./schema";
-import type { CsvAnalyticEntry, CsvChartPreset, CsvEntryData, IngestResult } from "./types";
+import type { CsvAnalyticEntry, CsvChartPreset, CsvColumnDefinition, CsvEntryData, IngestResult } from "./types";
 
 // The use-cases depend on THIS interface, not on a concrete database.
 export interface CsvAnalyticsRepository {
@@ -18,6 +18,11 @@ export interface CsvAnalyticsRepository {
   appendRows(id: number, rows: string[][]): IngestResult;
   /** Clears the entry's existing table, then inserts — schema unchanged. */
   truncateAndReload(id: number, rows: string[][]): IngestResult;
+  /**
+   * ALTER TABLEs in one new column per definition and updates columns_json to match.
+   * Existing rows get SQLite's default NULL for each new column — no backfill.
+   */
+  addColumns(id: number, newColumns: CsvColumnDefinition[]): CsvAnalyticEntry;
   /** Drops the entry's old physical table, creates a new one from `input`, loads its rows. */
   overwriteEntry(id: number, input: CreateCsvAnalyticEntryInput, rows: string[][]): CsvAnalyticEntry;
   updateMetadata(id: number, input: { name: string; description?: string }): CsvAnalyticEntry;

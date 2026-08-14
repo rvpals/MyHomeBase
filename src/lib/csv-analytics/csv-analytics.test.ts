@@ -61,12 +61,14 @@ function fakeRepo(): CsvAnalyticsRepository {
       const entry = entries.get(id);
       if (!entry) throw new Error(`CSV analytic entry ${id} not found.`);
       entries.set(id, { ...entry, rowCount: entry.rowCount + rows.length });
+      tableRows.set(id, [...(tableRows.get(id) ?? []), ...rows]);
       return { inserted: rows.length, skipped: 0 };
     },
     truncateAndReload: (id, rows) => {
       const entry = entries.get(id);
       if (!entry) throw new Error(`CSV analytic entry ${id} not found.`);
       entries.set(id, { ...entry, rowCount: rows.length });
+      tableRows.set(id, rows);
       return { inserted: rows.length, skipped: 0 };
     },
     overwriteEntry: (id, input, rows) => {
@@ -89,6 +91,19 @@ function fakeRepo(): CsvAnalyticsRepository {
       if (!entry) throw new Error(`CSV analytic entry ${id} not found.`);
       const updated = { ...entry, name: input.name, description: input.description };
       entries.set(id, updated);
+      return updated;
+    },
+    addColumns: (id, newColumns) => {
+      const entry = entries.get(id);
+      if (!entry) throw new Error(`CSV analytic entry ${id} not found.`);
+      const updated = { ...entry, columns: [...entry.columns, ...newColumns] };
+      entries.set(id, updated);
+      // Existing rows get NULL for each new column — no backfill.
+      const rows = tableRows.get(id) ?? [];
+      tableRows.set(
+        id,
+        rows.map((row) => [...row, ...newColumns.map(() => null)]),
+      );
       return updated;
     },
     deleteEntry: (id) => {
@@ -175,6 +190,28 @@ describe("createEntry", () => {
     const repo = fakeRepo();
     expect(() => createEntry(repo, sampleCreateInput({ columns: [] }))).toThrow();
   });
+
+  it("applies a fixed value to every row for a new column with no header in the file", () => {
+    const repo = fakeRepo();
+    const preview = previewCsvFile(SAMPLE_CSV);
+    const columns = [...preview.suggestedColumns, { name: "source", sourceHeader: "Source", type: "text" as const }];
+    const entry = createEntry(
+      repo,
+      sampleCreateInput({ columns, newColumnValues: { source: "NAS" } }),
+    );
+
+    expect(entry.columns.map((column) => column.name)).toEqual(["user_id", "event_at", "amount", "source"]);
+    const data = readEntryData(repo, entry.id);
+    expect(data.rows[0]).toEqual(["1", "2026-01-01", "10.5", "NAS"]);
+    expect(data.rows[1]).toEqual(["2", "2026-01-02", "20", "NAS"]);
+  });
+
+  it("rejects a new column with no value provided", () => {
+    const repo = fakeRepo();
+    const preview = previewCsvFile(SAMPLE_CSV);
+    const columns = [...preview.suggestedColumns, { name: "source", sourceHeader: "Source", type: "text" as const }];
+    expect(() => createEntry(repo, sampleCreateInput({ columns }))).toThrow();
+  });
 });
 
 describe("updateEntry", () => {
@@ -246,28 +283,53 @@ describe("updateEntry", () => {
     ).toThrow();
   });
 
-  it("injects new column values into appended rows", () => {
+  it("adds a new column and applies its value to every appended row", () => {
     const repo = fakeRepo();
     const entry = createEntry(repo, sampleCreateInput());
-    // Simulate adding a new column "category" (not in the CSV file)
-    const entryWithNewColumn = {
-      ...entry,
-      columns: [...entry.columns, { name: "category", sourceHeader: "Category", type: "text" as const }],
-    };
-    repo.getEntryById = () => entryWithNewColumn;
 
-    const moreRows = "User ID,Event At,Amount\n3,2026-01-03,5";
+    const moreRows = "User ID,Event At,Amount\n3,2026-01-03,5\n4,2026-01-04,7";
     const result = updateEntry(repo, entry.id, {
       name: entry.name,
       description: undefined,
       ingest: {
         mode: "append",
         fileText: moreRows,
-        newColumnValues: { category: "premium" },
+        columns: [{ name: "source", sourceHeader: "Source", type: "text" }],
+        newColumnValues: { source: "NAS" },
       },
     });
 
-    expect(result.ingestResult).toEqual({ inserted: 1, skipped: 0 });
+    expect(result.ingestResult).toEqual({ inserted: 2, skipped: 0 });
+    expect(result.entry.columns.map((column) => column.name)).toEqual([
+      "user_id",
+      "event_at",
+      "amount",
+      "source",
+    ]);
+
+    const data = readEntryData(repo, entry.id);
+    // Pre-existing rows (from creation) get NULL for the new column — no backfill.
+    expect(data.rows[0]).toEqual(["1", "2026-01-01", "10.5", null]);
+    // Newly appended rows all carry the typed value.
+    expect(data.rows[2]).toEqual(["3", "2026-01-03", "5", "NAS"]);
+    expect(data.rows[3]).toEqual(["4", "2026-01-04", "7", "NAS"]);
+  });
+
+  it("rejects a new column with no value provided", () => {
+    const repo = fakeRepo();
+    const entry = createEntry(repo, sampleCreateInput());
+
+    expect(() =>
+      updateEntry(repo, entry.id, {
+        name: entry.name,
+        description: undefined,
+        ingest: {
+          mode: "append",
+          fileText: "User ID,Event At,Amount\n3,2026-01-03,5",
+          columns: [{ name: "source", sourceHeader: "Source", type: "text" }],
+        },
+      }),
+    ).toThrow();
   });
 });
 
