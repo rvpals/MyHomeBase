@@ -1,11 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
+  clearCategoryIcon,
+  clearTagIcon,
   createEntry,
   deleteCategory,
   deleteEntry,
+  deleteFilter,
   deleteTag,
+  findEntries,
+  getCategoryIcon,
+  getFilter,
+  listFilters,
+  saveFilter,
   getEntry,
   getEntryNeighbors,
+  getTagIcon,
   listCategories,
   listEntries,
   listRecentEntries,
@@ -14,14 +23,27 @@ import {
   listTodayInHistory,
   listTopCategories,
   listTopTags,
+  setCategoryIcon,
   setLocked,
   setPinned,
+  setTagIcon,
   updateEntry,
   upsertCategory,
+  upsertTag,
 } from "./journal";
+import { emptyFilter } from "./filters";
+import { MAX_JOURNAL_ICON_BYTES } from "./schema";
 import type { JournalRepository } from "./ports";
 import type { EntryWriteData } from "./schema";
-import type { EntryLocation, JournalCategory, JournalEntry, JournalTag } from "./types";
+import type {
+  EntryLocation,
+  JournalCategory,
+  JournalEntry,
+  JournalFilterCondition,
+  JournalTag,
+  JournalTaxonomyIcon,
+  SavedJournalFilter,
+} from "./types";
 
 // Hand-written in-memory fake. It models the managed category/tag lists and the
 // entry<->name pairings (as the arrays on each entry) so the auto-register rule
@@ -30,6 +52,10 @@ function fakeRepo(): JournalRepository {
   let entries: JournalEntry[] = [];
   let categories: JournalCategory[] = [];
   let tags: JournalTag[] = [];
+  const categoryIcons = new Map<string, JournalTaxonomyIcon>();
+  const tagIcons = new Map<string, JournalTaxonomyIcon>();
+  let savedFilters: SavedJournalFilter[] = [];
+  let nextFilterId = 1;
   let nextEntryId = 1;
   let nextLocationId = 1;
   const now = "2026-01-01T00:00:00.000Z";
@@ -93,6 +119,78 @@ function fakeRepo(): JournalRepository {
         )
         .sort((a, b) => (a.date === b.date ? b.id - a.id : a.date < b.date ? 1 : -1))
         .slice(0, limit);
+    },
+    // An in-memory stand-in for the compiled SQL. Only the operators the tests
+    // below exercise are implemented — enough to prove the use-case's own rules
+    // (limit validation, empty filter = everything). buildFilterSql's full
+    // operator matrix is covered directly in filters.test.ts against the SQL it
+    // emits, which is the thing that actually runs in production.
+    findEntries(filter, limit) {
+      const matchesCondition = (entry: JournalEntry, condition: JournalFilterCondition): boolean => {
+        switch (condition.field) {
+          case "title":
+            return condition.operator === "contains"
+              ? entry.title.toLowerCase().includes((condition.value ?? "").toLowerCase())
+              : true;
+          case "category":
+            return condition.operator === "hasAny"
+              ? entry.categories.some((name) => (condition.values ?? []).includes(name))
+              : !entry.categories.some((name) => (condition.values ?? []).includes(name));
+          case "isPinned":
+            return entry.isPinned === (condition.value === "true");
+          default:
+            return true;
+        }
+      };
+      const complete = (condition: JournalFilterCondition) =>
+        condition.operator === "hasAny" || condition.operator === "hasNone"
+          ? (condition.values ?? []).some((name) => name.trim() !== "")
+          : (condition.value ?? "").trim() !== "";
+
+      const groups = filter.groups
+        .map((group) => ({ ...group, conditions: group.conditions.filter(complete) }))
+        .filter((group) => group.conditions.length > 0);
+
+      const matched = groups.length === 0
+        ? [...entries]
+        : entries.filter((entry) => {
+            const groupResults = groups.map((group) =>
+              group.join === "OR"
+                ? group.conditions.some((condition) => matchesCondition(entry, condition))
+                : group.conditions.every((condition) => matchesCondition(entry, condition)),
+            );
+            return filter.join === "OR" ? groupResults.some(Boolean) : groupResults.every(Boolean);
+          });
+
+      return matched
+        .sort((a, b) => (a.date === b.date ? b.id - a.id : a.date < b.date ? 1 : -1))
+        .slice(0, limit);
+    },
+    listFilters() {
+      return [...savedFilters].sort((a, b) => a.name.localeCompare(b.name));
+    },
+    getFilterById(id) {
+      return savedFilters.find((saved) => saved.id === id);
+    },
+    saveFilter(input) {
+      // Upsert by name, like the real UNIQUE (name) + ON CONFLICT.
+      const existing = savedFilters.find((saved) => saved.name === input.name);
+      if (existing) {
+        existing.filter = input.filter;
+        return existing;
+      }
+      const created = {
+        id: nextFilterId++,
+        name: input.name,
+        filter: input.filter,
+        createdAt: now,
+        updatedAt: now,
+      };
+      savedFilters.push(created);
+      return created;
+    },
+    deleteFilter(id) {
+      savedFilters = savedFilters.filter((saved) => saved.id !== id);
     },
     getEntryById(id) {
       return entries.find((entry) => entry.id === id);
@@ -168,6 +266,13 @@ function fakeRepo(): JournalRepository {
         categories: entry.categories.filter((category) => category !== name),
       }));
     },
+    getCategoryIcon: (name) => categoryIcons.get(name),
+    setCategoryIcon(name, icon) {
+      if (icon) categoryIcons.set(name, icon);
+      else categoryIcons.delete(name);
+      const category = categories.find((candidate) => candidate.name === name);
+      if (category) category.iconMimeType = icon?.mimeType;
+    },
     listTags() {
       return [...tags];
     },
@@ -195,6 +300,13 @@ function fakeRepo(): JournalRepository {
         ...entry,
         tags: entry.tags.filter((tag) => tag !== name),
       }));
+    },
+    getTagIcon: (name) => tagIcons.get(name),
+    setTagIcon(name, icon) {
+      if (icon) tagIcons.set(name, icon);
+      else tagIcons.delete(name);
+      const tag = tags.find((candidate) => candidate.name === name);
+      if (tag) tag.iconMimeType = icon?.mimeType;
     },
     registerCategoriesIfMissing(names) {
       for (const name of names) {
@@ -552,6 +664,156 @@ describe("category management", () => {
   });
 });
 
+describe("findEntries", () => {
+  it("returns every entry for an empty filter, unlike searchEntries' blank term", () => {
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2026-01-01", title: "one" });
+    createEntry(repo, { date: "2026-01-02", title: "two" });
+
+    // The Entries browser's "All entries" is an empty filter, so this must not
+    // be the empty list that a blank search term returns.
+    expect(findEntries(repo, emptyFilter())).toHaveLength(2);
+    expect(searchEntries(repo, "")).toHaveLength(0);
+  });
+
+  it("applies a condition", () => {
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2026-01-01", title: "Rome trip" });
+    createEntry(repo, { date: "2026-01-02", title: "groceries" });
+
+    const result = findEntries(repo, {
+      join: "AND",
+      groups: [{ join: "AND", conditions: [{ field: "title", operator: "contains", value: "trip" }] }],
+    });
+    expect(result.map((entry) => entry.title)).toEqual(["Rome trip"]);
+  });
+
+  it("honours a group's OR against the filter's AND", () => {
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2026-01-01", title: "Rome", categories: ["Travel"] });
+    createEntry(repo, { date: "2026-01-02", title: "Oslo", categories: ["Travel"] });
+    createEntry(repo, { date: "2026-01-03", title: "Rome", categories: ["Work"] });
+
+    // (title~Rome OR title~Oslo) AND category=Travel
+    const result = findEntries(repo, {
+      join: "AND",
+      groups: [
+        {
+          join: "OR",
+          conditions: [
+            { field: "title", operator: "contains", value: "Rome" },
+            { field: "title", operator: "contains", value: "Oslo" },
+          ],
+        },
+        { join: "AND", conditions: [{ field: "category", operator: "hasAny", values: ["Travel"] }] },
+      ],
+    });
+    expect(result.map((entry) => entry.title).sort()).toEqual(["Oslo", "Rome"]);
+  });
+
+  it("newest journal date first, capped at the limit", () => {
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2026-01-01", title: "old" });
+    createEntry(repo, { date: "2026-03-01", title: "new" });
+
+    expect(findEntries(repo, emptyFilter())[0].title).toBe("new");
+    expect(findEntries(repo, emptyFilter(), 1)).toHaveLength(1);
+  });
+
+  it("rejects a non-positive limit", () => {
+    const repo = fakeRepo();
+    expect(() => findEntries(repo, emptyFilter(), 0)).toThrow(/positive integer/);
+    expect(() => findEntries(repo, emptyFilter(), 1.5)).toThrow(/positive integer/);
+  });
+});
+
+describe("saved filter management", () => {
+  const filter = {
+    join: "AND" as const,
+    groups: [
+      { join: "AND" as const, conditions: [{ field: "title" as const, operator: "contains" as const, value: "trip" }] },
+    ],
+  };
+
+  it("saves and lists a named filter", () => {
+    const repo = fakeRepo();
+    saveFilter(repo, { name: "Trips", filter });
+    expect(listFilters(repo).map((saved) => saved.name)).toEqual(["Trips"]);
+  });
+
+  it("overwrites by name rather than adding a duplicate", () => {
+    const repo = fakeRepo();
+    const first = saveFilter(repo, { name: "Trips", filter });
+    const second = saveFilter(repo, {
+      name: "Trips",
+      filter: { join: "AND", groups: [{ join: "AND", conditions: [{ field: "title", operator: "contains", value: "changed" }] }] },
+    });
+
+    // UNIQUE (name) is what makes save an upsert — two same-named filters would
+    // be indistinguishable in the dropdown.
+    expect(listFilters(repo)).toHaveLength(1);
+    expect(second.id).toBe(first.id);
+    expect(getFilter(repo, first.id)?.filter.groups[0].conditions[0].value).toBe("changed");
+  });
+
+  it("rejects a blank name", () => {
+    const repo = fakeRepo();
+    expect(() => saveFilter(repo, { name: "", filter })).toThrow();
+    expect(() => saveFilter(repo, { name: "   ", filter })).not.toThrow(); // whitespace is a name; trimming is the UI's job
+  });
+
+  it("deletes a filter", () => {
+    const repo = fakeRepo();
+    const saved = saveFilter(repo, { name: "Trips", filter });
+    deleteFilter(repo, saved.id);
+    expect(listFilters(repo)).toHaveLength(0);
+    expect(getFilter(repo, saved.id)).toBeUndefined();
+  });
+});
+
+describe("category icons", () => {
+  const tinyPngBase64 = Buffer.from("fake png bytes").toString("base64");
+
+  it("stores an icon and records its mime type on the category", () => {
+    const repo = fakeRepo();
+    upsertCategory(repo, { name: "Travel", description: "" });
+
+    setCategoryIcon(repo, "Travel", { mimeType: "image/png", base64Data: tinyPngBase64 });
+
+    expect(getCategoryIcon(repo, "Travel")?.mimeType).toBe("image/png");
+    expect(repo.getCategoryByName("Travel")?.iconMimeType).toBe("image/png");
+  });
+
+  it("clears the icon again", () => {
+    const repo = fakeRepo();
+    upsertCategory(repo, { name: "Travel", description: "" });
+    setCategoryIcon(repo, "Travel", { mimeType: "image/png", base64Data: tinyPngBase64 });
+
+    clearCategoryIcon(repo, "Travel");
+
+    expect(getCategoryIcon(repo, "Travel")).toBeUndefined();
+    expect(repo.getCategoryByName("Travel")?.iconMimeType).toBeUndefined();
+  });
+
+  it("rejects an icon over the size cap", () => {
+    const repo = fakeRepo();
+    upsertCategory(repo, { name: "Travel", description: "" });
+    const tooBig = Buffer.alloc(MAX_JOURNAL_ICON_BYTES + 1).toString("base64");
+
+    expect(() =>
+      setCategoryIcon(repo, "Travel", { mimeType: "image/png", base64Data: tooBig }),
+    ).toThrow(/too large/);
+  });
+
+  it("refuses an icon for a category that doesn't exist", () => {
+    const repo = fakeRepo();
+    expect(() =>
+      setCategoryIcon(repo, "Nope", { mimeType: "image/png", base64Data: tinyPngBase64 }),
+    ).toThrow(/No category named/);
+    expect(() => clearCategoryIcon(repo, "Nope")).toThrow(/No category named/);
+  });
+});
+
 describe("tag management", () => {
   it("detaches the tag from entries when deleted", () => {
     const repo = fakeRepo();
@@ -559,6 +821,39 @@ describe("tag management", () => {
     deleteTag(repo, "daily");
     expect(listTags(repo).map((tag) => tag.name)).not.toContain("daily");
     expect(getEntry(repo, entry.id)?.tags).toEqual(["personal"]);
+  });
+});
+
+describe("tag icons", () => {
+  const tinyPngBase64 = Buffer.from("fake png bytes").toString("base64");
+
+  it("stores an icon and records its mime type on the tag", () => {
+    const repo = fakeRepo();
+    upsertTag(repo, { name: "daily", description: "" });
+
+    setTagIcon(repo, "daily", { mimeType: "image/png", base64Data: tinyPngBase64 });
+
+    expect(getTagIcon(repo, "daily")?.mimeType).toBe("image/png");
+    expect(repo.getTagByName("daily")?.iconMimeType).toBe("image/png");
+  });
+
+  it("clears the icon again", () => {
+    const repo = fakeRepo();
+    upsertTag(repo, { name: "daily", description: "" });
+    setTagIcon(repo, "daily", { mimeType: "image/png", base64Data: tinyPngBase64 });
+
+    clearTagIcon(repo, "daily");
+
+    expect(getTagIcon(repo, "daily")).toBeUndefined();
+    expect(repo.getTagByName("daily")?.iconMimeType).toBeUndefined();
+  });
+
+  it("refuses an icon for a tag that doesn't exist", () => {
+    const repo = fakeRepo();
+    expect(() =>
+      setTagIcon(repo, "nope", { mimeType: "image/png", base64Data: tinyPngBase64 }),
+    ).toThrow(/No tag named/);
+    expect(() => clearTagIcon(repo, "nope")).toThrow(/No tag named/);
   });
 });
 

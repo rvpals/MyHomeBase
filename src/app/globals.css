@@ -10,6 +10,10 @@
   --brass: #33e2b8;
   --brass-dark: #1c8a71;
   --brass-soft: #15332d;
+  /* The top bar reads as its own surface rather than as raised paper: a neutral
+     grey, no blue cast, a step *darker* than `--paper` so the bar anchors the
+     top edge and the page reads as sitting in front of it. */
+  --app-bar: #0d1013;
 }
 
 @theme inline {
@@ -22,6 +26,7 @@
   --color-brass: var(--brass);
   --color-brass-dark: var(--brass-dark);
   --color-brass-soft: var(--brass-soft);
+  --color-app-bar: var(--app-bar);
   --font-sans: var(--font-body);
   --font-display: var(--font-display);
   --font-mono: var(--font-mono-code);

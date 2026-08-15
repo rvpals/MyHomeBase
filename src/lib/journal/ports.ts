@@ -1,11 +1,20 @@
-import type { EntryWriteData, UpsertCategoryInput, UpsertTagInput } from "./schema";
+import type {
+  EntryWriteData,
+  JournalFilterWriteData,
+  UpsertCategoryInput,
+  UpsertTagInput,
+} from "./schema";
 import type {
   JournalCategory,
   JournalEntry,
   JournalEntryNeighbors,
+  JournalFilter,
   JournalTag,
   JournalTaxonomyCount,
+  JournalTaxonomyIcon,
+  SavedJournalFilter,
 } from "./types";
+import type { DecodedImage } from "@/lib/shared/image-upload";
 
 // The interface a journal use-case depends on. The real SQLite implementation
 // is wired in at wiring.ts; tests wire in an in-memory fake. Use-cases never see
@@ -27,6 +36,12 @@ export interface JournalRepository {
    * `limit`. Empty/blank terms return [].
    */
   searchEntries(term: string, limit: number): JournalEntry[];
+  /**
+   * Entries matching a structured filter, newest journal date first, up to
+   * `limit`. An empty filter (nothing that narrows) returns the same thing
+   * `listRecentEntries` would.
+   */
+  findEntries(filter: JournalFilter, limit: number): JournalEntry[];
   getEntryById(id: number): JournalEntry | undefined;
   /**
    * The entries immediately older and newer than `entryId` in (entry_date,
@@ -45,6 +60,10 @@ export interface JournalRepository {
   upsertCategory(input: UpsertCategoryInput): JournalCategory;
   /** Deletes the category and detaches it from every entry, in one transaction. */
   deleteCategory(name: string): void;
+  /** Used only by the icon-serving route — never by anything rendering a list. */
+  getCategoryIcon(name: string): JournalTaxonomyIcon | undefined;
+  /** `undefined` clears the icon, leaving the category itself untouched. */
+  setCategoryIcon(name: string, icon: DecodedImage | undefined): void;
 
   // Managed tag list.
   listTags(): JournalTag[];
@@ -52,6 +71,17 @@ export interface JournalRepository {
   upsertTag(input: UpsertTagInput): JournalTag;
   /** Deletes the tag and detaches it from every entry, in one transaction. */
   deleteTag(name: string): void;
+  /** Used only by the icon-serving route — never by anything rendering a list. */
+  getTagIcon(name: string): JournalTaxonomyIcon | undefined;
+  /** `undefined` clears the icon, leaving the tag itself untouched. */
+  setTagIcon(name: string, icon: DecodedImage | undefined): void;
+
+  // Saved entry filters for the Entries browser. `saveFilter` is an upsert by
+  // name (UNIQUE (name) — migration 0043), so there's no separate create/update.
+  listFilters(): SavedJournalFilter[];
+  getFilterById(id: number): SavedJournalFilter | undefined;
+  saveFilter(input: JournalFilterWriteData): SavedJournalFilter;
+  deleteFilter(id: number): void;
 
   // Insert-if-absent for names referenced by an entry, so saving/importing an
   // entry never fails on an unknown category/tag. Existing rows are left as-is

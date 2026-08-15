@@ -1,12 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
+import { TreeIcon } from "@/components/tree-icons";
 import type { NamedMapping } from "@/lib/csv-import";
 import type { JournalEntry, JournalPreferences, JournalTaxonomyCount } from "@/lib/journal";
+import { journalEntriesFilterHref } from "./journal-shared";
 import { JournalEntryForm } from "./journal-entry-form";
 import { JournalImportView } from "./journal-import-view";
 import { runJournalSqlAction } from "./journal-actions";
@@ -130,18 +133,30 @@ export function JournalView({
       </CollapsibleCard>
 
       <div className="grid gap-8 lg:grid-cols-2">
-        <CollapsibleCard title="Top Tags" defaultOpen={topTags.length > 0}>
+        <CollapsibleCard
+          title="Top Tags"
+          titleIcon={<TreeIcon name="chart" className="h-4 w-4" />}
+          defaultOpen={topTags.length > 0}
+        >
           {topTags.length === 0 ? (
             <p className="text-sm text-muted">No tags yet.</p>
           ) : (
             <ul className="flex flex-col gap-2">
               {topTags.map((tag, index) => (
                 <li key={tag.name} className="flex items-center justify-between gap-3 text-sm">
-                  <span className="flex items-center gap-2 text-ink">
-                    <span className="w-5 text-right font-mono text-xs text-muted">{index + 1}.</span>
-                    {tag.name}
-                  </span>
-                  <span className="rounded-full bg-brass-soft px-2 py-0.5 text-xs font-semibold text-brass-dark">
+                  {/* A real Link, so middle-click and ⌘-click open the filtered
+                      list in a new tab like any other navigation. */}
+                  <Link
+                    href={journalEntriesFilterHref("tag", tag.name)}
+                    title={`Show entries tagged "${tag.name}"`}
+                    className="flex min-w-0 items-center gap-2 text-ink hover:text-brass-dark hover:underline"
+                  >
+                    <span className="w-5 shrink-0 text-right font-mono text-xs text-muted">
+                      {index + 1}.
+                    </span>
+                    <span className="truncate">{tag.name}</span>
+                  </Link>
+                  <span className="shrink-0 rounded-full bg-brass-soft px-2 py-0.5 text-xs font-semibold text-brass-dark">
                     {tag.entryCount} {tag.entryCount === 1 ? "entry" : "entries"}
                   </span>
                 </li>
@@ -150,18 +165,28 @@ export function JournalView({
           )}
         </CollapsibleCard>
 
-        <CollapsibleCard title="Top Categories" defaultOpen={topCategories.length > 0}>
+        <CollapsibleCard
+          title="Top Categories"
+          titleIcon={<TreeIcon name="shapes" className="h-4 w-4" />}
+          defaultOpen={topCategories.length > 0}
+        >
           {topCategories.length === 0 ? (
             <p className="text-sm text-muted">No categories yet.</p>
           ) : (
             <ul className="flex flex-col gap-2">
               {topCategories.map((category, index) => (
                 <li key={category.name} className="flex items-center justify-between gap-3 text-sm">
-                  <span className="flex items-center gap-2 text-ink">
-                    <span className="w-5 text-right font-mono text-xs text-muted">{index + 1}.</span>
-                    {category.name}
-                  </span>
-                  <span className="rounded-full bg-brass-soft px-2 py-0.5 text-xs font-semibold text-brass-dark">
+                  <Link
+                    href={journalEntriesFilterHref("category", category.name)}
+                    title={`Show entries in "${category.name}"`}
+                    className="flex min-w-0 items-center gap-2 text-ink hover:text-brass-dark hover:underline"
+                  >
+                    <span className="w-5 shrink-0 text-right font-mono text-xs text-muted">
+                      {index + 1}.
+                    </span>
+                    <span className="truncate">{category.name}</span>
+                  </Link>
+                  <span className="shrink-0 rounded-full bg-brass-soft px-2 py-0.5 text-xs font-semibold text-brass-dark">
                     {category.entryCount} {category.entryCount === 1 ? "entry" : "entries"}
                   </span>
                 </li>

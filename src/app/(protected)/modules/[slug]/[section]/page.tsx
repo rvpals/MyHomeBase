@@ -28,12 +28,17 @@ const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
  * reached under the Stocks slug (or vice versa) — that would render a nav pointing
  * at routes the other module doesn't have.
  */
-function renderSection(slug: string, section: string, isAdmin: boolean) {
+function renderSection(
+  slug: string,
+  section: string,
+  isAdmin: boolean,
+  filterQuery: string | undefined,
+) {
   if (slug === EXPENSE_MODULE_SLUG && isExpenseSection(section)) {
     return <ExpenseSection section={section} />;
   }
   if (slug === JOURNAL_MODULE_SLUG && isJournalSection(section)) {
-    return <JournalSection section={section} isAdmin={isAdmin} />;
+    return <JournalSection section={section} isAdmin={isAdmin} filterQuery={filterQuery} />;
   }
   if (slug === STOCK_ETFS_MODULE_SLUG && isStockSection(section)) {
     return <StockSection section={section} />;
@@ -43,10 +48,19 @@ function renderSection(slug: string, section: string, isAdmin: boolean) {
 
 export default async function ModuleSectionPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string; section: string }>;
+  // `filter` carries a journal filter query, so a filtered entry list is a real
+  // URL — linkable, shareable, and surviving a refresh or a back button. That's
+  // why the Top Tags/Categories cards link here rather than pushing client state.
+  searchParams: Promise<{ filter?: string | string[] }>;
 }) {
   const { slug, section } = await params;
+  const { filter } = await searchParams;
+  // A repeated ?filter= yields an array; take the first rather than joining, so a
+  // crafted URL can't smuggle a second expression in.
+  const filterQuery = Array.isArray(filter) ? filter[0] : filter;
 
   const appModule = getModuleBySlug(deps.moduleRepo, slug);
   if (!appModule) notFound();
@@ -57,7 +71,7 @@ export default async function ModuleSectionPage({
   // who hasn't been granted the module.
   if (!currentUser || !userHasModuleAccess(currentUser, appModule.id, deps.userRepo)) notFound();
 
-  const body = renderSection(slug, section, isAdmin(currentUser));
+  const body = renderSection(slug, section, isAdmin(currentUser), filterQuery);
   if (!body) notFound();
 
   return <div className={PAGE_CONTAINER}>{body}</div>;

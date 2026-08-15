@@ -1,12 +1,17 @@
+import { decodeImageUpload, type ImageUploadInput } from "@/lib/shared/image-upload";
 import type { JournalRepository } from "./ports";
 import {
+  MAX_JOURNAL_ICON_BYTES,
   createEntrySchema,
+  journalFilterSchema,
+  saveJournalFilterSchema,
   updateEntrySchema,
   upsertCategorySchema,
   upsertTagSchema,
 } from "./schema";
 import type {
   CreateEntryInput,
+  SaveJournalFilterInput,
   UpdateEntryInput,
   UpsertCategoryInput,
   UpsertTagInput,
@@ -15,8 +20,11 @@ import type {
   JournalCategory,
   JournalEntry,
   JournalEntryNeighbors,
+  JournalFilter,
   JournalTag,
   JournalTaxonomyCount,
+  JournalTaxonomyIcon,
+  SavedJournalFilter,
   TodayInHistoryEntry,
 } from "./types";
 
@@ -62,6 +70,44 @@ export function searchEntries(repo: JournalRepository, term: string, limit = 25)
     throw new Error(`searchEntries: limit must be a positive integer, got ${limit}.`);
   }
   return repo.searchEntries(trimmed, limit);
+}
+
+/**
+ * Entries matching a saved/structured filter, newest journal date first.
+ *
+ * Unlike `searchEntries`, a filter that narrows nothing returns **everything**
+ * (up to `limit`) rather than nothing: the Entries browser's "All entries" option
+ * is an empty filter, and a blank browse screen would be the wrong default there.
+ */
+export function findEntries(
+  repo: JournalRepository,
+  filter: JournalFilter,
+  limit = 200,
+): JournalEntry[] {
+  if (!Number.isInteger(limit) || limit <= 0) {
+    throw new Error(`findEntries: limit must be a positive integer, got ${limit}.`);
+  }
+  return repo.findEntries(journalFilterSchema.parse(filter), limit);
+}
+
+export function listFilters(repo: JournalRepository): SavedJournalFilter[] {
+  return repo.listFilters();
+}
+
+export function getFilter(repo: JournalRepository, id: number): SavedJournalFilter | undefined {
+  return repo.getFilterById(id);
+}
+
+/** Saves a named filter, replacing any existing one with the same name. */
+export function saveFilter(
+  repo: JournalRepository,
+  input: SaveJournalFilterInput,
+): SavedJournalFilter {
+  return repo.saveFilter(saveJournalFilterSchema.parse(input));
+}
+
+export function deleteFilter(repo: JournalRepository, id: number): void {
+  repo.deleteFilter(id);
 }
 
 export function getEntry(repo: JournalRepository, id: number): JournalEntry | undefined {
@@ -189,6 +235,34 @@ export function deleteCategory(repo: JournalRepository, name: string): void {
   repo.deleteCategory(name);
 }
 
+/**
+ * Stores the icon shown beside a category wherever it's listed. The category
+ * must already exist — creating one as a side effect of an upload would let a
+ * typo add a category nobody asked for.
+ */
+export function setCategoryIcon(
+  repo: JournalRepository,
+  name: string,
+  input: ImageUploadInput,
+): void {
+  if (!repo.getCategoryByName(name)) throw new Error(`No category named "${name}".`);
+  repo.setCategoryIcon(name, decodeImageUpload(input, MAX_JOURNAL_ICON_BYTES));
+}
+
+/** Removes a category's icon, leaving the category itself untouched. */
+export function clearCategoryIcon(repo: JournalRepository, name: string): void {
+  if (!repo.getCategoryByName(name)) throw new Error(`No category named "${name}".`);
+  repo.setCategoryIcon(name, undefined);
+}
+
+/** Used only by the icon-serving route — never by anything rendering a list. */
+export function getCategoryIcon(
+  repo: JournalRepository,
+  name: string,
+): JournalTaxonomyIcon | undefined {
+  return repo.getCategoryIcon(name);
+}
+
 export function listTags(repo: JournalRepository): JournalTag[] {
   return repo.listTags();
 }
@@ -201,6 +275,23 @@ export function upsertTag(repo: JournalRepository, input: UpsertTagInput): Journ
 // Removing a tag from the managed list also detaches it from every entry.
 export function deleteTag(repo: JournalRepository, name: string): void {
   repo.deleteTag(name);
+}
+
+/** Stores the icon shown beside a tag wherever it's listed. Same rule as setCategoryIcon. */
+export function setTagIcon(repo: JournalRepository, name: string, input: ImageUploadInput): void {
+  if (!repo.getTagByName(name)) throw new Error(`No tag named "${name}".`);
+  repo.setTagIcon(name, decodeImageUpload(input, MAX_JOURNAL_ICON_BYTES));
+}
+
+/** Removes a tag's icon, leaving the tag itself untouched. */
+export function clearTagIcon(repo: JournalRepository, name: string): void {
+  if (!repo.getTagByName(name)) throw new Error(`No tag named "${name}".`);
+  repo.setTagIcon(name, undefined);
+}
+
+/** Used only by the icon-serving route — never by anything rendering a list. */
+export function getTagIcon(repo: JournalRepository, name: string): JournalTaxonomyIcon | undefined {
+  return repo.getTagIcon(name);
 }
 
 /** The most-used tags across all entries, highest count first, up to `limit`. */

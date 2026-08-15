@@ -29,6 +29,12 @@ export interface JournalViewerProps {
    * of any mapping dependency).
    */
   onShowLocation?: (location: EntryLocation) => void;
+  /**
+   * Called when "Map All Locations" is pressed. The button only appears when
+   * the entry has more than one location — with a single one, the per-location
+   * "Map" button already does the same job. Omit to hide it.
+   */
+  onShowAllLocations?: () => void;
   /** Called with the lock state to move to. Omit to hide the Lock button. */
   onToggleLock?: (nextLocked: boolean) => void;
   /** Called after the user confirms. Omit to hide the Delete button. */
@@ -43,6 +49,16 @@ export interface JournalViewerProps {
   /** Link to the next (newer) entry, and its date. Omit both to hide the Next button. */
   nextHref?: string;
   nextDate?: string;
+  /**
+   * Category name -> icon URL, for the icons shown in the date/time row. Only
+   * categories with an uploaded icon need an entry; a category with none is
+   * simply skipped there (its name still appears in Misc Info below). Plain
+   * data so this component stays free of any journal-lib import — the caller
+   * builds the URLs.
+   */
+  categoryIcons?: Record<string, string>;
+  /** Same deal as categoryIcons, for the entry's tags. */
+  tagIcons?: Record<string, string>;
   /** Disables the actions while the caller is working. */
   isBusy?: boolean;
   /** Caller-supplied classes, merged last so they win. */
@@ -57,6 +73,28 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       </dt>
       <dd className="min-w-0 flex-1 text-sm text-ink">{children}</dd>
     </div>
+  );
+}
+
+/** The icons for one entry's categories or tags, name-hinted, skipping any without one. */
+function TaxonomyIconRow({ names, icons }: { names: string[]; icons?: Record<string, string> }) {
+  if (!icons) return null;
+  const withIcons = names.filter((name) => icons[name]);
+  if (withIcons.length === 0) return null;
+  return (
+    <span className="flex items-center gap-1.5">
+      {withIcons.map((name) => (
+        // eslint-disable-next-line @next/next/no-img-element -- icon bytes are served from our own DB-backed route, not a static asset next/image can optimize.
+        <img
+          key={name}
+          src={icons[name]}
+          alt={name}
+          title={name}
+          loading="lazy"
+          className="h-6 w-6 shrink-0 rounded border border-line object-cover"
+        />
+      ))}
+    </span>
   );
 }
 
@@ -116,12 +154,15 @@ export function JournalViewer({
   onPrint,
   onEdit,
   onShowLocation,
+  onShowAllLocations,
   onToggleLock,
   onDelete,
   previousHref,
   previousDate,
   nextHref,
   nextDate,
+  categoryIcons,
+  tagIcons,
   isBusy = false,
   className = "",
 }: JournalViewerProps) {
@@ -135,6 +176,8 @@ export function JournalViewer({
   // dropped when none of its fields have a value.
   const hasPlaceName = entry.placeName !== "";
   const hasLocations = entry.locations.length > 0;
+  // One location needs no "all" button — its own "Map" button is the same thing.
+  const hasManyLocations = entry.locations.length > 1;
   const hasDetails = hasPlaceName || Boolean(entry.weather) || hasLocations;
 
   return (
@@ -180,6 +223,12 @@ export function JournalViewer({
               Locked
             </span>
           )}
+          {/* Flexible spacer: pushes the category/tag icons to the row's far
+              right when there's room, and lets them wrap below on a narrow
+              screen instead of squeezing the date/time. */}
+          <span className="min-w-0 flex-1" />
+          <TaxonomyIconRow names={entry.categories} icons={categoryIcons} />
+          <TaxonomyIconRow names={entry.tags} icons={tagIcons} />
         </div>
         {entry.title !== "" && (
           <h2 className="mt-2 font-display text-2xl font-semibold text-ink">{entry.title}</h2>
@@ -201,8 +250,13 @@ export function JournalViewer({
           {hasLocations && (
             <Field label="Locations">
               <ul className="flex flex-col gap-1">
-                {entry.locations.map((location) => (
+                {entry.locations.map((location, index) => (
                   <li key={location.id} className="flex flex-wrap items-center gap-2">
+                    {/* The same 1-based number the map pins carry, so the list
+                        and the pins can be read against each other. */}
+                    <span className="font-mono text-xs font-semibold text-brass-dark">
+                      #{index + 1}
+                    </span>
                     <span className="font-mono text-xs text-muted">
                       {location.latitude.toFixed(5)}, {location.longitude.toFixed(5)}
                     </span>
@@ -219,6 +273,16 @@ export function JournalViewer({
                   </li>
                 ))}
               </ul>
+              {hasManyLocations && onShowAllLocations && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="no-print mt-2"
+                  onClick={onShowAllLocations}
+                >
+                  Map All Locations
+                </Button>
+              )}
             </Field>
           )}
         </dl>

@@ -5,6 +5,14 @@ import { useState, type ReactNode } from "react";
 export interface CollapsibleCardProps {
   /** Header text, always visible. */
   title: string;
+  /**
+   * Small decorative glyph rendered immediately before `title`, inside the
+   * toggle. Purely visual — the title text is what names the card, so pass an
+   * `aria-hidden` icon and don't put meaning here that the title doesn't
+   * already carry. A slot rather than a widened `title` so the header keeps its
+   * text-only truncation behaviour.
+   */
+  titleIcon?: ReactNode;
   /** Whether the body starts expanded. Ignored when `open` is supplied. */
   defaultOpen?: boolean;
   /**
@@ -30,6 +38,7 @@ export interface CollapsibleCardProps {
 
 export function CollapsibleCard({
   title,
+  titleIcon,
   defaultOpen = false,
   open,
   onOpenChange,
@@ -62,7 +71,13 @@ export function CollapsibleCard({
           aria-expanded={isOpen}
           className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left text-sm font-medium text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
         >
-          <span className="truncate">{title}</span>
+          {/* The icon and the title share a min-w-0 flex row so the title still
+              truncates, while the glyph keeps its size rather than being
+              squeezed by a long one. */}
+          <span className="flex min-w-0 items-center gap-2">
+            {titleIcon && <span className="shrink-0 text-brass-dark">{titleIcon}</span>}
+            <span className="truncate">{title}</span>
+          </span>
           <span
             className={`shrink-0 text-muted transition-transform motion-reduce:transition-none ${
               isOpen ? "rotate-90" : ""

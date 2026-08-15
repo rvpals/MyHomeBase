@@ -1,11 +1,12 @@
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
-import { getEntry, getEntryNeighbors } from "@/lib/journal";
+import { getEntry, getEntryNeighbors, listCategories, listTags } from "@/lib/journal";
 import { getModuleBySlug } from "@/lib/modules";
 import { userHasModuleAccess } from "@/lib/user";
 import { deps } from "@/lib/wiring";
 import { JournalEntryScreen } from "./entry-screen";
+import { journalTaxonomyIconUrlsByName } from "../../journal-shared";
 import { PAGE_CONTAINER } from "../../../../page-container";
 
 const JOURNAL_MODULE_SLUG = "journal";
@@ -35,9 +36,21 @@ export default async function JournalEntryPage({
   const entry = getEntry(deps.journalRepo, entryId);
   if (!entry) notFound();
 
+  // Plain objects across the client boundary — JournalViewer is a client
+  // component and can't be handed a Map.
+  const categoryIcons = Object.fromEntries(
+    journalTaxonomyIconUrlsByName("category", listCategories(deps.journalRepo)),
+  );
+  const tagIcons = Object.fromEntries(journalTaxonomyIconUrlsByName("tag", listTags(deps.journalRepo)));
+
   return (
     <div className={PAGE_CONTAINER}>
-      <JournalEntryScreen entry={entry} neighbors={getEntryNeighbors(deps.journalRepo, entryId)} />
+      <JournalEntryScreen
+        entry={entry}
+        neighbors={getEntryNeighbors(deps.journalRepo, entryId)}
+        categoryIcons={categoryIcons}
+        tagIcons={tagIcons}
+      />
     </div>
   );
 }

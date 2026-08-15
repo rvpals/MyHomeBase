@@ -1,5 +1,57 @@
 # Change History
 
+## 2026-08-14 23:01 — My Journal: a filtered Entries browser, category/tag icons, and self-migrating deploys
+
+Three bodies of work land together.
+
+**Entries browser with saved filters** (migration `0043`, new table
+`jrn_saved_filters`). A new **Entries** section in My Journal builds a condition
+tree in the UI — one level of AND/OR groups, each holding N conditions — applies it
+to the entry list, and can save it under a name to pick from a dropdown later.
+New library modules `filters.ts` (`buildFilterSql`, `describeFilter`, the
+per-field operator table) and `filter-query.ts` (a text query parser), plus
+`findEntries` / `listFilters` / `getFilter` / `saveFilter` / `deleteFilter`
+use-cases and route-local `journal-entries-view`, `journal-entries-panel`,
+`journal-filter-builder`, `journal-taxonomy-view` and `journal-shared` views.
+`filter_json` is a deliberate JSON-column exception on the same grounds as
+`csv_chart_presets.options_json`: variable shape defined by the builder, replaced
+wholesale on save, never queried by SQL. Correctness therefore lives in code —
+`journalFilterSchema` validates the tree **on read as well as on write** using the
+widening-envelope pattern, an unparseable row is reported as unreadable rather
+than thrown, and `buildFilterSql` emits named parameters only, mapping field names
+through a fixed allowlist so a JSON `field` is never used as a SQL identifier.
+`UNIQUE (name)` makes save a single upsert, so saving under an existing name
+overwrites it. GPS/location conditions are anticipated and deliberately not built.
+
+**Icons for categories and tags** (migration `0042`). Each journal category and
+tag takes an uploaded icon, served by new routes
+`/api/journal/categories/[name]/icon` and `/api/journal/tags/[name]/icon` and shown
+at the right of an entry's date/time row. Stored as a `BLOB` + mime type, matching
+`exp_categories.icon_image` (0034) and `stk_investment_accounts.icon_image` (0037),
+so the bytes never ride along in a page's JSON payload — the category/tag reads in
+`repository.ts` moved to explicit column lists to keep the blob out of every normal
+query. PNG/JPEG/WebP/GIF only, capped at 128 KB (`MAX_JOURNAL_ICON_BYTES`) via the
+shared `image-upload.ts` helper; SVG is excluded because it can carry script from
+the app's own origin. The same migration drops `jrn_icons`, dead schema since 0027
+that no repository or route ever read or wrote. `EntryViewer` also gained
+`onShowAllLocations` (a multi-pin map, only offered when an entry has more than one
+location) with `#n` prefixes on the location rows matching the numbered pins, and
+`CollapsibleCard` gained `titleIcon`.
+
+**Deploys apply their own migrations.** `start.sh` now runs `migrate.cjs` in the
+window after the old process stops and before the new one binds — the only safe
+moment, since a schema change against a live database risks a locked write and
+starting first would serve new code against an old schema. It's gated on
+`DEPLOYED=1` so a crash-restart never migrates, and a migration failure is
+deliberately fatal rather than bringing up a build whose schema didn't land. This
+removes the one hand-run SSH step that could silently be skipped (and once was —
+it shipped a screen answering "no such column"); `ADMIN_MANUAL.md` and
+`INSTRUCTION_SETUP_SYNOLOGY.md` updated to match.
+
+**Also:** the top toolbar and a module's `TreeNav` section bar now share a new
+`--app-bar` theme token — a neutral dark grey, a step below `--paper`, so the two
+pinned nav edges read as one chrome layer framing the page.
+
 ## 2026-08-14 — CSV Analytics: add columns without re-importing a file
 
 Follow-up to the custom-columns feature (`058e8ef`): adding a new column during

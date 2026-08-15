@@ -7,6 +7,7 @@
 import { useState } from "react";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
+import { TreeIcon } from "@/components/tree-icons";
 import type { DailyQuote } from "@/lib/daily-quote";
 import { drawRandomQuoteAction } from "./daily-quote-actions";
 
@@ -63,6 +64,8 @@ export function DailyQuoteWidget({
     // they stay reachable (and don't toggle the card) while it's shut.
     <CollapsibleCard
       title="Daily Quote"
+      // The same quote-marks glyph the Daily Quote admin nav uses.
+      titleIcon={<TreeIcon name="quote" className="h-4 w-4" />}
       className={className}
       headerAction={
         <div className="flex items-center gap-2">

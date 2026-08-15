@@ -380,6 +380,7 @@ A titled card whose body expands/collapses. The standard wrapper for a secondary
 | Prop | Type | Notes |
 |------|------|-------|
 | `title` | `string` | Always-visible header text. **Plain text, not HTML** — write `&` not `&amp;`. |
+| `titleIcon?` | `ReactNode` | Small decorative glyph before the title, inside the toggle. Takes the accent colour and stays `shrink-0`, so a long title truncates around it. **Decorative only** — the title text is the accessible name, so pass an `aria-hidden` icon (`TreeIcon` already is). |
 | `defaultOpen?` | `boolean` | Default `false`. Ignored when `open` is supplied. |
 | `open?` | `boolean` | Supply with `onOpenChange` for controlled use; omit both to let the card own its state. |
 | `onOpenChange?` | `(open: boolean) => void` | Called with the state being moved to. |
@@ -390,6 +391,16 @@ A titled card whose body expands/collapses. The standard wrapper for a secondary
 ```tsx
 <CollapsibleCard title="Add an entry" defaultOpen>
   <JournalEntryForm onSubmit={handleCreate} />
+</CollapsibleCard>
+```
+
+With a glyph on the title line — reuse an existing icon rather than hand-rolling
+a second one ([`TreeIcon`](src/components/tree-icons.tsx) covers `history`,
+`chart`, `list`, `quote`…):
+
+```tsx
+<CollapsibleCard title="Today In History" titleIcon={<TreeIcon name="history" className="h-4 w-4" />}>
+  <TodayInHistoryGrid rows={rows} />
 </CollapsibleCard>
 ```
 
@@ -1301,10 +1312,12 @@ print/export view share it.
 | `onPrint?` | `() => void` | Omit to hide Print. |
 | `onEdit?` | `() => void` | Omit to hide Edit. Disabled while locked. |
 | `onShowLocation?` | `(location: EntryLocation) => void` | Adds a per-location "Map" button. |
+| `onShowAllLocations?` | `() => void` | Adds a "Map All Locations" button below the list. **Only rendered when the entry has more than one location** — with one, the per-location "Map" button already does the same job. The caller renders the multi-pin map. |
 | `onToggleLock?` | `(nextLocked: boolean) => void` | Omit to hide Lock. |
 | `onDelete?` | `() => void` | Omit to hide Delete. Guarded by an inline confirm. |
 | `previousHref?` / `previousDate?` | `string` | Adds a Previous button, left of the date/time, linking to the older neighbour. `previousDate` fills the caption below it. Omit both to hide the button. The caller computes the href — this component stays free of routing knowledge. |
 | `nextHref?` / `nextDate?` | `string` | Same, for the newer neighbour. |
+| `categoryIcons?` / `tagIcons?` | `Record<string, string>` | Name → icon URL for the icons shown at the right of the date/time row. Only names *with* an uploaded icon need an entry; anything missing is skipped. **Plain objects, not a `Map`** — this is a client component, and the page that fetches the icons is a server one. The caller builds the URLs, so the component takes no journal-lib dependency. |
 | `isBusy?` | `boolean` | Disables the actions while the caller works. |
 | `className?` | `string` | |
 
@@ -1313,13 +1326,16 @@ print/export view share it.
   entry={entry}
   onPrint={() => window.print()}
   onEdit={() => setEditing(true)}
-  onShowLocation={(location) => setMapLocation(location)}
+  onShowLocation={(location) => setMapView({ kind: "one", location })}
+  onShowAllLocations={() => setMapView({ kind: "all" })}
   onToggleLock={(nextLocked) => handleToggleLock(nextLocked)}
   onDelete={handleDelete}
   previousHref={previousHref}
   previousDate={neighbors.previous?.date}
   nextHref={nextHref}
   nextDate={neighbors.next?.date}
+  categoryIcons={categoryIcons}
+  tagIcons={tagIcons}
   isBusy={isPending}
 />
 ```
@@ -1329,6 +1345,11 @@ print/export view share it.
 **Notes:** blank fields are hidden, so an entry only shows what it recorded. Edit and Delete
 are disabled while `entry.isLocked` because the `updateEntry`/`deleteEntry` use-cases reject
 a locked entry. It stays free of any mapping dependency — the caller renders the map.
+
+Each location row is prefixed with a **1-based `#n`** matching the numbered pins the caller's
+multi-pin map draws, so the list and the map can be read against each other. The numbering is
+list order — positional, not an id — so it's derived here rather than stored.
+
 Carries the `print-sheet` class used by the `@media print` block in `globals.css`.
 
 The date/time is the visually dominant element in the header (`text-xl`, a calendar icon
@@ -1337,6 +1358,15 @@ in their own row above it, left-aligned, with the neighbour-date caption filling
 remaining width. Categories, Tags, and the `Entry #/created/updated` line live inside a
 `CollapsibleCard` titled "Misc Info", collapsed by default — secondary metadata the reader
 doesn't need on first look, same rationale `CollapsibleCard` uses everywhere else.
+
+**Category/tag icons sit at the right of the date/time row**, after a `flex-1` spacer, so
+they read as a glance-level summary of what an entry is *about* without the names competing
+with the date for attention (the names stay in Misc Info). Each is 24px with the
+category/tag name as its `title` **and** its `alt`, so hovering names it and a screen reader
+reads it — an icon-only row would otherwise be unlabelled. A name with no uploaded icon is
+skipped rather than given a placeholder: a row of empty squares says less than a shorter
+row. Because the header is `flex-wrap`, the icons drop to their own line on a narrow screen
+instead of squeezing the date.
 
 ---
 

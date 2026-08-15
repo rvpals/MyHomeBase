@@ -6,15 +6,26 @@ import {
   journalEntrySchema,
   journalTagSchema,
 } from "./schema";
-import type { EntryWriteData, UpsertCategoryInput, UpsertTagInput } from "./schema";
+import type { DecodedImage } from "@/lib/shared/image-upload";
+import { buildFilterSql } from "./filters";
+import { parseStoredJournalFilter } from "./schema";
+import type {
+  EntryWriteData,
+  JournalFilterWriteData,
+  UpsertCategoryInput,
+  UpsertTagInput,
+} from "./schema";
 import type {
   EntryLocation,
   JournalCategory,
   JournalEntry,
   JournalEntryNeighbors,
   JournalEntryRef,
+  JournalFilter,
   JournalTag,
   JournalTaxonomyCount,
+  JournalTaxonomyIcon,
+  SavedJournalFilter,
 } from "./types";
 
 interface EntryRow {
@@ -51,9 +62,36 @@ interface PairingRow {
 interface TaxonomyRow {
   name: string;
   description: string;
+  icon_image_mime_type: string | null;
   created_at: string;
   updated_at: string;
 }
+
+interface SavedFilterRow {
+  id: number;
+  name: string;
+  filter_json: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// parseStoredJournalFilter is deliberately forgiving (see its doc): a row whose
+// JSON can't be read comes back as an empty filter rather than throwing, so one
+// bad row can't take down the Entries screen.
+function savedFilterToDomain(row: SavedFilterRow): SavedJournalFilter {
+  return {
+    id: row.id,
+    name: row.name,
+    filter: parseStoredJournalFilter(row.filter_json),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// Every normal category/tag read names its columns and omits icon_image, so the
+// icon bytes never ride along with a list or a page render. Only
+// getCategoryIcon/setCategoryIcon (and the tag equivalents) touch that column.
+const TAXONOMY_COLUMNS = "name, description, icon_image_mime_type, created_at, updated_at";
 
 function locationToDomain(row: LocationRow): EntryLocation {
   return entryLocationSchema.parse({
@@ -70,6 +108,7 @@ function categoryToDomain(row: TaxonomyRow): JournalCategory {
   return journalCategorySchema.parse({
     name: row.name,
     description: row.description,
+    iconMimeType: row.icon_image_mime_type ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
@@ -79,6 +118,7 @@ function tagToDomain(row: TaxonomyRow): JournalTag {
   return journalTagSchema.parse({
     name: row.name,
     description: row.description,
+    iconMimeType: row.icon_image_mime_type ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
@@ -241,6 +281,69 @@ export class SqliteJournalRepository implements JournalRepository {
     );
   }
 
+  findEntries(filter: JournalFilter, limit: number): JournalEntry[] {
+    const compiled = buildFilterSql(filter);
+    // No WHERE at all when nothing narrows, rather than a synthetic `1=1` — an
+    // empty filter is a real state ("All entries") and this keeps the query the
+    // planner sees identical to listRecentEntries in that case.
+    const where = compiled ? `WHERE ${compiled.sql}` : "";
+    const rows = this.db
+      .prepare(
+        `SELECT e.*
+         FROM jrn_entries e
+         ${where}
+         ORDER BY e.entry_date DESC, e.entry_time DESC, e.id DESC
+         LIMIT @__limit`,
+      )
+      // Named params throughout: buildFilterSql generates its own keys, and
+      // `__limit` is prefixed so it can't collide with one of them.
+      .all({ ...(compiled?.params ?? {}), __limit: limit }) as EntryRow[];
+
+    return rows.map((row) =>
+      entryToDomain(
+        row,
+        this.categoryNamesFor(row.id),
+        this.tagNamesFor(row.id),
+        this.locationsFor(row.id),
+      ),
+    );
+  }
+
+  listFilters(): SavedJournalFilter[] {
+    const rows = this.db
+      .prepare("SELECT id, name, filter_json, created_at, updated_at FROM jrn_saved_filters ORDER BY name ASC")
+      .all() as SavedFilterRow[];
+    return rows.map(savedFilterToDomain);
+  }
+
+  getFilterById(id: number): SavedJournalFilter | undefined {
+    const row = this.db
+      .prepare("SELECT id, name, filter_json, created_at, updated_at FROM jrn_saved_filters WHERE id = ?")
+      .get(id) as SavedFilterRow | undefined;
+    return row ? savedFilterToDomain(row) : undefined;
+  }
+
+  saveFilter(input: JournalFilterWriteData): SavedJournalFilter {
+    // Upsert by name — UNIQUE (name) makes this one statement instead of a
+    // create/update pair. See migration 0043.
+    this.db
+      .prepare(
+        `INSERT INTO jrn_saved_filters (name, filter_json) VALUES (@name, @filterJson)
+         ON CONFLICT(name) DO UPDATE SET filter_json = excluded.filter_json`,
+      )
+      .run({ name: input.name, filterJson: JSON.stringify(input.filter) });
+
+    const saved = this.db
+      .prepare("SELECT id, name, filter_json, created_at, updated_at FROM jrn_saved_filters WHERE name = ?")
+      .get(input.name) as SavedFilterRow | undefined;
+    if (!saved) throw new Error(`Failed to read back saved filter "${input.name}".`);
+    return savedFilterToDomain(saved);
+  }
+
+  deleteFilter(id: number): void {
+    this.db.prepare("DELETE FROM jrn_saved_filters WHERE id = ?").run(id);
+  }
+
   getEntryById(id: number): JournalEntry | undefined {
     const row = this.db.prepare("SELECT * FROM jrn_entries WHERE id = ?").get(id) as
       | EntryRow
@@ -369,16 +472,30 @@ export class SqliteJournalRepository implements JournalRepository {
 
   listCategories(): JournalCategory[] {
     const rows = this.db
-      .prepare("SELECT * FROM jrn_categories ORDER BY name ASC")
+      .prepare(`SELECT ${TAXONOMY_COLUMNS} FROM jrn_categories ORDER BY name ASC`)
       .all() as TaxonomyRow[];
     return rows.map(categoryToDomain);
   }
 
   getCategoryByName(name: string): JournalCategory | undefined {
-    const row = this.db.prepare("SELECT * FROM jrn_categories WHERE name = ?").get(name) as
-      | TaxonomyRow
-      | undefined;
+    const row = this.db
+      .prepare(`SELECT ${TAXONOMY_COLUMNS} FROM jrn_categories WHERE name = ?`)
+      .get(name) as TaxonomyRow | undefined;
     return row ? categoryToDomain(row) : undefined;
+  }
+
+  getCategoryIcon(name: string): JournalTaxonomyIcon | undefined {
+    const row = this.db
+      .prepare("SELECT icon_image, icon_image_mime_type FROM jrn_categories WHERE name = ?")
+      .get(name) as { icon_image: Buffer | null; icon_image_mime_type: string | null } | undefined;
+    if (!row || !row.icon_image || !row.icon_image_mime_type) return undefined;
+    return { data: row.icon_image, mimeType: row.icon_image_mime_type };
+  }
+
+  setCategoryIcon(name: string, icon: DecodedImage | undefined): void {
+    this.db
+      .prepare("UPDATE jrn_categories SET icon_image = ?, icon_image_mime_type = ? WHERE name = ?")
+      .run(icon?.data ?? null, icon?.mimeType ?? null, name);
   }
 
   upsertCategory(input: UpsertCategoryInput): JournalCategory {
@@ -402,16 +519,30 @@ export class SqliteJournalRepository implements JournalRepository {
 
   listTags(): JournalTag[] {
     const rows = this.db
-      .prepare("SELECT * FROM jrn_tags ORDER BY name ASC")
+      .prepare(`SELECT ${TAXONOMY_COLUMNS} FROM jrn_tags ORDER BY name ASC`)
       .all() as TaxonomyRow[];
     return rows.map(tagToDomain);
   }
 
   getTagByName(name: string): JournalTag | undefined {
-    const row = this.db.prepare("SELECT * FROM jrn_tags WHERE name = ?").get(name) as
-      | TaxonomyRow
-      | undefined;
+    const row = this.db
+      .prepare(`SELECT ${TAXONOMY_COLUMNS} FROM jrn_tags WHERE name = ?`)
+      .get(name) as TaxonomyRow | undefined;
     return row ? tagToDomain(row) : undefined;
+  }
+
+  getTagIcon(name: string): JournalTaxonomyIcon | undefined {
+    const row = this.db
+      .prepare("SELECT icon_image, icon_image_mime_type FROM jrn_tags WHERE name = ?")
+      .get(name) as { icon_image: Buffer | null; icon_image_mime_type: string | null } | undefined;
+    if (!row || !row.icon_image || !row.icon_image_mime_type) return undefined;
+    return { data: row.icon_image, mimeType: row.icon_image_mime_type };
+  }
+
+  setTagIcon(name: string, icon: DecodedImage | undefined): void {
+    this.db
+      .prepare("UPDATE jrn_tags SET icon_image = ?, icon_image_mime_type = ? WHERE name = ?")
+      .run(icon?.data ?? null, icon?.mimeType ?? null, name);
   }
 
   upsertTag(input: UpsertTagInput): JournalTag {

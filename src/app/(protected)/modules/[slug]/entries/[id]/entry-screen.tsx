@@ -44,19 +44,30 @@ function googleMapsUrl(location: EntryLocation): string {
   return `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
 }
 
+/**
+ * Which map the panel below the viewer is showing: one chosen pin, or every
+ * location on the entry at once. A single piece of state rather than two, so
+ * the two modes can't both be open.
+ */
+type MapView = { kind: "one"; location: EntryLocation } | { kind: "all" };
+
 // Route-local adapter: wires the reusable JournalViewer's events to the
 // journal server actions and handles navigation after a delete.
 export function JournalEntryScreen({
   entry,
   neighbors,
+  categoryIcons,
+  tagIcons,
 }: {
   entry: JournalEntry;
   neighbors: JournalEntryNeighbors;
+  categoryIcons?: Record<string, string>;
+  tagIcons?: Record<string, string>;
 }) {
   const router = useRouter();
   const [isBusy, setIsBusy] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [mapLocation, setMapLocation] = useState<EntryLocation | undefined>(undefined);
+  const [mapView, setMapView] = useState<MapView | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
 
   async function handleToggleLock(nextLocked: boolean) {
@@ -122,30 +133,35 @@ export function JournalEntryScreen({
           entry={entry}
           onPrint={() => window.print()}
           onEdit={() => setIsEditing(true)}
-          onShowLocation={setMapLocation}
+          onShowLocation={(location) => setMapView({ kind: "one", location })}
+          onShowAllLocations={() => setMapView({ kind: "all" })}
           onToggleLock={handleToggleLock}
           onDelete={handleDelete}
           previousHref={previousHref}
           previousDate={neighbors.previous?.date}
           nextHref={nextHref}
           nextDate={neighbors.next?.date}
+          categoryIcons={categoryIcons}
+          tagIcons={tagIcons}
           isBusy={isBusy}
         />
       )}
 
-      {mapLocation && !isEditing && (
+      {mapView?.kind === "one" && !isEditing && (
         <div className="no-print rounded-xl border border-line bg-paper-raised p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div className="text-sm text-ink">
-              {mapLocation.locationName !== "" && <span className="mr-2">{mapLocation.locationName}</span>}
+              {mapView.location.locationName !== "" && (
+                <span className="mr-2">{mapView.location.locationName}</span>
+              )}
               <span className="font-mono text-xs text-muted">
-                {mapLocation.latitude.toFixed(5)}, {mapLocation.longitude.toFixed(5)}
+                {mapView.location.latitude.toFixed(5)}, {mapView.location.longitude.toFixed(5)}
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <span className="text-xs text-muted">Open in:</span>
               <a
-                href={openStreetMapUrl(mapLocation)}
+                href={openStreetMapUrl(mapView.location)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm text-brass-dark hover:underline"
@@ -153,14 +169,14 @@ export function JournalEntryScreen({
                 OpenStreetMap
               </a>
               <a
-                href={googleMapsUrl(mapLocation)}
+                href={googleMapsUrl(mapView.location)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm text-brass-dark hover:underline"
               >
                 Google Maps
               </a>
-              <Button size="sm" variant="secondary" onClick={() => setMapLocation(undefined)}>
+              <Button size="sm" variant="secondary" onClick={() => setMapView(undefined)}>
                 Close map
               </Button>
             </div>
@@ -168,10 +184,98 @@ export function JournalEntryScreen({
           <JournalLocationMap
             // `key` remounts the map when a different pin is chosen, so it
             // recenters even though the component holds its own Leaflet state.
-            key={mapLocation.id}
-            marker={{ latitude: mapLocation.latitude, longitude: mapLocation.longitude }}
-            center={{ latitude: mapLocation.latitude, longitude: mapLocation.longitude }}
+            key={mapView.location.id}
+            marker={{
+              latitude: mapView.location.latitude,
+              longitude: mapView.location.longitude,
+            }}
+            center={{
+              latitude: mapView.location.latitude,
+              longitude: mapView.location.longitude,
+            }}
           />
+        </div>
+      )}
+
+      {mapView?.kind === "all" && !isEditing && (
+        <div className="no-print rounded-xl border border-line bg-paper-raised p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-ink">
+              All locations{" "}
+              <span className="font-normal text-muted">({entry.locations.length})</span>
+            </h3>
+            <Button size="sm" variant="secondary" onClick={() => setMapView(undefined)}>
+              Close map
+            </Button>
+          </div>
+          <JournalLocationMap
+            // Numbered pins, fitted to the whole set. Taller than the
+            // single-pin map because it has to hold several pins at once.
+            markers={entry.locations.map((location, index) => ({
+              latitude: location.latitude,
+              longitude: location.longitude,
+              number: index + 1,
+            }))}
+            marker={null}
+            center={null}
+            heightClassName="h-80 max-lg:h-64"
+          />
+          {/* The pin numbers spelled out, so every coordinate is readable as
+              text and not only as a dot on the map. Scrolls sideways on a
+              phone rather than squeezing the coordinate column. */}
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[28rem] border-collapse text-left text-sm">
+              <thead>
+                <tr className="border-b border-line text-xs uppercase tracking-wide text-muted">
+                  <th scope="col" className="w-12 py-2 pr-2 font-medium">
+                    #
+                  </th>
+                  <th scope="col" className="py-2 pr-2 font-medium">
+                    Coordinates
+                  </th>
+                  <th scope="col" className="py-2 pr-2 font-medium">
+                    Name
+                  </th>
+                  <th scope="col" className="py-2 font-medium">
+                    Open in
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {entry.locations.map((location, index) => (
+                  <tr key={location.id} className="border-b border-line/60 last:border-b-0">
+                    <td className="py-2 pr-2 font-mono text-xs font-semibold text-brass-dark">
+                      #{index + 1}
+                    </td>
+                    <td className="py-2 pr-2 font-mono text-xs text-muted">
+                      {location.latitude.toFixed(5)}, {location.longitude.toFixed(5)}
+                    </td>
+                    <td className="py-2 pr-2 text-ink">
+                      {location.locationName !== "" ? location.locationName : "—"}
+                    </td>
+                    <td className="flex flex-wrap gap-3 py-2">
+                      <a
+                        href={openStreetMapUrl(location)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-brass-dark hover:underline"
+                      >
+                        OSM
+                      </a>
+                      <a
+                        href={googleMapsUrl(location)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-brass-dark hover:underline"
+                      >
+                        Google
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

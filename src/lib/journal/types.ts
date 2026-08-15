@@ -42,6 +42,12 @@ export interface JournalEntry {
 export interface JournalCategory {
   name: string;
   description: string;
+  /**
+   * Mime type of the category's icon, or undefined when none is set. The bytes
+   * themselves are fetched separately (see JournalTaxonomyIcon) so they never
+   * travel with a category list.
+   */
+  iconMimeType?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -49,6 +55,88 @@ export interface JournalCategory {
 export interface JournalTag {
   name: string;
   description: string;
+  /** Same deal as JournalCategory.iconMimeType, for a tag's icon. */
+  iconMimeType?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Raw icon bytes for one category or tag, read only by the icon-serving routes. */
+export interface JournalTaxonomyIcon {
+  data: Buffer;
+  mimeType: string;
+}
+
+// --- Saved entry filters -----------------------------------------------------
+//
+// A filter is one level of AND/OR groups, each holding conditions joined by its
+// own AND/OR — enough for "(A or B) and C" without becoming an arbitrary tree.
+// Stored as JSON in jrn_saved_filters.filter_json; see migration 0043 for why.
+
+/** The entry fields a condition can test. GPS/location is anticipated, not built. */
+export type JournalFilterField =
+  | "date"
+  | "time"
+  | "title"
+  | "content"
+  | "placeName"
+  | "category"
+  | "tag"
+  | "isPinned"
+  | "isLocked";
+
+export type JournalFilterOperator =
+  | "contains"
+  | "notContains"
+  | "equals"
+  | "before"
+  | "after"
+  | "between"
+  | "hasAny"
+  | "hasNone"
+  | "is"
+  | "isEmpty"
+  | "isNotEmpty";
+
+export type JournalFilterJoin = "AND" | "OR";
+
+/**
+ * One test against one field. Which of `value` / `valueTo` / `values` is used
+ * depends on the operator: `between` takes both bounds, the taxonomy operators
+ * take `values`, `isEmpty`/`isNotEmpty` take none, everything else takes `value`.
+ *
+ * A single flat shape rather than a discriminated union per operator, because the
+ * builder UI swaps operators on a half-filled row and a union would force it to
+ * discard whatever the user had already typed.
+ */
+export interface JournalFilterCondition {
+  field: JournalFilterField;
+  operator: JournalFilterOperator;
+  /** Single value, or the lower bound of a `between`. Booleans use "true"/"false". */
+  value?: string;
+  /** Upper bound of a `between`. */
+  valueTo?: string;
+  /** Category/tag names, for `hasAny` / `hasNone`. */
+  values?: string[];
+}
+
+export interface JournalFilterGroup {
+  /** How this group's own conditions combine. */
+  join: JournalFilterJoin;
+  conditions: JournalFilterCondition[];
+}
+
+export interface JournalFilter {
+  /** How the groups combine with each other. */
+  join: JournalFilterJoin;
+  groups: JournalFilterGroup[];
+}
+
+/** A named filter as stored. */
+export interface SavedJournalFilter {
+  id: number;
+  name: string;
+  filter: JournalFilter;
   createdAt: string;
   updatedAt: string;
 }

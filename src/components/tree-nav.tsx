@@ -503,7 +503,9 @@ export function TreeNav({
             // `nav-raised-bottom`: the bar is pinned to the bottom edge and
             // casts *up* over the section content, so it reads as a layer above
             // it rather than a shadow falling off the bottom of the screen.
-            "tree-nav-bleed nav-raised-bottom relative z-10 flex-row items-stretch border-y border-line bg-paper-raised"
+            // `bg-app-bar`: the same dark grey surface as the top bar, so the
+            // two pinned nav edges read as one chrome layer framing the page.
+            "tree-nav-bleed nav-raised-bottom relative z-10 flex-row items-stretch border-y border-line bg-app-bar"
             // The remaining column. For a collapsible tree that's the rail —
             // `strip` returned above and `full` is a bar. A non-collapsible one
             // has no state to be in and no width of its own, so it renders the

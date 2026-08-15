@@ -71,9 +71,36 @@ function fakeRepo(): JournalRepository {
     deleteCategory: () => {
       throw new Error("not used");
     },
+    findEntries: () => {
+      throw new Error("not used");
+    },
+    listFilters: () => {
+      throw new Error("not used");
+    },
+    getFilterById: () => {
+      throw new Error("not used");
+    },
+    saveFilter: () => {
+      throw new Error("not used");
+    },
+    deleteFilter: () => {
+      throw new Error("not used");
+    },
+    getCategoryIcon: () => {
+      throw new Error("not used");
+    },
+    setCategoryIcon: () => {
+      throw new Error("not used");
+    },
     listTags: () => [...tags],
     getTagByName: (name) => tags.find((tag) => tag.name === name),
     upsertTag: () => {
+      throw new Error("not used");
+    },
+    getTagIcon: () => {
+      throw new Error("not used");
+    },
+    setTagIcon: () => {
       throw new Error("not used");
     },
     deleteTag: () => {

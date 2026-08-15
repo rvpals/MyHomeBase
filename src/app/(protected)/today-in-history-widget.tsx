@@ -7,6 +7,7 @@
 import { useRouter } from "next/navigation";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
+import { TreeIcon } from "@/components/tree-icons";
 import type { TodayInHistoryEntry } from "@/lib/journal";
 
 function yearsAgoLabel(yearsAgo: number): string {
@@ -40,7 +41,14 @@ export function TodayInHistoryWidget({
   const router = useRouter();
 
   return (
-    <CollapsibleCard title="Today In History" className={className} defaultOpen={todayInHistory.length > 0}>
+    <CollapsibleCard
+      title="Today In History"
+      // The same clock glyph the journal's Calendar section uses, rather than a
+      // second hand-rolled one.
+      titleIcon={<TreeIcon name="history" className="h-4 w-4" />}
+      className={className}
+      defaultOpen={todayInHistory.length > 0}
+    >
       <p className="mb-3 text-sm text-muted">
         {todayInHistory.length > 0
           ? `${todayInHistory.length} past ${todayInHistory.length === 1 ? "entry" : "entries"} on this month and day. Click a row to open it.`

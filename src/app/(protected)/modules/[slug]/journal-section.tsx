@@ -5,6 +5,7 @@
 // A server component, so it can talk to `deps` directly and hand plain data to
 // the client views. Mirrors stock-section.tsx and expense-section.tsx.
 
+import { CollapsibleCard } from "@/components/collapsible-card";
 import { listNamedMappings } from "@/lib/csv-import";
 import {
   listCategories,
@@ -18,8 +19,10 @@ import { listModuleSettingsFor } from "@/lib/module-settings";
 import { getModuleBySlug } from "@/lib/modules";
 import { deps } from "@/lib/wiring";
 import { JOURNAL_SECTION_INFO, type JournalSection } from "./journal-sections";
+import { JournalEntriesPanel } from "./journal-entries-panel";
 import { JournalHomeHeader } from "./journal-search-view";
 import { JournalPreferencesView } from "./journal-preferences-view";
+import { JournalTaxonomyView } from "./journal-taxonomy-view";
 import { JournalView } from "./journal-view";
 import { SectionLayout } from "./section-layout";
 
@@ -27,7 +30,16 @@ const JOURNAL_MODULE_SLUG = "journal";
 const RECENT_JOURNAL_ENTRY_LIMIT = 25;
 const TOP_TAXONOMY_LIMIT = 10;
 
-function SectionBody({ section, isAdmin }: { section: JournalSection; isAdmin: boolean }) {
+function SectionBody({
+  section,
+  isAdmin,
+  filterQuery,
+}: {
+  section: JournalSection;
+  isAdmin: boolean;
+  /** From ?filter= — an ad-hoc filter query for the Entries section. */
+  filterQuery?: string;
+}) {
   switch (section) {
     case "main": {
       const journalModule = getModuleBySlug(deps.moduleRepo, JOURNAL_MODULE_SLUG);
@@ -48,12 +60,27 @@ function SectionBody({ section, isAdmin }: { section: JournalSection; isAdmin: b
       );
     }
 
+    case "entries":
+      // ?filter= (set by the Top Tags/Categories cards) pre-selects a slice;
+      // without it this lists everything and the reader picks from the dropdown.
+      return <JournalEntriesPanel filterQuery={filterQuery} />;
+
     case "configuration": {
       const journalModule = getModuleBySlug(deps.moduleRepo, JOURNAL_MODULE_SLUG);
       const preferences = resolveJournalPreferences(
         journalModule ? listModuleSettingsFor(deps.moduleSettingsRepo, journalModule.id) : [],
       );
-      return <JournalPreferencesView preferences={preferences} />;
+      return (
+        <div className="flex flex-col gap-8">
+          <JournalPreferencesView preferences={preferences} />
+          <CollapsibleCard title="Categories & Tags">
+            <JournalTaxonomyView
+              categories={listCategories(deps.journalRepo)}
+              tags={listTags(deps.journalRepo)}
+            />
+          </CollapsibleCard>
+        </div>
+      );
     }
 
     default:
@@ -66,7 +93,15 @@ function SectionBody({ section, isAdmin }: { section: JournalSection; isAdmin: b
   }
 }
 
-export function JournalSection({ section, isAdmin }: { section: JournalSection; isAdmin: boolean }) {
+export function JournalSection({
+  section,
+  isAdmin,
+  filterQuery,
+}: {
+  section: JournalSection;
+  isAdmin: boolean;
+  filterQuery?: string;
+}) {
   // Defensive: an unknown section would otherwise crash on info.label. The route
   // already validates, so this only catches a future caller getting it wrong.
   const info = JOURNAL_SECTION_INFO[section] ?? JOURNAL_SECTION_INFO.main;
@@ -87,7 +122,7 @@ export function JournalSection({ section, isAdmin }: { section: JournalSection; 
       )}
 
       <div className="mt-6">
-        <SectionBody section={section} isAdmin={isAdmin} />
+        <SectionBody section={section} isAdmin={isAdmin} filterQuery={filterQuery} />
       </div>
     </SectionLayout>
   );

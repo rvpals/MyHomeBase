@@ -30,13 +30,18 @@ In full:
 1. **Verify first.** `npm run verify` — typecheck, lint, tests, migration
    dry-run and a browser sweep. The publish does a production build but no
    testing.
-2. **If the release adds a migration**, apply it over SSH *before* the switch:
-   `cd /volume1/app/myhomebase && node --env-file-if-exists=.env migrate.cjs`
-3. **Publish:** `.\REBUILD_PUBLISH_NAS.bat`
-4. **Wait a minute**, or force it: DSM → Task Scheduler → "MyHomeBase
+2. **Publish:** `.\REBUILD_PUBLISH_NAS.bat`
+3. **Wait a minute**, or force it: DSM → Task Scheduler → "MyHomeBase
    keepalive" → **Run**.
-5. **Check it came back** — load the site; `app.log` in the app folder holds the
+4. **Check it came back** — load the site; `app.log` in the app folder holds the
    startup output if it didn't.
+
+**Migrations apply themselves.** `start.sh` runs `migrate.cjs` on a triggered
+deploy, in the window after the old process stops and before the new one binds, so
+a release that adds a migration needs no SSH either. A migration failure is fatal
+by design — the app does not start, the keepalive task retries every minute, and
+`app.log` says what broke. Run it by hand only when diagnosing such a failure:
+`cd /volume1/app/myhomebase && node --env-file-if-exists=.env migrate.cjs`
 
 Committing and pushing the source is a separate ritual — see
 `/release`, which also covers the Windows target, or `manual_release.bat` for a

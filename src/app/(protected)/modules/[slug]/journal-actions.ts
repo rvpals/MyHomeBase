@@ -7,23 +7,43 @@ import { reverseGeocode, searchPlaces, type GeoPlace } from "@/lib/geocoding";
 import { executeReadOnlyQuery } from "@/lib/sql-explorer";
 import { isAdmin } from "@/lib/user";
 import {
+  clearCategoryIcon,
+  clearTagIcon,
   createEntry,
+  deleteCategory,
   deleteEntry,
+  deleteFilter,
+  deleteTag,
+  findEntries,
   journalPreferencesToEntries,
+  listFilters,
+  saveFilter,
   searchEntries,
+  setCategoryIcon,
   setLocked,
+  setTagIcon,
   updateEntry,
+  upsertCategory,
+  upsertTag,
   type JournalEntry,
+  type JournalFilter,
   type JournalPreferences,
+  type SavedJournalFilter,
+  type UpsertCategoryInput,
+  type UpsertTagInput,
 } from "@/lib/journal";
 import { getModuleBySlug } from "@/lib/modules";
 import { saveModuleSettings } from "@/lib/module-settings";
+import type { ImageUploadInput } from "@/lib/shared/image-upload";
 import { getCurrentWeather, type CurrentWeather, type TemperatureUnit } from "@/lib/weather";
 import { deps } from "@/lib/wiring";
 
 const JOURNAL_MODULE_PATH = "/modules/journal";
 const JOURNAL_MODULE_SLUG = "journal";
 const SEARCH_RESULT_LIMIT = 50;
+// Higher than search's cap: this is a browse screen, and DataGrid paginates
+// whatever it's handed rather than rendering all of it at once.
+const ENTRIES_RESULT_LIMIT = 500;
 
 export interface ActionResult {
   ok: boolean;
@@ -136,6 +156,152 @@ export async function deleteJournalEntryAction(id: number): Promise<ActionResult
   }
   revalidatePath(JOURNAL_MODULE_PATH);
   return { ok: true };
+}
+
+// --- categories --------------------------------------------------------------
+
+export async function saveJournalCategoryAction(input: UpsertCategoryInput): Promise<ActionResult> {
+  try {
+    upsertCategory(deps.journalRepo, input);
+  } catch (error) {
+    return toErrorResult(error, "Failed to save the category.");
+  }
+  revalidatePath(JOURNAL_MODULE_PATH);
+  return { ok: true };
+}
+
+export async function deleteJournalCategoryAction(name: string): Promise<ActionResult> {
+  try {
+    deleteCategory(deps.journalRepo, name);
+  } catch (error) {
+    return toErrorResult(error, "Failed to delete the category.");
+  }
+  revalidatePath(JOURNAL_MODULE_PATH);
+  return { ok: true };
+}
+
+/**
+ * Stores a category's icon. Base64 rather than raw bytes for the same reason as
+ * every other image upload in the app: it survives server-action serialization
+ * cleanly, and the use-case decodes it and enforces the type and size limits.
+ */
+export async function saveJournalCategoryIconAction(
+  name: string,
+  mimeType: string,
+  base64Data: string,
+): Promise<ActionResult> {
+  try {
+    setCategoryIcon(deps.journalRepo, name, { mimeType, base64Data } as ImageUploadInput);
+  } catch (error) {
+    return toErrorResult(error, "Failed to save the category icon.");
+  }
+  revalidatePath(JOURNAL_MODULE_PATH);
+  return { ok: true };
+}
+
+export async function clearJournalCategoryIconAction(name: string): Promise<ActionResult> {
+  try {
+    clearCategoryIcon(deps.journalRepo, name);
+  } catch (error) {
+    return toErrorResult(error, "Failed to remove the category icon.");
+  }
+  revalidatePath(JOURNAL_MODULE_PATH);
+  return { ok: true };
+}
+
+// --- tags ----------------------------------------------------------------
+
+export async function saveJournalTagAction(input: UpsertTagInput): Promise<ActionResult> {
+  try {
+    upsertTag(deps.journalRepo, input);
+  } catch (error) {
+    return toErrorResult(error, "Failed to save the tag.");
+  }
+  revalidatePath(JOURNAL_MODULE_PATH);
+  return { ok: true };
+}
+
+export async function deleteJournalTagAction(name: string): Promise<ActionResult> {
+  try {
+    deleteTag(deps.journalRepo, name);
+  } catch (error) {
+    return toErrorResult(error, "Failed to delete the tag.");
+  }
+  revalidatePath(JOURNAL_MODULE_PATH);
+  return { ok: true };
+}
+
+export async function saveJournalTagIconAction(
+  name: string,
+  mimeType: string,
+  base64Data: string,
+): Promise<ActionResult> {
+  try {
+    setTagIcon(deps.journalRepo, name, { mimeType, base64Data } as ImageUploadInput);
+  } catch (error) {
+    return toErrorResult(error, "Failed to save the tag icon.");
+  }
+  revalidatePath(JOURNAL_MODULE_PATH);
+  return { ok: true };
+}
+
+export async function clearJournalTagIconAction(name: string): Promise<ActionResult> {
+  try {
+    clearTagIcon(deps.journalRepo, name);
+  } catch (error) {
+    return toErrorResult(error, "Failed to remove the tag icon.");
+  }
+  revalidatePath(JOURNAL_MODULE_PATH);
+  return { ok: true };
+}
+
+// --- saved entry filters -----------------------------------------------------
+
+export interface JournalFilterListResult extends ActionResult {
+  filters?: SavedJournalFilter[];
+}
+
+export interface JournalEntriesResult extends ActionResult {
+  entries?: JournalEntry[];
+}
+
+/** Runs a filter and returns the matching entries for the Entries browser. */
+export async function findJournalEntriesAction(
+  filter: JournalFilter,
+): Promise<JournalEntriesResult> {
+  try {
+    return { ok: true, entries: findEntries(deps.journalRepo, filter, ENTRIES_RESULT_LIMIT) };
+  } catch (error) {
+    return toErrorResult(error, "Failed to apply the filter.");
+  }
+}
+
+/** Saves a named filter, replacing any existing one with the same name. */
+export async function saveJournalFilterAction(
+  name: string,
+  filter: JournalFilter,
+): Promise<JournalFilterListResult> {
+  try {
+    saveFilter(deps.journalRepo, { name, filter });
+    // The caller re-renders the dropdown from this, so hand back the new list
+    // rather than making it round-trip again.
+    const filters = listFilters(deps.journalRepo);
+    revalidatePath(JOURNAL_MODULE_PATH);
+    return { ok: true, filters };
+  } catch (error) {
+    return toErrorResult(error, "Failed to save the filter.");
+  }
+}
+
+export async function deleteJournalFilterAction(id: number): Promise<JournalFilterListResult> {
+  try {
+    deleteFilter(deps.journalRepo, id);
+    const filters = listFilters(deps.journalRepo);
+    revalidatePath(JOURNAL_MODULE_PATH);
+    return { ok: true, filters };
+  } catch (error) {
+    return toErrorResult(error, "Failed to delete the filter.");
+  }
 }
 
 export interface WeatherResult extends ActionResult {

@@ -337,6 +337,13 @@ and switch to a new build when a publish leaves a `deploy.trigger` behind. After
 last one it also runs `set-startup-message.cjs`, so the next visitor to the home screen
 is told a new deployment is live; a crash-restart deliberately skips that.
 
+A triggered deploy **also applies any pending migrations** (`migrate.cjs`) in the
+window after the old process stops and before the new one binds. Like the startup
+message, it's gated on that trigger, so a crash-restart never migrates — a new
+schema should arrive with a new build, not because the process happened to die.
+A failed migration stops the start outright rather than serving a build against a
+schema that didn't land.
+
 **Copy it from the repo** (`start.sh` at the root) rather than retyping, then:
 
 ```powershell
@@ -426,8 +433,13 @@ The trigger is written *last*, after the copy has fully landed, so the app can n
 back up on a half-copied build. It's also excluded from the mirror, so a second publish
 can't delete a pending one.
 
-**If a release adds a migration, apply it before the restart** — otherwise the affected
-screens fail with "no such column":
+**Migrations apply themselves on a triggered deploy** — `start.sh` runs
+`migrate.cjs` after stopping the old process and before starting the new one, so a
+release that adds a migration needs no SSH. This used to be a hand-run step, and
+being skippable it was once skipped: the release shipped a screen answering "no
+such column". If a migration fails the app deliberately does **not** start; the
+keepalive task retries every minute and `app.log` holds the error. Run it by hand
+only to diagnose that:
 
 ```bash
 cd /volume1/app/myhomebase && node --env-file-if-exists=.env migrate.cjs
