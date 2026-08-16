@@ -12,6 +12,7 @@ import { cookies } from "next/headers";
 import { IconSetProvider } from "@/components/icon-set-context";
 import { ViewportCorrector } from "@/components/viewport-corrector";
 import { ViewportProvider } from "@/components/viewport-context";
+import { listSplashImages } from "@/lib/pwa";
 import {
   VIEWPORT_COOKIE,
   VIEWPORT_PINNED_COOKIE,
@@ -177,6 +178,18 @@ export default async function RootLayout({
     >
       <head>
         <style>{themeCss}</style>
+        {/* iOS launch images. Next has no metadata API for these, so they are
+            raw <link> tags. Unlike the manifest and `themeColor` above, these
+            PNGs are static and cannot follow the active theme — they bake in
+            the default theme's background. See src/lib/pwa/splash.ts. */}
+        {listSplashImages().map((image) => (
+          <link
+            key={image.href}
+            rel="apple-touch-startup-image"
+            media={image.media}
+            href={image.href}
+          />
+        ))}
         {/* Applies the stored top-bar state before first paint. Without it the
             page renders padded for the bar and then jumps when the client
             effect reads localStorage — a visible shove of every page's content

@@ -13,6 +13,7 @@
     "check:lib-boundary": "node scripts/check-lib-boundary.mjs",
     "clean:next": "node -e \"require('node:fs').rmSync('.next', { recursive: true, force: true })\"",
     "gen:icons": "node scripts/gen-icon-glyphs.mjs",
+    "gen:splash": "node scripts/gen-splash.mjs",
     "publish:nas": "node scripts/publish-nas.mjs",
     "db:migrate": "tsx --env-file-if-exists=.env scripts/migrate.ts",
     "db:migrate:dry-run": "tsx --env-file-if-exists=.env scripts/migration-dry-run.ts",

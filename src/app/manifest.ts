@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { listModules } from "@/lib/modules";
 import { DEFAULT_COLOR_THEME_ID, getColorTheme, getSetting } from "@/lib/settings";
 import { deps } from "@/lib/wiring";
 
@@ -20,6 +21,11 @@ export default function manifest(): MetadataRoute.Manifest {
   const theme = getColorTheme(themeId);
 
   return {
+    // A stable identity, independent of `start_url`. Without it the browser
+    // derives the app's identity from the start URL, so changing that URL later
+    // would register a *second* installed app rather than updating this one.
+    // Never change this value.
+    id: "/",
     name: appName,
     short_name: appName,
     description: "Your household's records: investments, spending, journal and analysis.",
@@ -38,5 +44,18 @@ export default function manifest(): MetadataRoute.Manifest {
       // padding baked in.
       { src: "/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
+    // Long-press the home-screen icon to jump straight into a module. Built from
+    // the visible modules rather than a hardcoded list, so renaming or hiding a
+    // module in admin is reflected here too.
+    //
+    // Android shows at most four, and only reads them at install time — an
+    // existing install keeps its old shortcuts until the app is reinstalled.
+    shortcuts: listModules(deps.moduleRepo)
+      .slice(0, 4)
+      .map((module) => ({
+        name: module.longName,
+        short_name: module.shortName,
+        url: `/modules/${module.slug}`,
+      })),
   };
 }
