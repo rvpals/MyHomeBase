@@ -11,9 +11,25 @@ import {
   deleteJournalEntryAction,
   setEntryLockAction,
 } from "../../journal-actions";
+import { journalEntriesFilterHref } from "../../journal-shared";
 import { JournalEntryEditForm } from "./entry-edit-form";
 
 const JOURNAL_MODULE_PATH = "/modules/journal";
+
+/**
+ * Clicking a category or tag opens the Entries browser filtered to it — the same
+ * `?filter=` link the Top Categories/Tags cards use, so both routes into a slice
+ * produce one shareable URL rather than two.
+ *
+ * A name containing a comma can't be expressed in the query grammar (the comma
+ * is its "any of" separator), and `journalEntriesFilterHref` degrades to an
+ * *unfiltered* link for those. That's right for a card whose whole job is to
+ * navigate, but wrong for a chip: a chip that silently shows every entry looks
+ * like the filter worked. So those stay unclickable here.
+ */
+function taxonomyFilterHref(kind: "category" | "tag", name: string): string | undefined {
+  return name.includes(",") ? undefined : journalEntriesFilterHref(kind, name);
+}
 
 // Leaflet touches `window`, so the map is client-only. Read-only here: no onPick.
 const JournalLocationMap = dynamic(
@@ -143,6 +159,8 @@ export function JournalEntryScreen({
           nextDate={neighbors.next?.date}
           categoryIcons={categoryIcons}
           tagIcons={tagIcons}
+          categoryHref={(name) => taxonomyFilterHref("category", name)}
+          tagHref={(name) => taxonomyFilterHref("tag", name)}
           isBusy={isBusy}
         />
       )}

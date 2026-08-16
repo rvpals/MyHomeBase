@@ -173,7 +173,7 @@ export function AppChrome({
   return (
     <div className={className}>
       {barOpen ? (
-        <header className="app-bar nav-raised-top fixed inset-x-0 top-0 z-40 flex h-14 items-center gap-2 border-b border-line bg-app-bar px-3">
+        <header className="app-bar nav-raised-top fixed inset-x-0 top-0 z-40 flex h-14 items-center gap-2 border-b border-line bg-paper-raised px-3">
           <Link
             href="/"
             title="Home"

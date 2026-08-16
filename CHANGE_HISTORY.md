@@ -1,5 +1,81 @@
 # Change History
 
+## 2026-08-15 20:47 — Install it like an app: per-user startup, launch screens, Daily Glance on the home page
+
+Five bodies of work land together, most of them pulling in the same direction: the
+app should open where you actually want it, and look like a real install while it does.
+
+**Per-user preferences** (migration `0044`, new table `sys_user_preferences`). Every
+stored setting until now was global — `sys_app_settings` holds the theme and app name
+for the whole install, `sys_module_settings` a module's configuration for everyone who
+opens it. This table is the per-user counterpart, and its first two keys let someone
+skip the home screen: pick a **favorite module**, turn on **open it on startup**, and
+logging in drops you straight into the module you actually use. New library module
+`src/lib/user-preferences` owns the whole use-case — `getUserPreferences`,
+`saveUserPreferences`, the `resolveUserPreferences` / `userPreferencesToEntries` pair
+that types the `TEXT` values, and the pure `resolveStartupDestination` that makes the
+redirect decision. Shaped after `sys_module_settings` (0006) rather than
+`sys_app_settings` (0002), since the owner has to be part of the identity:
+`UNIQUE (user_id, preference_key)` makes a save a single upsert and doubles as the
+lookup index. **Deliberate divergence from 0006:** that table writes with
+`replaceForModule` (delete-all, re-insert), this one writes per key, so a screen
+saving one preference can't silently wipe a preference it didn't know about. Three
+obligations SQL can't enforce are handled in code — `SqliteUserRepository.deleteUser`
+clears these rows in its existing transaction (no FK to cascade),
+`resolveStartupDestination` returns `undefined` when the favorite is no longer among
+the user's accessible modules so a stale preference degrades to the home screen
+instead of redirecting into a module they can't open, and the redirect only ever
+targets a module route, never the home page, so there is nothing to loop. The redirect
+runs *before* any of the home screen's own data is read, so a redirected visit doesn't
+pay for a quote, the journal and the positions it will never render. Also reachable
+from the CLI as `user-preferences`. `resetSettingsToDefaults` deliberately leaves this
+table alone — wiping everyone's personal preferences isn't what "reset the application
+settings" should mean.
+
+**Installable PWA polish.** The manifest gained a stable `id` of `"/"` — without one
+the browser derives the app's identity from `start_url`, so changing that URL later
+would register a *second* installed app instead of updating this one; it must never
+change. It also gained **home-screen shortcuts**, built from the visible modules
+rather than a hardcoded list so renaming or hiding a module in admin is reflected
+too (Android shows at most four and only reads them at install time, so an existing
+install keeps its old set until reinstalled). New library module `src/lib/pwa` and
+`npm run gen:splash` generate the 24 **iOS launch images** in `public/splash/`, emitted
+as raw `<link rel="apple-touch-startup-image">` tags because Next has no metadata API
+for them. Unlike the manifest and `themeColor`, these PNGs are static and bake in the
+default theme's background — they can't follow the active theme.
+
+**Daily Glance moved to the home screen**, from the Stocks & ETFs dashboard to the top
+of the landing page: it's the first thing worth seeing when you open the app, which is
+doubly true now that opening the app can land you here. It shows only for someone who
+can actually open the module it belongs to, and only once they hold a position, so an
+empty portfolio renders nothing rather than a card of zeroes above the app title.
+`glance` is gone from `DASHBOARD_WIDGET_IDS`; a layout saved before this release still
+names it, and `resolveDashboardWidgets` drops it the same way it already dropped any
+retired widget — covered by a new test, since those users must land on a working
+dashboard rather than a hole or a throw.
+
+**The About page's change log renders inline markdown.** New `parseInlineMarkdown` in
+`src/lib/change-history` splits a line into styled spans — bold, italic, code, links —
+with the regex work under test in the library rather than loose in a `.tsx`. `code`
+is claimed *before* any emphasis rule so backticked identifiers and paths (`**/*.ts`,
+`snake_case`) survive intact, and the underscore spellings require a word boundary
+either side, or a bare constant like `MAX_JOURNAL_ICON_BYTES` would parse as bold.
+An unterminated marker stays literal text, so a typo shows up on the page instead of
+swallowing the rest of the line. The block renderer also learned `####` headings,
+fenced code blocks and one level of nested bullets. Same page: the memory figures that
+have a denominator became meters via a new **`UsageMeter`** component (registered in
+`components.md`) — system RAM on one row, Process RSS and Process Heap on the next.
+The percentage is printed beside the label so the fill is never the only channel
+carrying the value.
+
+**Also:** journal categories and tags are now clickable from `JournalViewer` via new
+`categoryHref` / `tagHref` props, linking to a pre-filtered Entries list — the caller
+owns the URL, as with `previousHref`. The `--app-bar` theme token was reverted: the
+top bar and a module's `TreeNav` section bar go back to `bg-paper-raised`, undoing the
+one-release-old experiment from `be17c67`. And on the My Account screen, **Choose file**
+is now a real button with the shared drop shadow instead of a bare file input, with
+the chosen filename on its own line below it.
+
 ## 2026-08-14 23:01 — My Journal: a filtered Entries browser, category/tag icons, and self-migrating deploys
 
 Three bodies of work land together.

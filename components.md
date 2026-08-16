@@ -1366,6 +1366,7 @@ print/export view share it.
 | `previousHref?` / `previousDate?` | `string` | Adds a Previous button, left of the date/time, linking to the older neighbour. `previousDate` fills the caption below it. Omit both to hide the button. The caller computes the href — this component stays free of routing knowledge. |
 | `nextHref?` / `nextDate?` | `string` | Same, for the newer neighbour. |
 | `categoryIcons?` / `tagIcons?` | `Record<string, string>` | Name → icon URL for the icons shown at the right of the date/time row. Only names *with* an uploaded icon need an entry; anything missing is skipped. **Plain objects, not a `Map`** — this is a client component, and the page that fetches the icons is a server one. The caller builds the URLs, so the component takes no journal-lib dependency. |
+| `categoryHref?` / `tagHref?` | `(name: string) => string \| undefined` | Makes each category/tag clickable — both the header icon and the Misc Info chip link to whatever the caller returns (in the journal, a pre-filtered Entries list). Same arrangement as `previousHref`: the caller owns the URL. Return `undefined` for a name that can't be linked, and that one stays a plain label. Omit the prop and none of them are links. |
 | `isBusy?` | `boolean` | Disables the actions while the caller works. |
 | `className?` | `string` | |
 
@@ -1384,6 +1385,8 @@ print/export view share it.
   nextDate={neighbors.next?.date}
   categoryIcons={categoryIcons}
   tagIcons={tagIcons}
+  categoryHref={(name) => taxonomyFilterHref("category", name)}
+  tagHref={(name) => taxonomyFilterHref("tag", name)}
   isBusy={isPending}
 />
 ```

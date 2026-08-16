@@ -13,6 +13,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import type { EntryLocation, JournalEntry } from "@/lib/journal";
@@ -59,6 +60,16 @@ export interface JournalViewerProps {
   categoryIcons?: Record<string, string>;
   /** Same deal as categoryIcons, for the entry's tags. */
   tagIcons?: Record<string, string>;
+  /**
+   * Where clicking one of the entry's categories should go — given the category
+   * name, return an href (typically a pre-filtered entries list). Omit to leave
+   * the categories as plain, unclickable labels. The caller builds the URL, so
+   * this component stays free of routing knowledge, the same way `previousHref`
+   * does. Return `undefined` for a name that can't be linked.
+   */
+  categoryHref?: (name: string) => string | undefined;
+  /** Same deal as categoryHref, for the entry's tags. */
+  tagHref?: (name: string) => string | undefined;
   /** Disables the actions while the caller is working. */
   isBusy?: boolean;
   /** Caller-supplied classes, merged last so they win. */
@@ -76,38 +87,84 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+/**
+ * Wraps a category/tag in a link when the caller supplied one, and leaves it
+ * bare otherwise. Both the header icons and the Misc Info chips go through this,
+ * so a name is clickable in exactly the same cases in both places. The link is
+ * dropped from print output — a printed page has nothing to click.
+ */
+function TaxonomyLink({
+  name,
+  href,
+  className,
+  children,
+}: {
+  name: string;
+  href?: string;
+  className: string;
+  children: React.ReactNode;
+}) {
+  if (!href) return <span className={className}>{children}</span>;
+  return (
+    <Link
+      href={href}
+      title={`Show all entries with "${name}"`}
+      className={`${className} transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass`}
+    >
+      {children}
+    </Link>
+  );
+}
+
 /** The icons for one entry's categories or tags, name-hinted, skipping any without one. */
-function TaxonomyIconRow({ names, icons }: { names: string[]; icons?: Record<string, string> }) {
+function TaxonomyIconRow({
+  names,
+  icons,
+  hrefFor,
+}: {
+  names: string[];
+  icons?: Record<string, string>;
+  hrefFor?: (name: string) => string | undefined;
+}) {
   if (!icons) return null;
   const withIcons = names.filter((name) => icons[name]);
   if (withIcons.length === 0) return null;
   return (
     <span className="flex items-center gap-1.5">
       {withIcons.map((name) => (
-        // eslint-disable-next-line @next/next/no-img-element -- icon bytes are served from our own DB-backed route, not a static asset next/image can optimize.
-        <img
-          key={name}
-          src={icons[name]}
-          alt={name}
-          title={name}
-          loading="lazy"
-          className="h-6 w-6 shrink-0 rounded border border-line object-cover"
-        />
+        <TaxonomyLink key={name} name={name} href={hrefFor?.(name)} className="shrink-0">
+          {/* eslint-disable-next-line @next/next/no-img-element -- icon bytes are served from our own DB-backed route, not a static asset next/image can optimize. */}
+          <img
+            src={icons[name]}
+            alt={name}
+            title={name}
+            loading="lazy"
+            className="h-6 w-6 shrink-0 rounded border border-line object-cover"
+          />
+        </TaxonomyLink>
       ))}
     </span>
   );
 }
 
-function Chips({ values }: { values: string[] }) {
+function Chips({
+  values,
+  hrefFor,
+}: {
+  values: string[];
+  hrefFor?: (name: string) => string | undefined;
+}) {
   return (
     <div className="flex flex-wrap gap-1.5">
       {values.map((value) => (
-        <span
+        <TaxonomyLink
           key={value}
+          name={value}
+          href={hrefFor?.(value)}
           className="rounded-full bg-brass-soft px-2 py-0.5 font-mono text-xs font-semibold text-brass-dark"
         >
           {value}
-        </span>
+        </TaxonomyLink>
       ))}
     </div>
   );
@@ -163,6 +220,8 @@ export function JournalViewer({
   nextDate,
   categoryIcons,
   tagIcons,
+  categoryHref,
+  tagHref,
   isBusy = false,
   className = "",
 }: JournalViewerProps) {
@@ -227,8 +286,8 @@ export function JournalViewer({
               right when there's room, and lets them wrap below on a narrow
               screen instead of squeezing the date/time. */}
           <span className="min-w-0 flex-1" />
-          <TaxonomyIconRow names={entry.categories} icons={categoryIcons} />
-          <TaxonomyIconRow names={entry.tags} icons={tagIcons} />
+          <TaxonomyIconRow names={entry.categories} icons={categoryIcons} hrefFor={categoryHref} />
+          <TaxonomyIconRow names={entry.tags} icons={tagIcons} hrefFor={tagHref} />
         </div>
         {entry.title !== "" && (
           <h2 className="mt-2 font-display text-2xl font-semibold text-ink">{entry.title}</h2>
@@ -301,12 +360,12 @@ export function JournalViewer({
           <dl className="flex flex-col gap-3">
             {entry.categories.length > 0 && (
               <Field label="Categories">
-                <Chips values={entry.categories} />
+                <Chips values={entry.categories} hrefFor={categoryHref} />
               </Field>
             )}
             {entry.tags.length > 0 && (
               <Field label="Tags">
-                <Chips values={entry.tags} />
+                <Chips values={entry.tags} hrefFor={tagHref} />
               </Field>
             )}
             <Field label="Entry #">
