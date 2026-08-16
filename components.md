@@ -67,6 +67,7 @@ pattern instead of inventing one.
 | [`ChartBar`](#chartbar) | Category comparison / part-to-whole | [src/components/chart-bar.tsx](src/components/chart-bar.tsx) | yes |
 | [`ChartXY`](#chartxy) | User-configurable line/bar/scatter/area + zoom | [src/components/chart-xy.tsx](src/components/chart-xy.tsx) | yes |
 | [`ChartToolbar`](#chartoolbar) | A chart's gear control — **not called directly** | [src/components/chart-toolbar.tsx](src/components/chart-toolbar.tsx) | yes |
+| [`UsageMeter`](#usagemeter) | A stat tile whose value is part of a known total | [src/components/usage-meter.tsx](src/components/usage-meter.tsx) | no |
 | [`JournalViewer`](#journalviewer) | Full detail sheet for one journal entry | [src/components/journal-viewer.tsx](src/components/journal-viewer.tsx) | yes |
 | [`TickerViewer`](#tickerviewer) | Full record dialog for one ticker — 3 tabs of cards | [src/components/ticker-viewer.tsx](src/components/ticker-viewer.tsx) | yes |
 | [`IconSetProvider`](#iconsetprovider--useiconset) / `useIconSet` | Active module icon set (context) | [src/components/icon-set-context.tsx](src/components/icon-set-context.tsx) | yes |
@@ -1292,6 +1293,53 @@ is a hydration mismatch.
 exempt from the markers toggle, because those shapes carry meaning the line doesn't — hiding
 them would lose data rather than reduce clutter. The tooltip is deliberately **not**
 toggleable for the same reason: it carries the values the labels don't.
+
+---
+
+## UsageMeter
+
+A stat tile whose number is part of a known total, so it carries a slim filled track
+under the figure. Use it for used/total pairs — memory, disk, a quota.
+
+- **Source:** [src/components/usage-meter.tsx](src/components/usage-meter.tsx)
+- **Import:** `import { UsageMeter } from "@/components/usage-meter";`
+- **Client component:** no (renders no hooks)
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `label` | `string` | Tile label, in the stat-tile label style. |
+| `used` | `number` | The filled portion, same unit as `total`. |
+| `total` | `number` | The whole. `0` or negative renders an empty track rather than dividing by it. |
+| `formatValue` | `(value: number) => string` | Formats both figures. Pass a function the *client* side owns — see below. |
+| `caption?` | `string` | Qualifies the total when the label doesn't, e.g. "Of 32 GB system RAM." |
+| `className?` | `string` | Merged last. |
+
+```tsx
+<UsageMeter
+  label="RAM Used / Total"
+  used={memory.usedBytes}
+  total={memory.totalBytes}
+  caption="6.1 GB free."
+  formatValue={formatBytes}
+/>
+```
+
+**Used by:** the About screen
+[src/app/(protected)/admin/about/view.tsx](src/app/(protected)/admin/about/view.tsx) — system
+RAM on one row, Process RSS and Process Heap on the next.
+
+**Notes:** the percentage is printed beside the label, so the fill is never the only
+channel carrying the value — a meter that's only a bar fails the same contrast test a
+chart does. The track is `bg-line`, the fill `bg-brass`, both theme tokens.
+
+**`formatValue` is a function prop, so it can't cross a server→client boundary.** A server
+component can't pass it down; the client view imports the formatter itself and applies it
+(About imports `formatBytes` from `@/lib/system-info`). The server page passes the raw
+numbers.
+
+**Not `ChartBar`.** A meter answers "how full is this one thing"; `ChartBar` compares
+several categories and brings Recharts with it. Three used/total pairs are three meters,
+not a chart.
 
 ---
 

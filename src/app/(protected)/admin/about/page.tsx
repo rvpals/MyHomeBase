@@ -22,15 +22,32 @@ export default function AboutPage() {
     { label: "Node Version", value: systemInfo.server.nodeVersion },
     { label: "System Uptime", value: formatUptime(systemInfo.server.systemUptimeSeconds) },
     { label: "Process Uptime", value: formatUptime(systemInfo.server.processUptimeSeconds) },
-    {
-      label: "RAM Used / Total",
-      value: `${formatBytes(systemInfo.memory.usedBytes)} / ${formatBytes(systemInfo.memory.totalBytes)}`,
-    },
     { label: "RAM Free", value: formatBytes(systemInfo.memory.freeBytes) },
-    { label: "Process RSS", value: formatBytes(systemInfo.memory.processRssBytes) },
+  ];
+
+  // The three memory figures that have a denominator, shown as meters below the
+  // tiles. RSS is one process's resident set — it isn't a slice of anything else
+  // on this page, so total system RAM is the only honest scale, and the caption
+  // says so rather than leaving the reader to assume.
+  const ramMeter = {
+    label: "RAM Used / Total",
+    usedBytes: systemInfo.memory.usedBytes,
+    totalBytes: systemInfo.memory.totalBytes,
+    caption: `${formatBytes(systemInfo.memory.freeBytes)} free.`,
+  };
+
+  const processMeters = [
+    {
+      label: "Process RSS",
+      usedBytes: systemInfo.memory.processRssBytes,
+      totalBytes: systemInfo.memory.totalBytes,
+      caption: `Of ${formatBytes(systemInfo.memory.totalBytes)} system RAM.`,
+    },
     {
       label: "Process Heap",
-      value: `${formatBytes(systemInfo.memory.processHeapUsedBytes)} / ${formatBytes(systemInfo.memory.processHeapTotalBytes)}`,
+      usedBytes: systemInfo.memory.processHeapUsedBytes,
+      totalBytes: systemInfo.memory.processHeapTotalBytes,
+      caption: "Heap used of heap allocated.",
     },
   ];
 
@@ -50,6 +67,8 @@ export default function AboutPage() {
       appName={packageJson.name}
       appVersion={packageJson.version}
       stats={stats}
+      ramMeter={ramMeter}
+      processMeters={processMeters}
       backupText={`${systemInfo.backupFiles.count} backup file(s) totaling ${formatBytes(systemInfo.backupFiles.totalSizeBytes)}.`}
       databaseRows={databaseRows}
       envFilePath={systemInfo.envFilePath}

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { getChangeHistory, readChangeTag, summarizeChangeHistory } from "./change-history";
+import {
+  getChangeHistory,
+  parseInlineMarkdown,
+  readChangeTag,
+  summarizeChangeHistory,
+} from "./change-history";
 import type { ChangeHistoryRepository } from "./ports";
 import { FileChangeHistoryRepository } from "./repository";
 
@@ -144,6 +149,68 @@ describe("getChangeHistory", () => {
     const history = getChangeHistory(fakeRepo(""));
     expect(history.markdown).toBe("");
     expect(history.summary?.allTime).toEqual({ total: 0, added: 0, changed: 0, fixed: 0 });
+  });
+});
+
+describe("parseInlineMarkdown", () => {
+  it("returns a single text span for a line with no markup", () => {
+    expect(parseInlineMarkdown("Just prose.")).toEqual([{ style: "text", text: "Just prose." }]);
+  });
+
+  it("splits bold, italic and code out of the surrounding text", () => {
+    expect(parseInlineMarkdown("A **bold** and *italic* and `code` line")).toEqual([
+      { style: "text", text: "A " },
+      { style: "bold", text: "bold" },
+      { style: "text", text: " and " },
+      { style: "italic", text: "italic" },
+      { style: "text", text: " and " },
+      { style: "code", text: "code" },
+      { style: "text", text: " line" },
+    ]);
+  });
+
+  it("accepts the underscore spellings of bold and italic", () => {
+    expect(parseInlineMarkdown("__strong__ and _slanted_")).toEqual([
+      { style: "bold", text: "strong" },
+      { style: "text", text: " and " },
+      { style: "italic", text: "slanted" },
+    ]);
+  });
+
+  it("carries a link's target on the span", () => {
+    expect(parseInlineMarkdown("see [the docs](./ARCHITECTURE.md) first")).toEqual([
+      { style: "text", text: "see " },
+      { style: "text", text: "the docs", href: "./ARCHITECTURE.md" },
+      { style: "text", text: " first" },
+    ]);
+  });
+
+  it("treats asterisks and underscores inside a code span as literal", () => {
+    // The real log is full of these — `**/*.ts`, `snake_case`. Emphasis must not
+    // bite into a code span or the identifier renders mangled.
+    expect(parseInlineMarkdown("matches `**/*.ts` and `filter_json`")).toEqual([
+      { style: "text", text: "matches " },
+      { style: "code", text: "**/*.ts" },
+      { style: "text", text: " and " },
+      { style: "code", text: "filter_json" },
+    ]);
+  });
+
+  it("leaves an unterminated marker as literal text", () => {
+    // A typo should show up on the page, not swallow the rest of the line.
+    expect(parseInlineMarkdown("an **unclosed bold")).toEqual([
+      { style: "text", text: "an **unclosed bold" },
+    ]);
+  });
+
+  it("does not treat a mid-word underscore as emphasis", () => {
+    expect(parseInlineMarkdown("MAX_JOURNAL_ICON_BYTES")).toEqual([
+      { style: "text", text: "MAX_JOURNAL_ICON_BYTES" },
+    ]);
+  });
+
+  it("returns nothing for an empty line", () => {
+    expect(parseInlineMarkdown("")).toEqual([]);
   });
 });
 

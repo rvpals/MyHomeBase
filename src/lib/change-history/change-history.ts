@@ -5,6 +5,7 @@ import {
   type ChangeHistory,
   type ChangeHistorySummary,
   type ChangeKind,
+  type InlineSpan,
   type ReleaseSummary,
   type TaggedLine,
 } from "./types";
@@ -32,6 +33,66 @@ export function readChangeTag(text: string): TaggedLine {
 
   const kind = kindFromLabel(match[1]);
   return kind ? { kind, text: match[2] } : { kind: null, text };
+}
+
+// Inline markup, in precedence order. `code` is first deliberately: backticks in
+// this log wrap identifiers and paths (`**/*.ts`, `snake_case`) where an asterisk
+// or underscore is a literal character, so a code span is claimed before any
+// emphasis rule can bite into it. Links come next so their label can't be split.
+//
+// Each alternative captures its content in group 1 (links also capture a target
+// in group 2), and the union is matched left-to-right in one pass.
+const INLINE_PATTERN = new RegExp(
+  [
+    "`([^`]+)`", // code
+    "\\[([^\\]]+)\\]\\(([^)\\s]+)\\)", // [label](target)
+    "\\*\\*([^*]+)\\*\\*", // **bold**
+    // The underscore spellings require a word boundary either side, per
+    // CommonMark's intraword rule. Without it a bare constant like
+    // MAX_JOURNAL_ICON_BYTES parses as "MAX" + italic "JOURNAL" + "ICON_BYTES",
+    // and this log names constants in prose constantly.
+    "(?<![A-Za-z0-9])__([^_]+)__(?![A-Za-z0-9])", // __bold__
+    "\\*([^*\\n]+)\\*", // *italic*
+    "(?<![A-Za-z0-9])_([^_\\n]+)_(?![A-Za-z0-9])", // _italic_
+  ].join("|"),
+  "g",
+);
+
+/**
+ * Split a line of body text into styled runs.
+ *
+ * Handles the inline markdown this log actually uses — code spans, links, bold
+ * and italic — and leaves anything else as literal text, so an unsupported
+ * construct renders visibly rather than disappearing. Nesting is not supported:
+ * the outermost match wins and its content is taken literally, which keeps this
+ * a single pass and is enough for a change log.
+ */
+export function parseInlineMarkdown(text: string): InlineSpan[] {
+  const spans: InlineSpan[] = [];
+  let lastIndex = 0;
+
+  function pushText(value: string) {
+    if (value.length > 0) spans.push({ style: "text", text: value });
+  }
+
+  for (const match of text.matchAll(INLINE_PATTERN)) {
+    const [whole, code, linkLabel, linkHref, boldStars, boldScores, italicStars, italicScores] =
+      match;
+    pushText(text.slice(lastIndex, match.index));
+
+    if (code !== undefined) spans.push({ style: "code", text: code });
+    else if (linkLabel !== undefined)
+      spans.push({ style: "text", text: linkLabel, href: linkHref });
+    else if (boldStars !== undefined) spans.push({ style: "bold", text: boldStars });
+    else if (boldScores !== undefined) spans.push({ style: "bold", text: boldScores });
+    else if (italicStars !== undefined) spans.push({ style: "italic", text: italicStars });
+    else if (italicScores !== undefined) spans.push({ style: "italic", text: italicScores });
+
+    lastIndex = match.index + whole.length;
+  }
+
+  pushText(text.slice(lastIndex));
+  return spans;
 }
 
 function emptyCounts(): ChangeCounts {

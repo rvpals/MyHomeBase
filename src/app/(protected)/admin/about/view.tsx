@@ -10,17 +10,29 @@ import type { ReactNode } from "react";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { Tabs, type TabItem } from "@/components/tabs";
+import { UsageMeter } from "@/components/usage-meter";
 import {
+  parseInlineMarkdown,
   readChangeTag,
   type ChangeCounts,
   type ChangeHistorySummary,
   type ChangeKind,
 } from "@/lib/change-history";
+import { formatBytes } from "@/lib/system-info";
 import { PAGE_CONTAINER } from "../../page-container";
 
 interface StatItem {
   label: string;
   value: string;
+}
+
+// A memory figure that has a known total, so it renders as a meter rather than a
+// plain tile. Byte values stay raw here — the view formats them.
+interface MeterItem {
+  label: string;
+  usedBytes: number;
+  totalBytes: number;
+  caption?: string;
 }
 
 interface DatabaseRow {
@@ -102,26 +114,70 @@ function ChangeHistoryTotals({ summary }: { summary: ChangeHistorySummary }) {
   );
 }
 
-// Minimal renderer for the specific subset of markdown CHANGE_HISTORY.md
-// actually uses (#/##/### headings, "-"/"*" bullet lists, plain paragraphs)
-// plus this project's `[Added]` / `[Changed]` / `[Fixed]` item tags, which are
-// lifted out of the text and shown as a badge. Not a general markdown parser.
+// Renders one line's inline markup — bold, italic, code, links — from the spans
+// the lib parser produced. Emphasis takes the ink token so it reads as weight
+// rather than colour; a code span gets the same treatment as an inline `<code>`
+// elsewhere in the app.
+function InlineText({ text }: { text: string }) {
+  return (
+    <>
+      {parseInlineMarkdown(text).map((span, index) => {
+        const body =
+          span.style === "bold" ? (
+            <strong className="font-semibold text-ink">{span.text}</strong>
+          ) : span.style === "italic" ? (
+            <em className="italic">{span.text}</em>
+          ) : span.style === "code" ? (
+            <code className="rounded bg-brass-soft px-1 py-0.5 font-mono text-[0.85em] text-brass-dark">
+              {span.text}
+            </code>
+          ) : (
+            span.text
+          );
+
+        if (span.href) {
+          return (
+            <a
+              key={index}
+              href={span.href}
+              className="text-brass-dark underline underline-offset-2"
+            >
+              {body}
+            </a>
+          );
+        }
+        return <span key={index}>{body}</span>;
+      })}
+    </>
+  );
+}
+
+// Block renderer for CHANGE_HISTORY.md: `#`–`####` headings, "-"/"*" bullet
+// lists (with one level of indent), fenced code blocks, and paragraphs — plus
+// this project's `[Added]` / `[Changed]` / `[Fixed]` item tags, which are lifted
+// out of the text and shown as a badge. Inline markup inside each block is
+// handled by `InlineText`.
+//
+// Still not a general markdown parser (no tables, no block quotes, no ordered
+// lists), but it covers what the `build_project` skill writes and degrades to
+// literal text rather than dropping anything it doesn't know.
 function renderChangeHistory(markdown: string): ReactNode[] {
   const blocks: ReactNode[] = [];
-  let listItems: { kind: ChangeKind | null; text: string }[] = [];
+  let listItems: { kind: ChangeKind | null; text: string; nested: boolean }[] = [];
+  let fence: string[] | null = null;
 
   function flushList() {
     if (listItems.length === 0) return;
     blocks.push(
       <ul key={`list-${blocks.length}`} className="list-disc space-y-1 pl-5 text-sm text-ink">
         {listItems.map((item, index) => (
-          <li key={index}>
+          <li key={index} className={item.nested ? "ml-5 list-[circle]" : undefined}>
             {item.kind ? (
               <>
                 <KindBadge kind={item.kind} />{" "}
               </>
             ) : null}
-            {item.text}
+            <InlineText text={item.text} />
           </li>
         ))}
       </ul>,
@@ -129,9 +185,50 @@ function renderChangeHistory(markdown: string): ReactNode[] {
     listItems = [];
   }
 
+  function flushFence() {
+    if (fence === null) return;
+    blocks.push(
+      <pre
+        key={blocks.length}
+        className="overflow-x-auto rounded-xl border border-line p-3 font-mono text-xs text-ink"
+      >
+        {fence.join("\n")}
+      </pre>,
+    );
+    fence = null;
+  }
+
   for (const rawLine of markdown.split("\n")) {
     const line = rawLine.trimEnd();
-    if (line.startsWith("### ")) {
+
+    // Inside a fence every line is literal until the closing marker, so this
+    // has to come before any other block test.
+    if (fence !== null) {
+      if (line.trimStart().startsWith("```")) flushFence();
+      else fence.push(rawLine);
+      continue;
+    }
+    if (line.trimStart().startsWith("```")) {
+      flushList();
+      fence = [];
+      continue;
+    }
+
+    const indented = /^\s+[-*] /.test(rawLine);
+
+    if (line.startsWith("#### ")) {
+      flushList();
+      const { kind, text } = readChangeTag(line.slice(5));
+      blocks.push(
+        <h4
+          key={blocks.length}
+          className="mt-3 flex flex-wrap items-center gap-2 font-display text-sm font-semibold text-ink"
+        >
+          {kind ? <KindBadge kind={kind} /> : null}
+          <InlineText text={text} />
+        </h4>,
+      );
+    } else if (line.startsWith("### ")) {
       flushList();
       const { kind, text } = readChangeTag(line.slice(4));
       blocks.push(
@@ -140,7 +237,7 @@ function renderChangeHistory(markdown: string): ReactNode[] {
           className="mt-4 flex flex-wrap items-center gap-2 font-display text-base font-semibold text-ink"
         >
           {kind ? <KindBadge kind={kind} /> : null}
-          {text}
+          <InlineText text={text} />
         </h3>,
       );
     } else if (line.startsWith("## ")) {
@@ -150,30 +247,34 @@ function renderChangeHistory(markdown: string): ReactNode[] {
           key={blocks.length}
           className="mt-6 border-t border-line pt-4 font-display text-lg font-semibold text-ink first:mt-0 first:border-t-0 first:pt-0"
         >
-          {line.slice(3)}
+          <InlineText text={line.slice(3)} />
         </h2>,
       );
     } else if (line.startsWith("# ")) {
       flushList();
       blocks.push(
         <h1 key={blocks.length} className="font-display text-2xl font-semibold text-ink">
-          {line.slice(2)}
+          <InlineText text={line.slice(2)} />
         </h1>,
       );
     } else if (line.startsWith("- ") || line.startsWith("* ")) {
-      listItems.push(readChangeTag(line.slice(2)));
+      listItems.push({ ...readChangeTag(line.slice(2)), nested: false });
+    } else if (indented) {
+      const trimmed = line.trimStart();
+      listItems.push({ ...readChangeTag(trimmed.slice(2)), nested: true });
     } else if (line.trim() === "") {
       flushList();
     } else {
       flushList();
       blocks.push(
         <p key={blocks.length} className="text-sm text-muted">
-          {line}
+          <InlineText text={line} />
         </p>,
       );
     }
   }
   flushList();
+  flushFence();
 
   return blocks;
 }
@@ -182,6 +283,8 @@ export function AboutView({
   appName,
   appVersion,
   stats,
+  ramMeter,
+  processMeters,
   backupText,
   databaseRows,
   envFilePath,
@@ -192,6 +295,8 @@ export function AboutView({
   appName: string;
   appVersion: string;
   stats: StatItem[];
+  ramMeter: MeterItem;
+  processMeters: MeterItem[];
   backupText: string;
   databaseRows: DatabaseRow[];
   envFilePath: string;
@@ -242,6 +347,30 @@ export function AboutView({
             <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
               {stats.map((stat) => (
                 <StatTile key={stat.label} label={stat.label} value={stat.value} />
+              ))}
+            </div>
+
+            {/* Memory in two rows: system RAM on its own, then the two process
+                figures beside each other. Both collapse to one column on a phone. */}
+            <div className="mt-4 grid grid-cols-1 gap-4">
+              <UsageMeter
+                label={ramMeter.label}
+                used={ramMeter.usedBytes}
+                total={ramMeter.totalBytes}
+                caption={ramMeter.caption}
+                formatValue={formatBytes}
+              />
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-4 max-lg:grid-cols-1">
+              {processMeters.map((meter) => (
+                <UsageMeter
+                  key={meter.label}
+                  label={meter.label}
+                  used={meter.usedBytes}
+                  total={meter.totalBytes}
+                  caption={meter.caption}
+                  formatValue={formatBytes}
+                />
               ))}
             </div>
           </CollapsibleCard>

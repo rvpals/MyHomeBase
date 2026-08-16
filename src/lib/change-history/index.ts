@@ -8,9 +8,16 @@ export type {
   ChangeHistory,
   ChangeHistorySummary,
   ChangeKind,
+  InlineSpan,
+  InlineStyle,
   ReleaseSummary,
   TaggedLine,
 } from "./types";
 export { CHANGE_KINDS } from "./types";
 export type { ChangeHistoryRepository } from "./ports";
-export { getChangeHistory, readChangeTag, summarizeChangeHistory } from "./change-history";
+export {
+  getChangeHistory,
+  parseInlineMarkdown,
+  readChangeTag,
+  summarizeChangeHistory,
+} from "./change-history";

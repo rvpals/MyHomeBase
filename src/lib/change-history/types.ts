@@ -39,6 +39,23 @@ export interface TaggedLine {
   text: string;
 }
 
+/**
+ * One run of body text with a single inline style applied. A line of markdown
+ * parses to a list of these, which a view maps to elements — keeping the regex
+ * work out of the `.tsx` and under test.
+ *
+ * `code` wins over the emphasis styles: backticks in this log wrap identifiers
+ * and file paths, where a `*` or `_` is literal and must not be read as markup.
+ */
+export type InlineStyle = "text" | "bold" | "italic" | "code";
+
+export interface InlineSpan {
+  style: InlineStyle;
+  text: string;
+  /** Set when the span was written as a link; the view renders an anchor. */
+  href?: string;
+}
+
 /** The log itself plus its counts. Both null when there is no log to read. */
 export interface ChangeHistory {
   markdown: string | null;
