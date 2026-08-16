@@ -3,7 +3,10 @@
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
-import { clearUserAvatar, setUserAvatar, setUserPassword } from "@/lib/user";
+import { listModules } from "@/lib/modules";
+import { clearUserAvatar, getAccessibleModules, setUserAvatar, setUserPassword } from "@/lib/user";
+import { saveUserPreferences, type UserPreferencesUpdate } from "@/lib/user-preferences";
+import type { User } from "@/lib/user";
 import { deps } from "@/lib/wiring";
 
 export interface ActionResult {
@@ -11,11 +14,15 @@ export interface ActionResult {
   error?: string;
 }
 
-async function getActingUserId(): Promise<number> {
+async function getActingUser(): Promise<User> {
   const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
   const currentUser = getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo);
   if (!currentUser) throw new Error("Not authenticated.");
-  return currentUser.id;
+  return currentUser;
+}
+
+async function getActingUserId(): Promise<number> {
+  return (await getActingUser()).id;
 }
 
 function toErrorResult(error: unknown, fallback: string): ActionResult {
@@ -58,5 +65,34 @@ export async function changeOwnPasswordAction(password: string): Promise<ActionR
   } catch (error) {
     return toErrorResult(error, "Failed to change password.");
   }
+  return { ok: true };
+}
+
+export async function saveOwnPreferencesAction(
+  input: UserPreferencesUpdate,
+): Promise<ActionResult> {
+  try {
+    // The session decides whose preferences these are — the client never supplies
+    // a user id. The allowed favorites are re-derived here for the same reason:
+    // the picker's option list arrived from the server, but a hand-rolled request
+    // needn't have used it.
+    const currentUser = await getActingUser();
+    const accessibleModules = getAccessibleModules(
+      currentUser,
+      listModules(deps.moduleRepo),
+      deps.userRepo,
+    );
+    saveUserPreferences(
+      deps.userPreferencesRepo,
+      currentUser.id,
+      input,
+      accessibleModules.map((appModule) => appModule.slug),
+    );
+  } catch (error) {
+    return toErrorResult(error, "Failed to save preferences.");
+  }
+  revalidatePath("/account");
+  // The home page reads these to decide whether to redirect on arrival.
+  revalidatePath("/");
   return { ok: true };
 }

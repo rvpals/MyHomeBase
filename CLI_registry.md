@@ -44,6 +44,7 @@ Twelve commands, registered in [src/cli/index.ts:19-32](src/cli/index.ts#L19-L32
 | [`compute-analytics`](#compute-analytics) | write | **yes** |
 | [`ticker-overview`](#ticker-overview) | read (`--refresh` writes cache) | with `--market` |
 | [`set-startup-message`](#set-startup-message) | write | no |
+| [`user-preferences`](#user-preferences) | read (writes with `--favorite`/`--startup`) | no |
 
 Flag parsing is `--key value` pairs via [parse-flags.ts](src/cli/parse-flags.ts),
 except `ticker-overview` and `set-startup-message`, which read positionals and bare
@@ -355,6 +356,33 @@ With no argument, uses `formatDeploymentMessage(new Date())`. Max 2000 character
 (`(blank — nothing will be shown)` when empty).
 **Exit** — always 0.
 Source: [src/cli/set-startup-message.ts](src/cli/set-startup-message.ts)
+
+---
+
+## `user-preferences`
+
+Reads or writes one user's preferences — the favorite module and whether logging in
+opens it. Drives the same use-cases as the My Account screen, so the two can't diverge.
+
+```
+npm run cli -- user-preferences --user min                                # show
+npm run cli -- user-preferences --user min --favorite journal --startup yes
+npm run cli -- user-preferences --user min --favorite ""                  # clear favorite
+```
+
+**Input** — `--user <username>` (required). `--favorite <slug|"">` and
+`--startup yes|no` are both optional; **omitting one leaves that preference as it is**,
+so either can be changed without restating the other. Supplying neither is a read.
+
+**Calls** — `getUserPreferences` / `saveUserPreferences` / `resolveStartupDestination` on
+`deps.userPreferencesRepo`, plus `getAccessibleModules` to bound the favorite.
+
+**Output** — the favorite, the startup flag, and the resolved landing place
+(`lands on login: /modules/<slug>` or `the home screen`). A favorite the user can't
+reach is rejected, and the reachable module slugs are printed to stderr.
+**Exit** — 0; 1 when `--user` is missing or unknown, `--startup` isn't `yes`/`no`, or the
+save is rejected.
+Source: [src/cli/user-preferences.ts](src/cli/user-preferences.ts)
 
 ---
 

@@ -13,6 +13,7 @@ import { listUsersCommand } from "./list-users";
 import { refreshPositionsCommand } from "./refresh-positions";
 import { setStartupMessageCommand } from "./set-startup-message";
 import { tickerOverviewCommand } from "./ticker-overview";
+import { userPreferencesCommand } from "./user-preferences";
 
 type Command = (args: string[]) => Promise<void> | void;
 
@@ -29,6 +30,7 @@ const commands: Record<string, Command> = {
   "explain-rule": explainRuleCommand,
   "ticker-overview": tickerOverviewCommand,
   "set-startup-message": setStartupMessageCommand,
+  "user-preferences": userPreferencesCommand,
 };
 
 async function main(argv: string[]) {

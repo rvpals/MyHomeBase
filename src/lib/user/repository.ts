@@ -160,6 +160,9 @@ export class SqliteUserRepository implements UserRepository {
     // module's table, not this one's.
     const deleteUserTransaction = this.db.transaction((userId: number) => {
       this.db.prepare("DELETE FROM sys_user_module_access WHERE user_id = ?").run(userId);
+      // No FK to cascade (project convention), so per-user preferences are
+      // cleared here rather than left as orphans an id reuse could resurrect.
+      this.db.prepare("DELETE FROM sys_user_preferences WHERE user_id = ?").run(userId);
       this.db.prepare("DELETE FROM sys_users WHERE id = ?").run(userId);
     });
     deleteUserTransaction(id);

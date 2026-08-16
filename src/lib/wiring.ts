@@ -30,6 +30,7 @@ import { YahooTickerNewsClient } from "./ticker-news/yahoo-news-client";
 import { FmpTickerLogoClient } from "./ticker-logos/fmp-logo-client";
 import { SqliteTickerLogoRepository } from "./ticker-logos/repository";
 import { SqliteTickerRiskCacheRepository } from "./ticker-overview/repository";
+import { SqliteUserPreferencesRepository } from "./user-preferences/repository";
 import { SqliteUserRepository } from "./user/repository";
 
 const dbPath = process.env.MYHOMEBASE_DB ?? path.join(process.cwd(), "data", "myhomebase.db");
@@ -70,6 +71,7 @@ export const deps = {
   settingsRepo: new SqliteSettingsRepository(db),
   moduleSettingsRepo: new SqliteModuleSettingsRepository(db),
   userRepo: new SqliteUserRepository(db),
+  userPreferencesRepo: new SqliteUserPreferencesRepository(db),
   sessionRepo: new SqliteSessionRepository(db),
   investmentAccountRepo: new SqliteInvestmentAccountRepository(db),
   journalRepo: new SqliteJournalRepository(db),
