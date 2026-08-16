@@ -17,9 +17,7 @@ import { resolveDashboardWidgets, visibleDashboardWidgets } from "@/lib/stock-da
 import { listSnapshots, summarizeToDate } from "@/lib/stock-daily-snapshot";
 import {
   computeAllocation,
-  computeDayMovesByType,
   computePortfolioSummary,
-  computeTickerDayMoves,
   listPositions,
   listTransactions,
   UNASSIGNED_ACCOUNT_ID,
@@ -87,10 +85,6 @@ function SectionBody({ section }: { section: StockSection }) {
           summary={computePortfolioSummary(positions)}
           byType={computeAllocation(positions, (position) => position.type)}
           byStrategy={computeAllocation(positions, (position) => position.assetStrategy)}
-          dayMoves={computeDayMovesByType(positions)}
-          // Summed per ticker here, not in the view: a holding split across two
-          // accounts is still one security, and that rollup is domain logic.
-          tickerMoves={computeTickerDayMoves(positions)}
           transactionCount={listTransactions(deps.stockPositionRepo).length}
           accountCount={listAccounts(deps.investmentAccountRepo).length}
           unassignedCount={

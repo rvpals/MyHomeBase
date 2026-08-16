@@ -12,14 +12,8 @@ import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import type { DashboardWidgetId } from "@/lib/stock-dashboard";
 import { snapshotChangePct } from "@/lib/stock-daily-snapshot";
 import type { DailySnapshot, PeriodSummary, ToDateSummaries } from "@/lib/stock-daily-snapshot";
-import type {
-  AllocationSlice,
-  DayMovesByType,
-  PortfolioSummary,
-  TickerDayMove,
-} from "@/lib/stock-positions";
+import type { AllocationSlice, PortfolioSummary } from "@/lib/stock-positions";
 import { centsToDollars, formatCents } from "@/lib/shared/money";
-import { StockDailyGlance } from "./stock-daily-glance";
 import { StockRefreshPanel } from "./stock-refresh-panel";
 
 function gainClass(cents: number): string {
@@ -258,8 +252,6 @@ export function StockDashboardView({
   summary,
   byType,
   byStrategy,
-  dayMoves,
-  tickerMoves,
   transactionCount,
   accountCount,
   unassignedCount,
@@ -270,10 +262,6 @@ export function StockDashboardView({
   summary: PortfolioSummary;
   byType: AllocationSlice[];
   byStrategy: AllocationSlice[];
-  /** Today's move split into Stock / ETF / Other. */
-  dayMoves: DayMovesByType;
-  /** Today's move per ticker, already summed across accounts. */
-  tickerMoves: TickerDayMove[];
   transactionCount: number;
   accountCount: number;
   /** Positions still sitting in the "Unassigned" pseudo-account. */
@@ -296,7 +284,6 @@ export function StockDashboardView({
   const widgetContent: Record<DashboardWidgetId, ReactNode> = {
     refresh: <StockRefreshPanel lastSnapshotDate={lastSnapshotDate} />,
     summary: <PortfolioSummaryCard summary={summary} snapshots={snapshots} />,
-    glance: <StockDailyGlance moves={dayMoves} tickerMoves={tickerMoves} />,
     statistics: (
       <CollapsibleCard title="Statistics">
         <div className="flex flex-col gap-4">

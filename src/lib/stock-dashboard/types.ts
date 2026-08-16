@@ -1,8 +1,13 @@
-/** Every widget the Stocks & ETFs dashboard can show, in its default order. */
+/**
+ * Every widget the Stocks & ETFs dashboard can show, in its default order.
+ *
+ * Daily Glance is deliberately absent: it lives at the top of the home landing
+ * screen now, not on this dashboard. A saved layout still naming `glance` is
+ * dropped by `resolveDashboardWidgets`, which already ignores unknown ids.
+ */
 export const DASHBOARD_WIDGET_IDS = [
   "refresh",
   "summary",
-  "glance",
   "statistics",
   "allocationType",
   "allocationStrategy",
@@ -28,11 +33,6 @@ export const DASHBOARD_WIDGET_INFO: Record<DashboardWidgetId, DashboardWidgetInf
     id: "summary",
     label: "Portfolio Summary",
     description: "Total value, today's move, the value-over-time chart and the snapshot history.",
-  },
-  glance: {
-    id: "glance",
-    label: "Daily Glance",
-    description: "Stock and ETF moves, plus the top five gainers and losers with news.",
   },
   statistics: {
     id: "statistics",

@@ -21,7 +21,7 @@ export function defaultDashboardWidgets(): DashboardWidgetPreference[] {
  * Reads the saved dashboard layout, falling back to the shipped default.
  *
  * Stored as one comma-separated ordered list, a `-` prefix meaning hidden:
- * `summary,glance,-statistics,allocationType`. Two rules make it survive the app
+ * `summary,refresh,-statistics,allocationType`. Two rules make it survive the app
  * changing underneath it:
  *
  * - An id that's no longer a widget is **dropped** — a removed widget shouldn't

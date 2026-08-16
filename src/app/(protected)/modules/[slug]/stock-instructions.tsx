@@ -143,9 +143,13 @@ function MainInstructions() {
       </Section>
       <Section title="Daily Glance, and the News button">
         <p>
-          The table at the top is today by instrument type — what each bucket is worth, what it
-          moved in dollars, and what that is as a percentage — with the portfolio total on the last
-          row. <strong className="text-ink">Other</strong> (bonds, funds, crypto, cash) only appears
+          <strong className="text-ink">Daily Glance lives on the home screen</strong>, at the very
+          top, rather than on this dashboard — it is the first thing worth seeing when you open the
+          app. It appears there once you hold at least one position.
+        </p>
+        <p>
+          Its table is today by instrument type — what each bucket is worth, what it moved in
+          dollars, and what that is as a percentage — with the portfolio total on the last row. <strong className="text-ink">Other</strong> (bonds, funds, crypto, cash) only appears
           when you hold something in it. Below that are the five biggest risers and fallers.
           Stocks and ETFs are ranked <strong className="text-ink">together</strong> — the question is
           which holdings moved, not which kind they are — and a ticker held in two accounts is
