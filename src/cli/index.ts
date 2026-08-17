@@ -1,6 +1,7 @@
 // Command router: argv -> command. Peer of src/app — same use-cases, different I/O.
 // Register commands here as they're added; each command is a thin adapter that
 // parses args, validates with the module's zod schema, calls a lib use-case, and prints.
+import { attendanceReportCommand } from "./attendance-report";
 import { computeAnalyticsCommand } from "./compute-analytics";
 import { createCsvAnalyticsEntryCommand } from "./create-csv-analytics-entry";
 import { createUserCommand } from "./create-user";
@@ -12,6 +13,7 @@ import { listCsvAnalyticsCommand } from "./list-csv-analytics";
 import { listUsersCommand } from "./list-users";
 import { refreshPositionsCommand } from "./refresh-positions";
 import { setStartupMessageCommand } from "./set-startup-message";
+import { takeAttendanceCommand } from "./take-attendance";
 import { tickerOverviewCommand } from "./ticker-overview";
 import { userPreferencesCommand } from "./user-preferences";
 
@@ -31,6 +33,8 @@ const commands: Record<string, Command> = {
   "ticker-overview": tickerOverviewCommand,
   "set-startup-message": setStartupMessageCommand,
   "user-preferences": userPreferencesCommand,
+  "take-attendance": takeAttendanceCommand,
+  "attendance-report": attendanceReportCommand,
 };
 
 async function main(argv: string[]) {

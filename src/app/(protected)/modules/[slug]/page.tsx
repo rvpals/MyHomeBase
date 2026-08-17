@@ -6,6 +6,7 @@ import { getModuleBySlug } from "@/lib/modules";
 import { isAdmin, userHasModuleAccess } from "@/lib/user";
 import { deps } from "@/lib/wiring";
 import { PAGE_CONTAINER } from "../../page-container";
+import { AttendanceSection } from "./attendance-section";
 import { CsvAnalyticsView } from "./csv-analytics-view";
 import { ExpenseSection } from "./expense-section";
 import { JournalSection } from "./journal-section";
@@ -15,8 +16,17 @@ const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
 const CSV_ANALYSIS_MODULE_SLUG = "csv-analysis";
 const JOURNAL_MODULE_SLUG = "journal";
 const EXPENSE_MODULE_SLUG = "expense";
+const ATTENDANCE_MODULE_SLUG = "attendance";
 
-function ModuleBody({ slug, isCurrentUserAdmin }: { slug: string; isCurrentUserAdmin: boolean }) {
+function ModuleBody({
+  slug,
+  isCurrentUserAdmin,
+  requestedClassId,
+}: {
+  slug: string;
+  isCurrentUserAdmin: boolean;
+  requestedClassId?: number;
+}) {
   // Stocks & ETFs, My Journal, and Expense all use a tree nav: the module root
   // is their home/dashboard, and every other section is its own route under
   // [slug]/[section].
@@ -36,6 +46,10 @@ function ModuleBody({ slug, isCurrentUserAdmin }: { slug: string; isCurrentUserA
     return <ExpenseSection section="main" />;
   }
 
+  if (slug === ATTENDANCE_MODULE_SLUG) {
+    return <AttendanceSection section="main" requestedClassId={requestedClassId} />;
+  }
+
   return (
     <div className="rounded-xl border border-dashed border-line p-8 text-center">
       <p className="font-display text-lg text-ink">Coming soon</p>
@@ -46,10 +60,19 @@ function ModuleBody({ slug, isCurrentUserAdmin }: { slug: string; isCurrentUserA
 
 export default async function ModulePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  // `classId` picks the Attendance module's class, so a teacher can bookmark
+  // their first-period register and land straight on it.
+  searchParams: Promise<{ classId?: string | string[] }>;
 }) {
   const { slug } = await params;
+  const { classId } = await searchParams;
+  // A repeated ?classId= yields an array; take the first rather than joining.
+  const rawClassId = Array.isArray(classId) ? classId[0] : classId;
+  const requestedClassId = Number(rawClassId) || undefined;
+
   const appModule = getModuleBySlug(deps.moduleRepo, slug);
 
   if (!appModule) notFound();
@@ -62,7 +85,11 @@ export default async function ModulePage({
 
   return (
     <div className={PAGE_CONTAINER}>
-      <ModuleBody slug={slug} isCurrentUserAdmin={isAdmin(currentUser)} />
+      <ModuleBody
+        slug={slug}
+        isCurrentUserAdmin={isAdmin(currentUser)}
+        requestedClassId={requestedClassId}
+      />
     </div>
   );
 }

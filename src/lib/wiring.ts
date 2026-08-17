@@ -3,6 +3,7 @@
 // repository directly in a presentation file.
 import path from "node:path";
 import Database from "better-sqlite3";
+import { SqliteAttendanceRepository } from "./attendance/repository";
 import { SqliteAuthEventRepository } from "./auth-events/repository";
 import { SqliteSessionRepository } from "./auth/repository";
 import { GoogleAuthClient } from "./auth/google-client";
@@ -85,6 +86,7 @@ export const deps = {
   investmentAccountRepo: new SqliteInvestmentAccountRepository(db),
   journalRepo: new SqliteJournalRepository(db),
   expenseRepo: new SqliteExpenseRepository(db),
+  attendanceRepo: new SqliteAttendanceRepository(db),
   csvFolder: new NodeCsvFolder(),
   csvImportMappingRepo: new SqliteCsvImportMappingRepository(db),
   csvAnalyticsRepo: new SqliteCsvAnalyticsRepository(db),

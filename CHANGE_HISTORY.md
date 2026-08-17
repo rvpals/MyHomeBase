@@ -1,5 +1,60 @@
 # Change History
 
+## 2026-08-16 23:08 — Attendance: take the register on a phone
+
+A new module for teachers. Pick a class, tap the students who are here, press save —
+that is the whole interaction, and it is built to work one-handed on a phone, because
+that is where a register actually gets taken.
+
+**Five tables, one new prefix `att_`** (migration `0047`). `att_students` is the
+school-wide roster, `att_classes` the classes, and `att_class_enrollments` the
+many-to-many between them — so a student can sit in Period 1 Math and Period 4 Science
+without being entered twice. `att_attendance_records` is one saved session and
+`att_attendance_entries` one student's status within it. Migration `0048` registers the
+module itself, mirrored into `DEFAULT_MODULES` (a module missing from that list is
+*deleted* by "Reset to Default", so the two have to stay in step).
+
+**Everyone starts absent, and a save writes a row per student.** Only the present ones
+could have been stored for fewer rows, but then "absent" and "attendance was never
+taken" would be the same state in the database, and a teacher needs to tell those
+apart. `getAttendanceReport` returns `undefined` for a day nobody took, and a real
+report with `absentCount: 3` for a day everyone missed — two different answers, as
+they should be.
+
+**Re-taking attendance overwrites the day**, enforced by `UNIQUE (class_id,
+attendance_date)` and a delete-then-insert inside one transaction. This is a
+**deliberate exception to the "never put a DATE in a unique index" rule** in
+`coding-guide.md`. That rule exists because a date collapses two genuinely distinct
+events into one row — it came out of `stk_stock_transactions` silently dropping a
+second lot bought the same day. Attendance has no such second event: one record per
+class per day is the specification, so a collision is exactly the row the write is
+meant to replace. Both the migration log and the coding guide now say so, in the place
+where the next person will hit the rule and wonder.
+
+**Names are frozen at save time.** `class_name` and `student_name` are stored on the
+saved record alongside the ids. Renaming a class or fixing a student's spelling must
+not rewrite a register that was already printed, so the ids are for joining and the
+names are the historical record. Covered by a test that renames both and asserts the
+old report is unchanged.
+
+**The library holds all of it** — `src/lib/attendance` with types, schema, ports,
+repository, use-cases and settings, 41 tests across two files. `saveAttendance` rejects
+a student who isn't enrolled (a stale browser tab must not write attendance for someone
+since removed) and a student listed twice. Both CLI commands, `take-attendance` and
+`attendance-report`, drive the same use-cases the web app does.
+
+**Narrow behaviour:** the roster and class grids are `DataGrid`, so they become card
+lists below 1024px for free. The attendance list itself is a single column of
+full-width tap targets on a phone and two columns on a desktop — a list of large
+buttons is already the right shape for a thumb, so it is restyled rather than forked.
+The report uses the `print-sheet` / `no-print` classes rather than any per-view print
+CSS. No new shared components were needed; `components.md` is unchanged.
+
+**Configuration** holds two preferences — a default class for the home screen, and
+whether the report opens on today or on the most recent day with attendance. "No
+default class" is stored by *omitting* the settings row rather than writing a blank,
+because `moduleSettingEntrySchema` requires a non-empty value.
+
 ## 2026-08-16 23:00 — A sign-in log that notices, sector allocation, candlesticks, quotes by paste
 
 Four independent bodies of work, plus the usual crop of smaller fixes.

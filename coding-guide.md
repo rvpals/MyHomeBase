@@ -16,6 +16,7 @@ module is obvious from the name alone. New tables must follow this.
 | `csv_` | CSV Analysis (incl. user-generated per-entry tables from `buildTableName`) | `csv_analytics_entries`, `csv_chart_presets`, `csv_govee` |
 | `jrn_` | MyJournal | `jrn_entries`, `jrn_categories`, `jrn_tags`, `jrn_entry_categories`, `jrn_entry_tags`, `jrn_entry_locations`, `jrn_entry_images`, `jrn_saved_filters` |
 | `exp_` | Expense tracker | `exp_transactions`, `exp_creditcard_accounts`, `exp_categories`, `exp_post_import_rules`, `exp_post_import_rule_actions` |
+| `att_` | Attendance | `att_students`, `att_classes`, `att_class_enrollments`, `att_attendance_records`, `att_attendance_entries` |
 
 The `rei_` prefix (Real Estate Investment) was retired when that module was
 removed — see migration `0026_drop_real_estate_module`.
@@ -91,6 +92,15 @@ whole file at once: count how many matching rows the file holds against how many
 stored, and insert the shortfall. The database can't make that call — it can't tell a
 real second lot from an accidental re-import. Worked through in
 `migrations/0038_add_brokerage_firm_to_stock_transactions.md`.
+
+**The one standing exception** is `att_attendance_records`, which is unique on
+`(class_id, attendance_date)`. The rule above is about a date collapsing two
+genuinely distinct events into one row; attendance has no such second event, because
+the module is specified as one record per class per day and re-taking attendance
+*replaces* that day's record. So a collision there is the case the write is meant to
+overwrite, not a real row being dropped. If a class ever needs to meet twice in a day,
+drop the index rather than adding a column to it — see
+`migrations/0047_create_attendance_tables.md`.
 
 ### A settings value is blank, never NULL
 

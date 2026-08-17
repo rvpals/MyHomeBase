@@ -5,6 +5,8 @@ import { getModuleBySlug } from "@/lib/modules";
 import { isAdmin, userHasModuleAccess } from "@/lib/user";
 import { deps } from "@/lib/wiring";
 import { PAGE_CONTAINER } from "../../../page-container";
+import { AttendanceSection } from "../attendance-section";
+import { isAttendanceSection } from "../attendance-sections";
 import { ExpenseSection } from "../expense-section";
 import { isExpenseSection } from "../expense-sections";
 import { isJournalSection } from "../journal-sections";
@@ -12,6 +14,7 @@ import { JournalSection } from "../journal-section";
 import { StockSection } from "../stock-section";
 import { isStockSection } from "../stock-sections";
 
+const ATTENDANCE_MODULE_SLUG = "attendance";
 const EXPENSE_MODULE_SLUG = "expense";
 const JOURNAL_MODULE_SLUG = "journal";
 const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
@@ -33,7 +36,18 @@ function renderSection(
   section: string,
   isAdmin: boolean,
   filterQuery: string | undefined,
+  requestedClassId: number | undefined,
+  requestedDate: string | undefined,
 ) {
+  if (slug === ATTENDANCE_MODULE_SLUG && isAttendanceSection(section)) {
+    return (
+      <AttendanceSection
+        section={section}
+        requestedClassId={requestedClassId}
+        requestedDate={requestedDate}
+      />
+    );
+  }
   if (slug === EXPENSE_MODULE_SLUG && isExpenseSection(section)) {
     return <ExpenseSection section={section} />;
   }
@@ -54,13 +68,21 @@ export default async function ModuleSectionPage({
   // `filter` carries a journal filter query, so a filtered entry list is a real
   // URL — linkable, shareable, and surviving a refresh or a back button. That's
   // why the Top Tags/Categories cards link here rather than pushing client state.
-  searchParams: Promise<{ filter?: string | string[] }>;
+  // `classId`/`date` do the same job for the Attendance report.
+  searchParams: Promise<{
+    filter?: string | string[];
+    classId?: string | string[];
+    date?: string | string[];
+  }>;
 }) {
   const { slug, section } = await params;
-  const { filter } = await searchParams;
+  const { filter, classId, date } = await searchParams;
   // A repeated ?filter= yields an array; take the first rather than joining, so a
   // crafted URL can't smuggle a second expression in.
   const filterQuery = Array.isArray(filter) ? filter[0] : filter;
+  const rawClassId = Array.isArray(classId) ? classId[0] : classId;
+  const requestedClassId = Number(rawClassId) || undefined;
+  const requestedDate = Array.isArray(date) ? date[0] : date;
 
   const appModule = getModuleBySlug(deps.moduleRepo, slug);
   if (!appModule) notFound();
@@ -71,7 +93,14 @@ export default async function ModuleSectionPage({
   // who hasn't been granted the module.
   if (!currentUser || !userHasModuleAccess(currentUser, appModule.id, deps.userRepo)) notFound();
 
-  const body = renderSection(slug, section, isAdmin(currentUser), filterQuery);
+  const body = renderSection(
+    slug,
+    section,
+    isAdmin(currentUser),
+    filterQuery,
+    requestedClassId,
+    requestedDate,
+  );
   if (!body) notFound();
 
   return <div className={PAGE_CONTAINER}>{body}</div>;

@@ -18,6 +18,7 @@
 import { useCallback, useState, type ReactNode } from "react";
 import type { TreeNavState } from "@/components/tree-nav";
 import { useIsCompact } from "@/components/viewport-context";
+import { AttendanceNav } from "./attendance-nav";
 import { ExpenseNav } from "./expense-nav";
 import { JournalNav } from "./journal-nav";
 import { StockNav } from "./stock-nav";
@@ -27,7 +28,7 @@ export function SectionLayout({
   module,
   children,
 }: {
-  nav: "expense" | "journal" | "stock";
+  nav: "attendance" | "expense" | "journal" | "stock";
   /**
    * The module the sections belong to, badged at the head of the nav. Plain
    * data, read by the server shell — the navs are client components and the
@@ -56,7 +57,9 @@ export function SectionLayout({
           viewport. It sits on this wrapper rather than inside TreeNav so
           TreeNav itself doesn't need to know where on the page it landed. */}
       <div className={`tree-nav-sticky ${isNavStacked ? "" : "sticky top-6 shrink-0"}`}>
-        {nav === "expense" ? (
+        {nav === "attendance" ? (
+          <AttendanceNav onStateChange={handleNavStateChange} module={module} />
+        ) : nav === "expense" ? (
           <ExpenseNav onStateChange={handleNavStateChange} module={module} />
         ) : nav === "journal" ? (
           <JournalNav onStateChange={handleNavStateChange} module={module} />
