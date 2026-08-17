@@ -1,5 +1,84 @@
 # Change History
 
+## 2026-08-16 23:00 — A sign-in log that notices, sector allocation, candlesticks, quotes by paste
+
+Four independent bodies of work, plus the usual crop of smaller fixes.
+
+**Every login attempt now leaves evidence** (migration `0045`, new table
+`sys_auth_events`, new column `sys_users.last_login_at`). Before this the application
+recorded *nothing* on a failed sign-in — no row, no counter, no IP, not even a console
+line. The only trace of a success was `sys_sessions.created_at`, and that row is
+deleted on logout. The table records successes, failures and logouts, with the
+username as **typed** rather than a resolved account (a failure whose username matched
+nothing still has to be recorded), a CHECK-constrained `failure_reason`
+(`unknown_user` / `bad_password` / `account_disabled` / `invalid_input`), and the first
+`x-forwarded-for` hop as an advisory IP. New library module `src/lib/auth-events`, a
+new **Admin → Security** screen, and `reviewed_at` driving a home-screen banner for
+admins that persists until the failures are actually reviewed — it queries
+`reviewed_at IS NULL`, so nobody can dismiss it on anyone else's behalf.
+`last_login_at` is denormalised onto the user so User Management can answer "when did
+this person last get in" without touching the event table, and a daily prune in
+`instrumentation.ts` drops events past a 90-day window. **Ordinary visitors see no
+change at all** — the login error message is byte-for-byte identical, because
+`verifyCredentialsDetailed` reports the reason inward while `login` stays blind
+outward. Rate limiting and account lockout are explicitly out of scope, not deferred.
+
+**Allocation by sector on the Stocks dashboard** (migration `0046`, new table
+`stk_ticker_profiles`). Sector already existed as a live per-ticker read for the ticker
+viewer, which is fine for one symbol in a dialog and impossible for a roll-up — a
+40-position portfolio would mean 40 outbound requests per render. The data is
+near-static, so it is cached, shaped deliberately like `stk_ticker_logos`. The subtle
+part is that **a blank sector is a real answer, not a failure**: Yahoo reports no
+sector for a fund, which is most ETFs, so a blank row is a negative cache meaning "we
+looked and there is none". A *failed request* stores nothing at all — caching a network
+outage as a permanent absence is the specific bug avoided. Funds chart under "ETFs &
+funds" rather than "Unclassified", which for a fund is the truthful label. A
+`manual_sector` override column ships unused on purpose: SQLite can't add a column to a
+keyed table without the full rebuild, so an unused column now is cheaper than a
+migration later.
+
+**Candlestick charts, and a chart type the reader picks.** New `ChartCandle` — Recharts
+has no candle mark, so it's a bar with a `[low, high]` wick pair and a custom shape, and
+direction is encoded **twice** (colour *and* hollow/filled body) so it survives greyscale
+and red-green colour blindness. The rules live in `src/lib/shared/chart-candle.ts` with
+tests: high/low are re-derived as the max/min of all four prices, because Yahoo
+occasionally reports a high fractionally below the close on thin volume and an unclamped
+wick then draws *inside* the body. OHLC rides along in the history response the
+market-data client was already receiving and discarding, so it costs no extra request.
+The ticker viewer's Price History gains a Line ↔ Candles toggle; separately,
+`ChartToolbar` gains a chart-type selector (`line`/`bar`/`area`/`scatter`), which the CSV
+Analysis chart builder now uses instead of its own.
+
+**Daily quotes by paste** — the admin screen splits into **Add Quote** and **Import
+from Newsletter**, the latter parsing a pasted 3-2-1 issue and importing the quotes it
+finds. `view.tsx` shrank by ~120 lines as the forms moved out into their own routes and
+a shared `quote-form.tsx`.
+
+**The Stocks refresh control moved to the heading it acts on.** The old "Refresh &
+snapshot" collapsible card was a lot of furniture around one button, and being
+collapsed by default it hid the very control it existed to hold. It is now an icon
+beside the Dashboard heading with a progress strip under the divider. It still walks
+positions one at a time from the client, because a server action returns once and so
+can't report progress — one round trip per ticker, which costs nothing extra since the
+upstream quote fetch dominates either way, and buys a live line per symbol.
+
+**Chrome and screen reorganisation.** Everything about the reader collapses into one
+avatar dropdown in the app bar — My account, the layout switch, Administration, Log out
+— freeing the row on a 390px screen and putting log-out and whole-UI-layout changes
+behind a deliberate second click. The app-bar logo now points at `/?home=1`, because
+with a favourite-module startup preference on, `/` redirected away and the home screen
+was unreachable. Every module's `TreeNav` gains a module badge at its head, so the
+reader can see which module the sections belong to — on compact that was nowhere on
+screen. The Journal's New Entry card is now behind a title-row button (a context, since
+the header and the card straddle a server boundary), and its Top Tags / Top Categories
+cards merge into one Statistics card showing each taxonomy's uploaded icon.
+
+Smaller: a new `Comments` chip component for notes parked beside a feature; `showToolbar`
+on `DataGrid` for dashboard cards where the controls row is pure chrome; a
+`useCurrentPosition` hook behind the Journal's new GPS + Weather button; new `TreeIcon`
+glyphs including a redrawn `quote` and a distinct `stock-quote`, which the Stocks
+"actionables" section now uses instead of borrowing the quotation-mark icon.
+
 ## 2026-08-15 20:47 — Install it like an app: per-user startup, launch screens, Daily Glance on the home page
 
 Five bodies of work land together, most of them pulling in the same direction: the

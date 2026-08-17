@@ -160,6 +160,14 @@ export interface TickerClosePoint {
   date: string;
   closeCents: number;
   volume?: number;
+  /**
+   * The rest of the bar, when the provider reported it — what a candlestick needs.
+   * Optional for the reason `PricePoint`'s are: every figure this series is
+   * summarized by comes from the close. Present together or not at all.
+   */
+  openCents?: number;
+  highCents?: number;
+  lowCents?: number;
 }
 
 /** A price window plus the summary figures the chart is captioned with. */

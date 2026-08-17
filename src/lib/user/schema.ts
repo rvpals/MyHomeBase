@@ -11,6 +11,7 @@ export const userSchema = z.object({
   isDisabled: z.boolean(),
   googleEmail: z.string().email().optional(),
   avatarMimeType: z.string().optional(),
+  lastLoginAt: z.string().min(1).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

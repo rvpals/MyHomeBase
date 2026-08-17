@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { Module } from "@/lib/modules";
+import { toSqliteTimestampUtc } from "@/lib/shared/date";
 import { hashPassword, verifyPassword } from "@/lib/shared/password";
 import { secureCompare } from "@/lib/shared/secret";
 import type { NewUserRecord, UserRepository } from "./ports";
@@ -96,21 +97,65 @@ export function registerUser(
   );
 }
 
+/** Why a credential check failed. Never shown to the visitor — see `verifyCredentialsDetailed`. */
+export type CredentialFailureReason = "unknown_user" | "bad_password" | "account_disabled";
+
+export type CredentialCheck =
+  | { ok: true; user: User }
+  | { ok: false; reason: CredentialFailureReason; userId?: number };
+
+/**
+ * Verifies a login attempt and reports *why* it failed.
+ *
+ * The reason exists for the audit trail, not for the response: an operator reading
+ * the log needs to tell a typo from a systematic guess against a real account, while
+ * the browser must still learn nothing about which usernames exist. Callers are
+ * therefore obliged to keep the reason server-side — `login` records it and returns
+ * the same blind result it always did.
+ *
+ * `userId` is set on the failures where the account *was* found (wrong password, or
+ * disabled), which is what makes "repeated attempts against this account" answerable.
+ */
+export function verifyCredentialsDetailed(
+  input: { username: string; password: string },
+  repo: UserRepository,
+): CredentialCheck {
+  const credentials = repo.findCredentialsByUsername(input.username);
+  if (!credentials) return { ok: false, reason: "unknown_user" };
+  if (credentials.isDisabled) {
+    return { ok: false, reason: "account_disabled", userId: credentials.id };
+  }
+  if (!verifyPassword(input.password, credentials.passwordHash)) {
+    return { ok: false, reason: "bad_password", userId: credentials.id };
+  }
+
+  const user = repo.getUserById(credentials.id);
+  // The hash matched but the row vanished between the two reads. Treated as an
+  // unknown user rather than crashing a login.
+  if (!user) return { ok: false, reason: "unknown_user" };
+
+  return { ok: true, user };
+}
+
 /**
  * Verifies a login attempt. Returns the public `User` only if the password
  * matches and the account isn't disabled — this is the only place outside
  * the repository that touches a password hash.
+ *
+ * The deliberately blind shape: any failure is one `undefined`. Kept as the default
+ * so a caller that doesn't need to log can't leak a reason by accident.
  */
 export function verifyCredentials(
   input: { username: string; password: string },
   repo: UserRepository,
 ): User | undefined {
-  const credentials = repo.findCredentialsByUsername(input.username);
-  if (!credentials) return undefined;
-  if (credentials.isDisabled) return undefined;
-  if (!verifyPassword(input.password, credentials.passwordHash)) return undefined;
+  const check = verifyCredentialsDetailed(input, repo);
+  return check.ok ? check.user : undefined;
+}
 
-  return repo.getUserById(credentials.id);
+/** Stamps the last successful sign-in. Denormalised onto the user — see migrations/0045. */
+export function recordUserLogin(userId: number, repo: UserRepository, now: Date = new Date()): void {
+  repo.setLastLoginAt(userId, toSqliteTimestampUtc(now));
 }
 
 export function setUserPassword(

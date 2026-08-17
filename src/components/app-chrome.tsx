@@ -58,13 +58,23 @@ const BAR_KEY = "myhomebase:appbar";
 const iconButton =
   "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-brass-soft hover:text-brass-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
 
+// Shared by every item in a dropdown opened from this bar, so the module menu
+// and the user menu read as one pattern.
+const menuItem =
+  "flex w-full items-center gap-2 whitespace-nowrap rounded-md px-2.5 py-1.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
+const menuItemIdle = "text-ink hover:bg-line/60";
+const menuItemActive = "bg-brass-soft font-medium text-brass-dark";
+// z-30: under this bar's own z-40, over ordinary content.
+const menuPanel =
+  "absolute top-full z-30 mt-1 rounded-lg border border-line bg-paper-raised p-1 shadow-lg";
+
 /**
- * Compact's stand-in for the inline module list: one button that opens the
- * same links as a dropdown. There's no room to lay them out inline down here,
- * and the old alternative — a second bar pinned to the bottom — would have had
- * to fight the current module's own section bar (`TreeNav`) for the same edge.
+ * Open/closed state for a dropdown in this bar, closed by an outside click or
+ * Escape. Both menus here need exactly this and nothing more; `TreeNav`'s
+ * `GroupChip` hand-rolls its own copy, which is left alone rather than dragged
+ * into a shared component for two callers.
  */
-function ModuleMenu({ links, isActive }: { links: AppChromeLink[]; isActive: (href: string) => boolean }) {
+function useDropdown() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isOpen, setIsOpen] = useState(false);
 
@@ -85,6 +95,18 @@ function ModuleMenu({ links, isActive }: { links: AppChromeLink[]; isActive: (hr
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [isOpen]);
+
+  return { containerRef, isOpen, setIsOpen };
+}
+
+/**
+ * Compact's stand-in for the inline module list: one button that opens the
+ * same links as a dropdown. There's no room to lay them out inline down here,
+ * and the old alternative — a second bar pinned to the bottom — would have had
+ * to fight the current module's own section bar (`TreeNav`) for the same edge.
+ */
+function ModuleMenu({ links, isActive }: { links: AppChromeLink[]; isActive: (href: string) => boolean }) {
+  const { containerRef, isOpen, setIsOpen } = useDropdown();
 
   return (
     <div ref={containerRef} className="relative min-w-0 flex-1">
@@ -114,12 +136,7 @@ function ModuleMenu({ links, isActive }: { links: AppChromeLink[]; isActive: (hr
         </svg>
       </button>
       {isOpen && (
-        <div
-          role="menu"
-          aria-label="Modules"
-          // z-30: under this bar's own z-40, over ordinary content.
-          className="absolute left-0 top-full z-30 mt-1 min-w-48 rounded-lg border border-line bg-paper-raised p-1 shadow-lg"
-        >
+        <div role="menu" aria-label="Modules" className={`${menuPanel} left-0 min-w-48`}>
           {links.map((link) => (
             <Link
               key={link.slug}
@@ -127,14 +144,105 @@ function ModuleMenu({ links, isActive }: { links: AppChromeLink[]; isActive: (hr
               role="menuitem"
               title={link.hint ?? link.name}
               onClick={() => setIsOpen(false)}
-              className={`flex items-center gap-2 whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
-                isActive(link.href) ? "bg-brass-soft font-medium text-brass-dark" : "text-ink hover:bg-line/60"
-              }`}
+              className={`${menuItem} ${isActive(link.href) ? menuItemActive : menuItemIdle}`}
             >
               <ModuleIcon name={link.icon} className="h-4 w-4 shrink-0" />
               {link.name}
             </Link>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Everything about *this reader* behind one target: the account link, the
+ * layout switch, Administration and Log out.
+ *
+ * These were four separate controls in the bar. Grouping them frees the row —
+ * which compact needs most, since the module menu and the app title compete for
+ * the same 390px — and puts the two destructive-ish or global actions (log out,
+ * change the whole UI's layout) behind a deliberate second click rather than
+ * one stray tap. The avatar is the trigger, so `/account` moves inside as the
+ * first item.
+ */
+function UserMenu({
+  currentUser,
+  showAdmin,
+  logoutAction,
+  viewportPinned,
+  isAdminRoute,
+}: {
+  currentUser: AppChromeProps["currentUser"];
+  showAdmin: boolean;
+  logoutAction: () => Promise<void>;
+  viewportPinned: boolean;
+  isAdminRoute: boolean;
+}) {
+  const { containerRef, isOpen, setIsOpen } = useDropdown();
+  const close = () => setIsOpen(false);
+
+  return (
+    <div ref={containerRef} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setIsOpen((value) => !value)}
+        title={currentUser.fullName}
+        aria-label={`${currentUser.fullName} — account menu`}
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        className={`${iconButton} ${isOpen ? "bg-brass-soft text-brass-dark" : ""}`}
+      >
+        <Avatar
+          userId={currentUser.id}
+          avatarMimeType={currentUser.avatarMimeType}
+          fallbackText={currentUser.fullName}
+          version={currentUser.updatedAt}
+          size="sm"
+        />
+      </button>
+      {isOpen && (
+        // Right-aligned: this is the last thing in the bar, so a left-aligned
+        // panel would hang off the screen edge on compact.
+        <div role="menu" aria-label="Account" className={`${menuPanel} right-0 min-w-56`}>
+          <p className="truncate px-2.5 py-1.5 text-xs font-medium uppercase tracking-wide text-muted">
+            {currentUser.fullName}
+          </p>
+          <div className="my-1 h-px bg-line" />
+          <Link
+            href="/account"
+            role="menuitem"
+            onClick={close}
+            className={`${menuItem} ${menuItemIdle}`}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0" aria-hidden>
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
+            My account
+          </Link>
+          <ViewportSwitch pinned={viewportPinned} variant="menu-item" onToggled={close} />
+          {showAdmin && (
+            <Link
+              href="/admin"
+              role="menuitem"
+              onClick={close}
+              className={`${menuItem} ${isAdminRoute ? menuItemActive : menuItemIdle}`}
+            >
+              <AdminIcon className="h-4 w-4 shrink-0" />
+              Administration
+            </Link>
+          )}
+          <div className="my-1 h-px bg-line" />
+          <form action={logoutAction}>
+            <button type="submit" role="menuitem" className={`${menuItem} ${menuItemIdle}`}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0" aria-hidden>
+                <path d="M15 17l5-5-5-5M20 12H9M12 20H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h6" />
+              </svg>
+              Log out
+            </button>
+          </form>
         </div>
       )}
     </div>
@@ -174,8 +282,13 @@ export function AppChrome({
     <div className={className}>
       {barOpen ? (
         <header className="app-bar nav-raised-top fixed inset-x-0 top-0 z-40 flex h-14 items-center gap-2 border-b border-line bg-paper-raised px-3">
+          {/* `?home=1`, not `/`, so the logo always reaches the home screen.
+              Bare `/` redirects anyone who opted into opening a favorite module
+              on startup, which made this link a no-op for them — see the home
+              page. Startup entries (PWA start_url, the post-login redirect)
+              deliberately keep the bare `/` and still honour the favorite. */}
           <Link
-            href="/"
+            href="/?home=1"
             title="Home"
             className="flex shrink-0 items-center gap-2 rounded-lg px-1 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
           >
@@ -214,42 +327,13 @@ export function AppChrome({
           )}
 
           <div className={`flex shrink-0 items-center gap-1 ${isCompact ? "ml-auto" : ""}`}>
-            <ViewportSwitch pinned={viewportPinned} />
-            {showAdmin && (
-              <Link
-                href="/admin"
-                title="Administration"
-                aria-label="Administration"
-                className={`${iconButton} ${pathname.startsWith("/admin") ? "bg-brass-soft text-brass-dark" : ""}`}
-              >
-                <AdminIcon className="h-4 w-4" />
-              </Link>
-            )}
-            <Link href="/account" title="My account" aria-label="My account" className={iconButton}>
-              <Avatar
-                userId={currentUser.id}
-                avatarMimeType={currentUser.avatarMimeType}
-                fallbackText={currentUser.fullName}
-                version={currentUser.updatedAt}
-                size="sm"
-              />
-            </Link>
-            <form action={logoutAction}>
-              <button type="submit" title="Log out" aria-label="Log out" className={iconButton}>
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="h-4 w-4"
-                  aria-hidden
-                >
-                  <path d="M15 17l5-5-5-5M20 12H9M12 20H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h6" />
-                </svg>
-              </button>
-            </form>
+            <UserMenu
+              currentUser={currentUser}
+              showAdmin={showAdmin}
+              logoutAction={logoutAction}
+              viewportPinned={viewportPinned}
+              isAdminRoute={pathname.startsWith("/admin")}
+            />
             <button
               type="button"
               onClick={() => setBarOpen(false)}

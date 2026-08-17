@@ -1,16 +1,19 @@
 /**
  * Every widget the Stocks & ETFs dashboard can show, in its default order.
  *
- * Daily Glance is deliberately absent: it lives at the top of the home landing
- * screen now, not on this dashboard. A saved layout still naming `glance` is
- * dropped by `resolveDashboardWidgets`, which already ignores unknown ids.
+ * Two are deliberately absent. Daily Glance (`glance`) lives at the top of the
+ * home landing screen now, not on this dashboard. Refresh & snapshot (`refresh`)
+ * stopped being a widget at all: it's the icon beside the section heading, which
+ * is always available and so has nothing to configure. A saved layout still
+ * naming either is dropped by `resolveDashboardWidgets`, which already ignores
+ * unknown ids — that's why neither retirement needed a migration.
  */
 export const DASHBOARD_WIDGET_IDS = [
-  "refresh",
   "summary",
   "statistics",
   "allocationType",
   "allocationStrategy",
+  "allocationSector",
 ] as const;
 
 export type DashboardWidgetId = (typeof DASHBOARD_WIDGET_IDS)[number];
@@ -23,12 +26,6 @@ export interface DashboardWidgetInfo {
 }
 
 export const DASHBOARD_WIDGET_INFO: Record<DashboardWidgetId, DashboardWidgetInfo> = {
-  refresh: {
-    id: "refresh",
-    label: "Refresh & snapshot",
-    description:
-      "The Refresh All button and its progress log. Hiding it leaves no way to capture a daily snapshot.",
-  },
   summary: {
     id: "summary",
     label: "Portfolio Summary",
@@ -48,6 +45,12 @@ export const DASHBOARD_WIDGET_INFO: Record<DashboardWidgetId, DashboardWidgetInf
     id: "allocationStrategy",
     label: "Allocation by strategy",
     description: "Value split across the broker's strategy buckets, e.g. US Large Cap.",
+  },
+  allocationSector: {
+    id: "allocationSector",
+    label: "Allocation by sector",
+    description:
+      "Value split across market sectors, e.g. Technology. Sectors are looked up per ticker on Refresh All; funds have none and are grouped as 'ETFs & funds'.",
   },
 };
 

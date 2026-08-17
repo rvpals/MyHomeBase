@@ -49,6 +49,29 @@ export const adminNav: TreeNode[] = [
     href: "/admin/daily-quote",
     hint: "Manage the inspirational quotes shown on the home screen",
     icon: "quote",
+    children: [
+      {
+        id: "daily-quote-add",
+        label: "Add Quote",
+        href: "/admin/daily-quote/add",
+        hint: "Add a single quote by hand",
+        icon: "plus",
+      },
+      {
+        id: "daily-quote-import",
+        label: "Import from Newsletter",
+        href: "/admin/daily-quote/import",
+        hint: "Paste a 3-2-1 issue and import the quotes it contains",
+        icon: "newspaper",
+      },
+    ],
+  },
+  {
+    id: "security",
+    label: "Security",
+    href: "/admin/security",
+    hint: "Sign-in history and failed login attempts",
+    icon: "shield",
   },
   {
     id: "sql-explorer",

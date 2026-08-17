@@ -156,4 +156,31 @@ describe("parseChartDisplay", () => {
   it("rejects non-boolean toggles", () => {
     expect(parseChartDisplay('{"showDots":"yes","showGrid":1}', FALLBACK)).toEqual(FALLBACK);
   });
+
+  it("round-trips a chart type when the chart offers switching", () => {
+    const display: ChartDisplay = { ...FALLBACK, chartType: "area" };
+    expect(parseChartDisplay(serializeChartDisplay(display), FALLBACK)).toEqual(display);
+  });
+
+  it("leaves the chart type absent for a chart that doesn't switch", () => {
+    // Undefined means "this chart has one encoding", not "line" — so it must not
+    // acquire one by round-tripping, and the stored payload stays as it was.
+    const stored = serializeChartDisplay(FALLBACK);
+    expect(stored).not.toContain("chartType");
+    expect(parseChartDisplay(stored, FALLBACK).chartType).toBeUndefined();
+  });
+
+  it("rejects an unknown chart type", () => {
+    const fallback: ChartDisplay = { ...FALLBACK, chartType: "line" };
+    expect(parseChartDisplay('{"chartType":"pie"}', fallback).chartType).toBe("line");
+  });
+
+  it("keeps a stored chart type when a later field is missing", () => {
+    // The per-field rule has to hold for the new option too: a payload written
+    // before another option existed must not lose the type the reader picked.
+    expect(parseChartDisplay('{"chartType":"bar"}', FALLBACK)).toEqual({
+      ...FALLBACK,
+      chartType: "bar",
+    });
+  });
 });

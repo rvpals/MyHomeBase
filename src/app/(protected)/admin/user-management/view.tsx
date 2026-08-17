@@ -562,6 +562,18 @@ export function UserManagementView({
       ),
     },
     {
+      key: "lastLoginAt",
+      header: "Last Sign-In (UTC)",
+      value: (user) => user.lastLoginAt ?? null,
+      render: (user) =>
+        user.lastLoginAt ? (
+          <span className="whitespace-nowrap text-muted">{user.lastLoginAt}</span>
+        ) : (
+          // Distinct from a blank cell: this account exists but has never signed in.
+          <span className="text-muted">Never</span>
+        ),
+    },
+    {
       key: "modules",
       header: "Modules",
       value: (user) => (moduleIdsByUserId[user.id] ?? []).length,

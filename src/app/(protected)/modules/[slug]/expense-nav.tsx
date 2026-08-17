@@ -15,7 +15,13 @@ import {
   expenseSectionHref,
 } from "./expense-sections";
 
-export function ExpenseNav({ onStateChange }: { onStateChange?: (state: TreeNavState) => void }) {
+export function ExpenseNav({
+  onStateChange,
+  module,
+}: {
+  onStateChange?: (state: TreeNavState) => void;
+  module?: { name: string; icon: string };
+}) {
   const nodes: TreeNode[] = EXPENSE_SECTIONS.map((section) => ({
     id: section,
     label: EXPENSE_SECTION_INFO[section].label,
@@ -29,6 +35,7 @@ export function ExpenseNav({ onStateChange }: { onStateChange?: (state: TreeNavS
   return (
     <TreeNav
       nodes={nodes}
+      module={module}
       collapsible
       storageKey="myhomebase:expense-nav-collapsed"
       onStateChange={onStateChange}

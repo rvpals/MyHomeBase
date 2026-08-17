@@ -2,6 +2,8 @@
 
 import type { ReactElement } from "react";
 import {
+  Area,
+  AreaChart,
   CartesianGrid,
   LabelList,
   Legend,
@@ -15,7 +17,11 @@ import {
 import { CHART_CATEGORICAL_COLORS, CHART_CHROME } from "./chart-colors";
 import { pointLabelContent } from "./chart-point-labels";
 import { ChartToolbar, useChartDisplay } from "./chart-toolbar";
-import { selectLabeledIndexes, type ChartDisplayDefaults } from "@/lib/shared/chart-options";
+import {
+  selectLabeledIndexes,
+  type ChartDisplayDefaults,
+  type ChartEncoding,
+} from "@/lib/shared/chart-options";
 
 /** What a custom dot renderer is told about the point it's drawing. */
 export interface ChartLineDotContext {
@@ -83,6 +89,16 @@ export interface ChartLineProps extends ChartDisplayDefaults {
    * account balances.
    */
   curve?: "monotone" | "linear";
+  /**
+   * Offer the reader a line ↔ area switch in the toolbar. Omit it (the default)
+   * and there's no picker — which is every existing call site.
+   *
+   * Only those two: they share `LineChart`'s row shape and both support
+   * `renderDot`, so switching can't lose a series' custom marks. A caller wanting
+   * bar or scatter over the same rows wants [`ChartXY`](./chart-xy.tsx), which
+   * exists for reader-chosen encodings.
+   */
+  chartTypes?: readonly Extract<ChartEncoding, "line" | "area">[];
   className?: string;
 }
 
@@ -101,6 +117,7 @@ export function ChartLine({
   showGrid,
   showToolbar = true,
   displayStorageKey,
+  chartTypes,
   className = "",
 }: ChartLineProps) {
   const { display, setDisplay, maxPointLabels } = useChartDisplay(
@@ -111,12 +128,20 @@ export function ChartLine({
       // than one colour to tell apart.
       showLegend: showLegend ?? series.length > 1,
       showGrid,
+      // Undefined unless the call site opted in, so a chart with no picker keeps
+      // writing the same stored shape it always has.
+      chartType: chartTypes === undefined ? undefined : "line",
     },
     displayStorageKey,
   );
 
   // Custom marks are the series' data, not decoration, so they ignore the toggle.
   const hasCustomMarks = series.some((item) => item.renderDot !== undefined);
+
+  const isArea = display.chartType === "area";
+  // One `data`/`margin` pair for both, so the two encodings can't drift apart.
+  const Chart = isArea ? AreaChart : LineChart;
+  const Mark = isArea ? Area : Line;
 
   return (
     <div className={className}>
@@ -125,6 +150,7 @@ export function ChartLine({
           className="mb-1"
           value={display}
           onChange={setDisplay}
+          chartTypes={chartTypes}
           canToggleDots={!hasCustomMarks}
           canToggleLegend={series.length > 1}
           pointCount={data.length}
@@ -133,7 +159,7 @@ export function ChartLine({
       )}
       <div style={{ height }}>
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 14, right: 24, bottom: 0, left: 0 }}>
+          <Chart data={data} margin={{ top: 14, right: 24, bottom: 0, left: 0 }}>
             {display.showGrid && <CartesianGrid stroke={CHART_CHROME.grid} vertical={false} />}
             <XAxis
               dataKey={xKey}
@@ -167,13 +193,16 @@ export function ChartLine({
               );
 
               return (
-                <Line
+                <Mark
                   key={item.key}
                   type={curve}
                   dataKey={item.key}
                   name={item.label}
                   stroke={color}
                   strokeWidth={2}
+                  // Ignored by `Line`; an area needs a wash under its stroke, and
+                  // 0.2 is the opacity ChartXY's area already uses.
+                  {...(isArea ? { fill: color, fillOpacity: 0.2 } : {})}
                   connectNulls={connectNulls}
                   // Recharts renders a mark's labels only once its entry animation
                   // has finished, so with animation on the value labels pop in a
@@ -223,10 +252,10 @@ export function ChartLine({
                       })}
                     />
                   )}
-                </Line>
+                </Mark>
               );
             })}
-          </LineChart>
+          </Chart>
         </ResponsiveContainer>
       </div>
     </div>

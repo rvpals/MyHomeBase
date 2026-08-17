@@ -137,6 +137,12 @@ export interface DataGridProps<T> {
   showStatusBar?: boolean;
   /** Base filename (without extension) for the exported CSV. Defaults to "export". */
   exportFileName?: string;
+  /**
+   * Show the toolbar row (search box, Filters, Columns, Rows). Default true. Set
+   * false for a bare grid — one switch instead of turning off each control, for
+   * places like a dashboard card where the row is all chrome and no use.
+   */
+  showToolbar?: boolean;
   /** Show the search box. Default true (needs at least one column with `value`). */
   enableSearch?: boolean;
   /** Offer the per-column filter row (hidden until the user opens it). Default true. */
@@ -245,6 +251,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
         rows={props.rows}
         getRowKey={props.getRowKey}
         emptyMessage={props.emptyMessage}
+        showToolbar={props.showToolbar}
         enableSearch={props.enableSearch}
         onRowClick={props.onRowClick}
         className={props.className}
@@ -265,6 +272,7 @@ function DataGridFull<T>({
   enableExport = true,
   showStatusBar = true,
   exportFileName = "export",
+  showToolbar = true,
   enableSearch = true,
   enableColumnFilters = true,
   enableColumnPicker = true,
@@ -644,8 +652,13 @@ function DataGridFull<T>({
   // has dragged keep sizing themselves to their content exactly as before.
   const hasCustomWidths = Object.keys(layout.widths).length > 0;
 
+  // The filter row and the column panel are only reachable from the toolbar, so
+  // hiding it hides them too — otherwise one left open would have no way back.
   const hasToolbar =
-    showSearch || enableColumnFilters || enableColumnPicker || enableDensity || enableSelection;
+    showToolbar &&
+    (showSearch || enableColumnFilters || enableColumnPicker || enableDensity || enableSelection);
+  const showFilters = hasToolbar && enableColumnFilters;
+  const showColumnPicker = hasToolbar && enableColumnPicker;
 
   const recordRow = recordIndex !== undefined ? sortedRows[recordIndex] : undefined;
   const recordColumns = orderedColumns.filter((column) => !column.excludeFromRecordView);
@@ -670,12 +683,12 @@ function DataGridFull<T>({
               className={`${CONTROL_CLASS} w-48`}
             />
           )}
-          {enableColumnFilters && (
+          {showFilters && (
             <Button size="sm" variant="secondary" onClick={() => setShowFilterRow((open) => !open)}>
               {showFilterRow ? "Hide filters" : "Filters"}
             </Button>
           )}
-          {enableColumnPicker && (
+          {showColumnPicker && (
             <Button size="sm" variant="secondary" onClick={() => setShowColumnPanel((open) => !open)}>
               Columns
             </Button>
@@ -724,7 +737,7 @@ function DataGridFull<T>({
         </div>
       )}
 
-      {showColumnPanel && enableColumnPicker && (
+      {showColumnPanel && showColumnPicker && (
         <div className="border-b border-line bg-paper px-3 py-2">
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-xs font-medium uppercase tracking-wide text-muted">Columns</p>
@@ -853,7 +866,7 @@ function DataGridFull<T>({
                 );
               })}
             </tr>
-            {showFilterRow && enableColumnFilters && (
+            {showFilterRow && showFilters && (
               <tr>
                 {enableSelection && <th className="border border-line bg-paper px-2 py-1" />}
                 {enableRecordView && <th className="border border-line bg-paper px-2 py-1" />}

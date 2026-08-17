@@ -1,10 +1,10 @@
 "use client";
 
 // Categories & Tags editor for My Journal's Configuration section. Lists both
-// managed lists with an inline "New" form, and an Edit button on each row that
-// opens a popup (Modal) for changing the description and uploading/removing a
-// small icon — the icon control is the one thing that doesn't fit inline, since
-// dropping a file needs room the row doesn't have.
+// managed lists with an inline "New" form, and edit/delete icon buttons leading
+// each row. Edit opens a popup (Modal) for changing the description and
+// uploading/removing a small icon — the icon control is the one thing that
+// doesn't fit inline, since dropping a file needs room the row doesn't have.
 //
 // Route-local rather than registered: nothing outside My Journal renders this.
 
@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Modal } from "@/components/modal";
+import { TreeIcon } from "@/components/tree-icons";
 import {
   JOURNAL_IMAGE_MIME_TYPES,
   MAX_JOURNAL_ICON_BYTES,
@@ -283,6 +284,28 @@ function TaxonomyPanel({
               key={item.name}
               className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-paper px-3 py-1.5 text-sm"
             >
+              {/* Actions lead the row, icon-only. Each carries an aria-label and
+                  a title, since the glyph is the whole control. */}
+              <span className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setEditing(item)}
+                  aria-label={`Edit ${kind} "${item.name}"`}
+                  title="Edit"
+                  className="rounded-md p-1 text-brass-dark transition-colors hover:bg-brass-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+                >
+                  <TreeIcon name="pencil" className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(item)}
+                  aria-label={`Delete ${kind} "${item.name}"`}
+                  title="Delete"
+                  className="rounded-md p-1 text-red-400 transition-colors hover:bg-red-400/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+                >
+                  <TreeIcon name="trash" className="h-4 w-4" />
+                </button>
+              </span>
               <TaxonomyIconThumbnail name={item.name} url={iconUrl(kind, item, item.updatedAt)} />
               {/* The name links to the filtered entry list, same as the Top
                   Tags/Categories cards on the home screen. */}
@@ -294,22 +317,6 @@ function TaxonomyPanel({
                 {item.name}
               </Link>
               {item.description !== "" && <span className="text-xs text-muted">{item.description}</span>}
-              <span className="ml-auto flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setEditing(item)}
-                  className="text-xs font-medium text-brass-dark hover:underline"
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDelete(item)}
-                  className="text-xs font-medium text-red-400 hover:underline"
-                >
-                  Delete
-                </button>
-              </span>
             </li>
           ))}
         </ul>

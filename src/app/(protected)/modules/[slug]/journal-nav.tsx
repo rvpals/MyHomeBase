@@ -15,7 +15,13 @@ import {
   journalSectionHref,
 } from "./journal-sections";
 
-export function JournalNav({ onStateChange }: { onStateChange?: (state: TreeNavState) => void }) {
+export function JournalNav({
+  onStateChange,
+  module,
+}: {
+  onStateChange?: (state: TreeNavState) => void;
+  module?: { name: string; icon: string };
+}) {
   const nodes: TreeNode[] = JOURNAL_SECTIONS.map((section) => ({
     id: section,
     label: JOURNAL_SECTION_INFO[section].label,
@@ -29,6 +35,7 @@ export function JournalNav({ onStateChange }: { onStateChange?: (state: TreeNavS
   return (
     <TreeNav
       nodes={nodes}
+      module={module}
       collapsible
       storageKey="myhomebase:journal-nav-collapsed"
       onStateChange={onStateChange}

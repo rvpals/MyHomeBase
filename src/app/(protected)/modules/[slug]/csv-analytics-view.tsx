@@ -294,17 +294,11 @@ function ChartBuilder({ entry }: { entry: CsvAnalyticEntry }) {
       </div>
       {presetError && <p className="text-sm text-red-400">{presetError}</p>}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-        <label className="block text-sm">
-          <span className="mb-1 block font-medium text-ink">Chart type</span>
-          <select value={chartType} onChange={(event) => setChartType(event.target.value as ChartType)} className={`w-full ${controlClass}`}>
-            {CHART_TYPES.map((type) => (
-              <option key={type} value={type} className="capitalize">
-                {type}
-              </option>
-            ))}
-          </select>
-        </label>
+      {/* Chart type used to be a select here. It's in the chart's own gear popover
+          now — the same control every chart in the app offers, rather than one this
+          view invented. The state stays here because `records` below depends on it:
+          scatter needs a numeric x. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <label className="block text-sm">
           <span className="mb-1 block font-medium text-ink">X axis</span>
           <select value={xKey} onChange={(event) => setXKey(event.target.value)} className={`w-full ${controlClass}`}>
@@ -388,6 +382,10 @@ function ChartBuilder({ entry }: { entry: CsvAnalyticEntry }) {
       ) : (
         <ChartXY
           type={chartType}
+          // All four: this is the one view whose x is genuinely numeric on demand
+          // (see `records`), so scatter is honest here.
+          chartTypes={CHART_TYPES}
+          onTypeChange={setChartType}
           data={records}
           xKey={xKey}
           series={series}

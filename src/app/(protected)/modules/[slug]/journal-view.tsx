@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
@@ -9,8 +9,9 @@ import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { TreeIcon } from "@/components/tree-icons";
 import type { NamedMapping } from "@/lib/csv-import";
 import type { JournalEntry, JournalPreferences, JournalTaxonomyCount } from "@/lib/journal";
-import { journalEntriesFilterHref } from "./journal-shared";
+import { journalEntriesFilterHref, TaxonomyIconThumbnail } from "./journal-shared";
 import { JournalEntryForm } from "./journal-entry-form";
+import { useJournalNewEntry } from "./journal-new-entry-context";
 import { JournalImportView } from "./journal-import-view";
 import { runJournalSqlAction } from "./journal-actions";
 
@@ -66,6 +67,75 @@ interface SqlResultRow {
   cells: unknown[];
 }
 
+// One ranked taxonomy list inside the Statistics card. Local to this view —
+// Top Tags and Top Categories are the only two, and they differ only in their
+// heading, glyph and the filter link each row points at.
+function TaxonomyList({
+  heading,
+  icon,
+  counts,
+  emptyMessage,
+  hrefFor,
+  titleFor,
+  iconUrls,
+}: {
+  heading: string;
+  icon: ReactNode;
+  counts: JournalTaxonomyCount[];
+  emptyMessage: string;
+  hrefFor: (name: string) => string;
+  titleFor: (name: string) => string;
+  /** Name -> uploaded icon URL. Names without an icon are simply absent. */
+  iconUrls: Record<string, string>;
+}) {
+  return (
+    <section>
+      <h3 className="flex items-center gap-2 font-display text-sm text-brass-dark">
+        <span className="shrink-0">{icon}</span>
+        {heading}
+      </h3>
+      {counts.length === 0 ? (
+        <p className="mt-2 text-sm text-muted">{emptyMessage}</p>
+      ) : (
+        <ul className="mt-3 flex flex-col gap-2">
+          {counts.map((count, index) => (
+            <li key={count.name} className="flex items-center gap-2 text-sm">
+              <span className="w-5 shrink-0 text-right font-mono text-xs text-muted">
+                {index + 1}.
+              </span>
+              {/* The uploaded icon, if this tag/category has one. Rows without
+                  one still reserve the width, so the names stay in one column. */}
+              {iconUrls[count.name] ? (
+                <TaxonomyIconThumbnail name={count.name} url={iconUrls[count.name]} />
+              ) : (
+                <span aria-hidden="true" className="h-5 w-5 shrink-0" />
+              )}
+              {/* A real Link, so middle-click and ⌘-click open the filtered
+                  list in a new tab like any other navigation. */}
+              <Link
+                href={hrefFor(count.name)}
+                title={titleFor(count.name)}
+                className="min-w-0 truncate text-ink hover:text-brass-dark hover:underline"
+              >
+                {count.name}
+              </Link>
+              {/* The count sits right beside the name rather than at the far
+                  edge — a fixed-size circle, so a 4-digit total doesn't stretch
+                  into a pill and break the column of dots. */}
+              <span
+                title={`${count.entryCount} ${count.entryCount === 1 ? "entry" : "entries"}`}
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brass-soft font-mono text-[0.625rem] font-semibold leading-none text-brass-dark"
+              >
+                {count.entryCount}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function cellToText(value: unknown): string {
   return value === null || value === undefined ? "" : String(value);
 }
@@ -76,6 +146,8 @@ export function JournalView({
   topCategories,
   categoryOptions,
   tagOptions,
+  categoryIcons = {},
+  tagIcons = {},
   preferences,
   namedMappings,
   canRunSql = false,
@@ -85,12 +157,17 @@ export function JournalView({
   topCategories: JournalTaxonomyCount[];
   categoryOptions: string[];
   tagOptions: string[];
+  /** Name -> icon URL for the Statistics lists; absent names just show no icon. */
+  categoryIcons?: Record<string, string>;
+  tagIcons?: Record<string, string>;
   preferences: JournalPreferences;
   namedMappings: NamedMapping[];
   /** Only admins may run SQL; the server action re-checks this. */
   canRunSql?: boolean;
 }) {
   const router = useRouter();
+  // Owned by the title row's New Entry button, which lives in JournalHomeHeader.
+  const { isOpen: isNewEntryOpen } = useJournalNewEntry();
   const [sqlResult, setSqlResult] = useState<{ columns: string[]; rows: unknown[][] } | undefined>(undefined);
   const [sqlError, setSqlError] = useState<string | undefined>(undefined);
 
@@ -128,73 +205,42 @@ export function JournalView({
 
   return (
     <div className="flex flex-col gap-8">
-      <CollapsibleCard title="New Journal" defaultOpen={entries.length === 0}>
-        <JournalEntryForm categoryOptions={categoryOptions} tagOptions={tagOptions} preferences={preferences} />
+      {/* Hidden until the title row's New Entry button asks for it. Opened
+          that way it starts expanded — the reader just pressed the button that
+          means "write one", so a collapsed card would need a second click. */}
+      {isNewEntryOpen && (
+        <CollapsibleCard title="New Journal" defaultOpen>
+          <JournalEntryForm categoryOptions={categoryOptions} tagOptions={tagOptions} preferences={preferences} />
+        </CollapsibleCard>
+      )}
+
+      <CollapsibleCard
+        title="Statistics"
+        titleIcon={<TreeIcon name="chart" className="h-4 w-4" />}
+        defaultOpen={topTags.length > 0 || topCategories.length > 0}
+      >
+        {/* Two lists side by side on a wide screen, stacked below lg. */}
+        <div className="grid gap-8 lg:grid-cols-2">
+          <TaxonomyList
+            heading="Top Tags"
+            icon={<TreeIcon name="chart" className="h-4 w-4" />}
+            counts={topTags}
+            emptyMessage="No tags yet."
+            hrefFor={(name) => journalEntriesFilterHref("tag", name)}
+            titleFor={(name) => `Show entries tagged "${name}"`}
+            iconUrls={tagIcons}
+          />
+          <TaxonomyList
+            heading="Top Categories"
+            icon={<TreeIcon name="shapes" className="h-4 w-4" />}
+            counts={topCategories}
+            emptyMessage="No categories yet."
+            hrefFor={(name) => journalEntriesFilterHref("category", name)}
+            titleFor={(name) => `Show entries in "${name}"`}
+            iconUrls={categoryIcons}
+          />
+        </div>
       </CollapsibleCard>
-
-      <div className="grid gap-8 lg:grid-cols-2">
-        <CollapsibleCard
-          title="Top Tags"
-          titleIcon={<TreeIcon name="chart" className="h-4 w-4" />}
-          defaultOpen={topTags.length > 0}
-        >
-          {topTags.length === 0 ? (
-            <p className="text-sm text-muted">No tags yet.</p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {topTags.map((tag, index) => (
-                <li key={tag.name} className="flex items-center justify-between gap-3 text-sm">
-                  {/* A real Link, so middle-click and ⌘-click open the filtered
-                      list in a new tab like any other navigation. */}
-                  <Link
-                    href={journalEntriesFilterHref("tag", tag.name)}
-                    title={`Show entries tagged "${tag.name}"`}
-                    className="flex min-w-0 items-center gap-2 text-ink hover:text-brass-dark hover:underline"
-                  >
-                    <span className="w-5 shrink-0 text-right font-mono text-xs text-muted">
-                      {index + 1}.
-                    </span>
-                    <span className="truncate">{tag.name}</span>
-                  </Link>
-                  <span className="shrink-0 rounded-full bg-brass-soft px-2 py-0.5 text-xs font-semibold text-brass-dark">
-                    {tag.entryCount} {tag.entryCount === 1 ? "entry" : "entries"}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CollapsibleCard>
-
-        <CollapsibleCard
-          title="Top Categories"
-          titleIcon={<TreeIcon name="shapes" className="h-4 w-4" />}
-          defaultOpen={topCategories.length > 0}
-        >
-          {topCategories.length === 0 ? (
-            <p className="text-sm text-muted">No categories yet.</p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {topCategories.map((category, index) => (
-                <li key={category.name} className="flex items-center justify-between gap-3 text-sm">
-                  <Link
-                    href={journalEntriesFilterHref("category", category.name)}
-                    title={`Show entries in "${category.name}"`}
-                    className="flex min-w-0 items-center gap-2 text-ink hover:text-brass-dark hover:underline"
-                  >
-                    <span className="w-5 shrink-0 text-right font-mono text-xs text-muted">
-                      {index + 1}.
-                    </span>
-                    <span className="truncate">{category.name}</span>
-                  </Link>
-                  <span className="shrink-0 rounded-full bg-brass-soft px-2 py-0.5 text-xs font-semibold text-brass-dark">
-                    {category.entryCount} {category.entryCount === 1 ? "entry" : "entries"}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CollapsibleCard>
-      </div>
 
       <section>
         <div className="flex flex-wrap items-baseline justify-between gap-2">

@@ -30,13 +30,34 @@ function writeCookie(name: string, value: string, maxAge: number) {
   document.cookie = `${name}=${value}; path=/; max-age=${maxAge}; samesite=lax`;
 }
 
-export function ViewportSwitch({ pinned }: { pinned: boolean }) {
+export interface ViewportSwitchProps {
+  /** Whether the reader pinned the layout by hand — shown as a dot. */
+  pinned: boolean;
+  /**
+   * `bar` is the standalone top-bar control. `menu-item` is the same behaviour
+   * wearing a dropdown row's styling, for the user menu in `AppChrome` — the
+   * cookie writing and the unpin gesture are identical, so it's a skin, not a
+   * second component.
+   */
+  variant?: "bar" | "menu-item";
+  /** Called after a successful toggle — lets a menu close itself. */
+  onToggled?: () => void;
+  className?: string;
+}
+
+export function ViewportSwitch({
+  pinned,
+  variant = "bar",
+  onToggled,
+  className = "",
+}: ViewportSwitchProps) {
   const current = useViewport();
   const router = useRouter();
   const [isBusy, setIsBusy] = useState(false);
 
   const next = current === "compact" ? "full" : "compact";
   const label = `Switch to the ${next} layout`;
+  const isMenuItem = variant === "menu-item";
 
   function toggle() {
     setIsBusy(true);
@@ -44,6 +65,7 @@ export function ViewportSwitch({ pinned }: { pinned: boolean }) {
     writeCookie(VIEWPORT_PINNED_COOKIE, "1", YEAR);
     router.refresh();
     setIsBusy(false);
+    onToggled?.();
   }
 
   function unpin() {
@@ -73,7 +95,12 @@ export function ViewportSwitch({ pinned }: { pinned: boolean }) {
       disabled={isBusy}
       aria-label={label}
       title={`${label}${pinned ? " — right-click to go back to matching your screen" : ""}`}
-      className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-muted transition-colors hover:bg-brass-soft hover:text-brass-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass disabled:opacity-50"
+      className={
+        className ||
+        (isMenuItem
+          ? "flex w-full items-center gap-2 whitespace-nowrap rounded-md px-2.5 py-1.5 text-left text-sm text-ink transition-colors hover:bg-line/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass disabled:opacity-50"
+          : "flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-muted transition-colors hover:bg-brass-soft hover:text-brass-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass disabled:opacity-50")
+      }
     >
       {current === "compact" ? (
         // A phone outline: the layout you are in now.
@@ -87,7 +114,15 @@ export function ViewportSwitch({ pinned }: { pinned: boolean }) {
           <path d="M8 21h8M12 17v4" strokeLinecap="round" />
         </svg>
       )}
-      <span className="max-lg:hidden">{current === "compact" ? "Compact" : "Full"}</span>
+      {/* In the bar the label is the state, and it drops on a narrow screen to
+          save width. In a menu row there is room, and a bare "Compact" beside
+          Administration and Log out reads as a place to go rather than a
+          switch — so it names the action instead. */}
+      {isMenuItem ? (
+        <span>Switch to {next} layout</span>
+      ) : (
+        <span className="max-lg:hidden">{current === "compact" ? "Compact" : "Full"}</span>
+      )}
       {pinned && <span className="text-brass-dark" aria-hidden title="Pinned">•</span>}
     </button>
   );

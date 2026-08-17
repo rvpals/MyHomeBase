@@ -1,15 +1,12 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { AdminIcon } from "@/components/admin-icon";
-import { AppIcon } from "@/components/app-icon";
-import { Avatar } from "@/components/avatar";
-import { Button } from "@/components/button";
 import { ModuleCarousel } from "@/components/module-carousel";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
+import { getAuthEventSummary } from "@/lib/auth-events";
 import { getRandomQuote } from "@/lib/daily-quote";
 import { listTodayInHistory } from "@/lib/journal";
 import { listModules } from "@/lib/modules";
-import { getSetting, getStartupMessage } from "@/lib/settings";
+import { getStartupMessage } from "@/lib/settings";
 import { todayIsoLocal } from "@/lib/shared/date";
 import {
   computeDayMovesByType,
@@ -19,6 +16,7 @@ import {
 import { getAccessibleModules, isAdmin } from "@/lib/user";
 import { getUserPreferences, resolveStartupDestination } from "@/lib/user-preferences";
 import { deps } from "@/lib/wiring";
+import { BadLoginAlert } from "./bad-login-alert";
 import { DailyQuoteWidget } from "./daily-quote-widget";
 import { StockDailyGlance } from "./modules/[slug]/stock-daily-glance";
 import { PAGE_CONTAINER } from "./page-container";
@@ -26,8 +24,19 @@ import { StartupMessage } from "./startup-message";
 import { TodayInHistoryWidget } from "./today-in-history-widget";
 
 const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
+const JOURNAL_MODULE_SLUG = "journal";
 
-export default async function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  // `?home=1` means "I clicked Home" — show the home screen even for someone
+  // whose preference is to open a favorite module. Without it the app-bar logo
+  // pointed at a page that immediately redirected away, so the home screen was
+  // unreachable once the preference was on.
+  const askedForHome = (await searchParams).home !== undefined;
+
   const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
   const currentUser = getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo);
   // The (protected) layout already guarantees currentUser is defined here.
@@ -35,12 +44,14 @@ export default async function Home() {
   const modules = currentUser ? getAccessibleModules(currentUser, allModules, deps.userRepo) : [];
 
   // Somebody who has chosen a favorite module and asked to open it on startup
-  // goes straight there. Done before any of the home screen's own data is read,
-  // so a redirected visit doesn't pay for a quote, the journal and the positions
-  // it will never render. The destination is a module route, never this page, so
-  // there is nothing to loop. A favorite that has since been hidden or revoked
-  // resolves to undefined and lands here as normal — see resolveStartupDestination.
-  if (currentUser) {
+  // goes straight there — but only on a startup entry (bare `/`), not when they
+  // asked for the home screen by name. Done before any of the home screen's own
+  // data is read, so a redirected visit doesn't pay for a quote, the journal and
+  // the positions it will never render. The destination is a module route, never
+  // this page, so there is nothing to loop. A favorite that has since been hidden
+  // or revoked resolves to undefined and lands here as normal — see
+  // resolveStartupDestination.
+  if (currentUser && !askedForHome) {
     const startupSlug = resolveStartupDestination(
       getUserPreferences(deps.userPreferencesRepo, currentUser.id),
       modules.map((appModule) => appModule.slug),
@@ -48,7 +59,6 @@ export default async function Home() {
     if (startupSlug) redirect(`/modules/${startupSlug}`);
   }
 
-  const appName = getSetting(deps.settingsRepo, "application_name")?.value ?? "MyHomeBase";
   // A fresh random quote is picked on every landing on the home screen.
   const quote = getRandomQuote(deps.dailyQuoteRepo);
   const todayInHistory = listTodayInHistory(deps.journalRepo, todayIsoLocal());
@@ -56,62 +66,32 @@ export default async function Home() {
   // in the layout so it appears on the home screen specifically.
   const startupMessage = getStartupMessage(deps.settingsRepo);
 
-  // Daily Glance leads the home screen, but only for someone who can open the
-  // module it belongs to — `modules` is already access-filtered, so testing it
-  // costs nothing extra. Positions are read only once that's true, and an empty
-  // portfolio renders nothing rather than a card of zeroes above the app title.
-  const canSeeStocks = modules.some((appModule) => appModule.slug === STOCK_ETFS_MODULE_SLUG);
-  const positions = canSeeStocks ? listPositions(deps.stockPositionRepo) : [];
+  // Admins only: a non-admin can't reach the sign-in log, so warning them would be a
+  // message they can't act on. Counted rather than read as a stored message, so it
+  // clears only when the failures are actually reviewed — see migrations/0045.
+  const unreviewedFailures =
+    currentUser && isAdmin(currentUser)
+      ? getAuthEventSummary(deps.authEventRepo).unreviewedFailures
+      : 0;
+
+  // Daily Glance is shown only to someone who can open the module it belongs to
+  // — `modules` is already access-filtered, so testing it costs nothing extra.
+  // Positions are read only once that's true, and an empty portfolio renders
+  // nothing rather than a card of zeroes.
+  const stockModule = modules.find((appModule) => appModule.slug === STOCK_ETFS_MODULE_SLUG);
+  const positions = stockModule ? listPositions(deps.stockPositionRepo) : [];
+  // Each dashboard card is badged with its own module's icon, so it's obvious at
+  // a glance which module the numbers belong to. Undefined when the module is
+  // hidden or not granted, in which case the card simply shows no glyph.
+  const journalModule = modules.find((appModule) => appModule.slug === JOURNAL_MODULE_SLUG);
 
   return (
     <div className={PAGE_CONTAINER}>
       {startupMessage && <StartupMessage message={startupMessage} />}
-      {positions.length > 0 && (
-        <div className="mb-8">
-          <StockDailyGlance
-            moves={computeDayMovesByType(positions)}
-            // Summed per ticker here, not in the view: a holding split across two
-            // accounts is still one security, and that rollup is domain logic.
-            tickerMoves={computeTickerDayMoves(positions)}
-          />
-        </div>
-      )}
-      <div className="flex flex-wrap items-center justify-center gap-4 max-lg:gap-2">
-        {currentUser?.avatarMimeType ? (
-          <Avatar
-            userId={currentUser.id}
-            avatarMimeType={currentUser.avatarMimeType}
-            fallbackText={currentUser.fullName}
-            size="lg"
-            version={currentUser.updatedAt}
-          />
-        ) : (
-          <AppIcon className="h-14 w-14 shrink-0" />
-        )}
-        <div className="flex flex-wrap items-center justify-center gap-3 max-lg:gap-2">
-          <h1 className="font-display text-3xl font-semibold text-ink">{appName}</h1>
-          {currentUser && isAdmin(currentUser) && (
-            // Compact drops the label for a square gear puck: the full button
-            // put icon + title + label at ~447px, which scrolled a 390px screen
-            // sideways. `max-lg:` overrides only, so desktop can't regress.
-            <Button
-              href="/admin"
-              variant="primary"
-              title="Administration"
-              ariaLabel="Administration"
-              className="max-lg:h-9 max-lg:w-9 max-lg:p-0"
-            >
-              <AdminIcon className="h-4 w-4 max-lg:h-5 max-lg:w-5" />
-              <span className="max-lg:hidden">Administration</span>
-            </Button>
-          )}
-        </div>
-      </div>
-      <div className="mt-3 h-px w-full bg-line" />
+      {unreviewedFailures > 0 && <BadLoginAlert count={unreviewedFailures} />}
       {/* Plain data across the boundary — the carousel is a client island and
           can't be handed the module records themselves. */}
       <ModuleCarousel
-        className="mt-8"
         modules={modules.map((appModule) => ({
           slug: appModule.slug,
           name: appModule.longName,
@@ -124,6 +104,9 @@ export default async function Home() {
           imageVersion: appModule.updatedAt,
         }))}
       />
+      {/* Quote, then history, then the glance — quietest card first, and the
+          longest (Daily Glance, five gainers and five losers) last so it isn't
+          pushing the other two off the screen. */}
       {quote && (
         <DailyQuoteWidget
           className="mt-8"
@@ -131,7 +114,21 @@ export default async function Home() {
           isAdmin={currentUser ? isAdmin(currentUser) : false}
         />
       )}
-      <TodayInHistoryWidget className="mt-8" todayInHistory={todayInHistory} />
+      <TodayInHistoryWidget
+        className="mt-8"
+        todayInHistory={todayInHistory}
+        icon={journalModule?.icon}
+      />
+      {positions.length > 0 && (
+        <StockDailyGlance
+          className="mt-8"
+          moves={computeDayMovesByType(positions)}
+          // Summed per ticker here, not in the view: a holding split across two
+          // accounts is still one security, and that rollup is domain logic.
+          tickerMoves={computeTickerDayMoves(positions)}
+          icon={stockModule?.icon}
+        />
+      )}
     </div>
   );
 }

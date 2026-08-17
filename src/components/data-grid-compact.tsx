@@ -26,6 +26,8 @@ export interface DataGridCompactProps<T> {
   rows: T[];
   getRowKey: (row: T) => string | number;
   emptyMessage?: string;
+  /** Show the controls row above the cards (search + Sort by). Default true. */
+  showToolbar?: boolean;
   enableSearch?: boolean;
   onRowClick?: (row: T) => void;
   className?: string;
@@ -63,6 +65,7 @@ export function DataGridCompact<T>({
   rows,
   getRowKey,
   emptyMessage = "Nothing to show.",
+  showToolbar = true,
   enableSearch = true,
   onRowClick,
   className = "",
@@ -74,7 +77,10 @@ export function DataGridCompact<T>({
   // The first column identifies the record, so it becomes the card's heading
   // rather than another label/value line.
   const [leadColumn, ...detailColumns] = columns;
-  const sortableColumns = columns.filter((column) => column.value && column.sortable !== false);
+  const sortableColumns = showToolbar
+    ? columns.filter((column) => column.value && column.sortable !== false)
+    : [];
+  const showSearch = showToolbar && enableSearch;
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -94,9 +100,9 @@ export function DataGridCompact<T>({
 
   return (
     <div className={className}>
-      {(enableSearch || sortableColumns.length > 0) && (
+      {(showSearch || sortableColumns.length > 0) && (
         <div className="mb-3 flex flex-col gap-2">
-          {enableSearch && (
+          {showSearch && (
             <input
               type="search"
               value={query}

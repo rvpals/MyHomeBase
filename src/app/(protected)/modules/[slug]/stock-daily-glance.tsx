@@ -1,13 +1,17 @@
 "use client";
 
 // The Daily Glance card: how Stock and ETF moved today, then the five biggest
-// risers and fallers with a per-ticker news button.
+// risers and fallers with a per-ticker news button. A CollapsibleCard, like the
+// other two home-screen cards, so a long card can be folded away.
 //
 // A client component because the mover lists are re-rankable and each news button
 // fetches on demand. The ranking itself is lib work (`topGainers`/`topLosers`) —
 // this file only decides what's on screen.
 
 import { useState } from "react";
+import { CollapsibleCard } from "@/components/collapsible-card";
+import { Comments } from "@/components/comments";
+import { ModuleIcon } from "@/components/module-icons";
 import { formatCents } from "@/lib/shared/money";
 import {
   topGainers,
@@ -264,10 +268,20 @@ function MoverList({
 export function StockDailyGlance({
   moves,
   tickerMoves,
+  icon,
+  className,
 }: {
   moves: DayMovesByType;
   /** Today's move per ticker, already summed across accounts by the lib. */
   tickerMoves: TickerDayMove[];
+  /**
+   * The Stock & ETFs module's own icon name, so the card is badged with the
+   * module it belongs to. Passed in rather than hard-coded because the icon is
+   * a DB column an admin can change.
+   */
+  icon?: string;
+  /** Spacing is the caller's call, as with the other home-screen cards. */
+  className?: string;
 }) {
   const [measure, setMeasure] = useState<MoverMeasure>("total");
   const [news, setNews] = useState<Record<string, NewsState>>({});
@@ -291,10 +305,35 @@ export function StockDailyGlance({
   const losers = topLosers(tickerMoves, MOVER_COUNT, measure);
 
   return (
-    <div className="rounded-xl border border-line p-4">
-      <h3 className="font-display text-lg text-ink">Daily Glance</h3>
-
-      <div className="mt-4 rounded-xl border border-line p-4">
+    // Open by default: unlike the quote, these are the numbers somebody came to
+    // the home screen for — but collapsible so a long card can be folded away.
+    <CollapsibleCard
+      title="Daily Glance"
+      titleIcon={icon && <ModuleIcon name={icon} className="h-4 w-4" />}
+      defaultOpen
+      className={className}
+      // This used to be a footnote below the mover lists. It explains the
+      // Total value / Per share selector, which sits at the top of the card —
+      // so as a footnote it was ~400px below the control it described, past two
+      // lists the reader had to scroll through first.
+      headerAction={
+        <Comments
+          title="Explanation"
+          content={
+            <p>
+              <span className="text-ink">Total value</span> is shares × the price move — how much
+              the holding made or lost you. <span className="text-ink">Per share</span> is the move
+              on one share, so a big position and a small one in the same stock rank the same. The
+              percentage is identical either way. Stocks and ETFs rank together, and a ticker held
+              in more than one account is counted once. Press{" "}
+              <span className="text-ink">News</span> on a row for the story most likely to explain
+              its move, or the ticker itself for its full viewer.
+            </p>
+          }
+        />
+      }
+    >
+      <div className="rounded-xl border border-line p-4">
         <BucketTable moves={moves} />
       </div>
 
@@ -350,18 +389,9 @@ export function StockDailyGlance({
         />
       </div>
 
-      <p className="mt-4 text-xs text-muted">
-        <span className="text-ink">Total value</span> is shares × the price move — how much the
-        holding made or lost you. <span className="text-ink">Per share</span> is the move on one
-        share, so a big position and a small one in the same stock rank the same. The percentage is
-        identical either way. Stocks and ETFs rank together, and a ticker held in more than one
-        account is counted once. Press <span className="text-ink">News</span> on a row for the story
-        most likely to explain its move, or the ticker itself for its full viewer.
-      </p>
-
       {openTicker && (
         <TickerViewerHost ticker={openTicker} onClose={() => setOpenTicker(undefined)} />
       )}
-    </div>
+    </CollapsibleCard>
   );
 }

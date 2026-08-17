@@ -14,7 +14,6 @@ import { snapshotChangePct } from "@/lib/stock-daily-snapshot";
 import type { DailySnapshot, PeriodSummary, ToDateSummaries } from "@/lib/stock-daily-snapshot";
 import type { AllocationSlice, PortfolioSummary } from "@/lib/stock-positions";
 import { centsToDollars, formatCents } from "@/lib/shared/money";
-import { StockRefreshPanel } from "./stock-refresh-panel";
 
 function gainClass(cents: number): string {
   return cents < 0 ? "text-red-400" : "text-emerald-400";
@@ -40,7 +39,16 @@ function StatTile({
   );
 }
 
-function AllocationChart({ title, slices }: { title: string; slices: AllocationSlice[] }) {
+function AllocationChart({
+  title,
+  slices,
+  note,
+}: {
+  title: string;
+  slices: AllocationSlice[];
+  /** Optional line under the chart, explaining where the labels came from. */
+  note?: string;
+}) {
   if (slices.length === 0) return null;
   return (
     <div>
@@ -55,6 +63,7 @@ function AllocationChart({ title, slices }: { title: string; slices: AllocationS
         className="mt-2"
         displayStorageKey={`myhomebase:chart:stock-allocation:${title}`}
       />
+      {note && <p className="mt-1 text-xs text-muted">{note}</p>}
     </div>
   );
 }
@@ -64,7 +73,7 @@ function AllocationChart({ title, slices }: { title: string; slices: AllocationS
  * the value curve, and the day-by-day history behind it.
  *
  * The two big numbers come from the live positions rather than the newest
- * snapshot, so they're right even before today's Refresh All — the snapshots feed
+ * snapshot, so they're right even before today's refresh — the snapshots feed
  * the chart and the table below them.
  */
 function PortfolioSummaryCard({
@@ -164,7 +173,7 @@ function PortfolioSummaryCard({
         {summary.positionCount} position(s) ·{" "}
         {snapshots.length > 0
           ? `${snapshots.length} day(s) of history since ${snapshots[0].snapshotDate}`
-          : "no history captured yet — press Refresh All"}
+          : "no history captured yet — press the refresh icon by the heading"}
       </p>
 
       {history.length > 0 ? (
@@ -189,7 +198,7 @@ function PortfolioSummaryCard({
               displayStorageKey="myhomebase:chart:stock-dashboard-history"
             />
             <p className="mt-1 text-xs text-muted">
-              One point per day you pressed Refresh All. A day with no capture is absent rather than
+              One point per day you refreshed. A day with no capture is absent rather than
               flat-lined, so a gap in the line is a day that wasn&apos;t recorded.
             </p>
           </div>
@@ -212,8 +221,8 @@ function PortfolioSummaryCard({
         </>
       ) : (
         <p className="mt-4 rounded-md border border-dashed border-line p-4 text-center text-sm text-muted">
-          The value chart and history appear once you&apos;ve captured a day. Press{" "}
-          <span className="text-ink">Refresh All</span> above to record today.
+          The value chart and history appear once you&apos;ve captured a day. Press the{" "}
+          <span className="text-ink">refresh icon</span> beside the heading to record today.
         </p>
       )}
     </div>
@@ -252,6 +261,8 @@ export function StockDashboardView({
   summary,
   byType,
   byStrategy,
+  bySector,
+  sectorsPending,
   transactionCount,
   accountCount,
   unassignedCount,
@@ -262,6 +273,12 @@ export function StockDashboardView({
   summary: PortfolioSummary;
   byType: AllocationSlice[];
   byStrategy: AllocationSlice[];
+  bySector: AllocationSlice[];
+  /**
+   * True when no position has a looked-up sector yet, so the chart would be a
+   * single "ETFs & funds" bar. Says why instead of showing that.
+   */
+  sectorsPending: boolean;
   transactionCount: number;
   accountCount: number;
   /** Positions still sitting in the "Unassigned" pseudo-account. */
@@ -274,15 +291,12 @@ export function StockDashboardView({
 }) {
   const hasCostBasis = summary.totalCostCents > 0;
 
-  const lastSnapshotDate = snapshots[snapshots.length - 1]?.snapshotDate;
-
   /**
    * Every widget, keyed by id, so the render is a lookup over the user's order
    * rather than a fixed sequence of JSX. Building the map costs nothing — these are
    * elements, not renders — and it keeps "what a widget is" in one place.
    */
   const widgetContent: Record<DashboardWidgetId, ReactNode> = {
-    refresh: <StockRefreshPanel lastSnapshotDate={lastSnapshotDate} />,
     summary: <PortfolioSummaryCard summary={summary} snapshots={snapshots} />,
     statistics: (
       <CollapsibleCard title="Statistics">
@@ -310,6 +324,22 @@ export function StockDashboardView({
     ),
     allocationType: <AllocationChart title="Allocation by type" slices={byType} />,
     allocationStrategy: <AllocationChart title="Allocation by strategy" slices={byStrategy} />,
+    allocationSector: sectorsPending ? (
+      <div>
+        <h3 className="font-display text-lg text-ink">Allocation by sector</h3>
+        <p className="mt-2 rounded-md border border-dashed border-line p-4 text-center text-sm text-muted">
+          Sectors are looked up per ticker. Press{" "}
+          <span className="text-ink">Refresh All</span> to fetch them — it happens once per symbol,
+          not on every visit.
+        </p>
+      </div>
+    ) : (
+      <AllocationChart
+        title="Allocation by sector"
+        slices={bySector}
+        note="A fund has no single sector, so ETFs are grouped rather than split across the industries they hold."
+      />
+    ),
   };
 
   return (

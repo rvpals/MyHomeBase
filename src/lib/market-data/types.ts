@@ -172,4 +172,17 @@ export interface PricePoint {
   closeCents: number;
   /** Shares traded that day. Undefined where the provider didn't report it. */
   volume?: number;
+  /**
+   * The rest of the bar, for a candlestick.
+   *
+   * Optional because `closeCents` is what every statistic here is built from —
+   * volatility, correlation, Sharpe and the risk cache all read closes and would
+   * gain nothing from a required open. A provider that reports only closes is
+   * still a usable provider, so a candle chart degrades to "unavailable" rather
+   * than making the whole series an error. Present together or not at all: the
+   * adapter only sets them when the provider gave all three.
+   */
+  openCents?: number;
+  highCents?: number;
+  lowCents?: number;
 }

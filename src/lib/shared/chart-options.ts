@@ -13,6 +13,25 @@
 /** Which points carry a printed value. */
 export type PointLabelMode = "none" | "last" | "extremes" | "all";
 
+/**
+ * How a row-shaped series is drawn.
+ *
+ * Only these four, and only for charts whose data is *rows × series keys* — the
+ * shape all four can honestly render. `ChartBar` takes one value per category and
+ * `ChartCandle` needs four prices per period, so neither is re-encodable and
+ * neither offers this. A trend line drawn over unordered categories implies an
+ * order the data doesn't have, which is the thing this vocabulary exists to avoid.
+ */
+export type ChartEncoding = "line" | "bar" | "area" | "scatter";
+
+/** The encodings, in the order a picker should offer them. */
+export const CHART_ENCODINGS: readonly { value: ChartEncoding; label: string }[] = [
+  { value: "line", label: "Line" },
+  { value: "bar", label: "Bar" },
+  { value: "area", label: "Area" },
+  { value: "scatter", label: "Scatter" },
+];
+
 /** The modes, in the order a picker should offer them. */
 export const POINT_LABEL_MODES: readonly { value: PointLabelMode; label: string }[] = [
   { value: "none", label: "None" },
@@ -46,6 +65,15 @@ export interface ChartDisplay {
   showDots: boolean;
   showLegend: boolean;
   showGrid: boolean;
+  /**
+   * How the series is drawn, for a chart that offers the choice.
+   *
+   * Optional, unlike the other four, because most charts don't offer it: a chart
+   * with one honest encoding has no chart type to hold. Undefined means "this
+   * chart doesn't switch", not "line" — the difference matters when reading a
+   * stored preference back.
+   */
+  chartType?: ChartEncoding;
 }
 
 /**
@@ -167,6 +195,7 @@ export function parseChartDisplay(raw: string | null | undefined, fallback: Char
 
   const stored = parsed as Record<string, unknown>;
   const mode = stored.pointLabels;
+  const encoding = stored.chartType;
 
   return {
     pointLabels: POINT_LABEL_MODES.some((option) => option.value === mode)
@@ -175,6 +204,9 @@ export function parseChartDisplay(raw: string | null | undefined, fallback: Char
     showDots: typeof stored.showDots === "boolean" ? stored.showDots : fallback.showDots,
     showLegend: typeof stored.showLegend === "boolean" ? stored.showLegend : fallback.showLegend,
     showGrid: typeof stored.showGrid === "boolean" ? stored.showGrid : fallback.showGrid,
+    chartType: CHART_ENCODINGS.some((option) => option.value === encoding)
+      ? (encoding as ChartEncoding)
+      : fallback.chartType,
   };
 }
 

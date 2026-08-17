@@ -15,6 +15,21 @@ export function toIsoDateLocal(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+/**
+ * An instant formatted the way SQLite's `datetime('now')` does — `YYYY-MM-DD HH:MM:SS`
+ * in **UTC**, space-separated.
+ *
+ * Use this for any value compared against, or stored alongside, a column defaulting to
+ * `datetime('now')`. Those comparisons are *string* comparisons, and
+ * `toISOString()` would produce `2026-08-16T14:30:00.000Z`, whose "T" sorts after the
+ * space in every stored value — so an ISO cutoff silently matches rows it shouldn't.
+ *
+ * UTC, unlike the local-calendar helpers above, because that is what SQLite writes.
+ */
+export function toSqliteTimestampUtc(date: Date): string {
+  return date.toISOString().replace("T", " ").slice(0, 19);
+}
+
 /** Today, local-calendar. `now` is injectable so tests don't depend on the clock. */
 export function todayIsoLocal(now: Date = new Date()): string {
   return toIsoDateLocal(now);

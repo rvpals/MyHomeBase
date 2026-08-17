@@ -23,6 +23,7 @@ import {
   UNASSIGNED_ACCOUNT_ID,
 } from "@/lib/stock-positions";
 import { listItems, listWatchLists } from "@/lib/stock-watchlist";
+import { loadSectorMap, resolveSector } from "@/lib/ticker-profiles";
 import { deps } from "@/lib/wiring";
 import { NextDayActionsView } from "./next-day-actions-view";
 import { StockAccountsView, type AccountEntry } from "./stock-accounts-view";
@@ -32,6 +33,7 @@ import { StockDashboardView } from "./stock-dashboard-view";
 import { StockImportView } from "./stock-import-view";
 import { StockInstructions } from "./stock-instructions";
 import { StockPositionsView } from "./stock-positions-view";
+import { StockRefreshControl } from "./stock-refresh-control";
 import { STOCK_SECTION_INFO, type StockSection } from "./stock-sections";
 import { SectionLayout } from "./section-layout";
 import { StockTransactionsView } from "./stock-transactions-view";
@@ -67,24 +69,43 @@ function loadDashboardWidgets() {
   return resolveDashboardWidgets(loadModuleSettings());
 }
 
+/**
+ * This year's snapshots, oldest first. One read covers the chart and all three
+ * rollups — week and month are slices of the year, so re-querying per period
+ * would be three round trips for the same rows.
+ *
+ * Called by both the heading (for the refresh control's "last captured" date) and
+ * the dashboard body. Two reads per request, which is a cheap indexed range scan
+ * on a local SQLite file; threading one result through would mean the shell
+ * loading dashboard data for every section, including the seven that don't want it.
+ */
+function loadSnapshots(today: string) {
+  return listSnapshots(deps.stockDailySnapshotRepo, {
+    fromDate: startOfYearIso(today),
+    toDate: today,
+  });
+}
+
 function SectionBody({ section }: { section: StockSection }) {
   switch (section) {
     case "main": {
       const positions = listPositions(deps.stockPositionRepo);
-      // One read covers the chart and all three rollups — week and month are slices
-      // of the year, so re-querying per period would be three round trips for the
-      // same rows.
       const today = todayIsoLocal();
-      const snapshots = listSnapshots(deps.stockDailySnapshotRepo, {
-        fromDate: startOfYearIso(today),
-        toDate: today,
-      });
+      const snapshots = loadSnapshots(today);
+
+      // One read of the profile cache for the whole roll-up, rather than a query
+      // per position. Nothing is fetched here — a page render never calls out.
+      const sectors = loadSectorMap(deps.tickerProfileRepo);
 
       return (
         <StockDashboardView
           summary={computePortfolioSummary(positions)}
           byType={computeAllocation(positions, (position) => position.type)}
           byStrategy={computeAllocation(positions, (position) => position.assetStrategy)}
+          bySector={computeAllocation(positions, (position) =>
+            resolveSector(sectors.get(position.ticker)),
+          )}
+          sectorsPending={positions.length > 0 && sectors.size === 0}
           transactionCount={listTransactions(deps.stockPositionRepo).length}
           accountCount={listAccounts(deps.investmentAccountRepo).length}
           unassignedCount={
@@ -157,13 +178,34 @@ export function StockSection({ section }: { section: StockSection }) {
   // Defensive: an unknown section would otherwise crash on info.label. The route
   // already validates, so this only catches a future caller getting it wrong.
   const info = STOCK_SECTION_INFO[section] ?? STOCK_SECTION_INFO.main;
+  // Badged at the head of the nav so the reader can see which module they're
+  // in. Read here rather than in `StockNav` because both fields are
+  // admin-editable, and the nav is a client component.
+  const appModule = getModuleBySlug(deps.moduleRepo, STOCK_ETFS_MODULE_SLUG);
+  // Dashboard only: Refresh All acts on the portfolio as a whole, and on
+  // Configuration or CSV Import the same icon beside the heading would read as
+  // "reload this screen". Positions keeps its own Refresh All in its toolbar.
+  const snapshots = section === "main" ? loadSnapshots(todayIsoLocal()) : [];
 
   return (
     // The nav/body split lives in SectionLayout: it's a bar in `full` and a
     // column in `rail`/`strip`, so which way this lays out is client state that
     // a server component can't hold.
-    <SectionLayout nav="stock">
-      <h2 className="font-display text-2xl font-semibold text-ink">{info.label}</h2>
+    <SectionLayout
+      nav="stock"
+      module={appModule && { name: appModule.shortName, icon: appModule.icon }}
+    >
+      {/* `flex-wrap` so a 390px screen can drop the controls below the title
+          rather than squeezing it, and so the progress strip (`basis-full`) gets
+          its own line on every width. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="font-display text-2xl font-semibold text-ink">{info.label}</h2>
+        {section === "main" && (
+          <StockRefreshControl
+            lastSnapshotDate={snapshots[snapshots.length - 1]?.snapshotDate}
+          />
+        )}
+      </div>
       <p className="mt-1 text-sm text-muted">{info.description}</p>
       <div className="mt-3 h-px w-full bg-line" />
 

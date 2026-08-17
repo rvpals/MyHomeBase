@@ -1,13 +1,11 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/button";
-import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import type { CreateQuoteInput, DailyQuote, QuoteCategory } from "@/lib/daily-quote";
-import { createQuoteAction, deleteQuoteAction, updateQuoteAction } from "./actions";
-import { NewsletterImport } from "./newsletter-import";
+import { deleteQuoteAction, updateQuoteAction } from "./actions";
+import { QuoteForm } from "./quote-form";
 import { PAGE_CONTAINER } from "../../page-container";
 
 export interface DailyQuoteViewProps {
@@ -15,121 +13,9 @@ export interface DailyQuoteViewProps {
   categories: readonly QuoteCategory[];
 }
 
-const inputClass =
-  "w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
-
-// Add/Edit form. Remounted (via key) when the edited quote changes, so its local
-// state re-seeds from `initial`. Returns an error string from onSubmit to display.
-function QuoteForm({
-  initial,
-  categories,
-  onSubmit,
-  onCancel,
-}: {
-  initial?: DailyQuote;
-  categories: readonly QuoteCategory[];
-  onSubmit: (input: CreateQuoteInput) => Promise<string | undefined>;
-  onCancel?: () => void;
-}) {
-  const [quote, setQuote] = useState(initial?.quote ?? "");
-  const [author, setAuthor] = useState(initial?.author ?? "");
-  const [source, setSource] = useState(initial?.source ?? "");
-  const [category, setCategory] = useState<QuoteCategory>(initial?.category ?? categories[0]);
-  const [error, setError] = useState<string | undefined>(undefined);
-  const [isSaving, setIsSaving] = useState(false);
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsSaving(true);
-    setError(undefined);
-    try {
-      const failure = await onSubmit({ quote, author, category, source });
-      if (failure) {
-        setError(failure);
-        return;
-      }
-      if (!initial) {
-        setQuote("");
-        setAuthor("");
-        setSource("");
-        setCategory(categories[0]);
-      }
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-      <label className="block text-sm">
-        <span className="mb-1 block font-medium text-ink">Quote</span>
-        <textarea
-          value={quote}
-          onChange={(event) => setQuote(event.target.value)}
-          rows={3}
-          className={inputClass}
-          placeholder="Enter the quote text…"
-        />
-      </label>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <label className="block text-sm">
-          <span className="mb-1 block font-medium text-ink">Author</span>
-          <input
-            value={author}
-            onChange={(event) => setAuthor(event.target.value)}
-            className={inputClass}
-            placeholder="Unknown"
-          />
-        </label>
-        <label className="block text-sm">
-          <span className="mb-1 block font-medium text-ink">Category</span>
-          <select
-            value={category}
-            onChange={(event) => setCategory(event.target.value as QuoteCategory)}
-            className={inputClass}
-          >
-            {categories.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <label className="block text-sm">
-        <span className="mb-1 block font-medium text-ink">Source</span>
-        <input
-          value={source}
-          onChange={(event) => setSource(event.target.value)}
-          className={inputClass}
-          placeholder="Optional — book, letter, talk…"
-        />
-      </label>
-      {error && <p className="text-sm text-red-400">{error}</p>}
-      <div className="flex gap-3">
-        <Button type="submit" disabled={isSaving}>
-          {isSaving ? "Saving…" : initial ? "Save changes" : "Add quote"}
-        </Button>
-        {initial && onCancel && (
-          <Button type="button" variant="secondary" onClick={onCancel} disabled={isSaving}>
-            Cancel
-          </Button>
-        )}
-      </div>
-    </form>
-  );
-}
-
 export function DailyQuoteView({ quotes, categories }: DailyQuoteViewProps) {
   const router = useRouter();
   const [editing, setEditing] = useState<DailyQuote | null>(null);
-
-  async function handleCreate(input: CreateQuoteInput): Promise<string | undefined> {
-    const result = await createQuoteAction(input);
-    if (!result.ok) return result.error ?? "Failed to create quote.";
-    router.refresh();
-    return undefined;
-  }
 
   async function handleUpdate(id: number, input: CreateQuoteInput): Promise<string | undefined> {
     const result = await updateQuoteAction(id, input);
@@ -213,24 +99,22 @@ export function DailyQuoteView({ quotes, categories }: DailyQuoteViewProps) {
         every visit to the home page.
       </p>
 
-      <div className="mt-6 rounded-lg border border-line bg-paper-raised p-6">
-        <h2 className="mb-4 font-display text-lg font-semibold text-ink">
-          {editing ? `Edit quote #${editing.id}` : "Add a quote"}
-        </h2>
-        <QuoteForm
-          key={editing?.id ?? "new"}
-          initial={editing ?? undefined}
-          categories={categories}
-          onSubmit={(input) => (editing ? handleUpdate(editing.id, input) : handleCreate(input))}
-          onCancel={() => setEditing(null)}
-        />
-      </div>
-
-      <div className="mt-6">
-        <CollapsibleCard title="Import from newsletter">
-          <NewsletterImport categories={categories} />
-        </CollapsibleCard>
-      </div>
+      {/* Adding moved to its own screen (Daily Quote → Add Quote); editing stays
+          here, because Edit is pressed on a row of the grid below. */}
+      {editing && (
+        <div className="mt-6 rounded-lg border border-line bg-paper-raised p-6">
+          <h2 className="mb-4 font-display text-lg font-semibold text-ink">
+            Edit quote #{editing.id}
+          </h2>
+          <QuoteForm
+            key={editing.id}
+            initial={editing}
+            categories={categories}
+            onSubmit={(input) => handleUpdate(editing.id, input)}
+            onCancel={() => setEditing(null)}
+          />
+        </div>
+      )}
 
       <div className="mt-6">
         <DataGrid

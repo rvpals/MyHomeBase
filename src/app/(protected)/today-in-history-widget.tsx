@@ -6,8 +6,9 @@
 
 import { useRouter } from "next/navigation";
 import { CollapsibleCard } from "@/components/collapsible-card";
+import { Comments } from "@/components/comments";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
-import { TreeIcon } from "@/components/tree-icons";
+import { ModuleIcon } from "@/components/module-icons";
 import type { TodayInHistoryEntry } from "@/lib/journal";
 
 function yearsAgoLabel(yearsAgo: number): string {
@@ -33,9 +34,16 @@ const TODAY_IN_HISTORY_COLUMNS: DataGridColumn<TodayInHistoryEntry>[] = [
 
 export function TodayInHistoryWidget({
   todayInHistory,
+  icon,
   className,
 }: {
   todayInHistory: TodayInHistoryEntry[];
+  /**
+   * The journal module's own icon name — these entries are journal entries, and
+   * the rows link into that module. Passed in because the icon is a DB column an
+   * admin can change.
+   */
+  icon?: string;
   className?: string;
 }) {
   const router = useRouter();
@@ -43,17 +51,21 @@ export function TodayInHistoryWidget({
   return (
     <CollapsibleCard
       title="Today In History"
-      // The same clock glyph the journal's Calendar section uses, rather than a
-      // second hand-rolled one.
-      titleIcon={<TreeIcon name="history" className="h-4 w-4" />}
+      // Badged with the module the entries come from, matching Daily Glance.
+      titleIcon={icon && <ModuleIcon name={icon} className="h-4 w-4" />}
       className={className}
       defaultOpen={todayInHistory.length > 0}
+      // In the header slot rather than the body: the card starts collapsed when
+      // there's nothing from earlier years, which is exactly when a reader is
+      // most likely to wonder what it's for.
+      headerAction={
+        <Comments
+          title="About"
+          label="About"
+          content="This card displays what happened # number of years ago on the same month and date of today."
+        />
+      }
     >
-      <p className="mb-3 text-sm text-muted">
-        {todayInHistory.length > 0
-          ? `${todayInHistory.length} past ${todayInHistory.length === 1 ? "entry" : "entries"} on this month and day. Click a row to open it.`
-          : "Nothing recorded on this month and day in an earlier year."}
-      </p>
       <DataGrid
         columns={TODAY_IN_HISTORY_COLUMNS}
         rows={todayInHistory}
@@ -62,6 +74,9 @@ export function TodayInHistoryWidget({
         enableExport
         exportFileName="journal-today-in-history"
         showStatusBar={false}
+        // A handful of rows on a dashboard card: search, filters, column picker
+        // and density are all chrome here.
+        showToolbar={false}
         onRowClick={(item) => router.push(`/modules/journal/entries/${item.entry.id}`)}
       />
     </CollapsibleCard>

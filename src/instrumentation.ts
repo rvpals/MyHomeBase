@@ -1,5 +1,5 @@
 // Next.js calls register() once when the server starts. This is where the
-// Expense CSV auto-import is armed.
+// Expense CSV auto-import and the auth-event prune are armed.
 //
 // Design notes, all of which matter for it behaving on a NAS:
 //   * The heartbeat is a fixed 60s tick that re-reads the module settings each
@@ -17,13 +17,61 @@
 
 const HEARTBEAT_MS = 60_000;
 
+/**
+ * The auth-event prune runs on its own daily timer rather than on the 60s heartbeat:
+ * a 90-day retention window doesn't move minute to minute, so checking it 1,440 times
+ * a day would be pure waste. See migrations/0045.
+ */
+const PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
 const globalForAutoImport = globalThis as unknown as {
   __expenseAutoImportStarted?: boolean;
   __expenseAutoImportLastRunMs?: number;
+  __authEventPruneStarted?: boolean;
 };
+
+/** Deletes auth events past their retention window. Armed on its own daily timer. */
+async function armAuthEventPrune() {
+  if (globalForAutoImport.__authEventPruneStarted) return;
+  globalForAutoImport.__authEventPruneStarted = true;
+
+  // Imported lazily so the Edge/build passes never pull in better-sqlite3 — the same
+  // reason the expense block below defers its own imports.
+  const { pruneAuthEvents, DEFAULT_RETENTION_DAYS } = await import("@/lib/auth-events");
+  const { deps } = await import("@/lib/wiring");
+
+  const tick = () => {
+    try {
+      const deleted = pruneAuthEvents(deps.authEventRepo, DEFAULT_RETENTION_DAYS);
+      // Silent when there was nothing to do, so the log doesn't gain a daily line
+      // saying "deleted 0".
+      if (deleted > 0) {
+        console.log(
+          `[auth-events prune] deleted ${deleted} event(s) older than ${DEFAULT_RETENTION_DAYS} days.`,
+        );
+      }
+    } catch (error) {
+      // A throw here would become an unhandled rejection and could kill the server.
+      console.error("[auth-events prune] tick failed:", error);
+    }
+  };
+
+  // Once at startup, so a server that is restarted more often than daily still
+  // prunes. Deferred a little so it never competes with the first page render.
+  const initial = setTimeout(tick, 30_000);
+  initial.unref?.();
+
+  const timer = setInterval(tick, PRUNE_INTERVAL_MS);
+  timer.unref?.();
+
+  console.log(`[auth-events prune] armed (daily, ${DEFAULT_RETENTION_DAYS}-day retention).`);
+}
 
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
+
+  await armAuthEventPrune();
+
   if (globalForAutoImport.__expenseAutoImportStarted) return;
   globalForAutoImport.__expenseAutoImportStarted = true;
 

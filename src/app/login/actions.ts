@@ -2,9 +2,10 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { SESSION_COOKIE_NAME, login, logout } from "@/lib/auth";
+import { SESSION_COOKIE_NAME, getCurrentUser, login, logout } from "@/lib/auth";
 import { DuplicateUsernameError, InvalidAdminSecretError, registerUser } from "@/lib/user";
 import { deps } from "@/lib/wiring";
+import { readAuthEventContext } from "./request-context";
 
 export interface LoginResult {
   ok: boolean;
@@ -33,10 +34,17 @@ export async function registerAction(input: RegisterInput): Promise<LoginResult>
 }
 
 export async function loginAction(input: { username: string; password: string }): Promise<LoginResult> {
+  // Read once, before anything can fail, so both outcomes are recorded with the same
+  // metadata. `login` records the event and the *reason* internally; everything
+  // returned from here stays deliberately generic.
+  const audit = { repo: deps.authEventRepo, context: await readAuthEventContext() };
+
   let result;
   try {
-    result = login(input, deps.userRepo, deps.sessionRepo);
+    result = login(input, deps.userRepo, deps.sessionRepo, audit);
   } catch {
+    // A schema failure (blank field). `login` has already recorded it as
+    // `invalid_input` — the visitor sees the same sentence as any other failure.
     return { ok: false, error: "Invalid username or password." };
   }
 
@@ -58,7 +66,15 @@ export async function loginAction(input: { username: string; password: string })
 export async function logoutAction(): Promise<void> {
   const store = await cookies();
   const sessionId = store.get(SESSION_COOKIE_NAME)?.value;
-  if (sessionId) logout(sessionId, deps.sessionRepo);
+  if (sessionId) {
+    // Resolved before the session is deleted — afterwards the id is unresolvable.
+    const user = getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo);
+    logout(sessionId, deps.sessionRepo, {
+      repo: deps.authEventRepo,
+      context: await readAuthEventContext(),
+      userId: user?.id,
+    });
+  }
   store.delete(SESSION_COOKIE_NAME);
   redirect("/login");
 }

@@ -17,6 +17,7 @@ import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "rea
 import { Button } from "@/components/button";
 import { useIsCompact } from "@/components/viewport-context";
 import {
+  CHART_ENCODINGS,
   COMPACT_MAX_POINT_LABELS,
   DEFAULT_MAX_POINT_LABELS,
   POINT_LABEL_MODES,
@@ -24,6 +25,7 @@ import {
   parseChartDisplay,
   serializeChartDisplay,
   type ChartDisplay,
+  type ChartEncoding,
   type PointLabelMode,
 } from "@/lib/shared/chart-options";
 
@@ -37,6 +39,15 @@ export interface ChartToolbarProps {
    * bar already has a free end to print its own value on.
    */
   labelModes?: readonly PointLabelMode[];
+  /**
+   * Which encodings this chart's data can honestly be drawn as. Omit it — or pass
+   * one — and no type picker appears, which is the case for most charts.
+   *
+   * The call site decides, not the toolbar, because honesty depends on the data:
+   * `scatter` needs a numeric x, and a chart keyed by date can't offer it. A chart
+   * whose categories have no order shouldn't offer `line` at all.
+   */
+  chartTypes?: readonly ChartEncoding[];
   /**
    * Set false to hide a toggle that can't apply — a single series has no legend to
    * turn off, a bar chart has no markers, and a series drawing custom marks
@@ -74,6 +85,7 @@ export function ChartToolbar({
   value,
   onChange,
   labelModes,
+  chartTypes,
   canToggleDots = true,
   canToggleLegend = true,
   canToggleGrid = true,
@@ -94,6 +106,16 @@ export function ChartToolbar({
         : POINT_LABEL_MODES.filter((option) => labelModes.includes(option.value)),
     [labelModes],
   );
+
+  // Kept in the shared order rather than the caller's, so the list reads the same
+  // way on every chart that offers it.
+  const encodings = useMemo(
+    () => (chartTypes === undefined ? [] : CHART_ENCODINGS.filter((option) => chartTypes.includes(option.value))),
+    [chartTypes],
+  );
+  // One encoding is not a choice, and a chart with no `chartType` in its display
+  // state isn't offering one.
+  const canSwitchType = encodings.length > 1 && value.chartType !== undefined;
 
   // Clicking elsewhere closes the panel. Registered only while open, so a
   // dashboard of charts doesn't keep a listener each.
@@ -139,6 +161,27 @@ export function ChartToolbar({
             id={panelId}
             className="absolute right-0 top-full z-30 mt-1 w-56 rounded-md border border-line bg-paper p-3 shadow-lg"
           >
+            {canSwitchType && (
+              // First in the panel: it changes what the other options *mean* — a
+              // scatter has no line for "point markers" to sit on — so it reads as
+              // the parent choice it is.
+              <label className="mb-2 block border-b border-line pb-2">
+                <span className="mb-1 block text-xs font-medium text-muted">Chart type</span>
+                <select
+                  value={value.chartType}
+                  onChange={(event) =>
+                    onChange({ ...value, chartType: event.target.value as ChartEncoding })
+                  }
+                  className={SELECT_CLASS}
+                >
+                  {encodings.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             {modes.length > 1 && (
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-muted">Data point values</span>
@@ -224,10 +267,13 @@ export function useChartDisplay(
     showDots = true,
     showLegend = false,
     showGrid = true,
+    // No default: undefined is the honest value for a chart that doesn't switch,
+    // and a chart that does always passes its starting encoding.
+    chartType,
   } = defaults;
   const resolvedDefaults = useMemo<ChartDisplay>(
-    () => ({ pointLabels, showDots, showLegend, showGrid }),
-    [pointLabels, showDots, showLegend, showGrid],
+    () => ({ pointLabels, showDots, showLegend, showGrid, chartType }),
+    [pointLabels, showDots, showLegend, showGrid, chartType],
   );
 
   const [display, setDisplay] = useState<ChartDisplay>(resolvedDefaults);

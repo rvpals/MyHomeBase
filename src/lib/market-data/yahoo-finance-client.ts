@@ -33,6 +33,7 @@ interface ChartResult {
   indicators?: {
     quote?: [
       {
+        open?: (number | null)[];
         high?: (number | null)[];
         low?: (number | null)[];
         close?: (number | null)[];
@@ -128,15 +129,39 @@ export class YahooFinanceClient
     if (!result) return [];
 
     const timestamps = result.timestamp ?? [];
-    const closes = result.indicators?.quote?.[0]?.close ?? [];
-    const volumes = result.indicators?.quote?.[0]?.volume ?? [];
+    const rawQuote = result.indicators?.quote?.[0] ?? {};
+    const closes = rawQuote.close ?? [];
+    const volumes = rawQuote.volume ?? [];
+    // The rest of the bar rides along in the same response — it always did; this
+    // client simply used to drop it. Reading it costs no extra request.
+    const opens = rawQuote.open ?? [];
+    const highs = rawQuote.high ?? [];
+    const lows = rawQuote.low ?? [];
+
     return timestamps
       .map((timestamp, index): PricePoint | undefined => {
         const close = closes[index];
-        const volume = volumes[index];
-        return close == null
-          ? undefined
-          : { timestamp, closeCents: Math.round(close * 100), volume: volume ?? undefined };
+        if (close == null) return undefined;
+
+        // All three or none: half a candle can't be drawn, and a bar missing its
+        // open would otherwise render as a body of zero height at the wrong place.
+        const open = opens[index];
+        const high = highs[index];
+        const low = lows[index];
+        const hasBar = open != null && high != null && low != null;
+
+        return {
+          timestamp,
+          closeCents: Math.round(close * 100),
+          volume: volumes[index] ?? undefined,
+          ...(hasBar
+            ? {
+                openCents: Math.round(open * 100),
+                highCents: Math.round(high * 100),
+                lowCents: Math.round(low * 100),
+              }
+            : {}),
+        };
       })
       .filter((point): point is PricePoint => point !== undefined);
   }

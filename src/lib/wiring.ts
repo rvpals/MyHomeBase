@@ -3,6 +3,7 @@
 // repository directly in a presentation file.
 import path from "node:path";
 import Database from "better-sqlite3";
+import { SqliteAuthEventRepository } from "./auth-events/repository";
 import { SqliteSessionRepository } from "./auth/repository";
 import { GoogleAuthClient } from "./auth/google-client";
 import type { GoogleOAuthClient } from "./auth/ports";
@@ -30,6 +31,8 @@ import { YahooTickerNewsClient } from "./ticker-news/yahoo-news-client";
 import { FmpTickerLogoClient } from "./ticker-logos/fmp-logo-client";
 import { SqliteTickerLogoRepository } from "./ticker-logos/repository";
 import { SqliteTickerRiskCacheRepository } from "./ticker-overview/repository";
+import { SqliteTickerProfileRepository } from "./ticker-profiles/repository";
+import { YahooTickerProfileClient } from "./ticker-profiles/yahoo-profile-client";
 import { SqliteUserPreferencesRepository } from "./user-preferences/repository";
 import { SqliteUserRepository } from "./user/repository";
 
@@ -66,6 +69,11 @@ const googleOAuthClient: GoogleOAuthClient | undefined =
 // `registerUser` rejects any admin-secret attempt when this is undefined.
 const adminSignupSecret: string | undefined = process.env.ADMIN_SIGNUP_SECRET || undefined;
 
+// Hoisted out of `deps` because two entries share it: the Yahoo client is both
+// the market-data source and the quoteSummary source the sector lookup reads.
+// One instance means one crumb handshake rather than two.
+const marketDataClient = new YahooFinanceClient();
+
 export const deps = {
   moduleRepo: new SqliteModuleRepository(db),
   settingsRepo: new SqliteSettingsRepository(db),
@@ -73,6 +81,7 @@ export const deps = {
   userRepo: new SqliteUserRepository(db),
   userPreferencesRepo: new SqliteUserPreferencesRepository(db),
   sessionRepo: new SqliteSessionRepository(db),
+  authEventRepo: new SqliteAuthEventRepository(db),
   investmentAccountRepo: new SqliteInvestmentAccountRepository(db),
   journalRepo: new SqliteJournalRepository(db),
   expenseRepo: new SqliteExpenseRepository(db),
@@ -87,11 +96,15 @@ export const deps = {
   sqlExplorerRepo: new SqliteSqlExplorerRepository(db),
   systemInfoRepo: new RealSystemInfoRepository(),
   changeHistoryRepo: new FileChangeHistoryRepository(),
-  marketDataClient: new YahooFinanceClient(),
+  marketDataClient,
   tickerNewsClient: new YahooTickerNewsClient(),
   tickerLogoRepo: new SqliteTickerLogoRepository(db),
   tickerLogoClient: new FmpTickerLogoClient(),
   tickerRiskCacheRepo: new SqliteTickerRiskCacheRepository(db),
+  tickerProfileRepo: new SqliteTickerProfileRepository(db),
+  // Sector data rides on the quoteSummary client the detail tab already uses —
+  // same provider, same crumb handling, no second HTTP client.
+  tickerProfileClient: new YahooTickerProfileClient(marketDataClient),
   geocodingClient: new NominatimGeocodingClient(),
   weatherClient: new OpenMeteoWeatherClient(),
   googleOAuthClient,

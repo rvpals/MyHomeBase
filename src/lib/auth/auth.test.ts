@@ -1,10 +1,37 @@
 import { describe, expect, it } from "vitest";
+import type { AuthEvent, AuthEventFilter, AuthEventRepository, AuthEventSummary, NewAuthEvent } from "@/lib/auth-events";
 import { hashPassword } from "@/lib/shared/password";
 import type { NewUserRecord, UserRepository } from "@/lib/user";
 import type { User, UserCredentials, UserRole } from "@/lib/user";
 import type { GoogleOAuthClient, GoogleUserInfo, SessionRepository } from "./ports";
 import type { Session } from "./types";
 import { completeGoogleLogin, getCurrentUser, invalidateSessionsForUser, login, logout } from "./auth";
+
+/**
+ * Minimal recorder — only `recordEvent` is exercised here; the read side is covered by
+ * `src/lib/auth-events/auth-events.test.ts`.
+ */
+class FakeAuthEventRepository implements AuthEventRepository {
+  events: NewAuthEvent[] = [];
+
+  recordEvent(event: NewAuthEvent): void {
+    this.events.push(event);
+  }
+
+  listEvents(_filter: AuthEventFilter): AuthEvent[] {
+    return [];
+  }
+
+  getSummary(): AuthEventSummary {
+    return { totalFailures: 0, unreviewedFailures: 0, totalSuccesses: 0 };
+  }
+
+  markFailuresReviewed(): void {}
+
+  deleteEventsBefore(): number {
+    return 0;
+  }
+}
 
 class FakeUserRepository implements UserRepository {
   private users: (User & { passwordHash: string })[] = [];
@@ -112,6 +139,11 @@ class FakeUserRepository implements UserRepository {
   }
 
   setAvatar(): void {}
+
+  setLastLoginAt(id: number, timestamp: string): void {
+    const user = this.users.find((candidate) => candidate.id === id);
+    if (user) user.lastLoginAt = timestamp;
+  }
 }
 
 class FakeGoogleOAuthClient implements GoogleOAuthClient {
@@ -190,6 +222,126 @@ describe("login", () => {
     expect(
       login({ username: "bob", password: "correct-password" }, userRepo, sessionRepo),
     ).toBeUndefined();
+  });
+});
+
+// The audit trail is optional, so every test above proves `login` still works without
+// it. These prove that when it IS supplied, the reason reaches the log even though the
+// caller still receives a bare `undefined` — see migrations/0045.
+describe("login auditing", () => {
+  function setup() {
+    const userRepo = new FakeUserRepository();
+    const sessionRepo = new FakeSessionRepository();
+    const authEventRepo = new FakeAuthEventRepository();
+    const user = userRepo.seed(
+      { username: "bob", fullName: "Bob", role: "user", isDisabled: false },
+      hashPassword("correct-password"),
+    );
+    return { userRepo, sessionRepo, authEventRepo, user };
+  }
+
+  const audit = (repo: FakeAuthEventRepository) => ({
+    repo,
+    context: { ipAddress: "10.0.0.5", userAgent: "TestAgent/1.0" },
+  });
+
+  it("records a success with the user and the request metadata", () => {
+    const { userRepo, sessionRepo, authEventRepo, user } = setup();
+
+    login({ username: "bob", password: "correct-password" }, userRepo, sessionRepo, audit(authEventRepo));
+
+    expect(authEventRepo.events).toHaveLength(1);
+    expect(authEventRepo.events[0]).toMatchObject({
+      eventType: "login_success",
+      attemptedUsername: "bob",
+      userId: user.id,
+      ipAddress: "10.0.0.5",
+      userAgent: "TestAgent/1.0",
+    });
+  });
+
+  it("stamps last_login_at on a success", () => {
+    const { userRepo, sessionRepo, authEventRepo, user } = setup();
+
+    login({ username: "bob", password: "correct-password" }, userRepo, sessionRepo, audit(authEventRepo));
+
+    expect(userRepo.getUserById(user.id)?.lastLoginAt).toBeDefined();
+  });
+
+  it("records a wrong password as bad_password, with the account it was aimed at", () => {
+    const { userRepo, sessionRepo, authEventRepo, user } = setup();
+
+    const result = login({ username: "bob", password: "wrong" }, userRepo, sessionRepo, audit(authEventRepo));
+
+    // The caller learns nothing; the log learns everything.
+    expect(result).toBeUndefined();
+    expect(authEventRepo.events[0]).toMatchObject({
+      eventType: "login_failure",
+      failureReason: "bad_password",
+      attemptedUsername: "bob",
+      userId: user.id,
+    });
+  });
+
+  it("records an unknown username as unknown_user with no account", () => {
+    const { userRepo, sessionRepo, authEventRepo } = setup();
+
+    login({ username: "nobody", password: "whatever" }, userRepo, sessionRepo, audit(authEventRepo));
+
+    expect(authEventRepo.events[0]).toMatchObject({
+      failureReason: "unknown_user",
+      attemptedUsername: "nobody",
+    });
+    expect(authEventRepo.events[0].userId).toBeUndefined();
+  });
+
+  it("distinguishes a disabled account from a wrong password", () => {
+    const userRepo = new FakeUserRepository();
+    const sessionRepo = new FakeSessionRepository();
+    const authEventRepo = new FakeAuthEventRepository();
+    userRepo.seed(
+      { username: "gone", fullName: "Gone", role: "user", isDisabled: true },
+      hashPassword("correct-password"),
+    );
+
+    login({ username: "gone", password: "correct-password" }, userRepo, sessionRepo, audit(authEventRepo));
+
+    expect(authEventRepo.events[0].failureReason).toBe("account_disabled");
+  });
+
+  it("records a schema failure as invalid_input and still throws", () => {
+    const { userRepo, sessionRepo, authEventRepo } = setup();
+
+    expect(() =>
+      login({ username: "", password: "" }, userRepo, sessionRepo, audit(authEventRepo)),
+    ).toThrow();
+
+    expect(authEventRepo.events[0]).toMatchObject({
+      eventType: "login_failure",
+      failureReason: "invalid_input",
+    });
+  });
+
+  it("records nothing when no audit trail is supplied", () => {
+    const { userRepo, sessionRepo, authEventRepo } = setup();
+
+    login({ username: "bob", password: "correct-password" }, userRepo, sessionRepo);
+
+    expect(authEventRepo.events).toHaveLength(0);
+  });
+
+  it("records a logout against the user who was signed in", () => {
+    const { userRepo, sessionRepo, authEventRepo, user } = setup();
+    const result = login(
+      { username: "bob", password: "correct-password" },
+      userRepo,
+      sessionRepo,
+      audit(authEventRepo),
+    );
+
+    logout(result!.session.id, sessionRepo, { repo: authEventRepo, userId: user.id });
+
+    expect(authEventRepo.events.at(-1)).toMatchObject({ eventType: "logout", userId: user.id });
   });
 });
 

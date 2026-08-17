@@ -40,12 +40,12 @@ describe("resolveDashboardWidgets", () => {
 
   it("reads a saved order", () => {
     const widgets = resolveDashboardWidgets(
-      settings("statistics,summary,refresh,allocationType,allocationStrategy"),
+      settings("statistics,allocationType,summary,allocationStrategy"),
     );
     expect(widgets.slice(0, 3).map((widget) => widget.id)).toEqual([
       "statistics",
+      "allocationType",
       "summary",
-      "refresh",
     ]);
   });
 
@@ -78,6 +78,25 @@ describe("resolveDashboardWidgets", () => {
     expect(widgets.map((widget) => widget.id)).not.toContain("glance");
     expect(widgets).toHaveLength(DASHBOARD_WIDGET_IDS.length);
     expect(widgets.slice(0, 2).map((widget) => widget.id)).toEqual(["summary", "statistics"]);
+  });
+
+  /**
+   * Refresh & snapshot stopped being a widget when the button moved to the section
+   * heading. Same contract as `glance` above: a layout saved while it existed must
+   * resolve to a working dashboard, which is what lets it retire without a migration.
+   */
+  it("drops a saved 'refresh', now that the button lives on the heading", () => {
+    const widgets = resolveDashboardWidgets(settings("refresh,summary,statistics"));
+    expect(widgets.map((widget) => widget.id)).not.toContain("refresh");
+    expect(widgets).toHaveLength(DASHBOARD_WIDGET_IDS.length);
+    expect(widgets.slice(0, 2).map((widget) => widget.id)).toEqual(["summary", "statistics"]);
+  });
+
+  /** A hidden `-refresh` is just as retired as a visible one. */
+  it("drops a saved '-refresh' too", () => {
+    const widgets = resolveDashboardWidgets(settings("summary,-refresh,statistics"));
+    expect(widgets.map((widget) => widget.id)).not.toContain("refresh");
+    expect(widgets).toHaveLength(DASHBOARD_WIDGET_IDS.length);
   });
 
   it("keeps the first of a duplicated id rather than rendering it twice", () => {
@@ -141,32 +160,32 @@ describe("dashboardWidgetsToEntries", () => {
 
 describe("moveDashboardWidget", () => {
   it("swaps a widget with the one above it", () => {
-    const moved = moveDashboardWidget(defaultDashboardWidgets(), "summary", "up");
-    expect(moved.slice(0, 2).map((widget) => widget.id)).toEqual(["summary", "refresh"]);
+    const moved = moveDashboardWidget(defaultDashboardWidgets(), "statistics", "up");
+    expect(moved.slice(0, 2).map((widget) => widget.id)).toEqual(["statistics", "summary"]);
   });
 
   it("swaps a widget with the one below it", () => {
-    const moved = moveDashboardWidget(defaultDashboardWidgets(), "refresh", "down");
-    expect(moved.slice(0, 2).map((widget) => widget.id)).toEqual(["summary", "refresh"]);
+    const moved = moveDashboardWidget(defaultDashboardWidgets(), "summary", "down");
+    expect(moved.slice(0, 2).map((widget) => widget.id)).toEqual(["statistics", "summary"]);
   });
 
   it("does nothing at the ends rather than wrapping around", () => {
     const widgets = defaultDashboardWidgets();
-    expect(moveDashboardWidget(widgets, "refresh", "up")).toEqual(widgets);
-    expect(moveDashboardWidget(widgets, "allocationStrategy", "down")).toEqual(widgets);
+    expect(moveDashboardWidget(widgets, "summary", "up")).toEqual(widgets);
+    expect(moveDashboardWidget(widgets, "allocationSector", "down")).toEqual(widgets);
   });
 
   it("returns a new list rather than mutating the caller's", () => {
     const widgets = defaultDashboardWidgets();
-    const moved = moveDashboardWidget(widgets, "summary", "up");
+    const moved = moveDashboardWidget(widgets, "statistics", "up");
     expect(moved).not.toBe(widgets);
-    expect(widgets[0].id).toBe("refresh");
+    expect(widgets[0].id).toBe("summary");
   });
 
   it("carries visibility along with the move", () => {
-    const hidden = toggleDashboardWidget(defaultDashboardWidgets(), "summary");
-    const moved = moveDashboardWidget(hidden, "summary", "up");
-    expect(moved[0]).toEqual({ id: "summary", visible: false });
+    const hidden = toggleDashboardWidget(defaultDashboardWidgets(), "statistics");
+    const moved = moveDashboardWidget(hidden, "statistics", "up");
+    expect(moved[0]).toEqual({ id: "statistics", visible: false });
   });
 });
 
@@ -187,12 +206,12 @@ describe("toggleDashboardWidget", () => {
 
 describe("visibleDashboardWidgets", () => {
   it("returns the visible ids in order", () => {
-    const layout = toggleDashboardWidget(defaultDashboardWidgets(), "refresh");
+    const layout = toggleDashboardWidget(defaultDashboardWidgets(), "statistics");
     expect(visibleDashboardWidgets(layout)).toEqual([
       "summary",
-      "statistics",
       "allocationType",
       "allocationStrategy",
+      "allocationSector",
     ]);
   });
 });

@@ -18,13 +18,15 @@
 
 "use client";
 
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { Modal } from "@/components/modal";
 import { Button } from "@/components/button";
+import { ChartCandle } from "@/components/chart-candle";
 import { ChartLine } from "@/components/chart-line";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { TickerLogo } from "@/components/ticker-logo";
 import type { MarketEvent } from "@/lib/market-data";
+import { hasFullBars } from "@/lib/shared/chart-candle";
 import { centsToDollars, formatCents } from "@/lib/shared/money";
 // The event phrasing is shared with the Events card rather than written twice —
 // the same dividend must not read two ways in one dialog.
@@ -991,6 +993,16 @@ function RangeBar({
   );
 }
 
+/** How the price window is drawn. */
+type PriceMark = "line" | "candles";
+
+const MARK_OPTIONS: readonly { value: PriceMark; label: string }[] = [
+  { value: "line", label: "Line" },
+  { value: "candles", label: "Candles" },
+];
+
+const MARK_STORAGE_KEY = "myhomebase:chart:ticker-market-mark";
+
 function ChartPanel({
   data,
   range,
@@ -1004,15 +1016,61 @@ function ChartPanel({
   onSelectRange: (range: TickerHistoryRange) => void;
   isLoading?: boolean;
 }) {
+  // Local, not hoisted to the host: switching mark redraws the data already
+  // fetched, where switching range refetches. Remembered across mounts the same
+  // way each chart's display options are — a reader who prefers candles opens the
+  // next ticker on candles.
+  const [mark, setMark] = useState<PriceMark>("line");
+
+  useEffect(() => {
+    // Read in an effect, not the initializer: `localStorage` doesn't exist on the
+    // server, and reading it during render would disagree with the served HTML.
+    try {
+      const stored = window.localStorage.getItem(MARK_STORAGE_KEY);
+      /* eslint-disable-next-line react-hooks/set-state-in-effect --
+         Syncing from an external system (localStorage) on mount, the same pattern
+         as `useChartDisplay`. */
+      if (stored === "line" || stored === "candles") setMark(stored);
+    } catch {
+      // Storage can be unavailable (private browsing); the line default stands.
+    }
+  }, []);
+
+  function onSelectMark(next: PriceMark) {
+    setMark(next);
+    try {
+      window.localStorage.setItem(MARK_STORAGE_KEY, next);
+    } catch {
+      // Not worth surfacing — the choice still holds for this session.
+    }
+  }
+
   // Recharts wants plain numbers, and dollars read better on an axis than cents.
   const chartData = data.points.map((point) => ({
     date: point.date,
     close: centsToDollars(point.closeCents),
   }));
 
+  // Candles are offered only when the provider gave a full bar for every point —
+  // a candlestick with holes in it reads as halted trading, not missing data.
+  const canShowCandles = hasFullBars(data.points);
+  const candleData = canShowCandles
+    ? data.points.map((point) => ({
+        x: point.date,
+        open: centsToDollars(point.openCents ?? 0),
+        high: centsToDollars(point.highCents ?? 0),
+        low: centsToDollars(point.lowCents ?? 0),
+        close: centsToDollars(point.closeCents),
+      }))
+    : [];
+
+  // Falls back to the line whenever candles aren't available, so a ticker whose
+  // provider shorted the bars doesn't land on an empty panel.
+  const showCandles = mark === "candles" && canShowCandles;
+
   return (
     <div>
-      <div className="mb-3 flex flex-wrap gap-1">
+      <div className="mb-3 flex flex-wrap items-center gap-1">
         {ranges.map((option) => (
           <button
             key={option}
@@ -1028,6 +1086,28 @@ function ChartPanel({
             {RANGE_LABELS[option]}
           </button>
         ))}
+        {canShowCandles && (
+          // Same button vocabulary as the ranges, pushed to the far end: it picks
+          // how the window is drawn, not which window. `ml-auto` collapses to a
+          // plain wrap on a narrow card, so the row still reads at 390px.
+          <span className="ml-auto flex gap-1 max-lg:ml-0 max-lg:w-full max-lg:pt-1">
+            {MARK_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => onSelectMark(option.value)}
+                aria-pressed={option.value === mark}
+                className={`rounded-md px-3 py-1 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
+                  option.value === mark
+                    ? "bg-brass-soft text-brass-dark"
+                    : "text-muted hover:text-ink"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </span>
+        )}
         {isLoading && <span className="self-center pl-2 text-xs text-muted">Loading…</span>}
       </div>
 
@@ -1035,17 +1115,28 @@ function ChartPanel({
         <Empty>The provider returned no closes for this window.</Empty>
       ) : (
         <>
-          <ChartLine
-            data={chartData}
-            series={[{ key: "close", label: "Close" }]}
-            xKey="date"
-            formatValue={(value) => `$${value.toFixed(2)}`}
-            formatX={(value) => String(value).slice(5)}
-            // A price window reads by its high and low; the period change is
-            // spelled out in the stat tiles below.
-            pointLabels="extremes"
-            displayStorageKey="myhomebase:chart:ticker-market-history"
-          />
+          {showCandles ? (
+            <ChartCandle
+              data={candleData}
+              label="Daily range"
+              formatValue={(value) => `$${value.toFixed(2)}`}
+              formatX={(value) => String(value).slice(5)}
+              pointLabels="none"
+              displayStorageKey="myhomebase:chart:ticker-market-candles"
+            />
+          ) : (
+            <ChartLine
+              data={chartData}
+              series={[{ key: "close", label: "Close" }]}
+              xKey="date"
+              formatValue={(value) => `$${value.toFixed(2)}`}
+              formatX={(value) => String(value).slice(5)}
+              // A price window reads by its high and low; the period change is
+              // spelled out in the stat tiles below.
+              pointLabels="extremes"
+              displayStorageKey="myhomebase:chart:ticker-market-history"
+            />
+          )}
           <div className="mt-4">
             <StatGrid>
               <StatTile

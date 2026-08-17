@@ -24,9 +24,16 @@ import { StockNav } from "./stock-nav";
 
 export function SectionLayout({
   nav,
+  module,
   children,
 }: {
   nav: "expense" | "journal" | "stock";
+  /**
+   * The module the sections belong to, badged at the head of the nav. Plain
+   * data, read by the server shell — the navs are client components and the
+   * name and icon are both admin-editable, so neither can be hardcoded here.
+   */
+  module?: { name: string; icon: string };
   children: ReactNode;
 }) {
   // `useIsCompact` rather than `max-lg:` because the layout can be pinned — a
@@ -50,11 +57,11 @@ export function SectionLayout({
           TreeNav itself doesn't need to know where on the page it landed. */}
       <div className={`tree-nav-sticky ${isNavStacked ? "" : "sticky top-6 shrink-0"}`}>
         {nav === "expense" ? (
-          <ExpenseNav onStateChange={handleNavStateChange} />
+          <ExpenseNav onStateChange={handleNavStateChange} module={module} />
         ) : nav === "journal" ? (
-          <JournalNav onStateChange={handleNavStateChange} />
+          <JournalNav onStateChange={handleNavStateChange} module={module} />
         ) : (
-          <StockNav onStateChange={handleNavStateChange} />
+          <StockNav onStateChange={handleNavStateChange} module={module} />
         )}
       </div>
 

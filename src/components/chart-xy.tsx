@@ -31,9 +31,17 @@ import { Button } from "@/components/button";
 import { CHART_CATEGORICAL_COLORS, CHART_CHROME } from "./chart-colors";
 import { pointLabelContent } from "./chart-point-labels";
 import { ChartToolbar, useChartDisplay } from "./chart-toolbar";
-import { selectLabeledIndexes, type ChartDisplayDefaults } from "@/lib/shared/chart-options";
+import {
+  selectLabeledIndexes,
+  type ChartDisplayDefaults,
+  type ChartEncoding,
+} from "@/lib/shared/chart-options";
 
-export type ChartType = "line" | "bar" | "scatter" | "area";
+/**
+ * Re-exported from the lib so existing callers keep importing it from here.
+ * `ChartEncoding` is the shared name — the vocabulary is shared with the toolbar.
+ */
+export type ChartType = ChartEncoding;
 
 export interface ChartXYSeries {
   /** Key into each row of `data` (values should be numeric). */
@@ -45,7 +53,27 @@ export interface ChartXYSeries {
 }
 
 export interface ChartXYProps extends ChartDisplayDefaults {
+  /**
+   * The encoding to draw *first*. The reader can change it from the toolbar
+   * (see `chartTypes`), and passing a new `type` resets them to it — which is how
+   * a saved chart preset takes effect over a remembered preference.
+   */
   type: ChartType;
+  /**
+   * Which encodings the toolbar offers. Defaults to line/bar/area — **not**
+   * scatter, which needs a numeric x this component can't verify. Pass all four
+   * only where the x really is numeric.
+   */
+  chartTypes?: readonly ChartType[];
+  /**
+   * Told when the reader picks a different encoding from the toolbar.
+   *
+   * Needed by a caller whose *data* depends on the encoding — the CSV chart
+   * builder casts its x column to a number for scatter and leaves it a category
+   * otherwise, so it has to know. Omit it and the switch still works; the chart
+   * just keeps the choice to itself.
+   */
+  onTypeChange?: (type: ChartType) => void;
   /** Rows sharing one `xKey` field plus one numeric field per series key. */
   data: Record<string, number | string | null>[];
   xKey: string;
@@ -61,8 +89,12 @@ export interface ChartXYProps extends ChartDisplayDefaults {
 const ZOOM_FACTOR = 0.6;
 const MIN_WINDOW = 2;
 
+const DEFAULT_CHART_TYPES: readonly ChartType[] = ["line", "bar", "area"];
+
 function ChartXYComponent({
   type,
+  chartTypes = DEFAULT_CHART_TYPES,
+  onTypeChange,
   data,
   xKey,
   series,
@@ -79,9 +111,37 @@ function ChartXYComponent({
   className = "",
 }: ChartXYProps) {
   const { display, setDisplay, maxPointLabels } = useChartDisplay(
-    { pointLabels, showDots, showLegend: showLegend ?? series.length > 1, showGrid },
+    {
+      pointLabels,
+      showDots,
+      showLegend: showLegend ?? series.length > 1,
+      showGrid,
+      chartType: type,
+    },
     displayStorageKey,
   );
+
+  // A changed `type` prop wins over the reader's remembered choice.
+  //
+  // Adjusted during render for the same reason the zoom window below is: in an
+  // effect this would commit a frame drawing the old encoding against the new
+  // prop. The case that matters is loading a saved CSV chart preset — the preset
+  // names an encoding, and it would otherwise lose to whatever the reader last
+  // picked from the toolbar, silently drawing the wrong chart.
+  const [renderedType, setRenderedType] = useState(type);
+  const isNewType = renderedType !== type;
+  if (isNewType) {
+    setRenderedType(type);
+    setDisplay({ ...display, chartType: type });
+  }
+
+  // What's actually drawn: the reader's pick, falling back to the prop.
+  //
+  // `display` still holds the old encoding on the frame that detects a new `type`
+  // — the `setDisplay` above lands on the next render — so the new prop is read
+  // directly here. Without that this frame would draw the encoding we just
+  // replaced, which is the flash the render-time reconciliation exists to avoid.
+  const encoding = isNewType ? type : display.chartType ?? type;
   const total = data.length;
   const [zoomWindow, setZoomWindow] = useState<{ start: number; end: number }>({ start: 0, end: total });
 
@@ -129,11 +189,11 @@ function ChartXYComponent({
     return (
       <>
         {display.showGrid && (
-          <CartesianGrid stroke={CHART_CHROME.grid} vertical={type === "scatter"} />
+          <CartesianGrid stroke={CHART_CHROME.grid} vertical={encoding === "scatter"} />
         )}
         <XAxis
           dataKey={xAxisDataKey}
-          type={type === "scatter" ? "number" : "category"}
+          type={encoding === "scatter" ? "number" : "category"}
           tickFormatter={(value) => formatX(value as string | number)}
           axisLine={{ stroke: CHART_CHROME.axis }}
           {...axisProps}
@@ -160,7 +220,7 @@ function ChartXYComponent({
   // so zooming in re-picks the visible extremes rather than pointing off-screen.
   // Scatter is excluded: its marks are the points, with no free end to print on.
   function labelsFor(key: string) {
-    if (type === "scatter") return null;
+    if (encoding === "scatter") return null;
     const indexes = selectLabeledIndexes(
       visibleData.map((row) => row[key]),
       display.pointLabels,
@@ -174,7 +234,7 @@ function ChartXYComponent({
         content={pointLabelContent({
           indexes,
           formatValue,
-          placement: type === "bar" ? "cap" : "above",
+          placement: encoding === "bar" ? "cap" : "above",
           lastIndex: visibleData.length - 1,
           matchField: xKey,
           allowedKeys: indexes
@@ -187,7 +247,7 @@ function ChartXYComponent({
 
   function renderChart() {
     const margin = { top: 14, right: 24, bottom: 0, left: 0 };
-    switch (type) {
+    switch (encoding) {
       case "bar":
         return (
           <BarChart data={visibleData} margin={margin}>
@@ -273,10 +333,18 @@ function ChartXYComponent({
       <ChartToolbar
         className="mb-2"
         value={display}
-        onChange={setDisplay}
+        onChange={(next) => {
+          setDisplay(next);
+          // Only on a real change, so a caller re-shaping its data off this doesn't
+          // do it every time a checkbox moves.
+          if (next.chartType !== undefined && next.chartType !== encoding) {
+            onTypeChange?.(next.chartType);
+          }
+        }}
         showOptions={showToolbar}
-        labelModes={type === "scatter" ? ["none"] : undefined}
-        canToggleDots={type === "line" || type === "area"}
+        chartTypes={chartTypes}
+        labelModes={encoding === "scatter" ? ["none"] : undefined}
+        canToggleDots={encoding === "line" || encoding === "area"}
         canToggleLegend={series.length > 1}
         pointCount={visibleData.length}
         maxPointLabels={maxPointLabels}

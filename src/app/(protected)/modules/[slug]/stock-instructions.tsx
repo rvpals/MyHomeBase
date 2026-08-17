@@ -120,17 +120,18 @@ function MainInstructions() {
           rather than zero, which is the honest answer.
         </p>
       </Section>
-      <Section title="Refresh All, and the daily history">
+      <Section title="Refreshing, and the daily history">
         <p>
-          <strong className="text-ink">Refresh All</strong> fetches a live price for every position,
-          naming each ticker as it goes, then files today&apos;s totals — Stock, ETF, Other and Total
-          — in the value history. There is <strong className="text-ink">one row per day</strong>:
-          press it again this afternoon and today&apos;s row is recalculated and overwritten, not
-          duplicated.
+          The <strong className="text-ink">refresh icon</strong> beside the Dashboard heading fetches
+          a live price for every position, naming each ticker in the progress bar as it goes, then
+          files today&apos;s totals — Stock, ETF, Other and Total — in the value history. There is{" "}
+          <strong className="text-ink">one row per day</strong>: press it again this afternoon and
+          today&apos;s row is recalculated and overwritten, not duplicated.
         </p>
         <p>
-          A ticker that can&apos;t be priced is listed in red and skipped; the rest still refresh and
-          the snapshot still saves, so one delisted symbol can&apos;t cost you the day&apos;s record.
+          A ticker that can&apos;t be priced is skipped and counted at the end of the run; the rest
+          still refresh and the snapshot still saves, so one delisted symbol can&apos;t cost you the
+          day&apos;s record.
         </p>
       </Section>
       <Section title="Rearranging this screen">
@@ -143,9 +144,9 @@ function MainInstructions() {
       </Section>
       <Section title="Daily Glance, and the News button">
         <p>
-          <strong className="text-ink">Daily Glance lives on the home screen</strong>, at the very
-          top, rather than on this dashboard — it is the first thing worth seeing when you open the
-          app. It appears there once you hold at least one position.
+          <strong className="text-ink">Daily Glance lives on the home screen</strong> rather than on
+          this dashboard, as the last of the three cards below the module carousel. It appears there
+          once you hold at least one position, and you can fold it shut by clicking its title.
         </p>
         <p>
           Its table is today by instrument type — what each bucket is worth, what it moved in
@@ -512,9 +513,9 @@ function SettingsInstructions() {
           several rows and write them once.
         </p>
         <p>
-          Hiding a widget only changes what&apos;s drawn — nothing stops being recorded. The one to
-          think about is <strong className="text-ink">Refresh &amp; snapshot</strong>: hide it and
-          there&apos;s no button left to capture a daily snapshot, so the value history stops growing.
+          Hiding a widget only changes what&apos;s drawn — nothing stops being recorded, and no
+          layout can cost you the daily snapshot: the refresh icon lives on the Dashboard heading
+          rather than in a widget, so it can&apos;t be hidden.
         </p>
         <p>
           A widget added to the app in a later release appears at the bottom, visible, rather than

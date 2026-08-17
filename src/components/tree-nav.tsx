@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
+import { ModuleIcon } from "./module-icons";
 import { Puck } from "./puck";
 import { hasTreeIcon, TreeIcon } from "./tree-icons";
 import { useIsCompact } from "./viewport-context";
@@ -52,6 +53,14 @@ export interface TreeNode {
 
 export interface TreeNavProps {
   nodes: TreeNode[];
+  /**
+   * The module this tree belongs to, shown as an icon badge at the head of the
+   * nav. Answers "which module am I in?" — the section chips name the *section*,
+   * and once the app bar's module list is a dropdown (compact) or scrolled, the
+   * module itself is nowhere on screen. `icon` is a module icon key, rendered
+   * through `ModuleIcon` so it follows the reader's chosen icon set.
+   */
+  module?: { name: string; icon: string };
   /**
    * Show the collapse controls. The tree then has three states — full (icon +
    * label), rail (icons only, flattened) and strip (an accent edge you click to
@@ -339,8 +348,55 @@ function TreeItem({
   );
 }
 
+/**
+ * The module badge at the head of the tree. Icon-only in the bar and the rail,
+ * where width and height are both scarce; the name rides along in the desktop
+ * bar, which has the room and is where a bare glyph is least self-explanatory.
+ * Not a link — the module's own route is one tap away in the app bar, and a
+ * second target for it here would just crowd the row.
+ */
+function ModuleBadge({
+  module,
+  layout,
+}: {
+  module: { name: string; icon: string };
+  layout: "bar" | "rail" | "tree";
+}) {
+  // The rail is 64px of icons with no labels, so the badge matches: glyph only,
+  // centred, named by its tooltip. The bar and the nested tree both have room
+  // for the name beside it.
+  const showName = layout !== "rail";
+
+  return (
+    <div
+      title={module.name}
+      aria-label={module.name}
+      className={
+        layout === "bar"
+          ? "flex shrink-0 items-center gap-2 border-r border-line px-3 text-brass-dark"
+          : layout === "rail"
+            ? "flex flex-col items-center gap-1 border-b border-line px-2 py-2 text-brass-dark"
+            : "flex items-center gap-2 border-b border-line px-3 py-2 text-brass-dark"
+      }
+    >
+      <ModuleIcon name={module.icon} className="h-5 w-5 shrink-0" />
+      {showName && (
+        // In the bar the name drops below `lg` for the same reason the app
+        // bar's wordmark does: on a pinned-compact desktop window the section
+        // chips need the width more. The tree isn't width-pressed, so it keeps it.
+        <span
+          className={`truncate text-sm font-semibold ${layout === "bar" ? "whitespace-nowrap max-lg:hidden" : ""}`}
+        >
+          {module.name}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export function TreeNav({
   nodes,
+  module,
   collapsible = false,
   storageKey = DEFAULT_COLLAPSED_STORAGE_KEY,
   onStateChange,
@@ -467,7 +523,14 @@ export function TreeNav({
           // (mirrored above) is what tells `.app-main` to leave room for it.
           position="tree-nav-puck z-30"
         >
-          {active && hasTreeIcon(active.icon) ? (
+          {/* The module wins over the section here. With the bar gone this is
+              the only thing on screen saying where you are, and "which module"
+              is the coarser, more useful answer — the section is named by the
+              page's own heading. Falls back to the section icon, then a
+              chevron, so a tree with neither still leaves a target. */}
+          {module ? (
+            <ModuleIcon name={module.icon} className="h-5 w-5" />
+          ) : active && hasTreeIcon(active.icon) ? (
             <TreeIcon name={active.icon} className="h-5 w-5" />
           ) : (
             <span aria-hidden>&rsaquo;</span>
@@ -511,6 +574,12 @@ export function TreeNav({
           : `flex-col ${collapsible ? WIDTH_CLASS.rail : ""}`
       } ${surface}`}
     >
+      {/* Leads the nav in every form — the reader should be able to tell which
+          module they're in without looking back up at the app bar, where on
+          compact the module list is behind a menu button anyway. */}
+      {module && (
+        <ModuleBadge module={module} layout={isBar ? "bar" : collapsible ? "rail" : "tree"} />
+      )}
       {collapsible && (
         <div
           className={`flex items-center ${

@@ -15,7 +15,13 @@ import {
   stockSectionHref,
 } from "./stock-sections";
 
-export function StockNav({ onStateChange }: { onStateChange?: (state: TreeNavState) => void }) {
+export function StockNav({
+  onStateChange,
+  module,
+}: {
+  onStateChange?: (state: TreeNavState) => void;
+  module?: { name: string; icon: string };
+}) {
   const nodes: TreeNode[] = STOCK_SECTIONS.map((section) => ({
     id: section,
     label: STOCK_SECTION_INFO[section].label,
@@ -29,6 +35,7 @@ export function StockNav({ onStateChange }: { onStateChange?: (state: TreeNavSta
   return (
     <TreeNav
       nodes={nodes}
+      module={module}
       collapsible
       storageKey="myhomebase:stock-nav-collapsed"
       onStateChange={onStateChange}

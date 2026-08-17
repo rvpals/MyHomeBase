@@ -20,6 +20,7 @@ import { getModuleBySlug } from "@/lib/modules";
 import { deps } from "@/lib/wiring";
 import { JOURNAL_SECTION_INFO, type JournalSection } from "./journal-sections";
 import { JournalEntriesPanel } from "./journal-entries-panel";
+import { journalTaxonomyIconUrlsByName } from "./journal-shared";
 import { JournalHomeHeader } from "./journal-search-view";
 import { JournalPreferencesView } from "./journal-preferences-view";
 import { JournalTaxonomyView } from "./journal-taxonomy-view";
@@ -46,13 +47,20 @@ function SectionBody({
       const preferences = resolveJournalPreferences(
         journalModule ? listModuleSettingsFor(deps.moduleSettingsRepo, journalModule.id) : [],
       );
+      // Read once and use twice: the names feed the entry form's dropdowns, and
+      // the same rows carry the icon mime types the Statistics lists need. The
+      // top-N queries return names and counts only, so icons are matched by name.
+      const categories = listCategories(deps.journalRepo);
+      const tags = listTags(deps.journalRepo);
       return (
         <JournalView
           entries={listRecentEntries(deps.journalRepo, RECENT_JOURNAL_ENTRY_LIMIT)}
           topTags={listTopTags(deps.journalRepo, TOP_TAXONOMY_LIMIT)}
           topCategories={listTopCategories(deps.journalRepo, TOP_TAXONOMY_LIMIT)}
-          categoryOptions={listCategories(deps.journalRepo).map((category) => category.name)}
-          tagOptions={listTags(deps.journalRepo).map((tag) => tag.name)}
+          categoryOptions={categories.map((category) => category.name)}
+          tagOptions={tags.map((tag) => tag.name)}
+          categoryIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("category", categories))}
+          tagIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("tag", tags))}
           preferences={preferences}
           namedMappings={listNamedMappings(deps.csvImportMappingRepo, "Journal")}
           canRunSql={isAdmin}
@@ -105,25 +113,39 @@ export function JournalSection({
   // Defensive: an unknown section would otherwise crash on info.label. The route
   // already validates, so this only catches a future caller getting it wrong.
   const info = JOURNAL_SECTION_INFO[section] ?? JOURNAL_SECTION_INFO.main;
+  // Badged at the head of the nav so the reader can see which module they're
+  // in. Read here rather than in `JournalNav` because both fields are
+  // admin-editable, and the nav is a client component.
+  const appModule = getModuleBySlug(deps.moduleRepo, JOURNAL_MODULE_SLUG);
 
   return (
     // The nav/body split lives in SectionLayout: it's a bar in `full` and a
     // column in `rail`/`strip`, so which way this lays out is client state that
     // a server component can't hold.
-    <SectionLayout nav="journal">
+    <SectionLayout
+      nav="journal"
+      module={appModule && { name: appModule.shortName, icon: appModule.icon }}
+    >
+      {/* On the home screen the body goes *inside* the header: the title row's
+          New Entry button toggles the New Journal card down in JournalView, so
+          one client component has to sit above both. Other sections keep the
+          plain heading and render the body as a sibling. */}
       {section === "main" ? (
-        <JournalHomeHeader label={info.label} description={info.description} />
+        <JournalHomeHeader label={info.label} description={info.description}>
+          <div className="mt-6">
+            <SectionBody section={section} isAdmin={isAdmin} filterQuery={filterQuery} />
+          </div>
+        </JournalHomeHeader>
       ) : (
         <>
           <h2 className="font-display text-2xl font-semibold text-ink">{info.label}</h2>
           <p className="mt-1 text-sm text-muted">{info.description}</p>
           <div className="mt-3 h-px w-full bg-line" />
+          <div className="mt-6">
+            <SectionBody section={section} isAdmin={isAdmin} filterQuery={filterQuery} />
+          </div>
         </>
       )}
-
-      <div className="mt-6">
-        <SectionBody section={section} isAdmin={isAdmin} filterQuery={filterQuery} />
-      </div>
     </SectionLayout>
   );
 }

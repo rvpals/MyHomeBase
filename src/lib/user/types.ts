@@ -11,6 +11,11 @@ export interface User {
   googleEmail?: string;
   /** MIME type of the uploaded avatar, if any. The raw bytes aren't part of this type — see `getUserAvatar`. */
   avatarMimeType?: string;
+  /**
+   * Last successful sign-in, denormalised from `sys_auth_events` (migrations/0045).
+   * `undefined` means "has never signed in" — a real state, not missing data.
+   */
+  lastLoginAt?: string;
   createdAt: string;
   updatedAt: string;
 }

@@ -3,10 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
+import { useCurrentPosition } from "@/components/use-current-position";
 import type { JournalPreferences } from "@/lib/journal";
 import {
   createJournalEntryAction,
   fetchWeatherAction,
+  reverseGeocodeAction,
   type EntryWeatherInput,
   type JournalLocationInput,
 } from "./journal-actions";
@@ -48,6 +50,8 @@ export function JournalEntryForm({
   const [error, setError] = useState<string | undefined>(undefined);
   const [isBusy, setIsBusy] = useState(false);
   const [isFetchingWeather, setIsFetchingWeather] = useState(false);
+  const [isLocatingAndFetching, setIsLocatingAndFetching] = useState(false);
+  const { request: requestPosition } = useCurrentPosition();
 
   function update(field: keyof ReturnType<typeof emptyForm>, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -79,6 +83,43 @@ export function JournalEntryForm({
       setWeather({ temp: temperature, unit, description, code });
     } finally {
       setIsFetchingWeather(false);
+    }
+  }
+
+  // One press fills both fields: read GPS, name the point by reverse geocoding,
+  // append it to the locations list, and fetch that point's weather. Each stage
+  // keeps what the earlier ones produced — a failed name still lands the
+  // coordinates, and failed weather still lands the location.
+  async function handleGpsAndWeather() {
+    setIsLocatingAndFetching(true);
+    setError(undefined);
+    try {
+      const located = await requestPosition();
+      if (!located.ok) {
+        setError(located.error);
+        return;
+      }
+      const { latitude, longitude } = located.position;
+
+      const geocoded = await reverseGeocodeAction(latitude, longitude);
+      const locationName = geocoded.ok && geocoded.place ? geocoded.place.displayName : "";
+      setLocations((current) => [...current, { latitude, longitude, locationName }]);
+
+      // Only fill the free-text Place name if it's still empty — never overwrite
+      // something already typed.
+      if (locationName !== "") {
+        setForm((current) => (current.placeName === "" ? { ...current, placeName: locationName } : current));
+      }
+
+      const result = await fetchWeatherAction(latitude, longitude, preferences.temperatureUnit);
+      if (!result.ok || !result.weather) {
+        setError(result.error ?? "Got your location, but failed to fetch weather.");
+        return;
+      }
+      const { temperature, unit, description, code } = result.weather;
+      setWeather({ temp: temperature, unit, description, code });
+    } finally {
+      setIsLocatingAndFetching(false);
     }
   }
 
@@ -146,6 +187,15 @@ export function JournalEntryForm({
       <JournalLocationPicker value={locations} onChange={setLocations} />
 
       <div className="flex flex-wrap items-center gap-3">
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={handleGpsAndWeather}
+          disabled={isLocatingAndFetching}
+          title="Use this device's location to add a location and fetch its weather"
+        >
+          {isLocatingAndFetching ? "Locating…" : "GPS + Weather"}
+        </Button>
         <Button size="sm" variant="secondary" onClick={handleFetchWeather} disabled={isFetchingWeather}>
           {isFetchingWeather ? "Fetching…" : "Fetch today's weather"}
         </Button>

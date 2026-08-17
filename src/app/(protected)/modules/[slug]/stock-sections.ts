@@ -65,7 +65,7 @@ export const STOCK_SECTION_ICONS: Record<StockSection, string> = {
   positions: "list",
   transactions: "history",
   accounts: "database",
-  actionables: "quote",
+  actionables: "stock-quote",
   charts: "chart",
   import: "upload",
   settings: "sliders",

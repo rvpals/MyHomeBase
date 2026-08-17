@@ -1,7 +1,15 @@
 import {
+  recordLoginFailure,
+  recordLoginSuccess,
+  recordLogout,
+  type AuthEventContext,
+  type AuthEventRepository,
+} from "@/lib/auth-events";
+import {
   createUserFromGoogle,
   getUserByGoogleEmail,
-  verifyCredentials,
+  recordUserLogin,
+  verifyCredentialsDetailed,
   type User,
   type UserRepository,
 } from "@/lib/user";
@@ -20,23 +28,80 @@ function isExpired(session: Session): boolean {
  * Validates credentials and starts a session. Deliberately doesn't
  * distinguish "unknown username" from "wrong password" in its result —
  * avoids leaking which usernames exist.
+ *
+ * When `audit` is supplied, the *reason* for a failure is written to the audit trail
+ * even though the caller still receives a bare `undefined`. That asymmetry is the
+ * point: the operator gets to tell a typo from a systematic guess, while the browser
+ * learns nothing (see migrations/0045). A success also stamps `last_login_at`.
+ *
+ * `audit` is optional so the CLI and tests can call `login` without a recorder.
  */
 export function login(
   input: LoginInput,
   userRepo: UserRepository,
   sessionRepo: SessionRepository,
+  audit?: { repo: AuthEventRepository; context?: AuthEventContext },
 ): { session: Session; user: User } | undefined {
-  const parsed = loginSchema.parse(input);
-  const user = verifyCredentials(parsed, userRepo);
-  if (!user) return undefined;
+  // Parsed inside the try-equivalent: an invalid submission is still an attempt worth
+  // recording, and the raw username is what was typed.
+  let parsed: LoginInput;
+  try {
+    parsed = loginSchema.parse(input);
+  } catch (error) {
+    if (audit) {
+      recordLoginFailure(
+        typeof input?.username === "string" ? input.username : "",
+        "invalid_input",
+        audit.context ?? {},
+        audit.repo,
+      );
+    }
+    throw error;
+  }
+
+  const check = verifyCredentialsDetailed(parsed, userRepo);
+  if (!check.ok) {
+    if (audit) {
+      recordLoginFailure(
+        parsed.username,
+        check.reason,
+        audit.context ?? {},
+        audit.repo,
+        check.userId,
+      );
+    }
+    return undefined;
+  }
 
   const expiresAt = new Date(Date.now() + SESSION_DURATION_MS).toISOString();
-  const session = sessionRepo.createSession(user.id, expiresAt);
-  return { session, user };
+  const session = sessionRepo.createSession(check.user.id, expiresAt);
+
+  if (audit) {
+    recordLoginSuccess(parsed.username, check.user.id, audit.context ?? {}, audit.repo);
+  }
+  // Denormalised copy for the user-management screen. After the event so a failure
+  // here can't cost us the event row, and swallowed for the same reason the recorder
+  // swallows: a bookkeeping write must never turn a valid sign-in into a failed one.
+  try {
+    recordUserLogin(check.user.id, userRepo);
+  } catch (error) {
+    console.error("[auth] failed to stamp last_login_at:", error);
+  }
+
+  return { session, user: check.user };
 }
 
-export function logout(sessionId: string, sessionRepo: SessionRepository): void {
+/**
+ * Ends a session. `audit` is optional; `userId` is passed in because the caller
+ * already resolved it from the cookie and this function only has the session id.
+ */
+export function logout(
+  sessionId: string,
+  sessionRepo: SessionRepository,
+  audit?: { repo: AuthEventRepository; context?: AuthEventContext; userId?: number },
+): void {
   sessionRepo.deleteSession(sessionId);
+  if (audit) recordLogout(audit.userId, audit.context ?? {}, audit.repo);
 }
 
 /**
@@ -101,5 +166,15 @@ export async function completeGoogleLogin(
 
   const expiresAt = new Date(Date.now() + SESSION_DURATION_MS).toISOString();
   const session = sessionRepo.createSession(user.id, expiresAt);
+
+  // Stamped for Google sign-ins too, so `last_login_at` means "last got in" rather
+  // than "last got in with a password". Google *failures* are deliberately not
+  // recorded as auth events — see migrations/0045.
+  try {
+    recordUserLogin(user.id, userRepo);
+  } catch (error) {
+    console.error("[auth] failed to stamp last_login_at:", error);
+  }
+
   return { ok: true, session, user };
 }

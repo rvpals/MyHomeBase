@@ -218,6 +218,9 @@ export function toClosePoints(history: PricePoint[]): TickerClosePoint[] {
       date: toIsoDateLocal(new Date(point.timestamp * 1000)),
       closeCents: point.closeCents,
       volume: point.volume,
+      openCents: point.openCents,
+      highCents: point.highCents,
+      lowCents: point.lowCents,
     }));
 }
 

@@ -143,6 +143,11 @@ class FakeUserRepository implements UserRepository {
     if (avatar) this.avatarsByUserId.set(userId, avatar);
     else this.avatarsByUserId.delete(userId);
   }
+
+  setLastLoginAt(id: number, timestamp: string): void {
+    const user = this.users.find((candidate) => candidate.id === id);
+    if (user) user.lastLoginAt = timestamp;
+  }
 }
 
 function makeModule(id: number, slug: string): Module {

@@ -9,7 +9,7 @@ import { DuplicateGoogleEmailError } from "./user";
 // Only `getAvatar`/`setAvatar` below touch the `avatar` column.
 const USER_COLUMNS_WITHOUT_AVATAR = `
   id, username, full_name, description, password_hash, role, is_disabled,
-  google_email, avatar_mime_type, created_at, updated_at
+  google_email, avatar_mime_type, last_login_at, created_at, updated_at
 `;
 
 interface UserRow {
@@ -22,6 +22,7 @@ interface UserRow {
   is_disabled: number;
   google_email: string | null;
   avatar_mime_type: string | null;
+  last_login_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -36,6 +37,7 @@ function toDomain(row: UserRow): User {
     isDisabled: row.is_disabled === 1,
     googleEmail: row.google_email ?? undefined,
     avatarMimeType: row.avatar_mime_type ?? undefined,
+    lastLoginAt: row.last_login_at ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
@@ -138,6 +140,13 @@ export class SqliteUserRepository implements UserRepository {
       }
       throw error;
     }
+  }
+
+  setLastLoginAt(id: number, timestamp: string): void {
+    // Note: the `users_set_updated_at` trigger (migrations/0007) fires on this, so a
+    // sign-in also bumps `updated_at`. Accepted — "the row last changed when they last
+    // signed in" is true, and suppressing it would mean dropping the trigger.
+    this.db.prepare("UPDATE sys_users SET last_login_at = ? WHERE id = ?").run(timestamp, id);
   }
 
   getAvatar(userId: number): UserAvatar | undefined {
