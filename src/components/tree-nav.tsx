@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import { ModuleIcon } from "./module-icons";
 import { Puck } from "./puck";
-import { hasTreeIcon, TreeIcon } from "./tree-icons";
+import { hasTreeIcon, TreeIcon, useTreeIconIsColorful } from "./tree-icons";
 import { useIsCompact } from "./viewport-context";
 
 const DEFAULT_COLLAPSED_STORAGE_KEY = "myhomebase:tree-nav-collapsed";
@@ -124,6 +124,16 @@ function chipClass(active: boolean): string {
 }
 
 /**
+ * A section icon that carries the brass accent — but only when the active icon set is
+ * monochrome. Full-color artwork supplies its own fills, and tinting it just muddies the
+ * colors, so the accent is dropped there. Same rule the module badge already follows.
+ */
+function AccentTreeIcon({ name, className }: { name?: string; className?: string }) {
+  const colorful = useTreeIconIsColorful(name);
+  return <TreeIcon name={name} className={`${className ?? ""}${colorful ? "" : " text-brass"}`} />;
+}
+
+/**
  * One destination in the full bar — icon *and* label, always.
  *
  * The difference from `CompactChip` is the whole point of the state: desktop
@@ -232,7 +242,7 @@ function GroupChip({ node, pathname }: { node: TreeNode; pathname: string }) {
                     : "text-ink hover:bg-line/60"
                 }`}
               >
-                <TreeIcon name={child.icon} className="h-4 w-4 shrink-0 text-brass" />
+                <AccentTreeIcon name={child.icon} className="h-4 w-4 shrink-0" />
                 {child.label}
               </Link>
             ) : (
@@ -254,7 +264,7 @@ function GroupChip({ node, pathname }: { node: TreeNode; pathname: string }) {
 
 function CollapsedRow({ node, pathname }: { node: TreeNode; pathname: string }) {
   const active = Boolean(node.href) && node.href === pathname;
-  const icon = <TreeIcon name={node.icon} className="h-4 w-4 text-brass" />;
+  const icon = <AccentTreeIcon name={node.icon} className="h-4 w-4" />;
 
   if (!node.href) {
     return (
@@ -310,7 +320,7 @@ function TreeItem({
       ) : (
         <span className="w-4 shrink-0" aria-hidden />
       )}
-      <TreeIcon name={node.icon} className="h-4 w-4 shrink-0 text-brass" />
+      <AccentTreeIcon name={node.icon} className="h-4 w-4 shrink-0" />
       <span className="truncate">{node.label}</span>
     </span>
   );

@@ -93,6 +93,46 @@ const Tool: IconComponent = (props) => (
   </svg>
 );
 
+// A bound journal, closed, with a quill laid across it. The spine band and the
+// diagonal are the whole read at 16px: a plain rectangle is a book (or a card, or
+// a note), so the two raised bands plus the pen crossing the cover is what says
+// "journal you write in" rather than "book you read".
+const Journal: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <path d="M6 3.5h11a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 19V5A1.5 1.5 0 0 1 6 3.5Z" />
+    <path d="M7.5 3.5v17" />
+    <path d="M19.5 7.5c1.2 2.6-.4 5.6-3.1 7.6l-1.6 1.1.7-1.8c1.1-2.8 2.6-5.2 4-6.9Z" />
+    <path d="M15.4 13.6l1.2 1.1" />
+  </svg>
+);
+
+// A class register: a clipboard whose rows are names, each with a tick in the
+// margin. The ticks are what separate this from `list` — a row of plain lines is
+// any list at all, and the check is what makes it attendance.
+const Roster: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <rect x="4" y="4.5" width="16" height="16" rx="1.5" />
+    <path d="M9 4.5V3.5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1" />
+    <path d="M7.5 9.5l1.2 1.2 2-2.2" />
+    <path d="M7.5 14.5l1.2 1.2 2-2.2" />
+    <line x1="13" y1="9.5" x2="16.5" y2="9.5" />
+    <line x1="13" y1="14.5" x2="16.5" y2="14.5" />
+  </svg>
+);
+
+// A beamed pair of eighth notes. Filled noteheads and a solid beam are what make
+// this survive 16px in the app bar: a single note's stem is one hairline, which
+// reads as a stray tick or disappears altogether, and the beam is the shape the
+// eye actually recognises as "music".
+const Music: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <path d="M9.5 17.5V6.6l8.5-1.9v10.8" />
+    <path d="M9.5 10.1l8.5-1.9" />
+    <ellipse cx="7.25" cy="17.6" rx="2.3" ry="1.8" fill="currentColor" stroke="none" />
+    <ellipse cx="15.75" cy="15.5" rx="2.3" ry="1.8" fill="currentColor" stroke="none" />
+  </svg>
+);
+
 const ICONS: Record<ModuleIconName, IconComponent> = {
   building: Building,
   home: Home,
@@ -104,6 +144,9 @@ const ICONS: Record<ModuleIconName, IconComponent> = {
   heart: Heart,
   book: Book,
   tool: Tool,
+  journal: Journal,
+  roster: Roster,
+  music: Music,
 };
 
 // The original hand-drawn set, kept as the "classic" option and the fallback for any

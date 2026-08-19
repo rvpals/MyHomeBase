@@ -846,7 +846,17 @@ function TradesPanel({
         {formatCount(trades.transactions.length)} trade(s), {formatDate(trades.firstTradeAt)} to{" "}
         {formatDate(trades.lastTradeAt)}
       </SectionTitle>
-      <Table head={["Date", "Action", "Shares", "Price", "Total", "Brokerage"]}>
+      <Table
+        head={[
+          "Date",
+          "Action",
+          "Shares",
+          "Price",
+          "G/L % $ since this trans",
+          "Total",
+          "Brokerage",
+        ]}
+      >
         {trades.transactions.map((row) => (
           <tr key={row.id}>
             <Cell align="left">{formatDate(row.transactionAt)}</Cell>
@@ -857,6 +867,21 @@ function TradesPanel({
             </Cell>
             <Cell>{formatShares(row.numberOfShares)}</Cell>
             <Cell>{formatCents(row.pricePerShareCents)}</Cell>
+            <Cell>
+              {row.hasMoveSince ? (
+                <span
+                  title={`${formatCents(row.pricePerShareCents)} at the trade → ${formatCents(
+                    trades.currentPriceCents,
+                  )} now · ${signedCents(row.moveSinceCentsPerShare)} per share`}
+                >
+                  <Move cents={row.moveSinceCents} pct={row.moveSincePct} />
+                </span>
+              ) : (
+                <span className="text-muted" title="No current price is recorded for this ticker.">
+                  —
+                </span>
+              )}
+            </Cell>
             <Cell>{formatCents(row.totalAmountCents)}</Cell>
             <Cell>{row.brokerageFirm || "—"}</Cell>
           </tr>

@@ -358,14 +358,23 @@ function AccountHistory({ entry }: { entry: AccountEntry }) {
  * and the toggles stop meaning anything.
  */
 function AccountPerformanceOverTime({ entries }: { entries: AccountEntry[] }) {
-  const [hidden, setHidden] = useState<Set<number>>(new Set());
+  const history = buildAccountPerformanceHistory(entries);
+
+  // Only the first account is plotted to begin with. Overlaying every account
+  // at once is unreadable past a handful of them and the y-axis is dominated by
+  // whichever is largest, so the default is one line and you add the ones you
+  // want to compare. Seeded once, not derived — after the first render the
+  // selection belongs to the reader, so an account arriving later doesn't
+  // silently rewrite it.
+  const [hidden, setHidden] = useState<Set<number>>(
+    () => new Set(history.series.slice(1).map((entry) => entry.accountId)),
+  );
   // Off by default: straight segments between recorded dates. A smoothed curve
   // reads as intermediate movement, and for a balance recorded quarterly there
   // is no such reading in the data — it's an interpolation either way, but the
   // straight one looks like one.
   const [smooth, setSmooth] = useState(false);
 
-  const history = buildAccountPerformanceHistory(entries);
   const colorByAccountId = new Map(
     history.series.map((entry, index) => [
       entry.accountId,
@@ -511,7 +520,8 @@ function AccountPerformanceOverTime({ entries }: { entries: AccountEntry[] }) {
             displayStorageKey="myhomebase:chart:stock-accounts-overlay"
           />
           <p className="text-xs text-muted">
-            Accounts are recorded on their own schedules, so a line is drawn straight between the
+            One account is plotted to start with — click a chip above to add another and compare
+            them. Accounts are recorded on their own schedules, so a line is drawn straight between the
             dates that account actually reported — the dots are the real records. A blank cell in
             the table means nothing was recorded that day, which is not the same as a zero balance,
             and <span className="text-ink">Total recorded</span> only sums the accounts that

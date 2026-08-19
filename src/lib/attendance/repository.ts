@@ -1,12 +1,21 @@
 import type Database from "better-sqlite3";
 import type { AttendanceRepository } from "./ports";
-import { studentSchema, type ClassWriteData, type SaveAttendanceData, type StudentWriteData } from "./schema";
+import {
+  studentSchema,
+  type ClassWriteData,
+  type SaveAttendanceData,
+  type StudentActionWriteData,
+  type StudentWriteData,
+} from "./schema";
 import type {
   AttendanceClass,
   AttendanceEntry,
   AttendanceRecord,
+  AttendanceSessionSummary,
   AttendanceStatus,
+  RecordedStudentAction,
   Student,
+  StudentAction,
 } from "./types";
 
 interface StudentRow {
@@ -35,6 +44,7 @@ interface RecordRow {
   class_name: string;
   attendance_date: string;
   recorded_at: string;
+  session_label: string;
   recorded_by_user_id: number;
 }
 
@@ -42,6 +52,25 @@ interface EntryRow {
   student_id: number;
   student_name: string;
   status: string;
+}
+
+interface StudentActionRow {
+  id: number;
+  name: string;
+  code: string;
+  description: string;
+  icon: string;
+  sequence: number;
+  is_active: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface EntryActionRow {
+  student_id: number;
+  action_id: number;
+  action_code: string;
+  action_name: string;
 }
 
 function toStudent(row: StudentRow): Student {
@@ -68,6 +97,21 @@ function toClass(row: ClassRow): AttendanceClass {
   };
 }
 
+function toStudentAction(row: StudentActionRow): StudentAction {
+  return {
+    id: row.id,
+    name: row.name,
+    code: row.code,
+    description: row.description,
+    icon: row.icon,
+    sequence: row.sequence,
+    // SQLite has no boolean; the column is 0/1.
+    isActive: row.is_active === 1,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 // Roster order, used by every list so the same class reads the same way on the
 // attendance sheet and on the printed report.
 const STUDENT_ORDER = "ORDER BY s.last_name COLLATE NOCASE, s.first_name COLLATE NOCASE, s.id";
@@ -76,6 +120,19 @@ const STUDENT_COLUMNS = `
   s.id, s.first_name, s.last_name, s.student_identifier, s.email, s.note,
   s.created_at, s.updated_at
 `;
+
+const RECORD_COLUMNS = `
+  id, class_id, class_name, attendance_date, recorded_at, session_label,
+  recorded_by_user_id
+`;
+
+const STUDENT_ACTION_COLUMNS = `
+  id, name, code, description, icon, sequence, is_active, created_at, updated_at
+`;
+
+// Picker order. Sequence first so a teacher can put Late above Extra Credit,
+// name as the tie-break so two actions left at the default 0 are still stable.
+const STUDENT_ACTION_ORDER = "ORDER BY sequence, name COLLATE NOCASE, id";
 
 // The real repository. Swap the database without touching any use-case.
 export class SqliteAttendanceRepository implements AttendanceRepository {
@@ -255,20 +312,129 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
   }
 
   // -------------------------------------------------------------------------
+  // Student actions (the catalog)
+  // -------------------------------------------------------------------------
+
+  listStudentActions(includeRetired: boolean): StudentAction[] {
+    const rows = this.db
+      .prepare(
+        `SELECT ${STUDENT_ACTION_COLUMNS}
+         FROM att_student_actions
+         ${includeRetired ? "" : "WHERE is_active = 1"}
+         ${STUDENT_ACTION_ORDER}`,
+      )
+      .all() as StudentActionRow[];
+    return rows.map(toStudentAction);
+  }
+
+  getStudentActionById(id: number): StudentAction | undefined {
+    const row = this.db
+      .prepare(`SELECT ${STUDENT_ACTION_COLUMNS} FROM att_student_actions WHERE id = ?`)
+      .get(id) as StudentActionRow | undefined;
+    return row ? toStudentAction(row) : undefined;
+  }
+
+  getStudentActionByCode(code: string): StudentAction | undefined {
+    // NOCASE to match the unique index: `l` and `L` are the same code, so the
+    // duplicate check has to agree with what the database will reject.
+    const row = this.db
+      .prepare(
+        `SELECT ${STUDENT_ACTION_COLUMNS} FROM att_student_actions WHERE code = ? COLLATE NOCASE`,
+      )
+      .get(code) as StudentActionRow | undefined;
+    return row ? toStudentAction(row) : undefined;
+  }
+
+  createStudentAction(input: StudentActionWriteData): StudentAction {
+    const result = this.db
+      .prepare(
+        `INSERT INTO att_student_actions (name, code, description, icon, sequence, is_active)
+         VALUES (@name, @code, @description, @icon, @sequence, @isActive)`,
+      )
+      .run({ ...input, isActive: input.isActive ? 1 : 0 });
+
+    const created = this.getStudentActionById(Number(result.lastInsertRowid));
+    if (!created) throw new Error("Failed to read back newly created student action.");
+    return created;
+  }
+
+  updateStudentAction(id: number, input: StudentActionWriteData): StudentAction {
+    this.db
+      .prepare(
+        `UPDATE att_student_actions
+         SET name = @name,
+             code = @code,
+             description = @description,
+             icon = @icon,
+             sequence = @sequence,
+             is_active = @isActive
+         WHERE id = @id`,
+      )
+      .run({ ...input, isActive: input.isActive ? 1 : 0, id });
+
+    const updated = this.getStudentActionById(id);
+    if (!updated) throw new Error(`Failed to read back updated student action ${id}.`);
+    return updated;
+  }
+
+  countRecordedUsesOfAction(id: number): number {
+    const row = this.db
+      .prepare(
+        "SELECT COUNT(*) AS used FROM att_attendance_entry_actions WHERE action_id = ?",
+      )
+      .get(id) as { used: number };
+    return row.used;
+  }
+
+  deleteStudentAction(id: number): void {
+    // Only ever called for an unused action — the use-case checks
+    // countRecordedUsesOfAction first and retires a used one instead. Recorded
+    // rows are left alone regardless: they carry their own code and name.
+    this.db.prepare("DELETE FROM att_student_actions WHERE id = ?").run(id);
+  }
+
+  // -------------------------------------------------------------------------
   // Attendance
   // -------------------------------------------------------------------------
 
-  getAttendanceRecord(classId: number, attendanceDate: string): AttendanceRecord | undefined {
-    const row = this.db
+  /**
+   * Every action recorded in one session, grouped by student.
+   *
+   * One query for the whole session rather than one per student: a register of 30
+   * would otherwise cost 30 reads to answer a question most of them answer with
+   * "none".
+   *
+   * Ordered by the catalog's own sequence via a join, so the chips on a student's
+   * line read in the same order as the picker they were chosen from. The join is
+   * a LEFT one because a retired-and-then-deleted catalog row must not drop a
+   * recorded action off a historical report.
+   */
+  private loadEntryActions(recordId: number): Map<number, RecordedStudentAction[]> {
+    const rows = this.db
       .prepare(
-        `SELECT id, class_id, class_name, attendance_date, recorded_at, recorded_by_user_id
-         FROM att_attendance_records
-         WHERE class_id = ? AND attendance_date = ?`,
+        `SELECT a.student_id, a.action_id, a.action_code, a.action_name
+         FROM att_attendance_entry_actions a
+         LEFT JOIN att_student_actions c ON c.id = a.action_id
+         WHERE a.attendance_record_id = ?
+         ORDER BY COALESCE(c.sequence, 0), a.action_name COLLATE NOCASE, a.id`,
       )
-      .get(classId, attendanceDate) as RecordRow | undefined;
+      .all(recordId) as EntryActionRow[];
 
-    if (!row) return undefined;
+    const byStudentId = new Map<number, RecordedStudentAction[]>();
+    for (const row of rows) {
+      const actions = byStudentId.get(row.student_id) ?? [];
+      actions.push({
+        actionId: row.action_id,
+        code: row.action_code,
+        name: row.action_name,
+      });
+      byStudentId.set(row.student_id, actions);
+    }
+    return byStudentId;
+  }
 
+  /** Reads one record's entries, in the same order every screen shows them. */
+  private loadEntries(recordId: number): AttendanceEntry[] {
     const entryRows = this.db
       .prepare(
         `SELECT student_id, student_name, status
@@ -276,60 +442,77 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
          WHERE attendance_record_id = ?
          ORDER BY student_name COLLATE NOCASE, student_id`,
       )
-      .all(row.id) as EntryRow[];
+      .all(recordId) as EntryRow[];
 
-    const entries: AttendanceEntry[] = entryRows.map((entry) => ({
+    const actionsByStudentId = this.loadEntryActions(recordId);
+
+    return entryRows.map((entry) => ({
       studentId: entry.student_id,
       studentName: entry.student_name,
       status: entry.status as AttendanceStatus,
+      actions: actionsByStudentId.get(entry.student_id) ?? [],
     }));
+  }
 
+  private toRecord(row: RecordRow): AttendanceRecord {
     return {
       id: row.id,
       classId: row.class_id,
       className: row.class_name,
       attendanceDate: row.attendance_date,
       recordedAt: row.recorded_at,
+      sessionLabel: row.session_label,
       recordedByUserId: row.recorded_by_user_id,
-      entries,
+      entries: this.loadEntries(row.id),
     };
+  }
+
+  getAttendanceRecordById(recordId: number): AttendanceRecord | undefined {
+    const row = this.db
+      .prepare(`SELECT ${RECORD_COLUMNS} FROM att_attendance_records WHERE id = ?`)
+      .get(recordId) as RecordRow | undefined;
+    return row ? this.toRecord(row) : undefined;
+  }
+
+  listAttendanceRecords(classId: number, attendanceDate: string): AttendanceRecord[] {
+    const rows = this.db
+      .prepare(
+        `SELECT ${RECORD_COLUMNS}
+         FROM att_attendance_records
+         WHERE class_id = ? AND attendance_date = ?
+         ORDER BY recorded_at DESC, id DESC`,
+      )
+      .all(classId, attendanceDate) as RecordRow[];
+    return rows.map((row) => this.toRecord(row));
   }
 
   saveAttendance(
     input: SaveAttendanceData,
     className: string,
     studentNames: Map<number, string>,
+    actionsById: Map<number, StudentAction>,
   ): AttendanceRecord {
     const recordedAt = new Date().toISOString();
+    // HH:MM out of the ISO timestamp, stored so a picker can label the session
+    // without re-parsing. Same slice the 0049 backfill uses.
+    const sessionLabel = recordedAt.slice(11, 16);
 
-    // Delete-then-insert in ONE transaction. Re-taking attendance overwrites the
-    // day's record, and doing it in two statements outside a transaction could
-    // leave the day with the old record gone and no new one written.
+    // Append, never replace: a class may be registered several times a day, so
+    // an afternoon register must not overwrite the morning's. Still one
+    // transaction, so a failure can't leave a record with no entries.
     const write = this.db.transaction(() => {
-      const existing = this.db
-        .prepare(
-          "SELECT id FROM att_attendance_records WHERE class_id = ? AND attendance_date = ?",
-        )
-        .get(input.classId, input.attendanceDate) as { id: number } | undefined;
-
-      if (existing) {
-        this.db
-          .prepare("DELETE FROM att_attendance_entries WHERE attendance_record_id = ?")
-          .run(existing.id);
-        this.db.prepare("DELETE FROM att_attendance_records WHERE id = ?").run(existing.id);
-      }
-
       const result = this.db
         .prepare(
           `INSERT INTO att_attendance_records
-             (class_id, class_name, attendance_date, recorded_at, recorded_by_user_id)
-           VALUES (@classId, @className, @attendanceDate, @recordedAt, @recordedByUserId)`,
+             (class_id, class_name, attendance_date, recorded_at, session_label, recorded_by_user_id)
+           VALUES (@classId, @className, @attendanceDate, @recordedAt, @sessionLabel, @recordedByUserId)`,
         )
         .run({
           classId: input.classId,
           className,
           attendanceDate: input.attendanceDate,
           recordedAt,
+          sessionLabel,
           recordedByUserId: input.recordedByUserId,
         });
 
@@ -340,6 +523,15 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
          VALUES (?, ?, ?, ?)`,
       );
 
+      // The action's code and name are captured here, from the catalog rows the
+      // use-case resolved — so renaming "Extra Credit" later doesn't rewrite a
+      // report that has already been printed.
+      const insertEntryAction = this.db.prepare(
+        `INSERT INTO att_attendance_entry_actions
+           (attendance_record_id, student_id, action_id, action_code, action_name)
+         VALUES (?, ?, ?, ?, ?)`,
+      );
+
       for (const entry of input.entries) {
         insertEntry.run(
           recordId,
@@ -347,25 +539,57 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
           studentNames.get(entry.studentId) ?? `Student ${entry.studentId}`,
           entry.status,
         );
+
+        for (const actionId of entry.actionIds) {
+          const action = actionsById.get(actionId);
+          // The use-case has already rejected an unknown id, so a miss here would
+          // be a caller that bypassed it. Skipping beats writing a row whose code
+          // is a placeholder no report can explain.
+          if (!action) continue;
+          insertEntryAction.run(recordId, entry.studentId, action.id, action.code, action.name);
+        }
       }
+
+      return recordId;
     });
 
-    write();
+    const recordId = write();
 
-    const saved = this.getAttendanceRecord(input.classId, input.attendanceDate);
+    const saved = this.getAttendanceRecordById(recordId);
     if (!saved) throw new Error("Failed to read back the saved attendance record.");
     return saved;
   }
 
-  listRecordDatesForClass(classId: number): string[] {
+  listSessionsForClass(classId: number): AttendanceSessionSummary[] {
+    // Counts come from a grouped join rather than N per-record reads — the
+    // picker needs a label per session, not their entries.
     const rows = this.db
       .prepare(
-        `SELECT attendance_date
-         FROM att_attendance_records
-         WHERE class_id = ?
-         ORDER BY attendance_date DESC`,
+        `SELECT r.id,
+                r.attendance_date,
+                r.session_label,
+                COALESCE(SUM(CASE WHEN e.status = 'present' THEN 1 ELSE 0 END), 0) AS present_count,
+                COALESCE(SUM(CASE WHEN e.status = 'absent'  THEN 1 ELSE 0 END), 0) AS absent_count
+         FROM att_attendance_records r
+         LEFT JOIN att_attendance_entries e ON e.attendance_record_id = r.id
+         WHERE r.class_id = ?
+         GROUP BY r.id
+         ORDER BY r.attendance_date DESC, r.recorded_at DESC, r.id DESC`,
       )
-      .all(classId) as { attendance_date: string }[];
-    return rows.map((row) => row.attendance_date);
+      .all(classId) as {
+      id: number;
+      attendance_date: string;
+      session_label: string;
+      present_count: number;
+      absent_count: number;
+    }[];
+
+    return rows.map((row) => ({
+      recordId: row.id,
+      attendanceDate: row.attendance_date,
+      sessionLabel: row.session_label,
+      presentCount: row.present_count,
+      absentCount: row.absent_count,
+    }));
   }
 }

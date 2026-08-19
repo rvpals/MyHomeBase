@@ -1,7 +1,11 @@
 /**
- * Whether a student was there. Two states by design: everyone starts absent and
- * tapping a name marks them present, so a saved record always accounts for every
- * enrolled student rather than leaving "not marked" ambiguous.
+ * Whether a student was there.
+ *
+ * Two stored states, and no "unmarked": the register **starts with nobody
+ * marked**, but that is a screen state rather than a stored one — at save time
+ * anyone not marked present is written `absent`. So a saved session still
+ * accounts for every enrolled student, and "left blank" and "explicitly absent"
+ * are deliberately the same fact.
  */
 export const ATTENDANCE_STATUSES = ["present", "absent"] as const;
 
@@ -20,6 +24,51 @@ export interface Student {
   note: string;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * One entry in the teacher-editable catalog of things that can be noted about a
+ * student on the day — "Late", "Extra Credit".
+ *
+ * Separate from `AttendanceStatus`, which answers the one question the register
+ * exists to answer. An action is orthogonal to it: a student can be present and
+ * late, present and earning credit, or present and neither.
+ */
+export interface StudentAction {
+  id: number;
+  /** What it is called in the picker. */
+  name: string;
+  /** The short form a report shows — `L`, `EC`. Unique, case-insensitively. */
+  code: string;
+  /** Empty when unrecorded. */
+  description: string;
+  /**
+   * A key into `ATTENDANCE_ACTION_ICONS`. Empty, or a key the current set
+   * doesn't know, draws nothing — a catalog row can outlive a glyph.
+   */
+  icon: string;
+  /** Order in the picker. Ties break on name. */
+  sequence: number;
+  /**
+   * Whether it appears in the picker. A retired action stays readable in the
+   * sessions that already recorded it.
+   */
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * One action as it was recorded against a student in a saved session.
+ *
+ * `code` and `name` are the values captured at save time, not a live lookup —
+ * same reasoning as `studentName` below. `actionId` is kept alongside them so a
+ * tally across sessions can count the current catalog row even after a rename.
+ */
+export interface RecordedStudentAction {
+  actionId: number;
+  code: string;
+  name: string;
 }
 
 /** A class a teacher takes attendance for. */
@@ -44,6 +93,12 @@ export interface AttendanceEntry {
   studentId: number;
   studentName: string;
   status: AttendanceStatus;
+  /**
+   * The actions noted for this student in this session, in catalog order. Empty
+   * for most students in most sessions — being late is the exception, not the
+   * rule.
+   */
+  actions: RecordedStudentAction[];
 }
 
 /**
@@ -60,6 +115,13 @@ export interface AttendanceRecord {
   attendanceDate: string;
   /** Full ISO timestamp of the save. */
   recordedAt: string;
+  /**
+   * `HH:MM`, derived from `recordedAt` when the session was saved.
+   *
+   * Stored rather than re-derived because a class may be registered several
+   * times a day, so this is what distinguishes two sessions in a picker.
+   */
+  sessionLabel: string;
   recordedByUserId: number;
   entries: AttendanceEntry[];
 }
@@ -74,21 +136,51 @@ export interface AttendanceSheet {
   attendanceDate: string;
   students: Student[];
   /**
-   * The existing record for this class and date, when there is one. Its
-   * presence is what tells the UI that saving will overwrite rather than
-   * create.
+   * Sessions already saved for this class and date, newest first.
+   *
+   * Saving never replaces one of these — each save is its own session — so this
+   * is shown as history rather than as a warning. Empty on a day not yet
+   * registered.
    */
-  existingRecord?: AttendanceRecord;
+  sessions: AttendanceRecord[];
 }
 
-/** The roll-up a report shows for one class on one date. */
+/** The roll-up a report shows for one saved session. */
 export interface AttendanceReport {
+  /** The session this reports on — a date alone no longer identifies one. */
+  recordId: number;
   classId: number;
   className: string;
   attendanceDate: string;
   recordedAt: string;
+  sessionLabel: string;
   presentCount: number;
   absentCount: number;
   /** Every student's line, present and absent alike, in roster order. */
   entries: AttendanceEntry[];
+  /**
+   * How many students picked up each action in this session, in catalog order.
+   *
+   * Derived from `entries` rather than queried, so it can never disagree with the
+   * lines printed underneath it. Only actions that actually occurred appear — a
+   * tally of zeroes for every action the catalog holds is noise on a report.
+   */
+  actionTallies: AttendanceActionTally[];
+}
+
+/** One action's count within a session. */
+export interface AttendanceActionTally {
+  actionId: number;
+  code: string;
+  name: string;
+  count: number;
+}
+
+/** One session in a picker: enough to label it, without its entries. */
+export interface AttendanceSessionSummary {
+  recordId: number;
+  attendanceDate: string;
+  sessionLabel: string;
+  presentCount: number;
+  absentCount: number;
 }

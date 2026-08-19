@@ -1,5 +1,16 @@
-import type { ClassWriteData, SaveAttendanceData, StudentWriteData } from "./schema";
-import type { AttendanceClass, AttendanceRecord, Student } from "./types";
+import type {
+  ClassWriteData,
+  SaveAttendanceData,
+  StudentActionWriteData,
+  StudentWriteData,
+} from "./schema";
+import type {
+  AttendanceClass,
+  AttendanceRecord,
+  AttendanceSessionSummary,
+  Student,
+  StudentAction,
+} from "./types";
 
 // The use-cases depend on THIS interface, not on a concrete database.
 // That is what lets the web app, the CLI, and tests each supply their own.
@@ -31,14 +42,54 @@ export interface AttendanceRepository {
   enrollStudents(classId: number, studentIds: number[]): number;
   removeStudentFromClass(classId: number, studentId: number): void;
 
-  // Attendance
-  getAttendanceRecord(classId: number, attendanceDate: string): AttendanceRecord | undefined;
+  // Student actions (the catalog)
   /**
-   * Writes the session, replacing any existing record for the same class and
-   * date. Must be atomic: the delete and the insert are one transaction, or a
-   * failed save would leave the day with no attendance at all.
+   * The catalog in picker order. `includeRetired` is for the management screen,
+   * which has to show a retired action to un-retire it; every other caller wants
+   * only what a teacher can currently pick.
    */
-  saveAttendance(input: SaveAttendanceData, className: string, studentNames: Map<number, string>): AttendanceRecord;
-  /** Every record for a class, newest first. Used by the report's date picker. */
-  listRecordDatesForClass(classId: number): string[];
+  listStudentActions(includeRetired: boolean): StudentAction[];
+  getStudentActionById(id: number): StudentAction | undefined;
+  getStudentActionByCode(code: string): StudentAction | undefined;
+  createStudentAction(input: StudentActionWriteData): StudentAction;
+  updateStudentAction(id: number, input: StudentActionWriteData): StudentAction;
+  /** How many recorded rows reference this action, across every session. */
+  countRecordedUsesOfAction(id: number): number;
+  /**
+   * Removes an action that has never been recorded. A used one must be retired
+   * instead (`isActive: false`) — the recorded rows carry only its code and name,
+   * so deleting the catalog row would leave past sessions half-described.
+   */
+  deleteStudentAction(id: number): void;
+
+  // Attendance
+  /** One saved session by its id. A date alone no longer identifies one. */
+  getAttendanceRecordById(recordId: number): AttendanceRecord | undefined;
+  /**
+   * Every session for a class on a date, newest first. Usually one; more when
+   * the class was registered again the same day.
+   */
+  listAttendanceRecords(classId: number, attendanceDate: string): AttendanceRecord[];
+  /**
+   * Appends a session. **Never replaces one** — a class may be registered
+   * several times a day, and an afternoon register must not overwrite the
+   * morning's. The record and its entries are still one transaction, so a
+   * failure can't leave a session with no entries.
+   */
+  saveAttendance(
+    input: SaveAttendanceData,
+    className: string,
+    studentNames: Map<number, string>,
+    /**
+     * The catalog rows the entries' `actionIds` name, so the write can capture
+     * each action's code and name as they are now. Resolved by the use-case,
+     * which has already validated that every id exists.
+     */
+    actionsById: Map<number, StudentAction>,
+  ): AttendanceRecord;
+  /**
+   * Every session a class has, newest first — what the report's picker lists.
+   * Carries the counts so the picker can label each one without a second read.
+   */
+  listSessionsForClass(classId: number): AttendanceSessionSummary[];
 }

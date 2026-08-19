@@ -6,11 +6,15 @@
 // the client views. Mirrors journal-section.tsx and expense-section.tsx.
 
 import { CollapsibleCard } from "@/components/collapsible-card";
+import { Comments } from "@/components/comments";
 import {
   getAttendanceReport,
+  getAttendanceReportById,
   getAttendanceSheet,
   listClasses,
   listRecordDatesForClass,
+  listSessionsForClass,
+  listStudentActions,
   listStudents,
   listStudentsInClass,
   resolveAttendanceSettings,
@@ -20,6 +24,7 @@ import { listModuleSettingsFor } from "@/lib/module-settings";
 import { getModuleBySlug } from "@/lib/modules";
 import { todayIsoLocal } from "@/lib/shared/date";
 import { deps } from "@/lib/wiring";
+import { AttendanceActionsView } from "./attendance-actions-view";
 import { AttendanceClassesView } from "./attendance-classes-view";
 import { AttendanceConfigurationView } from "./attendance-configuration-view";
 import { AttendanceHomeView } from "./attendance-home-view";
@@ -62,10 +67,12 @@ function SectionBody({
   section,
   requestedClassId,
   requestedDate,
+  requestedRecordId,
 }: {
   section: AttendanceSection;
   requestedClassId?: number;
   requestedDate?: string;
+  requestedRecordId?: number;
 }) {
   switch (section) {
     case "main": {
@@ -90,6 +97,9 @@ function SectionBody({
               ? getAttendanceSheet(deps.attendanceRepo, selectedClassId, today)
               : undefined
           }
+          // Only pickable actions: the register must not offer one the teacher
+          // has retired. The management screen asks for the retired ones too.
+          actions={listStudentActions(deps.attendanceRepo)}
           selectedClassId={selectedClassId}
           today={today}
         />
@@ -122,6 +132,13 @@ function SectionBody({
       );
     }
 
+    case "actions":
+      return (
+        <AttendanceActionsView
+          actions={listStudentActions(deps.attendanceRepo, { includeRetired: true })}
+        />
+      );
+
     case "report": {
       const classes = listClasses(deps.attendanceRepo);
       const settings = loadSettings();
@@ -131,9 +148,10 @@ function SectionBody({
         settings.defaultClassId,
       );
 
-      const recordedDates = selectedClassId
-        ? listRecordDatesForClass(deps.attendanceRepo, selectedClassId)
+      const sessions = selectedClassId
+        ? listSessionsForClass(deps.attendanceRepo, selectedClassId)
         : [];
+      const recordedDates = [...new Set(sessions.map((session) => session.attendanceDate))];
 
       // The URL wins; otherwise today, unless the reader has asked for the most
       // recent day with attendance instead.
@@ -143,20 +161,37 @@ function SectionBody({
           : recordedDates[0];
       const selectedDate = requestedDate ?? fallbackDate;
 
+      const sessionsOnDate = sessions.filter(
+        (session) => session.attendanceDate === selectedDate,
+      );
+
+      // A specific session if the URL names one *and* it belongs to the selected
+      // class and date — otherwise the day's latest. Checking membership rather
+      // than trusting the id stops a hand-edited URL reporting another class's
+      // register under this class's heading.
+      const requestedSession =
+        requestedRecordId !== undefined &&
+        sessionsOnDate.some((session) => session.recordId === requestedRecordId)
+          ? requestedRecordId
+          : undefined;
+
+      const report = !selectedClassId
+        ? undefined
+        : requestedSession !== undefined
+          ? getAttendanceReportById(deps.attendanceRepo, requestedSession)
+          : getAttendanceReport(deps.attendanceRepo, {
+              classId: selectedClassId,
+              attendanceDate: selectedDate,
+            });
+
       return (
         <AttendanceReportView
           classes={classes}
-          report={
-            selectedClassId
-              ? getAttendanceReport(deps.attendanceRepo, {
-                  classId: selectedClassId,
-                  attendanceDate: selectedDate,
-                })
-              : undefined
-          }
+          report={report}
           selectedClassId={selectedClassId}
           selectedDate={selectedDate}
           recordedDates={recordedDates}
+          sessionsOnDate={sessionsOnDate}
         />
       );
     }
@@ -178,12 +213,15 @@ export function AttendanceSection({
   section,
   requestedClassId,
   requestedDate,
+  requestedRecordId,
 }: {
   section: AttendanceSection;
   /** From ?classId= — which class the home screen and report open on. */
   requestedClassId?: number;
   /** From ?date= — which day the report shows. */
   requestedDate?: string;
+  /** From ?recordId= — which of the day's sessions the report shows. */
+  requestedRecordId?: number;
 }) {
   // Defensive: an unknown section would otherwise crash on info.label. The route
   // already validates, so this only catches a future caller getting it wrong.
@@ -201,23 +239,41 @@ export function AttendanceSection({
       nav="attendance"
       module={appModule && { name: appModule.shortName, icon: appModule.icon }}
     >
-      <h2 className="font-display text-2xl font-semibold text-ink">{info.label}</h2>
+      <h2 className="flex items-center gap-2 font-display text-2xl font-semibold text-ink">
+        {info.label}
+        {/* On the home screen the instruction rides beside the title as a chip
+            rather than filling a card above the register. The register is the
+            reason a teacher is on this screen every morning, and after the first
+            week the guidance is read once and then in the way — a chip costs a
+            line of nothing and keeps the register at the top of the page. Every
+            other section keeps the card, where the copy is genuinely reference
+            material rather than a reminder. */}
+        {section === "main" && (
+          <Comments
+            title="Instruction"
+            content={<AttendanceInstructions section={section} />}
+          />
+        )}
+      </h2>
       <p className="mt-1 text-sm text-muted">{info.description}</p>
       <div className="mt-3 h-px w-full bg-line" />
 
       {/* No `no-print` needed: everything outside `.print-sheet` is already
           hidden by the @media print block in globals.css. */}
-      <div className="mt-6">
-        <CollapsibleCard title="Instruction">
-          <AttendanceInstructions section={section} />
-        </CollapsibleCard>
-      </div>
+      {section !== "main" && (
+        <div className="mt-6">
+          <CollapsibleCard title="Instruction">
+            <AttendanceInstructions section={section} />
+          </CollapsibleCard>
+        </div>
+      )}
 
       <div className="mt-6">
         <SectionBody
           section={section}
           requestedClassId={requestedClassId}
           requestedDate={requestedDate}
+          requestedRecordId={requestedRecordId}
         />
       </div>
     </SectionLayout>

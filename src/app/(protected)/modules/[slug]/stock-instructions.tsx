@@ -318,6 +318,33 @@ function AccountsInstructions() {
           you want the shape of the trend rather than the individual readings.
         </p>
       </Section>
+      <Section title="Instrument">
+        <p>
+          The chips above the chart are the instrument panel — the card has no separate legend,
+          because two controls where one does nothing is worse than one that works. Each chip is an
+          account: filled means plotted, outlined means dropped. The dot carries that
+          account&apos;s line colour, and the figure beside the name is its change across every
+          record it has.
+        </p>
+        <p>
+          It opens with the <strong className="text-ink">first account only</strong>. Overlaying
+          everything at once is unreadable past a few accounts, and the largest balance flattens the
+          rest against the axis — so start with one line and click in the accounts you actually want
+          to compare. Your selection then stays put; it isn&apos;t reset when the data reloads.
+        </p>
+        <p>
+          Selection drives the whole card, not just the chart. The table columns, the{" "}
+          <strong className="text-ink">Total recorded</strong> figure, and the CSV export all follow
+          the same chips, so a number you read is always a number you can see. Drop every account and
+          the chart steps aside and tells you so rather than drawing an empty grid.
+        </p>
+        <p>
+          To read one account&apos;s balance history in detail, leave it as the only chip selected —
+          the end-of-line label is its latest value, and the table beneath lists newest first. To
+          compare, add a second chip and watch the gap rather than the absolute levels; accounts
+          reporting on different schedules will step at different dates.
+        </p>
+      </Section>
     </>
   );
 }

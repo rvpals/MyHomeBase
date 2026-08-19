@@ -2,21 +2,34 @@ import { describe, expect, it } from "vitest";
 import {
   addStudent,
   createClass,
+  createStudentAction,
+  deleteStudentAction,
   enrollStudents,
   formatStudentName,
   getAttendanceReport,
+  getAttendanceReportById,
   getAttendanceSheet,
+  getStudentActionById,
   listClasses,
   listRecordDatesForClass,
+  listSessionsForClass,
+  listStudentActions,
   listStudentsInClass,
   removeStudentFromClass,
   saveAttendance,
+  setStudentActionActive,
   updateClass,
   updateStudent,
+  updateStudentAction,
 } from "./attendance";
 import type { AttendanceRepository } from "./ports";
-import type { ClassWriteData, SaveAttendanceData, StudentWriteData } from "./schema";
-import type { AttendanceClass, AttendanceRecord, Student } from "./types";
+import type {
+  ClassWriteData,
+  SaveAttendanceData,
+  StudentActionWriteData,
+  StudentWriteData,
+} from "./schema";
+import type { AttendanceClass, AttendanceRecord, Student, StudentAction } from "./types";
 
 // Hand-written in-memory fake — no mocking framework, reusable across tests.
 function fakeRepo(): AttendanceRepository {
@@ -24,12 +37,15 @@ function fakeRepo(): AttendanceRepository {
   const classes = new Map<number, AttendanceClass>();
   // classId -> the ids enrolled, insertion-ordered.
   const enrollments = new Map<number, Set<number>>();
-  // `${classId}:${date}` -> the saved record.
-  const records = new Map<string, AttendanceRecord>();
+  // Every saved session, insertion-ordered. A list rather than a map keyed on
+  // class+date, because a class may now be registered several times a day.
+  const records: AttendanceRecord[] = [];
+  const studentActions = new Map<number, StudentAction>();
 
   let nextStudentId = 1;
   let nextClassId = 1;
   let nextRecordId = 1;
+  let nextActionId = 1;
 
   const rosterOrder = (a: Student, b: Student) =>
     a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName) || a.id - b.id;
@@ -123,35 +139,121 @@ function fakeRepo(): AttendanceRepository {
       enrollments.get(classId)?.delete(studentId);
     },
 
-    getAttendanceRecord(classId, attendanceDate) {
-      return records.get(`${classId}:${attendanceDate}`);
+    listStudentActions(includeRetired) {
+      return [...studentActions.values()]
+        .filter((action) => includeRetired || action.isActive)
+        .sort(
+          (a, b) => a.sequence - b.sequence || a.name.localeCompare(b.name) || a.id - b.id,
+        );
     },
-    saveAttendance(input: SaveAttendanceData, className, studentNames) {
+    getStudentActionById(id) {
+      return studentActions.get(id);
+    },
+    getStudentActionByCode(code) {
+      // Case-insensitive, matching the real repository's NOCASE index.
+      return [...studentActions.values()].find(
+        (action) => action.code.toLowerCase() === code.toLowerCase(),
+      );
+    },
+    createStudentAction(input: StudentActionWriteData) {
+      const created: StudentAction = {
+        id: nextActionId++,
+        ...input,
+        createdAt: "2026-08-16T09:00:00Z",
+        updatedAt: "2026-08-16T09:00:00Z",
+      };
+      studentActions.set(created.id, created);
+      return created;
+    },
+    updateStudentAction(id, input: StudentActionWriteData) {
+      const existing = studentActions.get(id)!;
+      const updated = { ...existing, ...input, updatedAt: "2026-08-16T10:00:00Z" };
+      studentActions.set(id, updated);
+      return updated;
+    },
+    countRecordedUsesOfAction(id) {
+      return records
+        .flatMap((record) => record.entries)
+        .flatMap((entry) => entry.actions)
+        .filter((action) => action.actionId === id).length;
+    },
+    deleteStudentAction(id) {
+      studentActions.delete(id);
+    },
+
+    getAttendanceRecordById(recordId) {
+      return records.find((record) => record.id === recordId);
+    },
+    listAttendanceRecords(classId, attendanceDate) {
+      // Newest first, matching the real repository's ORDER BY.
+      return records
+        .filter(
+          (record) => record.classId === classId && record.attendanceDate === attendanceDate,
+        )
+        .sort((a, b) => b.id - a.id);
+    },
+    saveAttendance(input: SaveAttendanceData, className, studentNames, actionsById) {
+      // A distinct minute per save, so sessionLabel and the newest-first
+      // ordering are observable in tests.
+      const minute = String(30 + records.length).padStart(2, "0");
+      const recordedAt = `2026-08-16T14:${minute}:00Z`;
       const record: AttendanceRecord = {
         id: nextRecordId++,
         classId: input.classId,
         className,
         attendanceDate: input.attendanceDate,
-        recordedAt: "2026-08-16T14:30:00Z",
+        recordedAt,
+        sessionLabel: recordedAt.slice(11, 16),
         recordedByUserId: input.recordedByUserId,
         entries: input.entries.map((entry) => ({
           studentId: entry.studentId,
           studentName: studentNames.get(entry.studentId) ?? `Student ${entry.studentId}`,
           status: entry.status,
+          // Code and name captured from the catalog at save time, the way the
+          // real repository stores them on the row.
+          actions: entry.actionIds.flatMap((actionId) => {
+            const action = actionsById.get(actionId);
+            return action ? [{ actionId: action.id, code: action.code, name: action.name }] : [];
+          }),
         })),
       };
-      // Keyed on class+date, so a second save for the same day replaces the
-      // first — the same overwrite the unique index enforces for real.
-      records.set(`${input.classId}:${input.attendanceDate}`, record);
+      // Appends. Saving again for the same class and date is a second session,
+      // not a replacement — the unique index that used to forbid that is gone
+      // (migration 0049).
+      records.push(record);
       return record;
     },
-    listRecordDatesForClass(classId) {
-      return [...records.values()]
+    listSessionsForClass(classId) {
+      return records
         .filter((record) => record.classId === classId)
-        .map((record) => record.attendanceDate)
-        .sort((a, b) => b.localeCompare(a));
+        .sort((a, b) => b.attendanceDate.localeCompare(a.attendanceDate) || b.id - a.id)
+        .map((record) => ({
+          recordId: record.id,
+          attendanceDate: record.attendanceDate,
+          sessionLabel: record.sessionLabel,
+          presentCount: record.entries.filter((e) => e.status === "present").length,
+          absentCount: record.entries.filter((e) => e.status === "absent").length,
+        }));
     },
   };
+}
+
+/** The two actions the migration seeds, for the tests that need a catalog. */
+function seedActions(repo: AttendanceRepository) {
+  const late = createStudentAction(repo, {
+    name: "Late",
+    code: "L",
+    description: "Being late to class.",
+    icon: "turtle",
+    sequence: 1,
+  });
+  const extraCredit = createStudentAction(repo, {
+    name: "Extra Credit",
+    code: "EC",
+    icon: "dollar-plus",
+    sequence: 2,
+  });
+  return { late, extraCredit };
 }
 
 /** A repo with one class and three students already enrolled. */
@@ -335,17 +437,17 @@ describe("enrollStudents", () => {
 });
 
 describe("getAttendanceSheet", () => {
-  it("returns the enrolled students and no existing record for a fresh day", () => {
+  it("returns the enrolled students and no sessions for a fresh day", () => {
     const { repo, mathClass } = seededRepo();
 
     const sheet = getAttendanceSheet(repo, mathClass.id, "2026-08-16");
 
     expect(sheet.className).toBe("Math 101");
     expect(sheet.students).toHaveLength(3);
-    expect(sheet.existingRecord).toBeUndefined();
+    expect(sheet.sessions).toEqual([]);
   });
 
-  it("returns the existing record once attendance has been taken", () => {
+  it("lists the day's sessions once attendance has been taken", () => {
     const { repo, mathClass, ava, ben, chi } = seededRepo();
     saveAttendance(repo, {
       classId: mathClass.id,
@@ -359,7 +461,29 @@ describe("getAttendanceSheet", () => {
     });
 
     const sheet = getAttendanceSheet(repo, mathClass.id, "2026-08-16");
-    expect(sheet.existingRecord?.entries).toHaveLength(3);
+    expect(sheet.sessions).toHaveLength(1);
+    expect(sheet.sessions[0].entries).toHaveLength(3);
+  });
+
+  it("lists several sessions newest first", () => {
+    const { repo, mathClass, ava, ben, chi } = seededRepo();
+    const everyone = [ava, ben, chi];
+
+    for (let index = 0; index < 3; index += 1) {
+      saveAttendance(repo, {
+        classId: mathClass.id,
+        attendanceDate: "2026-08-16",
+        recordedByUserId: 1,
+        entries: everyone.map((student) => ({
+          studentId: student.id,
+          status: "present" as const,
+        })),
+      });
+    }
+
+    const sheet = getAttendanceSheet(repo, mathClass.id, "2026-08-16");
+    expect(sheet.sessions).toHaveLength(3);
+    expect(sheet.sessions[0].id).toBeGreaterThan(sheet.sessions[2].id);
   });
 
   it("rejects an unknown class", () => {
@@ -389,7 +513,56 @@ describe("saveAttendance", () => {
     expect(record.entries.find((entry) => entry.studentId === ava.id)?.studentName).toBe("Ava Chen");
   });
 
-  it("overwrites an earlier save for the same class and date", () => {
+  it("keeps a second save for the same day as its own session", () => {
+    const { repo, mathClass, ava, ben, chi } = seededRepo();
+    const everyone = [ava, ben, chi];
+
+    const morning = saveAttendance(repo, {
+      classId: mathClass.id,
+      attendanceDate: "2026-08-16",
+      recordedByUserId: 1,
+      entries: everyone.map((student) => ({ studentId: student.id, status: "absent" as const })),
+    });
+
+    const afternoon = saveAttendance(repo, {
+      classId: mathClass.id,
+      attendanceDate: "2026-08-16",
+      recordedByUserId: 1,
+      entries: everyone.map((student) => ({ studentId: student.id, status: "present" as const })),
+    });
+
+    // Two sessions, and the morning's register survives the afternoon's.
+    expect(afternoon.id).not.toBe(morning.id);
+    expect(listSessionsForClass(repo, mathClass.id)).toHaveLength(2);
+    expect(getAttendanceReportById(repo, morning.id)?.absentCount).toBe(3);
+    expect(getAttendanceReportById(repo, afternoon.id)?.presentCount).toBe(3);
+
+    // The date list still shows the day once, not twice.
+    expect(listRecordDatesForClass(repo, mathClass.id)).toEqual(["2026-08-16"]);
+  });
+
+  it("labels each session with its HH:MM", () => {
+    const { repo, mathClass, ava, ben, chi } = seededRepo();
+    const everyone = [ava, ben, chi];
+
+    const first = saveAttendance(repo, {
+      classId: mathClass.id,
+      attendanceDate: "2026-08-16",
+      recordedByUserId: 1,
+      entries: everyone.map((student) => ({ studentId: student.id, status: "present" as const })),
+    });
+    const second = saveAttendance(repo, {
+      classId: mathClass.id,
+      attendanceDate: "2026-08-16",
+      recordedByUserId: 1,
+      entries: everyone.map((student) => ({ studentId: student.id, status: "present" as const })),
+    });
+
+    expect(first.sessionLabel).toMatch(/^\d{2}:\d{2}$/);
+    expect(second.sessionLabel).not.toBe(first.sessionLabel);
+  });
+
+  it("reports the latest session when asked by date alone", () => {
     const { repo, mathClass, ava, ben, chi } = seededRepo();
     const everyone = [ava, ben, chi];
 
@@ -399,7 +572,6 @@ describe("saveAttendance", () => {
       recordedByUserId: 1,
       entries: everyone.map((student) => ({ studentId: student.id, status: "absent" as const })),
     });
-
     saveAttendance(repo, {
       classId: mathClass.id,
       attendanceDate: "2026-08-16",
@@ -407,14 +579,12 @@ describe("saveAttendance", () => {
       entries: everyone.map((student) => ({ studentId: student.id, status: "present" as const })),
     });
 
+    // "Print today" means the most recent register, not the first.
     const report = getAttendanceReport(repo, {
       classId: mathClass.id,
       attendanceDate: "2026-08-16",
     });
     expect(report?.presentCount).toBe(3);
-    expect(report?.absentCount).toBe(0);
-    // One record for the day, not two.
-    expect(listRecordDatesForClass(repo, mathClass.id)).toEqual(["2026-08-16"]);
   });
 
   it("keeps a different date as its own record", () => {
@@ -605,5 +775,266 @@ describe("getAttendanceReport", () => {
     expect(() =>
       getAttendanceReport(repo, { classId: mathClass.id, attendanceDate: "16/08/2026" }),
     ).toThrow(/YYYY-MM-DD/);
+  });
+});
+
+describe("createStudentAction", () => {
+  it("creates an action, uppercasing the code and defaulting the rest", () => {
+    const repo = fakeRepo();
+    const action = createStudentAction(repo, { name: "Late", code: " l ", icon: "turtle" });
+
+    expect(action.code).toBe("L");
+    expect(action.description).toBe("");
+    expect(action.sequence).toBe(0);
+    expect(action.isActive).toBe(true);
+  });
+
+  it("allows a blank icon — the code alone is a legitimate chip", () => {
+    const repo = fakeRepo();
+    expect(createStudentAction(repo, { name: "Note", code: "N" }).icon).toBe("");
+  });
+
+  it("rejects a blank name and a blank code", () => {
+    const repo = fakeRepo();
+    expect(() => createStudentAction(repo, { name: "  ", code: "L" })).toThrow();
+    expect(() => createStudentAction(repo, { name: "Late", code: " " })).toThrow();
+  });
+
+  it("rejects a code longer than a code should be", () => {
+    const repo = fakeRepo();
+    expect(() => createStudentAction(repo, { name: "Late", code: "VERYLONG" })).toThrow();
+  });
+
+  it("rejects an icon that is not in the menu", () => {
+    const repo = fakeRepo();
+    expect(() =>
+      createStudentAction(repo, { name: "Late", code: "L", icon: "rocket" as never }),
+    ).toThrow();
+  });
+
+  it("rejects a duplicate code, case-insensitively", () => {
+    const repo = fakeRepo();
+    createStudentAction(repo, { name: "Late", code: "L" });
+
+    expect(() => createStudentAction(repo, { name: "Left early", code: "l" })).toThrow(
+      /already used by "Late"/,
+    );
+  });
+});
+
+describe("listStudentActions", () => {
+  it("returns the catalog in picker order and hides retired actions by default", () => {
+    const repo = fakeRepo();
+    const { late } = seedActions(repo);
+    setStudentActionActive(repo, late.id, false);
+
+    expect(listStudentActions(repo).map((action) => action.code)).toEqual(["EC"]);
+    expect(listStudentActions(repo, { includeRetired: true }).map((a) => a.code)).toEqual([
+      "L",
+      "EC",
+    ]);
+  });
+});
+
+describe("updateStudentAction", () => {
+  it("lets an action keep its own code", () => {
+    const repo = fakeRepo();
+    const { late } = seedActions(repo);
+
+    const renamed = updateStudentAction(repo, late.id, { name: "Tardy", code: "L" });
+    expect(renamed.name).toBe("Tardy");
+  });
+
+  it("rejects taking another action's code", () => {
+    const repo = fakeRepo();
+    const { late } = seedActions(repo);
+
+    expect(() => updateStudentAction(repo, late.id, { name: "Late", code: "EC" })).toThrow(
+      /already used by "Extra Credit"/,
+    );
+  });
+
+  it("rejects an unknown id", () => {
+    const repo = fakeRepo();
+    expect(() => updateStudentAction(repo, 99, { name: "Late", code: "L" })).toThrow(
+      /No student action with the id 99/,
+    );
+  });
+});
+
+describe("setStudentActionActive", () => {
+  it("retires an action and brings it back without touching its other fields", () => {
+    const repo = fakeRepo();
+    const { late } = seedActions(repo);
+
+    const retired = setStudentActionActive(repo, late.id, false);
+    expect(retired.isActive).toBe(false);
+    expect(retired.icon).toBe("turtle");
+    expect(retired.description).toBe("Being late to class.");
+
+    expect(setStudentActionActive(repo, late.id, true).isActive).toBe(true);
+  });
+});
+
+describe("deleteStudentAction", () => {
+  it("deletes an action that has never been recorded", () => {
+    const repo = fakeRepo();
+    const { late } = seedActions(repo);
+
+    expect(deleteStudentAction(repo, late.id)).toEqual({ deleted: true, recordedUses: 0 });
+    expect(listStudentActions(repo).map((action) => action.code)).toEqual(["EC"]);
+  });
+
+  it("refuses to delete one that a session has recorded, and leaves it in place", () => {
+    const { repo, mathClass, ava } = seededRepo();
+    const { late } = seedActions(repo);
+
+    saveAttendance(repo, {
+      classId: mathClass.id,
+      attendanceDate: "2026-08-17",
+      recordedByUserId: 1,
+      entries: [{ studentId: ava.id, status: "present", actionIds: [late.id] }],
+    });
+
+    expect(deleteStudentAction(repo, late.id)).toEqual({ deleted: false, recordedUses: 1 });
+    expect(getStudentActionById(repo, late.id)?.code).toBe("L");
+  });
+
+  it("rejects an unknown id", () => {
+    const repo = fakeRepo();
+    expect(() => deleteStudentAction(repo, 99)).toThrow(/No student action with the id 99/);
+  });
+});
+
+describe("saveAttendance with student actions", () => {
+  it("records the actions against the student, capturing the code and name", () => {
+    const { repo, mathClass, ava, ben } = seededRepo();
+    const { late, extraCredit } = seedActions(repo);
+
+    const record = saveAttendance(repo, {
+      classId: mathClass.id,
+      attendanceDate: "2026-08-17",
+      recordedByUserId: 1,
+      entries: [
+        { studentId: ava.id, status: "present", actionIds: [late.id, extraCredit.id] },
+        { studentId: ben.id, status: "present" },
+      ],
+    });
+
+    const avaEntry = record.entries.find((entry) => entry.studentId === ava.id)!;
+    expect(avaEntry.actions.map((action) => action.code)).toEqual(["L", "EC"]);
+    expect(avaEntry.actions[0].name).toBe("Late");
+
+    // Nobody else picked anything up, and the field is an empty list rather than
+    // missing, so every screen can map over it without a guard.
+    expect(record.entries.find((entry) => entry.studentId === ben.id)!.actions).toEqual([]);
+  });
+
+  it("defaults to no actions, so the simplest payload still saves", () => {
+    const { repo, mathClass, ava } = seededRepo();
+
+    const record = saveAttendance(repo, {
+      classId: mathClass.id,
+      attendanceDate: "2026-08-17",
+      recordedByUserId: 1,
+      entries: [{ studentId: ava.id, status: "absent" }],
+    });
+
+    expect(record.entries[0].actions).toEqual([]);
+  });
+
+  it("rejects an unknown action id", () => {
+    const { repo, mathClass, ava } = seededRepo();
+    seedActions(repo);
+
+    expect(() =>
+      saveAttendance(repo, {
+        classId: mathClass.id,
+        attendanceDate: "2026-08-17",
+        recordedByUserId: 1,
+        entries: [{ studentId: ava.id, status: "present", actionIds: [99] }],
+      }),
+    ).toThrow(/No student action with the id 99/);
+  });
+
+  it("rejects a retired action, so a stale tab cannot record a withdrawn one", () => {
+    const { repo, mathClass, ava } = seededRepo();
+    const { late } = seedActions(repo);
+    setStudentActionActive(repo, late.id, false);
+
+    expect(() =>
+      saveAttendance(repo, {
+        classId: mathClass.id,
+        attendanceDate: "2026-08-17",
+        recordedByUserId: 1,
+        entries: [{ studentId: ava.id, status: "present", actionIds: [late.id] }],
+      }),
+    ).toThrow(/has been retired/);
+  });
+
+  it("rejects the same action listed twice for one student", () => {
+    const { repo, mathClass, ava } = seededRepo();
+    const { late } = seedActions(repo);
+
+    expect(() =>
+      saveAttendance(repo, {
+        classId: mathClass.id,
+        attendanceDate: "2026-08-17",
+        recordedByUserId: 1,
+        entries: [{ studentId: ava.id, status: "present", actionIds: [late.id, late.id] }],
+      }),
+    ).toThrow(/listed twice/);
+  });
+
+  it("records actions against an absent student, since the two facts are independent", () => {
+    const { repo, mathClass, ava } = seededRepo();
+    const { late } = seedActions(repo);
+
+    const record = saveAttendance(repo, {
+      classId: mathClass.id,
+      attendanceDate: "2026-08-17",
+      recordedByUserId: 1,
+      entries: [{ studentId: ava.id, status: "absent", actionIds: [late.id] }],
+    });
+
+    expect(record.entries[0].status).toBe("absent");
+    expect(record.entries[0].actions).toHaveLength(1);
+  });
+});
+
+describe("getAttendanceReportById action tallies", () => {
+  it("counts each action once per student and omits actions nobody got", () => {
+    const { repo, mathClass, ava, ben, chi } = seededRepo();
+    const { late, extraCredit } = seedActions(repo);
+
+    const record = saveAttendance(repo, {
+      classId: mathClass.id,
+      attendanceDate: "2026-08-17",
+      recordedByUserId: 1,
+      entries: [
+        { studentId: ava.id, status: "present", actionIds: [late.id, extraCredit.id] },
+        { studentId: ben.id, status: "present", actionIds: [late.id] },
+        { studentId: chi.id, status: "absent" },
+      ],
+    });
+
+    const report = getAttendanceReportById(repo, record.id)!;
+    expect(report.actionTallies).toEqual([
+      { actionId: late.id, code: "L", name: "Late", count: 2 },
+      { actionId: extraCredit.id, code: "EC", name: "Extra Credit", count: 1 },
+    ]);
+  });
+
+  it("has no tallies when the session recorded no actions", () => {
+    const { repo, mathClass, ava } = seededRepo();
+
+    const record = saveAttendance(repo, {
+      classId: mathClass.id,
+      attendanceDate: "2026-08-17",
+      recordedByUserId: 1,
+      entries: [{ studentId: ava.id, status: "present" }],
+    });
+
+    expect(getAttendanceReportById(repo, record.id)!.actionTallies).toEqual([]);
   });
 });

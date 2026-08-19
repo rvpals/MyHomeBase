@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ATTENDANCE_ACTION_ICONS } from "./action-icons";
 import { ATTENDANCE_STATUSES } from "./types";
 
 /** YYYY-MM-DD. Rejects a timestamp so a date column never gains a time part. */
@@ -62,9 +63,46 @@ export const enrollStudentsSchema = z.object({
 
 export type EnrollStudentsInput = z.input<typeof enrollStudentsSchema>;
 
+/**
+ * A student action in the catalog.
+ *
+ * The code is uppercased rather than merely trimmed, so `l` typed in a hurry and
+ * `L` are the one code the unique NOCASE index already treats them as — the
+ * stored value then matches what every report prints.
+ */
+export const createStudentActionSchema = z.object({
+  name: z.string().trim().min(1, "Action name is required."),
+  code: z
+    .string()
+    .trim()
+    .min(1, "A short code is required.")
+    .max(6, "A code is meant to be short — 6 characters at most.")
+    .transform((value) => value.toUpperCase()),
+  description: z.string().trim().default(""),
+  // Blank is allowed: an action with no glyph draws its code alone, which is a
+  // legitimate choice rather than a half-filled form.
+  icon: z
+    .union([z.enum(ATTENDANCE_ACTION_ICONS), z.literal("")])
+    .default(""),
+  sequence: z.number().int().min(0).default(0),
+  isActive: z.boolean().default(true),
+});
+
+export type CreateStudentActionInput = z.input<typeof createStudentActionSchema>;
+export type StudentActionWriteData = z.output<typeof createStudentActionSchema>;
+
+export const updateStudentActionSchema = createStudentActionSchema;
+export type UpdateStudentActionInput = z.input<typeof updateStudentActionSchema>;
+
 export const attendanceEntrySchema = z.object({
   studentId: z.number().int().positive(),
   status: z.enum(ATTENDANCE_STATUSES),
+  /**
+   * The catalog ids of the actions noted for this student. Defaults to empty —
+   * most students in most sessions have none, and the CLI's simplest form
+   * shouldn't have to say so.
+   */
+  actionIds: z.array(z.number().int().positive()).default([]),
 });
 
 /**

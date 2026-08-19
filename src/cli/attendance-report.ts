@@ -1,4 +1,9 @@
-import { getAttendanceReport, listClasses, listRecordDatesForClass } from "@/lib/attendance";
+import {
+  getAttendanceReport,
+  getAttendanceReportById,
+  listClasses,
+  listSessionsForClass,
+} from "@/lib/attendance";
 import { todayIsoLocal } from "@/lib/shared/date";
 import { deps } from "@/lib/wiring";
 import { parseFlags } from "./parse-flags";
@@ -9,7 +14,12 @@ import { parseFlags } from "./parse-flags";
  *
  *   attendance-report --class "Math 101"
  *   attendance-report --class "Math 101" --date 2026-08-15
- *   attendance-report --class "Math 101" --list-dates
+ *   attendance-report --class "Math 101" --list-sessions
+ *   attendance-report --class "Math 101" --session 12
+ *
+ * Without --session the day's latest register is printed, since a class may be
+ * registered more than once a day. `--list-dates` is kept as an alias for
+ * --list-sessions.
  */
 export async function attendanceReportCommand(args: string[]): Promise<void> {
   const flags = parseFlags(args);
@@ -31,37 +41,64 @@ export async function attendanceReportCommand(args: string[]): Promise<void> {
     return;
   }
 
-  if ("list-dates" in flags) {
-    const dates = listRecordDatesForClass(deps.attendanceRepo, attendanceClass.id);
-    if (dates.length === 0) {
+  if ("list-dates" in flags || "list-sessions" in flags) {
+    const sessions = listSessionsForClass(deps.attendanceRepo, attendanceClass.id);
+    if (sessions.length === 0) {
       console.log(`${attendanceClass.name} has no attendance recorded yet.`);
       return;
     }
-    console.log(`${attendanceClass.name} — ${dates.length} day(s) recorded:`);
-    for (const date of dates) console.log(`  ${date}`);
+    console.log(`${attendanceClass.name} — ${sessions.length} session(s) recorded:`);
+    for (const session of sessions) {
+      console.log(
+        `  #${session.recordId}  ${session.attendanceDate} ${session.sessionLabel}  ` +
+          `${session.presentCount} present, ${session.absentCount} absent`,
+      );
+    }
     return;
   }
 
   const attendanceDate = flags.date || todayIsoLocal();
-  const report = getAttendanceReport(deps.attendanceRepo, {
-    classId: attendanceClass.id,
-    attendanceDate,
-  });
+  // A specific session when asked for by id, else the day's latest.
+  const recordId = Number(flags.session);
+  const report = recordId
+    ? getAttendanceReportById(deps.attendanceRepo, recordId)
+    : getAttendanceReport(deps.attendanceRepo, {
+        classId: attendanceClass.id,
+        attendanceDate,
+      });
 
   if (!report) {
-    console.log(`No attendance was taken for ${attendanceClass.name} on ${attendanceDate}.`);
+    console.log(
+      recordId
+        ? `No session #${recordId}.`
+        : `No attendance was taken for ${attendanceClass.name} on ${attendanceDate}.`,
+    );
     return;
   }
 
-  console.log(`${report.className} — ${report.attendanceDate} (recorded ${report.recordedAt})`);
+  console.log(
+    `${report.className} — ${report.attendanceDate} session ${report.sessionLabel} ` +
+      `(recorded ${report.recordedAt})`,
+  );
   console.log(`${report.presentCount} present, ${report.absentCount} absent\n`);
 
+  // Only when something was noted — a line of nothing is worse than no line.
+  if (report.actionTallies.length > 0) {
+    console.log(
+      `Actions: ${report.actionTallies
+        .map((tally) => `${tally.code} ${tally.name} x${tally.count}`)
+        .join(", ")}`,
+    );
+    console.log("");
+  }
+
   for (const status of ["present", "absent"] as const) {
-    const names = report.entries
-      .filter((entry) => entry.status === status)
-      .map((entry) => entry.studentName);
-    console.log(`${status.toUpperCase()} (${names.length}):`);
-    for (const name of names) console.log(`  ${name}`);
+    const entries = report.entries.filter((entry) => entry.status === status);
+    console.log(`${status.toUpperCase()} (${entries.length}):`);
+    for (const entry of entries) {
+      const codes = entry.actions.map((action) => action.code);
+      console.log(`  ${entry.studentName}${codes.length > 0 ? ` [${codes.join(" ")}]` : ""}`);
+    }
     console.log("");
   }
 }

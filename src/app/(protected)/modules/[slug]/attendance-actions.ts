@@ -9,15 +9,24 @@ import {
   addStudent,
   attendanceSettingsToEntries,
   createClass,
+  createStudentAction,
   deleteClass,
   deleteStudent,
+  // Aliased: this file already exports server actions called
+  // `deleteStudentAction` / `updateStudentAction`, which act on a *student*. The
+  // use-cases below act on a student *action* — an unfortunate collision of two
+  // established names, resolved here rather than by renaming either public API.
+  deleteStudentAction as deleteStudentActionUseCase,
   enrollStudents,
   removeStudentFromClass,
   saveAttendance,
+  setStudentActionActive,
   updateClass,
   updateStudent,
+  updateStudentAction as updateStudentActionUseCase,
   type AttendanceSettings,
   type CreateClassInput,
+  type CreateStudentActionInput,
   type CreateStudentInput,
   type SaveAttendanceInput,
 } from "@/lib/attendance";
@@ -39,6 +48,7 @@ function revalidateAttendance(): void {
   revalidatePath(ATTENDANCE_MODULE_PATH);
   revalidatePath(`${ATTENDANCE_MODULE_PATH}/rosters`);
   revalidatePath(`${ATTENDANCE_MODULE_PATH}/classes`);
+  revalidatePath(`${ATTENDANCE_MODULE_PATH}/actions`);
   revalidatePath(`${ATTENDANCE_MODULE_PATH}/report`);
 }
 
@@ -146,25 +156,102 @@ export async function removeStudentFromClassAction(
   }
 }
 
+export interface SaveAttendanceResult extends ActionResult {
+  /** `HH:MM` of the session just written, so the view can name what it saved. */
+  sessionLabel?: string;
+}
+
 /**
- * Saves a day's attendance.
+ * Saves one attendance session, appending rather than replacing — a class may be
+ * registered several times a day.
  *
  * `recordedByUserId` comes from the session rather than the client — the browser
  * must not get to name who took the register.
  */
 export async function saveAttendanceAction(
   input: Omit<SaveAttendanceInput, "recordedByUserId">,
-): Promise<ActionResult> {
+): Promise<SaveAttendanceResult> {
   try {
     const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
     const currentUser = getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo);
     if (!currentUser) throw new Error("You must be signed in to save attendance.");
 
-    saveAttendance(deps.attendanceRepo, { ...input, recordedByUserId: currentUser.id });
+    const record = saveAttendance(deps.attendanceRepo, {
+      ...input,
+      recordedByUserId: currentUser.id,
+    });
+    revalidateAttendance();
+    return { ok: true, sessionLabel: record.sessionLabel };
+  } catch (error) {
+    return { ok: false, error: toMessage(error, "Failed to save attendance.") };
+  }
+}
+
+export async function createStudentActionAction(
+  input: CreateStudentActionInput,
+): Promise<ActionResult> {
+  try {
+    createStudentAction(deps.attendanceRepo, input);
     revalidateAttendance();
     return { ok: true };
   } catch (error) {
-    return { ok: false, error: toMessage(error, "Failed to save attendance.") };
+    return { ok: false, error: toMessage(error, "Failed to create the action.") };
+  }
+}
+
+export async function updateStudentActionAction(
+  id: number,
+  input: CreateStudentActionInput,
+): Promise<ActionResult> {
+  try {
+    updateStudentActionUseCase(deps.attendanceRepo, id, input);
+    revalidateAttendance();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: toMessage(error, "Failed to update the action.") };
+  }
+}
+
+export async function setStudentActionActiveAction(
+  id: number,
+  isActive: boolean,
+): Promise<ActionResult> {
+  try {
+    setStudentActionActive(deps.attendanceRepo, id, isActive);
+    revalidateAttendance();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: toMessage(error, "Failed to change the action.") };
+  }
+}
+
+export interface DeleteStudentActionResult extends ActionResult {
+  /**
+   * How many recorded rows reference the action. Non-zero means it was kept
+   * rather than deleted, and the view says so — the use-case refuses to delete an
+   * action a session has already recorded.
+   */
+  recordedUses?: number;
+}
+
+export async function deleteStudentActionAction(
+  id: number,
+): Promise<DeleteStudentActionResult> {
+  try {
+    const { deleted, recordedUses } = deleteStudentActionUseCase(deps.attendanceRepo, id);
+    revalidateAttendance();
+
+    if (!deleted) {
+      return {
+        ok: false,
+        recordedUses,
+        error: `This action has been recorded ${recordedUses} time${recordedUses === 1 ? "" : "s"}, so deleting it would leave those sessions half-described. Retire it instead.`,
+      };
+    }
+
+    return { ok: true, recordedUses };
+  } catch (error) {
+    return { ok: false, error: toMessage(error, "Failed to delete the action.") };
   }
 }
 

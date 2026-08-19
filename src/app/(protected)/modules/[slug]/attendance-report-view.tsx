@@ -7,7 +7,12 @@
 
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
-import type { AttendanceClass, AttendanceReport } from "@/lib/attendance";
+import type {
+  AttendanceClass,
+  AttendanceEntry,
+  AttendanceReport,
+  AttendanceSessionSummary,
+} from "@/lib/attendance";
 
 const INPUT_CLASS =
   "rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
@@ -20,6 +25,7 @@ export function AttendanceReportView({
   selectedClassId,
   selectedDate,
   recordedDates,
+  sessionsOnDate,
 }: {
   classes: AttendanceClass[];
   /** Undefined when the class/date pair has no saved attendance. */
@@ -28,15 +34,25 @@ export function AttendanceReportView({
   selectedDate: string;
   /** The dates this class has records for, newest first. */
   recordedDates: string[];
+  /**
+   * The sessions on the selected date, newest first. More than one when the
+   * class was registered again the same day.
+   */
+  sessionsOnDate: AttendanceSessionSummary[];
 }) {
   const router = useRouter();
 
   // The selection lives in the URL so a report is linkable and survives a
   // refresh — the same reasoning the journal's ?filter= uses.
-  function go(nextClassId: number | undefined, nextDate: string) {
+  function go(
+    nextClassId: number | undefined,
+    nextDate: string,
+    nextRecordId?: number,
+  ) {
     const params = new URLSearchParams();
     if (nextClassId) params.set("classId", String(nextClassId));
     params.set("date", nextDate);
+    if (nextRecordId) params.set("recordId", String(nextRecordId));
     router.push(`/modules/attendance/report?${params.toString()}`);
   }
 
@@ -70,6 +86,29 @@ export function AttendanceReportView({
             className={INPUT_CLASS}
           />
         </label>
+
+        {/* Only shown when the day actually holds more than one register —
+            a picker with a single option is noise. */}
+        {sessionsOnDate.length > 1 && (
+          <label className="flex flex-col gap-1">
+            <span className={LABEL_CLASS}>Session</span>
+            <select
+              value={report?.recordId ?? ""}
+              onChange={(event) =>
+                go(selectedClassId, selectedDate, Number(event.target.value) || undefined)
+              }
+              className={INPUT_CLASS}
+            >
+              {sessionsOnDate.map((session, index) => (
+                <option key={session.recordId} value={session.recordId}>
+                  {session.sessionLabel}
+                  {index === 0 ? " (latest)" : ""} · {session.presentCount}/
+                  {session.presentCount + session.absentCount} present
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         {recordedDates.length > 0 && (
           <label className="flex flex-col gap-1">
@@ -116,7 +155,9 @@ function ReportSheet({ report }: { report: AttendanceReport }) {
       <header>
         <h3 className="font-display text-2xl text-ink">{report.className}</h3>
         <p className="mt-1 text-sm text-muted">
-          Attendance for {report.attendanceDate} · recorded {report.recordedAt}
+          Attendance for {report.attendanceDate}
+          {report.sessionLabel && ` · session ${report.sessionLabel}`} · recorded{" "}
+          {report.recordedAt}
         </p>
       </header>
 
@@ -126,9 +167,30 @@ function ReportSheet({ report }: { report: AttendanceReport }) {
         <StatTile label="Total" value={report.entries.length} />
       </div>
 
+      {/* Only when the session recorded something. A row of zeroes for every
+          action the catalog holds would be noise on a printed sheet, and would
+          grow every time a teacher added one. */}
+      {report.actionTallies.length > 0 && (
+        <div className="mt-4">
+          <h4 className="font-display text-base text-ink">Actions noted</h4>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {report.actionTallies.map((tally) => (
+              <span
+                key={tally.actionId}
+                className="rounded-md border border-line px-2 py-1 text-sm text-ink"
+                title={tally.name}
+              >
+                <span className="font-mono font-semibold text-brass-dark">{tally.code}</span>{" "}
+                {tally.name} · {tally.count}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="mt-6 grid grid-cols-2 gap-6 max-lg:grid-cols-1">
-        <NameList title={`Present (${present.length})`} names={present.map((e) => e.studentName)} />
-        <NameList title={`Absent (${absent.length})`} names={absent.map((e) => e.studentName)} />
+        <NameList title={`Present (${present.length})`} entries={present} />
+        <NameList title={`Absent (${absent.length})`} entries={absent} />
       </div>
     </div>
   );
@@ -143,17 +205,41 @@ function StatTile({ label, value }: { label: string; value: number }) {
   );
 }
 
-function NameList({ title, names }: { title: string; names: string[] }) {
+/**
+ * One column of names, each with whatever was noted about them.
+ *
+ * Takes the entries rather than the names now: the codes hang off the same row,
+ * and passing two parallel arrays would let them fall out of step. The code chips
+ * are text rather than glyphs — this sheet is printed, often in black and white,
+ * and a two-letter code survives that where a 12px icon does not.
+ */
+function NameList({ title, entries }: { title: string; entries: AttendanceEntry[] }) {
   return (
     <section>
       <h4 className="font-display text-base text-ink">{title}</h4>
-      {names.length === 0 ? (
+      {entries.length === 0 ? (
         <p className="mt-2 text-sm text-muted">Nobody.</p>
       ) : (
         <ol className="mt-2 flex flex-col gap-1">
-          {names.map((name, index) => (
-            <li key={`${name}-${index}`} className="border-b border-line py-1 text-sm text-ink">
-              {name}
+          {entries.map((entry, index) => (
+            <li
+              key={`${entry.studentId}-${index}`}
+              className="flex items-center justify-between gap-2 border-b border-line py-1 text-sm text-ink"
+            >
+              <span className="min-w-0 truncate">{entry.studentName}</span>
+              {entry.actions.length > 0 && (
+                <span className="flex shrink-0 gap-1">
+                  {entry.actions.map((action) => (
+                    <span
+                      key={action.actionId}
+                      title={action.name}
+                      className="rounded bg-brass-soft px-1.5 font-mono text-[11px] font-semibold text-brass-dark"
+                    >
+                      {action.code}
+                    </span>
+                  ))}
+                </span>
+              )}
             </li>
           ))}
         </ol>

@@ -1,4 +1,9 @@
+"use client";
+
 import type { ReactElement, SVGProps } from "react";
+import { useIconSet } from "./icon-set-context";
+import type { ModuleIconSetId } from "./module-icon-sets.generated";
+import { TREE_ICON_GLYPHS } from "./tree-icon-sets.generated";
 
 type IconComponent = (props: SVGProps<SVGSVGElement>) => ReactElement;
 
@@ -19,6 +24,32 @@ const Sliders: IconComponent = (props) => (
     <circle cx="15" cy="12" r="2" fill="currentColor" stroke="none" />
     <line x1="4" y1="18" x2="20" y2="18" />
     <circle cx="11" cy="18" r="2" fill="currentColor" stroke="none" />
+  </svg>
+);
+
+// A cog. The near-universal mark for settings, and the counterpart to `sliders`
+// — reach for this when the section *is* configuration, and for `sliders` when it
+// is a set of adjustable values.
+//
+// Eight teeth drawn as one path rather than eight rotated rects: at 16px the
+// rects render as mush, and a single outline stays legible.
+const Gear: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <path d="M12 3.5l1.6 1.1 1.9-.5.9 1.7 1.9.6-.1 2 1.4 1.4-1.1 1.6.5 1.9-1.7.9-.6 1.9-2-.1-1.4 1.4-1.6-1.1-1.9.5-.9-1.7-1.9-.6.1-2L5.4 12l1.1-1.6-.5-1.9 1.7-.9.6-1.9 2 .1z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
+// A classroom: a teaching board on a stand. Distinct from `users` (a roster of
+// people) and `list` (a generic list) so "Classes" and "Rosters" don't read as
+// the same idea in one nav.
+const Classroom: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <rect x="3" y="4" width="18" height="12" rx="1.5" />
+    <path d="M7 9.5h6" />
+    <path d="M7 12.5h4" />
+    <path d="M12 16v4" />
+    <path d="M8.5 20h7" />
   </svg>
 );
 
@@ -221,6 +252,8 @@ const TREE_ICONS = {
   pencil: Pencil,
   trash: Trash,
   sliders: Sliders,
+  gear: Gear,
+  classroom: Classroom,
   list: ListRows,
   newspaper: Newspaper,
   plus: Plus,
@@ -252,6 +285,36 @@ export function hasTreeIcon(name?: string): name is TreeIconName {
   return name !== undefined && name in TREE_ICONS;
 }
 
+/**
+ * Row-action glyphs stay hand-drawn in every icon set. They are buttons, not
+ * destinations: full-color artwork on an inline edit/delete control shouts, and on
+ * `trash` specifically it weakens the destructive read that the monochrome glyph carries.
+ */
+const ALWAYS_CLASSIC = new Set<TreeIconName>(["pencil", "trash", "refresh"]);
+
+/**
+ * Whether the active set will draw this icon in its own colors rather than inheriting
+ * `currentColor`. Callers use it to drop an accent tint that would otherwise fight the
+ * artwork — the same rule `ICON_SETS.colorful` already drives for the module badge.
+ *
+ * False for a row action, and for any concept the set doesn't cover, since both of those
+ * fall through to the hand-drawn glyph and *do* tint.
+ */
+export function useTreeIconIsColorful(name?: string): boolean {
+  const { id, colorful } = useIconSet();
+  if (!colorful || !hasTreeIcon(name)) return false;
+  if (ALWAYS_CLASSIC.has(name)) return false;
+  return Boolean(TREE_ICON_GLYPHS[id]?.[name]);
+}
+
+/**
+ * A section icon in the reader's chosen icon set.
+ *
+ * Resolution order mirrors `ModuleIcon`: the active set's baked glyph, then the hand-drawn
+ * one above. The fallback is load-bearing rather than defensive — no set covers all 21
+ * concepts (flat-color has no paperclip), and a keyword-matched near-miss looks worse than
+ * the drawing it would replace.
+ */
 export function TreeIcon({
   name,
   className,
@@ -259,7 +322,21 @@ export function TreeIcon({
   name?: string;
   className?: string;
 }) {
-  const Icon = TREE_ICONS[name as TreeIconName];
-  if (!Icon) return null;
+  const { id } = useIconSet();
+  if (!hasTreeIcon(name)) return null;
+
+  const glyph = ALWAYS_CLASSIC.has(name) ? undefined : TREE_ICON_GLYPHS[id as ModuleIconSetId]?.[name];
+  if (glyph) {
+    return (
+      <svg
+        viewBox={`0 0 ${glyph.w} ${glyph.h}`}
+        className={className}
+        aria-hidden="true"
+        dangerouslySetInnerHTML={{ __html: glyph.body }}
+      />
+    );
+  }
+
+  const Icon = TREE_ICONS[name];
   return <Icon className={className} aria-hidden="true" />;
 }
