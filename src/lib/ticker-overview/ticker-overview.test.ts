@@ -35,6 +35,7 @@ import {
   summarizeHoldings,
   summarizeIncome,
   summarizePriceSeries,
+  computeTradeMoveSince,
   summarizeTrades,
   transactionDate,
 } from "./ticker-overview";
@@ -277,6 +278,72 @@ describe("summarizeTrades", () => {
     expect(trades.firstTradeAt).toBeUndefined();
     expect(trades.lastTradeAt).toBeUndefined();
     expect(trades.stats.count).toBe(0);
+  });
+});
+
+describe("computeTradeMoveSince", () => {
+  it("measures the move against the price paid, per share and across the trade", () => {
+    expect(computeTradeMoveSince(10_000, 4, 12_500)).toEqual({
+      hasMoveSince: true,
+      moveSinceCentsPerShare: 2_500,
+      moveSinceCents: 10_000,
+      moveSincePct: 25,
+    });
+  });
+
+  it("carries the sign through on a trade that is now under water", () => {
+    expect(computeTradeMoveSince(20_000, 3, 15_000)).toEqual({
+      hasMoveSince: true,
+      moveSinceCentsPerShare: -5_000,
+      moveSinceCents: -15_000,
+      moveSincePct: -25,
+    });
+  });
+
+  it("reports no move when either price is missing, rather than a total loss", () => {
+    expect(computeTradeMoveSince(0, 4, 12_500).hasMoveSince).toBe(false);
+    expect(computeTradeMoveSince(10_000, 4, 0)).toEqual({
+      hasMoveSince: false,
+      moveSinceCentsPerShare: 0,
+      moveSinceCents: 0,
+      moveSincePct: 0,
+    });
+  });
+
+  it("rounds a fractional-share move to whole cents", () => {
+    expect(computeTradeMoveSince(10_000, 1.5, 10_001).moveSinceCents).toBe(2);
+  });
+});
+
+describe("summarizeTrades", () => {
+  it("decorates every row with the move since that trade", () => {
+    const trades = summarizeTrades(
+      [
+        transaction({ id: 1, pricePerShareCents: 10_000, numberOfShares: 10 }),
+        transaction({
+          id: 2,
+          transactionAt: "2025-08-20",
+          pricePerShareCents: 20_000,
+          numberOfShares: 5,
+        }),
+      ],
+      12_500,
+    );
+
+    expect(trades.currentPriceCents).toBe(12_500);
+    expect(
+      trades.transactions.map((row) => [row.id, row.moveSinceCents, row.moveSincePct]),
+    ).toEqual([
+      [2, -37_500, -37.5],
+      [1, 25_000, 25],
+    ]);
+  });
+
+  it("reports no move on any row when the ticker is not held", () => {
+    const trades = summarizeTrades([transaction({ id: 1 })]);
+    expect(trades.currentPriceCents).toBe(0);
+    expect(trades.transactions[0].hasMoveSince).toBe(false);
+    expect(trades.transactions[0].moveSincePct).toBe(0);
   });
 });
 

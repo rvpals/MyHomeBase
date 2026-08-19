@@ -64,10 +64,35 @@ export interface TickerIncome {
   yieldOnCostPct: number;
 }
 
+/**
+ * One recorded trade, with how the price has moved since it was executed.
+ *
+ * The move is measured against the current price on our own position row, which
+ * is what keeps `getTickerOwnData` a database-only read. Both prices must be
+ * real for the answer to mean anything, so a trade with no baseline — or a
+ * ticker we no longer hold, and therefore have no current price for — reports
+ * `hasMoveSince: false` rather than a figure computed from a zero.
+ */
+export interface TickerTradeRow extends StockTransaction {
+  /** False when either price is missing; the other two fields are then 0. */
+  hasMoveSince: boolean;
+  /** Per-share move from the trade price to the current price. */
+  moveSinceCentsPerShare: number;
+  /** The per-share move across this trade's own share count. */
+  moveSinceCents: number;
+  /** The move against the trade price, 0-100. */
+  moveSincePct: number;
+}
+
 /** The recorded trade history for the ticker, across every brokerage. */
 export interface TickerTrades {
   /** Newest first. */
-  transactions: StockTransaction[];
+  transactions: TickerTradeRow[];
+  /**
+   * The price the "since this trade" moves are measured against — the current
+   * price on our position row. 0 when the ticker is not held.
+   */
+  currentPriceCents: number;
   stats: TransactionStats;
   /** Weighted average from the buy rows; undefined when none are recorded. */
   averageCostBasisCents?: number;

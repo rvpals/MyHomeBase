@@ -57,6 +57,7 @@ import type {
   TickerStory,
   TickerTimelineKind,
   TickerTimelinePoint,
+  TickerTradeRow,
   TickerTradeTimeline,
   TickerTrades,
   TickerWatchEntry,
@@ -157,11 +158,66 @@ export function summarizeIncome(
   };
 }
 
-/** Trade history plus the counts and totals the transactions panel captions it with. */
-export function summarizeTrades(transactions: StockTransaction[]): TickerTrades {
-  const newestFirst = [...transactions].sort(
-    (a, b) => Date.parse(b.transactionAt) - Date.parse(a.transactionAt),
-  );
+/**
+ * How far the price has moved since one trade was executed.
+ *
+ * Same guard as `computeWatchDrift`, for the same reason: a trade recorded
+ * without a price, or a ticker we no longer hold and so have no current price
+ * for, has no baseline to measure against — and dividing by a zero would read
+ * as a total loss rather than as "we don't know".
+ *
+ * Reported both per share and across the trade's own shares. The percentage is
+ * the same either way; the dollar figure is only meaningful against a share
+ * count, and this trade's count is the one the row is about.
+ */
+export function computeTradeMoveSince(
+  pricePerShareCents: number,
+  numberOfShares: number,
+  currentPriceCents: number,
+): Pick<
+  TickerTradeRow,
+  "hasMoveSince" | "moveSinceCentsPerShare" | "moveSinceCents" | "moveSincePct"
+> {
+  if (pricePerShareCents <= 0 || currentPriceCents <= 0) {
+    return {
+      hasMoveSince: false,
+      moveSinceCentsPerShare: 0,
+      moveSinceCents: 0,
+      moveSincePct: 0,
+    };
+  }
+
+  const moveSinceCentsPerShare = currentPriceCents - pricePerShareCents;
+  return {
+    hasMoveSince: true,
+    moveSinceCentsPerShare,
+    moveSinceCents: Math.round(moveSinceCentsPerShare * numberOfShares),
+    moveSincePct: percentOf(moveSinceCentsPerShare, pricePerShareCents),
+  };
+}
+
+/**
+ * Trade history plus the counts and totals the transactions panel captions it with.
+ *
+ * `currentPriceCents` is the price each row's "since this trade" move is
+ * measured against — our own position row's price, not a provider call. Pass 0
+ * (the default) for a ticker that isn't held: every row then reports no move
+ * rather than a fabricated one.
+ */
+export function summarizeTrades(
+  transactions: StockTransaction[],
+  currentPriceCents = 0,
+): TickerTrades {
+  const newestFirst = [...transactions]
+    .sort((a, b) => Date.parse(b.transactionAt) - Date.parse(a.transactionAt))
+    .map((transaction) => ({
+      ...transaction,
+      ...computeTradeMoveSince(
+        transaction.pricePerShareCents,
+        transaction.numberOfShares,
+        currentPriceCents,
+      ),
+    }));
   const buys = newestFirst.filter((transaction) => transaction.action === "Buy");
   const sells = newestFirst.filter((transaction) => transaction.action === "Sell");
   const sumShares = (rows: StockTransaction[]) =>
@@ -171,6 +227,7 @@ export function summarizeTrades(transactions: StockTransaction[]): TickerTrades 
 
   return {
     transactions: newestFirst,
+    currentPriceCents,
     stats: computeTransactionStats(newestFirst),
     averageCostBasisCents: computeAverageCostBasisCents(newestFirst),
     buyCount: buys.length,
@@ -397,7 +454,12 @@ export function getTickerOwnData(
     holdings,
     totals,
     income: summarizeIncome(positions, totals.valueCents, totals.costCents),
-    trades: summarizeTrades(deps.positions.listTransactions(ticker)),
+    // Same price the watchlist drift is measured against: our own position row,
+    // so the whole of this use-case stays a database read.
+    trades: summarizeTrades(
+      deps.positions.listTransactions(ticker),
+      positions[0]?.currentPriceCents ?? 0,
+    ),
     watchEntries,
     assetClass: firstWith("assetClass"),
     assetStrategy: firstWith("assetStrategy"),
