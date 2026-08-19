@@ -16,7 +16,8 @@ module is obvious from the name alone. New tables must follow this.
 | `csv_` | CSV Analysis (incl. user-generated per-entry tables from `buildTableName`) | `csv_analytics_entries`, `csv_chart_presets`, `csv_govee` |
 | `jrn_` | MyJournal | `jrn_entries`, `jrn_categories`, `jrn_tags`, `jrn_entry_categories`, `jrn_entry_tags`, `jrn_entry_locations`, `jrn_entry_images`, `jrn_saved_filters` |
 | `exp_` | Expense tracker | `exp_transactions`, `exp_creditcard_accounts`, `exp_categories`, `exp_post_import_rules`, `exp_post_import_rule_actions` |
-| `att_` | Attendance | `att_students`, `att_classes`, `att_class_enrollments`, `att_attendance_records`, `att_attendance_entries` |
+| `att_` | Attendance | `att_students`, `att_classes`, `att_class_enrollments`, `att_attendance_records`, `att_attendance_entries`, `att_student_actions`, `att_attendance_entry_actions` |
+| `mus_` | Music Library | `mus_tracks`, `mus_albums`, `mus_scan_runs`, `mus_track_lyrics`, `mus_playlists`, `mus_playlist_tracks`, `mus_play_events` |
 
 The `rei_` prefix (Real Estate Investment) was retired when that module was
 removed — see migration `0026_drop_real_estate_module`.
@@ -93,14 +94,14 @@ stored, and insert the shortfall. The database can't make that call — it can't
 real second lot from an accidental re-import. Worked through in
 `migrations/0038_add_brokerage_firm_to_stock_transactions.md`.
 
-**The one standing exception** is `att_attendance_records`, which is unique on
-`(class_id, attendance_date)`. The rule above is about a date collapsing two
-genuinely distinct events into one row; attendance has no such second event, because
-the module is specified as one record per class per day and re-taking attendance
-*replaces* that day's record. So a collision there is the case the write is meant to
-overwrite, not a real row being dropped. If a class ever needs to meet twice in a day,
-drop the index rather than adding a column to it — see
-`migrations/0047_create_attendance_tables.md`.
+`att_attendance_records` briefly carried a documented exception to this rule — it was
+unique on `(class_id, attendance_date)` to make re-taking attendance overwrite the day.
+**That exception is retired** (`migrations/0049_allow_multiple_attendance_sessions.md`):
+a class may now be registered several times a day, so the date genuinely doesn't
+identify a session and the rule applies here with no carve-out. The index is still
+there for lookups, just not `UNIQUE`. Worth knowing as a worked example of how such an
+exception dies: the premise was "there is no second event by specification", and the
+specification changed.
 
 ### A settings value is blank, never NULL
 

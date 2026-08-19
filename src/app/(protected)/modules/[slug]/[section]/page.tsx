@@ -10,6 +10,8 @@ import { isAttendanceSection } from "../attendance-sections";
 import { ExpenseSection } from "../expense-section";
 import { isExpenseSection } from "../expense-sections";
 import { isJournalSection } from "../journal-sections";
+import { MusicSection } from "../music-section";
+import { isMusicSection } from "../music-sections";
 import { JournalSection } from "../journal-section";
 import { StockSection } from "../stock-section";
 import { isStockSection } from "../stock-sections";
@@ -17,6 +19,7 @@ import { isStockSection } from "../stock-sections";
 const ATTENDANCE_MODULE_SLUG = "attendance";
 const EXPENSE_MODULE_SLUG = "expense";
 const JOURNAL_MODULE_SLUG = "journal";
+const MUSIC_LIBRARY_MODULE_SLUG = "music-library";
 const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
 
 /**
@@ -38,6 +41,7 @@ function renderSection(
   filterQuery: string | undefined,
   requestedClassId: number | undefined,
   requestedDate: string | undefined,
+  requestedRecordId: number | undefined,
 ) {
   if (slug === ATTENDANCE_MODULE_SLUG && isAttendanceSection(section)) {
     return (
@@ -45,6 +49,7 @@ function renderSection(
         section={section}
         requestedClassId={requestedClassId}
         requestedDate={requestedDate}
+        requestedRecordId={requestedRecordId}
       />
     );
   }
@@ -53,6 +58,9 @@ function renderSection(
   }
   if (slug === JOURNAL_MODULE_SLUG && isJournalSection(section)) {
     return <JournalSection section={section} isAdmin={isAdmin} filterQuery={filterQuery} />;
+  }
+  if (slug === MUSIC_LIBRARY_MODULE_SLUG && isMusicSection(section)) {
+    return <MusicSection section={section} />;
   }
   if (slug === STOCK_ETFS_MODULE_SLUG && isStockSection(section)) {
     return <StockSection section={section} />;
@@ -73,16 +81,19 @@ export default async function ModuleSectionPage({
     filter?: string | string[];
     classId?: string | string[];
     date?: string | string[];
+    recordId?: string | string[];
   }>;
 }) {
   const { slug, section } = await params;
-  const { filter, classId, date } = await searchParams;
+  const { filter, classId, date, recordId } = await searchParams;
   // A repeated ?filter= yields an array; take the first rather than joining, so a
   // crafted URL can't smuggle a second expression in.
   const filterQuery = Array.isArray(filter) ? filter[0] : filter;
   const rawClassId = Array.isArray(classId) ? classId[0] : classId;
   const requestedClassId = Number(rawClassId) || undefined;
   const requestedDate = Array.isArray(date) ? date[0] : date;
+  const rawRecordId = Array.isArray(recordId) ? recordId[0] : recordId;
+  const requestedRecordId = Number(rawRecordId) || undefined;
 
   const appModule = getModuleBySlug(deps.moduleRepo, slug);
   if (!appModule) notFound();
@@ -100,6 +111,7 @@ export default async function ModuleSectionPage({
     filterQuery,
     requestedClassId,
     requestedDate,
+    requestedRecordId,
   );
   if (!body) notFound();
 

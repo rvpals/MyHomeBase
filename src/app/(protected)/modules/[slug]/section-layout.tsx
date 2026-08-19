@@ -21,6 +21,7 @@ import { useIsCompact } from "@/components/viewport-context";
 import { AttendanceNav } from "./attendance-nav";
 import { ExpenseNav } from "./expense-nav";
 import { JournalNav } from "./journal-nav";
+import { MusicNav } from "./music-nav";
 import { StockNav } from "./stock-nav";
 
 export function SectionLayout({
@@ -28,7 +29,7 @@ export function SectionLayout({
   module,
   children,
 }: {
-  nav: "attendance" | "expense" | "journal" | "stock";
+  nav: "attendance" | "expense" | "journal" | "music" | "stock";
   /**
    * The module the sections belong to, badged at the head of the nav. Plain
    * data, read by the server shell — the navs are client components and the
@@ -63,6 +64,8 @@ export function SectionLayout({
           <ExpenseNav onStateChange={handleNavStateChange} module={module} />
         ) : nav === "journal" ? (
           <JournalNav onStateChange={handleNavStateChange} module={module} />
+        ) : nav === "music" ? (
+          <MusicNav onStateChange={handleNavStateChange} module={module} />
         ) : (
           <StockNav onStateChange={handleNavStateChange} module={module} />
         )}

@@ -56,6 +56,9 @@ pattern instead of inventing one.
 | [`Tabs`](#tabs) | One-of-N panels in the same space | [src/components/tabs.tsx](src/components/tabs.tsx) | yes |
 | [`ModuleCarousel`](#modulecarousel) | The home screen's module picker (grid on desktop, coverflow on phones) | [src/components/module-carousel.tsx](src/components/module-carousel.tsx) | yes |
 | [`AppChrome`](#appchrome) | The app's nav shell — one top bar, at every screen size | [src/components/app-chrome.tsx](src/components/app-chrome.tsx) | yes |
+| [`MusicPlayerProvider`](#musicplayerprovider) | Owns the single `<audio>` element and playback state — mount in the layout | [src/components/music-player-provider.tsx](src/components/music-player-provider.tsx) | yes |
+| [`MusicPlayerBar`](#musicplayerbar) | The persistent "what's playing" strip at the bottom of every page | [src/components/music-player-bar.tsx](src/components/music-player-bar.tsx) | yes |
+| [`SelectionBar`](#selectionbar) | Tick several rows, then send them somewhere (with `useSelection`) | [src/components/selection-bar.tsx](src/components/selection-bar.tsx) | yes |
 | [`ViewportSwitch`](#viewportswitch) | The global compact/full switch | [src/components/viewport-switch.tsx](src/components/viewport-switch.tsx) | yes |
 | [`Puck`](#puck) | The round target a minimised bar leaves behind | [src/components/puck.tsx](src/components/puck.tsx) | yes |
 | [`TreeNav`](#treenav) | Hierarchical parent/child nav tree | [src/components/tree-nav.tsx](src/components/tree-nav.tsx) | yes |
@@ -433,7 +436,7 @@ near the 44px comfortable tap target, and `Modal`'s `sm` is `w-full max-w-md`, w
 All three glyphs come from [`tree-icons.tsx`](src/components/tree-icons.tsx) — `info` was
 already there for Admin's About page; `note` and `clip` were added alongside this component
 rather than living in it, so they're available to `TreeNav` and anything else using
-`TreeIcon` and the app keeps exactly one monochrome glyph registry.
+`TreeIcon` and the app keeps exactly one glyph registry.
 
 ---
 
@@ -764,8 +767,8 @@ sub-pages (like Administration), not for the top-level module list.
 
 | Prop | Type | Notes |
 |------|------|-------|
-| `nodes` | `TreeNode[]` — `{ id, label, href?, hint?, icon?, children? }` | A node **without** `href` is a group heading (a dropdown in the bar, expand/collapse in the tree). `icon` is a key rendered via `TreeIcon` — currently `sliders`, `list`, `chart`, `upload`, `quote`, `stock-quote`, `newspaper`, `plus`, `grid`, `window`, `palette`, `info`, `history`, `users`, `database`, `shapes`, `shield`, `note`, `clip`, `refresh`. |
-| `module?` | `{ name, icon }` | The module the sections belong to, badged at the head of the nav — see below. `icon` is a **module** icon key (rendered via `ModuleIcon`, so it follows the reader's icon set), not a `TreeIcon` key. |
+| `nodes` | `TreeNode[]` — `{ id, label, href?, hint?, icon?, children? }` | A node **without** `href` is a group heading (a dropdown in the bar, expand/collapse in the tree). `icon` is a key rendered via `TreeIcon` — currently `sliders`, `gear`, `classroom`, `list`, `chart`, `upload`, `quote`, `stock-quote`, `newspaper`, `plus`, `grid`, `window`, `palette`, `info`, `history`, `users`, `database`, `shapes`, `shield`, `note`, `clip`, `refresh`, `pencil`, `trash`. **`gear` vs `sliders`:** use `gear` when the section *is* configuration, `sliders` when it's a set of adjustable values. `classroom` is a teaching board, distinct from `users` (people) and `list` (a generic list). |
+| `module?` | `{ name, icon }` | The module the sections belong to, badged at the head of the nav — see below. `icon` is a **module** icon key (rendered via `ModuleIcon`), not a `TreeIcon` key — the two registries hold different concepts. Both follow the reader's icon set. |
 | `collapsible?` | `boolean` | Default `false`. When true it owns its size and shows the two collapse controls — three states, see below. |
 | `storageKey?` | `string` | Where the state is remembered. Defaults to `"myhomebase:tree-nav-collapsed"`. **Pass a distinct key for every collapsible tree** — two trees sharing the default collapse together. |
 | `onStateChange?` | `(state: TreeNavState) => void` | Raised on every change **and once on mount**, after the stored preference is read. A shell needs it to know whether to stack — see below. **Memoize it** (`useCallback`); it's raised from an effect keyed on the callback, so a fresh function each render loops. |
@@ -1860,11 +1863,129 @@ they don't get their own registry section.
 | `CHART_CATEGORICAL_COLORS`, `CHART_STATUS_COLORS`, `CHART_CHROME` | [chart-colors.ts](src/components/chart-colors.ts) | The fixed 8-hue chart palette + grid/axis chrome. All charts read from here. |
 | `pointLabelContent` | [chart-point-labels.tsx](src/components/chart-point-labels.tsx) | Builds the `<LabelList content>` renderer every chart uses for value labels, so a labelled point looks identical on a line, a column and a bar. Labels wear the muted **text** token, never the series colour. |
 | `hasFullBars`, `normalizeCandleBar`, `candleDomain`, `candleGeometry` | [chart-candle.ts](src/lib/shared/chart-candle.ts) | `ChartCandle`'s rules — which series is complete enough to draw as candles, a bar's direction and consistent extremes, the axis window, and the body/wick geometry. In the lib, so they're tested. |
-| `TreeIcon`, `hasTreeIcon` | [tree-icons.tsx](src/components/tree-icons.tsx) | Resolves a `TreeNav` icon key (`sliders`, `list`, `chart`, `upload`, `quote`, `grid`, `window`, `palette`, `info`, `history`, `users`, `database`, `shapes`, `shield`) to an SVG. Also carries the row-action glyphs `pencil` and `trash` — not nav keys, but here so the app keeps one monochrome glyph registry. Renders `null` for an unknown key — fine in a row where the label carries the meaning, so check `hasTreeIcon` first anywhere the icon is the *only* content (the compact puck) or an unknown key is a blank button. |
+| `TreeIcon`, `hasTreeIcon`, `useTreeIconIsColorful` | [tree-icons.tsx](src/components/tree-icons.tsx) | Resolves a `TreeNav` icon key (`sliders`, `list`, `chart`, `upload`, `quote`, `grid`, `window`, `palette`, `info`, `history`, `users`, `database`, `shapes`, `shield`) to an SVG **in the reader's chosen icon set** — same `useIconSet()` context `ModuleIcon` reads, so a section nav matches the module toolbar. Falls back to the hand-drawn glyph in this file for any concept the active set lacks. Also carries the row-action glyphs `pencil`, `trash` and `refresh`, which stay hand-drawn and monochrome in *every* set: they're buttons, not destinations, and colored artwork on an inline delete weakens the destructive read. `useTreeIconIsColorful(name)` reports whether the active set will draw its own colors, so a caller can drop an accent tint that would otherwise muddy them. Renders `null` for an unknown key — fine in a row where the label carries the meaning, so check `hasTreeIcon` first anywhere the icon is the *only* content (the compact puck) or an unknown key is a blank button. |
 | `AppIcon` | [app-icon.tsx](src/components/app-icon.tsx) | The app wordmark glyph. Takes raw `SVGProps`. |
 | `AdminIcon` | [admin-icon.tsx](src/components/admin-icon.tsx) | The Administration glyph. Takes raw `SVGProps`. |
 | `MODULE_ICON_GLYPHS`, `ModuleIconSetId` | [module-icon-sets.generated.ts](src/components/module-icon-sets.generated.ts) | Generated — do not hand-edit. |
 | `ComponentName` | [_component-template.tsx](src/components/_component-template.tsx) | The starting point for a new reusable component. |
+
+
+## MusicPlayerProvider
+
+Owns the app's single `<audio>` element and the state around it. Mount once, in the
+protected layout — not inside a page. Don't reach for it to play a one-off sound
+effect; it models "the thing the user is listening to".
+
+- **Source:** [src/components/music-player-provider.tsx](src/components/music-player-provider.tsx)
+- **Import:** `import { MusicPlayerProvider, useMusicPlayer } from "@/components/music-player-provider";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `children` | `ReactNode` | Wraps the page so playback outlives navigation. |
+
+```tsx
+<MusicPlayerProvider>
+  <main>{children}</main>
+  <MusicPlayerBar />
+</MusicPlayerProvider>
+```
+
+**Used by:** [the protected layout](src/app/(protected)/layout.tsx).
+
+**Notes:** `useMusicPlayer()` returns `undefined` outside the provider rather than
+throwing, so a component can render in isolation. The `<audio>` element is created
+imperatively in an effect, not rendered as JSX — nothing should be able to unmount it
+by re-rendering, and it needs no DOM position. It lives **above** `children` for one
+reason: an `<audio>` element stops when it unmounts, so a player inside the music
+module's page would cut out the moment you navigated to another module. Also exports
+`trackStreamUrl`, `albumCoverUrl` and `formatPlayerTime` so route paths and `mm:ss`
+formatting live in one place.
+
+## MusicPlayerBar
+
+The persistent "what's playing" strip pinned to the bottom of every authenticated
+page. Renders `null` when nothing is playing, so it costs no space until first use.
+For the full-size artwork-and-lyrics screen use the module's player view instead.
+
+- **Source:** [src/components/music-player-bar.tsx](src/components/music-player-bar.tsx)
+- **Import:** `import { MusicPlayerBar } from "@/components/music-player-bar";`
+- **Client component:** yes
+
+Takes no props — it reads everything from `useMusicPlayer()`.
+
+```tsx
+<MusicPlayerBar />
+```
+
+**Used by:** [the protected layout](src/app/(protected)/layout.tsx).
+
+**Notes:** one of the few components that genuinely switches on `useIsCompact()`
+rather than restyling with `max-lg:`. A desktop transport row (previous/play/next, a
+full scrubber, elapsed and total times, volume) does not shrink into 375px — narrow
+gets a different arrangement: cover, title, one play/pause button, and the scrubber
+reduced to a 2px progress hairline along the top edge. Transport buttons are 44px
+touch targets. Uses a plain `<img>` for cover art, not `next/image`: nothing in this
+app imports it, and `scripts/publish-nas.mjs` notes `sharp` is never loaded — pulling
+it in would add a platform binary to the NAS deploy for no benefit.
+
+## SelectionBar
+
+Multi-select over a list, plus the action bar that appears once something is ticked. Use it
+for any "tick several rows, then do one thing with them" flow. If the bulk action is a
+single button with no target to choose, this is more machinery than you need — render your
+own button.
+
+- **Source:** [src/components/selection-bar.tsx](src/components/selection-bar.tsx)
+- **Import:** `import { SelectionBar, useSelection } from "@/components/selection-bar";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `selection` | `SelectionState` | From `useSelection()`. Hold it in the parent so it survives paging. |
+| `pageIds` | `readonly number[]` | Ids on the current page, for "select all". |
+| `targets` | `readonly SelectionTarget[]` | `{ id, label, detail? }`. Empty renders the picker as a disabled hint. |
+| `onSend` | `(targetId: number) => void` | A target was chosen. The caller performs the action. |
+| `onCreateAndSend?` | `(name: string) => void` | Omit to hide the create affordance. |
+| `isBusy?` | `boolean` | Disables the controls while the caller works. |
+| `message?` | `string` | Feedback from the caller — "Added 3 to Favourites", or an error. |
+| `itemNoun?` | `string` | Default `"item"`. Singularised automatically. |
+| `targetNoun?` | `string` | Default `"list"`. |
+| `children?` | `ReactNode` | Extra controls, rendered before the picker. |
+| `className?` | `string` | Merged last. |
+
+```tsx
+const selection = useSelection();
+
+<SelectionBar
+  selection={selection}
+  pageIds={rows.map((row) => row.id)}
+  targets={playlists.map((p) => ({ id: p.id, label: p.name, detail: String(p.trackCount) }))}
+  onSend={(id) => addToPlaylist(id, [...selection.selected])}
+  onCreateAndSend={(name) => createThenAdd(name)}
+  itemNoun="track"
+  targetNoun="playlist"
+/>
+```
+
+**Used by:** the Music Library's Library section, via
+[music-selection.tsx](src/app/(protected)/modules/[slug]/music-selection.tsx) — a thin
+wrapper that supplies the playlists and calls the server actions.
+
+**Notes:** the split is the point. This component is **pure presentation** — it imports only
+React and `Button`, performs no fetching and calls no server action, so it knows about *ids*
+and *targets* rather than tracks and playlists. Anything module-specific belongs in a
+wrapper, as `PlaylistSelectionBar` does.
+
+`useSelection` holds **ids, not rows**, so a selection survives paging: tick three, page
+forward, tick two more, add all five. It is deliberately *not* URL-backed — a tick is
+transient working state, and forty ids in a query string is unreadable (contrast the active
+view and chosen group in that module, which *are* in the URL because they are worth
+linking).
+
+Positioned `sticky bottom-2`, not `fixed`: the app already has a `fixed` music player bar
+owning the bottom of the viewport, and two stacked fixed bars fight. With nothing ticked it
+collapses to just the "select all" link, so it costs almost no space while browsing.
 
 ---
 

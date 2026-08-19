@@ -11,6 +11,7 @@ import { explainRuleCommand } from "./explain-rule";
 import { importJournalCsvCommand } from "./import-journal-csv";
 import { listCsvAnalyticsCommand } from "./list-csv-analytics";
 import { listUsersCommand } from "./list-users";
+import { musicLibraryCommand, scanMusicCommand } from "./scan-music";
 import { refreshPositionsCommand } from "./refresh-positions";
 import { setStartupMessageCommand } from "./set-startup-message";
 import { takeAttendanceCommand } from "./take-attendance";
@@ -35,6 +36,8 @@ const commands: Record<string, Command> = {
   "user-preferences": userPreferencesCommand,
   "take-attendance": takeAttendanceCommand,
   "attendance-report": attendanceReportCommand,
+  "scan-music": scanMusicCommand,
+  "music-library": musicLibraryCommand,
 };
 
 async function main(argv: string[]) {

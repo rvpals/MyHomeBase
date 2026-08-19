@@ -21,6 +21,10 @@ import { SqliteJournalRepository } from "./journal/repository";
 import { YahooFinanceClient } from "./market-data/yahoo-finance-client";
 import { SqliteModuleSettingsRepository } from "./module-settings/repository";
 import { SqliteModuleRepository } from "./modules/repository";
+import { LrclibLyricsClient } from "./music/lrclib-client";
+import { NodeMusicFileStore } from "./music/file-store";
+import { MusicMetadataReader } from "./music/metadata-reader";
+import { SqliteMusicRepository } from "./music/repository";
 import { SqliteSettingsRepository } from "./settings/repository";
 import { SqliteSqlExplorerRepository } from "./sql-explorer/repository";
 import { SqliteStockAnalyticsRepository } from "./stock-analytics/repository";
@@ -52,6 +56,12 @@ const db =
   })();
 
 globalForDb.__myhomebaseDb = db;
+
+// The music folder. Read here rather than in src/lib/music so the library code never
+// touches process.env: `//NAS_DS223/MEDIA/AUDIO` over SMB from Windows in dev,
+// `/volume1/MEDIA/AUDIO` locally on the NAS in production. Unset means the Music
+// Library module reports "not configured" rather than crashing.
+const musicRoot = process.env.MYHOMEBASE_MUSIC_ROOT ?? "";
 
 // Google sign-in is only enabled when all three env vars are set — every
 // adapter treats `deps.googleOAuthClient === undefined` as "feature off"
@@ -87,6 +97,13 @@ export const deps = {
   journalRepo: new SqliteJournalRepository(db),
   expenseRepo: new SqliteExpenseRepository(db),
   attendanceRepo: new SqliteAttendanceRepository(db),
+  musicRepo: new SqliteMusicRepository(db),
+  // Read-only by construction — MusicFileStore has no write method, so nothing here
+  // can modify the music collection.
+  musicFileStore: new NodeMusicFileStore(musicRoot),
+  musicRoot,
+  musicMetadataReader: new MusicMetadataReader(musicRoot),
+  lyricsClient: new LrclibLyricsClient(),
   csvFolder: new NodeCsvFolder(),
   csvImportMappingRepo: new SqliteCsvImportMappingRepository(db),
   csvAnalyticsRepo: new SqliteCsvAnalyticsRepository(db),

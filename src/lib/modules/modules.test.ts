@@ -152,6 +152,8 @@ describe("resetModulesToDefaults", () => {
       "journal",
       "csv-analysis",
       "expense",
+      "attendance",
+      "music-library",
     ]);
   });
 

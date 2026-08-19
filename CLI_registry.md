@@ -359,6 +359,70 @@ Source: [src/cli/set-startup-message.ts](src/cli/set-startup-message.ts)
 
 ---
 
+## `take-attendance`
+
+Records one attendance session for a class — the same use-case the home screen's
+register calls. Each run **appends** a session rather than replacing one, so a class
+that meets twice a day keeps both registers.
+
+```
+npm run cli -- take-attendance --class "Math 101" --present "3,7,9" --user 1
+npm run cli -- take-attendance --class "Math 101" --present all --user 1
+npm run cli -- take-attendance --class "Math 101" --date 2026-08-15 --present "3" --user 1
+npm run cli -- take-attendance --class "Math 101" --present all --actions "3:L,7:L+EC" --user 1
+```
+
+**Input** — `--class <name>` (required, matched case-insensitively) and `--user <id>`
+(required; who took the register). `--present` is a comma-separated list of student ids
+or `all`; **everyone not listed is recorded absent**, the same rule the UI applies.
+`--date YYYY-MM-DD` defaults to today. `--actions` notes student actions as
+`studentId:CODE` pairs, `+`-separated for several codes on one student — codes are the
+ones on the Student actions screen (`L`, `EC`), matched case-insensitively, because a
+catalog id is not something a teacher knows at a terminal.
+
+**Calls** — `listClasses`, `getAttendanceSheet`, `listStudentActions`, `saveAttendance`
+on `deps.attendanceRepo`.
+
+**Output** — how many sessions the day already holds (informational, not a warning),
+then the saved session's label and counts, then one line per student with their status
+and any noted codes in brackets.
+**Exit** — 0; 1 when `--class`/`--user` is missing, the class is unknown or empty, an
+action code is unknown (the available codes are printed), `--actions` names a student not
+enrolled in the class, or the save is rejected.
+Source: [src/cli/take-attendance.ts](src/cli/take-attendance.ts)
+
+---
+
+## `attendance-report`
+
+Prints a class's attendance for a day — the terminal counterpart of the Report screen.
+
+```
+npm run cli -- attendance-report --class "Math 101"
+npm run cli -- attendance-report --class "Math 101" --date 2026-08-15
+npm run cli -- attendance-report --class "Math 101" --list-sessions
+npm run cli -- attendance-report --class "Math 101" --session 12
+```
+
+**Input** — `--class <name>` (required). `--date YYYY-MM-DD` defaults to today.
+`--session <recordId>` picks one of the day's registers; without it the **latest** is
+printed, since a class may be registered more than once a day. `--list-sessions` lists
+every session with its id, date, label and counts instead of printing one
+(`--list-dates` is kept as an alias).
+
+**Calls** — `listClasses`, `listSessionsForClass`, `getAttendanceReport` /
+`getAttendanceReportById` on `deps.attendanceRepo`.
+
+**Output** — the class, date, session label and recorded timestamp; the present/absent
+counts; a one-line tally of any actions noted that session; then the PRESENT and ABSENT
+lists, each name followed by its action codes in brackets. Names and codes are as they
+were when attendance was taken.
+**Exit** — 0 (including when no attendance exists — that's a fact, not an error); 1 when
+`--class` is missing or unknown.
+Source: [src/cli/attendance-report.ts](src/cli/attendance-report.ts)
+
+---
+
 ## `user-preferences`
 
 Reads or writes one user's preferences — the favorite module and whether logging in
@@ -699,6 +763,60 @@ Settings helpers (pure): `resolveExpenseSettings`, `expenseSettingsToEntries`,
 `TransactionStatus = "new"|"reconciled"|"irreconcilable"`
 `RuleActionField = "categoryName"|"vendor"|"status"|"note"`
 `VendorTotal { vendor, totalCents, transactionCount, isDerived }`
+
+## attendance — `@/lib/attendance`
+
+All take `deps.attendanceRepo`. Everything JSON-serializable apart from the repo.
+
+| Use-case | Signature | Zod | Status |
+|---|---|---|---|
+| `formatStudentName` | `(student: Student) => string` — pure | — | **CLI** |
+| `listStudents` | `(repo) => Student[]` | — | web only |
+| `getStudentById` | `(repo, id) => Student \| undefined` | — | web only |
+| `addStudent` | `(repo, input: CreateStudentInput) => Student` | `createStudentSchema` | web only |
+| `updateStudent` | `(repo, id, input) => Student` | `updateStudentSchema` | web only |
+| `deleteStudent` | `(repo, id) => void` — clears enrollments; saved records keep their entries | — | web only |
+| `listClasses` | `(repo) => AttendanceClass[]` | — | **CLI** |
+| `getClassById` | `(repo, id) => AttendanceClass \| undefined` | — | web only |
+| `createClass` | `(repo, input: CreateClassInput) => AttendanceClass` — rejects a duplicate name readably | `createClassSchema` | web only |
+| `updateClass` | `(repo, id, input) => AttendanceClass` | `updateClassSchema` | web only |
+| `deleteClass` | `(repo, id) => void` — saved records survive, carrying the old class name | — | web only |
+| `listStudentsInClass` | `(repo, classId) => Student[]` | — | web only |
+| `enrollStudents` | `(repo, input) => { addedCount, skippedCount }` — re-adding is a no-op | `enrollStudentsSchema` | web only |
+| `removeStudentFromClass` | `(repo, classId, studentId) => void` | — | web only |
+| `listStudentActions` | `(repo, { includeRetired? } = {}) => StudentAction[]` — picker order; retired excluded by default | — | **CLI** |
+| `getStudentActionById` | `(repo, id) => StudentAction \| undefined` | — | web only |
+| `createStudentAction` | `(repo, input: CreateStudentActionInput) => StudentAction` — uppercases the code, rejects a duplicate case-insensitively | `createStudentActionSchema` | web only |
+| `updateStudentAction` | `(repo, id, input) => StudentAction` | `updateStudentActionSchema` | web only |
+| `setStudentActionActive` | `(repo, id, isActive) => StudentAction` — retire or bring back | — | web only |
+| `deleteStudentAction` | `(repo, id) => { deleted, recordedUses }` — **refuses** an action a session has recorded; retire it instead | — | web only |
+| `getAttendanceSheet` | `(repo, classId, attendanceDate) => AttendanceSheet` | — | **CLI** |
+| `saveAttendance` | `(repo, input: SaveAttendanceInput) => AttendanceRecord` — **appends** a session, never replaces | `saveAttendanceSchema` | **CLI** |
+| `getAttendanceReport` | `(repo, query) => AttendanceReport \| undefined` — the day's latest session | `attendanceReportQuerySchema` | **CLI** |
+| `getAttendanceReportById` | `(repo, recordId) => AttendanceReport \| undefined` | — | **CLI** |
+| `listSessionsForClass` | `(repo, classId) => AttendanceSessionSummary[]` — newest first, with counts | — | **CLI** |
+| `listRecordDatesForClass` | `(repo, classId) => string[]` — distinct dates, newest first | — | web only |
+
+The caller supplies the date; **no use-case here reads the clock** — both adapters
+already know their own "today", and a use-case that didn't would need the clock frozen
+to be testable.
+
+`saveAttendance` takes only the students marked present and writes everyone else
+`absent`, so "left blank" and "explicitly absent" are deliberately the same stored fact.
+It rejects an entry naming a student not enrolled in the class, a student listed twice, an
+unknown or **retired** action id, and the same action listed twice for one student.
+
+Student actions are a teacher-editable catalog (`att_student_actions`) recorded per
+student per session (`att_attendance_entry_actions`). Recorded rows carry the action's
+code **and** name as they were at save time, so a later rename doesn't rewrite a printed
+report — the same denormalization `className` and `studentName` use. Icon keys come from
+`ATTENDANCE_ACTION_ICONS`, a module-local glyph set outside the user-selectable icon
+sets; `migrations/0051_create_attendance_student_actions.md` records why.
+
+`AttendanceEntry { studentId, studentName, status, actions: RecordedStudentAction[] }`
+`AttendanceReport { recordId, classId, className, attendanceDate, recordedAt, sessionLabel, presentCount, absentCount, entries, actionTallies }`
+
+Preferences (pure): `resolveAttendanceSettings`, `attendanceSettingsToEntries`.
 
 ## journal — `@/lib/journal`
 
@@ -1051,6 +1169,68 @@ Image *uploads* are fine: `ImageUploadInput` carries base64 as a string.
 from a path: every `import*FromCsv`, `previewCsvFile`, `previewCsv`,
 `extractCsvAccountNames`, `parseThreeTwoOneNewsletter`, `parseEnvFile`,
 `summarizeChangeHistory`.
+
+---
+
+## `scan-music`
+
+Walks the music folder on the NAS and catalogs what it finds. **The command to use for
+the first scan of a large library** — reading tags across 20k files takes minutes, which
+is normal for a terminal job over SSH and impossible inside an HTTP request. Afterwards
+the web button is better: unchanged files are skipped, so a re-scan takes seconds.
+
+```
+npm run cli -- scan-music
+npm run cli -- scan-music CHINESE
+npm run cli -- scan-music CHINESE --limit 500
+npm run cli -- scan-music "CLASSICAL/Chinese Instruments" --formats flac
+npm run cli -- scan-music --include-unplayable --no-prune
+```
+
+**Input** — an optional folder relative to `MYHOMEBASE_MUSIC_ROOT` (omitted scans
+everything). `--formats mp3,flac` overrides the saved Configuration allowlist.
+`--limit N` stops after N files and reports the rate, which is how you turn "how long
+will this take" into a measurement before committing to a full run.
+`--include-unplayable` catalogs APE and WMA, which no browser can decode — off by
+default. `--no-prune` keeps catalog rows whose files have vanished from disk.
+
+**Calls** — `scanLibrary` on `deps.musicRepo`, `deps.musicFileStore` and
+`deps.musicMetadataReader`.
+
+**Output** — a live line showing the percentage, the file count and the file currently
+being read, then a summary: added, updated, skipped, failed, elapsed and files/sec. With
+`--limit`, an extrapolation to a full 20,000-file scan.
+**Exit** — 0; 1 when `MYHOMEBASE_MUSIC_ROOT` is unset, a `--formats` value is not a
+known audio extension, `--limit` is not a positive integer, or the scan fails outright.
+Progress is written to `mus_scan_runs`, so the web Scan Music screen shows a CLI run too.
+Source: [src/cli/scan-music.ts](src/cli/scan-music.ts)
+
+---
+
+## `music-library`
+
+Prints what is in the catalog — the terminal counterpart of the Library screen.
+
+```
+npm run cli -- music-library
+npm run cli -- music-library --search beyond --limit 40
+npm run cli -- music-library --unplayable
+```
+
+**Input** — `--search <term>` matches title, artist, album or filename;
+`--limit N` defaults to 20; `--unplayable` shows only the formats a browser cannot
+decode, which is how you find what would need converting to FLAC.
+
+**Calls** — `countTracks`, `countLyricsByStatus`, `listAlbums`, `searchTracks` on
+`deps.musicRepo`. Read-only.
+
+**Output** — track and album totals, the cached-lyrics breakdown by status, then one
+line per track: a `!` marker for unplayable formats, duration, extension, title and
+artist.
+**Exit** — always 0.
+Source: [src/cli/scan-music.ts](src/cli/scan-music.ts)
+
+---
 
 ## Known inconsistencies
 

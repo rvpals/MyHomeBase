@@ -136,10 +136,14 @@ sites never name a set — they just render `<ModuleIcon name="building" />` and
 current set's glyph.
 
 - **Glyph data is baked, not fetched.** The SVG bodies live in
-  `src/components/module-icon-sets.generated.ts`, generated from the `@iconify-json/*`
-  devDependencies by `scripts/gen-icon-glyphs.mjs` (`npm run gen:icons`) — no runtime icon
-  dependency. To add a set: add an entry to `ICON_SETS`, add its source + candidate map to
-  the generator, run `npm run gen:icons`, done.
+  `src/components/module-icon-sets.generated.ts` (the 13 module concepts) and
+  `src/components/tree-icon-sets.generated.ts` (the tree-nav section concepts), both
+  generated from the `@iconify-json/*` devDependencies by `scripts/gen-icon-glyphs.mjs`
+  (`npm run gen:icons`) — no runtime icon dependency. To add a set: add an entry to
+  `ICON_SETS`, add its source + candidate maps (`CAND` and `TREE_CAND`) to the generator,
+  run `npm run gen:icons`, done. **Name candidates explicitly and look at the result** —
+  the generator's keyword fallback is a safety net, not a plan; left to itself it picks
+  things like `school-bus-side` for a classroom.
 - **Monochrome vs. colorful.** A set is either theme-tinted (monochrome — inherits
   `currentColor`, sits in the solid-accent icon badge) or `colorful: true` (full-color
   artwork that carries its own fills). Colorful sets **can't** take the accent tint, so
@@ -150,8 +154,17 @@ current set's glyph.
   reads as artwork.
 - **"classic"** is the original hand-drawn set (`module-icons.tsx`) and the fallback for
   any concept a generated set happens to lack — never let a module icon render nothing.
-- This setting covers *module* icons only. Admin chrome (the `TreeNav` gear/grid/etc.
-  icons and `AdminIcon`) stays on the hand-drawn monochrome glyphs regardless of set.
+- **The setting covers module icons *and* `TreeNav` section icons.** `TreeIcon` reads the
+  same `useIconSet()` context, so a module's section bar matches its toolbar — including
+  going full-color together. Two deliberate exceptions stay hand-drawn in every set:
+  the row-action glyphs (`pencil`, `trash`, `refresh`), because they're buttons rather than
+  destinations and color on an inline delete weakens the destructive read; and `AdminIcon`.
+  Where a nav icon carries the brass accent, drop it for a colorful set —
+  `useTreeIconIsColorful(name)` answers that, and `TreeNav`'s `AccentTreeIcon` is the
+  worked example.
+- **No set covers every concept, and that's designed for.** `TreeIcon` falls back to its
+  hand-drawn glyph per *concept* (not per set), so a gap costs one icon rather than the
+  whole nav — `flat-color` has no paperclip, for instance.
 
 ## Installed-app surfaces (manifest, icons, launch screens)
 

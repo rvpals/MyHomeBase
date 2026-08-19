@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { AppChrome } from "@/components/app-chrome";
+import { MusicPlayerBar } from "@/components/music-player-bar";
+import { MusicPlayerProvider } from "@/components/music-player-provider";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { VIEWPORT_PINNED_COOKIE } from "@/lib/viewport";
 import { listModules } from "@/lib/modules";
@@ -55,7 +57,14 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
       {/* No `px-*` here — `.app-main` sets the side gutter from `--app-gutter`,
           so the compact section-tree bar can cancel exactly that much and run
           edge to edge. */}
-      <main className="app-main min-h-screen pb-8">{children}</main>
+      {/* The music player wraps the page rather than living inside the Music
+          Library module: an <audio> element stops when it unmounts, so keeping the
+          one instance above `children` is what lets a track keep playing while you
+          navigate between modules. The bar renders nothing until something plays. */}
+      <MusicPlayerProvider>
+        <main className="app-main min-h-screen pb-8">{children}</main>
+        <MusicPlayerBar />
+      </MusicPlayerProvider>
     </div>
   );
 }

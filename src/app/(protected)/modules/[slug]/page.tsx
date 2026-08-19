@@ -10,6 +10,7 @@ import { AttendanceSection } from "./attendance-section";
 import { CsvAnalyticsView } from "./csv-analytics-view";
 import { ExpenseSection } from "./expense-section";
 import { JournalSection } from "./journal-section";
+import { MusicSection } from "./music-section";
 import { StockSection } from "./stock-section";
 
 const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
@@ -17,6 +18,7 @@ const CSV_ANALYSIS_MODULE_SLUG = "csv-analysis";
 const JOURNAL_MODULE_SLUG = "journal";
 const EXPENSE_MODULE_SLUG = "expense";
 const ATTENDANCE_MODULE_SLUG = "attendance";
+const MUSIC_LIBRARY_MODULE_SLUG = "music-library";
 
 function ModuleBody({
   slug,
@@ -48,6 +50,10 @@ function ModuleBody({
 
   if (slug === ATTENDANCE_MODULE_SLUG) {
     return <AttendanceSection section="main" requestedClassId={requestedClassId} />;
+  }
+
+  if (slug === MUSIC_LIBRARY_MODULE_SLUG) {
+    return <MusicSection section="main" />;
   }
 
   return (

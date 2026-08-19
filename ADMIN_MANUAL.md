@@ -109,6 +109,51 @@ schema:
 cd /volume1/app/myhomebase && node --env-file-if-exists=.env migrate.cjs
 ```
 
+## If the app won't start after a DSM Node upgrade
+
+Symptom, in `app.log` — a startup crash naming ABI numbers, not the deploy:
+
+```
+Error: The module '.../better_sqlite3.node' was compiled against a different
+Node.js version using NODE_MODULE_VERSION 115. This version of Node.js requires
+NODE_MODULE_VERSION 127.
+...
+MIGRATION FAILED — not starting the app
+```
+
+**Cause.** `better-sqlite3` is a native addon, and its binary is keyed to Node's ABI
+rather than its version string. `scripts/publish-nas.mjs` downloads a prebuilt arm64
+binary for one specific ABI, so upgrading Node in Package Center leaves the shipped
+binary unloadable. Nothing is wrong with the database or the build — the app never gets
+far enough to open anything. `start.sh` treats a failed migration as fatal by design, so
+it will keep retrying every minute and logging the same error.
+
+**Fix.** Ask the NAS which ABI it wants, then republish for it:
+
+```bash
+node -p process.versions.modules      # on the NAS, over SSH. NOT `node -v`.
+```
+
+| DSM Node | ABI |
+|----------|-----|
+| v18      | 108 |
+| v20      | 115 |
+| v22      | 127 |
+
+```powershell
+# If the answer differs from the default in publish-nas.mjs:
+$env:NAS_NODE_ABI = "127"
+.\REBUILD_PUBLISH_NAS.bat
+```
+
+The publish prints which ABI it built for, and re-states this fix, so a mismatch is
+visible on Windows rather than only on the NAS.
+
+**No data is at risk.** `migrate.cjs` takes a timestamped backup before it touches
+anything, and it failed before opening the database — so the `.bak-*` files this created
+are just copies of the current, unmigrated database. Once the ABI matches, the pending
+migrations apply on the next restart as normal.
+
 ## Stopping the app
 
 **On the NAS**, prefer the trigger over killing the process. `deploy.trigger`

@@ -39,10 +39,28 @@ const OUT = path.join(ROOT, "dist-nas");
 
 /**
  * The target Node's ABI, not its version string — that is what a prebuild is
- * keyed on, and the usual way to get this wrong. Package Center's Node.js v20
- * on DSM is ABI 115. Node 22 would be 127.
+ * keyed on, and the usual way to get this wrong.
+ *
+ * | DSM Node | ABI |
+ * |----------|-----|
+ * | v18      | 108 |
+ * | v20      | 115 |
+ * | v22      | 127 |
+ *
+ * **This must match the Node actually installed on the NAS.** Upgrading Node in
+ * Package Center without changing this ships a binary the new runtime refuses to
+ * load, and the failure is a startup crash naming NODE_MODULE_VERSION rather than
+ * anything about the deploy:
+ *
+ *     Error: The module ... was compiled against a different Node.js version using
+ *     NODE_MODULE_VERSION 115. This version of Node.js requires NODE_MODULE_VERSION 127.
+ *
+ * Check the NAS with `node -p process.versions.modules` (not `node -v` — the ABI is
+ * what matters), then set this to match. Override without editing the file:
+ *
+ *     NAS_NODE_ABI=127 npm run publish:nas
  */
-const NODE_ABI = 115;
+const NODE_ABI = Number(process.env.NAS_NODE_ABI ?? 127);
 const TARGET = "linux-arm64";
 
 const BETTER_SQLITE3_VERSION = JSON.parse(
@@ -119,6 +137,10 @@ for (const unwanted of ["data", ".env", ".env.local", ".env.production"]) {
 }
 
 step(`Swapping in the ${TARGET} better-sqlite3 (ABI ${NODE_ABI})`);
+console.log(
+  `  targeting Node ${NODE_ABI === 127 ? "22" : NODE_ABI === 115 ? "20" : "?"} on the NAS` +
+    ` — confirm with \`node -p process.versions.modules\` over SSH`,
+);
 const tarballName = `better-sqlite3-v${BETTER_SQLITE3_VERSION}-node-v${NODE_ABI}-${TARGET}.tar.gz`;
 const url = `https://github.com/WiseLibs/better-sqlite3/releases/download/v${BETTER_SQLITE3_VERSION}/${tarballName}`;
 
@@ -202,6 +224,10 @@ console.log(`  ${checked} better-sqlite3 binaries, all AArch64`);
 step("Done");
 console.log(`  ${OUT}`);
 console.log(`  ${(directorySize(OUT) / 1024 / 1024).toFixed(1)} MB`);
+console.log(`\nBuilt for Node ABI ${NODE_ABI} (${NODE_ABI === 127 ? "Node 22" : NODE_ABI === 115 ? "Node 20" : "unknown"}).`);
+console.log("If the NAS crashes at startup with NODE_MODULE_VERSION, its Node was upgraded:");
+console.log("  node -p process.versions.modules      # on the NAS -- the ABI it wants");
+console.log("  NAS_NODE_ABI=<abi> npm run publish:nas");
 console.log("\nOn the NAS:");
 console.log("  node migrate.cjs               # apply any pending migrations");
 console.log("  node server.js                 # start the app");

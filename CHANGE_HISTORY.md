@@ -1,5 +1,171 @@
 # Change History
 
+## 2026-08-19 00:26 — Music Library: stream 20,000 songs off the NAS
+
+A new module that catalogs the audio already sitting on the NAS and streams it to a
+browser. **Nothing in it ever writes to a music file** — that is enforced in the type,
+not by discipline: `MusicFileStore` has no write, move, rename or delete method, so no
+code path from the app to a music file exists. Album art is *copied into* the database;
+lyrics are cached in the database; no `.lrc` or index file is ever left beside a track.
+
+**The library was measured before it was designed**, and the shape of the data drove
+most of the decisions: 20,272 files nested 2–8 levels deep — 10,574 mp3, 8,591 flac, 886
+ape, 90 wma, 84 ogg, 25 m4a, 22 wav — with no `Artist/Album/Track` convention. The top
+level mixes languages (`CHINESE`), genres (`CLASSICAL`), alphabet buckets (`ENGLISH/A`)
+and junk (`NO MUSIC`, `unsort`). So folder position is *not* trusted for metadata:
+embedded tags are the source of truth, the filename is the fallback, and an untagged file
+groups under its containing folder rather than being invented an album.
+
+**Four tables plus a new prefix `mus_`** (migration `0052`), lyrics in `0054`, and
+playlists and play counts in `0056`. `0053` registers the module; `0055` moves its icon
+off the borrowed `heart` glyph onto a real music note.
+
+**Audio bytes are never stored in SQLite** — only metadata and a path *relative* to
+`MYHOMEBASE_MUSIC_ROOT`. Relative, because the root differs per environment
+(`//NAS_DS223/MEDIA/AUDIO` over SMB in dev, `/volume1/MEDIA/AUDIO` on the NAS itself) and
+the same database file moves between them. `better-sqlite3` is synchronous, so serving a
+40 MB FLAC from a BLOB would block every other page render; `createReadStream` at a byte
+offset costs one buffer regardless of file size.
+
+**HTTP Range support is not an optimisation.** It is the difference between seeking
+instantly and downloading a whole FLAC first — and on iOS Safari the difference between
+playing and not playing at all, because it refuses an `<audio>` source whose server does
+not advertise `Accept-Ranges` and answer `206`. Eighteen unit tests pin every awkward
+header form (suffix ranges, backwards ranges, multi-range, out-of-bounds → `416` not
+`200`) so none of it is discovered by trial and error on a phone. Verified byte-exact
+against a real 30 MB FLAC: 1024 bytes requested, 1024 read.
+
+**APE and WMA are catalogued but never playable.** No browser implements either and none
+is going to, so 976 of the measured files can be listed and greyed out but not streamed.
+`formats.ts` is the single place that decides this, and the verdict is denormalized onto
+`mus_tracks.is_streamable` so a browse query can grey out the play button without
+re-deriving format rules per row. On-the-fly transcoding was considered and rejected: an
+aarch64 ffmpeg binary would peg a 2 GB DS223 and break seeking. Converting them to FLAC
+offline is the cheaper answer.
+
+**Scanning runs in two phases because the progress bar needs a denominator.** A fast walk
+counts candidate files, opening none; the slow pass then reads tags, reporting the file it
+is on. The UI shows a real percentage *and* the current filename, polled from
+`mus_scan_runs` — which is a table rather than in-memory state for two reasons: a scan
+cannot fit inside an HTTP request (minutes to tens of minutes on the NAS), and progress
+held in memory would vanish on a page refresh and be invisible to a scan started from the
+CLI. Writes commit in batches of 200 with the event loop yielded between them, so the
+rest of the app stays responsive while a scan runs. **A worker thread was considered and
+rejected** — it needs a third bundled entry point in `publish-nas.mjs` and a worker path
+resolving both under `next dev` and in the standalone build, which is real deployment risk
+for a job that is expensive exactly once.
+
+`file_mtime` + `file_size` make re-scanning nearly free: measured at 31 files/sec over SMB
+(≈11 minutes for the full library), and a second scan of the same folder skipped all 400
+files. Scanning is per-folder by design, which is also how `NO MUSIC` and `unsort` get
+left out — no ignore-list setting needed. A `--limit` flag on the CLI turns "how long will
+this take" into a measurement before committing to a full run.
+
+**Lyrics come from LRCLIB, not Google.** The feature was asked for as "fetch Google with
+title + artist"; that was not built, deliberately. Server-side requests to Google search
+from one IP get throttled to CAPTCHA pages, the result markup is obfuscated and changes
+without notice, and automated scraping is against their terms — the net effect would have
+been a feature that demos once and then rots. `lrclib.net` is free, needs no API key, and
+was verified against real tracks from this library (including Cantonese titles) before
+being committed to. Four statuses, not a nullable column: `found`, `instrumental` (a real
+answer — never retried), `not_found` (retryable; the database is community-contributed and
+grows) and `failed`, kept separate so an offline NAS is never remembered as "this song has
+no lyrics". Fetched on button press only — 20,272 tracks would mean 20,272 requests to a
+service that asks nothing in return.
+
+**The Library section is eight views over the one catalog** — All Songs, Artists, Genres,
+Playlists, Most Played, Years, Folders and Folder Hierarchy — each with its own icon, and
+the active view in the URL (`?view=`) so it is linkable. Search-first rather than a
+listing, because 20k rows is not a usable interface. Playlists are **shared, not
+per-user**: a household playlist is meant to be playable by anyone with module access, and
+the same track may appear twice in one (a set list can repeat a song). A play is counted
+when playback **starts**, which the Most Played view says out loud — that measures "opened"
+as much as "listened to", and `mus_play_events` keeps a timestamped row per play so a
+stricter definition can be computed over history later without a schema change.
+
+**Music survives navigation.** The single `<audio>` element lives in the protected layout
+above `children`, because an `<audio>` stops the moment it unmounts — a player inside the
+module's page would cut out on the way to another module. Two new registered components:
+`MusicPlayerProvider`/`MusicPlayerBar`, and `SelectionBar` + `useSelection` — a generic
+"tick several rows, then send them somewhere" pair that knows about ids and targets rather
+than tracks and playlists, so it stays reusable. The player bar is one of the few
+components that genuinely switches on `useIsCompact()` rather than restyling: a desktop
+transport row does not shrink into 375px, so narrow gets cover, title, one play/pause
+button and the scrubber reduced to a 2px hairline.
+
+**A blank-icon bug fixed along the way.** `TreeIcon` renders *nothing* for a name it does
+not know rather than falling back, so the invented key `"folder"` left a silently blank
+nav row. All 38 section icons across five modules were audited, and a test now asserts
+every Library view icon exists in `TREE_ICONS`.
+
+**`publish-nas.mjs` no longer hardcodes the Node ABI.** Upgrading DSM's Node from 20 to 22
+moved the ABI from 115 to 127, which made the shipped `better-sqlite3` binary unloadable
+and stopped the app at startup with `NODE_MODULE_VERSION` — a failure the script's own
+comment had predicted. `NODE_ABI` now defaults to 127 and reads `NAS_NODE_ABI`, the publish
+prints which ABI it built for, and `ADMIN_MANUAL.md` documents the symptom and the fix
+(`node -p process.versions.modules`, not `node -v`).
+
+One dependency: `music-metadata` (MIT, free). Pure JavaScript with **no native binary**,
+which is what keeps `better-sqlite3` the only thing in the tree needing an arm64 prebuild.
+
+Not built, and deliberately: cue-sheet splitting (398 single-file albums, flagged by
+`has_cue_sheet` so they can be found later without a re-scan), and APE/WMA playback.
+
+## 2026-08-18 23:20 — Attendance: two registers a day, student actions, and 12 icon sets
+
+Three things that had been sitting in the working tree, shipped together because they all
+touch the same module and the same icon plumbing.
+
+**A class that meets twice a day now keeps both registers** (migration `0049`). The
+original schema had `UNIQUE (class_id, attendance_date)`, and that uniqueness *was* the
+overwrite behaviour — taking the register a second time silently replaced the first. The
+index is recreated non-unique (per-class-per-day reads still need it, they just must not
+reject a second session) and a `session_label` column holds a readable `HH:MM` so the
+session picker can tell `09:05` from `14:10`. Neither step rebuilds the table: SQLite drops
+an index directly, and adding a `NOT NULL` column *with a default* is in-place. Existing
+rows backfill from `recorded_at`, which is a full ISO timestamp.
+
+**Student actions** (migration `0051`) — a teacher-editable catalog of things worth noting
+about one student on the day: "arrived late", "went up to the board and earned extra
+credit". A catalog table plus a join table rather than a free-text note column, because a
+code can then be counted, filtered and printed on the report. `action_code` and
+`action_name` are denormalized onto the join rows for the same reason `class_name` is
+denormalized elsewhere: a report printed last term must keep reading the way it did then,
+so renaming "Extra Credit" must not rewrite history. Retiring an action sets `is_active = 0`
+rather than deleting it — once an action has been recorded, its catalog row is the only
+place its icon and description live, so a hard delete would leave past sessions
+half-described. Only a never-used action is deleted outright. The actions carry their own
+small glyph set (`ATTENDANCE_ACTION_ICONS`), deliberately outside the user-selectable icon
+sets, because a teacher-editable list needs a fixed menu it can pick from without a code
+change.
+
+**Journal and Attendance stopped sharing a glyph** (migration `0050`). Both seeded with
+`book`, so they rendered identically in the app bar, on the home grid and in the carousel.
+Journal moves to `journal` (a bound journal with a quill) and Attendance to `roster` (a
+class register — checklist rows with ticks). Both `UPDATE`s are scoped by slug *and* by the
+old value, so a hand-picked icon is left alone; `DEFAULT_MODULES` is kept in step or "Reset
+to Default" would put `book` back.
+
+**The icon generator now bakes tree-nav glyphs too.** `scripts/gen-icon-glyphs.mjs` emits
+`TREE_ICON_GLYPHS` alongside the module set, keyed by the same set ids, so a reader's chosen
+icon set applies to the section nav as well as the module toolbar. Not every set covers
+every concept — flat-color has no paperclip — so `TreeIcon` falls back to the hand-drawn
+glyph, which is load-bearing rather than defensive: a keyword-matched near-miss looks worse
+than the drawing it would replace.
+
+## 2026-08-18 23:15 — Ticker detail: how far a trade has moved since you made it
+
+Each recorded trade on a ticker's history now carries the price move since it was
+executed — per share, across that trade's own share count, and as a percentage.
+
+Measured against the current price already on our own position row, which is what keeps
+`getTickerOwnData` a database-only read rather than another quote fetch. Both prices have
+to be real for the answer to mean anything, so a trade with no baseline — or a ticker no
+longer held, and therefore with no current price — reports `hasMoveSince: false` instead of
+a figure quietly computed from a zero. That distinction is the whole point: "no move to
+show" and "moved 0%" are different facts, and a percentage derived from a missing price is
+worse than a blank.
+
 ## 2026-08-16 23:08 — Attendance: take the register on a phone
 
 A new module for teachers. Pick a class, tap the students who are here, press save —
