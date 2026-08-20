@@ -25,6 +25,10 @@ import { LrclibLyricsClient } from "./music/lrclib-client";
 import { NodeMusicFileStore } from "./music/file-store";
 import { MusicMetadataReader } from "./music/metadata-reader";
 import { SqliteMusicRepository } from "./music/repository";
+import {
+  SqliteMagicCandidateSource,
+  SqliteMagicListRepository,
+} from "./music-magic/repository";
 import { SqliteSettingsRepository } from "./settings/repository";
 import { SqliteSqlExplorerRepository } from "./sql-explorer/repository";
 import { SqliteStockAnalyticsRepository } from "./stock-analytics/repository";
@@ -34,6 +38,7 @@ import { SqliteStockWatchListRepository } from "./stock-watchlist/repository";
 import { RealSystemInfoRepository } from "./system-info/repository";
 import { YahooTickerNewsClient } from "./ticker-news/yahoo-news-client";
 import { FmpTickerLogoClient } from "./ticker-logos/fmp-logo-client";
+import { SqliteTickerFavoriteRepository } from "./ticker-favorites/repository";
 import { SqliteTickerLogoRepository } from "./ticker-logos/repository";
 import { SqliteTickerRiskCacheRepository } from "./ticker-overview/repository";
 import { SqliteTickerProfileRepository } from "./ticker-profiles/repository";
@@ -104,6 +109,10 @@ export const deps = {
   musicRoot,
   musicMetadataReader: new MusicMetadataReader(musicRoot),
   lyricsClient: new LrclibLyricsClient(),
+  // Magic Playlists. Two ports rather than one: the candidate source only reads the
+  // catalog, so a test can fake the eligible tracks without faking saved-list storage.
+  magicListRepo: new SqliteMagicListRepository(db),
+  magicCandidateSource: new SqliteMagicCandidateSource(db),
   csvFolder: new NodeCsvFolder(),
   csvImportMappingRepo: new SqliteCsvImportMappingRepository(db),
   csvAnalyticsRepo: new SqliteCsvAnalyticsRepository(db),
@@ -119,6 +128,7 @@ export const deps = {
   tickerNewsClient: new YahooTickerNewsClient(),
   tickerLogoRepo: new SqliteTickerLogoRepository(db),
   tickerLogoClient: new FmpTickerLogoClient(),
+  tickerFavoriteRepo: new SqliteTickerFavoriteRepository(db),
   tickerRiskCacheRepo: new SqliteTickerRiskCacheRepository(db),
   tickerProfileRepo: new SqliteTickerProfileRepository(db),
   // Sector data rides on the quoteSummary client the detail tab already uses —

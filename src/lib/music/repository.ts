@@ -9,6 +9,7 @@ import type {
 import { MUSIC_FORMATS, type MusicExtension } from "./formats";
 import type { LyricsStatus, TrackLyrics } from "./lyrics";
 import type { MusicRepository } from "./ports";
+import { isRepeatMode, type QueueEntry, type QueueState, type RepeatMode } from "./queue";
 import type {
   Album,
   AlbumCover,
@@ -922,6 +923,151 @@ export class SqliteMusicRepository implements MusicRepository {
       let position = 0;
       for (const entryId of orderedPlaylistTrackIds) update.run(position++, entryId, playlistId);
     })();
+  }
+
+  // --- the play queue (see migrations/0059) ---
+
+  listQueueEntries(): { entry: QueueEntry; track: Track }[] {
+    // INNER JOIN for the same reason listPlaylistTracks uses one: a rescan that finds a
+    // file gone deletes the track row, and the queue should then simply be shorter
+    // rather than rendering a blank line for something unplayable.
+    const rows = this.db
+      .prepare(
+        `SELECT q.id AS queue_entry_id, q.position, ${TRACK_COLUMNS.split(",")
+          .map((column) => `t.${column.trim()}`)
+          .join(", ")}
+         FROM mus_play_queue q
+         JOIN mus_tracks t ON t.id = q.track_id
+         ORDER BY q.position, q.id`,
+      )
+      .all() as (TrackRow & { queue_entry_id: number; position: number })[];
+
+    return rows.map((row) => ({
+      entry: { id: row.queue_entry_id, trackId: row.id, position: row.position },
+      track: toTrack(row),
+    }));
+  }
+
+  getQueueState(): QueueState {
+    const row = this.db
+      .prepare(
+        `SELECT current_entry_id, repeat_mode, is_shuffled FROM mus_play_queue_state WHERE id = 1`,
+      )
+      .get() as
+      | { current_entry_id: number | null; repeat_mode: string; is_shuffled: number }
+      | undefined;
+
+    // The migration seeds the row, so `undefined` means someone deleted it. Defaulting
+    // rather than throwing: an unplayable queue screen is a worse outcome than a reset
+    // cursor, and every write path uses UPDATE ... WHERE id = 1 which will restore it.
+    if (row === undefined) return { repeatMode: "off", isShuffled: false };
+
+    return {
+      currentEntryId: row.current_entry_id ?? undefined,
+      // The column has a CHECK constraint, so this is belt-and-braces against a value
+      // written before it existed rather than a live concern.
+      repeatMode: isRepeatMode(row.repeat_mode) ? row.repeat_mode : "off",
+      isShuffled: row.is_shuffled === 1,
+    };
+  }
+
+  replaceQueue(trackIds: readonly number[], currentIndex?: number): number[] {
+    const insert = this.db.prepare(
+      `INSERT INTO mus_play_queue (track_id, position) VALUES (?, ?)`,
+    );
+    const setCurrent = this.db.prepare(
+      `UPDATE mus_play_queue_state SET current_entry_id = ? WHERE id = 1`,
+    );
+
+    // One transaction for the delete, the inserts and the cursor: a click in a track
+    // list must never be able to leave an emptied queue behind if an insert fails.
+    return this.db.transaction(() => {
+      this.db.prepare(`DELETE FROM mus_play_queue`).run();
+
+      const ids = trackIds.map((trackId, index) => {
+        const result = insert.run(trackId, index);
+        return Number(result.lastInsertRowid);
+      });
+
+      // An out-of-range index clears the cursor rather than throwing -- the caller asked
+      // for a row that is not there, and silence is the honest result.
+      const currentId = currentIndex === undefined ? null : (ids[currentIndex] ?? null);
+      setCurrent.run(currentId);
+      return ids;
+    })();
+  }
+
+  appendToQueue(trackIds: readonly number[]): number[] {
+    if (trackIds.length === 0) return [];
+    // MAX(position) rather than the row count: a removal leaves a gap, and counting
+    // would collide with a position already in use.
+    const nextRow = this.db
+      .prepare(`SELECT COALESCE(MAX(position), -1) + 1 AS next FROM mus_play_queue`)
+      .get() as { next: number };
+
+    const insert = this.db.prepare(
+      `INSERT INTO mus_play_queue (track_id, position) VALUES (?, ?)`,
+    );
+
+    return this.db.transaction(() => {
+      let position = nextRow.next;
+      return trackIds.map((trackId) => {
+        const result = insert.run(trackId, position++);
+        return Number(result.lastInsertRowid);
+      });
+    })();
+  }
+
+  removeQueueEntry(entryId: number): void {
+    // The cursor is NOT touched here. Where it should land when the playing entry goes
+    // is a domain decision, made by `afterRemoving` in queue.ts and applied by the
+    // use-case through saveQueueState -- a repository guessing it would duplicate the
+    // rule in a place with no tests.
+    this.db.prepare(`DELETE FROM mus_play_queue WHERE id = ?`).run(entryId);
+  }
+
+  clearQueue(): void {
+    this.db.prepare(`DELETE FROM mus_play_queue`).run();
+  }
+
+  reorderQueue(orderedEntryIds: readonly number[]): void {
+    const update = this.db.prepare(`UPDATE mus_play_queue SET position = ? WHERE id = ?`);
+    this.db.transaction(() => {
+      let position = 0;
+      for (const entryId of orderedEntryIds) update.run(position++, entryId);
+    })();
+  }
+
+  saveQueueState(state: {
+    currentEntryId?: number | null;
+    repeatMode?: RepeatMode;
+    isShuffled?: boolean;
+  }): void {
+    // Built as a partial UPDATE rather than a full row write: the callers each change one
+    // or two fields, and writing all three would mean every caller having to read the
+    // other values first just to preserve them.
+    const assignments: string[] = [];
+    const parameters: Record<string, unknown> = {};
+
+    // `undefined` means "leave alone"; `null` means "clear". Checked against undefined
+    // explicitly so null passes through as a real value.
+    if (state.currentEntryId !== undefined) {
+      assignments.push("current_entry_id = @currentEntryId");
+      parameters.currentEntryId = state.currentEntryId;
+    }
+    if (state.repeatMode !== undefined) {
+      assignments.push("repeat_mode = @repeatMode");
+      parameters.repeatMode = state.repeatMode;
+    }
+    if (state.isShuffled !== undefined) {
+      assignments.push("is_shuffled = @isShuffled");
+      parameters.isShuffled = state.isShuffled ? 1 : 0;
+    }
+    if (assignments.length === 0) return;
+
+    this.db
+      .prepare(`UPDATE mus_play_queue_state SET ${assignments.join(", ")} WHERE id = 1`)
+      .run(parameters);
   }
 
   // --- lyrics ---

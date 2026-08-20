@@ -100,6 +100,18 @@ export async function fetchLyricsAction(input: {
 }
 
 /** The cached lyrics for a track, without asking the service. */
+/**
+ * Whether the player should look lyrics up on its own.
+ *
+ * Its own action rather than reading `getMusicSettingsAction`, which also counts every
+ * track in the library -- the player asks this on each track change and has no use for
+ * the rest of that payload.
+ */
+export async function getAutoFetchLyricsAction(): Promise<boolean> {
+  await requireUser();
+  return readMusicSettings().autoFetchLyrics;
+}
+
 export async function getLyricsAction(trackId: number): Promise<LyricsActionResult | undefined> {
   await requireUser();
   const cached = getCachedLyrics(deps.musicRepo, trackId);
@@ -331,6 +343,7 @@ export async function listFoldersAction(
 export async function getMusicSettingsAction(): Promise<{
   scanExtensions: string[];
   skipUnstreamable: boolean;
+  autoFetchLyrics: boolean;
   musicRootConfigured: boolean;
   trackCount: number;
 }> {
@@ -339,6 +352,7 @@ export async function getMusicSettingsAction(): Promise<{
   return {
     scanExtensions: settings.scanExtensions,
     skipUnstreamable: settings.skipUnstreamable,
+    autoFetchLyrics: settings.autoFetchLyrics,
     musicRootConfigured: deps.musicRoot.trim() !== "",
     trackCount: deps.musicRepo.countTracks(),
   };
@@ -347,6 +361,7 @@ export async function getMusicSettingsAction(): Promise<{
 export async function saveMusicSettingsAction(input: {
   scanExtensions: string[];
   skipUnstreamable: boolean;
+  autoFetchLyrics?: boolean;
 }): Promise<{ ok: true } | { error: string }> {
   await requireUser();
   const parsed = musicSettingsSchema.safeParse(input);

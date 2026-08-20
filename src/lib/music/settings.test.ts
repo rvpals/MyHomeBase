@@ -21,6 +21,22 @@ describe("resolveMusicSettings", () => {
     expect(settings.scanExtensions).toEqual(["mp3", "flac"]);
     // A playable library is the common want, so this defaults on.
     expect(settings.skipUnstreamable).toBe(true);
+    // Auto-fetch defaults OFF: it sends traffic to lrclib.net, so it is opt-in.
+    expect(settings.autoFetchLyrics).toBe(false);
+  });
+
+  it("reads auto-fetch lyrics when it has been switched on", () => {
+    const settings = resolveMusicSettings(rows({ [MUSIC_SETTING_KEYS.autoFetchLyrics]: "true" }));
+    expect(settings.autoFetchLyrics).toBe(true);
+  });
+
+  it("treats anything other than true as off", () => {
+    // Covers the stored "false" and a value no UI would write but a hand-edited row
+    // could -- neither may switch an outbound-request feature on.
+    for (const value of ["false", "", "yes", "1", "TRUE "]) {
+      const settings = resolveMusicSettings(rows({ [MUSIC_SETTING_KEYS.autoFetchLyrics]: value }));
+      expect(settings.autoFetchLyrics).toBe(value.trim().toLowerCase() === "true");
+    }
   });
 
   it("reads a stored allowlist", () => {
@@ -87,6 +103,7 @@ describe("musicSettingsToEntries", () => {
       musicSettingsToEntries({
         scanExtensions: [...original.scanExtensions],
         skipUnstreamable: original.skipUnstreamable,
+        autoFetchLyrics: true,
       }).map((entry, index) => ({
         id: index + 1,
         moduleId: 7,
@@ -96,16 +113,25 @@ describe("musicSettingsToEntries", () => {
     );
     expect(restored.scanExtensions).toEqual(["mp3", "flac", "ape"]);
     expect(restored.skipUnstreamable).toBe(false);
+    expect(restored.autoFetchLyrics).toBe(true);
   });
 
   it("never writes a blank value, which the settings schema rejects", () => {
-    for (const entry of musicSettingsToEntries({ scanExtensions: [], skipUnstreamable: true })) {
+    for (const entry of musicSettingsToEntries({
+      scanExtensions: [],
+      skipUnstreamable: true,
+      autoFetchLyrics: false,
+    })) {
       expect(entry.value).not.toBe("");
     }
   });
 
   it("substitutes the default when handed an empty allowlist", () => {
-    const entries = musicSettingsToEntries({ scanExtensions: [], skipUnstreamable: true });
+    const entries = musicSettingsToEntries({
+      scanExtensions: [],
+      skipUnstreamable: true,
+      autoFetchLyrics: false,
+    });
     const extensions = entries.find((e) => e.key === MUSIC_SETTING_KEYS.scanExtensions);
     expect(extensions?.value).toBe("mp3,flac");
   });

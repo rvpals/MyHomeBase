@@ -13,6 +13,7 @@ import { getMusicSettingsAction, saveMusicSettingsAction } from "./music-actions
 export function MusicConfigurationView() {
   const [extensions, setExtensions] = useState<string[]>([]);
   const [skipUnstreamable, setSkipUnstreamable] = useState(true);
+  const [autoFetchLyrics, setAutoFetchLyrics] = useState(false);
   const [trackCount, setTrackCount] = useState(0);
   const [rootConfigured, setRootConfigured] = useState(true);
   const [loaded, setLoaded] = useState(false);
@@ -25,6 +26,7 @@ export function MusicConfigurationView() {
       if (cancelled) return;
       setExtensions(settings.scanExtensions);
       setSkipUnstreamable(settings.skipUnstreamable);
+      setAutoFetchLyrics(settings.autoFetchLyrics);
       setTrackCount(settings.trackCount);
       setRootConfigured(settings.musicRootConfigured);
       setLoaded(true);
@@ -45,7 +47,11 @@ export function MusicConfigurationView() {
   const onSave = () => {
     setMessage(undefined);
     startSaving(async () => {
-      const result = await saveMusicSettingsAction({ scanExtensions: extensions, skipUnstreamable });
+      const result = await saveMusicSettingsAction({
+        scanExtensions: extensions,
+        skipUnstreamable,
+        autoFetchLyrics,
+      });
       setMessage("error" in result ? result.error : "Saved.");
     });
   };
@@ -104,6 +110,24 @@ export function MusicConfigurationView() {
             <span className="mt-0.5 block text-xs text-muted">
               APE and WMA have no browser decoder. Leave this on for a library you can listen
               to; turn it off to catalog everything for reference.
+            </span>
+          </span>
+        </label>
+
+        <label className="mt-3 flex items-start gap-2 border-t border-line pt-3">
+          <input
+            type="checkbox"
+            checked={autoFetchLyrics}
+            onChange={(event) => setAutoFetchLyrics(event.target.checked)}
+            className="mt-0.5 accent-brass"
+          />
+          <span className="text-sm text-ink">
+            Auto-retrieve lyrics from the web when none are saved
+            <span className="mt-0.5 block text-xs text-muted">
+              Off by default: with this on, opening the player for a track with no saved
+              lyrics sends a lookup to lrclib.net by itself, instead of waiting for the
+              &ldquo;Get lyrics&rdquo; button. Each answer is cached, so a track is only ever
+              asked about once — and a miss is not retried automatically.
             </span>
           </span>
         </label>

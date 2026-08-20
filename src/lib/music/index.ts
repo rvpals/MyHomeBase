@@ -79,14 +79,22 @@ export {
 export {
   addToPlaylistSchema,
   browsePageSchema,
+  enqueueSchema,
   libraryViewSchema,
   playlistIdSchema,
   playlistWriteSchema,
+  queueEntryIdSchema,
   reorderPlaylistSchema,
+  reorderQueueSchema,
+  repeatModeSchema,
+  setQueueSchema,
   type AddToPlaylistInput,
   type BrowsePageInput,
+  type EnqueueInput,
   type PlaylistWriteInput,
   type ReorderPlaylistInput,
+  type ReorderQueueInput,
+  type SetQueueInput,
 } from "./schema";
 
 export {
@@ -118,6 +126,40 @@ export {
   type FetchLyricsDependencies,
   type FetchLyricsOutcome,
 } from "./lyrics-use-cases";
+
+export {
+  REPEAT_MODES,
+  REPEAT_MODE_INFO,
+  afterRemoving,
+  currentIndex,
+  currentItem,
+  isRepeatMode,
+  nextEntryId,
+  previousEntryId,
+  queueDurationSeconds,
+  remainingDurationSeconds,
+  shuffledEntryIds,
+  type PlayQueue,
+  type QueueEntry,
+  type QueueItem,
+  type QueueState,
+  type RepeatMode,
+} from "./queue";
+
+export {
+  advanceQueue,
+  clearQueue,
+  enqueueTracks,
+  getPlayQueue,
+  playQueueEntry,
+  removeQueueEntry,
+  reorderQueue,
+  rewindQueue,
+  setQueue,
+  setRepeatMode,
+  shuffleQueue,
+  type QueueDependencies,
+} from "./queue-use-cases";
 
 export {
   getTrackForStreaming,

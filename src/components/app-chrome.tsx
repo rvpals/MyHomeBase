@@ -280,8 +280,16 @@ export function AppChrome({
 
   return (
     <div className={className}>
+      {/* No `h-14` on the bar below: `.app-bar` in globals.css owns the height, because
+          it has to add the iOS safe-area inset to it (the bar paints under the Dynamic
+          Island — see `viewport-fit=cover` in src/app/layout.tsx). Two sources for one
+          height would just be a cascade puzzle.
+
+          The comment sits out here rather than inside the ternary branch: `{/* … *\/}` as
+          the first thing after `? (` parses as an object literal, not a comment, which is
+          a syntax error. */}
       {barOpen ? (
-        <header className="app-bar nav-raised-top fixed inset-x-0 top-0 z-40 flex h-14 items-center gap-2 border-b border-line bg-paper-raised px-3">
+        <header className="app-bar nav-raised-top fixed inset-x-0 top-0 z-40 flex items-center gap-2 border-b border-line bg-paper-raised px-3">
           {/* `?home=1`, not `/`, so the logo always reaches the home screen.
               Bare `/` redirects anyone who opted into opening a favorite module
               on startup, which made this link a no-op for them — see the home
@@ -346,7 +354,10 @@ export function AppChrome({
           </div>
         </header>
       ) : (
-        <Puck onClick={() => setBarOpen(true)} label="Show the toolbar" position="left-3 top-3 z-40">
+        // `app-bar-puck` (globals.css) rather than `top-3`: minimised, this is the only
+        // chrome on screen, so it must clear the Dynamic Island itself — nothing above it
+        // is reserving that space any more.
+        <Puck onClick={() => setBarOpen(true)} label="Show the toolbar" position="app-bar-puck z-40">
           <AppIcon className="h-5 w-5" />
         </Puck>
       )}

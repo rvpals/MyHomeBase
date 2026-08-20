@@ -12,6 +12,7 @@ import {
 export const MUSIC_SETTING_KEYS = {
   scanExtensions: "music_scan_extensions",
   skipUnstreamable: "music_skip_unstreamable",
+  autoFetchLyrics: "music_auto_fetch_lyrics",
 } as const;
 
 export interface MusicSettings {
@@ -35,6 +36,19 @@ export interface MusicSettings {
    * them; someone building a playable library does not.
    */
   skipUnstreamable: boolean;
+  /**
+   * Whether the player looks lyrics up on its own when a track has none cached.
+   *
+   * migrations/0054_create_music_track_lyrics.md ruled out fetching on play, on the
+   * grounds that it makes an outbound request per track played that the owner never
+   * asked for. That objection is about consent, not correctness, so this is the
+   * answer to it: off unless switched on, and only ever tried once per track,
+   * because the result -- hit or miss -- is cached either way.
+   *
+   * Defaults off, so an install that never visits this screen behaves exactly as
+   * the migration describes.
+   */
+  autoFetchLyrics: boolean;
 }
 
 /**
@@ -61,9 +75,15 @@ export function resolveMusicSettings(settings: ModuleSetting[]): MusicSettings {
   const rawSkip = byKey.get(MUSIC_SETTING_KEYS.skipUnstreamable);
   const skipUnstreamable = rawSkip === undefined ? true : rawSkip.trim().toLowerCase() === "true";
 
+  // Missing means off, unlike `skipUnstreamable` above: this one sends traffic to a
+  // third-party service, so it has to be asked for rather than inherited.
+  const rawAutoLyrics = byKey.get(MUSIC_SETTING_KEYS.autoFetchLyrics);
+  const autoFetchLyrics = rawAutoLyrics?.trim().toLowerCase() === "true";
+
   return {
     scanExtensions: scanExtensions.length > 0 ? scanExtensions : [...DEFAULT_SCAN_EXTENSIONS],
     skipUnstreamable,
+    autoFetchLyrics,
   };
 }
 
@@ -82,5 +102,6 @@ export function musicSettingsToEntries(settings: MusicSettings): { key: string; 
   return [
     { key: MUSIC_SETTING_KEYS.scanExtensions, value: [...new Set(extensions)].join(",") },
     { key: MUSIC_SETTING_KEYS.skipUnstreamable, value: String(settings.skipUnstreamable) },
+    { key: MUSIC_SETTING_KEYS.autoFetchLyrics, value: String(settings.autoFetchLyrics) },
   ];
 }

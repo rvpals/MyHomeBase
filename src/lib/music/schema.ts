@@ -41,6 +41,10 @@ export type StartScanInput = z.infer<typeof startScanSchema>;
 export const musicSettingsSchema = z.object({
   scanExtensions: z.array(musicExtensionSchema).min(1, "Choose at least one file format."),
   skipUnstreamable: z.boolean(),
+  // Defaulted rather than required: a caller that predates this setting (the CLI, an
+  // older form post) must keep working, and "off" is the safe reading -- see the field
+  // doc on MusicSettings.
+  autoFetchLyrics: z.boolean().default(false),
 });
 export type MusicSettingsInput = z.infer<typeof musicSettingsSchema>;
 
@@ -99,3 +103,36 @@ export const reorderPlaylistSchema = z.object({
   orderedPlaylistTrackIds: z.array(z.coerce.number().int().positive()),
 });
 export type ReorderPlaylistInput = z.infer<typeof reorderPlaylistSchema>;
+
+// --- the play queue (see migrations/0059) ---
+
+/** A queue ENTRY id, which is not a track id -- the queue may hold a track twice. */
+export const queueEntryIdSchema = z.coerce.number().int().positive();
+
+/**
+ * Replacing the queue: the tracks, and optionally which one to start from.
+ *
+ * `startIndex` is an index into `trackIds` rather than a track id, because the caller is
+ * a click in a list -- "this row, of these rows" -- and a track id could not name the
+ * second copy of a repeated track.
+ */
+export const setQueueSchema = z.object({
+  trackIds: z.array(trackIdSchema).min(1, "Choose at least one track."),
+  startIndex: z.coerce.number().int().min(0).optional(),
+});
+export type SetQueueInput = z.infer<typeof setQueueSchema>;
+
+/** Adding to the end of the queue. */
+export const enqueueSchema = z.object({
+  trackIds: z.array(trackIdSchema).min(1, "Choose at least one track."),
+});
+export type EnqueueInput = z.infer<typeof enqueueSchema>;
+
+/** How the queue advances. Mirrors the CHECK constraint on the column. */
+export const repeatModeSchema = z.enum(["off", "all", "one"]);
+
+/** Reordering. The full ordered list of entry ids, as with a playlist. */
+export const reorderQueueSchema = z.object({
+  orderedEntryIds: z.array(queueEntryIdSchema),
+});
+export type ReorderQueueInput = z.infer<typeof reorderQueueSchema>;

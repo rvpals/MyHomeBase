@@ -11,6 +11,38 @@ import { getSetting } from "@/lib/settings";
 import { getAccessibleModules, isAdmin } from "@/lib/user";
 import { deps } from "@/lib/wiring";
 import { logoutAction } from "../login/actions";
+import {
+  advanceQueueAction,
+  clearQueueAction,
+  enqueueTracksAction,
+  getQueueAction,
+  playQueueEntryAction,
+  removeQueueEntryAction,
+  rewindQueueAction,
+  setQueueAction,
+  setRepeatModeAction,
+  shuffleQueueAction,
+} from "./modules/[slug]/music-queue-actions";
+
+// The queue's server actions, handed to the player provider as props.
+//
+// Wired here rather than imported inside the component for the reason components.md
+// gives: a shared component takes props and emits events, so a file under
+// src/components must not reach into src/app. This object is where the two layers meet,
+// and it is typechecked against MusicQueueActions at the call site below -- the same
+// shape `logoutAction` is passed to AppChrome.
+const musicQueueActions = {
+  getQueue: getQueueAction,
+  setQueue: setQueueAction,
+  enqueueTracks: enqueueTracksAction,
+  playQueueEntry: playQueueEntryAction,
+  advanceQueue: advanceQueueAction,
+  rewindQueue: rewindQueueAction,
+  shuffleQueue: shuffleQueueAction,
+  removeQueueEntry: removeQueueEntryAction,
+  clearQueue: clearQueueAction,
+  setRepeatMode: setRepeatModeAction,
+};
 
 function getAppName(): string {
   return getSetting(deps.settingsRepo, "application_name")?.value ?? "MyHomeBase";
@@ -35,10 +67,11 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
     hint: appModule.description,
   }));
 
-  // Both bars are `fixed`, so they're out of the flow and content gets the full
+  // Every bar is `fixed`, so they're out of the flow and content gets the full
   // width. `app-main` is the hook globals.css uses to pad for whichever bars are
   // showing — this stays a server component, so reacting to that client-side
-  // state has to happen in CSS.
+  // state has to happen in CSS. The bottom edge stacks: the section nav sits on
+  // it, and the music player rides above the nav rather than covering it.
   return (
     <div className="min-h-screen">
       <AppChrome
@@ -61,7 +94,7 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
           Library module: an <audio> element stops when it unmounts, so keeping the
           one instance above `children` is what lets a track keep playing while you
           navigate between modules. The bar renders nothing until something plays. */}
-      <MusicPlayerProvider>
+      <MusicPlayerProvider actions={musicQueueActions}>
         <main className="app-main min-h-screen pb-8">{children}</main>
         <MusicPlayerBar />
       </MusicPlayerProvider>

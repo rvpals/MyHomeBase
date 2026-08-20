@@ -11,6 +11,8 @@ import { explainRuleCommand } from "./explain-rule";
 import { importJournalCsvCommand } from "./import-journal-csv";
 import { listCsvAnalyticsCommand } from "./list-csv-analytics";
 import { listUsersCommand } from "./list-users";
+import { magicPlaylistCommand } from "./magic-playlist";
+import { playQueueCommand } from "./play-queue";
 import { musicLibraryCommand, scanMusicCommand } from "./scan-music";
 import { refreshPositionsCommand } from "./refresh-positions";
 import { setStartupMessageCommand } from "./set-startup-message";
@@ -38,6 +40,8 @@ const commands: Record<string, Command> = {
   "attendance-report": attendanceReportCommand,
   "scan-music": scanMusicCommand,
   "music-library": musicLibraryCommand,
+  "magic-playlist": magicPlaylistCommand,
+  "play-queue": playQueueCommand,
 };
 
 async function main(argv: string[]) {

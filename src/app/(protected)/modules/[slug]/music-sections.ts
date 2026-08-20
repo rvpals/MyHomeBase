@@ -6,7 +6,7 @@
 // objects, so a lookup like MUSIC_SECTION_INFO[section] would come back undefined.
 // Same reasoning as attendance-sections.ts and journal-sections.ts.
 
-export const MUSIC_SECTIONS = ["main", "player", "scan", "configuration"] as const;
+export const MUSIC_SECTIONS = ["main", "magic", "player", "queue", "scan", "configuration"] as const;
 
 export type MusicSection = (typeof MUSIC_SECTIONS)[number];
 
@@ -23,9 +23,17 @@ export const MUSIC_SECTION_INFO: Record<
     label: "Library",
     description: "Browse and search everything in the catalog.",
   },
+  magic: {
+    label: "Magic Playlist",
+    description: "Pick genres, artists and a length; get a random playlist that fits.",
+  },
   player: {
     label: "Player",
     description: "The current track, with artwork and lyrics.",
+  },
+  queue: {
+    label: "Queue",
+    description: "What is lined up next. Reorder it, shuffle it, or take tracks out.",
   },
   scan: {
     label: "Scan Music",
@@ -40,11 +48,20 @@ export const MUSIC_SECTION_INFO: Record<
 /** Section -> nav icon key, resolved by TreeIcon. */
 export const MUSIC_SECTION_ICONS: Record<MusicSection, string> = {
   main: "grid",
-  // `chart` is wrong for a player and `grid` is taken; `classroom` reads as a stage.
-  // The tree icon set has no music glyph, so this is the closest honest fit.
-  player: "classroom",
+  // A magician's hat with a baton -- literal for "conjure me a playlist". Added as a real
+  // `magic` concept in TREE_ICONS *and* in the icon-set generator, so every set draws its
+  // own wand/hat glyph; an invented key renders NOTHING rather than falling back, per the
+  // note on `scan` below. Frees `shapes` back to the Genres view (LIBRARY_VIEW_ICONS).
+  magic: "magic",
+  // A turntable, added the same way as `magic` above. Replaces the old `classroom`
+  // stand-in, which read as a lecture stage rather than as playback.
+  player: "player",
+  // `list` is the honest fit and the only one: a queue IS an ordered list. Shared with
+  // the All Songs entry in LIBRARY_VIEW_ICONS, which is a different icon set rendered in
+  // a different place (the Library's view tabs), so there is no collision in the nav.
+  queue: "list",
   // `upload` rather than `folder`: TreeIcon has no folder concept (TREE_ICONS in
-  // tree-icons.tsx lists all 24), and an unknown name renders NOTHING rather than
+  // tree-icons.tsx lists them all), and an unknown name renders NOTHING rather than
   // falling back -- so a made-up key is a silently blank nav row. `upload` is the
   // closest existing fit for "pull files in from the NAS".
   scan: "upload",

@@ -12,6 +12,7 @@
 // transport row with a full scrubber and volume does not shrink into 375px, it has to
 // be a different arrangement.
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { useIsCompact } from "@/components/viewport-context";
 import {
@@ -24,16 +25,43 @@ export function MusicPlayerBar() {
   const player = useMusicPlayer();
   const isCompact = useIsCompact();
 
+  // Which shape is on screen, or null for nothing playing. Computed before the
+  // early return below because the effect that publishes it is a hook, and hooks
+  // can't sit after a conditional return.
+  const shape =
+    player === undefined || player.current === undefined
+      ? null
+      : isCompact
+        ? "compact"
+        : "full";
+
+  // Mirrored onto <html> so globals.css can reserve `.app-main` padding for the
+  // bar — the same seam `TreeNav` uses for `data-treenav`, and for the same
+  // reason: the layout that owns `.app-main` is a server component and can't see
+  // whether a track is loaded. The bar's *offset* is CSS's business too, since it
+  // parks above whatever the nav is occupying.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (shape) {
+      root.dataset.musicPlayer = shape;
+    } else {
+      delete root.dataset.musicPlayer;
+    }
+    return () => {
+      delete root.dataset.musicPlayer;
+    };
+  }, [shape]);
+
   if (player === undefined || player.current === undefined) return null;
 
-  const { current, isPlaying, position, duration, toggle, next, previous, seek, stop } = player;
+  const { current, isPlaying, position, duration, queue, toggle, next, previous, seek, stop } = player;
   const coverUrl = albumCoverUrl(current.albumId);
   const total = duration > 0 ? duration : (current.durationSeconds ?? 0);
   const fraction = total > 0 ? Math.min(position / total, 1) : 0;
 
   if (isCompact) {
     return (
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-paper-raised">
+      <div className="music-player-pinned border-t border-line bg-paper-raised">
         {/* The scrubber is a hairline here: a 44px-tall slider would eat the row. */}
         <div className="h-0.5 w-full bg-line">
           <div className="h-full bg-brass" style={{ width: `${fraction * 100}%` }} />
@@ -51,13 +79,14 @@ export function MusicPlayerBar() {
           <TransportButton onClick={toggle} label={isPlaying ? "Pause" : "Play"}>
             {isPlaying ? <PauseGlyph /> : <PlayGlyph />}
           </TransportButton>
+          <QueueButton count={queue.length} />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-paper-raised px-4 py-2">
+    <div className="music-player-pinned border-t border-line bg-paper-raised px-4 py-2">
       <div className="mx-auto flex max-w-6xl items-center gap-4">
         <Cover url={coverUrl} title={current.title} size="h-12 w-12" />
 
@@ -93,6 +122,8 @@ export function MusicPlayerBar() {
         />
         <span className="font-mono text-xs text-muted">{formatPlayerTime(total)}</span>
 
+        <QueueButton count={queue.length} />
+
         <button
           type="button"
           onClick={stop}
@@ -102,6 +133,43 @@ export function MusicPlayerBar() {
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * Opens the Queue screen, with how many tracks are lined up.
+ *
+ * A link rather than a popover: the queue is a real route (`/modules/music-library/queue`),
+ * so it is bookmarkable and survives a reload -- and a 60-track list does not belong in a
+ * panel hanging off a 48px-tall bar.
+ */
+function QueueButton({ count }: { count: number }) {
+  return (
+    <Link
+      href="/modules/music-library/queue"
+      aria-label={`Show the queue, ${count} ${count === 1 ? "track" : "tracks"}`}
+      title="Show the queue"
+      // Same 44px touch target as the transport buttons, per design.md.
+      className="relative grid h-11 w-11 shrink-0 place-items-center rounded-full text-ink hover:bg-brass-soft"
+    >
+      <QueueGlyph />
+      {count > 1 && (
+        // The count, only when there is more than the current track -- a badge reading
+        // "1" on a queue of one tells the listener nothing.
+        <span className="absolute -right-0.5 top-0.5 rounded-full bg-brass px-1 font-mono text-[10px] leading-tight text-paper">
+          {count > 99 ? "99+" : count}
+        </span>
+      )}
+    </Link>
+  );
+}
+
+function QueueGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current" aria-hidden="true">
+      {/* Three stacked lines and a play triangle: a list with something playing off it. */}
+      <path d="M3 5h12v2H3zm0 4h12v2H3zm0 4h8v2H3zm0 4h8v2H3zm12-1V9l6 4z" />
+    </svg>
   );
 }
 

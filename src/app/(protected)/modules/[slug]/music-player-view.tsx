@@ -17,7 +17,12 @@ import {
   formatPlayerTime,
   useMusicPlayer,
 } from "@/components/music-player-provider";
-import { fetchLyricsAction, getLyricsAction, type LyricsActionResult } from "./music-actions";
+import {
+  fetchLyricsAction,
+  getAutoFetchLyricsAction,
+  getLyricsAction,
+  type LyricsActionResult,
+} from "./music-actions";
 
 export function MusicPlayerView() {
   const player = useMusicPlayer();
@@ -35,20 +40,61 @@ export function MusicPlayerView() {
   const isLoadedForCurrent = loaded !== undefined && loaded.trackId === currentId;
   const lyrics = isLoadedForCurrent ? loaded.lyrics : undefined;
 
-  // Show anything already cached when the track changes, without asking the service.
-  // Pressing the button is what triggers a fetch -- see
-  // migrations/0054_create_music_track_lyrics.md on why this is not automatic.
+  // The "auto-retrieve lyrics" setting, read once per mount. Not per track change: it
+  // only changes when someone edits the configuration screen, and this screen is not
+  // where that happens.
+  const [autoFetch, setAutoFetch] = useState(false);
+  const [isAutoFetching, setIsAutoFetching] = useState(false);
   useEffect(() => {
-    if (currentId === undefined) return;
-
     let cancelled = false;
-    void getLyricsAction(currentId).then((cached) => {
-      if (!cancelled) setLoaded({ trackId: currentId, lyrics: cached });
+    void getAutoFetchLyricsAction().then((enabled) => {
+      if (!cancelled) setAutoFetch(enabled);
     });
     return () => {
       cancelled = true;
     };
-  }, [currentId]);
+  }, []);
+
+  // Show anything already cached when the track changes. A fetch normally waits for the
+  // button -- see migrations/0054_create_music_track_lyrics.md -- but the configuration
+  // setting above is the owner opting into the automatic version, which is the one
+  // objection that document raises.
+  //
+  // `getLyricsAction` first either way: the cache is what makes this safe to automate, so
+  // a track that has already been asked about never generates a second request.
+  useEffect(() => {
+    if (currentId === undefined) return;
+
+    let cancelled = false;
+    void getLyricsAction(currentId).then(async (cached) => {
+      if (cancelled) return;
+      setLoaded({ trackId: currentId, lyrics: cached });
+
+      // Only a track nobody has asked about yet (`undefined` -- no cached row at all).
+      // Every stored status is left alone, including the retryable ones: `not_found` and
+      // `failed` are worth another try eventually, but doing it on every play would mean
+      // an outbound request per play for exactly the tracks that never resolve. Those
+      // stay on the button, where "Try again" already lives.
+      if (!autoFetch || cached !== undefined) return;
+
+      // Tracked separately from `isFetching`: `useTransition`'s pending flag only
+      // covers work started inside `startTransition`, and without a flag here the
+      // panel would advertise the "Get lyrics" button while a lookup was already
+      // running.
+      setIsAutoFetching(true);
+      try {
+        const result = await fetchLyricsAction({ trackId: currentId });
+        if (!cancelled) setLoaded({ trackId: currentId, lyrics: result });
+      } finally {
+        // `finally`, so a thrown action (an offline NAS) can't strand the panel on
+        // "Looking up..." forever.
+        if (!cancelled) setIsAutoFetching(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentId, autoFetch]);
 
   const onFetchLyrics = useCallback(
     (force: boolean) => {
@@ -155,9 +201,9 @@ export function MusicPlayerView() {
                 changes so the listener knows which they are getting. */}
             <Button
               onClick={() => onFetchLyrics(lyrics?.status === "found")}
-              disabled={isFetching}
+              disabled={isFetching || isAutoFetching}
             >
-              {isFetching
+              {isFetching || isAutoFetching
                 ? "Searching..."
                 : lyrics === undefined
                   ? "Get lyrics"
@@ -170,7 +216,7 @@ export function MusicPlayerView() {
 
         <LyricsPanel
           lyrics={lyrics}
-          isFetching={isFetching}
+          isFetching={isFetching || isAutoFetching}
           hasLoadedCache={isLoadedForCurrent}
           trackTitle={current.title}
         />

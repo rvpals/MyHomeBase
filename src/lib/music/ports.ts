@@ -7,6 +7,7 @@ import type {
   PlaylistEntry,
 } from "./browse";
 import type { LyricsQuery, LyricsStatus, TrackLyrics } from "./lyrics";
+import type { QueueEntry, QueueState, RepeatMode } from "./queue";
 import type {
   Album,
   AlbumCover,
@@ -191,6 +192,33 @@ export interface MusicRepository {
   /** Removes one ENTRY, not every copy of a track -- a playlist may hold it twice. */
   removePlaylistEntry(playlistTrackId: number): void;
   reorderPlaylist(playlistId: number, orderedPlaylistTrackIds: readonly number[]): void;
+
+  // --- the play queue (single, shared, persistent; see migrations/0059) ---
+  /** Every queued entry in order, joined to its track. Entries whose track has been
+   *  deleted by a rescan are omitted rather than returned as a hole. */
+  listQueueEntries(): { entry: QueueEntry; track: Track }[];
+  /** The cursor and modes. The single state row is seeded by the migration, so this
+   *  always returns a value. */
+  getQueueState(): QueueState;
+  /** Replaces the whole queue with these tracks, in this order, and sets the cursor.
+   *  One call rather than clear-then-add so a click in a track list cannot leave a
+   *  half-built queue behind if it fails midway. Returns the new entry ids, in order. */
+  replaceQueue(trackIds: readonly number[], currentIndex?: number): number[];
+  /** Appends to the end of the queue, leaving the cursor and existing order alone. */
+  appendToQueue(trackIds: readonly number[]): number[];
+  /** Removes one ENTRY, not every copy of a track -- the queue may hold it twice. */
+  removeQueueEntry(entryId: number): void;
+  clearQueue(): void;
+  /** Rewrites positions from 0 in the order given. Takes the full ordered list for the
+   *  same reason `reorderPlaylist` does. */
+  reorderQueue(orderedEntryIds: readonly number[]): void;
+  /** Patches the state row. Omitted fields are left as they are; passing
+   *  `currentEntryId: null` clears the cursor, which `undefined` cannot express. */
+  saveQueueState(state: {
+    currentEntryId?: number | null;
+    repeatMode?: RepeatMode;
+    isShuffled?: boolean;
+  }): void;
 
   // --- lyrics (cached on demand; see migrations/0054) ---
   getTrackLyrics(trackId: number): TrackLyrics | undefined;
