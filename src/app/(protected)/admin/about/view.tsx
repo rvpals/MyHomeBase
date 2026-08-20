@@ -361,7 +361,7 @@ export function AboutView({
                 formatValue={formatBytes}
               />
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-4 max-lg:grid-cols-1">
+            <div className="card-grid mt-4 gap-4">
               {processMeters.map((meter) => (
                 <UsageMeter
                   key={meter.label}

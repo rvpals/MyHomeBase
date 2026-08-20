@@ -20,6 +20,10 @@ import {
 import { TickerLogo } from "@/components/ticker-logo";
 import type { TickerHistoryRange } from "@/lib/ticker-overview";
 import {
+  isFavoriteTickerAction,
+  toggleFavoriteTickerAction,
+} from "./ticker-favorites-actions";
+import {
   fetchTickerDetailAction,
   fetchTickerEventsAction,
   fetchTickerNewsFeedAction,
@@ -34,6 +38,15 @@ import {
 export interface TickerViewerHostProps {
   ticker: string;
   onClose: () => void;
+  /**
+   * Which tab to land on. Defaults to `"own"` — the reader's own holdings and
+   * trades, which is the right opening for a symbol reached from a grid row.
+   *
+   * The dashboard search passes `"yahoo"` for a symbol the system has never
+   * seen: "Our data" would be three empty cards, so it opens where there is
+   * something to read instead.
+   */
+  initialGroup?: TickerPanelGroup;
 }
 
 /**
@@ -116,8 +129,12 @@ function useLazyPanel<T>(
   return state;
 }
 
-function TickerViewerHostInner({ ticker, onClose }: TickerViewerHostProps) {
-  const [activeGroup, setActiveGroup] = useState<TickerPanelGroup>("own");
+function TickerViewerHostInner({
+  ticker,
+  onClose,
+  initialGroup = "own",
+}: TickerViewerHostProps) {
+  const [activeGroup, setActiveGroup] = useState<TickerPanelGroup>(initialGroup);
   const [range, setRange] = useState<TickerHistoryRange>("1y");
   // Bumped by Recalculate. It's part of the risk panel's request key, so the
   // hook treats each press as a new request and refetches — while keeping the
@@ -152,6 +169,33 @@ function TickerViewerHostInner({ ticker, onClose }: TickerViewerHostProps) {
 
   const recalculateRisk = useCallback(() => setRiskRecalculations((count) => count + 1), []);
 
+  // The star's own state, loaded once on open. Kept here rather than in
+  // `TickerViewer` because the toggle is a server action, and that component is
+  // shared presentation that must not know about this module's actions.
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [isSavingFavorite, setIsSavingFavorite] = useState(false);
+
+  useEffect(() => {
+    let stale = false;
+    void isFavoriteTickerAction(ticker).then((value) => {
+      if (!stale) setIsFavorite(value);
+    });
+    return () => {
+      stale = true;
+    };
+  }, [ticker]);
+
+  // Optimistic: the star flips immediately and the action's answer is what it
+  // settles on. A failure therefore rolls back to the truth rather than to a
+  // guess, which is why the action returns the current state on error.
+  const toggleFavorite = useCallback(() => {
+    setIsSavingFavorite(true);
+    setIsFavorite((current) => !current);
+    void toggleFavoriteTickerAction(ticker)
+      .then((result) => setIsFavorite(result.isFavorite))
+      .finally(() => setIsSavingFavorite(false));
+  }, [ticker]);
+
   return (
     <TickerViewer
       ticker={ticker}
@@ -169,14 +213,19 @@ function TickerViewerHostInner({ ticker, onClose }: TickerViewerHostProps) {
       range={range}
       onSelectRange={setRange}
       onRecalculateRisk={recalculateRisk}
+      favorite={{ isFavorite, onToggle: toggleFavorite, isSaving: isSavingFavorite }}
     />
   );
 }
 
 /**
  * Keyed by ticker so opening a different symbol remounts with clean state —
- * cheaper and less error-prone than resetting five panels by hand.
+ * cheaper and less error-prone than resetting five panels by hand. The key
+ * includes `initialGroup` because it only takes effect on mount: without it, a
+ * caller that reopens the same symbol on a different tab would be ignored.
  */
 export function TickerViewerHost(props: TickerViewerHostProps) {
-  return <TickerViewerHostInner key={props.ticker} {...props} />;
+  return (
+    <TickerViewerHostInner key={`${props.ticker}:${props.initialGroup ?? "own"}`} {...props} />
+  );
 }

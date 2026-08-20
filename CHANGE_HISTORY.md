@@ -1,5 +1,114 @@
 # Change History
 
+## 2026-08-19 23:22 — Play queue: see it, reorder it, keep it
+
+`migrations/0059` gives the play queue a table. The queue always existed — clicking a
+track in any list set it, which is how Next knew what to play — but nothing rendered it
+and it died with the page. Now it survives a reload and can be looked at: reorder, shuffle
+what is still to come, remove tracks, jump to any row, and pick a repeat mode (off / all /
+one). The rules for what plays next moved into `src/lib/music/queue.ts` as pure functions;
+they were four lines inside a React callback before, and they mishandled a track queued
+twice. Entries are addressed by **entry id, not track id**, because the same track may
+legitimately appear twice; there is **one queue, shared**, like the playlists; and a
+shuffle leaves the playing track alone and reorders only what follows.
+
+**The queue can be saved as a playlist** — naming a new one or appending to an existing
+one. Both, rather than only "create", because playlist names are unique: a create-only
+button would dead-end the moment you re-saved a list you were still tweaking. No new
+logic; it calls the same two actions the library's selection bar already uses, and the
+queue screen simply chooses the tracks differently (all of them, in queue order).
+
+**The player bar moved off the bottom edge — it was covering the section nav.** The nav is
+the primary way round a module, so a transient bar must not sit on top of it. Neither bar
+hard-codes the other's height: `globals.css` publishes `--tree-nav-height` from
+`html[data-treenav]` (4rem bar, 1.5rem puck, `0px` with no nav) and the player reads it as
+its `bottom`. The player mirrors its own presence onto `html[data-music-player]`, the same
+seam `TreeNav` uses, which is what lets the server-rendered `.app-main` reserve room for a
+bar whose presence only the client knows. The `.pb-safe` utility is gone: the new offset
+already clears the iOS home indicator, so keeping it would have double-counted the inset.
+Anything added to that edge in future publishes a height the same way.
+
+**Lyrics can now be fetched automatically, if you ask for it.** A new Music Library
+configuration toggle, **off by default**: with it on, opening the player for a track with
+no cached lyrics row sends the lrclib.net lookup by itself instead of waiting for the *Get
+lyrics* button. `migrations/0054` had deliberately ruled fetch-on-play out — an outbound
+request per track played that the owner never asked for — so this is an explicit switch,
+and it stays narrow. Any *stored* answer is left alone, including the retryable
+`not_found` and `failed`: auto-retrying those would mean a request on every play for
+precisely the tracks that never resolve, so they stay on the button, which already reads
+"Try again". `instrumental` is never retried at all. A track is therefore asked about at
+most once, ever, however often it is played.
+
+
+## 2026-08-19 23:22 — Magic Playlists: describe a playlist instead of building it
+
+A new Music Library section that assembles a playlist from a *query* rather than by hand:
+pick genres, artists and albums (OR within each field, AND across them) plus a target
+running time, and the generator shuffles every matching track and fills toward that
+length. `migrations/0057` adds `mus_magic_list` and `mus_magic_list_tracks`.
+
+Its own library module, `src/lib/music-magic` — a distinct domain (criteria and
+generation) depending on `src/lib/music` through that module's `index.ts`, not reaching
+into it.
+
+**Separate tables from `mus_playlists`, not a nullable `criteria_json` column.** Half the
+columns would be meaningless for either kind of row: a hand-built playlist has no
+criteria, no target length and no notion of regenerating, while a magic list's track order
+is disposable output rather than the thing being curated. Two fully-populated tables beat
+one that is half NULL in every row. Criteria are stored as JSON because they are always
+read whole; genres and artists as text but albums as ids, mirroring the catalog; tracks
+with no duration tag are excluded because they cannot be counted toward a target. The
+generated set is stored, so loading a saved list **replays** it and Regenerate is the
+explicit re-roll. Track order gets one further pass spacing the same artist apart — a pure
+permutation, so it cannot change the set or the running time.
+
+## 2026-08-19 23:22 — Stocks: find a ticker, and star the ones you watch daily
+
+Two additions to the Stocks & ETFs dashboard heading, answering two different questions.
+
+**A ticker search** — a magnifier suggesting symbols the system already knows, partial
+matched. `src/lib/ticker-search` merges the three places a symbol can already be known
+from (positions, watch-list items, cached profiles), keeps the strongest per symbol, and
+ranks prefix hits above substring ones. It adds **no table** — every source already
+existed. Free text is allowed, and the answer decides which tab the viewer opens on: a
+symbol we hold or watch opens on *Our data*, one we have never seen opens on the *Yahoo*
+tab, because its own-data cards would all be empty. Matching is on the **symbol only** —
+`stk_ticker_profiles` holds sector and industry, not a company name, so matching a name
+would have meant a migration for a search box.
+
+**A favorites star** — the short hand-picked jump list a search box does *not* serve, for
+the handful of symbols you open every morning. `stk_ticker_favorites` (`migrations/0058`)
+holds one row per symbol, keyed by the ticker itself, since a favorite has no identity
+beyond it. Not a column on `stk_stock_positions`: **you must be able to favorite a symbol
+you do not hold** — half the point is watching something before buying it — and a position
+row for a symbol you own nothing of would be a lie every other query in the module would
+then have to filter out. The same argument rules out a column on the watch-list items,
+which would additionally tie a favorite's lifetime to a list membership. Starring happens
+in **one place**, the ticker viewer's header, because every ticker in the app already
+opens that dialog — so one control covers the positions grid, the transaction list, watch
+lists, mover rows and both dashboard dropdowns.
+
+## 2026-08-19 23:22 — Grids that count their own columns, and seven more glyphs
+
+**A breakpoint ladder cannot answer "how many of these fit."** `design.md`'s 1024px
+boundary decides *which layout shape* a screen uses, and it does that well, but
+`grid-cols-4 sm:grid-cols-6 lg:grid-cols-10` treats a 402px phone and an 810px iPad
+portrait identically — and below that boundary lies a 3.2x span of widths. So collections
+of the same thing (cards, tiles) now use two intrinsic grids in `globals.css`,
+`.card-grid` and `.tile-grid`, built on `auto-fit` + `minmax`. The browser computes the
+column count from the space actually available, so a card is the same size on a phone as
+on a desktop and no part-card is ever left cut off at the edge — including at the widths a
+PWA hits that no breakpoint predicts (landscape phone, split view). Applied to the
+Attendance tile grids and the Account page, where the old ladder gave a phone ~85px cards
+and a desktop ~120px ones.
+
+**Seven glyphs added to the tree icon sets** (`star`, `star-filled`, `search`, `refresh`,
+`pencil`, `trash`, `none`), with `scripts/gen-icon-glyphs.mjs` updated to emit them. Some
+names are deliberately pinned to the classic set rather than themed: a favorite star
+carries *state* through outline vs solid, which a themed substitute would lose. The
+per-name fallback is load-bearing rather than defensive — no single set covers all 23
+names.
+
 ## 2026-08-19 00:26 — Music Library: stream 20,000 songs off the NAS
 
 A new module that catalogs the audio already sitting on the NAS and streams it to a

@@ -61,6 +61,43 @@ function MainInstructions() {
           </li>
         </ul>
       </Section>
+      <Section title="Search for a ticker">
+        <p>
+          The <strong className="text-ink">magnifier</strong> beside the Dashboard heading looks up a
+          symbol without hunting for a row that holds it. Type any part of a ticker and it suggests
+          matches from everything the app already knows — what you hold, what you&apos;re watching,
+          and anything it has cached reference data for — tagged so you can tell which is which.
+        </p>
+        <p>
+          A symbol we have <em>no</em> record of is still worth a look, so pressing{" "}
+          <strong className="text-ink">Enter</strong> opens it anyway — on the{" "}
+          <strong className="text-ink">Yahoo</strong> tab, since the Our-data cards would have
+          nothing to show. Matching is on the symbol itself, not a company name: no company names are
+          stored anywhere in the app.
+        </p>
+      </Section>
+      <Section title="Favorites">
+        <p>
+          The <strong className="text-ink">star</strong> beside the magnifier lists the symbols
+          you&apos;ve marked, newest first, each with its logo — click one to open its viewer. It
+          answers the question a search box can&apos;t: not &ldquo;find me a symbol I can
+          name&rdquo; but &ldquo;open one of the handful I check every morning.&rdquo;
+        </p>
+        <p>
+          You mark one from <strong className="text-ink">inside the viewer</strong> — the star in
+          its header, pressed once to favorite and again to unfavorite. That&apos;s the only place
+          it lives, deliberately: every ticker in the app opens that dialog, so one control covers
+          Positions, Transactions, watch lists and mover rows without a star in every grid.
+        </p>
+        <p>
+          A favorite is just the symbol — no shares, no price, no reminder. That makes it
+          different from a <strong className="text-ink">watch list</strong>, which tracks how a
+          symbol has moved since you noticed it; the two are independent, and starring something
+          never adds it to a list. Favorites are shared across everyone using the app, and
+          nothing removes one automatically — sell the position and the star stays, because a
+          symbol you&apos;ve exited is still one you may want to look at.
+        </p>
+      </Section>
       <Section title="Click a ticker for its full viewer">
         <p>
           Any <strong className="text-ink">ticker</strong> — in Positions, Transactions, a watch

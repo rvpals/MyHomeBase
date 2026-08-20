@@ -25,6 +25,7 @@ import { ChartCandle } from "@/components/chart-candle";
 import { ChartLine } from "@/components/chart-line";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { TickerLogo } from "@/components/ticker-logo";
+import { TreeIcon } from "@/components/tree-icons";
 import type { MarketEvent } from "@/lib/market-data";
 import { hasFullBars } from "@/lib/shared/chart-candle";
 import { centsToDollars, formatCents } from "@/lib/shared/money";
@@ -90,8 +91,25 @@ export interface TickerViewerProps {
    */
   onRecalculateRisk: () => void;
 
+  /**
+   * The favorite star in the header. **Optional** — omit it and no star renders,
+   * so this component stays usable by a caller that has no favorites store.
+   *
+   * Controlled by the host: it owns the state and the server action, which is
+   * what lets the press feel instant (the host flips its own state before the
+   * round trip) while this component stays pure presentation.
+   */
+  favorite?: TickerFavoriteControl;
+
   /** Caller-supplied classes, merged last so they win. */
   className?: string;
+}
+
+export interface TickerFavoriteControl {
+  isFavorite: boolean;
+  onToggle: () => void;
+  /** Disables the star while a toggle is in flight, so it can't be double-pressed. */
+  isSaving?: boolean;
 }
 
 const DEFAULT_RANGES: readonly TickerHistoryRange[] = ["1mo", "3mo", "6mo", "1y", "5y"];
@@ -1895,6 +1913,7 @@ export function TickerViewer({
   onSelectRange,
   ranges = DEFAULT_RANGES,
   onRecalculateRisk,
+  favorite,
   className = "",
 }: TickerViewerProps) {
   // The header price prefers the live quote and falls back to our own recorded
@@ -1924,6 +1943,24 @@ export function TickerViewer({
             <span className="rounded bg-brass-soft px-1.5 py-0.5 text-xs font-medium text-brass-dark">
               Watch only
             </span>
+          )}
+          {favorite && (
+            <button
+              type="button"
+              onClick={favorite.onToggle}
+              disabled={favorite.isSaving}
+              aria-pressed={favorite.isFavorite}
+              title={favorite.isFavorite ? "Remove from favorites" : "Mark as favorite"}
+              aria-label={favorite.isFavorite ? "Remove from favorites" : "Mark as favorite"}
+              className="rounded-md p-0.5 text-brass hover:text-brass-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass disabled:opacity-50"
+            >
+              {/* Outline vs solid carries the state; both glyphs are the same
+                  silhouette so the press reads as a fill, not a swap. */}
+              <TreeIcon
+                name={favorite.isFavorite ? "star-filled" : "star"}
+                className="h-5 w-5"
+              />
+            </button>
           )}
         </span>
       }

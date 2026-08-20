@@ -59,6 +59,28 @@ library modules (`stock-positions`, `stock-analytics`, `stock-watchlist`,
 `stock-daily-snapshot`, `investment-accounts`, `market-data`, `ticker-*`) that
 all share the one `stk_` table prefix.
 
+The dashboard heading carries a **ticker search** — a magnifier that suggests symbols
+the system already knows, partial-matched. `src/lib/ticker-search` owns the matching:
+it merges the three places a symbol can already be known from (positions, watch-list
+items, cached profiles), keeping the strongest per symbol, and ranks prefix hits above
+substring ones. It adds **no table** — every source already exists. Free text is
+allowed, and which tab the viewer opens on depends on the answer: a symbol we hold or
+watch opens on *Our data*, one we've never seen opens on the *Yahoo* tab, because its
+own-data cards would all be empty. Matching is on the **symbol only** — no company
+name is stored anywhere (`stk_ticker_profiles` holds sector and industry, not a name),
+so matching one would have meant a migration for a search box.
+
+Beside it sits a **favorites** star — a short hand-picked jump list for the symbols you
+open every morning, which is the want a search box does *not* serve. `stk_ticker_favorites`
+(`migrations/0058`) holds one row per symbol, keyed by the ticker itself since a favorite
+has no identity beyond it. Starring happens in **one place** — the ticker viewer's header —
+because every ticker in the app already opens that dialog, so one control covers the
+positions grid, the transaction list, a watch list, a mover row and both dashboard
+dropdowns. Favorites are **shared and independent of watch lists**: a favorite carries
+nothing but the symbol, where a watch-list item carries shares, an add-price and a
+reminder. `0058` records why that isn't unified, and why nothing prunes a favorite whose
+position was sold.
+
 **Journal** (`journal`) — dated entries with categories, tags, locations (with a
 map), and images; saved filters; CSV import. A filter query travels in the URL
 (`?filter=`) so a filtered list is linkable. Library: `src/lib/journal`.
@@ -97,6 +119,47 @@ URL (`?view=`) so it is linkable. Six read data the scanner already stores; Play
 Most Played needed `migrations/0056`. Playlists are **shared, not per-user**, and a play is
 counted when playback **starts**, so the count measures "opened" as much as "listened to" —
 `migrations/0056` records that tradeoff and why it is reversible. Library: `src/lib/music`.
+
+The **Magic Playlist** section builds a playlist from a *query* rather than by hand: pick
+genres, artists and albums (OR within each field, AND across them) plus a target running
+time, and the generator shuffles every matching track and fills toward that length. Its own
+library module, `src/lib/music-magic` — a distinct domain (criteria and generation) that
+depends on `src/lib/music` through that module's `index.ts`. `migrations/0057` records the
+choices worth knowing: criteria stored as JSON because they are always read whole,
+genres/artists as text but albums as ids (mirroring the catalog), tracks with no duration
+tag excluded because they cannot be counted toward a target, and the generated set stored
+so loading a saved list **replays** it while Regenerate is the explicit re-roll. Track order
+gets one further pass that spaces the same artist apart -- a pure permutation, so it cannot
+change the set or the running time.
+
+The **Queue** section makes the play queue visible. The queue always existed -- clicking a
+track in any list set it, which is how Next knew what to play -- but nothing rendered it and
+it died with the page. `migrations/0059` gives it a table, so it survives a reload and can be
+looked at: reorder it, shuffle what is still to come, take tracks out, jump to any row, and
+pick a repeat mode (off / all / one). Three things worth knowing, all recorded in that
+migration: entries are addressed by **entry id, not track id**, because the same track may be
+queued twice; there is **one queue, shared** by everyone using the app, like the playlists;
+and a shuffle leaves the playing track where it is and reorders only what follows. The rules
+about what plays next live in `src/lib/music/queue.ts` as pure functions -- they were four
+lines inside a React callback before, and they mishandled a duplicated track. The player bar
+carries a queue button, and the Queue screen is a real route, so it is bookmarkable.
+
+The Queue toolbar can also **save the queue as a playlist** -- either naming a new one or
+appending to an existing one. Both, not just "create", because a playlist name is unique:
+a create-only button would dead-end the moment you re-saved a list you were still
+tweaking. It adds no logic of its own, calling the same two actions the library's
+selection bar uses; the queue screen just picks the tracks differently (all of them, in
+queue order).
+
+**Configuration carries an opt-in "auto-retrieve lyrics from the web".** Off by default.
+With it on, opening the player for a track with **no cached lyrics row at all** sends the
+lrclib.net lookup by itself instead of waiting for the *Get lyrics* button.
+`migrations/0054` had ruled fetch-on-play out, on the grounds that it makes an outbound
+request per track played that the owner never asked for -- so this is a switch, and it is
+narrow: any *stored* answer is left alone, including the retryable `not_found` and
+`failed`. Auto-retrying those would mean a request on every play for exactly the tracks
+that never resolve; they stay on the button, which already reads "Try again". `instrumental`
+is never retried at all. So a track is asked about at most once, ever.
 
 ### Icons
 

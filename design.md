@@ -118,6 +118,20 @@ All alphas stay inside the safe range above (white ≤ 0.12, black ≤ 0.45), so
 these reads on Daybreak as well as on the dark themes. Hover **grows the shadow rather than
 translating the element** — a card whose whole header is a toggle must not move out from
 under the pointer mid-click.
+
+### Layout utilities
+
+The same rule — a named class in `globals.css`, not an arbitrary value at the call site —
+covers the responsive and safe-area idioms. Full reasoning under "Phone and desktop".
+
+| Class | For |
+|---|---|
+| `.card-grid` | A variable-length row of roomy cards; columns size themselves, capped at 24rem |
+| `.tile-grid` | The same for small fixed-ratio tiles, capped at 7rem |
+| `.music-player-pinned` | The music player's bar, pinned above whatever the section nav occupies |
+| `.app-bar` / `.app-bar-puck` | The top app bar's height and its minimised puck's offset, both including the top inset |
+| `.tree-nav-sticky` / `.tree-nav-puck` | The section bar pinned to the bottom edge, and its puck |
+| `--tree-nav-height` | How much of the bottom edge the section nav occupies — read it, don't re-measure it |
 - **Icon badge** — the standard "identity" mark for a card or feature tile is a solid
   rounded-square accent tile with the glyph knocked out of it: `rounded-xl bg-brass
   text-paper` with the icon in `text-paper`. This reads correctly in every theme for free
@@ -237,6 +251,17 @@ pinning buys: it costs the same row either way. It doesn't reclaim space, it mak
 bar to a puck. On desktop, `rail`/`strip` are still a side column, not a bar — only the
 `full` state pins to the bottom.
 
+**The bottom edge is shared, so it stacks — nothing claims `bottom-0` outright.** The
+section nav is the anchor there, and the music player rides *above* it: the nav is the
+primary way round a module, so a transient bar must not cover it. Neither one hard-codes
+the other's height. `globals.css` publishes `--tree-nav-height` from
+`html[data-treenav]` (4rem bar, 1.5rem puck, `0px` when the page has no nav) and the
+player's `.music-player-pinned` uses it as its `bottom`. A bar that needs the layout to
+reserve space also mirrors its own presence onto `<html>` — `data-treenav`,
+`data-music-player` — because `.app-main` is owned by a server layout that cannot see
+client state. **Adding a third thing to that edge means publishing a height the same
+way**, not writing another `fixed inset-x-0 bottom-0`.
+
 **The nav changes orientation with its state**, which is the part that catches people: it's
 a bar in `full` and a column in `rail`/`strip`. A shell can't decide its own direction from
 the viewport alone — it has to listen to `onStateChange` and stack whenever the nav is a
@@ -274,6 +299,12 @@ names for what sits either side of it:
 |---|---|
 | `compact` | below 1024px — a phone, a tablet in portrait, a half-width window |
 | `full` | 1024px and up |
+
+**What the boundary decides — and what it doesn't.** It decides the *layout shape*:
+sidebar or stacked, table or card list, bar or rail. It deliberately does **not** decide
+how many of a *repeated* thing fit in a row — see "Collections size themselves" below —
+and it can't express the device insets a phone has and a monitor doesn't — see "Installed
+as a PWA". Those are separate axes, and neither correlates with width.
 
 They're named after the *layout*, not the device, deliberately. An iPad in portrait is
 810px and wants the compact layout whatever it calls itself; so does a browser window
@@ -335,6 +366,67 @@ why 1 has to exist as an escape hatch.
 Fine for small static markup. **Not** for grids or charts: both trees mount, so Recharts
 measures a zero-width hidden container and any data the hidden one loads is fetched
 twice. Pick one with `useIsCompact()` instead.
+
+### Collections size themselves — don't count columns per breakpoint
+
+A row of *the same thing repeated* — cards, tiles — is not a layout-shape question, so
+the boundary is the wrong tool for it. `grid-cols-2 max-lg:grid-cols-1` gives a collection
+exactly two states, which means a 402px phone and an 810px iPad portrait get identical
+treatment despite `compact` spanning a **3.2× range** of widths. The result is cards
+stretched far too wide, or a part-card cut off at the edge.
+
+Let the browser count instead. Two utilities in `globals.css`:
+
+| | |
+|---|---|
+| `.card-grid` | roomy cards — columns are `minmax(18rem, 24rem)` |
+| `.tile-grid` | small fixed-ratio tiles — columns are `minmax(5rem, 7rem)` |
+
+```tsx
+<div className="card-grid gap-4">   {/* not grid grid-cols-2 max-lg:grid-cols-1 */}
+```
+
+Both use `repeat(auto-fit, minmax(min, max))` with `justify-content: start`, so the
+column count follows the space actually available and a card never grows past its cap —
+one card on a wide screen stays card-sized instead of inflating into a panel. **Gap stays
+a Tailwind class at the call site**; the utility owns columns only.
+
+Two honest caveats:
+
+- **These change wide screens too**, so they step outside the `max-lg:`-only guarantee
+  below. That's the deliberate trade: continuous sizing is the point, and it can't be had
+  from a variant that doesn't exist above 1024px.
+- **Not for everything in a grid.** A fixed set of 2–3 stat tiles, or full-width list
+  rows, wants an explicit column count — `auto-fit` would strand them at a cap that
+  doesn't suit. Reach for these when the collection is *variable-length*.
+
+### Installed as a PWA
+
+This app is installed to the home screen, not just visited. `src/app/layout.tsx` sets
+`viewport-fit=cover` and `apple-mobile-web-app-status-bar-style: black-translucent`, so
+the app paints **under** the notch / Dynamic Island and the home indicator. That's what
+standalone is supposed to look like — and it means reserving that space is *our* job, not
+the browser's. There is no URL bar to fall back on: installed, our bars are the only
+chrome, so a control hidden under the Island is simply unreachable.
+
+**Insets are a separate axis from width.** A landscape iPhone is ~874px — squarely
+`compact` — and needs a ~59px *side* inset that no width rule predicts. So:
+
+- **Anything pinned to a screen edge pads by `env(safe-area-inset-*)`.** `env()` is `0px`
+  on any device without insets, so this is free on desktop and Android. The existing
+  seams already do it — `.app-main`, `.app-bar`, `.tree-nav-sticky`, the pucks, and
+  `.music-player-pinned`. **Compose with those rather than adding a new
+  `fixed inset-x-0 bottom-0` of your own**, which is how one bar quietly ends up under
+  the home indicator — or on top of another bar (see below).
+- **Prefer `dvh` over `vh`** for full-height areas. In a Safari *tab* the collapsing URL
+  bar makes `100vh` overflow; installed it doesn't. `dvh` is right in both.
+- **Touch-only.** A `hover:` state is dead weight on a phone and can stick after a tap on
+  iOS. Pair it with a real `active:`/`aria-pressed` state rather than relying on hover to
+  communicate anything.
+
+**None of this is caught by `/verify`.** Playwright's WebKit doesn't emulate safe-area
+insets, so a regression here is invisible to CI — checking means a real device or the
+Xcode simulator.
 
 ## Building a new module's UI
 

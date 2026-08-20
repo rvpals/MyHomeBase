@@ -35,6 +35,8 @@ import { StockInstructions } from "./stock-instructions";
 import { StockPositionsView } from "./stock-positions-view";
 import { StockRefreshControl } from "./stock-refresh-control";
 import { STOCK_SECTION_INFO, type StockSection } from "./stock-sections";
+import { StockFavoritesMenu } from "./stock-favorites-menu";
+import { StockTickerSearch } from "./stock-ticker-search";
 import { SectionLayout } from "./section-layout";
 import { StockTransactionsView } from "./stock-transactions-view";
 import { StockWatchlistView, type WatchListEntry } from "./stock-watchlist-view";
@@ -201,9 +203,13 @@ export function StockSection({ section }: { section: StockSection }) {
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="font-display text-2xl font-semibold text-ink">{info.label}</h2>
         {section === "main" && (
-          <StockRefreshControl
-            lastSnapshotDate={snapshots[snapshots.length - 1]?.snapshotDate}
-          />
+          <>
+            <StockTickerSearch />
+            <StockFavoritesMenu />
+            <StockRefreshControl
+              lastSnapshotDate={snapshots[snapshots.length - 1]?.snapshotDate}
+            />
+          </>
         )}
       </div>
       <p className="mt-1 text-sm text-muted">{info.description}</p>

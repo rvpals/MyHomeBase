@@ -45,6 +45,8 @@ Twelve commands, registered in [src/cli/index.ts:19-32](src/cli/index.ts#L19-L32
 | [`ticker-overview`](#ticker-overview) | read (`--refresh` writes cache) | with `--market` |
 | [`set-startup-message`](#set-startup-message) | write | no |
 | [`user-preferences`](#user-preferences) | read (writes with `--favorite`/`--startup`) | no |
+| [`magic-playlist`](#magic-playlist) | read (writes with `--save`/`--regenerate`/`--delete`) | no |
+| [`play-queue`](#play-queue) | read (writes with every flag except none) | no |
 
 Flag parsing is `--key value` pairs via [parse-flags.ts](src/cli/parse-flags.ts),
 except `ticker-overview` and `set-startup-message`, which read positionals and bare
@@ -923,6 +925,44 @@ Repo is `deps.stockWatchListRepo`. **No CLI reach.**
 
 `StockWatchListItem { id, watchListId, ticker, shares, priceWhenAddedCents, addedDate, reminderAt?, reminderMessage, createdAt, updatedAt }`
 
+## ticker-favorites — `@/lib/ticker-favorites`
+
+Repo is `deps.tickerFavoriteRepo`. **No network anywhere in this module. No CLI reach.**
+
+| Use-case | Signature | Zod |
+|---|---|---|
+| `listFavorites` | `(repo) => TickerFavorite[]` — newest first | — |
+| `listFavoriteTickers` | `(repo) => string[]` — symbols only | — |
+| `isFavorite` | `(repo, ticker) => boolean` — normalizes; never throws | — |
+| `toggleFavorite` | `(repo, ticker) => boolean` — returns the state it landed in | `favoriteTickerSchema` |
+| `addFavorite` | `(repo, ticker) => boolean` — idempotent; `false` = already starred | `favoriteTickerSchema` |
+| `removeFavorite` | `(repo, ticker) => boolean` — idempotent; `false` = wasn't starred | `favoriteTickerSchema` |
+
+`TickerFavorite { ticker, createdAt }`
+
+`addFavorite`/`removeFavorite` exist *for* a CLI: a toggle is the wrong primitive for a
+caller that knows what it wants, since `favorite add AAPL` run twice should leave the
+symbol starred. The obvious command trio is `favorites list|add|remove`.
+
+## ticker-search — `@/lib/ticker-search`
+
+**Pure — no repo, no network.** The caller supplies the three ticker lists; this module
+only merges and matches. **No CLI reach.**
+
+| Use-case | Signature | Zod |
+|---|---|---|
+| `collectKnownTickers` | `({ positionTickers, watchListTickers, profileTickers }) => KnownTicker[]` — deduped, strongest source per symbol, alphabetical | — |
+| `matchTickers` | `(known, query, limit = 8) => TickerSuggestion[]` — substring; prefix hits first, then source, then alphabetical | `tickerQuerySchema` (at the boundary) |
+| `isKnownTicker` | `(known, query) => boolean` — exact, normalized | — |
+| `normalizeQuery` | `(query) => string` — trim + upper-case | — |
+
+`KnownTicker { ticker, source: "position" | "watchlist" | "profile" }`
+`TickerSuggestion extends KnownTicker { isPrefixMatch }`
+
+The three source lists come from `deps.stockPositionRepo`, `deps.stockWatchListRepo` and
+`deps.tickerProfileRepo` — assembled by the caller, which is what keeps this module pure
+and testable without any of the three.
+
 ## stock-daily-snapshot — `@/lib/stock-daily-snapshot`
 
 Repo is `deps.stockDailySnapshotRepo`. **No network anywhere in this module. No CLI reach.**
@@ -1128,15 +1168,16 @@ There is no `src/lib/shared/index.ts`; import `@/lib/shared/<file>`.
 
 | | Count |
 |---|---|
-| Exported use-cases across `src/lib/` | ~217 |
+| Exported use-cases across `src/lib/` | ~227 |
 | Reachable from the CLI | ~25 |
 | Registered commands | 12 |
 | **Coverage** | **~13%** |
 
-**Modules with zero CLI reach (16):** `auth`, `change-history`, `daily-quote`,
+**Modules with zero CLI reach (18):** `auth`, `change-history`, `daily-quote`,
 `geocoding`, `investment-accounts`, `market-data`, `module-settings`, `modules`,
 `next-day-actions`, `sql-explorer`, `stock-daily-snapshot`, `stock-watchlist`,
-`system-info`, `ticker-detail`, `ticker-logos`, `weather`.
+`system-info`, `ticker-detail`, `ticker-favorites`, `ticker-logos`, `ticker-search`,
+`weather`.
 (`stock-dashboard` and `viewport` are pure preference/layout helpers — no CLI needed.)
 
 [ARCHITECTURE.md:119-121](ARCHITECTURE.md#L119-L121) states that "every use-case is
@@ -1229,6 +1270,89 @@ line per track: a `!` marker for unplayable formats, duration, extension, title 
 artist.
 **Exit** — always 0.
 Source: [src/cli/scan-music.ts](src/cli/scan-music.ts)
+
+---
+
+## `magic-playlist`
+
+Builds a Magic Playlist from selection criteria — the terminal counterpart of the Magic
+Playlist screen.
+
+```
+npm run cli -- magic-playlist [--genre G]... [--artist A]... [--album ID]...
+                              [--minutes N] [--any] [--include-unplayable]
+                              [--save "Name"] [--description "..."]
+npm run cli -- magic-playlist --list
+npm run cli -- magic-playlist --load <id>
+npm run cli -- magic-playlist --regenerate <id>
+npm run cli -- magic-playlist --delete <id>
+
+npm run cli -- magic-playlist --genre Rock --genre Pop --minutes 60
+npm run cli -- magic-playlist --artist "Michael Jackson" --artist "Luther Vandross" --any
+npm run cli -- magic-playlist --genre Jazz --minutes 90 --save "Sunday morning"
+```
+
+A **repeated flag** is how a multi-select arrives: `--genre Rock --genre Pop` is one
+OR-group. Groups are combined with AND — `(Rock or Pop) and (that artist)` — and `--any`
+switches the whole predicate to OR. Tracks with no duration tag are never candidates, and
+unplayable formats are excluded unless `--include-unplayable` is passed.
+
+`--save` stores the criteria *and* the set just generated, so `--load` replays that set
+while `--regenerate` draws a new one from the same criteria.
+
+**Calls** — `generateMagicPlaylist`, `saveMagicList`, `loadMagicList`,
+`regenerateMagicList`, `listMagicLists`, `deleteMagicList` and `countMagicCandidates` on
+`deps.magicListRepo` and `deps.magicCandidateSource`. `Math.random` is injected by the
+command, not defaulted in the library.
+
+**Output** — the criteria, the eligible-track count, the numbered playlist with running
+times, then the total against the target and the library's own one-line explanation of how
+it went (the same wording the web screen shows).
+**Exit** — 0; 1 when `--minutes` is not a number, the target is outside 1 minute–12 hours,
+a named list already exists, or the requested list id does not exist.
+Source: [src/cli/magic-playlist.ts](src/cli/magic-playlist.ts)
+
+---
+
+## `play-queue`
+
+Reads and changes the stored play queue — the terminal counterpart of the Queue screen.
+
+```
+npm run cli -- play-queue                          # show the queue
+npm run cli -- play-queue --add 123 [--add 456]     # append tracks
+npm run cli -- play-queue --set 123 [--set 456]     # replace the queue
+npm run cli -- play-queue --play <entryId>          # jump to an entry
+npm run cli -- play-queue --next [--auto]
+npm run cli -- play-queue --previous
+npm run cli -- play-queue --shuffle
+npm run cli -- play-queue --remove <entryId>
+npm run cli -- play-queue --repeat off|all|one
+npm run cli -- play-queue --clear
+```
+
+It cannot make a sound — the `<audio>` element is in the browser. What it changes is the
+**stored** queue, which since [migration 0059](migrations/0059_create_music_play_queue.md)
+is the whole of the queue's state, so `--next` really does move the cursor and the web
+player sees it on its next read.
+
+`--add`/`--set` take **track** ids; `--play`/`--remove` take **entry** ids (printed in the
+listing). The distinction matters because the queue may hold the same track twice, and an
+entry id is what names the second copy.
+
+`--next` behaves like the Next *button*; `--next --auto` behaves like a track *ending*.
+They differ only under `--repeat one`, where the button skips onward and a track ending
+replays — see `nextEntryId` in [src/lib/music/queue.ts](src/lib/music/queue.ts).
+
+**Calls** — `getPlayQueue`, `setQueue`, `enqueueTracks`, `playQueueEntry`, `advanceQueue`,
+`rewindQueue`, `shuffleQueue`, `removeQueueEntry`, `clearQueue` and `setRepeatMode` on
+`deps.musicRepo`. `Math.random` is injected by the command, not defaulted in the library.
+
+**Output** — the numbered queue with entry ids, durations and a `>` on the playing row,
+then the track count, total and remaining time, and the repeat/shuffle state.
+**Exit** — 0; 1 when a flag is missing its value, an id is not a positive integer, or
+`--repeat` is given a mode other than `off`, `all` or `one`.
+Source: [src/cli/play-queue.ts](src/cli/play-queue.ts)
 
 ---
 

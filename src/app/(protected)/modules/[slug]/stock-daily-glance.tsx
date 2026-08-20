@@ -319,6 +319,7 @@ export function StockDailyGlance({
       headerAction={
         <Comments
           title="Explanation"
+          label="Explanation"
           content={
             <p>
               <span className="text-ink">Total value</span> is shares × the price move — how much
