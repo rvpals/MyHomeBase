@@ -262,7 +262,7 @@ function ActionForm({
     <div className="flex flex-col gap-4">
       {/* Two columns on a desktop, one below 1024px — max-lg: so the wide layout
           provably can't regress. */}
-      <div className="grid grid-cols-2 gap-4 max-lg:grid-cols-1">
+      <div className="card-grid gap-4">
         <label className="flex flex-col gap-1">
           <span className={LABEL_CLASS}>Name</span>
           <input
@@ -302,7 +302,7 @@ function ActionForm({
         <IconPicker value={icon} onChange={setIcon} />
       </div>
 
-      <div className="grid grid-cols-2 gap-4 max-lg:grid-cols-1">
+      <div className="card-grid gap-4">
         <label className="flex flex-col gap-1">
           <span className={LABEL_CLASS}>Order in the picker</span>
           <input

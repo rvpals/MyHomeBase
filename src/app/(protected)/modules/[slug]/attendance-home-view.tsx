@@ -49,7 +49,7 @@ const LABEL_CLASS = "text-xs font-medium uppercase tracking-wide text-muted";
  */
 const NAME_CLASS = "font-display text-lg font-bold italic text-ink";
 
-/** Same, sized for a card in the grid — the cards are ~85px wide on a phone. */
+/** Same, sized for a card in the grid — `.tile-grid` keeps those 5–7rem wide. */
 const CARD_NAME_CLASS = "font-display text-[13px] font-bold italic leading-tight text-ink";
 
 /** Which layout the register uses. Persisted, so it survives a reload. */
@@ -585,9 +585,13 @@ function ListView({
  * A little playing card per student.
  *
  * `aspect-[3/4]` is the poker-card proportion, which is what makes a grid of
- * these read as a hand of cards rather than a wall of tiles. Doubling the
- * columns at every breakpoint halves each card's area: ten across on a desktop,
- * four on a phone — ~85px wide at 390px, still a fine tap target.
+ * these read as a hand of cards rather than a wall of tiles.
+ *
+ * The column count is `.tile-grid`'s (globals.css), not a breakpoint ladder:
+ * each card is 5–7rem wide and the browser fits as many as the width allows.
+ * That keeps a card the same size on a 402px phone as on a 1440px desktop —
+ * where the old `grid-cols-4 sm:6 lg:10` gave a phone ~85px cards and a desktop
+ * ~120px ones — and it never leaves a part-card cut off at the edge.
  *
  * The ⚡ sits in the top-right corner opposite the P pip, as a 24px button. Below
  * the 44px floor on purpose: the card itself is the primary target and the corner
@@ -606,7 +610,7 @@ function CardView({
   isPending,
 }: RegisterProps) {
   return (
-    <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-10">
+    <ul className="tile-grid gap-2">
       {students.map((student) => {
         const isPresent = presentIds.has(student.id);
         const actionIds = actionIdsByStudentId.get(student.id) ?? new Set<number>();

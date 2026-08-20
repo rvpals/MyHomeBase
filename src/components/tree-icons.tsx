@@ -122,6 +122,43 @@ const Shapes: IconComponent = (props) => (
   </svg>
 );
 
+// A magician's top hat with a baton laid across it, plus two sparks. The mark for
+// "conjure me a playlist" -- the criteria form takes a few constraints and pulls a
+// result out of the hat.
+//
+// The hat is a brim line plus a tapered crown rather than an outlined silhouette:
+// at 16px a closed hat shape fills in and reads as a solid blob, whereas the open
+// crown-over-brim keeps two distinct strokes. The baton is one diagonal with a
+// contrasting tip, and the sparks are 4-point stars -- at nav-row size a 6-point
+// star loses its points, so 4 is the honest maximum.
+const MagicHat: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <path d="M8 12.5V6.2c0-1 .8-1.7 1.8-1.7h2.4c1 0 1.8.7 1.8 1.7v6.3" />
+    <path d="M5.2 12.6h11.6" />
+    <path d="M14.6 16.8l5.6-6.2" />
+    <path d="M19.4 11.5l1.6 1.4" />
+    <path d="M4.6 17.6l.5 1.4 1.4.5-1.4.5-.5 1.4-.5-1.4-1.4-.5 1.4-.5Z" />
+    <path d="M18.7 3.2l.4 1.1 1.1.4-1.1.4-.4 1.1-.4-1.1-1.1-.4 1.1-.4Z" />
+  </svg>
+);
+
+// A turntable: platter, spindle, record groove and tonearm. The player section is
+// "the current track with artwork", and a record player is the one object that says
+// that without a music glyph in the set.
+//
+// The tonearm crosses onto the platter rather than stopping at its edge -- an arm
+// that stops short reads as a stray tick at 16px. The pivot dot is filled so the
+// arm has an anchor when the strokes thin out.
+const RecordPlayer: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <rect x="2.5" y="4.5" width="19" height="15" rx="2" />
+    <circle cx="10.5" cy="12" r="5" />
+    <circle cx="10.5" cy="12" r="1.1" fill="currentColor" stroke="none" />
+    <path d="M18.4 7.6v4.2c0 1.4-1.1 2.6-2.5 3.4l-1.6.9" />
+    <circle cx="18.4" cy="7.2" r="1" fill="currentColor" stroke="none" />
+  </svg>
+);
+
 // An open book with a quill laid across it. At 16px the book is a plain
 // silhouette and the quill a single stroke — a feathered nib turns to mush at
 // nav-row size, so the diagonal plus the split tip is what reads as "quill".
@@ -244,6 +281,29 @@ const Trash: IconComponent = (props) => (
   </svg>
 );
 
+const Search: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <circle cx="10.5" cy="10.5" r="6.5" />
+    <line x1="15.2" y1="15.2" x2="20.5" y2="20.5" />
+  </svg>
+);
+
+const Star: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <path d="M12 3.6l2.6 5.3 5.9.85-4.25 4.15 1 5.85L12 17l-5.25 2.75 1-5.85L3.5 9.75l5.9-.85z" />
+  </svg>
+);
+
+/* The filled twin of `Star`, for the on state of a favorite toggle. Outline vs
+   solid is what carries the state here, so the two must stay the same silhouette —
+   a different shape would read as a different concept rather than a different
+   state. */
+const StarFilled: IconComponent = (props) => (
+  <svg {...shared} {...props} fill="currentColor">
+    <path d="M12 3.6l2.6 5.3 5.9.85-4.25 4.15 1 5.85L12 17l-5.25 2.75 1-5.85L3.5 9.75l5.9-.85z" />
+  </svg>
+);
+
 const TREE_ICONS = {
   note: Note,
   clip: Clip,
@@ -269,6 +329,11 @@ const TREE_ICONS = {
   users: Users,
   database: Database,
   shapes: Shapes,
+  search: Search,
+  magic: MagicHat,
+  player: RecordPlayer,
+  star: Star,
+  "star-filled": StarFilled,
 } as const;
 
 export type TreeIconName = keyof typeof TREE_ICONS;
@@ -290,7 +355,16 @@ export function hasTreeIcon(name?: string): name is TreeIconName {
  * destinations: full-color artwork on an inline edit/delete control shouts, and on
  * `trash` specifically it weakens the destructive read that the monochrome glyph carries.
  */
-const ALWAYS_CLASSIC = new Set<TreeIconName>(["pencil", "trash", "refresh"]);
+const ALWAYS_CLASSIC = new Set<TreeIconName>([
+  "pencil",
+  "trash",
+  "refresh",
+  "search",
+  // A favorite star is a *state*, carried by outline vs solid. A themed set
+  // redrawing it would lose that distinction, so both stay hand-drawn.
+  "star",
+  "star-filled",
+]);
 
 /**
  * Whether the active set will draw this icon in its own colors rather than inheriting
@@ -311,7 +385,7 @@ export function useTreeIconIsColorful(name?: string): boolean {
  * A section icon in the reader's chosen icon set.
  *
  * Resolution order mirrors `ModuleIcon`: the active set's baked glyph, then the hand-drawn
- * one above. The fallback is load-bearing rather than defensive — no set covers all 21
+ * one above. The fallback is load-bearing rather than defensive — no set covers all 23
  * concepts (flat-color has no paperclip), and a keyword-matched near-miss looks worse than
  * the drawing it would replace.
  */

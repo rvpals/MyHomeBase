@@ -316,7 +316,7 @@ function ClassForm({
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-4 max-lg:grid-cols-1">
+      <div className="card-grid gap-4">
         <label className="flex flex-col gap-1">
           <span className={LABEL_CLASS}>Class name</span>
           <input

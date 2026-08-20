@@ -236,7 +236,7 @@ function PreferencesSection({
         <form onSubmit={handleSubmit} className="mt-4">
           {/* Stacks below 1024px via max-lg: — the desktop two-column layout is
               left untouched. */}
-          <div className="grid grid-cols-2 gap-4 max-lg:grid-cols-1">
+          <div className="card-grid gap-4">
             <label className="block text-sm" htmlFor="favorite-module">
               <span className="mb-1 block font-medium text-ink">Favorite module</span>
               <IconSelect

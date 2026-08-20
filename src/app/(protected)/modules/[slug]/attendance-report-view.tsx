@@ -188,7 +188,7 @@ function ReportSheet({ report }: { report: AttendanceReport }) {
         </div>
       )}
 
-      <div className="mt-6 grid grid-cols-2 gap-6 max-lg:grid-cols-1">
+      <div className="card-grid mt-6 gap-6">
         <NameList title={`Present (${present.length})`} entries={present} />
         <NameList title={`Absent (${absent.length})`} entries={absent} />
       </div>
