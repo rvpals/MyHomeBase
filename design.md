@@ -86,11 +86,16 @@ Don't blur this line by giving a card a hard shadow or a button a soft one.
   accent treatment on hover (a soft ring/lift). Keep any hover shadow soft and low-opacity
   so it reads on both light and dark surfaces — a gentle `rgba(0,0,0,0.35)` lift, never
   the hard offset shadow that marks a `Button`.
+- **A progress bar's fill is the one non-button that takes the hard offset shadow.** It's
+  not a surface and not clickable — it's a slab sitting in a groove, the same material a
+  `Button` is made of, so it borrows the same 3px offset in the same direction and reads as
+  part of the same world. That's [`Progress3D`](components.md#progress3d), and it's the
+  whole licence: don't extend the reasoning to a card or a panel.
 - **No surface takes the button treatment.** The old left `Sidebar` was the one exception —
   a raised slab with `Button`'s hard offset shadow rotated to point right. It was retired
-  with the move to `AppChrome`, and the exception went with it. The nav bars are quiet
-  surfaces: a hairline border and a soft low-opacity shadow, nothing more. Don't give a
-  panel a hard shadow without asking.
+  with the move to edge-based navigation, and the exception went with it. The nav
+  surfaces are quiet: a hairline border and a soft low-opacity shadow, nothing more.
+  Don't give a panel a hard shadow without asking.
 
 ### The four elevation classes — reuse these, don't hand-roll a shadow
 
@@ -99,10 +104,14 @@ Reach for one of these before writing a new `shadow-[...]`:
 
 | Class | For | Shape |
 |---|---|---|
-| `.nav-raised-top` | A bar pinned at the **top**, casting down over content — app bar, section bar | inset 1px highlight + soft wide cast, downward |
-| `.nav-raised-bottom` | A bar pinned at the **bottom** — the compact module tabs | the same, cast **upward** |
+| `.nav-raised-top` | A bar pinned at the **top**, casting down over content | inset 1px highlight + soft wide cast, downward |
+| `.nav-raised-bottom` | A bar pinned at the **bottom** — the compact section trigger | the same, cast **upward** |
 | `.card-raised` | A card's resting lift — `CollapsibleCard` | inset highlight + hairline ring + tight cast |
 | `.card-raised-hover` | The same card's `:hover` | the cast grows and softens |
+| `.paper-texture` | A card that should read as a **physical sheet** — the journal's New Journal card | translucent fibre grid + diagonal sheen, no tint of its own |
+| `.progress-3d-track` / `.progress-3d-fill` | The pair behind [`Progress3D`](components.md#progress3d) — **every progress bar** | a groove cut into the page (surface gradient + inset lip) holding a lit slab (accent gradient + `Button`'s hard offset shadow) |
+| `[data-dashboard-texture]` | The home dashboard's **admin-uploaded** background picture | a `fixed` `::before` behind the cards; opacity + blur from the stored settings |
+| `[data-module-texture]` | A **module's own** uploaded background picture (Music Library today) | the same mechanism, keyed per module; set by that module's shell |
 
 Two things they encode that are easy to get wrong:
 
@@ -114,10 +123,51 @@ Two things they encode that are easy to get wrong:
   stacking a soft dark ring around it. Replacing the token with a literal would kill the
   theme inversion.
 
+`.paper-texture` is the one surface treatment that isn't a shadow, and it follows the same
+rule for the same reason: it is woven from **translucent black and white only**, never a
+grey. It layers over whatever `bg-paper-raised` the theme supplies, so it darkens and
+lightens that color instead of replacing it — grain on the dark themes, laid off-white on
+Daybreak and Sea Glass. Applied via `CollapsibleCard`'s `className` (which merges last), so
+no component changed to get it. Use it sparingly and only where "a sheet of paper" is the
+point — a form you write into. It is texture, not hierarchy: if you want a card to stand
+out, that's `.card-raised`, not this.
+
 All alphas stay inside the safe range above (white ≤ 0.12, black ≤ 0.45), so every one of
 these reads on Daybreak as well as on the dark themes. Hover **grows the shadow rather than
 translating the element** — a card whose whole header is a toggle must not move out from
 under the pointer mid-click.
+
+#### The one sanctioned exception: an uploaded background picture
+
+Two rules implement it — `[data-dashboard-texture]` for the home dashboard and
+`[data-module-texture]` for a module that wants its own (the Music Library today) — but
+it is **one** exception, not two: same mechanism, same constraints, different subject.
+
+Both put an **uploaded picture** behind a screen, and neither can obey the rule above: a
+photograph has its own colors and can't adapt to Daybreak versus BMS the way a
+black-and-white weave does. This is a deliberate, opt-in exception rather than a
+precedent — it exists because the picture *is* the point, chosen by the person looking at
+it.
+
+What keeps it from wrecking a theme:
+
+- It renders **only when someone uploads one**. The default state is no layer at all, not
+  a layer at opacity 0 — an always-on `fixed` pseudo-element would cost a compositing
+  layer on every scroll for nothing. (Who may upload follows the *screen*: the dashboard's
+  is admin-only because it lives in Administration; a module's follows that module's own
+  configuration screen.)
+- Opacity defaults to **0.10** and is capped at 1 with a blur up to 40px, so the picture
+  tints the theme's `--paper` showing through underneath rather than replacing it. That is
+  the same *intent* as `.paper-texture`, by the only means available to an image whose
+  colors we don't control.
+- It sits **behind the cards** (`z-index: -1`), which keep their `bg-paper-raised`. Text
+  legibility never depends on the picture, which is why both upload screens preview a real
+  card on top of it rather than the picture alone.
+- A module's layer wraps the **section content only**, not the rail or the section panel,
+  so the module's own navigation chrome stays on flat theme surfaces at any opacity.
+
+Don't extend this to another surface without the same justification. A texture behind
+*content* is a legibility risk that a card's own background is what mitigates.
 
 ### Layout utilities
 
@@ -129,9 +179,12 @@ covers the responsive and safe-area idioms. Full reasoning under "Phone and desk
 | `.card-grid` | A variable-length row of roomy cards; columns size themselves, capped at 24rem |
 | `.tile-grid` | The same for small fixed-ratio tiles, capped at 7rem |
 | `.music-player-pinned` | The music player's bar, pinned above whatever the section nav occupies |
-| `.app-bar` / `.app-bar-puck` | The top app bar's height and its minimised puck's offset, both including the top inset |
-| `.tree-nav-sticky` / `.tree-nav-puck` | The section bar pinned to the bottom edge, and its puck |
-| `--tree-nav-height` | How much of the bottom edge the section nav occupies — read it, don't re-measure it |
+| `--module-rail-width` | Tier 1's width (64px). Read it — never hardcode the number |
+| `--section-panel-width` | Tier 2's width (240px), `0px` when the panel is closed |
+| `--section-trigger-height` | What the compact section trigger occupies on the bottom edge |
+| `.shell-rail` / `.shell-panel` | Tier 1 and tier 2 as fixed columns, insets included |
+| `.shell-trigger` | The compact section trigger pinned to the bottom edge |
+
 - **Icon badge** — the standard "identity" mark for a card or feature tile is a solid
   rounded-square accent tile with the glyph knocked out of it: `rounded-xl bg-brass
   text-paper` with the icon in `text-paper`. This reads correctly in every theme for free
@@ -168,14 +221,13 @@ current set's glyph.
   reads as artwork.
 - **"classic"** is the original hand-drawn set (`module-icons.tsx`) and the fallback for
   any concept a generated set happens to lack — never let a module icon render nothing.
-- **The setting covers module icons *and* `TreeNav` section icons.** `TreeIcon` reads the
+- **The setting covers module icons *and* section-panel icons.** `TreeIcon` reads the
   same `useIconSet()` context, so a module's section bar matches its toolbar — including
   going full-color together. Two deliberate exceptions stay hand-drawn in every set:
   the row-action glyphs (`pencil`, `trash`, `refresh`), because they're buttons rather than
   destinations and color on an inline delete weakens the destructive read; and `AdminIcon`.
   Where a nav icon carries the brass accent, drop it for a colorful set —
-  `useTreeIconIsColorful(name)` answers that, and `TreeNav`'s `AccentTreeIcon` is the
-  worked example.
+  `useTreeIconIsColorful(name)` answers that.
 - **No set covers every concept, and that's designed for.** `TreeIcon` falls back to its
   hand-drawn glyph per *concept* (not per set), so a gap costs one icon rather than the
   whole nav — `flat-color` has no paperclip, for instance.
@@ -221,7 +273,7 @@ The caller triggers printing itself (`window.print()`), so a reusable component
 takes an `onPrint` callback rather than reaching for the browser API. See
 `JournalViewer` and `/modules/[slug]/entries/[id]`.
 
-## Page width and the nav bars
+## Page width
 
 Every full-page screen — module, Administration, or the home grid — is laid out in **one**
 container: `PAGE_CONTAINER` from
@@ -232,63 +284,112 @@ left most of a large display as empty margin either side of the content. The 160
 past a 2560px monitor on purpose so it doesn't bind on one; it's there only to stop a table
 spanning a 3440px ultrawide.
 
-**Navigation lives on the edges, not down the side.** `AppChrome` renders a `fixed` top bar
-at `z-40`, at every screen size, so a page gets the full width regardless. The `(protected)`
-layout pads `.app-main` for it via an `html[data-appbar]` rule in `globals.css` rather than
-a prop, since the layout is a server component and the minimise state is client-side.
-
-**Modules collapse into a menu on compact rather than a second bar.** There used to be a
-bottom bar just for module icons; it's gone. On `compact`, the top bar's module list becomes
-a single button that opens the same links as a dropdown — the bottom edge is worth more to
-the module's own section switcher (below) than to a row of icons that's read once per visit.
-
-**There's a second bar: the section tree — and it lives on the bottom edge, at every size.**
-A module's `TreeNav` is a row of chips, pinned to the bottom of the viewport whenever it's in
-its bar form (`full` state on desktop, and always on compact), because the switcher is
-chrome, not content, and shouldn't scroll away three screens down. Be clear-eyed about what
-pinning buys: it costs the same row either way. It doesn't reclaim space, it makes the row
-*useful all the time*. If a screen genuinely needs the height back, one `−` minimises the
-bar to a puck. On desktop, `rail`/`strip` are still a side column, not a bar — only the
-`full` state pins to the bottom.
-
-**The bottom edge is shared, so it stacks — nothing claims `bottom-0` outright.** The
-section nav is the anchor there, and the music player rides *above* it: the nav is the
-primary way round a module, so a transient bar must not cover it. Neither one hard-codes
-the other's height. `globals.css` publishes `--tree-nav-height` from
-`html[data-treenav]` (4rem bar, 1.5rem puck, `0px` when the page has no nav) and the
-player's `.music-player-pinned` uses it as its `bottom`. A bar that needs the layout to
-reserve space also mirrors its own presence onto `<html>` — `data-treenav`,
-`data-music-player` — because `.app-main` is owned by a server layout that cannot see
-client state. **Adding a third thing to that edge means publishing a height the same
-way**, not writing another `fixed inset-x-0 bottom-0`.
-
-**The nav changes orientation with its state**, which is the part that catches people: it's
-a bar in `full` and a column in `rail`/`strip`. A shell can't decide its own direction from
-the viewport alone — it has to listen to `onStateChange` and stack whenever the nav is a
-bar. Details and the pieces that have to line up:
-[`components.md` → TreeNav](components.md#treenav).
-
-**Two bars, two pucks, two corners.** Both fixed bars minimise the same way — to a
-[`Puck`](components.md#puck), a 44px circle you press to get it back. Each needs its own
-corner (top-left for the toolbar, bottom-left for the section bar): sharing one would stack
-them invisibly and only the top one could ever be pressed.
-
 `.app-main` owns the page's side gutter as `--app-gutter` rather than `px-8 max-lg:px-4`,
-so a bar inside it can cancel exactly that much and run edge to edge (`.tree-nav-bleed`).
+so a bar inside it can cancel exactly that much and run edge to edge.
 Don't put the padding utilities back on it.
 
-- Anything else that needs to sit above page content must stay under `z-40`, and any dialog
-  must stay at `z-50` (`Modal`) so its overlay still covers the bars.
-- **A whole-record viewer is a floating window, not a wide panel.** `Modal`'s
-  `size="window"` gives it 80% of the viewport, rounded and centred, draggable by its
-  header, with a maximize button that swaps to full-bleed and back — the right treatment
-  when the content is a screen in its own right (several tables, a chart, a news column),
-  as in `TickerViewer`. Leaving a margin of dimmed page on every side is the point: it says
-  "this is on top of where you were", where edge-to-edge says "you have gone somewhere",
-  and the reader can drag it aside to check the page underneath instead of closing it.
-  `size="full"` is still there for the maximized state and for anything that genuinely
-  wants every pixel. Don't reach for either on a form — a `sm`/`md` panel reads as "answer
-  this and get back".
+## Navigation: the two-tier shell
+
+**This is the target design for every module.** Read this section before adding any
+navigation element, and before building a new module's shell.
+
+Navigation is **two tiers plus a utility header**. Tier 1 answers *which module*, tier 2
+answers *which section of it*, and the header says where you currently are. The tiers are
+separate surfaces because they answer separate questions and change at different rates —
+the module list is the same on every screen in the app, the section list changes every time
+you switch module.
+
+| Tier | Desktop (`full`) | Compact | Component |
+|---|---|---|---|
+| 1 — modules | 64px icon rail, fixed left | dropdown in the app bar | `ModuleRail` |
+| 2 — sections | 240px panel, collapsible | bottom trigger + sheet | `SectionPanel` |
+| 3 — utility | slim top bar: breadcrumb, actions, profile | same bar, breadcrumb truncates | `AppHeader` |
+
+`TwoTierShell` composes all three and owns the state. A module shell hands it `links`,
+`sections` and `module` — it does **not** place the tiers itself.
+
+### Every page behind the login gets a shell
+
+There is no global bar any more. Navigation arrives *only* because a page's own shell
+renders it, so **a page that renders no shell has no navigation at all** — no module
+switcher, no Administration link, no way to log out. When you add a route under
+`(protected)`, wrap it or it is a dead end.
+
+Pages outside any module use `HomeShell` (`src/app/(protected)/home-shell.tsx`) — the
+home screen and the account screen do. It passes **`sections={[]}`**, which
+`TwoTierShell` reads as *no tier 2*: the rail and header render, the panel doesn't, and
+`.app-main` reserves the rail's width alone. That's the supported way to have a page
+with no sections; don't reach for it just to hide a panel you were too lazy to populate.
+
+### The fixed dimensions are contracts, not suggestions
+
+**64px and 240px are published as `--module-rail-width` and `--section-panel-width`** in
+`globals.css`. Read them; never re-measure and never hardcode `64px` at a call site. They
+are the same seam `--music-player-height` already is, and for the same reason: `.app-main` is
+owned by a *server* layout that cannot see the client state driving the panel's collapse,
+so the client mirrors its presence onto `<html data-sectionpanel>` and CSS does the padding.
+
+**Anything that needs the layout to reserve space publishes a variable and mirrors an
+attribute onto `<html>`.** Don't write a new `fixed inset-x-0` of your own — that is how
+one bar quietly ends up on top of another. Compose with what's published.
+
+### Tier 1 — the module rail
+
+64px, icon-only, named by `title` tooltip. Active state is **a tint *and* an accent edge
+bar** (`absolute left-0 w-0.5 bg-brass`), not a tint alone: at 64px wide with no label a
+tint is easy to miss against the rail's own `paper-raised` surface.
+
+Icon-only is a deliberate trade — it costs discoverability on touch, where there is no
+hover, and buys the content the full width. The panel header repeats the module name in
+words, which is what keeps the rail honest: the glyph is never the only thing naming where
+you are.
+
+### Tier 2 — the section panel
+
+240px, and **open or closed — there is no middle state.** `«` in the panel header closes
+it; `»` in the header brings it back. Deliberately *not* the three-state
+full/rail/strip model the old `TreeNav` used: a 64px icon rail for sections next to a 64px
+icon rail for modules is two ambiguous glyph columns side by side, which is worse than
+either extreme.
+
+Nested groups render as an accordion **on desktop only**. On compact the sheet flattens
+every leaf into one list and drops group headings —
+a phone has no room for a second level, and a dropped heading costs nothing when every
+child is still one tap away.
+
+### Tier 3 — the utility header
+
+Breadcrumb (`[Module] › [Section]`, optionally a third crumb for a record), global actions,
+profile. The breadcrumb is the *only* thing naming the current section in words on desktop
+when the panel is closed, so it is never decorative — don't drop it to make room.
+
+### What compact does differently
+
+The compact fork is a genuinely *different component*, not a restyle, which is why it reads
+`useIsCompact()` rather than `max-lg:` — see "Fork a component only when restyling
+genuinely can't do it" below. A 64px rail and a 240px panel side by side is 304px of chrome
+on a 390px phone.
+
+- **Modules** move into the app bar as a dropdown — the module switcher *is* the title.
+- **Sections** move to a bottom trigger row naming the current section, which opens a
+  **sheet** over a scrim. The trigger keeps answering "where am I?" while closed.
+- **Touch targets grow.** Sheet rows are `py-2.5` (~44px) against the desktop panel's
+  `py-1.5`. A pointer doesn't need the slack; a thumb does.
+- **The bottom edge still stacks.** The trigger publishes its height the same way the
+  music player reads (`--section-trigger-height`), and the player rides *above* it. Nothing
+  claims `bottom-0` outright.
+
+### There is no second navigation system
+
+`TreeNav`, `AppChrome`, `SectionLayout`, the per-module `*-nav.tsx` files and `Puck` were
+the previous shell. **They have all been deleted** — every module and Administration render
+`TwoTierShell`, and nothing minimises to a puck any more. If you find a reference to any of
+them in a comment, it is stale; fix it rather than reviving the pattern.
+
+What survived, because both are still needed and neither belongs to one tier:
+[`ModuleMenu`](components.md#navmenus) (compact's module switcher) and
+[`UserMenu`](components.md#navmenus) (the profile menu), both in
+`src/components/nav-menus.tsx`.
 
 ## Phone and desktop
 
@@ -311,9 +412,9 @@ They're named after the *layout*, not the device, deliberately. An iPad in portr
 dragged to half a 27" monitor. Calling it "phone" would make both read as bugs.
 
 1024 is not a new number: it's `lg`, the breakpoint every side-by-side layout here
-already uses. (The module section shells are the exception that proves the rule — they fork
-on `useIsCompact()` *and* the nav's state rather than on `lg:`, because the layout can be
-pinned and because a `full` nav is a bar at any width. See `SectionLayout`.)
+already uses. (`TwoTierShell` is the exception that proves the rule — it forks on
+`useIsCompact()` rather than `lg:`, because the layout can be *pinned*: a 1400px window can
+legitimately be compact, and a media query would still lay it out side by side.)
 
 ### Reach for CSS first — `max-lg:`, not `lg:`
 
@@ -414,8 +515,8 @@ chrome, so a control hidden under the Island is simply unreachable.
 
 - **Anything pinned to a screen edge pads by `env(safe-area-inset-*)`.** `env()` is `0px`
   on any device without insets, so this is free on desktop and Android. The existing
-  seams already do it — `.app-main`, `.app-bar`, `.tree-nav-sticky`, the pucks, and
-  `.music-player-pinned`. **Compose with those rather than adding a new
+  seams already do it — `.app-main`, `.shell-rail`, `.shell-panel`, `.shell-trigger`
+  and `.music-player-pinned`. **Compose with those rather than adding a new
   `fixed inset-x-0 bottom-0` of your own**, which is how one bar quietly ends up under
   the home indicator — or on top of another bar (see below).
 - **Prefer `dvh` over `vh`** for full-height areas. In a Safari *tab* the collapsing URL
@@ -448,3 +549,47 @@ When scaffolding a new module's `view.tsx`:
 5. Don't introduce a new shadow style, a new font, or a new literal color. If none of
    the existing patterns fit, that's a signal to stop and ask whether it's a new
    reusable component (per `components.md`'s process), not a one-off style.
+
+## Adding a UI element to the shell
+
+Read this whenever a change adds or moves a *navigation or chrome* element, as opposed to
+content inside a page. The two-tier shell only stays coherent if new controls land in the
+tier that matches what they do.
+
+**First: which tier does it belong to?**
+
+| The control… | Goes in | Not |
+|---|---|---|
+| switches which **module** you're in | tier 1, the rail | the header |
+| switches which **section** of the current module | tier 2, the panel | the header, or a bar of its own |
+| acts on the **whole app** (search, notifications, profile, layout switch) | tier 3, the header | the rail |
+| acts on the **current page only** (save, add, filter, refresh) | the page body | any tier — chrome is for navigation |
+
+That last row is the one most often got wrong. A "Refresh prices" button belongs on the
+Stocks page, not in the header, however global it feels — the header is for things that
+mean the same thing on every screen in the app.
+
+**Then, the rules that keep it from breaking the layout:**
+
+1. **Never write a new `fixed inset-x-0` / `fixed bottom-0`.** Compose with the published
+   variables (`--module-rail-width`, `--section-panel-width`,
+   `--section-trigger-height`, `--music-player-height`). Anything that needs the page to reserve space publishes its
+   own height and mirrors its presence onto `<html data-*>`, because `.app-main` belongs to
+   a server layout that can't see client state.
+2. **Say how it behaves at both sizes before you build it.** 64px + 240px is 304px of
+   chrome — on a 390px phone that is most of the screen. Every tier has a compact form; a
+   new element needs one too, and "it shrinks" is not an answer if the honest answer is "it
+   moves into the sheet".
+3. **Pad screen edges with `env(safe-area-inset-*)`.** Free on desktop (`0px`), essential
+   installed — the app paints under the Dynamic Island and the home indicator. See
+   "Installed as a PWA".
+4. **Stay under `z-40`.** The shell's surfaces sit at `z-30`–`z-40`; `Modal` owns `z-50` so
+   its overlay still covers them. A new element above `z-40` will cover a dialog.
+5. **Theme tokens only** — `bg-paper-raised`, `border-line`, `text-brass-dark`. Check it
+   against a light theme (Daybreak) before calling it done: `paperRaised` is *lighter* than
+   `paper` there, the inverse of the dark themes, and a rail-plus-panel design loses the
+   surface separation the dark themes give it for free.
+6. **Reuse the shell's components** rather than a parallel implementation. If none of
+   `ModuleRail` / `SectionPanel` / `AppHeader` fits, that's the signal to stop and ask
+   whether it's a new registered component — per `components.md`'s process — not to add a
+   fourth surface.

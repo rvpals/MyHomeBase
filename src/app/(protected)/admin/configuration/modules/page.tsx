@@ -4,6 +4,7 @@ import { CollapsibleCard } from "@/components/collapsible-card";
 import { useAdminSettings } from "../../admin-shell";
 import { PAGE_CONTAINER } from "../../../page-container";
 import { CarouselImageControl } from "./carousel-image-control";
+import { ModuleIconControl } from "./icon-control";
 
 export default function ModuleConfigurationPage() {
   const {
@@ -23,8 +24,8 @@ export default function ModuleConfigurationPage() {
       </p>
       <h1 className="mt-2 font-display text-3xl font-semibold text-ink">Module Configuration</h1>
       <p className="mt-2 text-sm text-muted">
-        Edit how each module is labeled, described, and ordered across the sidebar and home
-        screen.
+        Edit how each module is labeled, described, iconed, and ordered across the sidebar
+        and home screen.
       </p>
 
       <div className="mt-8 space-y-4">
@@ -101,7 +102,14 @@ export default function ModuleConfigurationPage() {
               <span className="text-ink">Visible in sidebar and home screen</span>
             </label>
 
-            {/* Saves on pick, not on the page's Save button — see the control. */}
+            {/* Both of these save on pick, not on the page's Save button — see
+                the controls. Icon first: it's the fallback the graphic overrides. */}
+            <ModuleIconControl
+              slug={module.slug}
+              moduleName={module.longName}
+              icon={module.icon}
+            />
+
             <CarouselImageControl
               slug={module.slug}
               moduleName={module.longName}

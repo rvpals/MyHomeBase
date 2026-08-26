@@ -134,11 +134,15 @@ export function StockTickerSearch() {
 
   return (
     <>
-      {/* `relative` anchors the desktop dropdown; on a narrow screen the wrapper
-          takes the whole line (the heading row is `flex-wrap`) and the list
-          becomes a block below the field rather than a popover that could
-          overflow the viewport. */}
-      <div ref={containerRef} className="relative max-lg:w-full">
+      {/* `relative` anchors the desktop dropdown. On a narrow screen the wrapper
+          takes the whole line *only once open* (the heading row is `flex-wrap`),
+          so the list becomes a block below the field rather than a popover that
+          could overflow the viewport. Closed it stays icon-width, or it would
+          push the heading's other controls onto lines of their own. */}
+      <div
+        ref={containerRef}
+        className={`relative ${isOpen ? "max-lg:w-full" : ""}`}
+      >
         {!isOpen ? (
           <button
             type="button"

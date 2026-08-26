@@ -149,6 +149,7 @@ export {
 export {
   advanceQueue,
   clearQueue,
+  closeQueue,
   enqueueTracks,
   getPlayQueue,
   playQueueEntry,

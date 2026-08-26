@@ -70,6 +70,22 @@ export interface JournalViewerProps {
   categoryHref?: (name: string) => string | undefined;
   /** Same deal as categoryHref, for the entry's tags. */
   tagHref?: (name: string) => string | undefined;
+  /**
+   * Rendered between the entry's content and Misc Info. The journal entry screen
+   * passes its "Pictures of this date" card here.
+   *
+   * A slot rather than props describing photos, so this component keeps knowing
+   * nothing about the photo archive — no fetching, no filesystem types, nothing to
+   * mock when it's rendered anywhere else. Omit it and the viewer is unchanged.
+   */
+  photosSlot?: React.ReactNode;
+  /**
+   * Where the running-shoe icon next to the date should go — a link to the
+   * journal Calendar opened on this entry's date. Omit to hide the icon. The
+   * caller computes the href so this component stays free of routing
+   * knowledge, the same way `previousHref` does.
+   */
+  calendarHref?: string;
   /** Disables the actions while the caller is working. */
   isBusy?: boolean;
   /** Caller-supplied classes, merged last so they win. */
@@ -150,9 +166,12 @@ function TaxonomyIconRow({
 function Chips({
   values,
   hrefFor,
+  icons,
 }: {
   values: string[];
   hrefFor?: (name: string) => string | undefined;
+  /** Optional name -> icon URL, to show each tag's/category's icon beside its name. */
+  icons?: Record<string, string>;
 }) {
   return (
     <div className="flex flex-wrap gap-1.5">
@@ -161,8 +180,17 @@ function Chips({
           key={value}
           name={value}
           href={hrefFor?.(value)}
-          className="rounded-full bg-brass-soft px-2 py-0.5 font-mono text-xs font-semibold text-brass-dark"
+          className="flex items-center gap-1.5 rounded-full bg-brass-soft px-2 py-0.5 font-mono text-xs font-semibold text-brass-dark"
         >
+          {icons?.[value] && (
+            /* eslint-disable-next-line @next/next/no-img-element -- icon bytes are served from our own DB-backed route, not a static asset next/image can optimize. */
+            <img
+              src={icons[value]}
+              alt=""
+              loading="lazy"
+              className="h-3.5 w-3.5 shrink-0 rounded object-cover"
+            />
+          )}
           {value}
         </TaxonomyLink>
       ))}
@@ -206,6 +234,26 @@ function ClockIcon({ className = "" }: { className?: string }) {
   );
 }
 
+// A running shoe in motion — its sole and the two short strokes behind the heel
+// read as speed. Sits next to the date field and jumps the reader to the
+// journal's Calendar open on that day.
+function RunningShoeIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <path d="M15 10.42l4.8-5.07M19 18h3M9.5 22L21.414 9.415A2 2 0 0 0 21.2 6.4l-5.61-4.208A1 1 0 0 0 14 3v2a2 2 0 0 1-1.394 1.906 8.677 8.053A1 1 0 0 0 8 9c-.155 6.393-2.082 9-4 9a2 2 0 0 0 0 4h14" />
+    </svg>
+  );
+}
+
 export function JournalViewer({
   entry,
   onPrint,
@@ -222,6 +270,8 @@ export function JournalViewer({
   tagIcons,
   categoryHref,
   tagHref,
+  photosSlot,
+  calendarHref,
   isBusy = false,
   className = "",
 }: JournalViewerProps) {
@@ -272,6 +322,17 @@ export function JournalViewer({
               </>
             )}
           </span>
+          {calendarHref && (
+            <Button
+              href={calendarHref}
+              size="sm"
+              title="Jump to calendar"
+              ariaLabel="Jump to calendar"
+              className="no-print shrink-0"
+            >
+              <RunningShoeIcon className="h-5 w-5" />
+            </Button>
+          )}
           {entry.isPinned && (
             <span className="rounded-full bg-brass-soft px-2 py-0.5 text-xs font-semibold text-brass-dark">
               Pinned
@@ -355,17 +416,21 @@ export function JournalViewer({
         </div>
       )}
 
+      {/* `no-print`: the photo card is a screen affordance — it holds buttons and
+          lazily-loaded images, neither of which belongs on a printed entry. */}
+      {photosSlot && <div className="no-print border-t border-line py-4">{photosSlot}</div>}
+
       <div className="border-t border-line py-4">
         <CollapsibleCard title="Misc Info">
           <dl className="flex flex-col gap-3">
             {entry.categories.length > 0 && (
               <Field label="Categories">
-                <Chips values={entry.categories} hrefFor={categoryHref} />
+                <Chips values={entry.categories} hrefFor={categoryHref} icons={categoryIcons} />
               </Field>
             )}
             {entry.tags.length > 0 && (
               <Field label="Tags">
-                <Chips values={entry.tags} hrefFor={tagHref} />
+                <Chips values={entry.tags} hrefFor={tagHref} icons={tagIcons} />
               </Field>
             )}
             <Field label="Entry #">

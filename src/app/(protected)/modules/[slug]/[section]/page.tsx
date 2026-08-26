@@ -42,6 +42,9 @@ function renderSection(
   requestedClassId: number | undefined,
   requestedDate: string | undefined,
   requestedRecordId: number | undefined,
+  requestedFormat: string | undefined,
+  calendarScope: string | undefined,
+  calendarAnchor: string | undefined,
 ) {
   if (slug === ATTENDANCE_MODULE_SLUG && isAttendanceSection(section)) {
     return (
@@ -50,6 +53,7 @@ function renderSection(
         requestedClassId={requestedClassId}
         requestedDate={requestedDate}
         requestedRecordId={requestedRecordId}
+        requestedFormat={requestedFormat}
       />
     );
   }
@@ -57,7 +61,18 @@ function renderSection(
     return <ExpenseSection section={section} />;
   }
   if (slug === JOURNAL_MODULE_SLUG && isJournalSection(section)) {
-    return <JournalSection section={section} isAdmin={isAdmin} filterQuery={filterQuery} />;
+    return (
+      <JournalSection
+        section={section}
+        isAdmin={isAdmin}
+        filterQuery={filterQuery}
+        calendarScope={calendarScope}
+        calendarAnchor={calendarAnchor}
+        // ?date= is shared with the Attendance report rather than given a second
+        // name: both mean "the day this screen is showing".
+        selectedDate={requestedDate}
+      />
+    );
   }
   if (slug === MUSIC_LIBRARY_MODULE_SLUG && isMusicSection(section)) {
     return <MusicSection section={section} />;
@@ -76,16 +91,22 @@ export default async function ModuleSectionPage({
   // `filter` carries a journal filter query, so a filtered entry list is a real
   // URL — linkable, shareable, and surviving a refresh or a back button. That's
   // why the Top Tags/Categories cards link here rather than pushing client state.
-  // `classId`/`date` do the same job for the Attendance report.
+  // `classId`/`date` do the same job for the Attendance report, and `date` is
+  // reused by the Journal calendar for the day whose entries are listed.
+  // `scope`/`anchor` carry which calendar period is on screen, so a month (or a
+  // year, or one week) is a bookmarkable URL.
   searchParams: Promise<{
     filter?: string | string[];
     classId?: string | string[];
     date?: string | string[];
     recordId?: string | string[];
+    format?: string | string[];
+    scope?: string | string[];
+    anchor?: string | string[];
   }>;
 }) {
   const { slug, section } = await params;
-  const { filter, classId, date, recordId } = await searchParams;
+  const { filter, classId, date, recordId, format, scope, anchor } = await searchParams;
   // A repeated ?filter= yields an array; take the first rather than joining, so a
   // crafted URL can't smuggle a second expression in.
   const filterQuery = Array.isArray(filter) ? filter[0] : filter;
@@ -94,6 +115,14 @@ export default async function ModuleSectionPage({
   const requestedDate = Array.isArray(date) ? date[0] : date;
   const rawRecordId = Array.isArray(recordId) ? recordId[0] : recordId;
   const requestedRecordId = Number(rawRecordId) || undefined;
+  // Which report shape to render. Left as a raw string here -- the section
+  // validates it against ATTENDANCE_REPORT_FORMATS, so an unknown value falls
+  // back to "brief" rather than 404ing a legitimate URL.
+  const requestedFormat = Array.isArray(format) ? format[0] : format;
+  // Same first-element rule as ?filter=: a repeated param must not concatenate
+  // into a value neither branch would accept.
+  const calendarScope = Array.isArray(scope) ? scope[0] : scope;
+  const calendarAnchor = Array.isArray(anchor) ? anchor[0] : anchor;
 
   const appModule = getModuleBySlug(deps.moduleRepo, slug);
   if (!appModule) notFound();
@@ -112,6 +141,9 @@ export default async function ModuleSectionPage({
     requestedClassId,
     requestedDate,
     requestedRecordId,
+    requestedFormat,
+    calendarScope,
+    calendarAnchor,
   );
   if (!body) notFound();
 

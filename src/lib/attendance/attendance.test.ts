@@ -4,6 +4,7 @@ import {
   createClass,
   createStudentAction,
   deleteStudentAction,
+  deleteStudents,
   enrollStudents,
   formatStudentName,
   getAttendanceReport,
@@ -76,6 +77,16 @@ function fakeRepo(): AttendanceRepository {
     deleteStudent(id) {
       students.delete(id);
       for (const enrolled of enrollments.values()) enrolled.delete(id);
+    },
+    deleteStudents(ids) {
+      let deleted = 0;
+      for (const id of ids) {
+        // Counts rows actually removed, matching the real repository: a stale
+        // id contributes nothing to the total.
+        if (students.delete(id)) deleted++;
+        for (const enrolled of enrollments.values()) enrolled.delete(id);
+      }
+      return deleted;
     },
 
     listClasses() {
@@ -235,6 +246,13 @@ function fakeRepo(): AttendanceRepository {
           absentCount: record.entries.filter((e) => e.status === "absent").length,
         }));
     },
+    listAttendanceRecordsForClass(classId) {
+      // Oldest first, matching the SQL repository — the detail report relies on
+      // that order to let the last session of a day win.
+      return records
+        .filter((record) => record.classId === classId)
+        .sort((a, b) => a.attendanceDate.localeCompare(b.attendanceDate) || a.id - b.id);
+    },
   };
 }
 
@@ -320,6 +338,50 @@ describe("updateStudent", () => {
     expect(() => updateStudent(repo, 99, { firstName: "Ghost", lastName: "User" })).toThrow(
       /No student with the id 99/,
     );
+  });
+});
+
+describe("deleteStudents", () => {
+  it("deletes a whole selection and reports how many went", () => {
+    const { repo, ava, ben, chi } = seededRepo();
+
+    expect(deleteStudents(repo, [ava.id, chi.id])).toBe(2);
+    expect(repo.listStudents().map((student: Student) => student.id)).toEqual([ben.id]);
+  });
+
+  it("clears the deleted students' enrollments", () => {
+    const { repo, mathClass, ava, ben, chi } = seededRepo();
+
+    deleteStudents(repo, [ava.id, chi.id]);
+    expect(listStudentsInClass(repo, mathClass.id).map((student) => student.id)).toEqual([
+      ben.id,
+    ]);
+  });
+
+  it("counts each student once when an id is listed twice", () => {
+    const { repo, ava } = seededRepo();
+    expect(deleteStudents(repo, [ava.id, ava.id])).toBe(1);
+  });
+
+  /**
+   * The reason this isn't a loop over `deleteStudent`, which throws on a missing
+   * id: a selection can go stale between rendering the grid and pressing Delete,
+   * and that must not cost the rest of the batch.
+   */
+  it("ignores an id that no longer exists rather than failing the batch", () => {
+    const { repo, ava } = seededRepo();
+
+    expect(deleteStudents(repo, [ava.id, 9999])).toBe(1);
+    expect(repo.getStudentById(ava.id)).toBeUndefined();
+  });
+
+  it("rejects an empty selection", () => {
+    expect(() => deleteStudents(fakeRepo(), [])).toThrow(/at least one student/i);
+  });
+
+  it("rejects a non-positive id rather than passing it to the database", () => {
+    expect(() => deleteStudents(fakeRepo(), [0])).toThrow();
+    expect(() => deleteStudents(fakeRepo(), [-3])).toThrow();
   });
 });
 

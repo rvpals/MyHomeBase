@@ -63,6 +63,37 @@ export const enrollStudentsSchema = z.object({
 
 export type EnrollStudentsInput = z.input<typeof enrollStudentsSchema>;
 
+/** The ids a bulk delete applies to. */
+export const studentIdsSchema = z
+  .array(z.number().int().positive())
+  .min(1, "Select at least one student.");
+
+/**
+ * Importing a roster from a CSV.
+ *
+ * The class name is required rather than optional: an import always lands in a
+ * class, which is created if nothing has that name and reused if something does.
+ * The mapping types are re-declared here as plain records rather than imported
+ * from `@/lib/csv-import` so this module's schema file stays self-contained —
+ * the import adapter is what knows those keys are CSV column indexes.
+ */
+export const importRosterSchema = z.object({
+  className: z.string().trim().min(1, "A class name is required."),
+  columnMapping: z.record(z.string(), z.string()),
+  fieldOptions: z
+    .record(
+      z.string(),
+      z.object({
+        delimiter: z.string().optional(),
+        dateFormat: z.string().optional(),
+        constantValue: z.string().optional(),
+      }),
+    )
+    .default({}),
+});
+
+export type ImportRosterInput = z.input<typeof importRosterSchema>;
+
 /**
  * A student action in the catalog.
  *

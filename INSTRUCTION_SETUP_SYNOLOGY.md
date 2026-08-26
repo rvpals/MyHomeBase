@@ -286,6 +286,7 @@ ls -a /volume1/app/myhomebase
 ```bash
 cat > /volume1/app/myhomebase/.env <<'EOF'
 MYHOMEBASE_DB=/volume1/app/myhomebase/data/myhomebase.db
+MYHOMEBASE_MUSIC_ROOT=/volume1/MEDIA/AUDIO
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 GOOGLE_REDIRECT_URI=https://mhb.yourname.synology.me/login/google/callback
@@ -293,6 +294,20 @@ ADMIN_SIGNUP_SECRET=
 EOF
 chmod 600 /volume1/app/myhomebase/.env
 ```
+
+**The music root is a DSM path here, not the UNC path the Windows dev box uses**
+(`//NAS_DS223/MEDIA/AUDIO`) — the same share, reached from the inside. It is read-only:
+nothing in the app writes to that folder. Leaving it blank switches the Music Library's
+scanning off; **it is read once at startup, so adding it to an existing install needs an
+app restart** (§ *Restart*), not just a page reload.
+
+**The journal's photo archive is NOT set here.** It lives in the app, at **My Journal →
+Configuration → Photo folder**, with a **Check Access** button that reports exactly what
+the app can see at that path — the year folders it found, and whether it could read files
+inside them. Set it there (`/volume1/MEDIA/PHOTO/BY YEAR` on the NAS) and press Check
+Access; no restart, and a wrong value can be corrected in the browser instead of over SSH.
+A legacy `MYHOMEBASE_PHOTO_ROOT` is still honoured as a fallback if an install already has
+one, but the setting wins.
 
 Copy the Google and admin-secret values from
 `E:\Code\Claude_Project\MyHomeBase\.env.local`. Leaving the Google ones blank simply

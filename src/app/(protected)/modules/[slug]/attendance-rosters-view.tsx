@@ -8,9 +8,12 @@ import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { Modal } from "@/components/modal";
 import type { AttendanceClass, Student } from "@/lib/attendance";
+import type { NamedMapping } from "@/lib/csv-import";
+import { AttendanceRosterImportView } from "./attendance-roster-import-view";
 import {
   addStudentAction,
   deleteStudentAction,
+  deleteStudentsAction,
   enrollStudentsAction,
   updateStudentAction,
 } from "./attendance-actions";
@@ -39,9 +42,12 @@ const EMPTY_FORM: StudentFormState = {
 export function AttendanceRostersView({
   students,
   classes,
+  importMappings,
 }: {
   students: Student[];
   classes: AttendanceClass[];
+  /** Saved column mappings for the roster CSV importer. */
+  importMappings: NamedMapping[];
 }) {
   const [editing, setEditing] = useState<Student>();
   const [error, setError] = useState<string>();
@@ -116,6 +122,12 @@ export function AttendanceRostersView({
         />
       </CollapsibleCard>
 
+      {/* Collapsed by default: importing is an occasional, start-of-term job,
+          and the roster itself is what this screen is for. */}
+      <CollapsibleCard title="Import a roster (CSV)">
+        <AttendanceRosterImportView namedMappings={importMappings} />
+      </CollapsibleCard>
+
       {error && <p className="text-sm text-red-400">{error}</p>}
 
       <DataGrid
@@ -127,7 +139,7 @@ export function AttendanceRostersView({
         storageKey="myhomebase:attendance-roster-grid"
         enableSelection
         renderSelectionActions={(selectedRows, clearSelection) => (
-          <AddToClassAction
+          <RosterSelectionActions
             students={selectedRows}
             classes={classes}
             onDone={clearSelection}
@@ -157,12 +169,15 @@ export function AttendanceRostersView({
 }
 
 /**
- * The bulk action on the roster grid: add the ticked students to a class.
+ * The bulk actions on the roster grid: add the ticked students to a class, or
+ * delete them outright.
  *
- * `clearSelection` is called once the write lands, so the ticks don't outlive
- * the action they described.
+ * `onDone` is called once a write lands, so the ticks don't outlive the action
+ * they described. Both actions share one busy flag and one message line: they
+ * act on the same selection, so letting one run while the other is mid-flight
+ * would report a count against a selection that had already changed.
  */
-function AddToClassAction({
+function RosterSelectionActions({
   students,
   classes,
   onDone,
@@ -175,10 +190,6 @@ function AddToClassAction({
   const [message, setMessage] = useState<string>();
   const [error, setError] = useState<string>();
   const [isPending, startTransition] = useTransition();
-
-  if (classes.length === 0) {
-    return <span className="text-sm text-muted">Create a class first.</span>;
-  }
 
   function handleAdd() {
     setError(undefined);
@@ -209,23 +220,59 @@ function AddToClassAction({
     });
   }
 
+  function handleDelete() {
+    setError(undefined);
+    setMessage(undefined);
+
+    // Deleting a person off the roster is not undoable, and the count is the
+    // part worth reading back before confirming.
+    const names =
+      students.length <= 3
+        ? students.map((student) => `${student.firstName} ${student.lastName}`).join(", ")
+        : `${students.length} students`;
+    if (!window.confirm(`Delete ${names} from the roster? This can’t be undone.`)) return;
+
+    startTransition(async () => {
+      const result = await deleteStudentsAction(students.map((student) => student.id));
+
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+
+      setMessage(`Deleted ${result.count}.`);
+      onDone();
+    });
+  }
+
   return (
     <span className="flex flex-wrap items-center gap-2">
-      <select
-        value={classId}
-        onChange={(event) => setClassId(event.target.value)}
-        className={INPUT_CLASS}
-        aria-label="Class to add the selected students to"
-      >
-        <option value="">Add to class…</option>
-        {classes.map((item) => (
-          <option key={item.id} value={item.id}>
-            {item.name}
-          </option>
-        ))}
-      </select>
-      <Button size="sm" onClick={handleAdd} disabled={isPending}>
-        {isPending ? "Adding…" : `Add ${students.length}`}
+      {/* Enrolling needs somewhere to enroll *to*, so the picker and its button
+          drop out entirely with no classes yet — but Delete still applies. */}
+      {classes.length === 0 ? (
+        <span className="text-sm text-muted">Create a class to enroll into.</span>
+      ) : (
+        <>
+          <select
+            value={classId}
+            onChange={(event) => setClassId(event.target.value)}
+            className={INPUT_CLASS}
+            aria-label="Class to add the selected students to"
+          >
+            <option value="">Add to class…</option>
+            {classes.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+          <Button size="sm" onClick={handleAdd} disabled={isPending}>
+            {isPending ? "Working…" : `Add ${students.length}`}
+          </Button>
+        </>
+      )}
+      <Button size="sm" variant="danger" onClick={handleDelete} disabled={isPending}>
+        {isPending ? "Working…" : `Delete ${students.length}`}
       </Button>
       {message && <span className="text-sm text-emerald-400">{message}</span>}
       {error && <span className="text-sm text-red-400">{error}</span>}

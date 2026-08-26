@@ -15,6 +15,11 @@ import {
   deleteFilter,
   deleteTag,
   findEntries,
+  generateCategoryIcon,
+  generateMissingTaxonomyIcons,
+  type GenerateIconsSummary,
+  type TaxonomyKind,
+  generateTagIcon,
   journalPreferencesToEntries,
   listFilters,
   saveFilter,
@@ -37,6 +42,8 @@ import { saveModuleSettings } from "@/lib/module-settings";
 import type { ImageUploadInput } from "@/lib/shared/image-upload";
 import { getCurrentWeather, type CurrentWeather, type TemperatureUnit } from "@/lib/weather";
 import { deps } from "@/lib/wiring";
+import { diagnosePhotoArchive, type PhotoArchiveDiagnosis } from "@/lib/journal-photos";
+import { configuredPhotoRoot, isPhotoRootFromSetting } from "./journal-photo-root";
 
 const JOURNAL_MODULE_PATH = "/modules/journal";
 const JOURNAL_MODULE_SLUG = "journal";
@@ -50,13 +57,20 @@ export interface ActionResult {
   error?: string;
 }
 
+/** `ActionResult` plus the counts, for the batch icon fill. */
+export interface GenerateIconsResult extends ActionResult {
+  generated?: number;
+  failed?: number;
+}
+
 function toErrorResult(error: unknown, fallback: string): ActionResult {
   return { ok: false, error: error instanceof Error ? error.message : fallback };
 }
 
-// The raw text the New Journal form collects. Categories/tags come as delimited
-// strings (comma / whitespace) matching how the import treats them; createEntry
-// trims, de-dupes, and auto-registers the individual names.
+// What the New Journal form collects. Categories and tags arrive as arrays —
+// the form picks them one at a time, so there is no delimited string to parse
+// here. createEntry still trims, de-dupes, and auto-registers each name, which
+// is what lets a name typed into the picker become a real category or tag.
 export interface JournalLocationInput {
   latitude: number;
   longitude: number;
@@ -76,8 +90,8 @@ export interface NewJournalEntryInput {
   title: string;
   content: string;
   placeName: string;
-  categoriesText: string;
-  tagsText: string;
+  categories: string[];
+  tags: string[];
   locations: JournalLocationInput[];
   weather?: EntryWeatherInput;
   isPinned?: boolean;
@@ -91,8 +105,8 @@ export async function createJournalEntryAction(input: NewJournalEntryInput): Pro
       title: input.title,
       content: input.content,
       placeName: input.placeName,
-      categories: input.categoriesText.split(","),
-      tags: input.tagsText.split(/\s+/),
+      categories: input.categories,
+      tags: input.tags,
       locations: input.locations,
       weather: input.weather,
       isPinned: input.isPinned ?? false,
@@ -121,8 +135,8 @@ export async function updateJournalEntryAction(
       title: input.title,
       content: input.content,
       placeName: input.placeName,
-      categories: input.categoriesText.split(","),
-      tags: input.tagsText.split(/\s+/),
+      categories: input.categories,
+      tags: input.tags,
       locations: input.locations,
       weather: input.weather,
       isPinned: input.isPinned ?? false,
@@ -199,6 +213,22 @@ export async function saveJournalCategoryIconAction(
   return { ok: true };
 }
 
+/**
+ * Generates a category's icon from its name — the flash button in the editor.
+ *
+ * Takes only the name: the drawing happens on the server from our own template,
+ * so there are no bytes to ship up and nothing the caller could substitute.
+ */
+export async function generateJournalCategoryIconAction(name: string): Promise<ActionResult> {
+  try {
+    await generateCategoryIcon(deps.journalRepo, name);
+  } catch (error) {
+    return toErrorResult(error, "Failed to generate the category icon.");
+  }
+  revalidatePath(JOURNAL_MODULE_PATH);
+  return { ok: true };
+}
+
 export async function clearJournalCategoryIconAction(name: string): Promise<ActionResult> {
   try {
     clearCategoryIcon(deps.journalRepo, name);
@@ -243,6 +273,39 @@ export async function saveJournalTagIconAction(
   }
   revalidatePath(JOURNAL_MODULE_PATH);
   return { ok: true };
+}
+
+/** Generates a tag's icon from its name. Same shape as the category version. */
+export async function generateJournalTagIconAction(name: string): Promise<ActionResult> {
+  try {
+    await generateTagIcon(deps.journalRepo, name);
+  } catch (error) {
+    return toErrorResult(error, "Failed to generate the tag icon.");
+  }
+  revalidatePath(JOURNAL_MODULE_PATH);
+  return { ok: true };
+}
+
+/**
+ * Fills in an icon for every category and tag that hasn't got one — or for just
+ * one of the two lists when `kind` is given, which is what the per-list
+ * "Autopopulate icon" button uses.
+ *
+ * Separate from the per-row button because a real journal has hundreds of tags
+ * and none of them start with an icon — clicking through them one at a time
+ * isn't a workflow. Skips anything that already has an icon.
+ */
+export async function generateMissingJournalIconsAction(
+  kind?: TaxonomyKind,
+): Promise<GenerateIconsResult> {
+  let summary: GenerateIconsSummary;
+  try {
+    summary = await generateMissingTaxonomyIcons(deps.journalRepo, kind);
+  } catch (error) {
+    return toErrorResult(error, "Failed to generate the missing icons.");
+  }
+  revalidatePath(JOURNAL_MODULE_PATH);
+  return { ok: true, ...summary };
 }
 
 export async function clearJournalTagIconAction(name: string): Promise<ActionResult> {
@@ -374,6 +437,48 @@ export async function saveJournalPreferencesAction(
   }
   revalidatePath(JOURNAL_MODULE_PATH);
   return { ok: true };
+}
+
+export interface PhotoAccessResult extends ActionResult {
+  diagnosis?: PhotoArchiveDiagnosis;
+  /** The path that was checked, and whether it came from the setting or the environment. */
+  checkedPath?: string;
+  isFromSetting?: boolean;
+}
+
+/**
+ * The Configuration screen's "Check Access" button.
+ *
+ * Reports what the app can actually see at the configured path — the folders it found,
+ * not just a pass/fail — because the failure this exists to diagnose looked identical
+ * whether the path was wrong, the volume was wrong, or the share was simply not readable
+ * by the user the app runs as.
+ *
+ * Takes the path as an argument so the screen can test a value the admin has typed but
+ * not yet saved; omit it to check what is currently stored.
+ */
+export async function checkPhotoAccessAction(candidatePath?: string): Promise<PhotoAccessResult> {
+  try {
+    const trimmed = candidatePath?.trim() ?? "";
+    const isCandidate = trimmed !== "";
+    const path = isCandidate ? trimmed : configuredPhotoRoot();
+
+    const diagnosis = await diagnosePhotoArchive(
+      deps.photoFileStoreFor(path),
+      // Today's date decides which year folder gets inspected in detail — recent years
+      // are the ones most likely to be populated.
+      new Date().toISOString().slice(0, 10),
+    );
+
+    return {
+      ok: true,
+      diagnosis,
+      checkedPath: path,
+      isFromSetting: isCandidate || isPhotoRootFromSetting(),
+    };
+  } catch (error) {
+    return toErrorResult(error, "Could not check the photo folder.");
+  }
 }
 
 export interface GeoSearchResult extends ActionResult {

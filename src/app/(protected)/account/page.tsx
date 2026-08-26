@@ -10,6 +10,7 @@ import {
   resolveViewport,
 } from "@/lib/viewport";
 import { deps } from "@/lib/wiring";
+import { HomeShell } from "../home-shell";
 import { AccountView } from "./view";
 
 export default async function AccountPage() {
@@ -27,19 +28,23 @@ export default async function AccountPage() {
   );
 
   return (
-    <AccountView
-      user={currentUser}
-      viewport={resolveViewport({ cookieValue: cookieStore.get(VIEWPORT_COOKIE)?.value })}
-      viewportPinned={cookieStore.get(VIEWPORT_PINNED_COOKIE)?.value === "1"}
-      preferences={getUserPreferences(deps.userPreferencesRepo, currentUser.id)}
-      // Plain data across the boundary — the view is a client island and can't
-      // be handed the module records themselves.
-      modules={accessibleModules.map((appModule) => ({
-        slug: appModule.slug,
-        name: appModule.longName,
-        hasImage: appModule.hasCarouselImage,
-        imageVersion: appModule.updatedAt,
-      }))}
-    />
+    // Belongs to no module, so the shell gives it the rail and the header but
+    // no section panel — see `home-shell.tsx`.
+    <HomeShell label="My account" icon="home" href="/account">
+      <AccountView
+        user={currentUser}
+        viewport={resolveViewport({ cookieValue: cookieStore.get(VIEWPORT_COOKIE)?.value })}
+        viewportPinned={cookieStore.get(VIEWPORT_PINNED_COOKIE)?.value === "1"}
+        preferences={getUserPreferences(deps.userPreferencesRepo, currentUser.id)}
+        // Plain data across the boundary — the view is a client island and can't
+        // be handed the module records themselves.
+        modules={accessibleModules.map((appModule) => ({
+          slug: appModule.slug,
+          name: appModule.longName,
+          hasImage: appModule.hasCarouselImage,
+          imageVersion: appModule.updatedAt,
+        }))}
+      />
+    </HomeShell>
   );
 }

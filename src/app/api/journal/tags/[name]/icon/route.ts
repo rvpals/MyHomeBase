@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { getTagIcon } from "@/lib/journal";
 import { deps } from "@/lib/wiring";
+import { journalIconResponse } from "../../../icon-response";
 
 // Serves a journal tag's icon. Same shape as the category-icon route.
 export async function GET(_request: Request, { params }: { params: Promise<{ name: string }> }) {
@@ -16,10 +17,5 @@ export async function GET(_request: Request, { params }: { params: Promise<{ nam
   const icon = getTagIcon(deps.journalRepo, name);
   if (!icon) return new NextResponse(null, { status: 404 });
 
-  return new NextResponse(new Uint8Array(icon.data), {
-    headers: {
-      "Content-Type": icon.mimeType,
-      "Cache-Control": "private, max-age=300",
-    },
-  });
+  return journalIconResponse(icon);
 }

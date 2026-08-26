@@ -8,7 +8,12 @@ import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { TreeIcon } from "@/components/tree-icons";
 import type { NamedMapping } from "@/lib/csv-import";
-import type { JournalEntry, JournalPreferences, JournalTaxonomyCount } from "@/lib/journal";
+import type {
+  JournalEntry,
+  JournalPreferences,
+  JournalPrefillTemplate,
+  JournalTaxonomyCount,
+} from "@/lib/journal";
 import { journalEntriesFilterHref, TaxonomyIconThumbnail } from "./journal-shared";
 import { JournalEntryForm } from "./journal-entry-form";
 import { useJournalNewEntry } from "./journal-new-entry-context";
@@ -149,6 +154,7 @@ export function JournalView({
   categoryIcons = {},
   tagIcons = {},
   preferences,
+  prefillTemplates = [],
   namedMappings,
   canRunSql = false,
 }: {
@@ -161,6 +167,8 @@ export function JournalView({
   categoryIcons?: Record<string, string>;
   tagIcons?: Record<string, string>;
   preferences: JournalPreferences;
+  /** Enabled prefill templates, for the entry form's picker. */
+  prefillTemplates?: JournalPrefillTemplate[];
   namedMappings: NamedMapping[];
   /** Only admins may run SQL; the server action re-checks this. */
   canRunSql?: boolean;
@@ -209,8 +217,13 @@ export function JournalView({
           that way it starts expanded — the reader just pressed the button that
           means "write one", so a collapsed card would need a second click. */}
       {isNewEntryOpen && (
-        <CollapsibleCard title="New Journal" defaultOpen>
-          <JournalEntryForm categoryOptions={categoryOptions} tagOptions={tagOptions} preferences={preferences} />
+        <CollapsibleCard title="New Journal" defaultOpen className="paper-texture">
+          <JournalEntryForm
+            categoryOptions={categoryOptions}
+            tagOptions={tagOptions}
+            preferences={preferences}
+            prefillTemplates={prefillTemplates}
+          />
         </CollapsibleCard>
       )}
 
@@ -242,24 +255,29 @@ export function JournalView({
         </div>
       </CollapsibleCard>
 
-      <section>
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <div>
-            <h2 className="font-display text-xl text-ink">
-              {sqlResult ? "Query result" : "Latest Entries"}
-            </h2>
-            <p className="mt-1 text-sm text-muted">
-              {sqlResult
-                ? `${sqlResult.rows.length} row(s) returned by your query.`
-                : `Showing the most recent ${entries.length} ${entries.length === 1 ? "entry" : "entries"}, newest first. Click a row to open it.`}
-            </p>
-          </div>
-          {sqlResult && (
+      {/* The latest-entries grid and its "Show SQL" re-run live in a card of
+          their own, so the home screen is a column of collapsibles rather than
+          one card plus a loose section. Starts expanded — it's the thing most
+          visits to the home screen are here for. The card keeps its "Recent
+          entries" title even while a re-run's result is showing; the body says
+          which of the two you're looking at. */}
+      <CollapsibleCard
+        title="Recent entries"
+        titleIcon={<TreeIcon name="list" className="h-4 w-4" />}
+        defaultOpen
+        headerAction={
+          sqlResult ? (
             <Button size="sm" variant="secondary" onClick={() => setSqlResult(undefined)}>
               Back to entries
             </Button>
-          )}
-        </div>
+          ) : undefined
+        }
+      >
+        <p className="text-sm text-muted">
+          {sqlResult
+            ? `${sqlResult.rows.length} row(s) returned by your query.`
+            : `Showing the most recent ${entries.length} ${entries.length === 1 ? "entry" : "entries"}, newest first. Click a row to open it.`}
+        </p>
 
         {sqlError && <p className="mt-2 text-sm text-red-400">{sqlError}</p>}
 
@@ -286,7 +304,7 @@ export function JournalView({
             />
           )}
         </div>
-      </section>
+      </CollapsibleCard>
 
       <CollapsibleCard title="Import from CSV">
         <JournalImportView namedMappings={namedMappings} />

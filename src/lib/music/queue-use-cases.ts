@@ -175,6 +175,23 @@ export function clearQueue(deps: QueueDependencies): PlayQueue {
   return readQueue(deps);
 }
 
+/**
+ * Closes the player without touching the queue.
+ *
+ * Clears the cursor only. The entries stay exactly where they are, because "hide the
+ * bar" and "throw away my 60-track queue" are different intentions -- the latter is
+ * `clearQueue`. Nulling the cursor is what makes the dismissal outlive a reload: the
+ * provider restores whatever `currentEntryId` points at on mount, so clearing React
+ * state alone left the bar to reappear on the next page load.
+ *
+ * `isShuffled` is deliberately left alone. The visible order IS still shuffled, so
+ * resetting the flag would make the button lie about the rows on screen.
+ */
+export function closeQueue(deps: QueueDependencies): PlayQueue {
+  deps.musicRepo.saveQueueState({ currentEntryId: null });
+  return readQueue(deps);
+}
+
 /** Sets how the queue advances. */
 export function setRepeatMode(
   input: { repeatMode: RepeatMode },

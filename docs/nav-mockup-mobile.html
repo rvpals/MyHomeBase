@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>MyHomeBase — Two-tier navigation (Mobile)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+<!--
+  Standalone mockup of the proposed MOBILE (compact / PWA) navigation. Open it
+  straight in a browser — no dev server, no login, no build step.
+
+  Two ways to read it:
+    * On a desktop it draws a 360x720 phone frame, so the shape can be judged
+      without a device.
+    * Open it on a real phone (or DevTools device mode) and hit "Fill screen" —
+      the frame drops away and the chrome pins to the real viewport edges, where
+      `env(safe-area-inset-bottom)` actually resolves to something.
+
+  Tokens are the real Signal Deck values from src/lib/settings/themes.ts.
+-->
+<style>
+  :root {
+    --paper: #12161A;
+    --paper-raised: #1A1F26;
+    --ink: #EEF2F3;
+    --line: #2B323B;
+    --muted: #8B96A1;
+    --brass: #33E2B8;
+    --brass-dark: #1C8A71;
+    --brass-soft: #15332D;
+    --font-display: "Space Grotesk", system-ui, sans-serif;
+    --font-body: "Manrope", system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0; padding: 24px;
+    background: var(--paper); color: var(--ink);
+    font-family: var(--font-body); font-size: 14px; line-height: 1.5;
+  }
+  h1, h2, h3 { font-family: var(--font-display); margin: 0; }
+
+  .page-head { max-width: 680px; margin: 0 auto 16px; }
+  .page-head .eyebrow {
+    font-size: 11px; font-weight: 600; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--muted); margin: 0 0 4px;
+  }
+  .page-head h1 { font-size: 24px; font-weight: 600; }
+  .page-head p { color: var(--muted); max-width: 60ch; margin: 6px 0 0; }
+
+  .controls {
+    max-width: 680px; margin: 0 auto 16px;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .controls label { color: var(--muted); font-size: 12px; }
+  .controls select, .controls button {
+    background: var(--paper-raised); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 8px;
+    padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer;
+  }
+
+  /* -------------------------------------------------------------------------
+     The phone frame. `position: relative` scopes the sheet and its scrim to the
+     frame rather than the page — in "Fill screen" mode the frame becomes the
+     viewport itself and the same absolute positioning still holds.
+     ------------------------------------------------------------------------- */
+  .phone {
+    position: relative;
+    width: 360px; height: 720px; margin: 0 auto;
+    overflow: hidden;
+    background: var(--paper);
+    border: 4px solid var(--line); border-radius: 28px;
+  }
+  body.fill { padding: 0; }
+  body.fill .page-head, body.fill .controls, body.fill .note { display: none; }
+  body.fill .phone {
+    width: 100vw; height: 100vh; height: 100dvh;
+    border: 0; border-radius: 0; margin: 0;
+  }
+
+  /* Top app bar — the module switcher is the title. */
+  .appbar {
+    position: relative; z-index: 20;
+    height: 56px; display: flex; align-items: center; gap: 8px;
+    padding: 0 12px 0 calc(12px + env(safe-area-inset-left));
+    padding-top: env(safe-area-inset-top);
+    height: calc(56px + env(safe-area-inset-top));
+    background: var(--paper-raised); border-bottom: 1px solid var(--line);
+  }
+  .switcher {
+    flex: 1; min-width: 0;
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px; border: 0; border-radius: 8px;
+    background: transparent; color: var(--ink);
+    font: inherit; text-align: left; cursor: pointer;
+  }
+  .switcher:hover { background: color-mix(in srgb, var(--line) 60%, transparent); }
+  .switcher:focus-visible { outline: 2px solid var(--brass); outline-offset: -1px; }
+  .switcher .name {
+    font-family: var(--font-display); font-size: 14px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .switcher .mod-icon { color: var(--brass-dark); display: flex; flex-shrink: 0; }
+
+  .avatar {
+    width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--brass-soft); color: var(--brass-dark);
+    font-size: 11px; font-weight: 600;
+  }
+
+  .module-menu {
+    position: absolute; left: 12px; top: 100%; z-index: 30;
+    min-width: 224px; margin-top: 4px; padding: 4px;
+    background: var(--paper-raised);
+    border: 1px solid var(--line); border-radius: 8px;
+    box-shadow: 0 10px 30px -10px rgba(0,0,0,.45);
+  }
+  .module-menu[hidden] { display: none; }
+  .menu-item {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    padding: 8px 10px; border: 0; border-radius: 6px;
+    background: transparent; color: var(--ink);
+    font: inherit; font-size: 14px; text-align: left; cursor: pointer;
+  }
+  .menu-item:hover { background: color-mix(in srgb, var(--line) 60%, transparent); }
+  .menu-item:focus-visible { outline: 2px solid var(--brass); outline-offset: -1px; }
+  .menu-item[aria-current="page"] {
+    background: var(--brass-soft); color: var(--brass-dark); font-weight: 500;
+  }
+
+  /* Body. The bottom padding clears the trigger, which is pinned to the frame. */
+  .content {
+    height: calc(100% - 56px - env(safe-area-inset-top));
+    overflow-y: auto;
+    padding: 16px 16px 88px;
+  }
+  .content h3 { font-size: 20px; font-weight: 600; }
+  .content .sub { color: var(--muted); margin: 2px 0 16px; }
+  .cards { display: grid; gap: 12px; }
+  .card {
+    border: 1px solid var(--line); border-radius: 12px;
+    background: var(--paper-raised); padding: 16px;
+  }
+  .card .k {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--muted); margin: 0;
+  }
+  .card .v { font-family: var(--font-display); font-size: 18px; margin: 4px 0 0; }
+
+  /* The bottom trigger: one row naming where you are, tapped to open the tree.
+     Replaces today's horizontally scrolling chip row — same edge, but every
+     section is reachable rather than the first three. `pb: max(...)` is the
+     safe-area allowance `.tree-nav-sticky` gives the real bar in globals.css. */
+  .trigger {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 20;
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 16px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    background: var(--paper-raised); border: 0; border-top: 1px solid var(--line);
+    color: var(--ink); font: inherit; text-align: left; cursor: pointer;
+  }
+  .trigger:hover { background: color-mix(in srgb, var(--line) 40%, var(--paper-raised)); }
+  .trigger:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+  .trigger .sec-icon { color: var(--brass-dark); display: flex; flex-shrink: 0; }
+  .trigger .label {
+    flex: 1; min-width: 0; font-weight: 500;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .trigger .hint { font-size: 12px; color: var(--muted); flex-shrink: 0; }
+  .trigger .caret { color: var(--muted); flex-shrink: 0; transform: rotate(-90deg); display: inline-block; }
+
+  /* The sheet, over a scrim. */
+  .scrim {
+    position: absolute; inset: 0; z-index: 30;
+    background: rgba(0,0,0,.45); border: 0; padding: 0; cursor: pointer;
+  }
+  .scrim[hidden], .sheet[hidden] { display: none; }
+
+  .sheet {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 40;
+    max-height: 70%; overflow-y: auto;
+    background: var(--paper-raised);
+    border-top: 1px solid var(--line);
+    border-radius: 16px 16px 0 0;
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+  .sheet-head {
+    position: sticky; top: 0;
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 16px;
+    background: var(--paper-raised); border-bottom: 1px solid var(--line);
+  }
+  /* The grab handle, centred over the row. */
+  .sheet-head::before {
+    content: ""; position: absolute; left: 50%; top: 6px;
+    width: 36px; height: 4px; transform: translateX(-50%);
+    border-radius: 2px; background: var(--line);
+  }
+  .sheet-head .name {
+    font-family: var(--font-display); font-size: 14px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .sheet-head .mod-icon { color: var(--brass-dark); display: flex; flex-shrink: 0; }
+  .icon-btn {
+    width: 32px; height: 32px; margin-left: auto; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    border: 0; border-radius: 6px; background: transparent;
+    color: var(--muted); cursor: pointer; font-size: 18px;
+  }
+  .icon-btn:hover { background: color-mix(in srgb, var(--line) 60%, transparent); color: var(--ink); }
+  .icon-btn:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+
+  .sheet-list { list-style: none; margin: 0; padding: 8px; }
+  /* ~44px touch targets — the desktop panel's rows are tighter, a pointer
+     doesn't need the slack. */
+  .sheet-row {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    padding: 10px 12px; border: 0; border-radius: 6px;
+    background: transparent; color: var(--ink);
+    font: inherit; font-size: 14px; text-align: left; cursor: pointer;
+  }
+  .sheet-row:hover { background: color-mix(in srgb, var(--line) 60%, transparent); }
+  .sheet-row:focus-visible { outline: 2px solid var(--brass); outline-offset: -1px; }
+  .sheet-row[aria-current="page"] {
+    background: var(--brass-soft); color: var(--brass-dark); font-weight: 500;
+  }
+
+  .note { max-width: 680px; margin: 16px auto 0; color: var(--muted); font-size: 13px; }
+  .note code {
+    font-family: ui-monospace, monospace; font-size: 12px;
+    background: var(--paper-raised); border: 1px solid var(--line);
+    border-radius: 4px; padding: 1px 4px;
+  }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <p class="eyebrow">Prototype — mobile / compact layout</p>
+  <h1>Two-tier navigation</h1>
+  <p>
+    Module switcher in the app bar, sections behind a bottom sheet with safe-area padding.
+    Tap the module title to switch; tap the bottom row to open the tree.
+  </p>
+</div>
+
+<div class="controls">
+  <label for="theme">Theme</label>
+  <select id="theme"></select>
+  <button id="fill" type="button">Fill screen</button>
+</div>
+
+<div class="phone">
+  <header class="appbar">
+    <button class="switcher" id="switcher" type="button" aria-haspopup="menu" aria-expanded="false">
+      <span class="mod-icon" id="bar-icon"></span>
+      <span class="name" id="bar-name"></span>
+      <span class="caret" id="bar-caret" aria-hidden="true" style="color: var(--muted);">&rsaquo;</span>
+    </button>
+    <div class="avatar" title="Signed-in reader">MH</div>
+    <div class="module-menu" id="module-menu" role="menu" aria-label="Modules" hidden></div>
+  </header>
+
+  <div class="content">
+    <h3 id="body-title"></h3>
+    <p class="sub" id="body-sub"></p>
+    <div class="cards">
+      <div class="card"><p class="k">Card 1</p><p class="v">&mdash;</p></div>
+      <div class="card"><p class="k">Card 2</p><p class="v">&mdash;</p></div>
+      <div class="card"><p class="k">Card 3</p><p class="v">&mdash;</p></div>
+      <div class="card"><p class="k">Card 4</p><p class="v">&mdash;</p></div>
+    </div>
+  </div>
+
+  <button class="trigger" id="trigger" type="button" aria-haspopup="dialog" aria-expanded="false">
+    <span class="sec-icon" id="trigger-icon"></span>
+    <span class="label" id="trigger-label"></span>
+    <span class="hint">Sections</span>
+    <span class="caret" aria-hidden="true">&rsaquo;</span>
+  </button>
+
+  <button class="scrim" id="scrim" aria-label="Close the section list" hidden></button>
+
+  <div class="sheet" id="sheet" role="dialog" aria-label="Sections" hidden>
+    <div class="sheet-head">
+      <span class="mod-icon" id="sheet-icon"></span>
+      <span class="name" id="sheet-name"></span>
+      <button class="icon-btn" id="sheet-close" type="button" aria-label="Close the section list">&times;</button>
+    </div>
+    <ul class="sheet-list" id="sheet-list"></ul>
+  </div>
+</div>
+
+<p class="note">
+  Mock state only — no routing. Open on a phone and press <em>Fill screen</em> to see the
+  real safe-area behaviour. The production shell (<code>AppChrome</code>,
+  <code>TreeNav</code>, <code>SectionLayout</code>) is untouched.
+</p>
+
+<script>
+// Icons — traced from src/components/module-icons.tsx and tree-icons.tsx.
+const ICON = {
+  chart:   '<path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 16v-5"/><path d="M13 16V8"/><path d="M18 16v-3"/>',
+  music:   '<circle cx="7" cy="17" r="2.5"/><circle cx="17" cy="15" r="2.5"/><path d="M9.5 17V7l10-2v10"/>',
+  journal: '<path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H18a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H6.5A1.5 1.5 0 0 0 5 20.5z"/><path d="M9 7h6M9 11h6"/>',
+  grid:    '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+  list:    '<path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4.5" cy="6" r="1" fill="currentColor" stroke="none"/><circle cx="4.5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="4.5" cy="18" r="1" fill="currentColor" stroke="none"/>',
+  history: '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/><path d="M12 8v4l3 2"/>',
+  database:'<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/>',
+  'stock-quote': '<path d="M4 16l4-5 3 3 5-7"/><path d="M13 7h4v4"/><path d="M4 20h16"/>',
+  upload:  '<path d="M12 16V4"/><path d="M8 8l4-4 4 4"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/>',
+  gear:    '<path d="M12 3.5l1.6 1.1 1.9-.5.9 1.7 1.9.6-.1 2 1.4 1.4-1.1 1.6.5 1.9-1.7.9-.6 1.9-2-.1-1.4 1.4-1.6-1.1-1.9.5-.9-1.7-1.9-.6.1-2L5.4 12l1.1-1.6-.5-1.9 1.7-.9.6-1.9 2 .1z"/><circle cx="12" cy="12" r="3"/>',
+  magic:   '<path d="M7 21l9-9"/><path d="M14 7l3-3 3 3-3 3z"/><path d="M5 5l1 2 2 1-2 1-1 2-1-2-2-1 2-1z"/>',
+  player:  '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2"/><path d="M16 8l-4 4"/>',
+  search:  '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
+  shapes:  '<circle cx="7.5" cy="16" r="4"/><rect x="12" y="12" width="8" height="8" rx="1"/><path d="M12 9L8.5 3 5 9z"/>',
+  sliders: '<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="2" fill="currentColor" stroke="none"/><circle cx="11" cy="18" r="2" fill="currentColor" stroke="none"/>',
+};
+
+function svg(name, size) {
+  const body = ICON[name] || "";
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" ' +
+         'stroke-linecap="round" stroke-linejoin="round" width="' + size + '" height="' + size +
+         '" aria-hidden="true">' + body + "</svg>";
+}
+
+// Mock data — shaped like the real *-sections.ts files.
+const MODULES = [
+  {
+    slug: "stocks", name: "Stocks & ETFs", icon: "chart",
+    sections: [
+      { id: "main",        label: "Dashboard",           icon: "grid" },
+      { id: "positions",   label: "Positions",           icon: "list" },
+      { id: "transactions",label: "Transactions",        icon: "history" },
+      { id: "accounts",    label: "Account Performance", icon: "database" },
+      { id: "actionables", label: "Actionables",         icon: "stock-quote" },
+      { id: "charts",      label: "Chart & Analysis",    icon: "chart" },
+      { id: "data", label: "Data", icon: "upload", children: [
+        { id: "import",   label: "CSV Import",    icon: "upload" },
+        { id: "settings", label: "Configuration", icon: "gear" },
+      ]},
+    ],
+  },
+  {
+    slug: "music", name: "Music Library", icon: "music",
+    sections: [
+      { id: "main",          label: "Library",        icon: "grid" },
+      { id: "magic",         label: "Magic Playlist", icon: "magic" },
+      { id: "player",        label: "Player",         icon: "player" },
+      { id: "queue",         label: "Queue",          icon: "list" },
+      { id: "scan",          label: "Scan Music",     icon: "search" },
+      { id: "configuration", label: "Configuration",  icon: "gear" },
+    ],
+  },
+  {
+    slug: "journal", name: "Journal", icon: "journal",
+    sections: [
+      { id: "main",        label: "Entries",       icon: "list" },
+      { id: "search",      label: "Search",        icon: "search" },
+      { id: "taxonomy",    label: "Tags & Places", icon: "shapes" },
+      { id: "preferences", label: "Preferences",   icon: "sliders" },
+    ],
+  },
+];
+
+const THEMES = {
+  "Signal Deck":  { paper:"#12161A", raised:"#1A1F26", ink:"#EEF2F3", line:"#2B323B", muted:"#8B96A1", brass:"#33E2B8", brassDark:"#1C8A71", brassSoft:"#15332D" },
+  "Ember Ledger": { paper:"#11131B", raised:"#171A25", ink:"#F4EEE3", line:"#2A2D3D", muted:"#9992A3", brass:"#E79355", brassDark:"#A35C2B", brassSoft:"#3A2A1C" },
+  "Daybreak":     { paper:"#F5F0EB", raised:"#FFFFFF", ink:"#241E1A", line:"#DED5CC", muted:"#7A6E64", brass:"#C2185B", brassDark:"#8E1145", brassSoft:"#FADCE7" },
+  "Sea Glass":    { paper:"#F2F5F4", raised:"#FFFFFF", ink:"#16302C", line:"#D3DEDB", muted:"#5F736F", brass:"#0F766E", brassDark:"#0A544E", brassSoft:"#D5EAE7" },
+};
+
+// State — plain variables, redrawn by render().
+let moduleSlug = MODULES[0].slug;
+let sectionId  = MODULES[0].sections[0].id;
+let menuOpen   = false;
+let sheetOpen  = false;
+
+const activeModule = () => MODULES.find((m) => m.slug === moduleSlug);
+// Flattened for the sheet: a phone has no room for a second level, and every
+// leaf is reachable in one list. Group headings are dropped, the way the
+// current compact bar drops them.
+const flatSections = (m) => m.sections.flatMap((s) => [s, ...(s.children || [])]);
+const activeSection = () => {
+  const flat = flatSections(activeModule());
+  return flat.find((s) => s.id === sectionId) || flat[0];
+};
+
+function renderMenu() {
+  const menu = document.getElementById("module-menu");
+  menu.hidden = !menuOpen;
+  document.getElementById("switcher").setAttribute("aria-expanded", String(menuOpen));
+  // Points down when closed, up when the menu is showing.
+  document.getElementById("bar-caret").style.transform =
+    menuOpen ? "rotate(-90deg)" : "rotate(90deg)";
+  if (!menuOpen) return;
+
+  menu.innerHTML = "";
+  MODULES.forEach((module) => {
+    const btn = document.createElement("button");
+    btn.className = "menu-item";
+    btn.type = "button";
+    btn.setAttribute("role", "menuitem");
+    if (module.slug === moduleSlug) btn.setAttribute("aria-current", "page");
+    btn.innerHTML = svg(module.icon, 16) + "<span>" + module.name + "</span>";
+    // Switching module resets the section, as navigating to a module root does.
+    btn.onclick = () => {
+      moduleSlug = module.slug;
+      sectionId = module.sections[0].id;
+      menuOpen = false;
+      render();
+    };
+    menu.appendChild(btn);
+  });
+}
+
+function renderSheet() {
+  const module = activeModule();
+  document.getElementById("sheet").hidden = !sheetOpen;
+  document.getElementById("scrim").hidden = !sheetOpen;
+  document.getElementById("trigger").setAttribute("aria-expanded", String(sheetOpen));
+  document.getElementById("sheet").setAttribute("aria-label", module.name + " sections");
+  document.getElementById("sheet-icon").innerHTML = svg(module.icon, 20);
+  document.getElementById("sheet-name").textContent = module.name;
+
+  const list = document.getElementById("sheet-list");
+  list.innerHTML = "";
+  flatSections(module).forEach((section) => {
+    const li = document.createElement("li");
+    const btn = document.createElement("button");
+    btn.className = "sheet-row";
+    btn.type = "button";
+    if (section.id === sectionId) btn.setAttribute("aria-current", "page");
+    btn.innerHTML = svg(section.icon, 16) + '<span class="label">' + section.label + "</span>";
+    btn.onclick = () => { sectionId = section.id; sheetOpen = false; render(); };
+    li.appendChild(btn);
+    list.appendChild(li);
+  });
+}
+
+function render() {
+  const module = activeModule();
+  const section = activeSection();
+
+  document.getElementById("bar-icon").innerHTML = svg(module.icon, 20);
+  document.getElementById("bar-name").textContent = module.name;
+  document.getElementById("trigger-icon").innerHTML = svg(section.icon, 20);
+  document.getElementById("trigger-label").textContent = section.label;
+  document.getElementById("body-title").textContent = section.label;
+  document.getElementById("body-sub").textContent =
+    "Mock content for " + module.name + ". Tap the title to switch modules.";
+
+  renderMenu();
+  renderSheet();
+}
+
+document.getElementById("switcher").onclick = () => { menuOpen = !menuOpen; render(); };
+document.getElementById("trigger").onclick  = () => { sheetOpen = true;  render(); };
+document.getElementById("scrim").onclick    = () => { sheetOpen = false; render(); };
+document.getElementById("sheet-close").onclick = () => { sheetOpen = false; render(); };
+
+// Escape closes whichever is open, and an outside tap closes the module menu —
+// same behaviour as `useDropdown` in app-chrome.tsx.
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (sheetOpen) { sheetOpen = false; render(); }
+  else if (menuOpen) { menuOpen = false; render(); }
+});
+document.addEventListener("mousedown", (e) => {
+  if (!menuOpen) return;
+  const bar = document.getElementById("switcher");
+  const menu = document.getElementById("module-menu");
+  if (!bar.contains(e.target) && !menu.contains(e.target)) { menuOpen = false; render(); }
+});
+
+document.getElementById("fill").onclick = () => document.body.classList.toggle("fill");
+
+const select = document.getElementById("theme");
+Object.keys(THEMES).forEach((name) => {
+  const option = document.createElement("option");
+  option.value = name; option.textContent = name;
+  select.appendChild(option);
+});
+select.onchange = () => {
+  const t = THEMES[select.value];
+  const root = document.documentElement.style;
+  root.setProperty("--paper", t.paper);
+  root.setProperty("--paper-raised", t.raised);
+  root.setProperty("--ink", t.ink);
+  root.setProperty("--line", t.line);
+  root.setProperty("--muted", t.muted);
+  root.setProperty("--brass", t.brass);
+  root.setProperty("--brass-dark", t.brassDark);
+  root.setProperty("--brass-soft", t.brassSoft);
+};
+
+render();
+</script>
+</body>
+</html>

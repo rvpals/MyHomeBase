@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { pruneRedundantFolders } from "./folders";
 import { DEFAULT_TARGET_SECONDS } from "./types";
 
 // Zod schemas for everything crossing a boundary into this module -- a server action or a
@@ -37,6 +38,38 @@ const MAX_CRITERIA_VALUES = 500;
  */
 const criteriaNameSchema = z.string().max(400);
 
+/**
+ * A folder path relative to the music root, e.g. `Rock/Queen`.
+ *
+ * Longer than a tag because a path accumulates its ancestors' names -- 400 characters is
+ * a plausible nesting depth on a NAS, 1000 is not. Trailing slashes are trimmed rather
+ * than rejected: SQL's folder expression yields them (`rtrim(relative_path, ...)` leaves
+ * the separator on), so a path picked straight out of the catalog can arrive with one and
+ * refusing it would be refusing our own output.
+ *
+ * Backslashes are rewritten to forward slashes for the same reason the scanner stores
+ * them that way: the NAS is reached over a Windows path, but `relative_path` is
+ * normalised, and a criterion that kept `\` would match nothing.
+ *
+ * Unlike `criteriaNameSchema` there is no meaningful empty value -- '' is the library
+ * root, not an "untagged" group -- so it is dropped by the transform on the field rather
+ * than accepted as a criterion.
+ */
+const folderPathSchema = z
+  .string()
+  .max(1000)
+  .transform((path) => path.replace(/[\\]/g, "/").replace(/[/]+$/, ""));
+
+/**
+ * A single folder path, for the picker's "list one level" call.
+ *
+ * `.default("")` because the top level is addressed by asking for the root, and a picker
+ * opening for the first time has no parent to name -- so the absent case must mean "start
+ * at the top" rather than be an error. Reuses `folderPathSchema`, so a path typed on the
+ * command line is normalised exactly as one clicked in the browser is.
+ */
+export const magicFolderPathSchema = folderPathSchema.default("");
+
 /** The selection criteria, as the form posts them. */
 export const magicCriteriaSchema = z.object({
   genres: z.array(criteriaNameSchema).max(MAX_CRITERIA_VALUES).default([]),
@@ -45,6 +78,15 @@ export const magicCriteriaSchema = z.object({
     .array(z.coerce.number().int().positive())
     .max(MAX_CRITERIA_VALUES)
     .default([]),
+  folders: z
+    .array(folderPathSchema)
+    .max(MAX_CRITERIA_VALUES)
+    .default([])
+    // Pruned at the BOUNDARY, so no caller can store a parent and its own child and then
+    // wonder which one is in force. `pruneRedundantFolders` also drops '' -- the root
+    // restricts nothing, and letting it through would make one stray entry silently mean
+    // "the whole library" no matter what else was picked.
+    .transform((paths) => pruneRedundantFolders(paths)),
   targetSeconds: z.coerce
     .number()
     .int()

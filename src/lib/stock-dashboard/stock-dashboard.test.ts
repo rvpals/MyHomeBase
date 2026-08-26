@@ -39,18 +39,16 @@ describe("resolveDashboardWidgets", () => {
   });
 
   it("reads a saved order", () => {
-    const widgets = resolveDashboardWidgets(
-      settings("statistics,allocationType,summary,allocationStrategy"),
-    );
+    const widgets = resolveDashboardWidgets(settings("statistics,allocation,summary"));
     expect(widgets.slice(0, 3).map((widget) => widget.id)).toEqual([
       "statistics",
-      "allocationType",
+      "allocation",
       "summary",
     ]);
   });
 
   it("reads a '-' prefix as hidden", () => {
-    const widgets = resolveDashboardWidgets(settings("summary,-statistics,allocationType"));
+    const widgets = resolveDashboardWidgets(settings("summary,-statistics,allocation"));
     expect(widgets.find((widget) => widget.id === "statistics")?.visible).toBe(false);
     expect(widgets.find((widget) => widget.id === "summary")?.visible).toBe(true);
   });
@@ -99,6 +97,40 @@ describe("resolveDashboardWidgets", () => {
     expect(widgets).toHaveLength(DASHBOARD_WIDGET_IDS.length);
   });
 
+  /**
+   * The three per-chart allocation widgets became one `allocation` card. A layout
+   * saved while they existed must resolve to a working dashboard with the new card
+   * present — that's what let the consolidation ship without a migration.
+   */
+  it("drops the three retired allocation ids and appends 'allocation' visible", () => {
+    const widgets = resolveDashboardWidgets(
+      settings("summary,allocationType,allocationStrategy,allocationSector,statistics"),
+    );
+    const ids = widgets.map((widget) => widget.id);
+    expect(ids).not.toContain("allocationType");
+    expect(ids).not.toContain("allocationStrategy");
+    expect(ids).not.toContain("allocationSector");
+    expect(ids.slice(0, 2)).toEqual(["summary", "statistics"]);
+    expect(widgets.find((widget) => widget.id === "allocation")).toEqual({
+      id: "allocation",
+      visible: true,
+    });
+    expect(widgets).toHaveLength(DASHBOARD_WIDGET_IDS.length);
+  });
+
+  /**
+   * The one behaviour change the consolidation can't preserve: a layout that hid
+   * *some* allocation charts gets the combined card back visible, because a single
+   * id can't express "type but not sector". Pinned so it reads as a decision.
+   */
+  it("gives back a visible 'allocation' even when the old charts were hidden", () => {
+    const widgets = resolveDashboardWidgets(
+      settings("summary,-allocationType,-allocationSector,statistics"),
+    );
+    expect(widgets.find((widget) => widget.id === "allocation")?.visible).toBe(true);
+    expect(widgets).toHaveLength(DASHBOARD_WIDGET_IDS.length);
+  });
+
   it("keeps the first of a duplicated id rather than rendering it twice", () => {
     const widgets = resolveDashboardWidgets(settings("summary,summary,statistics"));
     expect(widgets.filter((widget) => widget.id === "summary")).toHaveLength(1);
@@ -135,7 +167,7 @@ describe("dashboardWidgetsToEntries", () => {
 
   it("round-trips an order with a hidden widget", () => {
     const layout = toggleDashboardWidget(
-      moveDashboardWidget(defaultDashboardWidgets(), "allocationType", "up"),
+      moveDashboardWidget(defaultDashboardWidgets(), "allocation", "up"),
       "statistics",
     );
     const entries = dashboardWidgetsToEntries(layout);
@@ -151,9 +183,9 @@ describe("dashboardWidgetsToEntries", () => {
 
   it("rejects a duplicated widget, which would render it twice", () => {
     const layout = defaultDashboardWidgets();
-    // Overwrite "statistics" with a second "summary": still a full-length list, but
-    // one widget appears twice and another not at all.
-    layout[2] = { id: "summary", visible: true };
+    // Overwrite the last widget with a second "summary": still a full-length list,
+    // but one widget appears twice and another not at all.
+    layout[layout.length - 1] = { id: "summary", visible: true };
     expect(() => dashboardWidgetsToEntries(layout)).toThrow();
   });
 });
@@ -172,7 +204,7 @@ describe("moveDashboardWidget", () => {
   it("does nothing at the ends rather than wrapping around", () => {
     const widgets = defaultDashboardWidgets();
     expect(moveDashboardWidget(widgets, "summary", "up")).toEqual(widgets);
-    expect(moveDashboardWidget(widgets, "allocationSector", "down")).toEqual(widgets);
+    expect(moveDashboardWidget(widgets, "allocation", "down")).toEqual(widgets);
   });
 
   it("returns a new list rather than mutating the caller's", () => {
@@ -207,11 +239,6 @@ describe("toggleDashboardWidget", () => {
 describe("visibleDashboardWidgets", () => {
   it("returns the visible ids in order", () => {
     const layout = toggleDashboardWidget(defaultDashboardWidgets(), "statistics");
-    expect(visibleDashboardWidgets(layout)).toEqual([
-      "summary",
-      "allocationType",
-      "allocationStrategy",
-      "allocationSector",
-    ]);
+    expect(visibleDashboardWidgets(layout)).toEqual(["summary", "allocation"]);
   });
 });

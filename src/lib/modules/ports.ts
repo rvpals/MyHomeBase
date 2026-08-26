@@ -1,4 +1,5 @@
 import type { DecodedImage } from "@/lib/shared/image-upload";
+import type { ModuleIconName } from "./icon-names";
 import type { ModuleUpdate } from "./schema";
 import type { Module, ModuleSeed } from "./types";
 
@@ -12,6 +13,13 @@ export interface ModuleRepository {
   updateAll(updates: ModuleUpdate[]): void;
   /** Replaces the entire table with the given rows (sequence = array order). */
   resetToDefaults(defaults: ModuleSeed[]): void;
+  /**
+   * Sets one module's glyph on its own.
+   *
+   * Separate from `updateAll` because the icon picker saves on pick rather than
+   * through the admin form's Save button — see `setModuleIcon`.
+   */
+  setIcon(slug: string, icon: ModuleIconName): void;
 
   /**
    * The carousel image bytes. **The only read that touches the BLOB** — call it

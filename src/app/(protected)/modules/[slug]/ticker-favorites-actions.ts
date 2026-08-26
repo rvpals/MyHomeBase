@@ -1,6 +1,7 @@
 "use server";
 
-// The favorite star's two actions: read the jump list, and flip one symbol.
+// The favorite star's actions: read the jump list (with or without prices), ask
+// about one symbol, and flip one symbol.
 //
 // No `revalidatePath` on the toggle, deliberately. The star lives inside the
 // ticker viewer dialog and the jump list is fetched when its menu opens, so
@@ -8,9 +9,11 @@
 // the whole dashboard to update a control that already knows its own new state.
 
 import {
+  listFavoriteQuotes,
   listFavoriteTickers,
   toggleFavorite as toggleFavoriteUseCase,
   isFavorite as isFavoriteUseCase,
+  type FavoriteQuote,
 } from "@/lib/ticker-favorites";
 import { deps } from "@/lib/wiring";
 
@@ -24,6 +27,17 @@ export interface ToggleFavoriteResult {
 /** The favorited symbols, newest first. */
 export async function listFavoriteTickersAction(): Promise<string[]> {
   return listFavoriteTickers(deps.tickerFavoriteRepo);
+}
+
+/**
+ * The favorites with their last-refreshed prices, newest first.
+ *
+ * Reads stored prices only — no provider round-trip — so opening the menu is a
+ * DB read and shows the same figures as the positions table. A favorite that
+ * isn't held comes back without a price.
+ */
+export async function listFavoriteQuotesAction(): Promise<FavoriteQuote[]> {
+  return listFavoriteQuotes(deps.tickerFavoriteRepo, deps.stockPositionRepo);
 }
 
 /** Whether one symbol is starred — what the viewer's star renders from on open. */

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearCategoryIcon,
   clearTagIcon,
@@ -8,6 +8,7 @@ import {
   deleteFilter,
   deleteTag,
   findEntries,
+  generateMissingTaxonomyIcons,
   getCategoryIcon,
   getFilter,
   listFilters,
@@ -103,6 +104,11 @@ function fakeRepo(): JournalRepository {
       return entries
         .filter((entry) => entry.date.slice(5) === monthDay)
         .sort((a, b) => (a.date < b.date ? 1 : -1));
+    },
+    listEntriesInDateRange(startDate, endDate) {
+      return entries
+        .filter((entry) => entry.date >= startDate && entry.date <= endDate)
+        .sort((a, b) => (a.date === b.date ? a.id - b.id : a.date < b.date ? -1 : 1));
     },
     searchEntries(term, limit) {
       const needle = term.toLowerCase();
@@ -341,6 +347,28 @@ function fakeRepo(): JournalRepository {
         .map(([name, entryCount]) => ({ name, entryCount }))
         .sort((a, b) => b.entryCount - a.entryCount || a.name.localeCompare(b.name))
         .slice(0, limit);
+    },
+    // Prefill templates are exercised in prefill.test.ts, which brings its own
+    // fake. These satisfy the port so this file keeps compiling; nothing here
+    // asserts against them.
+    listPrefillTemplates() {
+      return [];
+    },
+    getPrefillTemplateById() {
+      return undefined;
+    },
+    getPrefillTemplateByName() {
+      return undefined;
+    },
+    savePrefillTemplate() {
+      throw new Error("not used in these tests");
+    },
+    deletePrefillTemplate() {},
+    setPrefillTemplateEnabled() {
+      throw new Error("not used in these tests");
+    },
+    listDistinctFieldValues() {
+      return [];
     },
   };
 }
@@ -854,6 +882,53 @@ describe("tag icons", () => {
       setTagIcon(repo, "nope", { mimeType: "image/png", base64Data: tinyPngBase64 }),
     ).toThrow(/No tag named/);
     expect(() => clearTagIcon(repo, "nope")).toThrow(/No tag named/);
+  });
+});
+
+describe("generateMissingTaxonomyIcons", () => {
+  const tinyPngBase64 = Buffer.from("fake png bytes").toString("base64");
+
+  // No network in a unit test: a failed fetch is the documented path to the
+  // locally drawn glyph, so stubbing it out keeps the run offline and
+  // deterministic without changing which branch is under test.
+  function stubOfflineFetch() {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("fills in only the tags that have no icon when asked for tags", async () => {
+    stubOfflineFetch();
+    const repo = fakeRepo();
+    upsertCategory(repo, { name: "Travel", description: "" });
+    upsertTag(repo, { name: "daily", description: "" });
+    upsertTag(repo, { name: "hiking", description: "" });
+    setTagIcon(repo, "daily", { mimeType: "image/png", base64Data: tinyPngBase64 });
+
+    const summary = await generateMissingTaxonomyIcons(repo, "tag");
+
+    expect(summary).toEqual({ generated: 1, failed: 0 });
+    // The hand-uploaded icon is left exactly as it was...
+    expect(getTagIcon(repo, "daily")?.mimeType).toBe("image/png");
+    // ...the blank one is filled...
+    expect(getTagIcon(repo, "hiking")?.mimeType).toBe("image/svg+xml");
+    // ...and the category list is untouched by a tags-only run.
+    expect(getCategoryIcon(repo, "Travel")).toBeUndefined();
+  });
+
+  it("covers both lists when no kind is given", async () => {
+    stubOfflineFetch();
+    const repo = fakeRepo();
+    upsertCategory(repo, { name: "Travel", description: "" });
+    upsertTag(repo, { name: "hiking", description: "" });
+
+    const summary = await generateMissingTaxonomyIcons(repo);
+
+    expect(summary).toEqual({ generated: 2, failed: 0 });
+    expect(getCategoryIcon(repo, "Travel")?.mimeType).toBe("image/svg+xml");
+    expect(getTagIcon(repo, "hiking")?.mimeType).toBe("image/svg+xml");
   });
 });
 

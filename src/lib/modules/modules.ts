@@ -7,6 +7,7 @@ import { DEFAULT_MODULES } from "./defaults";
 import type { ModuleRepository } from "./ports";
 import {
   MAX_CAROUSEL_IMAGE_BYTES,
+  moduleIconNameSchema,
   moduleUpdateListSchema,
   type ModuleUpdate,
 } from "./schema";
@@ -32,6 +33,23 @@ export function updateModules(repo: ModuleRepository, updates: ModuleUpdate[]): 
 export function resetModulesToDefaults(repo: ModuleRepository): Module[] {
   repo.resetToDefaults(DEFAULT_MODULES);
   return repo.listModules({ includeHidden: true });
+}
+
+/**
+ * Sets one module's glyph.
+ *
+ * Its own use-case rather than a field on `ModuleUpdate`, because the picker
+ * writes on pick instead of through the admin form's Save button — the same
+ * trade the carousel graphic makes below. Batching it would mean a chosen glyph
+ * sits unsaved in form state while the rail beside it still shows the old one.
+ *
+ * The name is validated against `MODULE_ICON_NAMES`, so an icon that no glyph
+ * set can draw is rejected here rather than falling back to `building` forever
+ * once it is in the database.
+ */
+export function setModuleIcon(repo: ModuleRepository, slug: string, icon: string): void {
+  requireModule(repo, slug);
+  repo.setIcon(slug, moduleIconNameSchema.parse(icon));
 }
 
 // ---------------------------------------------------------------------------

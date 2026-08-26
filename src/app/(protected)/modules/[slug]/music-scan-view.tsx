@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { Button } from "@/components/button";
+import { Progress3D } from "@/components/progress-3d";
 import {
   getScanStatusAction,
   listFoldersAction,
@@ -260,16 +261,15 @@ function ScanProgress({ status }: { status: ScanStatusView }) {
         </p>
       </div>
 
-      <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-line">
-        {status.percent === undefined ? (
-          <div className={`h-full w-1/3 bg-brass ${isRunning ? "animate-pulse" : ""}`} />
-        ) : (
-          <div
-            className="h-full bg-brass transition-[width] duration-300"
-            style={{ width: `${status.percent}%` }}
-          />
-        )}
-      </div>
+      {/* Indeterminate while phase one counts: `Progress3D` sweeps the fill for
+          an undefined value, which is the same "total unknown" state the
+          percentage above reports as "counting...". A finished-but-uncounted
+          run isn't sweeping anything, so it gets an empty track. */}
+      <Progress3D
+        value={status.percent === undefined && isRunning ? undefined : (status.percent ?? 0)}
+        ariaLabel="Scan progress"
+        className="mt-2"
+      />
 
       <p className="mt-2 font-mono text-xs text-ink">
         {status.filesSeen.toLocaleString()}

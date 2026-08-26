@@ -1,4 +1,4 @@
-export type ImportType = "Position" | "Transaction" | "Performance" | "Journal" | "Expense";
+export type ImportType = "Position" | "Transaction" | "Performance" | "Journal" | "Expense" | "Roster";
 
 /** CSV column index (as a string key) -> target field name. Columns absent from the map are ignored. */
 export type ColumnMapping = Record<string, string>;

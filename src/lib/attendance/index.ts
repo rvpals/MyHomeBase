@@ -1,10 +1,15 @@
 export {
+  ATTENDANCE_REPORT_FORMATS,
   ATTENDANCE_STATUSES,
   type AttendanceActionTally,
   type AttendanceClass,
+  type AttendanceDetailCell,
+  type AttendanceDetailReport,
+  type AttendanceDetailRow,
   type AttendanceEntry,
   type AttendanceRecord,
   type AttendanceReport,
+  type AttendanceReportFormat,
   type AttendanceSessionSummary,
   type AttendanceSheet,
   type AttendanceStatus,
@@ -22,6 +27,8 @@ export {
   createStudentActionSchema,
   createStudentSchema,
   enrollStudentsSchema,
+  importRosterSchema,
+  studentIdsSchema,
   saveAttendanceSchema,
   studentSchema,
   updateClassSchema,
@@ -33,6 +40,7 @@ export {
   type CreateStudentActionInput,
   type CreateStudentInput,
   type EnrollStudentsInput,
+  type ImportRosterInput,
   type SaveAttendanceInput,
   type StudentActionWriteData,
   type StudentWriteData,
@@ -49,10 +57,12 @@ export {
 } from "./settings";
 export {
   addStudent,
+  buildAttendanceDetailReport,
   createClass,
   createStudentAction,
   deleteClass,
   deleteStudent,
+  deleteStudents,
   deleteStudentAction,
   enrollStudents,
   formatStudentName,
@@ -75,3 +85,10 @@ export {
   updateStudent,
   updateStudentAction,
 } from "./attendance";
+export {
+  ATTENDANCE_IMPORT_FIELDS,
+  autoMapAttendanceHeaders,
+  importAttendanceRoster,
+  splitFullName,
+  type RosterImportResult,
+} from "./csv-import";

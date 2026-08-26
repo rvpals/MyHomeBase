@@ -1,6 +1,7 @@
 import type {
   EntryWriteData,
   JournalFilterWriteData,
+  PrefillTemplateWriteData,
   UpsertCategoryInput,
   UpsertTagInput,
 } from "./schema";
@@ -9,6 +10,8 @@ import type {
   JournalEntry,
   JournalEntryNeighbors,
   JournalFilter,
+  JournalPrefillField,
+  JournalPrefillTemplate,
   JournalTag,
   JournalTaxonomyCount,
   JournalTaxonomyIcon,
@@ -30,6 +33,12 @@ export interface JournalRepository {
    * newest first. `monthDay` is "MM-DD".
    */
   listEntriesByMonthDay(monthDay: string): JournalEntry[];
+  /**
+   * Every entry whose date falls in [startDate, endDate] inclusive, oldest
+   * first. Both bounds are "YYYY-MM-DD". Unlike listEntriesByMonthDay this is a
+   * range on the raw column, so it uses idx_jrn_entries_entry_date.
+   */
+  listEntriesInDateRange(startDate: string, endDate: string): JournalEntry[];
   /**
    * Entries whose date, time, title, content, place, categories, or tags match
    * `term` as a case-insensitive substring, newest journal date first, up to
@@ -93,4 +102,24 @@ export interface JournalRepository {
   // `limit` — for the "Top Tags" / "Top Categories" lists.
   listTopTags(limit: number): JournalTaxonomyCount[];
   listTopCategories(limit: number): JournalTaxonomyCount[];
+
+  // Prefill templates (migration 0062). `savePrefillTemplate` covers both create
+  // and update — the input carries an optional id — because the editor is one
+  // form either way and a split would duplicate its validation.
+  listPrefillTemplates(): JournalPrefillTemplate[];
+  getPrefillTemplateById(id: number): JournalPrefillTemplate | undefined;
+  getPrefillTemplateByName(name: string): JournalPrefillTemplate | undefined;
+  savePrefillTemplate(input: PrefillTemplateWriteData): JournalPrefillTemplate;
+  deletePrefillTemplate(id: number): void;
+  setPrefillTemplateEnabled(id: number, isEnabled: boolean): JournalPrefillTemplate;
+
+  /**
+   * The distinct values already used for one prefill-able field, most-used first,
+   * up to `limit` — the autocomplete list behind the template editor's value box.
+   *
+   * Only the free-text fields are answerable here (`title`, `content`,
+   * `placeName`); categories and tags have their own managed lists, and date/time
+   * have nothing worth suggesting. Anything else returns [].
+   */
+  listDistinctFieldValues(field: JournalPrefillField, limit: number): string[];
 }

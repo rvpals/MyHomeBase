@@ -69,12 +69,13 @@ function AllocationChart({
 }
 
 /**
- * The headline card: what the portfolio is worth right now, how it moved today,
- * the value curve, and the day-by-day history behind it.
+ * The headline card: what the portfolio is worth right now and how it moved
+ * today, over a collapsed Portfolio History child holding the value curve and
+ * the day-by-day table.
  *
  * The two big numbers come from the live positions rather than the newest
  * snapshot, so they're right even before today's refresh — the snapshots feed
- * the chart and the table below them.
+ * the chart and the table inside the child card.
  */
 function PortfolioSummaryCard({
   summary,
@@ -160,10 +161,8 @@ function PortfolioSummaryCard({
   ];
 
   return (
-    <div className="rounded-xl border border-line p-4">
-      <h3 className="font-display text-lg text-ink">Portfolio Summary</h3>
-
-      <p className="mt-2 font-display text-3xl text-ink">{formatCents(summary.totalValueCents)}</p>
+    <CollapsibleCard title="Portfolio Summary" defaultOpen>
+      <p className="font-display text-3xl text-ink">{formatCents(summary.totalValueCents)}</p>
       <p className={`mt-1 text-sm font-medium ${gainClass(summary.totalDayGainLossCents)}`}>
         {summary.totalDayGainLossCents >= 0 ? "▲" : "▼"} {formatCents(summary.totalDayGainLossCents)} (
         {summary.dayChangePct >= 0 ? "+" : ""}
@@ -176,9 +175,14 @@ function PortfolioSummaryCard({
           : "no history captured yet — press the refresh icon by the heading"}
       </p>
 
+      {/* Both views of the snapshot data live in one child card, collapsed by
+          default: the headline numbers above are the daily read, and the chart
+          and table are what you open when you want the trend behind them. With
+          no snapshots there's nothing to open, so the empty state replaces the
+          card rather than sitting inside it. */}
       {history.length > 0 ? (
-        <>
-          <div className="mt-6">
+        <CollapsibleCard title="Portfolio History" className="mt-6">
+          <div>
             <h4 className="text-xs font-medium uppercase tracking-wide text-muted">
               Value over time
             </h4>
@@ -218,14 +222,77 @@ function PortfolioSummaryCard({
               />
             </div>
           </div>
-        </>
+        </CollapsibleCard>
       ) : (
         <p className="mt-4 rounded-md border border-dashed border-line p-4 text-center text-sm text-muted">
           The value chart and history appear once you&apos;ve captured a day. Press the{" "}
           <span className="text-ink">refresh icon</span> beside the heading to record today.
         </p>
       )}
-    </div>
+    </CollapsibleCard>
+  );
+}
+
+/**
+ * All three ways the same total splits up, in one collapsed card.
+ *
+ * They were three separately-toggleable widgets once; nobody wanted one without
+ * the others, and three collapses to close a single idea was three too many. An
+ * individual chart still hides itself when it has no slices (`AllocationChart`
+ * returns null), so an empty split costs nothing here — but if all three are
+ * empty the card would open onto blank space, hence the explicit empty state.
+ */
+function PortfolioAllocationCard({
+  byType,
+  byStrategy,
+  bySector,
+  sectorsPending,
+}: {
+  byType: AllocationSlice[];
+  byStrategy: AllocationSlice[];
+  bySector: AllocationSlice[];
+  sectorsPending: boolean;
+}) {
+  // `sectorsPending` counts as content: it means there ARE positions, they just
+  // have no looked-up sector yet, and the "press Refresh All" prompt is the whole
+  // point of that state. Without it here an unrefreshed portfolio would fall
+  // through to the "nothing to split up" line and never say what to do.
+  const hasAny =
+    byType.length > 0 || byStrategy.length > 0 || bySector.length > 0 || sectorsPending;
+
+  return (
+    <CollapsibleCard title="Portfolio Allocation">
+      {hasAny ? (
+        // Stacked at every width, as the three charts were before they shared a
+        // card: a bar chart reads along its bars, and half-width bars with a
+        // ticker label on each one wrap badly on a phone.
+        <div className="flex flex-col gap-6">
+          <AllocationChart title="Allocation by type" slices={byType} />
+          <AllocationChart title="Allocation by strategy" slices={byStrategy} />
+          {sectorsPending ? (
+            <div>
+              <h3 className="font-display text-lg text-ink">Allocation by sector</h3>
+              <p className="mt-2 rounded-md border border-dashed border-line p-4 text-center text-sm text-muted">
+                Sectors are looked up per ticker. Press{" "}
+                <span className="text-ink">Refresh All</span> to fetch them — it happens once per
+                symbol, not on every visit.
+              </p>
+            </div>
+          ) : (
+            <AllocationChart
+              title="Allocation by sector"
+              slices={bySector}
+              note="A fund has no single sector, so ETFs are grouped rather than split across the industries they hold."
+            />
+          )}
+        </div>
+      ) : (
+        <p className="rounded-md border border-dashed border-line p-4 text-center text-sm text-muted">
+          Nothing to split up yet — import a positions CSV and the three allocation charts appear
+          here.
+        </p>
+      )}
+    </CollapsibleCard>
   );
 }
 
@@ -322,22 +389,12 @@ export function StockDashboardView({
         </div>
       </CollapsibleCard>
     ),
-    allocationType: <AllocationChart title="Allocation by type" slices={byType} />,
-    allocationStrategy: <AllocationChart title="Allocation by strategy" slices={byStrategy} />,
-    allocationSector: sectorsPending ? (
-      <div>
-        <h3 className="font-display text-lg text-ink">Allocation by sector</h3>
-        <p className="mt-2 rounded-md border border-dashed border-line p-4 text-center text-sm text-muted">
-          Sectors are looked up per ticker. Press{" "}
-          <span className="text-ink">Refresh All</span> to fetch them — it happens once per symbol,
-          not on every visit.
-        </p>
-      </div>
-    ) : (
-      <AllocationChart
-        title="Allocation by sector"
-        slices={bySector}
-        note="A fund has no single sector, so ETFs are grouped rather than split across the industries they hold."
+    allocation: (
+      <PortfolioAllocationCard
+        byType={byType}
+        byStrategy={byStrategy}
+        bySector={bySector}
+        sectorsPending={sectorsPending}
       />
     ),
   };

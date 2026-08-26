@@ -7,6 +7,7 @@ import {
   removeModuleCarouselImage,
   resetModulesToDefaults,
   setModuleCarouselImage,
+  setModuleIcon,
   updateModules,
 } from "./modules";
 import type { ModuleRepository } from "./ports";
@@ -53,6 +54,9 @@ function fakeRepo(seed: Module[]): ModuleRepository {
           sequence: index + 1,
         };
       });
+    },
+    setIcon(slug, icon) {
+      state = state.map((module) => (module.slug === slug ? { ...module, icon } : module));
     },
     resetToDefaults(defaults) {
       // Upsert by slug — preserves ids for modules that remain, matching the
@@ -172,6 +176,37 @@ describe("resetModulesToDefaults", () => {
     ]);
     const result = resetModulesToDefaults(repo);
     expect(result.find((module) => module.slug === "stock-etfs")?.id).toBe(42);
+  });
+});
+
+describe("setModuleIcon", () => {
+  it("changes just the glyph, leaving the other fields alone", () => {
+    const repo = fakeRepo(sample);
+    setModuleIcon(repo, "real-estate-investment", "wallet");
+    const module = getModuleBySlug(repo, "real-estate-investment");
+    expect(module?.icon).toBe("wallet");
+    // The point of a separate write: nothing else on the row moves.
+    expect(module?.shortName).toBe("Real Estate");
+    expect(module?.sequence).toBe(1);
+    expect(module?.isVisible).toBe(true);
+  });
+
+  it("sets the icon on a hidden module too", () => {
+    // The picker is reachable for any row on the admin screen, visible or not.
+    const repo = fakeRepo(sample);
+    setModuleIcon(repo, "hidden-module", "music");
+    expect(repo.getModuleBySlug("hidden-module")?.icon).toBe("music");
+  });
+
+  it("rejects a name no glyph set can draw, rather than storing it", () => {
+    const repo = fakeRepo(sample);
+    expect(() => setModuleIcon(repo, "real-estate-investment", "spaceship")).toThrow();
+    expect(repo.getModuleBySlug("real-estate-investment")?.icon).toBe("building");
+  });
+
+  it("rejects an unknown slug rather than silently updating nothing", () => {
+    const repo = fakeRepo(sample);
+    expect(() => setModuleIcon(repo, "no-such-module", "wallet")).toThrow(/no-such-module/);
   });
 });
 

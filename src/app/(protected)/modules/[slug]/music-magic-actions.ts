@@ -10,6 +10,7 @@ import {
   describeGeneration,
   describeMagicFailure,
   generateMagicPlaylist,
+  listMagicFolderOptions,
   listMagicLists,
   listMagicPickerOptions,
   loadMagicList,
@@ -18,6 +19,7 @@ import {
   updateMagicList,
   type MagicCriteria,
   type MagicDependencies,
+  type MagicFolderOption,
   type MagicGenerationStats,
   type MagicListSummary,
 } from "@/lib/music-magic";
@@ -85,10 +87,24 @@ export interface MagicGenerationResult {
   message: string;
 }
 
-/** The options the three criteria pickers offer. */
+/** The options the three flat criteria pickers offer. */
 export async function listMagicOptionsAction() {
   await requireUser();
   return listMagicPickerOptions(magicDeps());
+}
+
+/**
+ * One level of the folder picker: the folders directly inside `parentPath`.
+ *
+ * A separate call from `listMagicOptionsAction`, and called again on every drill-down,
+ * because the folder tree is walked rather than fetched whole -- see the note on
+ * `MagicCandidateSource.listFolderOptions`.
+ */
+export async function listMagicFolderOptionsAction(
+  parentPath: string,
+): Promise<MagicFolderOption[]> {
+  await requireUser();
+  return listMagicFolderOptions(magicDeps(), parentPath);
 }
 
 /** Generates a playlist from criteria, saving nothing. */

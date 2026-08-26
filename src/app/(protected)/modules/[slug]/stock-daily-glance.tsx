@@ -317,57 +317,59 @@ export function StockDailyGlance({
       // so as a footnote it was ~400px below the control it described, past two
       // lists the reader had to scroll through first.
       headerAction={
-        <Comments
-          title="Explanation"
-          label="Explanation"
-          content={
-            <p>
-              <span className="text-ink">Total value</span> is shares × the price move — how much
-              the holding made or lost you. <span className="text-ink">Per share</span> is the move
-              on one share, so a big position and a small one in the same stock rank the same. The
-              percentage is identical either way. Stocks and ETFs rank together, and a ticker held
-              in more than one account is counted once. Press{" "}
-              <span className="text-ink">News</span> on a row for the story most likely to explain
-              its move, or the ticker itself for its full viewer.
-            </p>
-          }
-        />
+        <div className="flex items-center gap-2">
+          {/* The selector governs the mover lists only. Per-share is meaningless
+              for the buckets above, which mix securities at different prices. */}
+          <div className="flex items-center gap-1 text-xs">
+            <span className="mr-1 text-muted">Measure by</span>
+            {(["total", "perShare"] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => setMeasure(option)}
+                aria-pressed={measure === option}
+                title={
+                  option === "total"
+                    ? "Shares × price move — the effect on your portfolio"
+                    : "The move on one share — the security's own move, whatever you hold"
+                }
+                className={`rounded-md border px-2 py-1 font-medium transition-colors ${
+                  measure === option
+                    ? "border-brass bg-brass-soft text-brass-dark"
+                    : "border-line text-muted hover:bg-paper-raised"
+                }`}
+              >
+                {option === "total" ? "Total value" : "Per share"}
+              </button>
+            ))}
+          </div>
+          <Comments
+            title="Explanation"
+            label="Explanation"
+            content={
+              <p>
+                <span className="text-ink">Total value</span> is shares × the price move — how much
+                the holding made or lost you. <span className="text-ink">Per share</span> is the move
+                on one share, so a big position and a small one in the same stock rank the same. The
+                percentage is identical either way. Stocks and ETFs rank together, and a ticker held
+                in more than one account is counted once. Press{" "}
+                <span className="text-ink">News</span> on a row for the story most likely to explain
+                its move, or the ticker itself for its full viewer.
+              </p>
+            }
+          />
+        </div>
       }
     >
       <div className="rounded-xl border border-line p-4">
         <BucketTable moves={moves} />
       </div>
 
-      {/* The selector governs the mover lists only. Per-share is meaningless for
-          the buckets above, which mix securities at different prices. */}
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-        <h4 className="text-xs font-medium uppercase tracking-wide text-muted">
-          Top movers today
-        </h4>
-        <div className="flex items-center gap-1 text-xs">
-          <span className="mr-1 text-muted">Measure by</span>
-          {(["total", "perShare"] as const).map((option) => (
-            <button
-              key={option}
-              type="button"
-              onClick={() => setMeasure(option)}
-              aria-pressed={measure === option}
-              title={
-                option === "total"
-                  ? "Shares × price move — the effect on your portfolio"
-                  : "The move on one share — the security's own move, whatever you hold"
-              }
-              className={`rounded-md border px-2 py-1 font-medium transition-colors ${
-                measure === option
-                  ? "border-brass bg-brass-soft text-brass-dark"
-                  : "border-line text-muted hover:bg-paper-raised"
-              }`}
-            >
-              {option === "total" ? "Total value" : "Per share"}
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* The selector that governs these lists now lives in the card header,
+          next to the title. */}
+      <h4 className="mt-6 text-xs font-medium uppercase tracking-wide text-muted">
+        Top movers today
+      </h4>
 
       <div className="mt-3 grid grid-cols-1 gap-6 xl:grid-cols-2">
         <MoverList

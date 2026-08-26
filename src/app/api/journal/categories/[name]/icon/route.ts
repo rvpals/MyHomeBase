@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { getCategoryIcon } from "@/lib/journal";
 import { deps } from "@/lib/wiring";
+import { journalIconResponse } from "../../../icon-response";
 
 // Serves a journal category's icon. This is the only place the icon bytes are
 // read, which is what keeps them out of every category list. Mirrors the
@@ -21,12 +22,5 @@ export async function GET(_request: Request, { params }: { params: Promise<{ nam
   const icon = getCategoryIcon(deps.journalRepo, name);
   if (!icon) return new NextResponse(null, { status: 404 });
 
-  return new NextResponse(new Uint8Array(icon.data), {
-    headers: {
-      "Content-Type": icon.mimeType,
-      // Private: it's behind a session. Short max-age so a replaced icon shows up
-      // quickly; callers also add a ?v= cache-buster from updatedAt.
-      "Cache-Control": "private, max-age=300",
-    },
-  });
+  return journalIconResponse(icon);
 }

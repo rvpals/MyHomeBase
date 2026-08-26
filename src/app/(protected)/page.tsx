@@ -1,8 +1,10 @@
+import type { CSSProperties } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { ModuleCarousel } from "@/components/module-carousel";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { getAuthEventSummary } from "@/lib/auth-events";
+import { dashboardTextureCssVars, getDashboardTexture } from "@/lib/dashboard-texture";
 import { getRandomQuote } from "@/lib/daily-quote";
 import { listTodayInHistory } from "@/lib/journal";
 import { listModules } from "@/lib/modules";
@@ -18,6 +20,7 @@ import { getUserPreferences, resolveStartupDestination } from "@/lib/user-prefer
 import { deps } from "@/lib/wiring";
 import { BadLoginAlert } from "./bad-login-alert";
 import { DailyQuoteWidget } from "./daily-quote-widget";
+import { HomeShell } from "./home-shell";
 import { StockDailyGlance } from "./modules/[slug]/stock-daily-glance";
 import { PAGE_CONTAINER } from "./page-container";
 import { StartupMessage } from "./startup-message";
@@ -85,50 +88,68 @@ export default async function Home({
   // hidden or not granted, in which case the card simply shows no glyph.
   const journalModule = modules.find((appModule) => appModule.slug === JOURNAL_MODULE_SLUG);
 
+  // The dashboard's optional background picture. `undefined` when no image has
+  // been uploaded, which is what keeps the fixed texture layer out of the DOM
+  // entirely rather than rendering one at opacity 0 — see globals.css,
+  // `[data-dashboard-texture]`. Cheap to read: the settings row carries
+  // `hasImage`, never the bytes (migrations/0063).
+  const textureVars = dashboardTextureCssVars(getDashboardTexture(deps.dashboardTextureRepo));
+
   return (
-    <div className={PAGE_CONTAINER}>
-      {startupMessage && <StartupMessage message={startupMessage} />}
-      {unreviewedFailures > 0 && <BadLoginAlert count={unreviewedFailures} />}
-      {/* Plain data across the boundary — the carousel is a client island and
-          can't be handed the module records themselves. */}
-      <ModuleCarousel
-        modules={modules.map((appModule) => ({
-          slug: appModule.slug,
-          name: appModule.longName,
-          description: appModule.description,
-          icon: appModule.icon,
-          href: `/modules/${appModule.slug}`,
-          // A flag and a timestamp, never the bytes — the browser fetches the
-          // artwork from the image route.
-          hasImage: appModule.hasCarouselImage,
-          imageVersion: appModule.updatedAt,
-        }))}
-      />
-      {/* Quote, then history, then the glance — quietest card first, and the
-          longest (Daily Glance, five gainers and five losers) last so it isn't
-          pushing the other two off the screen. */}
-      {quote && (
-        <DailyQuoteWidget
-          className="mt-8"
-          initialQuote={quote}
-          isAdmin={currentUser ? isAdmin(currentUser) : false}
+    // The home screen belongs to no module, so it gets the rail and the header
+    // but no section panel — see `home-shell.tsx`.
+    <HomeShell label="Home" icon="home" href="/?home=1">
+      {/* The texture layer attaches to this wrapper, not to a nested element:
+          its `::before` is `fixed` and must cover the viewport and sit behind
+          the cards. The attribute is absent when nothing was uploaded. */}
+      <div
+        className={PAGE_CONTAINER}
+        data-dashboard-texture={textureVars ? "" : undefined}
+        style={textureVars as CSSProperties | undefined}
+      >
+        {startupMessage && <StartupMessage message={startupMessage} />}
+        {unreviewedFailures > 0 && <BadLoginAlert count={unreviewedFailures} />}
+        {/* Plain data across the boundary — the carousel is a client island and
+            can't be handed the module records themselves. */}
+        <ModuleCarousel
+          modules={modules.map((appModule) => ({
+            slug: appModule.slug,
+            name: appModule.longName,
+            description: appModule.description,
+            icon: appModule.icon,
+            href: `/modules/${appModule.slug}`,
+            // A flag and a timestamp, never the bytes — the browser fetches the
+            // artwork from the image route.
+            hasImage: appModule.hasCarouselImage,
+            imageVersion: appModule.updatedAt,
+          }))}
         />
-      )}
-      <TodayInHistoryWidget
-        className="mt-8"
-        todayInHistory={todayInHistory}
-        icon={journalModule?.icon}
-      />
-      {positions.length > 0 && (
-        <StockDailyGlance
+        {/* Quote, then history, then the glance — quietest card first, and the
+            longest (Daily Glance, five gainers and five losers) last so it isn't
+            pushing the other two off the screen. */}
+        {quote && (
+          <DailyQuoteWidget
+            className="mt-8"
+            initialQuote={quote}
+            isAdmin={currentUser ? isAdmin(currentUser) : false}
+          />
+        )}
+        <TodayInHistoryWidget
           className="mt-8"
-          moves={computeDayMovesByType(positions)}
-          // Summed per ticker here, not in the view: a holding split across two
-          // accounts is still one security, and that rollup is domain logic.
-          tickerMoves={computeTickerDayMoves(positions)}
-          icon={stockModule?.icon}
+          todayInHistory={todayInHistory}
+          icon={journalModule?.icon}
         />
-      )}
-    </div>
+        {positions.length > 0 && (
+          <StockDailyGlance
+            className="mt-8"
+            moves={computeDayMovesByType(positions)}
+            // Summed per ticker here, not in the view: a holding split across two
+            // accounts is still one security, and that rollup is domain logic.
+            tickerMoves={computeTickerDayMoves(positions)}
+            icon={stockModule?.icon}
+          />
+        )}
+      </div>
+    </HomeShell>
   );
 }

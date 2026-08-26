@@ -85,6 +85,68 @@ position was sold.
 map), and images; saved filters; CSV import. A filter query travels in the URL
 (`?filter=`) so a filtered list is linkable. Library: `src/lib/journal`.
 
+The **Calendar** section shows those entries as a grid, in one of three ranges —
+week, month or year — with the range, the period and the clicked day all in the URL
+(`?scope=&anchor=&date=`), so a particular month with a day open is a bookmark. It
+**adds no table**: every cell is drawn from `jrn_entries` rows that already exist, read
+by one `listEntriesInDateRange` call bounded by the visible period rather than by
+filtering the whole table in memory.
+
+The date arithmetic lives in `src/lib/journal/calendar.ts` as pure functions over ISO
+strings — grid shape and padding, the ‹ › stepping, the 30-character title elision, the
+year view's heat scale, and parsing a typed date. Nothing about a calendar is computed in
+the view, which is why `journal-calendar` can print the same grid in a terminal. Four
+choices worth knowing:
+
+- **UTC arithmetic on "YYYY-MM-DD" strings, never a local `Date`.** An entry's date is a
+  calendar day the writer chose, not an instant, so building a local-time `Date` from it
+  would shift the day west of UTC and file an entry under the wrong cell. "Today" is the
+  one exception: it comes from `todayIsoLocal()` on the *server*, because read on the
+  client it would be the device's clock and a phone in another timezone would highlight a
+  different day than the entries were saved against.
+- **A month grid is always 6 rows**, padded from the neighbouring months. A 5-row
+  February beside a 6-row March would shift everything below the calendar while paging
+  through a year. Padding days show their titles (so a day never looks empty in one month
+  and populated in the next) but don't count toward the month's total.
+- **Month and year steps clamp the day rather than rolling over** — Jan 31 back a month is
+  Feb 28, not Mar 3 — so ‹ then › returns you where you started.
+- **The Jump box takes an explicit format**, defaulting to `MM/DD/YYYY` and remembered in
+  `localStorage`. `01/02/2026` is a real date in two formats and only the reader knows
+  which was meant, so the format is a choice, not a guess; a native picker sits beside the
+  box for when typing isn't wanted. Separators are lenient (`/`, `-`, `.`) since those
+  never change the meaning — the *field order* never budges.
+
+**Prefill templates** (`migrations/0062`) let a named set of field values start a new
+entry. Configuration → **Templates** builds them; the New Entry form grows a dropdown
+that fills the fields you left blank. Four choices worth knowing, all recorded in that
+migration:
+
+- **The values are JSON on one row**, not a child table — a template is read and written
+  whole every time, exactly like `jrn_saved_filters.filter_json` (0043) in the same module.
+- **A field carries a `mode`, not just a string.** A stored literal date would pin every
+  new entry to a fixed day in the past, so `date` and `time` can be *current date* /
+  *current time*, resolved at apply-time. `mode` is a real column rather than a sentinel
+  like `@now`, which would be indistinguishable from someone typing that into a title.
+- **Resolution happens in the browser**, for the same reason `todayIsoLocal()` does — an
+  entry's date is the writer's calendar day, not the server's instant.
+- **Applying fills blanks only.** A field already typed into is never overwritten, so the
+  control needs no confirmation and no undo.
+
+Locations and weather are deliberately not templatable: the entry form already resolves
+both live from GPS, and a stored copy would be staler than one button press.
+
+This is also the module that made **Configuration a nav group**. `SectionPanel` renders a
+node with children as an accordion heading and drops it from the compact sheet, so a
+parent cannot also be a page — the long-standing `/configuration` route therefore stayed
+put and became the group's first child, relabelled *Preferences*, with *Templates*
+alongside it.
+
+Week start is **hardcoded to Sunday**, in one place: `startOfWeek` in
+`calendar.ts`, which every grid builder goes through. Making it a journal preference
+later means giving that function (and the builders that call it) a `weekStartsOn`
+parameter and adding a `sys_module_settings` key — a contained change, but not a
+free one, since `WEEKDAY_LABELS` would need rotating too.
+
 **CSV Analysis** (`csv-analysis`) — import an arbitrary CSV, which creates a
 per-entry table (`csv_<name>`, from `buildTableName`), then chart and analyse it.
 The one module with **no tree nav and no sections**: its whole UI is a single
@@ -181,10 +243,20 @@ Music Library, which borrowed `heart` from `0053` until
 `migrations/0055_music_library_music_icon.md` added `music` (a beamed pair of eighth
 notes) — worth reading as the worked example of what a new concept costs.
 
-There is no admin UI for a module's icon, so changing one **is** a migration — an
-`UPDATE sys_modules`, scoped by slug *and* by the old value so it doesn't stomp a
-hand-picked choice. Keep `DEFAULT_MODULES` in step, or "Reset to Default" will put
-the old icon back.
+**Changing which of those names a module uses is an admin action, not a migration.**
+Admin → Configuration → Module Configuration carries a glyph grid per module
+(`ModuleIconControl`), which writes through `setModuleIcon` and saves on pick rather
+than on the page's Save button — the same trade the carousel graphic makes, and for
+the same reason: this one value draws the rail, the home grid and the admin card, so
+an unsaved choice would leave them disagreeing. The grid previews in whichever icon
+set is active under Configuration → Icons.
+
+Two things that still belong in a migration. **Seeding a new module's icon** — that's
+part of its `INSERT`. And **retiring a name from `MODULE_ICON_NAMES`**, which has to
+move any row still on it (`UPDATE sys_modules`, scoped by slug *and* by the old value
+so it doesn't stomp a hand-picked choice). Keep `DEFAULT_MODULES` in step either way:
+it is what "Reset to Default" writes, so a default left stale will put the old icon
+back over an admin's pick.
 
 Section icons in a tree nav are a **different, larger set**, resolved by
 `TreeIcon` ([src/components/tree-icons.tsx](src/components/tree-icons.tsx)) and
@@ -198,6 +270,34 @@ Optional per-module artwork on the home carousel, stored as a `BLOB` on
 `hasCarouselImage`, never the bytes — `sys_modules` is read on every
 authenticated page, so a `SELECT *` here would ship a megabyte per render. Rules
 in `coding-guide.md` → *Per-row images*.
+
+### Background picture
+
+Optional, per module, and **already built** — don't write a second one. A picture
+uploaded from the module's own configuration screen sits behind every section of
+that module. Stored in `sys_module_texture`, keyed by slug (migration 0064), with
+opacity / cover-or-tile / blur alongside it. The **Music Library** is the only
+user today (*Configuration → Appearance*).
+
+To give another module one:
+
+1. In the module's shell, read it and emit the wrapper — four lines, copied from
+   `music-shell.tsx`:
+   `moduleTextureCssVars(getModuleTexture(deps.moduleTextureRepo, SLUG))`, then
+   `data-module-texture={vars ? "" : undefined}` plus `style={vars}` on a div
+   around `{children}`.
+2. Add three actions to that module's actions file, mirroring the
+   `saveMusicTextureImageAction` / `remove…` / `saveMusicTextureSettingsAction`
+   trio, and gate them the way the rest of *that screen* is gated.
+3. Reuse the UI: `music-texture-control.tsx` is route-local by design. A **third**
+   module wanting a picture is the point to promote it into `src/components/` with
+   the slug and copy as props — see `components.md` → *Ask before creating*.
+
+No migration, no new table: the table is keyed by slug and takes any module. Domain
+code sees only `hasImage`, never the bytes; the BLOB is read by
+`GET /api/modules/[slug]/texture` alone. Design constraints (why the layer wraps
+section content and not the nav, why opacity defaults low) are in `design.md` →
+*The one sanctioned exception*.
 
 ## Creating a new module
 

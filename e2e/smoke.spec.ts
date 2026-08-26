@@ -28,6 +28,7 @@ const ADMIN_ROUTES = [
   "/admin/configuration/modules",
   "/admin/configuration/themes",
   "/admin/configuration/icons",
+  "/admin/configuration/texture",
 ] as const;
 
 /**

@@ -187,4 +187,70 @@ export interface JournalDefaultLocation {
 export interface JournalPreferences {
   defaultLocation: JournalDefaultLocation | null;
   temperatureUnit: JournalTemperatureUnit;
+  /**
+   * Absolute path to the photo archive the entry viewer looks in for pictures taken on
+   * an entry's date. `""` means not configured, and the photo card says so.
+   *
+   * A setting rather than an env var because the two environments need different values
+   * (a UNC path from Windows in dev, `/volume1/...` on the NAS) and an env var can only
+   * be changed by editing a file on the box and restarting the app — which is exactly
+   * how this went wrong the first time. Stored per-install in sys_module_settings, so
+   * each environment holds its own and neither needs a redeploy to fix a typo.
+   */
+  photoRoot: string;
 }
+
+// --- Prefill templates -------------------------------------------------------
+//
+// A named set of field values a new entry can be started from. Stored as JSON in
+// jrn_prefill_templates.fields_json; see migration 0062 for why that isn't a
+// child table, and why `mode` exists.
+
+/** The entry fields a template can prefill. Deliberately narrower than the entry:
+ *  locations and weather are excluded because the form already resolves both live
+ *  from GPS, and a stored copy would be staler than one button press. */
+export type JournalPrefillField =
+  | "date"
+  | "time"
+  | "title"
+  | "content"
+  | "placeName"
+  | "categories"
+  | "tags";
+
+/**
+ * How a field's value is produced when the template is applied.
+ *
+ * `literal` uses `value` as typed. `now` resolves to the current date or time at
+ * apply-time and is legal **only** on `date` and `time` — a stored literal date
+ * would pin every new entry to a fixed day in the past.
+ */
+export type JournalPrefillMode = "literal" | "now";
+
+/** One field of a template. `value` is "" whenever `mode` is `now`. */
+export interface JournalPrefillFieldValue {
+  field: JournalPrefillField;
+  mode: JournalPrefillMode;
+  value: string;
+}
+
+/** A named template as stored. */
+export interface JournalPrefillTemplate {
+  id: number;
+  name: string;
+  description: string;
+  /** Disabled templates stay on the Templates screen but leave the entry form's
+   *  dropdown. See 0062. */
+  isEnabled: boolean;
+  fields: JournalPrefillFieldValue[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * The subset of the New Entry form a template can fill. Plain strings throughout,
+ * matching what the form's inputs hold — categories and tags are the delimited
+ * text the form collects (comma / whitespace), not arrays, so applying a template
+ * is a straight string set with no parsing in the view.
+ */
+export type JournalPrefillFormValues = Record<JournalPrefillField, string>;

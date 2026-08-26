@@ -24,10 +24,18 @@ export class MusicMetadataReader implements AudioMetadataReader {
     if (absolute === undefined) return undefined;
 
     try {
-      // `duration: true` costs a little more work but is worth it: the tag is often
-      // absent, and duration is what disambiguates a lyrics match between a studio
-      // cut and a live version.
-      const metadata = await parseFile(absolute, { duration: true });
+      // NOT `duration: true`. That flag makes music-metadata read the *whole file* when
+      // the duration isn't in the header, which over SMB means pulling every byte across
+      // the network for a tag read. Measured on the NAS: 25ms -> 417ms on a 1 MB mp3,
+      // 248ms -> 1937ms on a 5.7 MB one, an 8-16x cost. Across a 10.9 GB folder that is
+      // the difference between a scan that finishes and one that gets killed mid-run,
+      // leaving an orphaned 'running' row the UI reports as "stopped reporting".
+      //
+      // Most files carry the duration in their header anyway, and those still come back
+      // populated for free. Where it's genuinely absent we now store nothing rather than
+      // paying a full file read for it -- duration only disambiguates a lyrics match
+      // between a studio and a live cut, which is not worth a scan that cannot complete.
+      const metadata = await parseFile(absolute);
       const common = metadata.common;
 
       // The first embedded picture only. A file can carry front cover, back cover and

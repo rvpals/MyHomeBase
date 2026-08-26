@@ -16,6 +16,19 @@ const shared = {
   strokeLinejoin: "round" as const,
 };
 
+// A lightning bolt, filled. The mark for "do this for me automatically" — it leads
+// the generate-an-icon row action in the journal's Categories & Tags editor.
+//
+// Filled rather than outlined: at 16px an outlined bolt is two zig-zag strokes that
+// read as noise, while the solid shape stays legible. That makes it the one row
+// action that isn't line art, which is deliberate — it *acts* rather than opening
+// something, like `trash` does.
+const Flash: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <path d="M13 2L4.5 13.2h5.2L10 22l8.5-11.2h-5.2z" fill="currentColor" stroke="none" />
+  </svg>
+);
+
 const Sliders: IconComponent = (props) => (
   <svg {...shared} {...props}>
     <line x1="4" y1="6" x2="20" y2="6" />
@@ -305,6 +318,7 @@ const StarFilled: IconComponent = (props) => (
 );
 
 const TREE_ICONS = {
+  flash: Flash,
   note: Note,
   clip: Clip,
   shield: Shield,
@@ -360,6 +374,7 @@ const ALWAYS_CLASSIC = new Set<TreeIconName>([
   "trash",
   "refresh",
   "search",
+  "flash",
   // A favorite star is a *state*, carried by outline vs solid. A themed set
   // redrawing it would lose that distinction, so both stay hand-drawn.
   "star",

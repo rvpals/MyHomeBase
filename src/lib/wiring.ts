@@ -11,6 +11,8 @@ import type { GoogleOAuthClient } from "./auth/ports";
 import { FileChangeHistoryRepository } from "./change-history/repository";
 import { SqliteCsvAnalyticsRepository } from "./csv-analytics/repository";
 import { SqliteCsvImportMappingRepository } from "./csv-import/repository";
+import { SqliteDashboardTextureRepository } from "./dashboard-texture/repository";
+import { SqliteModuleTextureRepository } from "./module-texture/repository";
 import { SqliteDailyQuoteRepository } from "./daily-quote/repository";
 import { NodeCsvFolder } from "./expense/csv-folder";
 import { SqliteExpenseRepository } from "./expense/repository";
@@ -18,6 +20,7 @@ import { NominatimGeocodingClient } from "./geocoding/nominatim-client";
 import { OpenMeteoWeatherClient } from "./weather/open-meteo-client";
 import { SqliteInvestmentAccountRepository } from "./investment-accounts/repository";
 import { SqliteJournalRepository } from "./journal/repository";
+import { NodePhotoFileStore } from "./journal-photos/file-store";
 import { YahooFinanceClient } from "./market-data/yahoo-finance-client";
 import { SqliteModuleSettingsRepository } from "./module-settings/repository";
 import { SqliteModuleRepository } from "./modules/repository";
@@ -29,6 +32,7 @@ import {
   SqliteMagicCandidateSource,
   SqliteMagicListRepository,
 } from "./music-magic/repository";
+import { SqliteScheduledRunRepository } from "./scheduled-refresh/repository";
 import { SqliteSettingsRepository } from "./settings/repository";
 import { SqliteSqlExplorerRepository } from "./sql-explorer/repository";
 import { SqliteStockAnalyticsRepository } from "./stock-analytics/repository";
@@ -68,6 +72,20 @@ globalForDb.__myhomebaseDb = db;
 // Library module reports "not configured" rather than crashing.
 const musicRoot = process.env.MYHOMEBASE_MUSIC_ROOT ?? "";
 
+// The photo archive's root is NOT read from the environment, unlike the music folder.
+//
+// It lives in the Journal module's settings (`photo_root`), editable on the module's
+// Configuration screen. The music root predates that decision and stays as it is; this
+// one is a setting because the two environments need different values (a UNC path from
+// Windows in dev, `/volume1/...` on the NAS) and an env var can only be corrected by
+// editing a file on the box and restarting -- which is how a wrong value went unnoticed
+// on the NAS. A setting can be fixed, and verified with "Check Access", in the browser.
+//
+// `photoFileStoreFor(root)` therefore builds a store per request from the stored path,
+// rather than `deps` holding one built at boot. The env var is still honoured as a
+// fallback so an install that set it keeps working.
+const photoRootFromEnv = process.env.MYHOMEBASE_PHOTO_ROOT ?? "";
+
 // Google sign-in is only enabled when all three env vars are set — every
 // adapter treats `deps.googleOAuthClient === undefined` as "feature off"
 // rather than reading env vars itself.
@@ -100,6 +118,17 @@ export const deps = {
   authEventRepo: new SqliteAuthEventRepository(db),
   investmentAccountRepo: new SqliteInvestmentAccountRepository(db),
   journalRepo: new SqliteJournalRepository(db),
+  /**
+   * A read-only view of the photo archive at `root`.
+   *
+   * A factory rather than a ready-made instance because the path is a per-install
+   * SETTING, so it is only known once the request has read it. Read-only by
+   * construction, like the music store — PhotoFileStore has no write method, so nothing
+   * here can modify the archive.
+   */
+  photoFileStoreFor: (root: string) => new NodePhotoFileStore(root),
+  /** Fallback for an install still configured through the environment. */
+  photoRootFromEnv,
   expenseRepo: new SqliteExpenseRepository(db),
   attendanceRepo: new SqliteAttendanceRepository(db),
   musicRepo: new SqliteMusicRepository(db),
@@ -117,8 +146,18 @@ export const deps = {
   csvImportMappingRepo: new SqliteCsvImportMappingRepository(db),
   csvAnalyticsRepo: new SqliteCsvAnalyticsRepository(db),
   dailyQuoteRepo: new SqliteDailyQuoteRepository(db),
+  // The home dashboard's background picture (migrations/0063). The BLOB is read
+  // only by src/app/api/dashboard/texture/route.ts; every other caller reads
+  // `hasImage` off the settings row.
+  dashboardTextureRepo: new SqliteDashboardTextureRepository(db),
+  // A module's own background picture, keyed by slug (migrations/0064). Same
+  // split as above: the BLOB is read only by
+  // src/app/api/modules/[slug]/texture/route.ts.
+  moduleTextureRepo: new SqliteModuleTextureRepository(db),
   stockPositionRepo: new SqliteStockPositionRepository(db),
   stockDailySnapshotRepo: new SqliteDailySnapshotRepository(db),
+  // Last-run bookkeeping for background jobs, keyed by job name (migrations/0061).
+  scheduledRunRepo: new SqliteScheduledRunRepository(db),
   stockWatchListRepo: new SqliteStockWatchListRepository(db),
   stockAnalyticsRepo: new SqliteStockAnalyticsRepository(db),
   sqlExplorerRepo: new SqliteSqlExplorerRepository(db),

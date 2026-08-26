@@ -18,6 +18,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { Comments } from "@/components/comments";
+import { Progress3D } from "@/components/progress-3d";
 import { TreeIcon } from "@/components/tree-icons";
 import { formatCents } from "@/lib/shared/money";
 import {
@@ -149,19 +150,13 @@ export function StockRefreshControl({ lastSnapshotDate }: { lastSnapshotDate?: s
                 </span>
               </div>
 
-              <div
-                className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-line"
-                role="progressbar"
-                aria-valuenow={pct}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-label="Refresh progress"
-              >
-                <div
-                  className="h-full rounded-full bg-brass transition-[width] motion-reduce:transition-none"
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
+              <Progress3D
+                value={progress.current}
+                max={progress.total}
+                size="sm"
+                ariaLabel="Refresh progress"
+                className="mt-1.5"
+              />
             </>
           )}
 

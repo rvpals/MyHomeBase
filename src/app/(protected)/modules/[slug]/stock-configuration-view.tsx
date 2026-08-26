@@ -1,15 +1,18 @@
 "use client";
 
-// The Configuration section: the three thresholds the next-day scan judges each
-// position against. These are module settings, the same rows Administration →
+// The Configuration section: the auto-refresh schedule, which dashboard widgets
+// are drawn, and the three thresholds the next-day scan judges each position
+// against. All of them are module settings, the same rows Administration →
 // Module Configuration writes — surfaced here because they're the knobs you reach
-// for while looking at the scan, not while doing admin.
+// for while looking at the module, not while doing admin.
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import type { NextDayActionThresholds } from "@/lib/next-day-actions";
+// From `types` rather than the module index -- see stock-auto-refresh-card.tsx.
+import type { ScheduledRefreshSettings, ScheduledRun } from "@/lib/scheduled-refresh/types";
 import {
   DASHBOARD_WIDGET_INFO,
   defaultDashboardWidgets,
@@ -17,6 +20,7 @@ import {
   toggleDashboardWidget,
   type DashboardWidgetPreference,
 } from "@/lib/stock-dashboard";
+import { StockAutoRefreshCard } from "./stock-auto-refresh-card";
 import { saveDashboardWidgetsAction } from "./stock-dashboard-actions";
 import { saveNextDayThresholdsAction } from "./next-day-actions-actions";
 
@@ -169,9 +173,13 @@ function DashboardWidgetsCard({ widgets }: { widgets: DashboardWidgetPreference[
 export function StockConfigurationView({
   thresholds,
   widgets,
+  autoRefresh,
+  lastAutoRefreshRun,
 }: {
   thresholds: NextDayActionThresholds;
   widgets: DashboardWidgetPreference[];
+  autoRefresh: ScheduledRefreshSettings;
+  lastAutoRefreshRun?: ScheduledRun;
 }) {
   const router = useRouter();
   const [profitTarget, setProfitTarget] = useState(String(thresholds.profitTargetPct));
@@ -206,6 +214,8 @@ export function StockConfigurationView({
 
   return (
     <div className="flex flex-col gap-6">
+      <StockAutoRefreshCard settings={autoRefresh} lastRun={lastAutoRefreshRun} />
+
       <DashboardWidgetsCard widgets={widgets} />
 
       <div className="rounded-xl border border-line p-4">

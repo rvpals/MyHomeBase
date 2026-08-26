@@ -1,6 +1,6 @@
-import type { TreeNode } from "@/components/tree-nav";
+import type { SectionNode } from "@/components/section-panel";
 
-export const adminNav: TreeNode[] = [
+export const adminNav: SectionNode[] = [
   {
     id: "configuration",
     label: "Configuration",
@@ -33,6 +33,13 @@ export const adminNav: TreeNode[] = [
         href: "/admin/configuration/icons",
         hint: "Change the module icon set for the application",
         icon: "shapes",
+      },
+      {
+        id: "configuration-texture",
+        label: "Dashboard Texture",
+        href: "/admin/configuration/texture",
+        hint: "Set an optional background picture for the home dashboard",
+        icon: "palette",
       },
     ],
   },

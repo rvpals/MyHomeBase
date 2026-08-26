@@ -19,6 +19,7 @@ export {
   MIN_TARGET_SECONDS,
   generateMagicSchema,
   magicCriteriaSchema,
+  magicFolderPathSchema,
   magicListIdSchema,
   magicListUpdateSchema,
   magicListWriteSchema,
@@ -33,6 +34,14 @@ export {
   spaceOutTracks,
 } from "./generate";
 
+export {
+  folderLabel,
+  folderLikePattern,
+  folderParent,
+  isFolderWithin,
+  pruneRedundantFolders,
+} from "./folders";
+
 // `shuffle` and `RandomSource` live in @/lib/shared/random now that the play queue shuffles
 // too -- re-exported here so this module's public surface is unchanged for its callers.
 export { shuffle, type RandomSource } from "@/lib/shared/random";
@@ -42,6 +51,7 @@ export {
   deleteMagicList,
   describeMagicFailure,
   generateMagicPlaylist,
+  listMagicFolderOptions,
   listMagicLists,
   listMagicPickerOptions,
   loadMagicList,
@@ -56,6 +66,7 @@ export {
 export type {
   MagicAlbumOption,
   MagicCandidateSource,
+  MagicFolderOption,
   MagicListRepository,
   MagicPickerOption,
 } from "./ports";

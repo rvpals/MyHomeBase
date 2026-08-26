@@ -18,6 +18,16 @@ export interface MagicCriteria {
   artists: string[];
   /** Album ids from mus_albums. */
   albumIds: number[];
+  /**
+   * Folder paths relative to the music root, each matching its WHOLE SUBTREE.
+   *
+   * `Rock` selects everything under Rock, `Rock/Queen` narrows to one folder beneath it.
+   * Subtree rather than exact-folder because most folders worth picking hold only
+   * sub-folders -- see migrations/0060. Unlike genres and artists, '' is NOT a criterion
+   * here: the empty path is the library root, and "the whole library" is what picking
+   * nothing already means.
+   */
+  folders: string[];
   /** How long the playlist should run. Approximate by design -- see selectTracksForTarget. */
   targetSeconds: number;
   /**
@@ -106,6 +116,7 @@ export function emptyCriteria(): MagicCriteria {
     genres: [],
     artists: [],
     albumIds: [],
+    folders: [],
     targetSeconds: DEFAULT_TARGET_SECONDS,
     matchAny: false,
     streamableOnly: true,
@@ -121,7 +132,10 @@ export function emptyCriteria(): MagicCriteria {
  */
 export function hasAnyFilter(criteria: MagicCriteria): boolean {
   return (
-    criteria.genres.length > 0 || criteria.artists.length > 0 || criteria.albumIds.length > 0
+    criteria.genres.length > 0 ||
+    criteria.artists.length > 0 ||
+    criteria.albumIds.length > 0 ||
+    criteria.folders.length > 0
   );
 }
 

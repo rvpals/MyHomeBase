@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import type { DecodedImage } from "@/lib/shared/image-upload";
+import type { ModuleIconName } from "./icon-names";
 import { moduleSchema, type ModuleUpdate } from "./schema";
 import type { Module, ModuleSeed } from "./types";
 import type { ModuleRepository } from "./ports";
@@ -96,6 +97,17 @@ export class SqliteModuleRepository implements ModuleRepository {
 
     if (!row?.data || !row.mimeType) return undefined;
     return { data: row.data, mimeType: row.mimeType };
+  }
+
+  setIcon(slug: string, icon: ModuleIconName): void {
+    this.db
+      .prepare(
+        `UPDATE sys_modules
+            SET icon = @icon,
+                updated_at = datetime('now')
+          WHERE slug = @slug`,
+      )
+      .run({ slug, icon });
   }
 
   setCarouselImage(slug: string, image: DecodedImage | undefined): void {

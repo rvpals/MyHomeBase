@@ -1,8 +1,9 @@
 import type { Track } from "@/lib/music";
 import { describeGeneration, selectTracksForTarget } from "./generate";
-import type { MagicCandidateSource, MagicListRepository } from "./ports";
+import type { MagicCandidateSource, MagicFolderOption, MagicListRepository } from "./ports";
 import {
   generateMagicSchema,
+  magicFolderPathSchema,
   magicListIdSchema,
   magicListUpdateSchema,
   magicListWriteSchema,
@@ -190,13 +191,34 @@ export function deleteMagicList(deps: MagicDependencies, input: unknown): MagicR
   return { ok: true, value: true };
 }
 
-/** The options the three criteria pickers offer, read from the catalog. */
+/**
+ * The options the flat criteria pickers offer, read from the catalog.
+ *
+ * Folders are deliberately NOT in here. The other three are fetched once and filtered in
+ * the browser; the folder tree is walked a level at a time, so it has its own use-case
+ * below rather than being bundled into a payload that would have to carry the whole
+ * hierarchy up front.
+ */
 export function listMagicPickerOptions(deps: MagicDependencies) {
   return {
     genres: deps.candidateSource.listGenreOptions(),
     artists: deps.candidateSource.listArtistOptions(),
     albums: deps.candidateSource.listAlbumOptions(),
   };
+}
+
+/**
+ * One level of the folder picker: the folders directly inside `parentPath`.
+ *
+ * Takes the parent through the schema like every other boundary input -- a path arrives
+ * from a form or from argv, and normalising it here (backslashes, trailing slash) is what
+ * lets the web picker and `--folder` agree on what `Rock/` means.
+ */
+export function listMagicFolderOptions(
+  deps: MagicDependencies,
+  input: unknown,
+): MagicFolderOption[] {
+  return deps.candidateSource.listFolderOptions(magicFolderPathSchema.parse(input));
 }
 
 /** A readable sentence for a failure, so both adapters word it identically. */

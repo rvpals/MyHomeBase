@@ -1,9 +1,11 @@
 import type Database from "better-sqlite3";
 import type { Track } from "@/lib/music";
 import { MUSIC_FORMATS, type MusicExtension } from "@/lib/music";
+import { folderLikePattern } from "./folders";
 import type {
   MagicAlbumOption,
   MagicCandidateSource,
+  MagicFolderOption,
   MagicListRepository,
   MagicPickerOption,
 } from "./ports";
@@ -49,6 +51,7 @@ interface MagicListRow {
   genres_json: string;
   artists_json: string;
   album_ids_json: string;
+  folders_json: string;
   match_any: number;
   streamable_only: number;
   last_generated_at: string | null;
@@ -141,6 +144,7 @@ function toMagicList(row: MagicListRow): MagicList {
       genres: parseStringArray(row.genres_json),
       artists: parseStringArray(row.artists_json),
       albumIds: parseNumberArray(row.album_ids_json),
+      folders: parseStringArray(row.folders_json),
       targetSeconds: row.target_seconds,
       matchAny: row.match_any === 1,
       streamableOnly: row.streamable_only === 1,
@@ -199,6 +203,16 @@ function buildCandidateFilter(criteria: MagicCriteria): {
   if (criteria.albumIds.length > 0) {
     selectors.push(`t.album_id IN ${placeholders(criteria.albumIds.length)}`);
     parameters.push(...criteria.albumIds);
+  }
+  // Folders are the one field that cannot be an IN list: a folder criterion matches a
+  // PREFIX, not a value, so each picked folder contributes its own LIKE and they are
+  // OR-ed together -- which is the same "OR within a field" rule the other three follow,
+  // just spelled out because SQL has no IN for prefixes. The group is parenthesised so it
+  // survives being AND-ed with the other selectors below.
+  if (criteria.folders.length > 0) {
+    const likes = criteria.folders.map(() => `t.relative_path LIKE ? COLLATE NOCASE`);
+    selectors.push(`(${likes.join(" OR ")})`);
+    parameters.push(...criteria.folders.map((folder) => folderLikePattern(folder)));
   }
 
   if (selectors.length > 0) {
@@ -316,6 +330,66 @@ export class SqliteMagicCandidateSource implements MagicCandidateSource {
       trackCount: row.track_count,
     }));
   }
+
+  /**
+   * One level of the folder tree, derived from the CATALOG rather than the filesystem.
+   *
+   * The same choice `MusicRepository.listFolderChildren` makes, for the same two reasons:
+   * the tree then shows only folders that hold something a listener can actually play, and
+   * it needs no NAS round-trip -- which matters when the NAS is asleep.
+   *
+   * Restricted to duration-tagged, streamable tracks, unlike the Library's version. That
+   * is the rule every option list in this class follows: a folder offered as a criterion
+   * must be one the generator can really draw from, and a folder showing 40 tracks that
+   * yields 3 candidates would make a thin playlist look like a bug. The consequence is
+   * that a folder holding nothing but unplayable files does not appear here at all, which
+   * is correct -- ticking it could only ever select nothing.
+   *
+   * Grouped in JS rather than SQL, again mirroring `listFolderChildren`: picking out "the
+   * path segment at depth N" needs nested instr/substr arithmetic that is unreadable, and
+   * this reads one subtree's paths rather than the whole library.
+   */
+  listFolderOptions(parentPath: string): MagicFolderOption[] {
+    const prefix = parentPath === "" ? "" : `${parentPath.replace(/\/+$/, "")}/`;
+    const depth = prefix === "" ? 0 : prefix.split("/").length - 1;
+
+    const rows = this.db
+      .prepare(
+        `SELECT relative_path FROM mus_tracks
+         WHERE duration_seconds IS NOT NULL AND is_streamable = 1
+           AND (@prefix = '' OR relative_path LIKE @like COLLATE NOCASE)`,
+      )
+      .all({ prefix, like: `${prefix}%` }) as { relative_path: string }[];
+
+    const children = new Map<string, { direct: number; total: number; hasChildren: boolean }>();
+
+    for (const row of rows) {
+      const segments = row.relative_path.split("/");
+      // A file sitting directly in the parent has exactly depth+1 segments (the filename),
+      // so it names no child folder and is skipped.
+      if (segments.length <= depth + 1) continue;
+
+      const name = segments[depth];
+      if (name === undefined || name === "") continue;
+      const entry = children.get(name) ?? { direct: 0, total: 0, hasChildren: false };
+      entry.total += 1;
+      // depth+2 segments means the file is directly inside this child; more means the
+      // child has folders of its own, which is what makes the row drillable.
+      if (segments.length === depth + 2) entry.direct += 1;
+      else entry.hasChildren = true;
+      children.set(name, entry);
+    }
+
+    return [...children.entries()]
+      .map(([name, counts]) => ({
+        relativePath: `${prefix}${name}`,
+        name,
+        trackCount: counts.direct,
+        totalTrackCount: counts.total,
+        hasChildren: counts.hasChildren,
+      }))
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }
 }
 
 /** Saved Magic Playlists and the sets they generated. */
@@ -327,8 +401,8 @@ export class SqliteMagicListRepository implements MagicListRepository {
       .prepare(
         `INSERT INTO mus_magic_list
            (name, description, target_seconds, genres_json, artists_json, album_ids_json,
-            match_any, streamable_only)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            folders_json, match_any, streamable_only)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          RETURNING id`,
       )
       .get(
@@ -338,6 +412,7 @@ export class SqliteMagicListRepository implements MagicListRepository {
         JSON.stringify(list.criteria.genres),
         JSON.stringify(list.criteria.artists),
         JSON.stringify(list.criteria.albumIds),
+        JSON.stringify(list.criteria.folders),
         list.criteria.matchAny ? 1 : 0,
         list.criteria.streamableOnly ? 1 : 0,
       ) as { id: number };
@@ -352,7 +427,8 @@ export class SqliteMagicListRepository implements MagicListRepository {
       .prepare(
         `UPDATE mus_magic_list
          SET name = ?, description = ?, target_seconds = ?, genres_json = ?,
-             artists_json = ?, album_ids_json = ?, match_any = ?, streamable_only = ?
+             artists_json = ?, album_ids_json = ?, folders_json = ?, match_any = ?,
+             streamable_only = ?
          WHERE id = ?`,
       )
       .run(
@@ -362,6 +438,7 @@ export class SqliteMagicListRepository implements MagicListRepository {
         JSON.stringify(list.criteria.genres),
         JSON.stringify(list.criteria.artists),
         JSON.stringify(list.criteria.albumIds),
+        JSON.stringify(list.criteria.folders),
         list.criteria.matchAny ? 1 : 0,
         list.criteria.streamableOnly ? 1 : 0,
         id,

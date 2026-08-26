@@ -3,8 +3,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
+import { TokenPicker } from "@/components/token-picker";
 import { useCurrentPosition } from "@/components/use-current-position";
-import type { JournalPreferences } from "@/lib/journal";
+import {
+  applyPrefillTemplate,
+  type JournalPreferences,
+  type JournalPrefillFormValues,
+  type JournalPrefillTemplate,
+} from "@/lib/journal";
 import {
   createJournalEntryAction,
   fetchWeatherAction,
@@ -24,13 +30,32 @@ function todayIso(): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
+/**
+ * Splits a prefill template's delimited text into names. Templates predate the
+ * pickers and still store "FAMILY, PERSONAL" as one string, so a template's
+ * value has to be broken up before it can become chips. A name the template
+ * carries that no longer exists as a category/tag still becomes a chip and gets
+ * registered on save — the same thing typing it would have done.
+ */
+function splitNames(text: string, separator: string | RegExp): string[] {
+  const seen = new Set<string>();
+  return text
+    .split(separator)
+    .map((name) => name.trim())
+    .filter((name) => {
+      if (name === "" || seen.has(name.toLowerCase())) return false;
+      seen.add(name.toLowerCase());
+      return true;
+    });
+}
+
 const emptyForm = (date: string) => ({
   date,
   time: "",
   title: "",
   placeName: "",
-  categoriesText: "",
-  tagsText: "",
+  categories: [] as string[],
+  tags: [] as string[],
   content: "",
 });
 
@@ -38,10 +63,13 @@ export function JournalEntryForm({
   categoryOptions,
   tagOptions,
   preferences,
+  prefillTemplates = [],
 }: {
   categoryOptions: string[];
   tagOptions: string[];
   preferences: JournalPreferences;
+  /** Enabled templates only — the server filters, so anything here is offerable. */
+  prefillTemplates?: JournalPrefillTemplate[];
 }) {
   const router = useRouter();
   const [form, setForm] = useState(() => emptyForm(todayIso()));
@@ -51,16 +79,63 @@ export function JournalEntryForm({
   const [isBusy, setIsBusy] = useState(false);
   const [isFetchingWeather, setIsFetchingWeather] = useState(false);
   const [isLocatingAndFetching, setIsLocatingAndFetching] = useState(false);
+  const [templateId, setTemplateId] = useState("");
   const { request: requestPosition } = useCurrentPosition();
 
-  function update(field: keyof ReturnType<typeof emptyForm>, value: string) {
+  // Text fields only. Categories and tags are arrays and go through setTaxonomy.
+  type TextField = Exclude<keyof ReturnType<typeof emptyForm>, "categories" | "tags">;
+
+  function update(field: TextField, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function setTaxonomy(field: "categories" | "tags", names: string[]) {
+    setForm((current) => ({ ...current, [field]: names }));
   }
 
   function reset() {
     setForm(emptyForm(todayIso()));
     setLocations([]);
     setWeather(null);
+    setTemplateId("");
+  }
+
+  // Fills the blank fields from a saved template. The merge itself is
+  // `applyPrefillTemplate` in lib — this only maps between the form's field
+  // names and the template's, and supplies the clock.
+  //
+  // `new Date()` here, in the browser, is deliberate: an entry's date is the
+  // calendar day the writer is living in, so resolving a template's "current
+  // date" on the server would file a late-evening entry under the wrong day for
+  // anyone in a different timezone. See migration 0062.
+  function handleApplyTemplate(rawId: string) {
+    setTemplateId(rawId);
+    if (rawId === "") return;
+    const template = prefillTemplates.find((candidate) => String(candidate.id) === rawId);
+    if (!template) return;
+
+    setForm((current) => {
+      const values: JournalPrefillFormValues = {
+        date: current.date,
+        time: current.time,
+        title: current.title,
+        content: current.content,
+        placeName: current.placeName,
+        categories: current.categories.join(", "),
+        tags: current.tags.join(" "),
+      };
+      const filled = applyPrefillTemplate(template, values, new Date());
+      return {
+        ...current,
+        date: filled.date,
+        time: filled.time,
+        title: filled.title,
+        content: filled.content,
+        placeName: filled.placeName,
+        categories: splitNames(filled.categories, ","),
+        tags: splitNames(filled.tags, /\s+/),
+      };
+    });
   }
 
   // Weather is fetched for the first picked location if there is one, otherwise
@@ -142,10 +217,36 @@ export function JournalEntryForm({
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted">
-        Write a new entry. Categories and tags are created automatically if they&apos;re new.
+        Write a new entry. Pick categories and tags from the dropdowns, or type a new one to create it.
       </p>
 
       {error && <p className="text-sm text-red-400">{error}</p>}
+
+      {/* Above the fields, because it acts on all of them. Hidden entirely when
+          no template is enabled, rather than shown empty — a dropdown with
+          nothing in it is a dead control. Full width on a phone, and it stays
+          full width on desktop too: it is a header for the grid below, not a
+          member of it. */}
+      {prefillTemplates.length > 0 && (
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-ink">Select prefill template</span>
+          <select
+            value={templateId}
+            onChange={(event) => handleApplyTemplate(event.target.value)}
+            className={INPUT_CLASS}
+          >
+            <option value="">Start from a template…</option>
+            {prefillTemplates.map((template) => (
+              <option key={template.id} value={String(template.id)}>
+                {template.name}
+              </option>
+            ))}
+          </select>
+          <span className="mt-1 block text-xs text-muted">
+            Fills the fields you have left blank. Anything you have already typed is kept.
+          </span>
+        </label>
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <label className="block text-sm">
@@ -166,17 +267,24 @@ export function JournalEntryForm({
           <span className="mb-1 block font-medium text-ink">Place name</span>
           <input type="text" value={form.placeName} onChange={(event) => update("placeName", event.target.value)} placeholder="e.g. Princeton University" className={INPUT_CLASS} />
         </label>
-        <label className="block text-sm">
-          <span className="mb-1 block font-medium text-ink">Categories</span>
-          <input type="text" list="journal-category-options" value={form.categoriesText} onChange={(event) => update("categoriesText", event.target.value)} placeholder="FAMILY, PERSONAL" className={INPUT_CLASS} />
-          <span className="mt-1 block text-xs text-muted">Comma-separated</span>
-        </label>
+        <TokenPicker
+          label="Categories"
+          value={form.categories}
+          onChange={(names) => setTaxonomy("categories", names)}
+          options={categoryOptions}
+          allowCreate
+          createPlaceholder="New category, e.g. FAMILY"
+        />
 
-        <label className="block text-sm sm:col-span-2">
-          <span className="mb-1 block font-medium text-ink">Tags</span>
-          <input type="text" list="journal-tag-options" value={form.tagsText} onChange={(event) => update("tagsText", event.target.value)} placeholder="Trinity Milestone Museum" className={INPUT_CLASS} />
-          <span className="mt-1 block text-xs text-muted">Space-separated</span>
-        </label>
+        <TokenPicker
+          className="sm:col-span-2"
+          label="Tags"
+          value={form.tags}
+          onChange={(names) => setTaxonomy("tags", names)}
+          options={tagOptions}
+          allowCreate
+          createPlaceholder="New tag, e.g. Museum"
+        />
 
         <label className="block text-sm sm:col-span-2">
           <span className="mb-1 block font-medium text-ink">Content</span>
@@ -216,17 +324,6 @@ export function JournalEntryForm({
           <span className="text-xs text-muted">Uses this entry&apos;s first location, or your default location.</span>
         )}
       </div>
-
-      <datalist id="journal-category-options">
-        {categoryOptions.map((name) => (
-          <option key={name} value={name} />
-        ))}
-      </datalist>
-      <datalist id="journal-tag-options">
-        {tagOptions.map((name) => (
-          <option key={name} value={name} />
-        ))}
-      </datalist>
 
       <div className="flex gap-2">
         <Button onClick={handleSave} disabled={isBusy || form.date === ""}>

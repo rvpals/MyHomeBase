@@ -1,5 +1,95 @@
 # Change History
 
+## 2026-08-25 22:29 — A scan that finishes, a bar you can see, and a picture behind the music
+
+**The Music Library scan was being killed a fifth of the way in, and `duration: true` was
+why.** A scan of INSTRUMENTAL would stall around 25 of 690 files and the screen would say
+"this scan stopped reporting — the server probably restarted". That message was right about
+the symptom and silent about the cause: `music-metadata`'s `duration` flag reads the
+**whole file** when the duration isn't in the header, so over SMB every byte of a 10.9 GB
+folder was crossing the network for a tag read. Measured on the NAS: 25ms → 417ms on a 1 MB
+mp3, 248ms → 1937ms on a 5.7 MB one — 8–27×. The process died buffering it, and a dead
+process cannot write `status = 'failed'`, so the row stayed `running` for ever. The flag is
+gone. Durations carried in a header still populate for free; where one is genuinely absent
+we now store nothing rather than paying a full file read for it, because duration only
+disambiguates a lyrics match between a studio and a live cut — not worth a scan that cannot
+complete. 25 was never a clue about the 25th file, incidentally: `PROGRESS_EVERY = 25` means
+it was simply the first progress write, and the scan died before the second.
+
+**An abandoned scan now closes itself.** `failAbandonedScanRuns` marks any `running` row
+silent for more than two minutes as failed, keeping its frozen counts and any real error.
+Called on read rather than by a timer — there is no scheduler here, and the only moment the
+answer matters is when someone looks.
+
+**`Progress3D`** — one progress bar for the whole app, and the four hand-rolled tracks are
+gone (stock refresh, expense cleanup, music scan, and `UsageMeter`'s own). The track is a
+groove cut into the page, a `paper → paper-raised → paper` gradient with an inset lip; the
+fill is a lit slab sitting in it, an accent gradient with a white sheen and the same hard
+offset shadow `Button` uses — so a filled bar and a button read as the same material. Both
+gradients live in `globals.css`, every colour a theme token, and the fill's accent arrives as
+a custom property so one rule serves the theme accent and the two semantic tones. This is
+the one non-button that takes the hard offset shadow, and `design.md` now says so rather
+than leaving the rule contradicted. The music scan's bar sweeps when the total is still
+unknown, which is the state its old bespoke `animate-pulse` existed for.
+
+**A module can have its own background picture, and the Music Library is the first**
+(*Configuration → Appearance*). `migrations/0064` adds `sys_module_texture`, keyed by module
+slug rather than pinned to one row like the dashboard's `0063` — the home screen is not a
+module and has no slug, so the two share a library shape and not a table. Upload, opacity,
+cover-or-tile and blur, previewed against a real card because judging a background without
+the thing that sits on it is guesswork. The picture wraps the section content only, never
+the rail or the panel, so a module's navigation stays legible at any opacity. Domain code
+sees `hasImage` and never the bytes; those are served by `/api/modules/[slug]/texture`
+alone. `modules.md` carries the recipe for the next module that wants one — four lines in
+its shell and three actions, no migration.
+
+**Attendance reports gained a Detail format.** The dropdown picks *Brief* (the printable
+per-session sheet, unchanged and still the default) or *Detail*: the whole term as a grid,
+dates across the top, students down the side, `P`/`A` plus whatever action codes were noted
+that day, and a present/absent total per row. Two rules it had to settle. **A date holds
+one column carrying that day's latest session** — `0049` dropped the unique index that used
+to make a save overwrite the day, so a date can hold several sessions; Brief remains where
+an individual one is reachable. And **a cell with no status is not an absence**: a student
+who joined in October has no row for September, and `saveAttendance` writes a row for every
+enrolled student precisely so "never taken" and "marked absent" stay different facts. Reads
+through one new repository method that costs three queries however many sessions a class
+has, rather than the two-per-record the per-day path costs.
+
+**The About screen has a Server Log tab.** The last 50 lines of `app.log`, with a Refresh
+that actually refetches. Finishing a half-landed change: the tab's markup was in the tree
+referencing state that had never been added, which is what was breaking the build — and it
+was styled with `btn btn-outline` class names that this app has never had, so the button
+would have rendered unstyled even once it compiled.
+
+### Also in this release
+
+Earlier work that had accumulated in the tree, summarised rather than narrated — each
+already carries its own migration log or registry entry:
+
+- **The two-tier navigation shell.** A 64px module rail, a 240px section panel and a
+  utility header replace the old `TreeNav`; every module got its own shell
+  (`music-shell`, `journal-shell`, `stock-shell`, `expense-shell`, `attendance-shell`,
+  `home-shell`). `TwoTierShell`, `ModuleRail`, `SectionPanel`, `AppHeader` and `NavMenus`
+  are registered in `components.md`; `design.md` describes which tier a new control
+  belongs in.
+- **Journal: a calendar, photos and templates.** A month/week calendar view over entries;
+  a photo card reading the NAS archive by date, with a `PhotoLightbox`; and
+  `migrations/0062`'s prefill templates, so an entry of a familiar kind starts filled in
+  rather than blank. Plus icon search and generated icons for the taxonomy.
+- **Stocks: auto-refresh on a schedule.** `migrations/0061` adds `sys_scheduled_runs` and
+  two module settings, so the work Refresh All does happens without anyone pressing it —
+  the value history depends on a snapshot being filed daily, and a missed day is a hole
+  that cannot be backfilled. Favorite quotes on the dashboard alongside it.
+- **Music: folders as a Magic Playlist criterion.** `migrations/0060` adds
+  `folders_json`, because a folder layout carries groupings no tag records — a box-set
+  rip, a compilation, a "sort this out later" pile.
+- **Attendance: roster CSV import**, reusing the shared CSV mapping machinery.
+- **The dashboard background picture** (`migrations/0063`), which `0064` above
+  generalised, and a `TokenPicker` for records that carry several names.
+
+Migrations in this release: **0060, 0061, 0062, 0063, 0064** — all five applied to the NAS
+database, 0064 at 2026-08-26 01:55.
+
 ## 2026-08-19 23:22 — Play queue: see it, reorder it, keep it
 
 `migrations/0059` gives the play queue a table. The queue always existed — clicking a

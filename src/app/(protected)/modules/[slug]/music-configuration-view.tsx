@@ -1,6 +1,6 @@
 "use client";
 
-// Configuration: which file formats a scan should catalog.
+// Configuration: which file formats a scan should catalog, and how the module looks.
 //
 // The allowlist is applied BEFORE a file is opened, so narrowing it genuinely speeds a
 // scan up rather than just hiding rows -- reading tags is the expensive part.
@@ -9,6 +9,7 @@ import { useEffect, useState, useTransition } from "react";
 import { Button } from "@/components/button";
 import { MUSIC_EXTENSIONS, MUSIC_FORMATS } from "@/lib/music";
 import { getMusicSettingsAction, saveMusicSettingsAction } from "./music-actions";
+import { MusicTextureControl } from "./music-texture-control";
 
 export function MusicConfigurationView() {
   const [extensions, setExtensions] = useState<string[]>([]);
@@ -166,6 +167,20 @@ export function MusicConfigurationView() {
           catalog and streams them to play; album art and lyrics are stored in the database, not
           alongside the audio.
         </p>
+      </section>
+
+      {/* The module's own background picture (migrations/0064). Its own section
+          rather than a row in the scan card above: it has nothing to do with
+          scanning, and it owns its own Save. */}
+      <section className="rounded-xl border border-line bg-paper-raised p-4">
+        <h2 className="font-display text-lg text-ink">Appearance</h2>
+        <p className="mt-1 text-sm text-muted">
+          An optional picture behind every Music Library screen. This card keeps its own
+          solid background so it stays readable while you tune the setting.
+        </p>
+        <div className="mt-4">
+          <MusicTextureControl />
+        </div>
       </section>
     </div>
   );

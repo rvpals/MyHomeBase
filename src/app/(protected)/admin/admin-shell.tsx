@@ -1,10 +1,10 @@
 "use client";
 
-import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
-import { TreeNav, type TreeNavState } from "@/components/tree-nav";
-import { useIsCompact } from "@/components/viewport-context";
+import type { NavLink } from "@/components/nav-menus";
+import { TwoTierShell } from "@/components/two-tier-shell";
 import type { ModuleSetting } from "@/lib/module-settings";
 import type { Module } from "@/lib/modules";
 import { DEFAULT_COLOR_THEME_ID, DEFAULT_ICON_SET_ID, type Setting } from "@/lib/settings";
@@ -18,6 +18,13 @@ export interface ModuleDraft {
   longName: string;
   description?: string;
   isVisible: boolean;
+  /**
+   * Read-only here, for the same reason as `hasCarouselImage`: the icon picker
+   * writes on pick, so this is the value to show on first render, not a field
+   * this form saves. `updateModuleField` must not be pointed at it — that would
+   * mark the page dirty for a change already persisted.
+   */
+  icon: string;
   /**
    * Read-only here. The carousel image is saved the moment it's picked rather
    * than through this form's Save button, so it isn't an editable draft field —
@@ -75,6 +82,7 @@ function toDraft(module: Module): ModuleDraft {
     longName: module.longName,
     description: module.description,
     isVisible: module.isVisible,
+    icon: module.icon,
     hasCarouselImage: module.hasCarouselImage,
   };
 }
@@ -101,26 +109,26 @@ export function AdminShell({
   initialModules,
   initialSettings,
   initialModuleSettings,
+  railLinks,
+  currentUser,
+  logoutAction,
+  viewportPinned,
 }: {
   children: ReactNode;
   initialModules: Module[];
   initialSettings: Setting[];
   initialModuleSettings: ModuleSetting[];
+  /** Tier 1's module list, loaded by the layout — this is a client component. */
+  railLinks: NavLink[];
+  currentUser: { id: number; fullName: string; avatarMimeType?: string; updatedAt?: string };
+  logoutAction: () => Promise<void>;
+  viewportPinned: boolean;
 }) {
   const router = useRouter();
-  // The shell has to stack, not just restyle: a full-width bar left as a flex
-  // *row* item gets squashed against the content beside it. `useIsCompact`
-  // rather than `max-lg:` because the layout can be pinned — a 1400px window
-  // can legitimately be in compact, and a media query would still lay it out
-  // side by side.
-  const isCompact = useIsCompact();
-  // The nav is a bar in `full` and a column in `rail`/`strip`, so which way
-  // this shell lays out follows the nav's state rather than the viewport
-  // alone. `useCallback` because TreeNav raises this from an effect keyed on
-  // the callback — a fresh function each render would loop.
-  const [navState, setNavState] = useState<TreeNavState>("full");
-  const handleNavStateChange = useCallback((state: TreeNavState) => setNavState(state), []);
-  const isNavStacked = isCompact || navState === "full";
+  // No orientation state any more: `TwoTierShell` owns the layout, and the
+  // section panel is a side column at every state rather than a bar that has to
+  // stack. `adminNav` keeps its nested groups — the panel renders them as an
+  // accordion on desktop and flattens them into the sheet on compact.
   const [modules, setModules] = useState<ModuleDraft[]>(() => initialModules.map(toDraft));
   const [applicationName, setApplicationNameState] = useState(
     () => initialSettings.find((setting) => setting.key === "application_name")?.value ?? "",
@@ -283,24 +291,23 @@ export function AdminShell({
         reset,
       }}
     >
-      <div className={`flex min-h-screen ${isNavStacked ? "flex-col" : ""}`}>
-        {/* `tree-nav-sticky` (actually `position: fixed` — see globals.css)
-            lives on this wrapper, not on TreeNav, so TreeNav doesn't need to
-            know where on the page it landed. */}
-        <div className="tree-nav-sticky shrink-0">
-          <TreeNav
-            nodes={adminNav}
-            collapsible
-            onStateChange={handleNavStateChange}
-            // Only reaches the rail and strip — TreeNav drops the caller's
-            // surface for either bar, where a right border spanning the full
-            // width would read as a stray line. `min-h-screen` is what makes
-            // the rail's border run the height of the page.
-            className="min-h-screen border-r border-line bg-paper-raised"
-          />
-        </div>
-        <div className="relative flex-1 overflow-y-auto p-8 pb-24 max-lg:p-4 max-lg:pb-24">{children}</div>
-      </div>
+      <TwoTierShell
+        links={railLinks}
+        sections={adminNav}
+        // Administration isn't a module — it has no row in the module table and
+        // no admin-editable name — so unlike every other caller these are
+        // constants rather than a lookup. `shield` is the tree-icon concept
+        // `adminNav`'s own Security entry uses, and the closest match to
+        // `AdminIcon` across the generated icon sets.
+        module={{ name: "Administration", icon: "shield", href: "/admin" }}
+        currentUser={currentUser}
+        // Always true: the layout redirects a non-admin before this renders.
+        showAdmin
+        logoutAction={logoutAction}
+        viewportPinned={viewportPinned}
+      >
+        <div className="relative p-8 pb-24 max-lg:p-4 max-lg:pb-24">{children}</div>
+      </TwoTierShell>
       <div className="fixed bottom-6 right-6 z-20 flex gap-3">
         <Button variant="secondary" onClick={reset} disabled={isSaving}>
           Reset to Default

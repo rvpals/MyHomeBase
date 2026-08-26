@@ -38,9 +38,12 @@ Twelve commands, registered in [src/cli/index.ts:19-32](src/cli/index.ts#L19-L32
 | [`create-csv-analytics-entry`](#create-csv-analytics-entry) | write (creates a table) | no |
 | [`delete-csv-analytics-entry`](#delete-csv-analytics-entry) | write (drops a table) | no |
 | [`import-journal-csv`](#import-journal-csv) | write | no |
+| [`journal-calendar`](#journal-calendar) | read | no |
+| [`journal-templates`](#journal-templates) | read (writes with `set`/`enable`/`disable`/`delete`) | no |
 | [`expense-top-spenders`](#expense-top-spenders) | read | no |
 | [`explain-rule`](#explain-rule) | read | no |
 | [`refresh-positions`](#refresh-positions) | write | **yes** |
+| [`run-scheduled-refresh`](#run-scheduled-refresh) | write (read with `--status`) | **yes** (not with `--status`) |
 | [`compute-analytics`](#compute-analytics) | write | **yes** |
 | [`ticker-overview`](#ticker-overview) | read (`--refresh` writes cache) | with `--market` |
 | [`set-startup-message`](#set-startup-message) | write | no |
@@ -197,6 +200,113 @@ Source: [src/cli/import-journal-csv.ts](src/cli/import-journal-csv.ts)
 
 ---
 
+## `journal-calendar`
+
+Prints the Journal calendar — the same grid the Calendar section draws, from the same
+library functions.
+
+```
+npm run cli -- journal-calendar
+npm run cli -- journal-calendar --scope week
+npm run cli -- journal-calendar --scope year --date 2025-01-01
+npm run cli -- journal-calendar --date 08/21/2026 --format MM/DD/YYYY
+npm run cli -- journal-calendar --date 2026-07-28 --day
+```
+
+**Input**
+
+| Flag | Type | Required | Notes |
+|---|---|---|---|
+| `--scope` | `month` \| `week` \| `year` | no | defaults to `month` |
+| `--date` | date | no | any day in the period to show; defaults to today |
+| `--format` | `MM/DD/YYYY` \| `DD/MM/YYYY` \| `YYYY-MM-DD` | no | how `--date` is read; defaults to `YYYY-MM-DD` |
+| `--day` | boolean | no | also list `--date`'s entries in full. **Put it last** — `parseFlags` treats every flag as taking a value, so `--day --scope week` would swallow `--scope` |
+
+**Calls** — `journalCalendarRange`, then `listEntriesInDateRange(deps.journalRepo, …)`,
+then `buildMonthGrid` / `buildWeekGrid` / `buildYearGrid`. `--date` is parsed by the same
+`parseJumpDate` the web Jump box uses, so a date that works in one works in the other.
+
+**Output** — the month/week grid as fixed-width columns, with `*` for today, `>` for the
+selected day and `.` for a day borrowed from the neighbouring month; the year scope prints
+a per-month count instead, since 12 grids of titles don't fit a terminal.
+
+```
+August 2026 — 14 entries
+
+Sun           Mon           Tue           Wed           Thu           Fri           Sat
+.26           .27           .28 (3)       .29           .30           .31             1
+                             test123
+```
+
+This command is the calendar's layering check: the grid shape, the 30-character title
+elision and the date parsing all come from `src/lib/journal`, so if it couldn't be printed
+here the logic would have leaked into the view.
+**Exit** — 0; 1 on an unknown `--scope`, an unknown `--format`, or an unparseable `--date`.
+Source: [src/cli/journal-calendar.ts](src/cli/journal-calendar.ts)
+
+---
+
+## `journal-templates`
+
+Journal prefill templates — the same use-cases the Configuration → Templates screen
+drives. A template is a named set of field values a new entry can start from.
+
+```
+npm run cli -- journal-templates list
+npm run cli -- journal-templates show --name "Gym"
+npm run cli -- journal-templates apply --name "Gym"
+npm run cli -- journal-templates set --name "Gym" --field categories --value HEALTH
+npm run cli -- journal-templates set --name "Today" --field date --now
+npm run cli -- journal-templates enable --name "Gym"
+npm run cli -- journal-templates disable --name "Gym"
+npm run cli -- journal-templates delete --name "Gym"
+```
+
+**Input**
+
+| Subcommand | Flags | Notes |
+|---|---|---|
+| `list` | — | every template, enabled or not, with its fields |
+| `show` | `--name` | one template |
+| `apply` | `--name` | what a new entry would be prefilled with, dynamic values resolved |
+| `set` | `--name`, `--field`, `--value` \| `--now`, `--description` | upserts **one field**; creates the template if it doesn't exist |
+| `enable` / `disable` | `--name` | whether the New Entry dropdown offers it |
+| `delete` | `--name` | |
+
+`--name` is matched case-insensitively, like the unique index. `--now` is a bare switch
+and only legal on `--field date` / `--field time` — **put it last**, since `parseFlags`
+treats every flag as taking a value.
+
+`set` takes one field per invocation rather than a JSON blob argument: a shell is a bad
+place to quote JSON, and the web editor is the right tool for building a whole template
+at once.
+
+**Calls** — `listPrefillTemplates` / `getPrefillTemplateByName` / `savePrefillTemplate` /
+`setPrefillTemplateEnabled` / `deletePrefillTemplate` / `applyPrefillTemplate`, all from
+`@/lib/journal`. Validation is the same `savePrefillTemplateSchema` the web action uses,
+so a duplicate name or an illegal `--now` fails identically in both.
+
+**Output** — one template per block, field label and value, with `<current>` for a
+dynamic field:
+
+```
+Gym
+Weekday workout
+  Date         <current>
+  Categories   HEALTH
+  Tags         gym cardio
+```
+
+`apply` is the layering check: it resolves "current date"/"current time" against this
+machine's clock through the same `applyPrefillTemplate` the browser calls, so if the
+merge couldn't be printed here the logic would have leaked into the entry form.
+
+**Exit** — 0; 1 on an unknown subcommand, a missing `--name`/`--field`, a template that
+doesn't exist, or a validation failure (duplicate name, unknown field, illegal `--now`).
+Source: [src/cli/journal-templates.ts](src/cli/journal-templates.ts)
+
+---
+
 ## `expense-top-spenders`
 
 The two rollups from the Expense dashboard's "Interesting stats" card. Useful for
@@ -269,6 +379,33 @@ persists the successes). Suitable for a scheduler.
 Source: [src/cli/refresh-positions.ts](src/cli/refresh-positions.ts)
 
 ---
+
+## `run-scheduled-refresh`
+
+⚠️ **Network + writes** (except with `--status`). Runs the full refresh pass: a Yahoo
+quote per position, a sector lookup for any uncached ticker, then today's snapshot —
+the same three steps as the Configuration screen's Refresh All, and the same pass the
+in-process scheduler runs on its heartbeat.
+
+```
+npm run cli -- run-scheduled-refresh
+npm run cli -- run-scheduled-refresh --force
+npm run cli -- run-scheduled-refresh --status
+```
+
+**Input** — `--force` ignores the switch and the interval; `--status` prints the
+settings and the last run without doing anything.
+**Calls** — `runScheduledRefreshNow({ force })` / `loadScheduledRefreshSettings()`.
+**Output** — `Refreshed: 38 priced, 1 failed, 2 sector(s), snapshot saved.`, or
+`Nothing ran: <reason>` when the switch is off, the interval hasn't elapsed, or there
+are no positions.
+**Exit** — 0 normally, **1 only when the whole pass failed**. A `partial` (one
+delisted ticker) is a success, so a scheduler doesn't alert on a single bad symbol.
+
+Without `--force` this respects the in-app switch and interval, so it is safe to point
+an external scheduler (DSM Task Scheduler, cron) at it if you would rather the clock
+lived outside the app — the app is already running its own timer, so only do one.
+Source: [src/cli/run-scheduled-refresh.ts](src/cli/run-scheduled-refresh.ts)
 
 ## `compute-analytics`
 
@@ -798,6 +935,23 @@ All take `deps.attendanceRepo`. Everything JSON-serializable apart from the repo
 | `getAttendanceReportById` | `(repo, recordId) => AttendanceReport \| undefined` | — | **CLI** |
 | `listSessionsForClass` | `(repo, classId) => AttendanceSessionSummary[]` — newest first, with counts | — | **CLI** |
 | `listRecordDatesForClass` | `(repo, classId) => string[]` — distinct dates, newest first | — | web only |
+| `buildAttendanceDetailReport` | `(repo, classId) => AttendanceDetailReport` — the whole-term grid: a row per student, a column per date | — | web only |
+
+`buildAttendanceDetailReport` backs the report screen's **Detail** format
+(`?format=detail`); the **Brief** format is `getAttendanceReport` above. Two rules it
+encodes, both load-bearing:
+
+- **One column per date, carrying that date's *latest* session.** A class can be
+  registered several times a day (0049 dropped the unique index that used to make a
+  save overwrite the day), so a date can hold more than one session. Same rule
+  `getAttendanceReport` uses for "today"; Brief is where a specific session is reachable.
+- **A cell with no `status` means "no entry that day"** — not enrolled yet — which is
+  deliberately distinct from `absent`. `saveAttendance` writes a row for every enrolled
+  student precisely so those stay different facts.
+
+Rows come from the sessions, not the live roster, so an unenrolled student still shows
+the days they attended. Reads through `listAttendanceRecordsForClass`, which is three
+queries regardless of session count rather than the two-per-record the per-day path costs.
 
 The caller supplies the date; **no use-case here reads the clock** — both adapters
 already know their own "today", and a use-case that didn't would need the clock frozen
@@ -852,6 +1006,42 @@ clock. `createEntry` auto-registers unknown categories and tags.
 `JournalEntry { id, date, time, title, content, placeName, weather?, isPinned, isLocked, categories: string[], tags: string[], locations: EntryLocation[], createdAt, updatedAt }`
 
 Preferences (pure): `resolveJournalPreferences`, `journalPreferencesToEntries`.
+
+## journal-photos — `@/lib/journal-photos`
+
+Finds the photographs a journal entry's date can be illustrated with. Takes
+`deps.photoFileStore` (a `PhotoFileStore` port over `MYHOMEBASE_PHOTO_ROOT`).
+**Read-only by construction** — the port has no write method, so nothing in the app can
+alter the archive.
+
+| Use-case | Signature | Zod | Status |
+|---|---|---|---|
+| `listPhotoFoldersForDate` | `(store, date) => Promise<PhotoFolderLookup>` — reads folder NAMES only, opens no files | `photoFolderLookupSchema` | web only |
+| `listPhotosInFolder` | `(store, { date, relativePath, includeAll? }) => Promise<PhotoFolderContents>` — for a month folder, reads each JPEG's EXIF header | `photoFolderContentsSchema` | web only |
+| `readExifDate` | `(bytes: Uint8Array) => string \| undefined` — pure JPEG/TIFF header parser | — | pure |
+| `dateFromFileName` | `(fileName) => string \| undefined` — pure, the no-EXIF fallback | — | pure |
+
+Split into two calls deliberately: listing folders is one directory read, while scanning a
+month folder opens every JPEG in it (~8ms per file cold over SMB, so ~10s for 1,400
+photos). The card asks for folders first and scans a folder only when it is opened.
+
+**The archive's convention** — photo root → year folder → two folder kinds:
+
+- `2019-06-09 Von Thun Farm Strawberry Festival` — one day's event. Every JPEG in it
+  matches the date; no file is opened.
+- `2019-06`, or the named `2018-05 Lake George Trip`, or the month-precision
+  `2019-01-00 San Diego Vacation` — a month of loose photos, filtered by EXIF
+  `DateTimeOriginal`, falling back to a date in the file name. EXIF wins over a
+  contradicting file name (a photo shot after midnight belongs to the day the shutter
+  fired).
+
+Only `.jpg`/`.jpeg` are read — RAW, video and sidecars are ignored.
+
+`PhotoFolder { name, relativePath, kind: "day" | "month", label, photoCount }`
+`PhotoFile { name, relativePath, matchedBy: "exif" | "file-name" | "folder", takenAt? }`
+
+No CLI command yet — the two use-cases take only JSON-serializable input and a port, so
+adding one needs no change to `lib/`.
 
 ## stock-positions — `@/lib/stock-positions`
 
@@ -991,7 +1181,9 @@ module-settings. **No CLI reach** (and little reason for one).
 exactly once), `moveDashboardWidget(prefs, id, "up"|"down")`,
 `toggleDashboardWidget(prefs, id)`, `visibleDashboardWidgets(prefs)`.
 
-Widget ids: `refresh`, `summary`, `glance`, `statistics`, `allocationType`, `allocationStrategy`.
+Widget ids: `summary`, `statistics`, `allocation`. (`refresh`, `glance` and the three
+per-chart `allocation*` ids are retired; `resolveDashboardWidgets` drops any saved layout
+still naming them, so no migration was needed.)
 
 ## investment-accounts — `@/lib/investment-accounts`
 
@@ -1121,6 +1313,52 @@ Repo is `deps.dailyQuoteRepo`. No network. **No CLI reach.**
 
 `QUOTE_CATEGORIES = ["Motivation","Inspiration","Wisdom","Success","Happiness","Life","Humor","Love"]`
 
+## dashboard-texture — `@/lib/dashboard-texture`
+
+Repo is `deps.dashboardTextureRepo`. No network. **No CLI reach.** The home dashboard's
+optional background picture (migration 0063) — a single-row settings table plus a BLOB.
+
+| Use-case | Signature | Zod |
+|---|---|---|
+| `getDashboardTexture` | `(repo) => DashboardTexture` — carries `hasImage`, never the bytes | — |
+| `getDashboardTextureImage` | `(repo) => DecodedImage \| undefined` — **serving route only** | — |
+| `setDashboardTextureImage` | `(repo, input) => void` | `imageUploadSchema` + 4 MB cap |
+| `removeDashboardTextureImage` | `(repo) => void` | — |
+| `saveDashboardTextureSettings` | `(repo, {opacity, mode, blur}) => void` | `dashboardTextureSettingsSchema` |
+| `dashboardTextureCssVars` | `(texture) => Record<string,string> \| undefined` — pure; `undefined` when no picture | — |
+
+`MAX_DASHBOARD_TEXTURE_BYTES = 4 MB`. `mode` is `"cover" | "tile"`; `opacity` 0..1;
+`blur` 0..40 px — all three CHECK-constrained in the table as well as validated here.
+
+## module-texture — `@/lib/module-texture`
+
+Repo is `deps.moduleTextureRepo`. No network. **No CLI reach.** A *per-module*
+background picture (migration 0064), keyed by module slug — the same shape as
+`dashboard-texture` above but one row per module rather than a pinned singleton. The
+Music Library is the only caller today (**My Music Library → Configuration →
+Appearance**); the picture sits behind every section of that module.
+
+| Use-case | Signature | Zod |
+|---|---|---|
+| `getModuleTexture` | `(repo, slug) => ModuleTexture` — carries `hasImage`, never the bytes; returns the display defaults when the module has no row | `moduleTextureSlugSchema` |
+| `getModuleTextureImage` | `(repo, slug) => DecodedImage \| undefined` — **serving route only** | `moduleTextureSlugSchema` |
+| `setModuleTextureImage` | `(repo, slug, input) => void` | slug + `imageUploadSchema` + 4 MB cap |
+| `removeModuleTextureImage` | `(repo, slug) => void` | `moduleTextureSlugSchema` |
+| `saveModuleTextureSettings` | `(repo, slug, {opacity, mode, blur}) => void` | slug + `moduleTextureSettingsSchema` |
+| `moduleTextureCssVars` | `(texture) => Record<string,string> \| undefined` — pure; `undefined` when no picture | — |
+
+`MAX_MODULE_TEXTURE_BYTES = 4 MB`. `mode` is `"cover" | "tile"`; `opacity` 0..1; `blur`
+0..40 px — all CHECK-constrained in the table as well as validated here. The slug is
+lowercased and restricted to `[a-z0-9-]`, so a route param cannot create a shadow row or
+reach SQL malformed.
+
+Served by `GET /api/modules/[slug]/texture` (session required, not admin — it is page
+decoration every signed-in reader already sees). Writes go through the module's own
+actions and follow **that screen's** gate, not a blanket admin check: Music's
+Configuration screen is reachable by any signed-in user, so its texture actions use
+`requireUser`, matching `saveMusicSettingsAction` beside them. The dashboard texture is
+admin-only because it lives in Administration — the gate follows the screen.
+
 ## weather — `@/lib/weather`
 
 `getCurrentWeather(deps.weatherClient, input) => Promise<CurrentWeather>` ⚠️ Open-Meteo,
@@ -1168,16 +1406,16 @@ There is no `src/lib/shared/index.ts`; import `@/lib/shared/<file>`.
 
 | | Count |
 |---|---|
-| Exported use-cases across `src/lib/` | ~227 |
+| Exported use-cases across `src/lib/` | ~234 |
 | Reachable from the CLI | ~25 |
 | Registered commands | 12 |
 | **Coverage** | **~13%** |
 
-**Modules with zero CLI reach (18):** `auth`, `change-history`, `daily-quote`,
-`geocoding`, `investment-accounts`, `market-data`, `module-settings`, `modules`,
-`next-day-actions`, `sql-explorer`, `stock-daily-snapshot`, `stock-watchlist`,
-`system-info`, `ticker-detail`, `ticker-favorites`, `ticker-logos`, `ticker-search`,
-`weather`.
+**Modules with zero CLI reach (19):** `auth`, `change-history`, `daily-quote`,
+`dashboard-texture`, `geocoding`, `investment-accounts`, `market-data`,
+`module-settings`, `modules`, `next-day-actions`, `sql-explorer`,
+`stock-daily-snapshot`, `stock-watchlist`, `system-info`, `ticker-detail`,
+`ticker-favorites`, `ticker-logos`, `ticker-search`, `weather`.
 (`stock-dashboard` and `viewport` are pure preference/layout helpers — no CLI needed.)
 
 [ARCHITECTURE.md:119-121](ARCHITECTURE.md#L119-L121) states that "every use-case is

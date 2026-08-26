@@ -8,10 +8,11 @@ import {
 } from "./schema";
 import type { DecodedImage } from "@/lib/shared/image-upload";
 import { buildFilterSql } from "./filters";
-import { parseStoredJournalFilter } from "./schema";
+import { parseStoredJournalFilter, parseStoredPrefillFields } from "./schema";
 import type {
   EntryWriteData,
   JournalFilterWriteData,
+  PrefillTemplateWriteData,
   UpsertCategoryInput,
   UpsertTagInput,
 } from "./schema";
@@ -22,6 +23,8 @@ import type {
   JournalEntryNeighbors,
   JournalEntryRef,
   JournalFilter,
+  JournalPrefillField,
+  JournalPrefillTemplate,
   JournalTag,
   JournalTaxonomyCount,
   JournalTaxonomyIcon,
@@ -65,6 +68,36 @@ interface TaxonomyRow {
   icon_image_mime_type: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// Spelled out rather than SELECT *, so adding a column later can't silently
+// widen every read of this table.
+const PREFILL_TEMPLATE_COLUMNS =
+  "SELECT id, name, description, is_enabled, fields_json, created_at, updated_at";
+
+interface PrefillTemplateRow {
+  id: number;
+  name: string;
+  description: string;
+  is_enabled: number;
+  fields_json: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// parseStoredPrefillFields is deliberately forgiving (see its doc): a row whose
+// JSON can't be read comes back with no fields rather than throwing, so one bad
+// template doesn't take the Templates screen down with it.
+function prefillTemplateToDomain(row: PrefillTemplateRow): JournalPrefillTemplate {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    isEnabled: row.is_enabled === 1,
+    fields: parseStoredPrefillFields(row.fields_json),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
 }
 
 interface SavedFilterRow {
@@ -236,6 +269,28 @@ export class SqliteJournalRepository implements JournalRepository {
          ORDER BY entry_date DESC, entry_time DESC, id DESC`,
       )
       .all(monthDay) as EntryRow[];
+
+    return rows.map((row) =>
+      entryToDomain(
+        row,
+        this.categoryNamesFor(row.id),
+        this.tagNamesFor(row.id),
+        this.locationsFor(row.id),
+      ),
+    );
+  }
+
+  listEntriesInDateRange(startDate: string, endDate: string): JournalEntry[] {
+    // A BETWEEN on entry_date itself, so idx_jrn_entries_entry_date applies —
+    // the reason the calendar reads a range rather than filtering listEntries()
+    // in memory. Ascending, because a calendar reads top-to-bottom through time.
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM jrn_entries
+         WHERE entry_date BETWEEN ? AND ?
+         ORDER BY entry_date ASC, entry_time ASC, id ASC`,
+      )
+      .all(startDate, endDate) as EntryRow[];
 
     return rows.map((row) =>
       entryToDomain(
@@ -602,6 +657,115 @@ export class SqliteJournalRepository implements JournalRepository {
          LIMIT ?`,
       )
       .all(limit) as JournalTaxonomyCount[];
+  }
+
+  // --- prefill templates (migration 0062) -----------------------------------
+
+  listPrefillTemplates(): JournalPrefillTemplate[] {
+    const rows = this.db
+      .prepare(`${PREFILL_TEMPLATE_COLUMNS} FROM jrn_prefill_templates ORDER BY name ASC`)
+      .all() as PrefillTemplateRow[];
+    return rows.map(prefillTemplateToDomain);
+  }
+
+  getPrefillTemplateById(id: number): JournalPrefillTemplate | undefined {
+    const row = this.db
+      .prepare(`${PREFILL_TEMPLATE_COLUMNS} FROM jrn_prefill_templates WHERE id = ?`)
+      .get(id) as PrefillTemplateRow | undefined;
+    return row ? prefillTemplateToDomain(row) : undefined;
+  }
+
+  getPrefillTemplateByName(name: string): JournalPrefillTemplate | undefined {
+    // NOCASE matches idx_jrn_prefill_templates_name, so this finds "gym" for
+    // "Gym" — which is what the uniqueness check in the use-case needs.
+    const row = this.db
+      .prepare(
+        `${PREFILL_TEMPLATE_COLUMNS} FROM jrn_prefill_templates WHERE name = ? COLLATE NOCASE`,
+      )
+      .get(name) as PrefillTemplateRow | undefined;
+    return row ? prefillTemplateToDomain(row) : undefined;
+  }
+
+  // Create and update in one method: the input's optional id decides which. An
+  // update rewrites every column, matching how the editor works — it loads the
+  // whole template and saves the whole template, so there is no partial write.
+  savePrefillTemplate(input: PrefillTemplateWriteData): JournalPrefillTemplate {
+    const params = {
+      name: input.name,
+      description: input.description,
+      isEnabled: input.isEnabled ? 1 : 0,
+      fieldsJson: JSON.stringify(input.fields),
+    };
+
+    if (input.id !== undefined) {
+      this.db
+        .prepare(
+          `UPDATE jrn_prefill_templates
+              SET name = @name,
+                  description = @description,
+                  is_enabled = @isEnabled,
+                  fields_json = @fieldsJson
+            WHERE id = @id`,
+        )
+        .run({ ...params, id: input.id });
+      const updated = this.getPrefillTemplateById(input.id);
+      if (!updated) throw new Error(`Prefill template ${input.id} no longer exists.`);
+      return updated;
+    }
+
+    const result = this.db
+      .prepare(
+        `INSERT INTO jrn_prefill_templates (name, description, is_enabled, fields_json)
+         VALUES (@name, @description, @isEnabled, @fieldsJson)`,
+      )
+      .run(params);
+    const created = this.getPrefillTemplateById(Number(result.lastInsertRowid));
+    if (!created) throw new Error(`Failed to read back prefill template "${input.name}".`);
+    return created;
+  }
+
+  deletePrefillTemplate(id: number): void {
+    this.db.prepare("DELETE FROM jrn_prefill_templates WHERE id = ?").run(id);
+  }
+
+  setPrefillTemplateEnabled(id: number, isEnabled: boolean): JournalPrefillTemplate {
+    this.db
+      .prepare("UPDATE jrn_prefill_templates SET is_enabled = ? WHERE id = ?")
+      .run(isEnabled ? 1 : 0, id);
+    const updated = this.getPrefillTemplateById(id);
+    if (!updated) throw new Error(`Prefill template ${id} no longer exists.`);
+    return updated;
+  }
+
+  listDistinctFieldValues(field: JournalPrefillField, limit: number): string[] {
+    // An allowlist mapping field -> column, not string interpolation of the
+    // field name: this value reaches SQL, and an allowlist makes the injection
+    // question unanswerable rather than merely unlikely.
+    //
+    // Only the free-text columns are here. Categories and tags have their own
+    // managed lists (listCategories/listTags) which the editor uses instead, and
+    // suggesting a previously-used date would be actively unhelpful.
+    const COLUMNS: Partial<Record<JournalPrefillField, string>> = {
+      title: "title",
+      content: "content",
+      placeName: "place_name",
+    };
+    const column = COLUMNS[field];
+    if (!column) return [];
+
+    // Most-used first, so the suggestion list opens with the value most likely
+    // wanted. Blanks are excluded — an empty suggestion is not a suggestion.
+    const rows = this.db
+      .prepare(
+        `SELECT ${column} AS value, COUNT(*) AS uses
+           FROM jrn_entries
+          WHERE ${column} <> ''
+          GROUP BY ${column}
+          ORDER BY uses DESC, value ASC
+          LIMIT ?`,
+      )
+      .all(limit) as { value: string }[];
+    return rows.map((row) => row.value);
   }
 
   // --- internal helpers -----------------------------------------------------

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { IconSelect } from "@/components/icon-select";
+import { Progress3D } from "@/components/progress-3d";
 import {
   DEFAULT_CLEANUP_BATCH_SIZE,
   RULE_ACTION_FIELDS,
@@ -416,18 +417,12 @@ function CleanupRunner({ unprocessedCount }: { unprocessedCount: number }) {
             </span>
             <span>{percent}%</span>
           </div>
-          <div
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={total}
-            aria-valuenow={done}
-            className="mt-1 h-2 w-full overflow-hidden rounded-full bg-line"
-          >
-            <div
-              className="h-full bg-brass transition-[width] duration-200"
-              style={{ width: `${percent}%` }}
-            />
-          </div>
+          <Progress3D
+            value={done}
+            max={total}
+            ariaLabel="Cleanup progress"
+            className="mt-1"
+          />
         </div>
       )}
 

@@ -1,5 +1,6 @@
 // Next.js calls register() once when the server starts. This is where the
-// Expense CSV auto-import and the auth-event prune are armed.
+// Expense CSV auto-import, the auth-event prune, and the Stocks auto-refresh are
+// armed.
 //
 // Design notes, all of which matter for it behaving on a NAS:
 //   * The heartbeat is a fixed 60s tick that re-reads the module settings each
@@ -28,6 +29,7 @@ const globalForAutoImport = globalThis as unknown as {
   __expenseAutoImportStarted?: boolean;
   __expenseAutoImportLastRunMs?: number;
   __authEventPruneStarted?: boolean;
+  __stockAutoRefreshStarted?: boolean;
 };
 
 /** Deletes auth events past their retention window. Armed on its own daily timer. */
@@ -67,10 +69,60 @@ async function armAuthEventPrune() {
   console.log(`[auth-events prune] armed (daily, ${DEFAULT_RETENTION_DAYS}-day retention).`);
 }
 
+/**
+ * The Stocks & ETFs auto-refresh: prices every position, looks up any new sector,
+ * and files today's snapshot -- the same three steps the dashboard's Refresh All
+ * button walks, so a day nobody pressed it is no longer a hole in the history.
+ *
+ * Shares the expense importer's 60s heartbeat design: the tick re-reads the
+ * module settings every time, so flipping the switch or changing the interval in
+ * the UI takes effect within a minute with no restart and no timer to rebuild.
+ *
+ * Differs in one respect, deliberately. The expense job keeps its last-run stamp
+ * on `globalThis`; this one persists it in `sys_scheduled_runs`, because its
+ * default interval is *daily* and `start.sh` cycles the process on every deploy
+ * and restarts it after any crash. In-memory state would turn "once a day" into
+ * "once per boot". See migrations/0061.
+ *
+ * The whole decision -- switched on? due yet? -- lives in `runScheduledRefreshNow`,
+ * which never throws. This function is just the clock.
+ */
+async function armStockAutoRefresh() {
+  if (globalForAutoImport.__stockAutoRefreshStarted) return;
+  globalForAutoImport.__stockAutoRefreshStarted = true;
+
+  // Imported lazily so the Edge/build passes never pull in better-sqlite3 --
+  // same reason as the two blocks around it.
+  const { runScheduledRefreshNow } = await import("@/lib/scheduled-refresh");
+
+  const tick = async () => {
+    try {
+      const summary = await runScheduledRefreshNow();
+      // Silent unless a pass actually ran, so an idle scheduler doesn't write a
+      // line a minute saying "not due yet".
+      if (summary.ran) {
+        const line = `[stock auto-refresh] ${summary.detail}`;
+        if (summary.status === "failed") console.error(line);
+        else console.log(line);
+      }
+    } catch (error) {
+      // Belt and braces: the runner already swallows its own errors, but an
+      // unhandled rejection in a timer callback can take the server down.
+      console.error("[stock auto-refresh] tick failed:", error);
+    }
+  };
+
+  const timer = setInterval(tick, HEARTBEAT_MS);
+  timer.unref?.();
+
+  console.log("[stock auto-refresh] scheduler armed (60s heartbeat).");
+}
+
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
   await armAuthEventPrune();
+  await armStockAutoRefresh();
 
   if (globalForAutoImport.__expenseAutoImportStarted) return;
   globalForAutoImport.__expenseAutoImportStarted = true;

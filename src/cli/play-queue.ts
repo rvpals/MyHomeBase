@@ -19,11 +19,13 @@
 //   npm run cli -- play-queue --remove <entryId>
 //   npm run cli -- play-queue --repeat off|all|one
 //   npm run cli -- play-queue --clear
+//   npm run cli -- play-queue --close                   # drop the cursor, keep the queue
 
 import {
   REPEAT_MODE_INFO,
   advanceQueue,
   clearQueue,
+  closeQueue,
   enqueueTracks,
   getPlayQueue,
   isRepeatMode,
@@ -108,6 +110,12 @@ export async function playQueueCommand(args: string[]): Promise<void> {
 
     if (args.includes("--clear")) {
       print(clearQueue(dependencies));
+      return;
+    }
+
+    // The counterpart to --clear: hides the web player's bar without discarding a queue.
+    if (args.includes("--close")) {
+      print(closeQueue(dependencies));
       return;
     }
 

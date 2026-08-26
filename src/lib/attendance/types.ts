@@ -176,6 +176,67 @@ export interface AttendanceActionTally {
   count: number;
 }
 
+/**
+ * The two shapes the report screen can render.
+ *
+ * `brief` is the printable per-session sheet — present/absent name lists for one
+ * day. `detail` is the whole-term grid: a row per student, a column per date.
+ * A named union rather than a boolean so a third format doesn't have to reshape
+ * the URL, and so the value can be validated at the boundary.
+ */
+export const ATTENDANCE_REPORT_FORMATS = ["brief", "detail"] as const;
+
+export type AttendanceReportFormat = (typeof ATTENDANCE_REPORT_FORMATS)[number];
+
+/**
+ * One student's mark on one date in the detail grid.
+ *
+ * `status` is `undefined` when that student has **no entry** in that date's
+ * session — they weren't enrolled yet, or joined later in the term. That is
+ * deliberately distinct from `absent`: `AttendanceRecord` writes a row for every
+ * enrolled student precisely so "never taken" and "marked absent" stay different
+ * facts, and the grid must not collapse them back together.
+ */
+export interface AttendanceDetailCell {
+  status?: AttendanceStatus;
+  /** Codes noted that day, in catalog order. Empty for most cells. */
+  actions: RecordedStudentAction[];
+}
+
+/** One row of the detail grid: a student, and their mark on every date. */
+export interface AttendanceDetailRow {
+  studentId: number;
+  studentName: string;
+  /** One cell per date in `AttendanceDetailReport.dates`, same order. */
+  cells: AttendanceDetailCell[];
+  /** Totals across the row, so a reader can scan a term without counting. */
+  presentCount: number;
+  absentCount: number;
+}
+
+/**
+ * The whole-term grid for one class.
+ *
+ * Columns are **dates**, not sessions: a class registered twice in a day
+ * contributes one column carrying its *latest* session, which is the same rule
+ * `getAttendanceReport` uses for "today". The brief format is where an individual
+ * session is still reachable.
+ */
+export interface AttendanceDetailReport {
+  classId: number;
+  className: string;
+  /** Every date this class has attendance for, **oldest first** — left to right. */
+  dates: string[];
+  /**
+   * Every student who appears in any session, sorted by name.
+   *
+   * Built from the sessions rather than from the current roster, so a student who
+   * has since been unenrolled still shows the days they attended — the same
+   * reasoning that makes `studentName` a stored value rather than a live lookup.
+   */
+  rows: AttendanceDetailRow[];
+}
+
 /** One session in a picker: enough to label it, without its entries. */
 export interface AttendanceSessionSummary {
   recordId: number;

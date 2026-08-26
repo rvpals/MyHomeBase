@@ -22,6 +22,12 @@ export interface AttendanceRepository {
   updateStudent(id: number, input: StudentWriteData): Student;
   /** Also clears the student's enrollments. Saved records keep their entries. */
   deleteStudent(id: number): void;
+  /**
+   * Deletes several students in one transaction, returning how many rows were
+   * actually removed — an id that no longer exists is simply not counted.
+   * Clears their enrollments too, exactly as `deleteStudent` does.
+   */
+  deleteStudents(ids: number[]): number;
 
   // Classes
   listClasses(): AttendanceClass[];
@@ -92,4 +98,14 @@ export interface AttendanceRepository {
    * Carries the counts so the picker can label each one without a second read.
    */
   listSessionsForClass(classId: number): AttendanceSessionSummary[];
+  /**
+   * Every session for a class **with its entries**, oldest first — the detail
+   * report's single read.
+   *
+   * Its own method rather than a loop over `listAttendanceRecords`, which costs
+   * two queries per record: across a term that is hundreds of round trips for a
+   * grid that wants one pass. This does it in three queries regardless of how
+   * many sessions there are.
+   */
+  listAttendanceRecordsForClass(classId: number): AttendanceRecord[];
 }

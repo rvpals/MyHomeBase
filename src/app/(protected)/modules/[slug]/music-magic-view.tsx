@@ -7,13 +7,15 @@
 // file chooses layout and wording only.
 //
 // LAYOUT: three CollapsibleCards -- Criteria builder (open, with a collapsible card per
-// picker inside it), Existing Magic Playlists (shut), and The Playlist last, since it is
-// the output of the two above.
+// picker inside it: Genres, Artists, Albums, Folder), Existing Magic Playlists (shut), and
+// The Playlist last, since it is the output of the two above.
 //
 // NARROW SCREENS: restyled with `max-lg:` throughout, never switched. The criteria row is
-// a 3-column grid that stacks to one; the pickers keep their own scroll; the action bar
+// a 4-column grid that stacks to one; the pickers keep their own scroll; the action bar
 // wraps. Nothing here needs a genuinely different component, so `useViewport()` is not
-// read -- per design.md, that keeps the desktop classes provably untouched.
+// read -- per design.md, that keeps the desktop classes provably untouched. The folder
+// picker drills down in place rather than opening a sheet, so it needs no narrow variant
+// either: it is a breadcrumb over a capped scroll list at every width.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/button";
@@ -25,7 +27,10 @@ import {
   emptyCriteria,
   formatRunningTime,
   hasAnyFilter,
+  isFolderWithin,
+  pruneRedundantFolders,
   type MagicCriteria,
+  type MagicFolderOption,
   type MagicGenerationStats,
   type MagicListSummary,
 } from "@/lib/music-magic";
@@ -34,6 +39,7 @@ import {
   countMagicCandidatesAction,
   deleteMagicListAction,
   generateMagicAction,
+  listMagicFolderOptionsAction,
   listMagicListsAction,
   listMagicOptionsAction,
   loadMagicListAction,
@@ -138,6 +144,173 @@ function MultiSelectPicker<T extends string | number>({
                 )}
                 <span className="shrink-0 text-xs text-muted">{option.trackCount}</span>
               </label>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * A drill-down folder picker: a breadcrumb, one level of folders, and a checkbox per row.
+ *
+ * NOT a `MultiSelectPicker` with paths in it, and the difference is not cosmetic. The other
+ * three pickers hold a flat list that arrives whole and is filtered in the browser; the
+ * folder tree is walked a level at a time, so this one fetches on every step and has a
+ * position (`parent`) that the others have no concept of. Sharing one component would mean
+ * one component with two disjoint halves.
+ *
+ * Local to this screen for the same reason `MultiSelectPicker` is: nothing in
+ * `components.md` fits, and one screen is not the second caller that ARCHITECTURE.md says
+ * to promote on.
+ *
+ * A parent and a child are both tickable, but ticking a parent covers its children --
+ * selecting a folder selects its whole subtree (migrations/0060). So a row inside an
+ * already-selected folder shows as covered and its checkbox is disabled rather than
+ * offering a tick that would do nothing.
+ *
+ * Selected folders are listed as chips ABOVE the browser, because a pick made three levels
+ * down is otherwise invisible the moment you navigate away from it -- and the whole point
+ * of drilling in is that you end up somewhere else.
+ */
+function FolderPicker({
+  selected,
+  onToggle,
+  onRemove,
+}: {
+  selected: string[];
+  onToggle: (relativePath: string) => void;
+  onRemove: (relativePath: string) => void;
+}) {
+  const [parent, setParent] = useState("");
+  const [nodes, setNodes] = useState<MagicFolderOption[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const segments = useMemo(() => (parent === "" ? [] : parent.split("/")), [parent]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setIsLoading(true);
+    void listMagicFolderOptionsAction(parent)
+      .then((options) => {
+        if (!cancelled) setNodes(options);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [parent]);
+
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      {/* What is picked, wherever in the tree it was picked. The full path, not just the
+          last segment -- two folders called "Live" under different artists are otherwise
+          indistinguishable in this list. */}
+      {selected.length > 0 && (
+        <ul className="flex flex-wrap gap-1.5">
+          {selected.map((path) => (
+            <li key={path}>
+              <button
+                type="button"
+                onClick={() => onRemove(path)}
+                title={`Remove ${path}`}
+                className="flex max-w-full items-center gap-1.5 rounded-md border border-brass bg-brass-soft px-2 py-1 text-xs text-ink hover:border-brass-dark"
+              >
+                <span className="min-w-0 truncate">{path}</span>
+                <span aria-hidden className="shrink-0 text-muted">
+                  &times;
+                </span>
+                <span className="sr-only">Remove folder</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Breadcrumb. Same shape as the Library's Folder Hierarchy view, so the two screens
+          navigate folders identically. */}
+      <div className="flex flex-wrap items-center gap-1 text-xs">
+        <button
+          type="button"
+          onClick={() => setParent("")}
+          className="rounded px-2 py-1 text-brass-dark hover:bg-brass-soft"
+        >
+          All music
+        </button>
+        {segments.map((segment, index) => (
+          <span key={`${segment}-${index}`} className="flex items-center gap-1">
+            <span className="text-muted">/</span>
+            <button
+              type="button"
+              onClick={() => setParent(segments.slice(0, index + 1).join("/"))}
+              className="rounded px-2 py-1 text-brass-dark hover:bg-brass-soft"
+            >
+              {segment}
+            </button>
+          </span>
+        ))}
+      </div>
+
+      {/* Capped and scrolled like the other three pickers, for the same reason: four of
+          these on a phone must not each be a page-long list. */}
+      <ul className="max-h-64 overflow-y-auto max-lg:max-h-56">
+        {isLoading && nodes.length === 0 && (
+          <li className="px-1 py-2 text-xs text-muted">Reading folders…</li>
+        )}
+        {!isLoading && nodes.length === 0 && (
+          <li className="px-1 py-2 text-xs text-muted">
+            {parent === ""
+              ? "No folders catalogued yet."
+              : "No sub-folders here — tick this folder in the breadcrumb's parent to use it."}
+          </li>
+        )}
+        {nodes.map((node) => {
+          const isSelected = selected.includes(node.relativePath);
+          // Covered by an ancestor already picked: ticking it would select nothing new, and
+          // the library would prune it on save anyway.
+          const isCovered =
+            !isSelected && selected.some((path) => isFolderWithin(node.relativePath, path));
+
+          return (
+            <li key={node.relativePath}>
+              <div
+                className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-sm ${
+                  isSelected ? "bg-brass-soft" : "hover:bg-brass-soft"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={isSelected || isCovered}
+                  disabled={isCovered}
+                  onChange={() => onToggle(node.relativePath)}
+                  aria-label={`Use folder ${node.relativePath}`}
+                  title={isCovered ? "Already covered by a folder above it" : node.relativePath}
+                  className="accent-brass disabled:opacity-50"
+                />
+                <span className="min-w-0 flex-1 truncate text-ink" title={node.relativePath}>
+                  {node.name}
+                </span>
+                {/* The subtree total, which is what ticking the row would select. A folder
+                    of folders has 0 tracks of its own, so showing the direct count would
+                    label most of the tree "0" and make it look unpickable. */}
+                <span className="shrink-0 text-xs text-muted">{node.totalTrackCount}</span>
+                {node.hasChildren ? (
+                  <button
+                    type="button"
+                    onClick={() => setParent(node.relativePath)}
+                    className="shrink-0 rounded px-2 py-1 text-xs text-brass-dark hover:bg-brass-soft"
+                  >
+                    Open
+                  </button>
+                ) : (
+                  // A fixed-width spacer so the counts line up whether or not a row is
+                  // drillable -- a ragged column reads as a rendering bug.
+                  <span aria-hidden className="w-[3.25rem] shrink-0" />
+                )}
+              </div>
             </li>
           );
         })}
@@ -277,6 +450,26 @@ export function MusicMagicView() {
     setCriteria((previous) => ({
       ...previous,
       albumIds: toggleIn(previous.albumIds, value),
+    }));
+
+  /**
+   * Adds or removes a folder, then prunes.
+   *
+   * `pruneRedundantFolders` is the library's own rule, called here rather than left to the
+   * server so the chip list and the live candidate count reflect what will ACTUALLY be
+   * stored. Without it, ticking a parent after its child would leave the child showing as a
+   * separate pick that silently vanishes on save.
+   */
+  const toggleFolder = (value: string) =>
+    setCriteria((previous) => ({
+      ...previous,
+      folders: pruneRedundantFolders(toggleIn(previous.folders, value)),
+    }));
+
+  const removeFolder = (value: string) =>
+    setCriteria((previous) => ({
+      ...previous,
+      folders: previous.folders.filter((path) => path !== value),
     }));
 
   const generate = async () => {
@@ -479,14 +672,14 @@ export function MusicMagicView() {
             <p className="text-sm text-muted">Editing &ldquo;{loadedName}&rdquo;</p>
           )}
 
-          {/* Three pickers side by side above 1024px, stacked below. `max-lg:` only, so the
+          {/* Four pickers side by side above 1024px, stacked below. `max-lg:` only, so the
               desktop grid provably cannot regress.
 
               `items-start` matters now that each column is a card: without it the grid
-              stretches all three to match the tallest, so opening one would leave two tall
+              stretches all four to match the tallest, so opening one would leave three tall
               empty cards beside it. */}
-          <div className="grid grid-cols-3 items-start gap-3 max-lg:grid-cols-1">
-            {/* All three start collapsed. Three open pickers stacked on a phone was already
+          <div className="grid grid-cols-4 items-start gap-3 max-lg:grid-cols-1">
+            {/* All four start collapsed. Four open pickers stacked on a phone was already
                 why each caps its own scroll height; shut by default the builder fits one
                 screen, and the header count says which ones are in play. */}
             <CollapsibleCard
@@ -555,6 +748,26 @@ export function MusicMagicView() {
                 onToggle={toggleAlbum}
               />
             </CollapsibleCard>
+
+            {/* Folders. Last of the four because it is the odd one out: the other three
+                slice by tag, this one slices by where the files actually sit -- which is the
+                axis that catches the untagged corners of the library the tags cannot
+                express. */}
+            <CollapsibleCard
+              title="Folder"
+              headerAction={
+                <PickerHeaderAction
+                  count={criteria.folders.length}
+                  onClear={() => setCriteria((previous) => ({ ...previous, folders: [] }))}
+                />
+              }
+            >
+              <FolderPicker
+                selected={criteria.folders}
+                onToggle={toggleFolder}
+                onRemove={removeFolder}
+              />
+            </CollapsibleCard>
           </div>
 
         {/* --- target length and match mode --- */}
@@ -617,7 +830,7 @@ export function MusicMagicView() {
             />
             Match <em>any</em> criteria
             <span className="text-xs text-muted">
-              (off: genres AND artists AND albums must all match)
+              (off: genres AND artists AND albums AND folders must all match)
             </span>
           </label>
         </div>

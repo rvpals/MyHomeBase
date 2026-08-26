@@ -6,6 +6,7 @@ import {
   createStudentSchema,
   enrollStudentsSchema,
   saveAttendanceSchema,
+  studentIdsSchema,
   updateClassSchema,
   updateStudentActionSchema,
   updateStudentSchema,
@@ -22,6 +23,9 @@ import {
 import type {
   AttendanceActionTally,
   AttendanceClass,
+  AttendanceDetailCell,
+  AttendanceDetailReport,
+  AttendanceDetailRow,
   AttendanceEntry,
   AttendanceRecord,
   AttendanceReport,
@@ -66,6 +70,21 @@ export function updateStudent(
 export function deleteStudent(repo: AttendanceRepository, id: number): void {
   requireStudent(repo, id);
   repo.deleteStudent(id);
+}
+
+/**
+ * Deletes a whole selection of students at once, returning how many rows went.
+ *
+ * Unlike `deleteStudent`, a missing id is **not** an error: a stale selection
+ * (the row was deleted in another tab first) shouldn't fail the rest of the
+ * batch. Ids are de-duplicated so the count reflects rows removed rather than
+ * ids submitted. Enrollments go with each student; saved attendance entries stay,
+ * for the same reason single deletion leaves them — a past register must keep
+ * reading the way it did when it was taken.
+ */
+export function deleteStudents(repo: AttendanceRepository, ids: number[]): number {
+  const validated = studentIdsSchema.parse(ids);
+  return repo.deleteStudents([...new Set(validated)]);
 }
 
 // ---------------------------------------------------------------------------
@@ -494,6 +513,81 @@ export function listSessionsForClass(
  */
 export function listRecordDatesForClass(repo: AttendanceRepository, classId: number): string[] {
   return [...new Set(listSessionsForClass(repo, classId).map((s) => s.attendanceDate))];
+}
+
+/**
+ * The whole-term grid for one class: a row per student, a column per date.
+ *
+ * Two decisions worth knowing, both of which the shape depends on:
+ *
+ * 1. **One column per date, carrying that day's LATEST session.** A class can be
+ *    registered more than once a day (migration 0049 dropped the unique index
+ *    that used to make a save overwrite the day), so a date can hold several
+ *    sessions. Taking the latest matches `getAttendanceReport`'s rule for
+ *    "today"; the brief format is where a specific session is still reachable.
+ *
+ * 2. **Rows come from the sessions, not the current roster.** A student who has
+ *    since been unenrolled still attended the days they attended, and a report
+ *    must keep reading the way it did when it was printed — the same reasoning
+ *    that makes `studentName` a stored value rather than a live lookup.
+ *
+ * A student with no entry in a given session gets a cell with **no status**, not
+ * `absent`: `saveAttendance` writes a row for every enrolled student precisely so
+ * those two stay distinguishable.
+ */
+export function buildAttendanceDetailReport(
+  repo: AttendanceRepository,
+  classId: number,
+): AttendanceDetailReport {
+  const attendanceClass = requireClass(repo, classId);
+  const records = repo.listAttendanceRecordsForClass(classId);
+
+  // The latest session per date. The repository returns oldest first, so a plain
+  // overwrite as we walk leaves the newest of each day in place.
+  const latestByDate = new Map<string, AttendanceRecord>();
+  for (const record of records) latestByDate.set(record.attendanceDate, record);
+
+  const dates = [...latestByDate.keys()].sort();
+
+  // Every student seen in any of the reported sessions, with the name from the
+  // most recent session that carried them -- a renamed student reads as their
+  // current name rather than flipping between spellings across the row.
+  const namesByStudentId = new Map<number, string>();
+  for (const date of dates) {
+    for (const entry of latestByDate.get(date)?.entries ?? []) {
+      namesByStudentId.set(entry.studentId, entry.studentName);
+    }
+  }
+
+  const rows: AttendanceDetailRow[] = [...namesByStudentId.entries()]
+    .map(([studentId, studentName]) => {
+      const cells: AttendanceDetailCell[] = dates.map((date) => {
+        const entry = latestByDate
+          .get(date)
+          ?.entries.find((candidate) => candidate.studentId === studentId);
+        // No entry -> no status. Not enrolled that day, which is not absence.
+        return entry === undefined
+          ? { actions: [] }
+          : { status: entry.status, actions: entry.actions };
+      });
+
+      return {
+        studentId,
+        studentName,
+        cells,
+        presentCount: cells.filter((cell) => cell.status === "present").length,
+        absentCount: cells.filter((cell) => cell.status === "absent").length,
+      };
+    })
+    // Same collation as every other student list on this module's screens.
+    .sort((a, b) => a.studentName.localeCompare(b.studentName, undefined, { sensitivity: "base" }));
+
+  return {
+    classId,
+    className: attendanceClass.name,
+    dates,
+    rows,
+  };
 }
 
 // ---------------------------------------------------------------------------

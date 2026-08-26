@@ -4,6 +4,14 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { listModuleSettingsFor, saveModuleSettings } from "@/lib/module-settings";
+import {
+  getModuleTexture,
+  removeModuleTextureImage,
+  saveModuleTextureSettings,
+  setModuleTextureImage,
+  type ModuleTextureMode,
+  type ModuleTextureSettings,
+} from "@/lib/module-texture";
 import { getModuleBySlug } from "@/lib/modules";
 import {
   addToPlaylistSchema,
@@ -281,6 +289,9 @@ export interface ScanStatusView {
 /** The current (or a specific) scan's progress, for polling. */
 export async function getScanStatusAction(scanRunId?: number): Promise<ScanStatusView | undefined> {
   await requireUser();
+  // Reconcile first: a scan killed with its process left a 'running' row that would
+  // otherwise win getActiveScanRun() forever and show as frozen.
+  deps.musicRepo.failAbandonedScanRuns();
   const run =
     scanRunId === undefined
       ? deps.musicRepo.getActiveScanRun()
@@ -309,6 +320,7 @@ export async function getScanStatusAction(scanRunId?: number): Promise<ScanStatu
 /** The last few scans, so the screen can show history rather than only "now". */
 export async function listRecentScansAction(limit = 5): Promise<ScanStatusView[]> {
   await requireUser();
+  deps.musicRepo.failAbandonedScanRuns();
   return deps.musicRepo.listRecentScanRuns(limit).map((run) => ({
     id: run.id,
     status: run.status,
@@ -567,4 +579,94 @@ export async function reorderPlaylistAction(input: {
   const parsed = reorderPlaylistSchema.parse(input);
   deps.musicRepo.reorderPlaylist(parsed.playlistId, parsed.orderedPlaylistTrackIds);
   return { ok: true };
+}
+
+// --- background picture (migrations/0064) ---------------------------------------
+//
+// Gated on `requireUser`, not on admin, deliberately: it matches
+// `saveMusicSettingsAction` directly above, and everything on this module's
+// Configuration screen is reachable by anyone who can reach the screen. Making
+// this one control stricter than the toggles beside it would be surprising rather
+// than safer. (The dashboard texture IS admin-only, because it's in
+// Administration -- the gate follows the screen, not the feature.)
+
+export interface MusicTextureResult {
+  ok: boolean;
+  error?: string;
+}
+
+/** Replaces the module's background picture. */
+export async function saveMusicTextureImageAction(formData: FormData): Promise<MusicTextureResult> {
+  try {
+    await requireUser();
+    const file = formData.get("image");
+    if (!(file instanceof File)) return { ok: false, error: "No image was received." };
+
+    setModuleTextureImage(deps.moduleTextureRepo, MUSIC_LIBRARY_SLUG, {
+      // Cast because the value came off a File and is unvalidated until the lib
+      // schema narrows it to the allowed set.
+      mimeType: file.type as never,
+      base64Data: Buffer.from(await file.arrayBuffer()).toString("base64"),
+    });
+    // "layout" because the picture is applied by the module shell, which wraps
+    // every section rather than only the form that changed it.
+    revalidatePath("/modules/music-library", "layout");
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not save the image.",
+    };
+  }
+}
+
+/** Clears the picture, returning the module to the theme's flat paper. */
+export async function removeMusicTextureImageAction(): Promise<MusicTextureResult> {
+  try {
+    await requireUser();
+    removeModuleTextureImage(deps.moduleTextureRepo, MUSIC_LIBRARY_SLUG);
+    revalidatePath("/modules/music-library", "layout");
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not remove the image.",
+    };
+  }
+}
+
+/** Saves opacity / mode / blur, leaving the picture in place. */
+export async function saveMusicTextureSettingsAction(
+  input: ModuleTextureSettings,
+): Promise<MusicTextureResult> {
+  try {
+    await requireUser();
+    saveModuleTextureSettings(deps.moduleTextureRepo, MUSIC_LIBRARY_SLUG, input);
+    revalidatePath("/modules/music-library", "layout");
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not save the settings.",
+    };
+  }
+}
+
+/** The current picture settings, for the configuration screen to edit. */
+export async function getMusicTextureAction(): Promise<{
+  hasImage: boolean;
+  imageVersion: string;
+  opacity: number;
+  mode: ModuleTextureMode;
+  blur: number;
+}> {
+  await requireUser();
+  const texture = getModuleTexture(deps.moduleTextureRepo, MUSIC_LIBRARY_SLUG);
+  return {
+    hasImage: texture.hasImage,
+    imageVersion: texture.updatedAt,
+    opacity: texture.opacity,
+    mode: texture.mode,
+    blur: texture.blur,
+  };
 }

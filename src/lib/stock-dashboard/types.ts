@@ -1,19 +1,24 @@
 /**
  * Every widget the Stocks & ETFs dashboard can show, in its default order.
  *
- * Two are deliberately absent. Daily Glance (`glance`) lives at the top of the
- * home landing screen now, not on this dashboard. Refresh & snapshot (`refresh`)
- * stopped being a widget at all: it's the icon beside the section heading, which
- * is always available and so has nothing to configure. A saved layout still
- * naming either is dropped by `resolveDashboardWidgets`, which already ignores
- * unknown ids — that's why neither retirement needed a migration.
+ * Several ids are deliberately absent. Daily Glance (`glance`) lives at the top of
+ * the home landing screen now, not on this dashboard. Refresh & snapshot
+ * (`refresh`) stopped being a widget at all: it's the icon beside the section
+ * heading, which is always available and so has nothing to configure. And the
+ * three per-chart allocation ids (`allocationType`, `allocationStrategy`,
+ * `allocationSector`) became the single `allocation` card, which draws all three
+ * splits together — they were never useful apart, and one card is one collapse.
+ *
+ * A saved layout still naming any of them is dropped by
+ * `resolveDashboardWidgets`, which ignores unknown ids and appends genuinely new
+ * ones as visible — that's why none of these retirements needed a migration. The
+ * one visible consequence: a layout that hid only *some* allocation charts gets
+ * all three back, because the widget list can no longer express that.
  */
 export const DASHBOARD_WIDGET_IDS = [
   "summary",
   "statistics",
-  "allocationType",
-  "allocationStrategy",
-  "allocationSector",
+  "allocation",
 ] as const;
 
 export type DashboardWidgetId = (typeof DASHBOARD_WIDGET_IDS)[number];
@@ -29,28 +34,19 @@ export const DASHBOARD_WIDGET_INFO: Record<DashboardWidgetId, DashboardWidgetInf
   summary: {
     id: "summary",
     label: "Portfolio Summary",
-    description: "Total value, today's move, the value-over-time chart and the snapshot history.",
+    description:
+      "Total value and today's move, over a Portfolio History child card holding the value-over-time chart and the snapshot table.",
   },
   statistics: {
     id: "statistics",
     label: "Statistics",
     description: "Week/month/year to date, position and transaction counts, cost basis, income.",
   },
-  allocationType: {
-    id: "allocationType",
-    label: "Allocation by type",
-    description: "Value split across Stock / ETF / Bond / other.",
-  },
-  allocationStrategy: {
-    id: "allocationStrategy",
-    label: "Allocation by strategy",
-    description: "Value split across the broker's strategy buckets, e.g. US Large Cap.",
-  },
-  allocationSector: {
-    id: "allocationSector",
-    label: "Allocation by sector",
+  allocation: {
+    id: "allocation",
+    label: "Portfolio Allocation",
     description:
-      "Value split across market sectors, e.g. Technology. Sectors are looked up per ticker on Refresh All; funds have none and are grouped as 'ETFs & funds'.",
+      "One card holding all three splits of the same total: by type (Stock / ETF / Bond / other), by the broker's strategy buckets, and by market sector. Sectors are looked up per ticker on Refresh All; a fund has none and is grouped as 'ETFs & funds'.",
   },
 };
 

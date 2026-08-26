@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/button";
+import { TokenPicker } from "@/components/token-picker";
 import type { JournalEntry } from "@/lib/journal";
 import {
   updateJournalEntryAction,
@@ -17,10 +18,16 @@ const INPUT_CLASS =
 // aggregate, so anything not resubmitted would be dropped.
 export function JournalEntryEditForm({
   entry,
+  categoryOptions,
+  tagOptions,
   onCancel,
   onSaved,
 }: {
   entry: JournalEntry;
+  /** Every known category name, for the picker's dropdown. */
+  categoryOptions: string[];
+  /** Every known tag name, for the picker's dropdown. */
+  tagOptions: string[];
   onCancel: () => void;
   onSaved: () => void;
 }) {
@@ -28,10 +35,9 @@ export function JournalEntryEditForm({
   const [time, setTime] = useState(entry.time);
   const [title, setTitle] = useState(entry.title);
   const [placeName, setPlaceName] = useState(entry.placeName);
-  // Categories are comma-separated and tags whitespace-separated, matching the
-  // delimiters the create form and the CSV importer use.
-  const [categoriesText, setCategoriesText] = useState(entry.categories.join(", "));
-  const [tagsText, setTagsText] = useState(entry.tags.join(" "));
+  // Held as arrays, the shape the pickers and the action both speak.
+  const [categories, setCategories] = useState<string[]>(entry.categories);
+  const [tags, setTags] = useState<string[]>(entry.tags);
   const [content, setContent] = useState(entry.content);
   const [isPinned, setIsPinned] = useState(entry.isPinned);
   const [locations, setLocations] = useState<JournalLocationInput[]>(
@@ -55,8 +61,8 @@ export function JournalEntryEditForm({
         title,
         content,
         placeName,
-        categoriesText,
-        tagsText,
+        categories,
+        tags,
         locations,
         // Carried through untouched unless the user asks to remove it.
         weather: removeWeather ? undefined : entry.weather,
@@ -97,17 +103,24 @@ export function JournalEntryEditForm({
           <span className="mb-1 block font-medium text-ink">Place name</span>
           <input type="text" value={placeName} onChange={(event) => setPlaceName(event.target.value)} className={INPUT_CLASS} />
         </label>
-        <label className="block text-sm">
-          <span className="mb-1 block font-medium text-ink">Categories</span>
-          <input type="text" value={categoriesText} onChange={(event) => setCategoriesText(event.target.value)} className={INPUT_CLASS} />
-          <span className="mt-1 block text-xs text-muted">Comma-separated</span>
-        </label>
+        <TokenPicker
+          label="Categories"
+          value={categories}
+          onChange={setCategories}
+          options={categoryOptions}
+          allowCreate
+          createPlaceholder="New category, e.g. FAMILY"
+        />
 
-        <label className="block text-sm sm:col-span-2">
-          <span className="mb-1 block font-medium text-ink">Tags</span>
-          <input type="text" value={tagsText} onChange={(event) => setTagsText(event.target.value)} className={INPUT_CLASS} />
-          <span className="mt-1 block text-xs text-muted">Space-separated</span>
-        </label>
+        <TokenPicker
+          className="sm:col-span-2"
+          label="Tags"
+          value={tags}
+          onChange={setTags}
+          options={tagOptions}
+          allowCreate
+          createPlaceholder="New tag, e.g. Museum"
+        />
 
         <label className="block text-sm sm:col-span-2">
           <span className="mb-1 block font-medium text-ink">Content</span>

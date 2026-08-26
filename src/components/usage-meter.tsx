@@ -5,6 +5,12 @@
 //
 // Pure presentation: the caller formats the values, because only it knows
 // whether the unit is bytes, rows or dollars.
+//
+// The track itself is `Progress3D` — this component is the tile around it (the
+// label row, the used/total figure, the caption). It had its own flat bar until
+// `Progress3D` existed; there's no reason for two progress tracks in the app.
+
+import { Progress3D } from "@/components/progress-3d";
 
 export interface UsageMeterProps {
   /** Tile label, e.g. "RAM Used / Total". */
@@ -47,18 +53,19 @@ export function UsageMeter({
       </p>
 
       {/* The track is the reader's comparison channel; the percentage above is the
-          text relief, so the fill never has to carry the value on its own. */}
-      <div
-        className="mt-3 h-2 overflow-hidden rounded-full bg-line"
-        role="meter"
-        aria-label={label}
-        aria-valuenow={Math.round(fraction * 100)}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuetext={`${formatValue(used)} of ${formatValue(total)}`}
-      >
-        <div className="h-full rounded-full bg-brass" style={{ width: `${fraction * 100}%` }} />
-      </div>
+          text relief, so the fill never has to carry the value on its own.
+
+          `formatValue` here feeds the *accessible* readout, not a visible one —
+          the tile already prints both figures above, so `showValue` stays off
+          and a screen reader still gets "6.1 GB of 32 GB" rather than "19%". */}
+      <Progress3D
+        value={total > 0 ? used : 0}
+        max={total > 0 ? total : 100}
+        size="sm"
+        ariaLabel={label}
+        formatValue={() => `${formatValue(used)} of ${formatValue(total)}`}
+        className="mt-3"
+      />
 
       {caption ? <p className="mt-2 text-xs text-muted">{caption}</p> : null}
     </div>

@@ -12,6 +12,7 @@ import {
   createStudentAction,
   deleteClass,
   deleteStudent,
+  deleteStudents,
   // Aliased: this file already exports server actions called
   // `deleteStudentAction` / `updateStudentAction`, which act on a *student*. The
   // use-cases below act on a student *action* — an unfortunate collision of two
@@ -86,6 +87,28 @@ export async function deleteStudentAction(id: number): Promise<ActionResult> {
     return { ok: true };
   } catch (error) {
     return { ok: false, error: toMessage(error, "Failed to delete the student.") };
+  }
+}
+
+export interface BulkActionResult extends ActionResult {
+  /** How many rows the write actually touched. */
+  count?: number;
+}
+
+/**
+ * Deletes a ticked selection from the roster.
+ *
+ * Separate from `deleteStudentAction` rather than looped over it: one write and
+ * one revalidate for the whole selection, and one transaction in the repository,
+ * so a partial failure can't leave half the selection gone.
+ */
+export async function deleteStudentsAction(ids: number[]): Promise<BulkActionResult> {
+  try {
+    const count = deleteStudents(deps.attendanceRepo, ids);
+    revalidateAttendance();
+    return { ok: true, count };
+  } catch (error) {
+    return { ok: false, error: toMessage(error, "Failed to delete the students.") };
   }
 }
 

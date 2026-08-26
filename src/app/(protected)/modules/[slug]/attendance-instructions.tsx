@@ -28,12 +28,22 @@ export function AttendanceInstructions({ section }: { section: AttendanceSection
 
     case "rosters":
       return (
-        <p className="text-sm text-muted">
-          Add students to the school-wide roster here. Only a first and last name are required. To
-          put several students in a class at once, tick them in the grid and use{" "}
-          <strong className="text-ink">Add to class</strong> in the toolbar. A student can be in as
-          many classes as you like.
-        </p>
+        <div className="flex flex-col gap-2 text-sm text-muted">
+          <p>
+            Add students to the school-wide roster here. Only a first and last name are required.
+            To put several students in a class at once, tick them in the grid and use{" "}
+            <strong className="text-ink">Add to class</strong> in the toolbar. A student can be in
+            as many classes as you like.
+          </p>
+          <p>
+            <strong className="text-ink">Import a roster (CSV)</strong> takes a school export
+            straight from the file. A single <em>Name</em> column holding{" "}
+            <span className="font-mono text-xs">Last,First Middle</span> is split on the first
+            comma, so a multi-word surname survives; blank separator lines between students are
+            ignored. Name the class on the form and it is created for you — or reused if you
+            already have one by that name — with everyone imported enrolled into it.
+          </p>
+        </div>
       );
 
     case "classes":

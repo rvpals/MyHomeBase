@@ -9,8 +9,11 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import type {
   AttendanceClass,
+  AttendanceDetailReport,
+  AttendanceDetailRow,
   AttendanceEntry,
   AttendanceReport,
+  AttendanceReportFormat,
   AttendanceSessionSummary,
 } from "@/lib/attendance";
 
@@ -21,15 +24,21 @@ const LABEL_CLASS = "text-xs font-medium uppercase tracking-wide text-muted";
 
 export function AttendanceReportView({
   classes,
+  format,
   report,
+  detailReport,
   selectedClassId,
   selectedDate,
   recordedDates,
   sessionsOnDate,
 }: {
   classes: AttendanceClass[];
-  /** Undefined when the class/date pair has no saved attendance. */
+  /** Which shape to render. The date/session pickers only apply to "brief". */
+  format: AttendanceReportFormat;
+  /** Undefined when the class/date pair has no saved attendance, or on "detail". */
   report?: AttendanceReport;
+  /** The whole-term grid. Only loaded for the "detail" format. */
+  detailReport?: AttendanceDetailReport;
   selectedClassId?: number;
   selectedDate: string;
   /** The dates this class has records for, newest first. */
@@ -48,11 +57,15 @@ export function AttendanceReportView({
     nextClassId: number | undefined,
     nextDate: string,
     nextRecordId?: number,
+    nextFormat: AttendanceReportFormat = format,
   ) {
     const params = new URLSearchParams();
     if (nextClassId) params.set("classId", String(nextClassId));
     params.set("date", nextDate);
     if (nextRecordId) params.set("recordId", String(nextRecordId));
+    // Omitted when brief so the default shape keeps a clean, shareable URL —
+    // ?format=brief and no param at all mean the same thing.
+    if (nextFormat !== "brief") params.set("format", nextFormat);
     router.push(`/modules/attendance/report?${params.toString()}`);
   }
 
@@ -78,18 +91,42 @@ export function AttendanceReportView({
         </label>
 
         <label className="flex flex-col gap-1">
-          <span className={LABEL_CLASS}>Date</span>
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(event) => go(selectedClassId, event.target.value)}
+          <span className={LABEL_CLASS}>Format</span>
+          <select
+            value={format}
+            onChange={(event) =>
+              go(
+                selectedClassId,
+                selectedDate,
+                undefined,
+                event.target.value as AttendanceReportFormat,
+              )
+            }
             className={INPUT_CLASS}
-          />
+          >
+            <option value="brief">Brief</option>
+            <option value="detail">Detail</option>
+          </select>
         </label>
+
+        {/* The date, session and jump-to pickers belong to the brief sheet: the
+            detail grid spans every recorded date, so narrowing to one would
+            leave it with a single column. */}
+        {format === "brief" && (
+          <label className="flex flex-col gap-1">
+            <span className={LABEL_CLASS}>Date</span>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(event) => go(selectedClassId, event.target.value)}
+              className={INPUT_CLASS}
+            />
+          </label>
+        )}
 
         {/* Only shown when the day actually holds more than one register —
             a picker with a single option is noise. */}
-        {sessionsOnDate.length > 1 && (
+        {format === "brief" && sessionsOnDate.length > 1 && (
           <label className="flex flex-col gap-1">
             <span className={LABEL_CLASS}>Session</span>
             <select
@@ -110,7 +147,7 @@ export function AttendanceReportView({
           </label>
         )}
 
-        {recordedDates.length > 0 && (
+        {format === "brief" && recordedDates.length > 0 && (
           <label className="flex flex-col gap-1">
             <span className={LABEL_CLASS}>Days with attendance</span>
             <select
@@ -128,13 +165,21 @@ export function AttendanceReportView({
           </label>
         )}
 
-        {report && <Button onClick={() => window.print()}>Print</Button>}
+        {(report ?? detailReport) && <Button onClick={() => window.print()}>Print</Button>}
       </div>
 
       {!selectedClassId ? (
         <p className="rounded-xl border border-dashed border-line p-8 text-center text-sm text-muted">
           Pick a class to see its report.
         </p>
+      ) : format === "detail" ? (
+        !detailReport || detailReport.dates.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-line p-8 text-center text-sm text-muted">
+            No attendance has been taken for this class yet.
+          </p>
+        ) : (
+          <DetailSheet report={detailReport} />
+        )
       ) : !report ? (
         <p className="rounded-xl border border-dashed border-line p-8 text-center text-sm text-muted">
           No attendance was taken for this class on {selectedDate}.
@@ -245,5 +290,140 @@ function NameList({ title, entries }: { title: string; entries: AttendanceEntry[
         </ol>
       )}
     </section>
+  );
+}
+
+/**
+ * Shortens an ISO date for a column header: `2026-08-25` -> `8/25`.
+ *
+ * Hand-sliced rather than `toLocaleDateString`, which would need a Date and
+ * therefore a timezone -- and an attendance date is a calendar day, not an
+ * instant, so constructing one is how a date drifts by one. The year is dropped
+ * because a column per day already runs wide; it stays in the row heading and
+ * the tooltip.
+ */
+function shortDate(isoDate: string): string {
+  const [, month, day] = isoDate.split("-");
+  if (month === undefined || day === undefined) return isoDate;
+  return `${Number(month)}/${Number(day)}`;
+}
+
+/**
+ * The whole-term grid: a row per student, a column per date.
+ *
+ * NARROW SCREENS: the table cannot reflow -- a term is genuinely wider than a
+ * phone -- so it scrolls horizontally inside its own container with the name
+ * column pinned left via `sticky`. That keeps the thing you need to read a row
+ * (whose row it is) on screen while the dates move under it, which is what makes
+ * the grid usable at any width without a second component.
+ */
+function DetailSheet({ report }: { report: AttendanceDetailReport }) {
+  return (
+    <div className="print-sheet rounded-xl border border-line p-6 max-lg:p-4">
+      <header>
+        <h3 className="font-display text-2xl text-ink">{report.className}</h3>
+        <p className="mt-1 text-sm text-muted">
+          Attendance across {report.dates.length}{" "}
+          {report.dates.length === 1 ? "day" : "days"} · {report.rows.length}{" "}
+          {report.rows.length === 1 ? "student" : "students"}
+          {report.dates.length > 0 && ` · ${report.dates[0]} to ${report.dates[report.dates.length - 1]}`}
+        </p>
+      </header>
+
+      {/* `-mx-*` lets the scroll area reach the card's edges, so a wide grid uses
+          the full width rather than scrolling inside a padded box. */}
+      <div className="mt-4 -mx-6 overflow-x-auto max-lg:-mx-4">
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-line">
+              {/* `left-0` pairs with the body cells below; both need the same
+                  offset or the pinned column and its header separate. */}
+              <th className="sticky left-0 z-10 bg-paper px-6 py-2 text-left align-bottom font-medium text-muted max-lg:px-4">
+                Student
+              </th>
+              {report.dates.map((date) => (
+                <th
+                  key={date}
+                  title={date}
+                  scope="col"
+                  className="whitespace-nowrap px-2 py-2 text-center font-mono text-xs font-medium text-muted"
+                >
+                  {shortDate(date)}
+                </th>
+              ))}
+              <th className="whitespace-nowrap px-3 py-2 text-right font-medium text-muted">
+                P / A
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {report.rows.map((row) => (
+              <DetailRow key={row.studentId} row={row} dates={report.dates} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="mt-4 text-xs text-muted">
+        <span className="font-mono font-semibold text-ink">P</span> present ·{" "}
+        <span className="font-mono font-semibold text-ink">A</span> absent ·{" "}
+        <span className="font-mono text-muted">&mdash;</span> not enrolled that day.
+        Any further codes are the actions noted that day; a day registered more than
+        once shows its latest session.
+      </p>
+    </div>
+  );
+}
+
+function DetailRow({ row, dates }: { row: AttendanceDetailRow; dates: string[] }) {
+  return (
+    <tr className="border-b border-line">
+      <th
+        scope="row"
+        className="sticky left-0 z-10 bg-paper px-6 py-1.5 text-left font-normal text-ink max-lg:px-4"
+      >
+        <span className="block max-w-[12rem] truncate">{row.studentName}</span>
+      </th>
+
+      {row.cells.map((cell, index) => (
+        <td
+          key={dates[index]}
+          className="whitespace-nowrap px-2 py-1.5 text-center align-middle"
+        >
+          {cell.status === undefined ? (
+            // Not enrolled that day. Deliberately not an A -- see
+            // AttendanceDetailCell.
+            <span className="text-muted" title="Not enrolled on this date">
+              &mdash;
+            </span>
+          ) : (
+            <span className="inline-flex items-baseline gap-1">
+              {/* A letter, not a colored dot: this sheet gets printed, often in
+                  black and white, where a tint carries nothing. */}
+              <span
+                className={`font-mono text-xs font-semibold ${
+                  cell.status === "present" ? "text-ink" : "text-red-400"
+                }`}
+              >
+                {cell.status === "present" ? "P" : "A"}
+              </span>
+              {cell.actions.map((action) => (
+                <span
+                  key={action.actionId}
+                  title={action.name}
+                  className="rounded bg-brass-soft px-1 font-mono text-[10px] font-semibold text-brass-dark"
+                >
+                  {action.code}
+                </span>
+              ))}
+            </span>
+          )}
+        </td>
+      ))}
+
+      <td className="whitespace-nowrap px-3 py-1.5 text-right font-mono text-xs text-muted">
+        {row.presentCount} / {row.absentCount}
+      </td>
+    </tr>
   );
 }

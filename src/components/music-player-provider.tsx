@@ -83,6 +83,8 @@ export interface MusicQueueActions {
   shuffleQueue: () => Promise<QueueViewModel>;
   removeQueueEntry: (entryId: number) => Promise<QueueViewModel>;
   clearQueue: () => Promise<QueueViewModel>;
+  /** Drops the cursor, keeping the entries -- what `stop` persists. */
+  closeQueue: () => Promise<QueueViewModel>;
   setRepeatMode: (mode: RepeatMode) => Promise<QueueViewModel>;
 }
 
@@ -308,12 +310,27 @@ export function MusicPlayerProvider({
     [queue, startTrack],
   );
 
+  /**
+   * Play/pause -- and the way back in after the bar has been dismissed.
+   *
+   * With no current track the queue may still hold entries (`closeQueue` drops the
+   * cursor and keeps the rows), so pressing play starts the first one rather than doing
+   * nothing. That matches a freshly loaded queue, where the first entry is also where
+   * play begins.
+   */
   const toggle = useCallback(() => {
     const audio = audioRef.current;
-    if (audio === null || current === undefined) return;
+    if (audio === null) return;
+
+    if (current === undefined) {
+      const first = queue?.rows.find((row) => row.isStreamable);
+      if (first !== undefined) playEntry(first.entryId);
+      return;
+    }
+
     if (audio.paused) void audio.play().catch(() => undefined);
     else audio.pause();
-  }, [current]);
+  }, [current, playEntry, queue]);
 
   /**
    * Steps the queue. The SERVER decides where to -- it owns the repeat mode and the
@@ -439,6 +456,10 @@ export function MusicPlayerProvider({
     setIsPlaying(false);
     setPosition(0);
     setDuration(0);
+    // Persisted, not just dropped from state: the mount effect above restores whatever
+    // `currentEntryId` points at, so without this the bar came back on the next page
+    // load and the dismissal looked like it had been ignored.
+    void actionsRef.current.closeQueue().then(setQueue).catch(() => undefined);
   }, []);
 
   const value = useMemo<MusicPlayerState>(

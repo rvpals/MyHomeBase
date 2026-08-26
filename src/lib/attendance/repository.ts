@@ -134,6 +134,22 @@ const STUDENT_ACTION_COLUMNS = `
 // name as the tie-break so two actions left at the default 0 are still stable.
 const STUDENT_ACTION_ORDER = "ORDER BY sequence, name COLLATE NOCASE, id";
 
+// SQLite caps how many parameters one statement may bind (999 on older builds),
+// so a bulk delete over a big selection is issued in chunks.
+const ID_CHUNK_SIZE = 500;
+
+function chunkIds(ids: number[]): number[][] {
+  const chunks: number[][] = [];
+  for (let index = 0; index < ids.length; index += ID_CHUNK_SIZE) {
+    chunks.push(ids.slice(index, index + ID_CHUNK_SIZE));
+  }
+  return chunks;
+}
+
+function placeholders(count: number): string {
+  return new Array(count).fill("?").join(", ");
+}
+
 // The real repository. Swap the database without touching any use-case.
 export class SqliteAttendanceRepository implements AttendanceRepository {
   constructor(private db: Database.Database) {}
@@ -195,6 +211,28 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
       this.db.prepare("DELETE FROM att_students WHERE id = ?").run(studentId);
     });
     removeStudent(id);
+  }
+
+  deleteStudents(ids: number[]): number {
+    // One transaction for the whole selection, so a failure part-way through
+    // can't leave some students gone and others still enrolled. Chunked because
+    // SQLite caps the number of bound parameters in a single statement.
+    const removeStudents = this.db.transaction((studentIds: number[]) => {
+      let deleted = 0;
+      for (const chunk of chunkIds(studentIds)) {
+        const marks = placeholders(chunk.length);
+        this.db
+          .prepare(`DELETE FROM att_class_enrollments WHERE student_id IN (${marks})`)
+          .run(chunk);
+        // `changes` counts students actually removed, so an id that no longer
+        // exists doesn't inflate the total the caller reports.
+        deleted += this.db
+          .prepare(`DELETE FROM att_students WHERE id IN (${marks})`)
+          .run(chunk).changes;
+      }
+      return deleted;
+    });
+    return removeStudents(ids);
   }
 
   // -------------------------------------------------------------------------
@@ -472,6 +510,89 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
       .prepare(`SELECT ${RECORD_COLUMNS} FROM att_attendance_records WHERE id = ?`)
       .get(recordId) as RecordRow | undefined;
     return row ? this.toRecord(row) : undefined;
+  }
+
+  /**
+   * Every session for a class with its entries, oldest first.
+   *
+   * Three queries total -- records, then all their entries, then all their
+   * actions -- rather than `toRecord`'s two-per-record. The detail report reads a
+   * whole term at once, where the per-record path would be hundreds of round
+   * trips. Grouped in JS afterwards, which is cheap next to the trips saved.
+   *
+   * Oldest first because that is the order the grid's date columns run in; the
+   * per-day pickers want newest first and keep their own ordering.
+   */
+  listAttendanceRecordsForClass(classId: number): AttendanceRecord[] {
+    const recordRows = this.db
+      .prepare(
+        `SELECT ${RECORD_COLUMNS}
+         FROM att_attendance_records
+         WHERE class_id = ?
+         ORDER BY attendance_date, recorded_at, id`,
+      )
+      .all(classId) as RecordRow[];
+    if (recordRows.length === 0) return [];
+
+    // Same ORDER BY as `loadEntries`, with the record id leading so one pass
+    // groups them. Keyed on class_id rather than an id list, so the SQL is a
+    // constant string however many sessions there are.
+    const entryRows = this.db
+      .prepare(
+        `SELECT e.attendance_record_id, e.student_id, e.student_name, e.status
+         FROM att_attendance_entries e
+         JOIN att_attendance_records r ON r.id = e.attendance_record_id
+         WHERE r.class_id = ?
+         ORDER BY e.attendance_record_id, e.student_name COLLATE NOCASE, e.student_id`,
+      )
+      .all(classId) as (EntryRow & { attendance_record_id: number })[];
+
+    // LEFT JOIN on the catalog for the same reason `loadEntryActions` uses one:
+    // a deleted catalog row must not drop a recorded action off a past report.
+    const actionRows = this.db
+      .prepare(
+        `SELECT a.attendance_record_id, a.student_id, a.action_id, a.action_code, a.action_name
+         FROM att_attendance_entry_actions a
+         JOIN att_attendance_records r ON r.id = a.attendance_record_id
+         LEFT JOIN att_student_actions c ON c.id = a.action_id
+         WHERE r.class_id = ?
+         ORDER BY a.attendance_record_id, COALESCE(c.sequence, 0),
+                  a.action_name COLLATE NOCASE, a.id`,
+      )
+      .all(classId) as (EntryActionRow & { attendance_record_id: number })[];
+
+    // Keyed by "recordId:studentId" -- an action row is only meaningful against
+    // the entry in its own session.
+    const actionsByEntry = new Map<string, RecordedStudentAction[]>();
+    for (const row of actionRows) {
+      const key = `${row.attendance_record_id}:${row.student_id}`;
+      const actions = actionsByEntry.get(key) ?? [];
+      actions.push({ actionId: row.action_id, code: row.action_code, name: row.action_name });
+      actionsByEntry.set(key, actions);
+    }
+
+    const entriesByRecord = new Map<number, AttendanceEntry[]>();
+    for (const row of entryRows) {
+      const entries = entriesByRecord.get(row.attendance_record_id) ?? [];
+      entries.push({
+        studentId: row.student_id,
+        studentName: row.student_name,
+        status: row.status as AttendanceStatus,
+        actions: actionsByEntry.get(`${row.attendance_record_id}:${row.student_id}`) ?? [],
+      });
+      entriesByRecord.set(row.attendance_record_id, entries);
+    }
+
+    return recordRows.map((row) => ({
+      id: row.id,
+      classId: row.class_id,
+      className: row.class_name,
+      attendanceDate: row.attendance_date,
+      recordedAt: row.recorded_at,
+      sessionLabel: row.session_label,
+      recordedByUserId: row.recorded_by_user_id,
+      entries: entriesByRecord.get(row.id) ?? [],
+    }));
   }
 
   listAttendanceRecords(classId: number, attendanceDate: string): AttendanceRecord[] {

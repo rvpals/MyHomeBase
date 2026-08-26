@@ -3,6 +3,7 @@ import {
   MAX_TARGET_SECONDS,
   MIN_TARGET_SECONDS,
   magicCriteriaSchema,
+  magicFolderPathSchema,
   magicListIdSchema,
   magicListUpdateSchema,
   magicListWriteSchema,
@@ -16,6 +17,7 @@ describe("magicCriteriaSchema", () => {
       genres: ["Rock", "Pop"],
       artists: ["Michael Jackson", "Luther Vandross"],
       albumIds: [3, 7],
+      folders: ["Rock/Queen"],
       targetSeconds: 3600,
       matchAny: false,
       streamableOnly: true,
@@ -24,6 +26,7 @@ describe("magicCriteriaSchema", () => {
     expect(parsed.genres).toEqual(["Rock", "Pop"]);
     expect(parsed.artists).toEqual(["Michael Jackson", "Luther Vandross"]);
     expect(parsed.albumIds).toEqual([3, 7]);
+    expect(parsed.folders).toEqual(["Rock/Queen"]);
     expect(parsed.targetSeconds).toBe(3600);
   });
 
@@ -33,6 +36,7 @@ describe("magicCriteriaSchema", () => {
     expect(parsed.genres).toEqual([]);
     expect(parsed.artists).toEqual([]);
     expect(parsed.albumIds).toEqual([]);
+    expect(parsed.folders).toEqual([]);
     expect(parsed.targetSeconds).toBe(3600);
     expect(parsed.matchAny).toBe(false);
     // Defaults ON here, unlike the rest of the module -- see migrations/0057.
@@ -80,6 +84,52 @@ describe("magicCriteriaSchema", () => {
 
   it("rejects a non-array where a list is expected", () => {
     expect(() => magicCriteriaSchema.parse({ genres: "Rock" })).toThrow();
+  });
+
+  it("drops the empty path from folders, unlike genres and artists", () => {
+    // '' is the library ROOT here, not an untagged group -- so it restricts nothing and
+    // must not survive as a criterion that quietly means "everything".
+    expect(magicCriteriaSchema.parse({ folders: [""] }).folders).toEqual([]);
+  });
+
+  it("prunes a folder already covered by a picked parent", () => {
+    const parsed = magicCriteriaSchema.parse({ folders: ["Rock", "Rock/Queen"] });
+    expect(parsed.folders).toEqual(["Rock"]);
+  });
+
+  it("normalises a trailing slash on a folder", () => {
+    expect(magicCriteriaSchema.parse({ folders: ["Rock/Queen/"] }).folders).toEqual([
+      "Rock/Queen",
+    ]);
+  });
+
+  it("normalises backslashes, so a Windows-shaped path matches the stored paths", () => {
+    expect(magicCriteriaSchema.parse({ folders: ["Rock\\Queen"] }).folders).toEqual([
+      "Rock/Queen",
+    ]);
+  });
+
+  it("rejects a folder path beyond the sane nesting depth", () => {
+    expect(() => magicCriteriaSchema.parse({ folders: ["x".repeat(1001)] })).toThrow();
+  });
+
+  it("rejects more folders than an IN clause should carry", () => {
+    const tooMany = Array.from({ length: 501 }, (_, index) => `Folder ${index}`);
+    expect(() => magicCriteriaSchema.parse({ folders: tooMany })).toThrow();
+  });
+});
+
+describe("magicFolderPathSchema", () => {
+  it("defaults to the root, so a picker with no parent starts at the top", () => {
+    expect(magicFolderPathSchema.parse(undefined)).toBe("");
+  });
+
+  it("normalises a path the same way a stored criterion is normalised", () => {
+    expect(magicFolderPathSchema.parse("Rock\\Queen/")).toBe("Rock/Queen");
+  });
+
+  it("rejects a non-string", () => {
+    expect(() => magicFolderPathSchema.parse(42)).toThrow();
   });
 });
 

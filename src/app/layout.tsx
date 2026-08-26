@@ -190,21 +190,27 @@ export default async function RootLayout({
             href={image.href}
           />
         ))}
-        {/* Applies the stored top-bar state before first paint. Without it the
-            page renders padded for the bar and then jumps when the client
-            effect reads localStorage — a visible shove of every page's content
-            on every navigation.
+        {/* Applies the stored section-panel state before first paint. Without
+            it the page renders padded for an open panel and then jumps when
+            `TwoTierShell`'s effect reads localStorage — a visible shove of every
+            page's content on every navigation.
 
-            The key string is duplicated from src/components/app-chrome.tsx on
-            purpose: that file is "use client", and importing a constant from it
-            into this server component yields an undefined client-reference
+            Only the *panel* is pre-applied, not `data-shell`: whether a page has
+            the tiers at all depends on which route rendered, which this script
+            can't know. The shell sets that on mount, and until it does
+            `.app-main` has no left padding — the honest default for the home
+            grid and the account screen, which have no rail.
+
+            The key string is duplicated from src/components/two-tier-shell.tsx
+            on purpose: that file is "use client", and importing a constant from
+            it into this server component yields an undefined client-reference
             proxy rather than the string, with nothing to catch it at build
             time. Keep the two in step. */}
         <script
           dangerouslySetInnerHTML={{
             __html:
-              "try{document.documentElement.dataset.appbar=" +
-              'localStorage.getItem("myhomebase:appbar")==="min"?"min":"open";' +
+              "try{document.documentElement.dataset.sectionpanel=" +
+              'localStorage.getItem("myhomebase:section-panel")==="closed"?"closed":"open";' +
               "}catch(e){}",
           }}
         />

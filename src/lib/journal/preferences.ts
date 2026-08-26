@@ -7,6 +7,7 @@ export const JOURNAL_SETTING_KEYS = {
   defaultLongitude: "default_longitude",
   defaultLocationName: "default_location_name",
   temperatureUnit: "temperature_unit",
+  photoRoot: "photo_root",
 } as const;
 
 const DEFAULT_TEMPERATURE_UNIT: JournalTemperatureUnit = "fahrenheit";
@@ -34,7 +35,11 @@ export function resolveJournalPreferences(settings: ModuleSetting[]): JournalPre
   const temperatureUnit: JournalTemperatureUnit =
     byKey.get(JOURNAL_SETTING_KEYS.temperatureUnit) === "celsius" ? "celsius" : DEFAULT_TEMPERATURE_UNIT;
 
-  return { defaultLocation, temperatureUnit };
+  // Trimmed: a stray space either side of a pasted path is invisible in the field but
+  // would make the folder unreachable.
+  const photoRoot = (byKey.get(JOURNAL_SETTING_KEYS.photoRoot) ?? "").trim();
+
+  return { defaultLocation, temperatureUnit, photoRoot };
 }
 
 /**
@@ -48,6 +53,12 @@ export function journalPreferencesToEntries(
   const entries: { key: string; value: string }[] = [
     { key: JOURNAL_SETTING_KEYS.temperatureUnit, value: preferences.temperatureUnit },
   ];
+
+  // Omitted when blank rather than stored as "": moduleSettingEntrySchema requires a
+  // non-empty value, and an absent row is what "not configured" means on read.
+  if (preferences.photoRoot.trim() !== "") {
+    entries.push({ key: JOURNAL_SETTING_KEYS.photoRoot, value: preferences.photoRoot.trim() });
+  }
 
   if (preferences.defaultLocation) {
     entries.push(

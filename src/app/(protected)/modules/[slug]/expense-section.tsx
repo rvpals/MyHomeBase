@@ -26,7 +26,7 @@ import { ExpenseDashboardView } from "./expense-dashboard-view";
 import { ExpenseImportView } from "./expense-import-view";
 import { ExpenseInstructions } from "./expense-instructions";
 import { EXPENSE_SECTION_INFO, type ExpenseSection } from "./expense-sections";
-import { SectionLayout } from "./section-layout";
+import { ExpenseShell } from "./expense-shell";
 import { ExpenseRulesView } from "./expense-rules-view";
 import { ExpenseSettingsView } from "./expense-settings-view";
 import { ExpenseTransactionsView } from "./expense-transactions-view";
@@ -121,23 +121,19 @@ function SectionBody({ section }: { section: ExpenseSection }) {
   }
 }
 
-export function ExpenseSection({ section }: { section: ExpenseSection }) {
+export async function ExpenseSection({ section }: { section: ExpenseSection }) {
   // Defensive: an unknown section would otherwise crash on info.label. The route
   // already validates, so this only catches a future caller getting it wrong.
   const info = EXPENSE_SECTION_INFO[section] ?? EXPENSE_SECTION_INFO.main;
-  // Badged at the head of the nav so the reader can see which module they're
-  // in. Read here rather than in `ExpenseNav` because both fields are
-  // admin-editable, and the nav is a client component.
-  const appModule = getModuleBySlug(deps.moduleRepo, EXPENSE_MODULE_SLUG);
 
   return (
-    // The nav/body split lives in SectionLayout: it's a bar in `full` and a
-    // column in `rail`/`strip`, so which way this lays out is client state that
-    // a server component can't hold.
-    <SectionLayout
-      nav="expense"
-      module={appModule && { name: appModule.shortName, icon: appModule.icon }}
-    >
+    // The two-tier shell: a module rail, a section panel and a utility header,
+    // all placed by `ExpenseShell`. See design.md, "Navigation: the two-tier
+    // shell".
+    //
+    // `async` because the shell reads cookies for the session and the pinned
+    // layout, which `next/headers` only exposes as a promise.
+    <ExpenseShell>
       <h2 className="font-display text-2xl font-semibold text-ink">{info.label}</h2>
       <p className="mt-1 text-sm text-muted">{info.description}</p>
       <div className="mt-3 h-px w-full bg-line" />
@@ -154,6 +150,6 @@ export function ExpenseSection({ section }: { section: ExpenseSection }) {
       <div className="mt-6">
         <SectionBody section={section} />
       </div>
-    </SectionLayout>
+    </ExpenseShell>
   );
 }

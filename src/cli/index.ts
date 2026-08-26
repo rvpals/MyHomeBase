@@ -8,13 +8,17 @@ import { createUserCommand } from "./create-user";
 import { deleteCsvAnalyticsEntryCommand } from "./delete-csv-analytics-entry";
 import { expenseTopSpendersCommand } from "./expense-top-spenders";
 import { explainRuleCommand } from "./explain-rule";
+import { favoriteQuotesCommand } from "./favorite-quotes";
 import { importJournalCsvCommand } from "./import-journal-csv";
+import { journalCalendarCommand } from "./journal-calendar";
+import { journalTemplatesCommand } from "./journal-templates";
 import { listCsvAnalyticsCommand } from "./list-csv-analytics";
 import { listUsersCommand } from "./list-users";
 import { magicPlaylistCommand } from "./magic-playlist";
 import { playQueueCommand } from "./play-queue";
 import { musicLibraryCommand, scanMusicCommand } from "./scan-music";
 import { refreshPositionsCommand } from "./refresh-positions";
+import { runScheduledRefreshCommand } from "./run-scheduled-refresh";
 import { setStartupMessageCommand } from "./set-startup-message";
 import { takeAttendanceCommand } from "./take-attendance";
 import { tickerOverviewCommand } from "./ticker-overview";
@@ -26,14 +30,18 @@ const commands: Record<string, Command> = {
   "create-user": createUserCommand,
   "list-users": listUsersCommand,
   "refresh-positions": refreshPositionsCommand,
+  "run-scheduled-refresh": runScheduledRefreshCommand,
   "compute-analytics": computeAnalyticsCommand,
   "list-csv-analytics": listCsvAnalyticsCommand,
   "create-csv-analytics-entry": createCsvAnalyticsEntryCommand,
   "delete-csv-analytics-entry": deleteCsvAnalyticsEntryCommand,
   "import-journal-csv": importJournalCsvCommand,
+  "journal-calendar": journalCalendarCommand,
+  "journal-templates": journalTemplatesCommand,
   "expense-top-spenders": expenseTopSpendersCommand,
   "explain-rule": explainRuleCommand,
   "ticker-overview": tickerOverviewCommand,
+  "favorite-quotes": favoriteQuotesCommand,
   "set-startup-message": setStartupMessageCommand,
   "user-preferences": userPreferencesCommand,
   "take-attendance": takeAttendanceCommand,

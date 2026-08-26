@@ -28,6 +28,10 @@ import { deps } from "@/lib/wiring";
 import { NextDayActionsView } from "./next-day-actions-view";
 import { StockAccountsView, type AccountEntry } from "./stock-accounts-view";
 import { StockAnalyticsView } from "./stock-analytics-view";
+import {
+  loadLastScheduledRun,
+  resolveScheduledRefreshSettings,
+} from "@/lib/scheduled-refresh";
 import { StockConfigurationView } from "./stock-configuration-view";
 import { StockDashboardView } from "./stock-dashboard-view";
 import { StockImportView } from "./stock-import-view";
@@ -35,9 +39,9 @@ import { StockInstructions } from "./stock-instructions";
 import { StockPositionsView } from "./stock-positions-view";
 import { StockRefreshControl } from "./stock-refresh-control";
 import { STOCK_SECTION_INFO, type StockSection } from "./stock-sections";
+import { StockShell } from "./stock-shell";
 import { StockFavoritesMenu } from "./stock-favorites-menu";
 import { StockTickerSearch } from "./stock-ticker-search";
-import { SectionLayout } from "./section-layout";
 import { StockTransactionsView } from "./stock-transactions-view";
 import { StockWatchlistView, type WatchListEntry } from "./stock-watchlist-view";
 
@@ -65,6 +69,10 @@ function loadModuleSettings() {
 
 function loadThresholds() {
   return resolveThresholds(loadModuleSettings());
+}
+
+function loadAutoRefreshSettings() {
+  return resolveScheduledRefreshSettings(loadModuleSettings());
 }
 
 function loadDashboardWidgets() {
@@ -168,6 +176,8 @@ function SectionBody({ section }: { section: StockSection }) {
         <StockConfigurationView
           thresholds={loadThresholds()}
           widgets={loadDashboardWidgets()}
+          autoRefresh={loadAutoRefreshSettings()}
+          lastAutoRefreshRun={loadLastScheduledRun()}
         />
       );
 
@@ -176,30 +186,26 @@ function SectionBody({ section }: { section: StockSection }) {
   }
 }
 
-export function StockSection({ section }: { section: StockSection }) {
+export async function StockSection({ section }: { section: StockSection }) {
   // Defensive: an unknown section would otherwise crash on info.label. The route
   // already validates, so this only catches a future caller getting it wrong.
   const info = STOCK_SECTION_INFO[section] ?? STOCK_SECTION_INFO.main;
-  // Badged at the head of the nav so the reader can see which module they're
-  // in. Read here rather than in `StockNav` because both fields are
-  // admin-editable, and the nav is a client component.
-  const appModule = getModuleBySlug(deps.moduleRepo, STOCK_ETFS_MODULE_SLUG);
   // Dashboard only: Refresh All acts on the portfolio as a whole, and on
   // Configuration or CSV Import the same icon beside the heading would read as
   // "reload this screen". Positions keeps its own Refresh All in its toolbar.
   const snapshots = section === "main" ? loadSnapshots(todayIsoLocal()) : [];
 
   return (
-    // The nav/body split lives in SectionLayout: it's a bar in `full` and a
-    // column in `rail`/`strip`, so which way this lays out is client state that
-    // a server component can't hold.
-    <SectionLayout
-      nav="stock"
-      module={appModule && { name: appModule.shortName, icon: appModule.icon }}
-    >
-      {/* `flex-wrap` so a 390px screen can drop the controls below the title
-          rather than squeezing it, and so the progress strip (`basis-full`) gets
-          its own line on every width. */}
+    // The two-tier shell: a module rail, a section panel and a utility header,
+    // all placed by `StockShell`. This module is the first one off `TreeNav` —
+    // see design.md, "Navigation: the two-tier shell".
+    //
+    // `async` because the shell reads cookies for the session and the pinned
+    // layout, which `next/headers` only exposes as a promise.
+    <StockShell>
+      {/* The three controls are icon-width closed, so they share the title's line
+          at 390px. `flex-wrap` is still what lets the progress strip (`basis-full`)
+          and an opened search field or menu take a line of their own. */}
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="font-display text-2xl font-semibold text-ink">{info.label}</h2>
         {section === "main" && (
@@ -226,6 +232,6 @@ export function StockSection({ section }: { section: StockSection }) {
       <div className="mt-6">
         <SectionBody section={section} />
       </div>
-    </SectionLayout>
+    </StockShell>
   );
 }

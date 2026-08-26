@@ -13,6 +13,7 @@ import {
 } from "../../journal-actions";
 import { journalEntriesFilterHref } from "../../journal-shared";
 import { JournalEntryEditForm } from "./entry-edit-form";
+import { JournalPhotosCard } from "./journal-photos-card";
 
 const JOURNAL_MODULE_PATH = "/modules/journal";
 
@@ -74,11 +75,17 @@ export function JournalEntryScreen({
   neighbors,
   categoryIcons,
   tagIcons,
+  categoryOptions,
+  tagOptions,
 }: {
   entry: JournalEntry;
   neighbors: JournalEntryNeighbors;
   categoryIcons?: Record<string, string>;
   tagIcons?: Record<string, string>;
+  /** Every known category name — the edit form's picker offers these. */
+  categoryOptions: string[];
+  /** Every known tag name — the edit form's picker offers these. */
+  tagOptions: string[];
 }) {
   const router = useRouter();
   const [isBusy, setIsBusy] = useState(false);
@@ -125,6 +132,12 @@ export function JournalEntryScreen({
     : undefined;
   const nextHref = neighbors.next ? `${JOURNAL_MODULE_PATH}/entries/${neighbors.next.id}` : undefined;
 
+  // Deep link for the viewer's running-shoe icon: the Calendar section opened
+  // on this entry's date. ?anchor= moves the grid to that day's month and
+  // ?date= selects it beneath the grid; leaving ?scope= unset falls back to
+  // the month view, so a link from any entry opens exactly its own month.
+  const calendarHref = `${JOURNAL_MODULE_PATH}/calendar?anchor=${entry.date}&date=${entry.date}`;
+
   return (
     <div className="flex flex-col gap-4">
       <div className="no-print">
@@ -138,6 +151,8 @@ export function JournalEntryScreen({
       {isEditing ? (
         <JournalEntryEditForm
           entry={entry}
+          categoryOptions={categoryOptions}
+          tagOptions={tagOptions}
           onCancel={() => setIsEditing(false)}
           onSaved={() => {
             setIsEditing(false);
@@ -153,6 +168,7 @@ export function JournalEntryScreen({
           onShowAllLocations={() => setMapView({ kind: "all" })}
           onToggleLock={handleToggleLock}
           onDelete={handleDelete}
+          calendarHref={calendarHref}
           previousHref={previousHref}
           previousDate={neighbors.previous?.date}
           nextHref={nextHref}
@@ -161,6 +177,7 @@ export function JournalEntryScreen({
           tagIcons={tagIcons}
           categoryHref={(name) => taxonomyFilterHref("category", name)}
           tagHref={(name) => taxonomyFilterHref("tag", name)}
+          photosSlot={<JournalPhotosCard date={entry.date} />}
           isBusy={isBusy}
         />
       )}

@@ -13,6 +13,8 @@ export const JOURNAL_SECTIONS = [
   "views",
   "report",
   "configuration",
+  "templates",
+  "metadata",
 ] as const;
 
 export type JournalSection = (typeof JOURNAL_SECTIONS)[number];
@@ -44,10 +46,35 @@ export const JOURNAL_SECTION_INFO: Record<JournalSection, { label: string; descr
     description: "Summaries and reports from your journal.",
   },
   configuration: {
-    label: "Configuration",
+    label: "Preferences",
     description: "Preferences for how your journal works.",
   },
+  templates: {
+    label: "Templates",
+    description: "Define different templates used in the journal module.",
+  },
+  metadata: {
+    label: "Meta Data",
+    description: "Categories and tags, and the icons that stand for them.",
+  },
 };
+
+/**
+ * The sections that hang under the "Configuration" group heading in the section
+ * panel, in panel order.
+ *
+ * A group heading is not a destination — `SectionPanel` renders a node with
+ * children as an accordion label, and drops it from the compact sheet's flat
+ * list entirely ("Configuration isn't a place you can go"). So the existing
+ * Configuration page keeps its route and becomes the group's first child,
+ * relabelled "Preferences" to say what it actually holds; the heading itself is
+ * synthesised in journal-shell.tsx and has no route of its own.
+ */
+export const JOURNAL_CONFIGURATION_SECTIONS: readonly JournalSection[] = [
+  "configuration",
+  "templates",
+  "metadata",
+];
 
 /** Section → nav icon key, resolved by TreeIcon. */
 export const JOURNAL_SECTION_ICONS: Record<JournalSection, string> = {
@@ -57,6 +84,14 @@ export const JOURNAL_SECTION_ICONS: Record<JournalSection, string> = {
   views: "window",
   report: "chart",
   configuration: "sliders",
+  // `note`, not `list` — that one is Entries', and two sections wearing the same
+  // glyph is the collision modules.md warns about. A template is a jotting you
+  // start from, which is what the sticky-note mark reads as.
+  templates: "note",
+  // `shapes` is free as a section glyph — the Statistics card uses it inline for
+  // categories, which is the same idea this section edits, not a collision with
+  // another destination.
+  metadata: "shapes",
 };
 
 const BASE_PATH = "/modules/journal";

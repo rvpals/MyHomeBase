@@ -7,6 +7,8 @@
 // sort and export correctly.
 
 import type { ReactNode } from "react";
+import { useState, useEffect, useRef } from "react";
+import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { Tabs, type TabItem } from "@/components/tabs";
@@ -304,6 +306,42 @@ export function AboutView({
   changeHistoryMarkdown: string | null;
   changeHistorySummary: ChangeHistorySummary | null;
 }) {
+  // The Server Log tab. Fetched from the client rather than passed down from
+  // page.tsx on purpose: the log is the one thing on this screen you want to
+  // re-read without reloading the page, and a server component can only give it
+  // to you once. `/api/admin/log` returns the last 50 lines as plain text.
+  const [logContent, setLogContent] = useState("Loading...");
+  const logRef = useRef<HTMLPreElement>(null);
+
+  const refreshLog = async () => {
+    setLogContent("Loading...");
+    try {
+      // `no-store` because a cached log defeats the point of a Refresh button.
+      const response = await fetch("/api/admin/log", { cache: "no-store" });
+      const text = await response.text();
+      // A 404 means start.sh has not written app.log yet -- that is a normal
+      // state on a fresh install, not a fault, so it reads as a sentence rather
+      // than the route's raw JSON body.
+      if (!response.ok) {
+        setLogContent(
+          response.status === 404
+            ? "No log file yet. It appears once the server has written app.log."
+            : `Could not read the log (HTTP ${response.status}).`,
+        );
+        return;
+      }
+      setLogContent(text.trim() === "" ? "The log file is empty." : text);
+    } catch (error) {
+      setLogContent(error instanceof Error ? `Error loading log: ${error.message}` : "Error loading log.");
+    }
+  };
+
+  useEffect(() => {
+    void refreshLog();
+    // Once on mount. `refreshLog` closes over nothing that changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const databaseColumns: DataGridColumn<DatabaseRow>[] = [
     { key: "label", header: "File", value: (file) => file.label, render: (file) => file.label },
     {
@@ -429,6 +467,32 @@ export function AboutView({
               </p>
             </div>
           )}
+        </div>
+      ),
+    },
+    {
+      key: "server-log",
+      label: "Server Log",
+      content: (
+        <div className="mt-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <p className="text-sm text-muted">
+              The last 50 lines of <span className="font-mono text-ink">app.log</span>, newest
+              at the bottom.
+            </p>
+            <Button size="sm" variant="secondary" onClick={() => void refreshLog()}>
+              Refresh
+            </Button>
+          </div>
+
+          {/* Same treatment as the expense cleanup log: a bordered mono block on
+              `bg-paper` so long lines are legible and the surface stays quiet. */}
+          <pre
+            ref={logRef}
+            className="mt-3 max-h-96 overflow-auto rounded-md border border-line bg-paper p-3 font-mono text-[11px] leading-5 whitespace-pre-wrap text-ink"
+          >
+            {logContent}
+          </pre>
         </div>
       ),
     },

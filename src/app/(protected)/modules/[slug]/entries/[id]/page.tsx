@@ -36,12 +36,15 @@ export default async function JournalEntryPage({
   const entry = getEntry(deps.journalRepo, entryId);
   if (!entry) notFound();
 
+  // Fetched once and used twice: the icon maps the viewer reads, and the plain
+  // name lists the edit form's category/tag pickers offer.
+  const categories = listCategories(deps.journalRepo);
+  const tags = listTags(deps.journalRepo);
+
   // Plain objects across the client boundary — JournalViewer is a client
   // component and can't be handed a Map.
-  const categoryIcons = Object.fromEntries(
-    journalTaxonomyIconUrlsByName("category", listCategories(deps.journalRepo)),
-  );
-  const tagIcons = Object.fromEntries(journalTaxonomyIconUrlsByName("tag", listTags(deps.journalRepo)));
+  const categoryIcons = Object.fromEntries(journalTaxonomyIconUrlsByName("category", categories));
+  const tagIcons = Object.fromEntries(journalTaxonomyIconUrlsByName("tag", tags));
 
   return (
     <div className={PAGE_CONTAINER}>
@@ -50,6 +53,8 @@ export default async function JournalEntryPage({
         neighbors={getEntryNeighbors(deps.journalRepo, entryId)}
         categoryIcons={categoryIcons}
         tagIcons={tagIcons}
+        categoryOptions={categories.map((category) => category.name)}
+        tagOptions={tags.map((tag) => tag.name)}
       />
     </div>
   );

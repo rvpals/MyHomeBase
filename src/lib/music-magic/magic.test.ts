@@ -5,6 +5,7 @@ import {
   deleteMagicList,
   describeMagicFailure,
   generateMagicPlaylist,
+  listMagicFolderOptions,
   listMagicLists,
   loadMagicList,
   regenerateMagicList,
@@ -15,6 +16,7 @@ import {
 import type {
   MagicAlbumOption,
   MagicCandidateSource,
+  MagicFolderOption,
   MagicListRepository,
   MagicPickerOption,
 } from "./ports";
@@ -78,6 +80,31 @@ class FakeCandidateSource implements MagicCandidateSource {
 
   listAlbumOptions(): MagicAlbumOption[] {
     return [{ albumId: 1, label: "An Album", albumArtist: "An Artist", trackCount: 8 }];
+  }
+
+  /** Records which level was asked for, so the use-case's normalising can be asserted. */
+  lastFolderParent?: string;
+
+  listFolderOptions(parentPath: string): MagicFolderOption[] {
+    this.lastFolderParent = parentPath;
+    if (parentPath === "") {
+      return [
+        { relativePath: "Rock", name: "Rock", trackCount: 0, totalTrackCount: 12, hasChildren: true },
+        { relativePath: "Jazz", name: "Jazz", trackCount: 4, totalTrackCount: 4, hasChildren: false },
+      ];
+    }
+    if (parentPath === "Rock") {
+      return [
+        {
+          relativePath: "Rock/Queen",
+          name: "Queen",
+          trackCount: 12,
+          totalTrackCount: 12,
+          hasChildren: false,
+        },
+      ];
+    }
+    return [];
   }
 }
 
@@ -466,5 +493,103 @@ describe("listMagicLists", () => {
     expect(summaries.map((entry) => entry.name).sort()).toEqual(["One", "Two"]);
     expect(summaries.find((entry) => entry.name === "One")?.trackCount).toBe(6);
     expect(summaries.find((entry) => entry.name === "Two")?.trackCount).toBe(2);
+  });
+});
+
+describe("listMagicFolderOptions", () => {
+  it("returns the top level when asked for no parent", () => {
+    const options = listMagicFolderOptions(deps, "");
+    expect(options.map((option) => option.name)).toEqual(["Rock", "Jazz"]);
+  });
+
+  it("defaults an absent parent to the top level, rather than erroring", () => {
+    // A picker opening for the first time has no parent to name.
+    expect(listMagicFolderOptions(deps, undefined)).toHaveLength(2);
+    expect(candidateSource.lastFolderParent).toBe("");
+  });
+
+  it("drills into a child folder", () => {
+    const options = listMagicFolderOptions(deps, "Rock");
+    expect(options.map((option) => option.relativePath)).toEqual(["Rock/Queen"]);
+  });
+
+  it("normalises a trailing slash so 'Rock/' and 'Rock' are the same level", () => {
+    listMagicFolderOptions(deps, "Rock/");
+    expect(candidateSource.lastFolderParent).toBe("Rock");
+  });
+
+  it("normalises backslashes, so a Windows-shaped path still resolves", () => {
+    listMagicFolderOptions(deps, "Rock\\Queen");
+    expect(candidateSource.lastFolderParent).toBe("Rock/Queen");
+  });
+
+  it("returns an empty level for a folder with no sub-folders", () => {
+    expect(listMagicFolderOptions(deps, "Jazz")).toEqual([]);
+  });
+});
+
+describe("folder criteria", () => {
+  it("passes picked folders through to the candidate source", () => {
+    generateMagicPlaylist(deps, criteria({ folders: ["Rock/Queen"] }));
+    expect(candidateSource.lastCriteria?.folders).toEqual(["Rock/Queen"]);
+  });
+
+  it("prunes a child folder whose parent is also picked", () => {
+    // Both select the same tracks -- see migrations/0060. The boundary drops the no-op so
+    // a saved list records what was meant.
+    generateMagicPlaylist(deps, criteria({ folders: ["Rock", "Rock/Queen"] }));
+    expect(candidateSource.lastCriteria?.folders).toEqual(["Rock"]);
+  });
+
+  it("drops the library root, which restricts nothing", () => {
+    generateMagicPlaylist(deps, criteria({ folders: [""] }));
+    expect(candidateSource.lastCriteria?.folders).toEqual([]);
+  });
+
+  it("counts candidates for a folder criterion", () => {
+    expect(countMagicCandidates(deps, criteria({ folders: ["Rock"] }))).toBe(30);
+    expect(candidateSource.lastCriteria?.folders).toEqual(["Rock"]);
+  });
+
+  it("saves folders with a list and reads them back", () => {
+    const saved = saveMagicList(deps, {
+      name: "Just that shelf",
+      criteria: criteria({ folders: ["Rock/Queen"] }),
+    });
+    expect(saved.ok).toBe(true);
+    if (!saved.ok) return;
+
+    const loaded = loadMagicList(deps, saved.value.magicList.id);
+    expect(loaded.ok).toBe(true);
+    if (!loaded.ok) return;
+    expect(loaded.value.magicList.criteria.folders).toEqual(["Rock/Queen"]);
+  });
+
+  it("regenerates from the folders the list stored, not from the form", () => {
+    const saved = saveMagicList(deps, {
+      name: "Stored folders",
+      criteria: criteria({ folders: ["Jazz"] }),
+    });
+    if (!saved.ok) return;
+
+    // Something else asks for a different folder in between -- the regenerate must ignore it.
+    generateMagicPlaylist(deps, criteria({ folders: ["Rock"] }));
+    regenerateMagicList(deps, saved.value.magicList.id);
+
+    expect(candidateSource.lastCriteria?.folders).toEqual(["Jazz"]);
+  });
+
+  it("updates a list's folders", () => {
+    const saved = saveMagicList(deps, { name: "Movable", criteria: criteria({ folders: ["Rock"] }) });
+    if (!saved.ok) return;
+
+    const updated = updateMagicList(deps, {
+      magicListId: saved.value.magicList.id,
+      name: "Movable",
+      criteria: criteria({ folders: ["Jazz"] }),
+    });
+    expect(updated.ok).toBe(true);
+    if (!updated.ok) return;
+    expect(updated.value.criteria.folders).toEqual(["Jazz"]);
   });
 });

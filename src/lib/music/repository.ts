@@ -544,6 +544,36 @@ export class SqliteMusicRepository implements MusicRepository {
     return row === undefined ? undefined : toScanRun(row);
   }
 
+  /**
+   * Marks abandoned 'running' rows as failed, returning how many were closed.
+   *
+   * A scan that dies with its process -- OOM-killed, container restarted, dev server
+   * reloaded -- never gets to write its own terminal status, so its row stays 'running'
+   * forever. That row then wins `getActiveScanRun()` and the screen shows a scan frozen
+   * at whatever the last progress write said, indefinitely.
+   *
+   * `staleAfterSeconds` matches `isScanRunStale` in types.ts: a live scan writes progress
+   * every 25 files, so two minutes of silence means the writer is gone. Called on read
+   * rather than by a timer -- there is no scheduler here, and the only moment the answer
+   * matters is when someone looks.
+   */
+  failAbandonedScanRuns(staleAfterSeconds = 120): number {
+    const result = this.db
+      .prepare(
+        `UPDATE mus_scan_runs SET
+           status = 'failed', finished_at = datetime('now'), updated_at = datetime('now'),
+           current_path = '',
+           last_error = CASE WHEN last_error = '' THEN ? ELSE last_error END
+         WHERE status = 'running'
+           AND updated_at < datetime('now', ?)`,
+      )
+      .run(
+        "The scan stopped reporting and was marked failed. The server most likely restarted. Starting another is safe: unchanged files are skipped.",
+        `-${staleAfterSeconds} seconds`,
+      );
+    return result.changes;
+  }
+
   listRecentScanRuns(limit: number): ScanRun[] {
     const rows = this.db
       .prepare(`SELECT * FROM mus_scan_runs ORDER BY started_at DESC LIMIT ?`)

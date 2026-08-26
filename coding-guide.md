@@ -11,7 +11,7 @@ module is obvious from the name alone. New tables must follow this.
 
 | Prefix | Module | Example tables |
 |---|---|---|
-| `sys_` | Platform — not a feature module | `sys_modules`, `sys_app_settings`, `sys_module_settings`, `sys_user_preferences`, `sys_users`, `sys_user_module_access`, `sys_sessions`, `sys_schema_migrations`, `sys_daily_quotes` |
+| `sys_` | Platform — not a feature module | `sys_modules`, `sys_app_settings`, `sys_module_settings`, `sys_user_preferences`, `sys_users`, `sys_user_module_access`, `sys_sessions`, `sys_schema_migrations`, `sys_daily_quotes`, `sys_scheduled_runs`, `sys_dashboard_texture`, `sys_module_texture` |
 | `stk_` | Stocks & ETFs (brokerage accounts **and** per-stock tables — one prefix) | `stk_investment_accounts`, `stk_stock_positions`, `stk_stock_transactions`, `stk_stock_watch_lists`, `stk_stock_volatility_cache`, `stk_ticker_risk_cache`, `stk_ticker_logos`, `stk_daily_snapshots` |
 | `csv_` | CSV Analysis (incl. user-generated per-entry tables from `buildTableName`) | `csv_analytics_entries`, `csv_chart_presets`, `csv_govee` |
 | `jrn_` | MyJournal | `jrn_entries`, `jrn_categories`, `jrn_tags`, `jrn_entry_categories`, `jrn_entry_tags`, `jrn_entry_locations`, `jrn_entry_images`, `jrn_saved_filters` |
@@ -125,10 +125,18 @@ legitimately blankable gets its own schema and its own repository write
 ### Per-row images
 
 A per-row image is a `BLOB` column plus a `<name>_mime_type` column, served by a
-dedicated route — never inlined as a base64 data URL. Five tables do this:
+dedicated route — never inlined as a base64 data URL. Eight tables do this:
 `sys_users.avatar` (0011), `exp_creditcard_accounts.card_image` (0031),
 `exp_categories.icon_image` (0034), `stk_investment_accounts.icon_image` (0037),
-`sys_modules.carousel_image` (0040).
+`sys_modules.carousel_image` (0040), `jrn_categories`/`jrn_tags.icon_image` (0042),
+`sys_dashboard_texture.image` (0063) and `sys_module_texture.image` (0064).
+
+The last two are worth reading before adding another: both are tables whose *only*
+purpose is to hold one picture and its display settings, which is what kept the bytes
+out of `sys_app_settings` (a `TEXT NOT NULL` key/value store read on every
+authenticated page) and off a second `sys_modules` column. When a picture is
+application- or module-wide rather than a property of a domain row, its own table is
+usually the answer.
 
 Adding one carries a **non-obvious obligation**: every normal read of that table must
 switch from `SELECT *` to an explicit column list that omits the blob, or the bytes

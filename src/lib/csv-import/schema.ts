@@ -6,6 +6,7 @@ export const importTypeSchema = z.enum([
   "Performance",
   "Journal",
   "Expense",
+  "Roster",
 ]);
 
 // Keys are CSV column indices, serialized as strings by JS object semantics.

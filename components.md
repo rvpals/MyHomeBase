@@ -55,25 +55,30 @@ pattern instead of inventing one.
 | [`CollapsibleCard`](#collapsiblecard) | A titled section that expands/collapses | [src/components/collapsible-card.tsx](src/components/collapsible-card.tsx) | yes |
 | [`Tabs`](#tabs) | One-of-N panels in the same space | [src/components/tabs.tsx](src/components/tabs.tsx) | yes |
 | [`ModuleCarousel`](#modulecarousel) | The home screen's module picker (grid on desktop, coverflow on phones) | [src/components/module-carousel.tsx](src/components/module-carousel.tsx) | yes |
-| [`AppChrome`](#appchrome) | The app's nav shell — one top bar, at every screen size | [src/components/app-chrome.tsx](src/components/app-chrome.tsx) | yes |
+| [`TwoTierShell`](#twotiershell) | **The navigation shell** — module rail + section panel + header | [src/components/two-tier-shell.tsx](src/components/two-tier-shell.tsx) | yes |
+| [`ModuleRail`](#modulerail) | Tier 1 — the 64px module icon rail | [src/components/module-rail.tsx](src/components/module-rail.tsx) | yes |
+| [`SectionPanel`](#sectionpanel) | Tier 2 — the 240px section panel / compact bottom sheet | [src/components/section-panel.tsx](src/components/section-panel.tsx) | yes |
+| [`AppHeader`](#appheader) | Tier 3 — the utility bar: breadcrumb, global actions, profile | [src/components/app-header.tsx](src/components/app-header.tsx) | yes |
+| [`NavMenus`](#navmenus) | The shared module switcher and profile dropdowns | [src/components/nav-menus.tsx](src/components/nav-menus.tsx) | yes |
 | [`MusicPlayerProvider`](#musicplayerprovider) | Owns the single `<audio>` element and playback state — mount in the layout | [src/components/music-player-provider.tsx](src/components/music-player-provider.tsx) | yes |
 | [`MusicPlayerBar`](#musicplayerbar) | The persistent "what's playing" strip, above the section nav on every page | [src/components/music-player-bar.tsx](src/components/music-player-bar.tsx) | yes |
 | [`SelectionBar`](#selectionbar) | Tick several rows, then send them somewhere (with `useSelection`) | [src/components/selection-bar.tsx](src/components/selection-bar.tsx) | yes |
 | [`ViewportSwitch`](#viewportswitch) | The global compact/full switch | [src/components/viewport-switch.tsx](src/components/viewport-switch.tsx) | yes |
-| [`Puck`](#puck) | The round target a minimised bar leaves behind | [src/components/puck.tsx](src/components/puck.tsx) | yes |
-| [`TreeNav`](#treenav) | Hierarchical parent/child nav tree | [src/components/tree-nav.tsx](src/components/tree-nav.tsx) | yes |
 | [`Avatar`](#avatar) | A user's picture, or initials fallback | [src/components/avatar.tsx](src/components/avatar.tsx) | no |
 | [`TickerLogo`](#tickerlogo) | A stock/ETF logo, or a monogram fallback | [src/components/ticker-logo.tsx](src/components/ticker-logo.tsx) | yes |
 | [`FileDropzone`](#filedropzone) | Drag-and-drop file picker | [src/components/file-dropzone.tsx](src/components/file-dropzone.tsx) | yes |
 | [`CsvMappingTable`](#csvmappingtable) | Map a CSV's columns to target fields | [src/components/csv-mapping-table.tsx](src/components/csv-mapping-table.tsx) | yes |
 | [`IconSelect`](#iconselect) | A dropdown whose options carry an image | [src/components/icon-select.tsx](src/components/icon-select.tsx) | yes |
+| [`TokenPicker`](#tokenpicker) | **Several names on one record** — removable chips + a dropdown to add | [src/components/token-picker.tsx](src/components/token-picker.tsx) | yes |
 | [`ChartLine`](#chartline) | Time-series line chart | [src/components/chart-line.tsx](src/components/chart-line.tsx) | yes |
 | [`ChartBar`](#chartbar) | Category comparison / part-to-whole | [src/components/chart-bar.tsx](src/components/chart-bar.tsx) | yes |
 | [`ChartXY`](#chartxy) | User-configurable line/bar/scatter/area + zoom | [src/components/chart-xy.tsx](src/components/chart-xy.tsx) | yes |
 | [`ChartCandle`](#chartcandle) | Candlestick / OHLC — four prices per period | [src/components/chart-candle.tsx](src/components/chart-candle.tsx) | yes |
 | [`ChartToolbar`](#chartoolbar) | A chart's gear control — **not called directly** | [src/components/chart-toolbar.tsx](src/components/chart-toolbar.tsx) | yes |
 | [`UsageMeter`](#usagemeter) | A stat tile whose value is part of a known total | [src/components/usage-meter.tsx](src/components/usage-meter.tsx) | no |
+| [`Progress3D`](#progress3d) | **Any progress bar** — work underway, 0..max | [src/components/progress-3d.tsx](src/components/progress-3d.tsx) | no |
 | [`JournalViewer`](#journalviewer) | Full detail sheet for one journal entry | [src/components/journal-viewer.tsx](src/components/journal-viewer.tsx) | yes |
+| [`PhotoLightbox`](#photolightbox) | Full-screen photo overlay with prev/next over a set | [src/components/photo-lightbox.tsx](src/components/photo-lightbox.tsx) | yes |
 | [`TickerViewer`](#tickerviewer) | Full record dialog for one ticker — 3 tabs of cards | [src/components/ticker-viewer.tsx](src/components/ticker-viewer.tsx) | yes |
 | [`IconSetProvider`](#iconsetprovider--useiconset) / `useIconSet` | Active module icon set (context) | [src/components/icon-set-context.tsx](src/components/icon-set-context.tsx) | yes |
 | [`ViewportProvider`](#viewportprovider--useviewport) / `useViewport` | Compact vs full layout (context) | [src/components/viewport-context.tsx](src/components/viewport-context.tsx) | yes |
@@ -435,7 +440,7 @@ near the 44px comfortable tap target, and `Modal`'s `sm` is `w-full max-w-md`, w
 
 All three glyphs come from [`tree-icons.tsx`](src/components/tree-icons.tsx) — `info` was
 already there for Admin's About page; `note` and `clip` were added alongside this component
-rather than living in it, so they're available to `TreeNav` and anything else using
+rather than living in it, so they're available to `SectionPanel` and anything else using
 `TreeIcon` and the app keeps exactly one glyph registry.
 
 ---
@@ -484,6 +489,24 @@ cards both do this):
 
 ```tsx
 <CollapsibleCard title="Daily Glance" titleIcon={icon && <ModuleIcon name={icon} className="h-4 w-4" />}>
+```
+
+**Nesting is allowed, one level.** A card can hold a child card when the child is a
+*subset of the same subject* the parent names — the Stocks & ETFs dashboard's
+Portfolio Summary holds a collapsed "Portfolio History" this way, so the headline
+numbers stay visible while the chart and the snapshot table are one click away.
+Give the child `className="mt-6"` to separate it from the body above it, and keep
+the parent open by default so the child's header is reachable without two clicks.
+Don't go deeper than one level, and don't nest just to group unrelated cards — a
+flat stack of siblings (see [TickerViewer](#tickerviewer)) is the pattern for that:
+
+```tsx
+<CollapsibleCard title="Portfolio Summary" defaultOpen>
+  <PortfolioHeadlineNumbers summary={summary} />
+  <CollapsibleCard title="Portfolio History" className="mt-6">
+    <ValueChart /> <SnapshotGrid />
+  </CollapsibleCard>
+</CollapsibleCard>
 ```
 
 Controlled, with an action that stays reachable while collapsed:
@@ -642,286 +665,145 @@ under `perspective`, purely decorative — it has no effect on hit-testing or la
 
 ---
 
-## AppChrome
+## TwoTierShell
 
-**The app's navigation shell.** One top bar, at every screen size. Mounted once by
-`(protected)/layout.tsx`; you should not need a second instance.
+**The navigation shell for all new work.** Composes the three tiers — module rail, section
+panel, utility header — and owns the state that ties them together. A module shell hands it
+data and gets the chrome placed for it. Full design rationale:
+[`design.md` → Navigation: the two-tier shell](design.md#navigation-the-two-tier-shell).
 
-- **Source:** [src/components/app-chrome.tsx](src/components/app-chrome.tsx)
-- **Import:** `import { AppChrome } from "@/components/app-chrome";`
-- **Client component:** yes (persists its minimise state to `localStorage`)
+- **Source:** [src/components/two-tier-shell.tsx](src/components/two-tier-shell.tsx)
+- **Import:** `import { TwoTierShell } from "@/components/two-tier-shell";`
+- **Client component:** yes (panel state, `localStorage`, the compact fork)
 
 | Prop | Type | Notes |
 |------|------|-------|
-| `links` | `AppChromeLink[]` — `{ slug, name, href, code, icon, hint? }` | One per module. |
-| `appName` | `string` | Wordmark; hidden below `lg` to leave room. |
-| `currentUser` | `{ id, fullName, avatarMimeType?, updatedAt? }` | The avatar, which opens the user menu. |
-| `showAdmin` | `boolean` | Gates the Administration item in the user menu. |
-| `logoutAction` | `() => Promise<void>` | Server action behind the log-out item. |
-| `viewportPinned` | `boolean` | Passed to `ViewportSwitch` so it can show the pin. |
-| `className?` | `string` | |
+| `links` | `NavLink[]` | Every module the reader can reach — tier 1. |
+| `sections` | `SectionNode[]` | The current module's sections — tier 2. One level of `children` is supported. |
+| `module` | `{ name; icon; href }` | Badged in the panel, first crumb in the breadcrumb. Both fields are admin-editable, so read them from the module row. |
+| `currentUser` | `{ id; fullName; avatarMimeType?; updatedAt? }` | For the profile menu. |
+| `showAdmin` | `boolean` | Whether the menu offers Administration. |
+| `logoutAction` | `() => Promise<void>` | Server action, passed through to the profile menu. |
+| `viewportPinned` | `boolean` | Whether the reader pinned the layout by hand. |
+| `extraCrumbs` | `Breadcrumb[]` | Appended after `[Module] › [Section]` — a record's name, say. Rarely needed. |
+| `headerActions` | `ReactNode` | **Whole-app** actions only. Page actions belong on the page. |
 
-**It replaced `Sidebar`.** A 240px slab down the left is a desktop pattern that cost a
-phone 62% of its screen and, being `fixed` above the content, swallowed taps meant for the
-page underneath. Navigation moved to the edges so every layout gets the full width.
+**Usage** — from a server component that can read `deps`, as in
+[`stock-shell.tsx`](src/app/(protected)/modules/[slug]/stock-shell.tsx):
 
-**Where the modules live is the only thing that differs by layout.** On `full` they sit
-inline in the top bar beside everything else. On `compact` there isn't room for that, so
-they collapse behind a single menu button (a grid icon) that opens the same list as a
-dropdown — closed by outside click, Escape, or picking a module, the same pattern
-`TreeNav`'s `GroupChip` uses. There used to be a second bar pinned to the bottom for this;
-it's gone, because that edge now belongs to the current module's own section bar
-(`TreeNav`, in its bar form) — see `TreeNav` below.
+```tsx
+<TwoTierShell links={links} sections={sections} module={{ name, icon, href }} ...>
+  {children}
+</TwoTierShell>
+```
 
-**Everything about the reader sits behind the avatar.** My account, the layout switch,
-Administration and Log out are one dropdown, not four buttons in the row — so the bar keeps
-the logo, the modules, the avatar and the minimise control and nothing else. Compact needed
-that width (the module menu and the app title already compete for a 390px row), and it puts
-logging out and changing the whole UI's layout behind a deliberate second click rather than
-one stray tap. The avatar is the trigger, so `/account` is the menu's first item rather than
-a link of its own. `−` stays in the bar: hiding the toolbar shouldn't cost two clicks.
+**Don't place the tiers yourself.** Their widths are published as CSS variables and
+`.app-main`'s padding is derived from them; a caller positioning a tier by hand becomes the
+fourth thing that has to agree on 64px and the first to drift.
 
-Both dropdowns here share `useDropdown` (open state, outside-click and Escape) and the
-`menuItem`/`menuPanel` classes, so they read as one pattern. `TreeNav`'s `GroupChip` still
-has its own copy — three callers would be the point to extract a real `Menu` component.
-
-**The bar minimises** to a small floating puck, top-left, and the state is remembered.
-
-**How the shell reacts to it.** `(protected)/layout.tsx` is a *server* component and this
-state is client-side, so they meet through an attribute rather than a prop: `AppChrome`
-mirrors onto `<html data-appbar>`, and `globals.css` pads `.app-main` accordingly. A script
-in the root layout applies the stored value **before first paint** — without it every page
-renders padded for the bar and then shoves when the mount effect reads `localStorage`. That
-script mutates `<html>`, which is why the root layout sets `suppressHydrationWarning`.
+**Responsive:** has a compact mode — the rail becomes a dropdown in the header and the
+panel becomes a bottom sheet. That fork is a genuinely different component, which is why it
+reads `useIsCompact()` rather than `max-lg:`.
 
 ---
 
-## ViewportSwitch
+## ModuleRail
 
-**The one control that drives the whole UI's layout**, in the user menu. `full` is the
-original desktop treatment; `compact` swaps in the components customised for a narrow
-screen (`DataGridCompact`, the collapsed module menu, tighter carousel artwork).
+Tier 1: a 64px icon-only column of modules, fixed to the left edge. Renders on the `full`
+layout only — `TwoTierShell` swaps in a dropdown on compact.
 
-- **Source:** [src/components/viewport-switch.tsx](src/components/viewport-switch.tsx)
+- **Source:** [src/components/module-rail.tsx](src/components/module-rail.tsx)
+- **Import:** `import { ModuleRail } from "@/components/module-rail";`
 - **Client component:** yes
 
 | Prop | Type | Notes |
 |------|------|-------|
-| `pinned` | `boolean` | Shows the pin dot. |
-| `variant?` | `"bar" \| "menu-item"` | Default `"bar"`. `"menu-item"` wears a dropdown row's styling and names the *action* ("Switch to compact layout") rather than the current state — in a list beside Administration and Log out, a bare "Compact" reads as a destination. Same cookie logic either way; it's a skin, not a second component. |
-| `onToggled?` | `() => void` | Fired after a toggle, so a menu can close itself. |
-| `className?` | `string` | Overrides the variant's classes outright. |
+| `links` | `ModuleRailLink[]` | `{ slug, name, href, icon, hint? }`. |
+| `isActive` | `(href: string) => boolean` | Supplied by the shell, which owns the pathname. |
 
-Choosing **pins** the layout, so `ViewportCorrector` stops second-guessing it and the choice
-sticks across devices and sessions. Right-click unpins and goes back to matching the screen.
-The Account page describes the current state but has no control of its own — two controls
-for one setting only invite them to disagree.
+Active state is a tint **and** an accent edge bar — at 64px with no label, a tint alone is
+easy to miss. The width comes from `--module-rail-width`; never hardcode `64px`.
+
+**Responsive:** renders `null` on compact by the shell's choice, rather than restyling.
 
 ---
 
-## Puck
+## SectionPanel
 
-The small round target a minimised bar leaves behind — press it to bring the bar back.
-Use it for **chrome that hides itself**, not as a general floating action button; a puck
-says "something is folded away here", so one that opens a dialog reads as a broken promise.
+Tier 2: the current module's sections. **Two shapes, picked by layout** — a fixed 240px
+column on `full`, a bottom trigger row plus a sheet on compact.
 
-- **Source:** [src/components/puck.tsx](src/components/puck.tsx)
-- **Import:** `import { Puck } from "@/components/puck";`
-- **Client component:** yes (it's a button with an `onClick`)
+- **Source:** [src/components/section-panel.tsx](src/components/section-panel.tsx)
+- **Import:** `import { SectionPanel, type SectionNode } from "@/components/section-panel";`
+- **Client component:** yes
 
 | Prop | Type | Notes |
 |------|------|-------|
-| `onClick` | `() => void` | Restores whatever was minimised. |
-| `label` | `string` | Both `title` and `aria-label` — it's icon-only, so this is its whole accessible name. |
-| `position` | `string` | Placement **and stacking**, e.g. `"left-3 top-3 z-40"`. There's no default `z-*`: without `tailwind-merge` a caller's `z-30` wouldn't reliably beat a built-in `z-40`. |
-| `children` | `ReactNode` | The glyph. 20px (`h-5 w-5`) inside the 44px circle. |
-| `className?` | `string` | Merged last. |
+| `sections` | `SectionNode[]` | `{ id, label, href, hint?, icon?, children? }`. |
+| `module` | `{ name; icon }` | Named in words at the head — this is what keeps the icon-only rail honest. |
+| `activeHref` | `string` | Usually the pathname. |
+| `isCompact` | `boolean` | Passed down by the shell, not read here. |
+| `isOpen` / `onOpenChange` | `boolean` / `(open) => void` | Desktop only; the header's `»` is the way back. |
 
-```tsx
-<Puck onClick={() => setBarOpen(true)} label="Show the toolbar" position="left-3 top-3 z-40">
-  <AppIcon className="h-5 w-5" />
-</Puck>
-```
+**Open or closed — there is no middle state**, deliberately unlike the old `TreeNav`'s
+full/rail/strip. A 64px icon rail for sections beside the 64px rail for modules is two
+ambiguous glyph columns side by side.
 
-**Used by:** [app-chrome.tsx](src/components/app-chrome.tsx) — the top bar (`left-3 top-3`);
-and [tree-nav.tsx](src/components/tree-nav.tsx) for the section bar's compact/minimised form
-(`tree-nav-puck`, bottom-left).
+Nested groups are an accordion on desktop and **flattened away on compact** — a phone has
+no room for a second level, and a dropped heading costs nothing when every child is one tap
+away. `flattenSections` is exported for callers that need the same list.
 
-**Notes:** 44px square, which is the minimum comfortable tap target — don't shrink it for a
-denser look. **Give each one its own corner.** Two pucks are in play and they're both
-`fixed`, on opposite corners (top-left, bottom-left); sharing a corner would stack them
-invisibly and the reader could only ever press the top one. It's `fixed`, so it doesn't need
-a compact variant — it's the same size at both layouts, which is why `TreeNav` can hand it a
-class that positions it and nothing else.
+**Responsive:** has a compact mode (bottom sheet, ~44px touch targets, safe-area padding).
 
 ---
 
-## TreeNav
+## AppHeader
 
-Hierarchical parent/child nav with hover hints. Use for a section with grouped
-sub-pages (like Administration), not for the top-level module list.
+Tier 3: a slim utility bar carrying the breadcrumb, whole-app actions and the profile menu.
 
-- **Source:** [src/components/tree-nav.tsx](src/components/tree-nav.tsx)
-- **Import:** `import { TreeNav, type TreeNode } from "@/components/tree-nav";`
-- **Client component:** yes (persists its state to `localStorage`)
+- **Source:** [src/components/app-header.tsx](src/components/app-header.tsx)
+- **Import:** `import { AppHeader, type Breadcrumb } from "@/components/app-header";`
+- **Client component:** yes
 
 | Prop | Type | Notes |
 |------|------|-------|
-| `nodes` | `TreeNode[]` — `{ id, label, href?, hint?, icon?, children? }` | A node **without** `href` is a group heading (a dropdown in the bar, expand/collapse in the tree). `icon` is a key rendered via `TreeIcon` — currently `sliders`, `gear`, `classroom`, `list`, `chart`, `upload`, `quote`, `stock-quote`, `newspaper`, `plus`, `grid`, `window`, `palette`, `info`, `history`, `users`, `database`, `shapes`, `shield`, `note`, `clip`, `refresh`, `pencil`, `trash`, `search`, `star`, `star-filled`. **`gear` vs `sliders`:** use `gear` when the section *is* configuration, `sliders` when it's a set of adjustable values. `classroom` is a teaching board, distinct from `users` (people) and `list` (a generic list). |
-| `module?` | `{ name, icon }` | The module the sections belong to, badged at the head of the nav — see below. `icon` is a **module** icon key (rendered via `ModuleIcon`), not a `TreeIcon` key — the two registries hold different concepts. Both follow the reader's icon set. |
-| `collapsible?` | `boolean` | Default `false`. When true it owns its size and shows the two collapse controls — three states, see below. |
-| `storageKey?` | `string` | Where the state is remembered. Defaults to `"myhomebase:tree-nav-collapsed"`. **Pass a distinct key for every collapsible tree** — two trees sharing the default collapse together. |
-| `onStateChange?` | `(state: TreeNavState) => void` | Raised on every change **and once on mount**, after the stored preference is read. A shell needs it to know whether to stack — see below. **Memoize it** (`useCallback`); it's raised from an effect keyed on the callback, so a fresh function each render loops. |
-| `className?` | `string` | The side column's surface. **Not applied to either bar** — see below. |
+| `crumbs` | `Breadcrumb[]` | `{ label, href?, icon? }`. The last is the current page and never a link. |
+| `moduleSwitcher` | `ReactNode` | Compact folds the module dropdown in here. |
+| `actions` | `ReactNode` | Whole-app actions only — search, notifications. |
+| `profile` | `ReactNode` | The shell passes `UserMenu`, so this file doesn't import auth. |
+| `onExpandPanel` | `() => void` | Renders the `»` that restores a collapsed panel. |
 
-```tsx
-const nodes: TreeNode[] = [
-  {
-    id: "configuration",
-    label: "Configuration",
-    icon: "sliders",
-    children: [
-      { id: "modules", label: "Modules", href: "/admin/configuration/modules", icon: "grid" },
-      { id: "icons", label: "Icons", href: "/admin/configuration/icons", icon: "shapes" },
-    ],
-  },
-];
+**The breadcrumb is load-bearing.** With the panel collapsed it is the only thing naming the
+current section in words — don't drop it to make room.
 
-<TreeNav nodes={nodes} collapsible />
-```
-
-**Used by:** Administration — [admin/admin-shell.tsx](src/app/(protected)/admin/admin-shell.tsx),
-node list in [admin/nav.ts](src/app/(protected)/admin/nav.ts); the Expense module's six
-sections — [expense-nav.tsx](src/app/(protected)/modules/[slug]/expense-nav.tsx); and the
-Stocks & ETFs module's eight — [stock-nav.tsx](src/app/(protected)/modules/[slug]/stock-nav.tsx).
-All three are `collapsible`, each with its own `storageKey`.
-
-**The module badge (`module`) leads the nav in every form.** The chips name the *section*;
-nothing in the nav said which **module** those sections belonged to. On compact that's a
-real gap — the app bar's module list is behind a menu button, so the module name is nowhere
-on screen. The badge is icon + name in the bar and the nested tree, icon-only in the `w-16`
-rail, and the icon alone on the compact puck (where it *replaces* the section icon: with the
-bar hidden it's the only "where am I" left, and the module is the more useful answer, since
-the page's own heading already names the section). It's deliberately **not a link** — the
-module's route is one tap away in the app bar, and a second target here would crowd the row.
-
-Pass it from the *server* shell, not the nav: `shortName` and `icon` are both admin-editable,
-and the navs are client components. `SectionLayout` threads it through — see
-[stock-section.tsx](src/app/(protected)/modules/[slug]/stock-section.tsx).
-
-**Collapsing — three states, two controls.** `full` (a **horizontal bar** pinned to the
-bottom of the viewport: icon + label chips) → `rail` (`w-16`, a column down the side, icons
-only, flattened to one row per node) → `strip` (`w-3`, just the accent edge). The `&rsaquo;`
-chevron — the same one the node rows and `CollapsibleCard` use — moves between `full` and
-`rail`, a `&laquo;` button drops to `strip`, and clicking the strip returns to `rail`.
-**Two controls rather than one cycling through three**, because a single control can only
-go one way and overshooting would mean going all the way round.
-
-**`full` is a bar, not a 256px column**, so the section content keeps the full page width
-for the whole visit instead of surrendering a quarter of it to nav that's read once. It's
-the same shape as the compact bar and shares its surface, with one deliberate difference:
-**every chip is labelled**, because a desktop has the room to name all of them. Compact
-labels only the active one.
-
-Consequences worth knowing:
-
-- **The nav changes orientation with its state**, so a shell can't lay it out from the
-  viewport alone — a full-width bar left as a flex *row* item gets squashed against the
-  content beside it. Hence `onStateChange`: the shell stacks for `full` and goes
-  side-by-side for `rail`/`strip`. Memoize the handler.
-- **Group headings become dropdowns.** A bar can't nest. A heading renders as a chip that
-  opens its children below it (closed by outside click, Escape, or picking a child), and
-  takes the accent when one of them is current. Dropping them the way the compact bar does
-  wasn't available here: Administration's `Configuration` is the *only* route to four
-  screens. The nested tree is gone from desktop, so this is how you reach a group.
-- **The full bar wraps; the compact bar scrolls sideways.** A scroll container clips in
-  *both* axes — setting `overflow-x` computes `overflow-y` to `auto` too — so a scrolling
-  row would cut the dropdown off at the bar's bottom edge. Compact has no groups to open,
-  so it keeps the scroll and the height that buys.
-
-In `strip` the tree isn't merely narrowed — it isn't rendered at all, replaced by the
-clickable edge. A hidden tree you can still Tab into is worse than no tree.
-
-Because a collapsible tree sets its own size, don't put a width on its wrapper — that pins
-the rail open (see [section-layout.tsx](src/app/(protected)/modules/[slug]/section-layout.tsx)).
-
-### Compact — the section bar
-
-**On `compact`, `rail` is a bar too** — compact has two states (bar or puck) where desktop
-has three. The shells stack below 1024px, so the tree sits *above or below* the content; a
-64px column would burn ~350px of height on eight icons. Turned on its side it costs one row:
-a horizontally scrolling strip of chips, pinned to the bottom of the viewport, edge to edge.
-It shares its surface with the `full` bar above; the differences are labelling, groups and
-overflow, all covered there.
-
-The bottom edge used to be split with `AppChrome`'s module tabs. It isn't anymore — compact
-collapses the module list into a menu button in the top bar instead (see `AppChrome`), which
-is what frees this edge for the section bar alone.
-
-- **Only the active chip is labelled.** Eight labels is ~900px of row on a 390px phone, so
-  most of the tree would start offscreen. Naming the current one keeps the row near-fitting
-  and answers the thing an icon row can't — *where am I?* The rest carry `title` +
-  `aria-label`, and widen when they become active.
-- **Group headings are dropped**, not flattened in beside their children. `Configuration`
-  isn't somewhere you can go, so as a chip it's a dead target taking room from real ones.
-  Compact therefore can't reach a grouped leaf that has no other route — the desktop bar
-  opens those as dropdowns, which is an affordance a 390px row has no width for.
-- **One control, not two.** The bar has a single `−` that minimises it to a [`Puck`](#puck)
-  wearing the current section's icon; tapping that gives the row back. Compact has two
-  states — bar or puck — where desktop has three. The chips already reach every leaf, and
-  the bar is as wide as it usefully gets on a phone, so a chevron down here would be a
-  control with nowhere to go.
-- **`isCompactRail` deliberately doesn't test `isRail`.** Both `full` and `rail` render as
-  the bar on compact, so a state inherited from the desktop preference can't strand the
-  reader in a layout with no control to press.
-
-Three pieces have to line up, and two of them are **not** in this component:
-
-| Piece | Where | Why it can't live in `TreeNav` |
-|-------|-------|-------------------------------|
-| `tree-nav-sticky` | on the **wrapper** each shell puts round `TreeNav` | Despite the name it's `position: fixed`, not `sticky` — `sticky` only engages once scrolling carries the element past its natural position, which would leave a bar near the top of a tall section stuck there until the reader scrolled to the very bottom. `fixed` pins it to the viewport's bottom edge unconditionally, the same as the top app bar. |
-| `position: fixed; bottom: 0` | `globals.css`, keyed to `html[data-treenav="bar"]` | Only `TreeNav` knows whether its bar is currently rendering, and it mirrors that onto `<html>` — the same seam `AppChrome` uses for its own bar. |
-| `tree-nav-bleed` | `globals.css`, `margin-inline: calc(-1 * var(--app-gutter))` | `.app-main` owns the page gutter as a variable so the bleed can't drift out of step with it. Don't put `px-*` back on `.app-main`. **No `w-full` on the bar** — `width: 100%` resolves against the wrapper, so the negative margins would shift the box rather than widen it and leave it a gutter short on the right. |
-| `tree-nav-puck` | `globals.css`, keyed to `html[data-treenav="puck"]` for `.app-main`'s padding, and just a fixed `bottom-left` position for the puck itself | Bottom-left, clear of `AppChrome`'s own top-left puck. |
-
-The `bottom`/padding rules key off `html[data-treenav]`, which `TreeNav` sets whenever its
-bar or puck form is actually on screen — not off a `data-viewport` media-style condition, so
-a page with no `TreeNav` at all (the home grid) never reserves the space.
-
-**`className` is not applied to either bar.** It's the side column's surface — a rounded
-card border, or Admin's `border-r` — and rounded corners on something spanning the full
-width read wrong. There's no `tailwind-merge` in this project, so an override would come
-down to which rule Tailwind emitted last; dropping it is the honest version. It still
-reaches `rail` and `strip`. Anything structural the *wrapper* needs (`shrink-0`) goes on
-the wrapper.
-
-**A shell that puts the tree in a flex row must stack whenever it's a bar** — in compact,
-and in `full` at any width. Fork on `useIsCompact()` plus `onStateChange`, not `max-lg:`,
-for the pinning reason above. The two module shells share
-[section-layout.tsx](src/app/(protected)/modules/[slug]/section-layout.tsx) for this;
-Admin does it inline in [admin-shell.tsx](src/app/(protected)/admin/admin-shell.tsx).
-
-`SectionLayout` takes a `nav` **slug** (`"expense" | "stock"`) rather than the nav element,
-because its callers (`ExpenseSection`, `StockSection`) are *server* components — a render
-prop or a callback wouldn't survive the boundary, so the client component imports both navs
-and picks one.
-
-**Migrating the stored value.** The `storageKey` used to hold a boolean (`"true"` =
-collapsed) and now holds the state name. `TreeNav` reads the legacy boolean and maps it to
-`rail`/`full`, so an existing preference survives — don't drop that branch.
-
-**Nav overlap:** `AppChrome`'s top bar is `fixed` at `z-40`; `TreeNav`'s bottom bar sits at
-`z-30` via `.tree-nav-sticky`. Keep other stacked elements below that, and dialogs at
-`Modal`'s `z-50`, or an overlay won't cover them.
-
-**Note:** the active node is matched on `pathname`, so each node needs a real route —
-a query parameter or client-side state won't highlight. Keep the node list and any
-labels in a **plain** module (not the `"use client"` nav file) if server components
-read them too; exports of a client module reach the server as unusable references.
-See [expense-sections.ts](src/app/(protected)/modules/[slug]/expense-sections.ts) and
-[stock-sections.ts](src/app/(protected)/modules/[slug]/stock-sections.ts).
+**Responsive:** `sticky`, not `fixed` — it sits inside the content column, so one
+`padding-left` on `.app-main` positions it and the page body together.
 
 ---
+
+## NavMenus
+
+The two dropdown menus the navigation shares. Both are placed by
+[`TwoTierShell`](#twotiershell) — you rarely render them directly.
+
+- **Source:** [src/components/nav-menus.tsx](src/components/nav-menus.tsx)
+- **Import:** `import { ModuleMenu, UserMenu, type NavLink } from "@/components/nav-menus";`
+- **Client component:** yes (both own dropdown open/close state)
+
+| Export | What |
+|---|---|
+| `ModuleMenu` | The compact layout's module switcher, folded into `AppHeader`. Props: `links: NavLink[]`, `isActive: (href) => boolean`. |
+| `UserMenu` | The profile menu — account, layout switch, Administration, log out. Props: `currentUser`, `showAdmin`, `logoutAction`, `viewportPinned`, `isAdminRoute`. |
+| `NavLink` | `{ slug, name, href, icon, hint? }` — one module, shared by the rail and the menu. |
+
+This file was `AppChrome`, a top bar on every page. That bar is gone with the move to the
+two-tier shell; these two menus survived because both are still needed and neither belongs
+to a single tier. They stay in one file because they share `useDropdown` and the
+`menuItem`/`menuPanel` classes, which is what makes them read as one pattern.
+
+**Responsive:** unchanged at both layouts — they're dropdowns, already small. `ModuleMenu`
+is only *rendered* on compact, but that's the shell's call, not a style fork.
+
 
 ## TickerLogo
 
@@ -991,7 +873,7 @@ A user's profile picture, or an initials circle when they have none.
 />
 ```
 
-**Used by:** the `AppChrome` top bar, [/account](src/app/(protected)/account/view.tsx), and the
+**Used by:** `UserMenu`, [/account](src/app/(protected)/account/view.tsx), and the
 User Management grid.
 
 **Notes:** renders `<img src="/api/users/{userId}/avatar">` — that route is the only place
@@ -1158,6 +1040,60 @@ Options are built by `categoryIconSelectOptions` in
 listener is only registered while open. Icons are plain `<img loading="lazy">`, so
 the caller passes a URL (typically a DB-backed route like
 `/api/expense/categories/<name>/icon`) rather than image bytes.
+
+---
+
+## TokenPicker
+
+A set of chosen names — each one its own removable chip, with a dropdown of the
+known names to add from. **Reach for it whenever a record holds *several* of
+something from a vocabulary** (categories, tags, labels). It replaces the
+delimited free-text field — "FAMILY, PERSONAL" typed into an `<input>` — where a
+typo silently creates a new name and there is nothing to click to remove one.
+
+For a single choice that needs an image beside each option, use
+[`IconSelect`](#iconselect) instead.
+
+- **Source:** [src/components/token-picker.tsx](src/components/token-picker.tsx)
+- **Import:** `import { TokenPicker } from "@/components/token-picker";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `label` | `string` | Rendered above the control, and used to build the two `aria-label`s (singularised by dropping a trailing `s`). |
+| `value` | `string[]` | The chosen names, in the order they'll be saved. |
+| `onChange` | `(next: string[]) => void` | Raises the whole next array. |
+| `options` | `string[]` | Every known name. Already-chosen ones are filtered out of the dropdown, so picking can't duplicate. |
+| `allowCreate?` | `boolean` | Default `false`. Adds a text field for a name that isn't in `options` yet. Leave it off for a closed vocabulary. |
+| `createPlaceholder?` | `string` | Placeholder for that field. Ignored unless `allowCreate`. |
+| `hint?` | `string` | Small muted line under the control. |
+| `className?` | `string` | Merged last, e.g. `"sm:col-span-2"` to span a two-column form grid. |
+
+```tsx
+<TokenPicker
+  className="sm:col-span-2"
+  label="Tags"
+  value={form.tags}
+  onChange={(names) => setTaxonomy("tags", names)}
+  options={tagOptions}
+  allowCreate
+  createPlaceholder="New tag, e.g. Museum"
+/>
+```
+
+**Used by:** the journal's Categories and Tags fields, in both the create form
+[journal-entry-form.tsx](src/app/(protected)/modules/[slug]/journal-entry-form.tsx)
+and the edit form
+[entry-edit-form.tsx](src/app/(protected)/modules/[slug]/entries/[id]/entry-edit-form.tsx).
+
+**Notes:** duplicate detection is case-insensitive, so adding "Museum" when
+"museum" is already chosen is a no-op and the stored casing is whatever went in
+first. The create field commits on Enter (`preventDefault`, so it can't submit the
+surrounding form) and on blur. The dropdown's own value is always `""` — it's an
+action, not a held choice — and it disables itself once every option is chosen.
+The component never registers a new name; a typed name is just a string in `value`
+until whatever saves the record decides what to do with it. Narrow screens stack
+the dropdown above the create field (`max-lg:flex-col`); chips wrap at any width.
 
 ---
 
@@ -1528,10 +1464,71 @@ toggleable for the same reason: it carries the values the labels don't.
 
 ---
 
+## Progress3D
+
+A progress bar for work underway. **Every progress bar uses this** — don't hand-roll
+another `h-2 w-full rounded-full bg-line` track with a `bg-brass` div inside it.
+
+Reads as a physical thing: the track is a groove cut into the page (a
+`paper → paper-raised → paper` gradient with an inset lip shadow), and the fill is a lit
+slab sitting in it (an accent gradient with a white sheen on top and the same hard offset
+shadow `Button` uses). Both gradients live in `globals.css` as `.progress-3d-track` /
+`.progress-3d-fill`; the component supplies the geometry, the clamping and the aria.
+
+- **Source:** [src/components/progress-3d.tsx](src/components/progress-3d.tsx)
+- **Import:** `import { Progress3D } from "@/components/progress-3d";`
+- **Client component:** no (renders no hooks — usable from a server component)
+- **Narrow screens:** unchanged. The bar is always fluid-width; `size` sets thickness only,
+  so it needs no `max-lg:` variants.
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `value` | `number \| undefined` | Work done, same unit as `max`. Clamped into range. **`undefined` goes indeterminate** — a sweeping fill for a job that hasn't counted its total yet. |
+| `max?` | `number` | Default `100`. `0` or negative renders an empty track rather than dividing by it. |
+| `size?` | `"sm" \| "md" \| "lg"` | Thickness. Default `"md"`. Use `sm` in a toolbar strip. |
+| `tone?` | `"accent" \| "positive" \| "negative"` | Default `"accent"` (follows the color theme). The other two are fixed semantic green/red — deliberately not theme tokens, per `design.md`. |
+| `label?` | `string` | Rendered above the bar in the stat-tile label style. |
+| `showValue?` | `boolean` | Percentage at the label's right. Needs `label` to have a row to sit in. |
+| `formatValue?` | `(value: number, max: number) => string` | Replaces the "42%" readout — only the caller knows the unit. |
+| `ariaLabel?` | `string` | **Required when there's no `label`** — a nameless progressbar announces only a number. |
+| `className?` | `string` | Merged last. |
+
+```tsx
+{/* Determinate, with its own label row */}
+<Progress3D label="Importing" value={done} max={total} showValue />
+
+{/* Bare bar under a readout the caller already renders */}
+<Progress3D value={progress.current} max={progress.total} size="sm" ariaLabel="Refresh progress" />
+
+{/* Indeterminate — total not yet known */}
+<Progress3D value={undefined} ariaLabel="Scan progress" />
+```
+
+**Used by:** the stock dashboard's refresh strip
+[src/app/(protected)/modules/[slug]/stock-refresh-control.tsx](src/app/(protected)/modules/[slug]/stock-refresh-control.tsx),
+the expense cleanup runner
+[src/app/(protected)/modules/[slug]/expense-rules-view.tsx](src/app/(protected)/modules/[slug]/expense-rules-view.tsx),
+and the music scan screen
+[src/app/(protected)/modules/[slug]/music-scan-view.tsx](src/app/(protected)/modules/[slug]/music-scan-view.tsx),
+which is the indeterminate case — phase one counts files before it can report a percentage.
+
+Also the track inside [`UsageMeter`](#usagemeter), which is the tile (label, figure,
+caption) wrapped around one of these.
+
+**Not for:** a *scrubber* you can drag to seek — the music player bar owns its own, because
+it's an input, not a readout. And if you want the used/total figures printed above the bar
+in a bordered tile, reach for [`UsageMeter`](#usagemeter) rather than assembling it again.
+
+---
+
 ## UsageMeter
 
 A stat tile whose number is part of a known total, so it carries a slim filled track
 under the figure. Use it for used/total pairs — memory, disk, a quota.
+
+The track is a [`Progress3D`](#progress3d) at `size="sm"`; this component is the tile
+around it — the label row, the `used / total` figure, the caption. Reach for it instead of
+composing those yourself.
 
 - **Source:** [src/components/usage-meter.tsx](src/components/usage-meter.tsx)
 - **Import:** `import { UsageMeter } from "@/components/usage-meter";`
@@ -1599,6 +1596,8 @@ print/export view share it.
 | `nextHref?` / `nextDate?` | `string` | Same, for the newer neighbour. |
 | `categoryIcons?` / `tagIcons?` | `Record<string, string>` | Name → icon URL for the icons shown at the right of the date/time row. Only names *with* an uploaded icon need an entry; anything missing is skipped. **Plain objects, not a `Map`** — this is a client component, and the page that fetches the icons is a server one. The caller builds the URLs, so the component takes no journal-lib dependency. |
 | `categoryHref?` / `tagHref?` | `(name: string) => string \| undefined` | Makes each category/tag clickable — both the header icon and the Misc Info chip link to whatever the caller returns (in the journal, a pre-filtered Entries list). Same arrangement as `previousHref`: the caller owns the URL. Return `undefined` for a name that can't be linked, and that one stays a plain label. Omit the prop and none of them are links. |
+| `photosSlot?` | `ReactNode` | Rendered between Content and Misc Info, inside a `no-print` wrapper. A **slot, not photo props** — the viewer stays free of any filesystem or archive types, and the caller supplies whatever card it likes. The journal entry screen passes its "Pictures of this date" card here. Omit it and the viewer is unchanged. |
+| `calendarHref?` | `string` | Adds a running-shoe icon immediately right of the date that links to the journal Calendar opened on this entry's date — the caller builds `?anchor=`/`?date=` so the grid lands on the right month with the day selected. Same arrangement as `previousHref`: the caller owns the URL. Omit to hide the icon. |
 | `isBusy?` | `boolean` | Disables the actions while the caller works. |
 | `className?` | `string` | |
 
@@ -1619,6 +1618,7 @@ print/export view share it.
   tagIcons={tagIcons}
   categoryHref={(name) => taxonomyFilterHref("category", name)}
   tagHref={(name) => taxonomyFilterHref("tag", name)}
+  photosSlot={<JournalPhotosCard date={entry.date} />}
   isBusy={isPending}
 />
 ```
@@ -1638,7 +1638,10 @@ Carries the `print-sheet` class used by the `@media print` block in `globals.css
 The date/time is the visually dominant element in the header (`text-xl`, a calendar icon
 before the date and a clock icon before the time), with Previous/Next — when supplied —
 in their own row above it, left-aligned, with the neighbour-date caption filling the
-remaining width. Categories, Tags, and the `Entry #/created/updated` line live inside a
+remaining width. When `calendarHref` is supplied, a running-shoe icon sits immediately
+right of the date/time as the "Jump to calendar" control — it deep-links to the Calendar
+section opened on that entry's date. Categories, Tags, and the `Entry #/created/updated`
+line live inside a
 `CollapsibleCard` titled "Misc Info", collapsed by default — secondary metadata the reader
 doesn't need on first look, same rationale `CollapsibleCard` uses everywhere else.
 
@@ -1650,6 +1653,54 @@ reads it — an icon-only row would otherwise be unlabelled. A name with no uplo
 skipped rather than given a placeholder: a row of empty squares says less than a shorter
 row. Because the header is `flex-wrap`, the icons drop to their own line on a narrow screen
 instead of squeezing the date.
+
+---
+
+## PhotoLightbox
+
+A full-screen overlay showing one photo at a time, with keyboard and on-screen navigation
+through a set. Reach for this whenever a grid of thumbnails needs a "look at this one
+properly" view.
+
+- **Source:** [src/components/photo-lightbox.tsx](src/components/photo-lightbox.tsx)
+- **Import:** `import { PhotoLightbox, type LightboxPhoto } from "@/components/photo-lightbox";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `photos` | `LightboxPhoto[]` — `{ src, caption, subcaption? }` | Plain data: URLs the caller already built, not records. `caption` is both the header text and the image's `alt`; `subcaption` is a second, dimmer line (the journal uses it for the folder a photo came from). |
+| `index` | `number` | Which photo is shown. **An out-of-range index renders nothing**, so a single state variable can mean "closed". |
+| `onIndexChange` | `(index: number) => void` | Raised with the index to move to. The component never wraps past either end — it hides the arrow instead, so the caller decides if wrapping is wanted. |
+| `onClose` | `() => void` | Raised by Escape, the close button, and a backdrop click. |
+| `className?` | `string` | |
+
+```tsx
+{lightbox && (
+  <PhotoLightbox
+    photos={lightbox.photos}
+    index={lightbox.index}
+    onIndexChange={(index) => setLightbox({ ...lightbox, index })}
+    onClose={() => setLightbox(undefined)}
+  />
+)}
+```
+
+**Used by:** the journal entry's "Pictures of this date" card
+([journal-photos-card.tsx](src/app/(protected)/modules/[slug]/entries/[id]/journal-photos-card.tsx)).
+
+**Notes.** Keys are bound on the **document**, not on a focused element: the overlay is
+opened by clicking a thumbnail elsewhere, so there is no reliable focus target and arrow
+keys have to work without clicking the overlay first. Only Escape / ← / → are
+`preventDefault`ed, so other shortcuts still work. Body scroll is locked while it's up —
+on a phone a swipe would otherwise scroll the page behind the photo.
+
+The image is `object-contain`, so a portrait photo and a panorama both fit without cropping.
+Close and prev/next are 40–48px circles rather than small glyphs, because on a phone they
+are the only way out and the backdrop is mostly covered by the image. Carries `no-print`: a
+printed page has nothing to click.
+
+Uses a plain `<img>`, not `next/image` — these bytes come from a session-gated route over a
+NAS share, which `next/image` can't optimize anyway.
 
 ---
 
@@ -1805,7 +1856,7 @@ Render a module glyph in the active icon set (`ModuleIcon`) or in an explicitly 
 <ModuleIconPreview setId="classic" name="building" className="h-5 w-5" />
 ```
 
-**Used by:** `ModuleCarousel`, `AppChrome`, and the icon picker at
+**Used by:** `ModuleCarousel`, `ModuleRail`, and the icon picker at
 [admin/configuration/icons/page.tsx](src/app/(protected)/admin/configuration/icons/page.tsx).
 
 **Notes:** falls back to the hand-drawn "classic" set for any missing glyph. Monochrome
@@ -1864,7 +1915,7 @@ they don't get their own registry section.
 | `CHART_CATEGORICAL_COLORS`, `CHART_STATUS_COLORS`, `CHART_CHROME` | [chart-colors.ts](src/components/chart-colors.ts) | The fixed 8-hue chart palette + grid/axis chrome. All charts read from here. |
 | `pointLabelContent` | [chart-point-labels.tsx](src/components/chart-point-labels.tsx) | Builds the `<LabelList content>` renderer every chart uses for value labels, so a labelled point looks identical on a line, a column and a bar. Labels wear the muted **text** token, never the series colour. |
 | `hasFullBars`, `normalizeCandleBar`, `candleDomain`, `candleGeometry` | [chart-candle.ts](src/lib/shared/chart-candle.ts) | `ChartCandle`'s rules — which series is complete enough to draw as candles, a bar's direction and consistent extremes, the axis window, and the body/wick geometry. In the lib, so they're tested. |
-| `TreeIcon`, `hasTreeIcon`, `useTreeIconIsColorful` | [tree-icons.tsx](src/components/tree-icons.tsx) | Resolves a `TreeNav` icon key (`sliders`, `list`, `chart`, `upload`, `quote`, `grid`, `window`, `palette`, `info`, `history`, `users`, `database`, `shapes`, `shield`) to an SVG **in the reader's chosen icon set** — same `useIconSet()` context `ModuleIcon` reads, so a section nav matches the module toolbar. Falls back to the hand-drawn glyph in this file for any concept the active set lacks. Also carries the row-action glyphs `pencil`, `trash`, `refresh`, `search`, `star` and `star-filled`, which stay hand-drawn and monochrome in *every* set: they're buttons, not destinations, and colored artwork on an inline delete weakens the destructive read. `star`/`star-filled` are the same silhouette outline and solid, because on a favorite toggle the fill *is* the state — a themed set redrawing one of them would lose that. `useTreeIconIsColorful(name)` reports whether the active set will draw its own colors, so a caller can drop an accent tint that would otherwise muddy them. Renders `null` for an unknown key — fine in a row where the label carries the meaning, so check `hasTreeIcon` first anywhere the icon is the *only* content (the compact puck) or an unknown key is a blank button. |
+| `TreeIcon`, `hasTreeIcon`, `useTreeIconIsColorful` | [tree-icons.tsx](src/components/tree-icons.tsx) | Resolves a section-panel icon key (`sliders`, `list`, `chart`, `upload`, `quote`, `grid`, `window`, `palette`, `info`, `history`, `users`, `database`, `shapes`, `shield`) to an SVG **in the reader's chosen icon set** — same `useIconSet()` context `ModuleIcon` reads, so a section panel matches the module rail. Falls back to the hand-drawn glyph in this file for any concept the active set lacks. Also carries the row-action glyphs `pencil`, `trash`, `refresh`, `search`, `flash`, `star` and `star-filled`, which stay hand-drawn and monochrome in *every* set: they're buttons, not destinations, and colored artwork on an inline delete weakens the destructive read. `star`/`star-filled` are the same silhouette outline and solid, because on a favorite toggle the fill *is* the state — a themed set redrawing one of them would lose that. `flash` is the one *filled* row action — an outlined bolt at 16px is two zig-zag strokes that read as noise, and the solid shape also says "this acts" rather than "this opens something". `useTreeIconIsColorful(name)` reports whether the active set will draw its own colors, so a caller can drop an accent tint that would otherwise muddy them. Renders `null` for an unknown key — fine in a row where the label carries the meaning, so check `hasTreeIcon` first anywhere the icon is the *only* content or an unknown key is a blank button. |
 | `AppIcon` | [app-icon.tsx](src/components/app-icon.tsx) | The app wordmark glyph. Takes raw `SVGProps`. |
 | `AdminIcon` | [admin-icon.tsx](src/components/admin-icon.tsx) | The Administration glyph. Takes raw `SVGProps`. |
 | `MODULE_ICON_GLYPHS`, `ModuleIconSetId` | [module-icon-sets.generated.ts](src/components/module-icon-sets.generated.ts) | Generated — do not hand-edit. |
@@ -1915,7 +1966,7 @@ formatting live in one place.
 call server actions — but a component under `src/components/` importing from `src/app/`
 inverts the dependency the layering rests on, and this file would have been the only one
 in the registry doing it. So the actions arrive as a prop, exactly as `logoutAction` does
-for [`AppChrome`](#appchrome). It also means the provider can be rendered in a test with
+for [`NavMenus`](#navmenus). It also means the provider can be rendered in a test with
 a fake and no database. `QueueRow`/`QueueViewModel` are declared **in the component** for
 the same reason; the server action's return type is checked against them at the mount site.
 
@@ -1964,7 +2015,7 @@ it in would add a platform binary to the NAS deploy for no benefit.
 1.5rem for the puck, `0px` with no nav on the page) and the player's
 `.music-player-pinned` reads it as its `bottom`. The player used to sit at `bottom-0` and
 covered the section nav — the one control you always want reachable. It now mirrors its
-own presence onto `html[data-music-player="compact" | "full"]`, the same seam `TreeNav`
+own presence onto `html[data-music-player="compact" | "full"]`, the same seam `SectionPanel`
 uses, which is what lets the server-rendered `.app-main` reserve room for a bar whose
 presence only the client knows. Adding anything else to that edge means publishing a
 height the same way, not adding another `bottom-0`.

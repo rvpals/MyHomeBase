@@ -17,6 +17,8 @@ function fakeRepo(): JournalRepository {
     listEntries: () => [...entries],
     listRecentEntries: (limit) => [...entries].slice(0, limit),
     listEntriesByMonthDay: (monthDay) => entries.filter((entry) => entry.date.slice(5) === monthDay),
+    listEntriesInDateRange: (startDate, endDate) =>
+      entries.filter((entry) => entry.date >= startDate && entry.date <= endDate),
     searchEntries: () => {
       throw new Error("not used");
     },
@@ -124,6 +126,29 @@ function fakeRepo(): JournalRepository {
       throw new Error("not used");
     },
     listTopCategories: () => {
+      throw new Error("not used");
+    },
+    // Prefill templates are covered in prefill.test.ts; the importer never
+    // touches them, so these only satisfy the port.
+    listPrefillTemplates: () => {
+      throw new Error("not used");
+    },
+    getPrefillTemplateById: () => {
+      throw new Error("not used");
+    },
+    getPrefillTemplateByName: () => {
+      throw new Error("not used");
+    },
+    savePrefillTemplate: () => {
+      throw new Error("not used");
+    },
+    deletePrefillTemplate: () => {
+      throw new Error("not used");
+    },
+    setPrefillTemplateEnabled: () => {
+      throw new Error("not used");
+    },
+    listDistinctFieldValues: () => {
       throw new Error("not used");
     },
   };

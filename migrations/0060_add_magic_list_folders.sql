@@ -1,0 +1,59 @@
+-- Magic Playlists: folders as a fourth criterion.
+--
+-- The criteria builder offered genres, artists and albums -- three ways of slicing the
+-- catalog by TAG. This adds the fourth way, which is the one the files themselves are
+-- actually organised by: where they sit on disk.
+--
+-- WHY THIS IS NOT REDUNDANT WITH THE OTHER THREE. This library's folder layout carries
+-- information the tags do not. A folder can be a compilation, a rip of one box set, a
+-- "sort this out later" pile -- groupings nobody ever wrote into an ID3 frame. Selecting
+-- by genre cannot express "everything in that folder" when the folder's tracks are
+-- untagged, and plenty of them are.
+--
+-- WHY A JSON COLUMN AND NOT A CHILD TABLE. Same argument as 0057's genres_json: the
+-- criteria set is read and written whole, every time, and a junction table would buy one
+-- query nothing asks ("which magic lists mention this folder") at the cost of a join on
+-- every read.
+--
+-- WHY PATHS AND NOT IDS. There is nothing to hold an id. A folder is not an entity in
+-- this schema -- `mus_tracks.relative_path` is the only place folders exist at all, and
+-- the Library's own Folders and Folder Hierarchy views derive them from that column
+-- rather than from a table. So a folder criterion is a path string, and it degrades
+-- exactly the way a stored genre or artist name does: moving or renaming the folder on
+-- disk orphans the criterion on the next scan, it then matches nothing, and the view's
+-- candidate count is what makes the newly-thin result explain itself. That is the right
+-- failure for a query you can re-pick in three clicks.
+--
+-- WHAT A STORED PATH MEANS: THE WHOLE SUBTREE. `Rock` selects everything under Rock,
+-- including `Rock/Queen/Live`. This is what makes the picker's drill-down meaningful --
+-- most interesting folders (a genre folder, an artist folder) contain only sub-folders,
+-- so an exact-folder-only reading would let you select a folder and get zero tracks.
+-- Applied as `relative_path LIKE 'Rock/%'`, which the existing
+-- idx_mus_tracks_magic_candidates cannot serve as a prefix seek; see the note at the
+-- bottom for why that is fine and no new index is added.
+--
+-- Folder paths are joined into the SAME selector group as genres, artists and albums, so
+-- `match_any` governs them identically: off (the default) means a track must match the
+-- folder clause AND the genre clause AND the artist clause; on means any of them is
+-- enough. There is deliberately no separate folder-only match mode -- a fifth semantics
+-- for one field would be a thing to explain in the UI forever.
+ALTER TABLE mus_magic_list ADD COLUMN folders_json TEXT NOT NULL DEFAULT '[]';
+
+-- The DEFAULT is what makes this migration safe on existing rows: every magic list saved
+-- before today reads back as "no folder restriction", which is precisely what it meant.
+-- No backfill, no data migration, no re-save needed -- an empty criteria list has always
+-- meant "no restriction on this field" rather than "match nothing", and that rule
+-- (buildCandidateFilter, and the contract on MagicCandidateSource.listCandidates) is
+-- what carries the old rows forward unchanged.
+
+-- NO NEW INDEX, and this is a considered omission rather than an oversight.
+--
+-- A subtree criterion is `relative_path LIKE 'Rock/%'`. A plain index on relative_path
+-- could serve that as a range scan, but only when the folder clause is the SELECTIVE one
+-- and only when SQLite chooses it over idx_mus_tracks_magic_candidates -- which already
+-- covers the two predicates every candidate query carries unconditionally
+-- (duration_seconds IS NOT NULL, is_streamable = 1). The candidate query is a full pass
+-- over a ~20k-row metadata table that this module already accepts materialising in order
+-- to shuffle it; adding an index that the planner will usually decline, and that every
+-- scan then has to maintain, is the wrong trade at this size. Revisit if the catalog
+-- grows an order of magnitude.

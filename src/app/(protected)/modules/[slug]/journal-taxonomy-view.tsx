@@ -1,10 +1,19 @@
 "use client";
 
-// Categories & Tags editor for My Journal's Configuration section. Lists both
-// managed lists with an inline "New" form, and edit/delete icon buttons leading
+// Categories & Tags editor for My Journal's Meta Data section. Lists both managed
+// lists with an inline "New" form, and edit/generate/delete icon buttons leading
 // each row. Edit opens a popup (Modal) for changing the description and
 // uploading/removing a small icon — the icon control is the one thing that
 // doesn't fit inline, since dropping a file needs room the row doesn't have.
+//
+// The ⚡ row action draws an icon from the item's *name*: the name is mapped to a
+// Material Design Icons glyph (@/lib/journal/icon-search) and the bytes fetched
+// once and stored (@/lib/journal/icon-fetch), falling back to a locally drawn
+// glyph when offline or unmapped. There are also two bulk fills, because a real
+// journal runs to a couple of hundred tags and none of them start with an icon:
+// "draw the missing icons" at the top covers both lists, and "Autopopulate icon
+// for <kind>" beside each list's Add button covers just that list. Both are
+// missing-only — the row action is how you redo a single one you don't like.
 //
 // Route-local rather than registered: nothing outside My Journal renders this.
 
@@ -26,6 +35,9 @@ import {
   clearJournalTagIconAction,
   deleteJournalCategoryAction,
   deleteJournalTagAction,
+  generateJournalCategoryIconAction,
+  generateJournalTagIconAction,
+  generateMissingJournalIconsAction,
   saveJournalCategoryAction,
   saveJournalCategoryIconAction,
   saveJournalTagAction,
@@ -65,6 +77,33 @@ function readFileAsBase64(file: File): Promise<string> {
 /** Where an item's icon is served from, or undefined when it has none. */
 function iconUrl(kind: Kind, item: TaxonomyItem, updatedAt: string): string | undefined {
   return journalTaxonomyIconUrl(kind, { ...item, updatedAt });
+}
+
+const generateIconAction = (kind: Kind) =>
+  kind === "category" ? generateJournalCategoryIconAction : generateJournalTagIconAction;
+
+/**
+ * Asks the server to draw an icon for `item` from its name, confirming first when
+ * that would overwrite one it already has.
+ *
+ * The confirm is conditional on purpose: generating onto an empty slot is
+ * trivially undoable (generate again, or upload), but an icon the reader chose and
+ * uploaded is not recoverable, so a mis-click on a crowded row mustn't destroy it.
+ *
+ * Returns the error message to show, or undefined when it worked or was cancelled.
+ */
+async function generateIconFor(
+  kind: Kind,
+  item: TaxonomyItem,
+): Promise<{ error?: string; cancelled?: boolean }> {
+  if (
+    item.iconMimeType &&
+    !window.confirm(`Replace the existing icon for "${item.name}" with a generated one?`)
+  ) {
+    return { cancelled: true };
+  }
+  const result = await generateIconAction(kind)(item.name);
+  return result.ok ? {} : { error: result.error };
 }
 
 /**
@@ -137,6 +176,22 @@ function EditTaxonomyModal({
     }
   }
 
+  // The same generate action as the row's flash button. Offered here too because
+  // this popup is where someone lands to *fix* an icon, and "draw me one" belongs
+  // beside "upload one" rather than only out on the row.
+  async function handleGenerateIcon() {
+    setError(undefined);
+    setIsBusy(true);
+    try {
+      const { error: message, cancelled } = await generateIconFor(kind, item);
+      if (cancelled) return;
+      if (message) setError(message);
+      else router.refresh();
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   const url = iconUrl(kind, item, updatedAt);
 
   return (
@@ -188,16 +243,21 @@ function EditTaxonomyModal({
               />
             </div>
           </div>
-          {item.iconMimeType && (
-            <button
-              type="button"
-              disabled={isBusy}
-              onClick={handleRemoveIcon}
-              className="mt-2 text-xs text-muted hover:text-red-400"
-            >
-              Remove icon
-            </button>
-          )}
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <Button size="sm" variant="secondary" onClick={handleGenerateIcon} disabled={isBusy}>
+              Generate from name
+            </Button>
+            {item.iconMimeType && (
+              <button
+                type="button"
+                disabled={isBusy}
+                onClick={handleRemoveIcon}
+                className="text-xs text-muted hover:text-red-400"
+              >
+                Remove icon
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </Modal>
@@ -220,9 +280,18 @@ function TaxonomyPanel({
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | undefined>(undefined);
   const [editing, setEditing] = useState<JournalCategory | JournalTag | undefined>(undefined);
+  // Which row is mid-generate, by name — one row's spinner must not disable the
+  // whole list, so this is a name rather than a boolean.
+  const [generating, setGenerating] = useState<string | undefined>(undefined);
+
+  // The batch fill for this list only — its own busy flag and its own result
+  // line, so it never borrows the per-row spinner.
+  const [autopopulating, setAutopopulating] = useState(false);
+  const [autopopulateResult, setAutopopulateResult] = useState<string | undefined>(undefined);
 
   const saveAction = kind === "category" ? saveJournalCategoryAction : saveJournalTagAction;
   const deleteAction = kind === "category" ? deleteJournalCategoryAction : deleteJournalTagAction;
+  const missingIcons = items.filter((item) => !item.iconMimeType).length;
 
   async function handleCreate() {
     setError(undefined);
@@ -234,6 +303,45 @@ function TaxonomyPanel({
     setName("");
     setDescription("");
     router.refresh();
+  }
+
+  async function handleGenerate(item: JournalCategory | JournalTag) {
+    setError(undefined);
+    setGenerating(item.name);
+    try {
+      const { error: message, cancelled } = await generateIconFor(kind, item);
+      if (cancelled) return;
+      if (message) setError(message);
+      else router.refresh();
+    } finally {
+      setGenerating(undefined);
+    }
+  }
+
+  /**
+   * Draws an icon for every row in *this* list that hasn't got one. Missing-only,
+   * so a hand-uploaded icon is never replaced by surprise — the per-row flash
+   * button stays the way to overwrite one.
+   */
+  async function handleAutopopulate() {
+    setError(undefined);
+    setAutopopulateResult(undefined);
+    setAutopopulating(true);
+    try {
+      const outcome = await generateMissingJournalIconsAction(kind);
+      if (!outcome.ok) {
+        setError(outcome.error ?? "Failed to generate the missing icons.");
+        return;
+      }
+      const failed = outcome.failed ?? 0;
+      setAutopopulateResult(
+        `Drew ${outcome.generated ?? 0} icon${outcome.generated === 1 ? "" : "s"}` +
+          (failed > 0 ? `, ${failed} could not be drawn.` : "."),
+      );
+      router.refresh();
+    } finally {
+      setAutopopulating(false);
+    }
   }
 
   async function handleDelete(item: JournalCategory | JournalTag) {
@@ -269,10 +377,26 @@ function TaxonomyPanel({
         </label>
       </div>
 
-      <div>
+      {/* Both buttons on one wrapping row: adding one by hand and filling in the
+          blanks for the whole list are the two things you do from here. */}
+      <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" onClick={handleCreate} disabled={name.trim() === ""}>
           Add {kind === "category" ? "category" : "tag"}
         </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={handleAutopopulate}
+          disabled={autopopulating || missingIcons === 0}
+          title={
+            missingIcons === 0
+              ? `Every ${kind} already has an icon`
+              : `Draw an icon for the ${missingIcons} with none yet, leaving existing icons alone`
+          }
+        >
+          {autopopulating ? "Drawing…" : `Autopopulate icon for ${kind}`}
+        </Button>
+        {autopopulateResult && <span className="text-sm text-muted">{autopopulateResult}</span>}
       </div>
 
       {items.length === 0 ? (
@@ -295,6 +419,27 @@ function TaxonomyPanel({
                   className="rounded-md p-1 text-brass-dark transition-colors hover:bg-brass-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
                 >
                   <TreeIcon name="pencil" className="h-4 w-4" />
+                </button>
+                {/* Generate an icon from the name. Sits between edit and delete
+                    because it edits the row rather than destroying it — and it
+                    stays enabled on rows that already have an icon, since
+                    replacing one is a reason to press it. */}
+                <button
+                  type="button"
+                  onClick={() => handleGenerate(item)}
+                  disabled={generating === item.name}
+                  aria-label={`Generate an icon for ${kind} "${item.name}"`}
+                  title={
+                    item.iconMimeType
+                      ? "Generate an icon from the name (replaces the current one)"
+                      : "Generate an icon from the name"
+                  }
+                  className="rounded-md p-1 text-brass-dark transition-colors hover:bg-brass-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass disabled:opacity-40"
+                >
+                  <TreeIcon
+                    name="flash"
+                    className={`h-4 w-4 ${generating === item.name ? "animate-pulse" : ""}`}
+                  />
                 </button>
                 <button
                   type="button"
@@ -334,6 +479,59 @@ function TaxonomyPanel({
   );
 }
 
+/**
+ * "Fill in the missing icons" — one click for every category and tag that hasn't
+ * got one.
+ *
+ * Worth its own control because the per-row button doesn't scale: a real journal
+ * runs to a couple of hundred tags and none of them start with an icon. Only
+ * fills blanks, so a hand-uploaded icon is never replaced by surprise.
+ */
+function GenerateAllIconsButton({ missing }: { missing: number }) {
+  const router = useRouter();
+  const [isBusy, setIsBusy] = useState(false);
+  const [result, setResult] = useState<string | undefined>(undefined);
+
+  async function handleClick() {
+    setResult(undefined);
+    setIsBusy(true);
+    try {
+      const outcome = await generateMissingJournalIconsAction();
+      if (!outcome.ok) {
+        setResult(outcome.error ?? "Failed to generate the missing icons.");
+        return;
+      }
+      const failed = outcome.failed ?? 0;
+      setResult(
+        `Drew ${outcome.generated ?? 0} icon${outcome.generated === 1 ? "" : "s"}` +
+          (failed > 0 ? `, ${failed} could not be drawn.` : "."),
+      );
+      router.refresh();
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  if (missing === 0 && result === undefined) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-paper px-4 py-3">
+      <TreeIcon name="flash" className="h-5 w-5 shrink-0 text-brass-dark" />
+      <p className="min-w-0 flex-1 text-sm text-ink">
+        {missing > 0
+          ? `${missing} categor${missing === 1 ? "y" : "ies"} and tags have no icon yet.`
+          : "Every category and tag has an icon."}
+        {result && <span className="ml-2 text-muted">{result}</span>}
+      </p>
+      {missing > 0 && (
+        <Button size="sm" onClick={handleClick} disabled={isBusy}>
+          {isBusy ? "Drawing…" : "Draw the missing icons"}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 export function JournalTaxonomyView({
   categories,
   tags,
@@ -341,18 +539,21 @@ export function JournalTaxonomyView({
   categories: JournalCategory[];
   tags: JournalTag[];
 }) {
+  const missing = [...categories, ...tags].filter((item) => !item.iconMimeType).length;
+
   return (
     <div className="flex flex-col gap-8">
+      <GenerateAllIconsButton missing={missing} />
       <TaxonomyPanel
         kind="category"
         title="Categories"
-        helpText="Categories are created automatically when you use a new name on an entry — add one here to give it a description up front, or an icon that shows up wherever the category appears."
+        helpText="Categories are created automatically when you use a new name on an entry — add one here to give it a description up front, or an icon that shows up wherever the category appears. The ⚡ button draws an icon from the name."
         items={categories}
       />
       <TaxonomyPanel
         kind="tag"
         title="Tags"
-        helpText="Tags are created automatically when you use a new name on an entry — add one here to give it a description up front, or an icon that shows up wherever the tag appears."
+        helpText="Tags are created automatically when you use a new name on an entry — add one here to give it a description up front, or an icon that shows up wherever the tag appears. The ⚡ button draws an icon from the name."
         items={tags}
       />
     </div>

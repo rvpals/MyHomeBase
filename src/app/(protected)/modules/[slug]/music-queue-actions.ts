@@ -5,6 +5,7 @@ import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import {
   advanceQueue,
   clearQueue,
+  closeQueue,
   enqueueSchema,
   enqueueTracks,
   getPlayQueue,
@@ -161,6 +162,17 @@ export async function removeQueueEntryAction(entryId: number): Promise<QueueView
 export async function clearQueueAction(): Promise<QueueViewModel> {
   await requireUser();
   return toViewModel(clearQueue(deps));
+}
+
+/**
+ * Hides the player bar, keeping the queue.
+ *
+ * Distinct from `clearQueueAction`: this only drops the cursor, so the entries are still
+ * there when you come back. See `closeQueue`.
+ */
+export async function closeQueueAction(): Promise<QueueViewModel> {
+  await requireUser();
+  return toViewModel(closeQueue(deps));
 }
 
 export async function setRepeatModeAction(repeatMode: string): Promise<QueueViewModel> {

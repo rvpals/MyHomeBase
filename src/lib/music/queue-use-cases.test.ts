@@ -4,6 +4,7 @@ import type { QueueEntry, QueueState, RepeatMode } from "./queue";
 import {
   advanceQueue,
   clearQueue,
+  closeQueue,
   enqueueTracks,
   getPlayQueue,
   playQueueEntry,
@@ -367,6 +368,44 @@ describe("clearQueue", () => {
     const deps = fakeRepo();
     setRepeatMode({ repeatMode: "all" }, deps);
     expect(clearQueue(deps).state.repeatMode).toBe("all");
+  });
+});
+
+describe("closeQueue", () => {
+  it("clears the cursor but keeps every entry", () => {
+    const deps = fakeRepo();
+    setQueue({ trackIds: [1, 2, 3], startIndex: 1 }, deps);
+    const queue = closeQueue(deps);
+
+    // The whole point: the bar hides, the 3-track queue survives.
+    expect(trackIdsOf(queue)).toEqual([1, 2, 3]);
+    expect(queue.state.currentEntryId).toBeUndefined();
+  });
+
+  it("leaves the shuffled flag alone, because the rows are still shuffled", () => {
+    const deps = { ...fakeRepo(), random: zeroRandom };
+    setQueue({ trackIds: [1, 2, 3] }, deps);
+    shuffleQueue(deps);
+
+    expect(closeQueue(deps).state.isShuffled).toBe(true);
+  });
+
+  it("is a no-op on a queue that was already closed", () => {
+    const deps = fakeRepo();
+    setQueue({ trackIds: [1, 2] }, deps);
+    closeQueue(deps);
+    const queue = closeQueue(deps);
+
+    expect(trackIdsOf(queue)).toEqual([1, 2]);
+    expect(queue.state.currentEntryId).toBeUndefined();
+  });
+
+  it("keeps the repeat mode, which is a preference rather than queue content", () => {
+    const deps = fakeRepo();
+    setQueue({ trackIds: [1] }, deps);
+    setRepeatMode({ repeatMode: "all" }, deps);
+
+    expect(closeQueue(deps).state.repeatMode).toBe("all");
   });
 });
 

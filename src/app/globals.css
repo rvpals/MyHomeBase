@@ -33,22 +33,21 @@ body {
   font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
 }
 
-/* The top bar is `fixed`, so `.app-main` pads for it. `AppChrome` mirrors its
-   minimise state onto `<html>` and this rule reads it — `(protected)/layout.tsx`
-   is a server component and can't see client state, so the reaction has to live
-   in CSS. Default assumes the bar is open, which is what the pre-paint script in
-   src/app/layout.tsx also assumes. */
+/* The page's own padding. There is no fixed top bar any more — the utility
+   header (`AppHeader`) is `sticky` *inside* the content column, so it scrolls
+   with the page rather than floating above it and needs no reserved space.
+   What's left is the gutter and the device insets. */
 .app-main {
   /* `+ env(safe-area-inset-top)` because src/app/layout.tsx sets
      `viewport-fit=cover` and `black-translucent`: the app paints *under* the
-     notch / Dynamic Island, so the bar it pads for starts below that inset
-     rather than at y=0. `env()` is `0px` on any device without insets, so every
-     desktop browser and most Android ones are unaffected. Same reasoning for
-     the bottom and side insets below. */
-  padding-top: calc(4.5rem + env(safe-area-inset-top)); /* 3.5rem bar + gutter */
+     notch / Dynamic Island, so content would otherwise start behind it. `env()`
+     is `0px` on any device without insets, so every desktop browser and most
+     Android ones are unaffected. Same reasoning for the bottom and side insets
+     below. */
+  padding-top: env(safe-area-inset-top);
   /* The side gutter lives here rather than as `px-8 max-lg:px-4` on the element,
-     because things inside it need to *cancel* it to run edge to edge — see
-     `.tree-nav-bleed`. One variable means the bleed can't drift out of step with
+     because things inside it need to *cancel* it to run edge to edge. One
+     variable means the bleed can't drift out of step with
      the padding it's undoing.
      `max()` rather than `+` because the side insets are only non-zero in
      landscape on a notched phone, and there the inset already *is* a generous
@@ -63,99 +62,129 @@ body {
   }
 }
 
-html[data-appbar="min"] .app-main {
-  padding-top: calc(1.5rem + env(safe-area-inset-top));
-}
+/* ---------------------------------------------------------------------------
+   The two-tier navigation shell: a 64px module rail (tier 1) and a 240px
+   section panel (tier 2), both fixed down the left on the full layout.
 
-/* The top app bar's own safe-area allowance. `AppChrome` already carries an
-   `.app-bar` class that had no rule behind it — this is it, rather than an
-   arbitrary Tailwind value on the element, so the inset lives next to the
-   `.app-main` padding that has to agree with it.
+   The widths are published as variables because three things have to agree on
+   them and only one of them is a React component: the rail's own width, the
+   panel's offset from the left edge, and the padding `.app-main` reserves so
+   page content isn't underneath either. Hardcoding `64px` at those three call
+   sites is how they drift.
 
-   Owns the height outright — `AppChrome` no longer carries `h-14` — because the
-   height and the inset that extends it have to be one calculation. 3.5rem is
-   the old `h-14`; the padding then holds the bar's contents below the Dynamic
-   Island, inside a bar that has grown by exactly that much.
+   `--section-panel-width` is `0px` by default and only takes its real value
+   when the panel is open, so the `calc()` below is one expression for both
+   states rather than two rules. `TwoTierShell` mirrors the open state onto
+   `<html data-sectionpanel>` — the same seam `data-music-player` uses,
+   and the same reason: `.app-main` belongs to a server layout that cannot see
+   the client state driving the collapse control.
 
-   Note this must agree with `.app-main`'s `padding-top` above (4.5rem = 3.5rem
-   bar + 1rem gutter): the bar is `fixed`, so nothing enforces that for us. */
-.app-bar {
-  padding-top: env(safe-area-inset-top);
-  height: calc(3.5rem + env(safe-area-inset-top));
-}
-
-/* A module's section bar (`TreeNav`, in its bar form) pins to the *bottom* edge
-   in both layouts now — `full`'s `full` state and all of compact. `TreeNav`
-   mirrors whether it's currently rendering that bar (or the puck it minimises
-   to) onto `<html data-treenav>`, the same seam `AppChrome` uses for the top
-   bar, because `.app-main` is owned by a server layout that can't see the
-   client state driving the nav's own collapse control.
-   Unset on any page without a `TreeNav` (the home grid, Administration's
-   sidebar layout) — no attribute, no reserved space, nothing to pad for.
-
-   The height is a variable rather than a padding value now, because two things
-   have to agree on it: the space `.app-main` reserves, and where the music
-   player parks itself. The player sits *above* the nav instead of over it — it
-   used to cover the bar, which is the one control you always want reachable.
-   `0px`, not `0`, so the `calc()`s below stay valid with no nav on the page. */
+   Compact sets neither. Down there the rail is a dropdown in the app bar and
+   the panel is a bottom sheet, so nothing is reserving side space — see
+   `--section-trigger-height` below for the bottom edge it does occupy. */
 :root {
-  --tree-nav-height: 0px;
+  --module-rail-width: 4rem; /* 64px */
+  --section-panel-width: 0px;
 }
 
-html[data-treenav="bar"] {
-  --tree-nav-height: 4rem;
+html[data-sectionpanel="open"] {
+  --section-panel-width: 15rem; /* 240px */
 }
 
-html[data-treenav="puck"] {
-  --tree-nav-height: 1.5rem;
-}
-
-/* The page pads for everything stacked against the bottom edge: the nav, plus
-   the player above it when a track is loaded. `--music-player-height` is `0px`
-   until `MusicPlayerBar` mirrors its presence onto `<html data-music-player>` —
-   the same seam and the same reason as `data-treenav`: only the client knows
-   whether something is playing, and `.app-main` belongs to a server layout.
-
-   Both selectors, because either bar can be present without the other: a module
-   page with no track playing, or the player following you to the home grid,
-   which has no `TreeNav`. The sum is the same either way — the absent one
-   contributes `0px` — so one rule covers both rather than four combinations. */
-html[data-treenav] .app-main,
-html[data-music-player] .app-main {
-  padding-bottom: calc(
-    var(--tree-nav-height) + var(--music-player-height, 0px) + env(safe-area-inset-bottom)
+/* Only on the full layout, and only where a shell rendered: `data-shell` is set
+   by `TwoTierShell`, so a page outside it reserves nothing. The home and account
+   screens are *inside* the shell but have no sections, so `--section-panel-width`
+   stays `0px` for them and this reserves the rail alone. */
+html[data-shell="two-tier"] .app-main {
+  padding-left: calc(
+    var(--module-rail-width) + var(--section-panel-width) + var(--app-gutter, 0px)
   );
 }
 
-/* `fixed`, not `sticky` — `sticky` only engages once scrolling would carry the
-   element past its *natural* position, so a bar sitting near the top of a tall
-   section would stay there until the reader scrolled all the way to the
-   bottom of the page. Pinning to the actual bottom of the *viewport*, on every
-   scroll position, needs `fixed`, the same treatment the top app bar uses.
-   Goes on the wrapper each section shell puts round `TreeNav`, never on the
-   nav itself, so `TreeNav` doesn't have to know its own screen position. */
-html[data-treenav="bar"] .tree-nav-sticky {
+/* Compact has no side chrome — the rail and panel are a dropdown and a sheet.
+   Reset rather than never-set, because the reader can *pin* the compact layout
+   on a 1400px window, where a `min-width` media query would still match. */
+@media (max-width: 1023.98px) {
+  html[data-shell="two-tier"] .app-main {
+    padding-left: var(--app-gutter, 0px);
+  }
+}
+
+html[data-shell="two-tier"][data-viewport="compact"] .app-main {
+  padding-left: var(--app-gutter, 0px);
+}
+
+/* What the compact section trigger occupies on the bottom edge, so the music
+   player can stack above it exactly as it stacks above the legacy nav. `0px`
+   when the shell isn't compact — on desktop the bottom edge is free and the
+   player gets the full width. */
+:root {
+  --section-trigger-height: 0px;
+}
+
+html[data-sectiontrigger="bar"] {
+  --section-trigger-height: 3.5rem;
+}
+
+html[data-sectiontrigger] .app-main {
+  padding-bottom: calc(
+    var(--section-trigger-height) + var(--music-player-height, 0px) +
+      env(safe-area-inset-bottom)
+  );
+}
+
+/* The rail and the panel are both fixed columns spanning the viewport's full
+   height, tucked under the utility header. z-30: below `AppChrome`'s z-40 and
+   `Modal`'s z-50, above ordinary content — same band the legacy nav bar uses. */
+.shell-rail,
+.shell-panel {
   position: fixed;
-  inset-inline: 0;
+  top: 0;
   bottom: 0;
-  /* Under AppChrome's z-40 bar and Modal's z-50, over ordinary content. */
   z-index: 30;
-  /* Keeps the bar's controls above the home indicator. `bottom: 0` still holds
-     so the bar's *background* runs to the physical edge — it's the tappable
-     content that moves up, which is what standalone iOS wants: no gap of page
-     showing under the bar, no buttons under the indicator. */
+  padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-/* Cancels the page gutter so the bar runs edge to edge. Applied by `TreeNav`
-   only in the shapes that want it, so it needs no viewport condition of its
-   own. The fallback covers a tree rendered outside `.app-main`.
-   Once `.tree-nav-sticky` is `fixed` (bar showing), the wrapper is out of
-   flow and sized by the viewport already — this margin trick is a no-op then,
-   but stays harmless for the non-bar shapes (rail/strip) that still use it. */
-.tree-nav-bleed {
-  margin-inline: calc(-1 * var(--app-gutter, 0px));
+.shell-rail {
+  left: 0;
+  width: var(--module-rail-width);
+  /* The left inset only matters in landscape on a notched phone, and the rail
+     doesn't render there — but it costs nothing and keeps the rule honest if
+     the compact boundary ever moves. */
+  padding-left: env(safe-area-inset-left);
 }
+
+.shell-panel {
+  left: calc(var(--module-rail-width) + env(safe-area-inset-left));
+  width: 15rem;
+}
+
+/* The compact section trigger, pinned to the bottom edge above the music
+   player. `bottom: 0` so the surface
+   runs to the physical edge with no strip of page showing under it, and the
+   inset applied as padding so the tappable row clears the home indicator. */
+.shell-trigger {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 30;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* The page pads for whatever is stacked against the bottom edge: the compact
+   section trigger (see `--section-trigger-height` above), plus the music player
+   above it when a track is loaded. `--music-player-height` is `0px` until
+   `MusicPlayerBar` mirrors its presence onto `<html data-music-player>` — only
+   the client knows whether something is playing, and `.app-main` belongs to a
+   server layout that can't see that. */
+html[data-music-player] .app-main {
+  padding-bottom: calc(
+    var(--section-trigger-height) + var(--music-player-height, 0px) +
+      env(safe-area-inset-bottom)
+  );
+}
+
 
 /* Elevation for the navigation bars: a raised surface, not a button.
    `design.md` keeps nav bars as quiet surfaces, so the lift comes from light
@@ -205,6 +234,131 @@ html[data-treenav="bar"] .tree-nav-sticky {
     0 4px 12px -4px rgba(0, 0, 0, 0.3);
 }
 
+/* Paper tooth for a card that should read as a physical sheet — the journal's
+   New Journal card, where you're "writing" something.
+
+   Deliberately tint-free: it's woven from translucent black and white only, so
+   it darkens and lightens whatever `bg-paper-raised` the active theme supplies
+   rather than imposing a grey of its own. A literal grey would look right on
+   Signal Deck and wrong on Daybreak (white card) and BMS (purple) — see
+   design.md, "The token system, not literal colors". On the dark themes this
+   reads as grey paper grain; on the light ones, as off-white laid paper.
+
+   Three layers, all `background-image` so the theme's `background-color` still
+   shows through underneath:
+     1-2. Two 1px hairline grids at 7deg and -11deg — the "laid" fibres. The odd
+          angles and coprime sizes (23px/31px) stop them beating into a visible
+          moire the way 45deg on equal pitches would.
+     3.   A broad diagonal sheen, so the sheet isn't uniformly flat.
+   Opacities are at the floor of what's visible (0.02-0.035); anything heavier
+   turns into corduroy behind small text. */
+.paper-texture {
+  background-image:
+    repeating-linear-gradient(
+      7deg,
+      rgba(0, 0, 0, 0.035) 0px,
+      rgba(0, 0, 0, 0.035) 1px,
+      transparent 1px,
+      transparent 23px
+    ),
+    repeating-linear-gradient(
+      -11deg,
+      rgba(255, 255, 255, 0.03) 0px,
+      rgba(255, 255, 255, 0.03) 1px,
+      transparent 1px,
+      transparent 31px
+    ),
+    linear-gradient(114deg, rgba(255, 255, 255, 0.02), rgba(0, 0, 0, 0.02));
+}
+
+/* The home dashboard's background picture (migrations/0063).
+
+   A `fixed` pseudo-element rather than a `background-image` on the page, for
+   three reasons:
+     1. It must sit BEHIND the cards, which carry `bg-paper-raised` and are what
+        keep text legible over a photograph. A background on the scroll container
+        would be painted under the content anyway, but `cover` would then size
+        to the *scroll height*, so a long dashboard would show a stretched crop
+        and a short one a different framing.
+     2. `filter: blur()` on a real background-image would blur the element's
+        content too. On its own layer it blurs only the picture.
+     3. `opacity` here is the admin's dial. Applying it to a layer rather than
+        compositing it into the image means the theme's `--paper` shows through
+        underneath, so the texture tints the theme instead of replacing it --
+        the same intent `.paper-texture` has, by the only means available to an
+        image whose colors we don't control.
+
+   Emitted only when a picture is uploaded: `dashboardTextureCssVars` returns
+   undefined otherwise and the wrapper renders no `data-dashboard-texture`, so
+   there is no always-on fixed compositing layer on a dashboard with no texture.
+
+   `scale(1.06)` counteracts blur's transparent edge -- a blurred layer fades out
+   at its own boundary, which would otherwise show as a light vignette around the
+   viewport. Cheap, and only visible when blur > 0.
+
+   WHY THE WRAPPER IS `position: relative` AND `z-index: 0`, NOT just relative.
+   `z-index: -1` alone would put the layer behind its own stacking context and
+   therefore behind `body`'s `background: var(--paper)` -- an opaque fill, so the
+   picture would simply never be seen. Giving the wrapper `z-index: 0` makes it a
+   stacking context of its own, which traps the -1 child *inside* it: the layer
+   lands above the body background and below the wrapper's content. The children
+   then need no z-index of their own. */
+[data-dashboard-texture] {
+  position: relative;
+  z-index: 0;
+}
+
+[data-dashboard-texture]::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: var(--dashboard-texture-image);
+  background-size: var(--dashboard-texture-size, cover);
+  background-repeat: var(--dashboard-texture-repeat, no-repeat);
+  background-position: center;
+  opacity: var(--dashboard-texture-opacity, 0.1);
+  filter: blur(var(--dashboard-texture-blur, 0px));
+  transform: scale(1.06);
+}
+
+/* A MODULE's background picture (migrations/0064) — the same mechanism as the
+   dashboard layer above, keyed to a module instead of the home screen. The Music
+   Library is the first to use it; the picture sits behind every one of that
+   module's sections.
+
+   A separate rule rather than a shared class because the two read different
+   custom properties, and a module screen must be able to carry its own picture
+   while the dashboard carries another. Everything the comment above explains --
+   why the wrapper needs `z-index: 0` to trap a `z-index: -1` child above the
+   opaque body background, why `scale(1.06)` hides a blurred layer's soft edge,
+   why opacity lives on the layer so the theme's `--paper` tints through rather
+   than being replaced -- applies here identically and is not repeated.
+
+   Emitted only when a picture is uploaded: `moduleTextureCssVars` returns
+   undefined otherwise and the shell renders no `data-module-texture` attribute,
+   so a module with no picture gets no always-on compositing layer. */
+[data-module-texture] {
+  position: relative;
+  z-index: 0;
+}
+
+[data-module-texture]::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: var(--module-texture-image);
+  background-size: var(--module-texture-size, cover);
+  background-repeat: var(--module-texture-repeat, no-repeat);
+  background-position: center;
+  opacity: var(--module-texture-opacity, 0.1);
+  filter: blur(var(--module-texture-blur, 0px));
+  transform: scale(1.06);
+}
+
 /* The hover lift. `CollapsibleCard` is often clickable in effect (its whole
    header toggles), and `design.md` allows a card "a soft ring/lift on hover" —
    so the shadow grows and softens rather than the card translating, which would
@@ -229,7 +383,10 @@ html[data-treenav="bar"] .tree-nav-sticky {
 .music-player-pinned {
   position: fixed;
   inset-inline: 0;
-  bottom: calc(var(--tree-nav-height) + env(safe-area-inset-bottom));
+  /* Stacks on the compact section trigger when there is one. On the full
+     layout `--section-trigger-height` is `0px` — the shell's tiers are side
+     columns, so the player gets the whole bottom edge. */
+  bottom: calc(var(--section-trigger-height) + env(safe-area-inset-bottom));
   /* Level with the section nav's z-30: both sit under AppChrome's z-40 top bar
      and Modal's z-50. They never overlap, so their order between themselves
      doesn't arise. */
@@ -238,7 +395,7 @@ html[data-treenav="bar"] .tree-nav-sticky {
 
 /* No `env(safe-area-inset-bottom)` on either height: the offset above already
    lifts the player clear of the home indicator, and the nav's own
-   `.tree-nav-sticky` padding covers the inset below it. Adding it here would
+   the trigger's own padding covers the inset below it. Adding it here would
    double-count. */
 html[data-music-player="compact"] {
   --music-player-height: 3.5rem;
@@ -280,22 +437,6 @@ html[data-music-player="full"] {
   justify-content: start;
 }
 
-/* Where the bar's puck sits once it's minimised: bottom-left, clear of
-   AppChrome's own top-left puck. Both bars now live on opposite edges, so
-   there's no shared corner to avoid and no top-bar state to track here — that
-   coupling only existed while the tree-nav puck sat under the top bar. */
-.tree-nav-puck {
-  bottom: calc(1rem + env(safe-area-inset-bottom));
-  left: calc(1rem + env(safe-area-inset-left));
-}
-
-/* The top bar's puck, same idiom: top-left, offset by the top inset so it clears
-   the Dynamic Island. Matches the `left-3 top-3` it replaces (0.75rem). */
-.app-bar-puck {
-  top: calc(0.75rem + env(safe-area-inset-top));
-  left: calc(0.75rem + env(safe-area-inset-left));
-}
-
 /* Printing (and "Save as PDF"): print the `.print-sheet` element alone as a clean
    ink-on-white page. Hiding everything and then revealing the sheet's subtree is
    layout-independent, so it doesn't depend on how the app chrome is structured.
@@ -334,5 +475,85 @@ html[data-music-player="full"] {
 
   .no-print {
     display: none !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Progress3D — the carved channel and the raised fill.
+
+   Two halves of one illusion, so they live together:
+
+     - The TRACK is a groove cut *into* the page. Its gradient runs
+       paper -> paper-raised -> paper across the bar, which reads as the far
+       wall catching light in the middle, and the inset shadow at the top edge
+       is the near lip casting down into it. Both ends are theme tokens, so the
+       groove is cut out of whatever surface the active theme supplies.
+
+     - The FILL is a slab sitting in that groove, lit from above: a
+       brass-dark -> brass -> brass-dark gradient with a white sheen along the
+       top 40%, then the hard offset shadow in `--brass-dark` that `Button`
+       uses. Same light source, same mechanic, so a filled bar and a button
+       read as the same material — see design.md, "Buttons are the 3D element".
+
+   Every color is a var(), never a literal, for the reason `.paper-texture`
+   documents: a grey that looks right on Signal Deck looks wrong on Daybreak.
+   The only literals are translucent white and black, and both stay inside the
+   safe range design.md sets (white <= 0.12, black <= 0.45), so the bar reads on
+   the light themes as well as the dark ones. */
+.progress-3d-track {
+  background-image: linear-gradient(
+    to right,
+    var(--paper) 0%,
+    var(--paper-raised) 50%,
+    var(--paper) 100%
+  );
+  box-shadow:
+    inset 0 2px 3px rgba(0, 0, 0, 0.32),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.06),
+    0 3px 0 0 var(--line);
+}
+
+/* The fill's accent is passed in as `--progress-3d-from`/`--progress-3d-to` by
+   the component's `tone` prop rather than hardcoded here, so the same class
+   serves the theme accent and the two semantic tones (up/down) without a
+   second copy of the gradient. */
+.progress-3d-fill {
+  background-image:
+    linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0.12) 0%,
+      rgba(255, 255, 255, 0.04) 40%,
+      rgba(0, 0, 0, 0.08) 100%
+    ),
+    linear-gradient(
+      to right,
+      var(--progress-3d-from) 0%,
+      var(--progress-3d-to) 55%,
+      var(--progress-3d-from) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 3px 0 0 var(--progress-3d-from);
+}
+
+/* The indeterminate sweep, for a job that hasn't counted its work yet. A
+   transform-only animation so it stays off the layout/paint path, and it holds
+   still under `prefers-reduced-motion` rather than pulsing in place. */
+@keyframes progress-3d-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+.progress-3d-indeterminate {
+  animation: progress-3d-sweep 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-3d-indeterminate {
+    animation: none;
   }
 }

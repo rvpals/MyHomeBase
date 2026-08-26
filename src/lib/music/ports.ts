@@ -143,6 +143,12 @@ export interface MusicRepository {
   getScanRun(id: number): ScanRun | undefined;
   getActiveScanRun(): ScanRun | undefined;
   listRecentScanRuns(limit: number): ScanRun[];
+  /**
+   * Closes 'running' rows whose writer is gone, returning how many. Call before
+   * reading scan status: a process killed mid-scan leaves a row that otherwise
+   * looks active forever.
+   */
+  failAbandonedScanRuns(staleAfterSeconds?: number): number;
 
   // --- browse views (see migrations/0056) ---
   /** Distinct artists with track counts, for the Artists view. */

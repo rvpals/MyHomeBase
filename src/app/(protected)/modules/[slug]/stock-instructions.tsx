@@ -302,6 +302,22 @@ function PositionsInstructions() {
           can&apos;t be quoted (delisted, renamed) is reported and skipped; the rest still refresh.
         </p>
       </Section>
+
+      <Section title="Auto refresh on schedule">
+        <p>
+          Under <strong>Configuration &rarr; Auto refresh on schedule</strong> you can let the
+          server do all of that on its own — every hour, every half day, or every day. It runs the
+          same three steps as Refresh All (prices, then sectors, then the day&apos;s snapshot), so
+          the value history stops having gaps on days nobody pressed the button.
+        </p>
+        <p>
+          The switch is off until you turn it on, and a change takes effect within a minute
+          without restarting anything. <strong>Run refresh now</strong> in that card ignores both
+          the switch and the interval, so you can try a pass before committing to a schedule.
+          Every day is the sensible default: a portfolio&apos;s numbers move on a daily cadence,
+          and the quote feed is a free service that&apos;s better not hammered.
+        </p>
+      </Section>
     </>
   );
 }

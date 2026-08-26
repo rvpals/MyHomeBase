@@ -1,6 +1,15 @@
 import { z } from "zod";
 import { MODULE_ICON_NAMES } from "./icon-names";
 
+/**
+ * One icon name, on its own.
+ *
+ * Split out of `moduleSchema` because the icon is now settable by itself (see
+ * `setModuleIcon`) and validating it should not require inventing the rest of a
+ * module row.
+ */
+export const moduleIconNameSchema = z.enum(MODULE_ICON_NAMES);
+
 export const moduleSchema = z.object({
   id: z.number().int().positive(),
   slug: z.string().min(1),
@@ -9,7 +18,7 @@ export const moduleSchema = z.object({
   description: z.string().min(1).optional(),
   sequence: z.number().int(),
   isVisible: z.boolean(),
-  icon: z.enum(MODULE_ICON_NAMES),
+  icon: moduleIconNameSchema,
   // Defaulted so `resetToDefaults` and any other caller building a Module from
   // scratch doesn't have to state it — a fresh module has no artwork.
   hasCarouselImage: z.boolean().default(false),

@@ -6,8 +6,10 @@
 //
 // Usage:
 //   npm run cli -- magic-playlist [--genre G]... [--artist A]... [--album ID]...
-//                                 [--minutes N] [--any] [--include-unplayable]
+//                                 [--folder PATH]... [--minutes N] [--any]
+//                                 [--include-unplayable]
 //                                 [--save "Name"] [--description "..."]
+//   npm run cli -- magic-playlist --folders [PATH]
 //   npm run cli -- magic-playlist --list
 //   npm run cli -- magic-playlist --load <id>
 //   npm run cli -- magic-playlist --regenerate <id>
@@ -16,6 +18,12 @@
 //   npm run cli -- magic-playlist --genre Rock --genre Pop --minutes 60
 //   npm run cli -- magic-playlist --artist "Michael Jackson" --artist "Luther Vandross" --any
 //   npm run cli -- magic-playlist --genre Jazz --minutes 90 --save "Sunday morning"
+//   npm run cli -- magic-playlist --folder "Rock/Queen" --minutes 45
+//   npm run cli -- magic-playlist --folders "Rock"        # browse one level of the tree
+//
+// A folder selects its whole SUBTREE, so --folder Rock covers Rock/Queen/Live too. Use
+// --folders to walk the tree and find the path to pass, since a folder criterion is a path
+// rather than a name you can guess.
 //
 // A repeated flag is how a multi-select arrives here: `--genre Rock --genre Pop` is the
 // OR-within-a-field group, matching what the web pickers post.
@@ -28,6 +36,7 @@ import {
   emptyCriteria,
   formatRunningTime,
   generateMagicPlaylist,
+  listMagicFolderOptions,
   listMagicLists,
   loadMagicList,
   regenerateMagicList,
@@ -72,6 +81,14 @@ export async function magicPlaylistCommand(args: string[]): Promise<void> {
     return;
   }
 
+  // `--folders` with no value means the top level, which is why this tests for the FLAG
+  // rather than for a value -- `valueOf` returning undefined is a legitimate case here,
+  // unlike for --load or --delete.
+  if (args.includes("--folders")) {
+    withReadableErrors(() => printFolders(valueOf(args, "--folders") ?? ""));
+    return;
+  }
+
   withReadableErrors(() => runGenerate(args));
 }
 
@@ -110,6 +127,7 @@ function runGenerate(args: string[]): void {
     genres: valuesOf(args, "--genre"),
     artists: valuesOf(args, "--artist"),
     albumIds: valuesOf(args, "--album").map((value) => Number(value)),
+    folders: valuesOf(args, "--folder"),
     matchAny: args.includes("--any"),
     streamableOnly: !args.includes("--include-unplayable"),
   };
@@ -152,6 +170,32 @@ function runGenerate(args: string[]): void {
   printPlaylist(result.value.generated);
   console.log("");
   console.log(`Saved as magic list #${result.value.magicList.id} "${result.value.magicList.name}".`);
+}
+
+/**
+ * Walks one level of the folder tree, so a `--folder` path can be discovered rather than
+ * guessed. The browsing counterpart of the web picker's drill-down.
+ */
+function printFolders(parentPath: string): void {
+  const options = listMagicFolderOptions(magicDeps(), parentPath);
+  const where = parentPath === "" ? "the library root" : parentPath;
+
+  if (options.length === 0) {
+    console.log(`No sub-folders in ${where}.`);
+    return;
+  }
+
+  console.log(`Folders in ${where}:`);
+  console.log("");
+  for (const option of options) {
+    // The subtree total is the number that matters -- it is what --folder would select.
+    console.log(
+      `  ${option.relativePath.padEnd(56)} ${String(option.totalTrackCount).padStart(6)} tracks` +
+        `${option.hasChildren ? "   (has sub-folders)" : ""}`,
+    );
+  }
+  console.log("");
+  console.log(`Pass one as --folder "<path>" to select it and everything beneath it.`);
 }
 
 function printSavedLists(): void {
@@ -228,6 +272,10 @@ function printCriteria(criteria: MagicCriteria, candidateCount?: number): void {
   if (criteria.genres.length > 0) parts.push(`genres: ${criteria.genres.join(" | ")}`);
   if (criteria.artists.length > 0) parts.push(`artists: ${criteria.artists.join(" | ")}`);
   if (criteria.albumIds.length > 0) parts.push(`albums: ${criteria.albumIds.join(" | ")}`);
+  // Marked as subtrees so the printed criteria cannot be misread as exact-folder matches.
+  if (criteria.folders.length > 0) {
+    parts.push(`folders: ${criteria.folders.map((folder) => `${folder}/*`).join(" | ")}`);
+  }
 
   console.log(
     parts.length === 0

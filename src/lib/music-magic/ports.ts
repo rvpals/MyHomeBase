@@ -43,6 +43,24 @@ export interface MagicCandidateSource {
 
   /** Albums with track counts, for the album picker. Keyed by id, not name. */
   listAlbumOptions(): MagicAlbumOption[];
+
+  /**
+   * The folders directly inside `parentPath`, for one level of the folder picker.
+   *
+   * ONE LEVEL AT A TIME, unlike the other three option lists, which return everything.
+   * The difference is not an inconsistency: genres and artists are a flat few thousand
+   * rows that the picker filters in the browser, whereas the folder tree is walked, and
+   * shipping every folder in the library so the client can rebuild a hierarchy from path
+   * strings would send far more than the handful any one screen shows. It also mirrors
+   * `MusicRepository.listFolderChildren`, which the Library's Folder Hierarchy view
+   * already drives the same way.
+   *
+   * `parentPath` is '' for the top level. Counts follow the same rule as every other
+   * option list here -- only duration-tagged, streamable tracks -- so the number beside a
+   * folder is what the generator could really draw from it, and `totalTrackCount` counts
+   * the whole subtree because that is what ticking the folder would select.
+   */
+  listFolderOptions(parentPath: string): MagicFolderOption[];
 }
 
 /**
@@ -63,6 +81,29 @@ export interface MagicAlbumOption {
   label: string;
   albumArtist: string;
   trackCount: number;
+}
+
+/**
+ * A folder choice: one node of the tree the picker walks.
+ *
+ * `relativePath` is what gets stored as the criterion; `name` is its last segment, which
+ * is all the picker has room to show. Two counts, and the picker needs both:
+ *
+ *  - `trackCount` -- tracks sitting DIRECTLY in this folder.
+ *  - `totalTrackCount` -- tracks anywhere in its subtree, which is what ticking it
+ *    actually selects (migrations/0060). For a folder holding only sub-folders the first
+ *    is 0 and the second is the interesting number, so showing only `trackCount` would
+ *    label most of the tree "0" and make it look unpickable.
+ *
+ * `hasChildren` is what tells the picker whether the row can be drilled into, rather than
+ * having it discover an empty level after a round-trip.
+ */
+export interface MagicFolderOption {
+  relativePath: string;
+  name: string;
+  trackCount: number;
+  totalTrackCount: number;
+  hasChildren: boolean;
 }
 
 /** Saved Magic Playlists: their criteria, and the set each last generated. */
