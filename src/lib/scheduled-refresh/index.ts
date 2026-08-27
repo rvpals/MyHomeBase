@@ -8,7 +8,7 @@
 // exporting no repository at all; this one has to, because the scheduler needs it.
 //
 // Client components import the types and the interval labels straight from
-// `./types` instead -- see `stock-auto-refresh-card.tsx`.
+// `./types` instead -- see `admin/background-tasks/view.tsx`.
 
 export type {
   RefreshInterval,
@@ -25,8 +25,9 @@ export {
   scheduledRunStatusSchema,
   type ScheduledRefreshSettingsInput,
 } from "./schema";
-export type { ScheduledRunRepository } from "./ports";
-export { SqliteScheduledRunRepository } from "./repository";
+// Both moved to `@/lib/scheduled-jobs`; re-exported for existing importers.
+export type { ScheduledRunRepository } from "@/lib/scheduled-jobs/ports";
+export { SqliteScheduledRunRepository } from "@/lib/scheduled-jobs/repository";
 export {
   DEFAULT_REFRESH_INTERVAL,
   SCHEDULED_REFRESH_SETTING_KEYS,

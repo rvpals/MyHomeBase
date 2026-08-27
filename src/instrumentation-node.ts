@@ -11,10 +11,22 @@
 //     rather than at startup, for the same reason: flipping it takes effect
 //     within a minute either way, with no restart. A tick with the switch off
 //     does nothing beyond reading the settings, so an idle scheduler is cheap.
+//   * Every job's last-run stamp lives in `sys_scheduled_runs`, not on
+//     `globalThis`. `start.sh` cycles the process on every deploy and restarts it
+//     after any crash, so in-memory state turned "once a day" into "once per
+//     boot". It is also what lets Administration -> Background Tasks answer the
+//     question this file used to answer only via `app.log`: did the job run?
 //   * A globalThis flag keeps dev-mode hot reload from stacking up timers.
 //   * `unref()` lets the process exit normally instead of being held open by a
 //     pending timer.
-//   * Runs only in the Node runtime — Edge has no filesystem or SQLite.
+//   * Runs only in the Node runtime — Edge has no filesystem or SQLite. That is
+//     enforced by this file's *name*: Next loads `instrumentation-node.ts` only
+//     for the Node runtime, so the Edge build never traces this graph at all.
+//     A `NEXT_RUNTIME !== "nodejs"` guard inside a plain `instrumentation.ts` is
+//     not enough — it is a runtime check, and Turbopack still statically follows
+//     the `await import()`s below into the Edge graph, which fails the build with
+//     "A Node.js module is loaded ... not supported in the Edge Runtime" for
+//     better-sqlite3, node:fs and node:crypto. Don't rename this back.
 
 const HEARTBEAT_MS = 60_000;
 
@@ -22,12 +34,16 @@ const HEARTBEAT_MS = 60_000;
  * The auth-event prune runs on its own daily timer rather than on the 60s heartbeat:
  * a 90-day retention window doesn't move minute to minute, so checking it 1,440 times
  * a day would be pure waste. See migrations/0045.
+ *
+ * It used to also run 30s after every boot. It no longer does: the run is stamped in
+ * `sys_scheduled_runs`, so the startup pass asks whether a day has actually elapsed.
+ * On a NAS that redeploys or restarts several times an hour, "daily" previously meant
+ * "every restart".
  */
 const PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 const globalForAutoImport = globalThis as unknown as {
   __expenseAutoImportStarted?: boolean;
-  __expenseAutoImportLastRunMs?: number;
   __authEventPruneStarted?: boolean;
   __stockAutoRefreshStarted?: boolean;
 };
@@ -39,17 +55,16 @@ async function armAuthEventPrune() {
 
   // Imported lazily so the Edge/build passes never pull in better-sqlite3 — the same
   // reason the expense block below defers its own imports.
-  const { pruneAuthEvents, DEFAULT_RETENTION_DAYS } = await import("@/lib/auth-events");
-  const { deps } = await import("@/lib/wiring");
+  const { runAuthEventPruneNow, DEFAULT_RETENTION_DAYS } = await import("@/lib/auth-events");
 
   const tick = () => {
     try {
-      const deleted = pruneAuthEvents(deps.authEventRepo, DEFAULT_RETENTION_DAYS);
+      const summary = runAuthEventPruneNow();
       // Silent when there was nothing to do, so the log doesn't gain a daily line
-      // saying "deleted 0".
-      if (deleted > 0) {
+      // saying "deleted 0". The Background Tasks screen shows the quiet runs.
+      if (summary.ran && summary.deletedCount > 0) {
         console.log(
-          `[auth-events prune] deleted ${deleted} event(s) older than ${DEFAULT_RETENTION_DAYS} days.`,
+          `[auth-events prune] deleted ${summary.deletedCount} event(s) older than ${DEFAULT_RETENTION_DAYS} days.`,
         );
       }
     } catch (error) {
@@ -58,8 +73,9 @@ async function armAuthEventPrune() {
     }
   };
 
-  // Once at startup, so a server that is restarted more often than daily still
-  // prunes. Deferred a little so it never competes with the first page render.
+  // Once shortly after startup, deferred so it never competes with the first page
+  // render. The runner's own interval check makes this a no-op unless a day has
+  // genuinely elapsed, so a frequently-restarted server no longer prunes on each boot.
   const initial = setTimeout(tick, 30_000);
   initial.unref?.();
 
@@ -119,8 +135,8 @@ async function armStockAutoRefresh() {
 }
 
 export async function register() {
-  if (process.env.NEXT_RUNTIME !== "nodejs") return;
-
+  // No NEXT_RUNTIME check needed: the `-node` filename already scopes this file
+  // to the Node runtime. See the note at the top of the file.
   await armAuthEventPrune();
   await armStockAutoRefresh();
 
@@ -128,33 +144,23 @@ export async function register() {
   globalForAutoImport.__expenseAutoImportStarted = true;
 
   // Imported lazily so the Edge/build passes never pull in better-sqlite3.
-  const { runExpenseAutoImport, loadExpenseSettings } = await import(
-    "@/lib/expense/auto-import-runner"
-  );
-  const { isAutoImportEnabled, shouldRunNow } = await import("@/lib/expense/settings");
+  const { runExpenseAutoImport } = await import("@/lib/expense/auto-import-runner");
 
+  // The whole decision -- switched on? due yet? -- lives in `runExpenseAutoImport`
+  // now, which reads its last-run stamp from `sys_scheduled_runs` and never throws.
+  // This function is just the clock, matching the stocks refresh above.
   const tick = () => {
     try {
-      const settings = loadExpenseSettings();
-      // False when the switch is off, or when there's no folder/interval to work from.
-      if (!isAutoImportEnabled(settings)) return;
-
-      if (
-        !shouldRunNow(
-          globalForAutoImport.__expenseAutoImportLastRunMs,
-          settings.autoImportIntervalMinutes,
-          Date.now(),
-        )
-      ) {
-        return;
-      }
-
-      // Stamped before the run so a long import can't trigger an overlapping one.
-      globalForAutoImport.__expenseAutoImportLastRunMs = Date.now();
-
       const summary = runExpenseAutoImport();
       if (!summary.ran) {
-        if (summary.reason) console.warn(`[expense auto-import] skipped: ${summary.reason}`);
+        // "Switched off" and "not due yet" are the normal quiet path and would write
+        // a line a minute, so only a real obstacle is logged.
+        const quiet =
+          summary.reason === "Automatic importing is switched off." ||
+          summary.reason === "Not due yet.";
+        if (summary.reason && !quiet) {
+          console.warn(`[expense auto-import] skipped: ${summary.reason}`);
+        }
         return;
       }
       for (const file of summary.files) {

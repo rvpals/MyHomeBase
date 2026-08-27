@@ -13,14 +13,17 @@ import { importJournalCsvCommand } from "./import-journal-csv";
 import { journalCalendarCommand } from "./journal-calendar";
 import { journalTemplatesCommand } from "./journal-templates";
 import { listCsvAnalyticsCommand } from "./list-csv-analytics";
+import { listScheduledJobsCommand } from "./list-scheduled-jobs";
 import { listUsersCommand } from "./list-users";
 import { magicPlaylistCommand } from "./magic-playlist";
+import { marketIndexesCommand } from "./market-indexes";
 import { playQueueCommand } from "./play-queue";
 import { musicLibraryCommand, scanMusicCommand } from "./scan-music";
 import { refreshPositionsCommand } from "./refresh-positions";
 import { runScheduledRefreshCommand } from "./run-scheduled-refresh";
 import { setStartupMessageCommand } from "./set-startup-message";
 import { takeAttendanceCommand } from "./take-attendance";
+import { simulateTickerCommand } from "./simulate-ticker";
 import { tickerOverviewCommand } from "./ticker-overview";
 import { userPreferencesCommand } from "./user-preferences";
 
@@ -31,6 +34,7 @@ const commands: Record<string, Command> = {
   "list-users": listUsersCommand,
   "refresh-positions": refreshPositionsCommand,
   "run-scheduled-refresh": runScheduledRefreshCommand,
+  "list-scheduled-jobs": listScheduledJobsCommand,
   "compute-analytics": computeAnalyticsCommand,
   "list-csv-analytics": listCsvAnalyticsCommand,
   "create-csv-analytics-entry": createCsvAnalyticsEntryCommand,
@@ -41,6 +45,8 @@ const commands: Record<string, Command> = {
   "expense-top-spenders": expenseTopSpendersCommand,
   "explain-rule": explainRuleCommand,
   "ticker-overview": tickerOverviewCommand,
+  "simulate-ticker": simulateTickerCommand,
+  "market-indexes": marketIndexesCommand,
   "favorite-quotes": favoriteQuotesCommand,
   "set-startup-message": setStartupMessageCommand,
   "user-preferences": userPreferencesCommand,

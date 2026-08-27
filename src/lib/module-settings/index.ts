@@ -12,5 +12,6 @@ export {
   listAllModuleSettings,
   listModuleSettingsFor,
   saveModuleSettings,
+  removeModuleSetting,
   saveModuleSettingsPartial,
 } from "./module-settings";

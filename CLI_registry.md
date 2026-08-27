@@ -28,7 +28,7 @@ command list and exits 1. There is no `--help`.
 
 # Part 1 — Available commands
 
-Twelve commands, registered in [src/cli/index.ts:19-32](src/cli/index.ts#L19-L32).
+Twenty-six commands, registered in [src/cli/index.ts:33-58](src/cli/index.ts#L33-L58).
 
 | Command | Reads / writes | Network |
 |---|---|---|
@@ -44,8 +44,11 @@ Twelve commands, registered in [src/cli/index.ts:19-32](src/cli/index.ts#L19-L32
 | [`explain-rule`](#explain-rule) | read | no |
 | [`refresh-positions`](#refresh-positions) | write | **yes** |
 | [`run-scheduled-refresh`](#run-scheduled-refresh) | write (read with `--status`) | **yes** (not with `--status`) |
+| [`list-scheduled-jobs`](#list-scheduled-jobs) | read | no |
 | [`compute-analytics`](#compute-analytics) | write | **yes** |
 | [`ticker-overview`](#ticker-overview) | read (`--refresh` writes cache) | with `--market` |
+| [`simulate-ticker`](#simulate-ticker) | read (writes nothing) | **yes** |
+| [`market-indexes`](#market-indexes) | read (writes nothing) | **yes** |
 | [`set-startup-message`](#set-startup-message) | write | no |
 | [`user-preferences`](#user-preferences) | read (writes with `--favorite`/`--startup`) | no |
 | [`magic-playlist`](#magic-playlist) | read (writes with `--save`/`--regenerate`/`--delete`) | no |
@@ -53,7 +56,8 @@ Twelve commands, registered in [src/cli/index.ts:19-32](src/cli/index.ts#L19-L32
 
 Flag parsing is `--key value` pairs via [parse-flags.ts](src/cli/parse-flags.ts),
 except `ticker-overview` and `set-startup-message`, which read positionals and bare
-switches.
+switches. `simulate-ticker` uses both — a leading positional ticker plus `--key value`
+flags.
 
 ---
 
@@ -407,6 +411,28 @@ an external scheduler (DSM Task Scheduler, cron) at it if you would rather the c
 lived outside the app — the app is already running its own timer, so only do one.
 Source: [src/cli/run-scheduled-refresh.ts](src/cli/run-scheduled-refresh.ts)
 
+## `list-scheduled-jobs`
+
+Read-only. Prints every background job the app runs on a timer and when each last ran
+— the CLI half of Administration &rarr; Background Tasks.
+
+```
+npm run cli -- list-scheduled-jobs
+```
+
+**Input** — none.
+**Calls** — `listScheduledJobs(deps.scheduledRunRepo.list())`, `describeLastRun`.
+**Output** — one block per job: its label, its `job_key`, and either
+`Last run 2026-08-26 04:00:00 — ok (38 priced)` or `Never run.`
+**Exit** — always 0. Nothing having run is an answer, not a failure.
+
+Worth having as a command and not just a screen: this is what you want when the app
+itself is the suspect. It reads `sys_scheduled_runs` directly, so it answers "did the
+scheduler ever fire?" with no browser, no session and no working web server. A run
+stamped with no status means the process died mid-pass, and it says `interrupted`
+rather than guessing.
+Source: [src/cli/list-scheduled-jobs.ts](src/cli/list-scheduled-jobs.ts)
+
 ## `compute-analytics`
 
 ⚠️ **Network-heavy + writes.** Recomputes all three analytics caches — the command an
@@ -471,6 +497,73 @@ stories. Risk prints its `Calculated` date because cached rows never expire.
 **Exit** — 0; 1 when no ticker is given. A failed market leg prints to stderr but does
 not change the exit code.
 Source: [src/cli/ticker-overview.ts](src/cli/ticker-overview.ts)
+
+---
+
+## `simulate-ticker`
+
+The Simulation section from a terminal: "had I bought N shares at the start of each of
+these windows and held to today, where would I be?"
+
+```
+npm run cli -- simulate-ticker AAPL --shares 10
+npm run cli -- simulate-ticker AAPL --shares 10 --ranges 1wk,6mo,1y,max
+npm run cli -- simulate-ticker AAPL --shares 2.5 --ranges all
+```
+
+**Input** — the ticker is a **bare positional** (the first argument, before any flag).
+
+| Flag | Effect |
+|---|---|
+| `--shares N` | Share count, fractional allowed. Default `1`. Must be greater than zero. |
+| `--ranges a,b,c` | Comma-separated windows. Default `1mo,6mo,1y`; `all` runs every one. Valid: `1wk`, `2wk`, `1mo`, `3mo`, `6mo`, `1y`, `2y`, `5y`, `10y`, `max`. |
+
+⚠️ Always hits the network — one price-history request per range, in parallel.
+
+**Calls** — `runSimulation(deps.marketDataClient, { ticker, shares, ranges })`, the same
+use-case and the same `runSimulationSchema` the web action uses, so a bad share count or
+an unknown range is rejected identically in both.
+
+**Output** — a row per range with buy price, current price, total cost, current value and
+gain/loss in dollars and percent, then an `UNAVAILABLE` block for any window the symbol
+is too young for. Price return only — no dividends, fees or taxes. Writes nothing.
+
+**Exit** — 0; 1 when no ticker is given or the input fails validation. A range with no
+usable history is reported under `UNAVAILABLE` and does not change the exit code.
+Source: [src/cli/simulate-ticker.ts](src/cli/simulate-ticker.ts)
+
+---
+
+## `market-indexes`
+
+The dashboard's Indexes card from a terminal: where the major benchmarks stand today.
+
+```
+npm run cli -- market-indexes
+npm run cli -- market-indexes --symbols ^GSPC,GC=F
+```
+
+**Input** — all flags optional; with none, the whole board.
+
+| Flag | Effect |
+|---|---|
+| `--symbols a,b,c` | Comma-separated subset. Must be catalogued symbols: `^GSPC`, `^IXIC`, `^DJI`, `^RUT`, `^VIX`, `GC=F`, `SI=F`, `CL=F`, `^TNX`, `DX-Y.NYB`, `BTC-USD`. |
+
+⚠️ Always hits the network — one quote request per symbol, in parallel (eleven by default).
+
+**Calls** — `loadIndexBoard(deps.marketDataClient, parseIndexSymbols(symbols))`, the same
+use-case and the same `indexBoardSchema` the card's Refresh all button uses, so an
+uncatalogued symbol is rejected identically in both.
+
+**Output** — a table per group (US equity, Commodities, Rates & currency, Crypto) with
+level, change and change % per index, then an `Unavailable:` block for any symbol the
+provider didn't return. Levels print in their own unit: bare points for an index, dollars
+for a commodity, percent for the 10-year yield. Writes nothing.
+
+**Exit** — 0; 1 when the input fails validation or *every* symbol failed. A partly-failed
+board still exits 0 — losing one of eleven unauthenticated calls is normal, and the rows
+that came back are the answer.
+Source: [src/cli/market-indexes.ts](src/cli/market-indexes.ts)
 
 ---
 

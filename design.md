@@ -85,7 +85,9 @@ Don't blur this line by giving a card a hard shadow or a button a soft one.
 - **Cards** (`CollapsibleCard` and any future card) use `border border-line` plus a subtle
   accent treatment on hover (a soft ring/lift). Keep any hover shadow soft and low-opacity
   so it reads on both light and dark surfaces — a gentle `rgba(0,0,0,0.35)` lift, never
-  the hard offset shadow that marks a `Button`.
+  the hard offset shadow that marks a `Button`. A card that needs to read as genuinely
+  *thick* opts into `.card-embossed`, which gets there with a lit top edge and a shadowed
+  underside rather than an offset — depth without joining the button vocabulary.
 - **A progress bar's fill is the one non-button that takes the hard offset shadow.** It's
   not a surface and not clickable — it's a slab sitting in a groove, the same material a
   `Button` is made of, so it borrows the same 3px offset in the same direction and reads as
@@ -97,7 +99,7 @@ Don't blur this line by giving a card a hard shadow or a button a soft one.
   surfaces are quiet: a hairline border and a soft low-opacity shadow, nothing more.
   Don't give a panel a hard shadow without asking.
 
-### The four elevation classes — reuse these, don't hand-roll a shadow
+### The elevation classes — reuse these, don't hand-roll a shadow
 
 The lifts above are named classes in `globals.css`, not arbitrary values at the call site.
 Reach for one of these before writing a new `shadow-[...]`:
@@ -108,6 +110,7 @@ Reach for one of these before writing a new `shadow-[...]`:
 | `.nav-raised-bottom` | A bar pinned at the **bottom** — the compact section trigger | the same, cast **upward** |
 | `.card-raised` | A card's resting lift — `CollapsibleCard` | inset highlight + hairline ring + tight cast |
 | `.card-raised-hover` | The same card's `:hover` | the cast grows and softens |
+| `.card-embossed` | An **opt-in bevel** for a card that should read as a thick slab — pair with `.card-raised-hover` | lit top edge + shadowed underside + ring + two-stop cast |
 | `.paper-texture` | A card that should read as a **physical sheet** — the journal's New Journal card | translucent fibre grid + diagonal sheen, no tint of its own |
 | `.progress-3d-track` / `.progress-3d-fill` | The pair behind [`Progress3D`](components.md#progress3d) — **every progress bar** | a groove cut into the page (surface gradient + inset lip) holding a lit slab (accent gradient + `Button`'s hard offset shadow) |
 | `[data-dashboard-texture]` | The home dashboard's **admin-uploaded** background picture | a `fixed` `::before` behind the cards; opacity + blur from the stored settings |

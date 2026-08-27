@@ -230,6 +230,7 @@ Row-click navigation:
 - MyJournal — [journal-view.tsx:220](src/app/(protected)/modules/[slug]/journal-view.tsx#L220) *(row click + "Show SQL" re-run)*
 - User Management — [user-management/view.tsx](src/app/(protected)/admin/user-management/view.tsx) *(cells rendering `Avatar`)*
 - Expense transactions — [expense-transactions-view.tsx](src/app/(protected)/modules/[slug]/expense-transactions-view.tsx) *(row selection + bulk edit/delete)*
+- Stocks & ETFs simulation — [stock-simulation-view.tsx](src/app/(protected)/modules/[slug]/stock-simulation-view.tsx) *(a fixed ten-row table: `showToolbar={false}` with `defaultPageSize="ALL"`, keeping sort and the status bar's CSV export)*
 - CSV Analysis, SQL Explorer, Stocks & ETFs (accounts / positions / watchlist / analytics / next-day actions)
 
 **Filter operators.** A column filter box is a substring match by default, and also
@@ -463,7 +464,7 @@ A titled card whose body expands/collapses. The standard wrapper for a secondary
 | `onOpenChange?` | `(open: boolean) => void` | Called with the state being moved to. |
 | `headerAction?` | `ReactNode` | Rendered on the title line, left of the chevron, **always visible**. Clicking it does not toggle the card. |
 | `children` | `ReactNode` | Body. |
-| `className?` | `string` | |
+| `className?` | `string` | Merged last, so it wins. The hook for the opt-in surface treatments below. |
 
 ```tsx
 <CollapsibleCard title="Add an entry" defaultOpen>
@@ -519,6 +520,28 @@ Controlled, with an action that stays reachable while collapsed:
   headerAction={<Button size="sm" onClick={handleRun}>Recalculate</Button>}
 >
   <RiskPanel />
+</CollapsibleCard>
+```
+
+### Surface treatments (opt-in, via `className`)
+
+The card's resting lift is `.card-raised` + `.card-raised-hover`, applied by the component
+itself. Two treatments layer on top of it, both opted into through `className` so no prop
+and no signature changes — see [design.md](design.md) for the full elevation table.
+
+- **`.card-embossed`** — a bevel, for a card that should read as a **thick slab** rather
+  than a sheet just off the page: lit top edge, shadowed underside, deeper cast. Built
+  without `Button`'s hard offset on purpose, so it gains depth without reading as
+  something you press. Reads subtler on the light themes (Daybreak, Sea Glass), where a
+  white card has little to bevel against — that is accepted, not a bug.
+- **`.paper-texture`** — a physical-sheet grain, for a card you *write into*. Texture, not
+  hierarchy; if the goal is standing out, that's `.card-embossed`.
+
+They compose, and neither needs a layout change — the cast is drawn outside the border box.
+
+```tsx
+<CollapsibleCard title="Portfolio Summary" defaultOpen className="card-embossed">
+  <Summary />
 </CollapsibleCard>
 ```
 

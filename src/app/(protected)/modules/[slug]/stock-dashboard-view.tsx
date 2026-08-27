@@ -14,6 +14,7 @@ import { snapshotChangePct } from "@/lib/stock-daily-snapshot";
 import type { DailySnapshot, PeriodSummary, ToDateSummaries } from "@/lib/stock-daily-snapshot";
 import type { AllocationSlice, PortfolioSummary } from "@/lib/stock-positions";
 import { centsToDollars, formatCents } from "@/lib/shared/money";
+import { StockIndexesCard } from "./stock-indexes-card";
 
 function gainClass(cents: number): string {
   return cents < 0 ? "text-red-400" : "text-emerald-400";
@@ -364,6 +365,9 @@ export function StockDashboardView({
    * elements, not renders — and it keeps "what a widget is" in one place.
    */
   const widgetContent: Record<DashboardWidgetId, ReactNode> = {
+    // Self-contained: it takes no props because it fetches its own board from its
+    // own Refresh all button, so the server loads nothing for it on page render.
+    indexes: <StockIndexesCard />,
     summary: <PortfolioSummaryCard summary={summary} snapshots={snapshots} />,
     statistics: (
       <CollapsibleCard title="Statistics">

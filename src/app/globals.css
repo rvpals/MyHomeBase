@@ -370,6 +370,61 @@ html[data-music-player] .app-main {
     0 8px 20px -6px rgba(0, 0, 0, 0.38);
 }
 
+/* An opt-in bevel for a card that should read as genuinely dimensional — a
+   raised slab rather than a sheet lying just off the page. Layered *over*
+   `.card-raised` (which still supplies the ring and the base cast), so a caller
+   opts in with `className="card-embossed"` the way the journal's New Journal
+   card opts into `.paper-texture`, and no component signature changes.
+
+   This is the "don't give a panel a hard shadow without asking" exception in
+   design.md, asked for and granted — with one deliberate limit: the bevel is
+   built from a lit *top* edge and a shadowed *bottom* edge, and never from
+   `Button`'s hard `0 3px 0 0` offset. The offset is what says "this is a switch
+   that moves when you press it"; a card is a surface you read. Keeping the
+   bevel edge-based means an embossed card reads as thick without joining the
+   button/`Progress3D` vocabulary.
+
+   Five layers, outermost last:
+     1. inset top highlight, at 0.16 — brighter than `.card-raised`'s 0.1,
+        because on a bevel this edge is doing the work of catching the light
+     2. inset bottom shade — the underside of the slab, turning away from it.
+        The pair of insets *is* the 3D border; everything below is depth.
+     3. a hairline ring, as `.card-raised` — outside the border, never instead
+        of it, so `border-line` still inverts per theme
+     4-5. a two-stop cast, tight then wide, so the card sits clearly above the
+        page without the shadow going muddy.
+
+   All alphas stay inside design.md's safe range (white <= 0.12 is exceeded only
+   by the single highlight at 0.16, which is an edge one pixel tall rather than a
+   wash; black <= 0.45). On the light themes (Daybreak, Sea Glass) this reads
+   subtler than on the dark ones — a white card on white has little contrast to
+   bevel against. That is accepted rather than patched with per-theme alphas:
+   forcing literals per polarity is exactly what the token system exists to
+   avoid. */
+.card-embossed {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -2px 3px -1px rgba(0, 0, 0, 0.28),
+    0 0 0 1px rgba(0, 0, 0, 0.24),
+    0 3px 6px -2px rgba(0, 0, 0, 0.32),
+    0 10px 22px -8px rgba(0, 0, 0, 0.34);
+}
+
+/* The embossed hover, for a card that also carries `.card-raised-hover`. Comes
+   after it in the file so it wins the specificity tie and the bevel isn't
+   flattened back to the plain lift on hover. Grows the cast and deepens the
+   underside — the slab lifts further off the page — but still never translates,
+   for the reason `.card-raised-hover` documents: the whole header is a toggle
+   and must not move out from under the pointer mid-click. */
+.card-embossed.card-raised-hover:hover {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -2px 3px -1px rgba(0, 0, 0, 0.32),
+    0 0 0 1px rgba(0, 0, 0, 0.28),
+    0 4px 8px -2px rgba(0, 0, 0, 0.36),
+    0 14px 28px -8px rgba(0, 0, 0, 0.42);
+}
+
 /* The music player's bottom offset. It clears the section nav rather than
    covering it: the nav bar is the primary way round a module, so the player --
    which is transient, and which you can always reopen from the module -- gives

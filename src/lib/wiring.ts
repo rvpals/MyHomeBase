@@ -32,7 +32,7 @@ import {
   SqliteMagicCandidateSource,
   SqliteMagicListRepository,
 } from "./music-magic/repository";
-import { SqliteScheduledRunRepository } from "./scheduled-refresh/repository";
+import { SqliteScheduledRunRepository } from "./scheduled-jobs/repository";
 import { SqliteSettingsRepository } from "./settings/repository";
 import { SqliteSqlExplorerRepository } from "./sql-explorer/repository";
 import { SqliteStockAnalyticsRepository } from "./stock-analytics/repository";

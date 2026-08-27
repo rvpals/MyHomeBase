@@ -31,6 +31,15 @@ export class SqliteScheduledRunRepository implements ScheduledRunRepository {
   }
 
   /**
+   * Every row, unordered by design: the admin screen lists jobs in
+   * `JOB_DESCRIPTORS` order, not in whatever order they last happened to run.
+   */
+  list(): ScheduledRun[] {
+    const rows = this.db.prepare("SELECT * FROM sys_scheduled_runs").all() as ScheduledRunRow[];
+    return rows.map(toDomain);
+  }
+
+  /**
    * One upsert against the primary key -- no select-then-write, which is the
    * point of keying the table on `job_key` (see migrations/0061).
    *

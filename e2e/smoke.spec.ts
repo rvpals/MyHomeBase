@@ -20,6 +20,7 @@ const ADMIN_ROUTES = [
   "/admin/about",
   "/admin/user-management",
   "/admin/security",
+  "/admin/background-tasks",
   "/admin/sql-explorer",
   "/admin/daily-quote",
   "/admin/daily-quote/add",

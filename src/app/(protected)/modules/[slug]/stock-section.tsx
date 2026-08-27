@@ -28,10 +28,6 @@ import { deps } from "@/lib/wiring";
 import { NextDayActionsView } from "./next-day-actions-view";
 import { StockAccountsView, type AccountEntry } from "./stock-accounts-view";
 import { StockAnalyticsView } from "./stock-analytics-view";
-import {
-  loadLastScheduledRun,
-  resolveScheduledRefreshSettings,
-} from "@/lib/scheduled-refresh";
 import { StockConfigurationView } from "./stock-configuration-view";
 import { StockDashboardView } from "./stock-dashboard-view";
 import { StockImportView } from "./stock-import-view";
@@ -40,6 +36,7 @@ import { StockPositionsView } from "./stock-positions-view";
 import { StockRefreshControl } from "./stock-refresh-control";
 import { STOCK_SECTION_INFO, type StockSection } from "./stock-sections";
 import { StockShell } from "./stock-shell";
+import { StockSimulationView } from "./stock-simulation-view";
 import { StockFavoritesMenu } from "./stock-favorites-menu";
 import { StockTickerSearch } from "./stock-ticker-search";
 import { StockTransactionsView } from "./stock-transactions-view";
@@ -69,10 +66,6 @@ function loadModuleSettings() {
 
 function loadThresholds() {
   return resolveThresholds(loadModuleSettings());
-}
-
-function loadAutoRefreshSettings() {
-  return resolveScheduledRefreshSettings(loadModuleSettings());
 }
 
 function loadDashboardWidgets() {
@@ -168,6 +161,11 @@ function SectionBody({ section }: { section: StockSection }) {
         />
       );
 
+    // No props: every price the simulation shows is fetched on demand by its own
+    // action, so there is nothing for the server to load here.
+    case "simulation":
+      return <StockSimulationView />;
+
     case "import":
       return <StockImportView accounts={loadAccountOptions()} />;
 
@@ -176,8 +174,6 @@ function SectionBody({ section }: { section: StockSection }) {
         <StockConfigurationView
           thresholds={loadThresholds()}
           widgets={loadDashboardWidgets()}
-          autoRefresh={loadAutoRefreshSettings()}
-          lastAutoRefreshRun={loadLastScheduledRun()}
         />
       );
 

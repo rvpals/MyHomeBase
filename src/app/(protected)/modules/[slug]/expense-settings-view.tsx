@@ -4,36 +4,42 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import type { AutoImportRunSummary, ExpenseSettings } from "@/lib/expense";
-import { runAutoImportNowAction, saveExpenseSettingsAction } from "./expense-actions";
+import Link from "next/link";
+import { runAutoImportNowAction, saveExpenseFolderAction } from "./expense-actions";
 
 const INPUT_CLASS =
   "w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
 
+/**
+ * What to import: the watched folder, and a manual run to try it.
+ *
+ * *When* to import -- the master switch and the interval -- moved to Administration
+ * -> Background Tasks, where all three of the app's timed jobs are armed together.
+ * This screen still shows whether the service is armed, read-only, because a folder
+ * with nothing watching it is the confusing half of the old arrangement.
+ */
 export function ExpenseSettingsView({ settings }: { settings: ExpenseSettings }) {
   const router = useRouter();
-  const [autoImportEnabled, setAutoImportEnabled] = useState(settings.autoImportEnabled);
   const [path, setPath] = useState(settings.autoImportPath);
-  const [intervalText, setIntervalText] = useState(String(settings.autoImportIntervalMinutes));
   const [isSaving, setIsSaving] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [message, setMessage] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
   const [lastRun, setLastRun] = useState<AutoImportRunSummary | undefined>(undefined);
 
-  const intervalMinutes = Number(intervalText);
-  const isConfigured = path.trim() !== "" && Number.isFinite(intervalMinutes) && intervalMinutes > 0;
-  const isEnabled = autoImportEnabled && isConfigured;
+  // Read-only status, derived from what the admin screen saved. `isEnabled` is the
+  // same three-way conjunction `isAutoImportEnabled` applies on the server.
+  const intervalMinutes = settings.autoImportIntervalMinutes;
+  const isConfigured = settings.autoImportPath !== "" && intervalMinutes > 0;
+  const isEnabled = settings.autoImportEnabled && isConfigured;
+  const isDirty = path.trim() !== settings.autoImportPath;
 
   async function handleSave() {
     setIsSaving(true);
     setError(undefined);
     setMessage(undefined);
     try {
-      const result = await saveExpenseSettingsAction({
-        autoImportEnabled,
-        autoImportPath: path,
-        autoImportIntervalMinutes: Number.isFinite(intervalMinutes) ? intervalMinutes : 0,
-      });
+      const result = await saveExpenseFolderAction(path);
       if (!result.ok) {
         setError(result.error);
         return;
@@ -98,8 +104,9 @@ export function ExpenseSettingsView({ settings }: { settings: ExpenseSettings })
             Imports are attributed to the first administrator account, since no one is signed in.
           </li>
           <li>
-            Turn the switch below off to stop the background service. Clearing the folder or setting
-            the interval to 0 also stops it.
+            The service is switched on and scheduled under{" "}
+            <strong className="text-ink">Administration &rarr; Background Tasks</strong>. Clearing
+            the folder here also stops it, whatever that switch says.
           </li>
         </ul>
       </div>
@@ -107,48 +114,18 @@ export function ExpenseSettingsView({ settings }: { settings: ExpenseSettings })
       {error && <p className="text-sm text-red-400">{error}</p>}
       {message && <p className="text-sm text-emerald-400">{message}</p>}
 
-      <label className="flex items-start gap-3 rounded-md border border-line bg-paper p-3 text-sm">
+      <label className="block text-sm sm:max-w-md">
+        <span className="mb-1 block font-medium text-ink">CSV auto-import folder</span>
         <input
-          type="checkbox"
-          checked={autoImportEnabled}
-          onChange={(event) => setAutoImportEnabled(event.target.checked)}
-          className="mt-0.5 h-4 w-4 shrink-0 rounded border-line text-brass focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+          value={path}
+          onChange={(event) => setPath(event.target.value)}
+          placeholder="/volume1/statements"
+          className={`${INPUT_CLASS} font-mono`}
         />
-        <span>
-          <span className="block font-medium text-ink">Automatic importing csv from folder</span>
-          <span className="mt-1 block text-xs text-muted">
-            The master switch for the background service. Off means the server never imports on its
-            own, whatever the folder and interval below say — <strong className="text-ink">Run
-            import now</strong> still works, so you can test the folder before switching this on.
-          </span>
+        <span className="mt-1 block text-xs text-muted">
+          A path on the server, not your PC — e.g. a NAS share folder.
         </span>
       </label>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <label className="block text-sm">
-          <span className="mb-1 block font-medium text-ink">CSV auto-import folder</span>
-          <input
-            value={path}
-            onChange={(event) => setPath(event.target.value)}
-            placeholder="/volume1/statements"
-            className={`${INPUT_CLASS} font-mono`}
-          />
-          <span className="mt-1 block text-xs text-muted">
-            A path on the server, not your PC — e.g. a NAS share folder.
-          </span>
-        </label>
-        <label className="block text-sm">
-          <span className="mb-1 block font-medium text-ink">Interval for auto-import (minutes)</span>
-          <input
-            type="number"
-            min={0}
-            value={intervalText}
-            onChange={(event) => setIntervalText(event.target.value)}
-            className={INPUT_CLASS}
-          />
-          <span className="mt-1 block text-xs text-muted">0 disables it.</span>
-        </label>
-      </div>
 
       <p className="text-xs text-muted">
         Background service:{" "}
@@ -158,15 +135,26 @@ export function ExpenseSettingsView({ settings }: { settings: ExpenseSettings })
           </span>
         ) : (
           <span className="text-muted">
-            off{!autoImportEnabled ? " — switched off above" : " — no folder or interval set"}
+            off
+            {!settings.autoImportEnabled
+              ? " — switched off"
+              : settings.autoImportPath === ""
+                ? " — no folder set"
+                : " — the interval is 0"}
           </span>
         )}
-        . Takes effect within a minute of saving; no restart needed.
+        . The switch and the interval live in{" "}
+        <Link href="/admin/background-tasks" className="text-brass hover:underline">
+          Administration &rarr; Background Tasks
+        </Link>
+        , along with when this job last ran.{" "}
+        <strong className="text-ink">Run import now</strong> below works either way, so you can
+        test a folder before arming the service.
       </p>
 
       <div className="flex flex-wrap gap-2">
-        <Button onClick={handleSave} disabled={isSaving}>
-          {isSaving ? "Saving…" : "Save settings"}
+        <Button onClick={handleSave} disabled={isSaving || !isDirty}>
+          {isSaving ? "Saving…" : "Save folder"}
         </Button>
         <Button variant="secondary" onClick={handleRunNow} disabled={isRunning}>
           {isRunning ? "Running…" : "Run import now"}

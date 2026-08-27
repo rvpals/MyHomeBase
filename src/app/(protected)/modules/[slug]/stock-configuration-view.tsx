@@ -11,8 +11,6 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import type { NextDayActionThresholds } from "@/lib/next-day-actions";
-// From `types` rather than the module index -- see stock-auto-refresh-card.tsx.
-import type { ScheduledRefreshSettings, ScheduledRun } from "@/lib/scheduled-refresh/types";
 import {
   DASHBOARD_WIDGET_INFO,
   defaultDashboardWidgets,
@@ -20,7 +18,6 @@ import {
   toggleDashboardWidget,
   type DashboardWidgetPreference,
 } from "@/lib/stock-dashboard";
-import { StockAutoRefreshCard } from "./stock-auto-refresh-card";
 import { saveDashboardWidgetsAction } from "./stock-dashboard-actions";
 import { saveNextDayThresholdsAction } from "./next-day-actions-actions";
 
@@ -173,13 +170,9 @@ function DashboardWidgetsCard({ widgets }: { widgets: DashboardWidgetPreference[
 export function StockConfigurationView({
   thresholds,
   widgets,
-  autoRefresh,
-  lastAutoRefreshRun,
 }: {
   thresholds: NextDayActionThresholds;
   widgets: DashboardWidgetPreference[];
-  autoRefresh: ScheduledRefreshSettings;
-  lastAutoRefreshRun?: ScheduledRun;
 }) {
   const router = useRouter();
   const [profitTarget, setProfitTarget] = useState(String(thresholds.profitTargetPct));
@@ -214,8 +207,10 @@ export function StockConfigurationView({
 
   return (
     <div className="flex flex-col gap-6">
-      <StockAutoRefreshCard settings={autoRefresh} lastRun={lastAutoRefreshRun} />
-
+      {/* The auto-refresh switch, its interval and its last-run line moved to
+          Administration -> Background Tasks, where all three of the app's timed jobs
+          are armed and observed together. Stripped of those four things this card had
+          nothing left, so it was deleted rather than left as an empty shell. */}
       <DashboardWidgetsCard widgets={widgets} />
 
       <div className="rounded-xl border border-line p-4">

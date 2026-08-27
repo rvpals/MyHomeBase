@@ -1,5 +1,82 @@
 # Change History
 
+## 2026-08-26 23:23 — Every timer in one place, a board of benchmarks, and "what if I'd bought then?"
+
+**Three background jobs ran on three timers and nothing could tell you whether any of them
+had fired.** The only honest answer lived in `app.log` on the NAS, which meant SSH to
+answer "did last night's price refresh happen?". **Administration → Background Tasks** now
+answers it in the browser: every job, what a pass actually does, and when it last ran with
+what outcome. Two things make it trustworthy rather than decorative. The list is driven by
+`JOB_DESCRIPTORS`, not by the rows in `sys_scheduled_runs` — a job that has never run has
+no row, and listing the table would have silently omitted exactly the job you were worried
+about, leaving "never ran" indistinguishable from "doesn't exist". And a run is stamped
+when it *starts*, so `status` is nullable on purpose: a process killed mid-pass reads as
+**interrupted**, never as `ok`. `list-scheduled-jobs` is the same answer from the CLI, which
+is what you want when the web server itself is the suspect.
+
+The generic bookkeeping moved to a new `src/lib/scheduled-jobs`, out of
+`src/lib/scheduled-refresh` — once a second and third job needed the same table, `src/lib/expense`
+and `src/lib/auth-events` shouldn't have to import a module named after stocks. The
+`stock_auto_refresh` job key is spelled exactly as migrations/0061 spelled it; renaming it
+would have orphaned the row every existing install already has. **No new migration** — the
+table has been there since 0061.
+
+**The expense auto-import kept its last-run stamp on `globalThis`, so it re-ran on every
+boot.** It now persists in `sys_scheduled_runs` like the other two, which is what makes
+"once a day" mean once a day on a NAS that `start.sh` cycles on every deploy. The
+sign-in-history prune moved the same way in the same release. Its card is deliberately
+neither runnable nor configurable: a pass *deletes* history past the 90-day window, so
+there is nothing to inspect afterwards and no diagnostic reason to force one.
+
+**The Stocks dashboard opens on an Indexes card** — S&P 500, NASDAQ, Dow, Russell, VIX,
+gold, silver, oil, the 10-year yield, the dollar index and bitcoin, in four labelled groups.
+Fetched only when you press *Refresh all*, never on page load, so a dashboard visit costs no
+network. All eleven reach the existing chart endpoint through `market-data`, so none of them
+needed a new client method. `^TNX` is the one to know about: it quotes the 10-year yield as
+a percentage already, hence its own `percent` unit. A symbol that comes back with no prior
+close reports a flat day rather than `NaN` — the level is still true, only the move is
+unknown.
+
+Adding it surfaced a real bug in the dashboard layout resolver, now fixed. New widgets were
+**appended** to a saved layout, which is fine for a widget shipped at the bottom and exactly
+wrong for one shipped at the top: anyone with a saved layout would have found Indexes at the
+foot of their dashboard. A new widget now anchors to its nearest already-known neighbour
+from the catalogue, so it lands where it shipped while every deliberate reorder stays
+untouched.
+
+**Stocks → Simulation answers "had I bought N shares of this, then?"** — ten windows from
+1 Week to MAX, tickable together. A range is a hypothetical *entry date*, not a holding
+period going forward: "6 M" buys at the close six months ago and holds to today, so every
+row shares one current price and differs only in what it assumes you paid. That's what makes
+ticking several at once the point of the screen rather than a novelty. Results are one
+`DataGrid` so the five figures compare down a column — and below 1024px it delegates to
+`DataGridCompact`, turning each range into a card where eight columns wouldn't fit. The
+Price Overlay is normalized on both axes, because plotted as real dates and dollars a
+ten-year line squashes a one-week line into a few pixels. **Nothing is saved and no table
+was added** — a run is a question, not a position. Gain/loss is price return only; no
+dividends, fees or taxes, and the screen says so next to the button. Windows settle
+independently, so a symbol younger than its ten-year window is reported unavailable while
+the rest still report.
+
+**A `"use client"` file was importing better-sqlite3, and it broke the build.** The new
+prune runner reaches the composition root, and re-exporting it from `src/lib/auth-events/index.ts`
+poisoned that barrel for every client importer: `admin/security/view.tsx` wanted one pure
+helper and three types, and got `node:fs` and a native SQLite addon in the browser bundle —
+`the chunking context does not support external modules`. The view now imports from the leaf
+modules, and the barrel carries the same warning `scheduled-refresh/index.ts` has had all
+along. **The lesson is about barrels, not about this file:** a barrel that re-exports
+anything touching `deps` is unsafe for client components, and the failure surfaces as an
+unreadable Turbopack trace rather than as a sensible error.
+
+`src/instrumentation.ts` became **`src/instrumentation-node.ts`** in the same fix. Its
+`NEXT_RUNTIME !== "nodejs"` guard was a *runtime* check, and Turbopack still statically
+followed the `await import()`s into the Edge graph — every `node:crypto`/`node:fs`/`node:os`
+warning in that build came from there. The `-node` filename is loaded only for the Node
+runtime, so the Edge build never traces the graph at all. Don't rename it back.
+
+Docs: `CLI_registry.md` said "Twelve commands" over a dispatch table that has held
+twenty-six for some time; corrected along with its line reference.
+
 ## 2026-08-25 22:29 — A scan that finishes, a bar you can see, and a picture behind the music
 
 **The Music Library scan was being killed a fifth of the way in, and `duration: true` was

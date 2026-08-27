@@ -6,12 +6,15 @@
 // Modelled on src/lib/expense/settings.ts, the app's other scheduled job.
 
 import type { ModuleSetting } from "@/lib/module-settings";
+import { JOB_KEYS } from "@/lib/scheduled-jobs/types";
 import { refreshIntervalSchema } from "./schema";
 import type { RefreshInterval, ScheduledRefreshSettings } from "./types";
 
 /** The module whose settings drive this job, and the job's row in `sys_scheduled_runs`. */
 export const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
-export const STOCK_AUTO_REFRESH_JOB_KEY = "stock_auto_refresh";
+// Aliased from the job catalogue rather than spelled again -- one literal for the
+// string that is also a primary key in `sys_scheduled_runs`.
+export const STOCK_AUTO_REFRESH_JOB_KEY = JOB_KEYS.stockAutoRefresh;
 
 export const SCHEDULED_REFRESH_SETTING_KEYS = {
   autoRefreshEnabled: "auto_refresh_enabled",

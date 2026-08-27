@@ -13,11 +13,6 @@ export const scheduledRefreshSettingsSchema = z.object({
 
 export type ScheduledRefreshSettingsInput = z.infer<typeof scheduledRefreshSettingsSchema>;
 
-export const scheduledRunStatusSchema = z.enum(["ok", "partial", "failed"]);
-
-export const scheduledRunSchema = z.object({
-  jobKey: z.string().min(1),
-  lastRunAt: z.string().min(1),
-  status: scheduledRunStatusSchema.optional(),
-  detail: z.string().min(1).optional(),
-});
+// The run-record schemas moved to `@/lib/scheduled-jobs` with the record itself.
+// Re-exported so existing importers keep resolving.
+export { scheduledRunSchema, scheduledRunStatusSchema } from "@/lib/scheduled-jobs/schema";

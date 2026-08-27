@@ -13,6 +13,7 @@ export const STOCK_SECTIONS = [
   "accounts",
   "actionables",
   "charts",
+  "simulation",
   "import",
   "settings",
 ] as const;
@@ -49,6 +50,10 @@ export const STOCK_SECTION_INFO: Record<StockSection, { label: string; descripti
     label: "Chart & Analysis",
     description: "Volatility, correlation and Sharpe ratio across the portfolio.",
   },
+  simulation: {
+    label: "Simulation",
+    description: "Run a simulation on a ticker.",
+  },
   import: {
     label: "CSV Import",
     description: "Define a reusable mapping per broker export, then import with it.",
@@ -67,6 +72,7 @@ export const STOCK_SECTION_ICONS: Record<StockSection, string> = {
   accounts: "database",
   actionables: "stock-quote",
   charts: "chart",
+  simulation: "magic",
   import: "upload",
   settings: "sliders",
 };

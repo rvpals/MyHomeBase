@@ -81,6 +81,15 @@ export const adminNav: SectionNode[] = [
     icon: "shield",
   },
   {
+    id: "background-tasks",
+    label: "Background Tasks",
+    href: "/admin/background-tasks",
+    hint: "What the server runs on a timer, and when each job last ran",
+    // `history`, not `clock` -- there is no clock glyph in the baked icon sets, and
+    // this screen is a run log as much as a scheduler. Present in every set.
+    icon: "history",
+  },
+  {
     id: "sql-explorer",
     label: "SQL Explorer",
     href: "/admin/sql-explorer",

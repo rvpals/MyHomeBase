@@ -15,6 +15,7 @@ import {
   type NamedMapping,
 } from "@/lib/csv-import";
 import {
+  EXPENSE_SETTING_KEYS,
   bulkEditTransactions,
   clearAccountImage,
   clearCategoryIcon,
@@ -23,7 +24,6 @@ import {
   createRule,
   createTransaction,
   deleteAccount,
-  expenseSettingsToEntries,
   deleteCategory,
   deleteRule,
   deleteTransaction,
@@ -43,7 +43,6 @@ import {
   type ExpenseImageUploadInput,
   type CleanupBatchResult,
   type ExpenseImportSummary,
-  type ExpenseSettings,
   type SaveAccountInput,
   type SaveCategoryInput,
   type SavePostImportRuleInput,
@@ -51,7 +50,7 @@ import {
 } from "@/lib/expense";
 import { runExpenseAutoImport } from "@/lib/expense/auto-import-runner";
 import { getModuleBySlug } from "@/lib/modules";
-import { saveModuleSettings } from "@/lib/module-settings";
+import { removeModuleSetting, saveModuleSettingsPartial } from "@/lib/module-settings";
 import { deps } from "@/lib/wiring";
 
 const EXPENSE_MODULE_PATH = "/modules/expense";
@@ -266,20 +265,45 @@ export async function deleteRuleAction(id: number): Promise<ActionResult> {
   return { ok: true };
 }
 
-export async function saveExpenseSettingsAction(
-  settings: ExpenseSettings,
-): Promise<ActionResult> {
+/**
+ * Saves the watched folder — and *only* the watched folder.
+ *
+ * Two deliberate narrowings from what this used to do, both forced by the master
+ * switch and the interval moving to Administration -> Background Tasks:
+ *
+ *  1. It takes a path, not the whole `ExpenseSettings`. This screen no longer renders
+ *     the other two fields, so accepting them would let it write values it never
+ *     showed the user.
+ *  2. `saveModuleSettingsPartial`, not `saveModuleSettings`. The wholesale save
+ *     deletes every row for the module and reinserts only what it is handed, so
+ *     saving a folder here would silently wipe the switch and interval an admin had
+ *     just set on the other screen.
+ */
+export async function saveExpenseFolderAction(autoImportPath: string): Promise<ActionResult> {
   try {
     const expenseModule = getModuleBySlug(deps.moduleRepo, "expense");
     if (!expenseModule) return { ok: false, error: "Expense module not found." };
-    saveModuleSettings(deps.moduleSettingsRepo, {
-      moduleId: expenseModule.id,
-      entries: expenseSettingsToEntries(settings),
-    });
+
+    const trimmed = autoImportPath.trim();
+    // Module-setting values must be non-empty, so clearing the folder deletes the row
+    // rather than writing "". `resolveExpenseSettings` reads a missing row as "" too,
+    // so both spellings mean the same thing to every reader.
+    if (trimmed === "") {
+      removeModuleSetting(
+        deps.moduleSettingsRepo,
+        expenseModule.id,
+        EXPENSE_SETTING_KEYS.autoImportPath,
+      );
+    } else {
+      saveModuleSettingsPartial(deps.moduleSettingsRepo, expenseModule.id, [
+        { key: EXPENSE_SETTING_KEYS.autoImportPath, value: trimmed },
+      ]);
+    }
   } catch (error) {
-    return toErrorResult(error, "Failed to save the settings.");
+    return toErrorResult(error, "Failed to save the folder.");
   }
   revalidatePath(EXPENSE_MODULE_PATH);
+  revalidatePath("/admin/background-tasks");
   return { ok: true };
 }
 
@@ -287,10 +311,15 @@ export interface AutoImportResult extends ActionResult {
   summary?: AutoImportRunSummary;
 }
 
-/** Runs the auto-import immediately, rather than waiting for the next tick. */
+/**
+ * Runs the auto-import immediately, rather than waiting for the next tick.
+ *
+ * `force`, so the master switch and the interval don't gate it: this is an explicit
+ * request, and testing a folder before arming the service is exactly what it's for.
+ */
 export async function runAutoImportNowAction(): Promise<AutoImportResult> {
   try {
-    const summary = runExpenseAutoImport();
+    const summary = runExpenseAutoImport({ force: true });
     revalidatePath(EXPENSE_MODULE_PATH);
     return { ok: true, summary };
   } catch (error) {

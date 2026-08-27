@@ -33,23 +33,11 @@ export interface ScheduledRefreshSettings {
   autoRefreshInterval: RefreshInterval;
 }
 
-/** How a finished pass turned out. `partial` means some tickers priced and some didn't. */
-export type ScheduledRunStatus = "ok" | "partial" | "failed";
-
-/**
- * The stored record of a job's last run.
- *
- * `status` is optional because the row is written when a run *starts*: a process
- * killed mid-pass leaves the outcome unknown rather than claiming success.
- */
-export interface ScheduledRun {
-  jobKey: string;
-  /** When the run started, as a SQLite-style UTC timestamp. */
-  lastRunAt: string;
-  status?: ScheduledRunStatus;
-  /** One human-readable line for the settings screen, e.g. "38 priced, 1 failed". */
-  detail?: string;
-}
+// The run record and its status live in `@/lib/scheduled-jobs` now -- three jobs
+// share that bookkeeping, so it is no longer a stocks concern. Re-exported here so
+// existing importers keep resolving.
+export type { ScheduledRun, ScheduledRunStatus } from "@/lib/scheduled-jobs/types";
+import type { ScheduledRunStatus } from "@/lib/scheduled-jobs/types";
 
 /** What one refresh pass did. Returned by the runner and rendered by both front-ends. */
 export interface ScheduledRefreshSummary {

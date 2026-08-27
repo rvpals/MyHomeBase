@@ -70,3 +70,32 @@ export function saveModuleSettingsPartial(
 
   return saveModuleSettings(repo, { moduleId, entries: merged });
 }
+
+/**
+ * Removes one setting, leaving every other key for the module untouched.
+ *
+ * Exists because module-setting *values* must be non-empty, so "clear this field"
+ * cannot be expressed as a save -- and the repository port deliberately offers only
+ * `replaceForModule`, so the filter has to happen in a use-case rather than as a
+ * per-key DELETE nobody else needs. A missing key and an empty one already mean the
+ * same thing to every `resolve*Settings` reader, which is what makes deleting the
+ * right way to clear it.
+ *
+ * A key the module doesn't have is not an error: the end state is the same either way.
+ */
+export function removeModuleSetting(
+  repo: ModuleSettingsRepository,
+  moduleId: number,
+  key: string,
+): ModuleSetting[] {
+  const remaining: ModuleSettingEntry[] = repo
+    .listByModuleId(moduleId)
+    .filter((setting) => setting.key !== key)
+    .map((setting) => ({
+      key: setting.key,
+      value: setting.value,
+      description: setting.description,
+    }));
+
+  return saveModuleSettings(repo, { moduleId, entries: remaining });
+}

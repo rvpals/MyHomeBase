@@ -11,6 +11,8 @@ import type { ScheduledRun, ScheduledRunStatus } from "./types";
  */
 export interface ScheduledRunRepository {
   get(jobKey: string): ScheduledRun | undefined;
+  /** Every stamped job, for the admin screen. Jobs that never ran have no row. */
+  list(): ScheduledRun[];
   /** Stamps a run as started now, clearing any previous outcome. */
   start(jobKey: string, startedAt: string): void;
   /** Records how the run turned out. */

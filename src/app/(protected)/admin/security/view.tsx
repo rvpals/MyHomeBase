@@ -4,12 +4,17 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
-import {
-  describeFailureReason,
-  type AuthEvent,
-  type AuthEventSummary,
-  type AuthEventType,
-} from "@/lib/auth-events";
+// Imported from the leaf modules, not the `@/lib/auth-events` barrel: that barrel
+// re-exports the `deps`-backed prune runner, which would drag better-sqlite3 and
+// `node:fs` into this client bundle and fail the build. Same rule, and the same
+// reason, as `admin/background-tasks/view.tsx` importing from
+// `@/lib/scheduled-refresh/types`.
+import { describeFailureReason } from "@/lib/auth-events/auth-events";
+import type {
+  AuthEvent,
+  AuthEventSummary,
+  AuthEventType,
+} from "@/lib/auth-events/types";
 import { markFailuresReviewedAction } from "./actions";
 import { PAGE_CONTAINER } from "../../page-container";
 

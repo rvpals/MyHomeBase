@@ -7,13 +7,14 @@
 // space until the first play.
 //
 // Narrow screens get a genuinely different component rather than a restyle -- a
-// single row of cover, title and play/pause, with the scrubber as a hairline at the
-// very top edge. That is the `useIsCompact()` case design.md describes: a desktop
+// single row of cover, title, play/pause, queue and close, with the scrubber as a
+// hairline at the very top edge. That is the `useIsCompact()` case design.md describes: a desktop
 // transport row with a full scrubber and volume does not shrink into 375px, it has to
 // be a different arrangement.
 
 import { useEffect } from "react";
 import Link from "next/link";
+import { Button } from "@/components/button";
 import { useIsCompact } from "@/components/viewport-context";
 import {
   albumCoverUrl,
@@ -80,6 +81,9 @@ export function MusicPlayerBar() {
             {isPlaying ? <PauseGlyph /> : <PlayGlyph />}
           </TransportButton>
           <QueueButton count={queue.length} />
+          <TransportButton onClick={stop} label="Close the player">
+            <CloseGlyph />
+          </TransportButton>
         </div>
       </div>
     );
@@ -124,13 +128,9 @@ export function MusicPlayerBar() {
 
         <QueueButton count={queue.length} />
 
-        <button
-          type="button"
-          onClick={stop}
-          className="rounded px-2 py-1 text-xs text-muted hover:text-ink"
-        >
+        <Button size="sm" variant="secondary" onClick={stop}>
           Close
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -228,6 +228,14 @@ function PauseGlyph() {
   return (
     <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current" aria-hidden="true">
       <path d="M6 5h4v14H6zm8 0h4v14h-4z" />
+    </svg>
+  );
+}
+
+function CloseGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current" aria-hidden="true">
+      <path d="M18.3 5.7 12 12l6.3 6.3-1.4 1.4L12 13.4l-6.3 6.3-1.4-1.4L10.6 12 4.3 5.7l1.4-1.4L12 10.6l6.3-6.3z" />
     </svg>
   );
 }

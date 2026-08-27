@@ -40,7 +40,7 @@ describe("resolveDashboardWidgets", () => {
 
   it("reads a saved order", () => {
     const widgets = resolveDashboardWidgets(settings("statistics,allocation,summary"));
-    expect(widgets.slice(0, 3).map((widget) => widget.id)).toEqual([
+    expect(widgets.map((widget) => widget.id).filter((id) => id !== "indexes")).toEqual([
       "statistics",
       "allocation",
       "summary",
@@ -54,11 +54,63 @@ describe("resolveDashboardWidgets", () => {
   });
 
   /** A widget shipped after this layout was saved must not be invisible forever. */
-  it("appends a widget missing from the saved value, visible", () => {
+  it("adds a widget missing from the saved value, visible", () => {
     const widgets = resolveDashboardWidgets(settings("summary,statistics"));
     expect(widgets).toHaveLength(DASHBOARD_WIDGET_IDS.length);
-    expect(widgets.slice(0, 2).map((widget) => widget.id)).toEqual(["summary", "statistics"]);
-    expect(widgets.slice(2).every((widget) => widget.visible)).toBe(true);
+    expect(widgets.every((widget) => widget.visible)).toBe(true);
+    // The saved widgets keep their saved order relative to each other.
+    const saved = widgets
+      .map((widget) => widget.id)
+      .filter((id) => id === "summary" || id === "statistics");
+    expect(saved).toEqual(["summary", "statistics"]);
+  });
+
+  /**
+   * Indexes ships at the *top* of the catalogue, and a user with a saved layout
+   * has to see it there — appending it would have buried the new card at the
+   * bottom of the very dashboards most likely to be in daily use.
+   */
+  it("inserts a new widget at its catalogue position, not at the end", () => {
+    const widgets = resolveDashboardWidgets(settings("summary,statistics,allocation"));
+    expect(widgets.map((widget) => widget.id)).toEqual([
+      "indexes",
+      "summary",
+      "statistics",
+      "allocation",
+    ]);
+  });
+
+  /**
+   * Anchored to its catalogue neighbour, so a reordered layout stays reordered.
+   *
+   * Here the user moved `allocation` to the top and `summary` to the bottom.
+   * `indexes` lands immediately before `summary` — the first widget that follows
+   * it in the catalogue and is present in the layout — rather than at position 0.
+   * That's the intended trade: the user's ordering is never overridden, so a new
+   * widget goes beside a widget it shipped beside, wherever the user put that one.
+   */
+  it("keeps a deliberate reorder while placing the new widget by its neighbour", () => {
+    const widgets = resolveDashboardWidgets(settings("allocation,-statistics,summary"));
+    expect(widgets.map((widget) => widget.id)).toEqual([
+      "allocation",
+      "statistics",
+      "indexes",
+      "summary",
+    ]);
+    // The user's hidden flag survives the insertion.
+    expect(widgets.find((widget) => widget.id === "statistics")?.visible).toBe(false);
+    expect(widgets.find((widget) => widget.id === "indexes")?.visible).toBe(true);
+  });
+
+  /** Nothing follows a catalogue-final widget, so it lands at the end. */
+  it("appends a new widget that is last in the catalogue", () => {
+    const widgets = resolveDashboardWidgets(settings("indexes,summary,statistics"));
+    expect(widgets.map((widget) => widget.id)).toEqual([
+      "indexes",
+      "summary",
+      "statistics",
+      "allocation",
+    ]);
   });
 
   it("drops an id that is no longer a widget", () => {
@@ -75,7 +127,11 @@ describe("resolveDashboardWidgets", () => {
     const widgets = resolveDashboardWidgets(settings("summary,glance,statistics"));
     expect(widgets.map((widget) => widget.id)).not.toContain("glance");
     expect(widgets).toHaveLength(DASHBOARD_WIDGET_IDS.length);
-    expect(widgets.slice(0, 2).map((widget) => widget.id)).toEqual(["summary", "statistics"]);
+    expect(
+      widgets
+        .map((widget) => widget.id)
+        .filter((id) => id === "summary" || id === "statistics"),
+    ).toEqual(["summary", "statistics"]);
   });
 
   /**
@@ -87,7 +143,11 @@ describe("resolveDashboardWidgets", () => {
     const widgets = resolveDashboardWidgets(settings("refresh,summary,statistics"));
     expect(widgets.map((widget) => widget.id)).not.toContain("refresh");
     expect(widgets).toHaveLength(DASHBOARD_WIDGET_IDS.length);
-    expect(widgets.slice(0, 2).map((widget) => widget.id)).toEqual(["summary", "statistics"]);
+    expect(
+      widgets
+        .map((widget) => widget.id)
+        .filter((id) => id === "summary" || id === "statistics"),
+    ).toEqual(["summary", "statistics"]);
   });
 
   /** A hidden `-refresh` is just as retired as a visible one. */
@@ -110,7 +170,10 @@ describe("resolveDashboardWidgets", () => {
     expect(ids).not.toContain("allocationType");
     expect(ids).not.toContain("allocationStrategy");
     expect(ids).not.toContain("allocationSector");
-    expect(ids.slice(0, 2)).toEqual(["summary", "statistics"]);
+    expect(ids.filter((id) => id === "summary" || id === "statistics")).toEqual([
+      "summary",
+      "statistics",
+    ]);
     expect(widgets.find((widget) => widget.id === "allocation")).toEqual({
       id: "allocation",
       visible: true,
@@ -138,7 +201,7 @@ describe("resolveDashboardWidgets", () => {
 
   it("tolerates stray whitespace and empty entries", () => {
     const widgets = resolveDashboardWidgets(settings(" summary , , -statistics ,"));
-    expect(widgets.slice(0, 2)).toEqual([
+    expect(widgets.filter((widget) => widget.id !== "indexes" && widget.id !== "allocation")).toEqual([
       { id: "summary", visible: true },
       { id: "statistics", visible: false },
     ]);
@@ -193,17 +256,17 @@ describe("dashboardWidgetsToEntries", () => {
 describe("moveDashboardWidget", () => {
   it("swaps a widget with the one above it", () => {
     const moved = moveDashboardWidget(defaultDashboardWidgets(), "statistics", "up");
-    expect(moved.slice(0, 2).map((widget) => widget.id)).toEqual(["statistics", "summary"]);
+    expect(moved.slice(1, 3).map((widget) => widget.id)).toEqual(["statistics", "summary"]);
   });
 
   it("swaps a widget with the one below it", () => {
     const moved = moveDashboardWidget(defaultDashboardWidgets(), "summary", "down");
-    expect(moved.slice(0, 2).map((widget) => widget.id)).toEqual(["statistics", "summary"]);
+    expect(moved.slice(1, 3).map((widget) => widget.id)).toEqual(["statistics", "summary"]);
   });
 
   it("does nothing at the ends rather than wrapping around", () => {
     const widgets = defaultDashboardWidgets();
-    expect(moveDashboardWidget(widgets, "summary", "up")).toEqual(widgets);
+    expect(moveDashboardWidget(widgets, "indexes", "up")).toEqual(widgets);
     expect(moveDashboardWidget(widgets, "allocation", "down")).toEqual(widgets);
   });
 
@@ -211,13 +274,13 @@ describe("moveDashboardWidget", () => {
     const widgets = defaultDashboardWidgets();
     const moved = moveDashboardWidget(widgets, "statistics", "up");
     expect(moved).not.toBe(widgets);
-    expect(widgets[0].id).toBe("summary");
+    expect(widgets[0].id).toBe("indexes");
   });
 
   it("carries visibility along with the move", () => {
     const hidden = toggleDashboardWidget(defaultDashboardWidgets(), "statistics");
     const moved = moveDashboardWidget(hidden, "statistics", "up");
-    expect(moved[0]).toEqual({ id: "statistics", visible: false });
+    expect(moved[1]).toEqual({ id: "statistics", visible: false });
   });
 });
 
@@ -239,6 +302,6 @@ describe("toggleDashboardWidget", () => {
 describe("visibleDashboardWidgets", () => {
   it("returns the visible ids in order", () => {
     const layout = toggleDashboardWidget(defaultDashboardWidgets(), "statistics");
-    expect(visibleDashboardWidgets(layout)).toEqual(["summary", "allocation"]);
+    expect(visibleDashboardWidgets(layout)).toEqual(["indexes", "summary", "allocation"]);
   });
 });

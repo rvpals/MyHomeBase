@@ -162,13 +162,19 @@ export function MusicPlayerView() {
           <span className="font-mono text-xs text-muted">{formatPlayerTime(total)}</span>
         </div>
 
-        <div className="mt-3 flex items-center gap-2">
+        {/* flex-wrap, because four buttons do not fit a 375px column in one line. */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <Button variant="secondary" onClick={player.previous}>
             Previous
           </Button>
           <Button onClick={player.toggle}>{isPlaying ? "Pause" : "Play"}</Button>
           <Button variant="secondary" onClick={player.next}>
             Next
+          </Button>
+          {/* Stops the audio and hides the bar but keeps the queue -- see `stop` in
+              music-player-provider.tsx. "Clear the queue" is the Queue screen's job. */}
+          <Button variant="secondary" onClick={player.stop}>
+            Close player
           </Button>
         </div>
 

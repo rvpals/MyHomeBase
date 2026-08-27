@@ -16,6 +16,7 @@
  * all three back, because the widget list can no longer express that.
  */
 export const DASHBOARD_WIDGET_IDS = [
+  "indexes",
   "summary",
   "statistics",
   "allocation",
@@ -31,6 +32,12 @@ export interface DashboardWidgetInfo {
 }
 
 export const DASHBOARD_WIDGET_INFO: Record<DashboardWidgetId, DashboardWidgetInfo> = {
+  indexes: {
+    id: "indexes",
+    label: "Indexes",
+    description:
+      "The major market benchmarks — S&P 500, NASDAQ, Dow, Russell, VIX, gold, silver, oil, the 10-year yield, the dollar index and bitcoin. Fetched on demand by the card's own Refresh all button, never on page load.",
+  },
   summary: {
     id: "summary",
     label: "Portfolio Summary",

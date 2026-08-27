@@ -54,10 +54,32 @@ export function resolveDashboardWidgets(settings: ModuleSetting[]): DashboardWid
 
   if (resolved.length === 0) return defaultDashboardWidgets();
 
-  // Widgets added to the app since this layout was saved.
-  for (const id of DASHBOARD_WIDGET_IDS) {
-    if (!seen.has(id)) resolved.push({ id, visible: true });
-  }
+  // Widgets added to the app since this layout was saved, each inserted at the
+  // place the catalogue puts it rather than appended.
+  //
+  // Appending was the old behaviour and it was wrong for a widget shipped at the
+  // *top* of DASHBOARD_WIDGET_IDS: a user with any saved layout would have found
+  // the new Indexes card at the bottom of their dashboard, which is the opposite
+  // of where it was placed. Anchoring to the nearest already-known neighbour
+  // keeps a new widget beside the widgets it shipped beside, while leaving every
+  // deliberate reorder the user made completely untouched.
+  DASHBOARD_WIDGET_IDS.forEach((id, catalogueIndex) => {
+    if (seen.has(id)) return;
+
+    // The first known widget that follows this one in the catalogue; the new
+    // widget goes immediately before it, or at the end if nothing follows.
+    const successor = DASHBOARD_WIDGET_IDS.slice(catalogueIndex + 1).find((candidate) =>
+      seen.has(candidate),
+    );
+    const at = successor
+      ? resolved.findIndex((preference) => preference.id === successor)
+      : -1;
+
+    if (at === -1) resolved.push({ id, visible: true });
+    else resolved.splice(at, 0, { id, visible: true });
+
+    seen.add(id);
+  });
 
   return resolved;
 }

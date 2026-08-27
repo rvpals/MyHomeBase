@@ -56,8 +56,73 @@ does before badging the nav.
 positions, transactions, watch lists, a daily-glance dashboard, ticker detail
 with news and risk, and CSV import from broker statements. Backed by several
 library modules (`stock-positions`, `stock-analytics`, `stock-watchlist`,
-`stock-daily-snapshot`, `investment-accounts`, `market-data`, `ticker-*`) that
-all share the one `stk_` table prefix.
+`stock-daily-snapshot`, `investment-accounts`, `market-data`, `market-indexes`,
+`ticker-*`) that all share the one `stk_` table prefix — though several of the
+newest (`stock-simulation`, `market-indexes`) own no table at all.
+
+The **Simulation** section answers "had I bought this then?" — one ticker, a share count,
+and any of ten windows (1 Week through MAX) ticked at once. It **adds no table and no
+migration**: nothing is saved, because a run is a question rather than a position, and
+every price is fetched live from the chart feed already wired for the rest of the module.
+Its own library module, `src/lib/stock-simulation`, holds the arithmetic; it depends on
+`src/lib/market-data` through that module's `index.ts` and needs no repository at all.
+Four choices worth knowing:
+
+- **A range is a hypothetical *entry date*, not a holding period going forward.** "6 M"
+  buys at the close six months ago and holds to today, so every row shares one current
+  price and differs only in what it assumes you paid — which is what makes ticking
+  several at once the point of the screen. The alternative reading (buy today, hold six
+  months) would need a price forecast, and there isn't one.
+- **The results are one `DataGrid`, not a card per range.** Every range reports the same
+  five figures, so a table lets them be compared down a column, which is the reason to
+  tick several at once. It cost nothing to get right: the grid is the app's mandated
+  table, and below 1024px it delegates to `DataGridCompact`, turning each range back into
+  a card where eight columns wouldn't fit.
+- **The Price Overlay is normalized on both axes** — x is progress through each window
+  (0–100%), y is percent change from that window's own buy price. Plotted as real dates
+  and real dollars, a ten-year line would squash a one-week line into a few pixels at the
+  right edge; normalizing is what lets them share an axis. Every line starts at 0%.
+- **A range that fails is reported, not thrown.** Windows are fetched in parallel and
+  settled independently, so a symbol younger than its ten-year window is listed under the
+  table as unavailable while the rest still report. A fresh listing legitimately fails
+  everything but the shortest.
+- **`1wk` and `2wk` are fetched as `1mo` and trimmed.** Yahoo has no two-week range, and
+  its one-week range only pairs with intraday intervals — asking for `1wk`/`1d` returns
+  about five bars with the first often missing, and that first bar *is* the buy price.
+  Trimming measures back from the series' own last bar, not from now, so a run on a Sunday
+  can't lose Friday's close.
+
+Gain/loss is **price return only** — dividends, fees and taxes aren't counted, and the
+screen says so beside the Run Sim button.
+
+The dashboard opens on an **Indexes** card — the major benchmarks, above your own
+portfolio, because "how did the market do?" is the question that frames every number
+below it. `src/lib/market-indexes` holds the catalogue (eleven symbols in four groups:
+the S&P, NASDAQ, Dow, Russell and VIX; gold, silver and WTI; the 10-year yield and the
+dollar index; bitcoin) and the one fetch over it. It adds **no table and no migration** —
+nothing is stored, because a market level is a reading rather than a record, and every
+quote comes from the chart feed already wired for the rest of the module. Four choices
+worth knowing:
+
+- **Nothing is fetched on page load.** Eleven calls to an unauthenticated provider on
+  every visit to the dashboard would make the module's landing screen pay for a card that
+  may be collapsed, so the card ships empty with a **Refresh all** button in its header
+  (`CollapsibleCard`'s `headerAction` slot, which sits outside the toggle) that fetches
+  the whole board on demand. The result lives in the card's own state until the next press.
+- **A level carries its unit.** `^GSPC` is a point level, `GC=F` is dollars an ounce, and
+  `^TNX` is a percentage already — so `IndexUnit` travels with every row and the view
+  formats by it. Printing all three as currency was the obvious bug to avoid: the S&P is
+  not worth $7,675.
+- **A dead symbol is reported, not thrown.** Symbols are fetched in parallel and settled
+  independently, so one 429 leaves the other ten on screen and names the missing one
+  underneath. A card that blanked because gold timed out would be worse than one that
+  says so.
+- **It is the first widget, and existing layouts get it first too.** Shipping a widget at
+  the top of `DASHBOARD_WIDGET_IDS` exposed a flaw in `resolveDashboardWidgets`: it
+  *appended* unknown-but-new widgets, so every user with a saved layout would have found
+  the new card at the bottom. It now inserts a new widget before its nearest already-known
+  catalogue successor, which puts Indexes first for a default layout and beside its
+  neighbours for a reordered one — without overriding any ordering the user chose.
 
 The dashboard heading carries a **ticker search** — a magnifier that suggests symbols
 the system already knows, partial-matched. `src/lib/ticker-search` owns the matching:
@@ -385,6 +450,19 @@ Add a `settings.ts` to the library module with a `…_SETTING_KEYS` map, a typed
 `…SettingsToEntries` writer — [src/lib/attendance/settings.ts](src/lib/attendance/settings.ts)
 is the pattern. Parsing must be **forgiving**: a settings row can outlive the
 thing it names, so a stale id is "not set", never a thrown error.
+
+**If the setting arms a background job, its switch and interval belong in
+Administration → Background Tasks, not on the module's own screen.** The rows still
+live in `sys_module_settings` under the module — only the controls move. Two reasons,
+both learned the hard way: three schedulers configured in three places left nobody
+able to answer "is anything actually running?", and a switch shown apart from the
+last-run record can be flipped on with no way to see it did nothing. Keep the job's
+*configuration* (a watched folder, a threshold) with the module, and have the admin
+card show those preconditions read-only so an armed-but-inert job explains itself.
+Register the job in `JOB_DESCRIPTORS`
+([src/lib/scheduled-jobs/types.ts](src/lib/scheduled-jobs/types.ts)) and stamp each
+pass through `ScheduledRunRepository` — the screen and the CLI both iterate that list,
+so a new job needs no new UI.
 
 ### 7. Sections and the nav
 

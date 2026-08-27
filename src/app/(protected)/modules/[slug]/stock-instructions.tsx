@@ -614,6 +614,59 @@ function SettingsInstructions() {
   );
 }
 
+function SimulationInstructions() {
+  return (
+    <>
+      <p className="text-sm text-muted">
+        A back-test, not a forecast. Type a ticker and a number of shares, tick the windows you
+        want, and each one answers the same question: <em>had you bought those shares at the
+        start of this window and held them to today, where would you be?</em>
+      </p>
+      <Section title="What a time range means here">
+        <p>
+          A range is a <strong className="text-ink">hypothetical entry date</strong>, not a holding
+          period going forward. &ldquo;6 M&rdquo; buys at the close six months ago; &ldquo;5 Y&rdquo;
+          buys at the close five years ago. Every row therefore shares one current price and
+          differs only in what it assumes you paid, which is why picking several ranges at once is
+          the point of the screen — the table lets you read a column straight down and compare
+          them.
+        </p>
+        <p>
+          The buy price is a real close from the price feed, not an average or an adjusted basis.
+        </p>
+      </Section>
+      <Section title="What the numbers leave out">
+        <p>
+          <strong className="text-ink">Price return only.</strong> Dividends, commissions,
+          spreads and taxes aren&apos;t counted, so a high-yield holding will look worse here than
+          it did in reality. Nothing is saved either — a run is a question, not a position, and
+          leaving the screen discards it.
+        </p>
+      </Section>
+      <Section title="Ranges that come back empty">
+        <p>
+          A window longer than the symbol has existed for has no starting close, so it&apos;s
+          listed under the table as unavailable rather than given a row with a wrong number in it.
+          A fresh listing can fail every range but the shortest, and that&apos;s the honest answer.
+        </p>
+      </Section>
+      <Section title="Reading the Price Overlay">
+        <p>
+          Each line is one range, drawn as <strong className="text-ink">percent change from its
+          own buy price</strong> against how far through that range it is — so every line starts
+          at 0% on the left and ends at its total return on the right. That normalising is what
+          lets a one-week line and a ten-year line share an axis; plotted as real dates and real
+          dollars, the decade would squash the week into a few pixels.
+        </p>
+        <p>
+          The x-axis is progress, not time. Two points at &ldquo;50%&rdquo; are half way through
+          their own windows, not the same date.
+        </p>
+      </Section>
+    </>
+  );
+}
+
 export function StockInstructions({ section }: { section: StockSection }) {
   switch (section) {
     case "main":
@@ -628,6 +681,8 @@ export function StockInstructions({ section }: { section: StockSection }) {
       return <ActionablesInstructions />;
     case "charts":
       return <ChartsInstructions />;
+    case "simulation":
+      return <SimulationInstructions />;
     case "import":
       return <ImportInstructions />;
     case "settings":
