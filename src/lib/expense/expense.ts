@@ -278,7 +278,9 @@ export function deleteRule(repo: ExpenseRepository, id: number): void {
 export interface CleanupLogEntry {
   transactionId: number;
   description: string;
-  /** The rule that matched, or undefined when nothing did. */
+  /** The matched rule's name, or undefined when nothing matched. */
+  ruleName?: string;
+  /** The matched rule's pattern, or undefined when nothing did. */
   pattern?: string;
   /** e.g. [{ fieldName: "vendor", value: "TGI Friday" }] — empty if nothing changed. */
   changes: { fieldName: RuleActionField; value: string }[];
@@ -338,6 +340,7 @@ export function runCleanupBatch(
     entries.push({
       transactionId: transaction.id,
       description: transaction.transactionDescription,
+      ruleName: plan?.rule.name,
       pattern: plan?.rule.pattern,
       changes: (plan?.assignments ?? []).map((assignment) => ({
         fieldName: assignment.fieldName,

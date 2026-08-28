@@ -2,7 +2,9 @@ import { EXIF_HEADER_BYTES, readExifDate } from "./exif";
 import {
   dateFromFileName,
   isDayFolderFor,
+  isDayFolderInRange,
   isMonthFolderFor,
+  isMonthFolderInRange,
   monthFolderNameOf,
   yearFolderOf,
 } from "./paths";
@@ -116,14 +118,25 @@ export async function listPhotoFoldersForDate(
  *
  * `includeAll` overrides the month filter, for the card's "show the whole month"
  * escape hatch after a scan matches nothing.
+ *
+ * The date to match on is either one `date` or a `from`/`to` range. One function rather
+ * than two because the arithmetic is identical -- a single date IS the range
+ * `date..date` -- and having the month scan exist twice is how the two copies drift.
  */
 export async function listPhotosInFolder(
   store: PhotoFileStore,
-  input: { date: string; relativePath: string; includeAll?: boolean },
+  input: {
+    date?: string;
+    from?: string;
+    to?: string;
+    relativePath: string;
+    includeAll?: boolean;
+  },
 ): Promise<PhotoFolderContents> {
-  const { date, relativePath, includeAll = false } = input;
+  const { relativePath, includeAll = false } = input;
+  const { from, to } = rangeOf(input);
 
-  const kind = folderKindOf(relativePath, date);
+  const kind = folderKindOf(relativePath, from, to);
   const names = await store.listPhotoNames(relativePath);
 
   if (kind === "day" || includeAll) {
@@ -152,7 +165,7 @@ export async function listPhotosInFolder(
   for (let start = 0; start < names.length; start += SCAN_CONCURRENCY) {
     const batch = names.slice(start, start + SCAN_CONCURRENCY);
     const results = await Promise.all(
-      batch.map((name) => matchPhoto(store, relativePath, name, date)),
+      batch.map((name) => matchPhoto(store, relativePath, name, from, to)),
     );
     matches.push(...results);
   }
@@ -192,7 +205,8 @@ async function matchPhoto(
   store: PhotoFileStore,
   relativeFolder: string,
   name: string,
-  date: string,
+  from: string,
+  to: string,
 ): Promise<PhotoFile | undefined> {
   const relativePath = `${relativeFolder}/${name}`;
 
@@ -200,13 +214,36 @@ async function matchPhoto(
   const takenAt = header === undefined ? undefined : readExifDate(header);
 
   if (takenAt !== undefined) {
-    return takenAt === date ? { name, relativePath, matchedBy: "exif", takenAt } : undefined;
+    return isWithin(takenAt, from, to)
+      ? { name, relativePath, matchedBy: "exif", takenAt }
+      : undefined;
   }
 
   // No readable EXIF: fall back to a date in the file name.
-  return dateFromFileName(name) === date
+  const fromName = dateFromFileName(name);
+  return fromName !== undefined && isWithin(fromName, from, to)
     ? { name, relativePath, matchedBy: "file-name" }
     : undefined;
+}
+
+/**
+ * The range a caller asked for, whether it passed one date or two.
+ *
+ * A missing `date` with no range degrades to the empty range `""..""`, which matches
+ * nothing -- the schema rejects that input at the boundary, so reaching here means a
+ * caller skipped validation and finding no photos beats matching every photo.
+ */
+function rangeOf(input: { date?: string; from?: string; to?: string }): {
+  from: string;
+  to: string;
+} {
+  if (input.date !== undefined) return { from: input.date, to: input.date };
+  return { from: input.from ?? "", to: input.to ?? "" };
+}
+
+/** Whether an ISO date falls in `from..to` inclusive. ISO dates compare as strings. */
+function isWithin(date: string, from: string, to: string): boolean {
+  return date >= from && date <= to;
 }
 
 /**
@@ -215,11 +252,15 @@ async function matchPhoto(
  * Re-derived from the path rather than trusted from the caller: this decides whether
  * the expensive EXIF scan runs, and a client that mislabels a 400-photo month folder
  * as a day folder would otherwise return the whole month as matches.
+ *
+ * Judged against the RANGE, so a day folder anywhere inside a wide range is still
+ * recognised as a day folder. A single date arrives here as `from === to`, which makes
+ * these two tests exactly the single-date ones.
  */
-function folderKindOf(relativePath: string, date: string): "day" | "month" {
+function folderKindOf(relativePath: string, from: string, to: string): "day" | "month" {
   const name = relativePath.split("/").pop() ?? "";
-  if (isMonthFolderFor(name, date)) return "month";
-  if (isDayFolderFor(name, date)) return "day";
+  if (isMonthFolderInRange(name, from, to)) return "month";
+  if (isDayFolderInRange(name, from, to)) return "day";
   // Neither convention: treat it as a month folder, the conservative choice -- it
   // filters by capture date instead of declaring every photo a match.
   return "month";

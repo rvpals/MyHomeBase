@@ -143,6 +143,12 @@ function TransactionsInstructions() {
       <Section title="Transactions">
         <ul className="flex list-disc flex-col gap-1 pl-5">
           <li>
+            The <strong className="text-ink">wand</strong> beside a description opens{" "}
+            <strong className="text-ink">Transaction Rules</strong> with a new rule started for you
+            — the name seeded from the first few characters, the description from the whole line.
+            Both are yours to edit, and nothing is saved until you save it there.
+          </li>
+          <li>
             <strong className="text-ink">Transaction date</strong> is when the purchase happened, and
             it&apos;s the date this module works from: sorting, the date filters, the charts and
             duplicate detection all use it.
@@ -247,6 +253,13 @@ function MetaDataInstructions() {
 function ImportInstructions() {
   return (
     <>
+      <Section title="Where the rules live">
+        <p>
+          Imported rows are still tidied up automatically — the rules run during every import.
+          To add, edit or re-run them, go to{" "}
+          <strong className="text-ink">Transaction Rules</strong> in the section list.
+        </p>
+      </Section>
       <Section title="Importing a statement">
         <ul className="flex list-disc flex-col gap-1 pl-5">
           <li>
@@ -295,6 +308,13 @@ function ImportInstructions() {
           </li>
         </ul>
       </Section>
+    </>
+  );
+}
+
+function TransactionRulesInstructions() {
+  return (
+    <>
       <Section title="Post Import Processing">
         <ul className="flex list-disc flex-col gap-1 pl-5">
           <li>
@@ -442,6 +462,7 @@ export function ExpenseInstructions({ section }: { section: ExpenseSection }) {
       {section === "meta-data" && <MetaDataInstructions />}
       {section === "charts" && <ChartsInstructions />}
       {section === "import" && <ImportInstructions />}
+      {section === "transaction-rules" && <TransactionRulesInstructions />}
       {section === "settings" && <SettingsInstructions />}
     </div>
   );

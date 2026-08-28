@@ -156,6 +156,8 @@ export const saveRuleActionSchema = z
   });
 
 export const savePostImportRuleSchema = z.object({
+  name: z.string().trim().min(1, "A rule name is required."),
+  description: z.string().trim().default(""),
   pattern: z.string().trim().min(1, "A pattern is required."),
   priority: z.number().int().default(0),
   isEnabled: z.boolean().default(true),
@@ -169,6 +171,10 @@ export type PostImportRuleWriteData = z.output<typeof savePostImportRuleSchema>;
 
 export const postImportRuleSchema = z.object({
   id: z.number().int().positive(),
+  // Not `.min(1)` like the save schema: a rule stored before migration 0065 whose
+  // pattern was whitespace-only kept a blank name, and reading it must not throw.
+  name: z.string(),
+  description: z.string(),
   pattern: z.string().min(1),
   priority: z.number().int(),
   isEnabled: z.boolean(),

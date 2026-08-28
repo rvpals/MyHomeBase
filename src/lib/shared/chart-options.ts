@@ -213,3 +213,64 @@ export function parseChartDisplay(raw: string | null | undefined, fallback: Char
 export function serializeChartDisplay(display: ChartDisplay): string {
   return JSON.stringify(display);
 }
+
+/**
+ * How many slices a part-to-whole chart may draw before the rest fold into "Other".
+ *
+ * Five, and the number is load-bearing rather than taste. A pie is an *all-pairs*
+ * form — any slice can end up adjacent to any other — so every pair of colours has
+ * to be separable, not just neighbours in a fixed order. Running the dataviz
+ * validator over `CHART_CATEGORICAL_COLORS` with `--pairs all` gives:
+ *
+ *   4 slots  PASS
+ *   5 slots  PASS (CVD ΔE 6.1, the 6–8 floor band — legal only with direct labels)
+ *   6 slots  FAIL — normal-vision ΔE 12.9, under the hard floor of 15
+ *
+ * So six slices are indistinguishable to a full-colour reader, let alone a
+ * colour-blind one. Five is the most the palette supports, and only because the
+ * slices are directly labelled.
+ */
+export const MAX_PART_TO_WHOLE_SLICES = 5;
+
+/**
+ * The key `foldToOther` gives the pooled slice. Exported so a caller can recognise
+ * it — to drill into it, or to style it — without matching a magic string.
+ */
+export const OTHER_SLICE_KEY = "__other__";
+
+/** One slice of a part-to-whole chart. */
+export interface PartToWholeSlice {
+  key: string;
+  label: string;
+  value: number;
+}
+
+/**
+ * Folds a descending-by-value list into at most `maxSlices` slices, gathering the
+ * tail into a single "Other" entry.
+ *
+ * Pure and here rather than in the component because it is a *rule* — the palette
+ * only supports so many separable slices — and a rule gets a test. Returns the
+ * kept slices in the order given, with "Other" last when anything was folded.
+ *
+ * `otherLabel` is a parameter so a caller can say "23 other vendors" rather than a
+ * bare "Other", which is the more honest label when the reader may want the count.
+ */
+export function foldToOther(
+  slices: PartToWholeSlice[],
+  maxSlices: number = MAX_PART_TO_WHOLE_SLICES,
+  otherLabel: (foldedCount: number) => string = (count) => `${count} others`,
+): PartToWholeSlice[] {
+  // Nothing to fold: one slice would be renamed "1 others" for no gain.
+  if (maxSlices < 1 || slices.length <= maxSlices) return slices;
+
+  const kept = slices.slice(0, maxSlices);
+  const folded = slices.slice(maxSlices);
+  const total = folded.reduce((sum, slice) => sum + slice.value, 0);
+
+  return [
+    ...kept,
+    // A fixed key so the fold keeps its colour slot as the data changes.
+    { key: OTHER_SLICE_KEY, label: otherLabel(folded.length), value: total },
+  ];
+}

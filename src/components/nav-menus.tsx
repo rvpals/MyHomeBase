@@ -17,10 +17,18 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { AdminIcon } from "./admin-icon";
 import { Avatar } from "./avatar";
 import { ModuleIcon } from "./module-icons";
+import { SlotIcon } from "./slot-icon";
 import { ViewportSwitch } from "./viewport-switch";
+import { getIconSlot } from "@/lib/icons";
+
+// Resolved once at module scope; the registry is static, so this is not I/O. These three
+// replace hand-rolled inline SVGs — the glyphs now come from the reader's icon set, and
+// each can be overridden individually.
+const MODULES_SLOT = getIconSlot("chrome_menu_modules_trigger")!;
+const ACCOUNT_SLOT = getIconSlot("chrome_menu_account")!;
+const ADMINISTRATION_SLOT = getIconSlot("chrome_menu_administration")!;
 
 export interface NavLink {
   slug: string;
@@ -96,21 +104,7 @@ export function ModuleMenu({ links, isActive }: { links: NavLink[]; isActive: (h
         aria-expanded={isOpen}
         className={iconButton}
       >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="h-4 w-4"
-          aria-hidden
-        >
-          <rect x="3" y="3" width="7" height="7" rx="1.5" />
-          <rect x="14" y="3" width="7" height="7" rx="1.5" />
-          <rect x="3" y="14" width="7" height="7" rx="1.5" />
-          <rect x="14" y="14" width="7" height="7" rx="1.5" />
-        </svg>
+        <SlotIcon slot={MODULES_SLOT} className="h-4 w-4" />
       </button>
       {isOpen && (
         <div role="menu" aria-label="Modules" className={`${menuPanel} left-0 min-w-48`}>
@@ -196,10 +190,7 @@ export function UserMenu({
             onClick={close}
             className={`${menuItem} ${menuItemIdle}`}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0" aria-hidden>
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-              <circle cx="12" cy="7" r="4" />
-            </svg>
+            <SlotIcon slot={ACCOUNT_SLOT} className="h-4 w-4 shrink-0" />
             My account
           </Link>
           <ViewportSwitch pinned={viewportPinned} variant="menu-item" onToggled={close} />
@@ -210,7 +201,7 @@ export function UserMenu({
               onClick={close}
               className={`${menuItem} ${isAdminRoute ? menuItemActive : menuItemIdle}`}
             >
-              <AdminIcon className="h-4 w-4 shrink-0" />
+              <SlotIcon slot={ADMINISTRATION_SLOT} className="h-4 w-4 shrink-0" />
               Administration
             </Link>
           )}

@@ -100,6 +100,14 @@ export interface RuleAction {
  */
 export interface PostImportRule {
   id: number;
+  /**
+   * Short human label, e.g. "TGI Friday's". Required on save; blank only on rules
+   * that predate migration 0065 and whose pattern was whitespace-only, so display
+   * code falls back to `pattern`.
+   */
+  name: string;
+  /** Optional longer note on why this rule exists. Empty means none. */
+  description: string;
   pattern: string;
   /** Lowest number wins when several rules match. */
   priority: number;

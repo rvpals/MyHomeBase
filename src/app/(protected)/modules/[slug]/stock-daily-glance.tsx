@@ -12,6 +12,8 @@ import { useState } from "react";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { Comments } from "@/components/comments";
 import { ModuleIcon } from "@/components/module-icons";
+import { SlotIcon } from "@/components/slot-icon";
+import { getIconSlot } from "@/lib/icons";
 import { formatCents } from "@/lib/shared/money";
 import {
   topGainers,
@@ -24,6 +26,9 @@ import {
 import type { TopNewsStory } from "@/lib/ticker-news";
 import { fetchTopStoryAction } from "./stock-news-actions";
 import { TickerCell, TickerViewerHost } from "./ticker-viewer-host";
+
+// Resolved once at module scope; the registry is static, so this is not I/O.
+const GLANCE_SLOT = getIconSlot("stock_card_daily_glance");
 
 const MOVER_COUNT = 5;
 
@@ -309,7 +314,16 @@ export function StockDailyGlance({
     // the home screen for — but collapsible so a long card can be folded away.
     <CollapsibleCard
       title="Daily Glance"
-      titleIcon={icon && <ModuleIcon name={icon} className="h-4 w-4" />}
+      // A slot of its own rather than the module's glyph: the module icon already badges
+      // the rail and the section header, so reusing it here said "Stocks" a third time
+      // instead of naming the card. Falls back to the module icon if unregistered.
+      titleIcon={
+        GLANCE_SLOT ? (
+          <SlotIcon slot={GLANCE_SLOT} className="h-4 w-4" />
+        ) : (
+          icon && <ModuleIcon name={icon} className="h-4 w-4" />
+        )
+      }
       defaultOpen
       className={className}
       // This used to be a footnote below the mover lists. It explains the

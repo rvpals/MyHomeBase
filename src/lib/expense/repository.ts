@@ -72,6 +72,8 @@ interface TransactionRow {
 
 interface RuleRow {
   id: number;
+  name: string;
+  description: string;
   pattern: string;
   priority: number;
   is_enabled: number;
@@ -131,6 +133,8 @@ function transactionToDomain(row: TransactionRow): ExpenseTransaction {
 function ruleToDomain(row: RuleRow, actionRows: RuleActionRow[]): PostImportRule {
   return postImportRuleSchema.parse({
     id: row.id,
+    name: row.name,
+    description: row.description,
     pattern: row.pattern,
     priority: row.priority,
     isEnabled: row.is_enabled === 1,
@@ -569,12 +573,14 @@ export class SqliteExpenseRepository implements ExpenseRepository {
 
   createRule(input: PostImportRuleWriteData): PostImportRule {
     const insertRule = this.db.prepare(
-      `INSERT INTO exp_post_import_rules (pattern, priority, is_enabled)
-       VALUES (@pattern, @priority, @isEnabled)`,
+      `INSERT INTO exp_post_import_rules (name, description, pattern, priority, is_enabled)
+       VALUES (@name, @description, @pattern, @priority, @isEnabled)`,
     );
 
     const ruleId = this.db.transaction(() => {
       const result = insertRule.run({
+        name: input.name,
+        description: input.description,
         pattern: input.pattern,
         priority: input.priority,
         isEnabled: input.isEnabled ? 1 : 0,
@@ -591,13 +597,17 @@ export class SqliteExpenseRepository implements ExpenseRepository {
 
   updateRule(id: number, input: PostImportRuleWriteData): PostImportRule {
     const updateRule = this.db.prepare(
-      `UPDATE exp_post_import_rules SET pattern = @pattern, priority = @priority, is_enabled = @isEnabled
+      `UPDATE exp_post_import_rules
+       SET name = @name, description = @description, pattern = @pattern,
+           priority = @priority, is_enabled = @isEnabled
        WHERE id = @id`,
     );
 
     this.db.transaction(() => {
       updateRule.run({
         id,
+        name: input.name,
+        description: input.description,
         pattern: input.pattern,
         priority: input.priority,
         isEnabled: input.isEnabled ? 1 : 0,

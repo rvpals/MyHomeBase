@@ -13,6 +13,11 @@ Strict layering: **all logic lives in `src/lib/`; the presentation layers
   that matches what it does, and never hand-roll a new `fixed` bar.
 - **Creating a new reusable component:** start from `./src/components/_component-template.tsx`.
 - **Before adding a table, column, or schema change:** read `./coding-guide.md` (table naming, migration conventions).
+- **Before adding any icon to a new screen, card, or nav:** read `./coding-guide.md` →
+  *Icons: use a slot, not a bare glyph name*. Icons that mark a **place** go through
+  `SlotIcon` + a registered slot, never `<TreeIcon name="…">` at the call site; row
+  actions and state glyphs deliberately stay as they are. **Propose the slot ids and
+  labels and wait for confirmation** — ids are permanent once uploads exist.
 - **Before creating a new module, or changing a module's slug/names/icon/sections:** read `./modules.md` (the module registry and the step-by-step recipe).
 
 ## Plan before building — wait for approval
@@ -22,9 +27,13 @@ Before writing any code for a new feature, module, or multi-file change: read
 1. **Files** you'll create and modify, listed by path.
 2. **Migration + `DEFAULT_MODULES`** changes — the numbered `.sql` and its `.md` log,
    any new table's 3-letter prefix, and whether a new module needs registering.
-3. **Third-party services and dependencies** you'd add, and **whether each is free**.
+3. **Icon slots** — if the work adds any screen, card, or nav that shows an icon, the
+   proposed slot ids, labels and `where` descriptions as a table, plus anything you chose
+   *not* to slot and why. Ids are persisted and can't be renamed later without orphaning
+   a user's upload, so these get confirmed with the plan, not after.
+4. **Third-party services and dependencies** you'd add, and **whether each is free**.
    Never build on a paid or metered API without asking first.
-4. **Open questions** about the requirements — anything where two readings would
+5. **Open questions** about the requirements — anything where two readings would
    produce materially different work.
 
 Then stop and wait. Don't start implementing, and don't fold the plan into the first

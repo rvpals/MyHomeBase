@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ChangeEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
@@ -22,6 +23,7 @@ import {
   deleteTransactionsAction,
   saveTransactionAction,
 } from "./expense-actions";
+import { expenseSectionHref } from "./expense-sections";
 import {
   CardThumbnail,
   CategoryIconThumbnail,
@@ -33,6 +35,13 @@ import {
 
 /** What the picker calls an empty category — blank means "not categorised yet". */
 const UNCATEGORISED_LABEL = "uncategorised";
+
+/**
+ * How much of a description seeds a new rule's name. Short on purpose: it's a
+ * starting point the user edits, and a card description's leading characters are
+ * the brand ("SQ *TGI FRID") while the tail is store and order noise.
+ */
+const RULE_NAME_SEED_LENGTH = 10;
 
 const INPUT_CLASS =
   "w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
@@ -72,6 +81,32 @@ function TrashIcon() {
       <path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7" />
       <path d="M6.5 7l.8 12a1.5 1.5 0 0 0 1.5 1.4h6.4a1.5 1.5 0 0 0 1.5-1.4l.8-12" />
       <path d="M10 11v6M14 11v6" />
+    </svg>
+  );
+}
+
+/**
+ * A magician's wand with sparks — "conjure a rule from this description". Local and
+ * hand-drawn like the two above: `TreeIcon name="magic"` exists, but a themed icon set
+ * draws it as full-colour artwork, which is right for the Music nav entry and wrong for
+ * a 16px control sitting inline beside the description text.
+ */
+function MagicIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-4 w-4"
+      aria-hidden="true"
+    >
+      <path d="M5 19l9-9" />
+      <path d="M12.5 5.5l1.2 2.3 2.3 1.2-2.3 1.2-1.2 2.3-1.2-2.3L9 9l2.3-1.2z" />
+      <path d="M18 4.5v2M17 5.5h2" />
+      <path d="M19 14v2M18 15h2" />
     </svg>
   );
 }
@@ -540,8 +575,36 @@ export function ExpenseTransactionsView({
     {
       key: "description",
       header: "Description",
+      // `value` stays the raw text so sorting and search ignore the button.
       value: (row) => row.transactionDescription,
-      render: (row) => row.transactionDescription,
+      render: (row) => (
+        <span className="group/rule flex items-center gap-1.5">
+          <span>{row.transactionDescription}</span>
+          {/*
+            A Link, not a button: this navigates, so middle-click and
+            open-in-new-tab should work. The rules screen reads ?name=,
+            ?description= and ?vendorDescription= and seeds an editable form —
+            every field stays editable, and nothing is written until the user
+            saves there. The full description goes over twice on purpose: once as
+            the rule's own description, and once as the line to match on.
+          */}
+          <Link
+            href={`${expenseSectionHref("transaction-rules")}?name=${encodeURIComponent(
+              row.transactionDescription.slice(0, RULE_NAME_SEED_LENGTH),
+            )}&description=${encodeURIComponent(
+              row.transactionDescription,
+            )}&vendorDescription=${encodeURIComponent(row.transactionDescription)}`}
+            aria-label={`Add a rule for ${row.transactionDescription}`}
+            title="Add rule"
+            // Hidden until the row is hovered on a pointer device, so a long
+            // table isn't a wall of glyphs — but always visible on touch, which
+            // has no hover, and whenever it has keyboard focus.
+            className="shrink-0 rounded-md p-0.5 text-brass-dark opacity-0 transition-opacity hover:bg-brass-soft focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass group-hover/rule:opacity-100 max-lg:opacity-100 motion-reduce:transition-none"
+          >
+            <MagicIcon />
+          </Link>
+        </span>
+      ),
     },
     { key: "vendor", header: "Vendor", value: (row) => row.vendor, render: (row) => row.vendor },
     {

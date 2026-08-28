@@ -1,3 +1,4 @@
+import { getAppVersion } from "@/lib/app-version";
 import { getChangeHistory } from "@/lib/change-history";
 import { formatBytes, getSystemInfo } from "@/lib/system-info";
 import { deps } from "@/lib/wiring";
@@ -14,6 +15,7 @@ function formatUptime(seconds: number): string {
 export default function AboutPage() {
   const systemInfo = getSystemInfo(deps.systemInfoRepo);
   const changeHistory = getChangeHistory(deps.changeHistoryRepo);
+  const appVersion = getAppVersion(deps.buildIdRepo);
 
   const stats = [
     { label: "Hostname", value: systemInfo.server.hostname },
@@ -66,6 +68,7 @@ export default function AboutPage() {
     <AboutView
       appName={packageJson.name}
       appVersion={packageJson.version}
+      buildId={appVersion.buildId}
       stats={stats}
       ramMeter={ramMeter}
       processMeters={processMeters}

@@ -12,7 +12,22 @@
 import { useState, type ReactNode } from "react";
 
 import { Modal } from "@/components/modal";
+import { SlotIcon } from "@/components/slot-icon";
 import { TreeIcon } from "@/components/tree-icons";
+import { getIconSlot } from "@/lib/icons";
+
+/**
+ * The chip's glyph. Slotted only for the default `info` mark.
+ *
+ * A caller that asked for `note` or `clip` chose that glyph deliberately to say something
+ * different, so silently redirecting it through the "help chip" slot would let one upload
+ * overwrite three distinct meanings. Every current call site takes the default.
+ */
+function HelpChipIcon({ icon, className }: { icon: Icon; className?: string }) {
+  const slot = icon === "info" ? getIconSlot("chrome_help_chip") : undefined;
+  if (slot) return <SlotIcon slot={slot} className={className} />;
+  return <TreeIcon name={icon} className={className} />;
+}
 
 type Icon = "info" | "note" | "clip";
 
@@ -72,7 +87,7 @@ export function Comments({
         // tap target without making the chip look oversized on a desktop.
         className={`inline-flex shrink-0 items-center gap-1.5 rounded-md bg-brass-soft px-2 py-1.5 text-xs font-medium text-brass-dark transition-colors hover:bg-brass hover:text-paper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${className}`}
       >
-        <TreeIcon name={icon} className="h-4 w-4" />
+        <HelpChipIcon icon={icon} className="h-4 w-4" />
         {label && <span>{label}</span>}
       </button>
 

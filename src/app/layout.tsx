@@ -9,9 +9,13 @@ import {
   Space_Grotesk,
 } from "next/font/google";
 import { cookies } from "next/headers";
+import { AppVersionWatch } from "@/components/app-version-watch";
+import { IconOverrideProvider } from "@/components/icon-override-context";
 import { IconSetProvider } from "@/components/icon-set-context";
 import { ViewportCorrector } from "@/components/viewport-corrector";
 import { ViewportProvider } from "@/components/viewport-context";
+import { getAppVersion } from "@/lib/app-version";
+import { getOverrideMap } from "@/lib/icons";
 import { listSplashImages } from "@/lib/pwa";
 import {
   VIEWPORT_COOKIE,
@@ -141,6 +145,9 @@ export default async function RootLayout({
 }>) {
   const theme = getActiveTheme();
   const iconSet = getActiveIconSet();
+  // Scoped to the active set: an override only ever applies under the set it was
+  // uploaded for, so switching sets swaps the whole map rather than filtering per render.
+  const iconOverrides = getOverrideMap(deps.iconOverridesRepo, iconSet.id);
 
   // Which layout to draw, decided here so the very first HTML is already right
   // — no desktop-then-phone flip after hydration. Middleware seeds the cookie
@@ -152,6 +159,12 @@ export default async function RootLayout({
     cookieValue: cookieStore.get(VIEWPORT_COOKIE)?.value,
   });
   const viewportPinned = cookieStore.get(VIEWPORT_PINNED_COOKIE)?.value === "1";
+
+  // The build serving this document, handed to `AppVersionWatch` below so an
+  // installed PWA can tell — on its next foreground — that it is still running
+  // JavaScript from a build the server has since replaced. Read here rather than
+  // in the protected layout so a phone parked on /login gets it too.
+  const { buildId } = getAppVersion(deps.buildIdRepo);
 
   // Overrides the default token values declared in globals.css :root — rendered
   // server-side so the selected theme applies with no client-side flash. Lives
@@ -217,10 +230,13 @@ export default async function RootLayout({
       </head>
       <body className="min-h-full bg-paper">
         <IconSetProvider value={{ id: iconSet.id as ModuleIconSetId, colorful: iconSet.colorful }}>
-          <ViewportProvider value={viewport}>
-            <ViewportCorrector current={viewport} pinned={viewportPinned} />
-            {children}
-          </ViewportProvider>
+          <IconOverrideProvider value={iconOverrides}>
+            <ViewportProvider value={viewport}>
+              <ViewportCorrector current={viewport} pinned={viewportPinned} />
+              <AppVersionWatch bootBuildId={buildId} />
+              {children}
+            </ViewportProvider>
+          </IconOverrideProvider>
         </IconSetProvider>
       </body>
     </html>

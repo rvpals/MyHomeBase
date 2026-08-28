@@ -122,7 +122,9 @@ export function ExpenseDashboardView({
           label="To processed"
           value={String(unprocessedCount)}
           needsAttention={unprocessedCount > 0}
-          href={expenseSectionHref("import")}
+          // The clean-up runner this count belongs to moved out of Import with the
+          // rest of the rules UI.
+          href={expenseSectionHref("transaction-rules")}
         />
         <Tile
           label="Uncategorised"

@@ -45,6 +45,9 @@ function renderSection(
   requestedFormat: string | undefined,
   calendarScope: string | undefined,
   calendarAnchor: string | undefined,
+  prefillRuleName: string | undefined,
+  prefillRuleDescription: string | undefined,
+  prefillRulePattern: string | undefined,
 ) {
   if (slug === ATTENDANCE_MODULE_SLUG && isAttendanceSection(section)) {
     return (
@@ -58,7 +61,14 @@ function renderSection(
     );
   }
   if (slug === EXPENSE_MODULE_SLUG && isExpenseSection(section)) {
-    return <ExpenseSection section={section} />;
+    return (
+      <ExpenseSection
+        section={section}
+        prefillRuleName={prefillRuleName}
+        prefillRuleDescription={prefillRuleDescription}
+        prefillRulePattern={prefillRulePattern}
+      />
+    );
   }
   if (slug === JOURNAL_MODULE_SLUG && isJournalSection(section)) {
     return (
@@ -103,10 +113,27 @@ export default async function ModuleSectionPage({
     format?: string | string[];
     scope?: string | string[];
     anchor?: string | string[];
+    // `name`/`description` seed a new Expense transaction rule, so "add a rule
+    // for this" can be a plain link that arrives with the form already filled.
+    name?: string | string[];
+    description?: string | string[];
+    // The raw statement line to match on, seeding the rule's pattern field.
+    vendorDescription?: string | string[];
   }>;
 }) {
   const { slug, section } = await params;
-  const { filter, classId, date, recordId, format, scope, anchor } = await searchParams;
+  const {
+    filter,
+    classId,
+    date,
+    recordId,
+    format,
+    scope,
+    anchor,
+    name,
+    description,
+    vendorDescription,
+  } = await searchParams;
   // A repeated ?filter= yields an array; take the first rather than joining, so a
   // crafted URL can't smuggle a second expression in.
   const filterQuery = Array.isArray(filter) ? filter[0] : filter;
@@ -123,6 +150,12 @@ export default async function ModuleSectionPage({
   // into a value neither branch would accept.
   const calendarScope = Array.isArray(scope) ? scope[0] : scope;
   const calendarAnchor = Array.isArray(anchor) ? anchor[0] : anchor;
+  // Same first-element rule again: a repeated ?name= must not concatenate.
+  const prefillRuleName = Array.isArray(name) ? name[0] : name;
+  const prefillRuleDescription = Array.isArray(description) ? description[0] : description;
+  const prefillRulePattern = Array.isArray(vendorDescription)
+    ? vendorDescription[0]
+    : vendorDescription;
 
   const appModule = getModuleBySlug(deps.moduleRepo, slug);
   if (!appModule) notFound();
@@ -144,6 +177,9 @@ export default async function ModuleSectionPage({
     requestedFormat,
     calendarScope,
     calendarAnchor,
+    prefillRuleName,
+    prefillRuleDescription,
+    prefillRulePattern,
   );
   if (!body) notFound();
 

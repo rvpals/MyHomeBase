@@ -58,8 +58,11 @@ function explain(transaction: ExpenseTransaction, rules: ReturnType<typeof listR
   for (const rule of rules) {
     const hits = matchesPattern(transaction.transactionDescription, rule.pattern);
     const mark = !rule.isEnabled ? "disabled" : hits ? "MATCHES " : "no      ";
+    // The name says why the rule exists, the pattern says what it matches — this
+    // is a diagnostic, so print both rather than choosing.
+    const name = rule.name.trim() === "" ? "" : `${JSON.stringify(rule.name)} `;
     console.log(
-      `    [${mark}] #${rule.id} prio=${rule.priority} ` +
+      `    [${mark}] #${rule.id} prio=${rule.priority} ${name}` +
         `${JSON.stringify(rule.pattern)} -> ${compilePattern(rule.pattern)}`,
     );
   }
@@ -70,10 +73,14 @@ function explain(transaction: ExpenseTransaction, rules: ReturnType<typeof listR
     return;
   }
 
+  const winnerName = plan.rule.name.trim() === "" ? "" : `${JSON.stringify(plan.rule.name)} `;
   console.log(
-    `  winner      : #${plan.rule.id} ${JSON.stringify(plan.rule.pattern)} ` +
+    `  winner      : #${plan.rule.id} ${winnerName}${JSON.stringify(plan.rule.pattern)} ` +
       "(only the FIRST matching rule is applied — rules do not stack)",
   );
+  if (plan.rule.description.trim() !== "") {
+    console.log(`  description : ${plan.rule.description}`);
+  }
 
   const assigned = new Set(plan.assignments.map((assignment) => assignment.fieldName));
   for (const action of [...plan.rule.actions].sort((a, b) => a.sortOrder - b.sortOrder)) {

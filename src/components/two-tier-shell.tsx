@@ -37,6 +37,12 @@ export interface TwoTierShellProps {
    * but belong to no module and so have nothing to list.
    */
   sections: SectionNode[];
+  /**
+   * The module's icon-slot namespace, passed through to `SectionPanel` so each section
+   * icon can be replaced individually from Admin > Configuration > Icons. Omit it and
+   * the icons resolve exactly as they did before slots existed.
+   */
+  iconNamespace?: string;
   /** The current module, badged in the panel and named in the breadcrumb. */
   module: { name: string; icon: string; href: string };
   currentUser: { id: number; fullName: string; avatarMimeType?: string; updatedAt?: string };
@@ -56,6 +62,7 @@ export interface TwoTierShellProps {
 export function TwoTierShell({
   links,
   sections,
+  iconNamespace,
   module,
   currentUser,
   showAdmin,
@@ -122,6 +129,7 @@ export function TwoTierShell({
           and sheet on compact. */}
       <SectionPanel
         sections={sections}
+        iconNamespace={iconNamespace}
         module={module}
         activeHref={pathname}
         isCompact={isCompact}

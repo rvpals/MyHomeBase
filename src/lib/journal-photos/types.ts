@@ -92,6 +92,17 @@ export interface PhotoFolder {
    * for that reason.
    */
   photoCount: number;
+  /**
+   * The date this DAY folder was matched on, when the lookup was a range.
+   *
+   * A range lookup returns folders for many different days at once, so "which day is
+   * this one?" can no longer be answered from the query -- the UI needs it to group
+   * and label the results. `undefined` for a month folder, and for the single-date
+   * lookup, where the query IS the answer.
+   */
+  matchedDate?: string;
+  /** The `YYYY-MM` a MONTH folder was matched on, under the same reasoning. */
+  matchedMonth?: string;
 }
 
 /** How a photo in a month folder came to be matched to the date. */

@@ -17,9 +17,50 @@
 // by side, which reads worse than either extreme.
 
 import Link from "next/link";
-import { useEffect, useId, useState } from "react";
+import { createContext, useContext, useEffect, useId, useState } from "react";
+import { getIconSlot, sectionSlotId } from "@/lib/icons";
 import { ModuleIcon } from "./module-icons";
+import { SlotIcon } from "./slot-icon";
 import { TreeIcon } from "./tree-icons";
+
+/**
+ * The module's slot namespace ("expense", "journal", …), supplied once by `SectionPanel`
+ * rather than threaded through `SectionRow` and `SectionGroup` as a prop.
+ *
+ * A context because this panel renders every module's nav from *data*: there is no call
+ * site to name a slot at, and the alternative is a prop on four render sites plus two
+ * internal components, all to carry one string that never changes within a render.
+ */
+const SectionNamespaceContext = createContext<string | undefined>(undefined);
+
+/**
+ * A section's icon, as an override-aware slot when the module declares a namespace.
+ *
+ * Falls straight back to `TreeIcon` when it doesn't, or when the derived id isn't a
+ * registered slot — so a module whose sections predate the registry keeps working
+ * unchanged, and a typo'd id degrades to the old behaviour instead of rendering nothing.
+ */
+/**
+ * The module-identity glyph at the head of the panel and the sheet.
+ *
+ * Normally this is the module's OWN icon — already user-editable under Module
+ * Configuration — so it is left alone; a slot here would be a second, competing way to set
+ * one value. Administration is the exception: it has no row in `sys_modules`, so its glyph
+ * is a hardcoded constant with no other way to change it, and it gets a slot.
+ */
+function ModuleIdentityIcon({ icon, className }: { icon: string; className?: string }) {
+  const namespace = useContext(SectionNamespaceContext);
+  const slot = namespace === "admin" ? getIconSlot("chrome_admin_identity") : undefined;
+  if (slot) return <SlotIcon slot={slot} className={className} />;
+  return <ModuleIcon name={icon} className={className} />;
+}
+
+function SectionIcon({ icon, id, className }: { icon?: string; id?: string; className?: string }) {
+  const namespace = useContext(SectionNamespaceContext);
+  const slot = namespace && id ? getIconSlot(sectionSlotId(namespace, id)) : undefined;
+  if (slot) return <SlotIcon slot={slot} className={className} />;
+  return <TreeIcon name={icon} className={className} />;
+}
 
 /**
  * One destination in the panel. `children` renders as an accordion group on
@@ -41,6 +82,15 @@ export interface SectionNode {
 
 export interface SectionPanelProps {
   sections: SectionNode[];
+  /**
+   * The module's icon-slot namespace ("expense", "journal", "stock", "attendance",
+   * "music", "admin"), used to derive a slot id per section via `sectionSlotId`.
+   *
+   * Optional: omit it and every section icon resolves exactly as it did before slots
+   * existed. Supplying it is what makes a module's nav icons individually replaceable
+   * from Admin > Configuration > Icons.
+   */
+  iconNamespace?: string;
   /** Badged at the head of the panel and the sheet — it's what keeps the icon-only rail honest. */
   module: { name: string; icon: string };
   /** Which href is currently open, for the active state. */
@@ -91,7 +141,7 @@ function SectionRow({
         }`}
       >
         {!compact && !nested && <span className="w-3 shrink-0" aria-hidden />}
-        <TreeIcon name={section.icon} className="h-4 w-4 shrink-0" />
+        <SectionIcon icon={section.icon} id={section.id} className="h-4 w-4 shrink-0" />
         <span className="truncate">{section.label}</span>
       </div>
     );
@@ -114,7 +164,7 @@ function SectionRow({
       {/* Lines a leaf up with the chevron column on a group row. Only on
           desktop, where groups exist at all. */}
       {!compact && !nested && <span className="w-3 shrink-0" aria-hidden />}
-      <TreeIcon name={section.icon} className="h-4 w-4 shrink-0" />
+      <SectionIcon icon={section.icon} id={section.id} className="h-4 w-4 shrink-0" />
       <span className="truncate">{section.label}</span>
     </Link>
   );
@@ -155,7 +205,7 @@ function SectionGroup({
         >
           &rsaquo;
         </span>
-        <TreeIcon name={section.icon} className="h-4 w-4 shrink-0" />
+        <SectionIcon icon={section.icon} id={section.id} className="h-4 w-4 shrink-0" />
         <span className="truncate">{section.label}</span>
       </button>
       {isOpen && (
@@ -176,7 +226,22 @@ function SectionGroup({
   );
 }
 
-export function SectionPanel({
+/**
+ * Supplies the slot namespace, then renders the panel.
+ *
+ * Split from the body rather than wrapping each branch: `SectionPanelBody` returns from
+ * two places (compact sheet, desktop column) and a provider added per-branch is one a
+ * future branch can forget.
+ */
+export function SectionPanel({ iconNamespace, ...props }: SectionPanelProps) {
+  return (
+    <SectionNamespaceContext.Provider value={iconNamespace}>
+      <SectionPanelBody {...props} />
+    </SectionNamespaceContext.Provider>
+  );
+}
+
+function SectionPanelBody({
   sections,
   module,
   activeHref,
@@ -184,7 +249,7 @@ export function SectionPanel({
   isOpen,
   onOpenChange,
   className = "",
-}: SectionPanelProps) {
+}: Omit<SectionPanelProps, "iconNamespace">) {
   const [sheetOpen, setSheetOpen] = useState(false);
 
   // Escape closes the sheet — the same affordance `AppChrome`'s dropdowns give,
@@ -243,7 +308,7 @@ export function SectionPanel({
           aria-expanded={sheetOpen}
           className={`shell-trigger flex items-center gap-2 border-t border-line bg-paper-raised px-4 pt-3 pb-3 text-left transition-colors hover:bg-line/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${className}`}
         >
-          <TreeIcon name={activeSection?.icon} className="h-5 w-5 shrink-0 text-brass-dark" />
+          <SectionIcon icon={activeSection?.icon} id={activeSection?.id} className="h-5 w-5 shrink-0 text-brass-dark" />
           <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
             {activeSection?.label ?? module.name}
           </span>
@@ -275,7 +340,7 @@ export function SectionPanel({
                   className="absolute left-1/2 top-1.5 h-1 w-9 -translate-x-1/2 rounded-full bg-line"
                   aria-hidden
                 />
-                <ModuleIcon name={module.icon} className="h-5 w-5 shrink-0 text-brass-dark" />
+                <ModuleIdentityIcon icon={module.icon} className="h-5 w-5 shrink-0 text-brass-dark" />
                 <span className="truncate font-display text-sm font-semibold text-ink">
                   {module.name}
                 </span>
@@ -322,7 +387,7 @@ export function SectionPanel({
       <div className="flex items-center gap-2 border-b border-line px-3 py-2.5">
         {/* The module named in words. This is what makes the icon-only rail
             defensible — the glyph is never the only thing saying where you are. */}
-        <ModuleIcon name={module.icon} className="h-5 w-5 shrink-0 text-brass-dark" />
+        <ModuleIdentityIcon icon={module.icon} className="h-5 w-5 shrink-0 text-brass-dark" />
         <span className="truncate font-display text-sm font-semibold text-ink">
           {module.name}
         </span>

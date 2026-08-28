@@ -85,7 +85,7 @@ function buildResultColumns(): DataGridColumn<RangeSimulation>[] {
       value: (row) => SIMULATION_RANGES.indexOf(row.range),
       render: (row) => (
         <span className="inline-flex items-center gap-2">
-          {/* Ties the row to its line in the overlay below. */}
+          {/* Ties the row to its own chart card below. */}
           <span
             aria-hidden
             className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
@@ -145,28 +145,74 @@ function buildResultColumns(): DataGridColumn<RangeSimulation>[] {
 }
 
 /**
- * The overlay's rows.
+ * One range's own chart rows.
  *
- * `normalizeSeries` has already resampled every range onto the same fixed grid
- * of progress steps, so joining them is a straight zip: one row per step,
- * carrying every selected range's percent change at that step. That shared grid
- * is what makes the chart honest — its x-axis is categorical, laying rows out
- * evenly by position, so series on different grids would each be drawn at the
- * wrong x.
+ * Each range now gets its own card, so there's no shared grid to zip onto — the
+ * series is already normalized to 0-100 progress by `normalizeSeries`, and the
+ * x-axis can just be the real close date, which reads better than a progress
+ * percentage once a chart only has one range in it.
  */
-function buildOverlayRows(simulations: RangeSimulation[]): Record<string, number>[] {
-  // The longest series defines the grid. Taking the first would collapse the
-  // whole chart to one row if that range happened to hold a single close.
-  const steps = Math.max(0, ...simulations.map((simulation) => simulation.series.length));
+function buildRangeRows(simulation: RangeSimulation): Record<string, number>[] {
+  return simulation.series.map((point) => ({
+    timestamp: point.timestamp,
+    changePct: point.changePct,
+  }));
+}
 
-  return Array.from({ length: steps }, (_, step) => {
-    const row: Record<string, number> = { progressPct: (step / Math.max(1, steps - 1)) * 100 };
-    for (const simulation of simulations) {
-      const point = simulation.series[step];
-      if (point) row[simulation.range] = point.changePct;
-    }
-    return row;
-  });
+/** Epoch seconds → a compact axis tick. Year only, once a range spans years. */
+function formatAxisDate(value: string | number, spansYears: boolean): string {
+  const date = new Date(Number(value) * 1000);
+  return spansYears
+    ? date.toLocaleDateString(undefined, { year: "numeric", month: "short" })
+    : date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+/**
+ * One range, one card, one chart.
+ *
+ * Split out of the view so each card owns its own memoized rows — a ten-range
+ * run would otherwise rebuild every chart's data whenever any one of them
+ * changed.
+ */
+function RangeChartCard({ simulation }: { simulation: RangeSimulation }) {
+  const rows = useMemo(() => buildRangeRows(simulation), [simulation]);
+
+  const series: ChartLineSeries[] = useMemo(
+    () => [
+      {
+        key: "changePct",
+        label: SIMULATION_RANGE_LABELS[simulation.range],
+        color: colorForRange(simulation.range),
+      },
+    ],
+    [simulation.range],
+  );
+
+  // Roughly a year of seconds — enough to decide between "Mar 4" and "Mar 2024".
+  const spansYears = simulation.currentTimestamp - simulation.buyTimestamp > 400 * 24 * 60 * 60;
+
+  return (
+    <CollapsibleCard
+      title={`${SIMULATION_RANGE_LABELS[simulation.range]} — bought ${formatDate(simulation.buyTimestamp)}`}
+      defaultOpen
+      headerAction={
+        <span className={`text-sm ${toneFor(simulation.gainLossCents)}`}>
+          {formatSignedCents(simulation.gainLossCents)} ({formatPct(simulation.gainLossPct)})
+        </span>
+      }
+    >
+      <ChartLine
+        data={rows}
+        series={series}
+        xKey="timestamp"
+        curve="linear"
+        height={260}
+        formatValue={(value) => `${value.toFixed(1)}%`}
+        formatX={(value) => formatAxisDate(value, spansYears)}
+        displayStorageKey={`myhomebase:stock-simulation-overlay:${simulation.range}`}
+      />
+    </CollapsibleCard>
+  );
 }
 
 export function StockSimulationView() {
@@ -205,21 +251,6 @@ export function StockSimulationView() {
   }
 
   const resultColumns = useMemo(() => buildResultColumns(), []);
-
-  const overlayRows = useMemo(
-    () => (result ? buildOverlayRows(result.simulations) : []),
-    [result],
-  );
-
-  const overlaySeries: ChartLineSeries[] = useMemo(
-    () =>
-      (result?.simulations ?? []).map((simulation) => ({
-        key: simulation.range,
-        label: SIMULATION_RANGE_LABELS[simulation.range],
-        color: colorForRange(simulation.range),
-      })),
-    [result],
-  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -341,27 +372,20 @@ export function StockSimulationView() {
           </CollapsibleCard>
 
           {result.simulations.length > 0 ? (
-            <CollapsibleCard title="Price Overlay" defaultOpen>
-              <p className="mb-3 text-xs text-muted">
-                Each line is one time range, plotted as percent change from its own buy price
-                against how far through that range it is — so a 1-week line and a 10-year line
-                can be compared on one axis. Every line starts at 0%.
+            <section className="flex flex-col gap-3" aria-label="Price charts">
+              <p className="text-xs text-muted">
+                One chart per selected time range, each plotted as percent change from that
+                range&apos;s own buy price — so every chart starts at 0% and shows only its own
+                window. Read the table above to compare ranges against each other.
               </p>
-              <ChartLine
-                data={overlayRows}
-                series={overlaySeries}
-                xKey="progressPct"
-                curve="linear"
-                // Only a single-close range leaves a gap in the shared grid;
-                // joining across it beats breaking the line into dots.
-                connectNulls
-                showLegend
-                height={340}
-                formatValue={(value) => `${value.toFixed(1)}%`}
-                formatX={(value) => `${Number(value).toFixed(0)}%`}
-                displayStorageKey="myhomebase:stock-simulation-overlay"
-              />
-            </CollapsibleCard>
+              {/* Two charts abreast on a desktop; one per row below 1024px, where a
+                  half-width chart would be too narrow to read. */}
+              <div className="grid grid-cols-2 gap-4 max-lg:grid-cols-1">
+                {result.simulations.map((simulation) => (
+                  <RangeChartCard key={simulation.range} simulation={simulation} />
+                ))}
+              </div>
+            </section>
           ) : null}
         </>
       ) : null}

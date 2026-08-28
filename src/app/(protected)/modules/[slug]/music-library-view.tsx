@@ -16,7 +16,9 @@
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/button";
+import { SlotIcon } from "@/components/slot-icon";
 import { TreeIcon } from "@/components/tree-icons";
+import { getIconSlot, tabSlotId } from "@/lib/icons";
 import {
   LIBRARY_VIEWS,
   LIBRARY_VIEW_ICONS,
@@ -45,6 +47,19 @@ import {
 } from "./music-actions";
 import { PlaylistSelectionBar, useTrackSelection } from "./music-selection";
 import { Pager, TrackList, type TrackListRow } from "./music-track-list";
+
+/**
+ * One view tab's glyph, as an override-aware slot.
+ *
+ * Derived rather than named per tab: the strip renders from `LIBRARY_VIEW_ICONS`, so there
+ * are eight rows and no call site to name. Falls back to the plain concept if the derived
+ * id isn't registered, so adding a view without a slot still draws something.
+ */
+function LibraryTabIcon({ view, className }: { view: LibraryView; className?: string }) {
+  const slot = getIconSlot(tabSlotId("music", view));
+  if (slot) return <SlotIcon slot={slot} className={className} />;
+  return <TreeIcon name={LIBRARY_VIEW_ICONS[view]} className={className} />;
+}
 
 const PAGE_SIZE = 50;
 
@@ -90,7 +105,7 @@ export function MusicLibraryView() {
                 isActive ? "bg-brass-soft text-brass-dark" : "text-muted hover:bg-brass-soft"
               }`}
             >
-              <TreeIcon name={LIBRARY_VIEW_ICONS[candidate]} className="h-4 w-4" />
+              <LibraryTabIcon view={candidate} className="h-4 w-4" />
               <span className="max-lg:hidden">{LIBRARY_VIEW_INFO[candidate].label}</span>
               {/* Narrow keeps the label on the active tab only, so the strip stays short
                   without becoming a row of unlabelled glyphs. */}

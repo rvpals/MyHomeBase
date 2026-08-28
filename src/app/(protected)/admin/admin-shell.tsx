@@ -294,6 +294,7 @@ export function AdminShell({
       <TwoTierShell
         links={railLinks}
         sections={adminNav}
+        iconNamespace="admin"
         // Administration isn't a module — it has no row in the module table and
         // no admin-editable name — so unlike every other caller these are
         // constants rather than a lookup. `shield` is the tree-icon concept

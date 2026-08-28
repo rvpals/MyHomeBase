@@ -20,15 +20,25 @@ export {
   photoRelativePathSchema,
   photoFolderLookupSchema,
   photoFolderContentsSchema,
+  photoRangeSchema,
+  photoRangeContentsSchema,
   type PhotoFolderLookupInput,
   type PhotoFolderContentsInput,
+  type PhotoRangeInput,
+  type PhotoRangeContentsInput,
 } from "./schema";
 export { listPhotoFoldersForDate, listPhotosInFolder, monthFolderLabel } from "./photos";
+export { listPhotoFoldersForRange } from "./range";
 export { diagnosePhotoArchive } from "./diagnose";
 export { EXIF_HEADER_BYTES, readExifDate, parseExifDate } from "./exif";
 export {
   dateFromFileName,
+  dayFolderDateOf,
   isDayFolderFor,
+  isDayFolderInRange,
+  isMonthFolderInRange,
+  monthFolderMonthOf,
+  yearFoldersInRange,
   isMonthFolderFor,
   isMonthPrecisionDayFolder,
   isPhotoFileName,

@@ -20,6 +20,7 @@ import { Button } from "@/components/button";
 import { Comments } from "@/components/comments";
 import { JournalViewer } from "@/components/journal-viewer";
 import { Modal } from "@/components/modal";
+import { PhotoOfTheDayButton } from "@/components/photo-of-the-day";
 import { useIsCompact } from "@/components/viewport-context";
 import {
   CALENDAR_CELL_TITLE_LIMIT,
@@ -30,18 +31,30 @@ import {
   buildMonthGrid,
   buildWeekGrid,
   buildYearGrid,
+  endOfMonth,
   formatCalendarDayHeading,
   formatJumpDate,
   isJournalDateFormat,
   parseJumpDate,
   shiftCalendarAnchor,
+  startOfMonth,
   type CalendarDay,
   type CalendarWeek,
   type JournalCalendarScope,
   type JournalDateFormat,
   type JournalEntry,
 } from "@/lib/journal";
+import { JournalPhotosHost } from "./journal-photos-host";
 import { journalEntriesFilterHref, TaxonomyIconThumbnail } from "./journal-shared";
+
+/**
+ * What the photo dialog is currently showing — one day, or a whole period.
+ *
+ * One piece of state for both buttons rather than two, so the two can never be open at
+ * once. Cleared to `undefined` when the dialog closes, which is what returns the reader
+ * to the calendar.
+ */
+type PhotoRequest = { kind: "day"; date: string } | { kind: "range"; from: string; to: string };
 
 /** Remembers the reader's Jump format between visits — a habit, not domain data. */
 const JUMP_FORMAT_STORAGE_KEY = "myhomebase:journal-calendar-jump-format";
@@ -77,6 +90,8 @@ export function JournalCalendarView({
 
   /** Which entry the viewer dialog is showing, if any. */
   const [openEntryId, setOpenEntryId] = useState<number | undefined>(undefined);
+  /** Which photos the Photo of the Day dialog is showing, if it is open. */
+  const [photoRequest, setPhotoRequest] = useState<PhotoRequest | undefined>(undefined);
 
   // The three grids come straight from the library; this component never walks a
   // calendar itself. Memoized because the year scope builds 12 × 42 cells and the
@@ -160,6 +175,16 @@ export function JournalCalendarView({
         onScope={(nextScope) => navigate({ scope: nextScope })}
         onStep={(delta) => navigate({ anchor: shiftCalendarAnchor(scope, anchor, delta) })}
         onToday={() => navigate({ anchor: today, date: today })}
+        onPhotosOfPeriod={() =>
+          // The whole month the anchor falls in, not the grid's padded span: a reader
+          // pressing this on August wants August, not the last days of July that the
+          // 6×7 grid happens to show. Both bounds come from the library.
+          setPhotoRequest({
+            kind: "range",
+            from: startOfMonth(anchor),
+            to: endOfMonth(anchor),
+          })
+        }
         onJump={(date) => {
           // A jump both moves the period and opens that day — typing a date is
           // asking "what did I write then?", not just "show me that month".
@@ -174,6 +199,7 @@ export function JournalCalendarView({
           isWeekScope={scope === "week"}
           onSelectDay={selectDay}
           onOpenEntry={setOpenEntryId}
+          onOpenPhotos={(date) => setPhotoRequest({ kind: "day", date })}
         />
       ) : null}
 
@@ -201,6 +227,25 @@ export function JournalCalendarView({
           tagIcons={tagIcons}
           onOpenEntry={setOpenEntryId}
           onClose={() => navigate({ date: null })}
+        />
+      ) : null}
+
+      {photoRequest ? (
+        // Keyed by what it is showing, so pressing a different day's button while one
+        // is open remounts the dialog rather than leaving the first scan's results in
+        // place under a new title.
+        <JournalPhotosHost
+          key={photoRequest.kind === "day" ? photoRequest.date : `${photoRequest.from}..${photoRequest.to}`}
+          date={photoRequest.kind === "day" ? photoRequest.date : undefined}
+          range={
+            photoRequest.kind === "range"
+              ? { from: photoRequest.from, to: photoRequest.to }
+              : undefined
+          }
+          // The button press WAS the "go and look" instruction here, unlike the entry
+          // card where the card renders whether or not anyone wants photos.
+          autoLookup
+          onClose={() => setPhotoRequest(undefined)}
         />
       ) : null}
 
@@ -242,6 +287,7 @@ function CalendarToolbar({
   onScope,
   onStep,
   onToday,
+  onPhotosOfPeriod,
   onJump,
 }: {
   scope: JournalCalendarScope;
@@ -252,6 +298,7 @@ function CalendarToolbar({
   onScope: (scope: JournalCalendarScope) => void;
   onStep: (delta: number) => void;
   onToday: () => void;
+  onPhotosOfPeriod: () => void;
   onJump: (date: string) => void;
 }) {
   const stepLabel = scope === "week" ? "week" : scope === "year" ? "year" : "month";
@@ -283,6 +330,15 @@ function CalendarToolbar({
         >
           ›
         </Button>
+        {/* Beside the steppers because it acts on the same thing they do — the period
+            currently shown. It always means the anchor's whole MONTH, in every scope:
+            "photos of the week" is what the individual day buttons already answer, and
+            a year of photo folders is a list nobody reads. */}
+        <PhotoOfTheDayButton
+          hint="Get photos of the month"
+          onOpen={onPhotosOfPeriod}
+          className="h-8 w-8 border border-line bg-paper max-lg:h-9 max-lg:w-9"
+        />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -310,6 +366,10 @@ function CalendarToolbar({
                 use the picker.
               </li>
               <li>In the year view a darker square means a busier day.</li>
+              <li>
+                The picture button on a day shows the photographs filed under that date;
+                the one beside ‹ › does the same for the whole month.
+              </li>
             </ul>
           }
         />
@@ -575,12 +635,14 @@ function MonthGrid({
   isWeekScope,
   onSelectDay,
   onOpenEntry,
+  onOpenPhotos,
 }: {
   weeks: CalendarWeek[];
   cellTitleLimit: number;
   isWeekScope: boolean;
   onSelectDay: (day: CalendarDay) => void;
   onOpenEntry: (id: number) => void;
+  onOpenPhotos: (date: string) => void;
 }) {
   return (
     <div className="overflow-hidden rounded-xl border border-line">
@@ -606,6 +668,7 @@ function MonthGrid({
               isTall={isWeekScope}
               onSelect={() => onSelectDay(day)}
               onOpenEntry={onOpenEntry}
+              onOpenPhotos={() => onOpenPhotos(day.date)}
             />
           )),
         )}
@@ -620,12 +683,14 @@ function DayCell({
   isTall,
   onSelect,
   onOpenEntry,
+  onOpenPhotos,
 }: {
   day: CalendarDay;
   titleLimit: number;
   isTall: boolean;
   onSelect: () => void;
   onOpenEntry: (id: number) => void;
+  onOpenPhotos: () => void;
 }) {
   const shown = day.entries.slice(0, titleLimit);
   const hidden = day.entries.length - shown.length;
@@ -666,11 +731,25 @@ function DayCell({
         >
           {day.dayOfMonth}
         </span>
-        {day.entries.length > 0 ? (
-          <span className="rounded bg-brass-soft px-1 text-[10px] font-medium text-brass-dark">
-            {day.entries.length}
-          </span>
-        ) : null}
+        <span className="flex shrink-0 items-center gap-1">
+          {day.entries.length > 0 ? (
+            <span className="rounded bg-brass-soft px-1 text-[10px] font-medium text-brass-dark">
+              {day.entries.length}
+            </span>
+          ) : null}
+          {/* On EVERY day, not only days with an entry: the archive is filed by date
+              independently of the journal, so a day with nothing written can still have
+              photographs — which is often exactly why you go looking.
+
+              It stays visible on a phone rather than being revealed on hover, since a
+              touch screen has no hover and this is the only way to reach the photos
+              there. The narrow cell is 16 units tall, so the button shrinks instead. */}
+          <PhotoOfTheDayButton
+            hint={`Photos from ${day.date}`}
+            onOpen={onOpenPhotos}
+            className="max-lg:h-5 max-lg:w-5"
+          />
+        </span>
       </div>
 
       <div className="flex min-w-0 flex-col gap-0.5">

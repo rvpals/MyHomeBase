@@ -83,6 +83,7 @@ export async function JournalShell({ children }: { children: ReactNode }) {
     <TwoTierShell
       links={links}
       sections={sections}
+      iconNamespace="journal"
       module={{
         name: appModule?.shortName ?? "My Journal",
         icon: appModule?.icon ?? "journal",

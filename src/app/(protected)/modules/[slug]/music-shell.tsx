@@ -74,6 +74,7 @@ export async function MusicShell({ children }: { children: ReactNode }) {
     <TwoTierShell
       links={links}
       sections={sections}
+      iconNamespace="music"
       module={{
         name: appModule?.shortName ?? "Music Library",
         icon: appModule?.icon ?? "music",

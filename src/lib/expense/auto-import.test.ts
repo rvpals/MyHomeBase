@@ -276,6 +276,7 @@ const EXPENSE_MIGRATIONS = [
   "0031_add_card_image_to_expense_accounts.sql",
   "0032_post_import_processing.sql",
   "0034_add_icon_image_to_expense_categories.sql",
+  "0065_add_name_and_description_to_post_import_rules.sql",
 ];
 
 function memoryExpenseRepo(): { repo: ExpenseRepository; db: Database.Database } {
@@ -436,6 +437,8 @@ describe("runAutoImport", () => {
     const { repo } = memoryExpenseRepo();
     repo.createAccount({ name: "Visa Gold", description: "", creditLineCents: 0 });
     repo.createRule({
+      name: "Amazon",
+      description: "",
       pattern: "AMAZON*",
       priority: 0,
       isEnabled: true,

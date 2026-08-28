@@ -11,7 +11,8 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
-import { TreeIcon } from "@/components/tree-icons";
+import { SlotIcon } from "@/components/slot-icon";
+import { getIconSlot } from "@/lib/icons";
 import {
   describeFilter,
   emptyFilter,
@@ -25,6 +26,9 @@ import {
   saveJournalFilterAction,
 } from "./journal-actions";
 import { JournalFilterBuilder } from "./journal-filter-builder";
+
+// Resolved once at module scope; the registry is static, so this is not I/O.
+const FILTERS_SLOT = getIconSlot("journal_card_entry_filters")!;
 
 const COLUMNS: DataGridColumn<JournalEntry>[] = [
   { key: "date", header: "Date", value: (entry) => entry.date, render: (entry) => entry.date },
@@ -213,7 +217,7 @@ export function JournalEntriesView({
 
       <CollapsibleCard
         title="Filter conditions"
-        titleIcon={<TreeIcon name="sliders" className="h-4 w-4" />}
+        titleIcon={<SlotIcon slot={FILTERS_SLOT} className="h-4 w-4" />}
         defaultOpen={Boolean(selected) || showAppliedQuery}
       >
         {selected ? (

@@ -7,7 +7,8 @@
 import { useState } from "react";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
-import { TreeIcon } from "@/components/tree-icons";
+import { SlotIcon } from "@/components/slot-icon";
+import { getIconSlot } from "@/lib/icons";
 import type { DailyQuote } from "@/lib/daily-quote";
 import { drawRandomQuoteAction } from "./daily-quote-actions";
 
@@ -28,6 +29,11 @@ function RefreshIcon({ className = "" }: { className?: string }) {
     </svg>
   );
 }
+
+// Resolved once at module scope. `getIconSlot` reads the static registry — no I/O — and
+// the guard is for the registry, not the user: if this id is ever removed the card loses
+// its icon rather than crashing.
+const QUOTE_SLOT = getIconSlot("homescreen_card_daily_quote");
 
 export function DailyQuoteWidget({
   initialQuote,
@@ -64,8 +70,10 @@ export function DailyQuoteWidget({
     // they stay reachable (and don't toggle the card) while it's shut.
     <CollapsibleCard
       title="Daily Quote"
-      // The same quote-marks glyph the Daily Quote admin nav uses.
-      titleIcon={<TreeIcon name="quote" className="h-4 w-4" />}
+      // A slot, not a bare concept: this card is the first place whose icon an admin can
+      // replace from Admin > Configuration > Icons. With nothing uploaded it renders the
+      // active set's quote-marks glyph, exactly as it did before.
+      titleIcon={QUOTE_SLOT ? <SlotIcon slot={QUOTE_SLOT} className="h-4 w-4" /> : undefined}
       className={className}
       headerAction={
         <div className="flex items-center gap-2">

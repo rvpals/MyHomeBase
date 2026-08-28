@@ -75,6 +75,8 @@ interface ActionDraft {
 }
 
 const emptyRule = {
+  name: "",
+  description: "",
   pattern: "",
   priority: 0,
   isEnabled: true,
@@ -84,16 +86,28 @@ const emptyRule = {
 function RuleForm({
   categories,
   editing,
+  prefillName,
+  prefillDescription,
+  prefillPattern,
   onDone,
 }: {
   categories: ExpenseCategory[];
   editing?: PostImportRule;
+  /**
+   * Seeds a *new* rule from ?name= / ?description= / ?vendorDescription=.
+   * Ignored while editing. `prefillPattern` fills "When the description matches".
+   */
+  prefillName?: string;
+  prefillDescription?: string;
+  prefillPattern?: string;
   onDone: () => void;
 }) {
   const router = useRouter();
   const [form, setForm] = useState(() =>
     editing
       ? {
+          name: editing.name,
+          description: editing.description,
           pattern: editing.pattern,
           priority: editing.priority,
           isEnabled: editing.isEnabled,
@@ -102,7 +116,14 @@ function RuleForm({
             fieldValue: action.fieldValue,
           })),
         }
-      : emptyRule,
+      : // A prefill only seeds a new rule — an existing rule's own values must win
+        // when you open it to edit.
+        {
+          ...emptyRule,
+          name: prefillName ?? "",
+          description: prefillDescription ?? "",
+          pattern: prefillPattern ?? "",
+        },
   );
   const [preview, setPreview] = useState<{ matchCount: number; samples: string[] } | undefined>();
   const [isChecking, setIsChecking] = useState(false);
@@ -162,6 +183,29 @@ function RuleForm({
     <div className="flex flex-col gap-3 rounded-md border border-line bg-paper-raised p-3">
       <p className="text-sm font-medium text-ink">{editing ? `Edit rule #${editing.id}` : "New rule"}</p>
       {error && <p className="text-sm text-red-400">{error}</p>}
+
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium text-ink">Name</span>
+        <input
+          value={form.name}
+          onChange={(event) => setForm({ ...form, name: event.target.value })}
+          placeholder="TGI Friday's"
+          className={INPUT_CLASS}
+        />
+      </label>
+
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium text-ink">
+          Description <span className="font-normal text-muted">(optional)</span>
+        </span>
+        <textarea
+          value={form.description}
+          onChange={(event) => setForm({ ...form, description: event.target.value })}
+          rows={2}
+          placeholder="Why this rule exists — e.g. the card prints this restaurant under three different names."
+          className={INPUT_CLASS}
+        />
+      </label>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <label className="block text-sm sm:col-span-2">
@@ -302,15 +346,27 @@ function RuleForm({
   );
 }
 
+/**
+ * What to call a rule on screen. Every rule saved since migration 0065 has a name;
+ * the fallback covers the one row that can still be blank — a pre-0065 rule whose
+ * pattern was whitespace-only, which never matches anything anyway.
+ */
+function ruleDisplayName(rule: { name: string; pattern: string }): string {
+  return rule.name.trim() || rule.pattern;
+}
+
 /** Formats one processed row for the run log. */
 function logLine(entry: CleanupLogEntry, index: number, total: number): string {
   const head = `Processing ${index} of ${total} — #${entry.transactionId} ${entry.description}`;
   if (!entry.pattern) return `${head} — no rule matched`;
-  if (entry.changes.length === 0) return `${head} — rule "${entry.pattern}" matched, nothing to change`;
+  // The name reads better in a log than the glob did, but a pre-0065 rule may not
+  // have one, so the pattern stays the fallback.
+  const label = entry.ruleName?.trim() || entry.pattern;
+  if (entry.changes.length === 0) return `${head} — rule "${label}" matched, nothing to change`;
   const changes = entry.changes
     .map((change) => `${RULE_ACTION_FIELD_LABELS[change.fieldName].toLowerCase()} set to "${change.value}"`)
     .join(", ");
-  return `${head} — rule "${entry.pattern}" used, ${changes}`;
+  return `${head} — rule "${label}" used, ${changes}`;
 }
 
 function CleanupRunner({ unprocessedCount }: { unprocessedCount: number }) {
@@ -441,10 +497,21 @@ export function ExpenseRulesView({
   rules,
   categories,
   unprocessedCount,
+  prefillName,
+  prefillDescription,
+  prefillPattern,
 }: {
   rules: PostImportRule[];
   categories: ExpenseCategory[];
   unprocessedCount: number;
+  /**
+   * From ?name= / ?description= on the transaction-rules route, so "add a rule
+   * for this" can be a plain link that arrives with the form part-filled.
+   */
+  prefillName?: string;
+  prefillDescription?: string;
+  /** Seeds "When the description matches" — the raw statement line to match on. */
+  prefillPattern?: string;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState<PostImportRule | undefined>(undefined);
@@ -466,9 +533,15 @@ export function ExpenseRulesView({
       <CleanupRunner unprocessedCount={unprocessedCount} />
 
       <RuleForm
-        key={editing?.id ?? "new"}
+        key={
+          editing?.id ??
+          `new:${prefillName ?? ""}:${prefillDescription ?? ""}:${prefillPattern ?? ""}`
+        }
         categories={categories}
         editing={editing}
+        prefillName={prefillName}
+        prefillDescription={prefillDescription}
+        prefillPattern={prefillPattern}
         onDone={() => setEditing(undefined)}
       />
 
@@ -481,6 +554,7 @@ export function ExpenseRulesView({
               key={rule.id}
               className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-paper px-3 py-1.5 text-sm"
             >
+              <span className="font-medium text-ink">{ruleDisplayName(rule)}</span>
               <span className="font-mono text-xs text-brass-dark">{rule.pattern}</span>
               <span className="text-muted">&rarr;</span>
               <span className="flex flex-wrap items-center gap-1">
@@ -511,7 +585,7 @@ export function ExpenseRulesView({
                 <button
                   type="button"
                   onClick={async () => {
-                    if (!window.confirm(`Delete the rule "${rule.pattern}"?`)) return;
+                    if (!window.confirm(`Delete the rule "${ruleDisplayName(rule)}"?`)) return;
                     const result = await deleteRuleAction(rule.id);
                     if (result.ok) router.refresh();
                     else window.alert(result.error);
@@ -521,6 +595,9 @@ export function ExpenseRulesView({
                   Delete
                 </button>
               </span>
+              {rule.description.trim() !== "" && (
+                <span className="basis-full text-xs text-muted">{rule.description}</span>
+              )}
             </li>
           ))}
         </ul>

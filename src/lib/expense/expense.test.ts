@@ -196,6 +196,8 @@ function fakeRepo(): ExpenseRepository {
       const id = nextRuleId++;
       const created: PostImportRule = {
         id,
+        name: input.name,
+        description: input.description,
         pattern: input.pattern,
         priority: input.priority,
         isEnabled: input.isEnabled,
@@ -217,6 +219,8 @@ function fakeRepo(): ExpenseRepository {
         rule.id === id
           ? {
               ...rule,
+              name: input.name,
+              description: input.description,
               pattern: input.pattern,
               priority: input.priority,
               isEnabled: input.isEnabled,
@@ -511,6 +515,7 @@ describe("runCleanupBatch", () => {
   }
 
   const tgiRule = {
+    name: "TGI Friday's",
     pattern: "*TGI*",
     actions: [
       { fieldName: "vendor" as const, fieldValue: "TGI Friday" },
@@ -548,6 +553,7 @@ describe("runCleanupBatch", () => {
 
     const tgiEntry = entries.find((entry) => entry.description.includes("TGI"));
     expect(tgiEntry?.pattern).toBe("*TGI*");
+    expect(tgiEntry?.ruleName).toBe("TGI Friday's");
     expect(tgiEntry?.changes).toEqual([
       { fieldName: "vendor", value: "TGI Friday" },
       { fieldName: "categoryName", value: "Restaurant" },
@@ -555,6 +561,7 @@ describe("runCleanupBatch", () => {
 
     const bakeryEntry = entries.find((entry) => entry.description === "LOCAL BAKERY");
     expect(bakeryEntry?.pattern).toBeUndefined();
+    expect(bakeryEntry?.ruleName).toBeUndefined();
     expect(bakeryEntry?.changes).toEqual([]);
   });
 
@@ -619,6 +626,44 @@ describe("runCleanupBatch", () => {
   });
 });
 
+describe("createRule validation", () => {
+  it("keeps the name and description it was given", () => {
+    const repo = fakeRepo();
+    const created = createRule(repo, {
+      name: "TGI Friday's",
+      description: "The card prints this restaurant under three different names.",
+      pattern: "*TGI*",
+      actions: [{ fieldName: "vendor", fieldValue: "TGI Friday" }],
+    });
+
+    expect(created.name).toBe("TGI Friday's");
+    expect(created.description).toBe("The card prints this restaurant under three different names.");
+  });
+
+  it("defaults a missing description to blank", () => {
+    const repo = fakeRepo();
+    const created = createRule(repo, {
+      name: "Amazon",
+      pattern: "AMAZON*",
+      actions: [{ fieldName: "categoryName", fieldValue: "online-purchase" }],
+    });
+
+    expect(created.description).toBe("");
+  });
+
+  it("rejects a rule with no name", () => {
+    const repo = fakeRepo();
+
+    expect(() =>
+      createRule(repo, {
+        name: "   ",
+        pattern: "AMAZON*",
+        actions: [{ fieldName: "categoryName", fieldValue: "online-purchase" }],
+      }),
+    ).toThrow(/name is required/i);
+  });
+});
+
 describe("resetProcessedFlags", () => {
   it("re-queues everything so a new rule can reach older rows", () => {
     const repo = fakeRepo();
@@ -637,6 +682,7 @@ describe("resetProcessedFlags", () => {
     expect(countUnprocessed(repo)).toBe(0);
 
     createRule(repo, {
+      name: "TGI Friday's",
       pattern: "*TGI*",
       actions: [{ fieldName: "vendor", fieldValue: "TGI Friday" }],
     });

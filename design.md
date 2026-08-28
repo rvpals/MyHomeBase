@@ -205,6 +205,19 @@ root layout and supplied through `IconSetProvider`; `ModuleIcon` consumes it, so
 sites never name a set — they just render `<ModuleIcon name="building" />` and get the
 current set's glyph.
 
+**And any single icon can be replaced without changing the set.** A *slot* names one
+place in the app (`homescreen_card_daily_quote`) and an admin can upload an SVG or image
+for it under the same screen; the set still supplies every position left alone. Overrides
+are stored per `(slot, set)`, so switching sets shows that set's own art rather than
+dragging a glyph into a style it wasn't drawn for. New UI should render a *place's* icon
+through `SlotIcon` rather than naming a concept — the rules, and the categories that
+deliberately stay concept-based (row actions, state glyphs), are in
+`coding-guide.md` → *Icons: use a slot, not a bare glyph name*.
+
+An SVG override inherits `currentColor`, so it tints to the theme accent like a built-in
+glyph; a PNG or JPEG keeps its own colors and will not follow the theme. Prefer SVG for
+anything meant to sit alongside the accent.
+
 - **Glyph data is baked, not fetched.** The SVG bodies live in
   `src/components/module-icon-sets.generated.ts` (the 13 module concepts) and
   `src/components/tree-icon-sets.generated.ts` (the tree-nav section concepts), both

@@ -8,6 +8,7 @@ import { SqliteAuthEventRepository } from "./auth-events/repository";
 import { SqliteSessionRepository } from "./auth/repository";
 import { GoogleAuthClient } from "./auth/google-client";
 import type { GoogleOAuthClient } from "./auth/ports";
+import { FileBuildIdRepository } from "./app-version/repository";
 import { FileChangeHistoryRepository } from "./change-history/repository";
 import { SqliteCsvAnalyticsRepository } from "./csv-analytics/repository";
 import { SqliteCsvImportMappingRepository } from "./csv-import/repository";
@@ -19,6 +20,7 @@ import { SqliteExpenseRepository } from "./expense/repository";
 import { NominatimGeocodingClient } from "./geocoding/nominatim-client";
 import { OpenMeteoWeatherClient } from "./weather/open-meteo-client";
 import { SqliteInvestmentAccountRepository } from "./investment-accounts/repository";
+import { SqliteIconOverridesRepository } from "./icons/repository";
 import { SqliteJournalRepository } from "./journal/repository";
 import { NodePhotoFileStore } from "./journal-photos/file-store";
 import { YahooFinanceClient } from "./market-data/yahoo-finance-client";
@@ -117,6 +119,9 @@ export const deps = {
   sessionRepo: new SqliteSessionRepository(db),
   authEventRepo: new SqliteAuthEventRepository(db),
   investmentAccountRepo: new SqliteInvestmentAccountRepository(db),
+  // Per-slot icon overrides (migrations/0066). Read for the active icon set on every
+  // page render; the raster BLOB is read only by src/app/api/icons/slots/[slot]/route.ts.
+  iconOverridesRepo: new SqliteIconOverridesRepository(db),
   journalRepo: new SqliteJournalRepository(db),
   /**
    * A read-only view of the photo archive at `root`.
@@ -163,6 +168,9 @@ export const deps = {
   sqlExplorerRepo: new SqliteSqlExplorerRepository(db),
   systemInfoRepo: new RealSystemInfoRepository(),
   changeHistoryRepo: new FileChangeHistoryRepository(),
+  // Reads .next/BUILD_ID so an installed PWA can tell it is running a build
+  // older than the one this server serves. Caches after the first read.
+  buildIdRepo: new FileBuildIdRepository(),
   marketDataClient,
   tickerNewsClient: new YahooTickerNewsClient(),
   tickerLogoRepo: new SqliteTickerLogoRepository(db),

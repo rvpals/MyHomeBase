@@ -328,6 +328,62 @@ Section icons in a tree nav are a **different, larger set**, resolved by
 keyed by plain strings — `grid`, `users`, `classroom`, `chart`, `gear`. Don't
 confuse the two lists.
 
+### Icon slots — replacing the icon in one specific place
+
+The two lists above are keyed by *concept*, and a concept is shared: `quote` is used by
+the home screen's Daily Quote card **and** by a Journal nav section, so "change the quote
+icon" would necessarily change both. A **slot** is the way to change just one of them.
+
+A slot is a code-registered id for one icon *position*
+(`homescreen_card_daily_quote`) that declares a default concept (`quote`).
+[`ICON_SLOTS`](src/lib/icons/slots.ts) is the registry — and the only queryable map of
+where this app shows icons, which is what lets **Admin → Configuration → Icons** list
+positions rather than making an admin guess at concept names. Resolution runs:
+
+```
+override for (slot, active set)  →  the active set's glyph for defaultConcept  →  hand-drawn fallback
+```
+
+The last two steps are what already happened, so **a slot nobody has overridden renders
+exactly as before.** Adopting a slot at a call site is therefore a safe one-line change:
+add the registry entry, then swap `<TreeIcon name="quote" …>` for
+`<SlotIcon slot={QUOTE_SLOT} …>`.
+
+Every slot also carries a **`where`** field — the click path to the icon in plain English
+("Home screen → the Daily Quote card header, immediately left of the title"). It is shown
+under each row in the admin list, and it is load-bearing rather than decoration: `label`
+alone is ambiguous once there are fifty-odd positions, because all five modules have a
+"Dashboard" section and two admin entries share the `palette` glyph.
+
+**73 positions are registered and 52 are wired up** — every module's section nav, plus the
+whole Admin nav, plus the Daily Quote card. The remaining 21 (card headers, the Music
+Library view tabs, shared chrome) are registered but inert: they appear in the admin list
+and accept an upload, yet the screen keeps rendering the default concept until the call
+site is converted. Each row says so, driven by the `wired` flag on the slot.
+
+### Two adoption patterns
+
+**A named call site** — swap `<TreeIcon name="quote" …>` for `<SlotIcon slot={SLOT} …>`,
+where `SLOT` comes from `getIconSlot("…")` at module scope. This is how the Daily Quote
+card works, and how the remaining card headers should be done.
+
+**A data-driven nav** — `SectionPanel` renders all six navs from `*_SECTION_ICONS` maps and
+`adminNav`, so there is no call site to name a slot at. Instead the shell passes
+`iconNamespace="expense"` and the panel derives the slot with
+`sectionSlotId(namespace, node.id)`. That is why 51 section icons became replaceable
+through **one** change in `section-panel.tsx` rather than 51 edits.
+
+The derivation is why slot ids for a section must equal `<namespace>_section_<slug>` with
+hyphens turned to underscores — Expense's slugs are kebab (`meta-data`), as are all of
+`adminNav`'s. A mismatch doesn't throw; it silently stops matching the override, so
+`slots.test.ts` enumerates every real section slug and asserts each resolves.
+
+**What does not get a slot:** row actions (pencil, trash, refresh) and state glyphs
+(`star` vs `star-filled`). Those are buttons and states rather than places — the same line
+`ALWAYS_CLASSIC` already draws in `tree-icons.tsx`. Full reasoning, including why uploaded
+SVG is sanitized rather than stored verbatim, is in
+`migrations/0066_create_icon_slot_overrides.md`.
+
 ### Carousel image
 
 Optional per-module artwork on the home carousel, stored as a `BLOB` on
@@ -497,6 +553,18 @@ the slug to the `nav` union and a branch to the picker. The nav is passed by
 *name*, not as a component, because a server parent can't hand a client child a
 render prop.
 
+**Then register the section icon slots.** Add one `ICON_SLOTS` entry per section in
+[src/lib/icons/slots.ts](src/lib/icons/slots.ts), with the id derived as
+`<slug>_section_<section>` (hyphens → underscores), and pass
+`iconNamespace="<slug>"` to `TwoTierShell` in the module's shell. That is the whole
+wiring — `SectionPanel` derives the rest, so there is nothing per-section to edit.
+Extend the section list in `src/lib/icons/slots.test.ts` so a later rename can't
+silently orphan an override.
+
+**Propose the ids and labels first and wait for confirmation** — they are user-facing
+and permanent. See `coding-guide.md` → *Propose the labels — don't invent them
+silently* for the table to present.
+
 ### 8. The routes
 
 Both route files dispatch on the slug, and both need editing:
@@ -562,6 +630,9 @@ plumbing — but a freshly seeded module is granted to nobody. Grant it in admin
 - [ ] Repository added to `deps` in `wiring.ts`
 - [ ] `<module>-sections.ts` (no `"use client"`), `-nav.tsx`, `-section.tsx`
 - [ ] Nav registered in `section-layout.tsx`
+- [ ] Icon slot ids + labels **proposed and confirmed** before being written
+- [ ] `ICON_SLOTS` entries added; `iconNamespace` passed to `TwoTierShell`
+- [ ] Section/tab slug lists in `src/lib/icons/slots.test.ts` extended
 - [ ] Branch added in **both** `page.tsx` and `[section]/page.tsx`
 - [ ] Views, `-actions.ts`, `-instructions.tsx`
 - [ ] Reused registered components; anything new added to `components.md`

@@ -42,7 +42,17 @@ function loadSettings() {
   );
 }
 
-function SectionBody({ section }: { section: ExpenseSection }) {
+function SectionBody({
+  section,
+  prefillRuleName,
+  prefillRuleDescription,
+  prefillRulePattern,
+}: {
+  section: ExpenseSection;
+  prefillRuleName?: string;
+  prefillRuleDescription?: string;
+  prefillRulePattern?: string;
+}) {
   switch (section) {
     case "main": {
       const transactions = listTransactions(deps.expenseRepo);
@@ -83,34 +93,34 @@ function SectionBody({ section }: { section: ExpenseSection }) {
       return (
         <ExpenseChartsView
           totals={totalsByCategory(deps.expenseRepo)}
+          // Rolled up from the rows in hand rather than through totalsByVendor,
+          // so the vendor chart doesn't cost a second read of the table.
+          vendorTotals={vendorTotals(listTransactions(deps.expenseRepo))}
           categories={listCategories(deps.expenseRepo)}
         />
       );
 
+    // Importing still *applies* the rules — that happens in the library
+    // (`importExpenseCsv` / `runCleanupBatch`), not here. Only the editing UI
+    // moved out, to the transaction-rules section.
     case "import":
       return (
-        <div className="flex flex-col gap-8">
-          <section>
-            <h2 className="font-display text-xl text-ink">Import a statement</h2>
-            <div className="mt-3">
-              <ExpenseImportView
-                accounts={listAccounts(deps.expenseRepo)}
-                namedMappings={listNamedMappings(deps.csvImportMappingRepo, "Expense")}
-              />
-            </div>
-          </section>
+        <ExpenseImportView
+          accounts={listAccounts(deps.expenseRepo)}
+          namedMappings={listNamedMappings(deps.csvImportMappingRepo, "Expense")}
+        />
+      );
 
-          <section>
-            <h2 className="font-display text-xl text-ink">Post Import Processing</h2>
-            <div className="mt-3">
-              <ExpenseRulesView
-                rules={listRules(deps.expenseRepo)}
-                categories={listCategories(deps.expenseRepo)}
-                unprocessedCount={countUnprocessed(deps.expenseRepo)}
-              />
-            </div>
-          </section>
-        </div>
+    case "transaction-rules":
+      return (
+        <ExpenseRulesView
+          rules={listRules(deps.expenseRepo)}
+          categories={listCategories(deps.expenseRepo)}
+          unprocessedCount={countUnprocessed(deps.expenseRepo)}
+          prefillName={prefillRuleName}
+          prefillDescription={prefillRuleDescription}
+          prefillPattern={prefillRulePattern}
+        />
       );
 
     case "settings":
@@ -121,7 +131,21 @@ function SectionBody({ section }: { section: ExpenseSection }) {
   }
 }
 
-export async function ExpenseSection({ section }: { section: ExpenseSection }) {
+export async function ExpenseSection({
+  section,
+  prefillRuleName,
+  prefillRuleDescription,
+  prefillRulePattern,
+}: {
+  section: ExpenseSection;
+  /**
+   * From ?name= / ?description= / ?vendorDescription= — seeds a new rule so the
+   * screen is linkable.
+   */
+  prefillRuleName?: string;
+  prefillRuleDescription?: string;
+  prefillRulePattern?: string;
+}) {
   // Defensive: an unknown section would otherwise crash on info.label. The route
   // already validates, so this only catches a future caller getting it wrong.
   const info = EXPENSE_SECTION_INFO[section] ?? EXPENSE_SECTION_INFO.main;
@@ -148,7 +172,12 @@ export async function ExpenseSection({ section }: { section: ExpenseSection }) {
       </div>
 
       <div className="mt-6">
-        <SectionBody section={section} />
+        <SectionBody
+          section={section}
+          prefillRuleName={prefillRuleName}
+          prefillRuleDescription={prefillRuleDescription}
+          prefillRulePattern={prefillRulePattern}
+        />
       </div>
     </ExpenseShell>
   );

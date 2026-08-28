@@ -37,6 +37,27 @@ export const photoFolderLookupSchema = z.object({
   date: photoDateSchema,
 });
 
+/**
+ * A span of dates, `from` on or before `to`.
+ *
+ * The refinement is what stops an inverted range reaching the archive: `to < from`
+ * matches nothing, so without it a mis-ordered range would look like an empty photo
+ * folder rather than like bad input -- the same reasoning as `photoDateSchema`'s
+ * real-calendar-date check.
+ *
+ * A single day is the legal range `date..date`, which is how the day button is
+ * expressed: one schema, one use-case, no second code path to keep in step.
+ */
+export const photoRangeSchema = z
+  .object({
+    from: photoDateSchema,
+    to: photoDateSchema,
+  })
+  .refine((value) => value.from <= value.to, {
+    message: "The range's start must be on or before its end.",
+    path: ["to"],
+  });
+
 /** What the card sends to open one folder. */
 export const photoFolderContentsSchema = z.object({
   date: photoDateSchema,
@@ -51,5 +72,24 @@ export const photoFolderContentsSchema = z.object({
   includeAll: z.boolean().default(false),
 });
 
+/**
+ * What the component sends to open one folder found by a RANGE lookup.
+ *
+ * The range version of `photoFolderContentsSchema`. Separate rather than a single
+ * schema with optional fields, so an adapter cannot pass neither and have the scan
+ * quietly match nothing: each boundary states which question it is asking.
+ */
+export const photoRangeContentsSchema = z.object({
+  from: photoDateSchema,
+  to: photoDateSchema,
+  relativePath: photoRelativePathSchema,
+  includeAll: z.boolean().default(false),
+}).refine((value) => value.from <= value.to, {
+  message: "The range's start must be on or before its end.",
+  path: ["to"],
+});
+
 export type PhotoFolderLookupInput = z.infer<typeof photoFolderLookupSchema>;
 export type PhotoFolderContentsInput = z.infer<typeof photoFolderContentsSchema>;
+export type PhotoRangeInput = z.infer<typeof photoRangeSchema>;
+export type PhotoRangeContentsInput = z.infer<typeof photoRangeContentsSchema>;

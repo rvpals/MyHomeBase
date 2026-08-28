@@ -12,6 +12,7 @@ export const EXPENSE_SECTIONS = [
   "meta-data",
   "charts",
   "import",
+  "transaction-rules",
   "settings",
 ] as const;
 
@@ -41,7 +42,11 @@ export const EXPENSE_SECTION_INFO: Record<ExpenseSection, { label: string; descr
   },
   import: {
     label: "Import Transaction",
-    description: "Bring in statement CSVs and set the rules that tidy them up.",
+    description: "Bring in statement CSVs. The rules that tidy them up live in Transaction Rules.",
+  },
+  "transaction-rules": {
+    label: "Transaction Rules",
+    description: "The post-import rules that fill in vendor, category, status and notes.",
   },
   settings: {
     label: "Settings",
@@ -56,6 +61,7 @@ export const EXPENSE_SECTION_ICONS: Record<ExpenseSection, string> = {
   "meta-data": "database",
   charts: "chart",
   import: "upload",
+  "transaction-rules": "clip",
   settings: "sliders",
 };
 

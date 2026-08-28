@@ -1,5 +1,102 @@
 # Change History
 
+## 2026-08-28 15:32 — Every icon has a name now, a picture behind the day, and rules that say why
+
+**Picking an icon set restyled all seventy-three icons at once, and that was the only
+choice on offer.** There was no way to replace *one* — and no way to even ask for it,
+because an icon was named by *concept* at the point it was drawn: `<TreeIcon name="quote" />`
+sat inside the Daily Quote card, and `quote` is also a Journal nav section, so "change the
+quote icon" necessarily changed both. Worse, nothing could enumerate where icons appeared.
+Answering "which icon does the Daily Quote card use?" meant grepping the source, which is
+why no configuration screen could offer a list.
+
+**Administration → Configuration → Icons now lists every icon position in the app and
+lets you replace any one of them.** Upload an SVG or a PNG, and that spot alone changes.
+The new concept is a **slot**: a stable id for one *place* (`homescreen_card_daily_quote`)
+that declares the concept it falls back to. Resolution runs *your override → the active
+set's glyph → the hand-drawn fallback*, and because the last two steps are exactly what
+happened before, **a slot nobody has overridden renders identically to the code it
+replaced.** That property is what let all 73 positions be converted incrementally instead
+of in one risky sweep, and it is what makes migration 0066 safe to roll back.
+
+`ICON_SLOTS` in `src/lib/icons/slots.ts` is now the app's only queryable map of where it
+shows icons — previously that knowledge existed only as string literals in eighteen
+files. Each entry carries a `where`: the click path in plain English, shown under every
+row. That field is load-bearing rather than decorative, because `label` alone stops being
+enough at this scale — all five modules have a "Dashboard" section, and two Admin entries
+both use the palette glyph.
+
+**Fifty-one of the seventy-three were wired by one change, not fifty-one.** The module and
+Admin navs render from data (`*_SECTION_ICONS`, `adminNav`), so there is no call site to
+name a slot at; instead each shell passes `iconNamespace="expense"` and `SectionPanel`
+derives the id per row with `sectionSlotId`. A new module now needs only that one prop plus
+its registry entries. The same trick, `tabSlotId`, covers the eight Music Library view tabs.
+That derivation is also the sharp edge: a slot id **must** equal
+`<namespace>_section_<slug>` with hyphens turned to underscores, and a mismatch doesn't
+throw — it silently stops matching the override. Two such mismatches were caught during
+the build (Expense's kebab `meta-data`/`transaction-rules`, and all fourteen Admin ids),
+free to fix only because nothing had shipped. `slots.test.ts` now enumerates every real
+section and tab slug and asserts each resolves, which is the test that catches the next
+rename.
+
+Three glyphs in the top header — the Modules button, My Account, Administration — were
+hand-rolled inline SVGs and are now slots, so for the first time they follow the reader's
+chosen icon set.
+
+**Uploaded SVG is sanitized on write, not merely served carefully.** `image-upload.ts`
+refuses SVG outright and is right to: those bytes come back from our own origin, so one
+carrying script is stored XSS. Slots accept it anyway, because inlining the markup is what
+lets a custom glyph inherit `currentColor` and tint to the theme — a PNG on an accent
+badge is a coloured blob. Inlining also means the `sandbox` CSP that protects the journal
+icon route does **not** apply here: that guards a file served as its own document, while
+inlined markup runs in the page's context. So `sanitizeSvg` reduces an upload to an
+**allowlist** of drawing elements and presentation attributes — `<script>`, `<style>`,
+`<foreignObject>`, `<use>`, `<a>`, every `on*` handler and every `href` are dropped. An
+allowlist rather than a blocklist because a blocklist ships broken the first vector it
+forgets, where an allowlist excludes even SVG features that don't exist yet. It has fifteen
+tests, most of them hostile input.
+
+One thing worth knowing about the reads: `listForSet` checks that its table exists before
+querying. Every other repository in the app assumes its table is there, correctly — the
+app is migrated before it runs. This one can't, because the root layout reads it, so on a
+database predating 0066 a missing table wouldn't degrade one screen, it would fail
+`next build` outright while prerendering whichever page came first. Writes still fail, but
+with a message naming the migration instead of a driver error.
+
+**A photo from the archive now sits behind the home screen.** `PhotoOfTheDay` picks one
+from the journal photo archive; `src/lib/journal-photos` grew a `range` use-case for
+"which folders hold photos between these dates", which is a generalisation of the
+single-date lookup rather than a loop over it — eight months of folders is eight directory
+reads, not two hundred and forty. `paths.ts` holds the naming rules and the traversal
+guard as pure string logic with no `node:path` and no filesystem, because that file is what
+stands between a request parameter and an arbitrary file read, and it deserves to be
+directly testable.
+
+**An installed PWA never noticed a deploy.** It is *suspended*, not closed, so returning
+to it reuses JavaScript loaded days ago and never asks whether that's current. The new
+`src/lib/app-version` hands the client the build ID it booted with and serves the one the
+server has now, so `AppVersionWatch` can spot the difference and reload. Both unknowns
+count as "no" deliberately — `next dev` has no BUILD_ID, and a dev session shouldn't
+reload itself in a loop.
+
+**A transaction rule was identified by its glob pattern everywhere it appeared** — the
+list, the delete confirmation, the clean-up log, the `explain-rule` CLI. A pattern says
+what a rule *matches* and never why it exists: `*TGI*` doesn't record that the card prints
+one restaurant three different ways. Migration 0065 adds `name` and `description` to
+`exp_post_import_rules`, back-filling `name` from `pattern` so existing rules stay
+identifiable. Both are `TEXT NOT NULL DEFAULT ''` — the name is required by
+`savePostImportRuleSchema` rather than by a `CHECK`, so the requirement is enforced where
+the message can be useful. `expense-create-rule` is the same thing from the terminal.
+
+Also: a reusable `ChartPie` for part-to-whole shares, with slices under 5% left unlabelled
+because the text collides in a thin wedge; shared `chart-options` so chart config stops
+being re-derived per view; and `misc_files/` is now gitignored — it holds real card
+statements and class rosters, and a file pushed once stays in history even after deletion.
+
+**Migration:** `0065` (expense rule name/description) and `0066` (`ico_slot_overrides`).
+Both applied to the NAS.
+
+
 ## 2026-08-26 23:23 — Every timer in one place, a board of benchmarks, and "what if I'd bought then?"
 
 **Three background jobs ran on three timers and nothing could tell you whether any of them

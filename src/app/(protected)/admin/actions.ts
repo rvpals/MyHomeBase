@@ -9,6 +9,7 @@ import {
   setDashboardTextureImage,
   type DashboardTextureSettings,
 } from "@/lib/dashboard-texture";
+import { clearOverride, saveOverride, ICON_OVERRIDE_MAX_BYTES } from "@/lib/icons";
 import {
   saveModuleSettings,
   type ModuleSettingEntry,
@@ -230,6 +231,94 @@ export async function saveDashboardTextureSettingsAction(
     return {
       ok: false,
       error: error instanceof Error ? error.message : "Could not save the settings.",
+    };
+  }
+}
+
+
+/** Mirrors the texture/carousel results — the icons screen handles them the same way. */
+export interface IconOverrideResult {
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * Stores an uploaded glyph for one icon slot, under one icon set.
+ *
+ * `FormData` rather than a base64 argument, for the reason the carousel and texture
+ * actions give: a `File` streams as ordinary multipart where base64 inflates ~33%
+ * against the server-action body limit.
+ *
+ * The SVG branch reads the file as *text* and hands the markup to the lib, which
+ * sanitizes it before storage — see src/lib/icons/sanitize-svg.ts. Raster goes through
+ * the shared image decoder untouched.
+ */
+export async function saveIconOverrideAction(formData: FormData): Promise<IconOverrideResult> {
+  try {
+    await requireAdmin();
+
+    const slotId = String(formData.get("slotId") ?? "");
+    const setId = String(formData.get("setId") ?? "");
+    const file = formData.get("icon");
+    if (!(file instanceof File)) return { ok: false, error: "No file was received." };
+    if (file.size > ICON_OVERRIDE_MAX_BYTES) {
+      return {
+        ok: false,
+        error: `That file is ${Math.round(file.size / 1024)} KB — keep it under ${Math.round(
+          ICON_OVERRIDE_MAX_BYTES / 1024,
+        )} KB.`,
+      };
+    }
+
+    // An SVG is markup, so it is read as text and sanitized; everything else is bytes.
+    // Some browsers report an empty type for .svg, hence the filename check.
+    const isSvg = file.type === "image/svg+xml" || file.name.toLowerCase().endsWith(".svg");
+
+    if (isSvg) {
+      saveOverride(deps.iconOverridesRepo, {
+        slotId,
+        setId,
+        kind: "svg",
+        source: await file.text(),
+      });
+    } else {
+      saveOverride(deps.iconOverridesRepo, {
+        slotId,
+        setId,
+        kind: "raster",
+        // Cast because the value came off a File and is unvalidated until the lib
+        // schema narrows it to the allowed set.
+        mimeType: file.type as never,
+        base64Data: Buffer.from(await file.arrayBuffer()).toString("base64"),
+      });
+    }
+
+    // "layout" because the overridden icon renders outside this form — the root layout
+    // reads the override map.
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not save that icon.",
+    };
+  }
+}
+
+/** Removes an override so the slot falls back to the active set's own glyph. */
+export async function clearIconOverrideAction(
+  slotId: string,
+  setId: string,
+): Promise<IconOverrideResult> {
+  try {
+    await requireAdmin();
+    clearOverride(deps.iconOverridesRepo, { slotId, setId });
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not remove that icon.",
     };
   }
 }

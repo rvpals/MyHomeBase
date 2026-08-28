@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   dateFromFileName,
+  dayFolderDateOf,
   isDayFolderFor,
+  isDayFolderInRange,
   isMonthFolderFor,
+  isMonthFolderInRange,
+  monthFolderMonthOf,
+  yearFoldersInRange,
   isMonthPrecisionDayFolder,
   isPhotoFileName,
   isSafeRelativePath,
@@ -244,5 +249,103 @@ describe("dateFromFileName", () => {
   it("returns undefined when there is no date at all", () => {
     expect(dateFromFileName("scan.jpg")).toBeUndefined();
     expect(dateFromFileName("")).toBeUndefined();
+  });
+});
+
+// --- The range helpers -------------------------------------------------------
+//
+// Same convention as above, asked as an interval instead of an equality. The cases
+// that matter are the boundaries (inclusive on both ends) and the two folder forms
+// that look like each other -- a day folder and a month-precision `-00` folder.
+
+describe("dayFolderDateOf", () => {
+  it("reads the date out of a bare and a named day folder", () => {
+    expect(dayFolderDateOf("2019-06-09")).toBe("2019-06-09");
+    expect(dayFolderDateOf("2019-06-09 Von Thun Farm Strawberry Festival")).toBe("2019-06-09");
+    expect(dayFolderDateOf("2019-06-09_Morning-Hike")).toBe("2019-06-09");
+  });
+
+  it("rejects a month folder, a month-precision folder and a mis-typed day", () => {
+    expect(dayFolderDateOf("2019-06")).toBeUndefined();
+    expect(dayFolderDateOf("2019-01-00 San Diego Vacation")).toBeUndefined();
+    // No separator after the date: a different day, mis-typed.
+    expect(dayFolderDateOf("2019-06-090")).toBeUndefined();
+    // Not a real calendar date -- it would compare inside a range and match nothing.
+    expect(dayFolderDateOf("2019-02-30 Impossible")).toBeUndefined();
+    expect(dayFolderDateOf("Holiday Photos")).toBeUndefined();
+  });
+});
+
+describe("monthFolderMonthOf", () => {
+  it("reads the month out of all three month-folder forms", () => {
+    expect(monthFolderMonthOf("2019-06")).toBe("2019-06");
+    expect(monthFolderMonthOf("2018-05 Lake George Trip")).toBe("2018-05");
+    expect(monthFolderMonthOf("2019-01-00 San Diego Vacation")).toBe("2019-01");
+  });
+
+  it("rejects a day folder", () => {
+    // The whole point of the distinction: a day folder must not be sent down the
+    // expensive EXIF path.
+    expect(monthFolderMonthOf("2019-06-09 Von Thun Farm")).toBeUndefined();
+    expect(monthFolderMonthOf("2019-13")).toBeUndefined();
+    expect(monthFolderMonthOf("Holiday Photos")).toBeUndefined();
+  });
+});
+
+describe("isDayFolderInRange", () => {
+  it("includes both boundaries", () => {
+    expect(isDayFolderInRange("2026-01-01 New Year", "2026-01-01", "2026-08-02")).toBe(true);
+    expect(isDayFolderInRange("2026-08-02 Beach", "2026-01-01", "2026-08-02")).toBe(true);
+  });
+
+  it("excludes a day one outside either end", () => {
+    expect(isDayFolderInRange("2025-12-31 Eve", "2026-01-01", "2026-08-02")).toBe(false);
+    expect(isDayFolderInRange("2026-08-03 After", "2026-01-01", "2026-08-02")).toBe(false);
+  });
+
+  it("matches a single-day range, which is how the day button is expressed", () => {
+    expect(isDayFolderInRange("2019-06-09 Von Thun Farm", "2019-06-09", "2019-06-09")).toBe(true);
+    expect(isDayFolderInRange("2019-06-10 Next Day", "2019-06-09", "2019-06-09")).toBe(false);
+  });
+
+  it("is false for a month folder", () => {
+    expect(isDayFolderInRange("2026-03", "2026-01-01", "2026-08-02")).toBe(false);
+  });
+});
+
+describe("isMonthFolderInRange", () => {
+  it("includes a month that only partly overlaps the range", () => {
+    // The range stops on the 2nd, but August's folder holds the 1st and the 2nd.
+    expect(isMonthFolderInRange("2026-08", "2026-01-01", "2026-08-02")).toBe(true);
+    expect(isMonthFolderInRange("2026-01 Winter", "2026-01-15", "2026-03-04")).toBe(true);
+  });
+
+  it("excludes a month either side of the range", () => {
+    expect(isMonthFolderInRange("2025-12", "2026-01-01", "2026-08-02")).toBe(false);
+    expect(isMonthFolderInRange("2026-09", "2026-01-01", "2026-08-02")).toBe(false);
+  });
+
+  it("includes the month of a single-day range", () => {
+    expect(isMonthFolderInRange("2019-06", "2019-06-09", "2019-06-09")).toBe(true);
+  });
+
+  it("is false for a day folder", () => {
+    expect(isMonthFolderInRange("2026-03-15 Museum", "2026-01-01", "2026-08-02")).toBe(false);
+  });
+});
+
+describe("yearFoldersInRange", () => {
+  it("returns one year for a range inside one year", () => {
+    expect(yearFoldersInRange("2026-01-01", "2026-08-02")).toEqual(["2026"]);
+    expect(yearFoldersInRange("2026-08-02", "2026-08-02")).toEqual(["2026"]);
+  });
+
+  it("returns every year a range crosses, including ones with no photos", () => {
+    // Every year is returned; whether its folder exists is the store's question.
+    expect(yearFoldersInRange("2019-11-02", "2021-01-09")).toEqual(["2019", "2020", "2021"]);
+  });
+
+  it("returns nothing for an inverted range", () => {
+    expect(yearFoldersInRange("2026-08-02", "2026-01-01")).toEqual([]);
   });
 });

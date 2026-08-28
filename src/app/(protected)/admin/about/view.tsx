@@ -8,6 +8,7 @@
 
 import type { ReactNode } from "react";
 import { useState, useEffect, useRef } from "react";
+import { clearCachesAndReload } from "@/components/app-version-watch";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
@@ -284,6 +285,7 @@ function renderChangeHistory(markdown: string): ReactNode[] {
 export function AboutView({
   appName,
   appVersion,
+  buildId,
   stats,
   ramMeter,
   processMeters,
@@ -296,6 +298,8 @@ export function AboutView({
 }: {
   appName: string;
   appVersion: string;
+  /** The deployed build's id, or null under `next dev` where there is none. */
+  buildId: string | null;
   stats: StatItem[];
   ramMeter: MeterItem;
   processMeters: MeterItem[];
@@ -378,6 +382,26 @@ export function AboutView({
           <CollapsibleCard title="Application & System Info" defaultOpen>
             <p className="font-display text-lg text-ink">{appName}</p>
             <p className="mt-1 text-sm text-muted">Version {appVersion}</p>
+
+            {/* The build id, and the button that makes this device match it.
+                Together they answer the question that prompted the feature:
+                "is my phone actually on the version I just deployed?" — compare
+                this string against the one your desktop shows. */}
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line p-4">
+              <div className="min-w-0">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted">Build</p>
+                <p className="mt-1 break-all font-mono text-sm text-ink">
+                  {buildId ?? "dev (no build id)"}
+                </p>
+                <p className="mt-1 text-xs text-muted">
+                  Installed to a home screen, the app is suspended rather than closed, so it can
+                  keep running an older build after a deploy. This reloads it from the server.
+                </p>
+              </div>
+              <Button variant="secondary" size="sm" onClick={() => void clearCachesAndReload()}>
+                Clear cache &amp; relaunch
+              </Button>
+            </div>
 
             <p className="mt-4 text-sm text-muted">
               Live details about the server process this instance is running on.

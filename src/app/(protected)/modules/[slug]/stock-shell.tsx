@@ -73,6 +73,7 @@ export async function StockShell({ children }: { children: ReactNode }) {
     <TwoTierShell
       links={links}
       sections={sections}
+      iconNamespace="stock"
       module={{
         name: appModule?.shortName ?? "Stocks & ETFs",
         icon: appModule?.icon ?? "chart",

@@ -25,6 +25,12 @@
 .DS_Store
 *.pem
 
+# personal source material, local only: module artwork, and the real bank /
+# brokerage statements and class rosters used to exercise the CSV importers.
+# Never commit these -- they are actual financial and student records, and a
+# file pushed once stays in git history even after it is deleted.
+/misc_files/
+
 # debug
 npm-debug.log*
 yarn-debug.log*

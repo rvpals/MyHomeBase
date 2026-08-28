@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   COMPACT_MAX_POINT_LABELS,
   DEFAULT_MAX_POINT_LABELS,
+  MAX_PART_TO_WHOLE_SLICES,
+  OTHER_SLICE_KEY,
+  foldToOther,
   isPointLabelModeCapped,
   parseChartDisplay,
   resolvePointLabelMode,
@@ -182,5 +185,69 @@ describe("parseChartDisplay", () => {
       ...FALLBACK,
       chartType: "bar",
     });
+  });
+});
+
+describe("foldToOther", () => {
+  const slices = [
+    { key: "a", label: "A", value: 100 },
+    { key: "b", label: "B", value: 80 },
+    { key: "c", label: "C", value: 60 },
+    { key: "d", label: "D", value: 40 },
+    { key: "e", label: "E", value: 20 },
+    { key: "f", label: "F", value: 8 },
+    { key: "g", label: "G", value: 2 },
+  ];
+
+  it("leaves a list that already fits untouched", () => {
+    const short = slices.slice(0, 3);
+    expect(foldToOther(short, 5)).toEqual(short);
+  });
+
+  it("leaves a list of exactly the maximum untouched", () => {
+    const exact = slices.slice(0, 5);
+    expect(foldToOther(exact, 5)).toEqual(exact);
+  });
+
+  it("folds the tail into one slice carrying its summed value", () => {
+    const folded = foldToOther(slices, 5);
+
+    expect(folded).toHaveLength(6);
+    expect(folded.slice(0, 5)).toEqual(slices.slice(0, 5));
+    // F + G, the two that didn't fit.
+    expect(folded[5]).toEqual({ key: "__other__", label: "2 others", value: 10 });
+  });
+
+  it("preserves the total, so the whole still adds up", () => {
+    const total = slices.reduce((sum, slice) => sum + slice.value, 0);
+    const foldedTotal = foldToOther(slices, 5).reduce((sum, slice) => sum + slice.value, 0);
+
+    expect(foldedTotal).toBe(total);
+  });
+
+  it("takes a caller's wording for the folded slice", () => {
+    const folded = foldToOther(slices, 5, (count) => `${count} other vendors`);
+
+    expect(folded[5].label).toBe("2 other vendors");
+  });
+
+  it("defaults to the palette's separable slice limit", () => {
+    expect(foldToOther(slices)).toHaveLength(MAX_PART_TO_WHOLE_SLICES + 1);
+  });
+
+  it("pools exactly what the next page shows, so a drill-down reconciles", () => {
+    // The invariant behind the Expense vendor card's drill-down: clicking the
+    // pooled slice re-folds the remainder, and the two must agree to the penny or
+    // the second donut is a different total from the slice that opened it.
+    const pooled = foldToOther(slices, 5).at(-1);
+    const nextPage = slices.slice(5).reduce((sum, slice) => sum + slice.value, 0);
+
+    expect(pooled?.key).toBe(OTHER_SLICE_KEY);
+    expect(pooled?.value).toBe(nextPage);
+  });
+
+  it("returns the list unchanged when the maximum is meaningless", () => {
+    // Guards the "1 others" absurdity a zero/negative cap would produce.
+    expect(foldToOther(slices, 0)).toEqual(slices);
   });
 });

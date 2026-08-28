@@ -4,9 +4,12 @@ import { cookies } from "next/headers";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import {
   listPhotoFoldersForDate,
+  listPhotoFoldersForRange,
   listPhotosInFolder,
   photoFolderContentsSchema,
   photoFolderLookupSchema,
+  photoRangeContentsSchema,
+  photoRangeSchema,
   type PhotoFile,
   type PhotoFolder,
   type PhotoFolderLookup,
@@ -92,4 +95,71 @@ export async function listPhotosInFolderAction(
 async function hasSession(): Promise<boolean> {
   const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
   return getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo) !== undefined;
+}
+
+/**
+ * Which folders in the archive hold photos anywhere in a date range.
+ *
+ * The range counterpart of `findPhotoFoldersAction`, and just as cheap: one directory
+ * read per year the range touches, matching on names alone. The journal calendar's
+ * month button is the caller.
+ */
+export async function findPhotoFoldersInRangeAction(
+  from: string,
+  to: string,
+): Promise<PhotoFoldersResult> {
+  if (!(await hasSession())) return { ok: false, error: "Not signed in." };
+
+  const parsed = photoRangeSchema.safeParse({ from, to });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Not a valid date range." };
+  }
+
+  try {
+    const result = await listPhotoFoldersForRange(photoStore(), parsed.data);
+    return {
+      ok: true,
+      isAvailable: result.isAvailable,
+      reason: result.reason,
+      rootPath: result.rootPath,
+      folders: result.folders,
+    };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Photo lookup failed." };
+  }
+}
+
+/**
+ * The photos in one folder that fall inside a date range.
+ *
+ * The expensive call for a month folder — it reads the head of every JPEG in it — which
+ * is why the dialog only makes it when a folder is actually opened.
+ */
+export async function listPhotosInFolderForRangeAction(
+  from: string,
+  to: string,
+  relativePath: string,
+  includeAll = false,
+): Promise<PhotoContentsResult> {
+  if (!(await hasSession())) return { ok: false, error: "Not signed in." };
+
+  const parsed = photoRangeContentsSchema.safeParse({ from, to, relativePath, includeAll });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Not a valid photo folder." };
+  }
+
+  try {
+    const result = await listPhotosInFolder(photoStore(), parsed.data);
+    return {
+      ok: true,
+      photos: result.photos,
+      examined: result.examined,
+      isEmptyAfterFilter: result.isEmptyAfterFilter,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not read the folder.",
+    };
+  }
 }

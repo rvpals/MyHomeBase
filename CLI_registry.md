@@ -2,7 +2,7 @@
 
 Reference for driving MyHomeBase from a terminal.
 
-**Part 1** documents the 12 commands that work today.
+**Part 1** documents the 27 commands that work today.
 **Part 2** is the full inventory of library use-cases — what a command *could* call.
 **Part 3** summarises the coverage gap.
 
@@ -28,7 +28,7 @@ command list and exits 1. There is no `--help`.
 
 # Part 1 — Available commands
 
-Twenty-six commands, registered in [src/cli/index.ts:33-58](src/cli/index.ts#L33-L58).
+Twenty-seven commands, registered in [src/cli/index.ts:33-61](src/cli/index.ts#L33-L61).
 
 | Command | Reads / writes | Network |
 |---|---|---|
@@ -42,6 +42,7 @@ Twenty-six commands, registered in [src/cli/index.ts:33-58](src/cli/index.ts#L33
 | [`journal-templates`](#journal-templates) | read (writes with `set`/`enable`/`disable`/`delete`) | no |
 | [`expense-top-spenders`](#expense-top-spenders) | read | no |
 | [`explain-rule`](#explain-rule) | read | no |
+| [`expense-create-rule`](#expense-create-rule) | write | no |
 | [`refresh-positions`](#refresh-positions) | write | **yes** |
 | [`run-scheduled-refresh`](#run-scheduled-refresh) | write (read with `--status`) | **yes** (not with `--status`) |
 | [`list-scheduled-jobs`](#list-scheduled-jobs) | read | no |
@@ -363,6 +364,39 @@ is skipped entirely, only the first matching rule applies, and rules only fill b
 **Exit** — 0; 1 when neither flag is given, or nothing matches. Prints
 `There are no post-import rules in this database.` and exits 0 when no rules exist.
 Source: [src/cli/explain-rule.ts](src/cli/explain-rule.ts)
+
+---
+
+## `expense-create-rule`
+
+Creates one post-import transaction rule — the CLI half of the **Transaction Rules**
+screen, so a rule can be scripted rather than typed. Writes one
+`exp_post_import_rules` row plus one `exp_post_import_rule_actions` row per `--set`.
+
+```
+npm run cli -- expense-create-rule --name "TGI Friday's"   --description "The card prints this restaurant three different ways"   --pattern "*TGI*" --set vendor="TGI Friday" --set categoryName=Restaurant
+
+npm run cli -- expense-create-rule --name Amazon --pattern "AMAZON*"   --set categoryName=online-purchase --priority 10 --disabled
+```
+
+**Input** — `--name`, `--pattern` and at least one `--set <field>=<value>` are required;
+a rule without a pattern or an action is inert, so the command refuses it rather than
+writing a row that can never fire. `--set` is **repeatable** and splits on the *first*
+`=`, so a value may contain one. Fields: `categoryName`, `vendor`, `status`, `note`.
+Optional `--description`, `--priority <int>` (default 0, lowest wins), `--disabled`.
+
+**Calls** — `createRule`, which validates through `savePostImportRuleSchema` — the same
+path the web form uses, so the rules are identical either way: a name is required, a
+`status` value must be one of `new` / `reconciled` / `irreconcilable`, and only a `note`
+may be blank.
+
+**Output** — the new rule's id, name, pattern, description, priority and each field it
+sets, then a reminder that existing transactions are untouched until the clean-up runs.
+
+**Exit** — 0 on success; 1 on a missing required flag (prints usage), an unknown field
+name, a non-integer `--priority`, or a schema rejection. Validation failures print the
+schema's own one-line message rather than a ZodError dump.
+Source: [src/cli/expense-create-rule.ts](src/cli/expense-create-rule.ts)
 
 ---
 

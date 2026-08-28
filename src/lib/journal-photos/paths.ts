@@ -224,3 +224,95 @@ function isPlausibleDate(candidate: string): boolean {
   if (Number.isNaN(parsed.getTime())) return false;
   return parsed.toISOString().slice(0, 10) === candidate;
 }
+
+/**
+ * Whether a folder name is a day folder whose date falls inside `from..to` inclusive.
+ *
+ * The range counterpart of `isDayFolderFor`. It reads the date out of the name and
+ * compares it, rather than testing the name against every date in the range: an
+ * eight-month range holds 240-odd dates, and `startsWith` against each of them would
+ * be 240 string comparisons per folder to answer what one interval test answers.
+ *
+ * ISO dates compare correctly as strings, which is why no parsing is needed -- the
+ * whole archive convention is built on that property.
+ */
+export function isDayFolderInRange(folderName: string, from: string, to: string): boolean {
+  const date = dayFolderDateOf(folderName);
+  if (date === undefined) return false;
+  return date >= from && date <= to;
+}
+
+/**
+ * Whether a folder name is a month folder for any month the range touches.
+ *
+ * A month folder is included when its month OVERLAPS the range, not when the range
+ * contains the whole month -- a range ending on the 2nd of August still wants
+ * `2026-08`, because photos from the 1st and 2nd are in it. Which of its photos
+ * actually belong is settled later by the EXIF scan, not here.
+ */
+export function isMonthFolderInRange(folderName: string, from: string, to: string): boolean {
+  const month = monthFolderMonthOf(folderName);
+  if (month === undefined) return false;
+  return month >= monthFolderNameOf(from) && month <= monthFolderNameOf(to);
+}
+
+/**
+ * The `YYYY-MM-DD` a day folder is named for, or `undefined` when the name is not a
+ * day folder at all.
+ *
+ * Rejects a month-precision `YYYY-MM-00` folder for the same reason `isDayFolderFor`
+ * does: day `00` is not a day, and treating it as one would file a whole vacation on
+ * the 31st of the previous month or on nothing.
+ */
+export function dayFolderDateOf(folderName: string): string | undefined {
+  const trimmed = folderName.trim();
+  if (isMonthPrecisionDayFolder(trimmed)) return undefined;
+
+  const match = trimmed.match(/^(\d{4}-\d{2}-\d{2})(?:[\s._-].*)?$/);
+  if (!match) return undefined;
+
+  // A real calendar date, so `2019-06-31 Something` is not offered as a day folder --
+  // it would compare inside a range and then match no photo.
+  return isPlausibleDate(match[1]) ? match[1] : undefined;
+}
+
+/**
+ * The `YYYY-MM` a month folder is named for, or `undefined` when the name is not a
+ * month folder.
+ *
+ * Accepts all three forms the archive contains: the bare `2019-06`, the named
+ * `2018-05 Lake George Trip`, and the month-precision `2019-01-00 San Diego Vacation`.
+ */
+export function monthFolderMonthOf(folderName: string): string | undefined {
+  const trimmed = folderName.trim();
+
+  // The separator after the month must NOT be a hyphen: `2019-06-09 Von Thun Farm` is a
+  // DAY folder, and a `-` in the separator class would let its `-09` be swallowed as
+  // part of the description -- which is exactly how a day folder gets mistaken for a
+  // month and sent down the expensive EXIF path. Only the explicit `-00` group may
+  // consume a hyphen here.
+  const match = trimmed.match(/^(\d{4}-\d{2})(?:-00)?(?:[\s._](?:.*)?)?$/);
+  if (!match) return undefined;
+  const month = match[1];
+  return isPlausibleDate(`${month}-01`) ? month : undefined;
+}
+
+/**
+ * Every year folder a date range touches, in order -- `2019-11-02`..`2021-01-09` ->
+ * `["2019", "2020", "2021"]`.
+ *
+ * The archive files a photo under the year it was taken, so these are the only
+ * folders a range lookup ever needs to read. Returns `[]` when the range is inverted,
+ * which callers treat as an empty result rather than as an error.
+ */
+export function yearFoldersInRange(from: string, to: string): string[] {
+  if (to < from) return [];
+
+  const first = Number(yearFolderOf(from));
+  const last = Number(yearFolderOf(to));
+  if (!Number.isFinite(first) || !Number.isFinite(last)) return [];
+
+  const years: string[] = [];
+  for (let year = first; year <= last; year += 1) years.push(String(year));
+  return years;
+}

@@ -317,6 +317,21 @@ const StarFilled: IconComponent = (props) => (
   </svg>
 );
 
+/* A framed photograph: a rounded rect, a sun, and a hill. The mark for "show me the
+   pictures", used on the journal calendar's per-day and per-month photo buttons.
+
+   Drawn to survive 14px, which is the size it renders at inside a calendar cell: one
+   frame, one circle and one ridge, with nothing else competing. A stack-of-photos
+   glyph was tried first and turned to mush at that size — the offset second frame
+   reads as a smudge rather than as depth. */
+const Photo: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <rect x="3" y="4.5" width="18" height="15" rx="2.5" />
+    <circle cx="8.75" cy="9.75" r="1.6" />
+    <path d="M3.5 16.5l4.75-4.25 4 3.5 3.25-2.75 4.5 4" />
+  </svg>
+);
+
 const TREE_ICONS = {
   flash: Flash,
   note: Note,
@@ -348,6 +363,7 @@ const TREE_ICONS = {
   player: RecordPlayer,
   star: Star,
   "star-filled": StarFilled,
+  photo: Photo,
 } as const;
 
 export type TreeIconName = keyof typeof TREE_ICONS;
@@ -379,6 +395,10 @@ const ALWAYS_CLASSIC = new Set<TreeIconName>([
   // redrawing it would lose that distinction, so both stay hand-drawn.
   "star",
   "star-filled",
+  // The calendar's photo button is a 14px control inside a grid cell. Full-color
+  // artwork at that size is a coloured blob, and it would fight the day number it
+  // sits beside.
+  "photo",
 ]);
 
 /**

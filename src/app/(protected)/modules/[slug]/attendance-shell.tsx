@@ -64,6 +64,7 @@ export async function AttendanceShell({ children }: { children: ReactNode }) {
     <TwoTierShell
       links={links}
       sections={sections}
+      iconNamespace="attendance"
       module={{
         name: appModule?.shortName ?? "Attendance",
         icon: appModule?.icon ?? "roster",

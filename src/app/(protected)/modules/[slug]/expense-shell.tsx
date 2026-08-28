@@ -64,6 +64,7 @@ export async function ExpenseShell({ children }: { children: ReactNode }) {
     <TwoTierShell
       links={links}
       sections={sections}
+      iconNamespace="expense"
       module={{
         name: appModule?.shortName ?? "Expense",
         icon: appModule?.icon ?? "wallet",

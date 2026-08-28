@@ -46,6 +46,7 @@ import {
   type MagicDependencies,
 } from "@/lib/music-magic";
 import { deps } from "@/lib/wiring";
+import { messageOf } from "./error-message";
 
 /** Math.random is injected here, not defaulted in the library -- same as the web adapter. */
 function magicDeps(): MagicDependencies {
@@ -333,20 +334,4 @@ function valuesOf(args: string[], flag: string): string[] {
     if (value !== undefined && !value.startsWith("--")) values.push(value);
   });
   return values;
-}
-
-/**
- * A readable message for a thrown error.
- *
- * A ZodError's `.message` is the serialized ISSUE ARRAY -- printing it dumps twelve lines
- * of JSON at someone who typed a too-large `--minutes`, burying the schema's own perfectly
- * good wording inside it. So the first issue's message is preferred when there is one.
- */
-function messageOf(error: unknown): string {
-  const issues = (error as { issues?: { message?: string }[] }).issues;
-  if (Array.isArray(issues)) {
-    const first = issues[0]?.message;
-    if (typeof first === "string" && first !== "") return first;
-  }
-  return error instanceof Error ? error.message : String(error);
 }

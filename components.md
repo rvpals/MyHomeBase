@@ -72,6 +72,7 @@ pattern instead of inventing one.
 | [`TokenPicker`](#tokenpicker) | **Several names on one record** — removable chips + a dropdown to add | [src/components/token-picker.tsx](src/components/token-picker.tsx) | yes |
 | [`ChartLine`](#chartline) | Time-series line chart | [src/components/chart-line.tsx](src/components/chart-line.tsx) | yes |
 | [`ChartBar`](#chartbar) | Category comparison / part-to-whole | [src/components/chart-bar.tsx](src/components/chart-bar.tsx) | yes |
+| [`ChartPie`](#chartpie) | Share of a whole — **max 5 slices** | [src/components/chart-pie.tsx](src/components/chart-pie.tsx) | yes |
 | [`ChartXY`](#chartxy) | User-configurable line/bar/scatter/area + zoom | [src/components/chart-xy.tsx](src/components/chart-xy.tsx) | yes |
 | [`ChartCandle`](#chartcandle) | Candlestick / OHLC — four prices per period | [src/components/chart-candle.tsx](src/components/chart-candle.tsx) | yes |
 | [`ChartToolbar`](#chartoolbar) | A chart's gear control — **not called directly** | [src/components/chart-toolbar.tsx](src/components/chart-toolbar.tsx) | yes |
@@ -79,11 +80,15 @@ pattern instead of inventing one.
 | [`Progress3D`](#progress3d) | **Any progress bar** — work underway, 0..max | [src/components/progress-3d.tsx](src/components/progress-3d.tsx) | no |
 | [`JournalViewer`](#journalviewer) | Full detail sheet for one journal entry | [src/components/journal-viewer.tsx](src/components/journal-viewer.tsx) | yes |
 | [`PhotoLightbox`](#photolightbox) | Full-screen photo overlay with prev/next over a set | [src/components/photo-lightbox.tsx](src/components/photo-lightbox.tsx) | yes |
+| [`PhotoOfTheDay`](#photooftheday--photoofthedaybutton) / `PhotoOfTheDayButton` | **Photos for a date or a date range**, as a closable dialog | [src/components/photo-of-the-day.tsx](src/components/photo-of-the-day.tsx) | yes |
 | [`TickerViewer`](#tickerviewer) | Full record dialog for one ticker — 3 tabs of cards | [src/components/ticker-viewer.tsx](src/components/ticker-viewer.tsx) | yes |
 | [`IconSetProvider`](#iconsetprovider--useiconset) / `useIconSet` | Active module icon set (context) | [src/components/icon-set-context.tsx](src/components/icon-set-context.tsx) | yes |
 | [`ViewportProvider`](#viewportprovider--useviewport) / `useViewport` | Compact vs full layout (context) | [src/components/viewport-context.tsx](src/components/viewport-context.tsx) | yes |
 | [`ModuleIcon`](#moduleicon--moduleiconpreview) / `ModuleIconPreview` | Render a module glyph | [src/components/module-icons.tsx](src/components/module-icons.tsx) | yes |
+| [`SlotIcon`](#sloticon) | Render the icon for a named place in the app, honouring per-slot overrides | [src/components/slot-icon.tsx](src/components/slot-icon.tsx) | yes |
+| [`IconOverrideProvider`](#iconoverrideprovider--useiconoverrides) / `useIconOverrides` | Per-slot icon overrides for the active set (context) | [src/components/icon-override-context.tsx](src/components/icon-override-context.tsx) | yes |
 | [`useCurrentPosition`](#usecurrentposition) | Read the device's GPS coordinates (hook) | [src/components/use-current-position.ts](src/components/use-current-position.ts) | yes |
+| [`AppVersionWatch`](#appversionwatch) | Prompts a stale installed PWA to reload after a deploy — mount in the layout | [src/components/app-version-watch.tsx](src/components/app-version-watch.tsx) | yes |
 
 Small helpers that are not full components: [see below](#unregistered-helpers).
 
@@ -477,7 +482,7 @@ a second one ([`TreeIcon`](src/components/tree-icons.tsx) covers `history`,
 `chart`, `list`, `quote`…):
 
 ```tsx
-<CollapsibleCard title="Daily Quote" titleIcon={<TreeIcon name="quote" className="h-4 w-4" />}>
+<CollapsibleCard title="Daily Quote" titleIcon={<SlotIcon slot={QUOTE_SLOT} className="h-4 w-4" />}>
   <Quote quote={quote} />
 </CollapsibleCard>
 ```
@@ -866,6 +871,54 @@ payload). **A missing logo is the normal case** — most ETFs have none — so t
 answers 404 and the component draws the monogram; a "nothing found" result is cached so
 the same ticker isn't re-requested on every render. Images are `loading="lazy"`, so a
 long grid only fetches what's on screen.
+
+---
+
+## AppVersionWatch
+
+Notices that this client is running an older build than the server serves, and offers a
+reload that actually picks up the new one. **Mount once in the root layout** — it is not a
+page-level component, and a second instance would mean two prompts.
+
+- **Source:** [src/components/app-version-watch.tsx](src/components/app-version-watch.tsx)
+- **Import:** `import { AppVersionWatch, clearCachesAndReload } from "@/components/app-version-watch";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `bootBuildId` | `string \| null` | The build id that served this document. From `getAppVersion(deps.buildIdRepo)`. `null` under `next dev`, which disables the check entirely. |
+
+```tsx
+const { buildId } = getAppVersion(deps.buildIdRepo);
+<AppVersionWatch bootBuildId={buildId} />
+```
+
+**Used by:** [src/app/layout.tsx](src/app/layout.tsx). Its exported
+`clearCachesAndReload()` also backs the "Clear cache & relaunch" button on
+[Administration → About](src/app/(protected)/admin/about/view.tsx) — the manual control and
+the automatic prompt deliberately share one definition of "refresh".
+
+**Notes:** the problem it exists for is that **an installed PWA is suspended, not closed**
+— reopening it resumes a days-old document that never re-requests anything, so a deploy
+that is live on a desktop stays invisible on a phone. Hence the check runs on
+`visibilitychange`, not on a timer: coming back to the foreground is both the moment the
+app might be stale and the only moment a suspended app runs code at all. Nothing polls.
+
+`clearCachesAndReload()` clears Cache Storage, unregisters any service workers, then
+`location.replace()`s onto a URL carrying a `__v` timestamp. Both cache steps are **no-ops
+today** — the app registers no service worker — and are kept so the button doesn't silently
+stop working if one is ever added. The cache-busting URL is the part that does the real
+work: **no web API can reach the browser's own HTTP cache**, so the only way past it is to
+request a URL it has no entry for. The `__v` parameter is stripped via `replaceState` after
+load so it never reaches a bookmark.
+
+Renders `null` until the builds differ; then a `fixed top-0 z-40` strip. Pinned to the
+**top** deliberately — the bottom edge already stacks the compact section trigger and the
+music player on published heights, and a transient bar shouldn't join that contract or make
+`.app-main` reserve space for it. Pads by `env(safe-area-inset-top)` since the app paints
+under the Dynamic Island. Responsive via `max-lg:` (centred on desktop, label-and-actions
+spread on a phone). Dismissible on purpose: an unskippable reload prompt mid-edit would
+lose what was being typed, and it returns on the next foreground.
 
 ---
 
@@ -1260,7 +1313,10 @@ and the "My past performance" chart in
 ## ChartBar
 
 Horizontal bars for part-to-whole or magnitude comparison across a handful of categories.
-**Use this instead of a pie chart** (per the dataviz skill).
+**Prefer this over [`ChartPie`](#chartpie) whenever the reader compares magnitudes** ("who did I
+spend most at") — a bar's length is read more accurately than a slice's angle, and it takes as
+many categories as you like. Reach for the pie only when the question is genuinely "what
+fraction of the whole", and only up to 5 slices.
 
 - **Source:** [src/components/chart-bar.tsx](src/components/chart-bar.tsx)
 - **Import:** `import { ChartBar, type ChartBarItem } from "@/components/chart-bar";`
@@ -1287,6 +1343,73 @@ Horizontal bars for part-to-whole or magnitude comparison across a handful of ca
 
 **Used by:** Stocks & ETFs allocation and dividend-income breakdown —
 [stock-positions-view.tsx](src/app/(protected)/modules/[slug]/stock-positions-view.tsx).
+
+---
+
+## ChartPie
+
+A donut showing each category's **share of a whole**, read at a glance.
+
+- **Source:** [src/components/chart-pie.tsx](src/components/chart-pie.tsx)
+- **Import:** `import { ChartPie } from "@/components/chart-pie";`
+- **Client component:** yes (wraps Recharts)
+- **Does _not_ take the shared chart display props** — see why below.
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `items` | `PartToWholeSlice[]` | `{ key, label, value }`, biggest first. **Max 5** — fold first (below). |
+| `formatValue?` | `(value: number) => string` | Used in the tooltip. |
+| `height?` | `number` | Defaults to `260`. |
+| `className?` | `string` | |
+| `onSliceClick?` | `(slice) => void` | Raised with the clicked slice. Makes slices clickable; the component decides nothing. |
+| `isSliceEnabled?` | `(slice) => boolean` | Which slices `onSliceClick` applies to. Defaults to all. |
+
+```tsx
+import { foldToOther } from "@/lib/shared/chart-options";
+
+<ChartPie
+  items={foldToOther(slices, 5, (count) => `${count} other vendors`)}
+  formatValue={(value) => `$${value.toFixed(2)}`}
+/>
+```
+
+**Five slices is a hard ceiling, and it comes from the palette rather than from taste.** A pie
+is an *all-pairs* form — any slice can end up beside any other — so every pair of colours must
+be separable, not just neighbours in the fixed order. Running the dataviz validator over
+`CHART_CATEGORICAL_COLORS` with `--pairs all`:
+
+| Slots | Result |
+|---|---|
+| 4 | PASS |
+| 5 | PASS — CVD ΔE 6.1, the 6–8 floor band, legal *only* with direct labels |
+| 6 | **FAIL** — normal-vision ΔE 12.9, under the hard floor of 15 |
+
+So six slices are hard to tell apart with full colour vision, never mind without. Use
+`foldToOther` from [chart-options.ts](src/lib/shared/chart-options.ts) to pool the tail; it takes
+the wording of the folded slice so you can say "23 other vendors" rather than a bare "Other".
+
+**Fixed, not props:** each slice ≥5% carries its percentage *inside* the ring, there is no legend
+box, and there is no `ChartToolbar`.
+
+- **Labels are inside the arc** because outside ones (with leader lines, Recharts' default)
+  clipped off both edges of a card at phone width. Inside, text cannot overflow the box however
+  narrow it gets. Below 5% a slice prints nothing rather than colliding with its neighbours.
+- **No legend**, because it duplicated the labels word-for-word and overflowed narrow cards.
+- **So the caller must supply the names.** The chart prints only percentages; identity and exact
+  values live in a companion list. **Always pair this with one**, showing a colour swatch drawn
+  from `CHART_CATEGORICAL_COLORS` in the same index order — see the Expense vendor card. That
+  list is also the "table view" that discharges the validator's contrast warning (three palette
+  hues fall below 3:1 against paper), which is why it isn't optional.
+
+**Drill-down.** `onSliceClick` + `isSliceEnabled` let a pooled slice open its own contents.
+The Expense vendor card does this by re-folding the *remainder* at the next level — same
+component, same fold, one page down — so the drill is one operation repeated rather than a
+second kind of view, and the pooled value always equals the next level's total (there's a test
+pinning that). **A wedge can't take focus**, so put the same action on the companion list's
+pooled row as a real `<button>`; that's the keyboard path.
+
+**Used by:** the Expense module's Charts and Analysis → Vendor card —
+[expense-charts-view.tsx](src/app/(protected)/modules/[slug]/expense-charts-view.tsx).
 
 **Notes:** each bar is direct-labeled with its value (the required contrast relief) and the
 axis tick supplies identity, so there is no legend box.
@@ -1727,6 +1850,80 @@ NAS share, which `next/image` can't optimize anyway.
 
 ---
 
+## PhotoOfTheDay / PhotoOfTheDayButton
+
+**The photographs for a date, or for a span of dates.** A dialog that lists the archive
+folders matching what you asked for, opens each one into a thumbnail grid on demand, and
+hands a click off to [`PhotoLightbox`](#photolightbox). `PhotoOfTheDayButton` is the small
+picture-glyph control that opens it.
+
+- **Source:** [src/components/photo-of-the-day.tsx](src/components/photo-of-the-day.tsx)
+- **Import:** `import { PhotoOfTheDay, PhotoOfTheDayButton } from "@/components/photo-of-the-day";`
+- **Client component:** yes
+
+### `PhotoOfTheDay`
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `date?` | `string` | One day, `YYYY-MM-DD`. Pass this **or** `range`, never both. |
+| `range?` | `{ from: string; to: string }` | A span of days, inclusive at both ends. |
+| `onFindFolders` | `(query) => Promise<PhotoFoldersOutcome>` | The cheap lookup — folder names and counts. Wired to a server action by the caller. |
+| `onListPhotos` | `(query, relativePath, includeAll) => Promise<PhotoContentsOutcome>` | The expensive one; called only when a folder is opened. |
+| `photoUrl` | `(relativePath: string) => string` | Builds the URL for a photo's bytes. |
+| `onClose` | `() => void` | Escape, the ✕, an overlay click, and the Close button. |
+| `autoLookup?` | `boolean` | Default `false`. `true` looks on mount — for a caller whose button press already meant "go and look". |
+| `className?` | `string` | Applied to the dialog panel, merged last. |
+
+### `PhotoOfTheDayButton`
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `hint` | `string` | Native tooltip **and** the accessible name — the glyph has no text. Say which photos it shows. |
+| `onOpen` | `() => void` | Fired on press. The handler already calls `stopPropagation`. |
+| `className?` | `string` | Merged last, so a caller can resize it. |
+
+```tsx
+const [request, setRequest] = useState<{ date: string } | undefined>();
+
+<PhotoOfTheDayButton hint="Photos from 2026-08-27" onOpen={() => setRequest({ date: "2026-08-27" })} />
+
+{request && (
+  <PhotoOfTheDay
+    date={request.date}
+    autoLookup
+    photoUrl={(path) => `/api/journal/photos?path=${encodeURIComponent(path)}`}
+    onFindFolders={(query) => findPhotoFoldersAction((query as { date: string }).date)}
+    onListPhotos={(query, path, all) => listPhotosInFolderAction((query as { date: string }).date, path, all)}
+    onClose={() => setRequest(undefined)}
+  />
+)}
+```
+
+**Used by:** the Journal calendar's per-day and per-month photo buttons
+[journal-calendar-view.tsx](src/app/(protected)/modules/[slug]/journal-calendar-view.tsx),
+and the entry viewer's "Pictures of this date" card
+[journal-photos-card.tsx](src/app/(protected)/modules/[slug]/entries/[id]/journal-photos-card.tsx).
+Both go through one wiring island,
+[journal-photos-host.tsx](src/app/(protected)/modules/[slug]/journal-photos-host.tsx) —
+copy that pattern rather than binding the actions again, and note *why* it exists: a
+registered component may not import a server action, so the binding has to live in the
+route.
+
+**Notes worth knowing before reusing it:**
+
+- **It owns no open/closed state** — guard it with `{isOpen && <PhotoOfTheDay …>}` like
+  any [`Modal`](#modal). **Key it by what it shows** (`key={date}`); pointing a mounted
+  dialog at a new date would leave the previous scan's folders under the new title.
+- **A single date and a range are the same code path.** The domain treats one day as the
+  range `date..date`, so the day case cannot drift from the range case.
+- **Nothing is scanned until a folder is opened.** The folder list is names and counts
+  only, which is what keeps an eight-month range instant to open even though scanning it
+  whole would read thousands of JPEG headers over SMB.
+- **Responsive:** the dialog is a `Modal` (already responsive); its thumbnail grid is five
+  columns wide, three below 1024px and two below 640px, via `max-lg:` / `max-sm:`. The
+  button is 24px square and is meant to sit inside a larger tap target — resize it with
+  `className` when it stands alone.
+
 ## TickerViewer
 
 **Everything about one ticker, in one dialog.** **Three tabs, each a stack of
@@ -1884,6 +2081,70 @@ Render a module glyph in the active icon set (`ModuleIcon`) or in an explicitly 
 
 **Notes:** falls back to the hand-drawn "classic" set for any missing glyph. Monochrome
 sets inherit `currentColor` from `className`; color sets carry their own fills.
+
+---
+
+## SlotIcon
+
+The icon for one named *place* in the app (a "slot"), honouring any per-slot override an
+admin has uploaded.
+
+- **Source:** [src/components/slot-icon.tsx](src/components/slot-icon.tsx)
+- **Import:** `import { SlotIcon } from "@/components/slot-icon";`
+- **Client component:** yes
+
+```tsx
+// The slot definition comes from the registry, so this stays presentation-only.
+const QUOTE_SLOT = getIconSlot("homescreen_card_daily_quote");
+
+<SlotIcon slot={QUOTE_SLOT} className="h-4 w-4" />
+```
+
+**Used by:** [daily-quote-widget.tsx](src/app/(protected)/daily-quote-widget.tsx) (the
+pilot call site) and the per-slot list in
+[admin/configuration/icons/slots-view.tsx](src/app/(protected)/admin/configuration/icons/slots-view.tsx).
+
+**When to reach for this instead of `TreeIcon`.** Use `SlotIcon` where the icon marks a
+*location* someone might reasonably want to re-skin — a home-screen card, a nav section,
+an admin page. Keep using `TreeIcon` directly for **row actions** (pencil, trash, refresh)
+and for **state glyphs** (`star` vs `star-filled`): those are buttons and states, not
+places, and letting someone override half of a state pair would break the distinction the
+pair exists to carry. It is the same line `ALWAYS_CLASSIC` draws inside `tree-icons.tsx`.
+
+**Two ways a slot reaches the screen.** A *named call site* names its slot directly, as the
+Daily Quote card does. A *data-driven nav* can't — `SectionPanel` renders six different navs
+from data — so that one takes an `iconNamespace` prop and derives the slot per row with
+`sectionSlotId(namespace, node.id)`. If you are adding a nav rather than a card, follow the
+second pattern; see `modules.md` → *Icon slots*.
+
+**Notes:** resolution runs *override → the active set's glyph for the slot's default
+concept → hand-drawn fallback*. The last two steps are exactly what `TreeIcon`/`ModuleIcon`
+already do, so **an un-overridden slot renders identically to the call site it replaced** —
+which is what lets call sites convert one at a time. An SVG override is inlined (so it
+tints to the theme accent like a built-in glyph); a raster override is an `<img>` and keeps
+its own colors. See [src/lib/icons/slots.ts](src/lib/icons/slots.ts) for the registry and
+`migrations/0066_create_icon_slot_overrides.md` for the reasoning.
+
+---
+
+## IconOverrideProvider / useIconOverrides
+
+Context supplying the per-slot icon overrides that apply to the *active* icon set.
+
+- **Source:** [src/components/icon-override-context.tsx](src/components/icon-override-context.tsx)
+- **Import:** `import { IconOverrideProvider, useIconOverrides } from "@/components/icon-override-context";`
+- **Client component:** yes
+
+```tsx
+// Mounted once in the root layout, inside IconSetProvider:
+<IconOverrideProvider value={iconOverrides}>{children}</IconOverrideProvider>
+```
+
+**Used by:** [src/app/layout.tsx](src/app/layout.tsx) (provider); `SlotIcon` (consumer).
+
+**Notes:** the map is read server-side scoped to the selected set, so it only holds
+overrides that can actually apply. Empty outside a provider, so a `SlotIcon` rendered
+standalone still draws its default glyph.
 
 ---
 

@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
-import { TreeIcon } from "@/components/tree-icons";
+import { SlotIcon } from "@/components/slot-icon";
+import { getIconSlot } from "@/lib/icons";
 import type { NamedMapping } from "@/lib/csv-import";
 import type {
   JournalEntry,
@@ -17,6 +18,13 @@ import type {
 import { journalEntriesFilterHref, TaxonomyIconThumbnail } from "./journal-shared";
 import { JournalEntryForm } from "./journal-entry-form";
 import { useJournalNewEntry } from "./journal-new-entry-context";
+
+// Resolved once at module scope — `getIconSlot` reads the static registry, no I/O. The
+// non-null assertions are safe because slots.test.ts asserts each id is registered.
+const STATS_SLOT = getIconSlot("journal_card_statistics")!;
+const TOP_TAGS_SLOT = getIconSlot("journal_heading_top_tags")!;
+const TOP_CATEGORIES_SLOT = getIconSlot("journal_heading_top_categories")!;
+const RECENT_SLOT = getIconSlot("journal_card_recent_entries")!;
 import { JournalImportView } from "./journal-import-view";
 import { runJournalSqlAction } from "./journal-actions";
 
@@ -229,14 +237,14 @@ export function JournalView({
 
       <CollapsibleCard
         title="Statistics"
-        titleIcon={<TreeIcon name="chart" className="h-4 w-4" />}
+        titleIcon={<SlotIcon slot={STATS_SLOT} className="h-4 w-4" />}
         defaultOpen={topTags.length > 0 || topCategories.length > 0}
       >
         {/* Two lists side by side on a wide screen, stacked below lg. */}
         <div className="grid gap-8 lg:grid-cols-2">
           <TaxonomyList
             heading="Top Tags"
-            icon={<TreeIcon name="chart" className="h-4 w-4" />}
+            icon={<SlotIcon slot={TOP_TAGS_SLOT} className="h-4 w-4" />}
             counts={topTags}
             emptyMessage="No tags yet."
             hrefFor={(name) => journalEntriesFilterHref("tag", name)}
@@ -245,7 +253,7 @@ export function JournalView({
           />
           <TaxonomyList
             heading="Top Categories"
-            icon={<TreeIcon name="shapes" className="h-4 w-4" />}
+            icon={<SlotIcon slot={TOP_CATEGORIES_SLOT} className="h-4 w-4" />}
             counts={topCategories}
             emptyMessage="No categories yet."
             hrefFor={(name) => journalEntriesFilterHref("category", name)}
@@ -263,7 +271,7 @@ export function JournalView({
           which of the two you're looking at. */}
       <CollapsibleCard
         title="Recent entries"
-        titleIcon={<TreeIcon name="list" className="h-4 w-4" />}
+        titleIcon={<SlotIcon slot={RECENT_SLOT} className="h-4 w-4" />}
         defaultOpen
         headerAction={
           sqlResult ? (

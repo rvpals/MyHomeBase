@@ -17,6 +17,7 @@ module is obvious from the name alone. New tables must follow this.
 | `jrn_` | MyJournal | `jrn_entries`, `jrn_categories`, `jrn_tags`, `jrn_entry_categories`, `jrn_entry_tags`, `jrn_entry_locations`, `jrn_entry_images`, `jrn_saved_filters` |
 | `exp_` | Expense tracker | `exp_transactions`, `exp_creditcard_accounts`, `exp_categories`, `exp_post_import_rules`, `exp_post_import_rule_actions` |
 | `att_` | Attendance | `att_students`, `att_classes`, `att_class_enrollments`, `att_attendance_records`, `att_attendance_entries`, `att_student_actions`, `att_attendance_entry_actions` |
+| `ico_` | Icon customisation — platform-wide, not a feature module | `ico_slot_overrides` |
 | `mus_` | Music Library | `mus_tracks`, `mus_albums`, `mus_scan_runs`, `mus_track_lyrics`, `mus_playlists`, `mus_playlist_tracks`, `mus_play_events`, `mus_magic_list`, `mus_magic_list_tracks`, `mus_play_queue`, `mus_play_queue_state` |
 
 The `rei_` prefix (Real Estate Investment) was retired when that module was
@@ -169,3 +170,105 @@ multipart with neither problem, and needs no `FileReader` in the browser. Conver
 base64 server-side if the use-case wants it. `saveModuleCarouselImageAction` is the
 worked example. Also check the size **client-side** before uploading, so an oversized
 file is refused instantly with the app's own wording instead of a 500.
+
+## Icons: use a slot, not a bare glyph name
+
+Every icon that marks a **place** in the app goes through `SlotIcon` and a registered
+entry in `ICON_SLOTS` ([src/lib/icons/slots.ts](src/lib/icons/slots.ts)) — never
+`<TreeIcon name="chart" />` at the call site. All 73 current positions are wired this
+way; a new feature or module should not reintroduce the old pattern.
+
+**Why.** A glyph name is a *concept*, and concepts are shared: `grid` is the dashboard
+in all five modules, `chart` is four different reports, `palette` is two admin screens.
+So a bare name is not addressable — there is no way to re-skin the Journal dashboard
+without also re-skinning Expense's, and nothing can enumerate where icons appear in
+order to offer the choice. A slot is a stable id for one position that *declares* a
+default concept, which makes the position addressable while keeping the glyph unchanged
+until someone overrides it.
+
+### Adding one
+
+1. Register the slot: `id`, `label`, `group`, `where` (the click path, shown in the
+   admin list), `defaultConcept` (a glyph that already renders correctly), `namespace`,
+   and `wired: true` once step 2 is done.
+2. At the call site, `const FOO_SLOT = getIconSlot("…")!` at **module scope** — the
+   registry is static, so this is not I/O — then `<SlotIcon slot={FOO_SLOT} … />`.
+
+A slot with no override renders exactly what the concept rendered before, so step 1
+alone changes nothing and step 2 is safe in isolation.
+
+### Propose the labels — don't invent them silently
+
+A slot's `id`, `label` and `where` are **user-facing and permanent**, so when a new module
+or feature introduces icon positions, **suggest the names and get them confirmed before
+writing them.** Present a short table — proposed id, label, where, default concept — and
+ask. Do not bury the naming inside the first implementation edit.
+
+The reason is the asymmetry: the `id` is written into `ico_slot_overrides.slot_id` and
+cannot be changed later without orphaning uploads, while `label` and `where` are the only
+things telling an admin which of seventy-odd rows they are about to replace. Both are
+cheap to get right up front and expensive to fix afterwards. It is also the point where a
+second opinion actually helps — whether a position deserves a slot at all (is it a place,
+or a row action?) and what to call it are judgement calls, not mechanical ones.
+
+Propose in this shape, then wait:
+
+| Proposed id | Label | Where | Default |
+|---|---|---|---|
+| `budget_section_main` | Dashboard | Budget → section panel → Dashboard. | `grid` |
+| `budget_card_forecast` | Forecast card | Budget → Dashboard → the Forecast card header. | `chart` |
+
+Follow the conventions already in the registry so a suggestion is easy to accept:
+`<area>_<kind>_<name>` in lower snake_case; `label` is the on-screen wording, not a
+restatement of the id; `where` is a click path ending in a full stop; `group` matches the
+sibling entries. Flag anything you decided *not* to slot and why — that list is as useful
+to review as the slots themselves.
+
+### Data-driven navs derive the id instead
+
+A nav rendered from a map (`*_SECTION_ICONS`, `adminNav`, `LIBRARY_VIEW_ICONS`) has no
+call site to name a slot at. Those pass a namespace once and derive per row —
+`sectionSlotId(namespace, node.id)` or `tabSlotId(namespace, view)`. This is why 51
+section icons became replaceable through one change in `section-panel.tsx` rather than
+51 edits. **A new module's sections need only `iconNamespace="<slug>"` on its shell plus
+the registry entries** — no per-section wiring.
+
+The derivation makes slot ids load-bearing: they must equal
+`<namespace>_section_<slug>` with hyphens turned to underscores (Expense's slugs are
+kebab, as are all of `adminNav`'s). A mismatch **does not throw** — it silently stops
+matching the override — so `slots.test.ts` enumerates every real section and tab slug
+and asserts each resolves. Extend those lists when adding a module.
+
+### What must NOT become a slot
+
+- **Row actions** — pencil, trash, refresh, search. They are buttons, and
+  `ALWAYS_CLASSIC` in `tree-icons.tsx` keeps them hand-drawn so an inline delete control
+  can't become full-colour artwork that weakens the destructive read.
+- **State glyphs** — `star`/`star-filled`, play/pause, the now-playing marker. The
+  outline-vs-solid contrast *is* the information; overriding half a pair destroys it.
+- **A module's own icon.** Already user-editable under Admin → Configuration → Module
+  Configuration, backed by `sys_modules.icon`. A slot would be a second, competing way
+  to set one value. (Administration is the sole exception: it has no `sys_modules` row,
+  so its glyph is a constant with no other way to change it.)
+- **A glyph chosen to mean something specific.** `Comments` slots only its default
+  `info` chip; a caller that asked for `note` or `clip` meant that, and routing all
+  three through one slot would let a single upload overwrite three meanings.
+
+### Ids are permanent
+
+Slot ids are written to `ico_slot_overrides.slot_id`. Renaming one — or renaming a
+module section slug that an id is derived from — orphans a user's uploaded icon
+silently. Once uploads exist, an id change needs an `UPDATE ico_slot_overrides`
+alongside it. Two mismatches were caught during the initial build and were free to fix
+only because nothing had shipped.
+
+### Uploaded SVG is sanitized on write
+
+`src/lib/shared/image-upload.ts` refuses SVG, correctly, because those bytes are served
+verbatim from our own origin. Slot overrides accept it anyway because the markup is
+**inlined**, which is what lets a custom glyph inherit `currentColor` and tint to the
+theme. Inlining also means the `sandbox` CSP in `api/journal/icon-response.ts` does not
+apply — it protects a file served as a document, not markup running in the page. So
+`sanitizeSvg` reduces the upload to an **allowlist** of drawing elements and
+presentation attributes at write time. If you ever store SVG for a new purpose, reuse
+that function; don't hand-roll a blocklist.
