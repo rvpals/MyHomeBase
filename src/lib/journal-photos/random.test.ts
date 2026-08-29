@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { buildJpegWithExif } from "./exif.fixture";
 import { pickRandomPhoto } from "./random";
 import type { PhotoFileStore } from "./ports";
 import type { PhotoRootCheck } from "./types";
@@ -12,11 +13,17 @@ interface FakeArchive {
   root?: PhotoRootCheck;
   folders?: Record<string, string[]>;
   photos?: Record<string, string[]>;
+  /** Header bytes by relative path, for the capture-date read. */
+  headers?: Record<string, Uint8Array>;
+  /** Relative paths whose header read throws, standing in for a dropped share. */
+  unreadableHeaders?: string[];
 }
 
 class FakeStore implements PhotoFileStore {
   /** Every folder listing asked for, in order -- used to bound the retry loop's I/O. */
   readonly folderReads: string[] = [];
+  /** Every header read asked for, to prove the draw reads one file and not a folder. */
+  readonly headerReads: string[] = [];
 
   constructor(private readonly archive: FakeArchive) {}
 
@@ -41,8 +48,12 @@ class FakeStore implements PhotoFileStore {
     return (this.archive.photos ?? {})[relativeFolder] ?? [];
   }
 
-  async readHeader(): Promise<Uint8Array | undefined> {
-    return undefined;
+  async readHeader(relativePath: string): Promise<Uint8Array | undefined> {
+    this.headerReads.push(relativePath);
+    if ((this.archive.unreadableHeaders ?? []).includes(relativePath)) {
+      throw new Error("share dropped");
+    }
+    return (this.archive.headers ?? {})[relativePath];
   }
 
   async readPhoto(): Promise<{ data: Uint8Array; mimeType: string } | undefined> {
@@ -202,5 +213,72 @@ describe("pickRandomPhoto", () => {
       if (pick.relativePath !== undefined) expect(paths.has(pick.relativePath)).toBe(true);
     }
     expect(store.folderReads).toEqual([]);
+  });
+});
+
+describe("pickRandomPhoto capture date", () => {
+  const archive = {
+    folders: { "": ["2019"], "2019": ["2019-06-09 Hiking"] },
+    photos: { "2019/2019-06-09 Hiking": ["IMG_20190609_143501.jpg"] },
+  };
+  const photoPath = "2019/2019-06-09 Hiking/IMG_20190609_143501.jpg";
+
+  it("reads the day from the photo's EXIF", async () => {
+    const store = new FakeStore({
+      ...archive,
+      // A stamp that deliberately DISAGREES with the file name, so the assertion
+      // proves EXIF won rather than that both happened to say the same thing.
+      headers: { [photoPath]: buildJpegWithExif({ dateTimeOriginal: "2019:06:10 00:01:12" }) },
+    });
+
+    const pick = await pickRandomPhoto(store, sequence(0));
+
+    expect(pick.takenAt).toBe("2019-06-10");
+    expect(pick.takenAtSource).toBe("exif");
+  });
+
+  it("falls back to the file name when there is no readable EXIF", async () => {
+    const store = new FakeStore(archive);
+
+    const pick = await pickRandomPhoto(store, sequence(0));
+
+    expect(pick.takenAt).toBe("2019-06-09");
+    expect(pick.takenAtSource).toBe("file-name");
+  });
+
+  it("falls back to the file name when the header read throws", async () => {
+    const store = new FakeStore({ ...archive, unreadableHeaders: [photoPath] });
+
+    const pick = await pickRandomPhoto(store, sequence(0));
+
+    expect(pick.takenAt).toBe("2019-06-09");
+    expect(pick.takenAtSource).toBe("file-name");
+  });
+
+  it("still returns the photo when no date can be found at all", async () => {
+    const store = new FakeStore({
+      folders: { "": ["2019"], "2019": ["2019-06"] },
+      photos: { "2019/2019-06": ["scan.jpg"] },
+    });
+
+    const pick = await pickRandomPhoto(store, sequence(0));
+
+    // The picture is the point of the card; a missing timestamp is not a failed draw.
+    expect(pick.relativePath).toBe("2019/2019-06/scan.jpg");
+    expect(pick.takenAt).toBeUndefined();
+    expect(pick.takenAtSource).toBeUndefined();
+  });
+
+  it("reads the header of only the photo it picked", async () => {
+    const store = new FakeStore({
+      folders: { "": ["2019"], "2019": ["2019-06"] },
+      photos: { "2019/2019-06": ["a.jpg", "b.jpg", "c.jpg"] },
+    });
+
+    await pickRandomPhoto(store, sequence(0));
+
+    // The whole cost model of this file: a draw is three listings plus ONE header
+    // read, never a scan of the folder it landed in.
+    expect(store.headerReads).toEqual(["2019/2019-06/a.jpg"]);
   });
 });

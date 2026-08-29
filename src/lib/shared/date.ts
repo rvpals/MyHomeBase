@@ -71,3 +71,105 @@ export function startOfMonthIso(isoDate: string): string {
 export function startOfYearIso(isoDate: string): string {
   return `${parseIsoDateLocal(isoDate).getFullYear()}-01-01`;
 }
+
+/**
+ * A span expressed the way a person counts one: whole years, then whole months, then
+ * leftover days.
+ *
+ * All three are non-negative. A future date yields all zeros rather than negatives —
+ * see `calendarAgeSince`.
+ */
+export interface CalendarAge {
+  years: number;
+  months: number;
+  days: number;
+}
+
+/**
+ * How long ago `isoDate` was, in calendar years, months and days.
+ *
+ * Calendar arithmetic, not division. `days / 365` would call a photo taken on
+ * 2019-06-09 and viewed on 2025-06-09 "5 years, 11 months" because of the leap days in
+ * between, when the answer a reader wants is "6 years". So the units are subtracted
+ * field by field and borrowed when negative — days from the length of the month
+ * preceding `now`, months from a year — which is what makes an exact anniversary come
+ * out as a clean `{ years: n, months: 0, days: 0 }`.
+ *
+ * The months are counted by walking `isoDate` forward a month at a time and measuring
+ * what is left, rather than by subtracting the day-of-month fields and borrowing. A
+ * borrow has to pick *some* month to borrow from, and every choice is wrong somewhere:
+ * borrowing from the month before `now` turns 2026-01-31 -> 2026-03-01 into "1 month,
+ * -2 days" (February's 28 can't cover a 30-day deficit), and borrowing from the month
+ * `isoDate` falls in overstates every ordinary mid-month span. Walking sidesteps the
+ * choice — the leftover is a real count of days between two real dates, so it can
+ * never come out negative.
+ *
+ * The one subtlety is what "one month after the 31st" means when the target month is
+ * shorter. It clamps to the last day of that month, so 2026-01-31 + 1 month is 28 Feb
+ * and the span to 2026-03-01 reads "1 month, 1 day" — the answer a person gives. The
+ * clamp is also what keeps an exact anniversary at `{ years: n, months: 0, days: 0 }`.
+ *
+ * A date in the future returns all zeros. A camera with a wrong clock, or a photo
+ * copied with a stamp from next week, is not worth a "-3 days" in a card title, and
+ * the caller cannot do anything more useful with a negative span than treat it as now.
+ *
+ * `now` is a parameter so callers and tests are not at the mercy of the clock.
+ */
+export function calendarAgeSince(isoDate: string, now: Date = new Date()): CalendarAge {
+  const then = parseIsoDateLocal(isoDate);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (then.getTime() >= today.getTime()) return { years: 0, months: 0, days: 0 };
+
+  /**
+   * `then` advanced by `count` whole months, clamped to the last day of the target
+   * month. Day 0 of the following month is that month's last day, which is where the
+   * 28/29/30/31 comes from — no leap-year special case anywhere in this file.
+   */
+  const monthsAfterThen = (count: number): Date => {
+    const lastDayOfTarget = new Date(then.getFullYear(), then.getMonth() + count + 1, 0).getDate();
+    return new Date(
+      then.getFullYear(),
+      then.getMonth() + count,
+      Math.min(then.getDate(), lastDayOfTarget),
+    );
+  };
+
+  // The month gap by field, then one step back if that lands past `now` — which it
+  // does whenever the day-of-month hasn't come round yet.
+  let months =
+    (today.getFullYear() - then.getFullYear()) * 12 + (today.getMonth() - then.getMonth());
+  if (monthsAfterThen(months).getTime() > today.getTime()) months -= 1;
+
+  // Both are local midnight, so this division is exact except across a DST boundary,
+  // where one of the days is 23 or 25 hours long — hence the rounding.
+  const days = Math.round((today.getTime() - monthsAfterThen(months).getTime()) / 86_400_000);
+
+  return { years: Math.floor(months / 12), months: months % 12, days };
+}
+
+/** `1 day` / `2 days`, and the same for the other two units. */
+function unit(value: number, name: string): string {
+  return `${value} ${name}${value === 1 ? "" : "s"}`;
+}
+
+/**
+ * A `CalendarAge` as English: `"6 years, 2 months, 20 days ago"`.
+ *
+ * Zero units are dropped, so an exact anniversary reads `"6 years ago"` rather than
+ * `"6 years, 0 months, 0 days ago"`, and a photo from last week reads `"3 days ago"`
+ * with no leading zeros to wade through. An all-zero span — today, or a future date
+ * `calendarAgeSince` clamped — is `"today"`, since "0 days ago" is a strange way to
+ * say it.
+ *
+ * Middle zeros are dropped too: `{ years: 2, months: 0, days: 5 }` is "2 years,
+ * 5 days ago". Keeping the "0 months" would be more literal and reads worse.
+ */
+export function formatCalendarAge(age: CalendarAge): string {
+  const parts: string[] = [];
+  if (age.years > 0) parts.push(unit(age.years, "year"));
+  if (age.months > 0) parts.push(unit(age.months, "month"));
+  if (age.days > 0) parts.push(unit(age.days, "day"));
+
+  if (parts.length === 0) return "today";
+  return `${parts.join(", ")} ago`;
+}

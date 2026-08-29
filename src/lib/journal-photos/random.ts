@@ -1,3 +1,5 @@
+import { EXIF_HEADER_BYTES, readExifDate } from "./exif";
+import { dateFromFileName } from "./paths";
 import type { PhotoFileStore } from "./ports";
 import type { PhotoRootCheck } from "./types";
 import type { RandomSource } from "@/lib/shared/random";
@@ -57,6 +59,18 @@ export interface RandomPhotoPick {
   folderName?: string;
   /** The year folder it came from, e.g. `2019`. */
   year?: string;
+  /**
+   * The day it was taken, `YYYY-MM-DD`, or `undefined` when nothing readable says.
+   *
+   * Only the day, not the instant: that is all EXIF's `DateTimeOriginal` is parsed
+   * down to elsewhere in this module, and "how long ago" is a question about days.
+   */
+  takenAt?: string;
+  /**
+   * Where `takenAt` came from — the same vocabulary as `PhotoFile.matchedBy`, so a
+   * reader can tell a camera's own stamp from a guess off the file name.
+   */
+  takenAtSource?: "exif" | "file-name";
 }
 
 /**
@@ -119,13 +133,16 @@ export async function pickRandomPhoto(
     const name = pickOne(photoNames, random);
     if (name === undefined) continue;
 
+    const relativePath = `${relativeFolder}/${name}`;
+
     return {
       isAvailable: true,
       rootPath: rootCheck.path,
       name,
-      relativePath: `${relativeFolder}/${name}`,
+      relativePath,
       folderName,
       year,
+      ...(await takenDateOf(store, relativePath, name)),
     };
   }
 
@@ -146,4 +163,41 @@ function pickOne<T>(items: readonly T[], random: RandomSource): T | undefined {
   if (items.length === 0) return undefined;
   const index = Math.min(Math.max(Math.floor(random() * items.length), 0), items.length - 1);
   return items[index];
+}
+
+/**
+ * When one photograph was taken, and on what evidence.
+ *
+ * EXIF first, the file name second, nothing third — the same order and the same
+ * reasoning as `matchPhoto` in photos.ts: a camera's own stamp beats a name that a
+ * copy or a rename can have got wrong.
+ *
+ * One extra partial read per draw, and only ever for the single file that was picked —
+ * not for the folder it sits in. That is what keeps this affordable on a card that
+ * redraws on a button press: the walk above is three directory listings, and this adds
+ * one header read of a few KB, not a scan.
+ *
+ * Never throws and never returns a reason. A photo whose header cannot be read, or
+ * whose metadata is missing or corrupt, simply has no date — the card drops the age
+ * from its title and still shows the picture, which is the only sensible outcome. A
+ * missing timestamp is not a failed draw.
+ */
+async function takenDateOf(
+  store: PhotoFileStore,
+  relativePath: string,
+  name: string,
+): Promise<{ takenAt?: string; takenAtSource?: "exif" | "file-name" }> {
+  try {
+    const header = await store.readHeader(relativePath, EXIF_HEADER_BYTES);
+    const fromExif = header === undefined ? undefined : readExifDate(header);
+    if (fromExif !== undefined) return { takenAt: fromExif, takenAtSource: "exif" };
+  } catch {
+    // A read that fails on this one file — a permission, a dropped share mid-draw.
+    // Falls through to the file name, which needs no I/O at all.
+  }
+
+  const fromName = dateFromFileName(name);
+  if (fromName !== undefined) return { takenAt: fromName, takenAtSource: "file-name" };
+
+  return {};
 }

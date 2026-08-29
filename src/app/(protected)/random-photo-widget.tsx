@@ -11,6 +11,7 @@ import { PhotoLightbox } from "@/components/photo-lightbox";
 import { SlotIcon } from "@/components/slot-icon";
 import { getIconSlot } from "@/lib/icons";
 import type { RandomPhotoPick } from "@/lib/journal-photos";
+import { calendarAgeSince, formatCalendarAge } from "@/lib/shared/date";
 import { drawRandomPhotoAction } from "./random-photo-actions";
 
 function RefreshIcon({ className = "" }: { className?: string }) {
@@ -67,6 +68,29 @@ function messageFor(pick: RandomPhotoPick): string {
   }
 }
 
+/**
+ * The card's title, with how long ago the photograph was taken when that is known.
+ *
+ * Computed on the client, per render, deliberately: the age is relative to *now*, and
+ * baking it into the server payload would leave a tab open overnight claiming a photo
+ * is a day younger than it is. The pick carries the capture DATE; the arithmetic
+ * against today belongs wherever it is being read.
+ *
+ * A photo with no readable date, or no photo at all, gets the bare title rather than a
+ * placeholder — there is nothing honest to put in its place. The same for a date that
+ * will not parse: `calendarAgeSince` throws on one, and both producers of `takenAt`
+ * validate, but the value arrives over a server-action boundary and a home screen that
+ * goes blank over a card title is not a trade worth making.
+ */
+function titleFor(pick: RandomPhotoPick, now: Date): string {
+  if (pick.takenAt === undefined) return "Random photo";
+  try {
+    return `Random photo · ${formatCalendarAge(calendarAgeSince(pick.takenAt, now))}`;
+  } catch {
+    return "Random photo";
+  }
+}
+
 export function RandomPhotoWidget({
   initialPick,
   className,
@@ -96,6 +120,10 @@ export function RandomPhotoWidget({
   }
 
   const hasPhoto = pick.relativePath !== undefined;
+  // `new Date()` in the render body, not in state: a fresh draw re-renders anyway, and
+  // the value only ever needs to be right at the moment the title is drawn. Day-level
+  // arithmetic, so there is nothing here for a ticking clock to keep up with.
+  const title = titleFor(pick, new Date());
   const caption = pick.folderName !== undefined ? `${pick.folderName} / ${pick.name}` : pick.name;
 
   return (
@@ -103,7 +131,7 @@ export function RandomPhotoWidget({
     // opens shut would only ever show its own title. The refresh button lives in
     // `headerAction` so it stays reachable and doesn't toggle the card.
     <CollapsibleCard
-      title="Random photo"
+      title={title}
       titleIcon={
         RANDOM_PHOTO_SLOT ? <SlotIcon slot={RANDOM_PHOTO_SLOT} className="h-4 w-4" /> : undefined
       }
