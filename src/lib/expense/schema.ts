@@ -27,6 +27,8 @@ export const creditCardAccountSchema = z.object({
 export const MAX_CARD_IMAGE_BYTES = 512 * 1024;
 /** Cap for a category icon: a quarter of the card cap, since it renders tiny. */
 export const MAX_CATEGORY_ICON_BYTES = 128 * 1024;
+/** Cap for a vendor icon. Same cap as a category icon — it renders at the same size. */
+export const MAX_VENDOR_ICON_BYTES = 128 * 1024;
 
 // The upload shape and its type allowlist live in @/lib/shared/image-upload, which
 // every module storing image bytes shares. Re-exported under the old names so this
@@ -59,6 +61,22 @@ export const saveCategorySchema = z.object({
 
 export type SaveCategoryInput = z.input<typeof saveCategorySchema>;
 export type CategoryWriteData = z.output<typeof saveCategorySchema>;
+
+export const expenseVendorSchema = z.object({
+  name: z.string().min(1),
+  description: z.string(),
+  iconMimeType: z.string().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const saveVendorSchema = z.object({
+  name: z.string().trim().min(1, "Vendor name is required."),
+  description: z.string().trim().default(""),
+});
+
+export type SaveVendorInput = z.input<typeof saveVendorSchema>;
+export type VendorWriteData = z.output<typeof saveVendorSchema>;
 
 export const expenseTransactionSchema = z.object({
   id: z.number().int().positive(),

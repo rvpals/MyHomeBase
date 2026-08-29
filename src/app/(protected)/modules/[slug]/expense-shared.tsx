@@ -2,7 +2,7 @@
 // of the section views so importing a helper never drags a whole screen with it.
 
 import type { IconSelectOption } from "@/components/icon-select";
-import type { CreditCardAccount, ExpenseCategory } from "@/lib/expense";
+import type { CreditCardAccount, ExpenseCategory, ExpenseVendor } from "@/lib/expense";
 
 /** Cents to a signed currency string, e.g. -4500 → "-$45.00". */
 export function formatCents(cents: number): string {
@@ -55,6 +55,69 @@ export function categoryIconUrlsByName(categories: ExpenseCategory[]): Map<strin
 
 /** A category's icon at label size, or nothing when it has none. */
 export function CategoryIconThumbnail({
+  iconUrl,
+  className = "",
+}: {
+  iconUrl?: string;
+  className?: string;
+}) {
+  if (!iconUrl) return null;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- icon bytes are served from our own DB-backed route, not a static asset next/image can optimize.
+    <img
+      src={iconUrl}
+      alt=""
+      loading="lazy"
+      className={`h-5 w-5 shrink-0 rounded border border-line object-cover ${className}`}
+    />
+  );
+}
+
+/**
+ * A vendor's icon URL, or undefined when it has none.
+ *
+ * Takes the two fields it needs rather than an `ExpenseVendor`, because the
+ * screens that render vendor icons mostly hold a `VendorListEntry` (the merge of
+ * saved rows and derived rollups) rather than a saved vendor. An unsaved vendor
+ * has no `iconMimeType`, so it correctly yields nothing.
+ */
+export function vendorIconUrl(vendor: {
+  name: string;
+  iconMimeType?: string;
+  updatedAt: string;
+}): string | undefined {
+  if (!vendor.iconMimeType) return undefined;
+  return `/api/expense/vendors/${encodeURIComponent(vendor.name)}/icon?v=${encodeURIComponent(
+    vendor.updatedAt,
+  )}`;
+}
+
+/**
+ * Name -> icon URL for the screens that only have a vendor *name* to render —
+ * the transactions grid, the spend rollups, the charts.
+ *
+ * **Upper-cased keys.** A transaction's vendor text and the saved vendor's
+ * spelling need not agree on case ("Costco" vs "COSTCO"), and the repository
+ * matches them case-insensitively, so the lookup has to as well or the icon
+ * silently fails to appear. Read it through `vendorIconFor`, which applies the
+ * same normalisation, rather than calling `.get()` directly.
+ */
+export function vendorIconUrlsByName(vendors: ExpenseVendor[]): Map<string, string> {
+  const urls = new Map<string, string>();
+  for (const vendor of vendors) {
+    const url = vendorIconUrl(vendor);
+    if (url) urls.set(vendor.name.toUpperCase(), url);
+  }
+  return urls;
+}
+
+/** The icon URL for one vendor name, case-insensitively. Pairs with the map above. */
+export function vendorIconFor(urls: Map<string, string>, vendorName: string): string | undefined {
+  return urls.get(vendorName.trim().toUpperCase());
+}
+
+/** A vendor's icon at label size, or nothing when it has none. */
+export function VendorIconThumbnail({
   iconUrl,
   className = "",
 }: {

@@ -3,6 +3,7 @@ import type { ExpenseRepository, TransactionFilter } from "./ports";
 import {
   creditCardAccountSchema,
   expenseCategorySchema,
+  expenseVendorSchema,
   expenseTransactionSchema,
   postImportRuleSchema,
 } from "./schema";
@@ -12,6 +13,7 @@ import type {
   CategoryWriteData,
   PostImportRuleWriteData,
   TransactionWriteData,
+  VendorWriteData,
 } from "./schema";
 import type {
   CardImage,
@@ -20,8 +22,10 @@ import type {
   CreditCardAccount,
   ExpenseCategory,
   ExpenseTransaction,
+  ExpenseVendor,
   PostImportRule,
   RuleActionField,
+  VendorIcon,
 } from "./types";
 
 interface AccountRow {
@@ -52,6 +56,18 @@ interface CategoryRow {
 // and omits `icon_image`, so the icon bytes never ride along with a list or a page
 // render. Only getCategoryIcon/setCategoryIcon touch that column.
 const CATEGORY_COLUMNS = "name, description, icon_image_mime_type, created_at, updated_at";
+
+interface VendorRow {
+  name: string;
+  description: string;
+  icon_image_mime_type: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Same discipline as CATEGORY_COLUMNS: no `icon_image` here, so the blob never
+// rides along with a list or a page render.
+const VENDOR_COLUMNS = "name, description, icon_image_mime_type, created_at, updated_at";
 
 interface TransactionRow {
   id: number;
@@ -103,6 +119,16 @@ function accountToDomain(row: AccountRow): CreditCardAccount {
 
 function categoryToDomain(row: CategoryRow): ExpenseCategory {
   return expenseCategorySchema.parse({
+    name: row.name,
+    description: row.description,
+    iconMimeType: row.icon_image_mime_type ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  });
+}
+
+function vendorToDomain(row: VendorRow): ExpenseVendor {
+  return expenseVendorSchema.parse({
     name: row.name,
     description: row.description,
     iconMimeType: row.icon_image_mime_type ?? undefined,
@@ -163,6 +189,14 @@ const BULK_EDITABLE_COLUMNS: Record<keyof BulkTransactionEditData, string> = {
   note: "note",
   status: "status",
   processed: "processed",
+};
+
+/** The column behind each field a rule can assign, shared by both write paths. */
+const RULE_FIELD_COLUMNS: Record<RuleActionField, string> = {
+  categoryName: "category_name",
+  vendor: "vendor",
+  status: "status",
+  note: "note",
 };
 
 /**
@@ -352,6 +386,90 @@ export class SqliteExpenseRepository implements ExpenseRepository {
     })();
   }
 
+  // --- vendors --------------------------------------------------------------
+  //
+  // Names match case-insensitively throughout (`COLLATE NOCASE`, backed by the
+  // exp_vendors_name_nocase index from migration 0068), because vendorGroupKey
+  // already upper-cases before grouping — so one rollup group must never be able
+  // to match two rows. The stored spelling is preserved as typed.
+
+  listVendors(): ExpenseVendor[] {
+    const rows = this.db
+      .prepare(`SELECT ${VENDOR_COLUMNS} FROM exp_vendors ORDER BY name ASC`)
+      .all() as VendorRow[];
+    return rows.map(vendorToDomain);
+  }
+
+  getVendorByName(name: string): ExpenseVendor | undefined {
+    const row = this.db
+      .prepare(`SELECT ${VENDOR_COLUMNS} FROM exp_vendors WHERE name = ? COLLATE NOCASE`)
+      .get(name) as VendorRow | undefined;
+    return row ? vendorToDomain(row) : undefined;
+  }
+
+  getVendorIcon(name: string): VendorIcon | undefined {
+    const row = this.db
+      .prepare(
+        "SELECT icon_image, icon_image_mime_type FROM exp_vendors WHERE name = ? COLLATE NOCASE",
+      )
+      .get(name) as { icon_image: Buffer | null; icon_image_mime_type: string | null } | undefined;
+    if (!row || !row.icon_image || !row.icon_image_mime_type) return undefined;
+    return { data: row.icon_image, mimeType: row.icon_image_mime_type };
+  }
+
+  setVendorIcon(name: string, icon: VendorIcon | undefined): void {
+    this.db
+      .prepare(
+        "UPDATE exp_vendors SET icon_image = ?, icon_image_mime_type = ? WHERE name = ? COLLATE NOCASE",
+      )
+      .run(icon?.data ?? null, icon?.mimeType ?? null, name);
+  }
+
+  upsertVendor(input: VendorWriteData): ExpenseVendor {
+    // Case-insensitive by hand rather than through ON CONFLICT: the conflict
+    // target is the PRIMARY KEY, which is case-*sensitive*, so saving "Costco"
+    // over a stored "COSTCO" would insert a second row and trip the NOCASE
+    // index instead of updating. Looking first also lets a re-save under a
+    // different casing keep the original spelling rather than silently
+    // rewriting it.
+    return this.db.transaction(() => {
+      const existing = this.getVendorByName(input.name);
+      if (existing) {
+        this.db
+          .prepare("UPDATE exp_vendors SET description = ? WHERE name = ? COLLATE NOCASE")
+          .run(input.description, existing.name);
+      } else {
+        this.db
+          .prepare("INSERT INTO exp_vendors (name, description) VALUES (@name, @description)")
+          .run(input);
+      }
+      const saved = this.getVendorByName(input.name);
+      if (!saved) throw new Error(`Failed to read back vendor "${input.name}".`);
+      return saved;
+    })();
+  }
+
+  deleteVendor(name: string): void {
+    // Only the row and its icon go. Unlike deleteCategory this leaves
+    // exp_transactions.vendor alone: blanking it would throw away the tidied
+    // name post-import processing worked out, and the vendor would vanish from
+    // the rollups rather than simply losing its icon.
+    this.db.prepare("DELETE FROM exp_vendors WHERE name = ? COLLATE NOCASE").run(name);
+  }
+
+  registerVendorsIfMissing(names: string[]): void {
+    // NOCASE-guarded rather than INSERT OR IGNORE on the PK: a differently-cased
+    // duplicate would pass the PK check and only then hit the unique index.
+    const exists = this.db.prepare("SELECT 1 FROM exp_vendors WHERE name = ? COLLATE NOCASE");
+    const insert = this.db.prepare("INSERT INTO exp_vendors (name) VALUES (?)");
+    this.db.transaction(() => {
+      for (const name of names) {
+        if (name.trim() === "") continue;
+        if (!exists.get(name)) insert.run(name);
+      }
+    })();
+  }
+
   // --- transactions ---------------------------------------------------------
 
   listTransactions(filter?: TransactionFilter): ExpenseTransaction[] {
@@ -496,19 +614,12 @@ export class SqliteExpenseRepository implements ExpenseRepository {
     // Built dynamically so untouched columns keep their values, and always
     // marking processed in the same statement — a row can't end up changed but
     // still queued.
-    const columnByField: Record<RuleActionField, string> = {
-      categoryName: "category_name",
-      vendor: "vendor",
-      status: "status",
-      note: "note",
-    };
-
     const setClauses: string[] = ["processed = 1"];
     const params: Record<string, string | number> = { id };
 
     for (const [field, value] of Object.entries(assignments)) {
       if (value === undefined) continue;
-      const column = columnByField[field as RuleActionField];
+      const column = RULE_FIELD_COLUMNS[field as RuleActionField];
       setClauses.push(`${column} = @${field}`);
       params[field] = value;
     }
@@ -516,6 +627,36 @@ export class SqliteExpenseRepository implements ExpenseRepository {
     this.db
       .prepare(`UPDATE exp_transactions SET ${setClauses.join(", ")} WHERE id = @id`)
       .run(params);
+  }
+
+  forceApplyRuleAssignments(
+    updates: { id: number; assignments: Partial<Record<RuleActionField, string>> }[],
+  ): number {
+    if (updates.length === 0) return 0;
+
+    // One transaction for the whole run: a half-applied rule would leave the
+    // user unable to tell which rows had been rewritten. Deliberately does not
+    // touch `processed` — this path is outside the import queue.
+    return this.db.transaction(() => {
+      let changed = 0;
+      for (const update of updates) {
+        const setClauses: string[] = [];
+        const params: Record<string, string | number> = { id: update.id };
+
+        for (const [field, value] of Object.entries(update.assignments)) {
+          if (value === undefined) continue;
+          setClauses.push(`${RULE_FIELD_COLUMNS[field as RuleActionField]} = @${field}`);
+          params[field] = value;
+        }
+        if (setClauses.length === 0) continue;
+
+        const result = this.db
+          .prepare(`UPDATE exp_transactions SET ${setClauses.join(", ")} WHERE id = @id`)
+          .run(params);
+        changed += result.changes;
+      }
+      return changed;
+    })();
   }
 
   resetProcessedFlags(): number {

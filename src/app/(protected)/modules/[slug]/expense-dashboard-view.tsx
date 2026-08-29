@@ -1,9 +1,20 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { CollapsibleCard } from "@/components/collapsible-card";
-import type { CategoryTotal, ExpenseCategory, VendorTotal } from "@/lib/expense";
+import type {
+  CategoryTotal,
+  ExpenseCategory,
+  ExpenseVendor,
+  VendorTotal,
+} from "@/lib/expense";
 import { expenseSectionHref } from "./expense-sections";
-import { CategoryIconThumbnail, categoryIconUrlsByName, formatCents } from "./expense-shared";
+import {
+  CategoryIconThumbnail,
+  categoryIconUrlsByName,
+  formatCents,
+  vendorIconFor,
+  vendorIconUrlsByName,
+} from "./expense-shared";
 
 /** One headline number. Highlighted when it represents outstanding work. */
 function Tile({
@@ -100,6 +111,7 @@ export function ExpenseDashboardView({
   topVendors,
   topCategories,
   categories,
+  vendors,
 }: {
   totalCents: number;
   transactionCount: number;
@@ -110,8 +122,11 @@ export function ExpenseDashboardView({
   topCategories: CategoryTotal[];
   /** Only for their icons — a rollup carries a category name, not its icon. */
   categories: ExpenseCategory[];
+  /** Likewise: a vendor rollup carries only the name. */
+  vendors: ExpenseVendor[];
 }) {
   const categoryIconUrls = categoryIconUrlsByName(categories);
+  const vendorIconUrls = vendorIconUrlsByName(vendors);
   const noTransactions = transactionCount === 0;
 
   return (
@@ -154,6 +169,7 @@ export function ExpenseDashboardView({
                 key={total.vendor || "unknown"}
                 label={total.vendor === "" ? "unknown" : total.vendor}
                 isPlaceholder={total.vendor === ""}
+                iconUrl={vendorIconFor(vendorIconUrls, total.vendor)}
                 transactionCount={total.transactionCount}
                 totalCents={total.totalCents}
               />

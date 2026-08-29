@@ -15,6 +15,7 @@ import {
   type CreditCardAccount,
   type ExpenseCategory,
   type ExpenseTransaction,
+  type ExpenseVendor,
   type TransactionStatus,
 } from "@/lib/expense";
 import {
@@ -27,10 +28,13 @@ import { expenseSectionHref } from "./expense-sections";
 import {
   CardThumbnail,
   CategoryIconThumbnail,
+  VendorIconThumbnail,
   categoryIconSelectOptions,
   categoryIconUrlsByName,
   formatCents,
   todayIso,
+  vendorIconFor,
+  vendorIconUrlsByName,
 } from "./expense-shared";
 
 /** What the picker calls an empty category — blank means "not categorised yet". */
@@ -518,10 +522,12 @@ export function ExpenseTransactionsView({
   transactions,
   accounts,
   categories,
+  vendors,
 }: {
   transactions: ExpenseTransaction[];
   accounts: CreditCardAccount[];
   categories: ExpenseCategory[];
+  vendors: ExpenseVendor[];
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState<ExpenseTransaction | undefined>(undefined);
@@ -539,6 +545,9 @@ export function ExpenseTransactionsView({
   // A row carries only the category *name*, so the grid looks its icon up here
   // rather than scanning the category list per cell.
   const categoryIconUrls = categoryIconUrlsByName(categories);
+  // Same for the vendor, which is a bare string on the row. Keyed case-insensitively
+  // (see vendorIconUrlsByName) since a row's spelling need not match the saved one.
+  const vendorIconUrls = vendorIconUrlsByName(vendors);
 
   async function handleBulkDelete(rows: ExpenseTransaction[], clearSelection: () => void) {
     if (!window.confirm(`Delete ${rows.length} transaction(s)? This can't be undone.`)) return;
@@ -606,7 +615,20 @@ export function ExpenseTransactionsView({
         </span>
       ),
     },
-    { key: "vendor", header: "Vendor", value: (row) => row.vendor, render: (row) => row.vendor },
+    {
+      key: "vendor",
+      header: "Vendor",
+      value: (row) => row.vendor,
+      render: (row) =>
+        row.vendor === "" ? (
+          ""
+        ) : (
+          <span className="flex items-center gap-2">
+            <VendorIconThumbnail iconUrl={vendorIconFor(vendorIconUrls, row.vendor)} />
+            <span>{row.vendor}</span>
+          </span>
+        ),
+    },
     {
       key: "category",
       header: "Category",

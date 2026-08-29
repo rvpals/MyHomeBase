@@ -10,7 +10,7 @@
 // shape you'd write by hand.
 
 import type { ExpenseRepository, TransactionFilter } from "./ports";
-import type { ExpenseTransaction, VendorTotal } from "./types";
+import type { ExpenseTransaction, ExpenseVendor, VendorTotal } from "./types";
 
 /**
  * Payment aggregators that print their own name ahead of the merchant's, e.g.
@@ -100,4 +100,87 @@ export function vendorTotals(transactions: ExpenseTransaction[]): VendorTotal[] 
 /** Spend per vendor straight from the repository, biggest total first. */
 export function totalsByVendor(repo: ExpenseRepository, filter?: TransactionFilter): VendorTotal[] {
   return vendorTotals(repo.listTransactions(filter));
+}
+
+/**
+ * One row of the Meta Data vendor list: a vendor name plus whatever is known
+ * about it from either side.
+ */
+export interface VendorListEntry {
+  /** Display name — the saved spelling when there is a row, else the derived one. */
+  name: string;
+  description: string;
+  iconMimeType?: string;
+  /** Cache-buster source for the icon URL; empty when the vendor isn't saved. */
+  updatedAt: string;
+  /** True once a row exists, i.e. the vendor can be edited and deleted. */
+  isSaved: boolean;
+  /** True when transactions reference this name, so it drives the rollups. */
+  isInUse: boolean;
+  totalCents: number;
+  transactionCount: number;
+}
+
+/**
+ * The vendor list the Meta Data screen shows: every vendor the transactions
+ * mention, merged with every vendor that has been saved.
+ *
+ * Neither side alone is enough. The saved table starts empty and would show
+ * nothing to work with; the derived rollups know nothing about descriptions or
+ * icons. Merging means you can give an icon to a vendor that only exists on a
+ * statement, and a saved vendor whose transactions have all been deleted still
+ * shows up so you can delete it.
+ *
+ * Keyed case-insensitively, matching `vendorGroupKey` and the NOCASE index on
+ * `exp_vendors` — so a row stored as "COSTCO" decorates a group derived as
+ * "Costco". The saved spelling wins as the display name, since that's the one
+ * a person typed.
+ *
+ * Pure: the caller supplies both sides. **Saved vendors sort first**, then the
+ * derived-only ones — the saved rows are the ones you've curated, so they're what
+ * you come back to edit, while the unsaved tail is a backlog to work through.
+ * Within each group it's biggest spend first, then name, so the order is stable
+ * and the vendors that matter lead each half.
+ */
+export function mergeVendorsWithTotals(
+  saved: ExpenseVendor[],
+  totals: VendorTotal[],
+): VendorListEntry[] {
+  const entries = new Map<string, VendorListEntry>();
+
+  for (const total of totals) {
+    // A group with no usable name at all isn't a vendor you can save or edit.
+    if (total.vendor.trim() === "") continue;
+    entries.set(total.vendor.toUpperCase(), {
+      name: total.vendor,
+      description: "",
+      updatedAt: "",
+      isSaved: false,
+      isInUse: true,
+      totalCents: total.totalCents,
+      transactionCount: total.transactionCount,
+    });
+  }
+
+  for (const vendor of saved) {
+    const key = vendor.name.toUpperCase();
+    const derived = entries.get(key);
+    entries.set(key, {
+      name: vendor.name,
+      description: vendor.description,
+      iconMimeType: vendor.iconMimeType,
+      updatedAt: vendor.updatedAt,
+      isSaved: true,
+      isInUse: derived?.isInUse ?? false,
+      totalCents: derived?.totalCents ?? 0,
+      transactionCount: derived?.transactionCount ?? 0,
+    });
+  }
+
+  return [...entries.values()].sort(
+    (left, right) =>
+      Number(right.isSaved) - Number(left.isSaved) ||
+      right.totalCents - left.totalCents ||
+      left.name.localeCompare(right.name),
+  );
 }

@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { ExpenseRepository, TransactionFilter } from "./ports";
-import type { ExpenseTransaction } from "./types";
-import { totalsByVendor, vendorGroupKey, vendorKeyFromDescription, vendorTotals } from "./vendors";
+import type { ExpenseTransaction, ExpenseVendor } from "./types";
+import {
+  mergeVendorsWithTotals,
+  totalsByVendor,
+  vendorGroupKey,
+  vendorKeyFromDescription,
+  vendorTotals,
+} from "./vendors";
 
 function transaction(overrides: Partial<ExpenseTransaction> = {}): ExpenseTransaction {
   return {
@@ -153,5 +159,106 @@ describe("totalsByVendor", () => {
     expect(totalsByVendor(repo, { fromDate: "2026-08-01" })).toEqual([
       { vendor: "Costco", totalCents: 1_000, transactionCount: 1, isDerived: false },
     ]);
+  });
+});
+
+function savedVendor(overrides: Partial<ExpenseVendor> = {}): ExpenseVendor {
+  return {
+    name: "COSTCO",
+    description: "",
+    createdAt: "2026-08-01T00:00:00.000Z",
+    updatedAt: "2026-08-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+describe("mergeVendorsWithTotals", () => {
+  it("lists a vendor that only exists in the transactions, marked unsaved", () => {
+    const totals = vendorTotals([transaction({ vendor: "Costco", amountCents: 4500 })]);
+
+    const merged = mergeVendorsWithTotals([], totals);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({
+      name: "Costco",
+      isSaved: false,
+      isInUse: true,
+      totalCents: 4500,
+      transactionCount: 1,
+    });
+  });
+
+  it("lists a saved vendor with no transactions, so it can still be deleted", () => {
+    const merged = mergeVendorsWithTotals([savedVendor({ name: "Old Shop" })], []);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({ name: "Old Shop", isSaved: true, isInUse: false });
+    expect(merged[0].totalCents).toBe(0);
+  });
+
+  it("merges the two sides into one entry, keeping the spend and the icon", () => {
+    const totals = vendorTotals([transaction({ vendor: "Costco", amountCents: 4500 })]);
+    const saved = [savedVendor({ name: "Costco", description: "warehouse", iconMimeType: "image/png" })];
+
+    const merged = mergeVendorsWithTotals(saved, totals);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({
+      name: "Costco",
+      description: "warehouse",
+      iconMimeType: "image/png",
+      isSaved: true,
+      isInUse: true,
+      totalCents: 4500,
+    });
+  });
+
+  it("matches the two sides regardless of case, preferring the saved spelling", () => {
+    const totals = vendorTotals([transaction({ vendor: "Costco", amountCents: 4500 })]);
+
+    // The row is stored upper-case but the transaction says "Costco". One entry,
+    // named the way it was saved — this is the case the NOCASE index exists for.
+    const merged = mergeVendorsWithTotals([savedVendor({ name: "COSTCO" })], totals);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({ name: "COSTCO", isSaved: true, isInUse: true, totalCents: 4500 });
+  });
+
+  it("skips a rollup group with no usable name", () => {
+    // A description with no brand in it yields an empty group name, which isn't
+    // a vendor anyone can save or give an icon to.
+    const totals = vendorTotals([transaction({ transactionDescription: "12345", amountCents: 100 })]);
+
+    expect(mergeVendorsWithTotals([], totals)).toHaveLength(0);
+  });
+
+  it("orders by spend, then by name, within the unsaved group", () => {
+    const totals = vendorTotals([
+      transaction({ id: 1, vendor: "Small", amountCents: 100 }),
+      transaction({ id: 2, vendor: "Big", amountCents: 9000 }),
+      transaction({ id: 3, vendor: "Middle", amountCents: 500 }),
+    ]);
+
+    const merged = mergeVendorsWithTotals([], totals);
+
+    expect(merged.map((entry) => entry.name)).toEqual(["Big", "Middle", "Small"]);
+  });
+
+  it("puts saved vendors above unsaved ones, whatever they spent", () => {
+    const totals = vendorTotals([
+      // The unsaved vendor outspends both saved ones by an order of magnitude,
+      // so this fails if spend is still the primary sort key.
+      transaction({ id: 1, vendor: "Derived", amountCents: 90000 }),
+      transaction({ id: 2, vendor: "Costco", amountCents: 4500 }),
+    ]);
+
+    const merged = mergeVendorsWithTotals(
+      [savedVendor({ name: "Costco" }), savedVendor({ name: "Unused" })],
+      totals,
+    );
+
+    // Saved first (Costco has spend, Unused has none), then the derived tail.
+    expect(merged.map((entry) => entry.name)).toEqual(["Costco", "Unused", "Derived"]);
+    expect(merged.map((entry) => entry.isSaved)).toEqual([true, true, false]);
   });
 });

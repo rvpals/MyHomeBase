@@ -5,9 +5,21 @@ import { ChartBar } from "@/components/chart-bar";
 import { CHART_CATEGORICAL_COLORS } from "@/components/chart-colors";
 import { ChartPie } from "@/components/chart-pie";
 import { CollapsibleCard } from "@/components/collapsible-card";
-import type { CategoryTotal, ExpenseCategory, VendorTotal } from "@/lib/expense";
+import type {
+  CategoryTotal,
+  ExpenseCategory,
+  ExpenseVendor,
+  VendorTotal,
+} from "@/lib/expense";
 import { OTHER_SLICE_KEY, foldToOther, type PartToWholeSlice } from "@/lib/shared/chart-options";
-import { CategoryIconThumbnail, categoryIconUrlsByName, formatCents } from "./expense-shared";
+import {
+  CategoryIconThumbnail,
+  VendorIconThumbnail,
+  categoryIconUrlsByName,
+  formatCents,
+  vendorIconFor,
+  vendorIconUrlsByName,
+} from "./expense-shared";
 
 const UNCATEGORISED_LABEL = "uncategorised";
 const UNKNOWN_VENDOR_LABEL = "unknown";
@@ -19,20 +31,42 @@ const UNKNOWN_VENDOR_LABEL = "unknown";
 const CHARTED_VENDOR_COUNT = 5;
 
 /**
- * The Vendor card: a donut of each vendor's share, with the pooled slice drillable.
+ * The Vendor card: a donut of each **saved** vendor's share, with the pooled slice
+ * drillable.
+ *
+ * Restricted to saved vendors on purpose. The derived rollups pick up every brand
+ * key a statement description yields, which is a long tail of one-off spellings
+ * that swamps the chart; saving a vendor is the signal that you care about it, so
+ * the saved list is the curated one worth charting. The shares are therefore of
+ * *saved* spend, not of all spend — the header says so.
  *
  * Clicking "N other vendors" doesn't open a different kind of view — it folds the
  * *remainder* the same way and draws the same donut one level down. So the drill is
  * one operation applied repeatedly, and "Back" is just a smaller depth.
  */
-function VendorSpendCard({ vendorTotals }: { vendorTotals: VendorTotal[] }) {
+function VendorSpendCard({
+  vendorTotals,
+  vendors,
+}: {
+  vendorTotals: VendorTotal[];
+  /** The saved vendors: both what the chart is limited to and where its icons come from. */
+  vendors: ExpenseVendor[];
+}) {
+  const vendorIconUrls = vendorIconUrlsByName(vendors);
   // How many whole pages of vendors have been drilled past. 0 is the top level.
   const [depth, setDepth] = useState(0);
+
+  // Upper-cased, matching vendorGroupKey and the NOCASE index: a transaction's
+  // spelling needn't match the saved row's, and comparing exactly would drop a
+  // vendor from its own chart.
+  const savedNames = new Set(vendors.map((vendor) => vendor.name.toUpperCase()));
 
   // A pie shows a share of a whole, so a credit — a negative share — has no slice
   // to sit in. Same exclusion as the category chart, for a stricter reason.
   // `vendorTotals` already arrives biggest-first, so slicing keeps the top spenders.
-  const vendorSpend = vendorTotals.filter((total) => total.totalCents > 0);
+  const vendorSpend = vendorTotals.filter(
+    (total) => total.totalCents > 0 && savedNames.has(total.vendor.trim().toUpperCase()),
+  );
   const allSlices: PartToWholeSlice[] = vendorSpend.map((total) => ({
     key: total.vendor || UNKNOWN_VENDOR_LABEL,
     label: total.vendor || UNKNOWN_VENDOR_LABEL,
@@ -76,9 +110,11 @@ function VendorSpendCard({ vendorTotals }: { vendorTotals: VendorTotal[] }) {
           </>
         ) : (
           <>
-            Each vendor&apos;s share of total spend. Grouped on the vendor that post-import
-            processing set, falling back to the leading brand word of the statement description —
-            so COSTCO* and AMAZON* lines roll up together.
+            Each saved vendor&apos;s share of {formatCents(pageTotalCents)} — the spend
+            belonging to vendors you&apos;ve saved, not your whole total. Grouped on the
+            vendor that post-import processing set, falling back to the leading brand word
+            of the statement description, so COSTCO* and AMAZON* lines roll up together.
+            Save a vendor under Meta Data to add it here.
           </>
         )}
         {canDrill && " Click the pooled slice to break it down further."}
@@ -147,6 +183,10 @@ function VendorSpendCard({ vendorTotals }: { vendorTotals: VendorTotal[] }) {
                 >
                   <span className="flex min-w-0 items-center gap-2 text-ink">
                     {swatch}
+                    {/* The slice key is the vendor name, so it can carry the icon.
+                        The pooled slice above is many vendors and keeps the
+                        swatch alone. */}
+                    <VendorIconThumbnail iconUrl={vendorIconFor(vendorIconUrls, item.key)} />
                     <span className="truncate">{item.label}</span>
                   </span>
                   {amount}
@@ -156,7 +196,14 @@ function VendorSpendCard({ vendorTotals }: { vendorTotals: VendorTotal[] }) {
           </ul>
         </>
       ) : (
-        <p className="mt-3 text-sm text-muted">No positive spend to chart.</p>
+        // Two different reasons for an empty chart, and "no spend" would be a lie
+        // for the first one: you may well have plenty of spend, just none of it
+        // against a vendor you've saved.
+        <p className="mt-3 text-sm text-muted">
+          {vendors.length === 0
+            ? "No saved vendors yet — save one under Meta Data to chart it."
+            : "No positive spend against your saved vendors to chart."}
+        </p>
       )}
     </CollapsibleCard>
   );
@@ -166,11 +213,14 @@ export function ExpenseChartsView({
   totals,
   vendorTotals,
   categories,
+  vendors,
 }: {
   totals: CategoryTotal[];
   vendorTotals: VendorTotal[];
   /** Only for their icons — a rollup carries a category name, not its icon. */
   categories: ExpenseCategory[];
+  /** Likewise: a vendor rollup carries only the name. */
+  vendors: ExpenseVendor[];
 }) {
   const categoryIconUrls = categoryIconUrlsByName(categories);
 
@@ -217,7 +267,7 @@ export function ExpenseChartsView({
         )}
       </section>
 
-      <VendorSpendCard vendorTotals={vendorTotals} />
+      <VendorSpendCard vendorTotals={vendorTotals} vendors={vendors} />
 
       <section>
         <h2 className="font-display text-xl text-ink">Totals</h2>

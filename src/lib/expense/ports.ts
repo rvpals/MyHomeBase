@@ -4,6 +4,7 @@ import type {
   CategoryWriteData,
   PostImportRuleWriteData,
   TransactionWriteData,
+  VendorWriteData,
 } from "./schema";
 import type {
   CardImage,
@@ -12,8 +13,10 @@ import type {
   CreditCardAccount,
   ExpenseCategory,
   ExpenseTransaction,
+  ExpenseVendor,
   PostImportRule,
   RuleActionField,
+  VendorIcon,
 } from "./types";
 
 /** Narrows the transaction list. Omitted fields mean "no constraint". */
@@ -53,6 +56,27 @@ export interface ExpenseRepository {
   /** Passing undefined clears the icon. */
   setCategoryIcon(name: string, icon: CategoryIcon | undefined): void;
 
+  // Vendors
+  //
+  // The saved side of a vendor only. The spend rollups (`vendorTotals`) stay
+  // derived from the transactions and need no row here, so a vendor can be
+  // absent from this table and still appear on every screen.
+  listVendors(): ExpenseVendor[];
+  /** Matched case-insensitively, so "Costco" finds a row stored as "COSTCO". */
+  getVendorByName(name: string): ExpenseVendor | undefined;
+  upsertVendor(input: VendorWriteData): ExpenseVendor;
+  /**
+   * Deletes the vendor row and its icon. Transactions keep their `vendor` text,
+   * so the name reappears as a derived-only vendor.
+   */
+  deleteVendor(name: string): void;
+  /** Insert-if-absent, so a name used on a transaction always has a row. */
+  registerVendorsIfMissing(names: string[]): void;
+  /** Reads the icon bytes. Only the icon-serving route calls this. */
+  getVendorIcon(name: string): VendorIcon | undefined;
+  /** Passing undefined clears the icon. */
+  setVendorIcon(name: string, icon: VendorIcon | undefined): void;
+
   // Transactions
   listTransactions(filter?: TransactionFilter): ExpenseTransaction[];
   getTransactionById(id: number): ExpenseTransaction | undefined;
@@ -90,6 +114,15 @@ export interface ExpenseRepository {
   ): void;
   /** Clears the processed flag so the rules can be run over rows again. */
   resetProcessedFlags(): number;
+  /**
+   * Writes assignments to many rows at once, overwriting what's there and
+   * leaving the processed flag alone — the deliberate "run this rule over the
+   * back catalogue" path, which isn't part of the import queue. Returns how
+   * many rows were written.
+   */
+  forceApplyRuleAssignments(
+    updates: { id: number; assignments: Partial<Record<RuleActionField, string>> }[],
+  ): number;
 
   // Rules
   listRules(): PostImportRule[];

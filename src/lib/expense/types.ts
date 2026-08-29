@@ -46,6 +46,31 @@ export interface CategoryIcon {
   mimeType: string;
 }
 
+/**
+ * A saved vendor: the editable identity behind a vendor name — a description and
+ * an icon. Distinct from `VendorTotal`, which is a spend rollup derived from the
+ * transactions; a vendor can appear in a rollup with no row here, which is the
+ * normal state until you give it a description or an icon.
+ */
+export interface ExpenseVendor {
+  name: string;
+  description: string;
+  /**
+   * Mime type of the vendor icon, or undefined when none is set. The bytes
+   * themselves are fetched separately (see VendorIcon) so they never travel
+   * with a vendor list.
+   */
+  iconMimeType?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Raw icon bytes for one vendor, read only by the icon-serving route. */
+export interface VendorIcon {
+  data: Buffer;
+  mimeType: string;
+}
+
 export interface ExpenseTransaction {
   id: number;
   /** YYYY-MM-DD, when the purchase happened. */

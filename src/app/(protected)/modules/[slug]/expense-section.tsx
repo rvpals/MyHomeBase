@@ -13,6 +13,8 @@ import {
   listCategories,
   listRules,
   listTransactions,
+  listVendors,
+  mergeVendorsWithTotals,
   resolveExpenseSettings,
   totalsByCategory,
   vendorTotals,
@@ -68,6 +70,7 @@ function SectionBody({
           topVendors={vendorTotals(transactions).slice(0, TOP_SPENDER_COUNT)}
           topCategories={totalsByCategory(deps.expenseRepo).slice(0, TOP_SPENDER_COUNT)}
           categories={listCategories(deps.expenseRepo)}
+          vendors={listVendors(deps.expenseRepo)}
         />
       );
     }
@@ -78,6 +81,7 @@ function SectionBody({
           transactions={listTransactions(deps.expenseRepo)}
           accounts={listAccounts(deps.expenseRepo)}
           categories={listCategories(deps.expenseRepo)}
+          vendors={listVendors(deps.expenseRepo)}
         />
       );
 
@@ -86,6 +90,12 @@ function SectionBody({
         <ExpenseAccountsView
           accounts={listAccounts(deps.expenseRepo)}
           categories={listCategories(deps.expenseRepo)}
+          // Saved vendors merged with the ones derived from the transactions, so
+          // a vendor that only exists on a statement can still be given an icon.
+          vendors={mergeVendorsWithTotals(
+            listVendors(deps.expenseRepo),
+            vendorTotals(listTransactions(deps.expenseRepo)),
+          )}
         />
       );
 
@@ -97,6 +107,7 @@ function SectionBody({
           // so the vendor chart doesn't cost a second read of the table.
           vendorTotals={vendorTotals(listTransactions(deps.expenseRepo))}
           categories={listCategories(deps.expenseRepo)}
+          vendors={listVendors(deps.expenseRepo)}
         />
       );
 
