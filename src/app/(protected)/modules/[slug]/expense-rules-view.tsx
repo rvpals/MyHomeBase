@@ -16,6 +16,7 @@ import {
   type RuleActionField,
 } from "@/lib/expense";
 import {
+  applyRuleToExistingAction,
   countUnprocessedAction,
   deleteRuleAction,
   previewPatternAction,
@@ -513,7 +514,6 @@ export function ExpenseRulesView({
   /** Seeds "When the description matches" — the raw statement line to match on. */
   prefillPattern?: string;
 }) {
-  const router = useRouter();
   const [editing, setEditing] = useState<PostImportRule | undefined>(undefined);
   // A rule action stores a category *name*, so its icon is looked up once here.
   const categoryIconUrls = categoryIconUrlsByName(categories);
@@ -550,58 +550,154 @@ export function ExpenseRulesView({
       ) : (
         <ul className="flex flex-col gap-1">
           {rules.map((rule) => (
-            <li
+            <RuleRow
               key={rule.id}
-              className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-paper px-3 py-1.5 text-sm"
-            >
-              <span className="font-medium text-ink">{ruleDisplayName(rule)}</span>
-              <span className="font-mono text-xs text-brass-dark">{rule.pattern}</span>
-              <span className="text-muted">&rarr;</span>
-              <span className="flex flex-wrap items-center gap-1">
-                {rule.actions.map((action) => (
-                  <span key={action.id} className="flex items-center gap-1">
-                    {action.fieldName === "categoryName" && (
-                      <CategoryIconThumbnail
-                        iconUrl={categoryIconUrls.get(action.fieldValue)}
-                        className="h-4 w-4"
-                      />
-                    )}
-                    <span className="rounded-full bg-brass-soft px-2 py-0.5 text-xs text-brass-dark">
-                      {RULE_ACTION_FIELD_LABELS[action.fieldName]} = {action.fieldValue || "(blank)"}
-                    </span>
-                  </span>
-                ))}
-              </span>
-              <span className="text-xs text-muted">priority {rule.priority}</span>
-              {!rule.isEnabled && <span className="text-xs text-red-400">disabled</span>}
-              <span className="ml-auto flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setEditing(rule)}
-                  className="text-xs font-medium text-brass-dark hover:underline"
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (!window.confirm(`Delete the rule "${ruleDisplayName(rule)}"?`)) return;
-                    const result = await deleteRuleAction(rule.id);
-                    if (result.ok) router.refresh();
-                    else window.alert(result.error);
-                  }}
-                  className="text-xs font-medium text-red-400 hover:underline"
-                >
-                  Delete
-                </button>
-              </span>
-              {rule.description.trim() !== "" && (
-                <span className="basis-full text-xs text-muted">{rule.description}</span>
-              )}
-            </li>
+              rule={rule}
+              categoryIconUrls={categoryIconUrls}
+              onEdit={() => setEditing(rule)}
+            />
           ))}
         </ul>
       )}
     </div>
+  );
+}
+
+/** Line break for the confirm dialog, which takes plain text rather than JSX. */
+const NEWLINE = "\n";
+
+/**
+ * The warning shown before a forced run. Names the fields that will actually be
+ * overwritten and the ones that won't, because the whole risk of this button is
+ * changing a field the user wasn't thinking about.
+ */
+function forcedRunWarning(rule: PostImportRule): string {
+  const fields = [...new Set(rule.actions.map((action) => action.fieldName))];
+  const overwritten = fields.filter((field) => field !== "status");
+  const labels = overwritten.map((field) => RULE_ACTION_FIELD_LABELS[field]).join(", ");
+
+  const lines = [
+    `Re-run "${ruleDisplayName(rule)}" over every transaction matching ${rule.pattern}?`,
+    "",
+  ];
+
+  if (overwritten.length === 0) {
+    lines.push("This rule only sets Status, which is never overwritten, so nothing will change.");
+    return lines.join(NEWLINE);
+  }
+
+  lines.push(
+    `This OVERWRITES ${labels} on every matching transaction, including rows you have already edited by hand. It cannot be undone.`,
+  );
+  if (fields.includes("status")) {
+    lines.push("", "Status will NOT be changed — reconciled rows keep their status.");
+  }
+  if (!rule.isEnabled) {
+    lines.push("", "Note: this rule is disabled, but running it here will still change transactions.");
+  }
+  return lines.join(NEWLINE);
+}
+
+/**
+ * One saved rule, with its row actions.
+ *
+ * Its own component so "Update Trans" can hold a per-row busy state — a shared
+ * one would grey out every rule's button while a single rule ran.
+ */
+function RuleRow({
+  rule,
+  categoryIconUrls,
+  onEdit,
+}: {
+  rule: PostImportRule;
+  categoryIconUrls: Map<string, string>;
+  onEdit: () => void;
+}) {
+  const router = useRouter();
+  const [isApplying, setIsApplying] = useState(false);
+
+  async function handleUpdateExisting() {
+    if (!window.confirm(forcedRunWarning(rule))) return;
+    setIsApplying(true);
+    try {
+      const result = await applyRuleToExistingAction(rule.id);
+      if (!result.ok) {
+        window.alert(result.error);
+        return;
+      }
+      const matched = result.matchedCount ?? 0;
+      const changed = result.changedCount ?? 0;
+      window.alert(
+        matched === 0
+          ? `No transactions match "${rule.pattern}", so nothing changed.`
+          : `Matched ${matched} transaction(s); ${changed} updated.` +
+              (changed < matched ? " The rest already held these values." : ""),
+      );
+      router.refresh();
+    } finally {
+      setIsApplying(false);
+    }
+  }
+
+  return (
+    <li className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-paper px-3 py-1.5 text-sm">
+      <span className="font-medium text-ink">{ruleDisplayName(rule)}</span>
+      <span className="font-mono text-xs text-brass-dark">{rule.pattern}</span>
+      <span className="text-muted">&rarr;</span>
+      <span className="flex flex-wrap items-center gap-1">
+        {rule.actions.map((action) => (
+          <span key={action.id} className="flex items-center gap-1">
+            {action.fieldName === "categoryName" && (
+              <CategoryIconThumbnail
+                iconUrl={categoryIconUrls.get(action.fieldValue)}
+                className="h-4 w-4"
+              />
+            )}
+            <span className="rounded-full bg-brass-soft px-2 py-0.5 text-xs text-brass-dark">
+              {RULE_ACTION_FIELD_LABELS[action.fieldName]} = {action.fieldValue || "(blank)"}
+            </span>
+          </span>
+        ))}
+      </span>
+      <span className="text-xs text-muted">priority {rule.priority}</span>
+      {!rule.isEnabled && <span className="text-xs text-red-400">disabled</span>}
+      <span className="ml-auto flex gap-3">
+        <button
+          type="button"
+          onClick={handleUpdateExisting}
+          disabled={isApplying}
+          title="Update existing transactions by overwriting"
+          className="text-xs font-medium text-brass-dark hover:underline disabled:opacity-50"
+        >
+          {isApplying ? "Updating…" : "Update Trans"}
+        </button>
+        <button
+          type="button"
+          onClick={onEdit}
+          className="text-xs font-medium text-brass-dark hover:underline"
+        >
+          Edit
+        </button>
+        <button
+          type="button"
+          onClick={async () => {
+            if (!window.confirm(`Delete the rule "${ruleDisplayName(rule)}"?`)) return;
+            const result = await deleteRuleAction(rule.id);
+            if (result.ok) router.refresh();
+            else window.alert(result.error);
+          }}
+          className="text-xs font-medium text-red-400 hover:underline"
+        >
+          Delete
+        </button>
+      </span>
+      {rule.description.trim() !== "" && (
+        <span className="basis-full text-xs text-muted">{rule.description}</span>
+      )}
+      <span className="basis-full text-xs text-muted">
+        <strong className="font-medium text-ink">Update Trans</strong> updates existing
+        transactions by overwriting.
+      </span>
+    </li>
   );
 }

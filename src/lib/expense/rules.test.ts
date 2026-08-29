@@ -4,6 +4,7 @@ import {
   compilePattern,
   findMatchingRule,
   matchesPattern,
+  planForcedRuleApplication,
   planRuleApplication,
   type TransactionFieldsForRules,
 } from "./rules";
@@ -192,5 +193,61 @@ describe("applyAssignments", () => {
       status: "reconciled",
     });
     expect(original.vendor).toBe(""); // input untouched
+  });
+});
+
+describe("planForcedRuleApplication", () => {
+  it("overwrites a field that already holds a different value", () => {
+    const plan = planForcedRuleApplication(
+      transaction({ categoryName: "groceries" }),
+      rule({ actions: [action("categoryName", "online-purchase")] }),
+    );
+    expect(plan?.assignments).toEqual([{ fieldName: "categoryName", value: "online-purchase" }]);
+  });
+
+  it("skips a field that already holds the value the rule would write", () => {
+    const plan = planForcedRuleApplication(
+      transaction({ categoryName: "online-purchase" }),
+      rule({ actions: [action("categoryName", "online-purchase")] }),
+    );
+    expect(plan?.assignments).toEqual([]);
+  });
+
+  it("never overwrites a status the user has already moved off new", () => {
+    const plan = planForcedRuleApplication(
+      transaction({ status: "reconciled", vendor: "old" }),
+      rule({ actions: [action("status", "new", 0), action("vendor", "Amazon", 1)] }),
+    );
+    expect(plan?.assignments).toEqual([{ fieldName: "vendor", value: "Amazon" }]);
+  });
+
+  it("still sets status on a row that is untouched", () => {
+    const plan = planForcedRuleApplication(
+      transaction({ status: "new" }),
+      rule({ actions: [action("status", "reconciled")] }),
+    );
+    expect(plan?.assignments).toEqual([{ fieldName: "status", value: "reconciled" }]);
+  });
+
+  it("uses the first action when a rule names the same field twice", () => {
+    const plan = planForcedRuleApplication(
+      transaction({ vendor: "old" }),
+      rule({ actions: [action("vendor", "First", 0), action("vendor", "Second", 1)] }),
+    );
+    expect(plan?.assignments).toEqual([{ fieldName: "vendor", value: "First" }]);
+  });
+
+  it("returns undefined when the description doesn't match the pattern", () => {
+    expect(
+      planForcedRuleApplication(transaction({ transactionDescription: "SQ *TGI" }), rule()),
+    ).toBeUndefined();
+  });
+
+  it("ignores priority and the enabled flag — the caller picked this rule", () => {
+    const plan = planForcedRuleApplication(
+      transaction({ vendor: "old" }),
+      rule({ isEnabled: false, actions: [action("vendor", "Amazon")] }),
+    );
+    expect(plan?.assignments).toEqual([{ fieldName: "vendor", value: "Amazon" }]);
   });
 });

@@ -133,3 +133,63 @@ export function applyAssignments<T extends TransactionFieldsForRules>(
   }
   return next;
 }
+
+/**
+ * Works out what a *single named rule* would change on this transaction when
+ * run deliberately, overwriting what's already there.
+ *
+ * Three differences from `planRuleApplication`, all of them the point of the
+ * "Update Trans" button:
+ *  - The rule is given rather than chosen, so priority and the "first match
+ *    wins" order don't apply — you asked for *this* rule.
+ *  - Filled-in fields are overwritten, so a corrected rule can fix rows an
+ *    earlier version of it got wrong.
+ *  - `status` is the exception and keeps the blank-only guard, because it's
+ *    workflow state rather than a label: a force-apply must never knock a row
+ *    you've already reconciled back to `new`. Nothing in the app can undo that.
+ *
+ * Returns undefined when the description doesn't match. Assignments that would
+ * write the value already there are dropped, so a caller counting changed rows
+ * counts real changes.
+ */
+export function planForcedRuleApplication(
+  transaction: TransactionFieldsForRules,
+  rule: PostImportRule,
+): RulePlan | undefined {
+  if (!matchesPattern(transaction.transactionDescription, rule.pattern)) return undefined;
+
+  const assignments: PlannedAssignment[] = [];
+  const seen = new Set<RuleActionField>();
+
+  for (const action of [...rule.actions].sort((a, b) => a.sortOrder - b.sortOrder)) {
+    // Same first-one-wins de-dupe as the normal plan, for the same reason: the
+    // outcome mustn't depend on row order in the database.
+    if (seen.has(action.fieldName)) continue;
+    seen.add(action.fieldName);
+    // Workflow state is never overwritten — see the note above.
+    if (action.fieldName === "status" && !isFieldUnset(transaction, "status")) continue;
+    if (currentValue(transaction, action.fieldName) === action.fieldValue) continue;
+    assignments.push({ fieldName: action.fieldName, value: action.fieldValue });
+  }
+
+  return { rule, assignments };
+}
+
+/** The value a rule-visible field holds right now, as a string. */
+function currentValue(
+  transaction: TransactionFieldsForRules,
+  fieldName: RuleActionField,
+): string {
+  switch (fieldName) {
+    case "categoryName":
+      return transaction.categoryName;
+    case "vendor":
+      return transaction.vendor;
+    case "note":
+      return transaction.note;
+    case "status":
+      return transaction.status;
+    default:
+      return "";
+  }
+}

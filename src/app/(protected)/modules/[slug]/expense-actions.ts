@@ -19,25 +19,30 @@ import {
   bulkEditTransactions,
   clearAccountImage,
   clearCategoryIcon,
+  clearVendorIcon,
   countUnprocessed,
   createAccount,
   createRule,
   createTransaction,
   deleteAccount,
   deleteCategory,
+  deleteVendor,
   deleteRule,
   deleteTransaction,
   deleteTransactions,
   importExpenseCsv,
   previewPatternMatches,
   resetProcessedFlags,
+  applyRuleToExistingTransactions,
   runCleanupBatch,
   setAccountImage,
   setCategoryIcon,
+  setVendorIcon,
   updateAccount,
   updateRule,
   updateTransaction,
   upsertCategory,
+  upsertVendor,
   type AutoImportRunSummary,
   type BulkTransactionEditInput,
   type ExpenseImageUploadInput,
@@ -45,7 +50,9 @@ import {
   type ExpenseImportSummary,
   type SaveAccountInput,
   type SaveCategoryInput,
+  type SaveVendorInput,
   type SavePostImportRuleInput,
+  type RuleActionField,
   type SaveTransactionInput,
 } from "@/lib/expense";
 import { runExpenseAutoImport } from "@/lib/expense/auto-import-runner";
@@ -175,6 +182,65 @@ export async function clearCategoryIconAction(name: string): Promise<ActionResul
     clearCategoryIcon(deps.expenseRepo, name);
   } catch (error) {
     return toErrorResult(error, "Failed to remove the category icon.");
+  }
+  revalidatePath(EXPENSE_MODULE_PATH);
+  return { ok: true };
+}
+
+// --- vendors ----------------------------------------------------------------
+//
+// A vendor usually starts out derived from a statement description with no row
+// of its own, so these are the actions that first persist one. Saving a vendor
+// that is already saved just updates its description.
+
+export async function saveVendorAction(input: SaveVendorInput): Promise<ActionResult> {
+  try {
+    upsertVendor(deps.expenseRepo, input);
+  } catch (error) {
+    return toErrorResult(error, "Failed to save the vendor.");
+  }
+  revalidatePath(EXPENSE_MODULE_PATH);
+  return { ok: true };
+}
+
+export async function deleteVendorAction(name: string): Promise<ActionResult> {
+  try {
+    deleteVendor(deps.expenseRepo, name);
+  } catch (error) {
+    return toErrorResult(error, "Failed to delete the vendor.");
+  }
+  revalidatePath(EXPENSE_MODULE_PATH);
+  return { ok: true };
+}
+
+/**
+ * Stores a vendor's icon, creating the vendor row when it doesn't exist yet —
+ * see `setVendorIcon`, which owns that behaviour. Base64 rather than raw bytes
+ * for the same reason as the card image: it survives server-action
+ * serialization cleanly, and the use-case enforces the type and size limits.
+ */
+export async function saveVendorIconAction(
+  name: string,
+  mimeType: string,
+  base64Data: string,
+): Promise<ActionResult> {
+  try {
+    setVendorIcon(deps.expenseRepo, name, {
+      mimeType,
+      base64Data,
+    } as ExpenseImageUploadInput);
+  } catch (error) {
+    return toErrorResult(error, "Failed to save the vendor icon.");
+  }
+  revalidatePath(EXPENSE_MODULE_PATH);
+  return { ok: true };
+}
+
+export async function clearVendorIconAction(name: string): Promise<ActionResult> {
+  try {
+    clearVendorIcon(deps.expenseRepo, name);
+  } catch (error) {
+    return toErrorResult(error, "Failed to remove the vendor icon.");
   }
   revalidatePath(EXPENSE_MODULE_PATH);
   return { ok: true };
@@ -365,6 +431,29 @@ export async function resetProcessedAction(): Promise<UnprocessedCountResult> {
     return { ok: true, count };
   } catch (error) {
     return toErrorResult(error, "Failed to reset the processed flags.");
+  }
+}
+
+export interface ForcedRuleActionResult extends ActionResult {
+  matchedCount?: number;
+  changedCount?: number;
+  fieldsChanged?: RuleActionField[];
+}
+
+/**
+ * Re-runs one rule over every transaction it matches, overwriting existing
+ * values — the per-rule "Update Trans" button. Unlike the clean-up this ignores
+ * the processed queue entirely; the client warns before calling it.
+ */
+export async function applyRuleToExistingAction(
+  ruleId: number,
+): Promise<ForcedRuleActionResult> {
+  try {
+    const result = applyRuleToExistingTransactions(deps.expenseRepo, ruleId);
+    revalidatePath(EXPENSE_MODULE_PATH);
+    return { ok: true, ...result };
+  } catch (error) {
+    return toErrorResult(error, "Failed to update the transactions.");
   }
 }
 

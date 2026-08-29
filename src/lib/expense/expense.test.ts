@@ -16,20 +16,29 @@ import {
   getCategoryIcon,
   previewPatternMatches,
   resetProcessedFlags,
+  applyRuleToExistingTransactions,
   runCleanupBatch,
   setAccountImage,
   setCategoryIcon,
+  setVendorIcon,
+  clearVendorIcon,
+  deleteVendor,
+  getVendorIcon,
+  listVendors,
   totalsByCategory,
+  updateRule,
   updateTransaction,
   upsertCategory,
+  upsertVendor,
 } from "./expense";
-import { MAX_CARD_IMAGE_BYTES, MAX_CATEGORY_ICON_BYTES } from "./schema";
+import { MAX_CARD_IMAGE_BYTES, MAX_CATEGORY_ICON_BYTES, MAX_VENDOR_ICON_BYTES } from "./schema";
 import type { ExpenseRepository, TransactionFilter } from "./ports";
 import type {
   AccountWriteData,
   CategoryWriteData,
   PostImportRuleWriteData,
   TransactionWriteData,
+  VendorWriteData,
 } from "./schema";
 import type {
   CardImage,
@@ -38,17 +47,21 @@ import type {
   CreditCardAccount,
   ExpenseCategory,
   ExpenseTransaction,
+  ExpenseVendor,
   PostImportRule,
+  VendorIcon,
 } from "./types";
 
 // Hand-written in-memory fake implementing the port.
 function fakeRepo(): ExpenseRepository {
   let accounts: CreditCardAccount[] = [];
   let categories: ExpenseCategory[] = [];
+  let vendors: ExpenseVendor[] = [];
   let transactions: ExpenseTransaction[] = [];
   let rules: PostImportRule[] = [];
   const images = new Map<number, CardImage>();
   const categoryIcons = new Map<string, CategoryIcon>();
+  const vendorIcons = new Map<string, VendorIcon>();
   let nextAccountId = 1;
   let nextTransactionId = 1;
   let nextRuleId = 1;
@@ -129,6 +142,50 @@ function fakeRepo(): ExpenseRepository {
       );
     },
 
+    // Vendors. Matched case-insensitively, mirroring the NOCASE index the real
+    // repository relies on — a fake that compared exactly would let a
+    // case-collision bug pass here and fail against SQLite.
+    listVendors: () => [...vendors],
+    getVendorByName: (name) =>
+      vendors.find((vendor) => vendor.name.toUpperCase() === name.toUpperCase()),
+    upsertVendor(input: VendorWriteData) {
+      const existing = vendors.find(
+        (vendor) => vendor.name.toUpperCase() === input.name.toUpperCase(),
+      );
+      if (existing) {
+        existing.description = input.description;
+        return existing;
+      }
+      const created: ExpenseVendor = { ...input, createdAt: now, updatedAt: now };
+      vendors.push(created);
+      return created;
+    },
+    deleteVendor(name) {
+      // Deliberately leaves `transactions` alone — see deleteVendor's contract.
+      vendors = vendors.filter((vendor) => vendor.name.toUpperCase() !== name.toUpperCase());
+      vendorIcons.delete(name.toUpperCase());
+    },
+    registerVendorsIfMissing(names) {
+      for (const name of names) {
+        if (
+          name.trim() !== "" &&
+          !vendors.some((vendor) => vendor.name.toUpperCase() === name.toUpperCase())
+        ) {
+          vendors.push({ name, description: "", createdAt: now, updatedAt: now });
+        }
+      }
+    },
+    getVendorIcon: (name) => vendorIcons.get(name.toUpperCase()),
+    setVendorIcon(name, icon) {
+      if (icon) vendorIcons.set(name.toUpperCase(), icon);
+      else vendorIcons.delete(name.toUpperCase());
+      vendors = vendors.map((vendor) =>
+        vendor.name.toUpperCase() === name.toUpperCase()
+          ? { ...vendor, iconMimeType: icon?.mimeType }
+          : vendor,
+      );
+    },
+
     listTransactions: (filter) => transactions.filter((t) => matchesFilter(t, filter)),
     getTransactionById: (id) => transactions.find((transaction) => transaction.id === id),
     createTransaction(input: TransactionWriteData, createdByUserId) {
@@ -188,6 +245,19 @@ function fakeRepo(): ExpenseRepository {
       const count = transactions.length;
       transactions = transactions.map((transaction) => ({ ...transaction, processed: false }));
       return count;
+    },
+    forceApplyRuleAssignments(updates) {
+      let changed = 0;
+      for (const update of updates) {
+        if (Object.keys(update.assignments).length === 0) continue;
+        changed += 1;
+        transactions = transactions.map((transaction) =>
+          transaction.id === update.id
+            ? ({ ...transaction, ...update.assignments } as ExpenseTransaction)
+            : transaction,
+        );
+      }
+      return changed;
     },
 
     listRules: () => [...rules].sort((a, b) => (a.priority === b.priority ? a.id - b.id : a.priority - b.priority)),
@@ -947,5 +1017,273 @@ describe("bulkEditTransactions", () => {
       transactionDate: "2026-07-15",
       amountCents: 1000,
     });
+  });
+});
+
+describe("vendors", () => {
+  it("saves a vendor and reads it back", () => {
+    const repo = fakeRepo();
+    upsertVendor(repo, { name: "Costco", description: "warehouse" });
+
+    expect(listVendors(repo)).toHaveLength(1);
+    expect(listVendors(repo)[0]).toMatchObject({ name: "Costco", description: "warehouse" });
+  });
+
+  it("updates the description rather than adding a second row", () => {
+    const repo = fakeRepo();
+    upsertVendor(repo, { name: "Costco", description: "warehouse" });
+    upsertVendor(repo, { name: "Costco", description: "bulk groceries" });
+
+    expect(listVendors(repo)).toHaveLength(1);
+    expect(listVendors(repo)[0].description).toBe("bulk groceries");
+  });
+
+  it("treats a differently-cased name as the same vendor", () => {
+    const repo = fakeRepo();
+    upsertVendor(repo, { name: "Costco", description: "warehouse" });
+    upsertVendor(repo, { name: "COSTCO", description: "same shop" });
+
+    // One row, and the original spelling survives — the casing you first typed
+    // is the one the screens show.
+    expect(listVendors(repo)).toHaveLength(1);
+    expect(listVendors(repo)[0]).toMatchObject({ name: "Costco", description: "same shop" });
+  });
+
+  it("rejects a blank name", () => {
+    const repo = fakeRepo();
+    expect(() => upsertVendor(repo, { name: "   " })).toThrow();
+  });
+
+  it("deletes a vendor without touching its transactions", () => {
+    const repo = fakeRepo();
+    const account = createAccount(repo, { name: "Visa" });
+    upsertVendor(repo, { name: "Costco", description: "warehouse" });
+    createTransaction(
+      repo,
+      {
+        transactionDate: "2026-08-01",
+        transactionAccountId: account.id,
+        transactionDescription: "COSTCO WHSE #1017",
+        vendor: "Costco",
+        amountCents: 4500,
+      },
+      1,
+    );
+
+    deleteVendor(repo, "Costco");
+
+    expect(listVendors(repo)).toHaveLength(0);
+    // The vendor name stays on the transaction, so the spend rollups are intact
+    // and the vendor comes straight back as a derived-only entry.
+    expect(listTransactions(repo)).toHaveLength(1);
+    expect(listTransactions(repo)[0].vendor).toBe("Costco");
+  });
+});
+
+describe("vendor icons", () => {
+  // Inlined at each call site rather than hoisted, so "image/png" narrows to the
+  // mime-type union instead of widening to string — same as the tests above.
+  const iconBase64 = Buffer.from("fake icon bytes").toString("base64");
+
+  it("stores an icon and records its mime type on the vendor", () => {
+    const repo = fakeRepo();
+    upsertVendor(repo, { name: "Costco" });
+
+    setVendorIcon(repo, "Costco", { mimeType: "image/png", base64Data: iconBase64 });
+
+    expect(getVendorIcon(repo, "Costco")?.mimeType).toBe("image/png");
+    expect(repo.getVendorByName("Costco")?.iconMimeType).toBe("image/png");
+  });
+
+  it("creates the vendor row when uploading an icon for an unsaved vendor", () => {
+    const repo = fakeRepo();
+
+    // The case that separates vendors from categories: most vendors are derived
+    // from a statement and have never been saved, so the upload has to create
+    // the row rather than refuse.
+    setVendorIcon(repo, "TRADER JOES", { mimeType: "image/png", base64Data: iconBase64 });
+
+    expect(repo.getVendorByName("TRADER JOES")?.iconMimeType).toBe("image/png");
+    expect(listVendors(repo)).toHaveLength(1);
+  });
+
+  it("finds the icon regardless of the casing asked for", () => {
+    const repo = fakeRepo();
+    upsertVendor(repo, { name: "Costco" });
+    setVendorIcon(repo, "Costco", { mimeType: "image/png", base64Data: iconBase64 });
+
+    expect(getVendorIcon(repo, "COSTCO")?.mimeType).toBe("image/png");
+    expect(getVendorIcon(repo, "costco")?.mimeType).toBe("image/png");
+  });
+
+  it("clears the icon again", () => {
+    const repo = fakeRepo();
+    upsertVendor(repo, { name: "Costco" });
+    setVendorIcon(repo, "Costco", { mimeType: "image/png", base64Data: iconBase64 });
+
+    clearVendorIcon(repo, "Costco");
+
+    expect(getVendorIcon(repo, "Costco")).toBeUndefined();
+    expect(repo.getVendorByName("Costco")?.iconMimeType).toBeUndefined();
+  });
+
+  it("rejects a disallowed type, including SVG", () => {
+    const repo = fakeRepo();
+    upsertVendor(repo, { name: "Costco" });
+
+    expect(() =>
+      setVendorIcon(repo, "Costco", {
+        mimeType: "image/svg+xml" as never,
+        base64Data: Buffer.from("<svg />").toString("base64"),
+      }),
+    ).toThrow();
+  });
+
+  it("rejects an icon over the size cap", () => {
+    const repo = fakeRepo();
+    upsertVendor(repo, { name: "Costco" });
+
+    expect(() =>
+      setVendorIcon(repo, "Costco", {
+        mimeType: "image/png",
+        base64Data: Buffer.alloc(MAX_VENDOR_ICON_BYTES + 1).toString("base64"),
+      }),
+    ).toThrow();
+  });
+
+  it("refuses to clear an icon for a vendor that doesn't exist", () => {
+    const repo = fakeRepo();
+    expect(() => clearVendorIcon(repo, "Nope")).toThrow(/No vendor named/);
+  });
+});
+
+describe("applyRuleToExistingTransactions", () => {
+  /** A processed row that a rule has already labelled — the case this feature exists for. */
+  function seedProcessedRow(
+    repo: ExpenseRepository,
+    accountId: number,
+    description: string,
+  ) {
+    return createTransaction(
+      repo,
+      {
+        transactionDate: "2026-07-15",
+        transactionAccountId: accountId,
+        transactionDescription: description,
+        amountCents: 100,
+      },
+      1,
+    );
+  }
+
+  it("overwrites a value an earlier version of the rule got wrong", () => {
+    const repo = fakeRepo();
+    const account = seedAccount(repo);
+    seedProcessedRow(repo, account.id, "AMAZON MKTPL*2X4Y9");
+    const wrong = createRule(repo, {
+      name: "Amazon",
+      pattern: "AMAZON*",
+      actions: [{ fieldName: "categoryName", fieldValue: "groceries" }],
+    });
+    runCleanupBatch(repo);
+    expect(listTransactions(repo)[0].categoryName).toBe("groceries");
+
+    updateRule(repo, wrong.id, {
+      name: "Amazon",
+      pattern: "AMAZON*",
+      actions: [{ fieldName: "categoryName", fieldValue: "online-purchase" }],
+    });
+    const result = applyRuleToExistingTransactions(repo, wrong.id);
+
+    expect(result).toMatchObject({ matchedCount: 1, changedCount: 1 });
+    expect(listTransactions(repo)[0].categoryName).toBe("online-purchase");
+  });
+
+  it("leaves transactions the pattern doesn't match alone", () => {
+    const repo = fakeRepo();
+    const account = seedAccount(repo);
+    seedProcessedRow(repo, account.id, "SQ *TGI FRIDAYS");
+    const created = createRule(repo, {
+      name: "Amazon",
+      pattern: "AMAZON*",
+      actions: [{ fieldName: "vendor", fieldValue: "Amazon" }],
+    });
+
+    const result = applyRuleToExistingTransactions(repo, created.id);
+
+    expect(result.matchedCount).toBe(0);
+    expect(listTransactions(repo)[0].vendor).toBe("");
+  });
+
+  it("never overwrites the status of a row that's already been reconciled", () => {
+    const repo = fakeRepo();
+    const account = seedAccount(repo);
+    const row = seedProcessedRow(repo, account.id, "AMAZON MKTPL*2X4Y9");
+    bulkEditTransactions(repo, [row.id], { status: "reconciled" });
+    const created = createRule(repo, {
+      name: "Amazon",
+      pattern: "AMAZON*",
+      actions: [
+        { fieldName: "status", fieldValue: "new" },
+        { fieldName: "vendor", fieldValue: "Amazon" },
+      ],
+    });
+
+    const result = applyRuleToExistingTransactions(repo, created.id);
+
+    expect(listTransactions(repo)[0].status).toBe("reconciled");
+    expect(listTransactions(repo)[0].vendor).toBe("Amazon");
+    expect(result.fieldsChanged).toEqual(["vendor"]);
+  });
+
+  it("doesn't count a row that already holds the rule's values as changed", () => {
+    const repo = fakeRepo();
+    const account = seedAccount(repo);
+    seedProcessedRow(repo, account.id, "AMAZON MKTPL*2X4Y9");
+    const created = createRule(repo, {
+      name: "Amazon",
+      pattern: "AMAZON*",
+      actions: [{ fieldName: "vendor", fieldValue: "Amazon" }],
+    });
+    runCleanupBatch(repo);
+
+    const result = applyRuleToExistingTransactions(repo, created.id);
+
+    expect(result).toMatchObject({ matchedCount: 1, changedCount: 0 });
+  });
+
+  it("registers a category the corrected rule introduces", () => {
+    const repo = fakeRepo();
+    const account = seedAccount(repo);
+    seedProcessedRow(repo, account.id, "AMAZON MKTPL*2X4Y9");
+    const created = createRule(repo, {
+      name: "Amazon",
+      pattern: "AMAZON*",
+      actions: [{ fieldName: "categoryName", fieldValue: "online-purchase" }],
+    });
+
+    applyRuleToExistingTransactions(repo, created.id);
+
+    expect(listCategories(repo).map((category) => category.name)).toContain("online-purchase");
+  });
+
+  it("leaves the processed queue untouched — this runs outside it", () => {
+    const repo = fakeRepo();
+    const account = seedAccount(repo);
+    seedProcessedRow(repo, account.id, "AMAZON MKTPL*2X4Y9");
+    const created = createRule(repo, {
+      name: "Amazon",
+      pattern: "AMAZON*",
+      actions: [{ fieldName: "vendor", fieldValue: "Amazon" }],
+    });
+
+    applyRuleToExistingTransactions(repo, created.id);
+
+    expect(countUnprocessed(repo)).toBe(1);
+  });
+
+  it("throws for a rule that doesn't exist", () => {
+    const repo = fakeRepo();
+    expect(() => applyRuleToExistingTransactions(repo, 999)).toThrow(/No rule with id 999/);
   });
 });

@@ -1,12 +1,14 @@
 import { decodeImageUpload } from "@/lib/shared/image-upload";
 import type { ExpenseRepository, TransactionFilter } from "./ports";
-import { matchesPattern, planRuleApplication } from "./rules";
+import { matchesPattern, planForcedRuleApplication, planRuleApplication } from "./rules";
 import {
   MAX_CARD_IMAGE_BYTES,
   MAX_CATEGORY_ICON_BYTES,
+  MAX_VENDOR_ICON_BYTES,
   bulkTransactionEditSchema,
   saveAccountSchema,
   saveCategorySchema,
+  saveVendorSchema,
   savePostImportRuleSchema,
   saveTransactionSchema,
   transactionIdsSchema,
@@ -17,6 +19,7 @@ import type {
   PostImportRuleWriteData,
   SaveAccountInput,
   SaveCategoryInput,
+  SaveVendorInput,
   SavePostImportRuleInput,
   SaveTransactionInput,
 } from "./schema";
@@ -27,8 +30,10 @@ import type {
   CreditCardAccount,
   ExpenseCategory,
   ExpenseTransaction,
+  ExpenseVendor,
   PostImportRule,
   RuleActionField,
+  VendorIcon,
 } from "./types";
 
 // --- Credit-card accounts ---------------------------------------------------
@@ -136,6 +141,58 @@ export function getCategoryIcon(
   name: string,
 ): CategoryIcon | undefined {
   return repo.getCategoryIcon(name);
+}
+
+// --- Vendors ----------------------------------------------------------------
+//
+// Only the *saved* side lives here. The spend rollups (`vendorTotals`) stay pure
+// and derived from the transactions, so every screen keeps working for a vendor
+// that has no row at all.
+
+export function listVendors(repo: ExpenseRepository): ExpenseVendor[] {
+  return repo.listVendors();
+}
+
+export function upsertVendor(repo: ExpenseRepository, input: SaveVendorInput): ExpenseVendor {
+  return repo.upsertVendor(saveVendorSchema.parse(input));
+}
+
+/**
+ * Removes the vendor's saved description and icon. The transactions keep their
+ * `vendor` text, so the name comes straight back as a derived-only vendor — this
+ * clears the decoration, it does not erase history.
+ */
+export function deleteVendor(repo: ExpenseRepository, name: string): void {
+  repo.deleteVendor(name);
+}
+
+/**
+ * Stores the icon shown beside a vendor everywhere it appears.
+ *
+ * Unlike a category icon this **creates the vendor row when it's missing**, and
+ * that asymmetry is deliberate: most vendors start life derived from a statement
+ * description and have never been saved, so requiring a prior save would mean
+ * every icon upload needed two steps. The name still has to be non-blank, which
+ * `saveVendorSchema` enforces.
+ */
+export function setVendorIcon(
+  repo: ExpenseRepository,
+  name: string,
+  input: ExpenseImageUploadInput,
+): void {
+  const vendor = repo.getVendorByName(name) ?? upsertVendor(repo, { name });
+  repo.setVendorIcon(vendor.name, decodeImageUpload(input, MAX_VENDOR_ICON_BYTES));
+}
+
+/** Removes a vendor's icon, leaving the vendor row itself untouched. */
+export function clearVendorIcon(repo: ExpenseRepository, name: string): void {
+  if (!repo.getVendorByName(name)) throw new Error(`No vendor named "${name}".`);
+  repo.setVendorIcon(name, undefined);
+}
+
+/** Used only by the icon-serving route — never by anything rendering a list. */
+export function getVendorIcon(repo: ExpenseRepository, name: string): VendorIcon | undefined {
+  return repo.getVendorIcon(name);
 }
 
 // --- Transactions -----------------------------------------------------------
@@ -369,6 +426,68 @@ export function countUnprocessed(repo: ExpenseRepository): number {
  */
 export function resetProcessedFlags(repo: ExpenseRepository): number {
   return repo.resetProcessedFlags();
+}
+
+export interface ForcedRuleApplicationResult {
+  /** How many existing transactions the rule's pattern matched. */
+  matchedCount: number;
+  /** How many of those actually changed — a row already correct isn't counted. */
+  changedCount: number;
+  /** The fields the run wrote, for the message shown afterwards. */
+  fieldsChanged: RuleActionField[];
+}
+
+/**
+ * Runs one rule over the whole back catalogue, overwriting what's already there.
+ *
+ * This is the "Update Trans" button, and it's deliberately not the clean-up:
+ * the clean-up walks the `processed` queue applying whichever rule matches
+ * first and only filling blanks, whereas this applies *the rule you picked* to
+ * every row it matches, whether or not the row has been processed and whether
+ * or not the fields are already filled. That's what lets a corrected rule fix
+ * rows an earlier version of it got wrong.
+ *
+ * `status` is the one field it won't overwrite — see `planForcedRuleApplication`.
+ * The `processed` flag is left alone too: this run happens outside the queue.
+ *
+ * A disabled rule still runs. Asking for it by name is explicit enough, and the
+ * UI warns that the rule is disabled before it gets here.
+ */
+export function applyRuleToExistingTransactions(
+  repo: ExpenseRepository,
+  ruleId: number,
+): ForcedRuleApplicationResult {
+  const rule = repo.getRuleById(ruleId);
+  if (!rule) throw new Error(`No rule with id ${ruleId}.`);
+
+  // Matching is the glob syntax compiled to a RegExp, which SQL can't express,
+  // so the scan happens here — the same approach `previewPatternMatches` takes.
+  const updates: { id: number; assignments: Partial<Record<RuleActionField, string>> }[] = [];
+  const fieldsChanged = new Set<RuleActionField>();
+  const categories: string[] = [];
+  let matchedCount = 0;
+
+  for (const transaction of repo.listTransactions()) {
+    const plan = planForcedRuleApplication(transaction, rule);
+    if (!plan) continue;
+    matchedCount += 1;
+    if (plan.assignments.length === 0) continue;
+
+    const assignments: Partial<Record<RuleActionField, string>> = {};
+    for (const assignment of plan.assignments) {
+      assignments[assignment.fieldName] = assignment.value;
+      fieldsChanged.add(assignment.fieldName);
+      if (assignment.fieldName === "categoryName") categories.push(assignment.value);
+    }
+    updates.push({ id: transaction.id, assignments });
+  }
+
+  // A category the rule introduces must exist in the managed list, exactly as
+  // it would after an import.
+  if (categories.length > 0) repo.registerCategoriesIfMissing(categories);
+
+  const changedCount = repo.forceApplyRuleAssignments(updates);
+  return { matchedCount, changedCount, fieldsChanged: [...fieldsChanged] };
 }
 
 /**
