@@ -29,6 +29,7 @@ export {
 } from "./schema";
 export { listPhotoFoldersForDate, listPhotosInFolder, monthFolderLabel } from "./photos";
 export { listPhotoFoldersForRange } from "./range";
+export { pickRandomPhoto, type RandomPhotoPick } from "./random";
 export { diagnosePhotoArchive } from "./diagnose";
 export { EXIF_HEADER_BYTES, readExifDate, parseExifDate } from "./exif";
 export {
