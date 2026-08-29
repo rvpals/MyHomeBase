@@ -13,8 +13,11 @@ export async function GET() {
   const currentUser = getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo);
   if (!currentUser) return new NextResponse(null, { status: 401 });
 
-  // Read the app.log file from the app directory
-  const appLogPath = path.join(process.cwd(), "app", "app.log");
+  // app.log sits in the app root, which is the process working directory --
+  // start.sh cd's into $APP before launching server.js. There is no "app"
+  // subfolder on the NAS; joining one in made this path unresolvable, so the
+  // route 404'd forever and the Server Log tab always read as empty.
+  const appLogPath = path.join(process.cwd(), "app.log");
 
   try {
     const fs = await import("node:fs");

@@ -1,5 +1,77 @@
 # Change History
 
+## 2026-08-28 23:25 — The home screen is yours to arrange
+
+**Appearance settings moved out of Configuration.** Administration's Configuration group
+had grown into a drawer: two screens about how the app is *set up* sat beside three about
+how it *looks*. Color Themes, Icons and Dashboard Texture now live under a new **Display
+Settings** group, leaving Configuration to Module and Application Configuration alone.
+
+The three moved screens kept their `configuration-*` nav ids and their
+`/admin/configuration/*` URLs. That looks inconsistent and is deliberate: `SectionPanel`
+derives each icon slot id from the nav id, so renaming them to match the new label would
+have silently orphaned every icon anyone had uploaded for those positions — they would
+have fallen back to default glyphs with nothing to explain why. A regrouping of the nav is
+not a move of the screens, and the ids record that.
+
+**Which cards the home screen shows is now a setting.** *Display Settings → Dashboard
+Widgets* lists the five real home screen cards — Module Carousel, Daily Quote, Today in
+History, Random Photo, Stock Daily Glance — with a checkbox and a pair of arrows each.
+One layout for the whole install, stored as the `home_widgets` app setting
+(migration 0067), like `color_theme` beside it.
+
+Four things about it that are decisions rather than details:
+
+- **Ticking a card cannot conjure its content.** Visibility is an AND with each card's
+  own condition, never an override: Stock Daily Glance still needs positions and access
+  to the module, Daily Quote still needs a quote. A tick only ever *takes a card away*,
+  and the screen says so rather than leaving it to be discovered.
+- **Hiding a card skips its fetch.** The layout is read before any card data, so an
+  unticked Random Photo costs no directory listings over the photo share and an unticked
+  Daily Glance reads no positions. Hiding makes the page cheaper, not just quieter —
+  which matters most when the NAS is asleep.
+- **Two things on the home screen are deliberately not in the list.** The deployment
+  message clears itself once acknowledged, so a permanent "hide" would configure
+  something already gone; the failed sign-in alert is a security signal an admin should
+  not be able to tick away for good. Neither is a card you arrange.
+- **Spacing had to stop belonging to the cards.** The carousel was always first and
+  carried no top margin while every other card hardcoded `mt-8`. Once any card can be
+  first that is wrong in both directions, so the gap follows position — and follows the
+  first *drawn* card, not the first ticked one, because a ticked-but-empty card would
+  otherwise leave a stray gap at the top of the page.
+
+Adding a card later needs no migration: `resolveHomeWidgets` inserts an id missing from a
+saved layout at its catalogue position and drops one that is no longer a card. Inserting
+rather than appending is the bug the Stocks dashboard shipped once — a card added at the
+top of the catalogue turned up at the bottom of every saved layout — and the test suite
+pins it here so it cannot happen twice.
+
+**A photograph on the home screen, drawn at random.** One picture from anywhere in the
+journal archive, rerolled on every landing. The walk reads exactly one directory listing
+per level — root, year, folder — so a folder of 2,000 photos costs the same as a folder
+of three, and no file is opened until the browser asks the image route for the bytes. A
+pick that lands on an empty or RAW-only folder re-rolls up to eight times, because those
+are ordinary in a real archive and a card reading "no photo found" would look broken. An
+unconfigured archive, an unreachable one and an empty one are three different answers, and
+the card tells them apart instead of collapsing them into one shrug.
+
+**CSV Analysis got the two-tier nav.** The module now has a Dashboard and a Configuration
+section like Music and Expense, rather than one page carrying everything.
+
+**Three fixes.**
+
+- **The Server Log tab was always empty.** The route joined an `app/` subfolder onto the
+  working directory, and there is no such folder on the NAS — `start.sh` already cd's
+  into the app root before launching. The path never resolved, so the route 404'd forever.
+- **A module texture slug was lowercased after it was validated, not before.** With the
+  transform last, the pattern saw the raw route param, so `Music-Library` was rejected
+  outright rather than normalised — the one case the lowercasing exists for. The
+  shadow-row guard behind it had therefore never actually run.
+- **The app mark on the module rail survives being slotted.** `SlotIcon` takes an
+  optional `fallback` for the one position whose original icon is bespoke artwork rather
+  than a glyph from either table. Without it the multi-colour brass badge would have
+  quietly become a flat line-art house for everyone who has uploaded nothing.
+
 ## 2026-08-28 21:29 — Uploaded icons get cleaned up on the way in
 
 **A 1024x1024 icon was not a high-resolution icon.** Four uploads sat in the database as

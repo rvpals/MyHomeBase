@@ -20,6 +20,21 @@ export const adminNav: SectionNode[] = [
         hint: "General settings that apply across the application",
         icon: "window",
       },
+    ],
+  },
+  {
+    // Heading only, like `configuration` above -- the three appearance screens live
+    // here, but there is no Display Settings page to link to.
+    //
+    // The child ids stay `configuration-*` on purpose. `SectionPanel` derives each
+    // icon slot id from the id, so renaming these to `display-settings-*` would
+    // orphan any icon already uploaded for those positions. Their routes stay under
+    // /admin/configuration/ for the same reason: this is a regrouping of the nav,
+    // not a move of the screens.
+    id: "display-settings",
+    label: "Display Settings",
+    icon: "palette",
+    children: [
       {
         id: "configuration-themes",
         label: "Color Themes",
@@ -40,6 +55,15 @@ export const adminNav: SectionNode[] = [
         href: "/admin/configuration/texture",
         hint: "Set an optional background picture for the home dashboard",
         icon: "palette",
+      },
+      {
+        // A fresh id, so unlike its siblings above it needs no `configuration-`
+        // legacy: nothing has ever been uploaded against its icon slot.
+        id: "display-settings-widgets",
+        label: "Dashboard Widgets",
+        href: "/admin/display-settings/widgets",
+        hint: "Choose which cards the home screen shows, and in what order",
+        icon: "grid",
       },
     ],
   },

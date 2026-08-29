@@ -116,10 +116,15 @@ describe("sectionSlotId", () => {
         "import", "transaction-rules", "settings",
       ],
       attendance: ["main", "rosters", "classes", "actions", "report", "configuration"],
+      csv: ["main", "configuration"],
       music: ["main", "magic", "player", "queue", "scan", "configuration"],
       admin: [
         "configuration", "configuration-modules", "configuration-application",
+        // Under the Display Settings group, but the ids stayed `configuration-*` so
+        // existing icon overrides kept matching.
+        "display-settings",
         "configuration-themes", "configuration-icons", "configuration-texture",
+        "display-settings-widgets",
         "user-management", "daily-quote", "daily-quote-add", "daily-quote-import",
         "security", "background-tasks", "sql-explorer", "about",
       ],

@@ -18,8 +18,15 @@
 // padding `.app-main` reserves), and only one of them is a React component.
 
 import Link from "next/link";
+import { getIconSlot } from "@/lib/icons";
 import { AppIcon } from "./app-icon";
 import { ModuleIcon } from "./module-icons";
+import { SlotIcon } from "./slot-icon";
+
+// Resolved at module scope: `ICON_SLOTS` is a static array, so this is a lookup
+// rather than I/O. Non-null because the id is registered in slots.ts and a test
+// asserts every wired slot exists.
+const HOME_SLOT = getIconSlot("chrome_rail_home")!;
 
 export interface ModuleRailLink {
   slug: string;
@@ -56,7 +63,10 @@ export function ModuleRail({ links, isActive, className = "" }: ModuleRailProps)
         aria-label="Home"
         className="mb-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-brass-dark transition-colors hover:bg-brass-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
       >
-        <AppIcon className="h-6 w-6" />
+        {/* Replaceable from Admin → Display Settings → Icons. `fallback` keeps the
+            brass coin-and-house mark until someone actually uploads something —
+            the app mark is artwork, not a glyph either icon table can express. */}
+        <SlotIcon slot={HOME_SLOT} className="h-6 w-6" fallback={<AppIcon className="h-6 w-6" />} />
       </Link>
 
       <div className="h-px w-8 shrink-0 bg-line" aria-hidden />

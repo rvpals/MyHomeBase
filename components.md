@@ -677,7 +677,7 @@ because the arrows and dots already cover keyboard selection.
   timestamp, so **no page ever carries the bytes**. `imageVersion` is the cache-buster;
   without it a replaced image lingers for the route's 5-minute `max-age`.
 - With no upload, how good the glyph looks depends on the icon set: pick `fluent-3d` or
-  `flat-color` in Admin → Configuration → Icons and it renders as real artwork rather than
+  `flat-color` in Admin → Display Settings → Icons and it renders as real artwork rather than
   a blown-up line icon.
 
 **Notes:** the tile behind a *glyph* is a solid-accent square for monochrome icon sets and
@@ -2101,7 +2101,8 @@ const QUOTE_SLOT = getIconSlot("homescreen_card_daily_quote");
 ```
 
 **Used by:** [daily-quote-widget.tsx](src/app/(protected)/daily-quote-widget.tsx) (the
-pilot call site) and the per-slot list in
+pilot call site), [module-rail.tsx](src/components/module-rail.tsx) (the app mark, via
+`fallback`), and the per-slot list in
 [admin/configuration/icons/slots-view.tsx](src/app/(protected)/admin/configuration/icons/slots-view.tsx).
 
 **When to reach for this instead of `TreeIcon`.** Use `SlotIcon` where the icon marks a
@@ -2110,6 +2111,14 @@ an admin page. Keep using `TreeIcon` directly for **row actions** (pencil, trash
 and for **state glyphs** (`star` vs `star-filled`): those are buttons and states, not
 places, and letting someone override half of a state pair would break the distinction the
 pair exists to carry. It is the same line `ALWAYS_CLASSIC` draws inside `tree-icons.tsx`.
+
+**`fallback` — bespoke default artwork.** One position's original icon is not a glyph from
+either table: `chrome_rail_home`, the app mark atop the module rail, is the multi-colour
+brass `AppIcon`. A `defaultConcept` can't express that, so `SlotIcon` takes an optional
+`fallback` node rendered when no override exists, and `ModuleRail` passes `<AppIcon />`.
+Don't use it elsewhere — a glyph worth slotting belongs in `TREE_ICONS`/`MODULE_ICONS`
+where every set can draw its own. This is for application identity, which no set should
+redraw.
 
 **Two ways a slot reaches the screen.** A *named call site* names its slot directly, as the
 Daily Quote card does. A *data-driven nav* can't — `SectionPanel` renders six different navs

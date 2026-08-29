@@ -32,7 +32,11 @@ export type ModuleTextureSettingsInput = z.infer<typeof moduleTextureSettingsSch
 export const moduleTextureSlugSchema = z
   .string({ message: "A module slug is required." })
   .trim()
+  // Lowercased BEFORE the pattern is checked, not after. With the transform last the
+  // regex saw the raw route param, so `Music-Library` was rejected outright rather than
+  // normalised -- which is the one case the lowercasing exists for, and it meant the
+  // shadow-row guard never actually ran.
+  .toLowerCase()
   .min(1, "A module slug is required.")
   .max(64, "That module slug is too long.")
-  .regex(/^[a-z0-9-]+$/, "A module slug is lowercase letters, numbers and hyphens.")
-  .transform((slug) => slug.toLowerCase());
+  .regex(/^[a-z0-9-]+$/, "A module slug is lowercase letters, numbers and hyphens.");

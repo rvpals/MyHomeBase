@@ -88,7 +88,7 @@ export interface SectionPanelProps {
    *
    * Optional: omit it and every section icon resolves exactly as it did before slots
    * existed. Supplying it is what makes a module's nav icons individually replaceable
-   * from Admin > Configuration > Icons.
+   * from Admin > Display Settings > Icons.
    */
   iconNamespace?: string;
   /** Badged at the head of the panel and the sheet — it's what keeps the icon-only rail honest. */

@@ -71,7 +71,7 @@ export function DailyQuoteWidget({
     <CollapsibleCard
       title="Daily Quote"
       // A slot, not a bare concept: this card is the first place whose icon an admin can
-      // replace from Admin > Configuration > Icons. With nothing uploaded it renders the
+      // replace from Admin > Display Settings > Icons. With nothing uploaded it renders the
       // active set's quote-marks glyph, exactly as it did before.
       titleIcon={QUOTE_SLOT ? <SlotIcon slot={QUOTE_SLOT} className="h-4 w-4" /> : undefined}
       className={className}

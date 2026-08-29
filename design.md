@@ -24,7 +24,7 @@ properties defined in `src/lib/settings/themes.ts` and exposed as Tailwind utili
 | `brassDark` | `text-brass-dark` / `var(--brass-dark)` | Accent shadow/hover shade, and the text color on `brassSoft` chips |
 | `brassSoft` | `bg-brass-soft` | Low-emphasis tinted chip/badge background |
 
-Any of these can be swapped at runtime (Admin → Configuration → Color Themes), so a
+Any of these can be swapped at runtime (Admin → Display Settings → Color Themes), so a
 component that reaches for a literal color instead of a token will look right in one
 theme and wrong in the others. The shipped themes are **Signal Deck** (default),
 **Ember Ledger**, **Aurora Deck**, **BMS** (Bristol Myers Squibb brand purple on charcoal
@@ -199,7 +199,7 @@ covers the responsive and safe-area idioms. Full reasoning under "Phone and desk
 
 Module icons (the graphics on the home carousel and the glyphs in the nav bars) are driven by a
 user-chosen **icon set**, the same way colors are driven by a theme — picked at Admin →
-Configuration → Icons, persisted as the `icon_set` setting, and registered in
+Display Settings → Icons, persisted as the `icon_set` setting, and registered in
 `ICON_SETS` (`src/lib/settings/icon-sets.ts`). The active set is read server-side in the
 root layout and supplied through `IconSetProvider`; `ModuleIcon` consumes it, so call
 sites never name a set — they just render `<ModuleIcon name="building" />` and get the

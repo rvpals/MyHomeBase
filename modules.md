@@ -214,8 +214,9 @@ free one, since `WEEKDAY_LABELS` would need rotating too.
 
 **CSV Analysis** (`csv-analysis`) — import an arbitrary CSV, which creates a
 per-entry table (`csv_<name>`, from `buildTableName`), then chart and analyse it.
-The one module with **no tree nav and no sections**: its whole UI is a single
-view. Library: `src/lib/csv-analytics`, `src/lib/csv-import`.
+Sections: Dashboard (the whole import/chart UI) and Configuration (a placeholder
+until there is a setting worth persisting). Library: `src/lib/csv-analytics`,
+`src/lib/csv-import`.
 
 **Expense** (`expense`) — credit-card transactions imported from CSV, categorised
 by post-import rules, with a dashboard and charts. Library: `src/lib/expense`.
@@ -314,7 +315,7 @@ Admin → Configuration → Module Configuration carries a glyph grid per module
 than on the page's Save button — the same trade the carousel graphic makes, and for
 the same reason: this one value draws the rail, the home grid and the admin card, so
 an unsaved choice would leave them disagreeing. The grid previews in whichever icon
-set is active under Configuration → Icons.
+set is active under Display Settings → Icons.
 
 Two things that still belong in a migration. **Seeding a new module's icon** — that's
 part of its `INSERT`. And **retiring a name from `MODULE_ICON_NAMES`**, which has to
@@ -337,7 +338,7 @@ icon" would necessarily change both. A **slot** is the way to change just one of
 A slot is a code-registered id for one icon *position*
 (`homescreen_card_daily_quote`) that declares a default concept (`quote`).
 [`ICON_SLOTS`](src/lib/icons/slots.ts) is the registry — and the only queryable map of
-where this app shows icons, which is what lets **Admin → Configuration → Icons** list
+where this app shows icons, which is what lets **Admin → Display Settings → Icons** list
 positions rather than making an admin guess at concept names. Resolution runs:
 
 ```
@@ -355,11 +356,12 @@ under each row in the admin list, and it is load-bearing rather than decoration:
 alone is ambiguous once there are fifty-odd positions, because all five modules have a
 "Dashboard" section and two admin entries share the `palette` glyph.
 
-**73 positions are registered and 52 are wired up** — every module's section nav, plus the
-whole Admin nav, plus the Daily Quote card. The remaining 21 (card headers, the Music
-Library view tabs, shared chrome) are registered but inert: they appear in the admin list
-and accept an upload, yet the screen keeps rendering the default concept until the call
-site is converted. Each row says so, driven by the `wired` flag on the slot.
+**77 positions are registered and all 77 are wired up** — every module's section nav,
+the whole Admin nav, and the home screen's Daily Quote, Photo of the Day and Random
+Photo cards. A slot that is registered but not yet converted at its call site would be
+inert (it appears in the admin list and accepts an upload, yet the screen keeps
+rendering the default concept); the `wired` flag on the slot drives that note in each
+row, and there are currently none in that state.
 
 ### Two adoption patterns
 
@@ -419,6 +421,45 @@ code sees only `hasImage`, never the bytes; the BLOB is read by
 `GET /api/modules/[slug]/texture` alone. Design constraints (why the layer wraps
 section content and not the nav, why opacity defaults low) are in `design.md` →
 *The one sanctioned exception*.
+
+### Home screen cards
+
+Which cards the home screen draws, and in what order, is configured from
+**Administration → Display Settings → Dashboard Widgets** and stored as the single
+`home_widgets` app setting (migration 0067). `src/lib/home-dashboard` owns the catalogue
+and the encoding; the screen and `src/app/(protected)/page.tsx` only present.
+
+The layout is **global** — one value for the whole install, like `color_theme` beside
+it, so an admin arranges the home screen for everyone. `resolveHomeWidgets` takes a
+plain string rather than a settings array precisely so a later move to a per-user layout
+(`sys_user_preferences`, migration 0044) would touch only the route layer.
+
+Four things worth knowing before touching it:
+
+- **Visibility is an AND with each card's own condition, never an override.** Ticking
+  Stock Daily Glance cannot conjure positions, and Daily Quote still needs a quote. The
+  home screen keeps every guard it had; a tick can only ever *take a card away*.
+- **Two of the things the home screen renders are deliberately not in the catalogue**
+  — the one-shot deployment message (it clears itself once acknowledged, so a permanent
+  "hide" would configure something already gone) and the failed sign-in alert (a
+  security signal, shown only to admins while failures are unreviewed). Neither is a
+  card you arrange.
+- **A hidden card skips its own fetch.** The layout is read before any card data, so an
+  unticked Random Photo costs no directory listings over the photo share and an unticked
+  Daily Glance reads no positions. Hiding a card makes the page cheaper, not just quieter.
+- **Spacing is positional, not per-card.** The carousel used to be first and carried no
+  top margin while the others hardcoded `mt-8`. Once any card can be first, the gap has
+  to follow position — and it follows the first *drawn* card, not the first ticked one,
+  because a ticked-but-empty card would otherwise leave a stray gap at the top.
+
+Adding a card: append its id to `HOME_WIDGET_IDS`, give it `HOME_WIDGET_INFO` copy, and
+add a `case` to the switch in `page.tsx`. **No migration** — `resolveHomeWidgets`
+inserts an id missing from a saved layout at its catalogue position (not appended, which
+is the bug `stock-dashboard` shipped once) and drops an id that is no longer a card.
+
+Not to be confused with the **Stocks & ETFs** module's own dashboard widgets
+(`src/lib/stock-dashboard`), which are a different catalogue stored as a *module*
+setting and configured from that module's Configuration section.
 
 ## Creating a new module
 
@@ -522,8 +563,9 @@ so a new job needs no new UI.
 
 ### 7. Sections and the nav
 
-Skip this whole step for a single-screen module — CSV Analysis has no nav, and
-that's a legitimate shape.
+Skip this whole step for a single-screen module — that's a legitimate shape.
+Every module currently shipping has a nav, though: CSV Analysis was the last
+single-screen one and gained Dashboard + Configuration.
 
 Otherwise, three files under
 [src/app/(protected)/modules/[slug]/](src/app/(protected)/modules/[slug]/),

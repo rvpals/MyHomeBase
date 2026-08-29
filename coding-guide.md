@@ -175,7 +175,7 @@ file is refused instantly with the app's own wording instead of a 500.
 
 Every icon that marks a **place** in the app goes through `SlotIcon` and a registered
 entry in `ICON_SLOTS` ([src/lib/icons/slots.ts](src/lib/icons/slots.ts)) — never
-`<TreeIcon name="chart" />` at the call site. All 73 current positions are wired this
+`<TreeIcon name="chart" />` at the call site. All 79 current positions are wired this
 way; a new feature or module should not reintroduce the old pattern.
 
 **Why.** A glyph name is a *concept*, and concepts are shared: `grid` is the dashboard
@@ -223,6 +223,19 @@ Follow the conventions already in the registry so a suggestion is easy to accept
 restatement of the id; `where` is a click path ending in a full stop; `group` matches the
 sibling entries. Flag anything you decided *not* to slot and why — that list is as useful
 to review as the slots themselves.
+
+### Bespoke default artwork: `fallback`
+
+One slot's original icon is not a glyph from either table — `chrome_rail_home`, the app
+mark at the top of the module rail, is a multi-colour brass badge (`AppIcon`). A
+`defaultConcept` cannot express that, so slotting it naively would have quietly replaced
+the mark with a flat line-art house for everyone who has uploaded nothing.
+
+`SlotIcon` therefore takes an optional `fallback` node, used only when no override
+exists. The rail passes `<AppIcon />`. **Do not reach for this elsewhere**: if a glyph
+needs slotting, it belongs in `TREE_ICONS`/`MODULE_ICONS` so every icon set can draw its
+own version. `fallback` exists for application identity, which by definition no set
+should redraw.
 
 ### Data-driven navs derive the id instead
 

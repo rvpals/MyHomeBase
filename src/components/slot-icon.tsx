@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import type { IconSlot } from "@/lib/icons";
 import { useIconOverrides } from "./icon-override-context";
 import { TreeIcon } from "./tree-icons";
@@ -25,10 +26,24 @@ import { ModuleIcon } from "./module-icons";
 export function SlotIcon({
   slot,
   className = "",
+  fallback,
 }: {
   /** The slot definition from `ICON_SLOTS` — passed whole so this stays presentation-only. */
   slot: IconSlot;
   className?: string;
+  /**
+   * What to render when nothing is overridden, instead of the slot's default concept.
+   *
+   * Only for positions whose original icon is bespoke artwork rather than a glyph from
+   * either table — currently just the app mark on the module rail, which is a multi-colour
+   * brass badge that no `defaultConcept` can express. Without this the promise that "an
+   * un-overridden slot renders exactly what the call site rendered before" would be false
+   * for that one position: it would quietly become a flat line-art house.
+   *
+   * Leave it unset everywhere else. A slot reaching for it is usually a sign the glyph
+   * belongs in the icon tables instead, where every set can draw its own version.
+   */
+  fallback?: ReactNode;
 }) {
   const overrides = useIconOverrides();
   const override = overrides[slot.id];
@@ -62,6 +77,8 @@ export function SlotIcon({
       />
     );
   }
+
+  if (fallback !== undefined) return <>{fallback}</>;
 
   if (slot.namespace === "module") {
     return <ModuleIcon name={slot.defaultConcept} className={className} />;

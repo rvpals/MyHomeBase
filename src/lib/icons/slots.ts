@@ -64,6 +64,15 @@ export const ICON_SLOTS: IconSlot[] = [
     wired: true,
     namespace: "tree",
   },
+  {
+    id: "homescreen_card_random_photo",
+    label: "Random Photo card",
+    group: "Home screen",
+    where: "Home screen → the Random Photo card header, immediately left of the title.",
+    defaultConcept: "photo",
+    wired: true,
+    namespace: "tree",
+  },
 
   /* ---------------------------------------------------------------------------------
      Stocks & ETFs — nav sections. Section panel, left of each section name.
@@ -299,6 +308,28 @@ export const ICON_SLOTS: IconSlot[] = [
     group: "Journal cards",
     where: "Journal → open a single entry → the Photos card header.",
     defaultConcept: "photo",
+    wired: true,
+    namespace: "tree",
+  },
+
+  /* ---------------------------------------------------------------------------------
+     CSV Analysis — nav sections.
+  --------------------------------------------------------------------------------- */
+  {
+    id: "csv_section_main",
+    label: "Dashboard",
+    group: "CSV Analysis sections",
+    where: "CSV Data Analysis → section panel → Dashboard.",
+    defaultConcept: "grid",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "csv_section_configuration",
+    label: "Configuration",
+    group: "CSV Analysis sections",
+    where: "CSV Data Analysis → section panel → Configuration.",
+    defaultConcept: "gear",
     wired: true,
     namespace: "tree",
   },
@@ -569,9 +600,10 @@ export const ICON_SLOTS: IconSlot[] = [
   /* ---------------------------------------------------------------------------------
      Admin. The nav entries down the left of every Admin screen. Ids follow the same
      `<namespace>_section_<slug>` rule the modules use, because `SectionPanel` derives them
-     the same way — `adminNav`'s kebab ids become snake here. `palette` appears twice
-     in the underlying nav (Color Themes and Dashboard Texture) — separating those two is
-     exactly what a per-position override buys over a per-concept one.
+     the same way — `adminNav`'s kebab ids become snake here. `palette` appears three times
+     in the underlying nav (the Display Settings header, Color Themes and Dashboard
+     Texture) — separating those is exactly what a per-position override buys over a
+     per-concept one.
   --------------------------------------------------------------------------------- */
   {
     id: "admin_section_configuration",
@@ -601,10 +633,23 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    id: "admin_section_display_settings",
+    label: "Display Settings (group)",
+    group: "Admin navigation",
+    where: "Admin → section panel → the Display Settings group header.",
+    defaultConcept: "palette",
+    wired: true,
+    namespace: "tree",
+  },
+  /* The three below sit under Display Settings, but their slot ids still read
+     `configuration_*`: the nav ids they derive from were kept so that icons already
+     uploaded for these positions survived the regrouping. Id, not label, is what a
+     stored override matches on. */
+  {
     id: "admin_section_configuration_themes",
     label: "Color Themes",
     group: "Admin navigation",
-    where: "Admin → Configuration → Color Themes.",
+    where: "Admin → Display Settings → Color Themes.",
     defaultConcept: "palette",
     wired: true,
     namespace: "tree",
@@ -613,7 +658,7 @@ export const ICON_SLOTS: IconSlot[] = [
     id: "admin_section_configuration_icons",
     label: "Icons",
     group: "Admin navigation",
-    where: "Admin → Configuration → Icons — this very screen's own nav entry.",
+    where: "Admin → Display Settings → Icons — this very screen's own nav entry.",
     defaultConcept: "shapes",
     wired: true,
     namespace: "tree",
@@ -622,8 +667,17 @@ export const ICON_SLOTS: IconSlot[] = [
     id: "admin_section_configuration_texture",
     label: "Dashboard Texture",
     group: "Admin navigation",
-    where: "Admin → Configuration → Dashboard Texture.",
+    where: "Admin → Display Settings → Dashboard Texture.",
     defaultConcept: "palette",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "admin_section_display_settings_widgets",
+    label: "Dashboard Widgets",
+    group: "Admin navigation",
+    where: "Admin → Display Settings → Dashboard Widgets.",
+    defaultConcept: "grid",
     wired: true,
     namespace: "tree",
   },
@@ -706,6 +760,23 @@ export const ICON_SLOTS: IconSlot[] = [
      The module rail's per-module glyphs are deliberately absent — those are
      `sys_modules.icon`, already editable under Module Configuration.
   --------------------------------------------------------------------------------- */
+  {
+    // The app mark at the top of the module rail. Slotted even though it is the
+    // application's own identity, because it is a *place* (the way home) and the
+    // one icon present on every module screen.
+    //
+    // `defaultConcept` is a formality here: unlike every other slot, the call
+    // site passes its own fallback (`AppIcon`, the brass coin-and-house mark),
+    // because the real default is multi-colour artwork rather than a glyph from
+    // either table. `home` is what a set-level replacement would land on.
+    id: "chrome_rail_home",
+    label: "Home / app mark",
+    group: "Shared chrome",
+    where: "Module rail → the app mark at the very top, above the divider.",
+    defaultConcept: "home",
+    wired: true,
+    namespace: "module",
+  },
   {
     id: "chrome_menu_modules_trigger",
     label: "Modules menu button",

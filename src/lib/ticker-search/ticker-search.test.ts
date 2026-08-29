@@ -74,7 +74,10 @@ describe("matchTickers", () => {
   });
 
   it("matches inside a symbol too", () => {
-    expect(matchTickers(known, "OOG").map((m) => m.ticker)).toEqual(["GOOG", "GOOGL"]);
+    // Both hit at index 1, so neither is a prefix match and the source tier decides:
+    // GOOGL is held and GOOG only watched. Alphabetical is the LAST tiebreak, not the
+    // first -- see "ranks a held symbol above a merely known one" below.
+    expect(matchTickers(known, "OOG").map((m) => m.ticker)).toEqual(["GOOGL", "GOOG"]);
   });
 
   it("ranks prefix matches above substring matches", () => {

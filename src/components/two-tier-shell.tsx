@@ -39,7 +39,7 @@ export interface TwoTierShellProps {
   sections: SectionNode[];
   /**
    * The module's icon-slot namespace, passed through to `SectionPanel` so each section
-   * icon can be replaced individually from Admin > Configuration > Icons. Omit it and
+   * icon can be replaced individually from Admin > Display Settings > Icons. Omit it and
    * the icons resolve exactly as they did before slots existed.
    */
   iconNamespace?: string;
