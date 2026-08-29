@@ -283,11 +283,13 @@ Run each with `npm run cli -- <command>`.
       by type; sparse gaps are skipped (never a $0.00 label); “latest” = last real value.
 - [ ] CSV broker-import remembers which account a label maps to.
 
-### Actionables (`/actionables`)
+### Watch & Test (`/watch-test`)
 
 - [ ] Watch lists: create, add/remove symbols, chart them.
 - [ ] Next-day signals honour the configured thresholds.
 - [ ] Favorite stars show next to watched symbols where applicable.
+- [ ] Simulation runs a backtest on any ticker; the three cards (Watch Lists,
+      Next-Day Signals, Simulation) each fold away independently.
 
 ### Charts & Analysis (`/charts`)
 

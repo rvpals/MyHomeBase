@@ -1,5 +1,83 @@
 # Change History
 
+## 2026-08-29 09:45 — A vendor is somebody now
+
+**Vendors became a thing you can edit, not just a total.** Until now a vendor existed
+only at read time: `vendorTotals` grouped transactions on `exp_transactions.vendor`,
+falling back to a brand key stripped out of the raw statement description when that
+column was blank — which it is on most rows. That is a rollup, not an entity. There was
+no row to hang a description or an icon off, and nothing to rename or delete. Migration
+0068 adds `exp_vendors`, and nothing more: the rollup keeps working untouched, and a
+transaction still needs no vendor row to group under that name.
+
+Four decisions in that table are worth the ink:
+
+- **The name is the key, and the index is `NOCASE`.** `vendorGroupKey()` already
+  upper-cases before grouping, so "Costco" and "COSTCO" are one vendor to every report
+  in the module — but SQLite's `TEXT PRIMARY KEY` is case-*sensitive*, so the key alone
+  would happily hold both. The unique NOCASE index is what actually enforces one vendor;
+  the primary key stays case-sensitive so the spelling you typed is the spelling stored.
+- **`upsertVendor` does its lookup by hand rather than `ON CONFLICT`.** The conflict
+  target would be the case-sensitive key, so saving "Costco" over a stored "COSTCO"
+  would try to insert a second row and trip the NOCASE index instead of updating.
+- **There is no foreign key to `exp_transactions.vendor`.** The relationship is
+  deliberately loose: an import must never fail for want of a vendor row.
+- **Deleting a vendor leaves the transactions alone.** `deleteCategory` blanks
+  `category_name`, because "uncategorised" is a real state. Blanking `vendor` would
+  instead destroy the tidied name a post-import rule worked out, so it doesn't.
+
+**Meta Data grew a Vendors card, collapsed by default** — the list is as long as your
+vendor history, so opening it is a choice. Inside, a Saved / Unsaved pair of tabs with
+the counts in the labels, because with the lists split you can no longer see how much is
+in the tab you're not looking at, and the unsaved backlog is the whole reason to switch.
+The Delete button appears only on a saved vendor; a derived one has no row, so the
+button would be a no-op that looks like a failure. Uploading an icon to a vendor that
+was never saved creates the row for you — most vendors start life derived from a
+statement, and demanding a save first would make every icon a two-step job.
+
+**The vendor donut now shows saved vendors only.** The derived rollups pick up every
+one-off spelling a statement description yields, and that long tail swamped the chart.
+Saving a vendor is the signal that you care about it. "No saved vendors yet" and "no
+spend against your saved vendors" are different answers and the card tells them apart,
+since the first one would be a lie dressed as the second.
+
+**Rules can now be re-run over transactions you've already imported.** Each rule has an
+**Update Trans** button that applies *that* rule to every transaction it matches,
+overwriting what's there — which is what lets a corrected rule fix rows an earlier
+version of it got wrong. The ordinary clean-up can't do this and shouldn't: it walks the
+processed queue applying whichever rule matches first and only ever fills blanks.
+
+The warning names the fields before it does anything, because the risk of the button is
+changing a field you weren't thinking about. **Status is the one field it will not
+overwrite.** Status is workflow state rather than a label — a force-apply that knocked
+two hundred reconciled rows back to `new` would destroy months of work, and nothing in
+the app can undo that. It also leaves the `processed` flag alone: this run happens
+outside the import queue, not through it.
+
+**Watch lists, signals and simulation are one screen.** Watching and back-testing are
+one workflow — both are about tickers you're *considering* rather than ones you hold —
+so Actionables and Simulation merged into **Watch & Test**, three folding cards in one
+column, and the stock nav went from nine sections to eight. The five Market-tab cards in
+the ticker dialog picked up icon slots at the same time, under a new "Stocks & ETFs
+cards" group.
+
+**The random photo card says how old the photo is.** `Random photo · 6 years, 2 months,
+20 days ago`, read from EXIF where the file has it and from the file name where it
+doesn't — the same order `matchPhoto` already uses. It costs one partial header read of
+the single file that was picked, not a scan: the walk is still three directory listings.
+The age is computed in the browser on each render rather than baked into the server
+payload, so a tab left open overnight doesn't insist a photo is a day younger than it is.
+
+**A calendar-age bug that produced negative days.** `calendarAgeSince` subtracted the
+date fields and borrowed from the month before `now`, which cannot work: from 31 Jan to
+1 Mar the day deficit is 30 and February only supplies 28, so the answer came out as
+"1 month, **-2** days". Borrowing from the other candidate month overstates every
+ordinary mid-month span instead, so the borrow is gone entirely — the months are counted
+by walking the date forward a month at a time, clamped to the last real day of a shorter
+month, and the leftover is a true count of days between two real dates. A span measured
+that way cannot come out negative. A sweep over ten years of month-ends is in the test
+suite to keep it that way.
+
 ## 2026-08-28 23:25 — The home screen is yours to arrange
 
 **Appearance settings moved out of Configuration.** Administration's Configuration group

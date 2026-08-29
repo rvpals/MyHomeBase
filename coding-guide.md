@@ -15,7 +15,7 @@ module is obvious from the name alone. New tables must follow this.
 | `stk_` | Stocks & ETFs (brokerage accounts **and** per-stock tables — one prefix) | `stk_investment_accounts`, `stk_stock_positions`, `stk_stock_transactions`, `stk_stock_watch_lists`, `stk_stock_volatility_cache`, `stk_ticker_risk_cache`, `stk_ticker_logos`, `stk_daily_snapshots` |
 | `csv_` | CSV Analysis (incl. user-generated per-entry tables from `buildTableName`) | `csv_analytics_entries`, `csv_chart_presets`, `csv_govee` |
 | `jrn_` | MyJournal | `jrn_entries`, `jrn_categories`, `jrn_tags`, `jrn_entry_categories`, `jrn_entry_tags`, `jrn_entry_locations`, `jrn_entry_images`, `jrn_saved_filters` |
-| `exp_` | Expense tracker | `exp_transactions`, `exp_creditcard_accounts`, `exp_categories`, `exp_post_import_rules`, `exp_post_import_rule_actions` |
+| `exp_` | Expense tracker | `exp_transactions`, `exp_creditcard_accounts`, `exp_categories`, `exp_vendors`, `exp_post_import_rules`, `exp_post_import_rule_actions` |
 | `att_` | Attendance | `att_students`, `att_classes`, `att_class_enrollments`, `att_attendance_records`, `att_attendance_entries`, `att_student_actions`, `att_attendance_entry_actions` |
 | `ico_` | Icon customisation — platform-wide, not a feature module | `ico_slot_overrides` |
 | `mus_` | Music Library | `mus_tracks`, `mus_albums`, `mus_scan_runs`, `mus_track_lyrics`, `mus_playlists`, `mus_playlist_tracks`, `mus_play_events`, `mus_magic_list`, `mus_magic_list_tracks`, `mus_play_queue`, `mus_play_queue_state` |
@@ -126,11 +126,16 @@ legitimately blankable gets its own schema and its own repository write
 ### Per-row images
 
 A per-row image is a `BLOB` column plus a `<name>_mime_type` column, served by a
-dedicated route — never inlined as a base64 data URL. Eight tables do this:
+dedicated route — never inlined as a base64 data URL. Nine tables do this:
 `sys_users.avatar` (0011), `exp_creditcard_accounts.card_image` (0031),
 `exp_categories.icon_image` (0034), `stk_investment_accounts.icon_image` (0037),
 `sys_modules.carousel_image` (0040), `jrn_categories`/`jrn_tags.icon_image` (0042),
-`sys_dashboard_texture.image` (0063) and `sys_module_texture.image` (0064).
+`sys_dashboard_texture.image` (0063), `sys_module_texture.image` (0064) and
+`exp_vendors.icon_image` (0068).
+
+`exp_vendors` is the one to copy for a new table that needs an icon: the blob and its
+mime column are in the initial `CREATE` rather than bolted on by a later `ALTER`, which
+is what the `exp_categories` 0029 → 0034 two-step had to do.
 
 The last two are worth reading before adding another: both are tables whose *only*
 purpose is to hold one picture and its display settings, which is what kept the bytes
