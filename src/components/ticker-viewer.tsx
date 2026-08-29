@@ -24,8 +24,10 @@ import { Button } from "@/components/button";
 import { ChartCandle } from "@/components/chart-candle";
 import { ChartLine } from "@/components/chart-line";
 import { CollapsibleCard } from "@/components/collapsible-card";
+import { SlotIcon } from "@/components/slot-icon";
 import { TickerLogo } from "@/components/ticker-logo";
 import { TreeIcon } from "@/components/tree-icons";
+import { getIconSlot } from "@/lib/icons";
 import type { MarketEvent } from "@/lib/market-data";
 import { hasFullBars } from "@/lib/shared/chart-candle";
 import { centsToDollars, formatCents } from "@/lib/shared/money";
@@ -45,6 +47,15 @@ import type {
   TickerTimelinePoint,
   TickerTradeTimeline,
 } from "@/lib/ticker-overview";
+
+// The Market tab's card badges. Resolved once at module scope — `getIconSlot` reads the
+// static registry, so this is not I/O. The non-null assertions are safe because the ids
+// are registered in slots.ts and slots.test.ts fails on an unwired or missing slot.
+const MARKET_QUOTE_SLOT = getIconSlot("stock_card_market_quote")!;
+const MARKET_HISTORY_SLOT = getIconSlot("stock_card_market_price_history")!;
+const MARKET_EVENTS_SLOT = getIconSlot("stock_card_market_events")!;
+const MARKET_RISKS_SLOT = getIconSlot("stock_card_market_risks")!;
+const MARKET_NEWS_SLOT = getIconSlot("stock_card_market_news")!;
 
 /** Which tab is showing. Each holds a stack of cards, not further tabs. */
 export type TickerPanelGroup = "own" | "market" | "yahoo";
@@ -2000,13 +2011,21 @@ export function TickerViewer({
 
         {activeGroup === "market" && (
           <>
-            <CollapsibleCard title="Quote" defaultOpen>
+            <CollapsibleCard
+              title="Quote"
+              titleIcon={<SlotIcon slot={MARKET_QUOTE_SLOT} className="h-4 w-4" />}
+              defaultOpen
+            >
               <Panel state={quote} loadingLabel="Fetching the quote…">
                 {(data) => <QuotePanel data={data} />}
               </Panel>
             </CollapsibleCard>
 
-            <CollapsibleCard title="Price History" defaultOpen>
+            <CollapsibleCard
+              title="Price History"
+              titleIcon={<SlotIcon slot={MARKET_HISTORY_SLOT} className="h-4 w-4" />}
+              defaultOpen
+            >
               <Panel state={priceSeries} loadingLabel="Fetching the price history…">
                 {(data) => (
                   <ChartPanel
@@ -2022,7 +2041,11 @@ export function TickerViewer({
 
             {/* Sits under the chart because it explains its shape: the step down
                 in March was the ex-dividend date, the gap up was the beat. */}
-            <CollapsibleCard title="Events" defaultOpen>
+            <CollapsibleCard
+              title="Events"
+              titleIcon={<SlotIcon slot={MARKET_EVENTS_SLOT} className="h-4 w-4" />}
+              defaultOpen
+            >
               <Panel state={events} loadingLabel="Fetching dividends, splits and earnings…">
                 {(data) => <EventsPanel data={data} />}
               </Panel>
@@ -2033,6 +2056,7 @@ export function TickerViewer({
                 reader shouldn't have to expand the card to reach it. */}
             <CollapsibleCard
               title="Risks"
+              titleIcon={<SlotIcon slot={MARKET_RISKS_SLOT} className="h-4 w-4" />}
               defaultOpen
               headerAction={
                 <Button
@@ -2050,7 +2074,11 @@ export function TickerViewer({
               </Panel>
             </CollapsibleCard>
 
-            <CollapsibleCard title="News" defaultOpen>
+            <CollapsibleCard
+              title="News"
+              titleIcon={<SlotIcon slot={MARKET_NEWS_SLOT} className="h-4 w-4" />}
+              defaultOpen
+            >
               <Panel state={news} loadingLabel="Fetching recent stories…">
                 {(data) => <NewsPanel data={data} />}
               </Panel>

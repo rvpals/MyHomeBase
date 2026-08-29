@@ -104,8 +104,8 @@ describe("sectionSlotId", () => {
     // its override. Enumerating the real section lists here is what catches that.
     const sections: Record<string, string[]> = {
       stock: [
-        "main", "positions", "transactions", "accounts", "actionables",
-        "charts", "simulation", "import", "settings",
+        "main", "positions", "transactions", "accounts", "watch-test",
+        "charts", "import", "settings",
       ],
       journal: [
         "main", "entries", "calendar", "views", "report",

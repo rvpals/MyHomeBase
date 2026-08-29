@@ -140,14 +140,24 @@ function SectionBody({ section }: { section: StockSection }) {
       return <StockAccountsView entries={entries} />;
     }
 
-    case "actionables": {
+    // Watching and back-testing are one workflow: both are about tickers you're
+    // considering rather than ones you hold. The three parts each get an outer
+    // CollapsibleCard so a long screen can be folded down to the part in use.
+    case "watch-test": {
       const watchListEntries: WatchListEntry[] = listWatchLists(deps.stockWatchListRepo).map(
         (list) => ({ list, items: listItems(deps.stockWatchListRepo, list.id) }),
       );
       return (
-        <div className="flex flex-col gap-10">
-          <StockWatchlistView entries={watchListEntries} />
-          <NextDayActionsView initialThresholds={loadThresholds()} />
+        <div className="flex flex-col gap-6">
+          <CollapsibleCard title="Watch Lists" defaultOpen>
+            <StockWatchlistView entries={watchListEntries} />
+          </CollapsibleCard>
+          <CollapsibleCard title="Next-Day Signals" defaultOpen>
+            <NextDayActionsView initialThresholds={loadThresholds()} />
+          </CollapsibleCard>
+          <CollapsibleCard title="Simulation" defaultOpen>
+            <StockSimulationView />
+          </CollapsibleCard>
         </div>
       );
     }
@@ -160,11 +170,6 @@ function SectionBody({ section }: { section: StockSection }) {
           sharpeResult={getSharpeCache(deps.stockAnalyticsRepo)}
         />
       );
-
-    // No props: every price the simulation shows is fetched on demand by its own
-    // action, so there is nothing for the server to load here.
-    case "simulation":
-      return <StockSimulationView />;
 
     case "import":
       return <StockImportView accounts={loadAccountOptions()} />;

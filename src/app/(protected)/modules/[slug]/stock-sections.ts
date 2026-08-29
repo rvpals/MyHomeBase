@@ -11,9 +11,8 @@ export const STOCK_SECTIONS = [
   "positions",
   "transactions",
   "accounts",
-  "actionables",
+  "watch-test",
   "charts",
-  "simulation",
   "import",
   "settings",
 ] as const;
@@ -42,17 +41,13 @@ export const STOCK_SECTION_INFO: Record<StockSection, { label: string; descripti
     label: "Account Performance",
     description: "Brokerage accounts and their value over time.",
   },
-  actionables: {
-    label: "Actionables",
-    description: "Watch lists, and the next-day signals scanned from your holdings.",
+  "watch-test": {
+    label: "Watch & Test",
+    description: "Watch lists, next-day signals, and what-if backtests on any ticker.",
   },
   charts: {
     label: "Chart & Analysis",
     description: "Volatility, correlation and Sharpe ratio across the portfolio.",
-  },
-  simulation: {
-    label: "Simulation",
-    description: "Run a simulation on a ticker.",
   },
   import: {
     label: "CSV Import",
@@ -70,9 +65,8 @@ export const STOCK_SECTION_ICONS: Record<StockSection, string> = {
   positions: "list",
   transactions: "history",
   accounts: "database",
-  actionables: "stock-quote",
+  "watch-test": "stock-quote",
   charts: "chart",
-  simulation: "magic",
   import: "upload",
   settings: "sliders",
 };
