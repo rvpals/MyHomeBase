@@ -72,3 +72,22 @@ export interface IconOverrideImage {
 
 /** What `SlotIcon` needs to render one slot, with the bytes left behind. */
 export type IconOverrideMap = Record<string, IconOverride>;
+
+/** Straight (non-premultiplied) RGBA pixels, 4 bytes per pixel, row-major. */
+export interface RawBitmap {
+  data: Buffer;
+  width: number;
+  height: number;
+}
+
+/** What `normalizeIconImage` did, so the admin screen can report it. */
+export interface NormalizedIcon {
+  data: Buffer;
+  mimeType: "image/png";
+  width: number;
+  height: number;
+  /** True when a flattened checkerboard or solid backdrop was turned back into alpha. */
+  strippedBackdrop: boolean;
+  /** True when dead margin around the artwork was cropped away. */
+  trimmed: boolean;
+}

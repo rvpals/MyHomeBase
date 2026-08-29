@@ -17,7 +17,8 @@ import {
   type IconOverrideInput,
 } from "./schema";
 import { getIconSlot } from "./slots";
-import type { IconOverridesRepository } from "./ports";
+import { normalizeIconImage } from "./normalize-image";
+import type { IconImageProcessor, IconOverridesRepository } from "./ports";
 import type { IconOverride, IconOverrideImage, IconOverrideMap } from "./types";
 
 /**
@@ -55,11 +56,16 @@ export function getOverrideImage(
  * from a form post, and an unrecognised one would write a row that no screen can render
  * or remove. Rejecting it here keeps the table's contents a subset of `ICON_SLOTS`.
  */
-export function saveOverride(
+export async function saveOverride(
   repo: IconOverridesRepository,
   input: IconOverrideInput,
   now: Date = new Date(),
-): IconOverride {
+  /**
+   * Optional so tests and any caller that only handles SVG need not supply one. When it is
+   * absent a raster upload is stored exactly as it arrived — the pre-processing behaviour.
+   */
+  processor?: IconImageProcessor,
+): Promise<IconOverride> {
   const parsed = iconOverrideInputSchema.parse(input);
 
   if (!getIconSlot(parsed.slotId)) {
@@ -93,14 +99,45 @@ export function saveOverride(
     ICON_OVERRIDE_MAX_BYTES,
   );
 
+  // Normalise the raster: undo a flattened checkerboard, trim dead margin, downscale to
+  // the stored size. Failure here is deliberately NOT fatal — a decoder that chokes on an
+  // odd-but-valid file should cost the reader a less tidy icon, not their upload. The
+  // original bytes already passed the mime allowlist and the size cap, so falling back to
+  // them is safe.
+  let storedData = data;
+  let storedMime: string = mimeType;
+  if (processor) {
+    try {
+      const normalized = await normalizeIconImage(processor, data);
+      storedData = normalized.data;
+      storedMime = normalized.mimeType;
+    } catch (error) {
+      // Two very different failures land here, and they deserve different answers.
+      //
+      // The processor being UNAVAILABLE — a native module that won't load on this
+      // platform — is an install problem. Storing the raw upload anyway would "work"
+      // while quietly producing exactly the muddy icon this pipeline exists to prevent,
+      // and nothing would ever say why. So it propagates: one clear error beats a silent
+      // downgrade repeated on every upload.
+      //
+      // A single image being UNREADABLE is the reader's problem, not the server's, and it
+      // should not cost them the upload. The original bytes already passed the mime
+      // allowlist and the size cap, so keeping them is safe.
+      if (error instanceof Error && /Image processing is unavailable/.test(error.message)) {
+        throw error;
+      }
+      // Keep `data`/`mimeType` as decoded.
+    }
+  }
+
   repo.upsert({
     slotId: parsed.slotId,
     setId: parsed.setId,
-    imageData: data,
-    imageMimeType: mimeType,
+    imageData: storedData,
+    imageMimeType: storedMime,
     updatedAt,
   });
-  return { slotId: parsed.slotId, setId: parsed.setId, imageMimeType: mimeType, updatedAt };
+  return { slotId: parsed.slotId, setId: parsed.setId, imageMimeType: storedMime, updatedAt };
 }
 
 /** Removes an override so the slot falls back to its set's own glyph. */

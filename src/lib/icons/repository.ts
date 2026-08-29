@@ -93,6 +93,23 @@ export class SqliteIconOverridesRepository implements IconOverridesRepository {
     return { data: row.image_data, mimeType: row.image_mime };
   }
 
+  listAllImages(): { slotId: string; setId: string; data: Buffer; mimeType: string }[] {
+    if (!this.hasTable()) return [];
+    const rows = this.db
+      .prepare(
+        `SELECT slot_id, set_id, image_data, image_mime FROM ico_slot_overrides
+          WHERE image_data IS NOT NULL AND image_mime IS NOT NULL
+          ORDER BY set_id, slot_id`,
+      )
+      .all() as { slot_id: string; set_id: string; image_data: Buffer; image_mime: string }[];
+    return rows.map((row) => ({
+      slotId: row.slot_id,
+      setId: row.set_id,
+      data: row.image_data,
+      mimeType: row.image_mime,
+    }));
+  }
+
   upsert(override: IconOverrideWrite): void {
     // A write on an unmigrated database must fail — but with something an admin can act
     // on. The raw driver error here is "no such table: ico_slot_overrides", which is true

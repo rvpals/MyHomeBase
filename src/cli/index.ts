@@ -9,6 +9,7 @@ import { deleteCsvAnalyticsEntryCommand } from "./delete-csv-analytics-entry";
 import { expenseTopSpendersCommand } from "./expense-top-spenders";
 import { explainRuleCommand } from "./explain-rule";
 import { expenseCreateRuleCommand } from "./expense-create-rule";
+import { normalizeIconOverridesCommand } from "./normalize-icon-overrides";
 import { favoriteQuotesCommand } from "./favorite-quotes";
 import { importJournalCsvCommand } from "./import-journal-csv";
 import { journalCalendarCommand } from "./journal-calendar";
@@ -46,6 +47,7 @@ const commands: Record<string, Command> = {
   "expense-top-spenders": expenseTopSpendersCommand,
   "explain-rule": explainRuleCommand,
   "expense-create-rule": expenseCreateRuleCommand,
+  "normalize-icon-overrides": normalizeIconOverridesCommand,
   "ticker-overview": tickerOverviewCommand,
   "simulate-ticker": simulateTickerCommand,
   "market-indexes": marketIndexesCommand,

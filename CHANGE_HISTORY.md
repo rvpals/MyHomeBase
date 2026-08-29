@@ -1,5 +1,81 @@
 # Change History
 
+## 2026-08-28 21:29 — Uploaded icons get cleaned up on the way in
+
+**A 1024x1024 icon was not a high-resolution icon.** Four uploads sat in the database as
+~110 KB JPEGs, and they looked wrong at the 16-20px a slot icon actually renders at. The
+resolution was never the problem — 1024px into a 16px slot is 64x oversampled. The problem
+is that **JPEG has no alpha channel**, so exporting art whose background is the editor's
+transparency checkerboard writes that checkerboard into the file as literal grey and white
+pixels. At full size it is invisible. At 16px the squares average into one muddy grey block
+behind the glyph, and on the compact "Sections" trigger — where the icon is the only thing
+in the control — that grey square *is* the button.
+
+**Raster uploads are now normalised before they are stored.** A flattened checkerboard or
+solid mat is turned back into real transparency, the dead margin around the artwork is
+cropped, and the result is re-encoded as a 256px PNG. The four real uploads went from
+108/102/111/111 KB to 19/20/16/16 KB, each with genuine alpha. 256px is deliberate rather
+than generous: 20px is the largest a slot icon ever draws, so 256 covers a 3x-DPR phone
+with room to spare, and anything larger is bytes in every backup for detail no screen can
+show. `normalize-icon-overrides` (CLI) re-runs the pipeline over rows stored before it
+existed; it does not run on the NAS, where re-uploading through the browser is the
+equivalent.
+
+The decisions — is this border a checkerboard? where does the artwork end? — are plain
+arithmetic over an RGBA array in `src/lib/icons/normalize-image.ts`, testable with a
+hand-built canvas and no image file, because that is the part that can be subtly wrong.
+`image-processor.ts` is the only file that touches `sharp`.
+
+**Detection declines rather than guesses.** A photo, a screenshot, or artwork that bleeds
+to the edge is left alone: a false positive punches holes in somebody's art, where a false
+negative merely costs a slightly worse icon. One trap found the hard way — cluster the
+border colours at the *wide* tolerance. Lossy compression does not preserve a flat tone;
+one real upload came back with **38 distinct colours in a single row**, so clustering
+strictly split a genuine two-tone checkerboard into buckets too small to pass the agreement
+threshold and detection declined an image it should plainly have cleaned. Clearing at the
+tight tolerance had the same root cause and two symptoms: a faint grid left behind, and —
+because some border pixels stayed opaque — the trim silently doing nothing, since the
+content box then reached the frame edge.
+
+**`sharp` is native, and the first NAS deploy of this failed.** `publish-nas.mjs` already
+swapped `better-sqlite3` for its linux-arm64 prebuild; its header used to say the app had
+"exactly one native module that matters". That is no longer true, and three things about
+the second one cost real time:
+
+- **sharp is two packages** — the binding and the `libvips` it dlopens. Shipping the
+  binding alone produces `ERR_DLOPEN_FAILED: libvips-cpp.so.8.17.3: cannot open shared
+  object file` on first use.
+- **The libvips version has to be read from the arm64 binding's `optionalDependencies`,
+  after downloading it.** Reading it from the installed win32 binding returns nothing,
+  because on Windows libvips is statically linked into the binding — the lookup produced
+  `undefined` and the libvips step was silently skipped, which is exactly how the broken
+  deploy happened. Guessing does not work either: sharp 0.34.5 wants libvips **1.2.4**,
+  where the version numbers alone suggest 1.2.3. A missing libvips is now fatal at publish
+  time rather than a skipped step.
+- **Git Bash's GNU tar cannot take a `C:\...` path for `-f`** — it reads the drive letter
+  as a remote host and dies with `Cannot connect to C: resolve failed`, and `--force-local`
+  does not save it. Run tar with `cwd` set to the destination and a relative tarball path.
+
+**The `sharp` import is lazy, and that is load-bearing.** It is reached through
+`wiring.ts`, the composition root every page imports, so a top-level import ran on every
+render — which is why the broken deploy filled `app.log` with `ERR_DLOPEN_FAILED` on
+ordinary page views rather than on an upload. Deferred to first use, the same broken install
+costs one failed upload and nothing else.
+
+That distinction is also why `saveOverride` no longer swallows every failure. An
+**unreadable image** keeps the original bytes, because a decoder choking on an
+odd-but-valid file should not cost the reader their upload. A processor that is
+**unavailable** throws, because storing the raw upload would look like success while
+quietly producing the exact muddy icon this pipeline exists to prevent — and nothing would
+ever say why.
+
+The admin screen now previews each icon at its real sizes, 20px and 16px beside the large
+tile, so a glyph that dies small is obvious before a deploy rather than after.
+
+**No migration.** `ico_slot_overrides` already stored the bytes; only what is written to it
+changed.
+
+
 ## 2026-08-28 15:32 — Every icon has a name now, a picture behind the day, and rules that say why
 
 **Picking an icon set restyled all seventy-three icons at once, and that was the only

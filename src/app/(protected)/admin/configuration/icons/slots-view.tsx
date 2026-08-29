@@ -74,10 +74,23 @@ function SlotRow({
 
   return (
     <div className="flex flex-wrap items-center gap-4 rounded-lg border border-line p-3 max-lg:gap-3">
-      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-line bg-paper text-brass-dark">
-        {/* Renders through the same component the app uses, so this preview cannot
-            disagree with what the card shows. */}
-        <SlotIcon slot={slot} className="h-6 w-6" />
+      <span className="flex shrink-0 items-center gap-2">
+        <span className="flex h-12 w-12 items-center justify-center rounded-lg border border-line bg-paper text-brass-dark">
+          {/* Renders through the same component the app uses, so this preview cannot
+              disagree with what the card shows. */}
+          <SlotIcon slot={slot} className="h-6 w-6" />
+        </span>
+        {/* Actual size. 20px is the largest a slot icon ever renders (the compact
+            "Sections" trigger on a phone), 16px is every nav row and card header — so
+            these two are the only sizes that matter, and a glyph that dies at 16px should
+            be obvious here rather than after a deploy. */}
+        <span
+          className="flex h-12 w-9 flex-col items-center justify-center gap-1 rounded-lg border border-line bg-paper text-brass-dark"
+          title="Actual size: 20px (phone section bar) and 16px (nav rows, card headers)"
+        >
+          <SlotIcon slot={slot} className="h-5 w-5" />
+          <SlotIcon slot={slot} className="h-4 w-4" />
+        </span>
       </span>
 
       <div className="min-w-0 flex-1">
@@ -156,6 +169,12 @@ export function IconSlotsView({
         An <span className="font-medium text-ink">SVG</span> is tinted to the theme accent
         like the built-in icons. A PNG or JPEG keeps its own colors, so it won&apos;t match
         the theme. Keep files under {Math.round(ICON_OVERRIDE_MAX_BYTES / 1024)} KB.
+      </p>
+      <p className="mt-2 text-sm text-muted">
+        Uploaded images are tidied up automatically: a flattened transparency checkerboard
+        (what you get exporting to JPEG) is turned back into real transparency, empty margin
+        is cropped, and the result is stored as a 256px PNG. So a big export is fine —
+        it&apos;ll come out small and sharp. A photo is left alone rather than guessed at.
       </p>
 
       {groups.map((entry) => (

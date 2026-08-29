@@ -254,6 +254,65 @@ and asserts each resolves. Extend those lists when adding a module.
   `info` chip; a caller that asked for `note` or `clip` meant that, and routing all
   three through one slot would let a single upload overwrite three meanings.
 
+### Uploaded rasters are normalised, not stored as sent
+
+An icon upload goes through `normalizeIconImage` before it reaches the database: a
+flattened transparency checkerboard is turned back into real alpha, empty margin is
+cropped, and the result is re-encoded as a 256px PNG. A real upload went from a 108 KB
+1024px JPEG to 19 KB.
+
+The reason is that **JPEG has no alpha channel**, so exporting icon art to JPEG writes the
+editor's grey/white checkerboard into the file as literal pixels. It looks fine at 1024px
+and becomes a grey smudge at the 16-20px a slot icon actually renders at — worst on the
+compact "Sections" trigger, where the icon is the only content in the control.
+
+Two rules worth keeping if you touch this:
+
+- **Decisions live in `src/lib/icons/normalize-image.ts`, pixels in the adapter.** The
+  arithmetic — is this border a checkerboard? where does the artwork end? — is plain maths
+  over an RGBA array, testable with a hand-built canvas and no native module.
+  `image-processor.ts` is the only file that imports `sharp`.
+- **Detection declines rather than guesses.** A photo, a screenshot, or art that bleeds to
+  the edge is left alone; a false positive would punch holes in someone's artwork, where a
+  false negative merely costs a slightly worse icon. If normalisation throws, `saveOverride`
+  keeps the original bytes rather than failing the upload.
+
+One trap found the hard way: cluster border colours at the *wide* tolerance. Lossy
+compression turns a flat backdrop tone into a spread — one real upload had 38 distinct
+colours in a single row — so clustering strictly split a genuine checkerboard into buckets
+too small to pass the agreement threshold, and detection declined an image it should plainly
+have cleaned.
+
+`normalize-icon-overrides` (CLI) re-runs the pipeline over rows stored before it existed.
+
+**`sharp` is a native module**, so `scripts/publish-nas.mjs` swaps its linux-arm64 build at
+publish time, exactly as it does for `better-sqlite3`. Adding any further native dependency
+means extending that script, or the NAS fails at runtime rather than at publish. Three
+things that cost real time here:
+
+- **`sharp` is two packages,** the binding (`@img/sharp-<platform>`) and the `libvips`
+  library it dlopens. Shipping the binding alone gets `ERR_DLOPEN_FAILED:
+  libvips-cpp.so...: cannot open shared object file` on first use.
+- **Read the libvips version from the arm64 binding's `optionalDependencies`, after
+  downloading it.** Not from the installed win32 binding — on Windows libvips is statically
+  linked in, so that package declares no libvips dependency at all and the lookup returns
+  `undefined`. And not by guessing: sharp 0.34.5 wants libvips **1.2.4**, where the
+  version numbers alone suggest 1.2.3.
+- **Git Bash's GNU tar cannot take a `C:\...` path for `-f`.** It reads the drive letter as
+  a remote host and dies with `Cannot connect to C: resolve failed`; `--force-local` does
+  not help. Run tar with `cwd` set to the destination and a *relative* tarball path.
+
+**Import a native module lazily if it is reached through `wiring.ts`.** That file is the
+composition root every page imports, so a top-level `import sharp` runs on every render —
+which is how a broken install turned an upload-only dependency into `app.log` filling with
+`ERR_DLOPEN_FAILED` on ordinary page views. `image-processor.ts` defers the import to first
+use, so the same broken install now costs one failed upload and nothing else.
+
+That failure is also the one case the pipeline does **not** swallow. An unreadable *image*
+keeps the original bytes, because it should not cost the reader their upload; a processor
+that is *unavailable* throws, because storing the raw upload would look like success while
+silently producing the muddy icon the pipeline exists to prevent.
+
 ### Ids are permanent
 
 Slot ids are written to `ico_slot_overrides.slot_id`. Renaming one — or renaming a

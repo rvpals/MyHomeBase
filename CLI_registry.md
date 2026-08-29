@@ -43,6 +43,7 @@ Twenty-seven commands, registered in [src/cli/index.ts:33-61](src/cli/index.ts#L
 | [`expense-top-spenders`](#expense-top-spenders) | read | no |
 | [`explain-rule`](#explain-rule) | read | no |
 | [`expense-create-rule`](#expense-create-rule) | write | no |
+| [`normalize-icon-overrides`](#normalize-icon-overrides) | write (read with `--dry-run`) | no |
 | [`refresh-positions`](#refresh-positions) | write | **yes** |
 | [`run-scheduled-refresh`](#run-scheduled-refresh) | write (read with `--status`) | **yes** (not with `--status`) |
 | [`list-scheduled-jobs`](#list-scheduled-jobs) | read | no |
@@ -1718,6 +1719,39 @@ then the track count, total and remaining time, and the repeat/shuffle state.
 **Exit** — 0; 1 when a flag is missing its value, an id is not a positive integer, or
 `--repeat` is given a mode other than `off`, `all` or `one`.
 Source: [src/cli/play-queue.ts](src/cli/play-queue.ts)
+
+---
+
+## `normalize-icon-overrides`
+
+Re-runs the icon normaliser over raster icon overrides that are already stored.
+
+```bash
+npm run cli -- normalize-icon-overrides --dry-run   # report, change nothing
+npm run cli -- normalize-icon-overrides
+```
+
+Uploads made before the normaliser existed kept whatever the browser sent — typically a
+1024px JPEG with the transparency checkerboard flattened into it, which reads as a grey
+smudge at the 16-20px an icon actually renders at. New uploads are cleaned on the way in;
+this is how earlier ones catch up without re-uploading each by hand. It strips a flattened
+backdrop back to real alpha, crops empty margin, and re-encodes as a 256px PNG.
+
+Safe to run repeatedly: a second pass over an already-normalised PNG finds no backdrop and
+nothing to trim. SVG overrides are never touched — they are markup, not pixels. One
+unreadable image is skipped with a note rather than aborting the rest.
+
+Writes through `saveOverride`, so the slot check, the one-payload rule and the `updated_at`
+stamp stay in one place — that stamp is the `?v=` cache-buster, without which a browser
+would keep showing the old picture.
+
+**This does not run on the NAS.** `publish-nas.mjs` bundles only `migrate.cjs` and
+`set-startup-message.cjs`, so no general CLI command exists on the deployed box. To fix
+rows in the production database either re-upload the icons through the browser — the
+normaliser runs on upload — or run this from Windows with `MYHOMEBASE_DB` pointed at the
+NAS path over SMB, which is safest right after a backup.
+
+Source: [src/cli/normalize-icon-overrides.ts](src/cli/normalize-icon-overrides.ts)
 
 ---
 

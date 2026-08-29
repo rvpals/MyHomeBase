@@ -275,22 +275,29 @@ export async function saveIconOverrideAction(formData: FormData): Promise<IconOv
     const isSvg = file.type === "image/svg+xml" || file.name.toLowerCase().endsWith(".svg");
 
     if (isSvg) {
-      saveOverride(deps.iconOverridesRepo, {
+      await saveOverride(deps.iconOverridesRepo, {
         slotId,
         setId,
         kind: "svg",
         source: await file.text(),
       });
     } else {
-      saveOverride(deps.iconOverridesRepo, {
-        slotId,
-        setId,
-        kind: "raster",
-        // Cast because the value came off a File and is unvalidated until the lib
-        // schema narrows it to the allowed set.
-        mimeType: file.type as never,
-        base64Data: Buffer.from(await file.arrayBuffer()).toString("base64"),
-      });
+      await saveOverride(
+        deps.iconOverridesRepo,
+        {
+          slotId,
+          setId,
+          kind: "raster",
+          // Cast because the value came off a File and is unvalidated until the lib
+          // schema narrows it to the allowed set.
+          mimeType: file.type as never,
+          base64Data: Buffer.from(await file.arrayBuffer()).toString("base64"),
+        },
+        new Date(),
+        // Strips a flattened checkerboard, trims dead margin and downscales to 256px PNG.
+        // Passed only on this branch: an SVG needs none of it.
+        deps.iconImageProcessor,
+      );
     }
 
     // "layout" because the overridden icon renders outside this form — the root layout

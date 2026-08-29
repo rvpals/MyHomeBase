@@ -29,3 +29,11 @@ export {
   clearOverride,
 } from "./overrides";
 export { sanitizeSvg, type SanitizedSvg } from "./sanitize-svg";
+export {
+  normalizeIconImage,
+  detectBackdropColours,
+  findContentBox,
+  ICON_TARGET_SIZE,
+} from "./normalize-image";
+export type { IconImageProcessor } from "./ports";
+export type { NormalizedIcon, RawBitmap } from "./types";

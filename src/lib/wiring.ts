@@ -20,6 +20,7 @@ import { SqliteExpenseRepository } from "./expense/repository";
 import { NominatimGeocodingClient } from "./geocoding/nominatim-client";
 import { OpenMeteoWeatherClient } from "./weather/open-meteo-client";
 import { SqliteInvestmentAccountRepository } from "./investment-accounts/repository";
+import { SharpIconImageProcessor } from "./icons/image-processor";
 import { SqliteIconOverridesRepository } from "./icons/repository";
 import { SqliteJournalRepository } from "./journal/repository";
 import { NodePhotoFileStore } from "./journal-photos/file-store";
@@ -122,6 +123,9 @@ export const deps = {
   // Per-slot icon overrides (migrations/0066). Read for the active icon set on every
   // page render; the raster BLOB is read only by src/app/api/icons/slots/[slot]/route.ts.
   iconOverridesRepo: new SqliteIconOverridesRepository(db),
+  // Normalises an uploaded icon (strip flattened checkerboard, trim, downscale to PNG).
+  // The only consumer of `sharp`; publish-nas.mjs swaps its linux-arm64 build on deploy.
+  iconImageProcessor: new SharpIconImageProcessor(),
   journalRepo: new SqliteJournalRepository(db),
   /**
    * A read-only view of the photo archive at `root`.

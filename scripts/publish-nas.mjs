@@ -6,10 +6,12 @@
 // across. The NAS runs no npm, no compiler and no build step.
 //
 // Two things make that possible:
-//   1. The app has exactly one native module that matters — `better-sqlite3`.
-//      (`sharp` is also present but is never loaded: nothing imports
-//      `next/image`, and sharp isn't even a declared dependency.) Its arm64
-//      binary is a published prebuild, so we download it rather than compile.
+//   1. The app has TWO native modules that matter — `better-sqlite3` and `sharp`.
+//      Both have published arm64 prebuilds, so we download rather than compile.
+//      (`sharp` used to be dead weight here: it ships with Next but nothing
+//      imported it. It is loaded now — `src/lib/icons/image-processor.ts` uses it
+//      to normalise uploaded icons — so its win32 binary has to be swapped too,
+//      or every icon upload fails on the NAS.)
 //   2. The migration runner is bundled to plain CJS, so the NAS doesn't need
 //      `tsx` — which would drag in esbuild's own platform binary and reintroduce
 //      the very problem we're avoiding.
@@ -22,6 +24,7 @@ import {
   chmodSync,
   cpSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -170,6 +173,105 @@ for (const file of walk(OUT)) {
 rmSync(scratch, { recursive: true, force: true });
 if (replaced.length === 0) throw new Error("Found no better_sqlite3.node to replace.");
 for (const file of replaced) console.log(`  patched ${file}`);
+
+step(`Swapping in the ${TARGET} sharp`);
+//
+// `sharp` is not one binary but two npm packages: `@img/sharp-<platform>` (the small
+// N-API binding) and `@img/sharp-libvips-<platform>` (the large image library it calls).
+// Installing on Windows brings only the win32-x64 pair, so both linux-arm64 packages are
+// fetched from the registry and dropped in beside them. sharp resolves the platform
+// package at require time, so having both present is fine — the NAS picks its own.
+//
+// Unlike better-sqlite3 these are plain npm tarballs rather than GitHub release assets,
+// and there are TWO of them: the binding (`@img/sharp-<platform>`) and the image library it
+// dlopens at runtime (`@img/sharp-libvips-<platform>`). Shipping the binding alone gets you
+// `ERR_DLOPEN_FAILED: libvips-cpp.so...: cannot open shared object file` on first use — a
+// runtime failure on the NAS, which is exactly what this script exists to prevent.
+//
+// The libvips version floats independently of sharp's, so it is read from the *arm64*
+// binding's own `optionalDependencies` after download. Reading it from the installed win32
+// binding does not work and was the original bug here: on Windows libvips is statically
+// linked into the binding, so that package declares no libvips dependency at all, the
+// lookup produced `undefined`, and the whole libvips step was silently skipped.
+{
+  const sharpVersion = JSON.parse(
+    readFileSync(path.join(ROOT, "node_modules", "sharp", "package.json"), "utf8"),
+  ).version;
+
+  const outImg = path.join(OUT, "node_modules", "@img");
+  mkdirSync(outImg, { recursive: true });
+
+  /** Downloads one @img package into `dist-nas/node_modules/@img/<short>` and verifies it. */
+  async function addImgPackage(pkg, version) {
+    const short = pkg.replace("@img/", "");
+    const url = `https://registry.npmjs.org/${pkg}/-/${short}-${version}.tgz`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(
+        `No ${TARGET} prebuild for ${pkg}@${version} (HTTP ${res.status}) at ${url}. ` +
+          `Icon uploads would fail on the NAS. Check the version or pin sharp.`,
+      );
+    }
+    const scratchDir = mkdtempSync(path.join(tmpdir(), "mhb-sharp-"));
+    const tgz = path.join(scratchDir, `${short}.tgz`);
+    writeFileSync(tgz, Buffer.from(await res.arrayBuffer()));
+    // npm tarballs put everything under `package/`; --strip-components lands it flat.
+    const dest = path.join(outImg, short);
+    mkdirSync(dest, { recursive: true });
+    // `cwd` + a RELATIVE tarball path, not `-C <abs>`. Git Bash's GNU tar reads a
+    // `C:\...` argument to `-f` as a remote host spec and dies with
+    // "Cannot connect to C: resolve failed"; `--force-local` does not save it either.
+    // Running from the destination sidesteps the whole drive-letter question.
+    execFileSync("tar", ["-xzf", path.relative(dest, tgz), "--strip-components", "1"], {
+      cwd: dest,
+    });
+    rmSync(scratchDir, { recursive: true, force: true });
+
+    // Prove it really is arm64 before shipping it, the same guarantee the
+    // better-sqlite3 swap gives.
+    let verified = 0;
+    for (const file of walk(dest)) {
+      const base = path.basename(file);
+      if (base.endsWith(".node") || base.includes(".so")) {
+        assertIsAarch64Elf(file, path.relative(OUT, file));
+        verified += 1;
+      }
+    }
+    console.log(`  added ${path.relative(OUT, dest)} (${version}, ${verified} AArch64 binaries)`);
+    return { dest, verified };
+  }
+
+  const binding = await addImgPackage(`@img/sharp-${TARGET}`, sharpVersion);
+
+  // The binding names the exact libvips build it dlopens. Read it from what we just
+  // downloaded rather than guessing — 0.34.5's binding wants libvips 1.2.4, not the 1.2.3
+  // a version-number guess would land on.
+  const bindingManifest = JSON.parse(
+    readFileSync(path.join(binding.dest, "package.json"), "utf8"),
+  );
+  const libvipsEntry = Object.entries({
+    ...(bindingManifest.dependencies ?? {}),
+    ...(bindingManifest.optionalDependencies ?? {}),
+  }).find(([name]) => name.startsWith("@img/sharp-libvips-"));
+
+  if (!libvipsEntry) {
+    throw new Error(
+      `@img/sharp-${TARGET}@${sharpVersion} declares no @img/sharp-libvips-* dependency, ` +
+        `so this script cannot tell which libvips to ship. Inspect its package.json.`,
+    );
+  }
+
+  const [libvipsPkg, libvipsRange] = libvipsEntry;
+  const libvips = await addImgPackage(libvipsPkg, libvipsRange.replace(/^[^0-9]*/, ""));
+
+  // Fatal rather than a warning: a binding with no libvips beside it fails at *runtime*,
+  // on the first icon upload, long after the deploy looked successful.
+  if (libvips.verified === 0) {
+    throw new Error(
+      `Shipped ${libvipsPkg} but found no .so inside it — sharp would fail to dlopen on the NAS.`,
+    );
+  }
+}
 
 step("Bundling the migration runner (so the NAS needs no tsx)");
 await build({
