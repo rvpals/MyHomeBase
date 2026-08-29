@@ -1,13 +1,12 @@
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
-import { listEntries as listCsvAnalyticsEntries } from "@/lib/csv-analytics";
 import { getModuleBySlug } from "@/lib/modules";
 import { isAdmin, userHasModuleAccess } from "@/lib/user";
 import { deps } from "@/lib/wiring";
 import { PAGE_CONTAINER } from "../../page-container";
 import { AttendanceSection } from "./attendance-section";
-import { CsvAnalyticsView } from "./csv-analytics-view";
+import { CsvSection } from "./csv-section";
 import { ExpenseSection } from "./expense-section";
 import { JournalSection } from "./journal-section";
 import { MusicSection } from "./music-section";
@@ -37,7 +36,7 @@ function ModuleBody({
   }
 
   if (slug === CSV_ANALYSIS_MODULE_SLUG) {
-    return <CsvAnalyticsView entries={listCsvAnalyticsEntries(deps.csvAnalyticsRepo)} />;
+    return <CsvSection section="main" />;
   }
 
   if (slug === JOURNAL_MODULE_SLUG) {

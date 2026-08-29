@@ -7,6 +7,8 @@ import { deps } from "@/lib/wiring";
 import { PAGE_CONTAINER } from "../../../page-container";
 import { AttendanceSection } from "../attendance-section";
 import { isAttendanceSection } from "../attendance-sections";
+import { CsvSection } from "../csv-section";
+import { isCsvSection } from "../csv-sections";
 import { ExpenseSection } from "../expense-section";
 import { isExpenseSection } from "../expense-sections";
 import { isJournalSection } from "../journal-sections";
@@ -17,6 +19,7 @@ import { StockSection } from "../stock-section";
 import { isStockSection } from "../stock-sections";
 
 const ATTENDANCE_MODULE_SLUG = "attendance";
+const CSV_ANALYSIS_MODULE_SLUG = "csv-analysis";
 const EXPENSE_MODULE_SLUG = "expense";
 const JOURNAL_MODULE_SLUG = "journal";
 const MUSIC_LIBRARY_MODULE_SLUG = "music-library";
@@ -59,6 +62,9 @@ function renderSection(
         requestedFormat={requestedFormat}
       />
     );
+  }
+  if (slug === CSV_ANALYSIS_MODULE_SLUG && isCsvSection(section)) {
+    return <CsvSection section={section} />;
   }
   if (slug === EXPENSE_MODULE_SLUG && isExpenseSection(section)) {
     return (
