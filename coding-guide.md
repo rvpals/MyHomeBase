@@ -19,6 +19,7 @@ module is obvious from the name alone. New tables must follow this.
 | `att_` | Attendance | `att_students`, `att_classes`, `att_class_enrollments`, `att_attendance_records`, `att_attendance_entries`, `att_student_actions`, `att_attendance_entry_actions` |
 | `ico_` | Icon customisation — platform-wide, not a feature module | `ico_slot_overrides` |
 | `mus_` | Music Library | `mus_tracks`, `mus_albums`, `mus_scan_runs`, `mus_track_lyrics`, `mus_playlists`, `mus_playlist_tracks`, `mus_play_events`, `mus_magic_list`, `mus_magic_list_tracks`, `mus_play_queue`, `mus_play_queue_state` |
+| `gam_` | Games | `gam_scores` |
 
 The `rei_` prefix (Real Estate Investment) was retired when that module was
 removed — see migration `0026_drop_real_estate_module`.

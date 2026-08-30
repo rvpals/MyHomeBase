@@ -133,6 +133,21 @@ const Music: IconComponent = (props) => (
   </svg>
 );
 
+// A gamepad: a rounded body with a D-pad cross on the left and two buttons on the
+// right. The buttons are filled for the same reason Music's noteheads are — a
+// hairline circle at the 16px the app bar draws this at either disappears or reads
+// as a stray tick. The waisted body (the two curves pinching in at top and bottom)
+// is what separates this from a plain rounded rectangle at small sizes.
+const Game: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <path d="M7.5 7.5h9a4.5 4.5 0 0 1 4.5 4.5v.6a4 4 0 0 1-7.3 2.25l-.35-.52h-3.7l-.35.52A4 4 0 0 1 3 12.6V12a4.5 4.5 0 0 1 4.5-4.5Z" />
+    <line x1="8.4" y1="10.6" x2="8.4" y2="13" />
+    <line x1="7.2" y1="11.8" x2="9.6" y2="11.8" />
+    <circle cx="15.4" cy="11" r="1" fill="currentColor" stroke="none" />
+    <circle cx="17.4" cy="13" r="1" fill="currentColor" stroke="none" />
+  </svg>
+);
+
 const ICONS: Record<ModuleIconName, IconComponent> = {
   building: Building,
   home: Home,
@@ -147,6 +162,7 @@ const ICONS: Record<ModuleIconName, IconComponent> = {
   journal: Journal,
   roster: Roster,
   music: Music,
+  game: Game,
 };
 
 // The original hand-drawn set, kept as the "classic" option and the fallback for any

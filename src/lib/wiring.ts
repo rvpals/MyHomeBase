@@ -10,6 +10,7 @@ import { GoogleAuthClient } from "./auth/google-client";
 import type { GoogleOAuthClient } from "./auth/ports";
 import { FileBuildIdRepository } from "./app-version/repository";
 import { FileChangeHistoryRepository } from "./change-history/repository";
+import { SqliteColorThemeRepository } from "./color-themes/repository";
 import { SqliteCsvAnalyticsRepository } from "./csv-analytics/repository";
 import { SqliteCsvImportMappingRepository } from "./csv-import/repository";
 import { SqliteDashboardTextureRepository } from "./dashboard-texture/repository";
@@ -17,6 +18,7 @@ import { SqliteModuleTextureRepository } from "./module-texture/repository";
 import { SqliteDailyQuoteRepository } from "./daily-quote/repository";
 import { NodeCsvFolder } from "./expense/csv-folder";
 import { SqliteExpenseRepository } from "./expense/repository";
+import { SqliteGamesRepository } from "./games/repository";
 import { NominatimGeocodingClient } from "./geocoding/nominatim-client";
 import { OpenMeteoWeatherClient } from "./weather/open-meteo-client";
 import { SqliteInvestmentAccountRepository } from "./investment-accounts/repository";
@@ -118,6 +120,10 @@ const marketDataClient = new YahooFinanceClient();
 export const deps = {
   moduleRepo: new SqliteModuleRepository(db),
   settingsRepo: new SqliteSettingsRepository(db),
+  // The color themes themselves (migrations/0076), built-ins included — read on every
+  // page render so the root layout can emit the active theme's :root custom properties.
+  // No BLOBs, so unlike the texture repos there is no heavy column to keep off that path.
+  colorThemeRepo: new SqliteColorThemeRepository(db),
   moduleSettingsRepo: new SqliteModuleSettingsRepository(db),
   userRepo: new SqliteUserRepository(db),
   userPreferencesRepo: new SqliteUserPreferencesRepository(db),
@@ -144,6 +150,10 @@ export const deps = {
   photoRootFromEnv,
   expenseRepo: new SqliteExpenseRepository(db),
   attendanceRepo: new SqliteAttendanceRepository(db),
+  // The Games module's shared high-score board (migrations/0074). There is no
+  // repository for the games themselves — the catalogue is code, in
+  // src/lib/games/catalogue.ts.
+  gamesRepo: new SqliteGamesRepository(db),
   musicRepo: new SqliteMusicRepository(db),
   // Read-only by construction — MusicFileStore has no write method, so nothing here
   // can modify the music collection.

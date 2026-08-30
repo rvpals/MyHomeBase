@@ -158,6 +158,7 @@ describe("resetModulesToDefaults", () => {
       "expense",
       "attendance",
       "music-library",
+      "games",
     ]);
   });
 

@@ -117,6 +117,7 @@ describe("sectionSlotId", () => {
       ],
       attendance: ["main", "rosters", "classes", "actions", "report", "configuration"],
       csv: ["main", "configuration"],
+      games: ["main", "scores", "configuration"],
       music: ["main", "magic", "player", "queue", "scan", "configuration"],
       admin: [
         "configuration", "configuration-modules", "configuration-application",

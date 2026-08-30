@@ -2,6 +2,7 @@
 // Register commands here as they're added; each command is a thin adapter that
 // parses args, validates with the module's zod schema, calls a lib use-case, and prints.
 import { attendanceReportCommand } from "./attendance-report";
+import { colorThemesCommand } from "./color-themes";
 import { computeAnalyticsCommand } from "./compute-analytics";
 import { createCsvAnalyticsEntryCommand } from "./create-csv-analytics-entry";
 import { createUserCommand } from "./create-user";
@@ -10,6 +11,7 @@ import { expenseTopSpendersCommand } from "./expense-top-spenders";
 import { explainRuleCommand } from "./explain-rule";
 import { expenseCreateRuleCommand } from "./expense-create-rule";
 import { normalizeIconOverridesCommand } from "./normalize-icon-overrides";
+import { gameScoresCommand } from "./game-scores";
 import { favPhotosCommand } from "./fav-photos";
 import { favoriteQuotesCommand } from "./favorite-quotes";
 import { importJournalCsvCommand } from "./import-journal-csv";
@@ -53,7 +55,9 @@ const commands: Record<string, Command> = {
   "simulate-ticker": simulateTickerCommand,
   "market-indexes": marketIndexesCommand,
   "favorite-quotes": favoriteQuotesCommand,
+  "color-themes": colorThemesCommand,
   "fav-photos": favPhotosCommand,
+  "game-scores": gameScoresCommand,
   "set-startup-message": setStartupMessageCommand,
   "user-preferences": userPreferencesCommand,
   "take-attendance": takeAttendanceCommand,

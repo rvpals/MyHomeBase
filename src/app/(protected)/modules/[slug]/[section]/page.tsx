@@ -11,6 +11,8 @@ import { CsvSection } from "../csv-section";
 import { isCsvSection } from "../csv-sections";
 import { ExpenseSection } from "../expense-section";
 import { isExpenseSection } from "../expense-sections";
+import { GamesSection } from "../games-section";
+import { isGamesSection } from "../games-sections";
 import { isJournalSection } from "../journal-sections";
 import { MusicSection } from "../music-section";
 import { isMusicSection } from "../music-sections";
@@ -21,6 +23,7 @@ import { isStockSection } from "../stock-sections";
 const ATTENDANCE_MODULE_SLUG = "attendance";
 const CSV_ANALYSIS_MODULE_SLUG = "csv-analysis";
 const EXPENSE_MODULE_SLUG = "expense";
+const GAMES_MODULE_SLUG = "games";
 const JOURNAL_MODULE_SLUG = "journal";
 const MUSIC_LIBRARY_MODULE_SLUG = "music-library";
 const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
@@ -79,6 +82,11 @@ function renderSection(
         requestedGroupKey={requestedGroupKey}
       />
     );
+  }
+  // Double-gated on the slug AND this module's own section names, so a Games
+  // section name cannot resolve under another module's slug.
+  if (slug === GAMES_MODULE_SLUG && isGamesSection(section)) {
+    return <GamesSection section={section} />;
   }
   if (slug === JOURNAL_MODULE_SLUG && isJournalSection(section)) {
     return (

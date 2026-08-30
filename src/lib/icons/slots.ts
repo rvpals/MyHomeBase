@@ -376,6 +376,37 @@ export const ICON_SLOTS: IconSlot[] = [
   },
 
   /* ---------------------------------------------------------------------------------
+     Games — nav sections.
+  --------------------------------------------------------------------------------- */
+  {
+    id: "games_section_main",
+    label: "Arcade",
+    group: "Games sections",
+    where: "Games & Puzzles → section panel → Arcade.",
+    defaultConcept: "grid",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "games_section_scores",
+    label: "Scores",
+    group: "Games sections",
+    where: "Games & Puzzles → section panel → Scores.",
+    defaultConcept: "chart",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "games_section_configuration",
+    label: "Configuration",
+    group: "Games sections",
+    where: "Games & Puzzles → section panel → Configuration.",
+    defaultConcept: "gear",
+    wired: true,
+    namespace: "tree",
+  },
+
+  /* ---------------------------------------------------------------------------------
      Expense — nav sections.
   --------------------------------------------------------------------------------- */
   {

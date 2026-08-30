@@ -55,7 +55,9 @@ Twenty-seven commands, registered in [src/cli/index.ts:33-61](src/cli/index.ts#L
 | [`user-preferences`](#user-preferences) | read (writes with `--favorite`/`--startup`) | no |
 | [`magic-playlist`](#magic-playlist) | read (writes with `--save`/`--regenerate`/`--delete`) | no |
 | [`play-queue`](#play-queue) | read (writes with every flag except none) | no |
+| [`color-themes`](#color-themes) | read (writes with `import`/`reset`/`delete`) | no |
 | [`fav-photos`](#fav-photos) | read (writes with `add`/`note`/`remove`) | no |
+| [`game-scores`](#game-scores) | read | no |
 
 Flag parsing is `--key value` pairs via [parse-flags.ts](src/cli/parse-flags.ts),
 except `ticker-overview` and `set-startup-message`, which read positionals and bare
@@ -1736,6 +1738,49 @@ Source: [src/cli/play-queue.ts](src/cli/play-queue.ts)
 
 ---
 
+## `color-themes`
+
+Reads and changes the colour themes behind Admin → Configuration → Color Themes.
+
+```
+npm run cli -- color-themes list
+npm run cli -- color-themes show <id>
+npm run cli -- color-themes export <id>
+npm run cli -- color-themes import <file.json>
+npm run cli -- color-themes reset <built-in-id>
+npm run cli -- color-themes delete <id>
+```
+
+Themes are rows as of migration 0076, so this is the terminal half of that screen. The
+eight built-ins are ordinary editable rows; `reset` is what restores one to its
+definition in `COLOR_THEMES`.
+
+**`export` and `import` are the reason this exists beyond parity.** A theme is twelve
+values, and moving one between installs — dev to the NAS — by retyping hex codes into a
+form is how a colour ends up one digit off. `export` writes the four fields `import`
+reads back (`isBuiltin` and `updatedAt` belong to the install, not the theme, so they are
+left out). `import` **updates when the id already exists and creates otherwise**, so
+re-importing an edited file is one command rather than a delete followed by an import.
+
+`show` prints the nine colours, the three fonts, and the full contrast report — passes
+included, since a number that only appears on failure gets ignored. Contrast is
+**warn-only** everywhere, `import` included: a low ratio is reported and still saved.
+
+Two writes are refused rather than guessed at: a **built-in cannot be deleted** (reset it
+instead) and the **theme currently selected cannot be deleted**, because the alternative
+is silently repointing `color_theme` at the default and changing how the whole app looks
+as a side effect of a delete.
+
+**Calls** — `listColorThemes`, `getColorThemeById`, `createColorTheme`, `saveColorTheme`,
+`resetBuiltinTheme`, `deleteColorTheme` and `checkThemeContrast` on `deps.colorThemeRepo`.
+**Output** — `list` is one line per theme with `(active, built-in)` marks; `export` is
+JSON on stdout, so it redirects cleanly to a file.
+**Exit** — 0; 1 on an unknown id, a malformed hex, a font the app does not load, a
+non-slug id, or either refused delete.
+Source: [src/cli/color-themes.ts](src/cli/color-themes.ts)
+
+---
+
 ## `fav-photos`
 
 Reads and changes the favourite photographs behind the home screen's random photo card.
@@ -1796,6 +1841,38 @@ normaliser runs on upload — or run this from Windows with `MYHOMEBASE_DB` poin
 NAS path over SMB, which is safest right after a backup.
 
 Source: [src/cli/normalize-icon-overrides.ts](src/cli/normalize-icon-overrides.ts)
+
+---
+
+## `game-scores`
+
+Prints the Games module's shared high-score board — the terminal counterpart of the
+Arcade and Scores screens.
+
+```
+npm run cli -- game-scores
+npm run cli -- game-scores --game 2048
+npm run cli -- game-scores --game arrow-clearing-hard
+npm run cli -- game-scores --game 2048 --limit 25
+```
+
+**Input** — all optional. `--game <key>` limits the board to one game, validated
+against `GAME_CATALOGUE` (so a typo is reported rather than returning an empty table).
+`--limit <n>` defaults to 10 and is capped at 100 by the schema.
+
+**Calls** — `listGames` and `listTopScores` on `deps.gamesRepo`, plus `formatScore` —
+the same use-cases the web app calls.
+
+**Output** — with no `--game`, one line per catalogue game (its record, who holds it,
+and how many games have been finished) followed by the overall board. With `--game`,
+just that game's board. Each row is rank, player, score with the game's unit, moves and
+the date. Ties are broken in favour of whoever got there first, matching the screen.
+
+**Exit** — 0 (including when nothing has been played — that's a fact, not an error);
+1 when `--limit` is not a positive number, or when the schema rejects a flag (an
+unknown `--game`, a `--limit` over the cap). A zod failure is printed through
+`messageOf`, so it reads as one line rather than a wall of JSON.
+Source: [src/cli/game-scores.ts](src/cli/game-scores.ts)
 
 ---
 

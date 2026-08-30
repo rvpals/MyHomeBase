@@ -8,6 +8,7 @@ import { PAGE_CONTAINER } from "../../page-container";
 import { AttendanceSection } from "./attendance-section";
 import { CsvSection } from "./csv-section";
 import { ExpenseSection } from "./expense-section";
+import { GamesSection } from "./games-section";
 import { JournalSection } from "./journal-section";
 import { MusicSection } from "./music-section";
 import { StockSection } from "./stock-section";
@@ -18,6 +19,7 @@ const JOURNAL_MODULE_SLUG = "journal";
 const EXPENSE_MODULE_SLUG = "expense";
 const ATTENDANCE_MODULE_SLUG = "attendance";
 const MUSIC_LIBRARY_MODULE_SLUG = "music-library";
+const GAMES_MODULE_SLUG = "games";
 
 function ModuleBody({
   slug,
@@ -53,6 +55,10 @@ function ModuleBody({
 
   if (slug === MUSIC_LIBRARY_MODULE_SLUG) {
     return <MusicSection section="main" />;
+  }
+
+  if (slug === GAMES_MODULE_SLUG) {
+    return <GamesSection section="main" />;
   }
 
   return (

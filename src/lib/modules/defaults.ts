@@ -8,7 +8,8 @@ import type { ModuleSeed } from "./types";
 // migrations/0050_journal_and_roster_module_icons.sql (which repointed the Journal
 // and Attendance icons off the shared `book` glyph) and
 // migrations/0055_music_library_music_icon.sql (which moved Music Library off the
-// borrowed `heart` onto a real music glyph).
+// borrowed `heart` onto a real music glyph), and
+// migrations/0075_seed_games_module.sql.
 // "Reset to Default" restores the table to exactly this list — keep both in sync.
 export const DEFAULT_MODULES: ModuleSeed[] = [
   {
@@ -64,5 +65,14 @@ export const DEFAULT_MODULES: ModuleSeed[] = [
     sequence: 7,
     isVisible: true,
     icon: "music",
+  },
+  {
+    slug: "games",
+    shortName: "Games",
+    longName: "Games & Puzzles",
+    description: "Play a quick game and keep a high-score board.",
+    sequence: 8,
+    isVisible: true,
+    icon: "game",
   },
 ];
