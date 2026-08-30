@@ -36,6 +36,7 @@ are the `snake_case` equivalents.
 | `expense` | Expense | Expense Tracker | Track credit-card spending by category. | 5 | `wallet` | `exp_` |
 | `attendance` | Attendance | Class Attendance | Take daily attendance for a class. | 6 | `roster` | `att_` |
 | `music-library` | Music Library | My Music Library | Browse and stream your music collection. | 7 | `music` | `mus_` |
+| `games` | Games | Games & Puzzles | Play a quick game and keep a high-score board. | 8 | `game` | `gam_` |
 
 Sequence 1 is deliberately vacant: it belonged to the Real Estate module, retired
 in `migrations/0026_drop_real_estate_module`. Its `rei_` prefix is retired with
@@ -337,12 +338,173 @@ narrow: any *stored* answer is left alone, including the retryable `not_found` a
 that never resolve; they stay on the button, which already reads "Try again". `instrumental`
 is never retried at all. So a track is asked about at most once, ever.
 
+**Games** (`games`) — a small arcade with a shared high-score board. Sections:
+**Arcade** (the list of games, and the selected board inline), **Scores**, and
+**Configuration**. Library: `src/lib/games`. One table, `gam_scores`
+(`migrations/0074`); registered by `0075`. Two games so far: **2048**, and
+**Arrow Clearing** at three board sizes.
+
+Five choices worth knowing, all recorded in `0074`'s log:
+
+- **The catalogue of games is code, not a table.** There is deliberately no
+  `gam_games`: a game is only playable if the view that draws it exists in the build,
+  so a row could name a game this deployment cannot run, and an admin could "add" one
+  by inserting a row and get a card that goes nowhere. `GAME_CATALOGUE` in
+  `src/lib/games/catalogue.ts` is the registry, exactly as `HOME_WIDGET_IDS` (0067)
+  and `src/lib/market-indexes` are. *What the app can do is code; what the user did is
+  data.* Adding a game is therefore one catalogue entry plus one branch in
+  `games-arcade-view.tsx` — no migration and no nav change.
+- **`game_key` is not a foreign key**, for the same reason, and a score outlives its
+  game being retired from the catalogue. `formatScore` and both views tolerate an
+  unknown key rather than throwing; validation happens on the way *in*, via
+  `recordScoreSchema`, which is what stops a crafted request writing scores for a game
+  that does not exist.
+- **`user_id` carries no `REFERENCES sys_users` clause either** — and this one was a
+  bug before it was a decision. It shipped with a real FK, and because
+  `better-sqlite3` enables `PRAGMA foreign_keys` on every connection, deleting a user
+  who had ever finished a game failed outright, breaking Admin → User Management. No
+  other table in the project declares an FK to `sys_users`;
+  `SqliteUserRepository.deleteUser` clears what it owns by hand and says so
+  ("No FK to cascade (project convention)"). Every read LEFT JOINs instead, so an
+  orphaned score renders as "Unknown player" rather than emptying the board.
+- **The board is shared, not per-user.** It answers "who is best at this", so no read
+  filters by the viewer. Same call as `stk_ticker_favorites` (0058).
+- **A score is only saved when a game ends**, and the board is never sent to the
+  server or re-simulated there. A determined player can post any number they like,
+  which is accepted deliberately for a single-household arcade; `games-actions.ts`
+  records what verifying it would cost. `played_at` *is* server-stamped, since a
+  client-supplied timestamp would win every tie-break in the `score DESC,
+  played_at ASC` ordering.
+
+The 2048 rules live in `src/lib/games/game-2048.ts` as pure functions over a flat
+16-cell board, with the RNG injected — which is what makes the merge rules testable
+at all, since a real `Math.random` would mean asserting on wherever the new tile
+landed. Nothing about the game is decided in the view. Two rules the tests pin down
+because they decide most games: a gap between equal tiles does not prevent a merge,
+and a tile merges at most once per move (a row of four 2s is two 4s, never an 8).
+`canMove` answers "is there an empty cell?" first — defined purely as "does some
+direction shift something", it reports game-over for an empty board, which is how a
+fresh board could have been dead on arrival.
+
+Tiles are coloured by **one theme token at increasing opacity** (`brass/10` through
+`brass`), not a hardcoded ramp: there are 9 tokens and 11 tile values, and a literal
+beige ramp would look wrong in the two light themes. The board is a square sized in
+`min(28rem, 88vw)`, so it scales rather than reflowing, and it takes arrow keys, WASD
+and touch swipes.
+
+#### Arrow Clearing
+
+A logic puzzle: every arrow occupies a straight run of one to four cells and points one
+way. Click it and it flies off the board — but only if every cell between its **head**
+and the edge is empty. A blocked arrow bumps and stays. Clear the board to win. Rules in
+[game-arrows.ts](src/lib/games/game-arrows.ts), board in
+[game-arrows-view.tsx](src/app/(protected)/modules/[slug]/game-arrows-view.tsx).
+
+Three decisions worth keeping:
+
+- **Levels are generated in reverse, which is what guarantees they are solvable.**
+  Arrows are "shot in" from outside: each is placed only where its own exit is clear *at
+  the moment it is placed*. Since clearing an arrow only ever frees cells, an arrow whose
+  exit was clear when placed still has a clear exit once everything placed after it has
+  gone — so replaying the placements backwards always empties the board. Scattering
+  arrows and then testing solvability would need a search per candidate and an unbounded
+  retry loop; this construction cannot produce a bad board at all. The generator's test
+  asserts it over 180 random boards rather than trusting the argument.
+- **Only the path in front of the head is checked.** The tail follows exactly where the
+  head has already been, so a head with a clear run means the whole piece can leave —
+  and walking every cell of the arrow would find its own tail and report every arrow as
+  blocked by itself. That regression has a test.
+- **Three catalogue keys, not one game with a difficulty column** (`arrow-clearing-easy`
+  / `-medium` / `-hard`, 5×5 / 7×7 / 9×9). The scoreboard sorts on score alone, so one
+  shared key would rank an easy clear against a hard one. `arrowDifficultyOf` maps a key
+  back to its difficulty so the three cards share one view.
+
+Scoring is 100 a cleared arrow less 15 a wasted click, floored at a tenth of full marks
+so a badly-played big board still outranks a badly-played small one. Pieces are drawn
+from the `brass` token at two opacities (head solid, tail at 35%) so they read in all
+eight themes, and are **absolutely positioned over a gapless grid in percentages** — a
+grid `gap` would make each cell's true offset drift from `index / size`, so pieces would
+misalign further down the board. Fly-off is a CSS transform and the blocked bump a
+keyframe in `globals.css`; both respect `prefers-reduced-motion`, the bump falling back
+to a brightness flash rather than nothing, since it is the only visual feedback for an
+illegal move. Sound effects are synthesized with the Web Audio API (no asset files) and
+the context is created on first gesture, never on mount — a browser blocks an autoplayed
+one and warns on every load.
+
+#### Adding another game
+
+A game is **code plus one catalogue entry** — no migration, no new table, no nav
+change, and nothing to register in `sys_modules`. That is the whole point of the
+catalogue decision above, and it is what makes this a four-step job rather than a
+module-sized one. Work bottom-up, as always.
+
+**1. The rules, as pure functions.** A new file in `src/lib/games/` — mirror
+[game-2048.ts](src/lib/games/game-2048.ts). Nothing about the game may live in the
+view: the board shape, every legal move, the score arithmetic and the
+is-it-over test all belong here, because that is what makes them testable and what
+lets a CLI print the same game. **Inject the randomness** (`random: Random`) rather
+than calling `Math.random` inside — a real RNG means a test asserting on a board is
+also asserting on wherever the new tile happened to land, which is why every
+`game-2048.ts` function takes it as an argument.
+
+**2. A colocated Vitest**, success *and* failure paths, as `CLAUDE.md` requires. Pin
+down the rules a player would argue about, not just the happy path — for 2048 those
+were "a gap does not prevent a merge" and "a tile merges at most once per move". Two
+traps worth knowing, both of which the 2048 tests actually caught:
+
+- **An "is it over?" predicate defined purely as "does any move change the board"
+  reports true for an *empty* board**, because sliding nothing changes nothing. Check
+  for a free cell first. This shipped as a real bug and the test is what found it.
+- **Assert the board orientation explicitly.** Up/down/left/right are easy to get
+  transposed, and a merge that works left will silently do the wrong thing upward.
+
+**3. The catalogue entry** in [catalogue.ts](src/lib/games/catalogue.ts):
+
+```ts
+{
+  key: "sudoku",          // stored in gam_scores.game_key -- PERMANENT once a score exists
+  name: "Sudoku",
+  description: "One line, shown on the Arcade card.",
+  status: "available",    // or "coming-soon" to list it before it is playable
+  scoreUnit: "seconds",   // "points" | "seconds" -- how formatScore labels it
+}
+```
+
+Two fields carry real weight. **`key` is permanent** — it is written into every score
+row, and renaming it orphans them exactly the way renaming an icon slot id orphans an
+upload. **`scoreUnit`** is what lets the shared scoreboard label a column without
+knowing what the game is; if a new game scores in something that is neither points nor
+seconds, widen the union in [types.ts](src/lib/games/types.ts) and the branch in
+`formatScore` together.
+
+`status: "coming-soon"` is a legitimate half-step: the card renders with a *Soon* badge
+and no Play button, so a game can be announced before step 4 exists.
+
+**4. The view, and one branch.** A `game-<name>-view.tsx` beside
+[game-2048-view.tsx](src/app/(protected)/modules/[slug]/game-2048-view.tsx), plus a
+case in [games-arcade-view.tsx](src/app/(protected)/modules/[slug]/games-arcade-view.tsx):
+
+```tsx
+{open.game.key === "sudoku" && <SudokuView bestScore={open.best?.score ?? 0} />}
+```
+
+The view owns presentation state only, and calls `saveScoreAction(key, score, moves)`
+when the game **ends** — once. Guard that call with a ref: `over` alone re-fires on
+every subsequent render and posts the same score repeatedly. Nothing else in the
+module needs touching — the Arcade list, the scoreboard, the CLI and the Configuration
+screen are all driven off `GAME_CATALOGUE` and pick a new game up for free.
+
+Two things a new game does **not** get to decide, because they are module-wide: the
+score is stamped server-side (`played_at` from the use-case, never the client), and
+the board is not re-simulated on the server — see the fifth bullet above for why that
+trade is deliberate and what changing it would cost.
+
 ### Icons
 
 `icon` must be one of `MODULE_ICON_NAMES` in
 [src/lib/modules/icon-names.ts](src/lib/modules/icon-names.ts): `building`,
 `home`, `briefcase`, `wallet`, `chart`, `folder`, `shield`, `heart`, `book`,
-`tool`, `journal`, `roster`, `music`.
+`tool`, `journal`, `roster`, `music`, `game`.
 
 **Prefer the closest existing fit.** Adding a concept is not a one-line change: it
 has to be drawn by hand for the "classic" set *and* named in `TREE_CAND`-style
@@ -404,7 +566,7 @@ under each row in the admin list, and it is load-bearing rather than decoration:
 alone is ambiguous once there are fifty-odd positions, because all five modules have a
 "Dashboard" section and two admin entries share the `palette` glyph.
 
-**77 positions are registered and all 77 are wired up** — every module's section nav,
+**86 positions are registered and all 86 are wired up** — every module's section nav,
 the whole Admin nav, and the home screen's Daily Quote, Photo of the Day and Random
 Photo cards. A slot that is registered but not yet converted at its call site would be
 inert (it appears in the admin list and accepts an upload, yet the screen keeps
@@ -615,7 +777,7 @@ Skip this whole step for a single-screen module — that's a legitimate shape.
 Every module currently shipping has a nav, though: CSV Analysis was the last
 single-screen one and gained Dashboard + Configuration.
 
-Otherwise, three files under
+Otherwise, these files under
 [src/app/(protected)/modules/[slug]/](src/app/(protected)/modules/[slug]/),
 named `<module>-*`:
 
@@ -628,20 +790,18 @@ named `<module>-*`:
   `undefined`. This has bitten before — the comment at the top of
   [attendance-sections.ts](src/app/(protected)/modules/[slug]/attendance-sections.ts)
   records it.
-- **`<module>-nav.tsx`** — `"use client"`. Maps the section list into
-  `TreeNode[]` and renders the shared `TreeNav`. Give it **its own**
-  `storageKey` (`myhomebase:<module>-nav-collapsed`) so collapsing one tree
-  doesn't collapse the others.
 - **`<module>-section.tsx`** — a **server** component. Reads `deps`, loads only
   the data the requested section needs, renders `SectionLayout` with the heading,
   a `CollapsibleCard` of instructions, and the section body. Views get plain
   data, never `deps`.
 
-Then register the nav in
-[section-layout.tsx](src/app/(protected)/modules/[slug]/section-layout.tsx): add
-the slug to the `nav` union and a branch to the picker. The nav is passed by
-*name*, not as a component, because a server parent can't hand a client child a
-render prop.
+There is **no central nav picker to register with** — an earlier version of this
+document pointed at a `section-layout.tsx`, which does not exist. Each module's
+`<module>-section.tsx` renders its own shell directly (see
+[csv-section.tsx](src/app/(protected)/modules/[slug]/csv-section.tsx)), and the shell
+hands `sections` to `TwoTierShell`, which renders `SectionPanel`. Nor is a
+`<module>-nav.tsx` needed: no module ships one, because the section panel is
+data-driven from the list above.
 
 **Then register the section icon slots.** Add one `ICON_SLOTS` entry per section in
 [src/lib/icons/slots.ts](src/lib/icons/slots.ts), with the id derived as
@@ -710,6 +870,10 @@ plumbing — but a freshly seeded module is granted to nobody. Grant it in admin
 *User Management*, or the module 404s for everyone including you.
 
 ## Checklist
+
+This is the checklist for a **new module**. Adding a *game* to the existing Games
+module is a much smaller job with its own four-step recipe — see *Per-module detail*
+→ **Games** → *Adding another game*; none of the items below apply to it.
 
 - [ ] Slug, names, description, sequence, 3-letter prefix chosen
 - [ ] `src/lib/<name>/` with types, schema, ports, repository, use-cases, `index.ts`

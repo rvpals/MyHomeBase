@@ -612,3 +612,49 @@ html[data-music-player="full"] {
     animation: none;
   }
 }
+
+/* Arrow Clearing: the bounce a piece plays when its way out is blocked.
+
+   A transform-only animation, so it stays off the layout/paint path — and it is the
+   only feedback for an illegal move besides the sound, which is why it also has a
+   reduced-motion fallback rather than simply being switched off: a player who has
+   asked for less motion still needs to be told the move did nothing. */
+@keyframes arrow-bump {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  20% {
+    transform: translate(-3px, 0) rotate(-1.5deg);
+  }
+  40% {
+    transform: translate(3px, 0) rotate(1.5deg);
+  }
+  60% {
+    transform: translate(-2px, 0) rotate(-1deg);
+  }
+  80% {
+    transform: translate(2px, 0) rotate(1deg);
+  }
+}
+
+.animate-arrow-bump {
+  animation: arrow-bump 320ms ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-arrow-bump {
+    /* No shaking, but still an unmistakable "that did not work" flash. */
+    animation: arrow-bump-flash 320ms ease-in-out;
+  }
+}
+
+@keyframes arrow-bump-flash {
+  0%,
+  100% {
+    filter: none;
+  }
+  50% {
+    filter: brightness(1.35) saturate(1.6);
+  }
+}

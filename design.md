@@ -9,8 +9,8 @@ express: colors, type, and the "3D switch" button treatment.
 
 Never hardcode a hex value or a literal Tailwind color for anything structural
 (backgrounds, borders, text, accents). Everything goes through the 9 CSS custom
-properties defined in `src/lib/settings/themes.ts` and exposed as Tailwind utilities via
-`@theme inline` in `src/app/globals.css`:
+properties that make up a **theme**, exposed as Tailwind utilities via `@theme inline` in
+`src/app/globals.css`:
 
 | Token | Tailwind utility | Role |
 |---|---|---|
@@ -19,21 +19,39 @@ properties defined in `src/lib/settings/themes.ts` and exposed as Tailwind utili
 | `ink` | `text-ink` | Primary text |
 | `line` | `border-line` / `bg-line` | Borders, dividers, hairlines |
 | `muted` | `text-muted` | Secondary text |
-| `mutedInverse` | `text-muted-inverse` | Reserved tertiary text slot (currently unused by any component — available if a third text weight is ever needed) |
+| `mutedInverse` | `text-muted-inverse` | Tertiary text — a third weight below `muted`. Used by the theme builder's preview card; otherwise still largely spare |
 | `brass` | `bg-brass` / `text-brass` | Accent — icons, active states, primary fills |
 | `brassDark` | `text-brass-dark` / `var(--brass-dark)` | Accent shadow/hover shade, and the text color on `brassSoft` chips |
 | `brassSoft` | `bg-brass-soft` | Low-emphasis tinted chip/badge background |
 
-Any of these can be swapped at runtime (Admin → Display Settings → Color Themes), so a
+Any of these can be swapped at runtime (Admin → Configuration → Color Themes), so a
 component that reaches for a literal color instead of a token will look right in one
 theme and wrong in the others. The shipped themes are **Signal Deck** (default),
 **Ember Ledger**, **Aurora Deck**, **BMS** (Bristol Myers Squibb brand purple on charcoal
 gray), **Midnight Slate** (blue-slate with an ice-blue accent) and **Copper Vault**
 (near-black with a copper accent) — all dark — plus two light themes, **Daybreak** (rose
-on warm paper) and **Sea Glass** (deep teal on cool off-white). Adding another theme is
-just another entry in `COLOR_THEMES` (`src/lib/settings/themes.ts`) — no component
-changes needed, as long as it reuses an existing `FontKey` (a new font also needs wiring
-in `src/app/layout.tsx`).
+on warm paper) and **Sea Glass** (deep teal on cool off-white).
+
+**Themes are data, not code** (migration 0076). They live in `sys_color_themes`, and an
+admin can build, edit, duplicate and delete them on that screen — including the eight
+built-ins, which the migration seeds as ordinary editable rows. Two consequences for
+anyone writing components:
+
+- **You cannot enumerate the themes at build time.** There may be a ninth, or a
+  built-in may have been recoloured. Never special-case a theme by id, and never assume a
+  particular token *value* — only its role in the table above.
+- `COLOR_THEMES` in `src/lib/settings/themes.ts` still exists, but its job is now narrow:
+  it is the **reset baseline** for the eight built-ins and the last-resort fallback when
+  no row matches. Editing it changes what "Reset" restores, not what the app renders.
+
+A user-built theme still has to reuse an existing `FontKey` — the seven faces are loaded
+by `next/font/google` calls in `src/app/layout.tsx`, so the builder offers exactly those
+and a new font needs wiring there first.
+
+**Contrast is warned about, never enforced.** The builder measures the pairings in
+`src/lib/color-themes/contrast.ts` and flags anything below its WCAG target, but nothing
+blocks a save — some pairings in this token set are deliberately quiet (see `line`
+below), and the tests pin which pairs every shipped theme is expected to clear.
 
 **Design for both light and dark.** Because light themes exist, don't assume a dark page.
 Structural styling must go through the tokens above (they invert correctly), and any
@@ -54,17 +72,21 @@ don't branch per-theme to fix it unless asked.)
 
 ## Type
 
-Fonts are also theme-driven — each of the 3 themes pairs a display face, a body face,
-and a mono face (wired in `src/app/layout.tsx`, all loaded via `next/font/google`, and
-selected by the CSS vars `--font-display` / `--font-body` / `--font-mono-code`).
+Fonts are also theme-driven — every theme pairs a display face, a body face, and a mono
+face, chosen from the seven `FONT_KEYS` (wired in `src/app/layout.tsx`, all loaded via
+`next/font/google`, and selected by the CSS vars `--font-display` / `--font-body` /
+`--font-mono-code`). All seven load on every request regardless of the active theme,
+which is what lets a theme switch just repoint those three variables.
 
 - Headings, module names, page titles → `font-display` (`font-display` Tailwind class).
 - Body copy, labels, buttons → `font-body` (Tailwind default `font-sans`, already applied to `<body>`).
 - Reference codes, ledger-style numbers, tags (e.g. a module's "REI" code) → `font-mono` (Tailwind `font-mono`).
 
-Don't reach for a font family outside this trio. If a new theme is added, give it its
-own display/body/mono choice in `themes.ts` rather than hardcoding a font anywhere in
-`src/app` or `src/components`.
+Don't reach for a font family outside this trio. A theme picks its own
+display/body/mono from `FONT_KEYS` — never hardcode a font family anywhere in `src/app`
+or `src/components`. Adding an eighth face means a `next/font/google` loader **and** an
+entry in `FONT_VAR_MAP` in `src/app/layout.tsx`, plus a key in `FONT_KEYS`; miss any one
+and a theme naming it silently renders the browser fallback.
 
 ## The signature: buttons are switches, cards are calm
 
@@ -171,6 +193,28 @@ What keeps it from wrecking a theme:
 
 Don't extend this to another surface without the same justification. A texture behind
 *content* is a legibility risk that a card's own background is what mitigates.
+
+### Motion: a named class in `globals.css`, and always a reduced-motion branch
+
+Same rule again — a keyframe animation is a named class in `globals.css`, never an
+arbitrary value at the call site. There are two so far: `progress-3d-indeterminate` (the
+sweep on a job that hasn't counted its work) and `animate-arrow-bump` (the shake an Arrow
+Clearing piece plays when its way out is blocked).
+
+Animate **transforms and opacity only**, so the animation stays off the layout and paint
+path.
+
+Every one needs a `@media (prefers-reduced-motion: reduce)` branch, and the branch is a
+judgement call rather than a reflex `animation: none`:
+
+- **Decorative motion stops.** The progress sweep holds still — it was saying "something
+  is happening", which the surrounding text already says.
+- **Motion that is the only feedback for an event must survive in some form.** The arrow
+  bump is the *only* visual signal that a move was illegal, so under reduced motion it
+  becomes a brightness flash instead of vanishing. Switching it off would leave a player
+  who asked for less motion with no idea why their tap did nothing.
+
+Ask which of those two a new animation is before writing its fallback.
 
 ### Layout utilities
 
