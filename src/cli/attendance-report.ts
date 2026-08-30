@@ -1,4 +1,5 @@
 import {
+  attendanceReportToCsv,
   getAttendanceReport,
   getAttendanceReportById,
   listClasses,
@@ -16,17 +17,25 @@ import { parseFlags } from "./parse-flags";
  *   attendance-report --class "Math 101" --date 2026-08-15
  *   attendance-report --class "Math 101" --list-sessions
  *   attendance-report --class "Math 101" --session 12
+ *   attendance-report --class "Math 101" --csv
  *
  * Without --session the day's latest register is printed, since a class may be
  * registered more than once a day. `--list-dates` is kept as an alias for
  * --list-sessions.
+ *
+ * `--csv` writes the same session to stdout as CSV instead of the readable
+ * listing, so it can be redirected to a file. It goes through the same
+ * `attendanceReportToCsv` the Report screen's Export button uses, so the two
+ * produce byte-identical files.
  */
 export async function attendanceReportCommand(args: string[]): Promise<void> {
   const flags = parseFlags(args);
   const className = flags.class;
 
   if (!className) {
-    console.error('Usage: attendance-report --class "Math 101" [--date YYYY-MM-DD] [--list-dates]');
+    console.error(
+      'Usage: attendance-report --class "Math 101" [--date YYYY-MM-DD] [--list-dates] [--csv]',
+    );
     process.exitCode = 1;
     return;
   }
@@ -73,6 +82,12 @@ export async function attendanceReportCommand(args: string[]): Promise<void> {
         ? `No session #${recordId}.`
         : `No attendance was taken for ${attendanceClass.name} on ${attendanceDate}.`,
     );
+    return;
+  }
+
+  // Nothing but the CSV on stdout, so `> register.csv` yields a clean file.
+  if ("csv" in flags) {
+    console.log(attendanceReportToCsv(report));
     return;
   }
 

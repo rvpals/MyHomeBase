@@ -291,6 +291,29 @@ describe("formatStudentName", () => {
     const student = addStudent(repo, { firstName: "Ava", lastName: "Chen" });
     expect(formatStudentName(student)).toBe("Ava Chen");
   });
+
+  it("puts the last name first when asked", () => {
+    const repo = fakeRepo();
+    const student = addStudent(repo, { firstName: "Ava", lastName: "Chen" });
+    expect(formatStudentName(student, true)).toBe("Chen, Ava");
+  });
+
+  // Built by hand rather than through addStudent, which requires both names.
+  // The guard is for a Student that reached the formatter some other way — an
+  // older row, or an import that predates the current schema.
+  it("omits the comma when one of the names is missing", () => {
+    const student: Student = {
+      id: 1,
+      firstName: "Ava",
+      lastName: "",
+      studentIdentifier: "",
+      email: "",
+      note: "",
+      createdAt: "2026-08-15T09:00:00.000Z",
+      updatedAt: "2026-08-15T09:00:00.000Z",
+    };
+    expect(formatStudentName(student, true)).toBe("Ava");
+  });
 });
 
 describe("addStudent", () => {

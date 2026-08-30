@@ -104,9 +104,12 @@ export async function runJournalImportAction(
   fileText: string,
   columnMapping: ColumnMapping,
   fieldOptions: FieldOptionsMap,
+  skipDuplicates = true,
 ): Promise<JournalImportResult> {
   try {
-    const summary = importJournalCsv(deps.journalRepo, fileText, columnMapping, fieldOptions);
+    const summary = importJournalCsv(deps.journalRepo, fileText, columnMapping, fieldOptions, {
+      skipDuplicates,
+    });
     revalidatePath(JOURNAL_MODULE_PATH);
     return { ok: true, summary };
   } catch (error) {

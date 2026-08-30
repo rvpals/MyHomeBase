@@ -7,9 +7,9 @@
 //
 //   npm run cli -- expense-create-rule --name "TGI Friday's" \
 //     --description "The card prints this restaurant three different ways" \
-//     --pattern "*TGI*" --set vendor="TGI Friday" --set categoryName=Restaurant
+//     --pattern "%TGI%" --set vendor="TGI Friday" --set categoryName=Restaurant
 //
-//   npm run cli -- expense-create-rule --name Amazon --pattern "AMAZON*" \
+//   npm run cli -- expense-create-rule --name Amazon --pattern "AMAZON%" \
 //     --set categoryName=online-purchase --priority 10 --disabled
 import {
   RULE_ACTION_FIELDS,
@@ -25,7 +25,8 @@ const USAGE = `Usage:
 
 Required:
   --name <text>          What to call this rule, e.g. "TGI Friday's".
-  --pattern <glob>       Matched against the statement description, e.g. "*TGI*".
+  --pattern <glob>       Matched against the statement description, e.g. "%TGI%".
+                         "%" is the wildcard; "*" is a literal asterisk.
   --set <field>=<value>  A field this rule sets. Repeatable. One is required.
                          Fields: ${RULE_ACTION_FIELDS.join(", ")}
 

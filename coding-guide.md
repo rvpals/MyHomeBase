@@ -11,7 +11,7 @@ module is obvious from the name alone. New tables must follow this.
 
 | Prefix | Module | Example tables |
 |---|---|---|
-| `sys_` | Platform — not a feature module | `sys_modules`, `sys_app_settings`, `sys_module_settings`, `sys_user_preferences`, `sys_users`, `sys_user_module_access`, `sys_sessions`, `sys_schema_migrations`, `sys_daily_quotes`, `sys_scheduled_runs`, `sys_dashboard_texture`, `sys_module_texture` |
+| `sys_` | Platform — not a feature module | `sys_modules`, `sys_app_settings`, `sys_module_settings`, `sys_user_preferences`, `sys_users`, `sys_user_module_access`, `sys_sessions`, `sys_schema_migrations`, `sys_daily_quotes`, `sys_scheduled_runs`, `sys_dashboard_texture`, `sys_module_texture`, `sys_fav_photo` |
 | `stk_` | Stocks & ETFs (brokerage accounts **and** per-stock tables — one prefix) | `stk_investment_accounts`, `stk_stock_positions`, `stk_stock_transactions`, `stk_stock_watch_lists`, `stk_stock_volatility_cache`, `stk_ticker_risk_cache`, `stk_ticker_logos`, `stk_daily_snapshots` |
 | `csv_` | CSV Analysis (incl. user-generated per-entry tables from `buildTableName`) | `csv_analytics_entries`, `csv_chart_presets`, `csv_govee` |
 | `jrn_` | MyJournal | `jrn_entries`, `jrn_categories`, `jrn_tags`, `jrn_entry_categories`, `jrn_entry_tags`, `jrn_entry_locations`, `jrn_entry_images`, `jrn_saved_filters` |
@@ -262,8 +262,9 @@ and asserts each resolves. Extend those lists when adding a module.
 - **Row actions** — pencil, trash, refresh, search. They are buttons, and
   `ALWAYS_CLASSIC` in `tree-icons.tsx` keeps them hand-drawn so an inline delete control
   can't become full-colour artwork that weakens the destructive read.
-- **State glyphs** — `star`/`star-filled`, play/pause, the now-playing marker. The
-  outline-vs-solid contrast *is* the information; overriding half a pair destroys it.
+- **State glyphs** — `star`/`star-filled`, `heart`/`heart-filled`, play/pause, the
+  now-playing marker. The outline-vs-solid contrast *is* the information; overriding
+  half a pair destroys it.
 - **A module's own icon.** Already user-editable under Admin → Configuration → Module
   Configuration, backed by `sys_modules.icon`. A slot would be a second, competing way
   to set one value. (Administration is the sole exception: it has no `sys_modules` row,

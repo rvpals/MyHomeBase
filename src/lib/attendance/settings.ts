@@ -7,6 +7,7 @@ import type { ModuleSetting } from "@/lib/module-settings";
 export const ATTENDANCE_SETTING_KEYS = {
   defaultClassId: "attendance_default_class_id",
   reportDefaultsToToday: "attendance_report_defaults_to_today",
+  cardsUseLastNameFirst: "attendance_cards_use_last_name_first",
 } as const;
 
 export interface AttendanceSettings {
@@ -21,6 +22,15 @@ export interface AttendanceSettings {
    * prints yesterday's register the next morning.
    */
   reportDefaultsToToday: boolean;
+  /**
+   * Whether the home screen's **card** view names a student "Lovelace, Ada"
+   * rather than "Ada Lovelace" — the order a paper register is usually in, so a
+   * teacher can find a name by scanning surnames.
+   *
+   * Card view only, deliberately: the list view sorts and reads differently, and
+   * the toggle is worded for the cards.
+   */
+  cardsUseLastNameFirst: boolean;
 }
 
 /**
@@ -43,7 +53,12 @@ export function resolveAttendanceSettings(settings: ModuleSetting[]): Attendance
   const reportDefaultsToToday =
     rawToday === undefined ? true : rawToday.trim().toLowerCase() === "true";
 
-  return { defaultClassId, reportDefaultsToToday };
+  // Missing means off — "First Last" is how the module has always read, so an
+  // install that predates this setting must not silently reorder every card.
+  const rawLastNameFirst = byKey.get(ATTENDANCE_SETTING_KEYS.cardsUseLastNameFirst);
+  const cardsUseLastNameFirst = rawLastNameFirst?.trim().toLowerCase() === "true";
+
+  return { defaultClassId, reportDefaultsToToday, cardsUseLastNameFirst };
 }
 
 /**
@@ -70,6 +85,10 @@ export function attendanceSettingsToEntries(
     {
       key: ATTENDANCE_SETTING_KEYS.reportDefaultsToToday,
       value: String(settings.reportDefaultsToToday),
+    },
+    {
+      key: ATTENDANCE_SETTING_KEYS.cardsUseLastNameFirst,
+      value: String(settings.cardsUseLastNameFirst),
     },
   ];
 }

@@ -20,6 +20,7 @@ import {
   clearAccountImage,
   clearCategoryIcon,
   clearVendorIcon,
+  autoPopulateVendorIcon,
   countUnprocessed,
   createAccount,
   createRule,
@@ -52,6 +53,7 @@ import {
   type SaveCategoryInput,
   type SaveVendorInput,
   type SavePostImportRuleInput,
+  type VendorIconFetchResult,
   type RuleActionField,
   type SaveTransactionInput,
 } from "@/lib/expense";
@@ -234,6 +236,36 @@ export async function saveVendorIconAction(
   }
   revalidatePath(EXPENSE_MODULE_PATH);
   return { ok: true };
+}
+
+/** One auto-populate batch's worth of results, in the order asked for. */
+export interface AutoPopulateVendorIconsResult extends ActionResult {
+  results?: VendorIconFetchResult[];
+}
+
+/**
+ * Fetches logos for a batch of vendors. The client calls this a few names at a
+ * time so the progress bar can move and the run can be stopped part way — a
+ * single call over forty vendors could not report anything until it finished,
+ * and would sit on forty sequential HTTP requests.
+ *
+ * The batch runs its lookups concurrently: they are independent, network-bound,
+ * and against a service that is fine with a handful at once. One vendor
+ * throwing does not take the batch down, because the use case catches per
+ * vendor and reports `failed`.
+ */
+export async function autoPopulateVendorIconsAction(
+  names: string[],
+): Promise<AutoPopulateVendorIconsResult> {
+  try {
+    const results = await Promise.all(
+      names.map((name) => autoPopulateVendorIcon(deps.expenseRepo, deps.vendorLogoClient, name)),
+    );
+    revalidatePath(EXPENSE_MODULE_PATH);
+    return { ok: true, results };
+  } catch (error) {
+    return toErrorResult(error, "Failed to auto-populate the vendor icons.");
+  }
 }
 
 export async function clearVendorIconAction(name: string): Promise<ActionResult> {

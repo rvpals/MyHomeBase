@@ -74,20 +74,31 @@ export function AttendanceInstructions({ section }: { section: AttendanceSection
 
     case "report":
       return (
-        <p className="text-sm text-muted">
-          Pick a class and a date to see who was present and who was absent, then press{" "}
-          <strong className="text-ink">Print</strong>. Any actions noted that session print as
-          codes beside the student, with a count of each above the lists. Names and codes are
-          shown as they were when attendance was taken, so a later rename doesn&apos;t change an
-          old report.
-        </p>
+        <div className="flex flex-col gap-2 text-sm text-muted">
+          <p>
+            Pick a class and a date to see who was present and who was absent, then press{" "}
+            <strong className="text-ink">Print</strong>. Any actions noted that session print as
+            codes beside the student, with a count of each above the lists. Names and codes are
+            shown as they were when attendance was taken, so a later rename doesn&apos;t change
+            an old report.
+          </p>
+          <p>
+            <strong className="text-ink">Export CSV</strong> downloads whatever is on screen as a
+            spreadsheet file — a row per student for the <em>Brief</em> sheet, or a row per
+            student and a column per date for <em>Detail</em>. In the detail file a cell reads{" "}
+            <span className="font-mono text-xs">P</span> or{" "}
+            <span className="font-mono text-xs">A</span> with any codes after it, and a blank
+            cell means attendance was never taken for that student that day — which is not the
+            same as being absent.
+          </p>
+        </div>
       );
 
     case "configuration":
       return (
         <p className="text-sm text-muted">
-          Set the class the home screen opens on, and whether the report starts on today&apos;s
-          date.
+          Set the class the home screen opens on, whether the report starts on today&apos;s date,
+          and whether the home screen&apos;s cards name a student surname-first.
         </p>
       );
 

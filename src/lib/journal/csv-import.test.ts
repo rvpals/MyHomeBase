@@ -59,6 +59,15 @@ function fakeRepo(): JournalRepository {
     deleteEntry(id) {
       entries = entries.filter((entry) => entry.id !== id);
     },
+    // Mirrors the SQL in repository.ts: exact date and time, title trimmed on
+    // both sides, case significant.
+    countEntriesMatching: (key) =>
+      entries.filter(
+        (entry) =>
+          entry.date === key.date &&
+          entry.time === key.time &&
+          entry.title.trim() === key.title.trim(),
+      ).length,
     setEntryPinned: () => {
       throw new Error("not used");
     },
@@ -220,5 +229,166 @@ describe("importJournalCsv", () => {
 
     expect(summary.importedCount).toBe(1);
     expect(summary.skippedCount).toBe(0);
+  });
+
+  // Duplicate detection matches on date + time + title. Content is deliberately
+  // NOT part of the key, and the check counts rather than tests a boolean so a
+  // file may legitimately hold several rows sharing one key.
+  describe("duplicate detection", () => {
+    // One row: 4/27/26, 13:45, title "A title".
+    const row = (title: string, content = "Body", time = "13:45") =>
+      `"4/27/26","${time}","FAMILY","Trip","","","","${title}","${content}"`;
+
+    it("re-importing the same file imports nothing the second time", () => {
+      const csv = `${HEADER}\n${row("A title")}\n${row("Another")}`;
+      const repo = fakeRepo();
+
+      const first = importJournalCsv(repo, csv, MAPPING, OPTIONS);
+      const second = importJournalCsv(repo, csv, MAPPING, OPTIONS);
+
+      expect(first).toMatchObject({ importedCount: 2, skippedCount: 0 });
+      expect(second).toMatchObject({ importedCount: 0, skippedCount: 2 });
+      expect(repo.listEntries()).toHaveLength(2);
+    });
+
+    it("names the reason so a skip is never a mystery", () => {
+      const csv = `${HEADER}\n${row("A title")}`;
+      const repo = fakeRepo();
+
+      importJournalCsv(repo, csv, MAPPING, OPTIONS);
+      const summary = importJournalCsv(repo, csv, MAPPING, OPTIONS);
+
+      expect(summary.results).toEqual([
+        { rowNumber: 2, status: "skipped", reason: "Duplicate of an existing entry" },
+      ]);
+    });
+
+    // The reason countEntriesMatching returns a count and not a boolean: three
+    // rows sharing a key are three legitimate entries, and a re-import of the
+    // same file must still add none of them.
+    it("imports every copy of a repeated key, then none on re-import", () => {
+      const csv = `${HEADER}\n${row("Gym")}\n${row("Gym")}\n${row("Gym")}`;
+      const repo = fakeRepo();
+
+      const first = importJournalCsv(repo, csv, MAPPING, OPTIONS);
+      const second = importJournalCsv(repo, csv, MAPPING, OPTIONS);
+
+      expect(first).toMatchObject({ importedCount: 3, skippedCount: 0 });
+      expect(second).toMatchObject({ importedCount: 0, skippedCount: 3 });
+      expect(repo.listEntries()).toHaveLength(3);
+    });
+
+    it("imports the shortfall when the file holds more copies than are stored", () => {
+      const repo = fakeRepo();
+      importJournalCsv(repo, `${HEADER}\n${row("Gym")}`, MAPPING, OPTIONS);
+
+      // The file now has two copies; one is already stored, so one is new.
+      const summary = importJournalCsv(
+        repo,
+        `${HEADER}\n${row("Gym")}\n${row("Gym")}`,
+        MAPPING,
+        OPTIONS,
+      );
+
+      expect(summary).toMatchObject({ importedCount: 1, skippedCount: 1 });
+      expect(repo.listEntries()).toHaveLength(2);
+    });
+
+    it("treats a different title as a different entry", () => {
+      const repo = fakeRepo();
+      importJournalCsv(repo, `${HEADER}\n${row("Morning")}`, MAPPING, OPTIONS);
+
+      const summary = importJournalCsv(repo, `${HEADER}\n${row("Evening")}`, MAPPING, OPTIONS);
+
+      expect(summary).toMatchObject({ importedCount: 1, skippedCount: 0 });
+    });
+
+    it("treats a different time as a different entry", () => {
+      const repo = fakeRepo();
+      importJournalCsv(repo, `${HEADER}\n${row("Gym", "Body", "07:00")}`, MAPPING, OPTIONS);
+
+      const summary = importJournalCsv(
+        repo,
+        `${HEADER}\n${row("Gym", "Body", "19:00")}`,
+        MAPPING,
+        OPTIONS,
+      );
+
+      expect(summary).toMatchObject({ importedCount: 1, skippedCount: 0 });
+    });
+
+    // The deliberate consequence of excluding content from the key: an edited
+    // body does not import a second copy, and does not overwrite the stored one.
+    it("skips a row whose content changed but whose date, time and title did not", () => {
+      const repo = fakeRepo();
+      importJournalCsv(repo, `${HEADER}\n${row("Gym", "Ran 5k")}`, MAPPING, OPTIONS);
+
+      const summary = importJournalCsv(repo, `${HEADER}\n${row("Gym", "Ran 10k")}`, MAPPING, OPTIONS);
+
+      expect(summary).toMatchObject({ importedCount: 0, skippedCount: 1 });
+      expect(repo.listEntries()).toHaveLength(1);
+      expect(repo.listEntries()[0].content).toBe("Ran 5k"); // never overwritten
+    });
+
+    it("matches a title that differs only by surrounding whitespace", () => {
+      const repo = fakeRepo();
+      importJournalCsv(repo, `${HEADER}\n${row("Gym")}`, MAPPING, OPTIONS);
+
+      const summary = importJournalCsv(repo, `${HEADER}\n${row("  Gym  ")}`, MAPPING, OPTIONS);
+
+      expect(summary).toMatchObject({ importedCount: 0, skippedCount: 1 });
+    });
+
+    it("treats a title differing only in case as a different entry", () => {
+      const repo = fakeRepo();
+      importJournalCsv(repo, `${HEADER}\n${row("Gym")}`, MAPPING, OPTIONS);
+
+      const summary = importJournalCsv(repo, `${HEADER}\n${row("gym")}`, MAPPING, OPTIONS);
+
+      expect(summary).toMatchObject({ importedCount: 1, skippedCount: 0 });
+    });
+
+    // Untimed AND untitled rows share one key, which is exactly the case a
+    // boolean check would have collapsed to a single entry.
+    it("handles untimed, untitled rows by count", () => {
+      const untitled = `"4/27/26","","FAMILY","Trip","","","","",""`;
+      const repo = fakeRepo();
+
+      const first = importJournalCsv(repo, `${HEADER}\n${untitled}\n${untitled}`, MAPPING, OPTIONS);
+      const second = importJournalCsv(repo, `${HEADER}\n${untitled}\n${untitled}`, MAPPING, OPTIONS);
+
+      expect(first).toMatchObject({ importedCount: 2, skippedCount: 0 });
+      expect(second).toMatchObject({ importedCount: 0, skippedCount: 2 });
+    });
+
+    it("imports duplicates anyway when skipDuplicates is false", () => {
+      const csv = `${HEADER}\n${row("A title")}`;
+      const repo = fakeRepo();
+
+      importJournalCsv(repo, csv, MAPPING, OPTIONS);
+      const summary = importJournalCsv(repo, csv, MAPPING, OPTIONS, { skipDuplicates: false });
+
+      expect(summary).toMatchObject({ importedCount: 1, skippedCount: 0 });
+      expect(repo.listEntries()).toHaveLength(2);
+    });
+
+    it("still records a genuinely bad row as skipped while deduping", () => {
+      const repo = fakeRepo();
+      importJournalCsv(repo, `${HEADER}\n${row("Gym")}`, MAPPING, OPTIONS);
+
+      const summary = importJournalCsv(
+        repo,
+        `${HEADER}\n${row("Gym")}\n"not a date","","","","","","","Bad",""`,
+        MAPPING,
+        OPTIONS,
+      );
+
+      expect(summary.importedCount).toBe(0);
+      expect(summary.skippedCount).toBe(2);
+      expect(summary.results.map((result) => result.reason)).toEqual([
+        "Duplicate of an existing entry",
+        expect.stringContaining("date"),
+      ]);
+    });
   });
 });

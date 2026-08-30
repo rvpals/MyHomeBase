@@ -4,6 +4,11 @@ import {
   imageUploadSchema,
   type ImageUploadInput,
 } from "@/lib/shared/image-upload";
+import {
+  DEFAULT_STATEMENT_CLOSE_DAY,
+  MAX_STATEMENT_CLOSE_DAY,
+  MIN_STATEMENT_CLOSE_DAY,
+} from "./billing-cycle";
 import { RULE_ACTION_FIELDS, TRANSACTION_STATUSES } from "./types";
 
 // zod is the single source of truth for every shape crossing a boundary (server
@@ -18,6 +23,11 @@ export const creditCardAccountSchema = z.object({
   name: z.string().min(1),
   description: z.string(),
   creditLineCents: z.number().int(),
+  // 0 is allowed on the way *out* of the database but not on the way in (see
+  // saveAccountSchema): it is the "never set" state migration 0070 leaves on an
+  // existing row, and refusing it here would make an un-editable account
+  // un-readable too.
+  statementCloseDay: z.number().int().min(0).max(MAX_STATEMENT_CLOSE_DAY),
   imageMimeType: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -41,6 +51,15 @@ export const saveAccountSchema = z.object({
   name: z.string().trim().min(1, "Account name is required."),
   description: z.string().trim().default(""),
   creditLineCents: z.number().int().nonnegative().default(0),
+  // A saved card always carries a real day: the form defaults it, so there is no
+  // reason to let 0 back in. Defaulted rather than required so an existing caller
+  // (the CLI, a test) that omits it still saves a usable card.
+  statementCloseDay: z
+    .number()
+    .int()
+    .min(MIN_STATEMENT_CLOSE_DAY, "Statement close day must be between 1 and 31.")
+    .max(MAX_STATEMENT_CLOSE_DAY, "Statement close day must be between 1 and 31.")
+    .default(DEFAULT_STATEMENT_CLOSE_DAY),
 });
 
 export type SaveAccountInput = z.input<typeof saveAccountSchema>;

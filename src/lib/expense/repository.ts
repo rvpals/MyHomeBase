@@ -33,6 +33,7 @@ interface AccountRow {
   name: string;
   description: string;
   credit_line_cents: number;
+  statement_close_day: number;
   card_image_mime_type: string | null;
   created_at: string;
   updated_at: string;
@@ -42,7 +43,7 @@ interface AccountRow {
 // the image bytes never ride along with a list or a page render. Only
 // getAccountImage/setAccountImage touch that column.
 const ACCOUNT_COLUMNS =
-  "id, name, description, credit_line_cents, card_image_mime_type, created_at, updated_at";
+  "id, name, description, credit_line_cents, statement_close_day, card_image_mime_type, created_at, updated_at";
 
 interface CategoryRow {
   name: string;
@@ -111,6 +112,7 @@ function accountToDomain(row: AccountRow): CreditCardAccount {
     name: row.name,
     description: row.description,
     creditLineCents: row.credit_line_cents,
+    statementCloseDay: row.statement_close_day,
     imageMimeType: row.card_image_mime_type ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -290,8 +292,8 @@ export class SqliteExpenseRepository implements ExpenseRepository {
   createAccount(input: AccountWriteData): CreditCardAccount {
     const result = this.db
       .prepare(
-        `INSERT INTO exp_creditcard_accounts (name, description, credit_line_cents)
-         VALUES (@name, @description, @creditLineCents)`,
+        `INSERT INTO exp_creditcard_accounts (name, description, credit_line_cents, statement_close_day)
+         VALUES (@name, @description, @creditLineCents, @statementCloseDay)`,
       )
       .run(input);
     const created = this.getAccountById(Number(result.lastInsertRowid));
@@ -303,7 +305,10 @@ export class SqliteExpenseRepository implements ExpenseRepository {
     this.db
       .prepare(
         `UPDATE exp_creditcard_accounts
-         SET name = @name, description = @description, credit_line_cents = @creditLineCents
+         SET name = @name,
+             description = @description,
+             credit_line_cents = @creditLineCents,
+             statement_close_day = @statementCloseDay
          WHERE id = @id`,
       )
       .run({ ...input, id });

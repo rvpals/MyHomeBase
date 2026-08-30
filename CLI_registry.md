@@ -55,6 +55,7 @@ Twenty-seven commands, registered in [src/cli/index.ts:33-61](src/cli/index.ts#L
 | [`user-preferences`](#user-preferences) | read (writes with `--favorite`/`--startup`) | no |
 | [`magic-playlist`](#magic-playlist) | read (writes with `--save`/`--regenerate`/`--delete`) | no |
 | [`play-queue`](#play-queue) | read (writes with every flag except none) | no |
+| [`fav-photos`](#fav-photos) | read (writes with `add`/`note`/`remove`) | no |
 
 Flag parsing is `--key value` pairs via [parse-flags.ts](src/cli/parse-flags.ts),
 except `ticker-overview` and `set-startup-message`, which read positionals and bare
@@ -180,6 +181,7 @@ Imports journal entries from a CSV, using either a saved mapping or auto-mapped 
 ```
 npm run cli -- import-journal-csv --file ./journal.csv
 npm run cli -- import-journal-csv --file ./journal.csv --mapping "Day One export"
+npm run cli -- import-journal-csv --file ./journal.csv --allow-duplicates
 ```
 
 **Input**
@@ -188,19 +190,27 @@ npm run cli -- import-journal-csv --file ./journal.csv --mapping "Day One export
 |---|---|---|---|
 | `--file` | path | yes | |
 | `--mapping` | string | no | name of a saved `Journal` mapping; auto-maps from headers when omitted |
+| `--allow-duplicates` | boolean | no | import rows that already exist; **off** by default, so a re-run is a no-op |
 
 **Calls** — `listNamedMappings(deps.csvImportMappingRepo, "Journal")` or
 `autoMapJournalHeaders(parseCsv(fileText).headers)`, then
-`importJournalCsv(deps.journalRepo, …)`.
+`importJournalCsv(deps.journalRepo, …, { skipDuplicates })`.
 
 **Output** — a count plus a line per skipped row:
 
 ```
 Imported 118, skipped 2.
   Row 44: missing date
+  Row 91: Duplicate of an existing entry
 ```
 
 Best-effort by design: a bad row is skipped and reported, not fatal.
+
+**Idempotent by default** (migration 0072). An entry already exists when its
+date, time and title all match — content is not compared, so a re-export with
+reflowed body text does not import a second copy. Nothing is ever *updated*: a
+match is declined, not overwritten. `--allow-duplicates` turns the check off for
+a file that deliberately holds another copy of something.
 **Exit** — 0; 1 on missing `--file`, an unknown mapping name, or a read failure.
 Source: [src/cli/import-journal-csv.ts](src/cli/import-journal-csv.ts)
 
@@ -375,9 +385,9 @@ screen, so a rule can be scripted rather than typed. Writes one
 `exp_post_import_rules` row plus one `exp_post_import_rule_actions` row per `--set`.
 
 ```
-npm run cli -- expense-create-rule --name "TGI Friday's"   --description "The card prints this restaurant three different ways"   --pattern "*TGI*" --set vendor="TGI Friday" --set categoryName=Restaurant
+npm run cli -- expense-create-rule --name "TGI Friday's"   --description "The card prints this restaurant three different ways"   --pattern "%TGI%" --set vendor="TGI Friday" --set categoryName=Restaurant
 
-npm run cli -- expense-create-rule --name Amazon --pattern "AMAZON*"   --set categoryName=online-purchase --priority 10 --disabled
+npm run cli -- expense-create-rule --name Amazon --pattern "AMAZON%"   --set categoryName=online-purchase --priority 10 --disabled
 ```
 
 **Input** — `--name`, `--pattern` and at least one `--set <field>=<value>` are required;
@@ -669,21 +679,25 @@ npm run cli -- attendance-report --class "Math 101"
 npm run cli -- attendance-report --class "Math 101" --date 2026-08-15
 npm run cli -- attendance-report --class "Math 101" --list-sessions
 npm run cli -- attendance-report --class "Math 101" --session 12
+npm run cli -- attendance-report --class "Math 101" --csv > register.csv
 ```
 
 **Input** — `--class <name>` (required). `--date YYYY-MM-DD` defaults to today.
 `--session <recordId>` picks one of the day's registers; without it the **latest** is
 printed, since a class may be registered more than once a day. `--list-sessions` lists
 every session with its id, date, label and counts instead of printing one
-(`--list-dates` is kept as an alias).
+(`--list-dates` is kept as an alias). `--csv` writes the session as CSV instead of the
+readable listing.
 
 **Calls** — `listClasses`, `listSessionsForClass`, `getAttendanceReport` /
-`getAttendanceReportById` on `deps.attendanceRepo`.
+`getAttendanceReportById` on `deps.attendanceRepo`; `attendanceReportToCsv` for `--csv`.
 
 **Output** — the class, date, session label and recorded timestamp; the present/absent
 counts; a one-line tally of any actions noted that session; then the PRESENT and ABSENT
 lists, each name followed by its action codes in brackets. Names and codes are as they
-were when attendance was taken.
+were when attendance was taken. With `--csv`, **only** the CSV — a row per student,
+absentees included — so stdout can be redirected straight to a file; it goes through the
+same `attendanceReportToCsv` as the Report screen's Export button, so the two agree.
 **Exit** — 0 (including when no attendance exists — that's a fact, not an error); 1 when
 `--class` is missing or unknown.
 Source: [src/cli/attendance-report.ts](src/cli/attendance-report.ts)
@@ -1125,7 +1139,7 @@ All take `deps.journalRepo`. Everything JSON-serializable apart from the repo.
 | `listTags` | `(repo) => JournalTag[]` | — | web only |
 | `upsertTag` | `(repo, input) => JournalTag` | `upsertTagSchema` | web only |
 | `deleteTag` | `(repo, name) => void` | — | web only |
-| `importJournalCsv` | `(repo, fileText, columnMapping, fieldOptions = {}) => ImportSummary` | indirect | **CLI** |
+| `importJournalCsv` | `(repo, fileText, columnMapping, fieldOptions = {}, options = {}) => ImportSummary` — `options.skipDuplicates` defaults to `true`; idempotent on re-import | indirect | **CLI** |
 | `autoMapJournalHeaders` | `(headers: string[]) => { columnMapping, fieldOptions }` — pure | — | **CLI** |
 
 `listTodayInHistory` takes the reference date as an argument rather than reading the
@@ -1719,6 +1733,36 @@ then the track count, total and remaining time, and the repeat/shuffle state.
 **Exit** — 0; 1 when a flag is missing its value, an id is not a positive integer, or
 `--repeat` is given a mode other than `off`, `all` or `one`.
 Source: [src/cli/play-queue.ts](src/cli/play-queue.ts)
+
+---
+
+## `fav-photos`
+
+Reads and changes the favourite photographs behind the home screen's random photo card.
+
+```
+npm run cli -- fav-photos list
+npm run cli -- fav-photos add <relative-path> [note]
+npm run cli -- fav-photos note <relative-path> <note>
+npm run cli -- fav-photos remove <relative-path>
+```
+
+Paths are **relative to the configured photo root** (the Journal module's `photo_root`,
+falling back to `MYHOMEBASE_PHOTO_ROOT`) — that is what the table stores, so a favourite
+survives the share being remounted. Quote them: every folder name in the archive contains
+spaces.
+
+`add` is idempotent and never overwrites an existing note, so re-adding a favourite is
+safe; `note` is the way to change one. `note` on a photo that is not a favourite fails
+rather than creating the row, so an edit cannot resurrect a favourite removed elsewhere.
+
+**Calls** — `listFavPhotos`, `addFavPhoto`, `setFavPhotoNote` and `removeFavPhoto` on
+`deps.favPhotoRepo`.
+**Output** — one line per favourite (added-at and path), with the note indented beneath
+when there is one.
+**Exit** — 0; 1 when the path is missing, escapes the photo root, the note exceeds 500
+characters, or `note` names a photo that is not a favourite.
+Source: [src/cli/fav-photos.ts](src/cli/fav-photos.ts)
 
 ---
 

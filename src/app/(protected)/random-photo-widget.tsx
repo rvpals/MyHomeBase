@@ -9,10 +9,17 @@ import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { PhotoLightbox } from "@/components/photo-lightbox";
 import { SlotIcon } from "@/components/slot-icon";
+import { TreeIcon } from "@/components/tree-icons";
+import type { FavPhoto } from "@/lib/fav-photos";
 import { getIconSlot } from "@/lib/icons";
 import type { RandomPhotoPick } from "@/lib/journal-photos";
 import { calendarAgeSince, formatCalendarAge } from "@/lib/shared/date";
-import { drawRandomPhotoAction } from "./random-photo-actions";
+import { FavPhotosDialog } from "./fav-photos-dialog";
+import {
+  drawRandomPhotoAction,
+  listFavPhotosAction,
+  toggleFavPhotoAction,
+} from "./random-photo-actions";
 
 function RefreshIcon({ className = "" }: { className?: string }) {
   return (
@@ -93,10 +100,20 @@ function titleFor(pick: RandomPhotoPick, now: Date): string {
 
 export function RandomPhotoWidget({
   initialPick,
+  initialFavorites,
   className,
 }: {
   /** The photograph drawn on the server for this page load. */
   initialPick: RandomPhotoPick;
+  /**
+   * Every favourite, read on the server for this page load.
+   *
+   * The whole list rather than a bare `isFavorite` for the drawn photo, because the
+   * card needs both answers: which glyph the heart shows, and what the dialog opens
+   * onto. One read serves both, and it means pressing "My favorites" shows the list
+   * immediately instead of opening onto a spinner.
+   */
+  initialFavorites: FavPhoto[];
   /** Spacing is the caller's call, as with the other home-screen cards. */
   className?: string;
 }) {
@@ -104,6 +121,9 @@ export function RandomPhotoWidget({
   const [isDrawing, setIsDrawing] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  const [favorites, setFavorites] = useState(initialFavorites);
+  const [isFavoriting, setIsFavoriting] = useState(false);
+  const [isListOpen, setIsListOpen] = useState(false);
 
   async function handleRefresh() {
     setIsDrawing(true);
@@ -119,7 +139,33 @@ export function RandomPhotoWidget({
     }
   }
 
+  /**
+   * Keeps the photo on screen, or stops keeping it.
+   *
+   * Re-reads the list afterwards rather than patching it locally: the row the server
+   * created carries a `createdAt` this side cannot invent, and the dialog is opened
+   * from the same state.
+   */
+  async function handleToggleFavorite() {
+    if (pick.relativePath === undefined) return;
+    setIsFavoriting(true);
+    setError(undefined);
+    try {
+      await toggleFavPhotoAction(pick.relativePath);
+      setFavorites(await listFavPhotosAction());
+    } catch {
+      setError("Couldn't change that favourite.");
+    } finally {
+      setIsFavoriting(false);
+    }
+  }
+
   const hasPhoto = pick.relativePath !== undefined;
+  // Derived from the list rather than held as its own flag, so removing the shown photo
+  // from inside the dialog un-fills the heart without a second round trip.
+  const isFavorited =
+    pick.relativePath !== undefined &&
+    favorites.some((favorite) => favorite.relativePath === pick.relativePath);
   // `new Date()` in the render body, not in state: a fresh draw re-renders anyway, and
   // the value only ever needs to be right at the moment the title is drawn. Day-level
   // arithmetic, so there is nothing here for a ticking clock to keep up with.
@@ -138,11 +184,56 @@ export function RandomPhotoWidget({
       className={className}
       defaultOpen
       headerAction={
-        <Button size="sm" variant="secondary" onClick={handleRefresh} disabled={isDrawing}>
-          <RefreshIcon className={`h-4 w-4 ${isDrawing ? "animate-spin" : ""}`} />
-          {/* Icon-only control, so the accessible name comes from this label. */}
-          <span className="sr-only">Show a different photo</span>
-        </Button>
+        // Three icon-only controls in one row: keep this photo, draw another, read the
+        // kept ones back. All in `headerAction` so none of them toggles the card.
+        <div className="flex items-center gap-1">
+          {/* Only offered when there is a photograph to keep — a heart on an empty card
+              would have nothing to act on. */}
+          {hasPhoto && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleToggleFavorite}
+              disabled={isFavoriting}
+              title={isFavorited ? "Remove from favorites" : "Mark as favorite"}
+              ariaLabel={isFavorited ? "Remove from favorites" : "Mark as favorite"}
+            >
+              {/* Outline vs solid is what carries the state, which is why both glyphs
+                  stay hand-drawn — see ALWAYS_CLASSIC in tree-icons.tsx. */}
+              <TreeIcon
+                name={isFavorited ? "heart-filled" : "heart"}
+                className={`h-4 w-4 ${isFavorited ? "text-brass-dark" : ""}`}
+              />
+            </Button>
+          )}
+
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={handleRefresh}
+            disabled={isDrawing}
+            title="Show a different photo"
+            ariaLabel="Show a different photo"
+          >
+            <RefreshIcon className={`h-4 w-4 ${isDrawing ? "animate-spin" : ""}`} />
+          </Button>
+
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setIsListOpen(true)}
+            title="My favorite photos"
+            ariaLabel="My favorite photos"
+          >
+            <TreeIcon name="heart-filled" className="h-4 w-4" />
+            {/* The count is the one piece of text in this row: it tells the reader
+                whether the list is worth opening before they open it. Hidden on a
+                phone, where three glyphs and a number crowd the title. */}
+            {favorites.length > 0 && (
+              <span className="ml-1 text-xs max-lg:hidden">{favorites.length}</span>
+            )}
+          </Button>
+        </div>
       }
     >
       {hasPhoto && pick.relativePath !== undefined ? (
@@ -194,6 +285,17 @@ export function RandomPhotoWidget({
           index={0}
           onIndexChange={() => {}}
           onClose={() => setIsLightboxOpen(false)}
+        />
+      )}
+
+      {/* Mounted only while open, so it re-reads on each visit rather than holding a
+          stale list — and `initialFavorites` is the card's own state, which the toggle
+          above keeps current. */}
+      {isListOpen && (
+        <FavPhotosDialog
+          initialFavorites={favorites}
+          onChanged={setFavorites}
+          onClose={() => setIsListOpen(false)}
         />
       )}
     </CollapsibleCard>

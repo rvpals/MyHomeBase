@@ -317,6 +317,27 @@ const StarFilled: IconComponent = (props) => (
   </svg>
 );
 
+/* A heart, for the favourite toggle on the home screen's random photo card.
+
+   A second favourite mark alongside `star`, which is not a duplication to be tidied
+   away: the star means "a symbol I want to reach quickly" in the stocks module, and
+   this means "a picture I want to keep". Sharing one glyph would make the favourites
+   list on one screen look like the jump list on the other. */
+const Heart: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <path d="M12 20.3l-1.45-1.32C5.4 14.36 2 11.28 2 7.5A4.5 4.5 0 0 1 6.5 3c1.74 0 3.41.81 4.5 2.09A5.98 5.98 0 0 1 15.5 3 4.5 4.5 0 0 1 20 7.5c0 3.78-3.4 6.86-8.55 11.48z" />
+  </svg>
+);
+
+/* The filled twin of `Heart`, for the on state. Outline vs solid is what carries the
+   state here, so the two must stay the same silhouette — a different shape would read
+   as a different concept rather than a different state. Same rule as `star`. */
+const HeartFilled: IconComponent = (props) => (
+  <svg {...shared} {...props} fill="currentColor">
+    <path d="M12 20.3l-1.45-1.32C5.4 14.36 2 11.28 2 7.5A4.5 4.5 0 0 1 6.5 3c1.74 0 3.41.81 4.5 2.09A5.98 5.98 0 0 1 15.5 3 4.5 4.5 0 0 1 20 7.5c0 3.78-3.4 6.86-8.55 11.48z" />
+  </svg>
+);
+
 /* A framed photograph: a rounded rect, a sun, and a hill. The mark for "show me the
    pictures", used on the journal calendar's per-day and per-month photo buttons.
 
@@ -363,6 +384,8 @@ const TREE_ICONS = {
   player: RecordPlayer,
   star: Star,
   "star-filled": StarFilled,
+  heart: Heart,
+  "heart-filled": HeartFilled,
   photo: Photo,
 } as const;
 
@@ -395,6 +418,10 @@ const ALWAYS_CLASSIC = new Set<TreeIconName>([
   // redrawing it would lose that distinction, so both stay hand-drawn.
   "star",
   "star-filled",
+  // A favourited photo is a *state* too, carried by outline vs solid exactly as the
+  // star is — and the heart is a toggle button on a card header, not a destination.
+  "heart",
+  "heart-filled",
   // The calendar's photo button is a 14px control inside a grid cell. Full-color
   // artwork at that size is a coloured blob, and it would fight the day number it
   // sits beside.

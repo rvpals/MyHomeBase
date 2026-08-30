@@ -232,6 +232,13 @@ function fakeRepo(): JournalRepository {
     deleteEntry(id) {
       entries = entries.filter((entry) => entry.id !== id);
     },
+    countEntriesMatching: (key) =>
+      entries.filter(
+        (entry) =>
+          entry.date === key.date &&
+          entry.time === key.time &&
+          entry.title.trim() === key.title.trim(),
+      ).length,
     setEntryPinned(id, isPinned) {
       const existing = entries.find((entry) => entry.id === id);
       if (!existing) throw new Error(`Entry ${id} not found.`);

@@ -24,7 +24,7 @@ function rule(overrides: Partial<PostImportRule> = {}): PostImportRule {
     id: 1,
     name: "Amazon",
     description: "",
-    pattern: "AMAZON*",
+    pattern: "AMAZON%",
     priority: 0,
     isEnabled: true,
     actions: [action("categoryName", "online-purchase")],
@@ -49,12 +49,12 @@ function transaction(
 
 describe("matchesPattern", () => {
   it("matches a trailing wildcard against real card text", () => {
-    expect(matchesPattern("AMAZON MKTPL*2X4Y9", "AMAZON*")).toBe(true);
-    expect(matchesPattern("AMAZON.COM*4T7G1", "AMAZON*")).toBe(true);
+    expect(matchesPattern("AMAZON MKTPL*2X4Y9", "AMAZON%")).toBe(true);
+    expect(matchesPattern("AMAZON.COM*4T7G1", "AMAZON%")).toBe(true);
   });
 
   it("anchors a wildcard pattern, so a prefix pattern won't match mid-string", () => {
-    expect(matchesPattern("PRIME VIDEO AMAZON", "AMAZON*")).toBe(false);
+    expect(matchesPattern("PRIME VIDEO AMAZON", "AMAZON%")).toBe(false);
   });
 
   it("matches anywhere when the pattern has no wildcard", () => {
@@ -63,11 +63,11 @@ describe("matchesPattern", () => {
   });
 
   it("supports a leading and trailing wildcard", () => {
-    expect(matchesPattern("SQ *TGI FRIDAYS #221", "*TGI*")).toBe(true);
+    expect(matchesPattern("SQ *TGI FRIDAYS #221", "%TGI%")).toBe(true);
   });
 
   it("is case-insensitive", () => {
-    expect(matchesPattern("amazon mktpl", "AMAZON*")).toBe(true);
+    expect(matchesPattern("amazon mktpl", "AMAZON%")).toBe(true);
   });
 
   it("treats regex metacharacters in the description as literal text", () => {
@@ -76,23 +76,52 @@ describe("matchesPattern", () => {
     expect(matchesPattern("anything at all", "a.c")).toBe(false); // '.' is literal
   });
 
+  it("spans the literal asterisks a card prints, which is the point of using %", () => {
+    // The membership charge, as three different cards render it.
+    const pattern = "%COSTCO%ANNUAL RENEWAL%";
+    expect(matchesPattern("COSTCO *ANNUAL RENEWAL*", pattern)).toBe(true);
+    expect(matchesPattern("COSTCO*ANNUAL RENEWAL", pattern)).toBe(true);
+    expect(matchesPattern("DEBIT COSTCO WHSE #1017 *ANNUAL RENEWAL* 88", pattern)).toBe(true);
+  });
+
+  it("treats * in a pattern as a literal asterisk, not a wildcard", () => {
+    // Matches because the description really does contain "COSTCO *ANNUAL".
+    expect(matchesPattern("COSTCO *ANNUAL RENEWAL*", "COSTCO *ANNUAL")).toBe(true);
+    // And doesn't match when the asterisk isn't there — a wildcard would have.
+    expect(matchesPattern("COSTCO ANNUAL RENEWAL", "COSTCO *ANNUAL")).toBe(false);
+    expect(matchesPattern("AMAZON MKTPL 2X4Y9", "AMAZON*")).toBe(false);
+  });
+
+  it("treats # in a pattern as a literal, so store numbers stay exact", () => {
+    expect(matchesPattern("WALMART #2841", "WALMART #2841")).toBe(true);
+    expect(matchesPattern("WALMART 2841", "WALMART #2841")).toBe(false);
+  });
+
   it("does not match on a blank pattern", () => {
     expect(matchesPattern("AMAZON", "   ")).toBe(false);
   });
 });
 
 describe("compilePattern", () => {
-  it("treats an asterisk inside a vendor name as a wildcard", () => {
+  it("keeps a processor prefix's asterisk literal", () => {
+    // "SQ *COFFEE" is what the card prints, so the pattern means just that.
     expect(compilePattern("SQ *COFFEE").test("SQ *COFFEE")).toBe(true);
-    expect(compilePattern("SQ *COFFEE").test("SQ MY COFFEE")).toBe(true);
+    expect(compilePattern("SQ *COFFEE").test("SQ MY COFFEE")).toBe(false);
+    // Reach across it with the wildcard instead.
+    expect(compilePattern("SQ %COFFEE").test("SQ MY COFFEE")).toBe(true);
+  });
+
+  it("escapes regex metacharacters in every segment around a wildcard", () => {
+    expect(compilePattern("A.C%(X)").test("A.C anything (X)")).toBe(true);
+    expect(compilePattern("A.C%(X)").test("ABC anything (X)")).toBe(false);
   });
 });
 
 describe("findMatchingRule", () => {
   it("returns the first matching rule in the given order", () => {
     const rules = [
-      rule({ id: 1, pattern: "AMAZON PRIME*", priority: 0 }),
-      rule({ id: 2, pattern: "AMAZON*", priority: 1 }),
+      rule({ id: 1, pattern: "AMAZON PRIME%", priority: 0 }),
+      rule({ id: 2, pattern: "AMAZON%", priority: 1 }),
     ];
     expect(findMatchingRule("AMAZON PRIME*MEMBERSHIP", rules)?.id).toBe(1);
     expect(findMatchingRule("AMAZON MKTPL*99", rules)?.id).toBe(2);
@@ -110,13 +139,13 @@ describe("findMatchingRule", () => {
 describe("planRuleApplication", () => {
   it("plans every field the matching rule sets", () => {
     const tgi = rule({
-      pattern: "*TGI*",
+      pattern: "%TGI%",
       actions: [action("vendor", "TGI Friday", 0), action("categoryName", "Restaurant", 1)],
     });
 
     const plan = planRuleApplication(transaction({ transactionDescription: "SQ *TGI FRIDAYS" }), [tgi]);
 
-    expect(plan?.rule.pattern).toBe("*TGI*");
+    expect(plan?.rule.pattern).toBe("%TGI%");
     expect(plan?.assignments).toEqual([
       { fieldName: "vendor", value: "TGI Friday" },
       { fieldName: "categoryName", value: "Restaurant" },

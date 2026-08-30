@@ -118,7 +118,7 @@ export {
   OPERATORS_BY_FIELD,
   FIELD_LABELS,
 } from "./filters";
-export type { JournalRepository } from "./ports";
+export type { JournalEntryMatchKey, JournalRepository } from "./ports";
 export { SqliteJournalRepository } from "./repository";
 export {
   listEntries,

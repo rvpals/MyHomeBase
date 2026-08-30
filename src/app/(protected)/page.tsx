@@ -14,6 +14,7 @@ import {
   type HomeWidgetId,
 } from "@/lib/home-dashboard";
 import { listTodayInHistory } from "@/lib/journal";
+import { listFavPhotos } from "@/lib/fav-photos";
 import { pickRandomPhoto } from "@/lib/journal-photos";
 import { listModules } from "@/lib/modules";
 import { getSetting, getStartupMessage } from "@/lib/settings";
@@ -92,6 +93,10 @@ export default async function Home({
   // unreachable archive comes back as a `reason` rather than throwing, so a NAS that is
   // asleep cannot take the home screen down with it.
   const randomPhoto = shows("randomPhoto") ? await pickRandomPhoto(photoStore()) : undefined;
+  // The favourites list, read alongside the draw and only when the card is shown. One
+  // small table read that serves both the heart's state and the list dialog's contents,
+  // so neither costs a round trip on first interaction.
+  const favoritePhotos = shows("randomPhoto") ? listFavPhotos(deps.favPhotoRepo) : [];
 
   // Set by a deployment; blank once someone has clicked OK. Read here rather than
   // in the layout so it appears on the home screen specifically.
@@ -213,7 +218,12 @@ export default async function Home({
               // case we aren't in this branch -- the check is what keeps the prop
               // required rather than widening it for a case that can't happen.
               return randomPhoto ? (
-                <RandomPhotoWidget key={id} className={spacing} initialPick={randomPhoto} />
+                <RandomPhotoWidget
+                  key={id}
+                  className={spacing}
+                  initialPick={randomPhoto}
+                  initialFavorites={favoritePhotos}
+                />
               ) : null;
             case "stockGlance":
               return positions.length > 0 ? (

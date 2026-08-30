@@ -45,6 +45,10 @@ import { SqliteStockWatchListRepository } from "./stock-watchlist/repository";
 import { RealSystemInfoRepository } from "./system-info/repository";
 import { YahooTickerNewsClient } from "./ticker-news/yahoo-news-client";
 import { FmpTickerLogoClient } from "./ticker-logos/fmp-logo-client";
+import { SearchingVendorLogoClient } from "./vendor-logos/searching-vendor-logo-client";
+import { DuckDuckGoVendorDomainClient } from "./vendor-logos/duckduckgo-domain-client";
+import { GoogleFaviconIconClient } from "./vendor-logos/google-favicon-icon-client";
+import { SqliteFavPhotoRepository } from "./fav-photos/repository";
 import { SqliteTickerFavoriteRepository } from "./ticker-favorites/repository";
 import { SqliteTickerLogoRepository } from "./ticker-logos/repository";
 import { SqliteTickerRiskCacheRepository } from "./ticker-overview/repository";
@@ -179,7 +183,19 @@ export const deps = {
   tickerNewsClient: new YahooTickerNewsClient(),
   tickerLogoRepo: new SqliteTickerLogoRepository(db),
   tickerLogoClient: new FmpTickerLogoClient(),
+  // Look the vendor's real website up, then fall back to guessing the domain
+  // from its name. Both services are free and keyless. Guessing alone could not
+  // find usps.com from "United States Post Office"; searching alone is quiet
+  // for small local businesses. Together they cover most of a vendor list.
+  vendorLogoClient: new SearchingVendorLogoClient(
+    new DuckDuckGoVendorDomainClient(),
+    new GoogleFaviconIconClient(),
+  ),
   tickerFavoriteRepo: new SqliteTickerFavoriteRepository(db),
+  // Favourited photographs (migrations/0073). Keyed by the path from the configured
+  // photo root, not an absolute one, so a favourite survives the share being remounted
+  // or `photo_root` being corrected.
+  favPhotoRepo: new SqliteFavPhotoRepository(db),
   tickerRiskCacheRepo: new SqliteTickerRiskCacheRepository(db),
   tickerProfileRepo: new SqliteTickerProfileRepository(db),
   // Sector data rides on the quoteSummary client the detail tab already uses —

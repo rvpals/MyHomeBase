@@ -1,0 +1,38 @@
+-- Index the three columns the journal CSV importer uses to recognise a
+-- duplicate: entry_date, entry_time, title.
+--
+-- The importer asks "how many stored entries carry this exact date, time and
+-- title" once per distinct key in the file. Without this index that is a full
+-- scan of jrn_entries per distinct key -- so a 400-row export of 400 distinct
+-- days meant 400 scans, over a database file that lives on the NAS.
+--
+-- Leading entry_date deliberately mirrors idx_jrn_entries_entry_date (0027).
+-- That older index is NOT dropped here: this migration ships alongside a
+-- behaviour change, and retiring an index the calendar's BETWEEN query depends
+-- on belongs in its own change where it can be judged on its own.
+--
+-- WHY THIS IS NOT `CREATE UNIQUE INDEX`. It would be the obvious way to make
+-- duplicates impossible, and it is the wrong tool here for three reasons:
+--
+--   1. 0027 states the rule this table lives by -- "Multiple entries per
+--      calendar date are allowed: entry_date is only indexed, never unique".
+--      entry_time and title both DEFAULT '', so two untitled, untimed entries
+--      on one day are a legal, reachable state that a unique index would
+--      retroactively make illegal.
+--   2. Any existing database may already hold such rows -- including ones an
+--      earlier run of this very importer created. Creating a unique index over
+--      them fails outright, so the migration would abort on exactly the
+--      databases that most need the fix.
+--   3. Uniqueness here is an IMPORT POLICY, not a data invariant. Typing the
+--      same title twice by hand on one day is the writer's business; silently
+--      importing a file twice is not. Keeping the constraint out of the schema
+--      is what lets `skipDuplicates: false` exist as a deliberate escape hatch.
+--
+-- Adding a UNIQUE index to an existing SQLite table would also mean the full
+-- create-copy-drop rebuild, which is a poor trade for a rule the importer
+-- already enforces in code.
+--
+-- Pure addition: no table rebuilt, no column changed, nothing back-filled.
+
+CREATE INDEX IF NOT EXISTS idx_jrn_entries_match_key
+  ON jrn_entries (entry_date, entry_time, title);

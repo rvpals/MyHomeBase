@@ -21,6 +21,7 @@ import {
   setAccountImage,
   setCategoryIcon,
   setVendorIcon,
+  autoPopulateVendorIcon,
   clearVendorIcon,
   deleteVendor,
   getVendorIcon,
@@ -586,7 +587,7 @@ describe("runCleanupBatch", () => {
 
   const tgiRule = {
     name: "TGI Friday's",
-    pattern: "*TGI*",
+    pattern: "%TGI%",
     actions: [
       { fieldName: "vendor" as const, fieldValue: "TGI Friday" },
       { fieldName: "categoryName" as const, fieldValue: "Restaurant" },
@@ -622,7 +623,7 @@ describe("runCleanupBatch", () => {
     const { entries } = runCleanupBatch(repo);
 
     const tgiEntry = entries.find((entry) => entry.description.includes("TGI"));
-    expect(tgiEntry?.pattern).toBe("*TGI*");
+    expect(tgiEntry?.pattern).toBe("%TGI%");
     expect(tgiEntry?.ruleName).toBe("TGI Friday's");
     expect(tgiEntry?.changes).toEqual([
       { fieldName: "vendor", value: "TGI Friday" },
@@ -702,7 +703,7 @@ describe("createRule validation", () => {
     const created = createRule(repo, {
       name: "TGI Friday's",
       description: "The card prints this restaurant under three different names.",
-      pattern: "*TGI*",
+      pattern: "%TGI%",
       actions: [{ fieldName: "vendor", fieldValue: "TGI Friday" }],
     });
 
@@ -714,7 +715,7 @@ describe("createRule validation", () => {
     const repo = fakeRepo();
     const created = createRule(repo, {
       name: "Amazon",
-      pattern: "AMAZON*",
+      pattern: "AMAZON%",
       actions: [{ fieldName: "categoryName", fieldValue: "online-purchase" }],
     });
 
@@ -727,7 +728,7 @@ describe("createRule validation", () => {
     expect(() =>
       createRule(repo, {
         name: "   ",
-        pattern: "AMAZON*",
+        pattern: "AMAZON%",
         actions: [{ fieldName: "categoryName", fieldValue: "online-purchase" }],
       }),
     ).toThrow(/name is required/i);
@@ -753,7 +754,7 @@ describe("resetProcessedFlags", () => {
 
     createRule(repo, {
       name: "TGI Friday's",
-      pattern: "*TGI*",
+      pattern: "%TGI%",
       actions: [{ fieldName: "vendor", fieldValue: "TGI Friday" }],
     });
     resetProcessedFlags(repo);
@@ -781,7 +782,7 @@ describe("previewPatternMatches", () => {
       );
     }
 
-    const preview = previewPatternMatches(repo, "AMAZON*");
+    const preview = previewPatternMatches(repo, "AMAZON%");
 
     expect(preview.matchCount).toBe(2);
     expect(preview.samples).toHaveLength(2);
@@ -1182,7 +1183,7 @@ describe("applyRuleToExistingTransactions", () => {
     seedProcessedRow(repo, account.id, "AMAZON MKTPL*2X4Y9");
     const wrong = createRule(repo, {
       name: "Amazon",
-      pattern: "AMAZON*",
+      pattern: "AMAZON%",
       actions: [{ fieldName: "categoryName", fieldValue: "groceries" }],
     });
     runCleanupBatch(repo);
@@ -1190,7 +1191,7 @@ describe("applyRuleToExistingTransactions", () => {
 
     updateRule(repo, wrong.id, {
       name: "Amazon",
-      pattern: "AMAZON*",
+      pattern: "AMAZON%",
       actions: [{ fieldName: "categoryName", fieldValue: "online-purchase" }],
     });
     const result = applyRuleToExistingTransactions(repo, wrong.id);
@@ -1205,7 +1206,7 @@ describe("applyRuleToExistingTransactions", () => {
     seedProcessedRow(repo, account.id, "SQ *TGI FRIDAYS");
     const created = createRule(repo, {
       name: "Amazon",
-      pattern: "AMAZON*",
+      pattern: "AMAZON%",
       actions: [{ fieldName: "vendor", fieldValue: "Amazon" }],
     });
 
@@ -1222,7 +1223,7 @@ describe("applyRuleToExistingTransactions", () => {
     bulkEditTransactions(repo, [row.id], { status: "reconciled" });
     const created = createRule(repo, {
       name: "Amazon",
-      pattern: "AMAZON*",
+      pattern: "AMAZON%",
       actions: [
         { fieldName: "status", fieldValue: "new" },
         { fieldName: "vendor", fieldValue: "Amazon" },
@@ -1242,7 +1243,7 @@ describe("applyRuleToExistingTransactions", () => {
     seedProcessedRow(repo, account.id, "AMAZON MKTPL*2X4Y9");
     const created = createRule(repo, {
       name: "Amazon",
-      pattern: "AMAZON*",
+      pattern: "AMAZON%",
       actions: [{ fieldName: "vendor", fieldValue: "Amazon" }],
     });
     runCleanupBatch(repo);
@@ -1258,7 +1259,7 @@ describe("applyRuleToExistingTransactions", () => {
     seedProcessedRow(repo, account.id, "AMAZON MKTPL*2X4Y9");
     const created = createRule(repo, {
       name: "Amazon",
-      pattern: "AMAZON*",
+      pattern: "AMAZON%",
       actions: [{ fieldName: "categoryName", fieldValue: "online-purchase" }],
     });
 
@@ -1273,7 +1274,7 @@ describe("applyRuleToExistingTransactions", () => {
     seedProcessedRow(repo, account.id, "AMAZON MKTPL*2X4Y9");
     const created = createRule(repo, {
       name: "Amazon",
-      pattern: "AMAZON*",
+      pattern: "AMAZON%",
       actions: [{ fieldName: "vendor", fieldValue: "Amazon" }],
     });
 
@@ -1285,5 +1286,106 @@ describe("applyRuleToExistingTransactions", () => {
   it("throws for a rule that doesn't exist", () => {
     const repo = fakeRepo();
     expect(() => applyRuleToExistingTransactions(repo, 999)).toThrow(/No rule with id 999/);
+  });
+});
+
+describe("autoPopulateVendorIcon", () => {
+  /** A logo client that answers from a table, so no test touches a network. */
+  function fakeClient(
+    logos: Record<string, { data: Buffer; mimeType: string } | undefined>,
+    options: { throwFor?: string } = {},
+  ) {
+    const asked: string[] = [];
+    return {
+      asked,
+      client: {
+        async fetch(vendorName: string) {
+          asked.push(vendorName);
+          if (options.throwFor === vendorName) throw new Error("network down");
+          const logo = logos[vendorName];
+          return logo
+            ? {
+                ...logo,
+                source: `https://example.test/${vendorName}`,
+                domain: "example.test",
+                via: "search" as const,
+              }
+            : undefined;
+        },
+      },
+    };
+  }
+
+  const png = { data: Buffer.from([0x89, 0x50, 0x4e, 0x47]), mimeType: "image/png" };
+
+  it("stores a fetched logo and creates the vendor row", async () => {
+    const repo = fakeRepo();
+    const { client } = fakeClient({ Costco: png });
+
+    const result = await autoPopulateVendorIcon(repo, client, "Costco");
+
+    expect(result).toMatchObject({ name: "Costco", outcome: "set", domain: "example.test" });
+    expect(getVendorIcon(repo, "Costco")?.mimeType).toBe("image/png");
+    expect(listVendors(repo).map((vendor) => vendor.name)).toContain("Costco");
+  });
+
+  it("never overwrites an icon that is already there", async () => {
+    const repo = fakeRepo();
+    upsertVendor(repo, { name: "Costco" });
+    setVendorIcon(repo, "Costco", {
+      mimeType: "image/jpeg",
+      base64Data: Buffer.from([1, 2, 3]).toString("base64"),
+    });
+    const { client, asked } = fakeClient({ Costco: png });
+
+    const result = await autoPopulateVendorIcon(repo, client, "Costco");
+
+    expect(result.outcome).toBe("already-has-icon");
+    // The skip happens before the lookup, so a re-run costs no requests.
+    expect(asked).toEqual([]);
+    expect(getVendorIcon(repo, "Costco")?.mimeType).toBe("image/jpeg");
+  });
+
+  it("reports a vendor the service has no logo for, without creating a row", async () => {
+    const repo = fakeRepo();
+    const { client } = fakeClient({});
+
+    const result = await autoPopulateVendorIcon(repo, client, "Bob's Corner Store");
+
+    expect(result).toEqual({ name: "Bob's Corner Store", outcome: "no-logo-found" });
+    expect(listVendors(repo)).toEqual([]);
+  });
+
+  it("reports a broken lookup as failed rather than throwing", async () => {
+    const repo = fakeRepo();
+    const { client } = fakeClient({ Costco: png }, { throwFor: "Costco" });
+
+    const result = await autoPopulateVendorIcon(repo, client, "Costco");
+
+    expect(result).toEqual({ name: "Costco", outcome: "failed" });
+    expect(listVendors(repo)).toEqual([]);
+  });
+
+  it("keeps the saved spelling when the vendor row already exists", async () => {
+    const repo = fakeRepo();
+    upsertVendor(repo, { name: "COSTCO", description: "warehouse" });
+    const { client } = fakeClient({ Costco: png });
+
+    const result = await autoPopulateVendorIcon(repo, client, "Costco");
+
+    expect(result.outcome).toBe("set");
+    expect(result.name).toBe("COSTCO");
+    // The description survives — an icon fetch must not blank the row.
+    expect(listVendors(repo)[0].description).toBe("warehouse");
+  });
+
+  it("treats a blank name as a failure rather than asking for it", async () => {
+    const repo = fakeRepo();
+    const { client, asked } = fakeClient({});
+
+    const result = await autoPopulateVendorIcon(repo, client, "   ");
+
+    expect(result.outcome).toBe("failed");
+    expect(asked).toEqual([]);
   });
 });

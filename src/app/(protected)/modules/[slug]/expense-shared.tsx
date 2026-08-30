@@ -92,6 +92,15 @@ export function vendorIconUrl(vendor: {
   )}`;
 }
 
+/** The vendor rows for an `IconSelect`, icons included. Mirrors the category one. */
+export function vendorIconSelectOptions(vendors: ExpenseVendor[]): IconSelectOption[] {
+  return vendors.map((vendor) => ({
+    value: vendor.name,
+    label: vendor.name,
+    iconUrl: vendorIconUrl(vendor),
+  }));
+}
+
 /**
  * Name -> icon URL for the screens that only have a vendor *name* to render —
  * the transactions grid, the spend rollups, the charts.

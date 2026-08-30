@@ -57,9 +57,19 @@ type RegisterView = "list" | "card";
 
 const VIEW_STORAGE_KEY = "myhomebase:attendance-register-view";
 
-/** A student's display name. Mirrors `formatStudentName` in the lib. */
-function studentName(student: Student): string {
-  return `${student.firstName} ${student.lastName}`.trim();
+/**
+ * A student's display name. Mirrors `formatStudentName` in the lib.
+ *
+ * `lastNameFirst` is the card view's setting; the comma is only placed when
+ * there is something on both sides of it.
+ */
+function studentName(student: Student, lastNameFirst = false): string {
+  const first = student.firstName.trim();
+  const last = student.lastName.trim();
+
+  if (!lastNameFirst) return `${first} ${last}`.trim();
+  if (!first || !last) return `${last}${first}`.trim();
+  return `${last}, ${first}`;
 }
 
 export function AttendanceHomeView({
@@ -68,6 +78,7 @@ export function AttendanceHomeView({
   actions,
   selectedClassId,
   today,
+  cardsUseLastNameFirst,
 }: {
   classes: { id: number; name: string; enrolledCount: number }[];
   /** The chosen class's roster, or undefined when no class is selected. */
@@ -77,6 +88,8 @@ export function AttendanceHomeView({
   selectedClassId?: number;
   /** Today, as the server's local calendar day. */
   today: string;
+  /** Whether the **card** view reads "Chen, Ava". The list view never does. */
+  cardsUseLastNameFirst: boolean;
 }) {
   const router = useRouter();
 
@@ -114,6 +127,7 @@ export function AttendanceHomeView({
           sheet={sheet}
           actions={actions}
           today={today}
+          cardsUseLastNameFirst={cardsUseLastNameFirst}
         />
       ) : (
         <p className="rounded-xl border border-dashed border-line p-8 text-center text-sm text-muted">
@@ -133,10 +147,13 @@ function RegisterPanel({
   sheet,
   actions,
   today,
+  cardsUseLastNameFirst,
 }: {
   sheet: AttendanceSheet;
   actions: StudentAction[];
   today: string;
+  /** Whether the **card** view reads "Chen, Ava". The list view never does. */
+  cardsUseLastNameFirst: boolean;
 }) {
   // Nobody starts marked — the whole point of the change. Unmarked and absent
   // are the same stored fact, so this is a set of who is *here*.
@@ -268,6 +285,7 @@ function RegisterPanel({
     onToggle: toggle,
     onOpenActions: setPickerStudentId,
     isPending,
+    cardsUseLastNameFirst,
   };
 
   return (
@@ -422,6 +440,12 @@ interface RegisterProps {
   onToggle: (studentId: number) => void;
   onOpenActions: (studentId: number) => void;
   isPending: boolean;
+  /**
+   * Read by `CardView` alone. It rides in the shared props bag rather than
+   * being passed separately because both views take one object; `ListView`
+   * simply ignores it, which is the setting's documented scope.
+   */
+  cardsUseLastNameFirst: boolean;
 }
 
 /**
@@ -608,6 +632,7 @@ function CardView({
   onToggle,
   onOpenActions,
   isPending,
+  cardsUseLastNameFirst,
 }: RegisterProps) {
   return (
     <ul className="tile-grid gap-2">
@@ -615,7 +640,7 @@ function CardView({
         const isPresent = presentIds.has(student.id);
         const actionIds = actionIdsByStudentId.get(student.id) ?? new Set<number>();
         const initials = `${student.firstName.charAt(0)}${student.lastName.charAt(0)}`.toUpperCase();
-        const name = studentName(student);
+        const name = studentName(student, cardsUseLastNameFirst);
 
         return (
           <li key={student.id}>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ChangeEvent } from "react";
+import { useMemo, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
@@ -8,14 +8,21 @@ import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { IconSelect } from "@/components/icon-select";
 import { Modal } from "@/components/modal";
+import { ViewModeSwitch, type ViewModeOption } from "@/components/view-mode-switch";
 import {
+  TRANSACTION_GROUP_BYS,
+  TRANSACTION_GROUP_BY_LABELS,
   TRANSACTION_STATUSES,
+  groupTransactions,
+  isTransactionGroupBy,
   parseMoneyToCents,
   type BulkTransactionEditInput,
   type CreditCardAccount,
   type ExpenseCategory,
   type ExpenseTransaction,
   type ExpenseVendor,
+  type TransactionGroup,
+  type TransactionGroupBy,
   type TransactionStatus,
 } from "@/lib/expense";
 import {
@@ -518,19 +525,122 @@ function BulkEditDialog({
   );
 }
 
+/** The view switcher's options, labelled by the library rather than here. */
+const VIEW_MODE_OPTIONS: readonly ViewModeOption<TransactionGroupBy>[] = TRANSACTION_GROUP_BYS.map(
+  (groupBy) => ({
+    key: groupBy,
+    label: TRANSACTION_GROUP_BY_LABELS[groupBy],
+    hint:
+      groupBy === "all"
+        ? "Every transaction in one list"
+        : `Group transactions by ${TRANSACTION_GROUP_BY_LABELS[groupBy].toLowerCase()}`,
+  }),
+);
+
+/** A chevron that points down when its group is open. A state glyph, so bare. */
+function DisclosureIcon({ isOpen }: { isOpen: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`h-4 w-4 shrink-0 transition-transform motion-reduce:transition-none ${
+        isOpen ? "rotate-90" : ""
+      }`}
+      aria-hidden="true"
+    >
+      <path d="M9 6l6 6-6 6" />
+    </svg>
+  );
+}
+
+/**
+ * One group's header row: what it is, how many rows, what they come to.
+ *
+ * A button rather than a div with a click handler, so it's focusable and
+ * space/enter work — the whole row is the target, which is what a 44px touch
+ * hit-area needs.
+ */
+function GroupHeaderRow({
+  group,
+  account,
+  isOpen,
+  onToggle,
+}: {
+  group: TransactionGroup;
+  account?: CreditCardAccount;
+  isOpen: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={isOpen}
+      className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-brass-soft/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brass motion-reduce:transition-none ${
+        isOpen ? "bg-brass-soft/40" : ""
+      }`}
+    >
+      <DisclosureIcon isOpen={isOpen} />
+      {account && <CardThumbnail account={account} />}
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-medium text-ink">{group.label}</span>
+        {group.sublabel !== "" && (
+          <span className="block truncate text-xs text-muted">{group.sublabel}</span>
+        )}
+      </span>
+      <span className="shrink-0 text-xs text-muted">
+        {group.transactionCount} txn{group.transactionCount === 1 ? "" : "s"}
+      </span>
+      <span
+        className={`shrink-0 font-mono text-sm font-semibold ${
+          group.totalCents < 0 ? "text-emerald-400" : "text-ink"
+        }`}
+      >
+        {formatCents(group.totalCents)}
+      </span>
+    </button>
+  );
+}
+
 export function ExpenseTransactionsView({
   transactions,
   accounts,
   categories,
   vendors,
+  requestedGroupBy,
+  requestedGroupKey,
 }: {
   transactions: ExpenseTransaction[];
   accounts: CreditCardAccount[];
   categories: ExpenseCategory[];
   vendors: ExpenseVendor[];
+  /**
+   * From ?groupBy= / ?group=, set by the Meta Data cards. Seeds the initial view
+   * only — once the screen is open the switcher owns the grouping, so arriving
+   * on "Gas" doesn't stop you looking at anything else.
+   */
+  requestedGroupBy?: string;
+  requestedGroupKey?: string;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState<ExpenseTransaction | undefined>(undefined);
+  // Seeded from the URL when it names a grouping we know, else the flat list. An
+  // unrecognised value falls back rather than throwing: these arrive from an
+  // address bar, and a stale bookmark should still show the transactions.
+  const [groupBy, setGroupBy] = useState<TransactionGroupBy>(() =>
+    isTransactionGroupBy(requestedGroupBy) ? requestedGroupBy : "all",
+  );
+  // Which group is expanded. One at a time: several open grids on one page each
+  // carry their own toolbar, paging and footer, which stops reading as a summary.
+  //
+  // Also seeded from the URL. Not validated here — a key naming a group that no
+  // longer exists simply matches nothing and every group renders closed, which
+  // is the right outcome for a link to a deleted category.
+  const [openGroupKey, setOpenGroupKey] = useState<string | undefined>(requestedGroupKey);
   // Holds the rows the dialog is editing plus the grid's own clear-selection
   // callback, so the selection is dropped once the change lands.
   const [bulkEdit, setBulkEdit] = useState<
@@ -724,6 +834,55 @@ export function ExpenseTransactionsView({
     },
   ];
 
+  // The rollup is pure and the row list is stable between renders, so this only
+  // recomputes when the data or the grouping actually changes — it walks every
+  // transaction, which is worth not doing on each keystroke elsewhere.
+  const groups = useMemo(
+    () => groupTransactions(transactions, groupBy, accounts),
+    [transactions, groupBy, accounts],
+  );
+
+  /**
+   * The transaction grid over some subset of rows. One definition used by every
+   * view: the flat list and each expanded group get identical columns, actions,
+   * selection and export, because they are the same table looked at differently.
+   */
+  function renderGrid(rows: ExpenseTransaction[], storageKey: string) {
+    return (
+      <DataGrid
+        columns={columns}
+        rows={rows}
+        getRowKey={(row) => row.id}
+        emptyMessage="No transactions yet. Add one above, or import a statement."
+        enableExport
+        exportFileName="expense-transactions"
+        storageKey={storageKey}
+        recordViewTitle={(row) => `Transaction #${row.id}`}
+        enableSelection
+        renderSelectionActions={(selectedRows, clearSelection) => (
+          <>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={isBulkBusy}
+              onClick={() => setBulkEdit({ rows: selectedRows, clearSelection })}
+            >
+              Bulk edit
+            </Button>
+            <Button
+              size="sm"
+              variant="danger"
+              disabled={isBulkBusy}
+              onClick={() => handleBulkDelete(selectedRows, clearSelection)}
+            >
+              {isBulkBusy ? "Deleting…" : "Delete"}
+            </Button>
+          </>
+        )}
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <CollapsibleCard
@@ -739,43 +898,64 @@ export function ExpenseTransactionsView({
         />
       </CollapsibleCard>
 
-      <div>
-        <p className="mb-3 text-sm text-muted">
-          {transactions.length} transaction(s). Use the search and filters to narrow the list, then
-          tick rows to bulk edit or delete them.
+      <div className="flex flex-col gap-3">
+        <ViewModeSwitch
+          options={VIEW_MODE_OPTIONS}
+          value={groupBy}
+          onChange={(next) => {
+            setGroupBy(next);
+            // Group keys are namespaced per grouping, so a key held across a
+            // switch would never match — closing is the honest reset.
+            setOpenGroupKey(undefined);
+          }}
+          label="View"
+        />
+
+        <p className="text-sm text-muted">
+          {transactions.length} transaction(s).{" "}
+          {groupBy === "all"
+            ? "Use the search and filters to narrow the list, then tick rows to bulk edit or delete them."
+            : "Open a group to search, filter and bulk edit inside it."}
           {bulkResult && <span className="ml-2 font-medium text-brass-dark">{bulkResult}</span>}
         </p>
-        <DataGrid
-          columns={columns}
-          rows={transactions}
-          getRowKey={(row) => row.id}
-          emptyMessage="No transactions yet. Add one above, or import a statement."
-          enableExport
-          exportFileName="expense-transactions"
-          storageKey="expense-transactions"
-          recordViewTitle={(row) => `Transaction #${row.id}`}
-          enableSelection
-          renderSelectionActions={(selectedRows, clearSelection) => (
-            <>
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={isBulkBusy}
-                onClick={() => setBulkEdit({ rows: selectedRows, clearSelection })}
-              >
-                Bulk edit
-              </Button>
-              <Button
-                size="sm"
-                variant="danger"
-                disabled={isBulkBusy}
-                onClick={() => handleBulkDelete(selectedRows, clearSelection)}
-              >
-                {isBulkBusy ? "Deleting…" : "Delete"}
-              </Button>
-            </>
-          )}
-        />
+
+        {groupBy === "all" ? (
+          renderGrid(transactions, "expense-transactions")
+        ) : groups.length === 0 ? (
+          <p className="rounded-md border border-line bg-paper px-3 py-6 text-center text-sm text-muted">
+            Nothing to group yet. Add a transaction above, or import a statement.
+          </p>
+        ) : (
+          <ul className="flex flex-col divide-y divide-line overflow-hidden rounded-md border border-line bg-paper">
+            {groups.map((group) => {
+              const isOpen = group.key === openGroupKey;
+              return (
+                <li key={group.key}>
+                  <GroupHeaderRow
+                    group={group}
+                    account={accounts.find((candidate) => candidate.id === group.accountId)}
+                    isOpen={isOpen}
+                    onToggle={() => setOpenGroupKey(isOpen ? undefined : group.key)}
+                  />
+                  {isOpen && (
+                    <div className="border-t border-line bg-paper-raised p-3">
+                      {group.rows.length === 0 ? (
+                        <p className="py-2 text-center text-sm text-muted">
+                          No transactions on this card yet.
+                        </p>
+                      ) : (
+                        // One storageKey for every group, so the columns you
+                        // arranged stay arranged as you move between them —
+                        // a per-group key would make each card forget.
+                        renderGrid(group.rows, "expense-transactions-group")
+                      )}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
 
       {bulkEdit && (

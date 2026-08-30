@@ -56,6 +56,10 @@ export function JournalImportView({ namedMappings: initialNamedMappings }: { nam
   const [summary, setSummary] = useState<ImportSummary | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
   const [isBusy, setIsBusy] = useState(false);
+  // Default on: re-importing a file you already imported should be a no-op, not
+  // a second copy of every entry. Unticking it is the deliberate escape hatch
+  // for a file that really does hold another copy of something.
+  const [skipDuplicates, setSkipDuplicates] = useState(true);
 
   async function handleFile(file: File) {
     setIsBusy(true);
@@ -155,7 +159,7 @@ export function JournalImportView({ namedMappings: initialNamedMappings }: { nam
     setIsBusy(true);
     setError(undefined);
     try {
-      const result = await runJournalImportAction(fileText, mapping, fieldOptions);
+      const result = await runJournalImportAction(fileText, mapping, fieldOptions, skipDuplicates);
       if (!result.ok) {
         setError(result.error);
         return;
@@ -313,10 +317,30 @@ export function JournalImportView({ namedMappings: initialNamedMappings }: { nam
             </div>
           )}
 
-          <div>
-            <Button onClick={handleImport} disabled={isBusy}>
-              {isBusy ? "Importing…" : "Import"}
-            </Button>
+          <div className="flex flex-col gap-3">
+            <label className="flex items-start gap-2 text-sm text-ink max-lg:py-1">
+              <input
+                type="checkbox"
+                checked={skipDuplicates}
+                onChange={(event) => setSkipDuplicates(event.target.checked)}
+                disabled={isBusy}
+                className="mt-0.5 accent-brass"
+                aria-describedby="journal-import-dedupe-hint"
+              />
+              <span>
+                Skip entries that already exist
+                <span id="journal-import-dedupe-hint" className="mt-0.5 block text-xs text-muted">
+                  An entry counts as existing when its date, time and title all match. Untick to
+                  import every row, even ones already in the journal.
+                </span>
+              </span>
+            </label>
+
+            <div>
+              <Button onClick={handleImport} disabled={isBusy}>
+                {isBusy ? "Importing…" : "Import"}
+              </Button>
+            </div>
           </div>
 
           {summary && (

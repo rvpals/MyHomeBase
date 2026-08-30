@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import type { JournalRepository } from "./ports";
+import type { JournalEntryMatchKey, JournalRepository } from "./ports";
 import {
   entryLocationSchema,
   journalCategorySchema,
@@ -204,41 +204,9 @@ export class SqliteJournalRepository implements JournalRepository {
         "SELECT * FROM jrn_entries ORDER BY entry_date DESC, entry_time DESC, id DESC",
       )
       .all() as EntryRow[];
-    if (rows.length === 0) return [];
 
-    // Fetch all child rows once and group by entry to avoid an N+1 query storm.
-    const categoriesByEntry = this.groupPairings(
-      this.db
-        .prepare(
-          "SELECT entry_id, category_name AS name FROM jrn_entry_categories ORDER BY id ASC",
-        )
-        .all() as PairingRow[],
-    );
-    const tagsByEntry = this.groupPairings(
-      this.db
-        .prepare("SELECT entry_id, tag_name AS name FROM jrn_entry_tags ORDER BY id ASC")
-        .all() as PairingRow[],
-    );
-    const locationsByEntry = new Map<number, EntryLocation[]>();
-    const locationRows = this.db
-      .prepare(
-        "SELECT * FROM jrn_entry_locations ORDER BY entry_id ASC, sort_order ASC",
-      )
-      .all() as LocationRow[];
-    for (const row of locationRows) {
-      const existing = locationsByEntry.get(row.entry_id) ?? [];
-      existing.push(locationToDomain(row));
-      locationsByEntry.set(row.entry_id, existing);
-    }
-
-    return rows.map((row) =>
-      entryToDomain(
-        row,
-        categoriesByEntry.get(row.id) ?? [],
-        tagsByEntry.get(row.id) ?? [],
-        locationsByEntry.get(row.id) ?? [],
-      ),
-    );
+    // Every entry, so the child reads need no id filter.
+    return this.hydrateEntries(rows, "all");
   }
 
   listRecentEntries(limit: number): JournalEntry[] {
@@ -247,15 +215,7 @@ export class SqliteJournalRepository implements JournalRepository {
         "SELECT * FROM jrn_entries ORDER BY entry_date DESC, entry_time DESC, id DESC LIMIT ?",
       )
       .all(limit) as EntryRow[];
-    // Only a handful of rows (the overview list), so per-entry child fetches are fine.
-    return rows.map((row) =>
-      entryToDomain(
-        row,
-        this.categoryNamesFor(row.id),
-        this.tagNamesFor(row.id),
-        this.locationsFor(row.id),
-      ),
-    );
+    return this.hydrateEntries(rows);
   }
 
   listEntriesByMonthDay(monthDay: string): JournalEntry[] {
@@ -270,14 +230,7 @@ export class SqliteJournalRepository implements JournalRepository {
       )
       .all(monthDay) as EntryRow[];
 
-    return rows.map((row) =>
-      entryToDomain(
-        row,
-        this.categoryNamesFor(row.id),
-        this.tagNamesFor(row.id),
-        this.locationsFor(row.id),
-      ),
-    );
+    return this.hydrateEntries(rows);
   }
 
   listEntriesInDateRange(startDate: string, endDate: string): JournalEntry[] {
@@ -292,14 +245,7 @@ export class SqliteJournalRepository implements JournalRepository {
       )
       .all(startDate, endDate) as EntryRow[];
 
-    return rows.map((row) =>
-      entryToDomain(
-        row,
-        this.categoryNamesFor(row.id),
-        this.tagNamesFor(row.id),
-        this.locationsFor(row.id),
-      ),
-    );
+    return this.hydrateEntries(rows);
   }
 
   searchEntries(term: string, limit: number): JournalEntry[] {
@@ -326,14 +272,7 @@ export class SqliteJournalRepository implements JournalRepository {
       )
       .all(pattern, pattern, pattern, pattern, pattern, pattern, pattern, limit) as EntryRow[];
 
-    return rows.map((row) =>
-      entryToDomain(
-        row,
-        this.categoryNamesFor(row.id),
-        this.tagNamesFor(row.id),
-        this.locationsFor(row.id),
-      ),
-    );
+    return this.hydrateEntries(rows);
   }
 
   findEntries(filter: JournalFilter, limit: number): JournalEntry[] {
@@ -354,14 +293,7 @@ export class SqliteJournalRepository implements JournalRepository {
       // `__limit` is prefixed so it can't collide with one of them.
       .all({ ...(compiled?.params ?? {}), __limit: limit }) as EntryRow[];
 
-    return rows.map((row) =>
-      entryToDomain(
-        row,
-        this.categoryNamesFor(row.id),
-        this.tagNamesFor(row.id),
-        this.locationsFor(row.id),
-      ),
-    );
+    return this.hydrateEntries(rows);
   }
 
   listFilters(): SavedJournalFilter[] {
@@ -505,6 +437,21 @@ export class SqliteJournalRepository implements JournalRepository {
       this.db.prepare("DELETE FROM jrn_entry_locations WHERE entry_id = ?").run(id);
       this.db.prepare("DELETE FROM jrn_entries WHERE id = ?").run(id);
     })();
+  }
+
+  countEntriesMatching(key: JournalEntryMatchKey): number {
+    // Rides idx_jrn_entries_match_key (migration 0072) on all three columns.
+    // TRIM on the stored side too: a title that arrived with trailing space from
+    // an earlier import must still match the same title read cleanly today.
+    const row = this.db
+      .prepare(
+        `SELECT COUNT(*) AS matches FROM jrn_entries
+         WHERE entry_date = @date
+           AND entry_time = @time
+           AND TRIM(title) = @title`,
+      )
+      .get({ ...key, title: key.title.trim() }) as { matches: number };
+    return row.matches;
   }
 
   setEntryPinned(id: number, isPinned: boolean): JournalEntry {
@@ -794,6 +741,76 @@ export class SqliteJournalRepository implements JournalRepository {
     input.locations.forEach((location, index) => {
       insertLocation.run(entryId, location.latitude, location.longitude, location.locationName, index);
     });
+  }
+
+  /**
+   * Turns a set of entry rows into domain entries, reading each child table
+   * ONCE for the whole set rather than once per row.
+   *
+   * Every list reader goes through here. The per-entry `categoryNamesFor` /
+   * `tagNamesFor` / `locationsFor` helpers below are now only for
+   * `getEntryById`, where there is exactly one row and a batch would be three
+   * identical queries with a one-element IN list.
+   *
+   * Why this matters: the Entries screen reads 500 rows and the year calendar
+   * ~380, so per-row child fetches meant ~1,500 and ~1,140 queries for one page
+   * — each a round trip to a database file that lives on the NAS over SMB.
+   *
+   * The id list is interpolated as literal integers rather than bound as
+   * parameters. They come from `jrn_entries.id` (INTEGER PRIMARY KEY) that
+   * SQLite just handed us, never from user input, and binding them would mean a
+   * fresh statement per distinct row count — which defeats better-sqlite3's
+   * statement cache on exactly the queries this is meant to speed up.
+   *
+   * `all` skips the IN filter altogether, for `listEntries()`: when the caller
+   * already holds every row, naming each id back to SQLite is both a needlessly
+   * long statement and a worse plan than the three unfiltered scans it replaces.
+   */
+  private hydrateEntries(rows: EntryRow[], scope: "some" | "all" = "some"): JournalEntry[] {
+    if (rows.length === 0) return [];
+
+    const idList = rows.map((row) => row.id).join(",");
+    const restrict = (column: string) => (scope === "all" ? "" : `WHERE ${column} IN (${idList})`);
+
+    const categoriesByEntry = this.groupPairings(
+      this.db
+        .prepare(
+          `SELECT entry_id, category_name AS name FROM jrn_entry_categories
+           ${restrict("entry_id")} ORDER BY id ASC`,
+        )
+        .all() as PairingRow[],
+    );
+    const tagsByEntry = this.groupPairings(
+      this.db
+        .prepare(
+          `SELECT entry_id, tag_name AS name FROM jrn_entry_tags
+           ${restrict("entry_id")} ORDER BY id ASC`,
+        )
+        .all() as PairingRow[],
+    );
+
+    const locationsByEntry = new Map<number, EntryLocation[]>();
+    const locationRows = this.db
+      .prepare(
+        `SELECT * FROM jrn_entry_locations
+         ${restrict("entry_id")} ORDER BY entry_id ASC, sort_order ASC`,
+      )
+      .all() as LocationRow[];
+    for (const row of locationRows) {
+      const existing = locationsByEntry.get(row.entry_id) ?? [];
+      existing.push(locationToDomain(row));
+      locationsByEntry.set(row.entry_id, existing);
+    }
+
+    // Row order is preserved: the caller's ORDER BY is the sort the screen wants.
+    return rows.map((row) =>
+      entryToDomain(
+        row,
+        categoriesByEntry.get(row.id) ?? [],
+        tagsByEntry.get(row.id) ?? [],
+        locationsByEntry.get(row.id) ?? [],
+      ),
+    );
   }
 
   private categoryNamesFor(entryId: number): string[] {

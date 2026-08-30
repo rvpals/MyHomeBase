@@ -1,15 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ChartBar } from "@/components/chart-bar";
 import { CHART_CATEGORICAL_COLORS } from "@/components/chart-colors";
+import { ChartLine } from "@/components/chart-line";
 import { ChartPie } from "@/components/chart-pie";
 import { CollapsibleCard } from "@/components/collapsible-card";
-import type {
-  CategoryTotal,
-  ExpenseCategory,
-  ExpenseVendor,
-  VendorTotal,
+import { Tabs, type TabItem } from "@/components/tabs";
+import {
+  compareMonths,
+  latestMonth,
+  monthLabel,
+  monthlyTotals,
+  previousMonthOf,
+  type CategoryComparison,
+  type CategoryTotal,
+  type ExpenseCategory,
+  type ExpenseTransaction,
+  type ExpenseVendor,
+  type VendorTotal,
 } from "@/lib/expense";
 import { OTHER_SLICE_KEY, foldToOther, type PartToWholeSlice } from "@/lib/shared/chart-options";
 import {
@@ -209,14 +218,206 @@ function VendorSpendCard({
   );
 }
 
+/** What an empty category is called in the trend table. Matches the rest of the module. */
+const UNCATEGORISED_TREND_LABEL = "uncategorised";
+
+/** How many movers the comparison table lists before it stops. */
+const MAX_COMPARISON_ROWS = 12;
+
+/**
+ * Net spend per calendar month — the module's only view with a time axis.
+ *
+ * Calendar months rather than billing cycles: a cycle belongs to one card, so
+ * two cards closing on different days have different "Augusts" and there is no
+ * shared axis to compare. See the header of `trends.ts`.
+ */
+function SpendOverTimeCard({ transactions }: { transactions: ExpenseTransaction[] }) {
+  // Walks every transaction, so it recomputes only when the rows change rather
+  // than on each render of the surrounding screen.
+  const totals = useMemo(() => monthlyTotals(transactions), [transactions]);
+
+  if (totals.length < 2) {
+    return (
+      <section>
+        <h2 className="font-display text-xl text-ink">Spend over time</h2>
+        <p className="mt-1 text-sm text-muted">
+          {totals.length === 0
+            ? "Nothing dated to chart yet."
+            : "Only one month so far — a trend needs at least two."}
+        </p>
+      </section>
+    );
+  }
+
+  // Dollars, not cents: the axis and the tooltip both read in the unit the rest
+  // of the screen prints.
+  const data = totals.map((total) => ({ month: total.label, spend: total.totalCents / 100 }));
+
+  const latest = totals[totals.length - 1];
+  const previous = totals[totals.length - 2];
+  const change = latest.totalCents - previous.totalCents;
+
+  return (
+    <section>
+      <h2 className="font-display text-xl text-ink">Spend over time</h2>
+      <p className="mt-1 text-sm text-muted">
+        Net spend per calendar month, refunds included. {latest.label} is{" "}
+        {change === 0 ? (
+          "level with"
+        ) : (
+          <>
+            <span className={change > 0 ? "text-brass-dark" : "text-emerald-400"}>
+              {formatCents(Math.abs(change))} {change > 0 ? "more" : "less"}
+            </span>{" "}
+            than
+          </>
+        )}{" "}
+        {previous.label}.
+        {/* The newest month is almost always still running, so it will read as a
+            drop no matter what. Said plainly rather than letting the chart imply
+            a fall that is really an incomplete month. */}{" "}
+        The most recent month may be partial.
+      </p>
+      <div className="mt-3">
+        <ChartLine
+          data={data}
+          series={[{ key: "spend", label: "Net spend" }]}
+          xKey="month"
+          formatValue={(value) => `$${value.toFixed(2)}`}
+          displayStorageKey="myhomebase:chart:expense-spend-over-time"
+        />
+      </div>
+    </section>
+  );
+}
+
+/** One category's row in the comparison table: the two months and the delta. */
+function ComparisonRow({
+  row,
+  iconUrl,
+}: {
+  row: CategoryComparison;
+  iconUrl: string | undefined;
+}) {
+  const isUp = row.changeCents > 0;
+  const isFlat = row.changeCents === 0;
+
+  return (
+    // Stacks below 1024px: five columns don't fit a phone, and a horizontal
+    // scroll hides the delta — which is the column the table exists for.
+    <li className="flex items-center justify-between gap-3 rounded-md border border-line bg-paper px-3 py-1.5 text-sm max-lg:flex-col max-lg:items-start max-lg:gap-1">
+      <span className="flex min-w-0 items-center gap-2 text-ink">
+        {row.categoryName === "" ? (
+          <span className="text-muted">{UNCATEGORISED_TREND_LABEL}</span>
+        ) : (
+          <>
+            <CategoryIconThumbnail iconUrl={iconUrl} />
+            <span className="truncate">{row.categoryName}</span>
+          </>
+        )}
+      </span>
+
+      <span className="flex shrink-0 items-center gap-3 font-mono text-xs max-lg:w-full max-lg:justify-between">
+        <span className="text-muted">{formatCents(row.previousCents)}</span>
+        <span aria-hidden="true" className="text-muted">
+          →
+        </span>
+        <span className="text-ink">{formatCents(row.currentCents)}</span>
+        <span
+          className={`w-28 text-right ${
+            isFlat ? "text-muted" : isUp ? "text-brass-dark" : "text-emerald-400"
+          }`}
+        >
+          {isFlat ? "no change" : `${isUp ? "+" : "−"}${formatCents(Math.abs(row.changeCents))}`}
+          {/* A percentage needs a non-zero base to mean anything — a category
+              that started from nothing has no meaningful ratio. */}
+          {row.changeRatio !== undefined && !isFlat && (
+            <span className="ml-1 text-muted">
+              ({isUp ? "+" : "−"}
+              {Math.abs(Math.round(row.changeRatio * 100))}%)
+            </span>
+          )}
+        </span>
+      </span>
+    </li>
+  );
+}
+
+/**
+ * This month against last, per category, biggest movement first — the card that
+ * answers "what changed?", which the all-time totals below cannot.
+ *
+ * Both months are taken from the data rather than from today's clock, so a
+ * module that hasn't been imported into for a while compares the two months you
+ * actually have instead of two empty ones.
+ */
+function MonthComparisonCard({
+  transactions,
+  categoryIconUrls,
+}: {
+  transactions: ExpenseTransaction[];
+  categoryIconUrls: Map<string, string>;
+}) {
+  const current = useMemo(() => latestMonth(transactions), [transactions]);
+  const previous = current === undefined ? undefined : previousMonthOf(current);
+
+  const rows = useMemo(
+    () =>
+      current === undefined || previous === undefined
+        ? []
+        : compareMonths(transactions, current, previous),
+    [transactions, current, previous],
+  );
+
+  if (current === undefined || previous === undefined) {
+    return (
+      <section>
+        <h2 className="font-display text-xl text-ink">Month on month</h2>
+        <p className="mt-1 text-sm text-muted">Nothing dated to compare yet.</p>
+      </section>
+    );
+  }
+
+  const movers = rows.filter((row) => row.changeCents !== 0).slice(0, MAX_COMPARISON_ROWS);
+
+  return (
+    <section>
+      <h2 className="font-display text-xl text-ink">Month on month</h2>
+      <p className="mt-1 text-sm text-muted">
+        {monthLabel(current)} against {monthLabel(previous)}, biggest movement first.
+        {rows.length > movers.length &&
+          ` ${rows.length - movers.length} unchanged or smaller mover(s) not shown.`}
+      </p>
+      {movers.length === 0 ? (
+        <p className="mt-3 text-sm text-muted">
+          Nothing moved between these two months.
+        </p>
+      ) : (
+        <ul className="mt-3 flex flex-col gap-1">
+          {movers.map((row) => (
+            <ComparisonRow
+              key={row.categoryName || UNCATEGORISED_TREND_LABEL}
+              row={row}
+              iconUrl={categoryIconUrls.get(row.categoryName)}
+            />
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 export function ExpenseChartsView({
   totals,
   vendorTotals,
+  transactions,
   categories,
   vendors,
 }: {
   totals: CategoryTotal[];
   vendorTotals: VendorTotal[];
+  /** The rows themselves — the monthly rollups are computed from them client-side. */
+  transactions: ExpenseTransaction[];
   /** Only for their icons — a rollup carries a category name, not its icon. */
   categories: ExpenseCategory[];
   /** Likewise: a vendor rollup carries only the name. */
@@ -246,7 +447,11 @@ export function ExpenseChartsView({
   const netCents = totals.reduce((sum, total) => sum + total.totalCents, 0);
   const transactionCount = totals.reduce((sum, total) => sum + total.transactionCount, 0);
 
-  return (
+  // Two tabs rather than one long scroll: the all-time breakdown and the
+  // month-on-month view answer different questions, and Tabs is for unrelated
+  // panels sharing a space (ViewModeSwitch would claim they were one dataset
+  // re-cut, which they are not).
+  const mainTab = (
     <div className="flex flex-col gap-8">
       <section>
         <h2 className="font-display text-xl text-ink">Spend by category</h2>
@@ -301,4 +506,18 @@ export function ExpenseChartsView({
       </section>
     </div>
   );
+
+  const monthlyTab = (
+    <div className="flex flex-col gap-8">
+      <SpendOverTimeCard transactions={transactions} />
+      <MonthComparisonCard transactions={transactions} categoryIconUrls={categoryIconUrls} />
+    </div>
+  );
+
+  const tabs: TabItem[] = [
+    { key: "main", label: "Main", content: mainTab },
+    { key: "monthly", label: "Monthly comparison", content: monthlyTab },
+  ];
+
+  return <Tabs items={tabs} defaultActiveKey="main" />;
 }

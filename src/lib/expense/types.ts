@@ -12,6 +12,15 @@ export interface CreditCardAccount {
   description: string;
   creditLineCents: number;
   /**
+   * Day of the month this card's statement closes, 1–31, and that day is *on*
+   * the statement — a card closing on the 28th has a cycle running 29 Jul to
+   * 28 Aug. 0 means "never set", which only rows predating migration 0070 carry;
+   * `normalizeCloseDay` resolves it to the default rather than failing. A close
+   * day past the end of a short month is clamped to that month's last day, as
+   * every issuer does. See `billing-cycle.ts`.
+   */
+  statementCloseDay: number;
+  /**
    * Mime type of the card image, or undefined when none is set. The bytes
    * themselves are fetched separately (see CardImage) so they never travel with
    * an account list.
@@ -119,9 +128,13 @@ export interface RuleAction {
 
 /**
  * A post-import processing rule: one condition, many assignments. `pattern` is a
- * case-insensitive glob matched against `transactionDescription`, e.g. `*TGI*`
+ * case-insensitive glob matched against `transactionDescription`, e.g. `%TGI%`
  * setting vendor "TGI Friday" and category "Restaurant". Rules are global — they
  * apply to every card.
+ *
+ * The wildcard is `%`, not `*`: statement descriptions print asterisks
+ * constantly (`AMAZON.COM*2A34B5C6`), so `*` is a literal here. See
+ * `compilePattern`. Migration 0069 rewrote every stored `*` to `%`.
  */
 export interface PostImportRule {
   id: number;

@@ -200,6 +200,27 @@ migration:
 Locations and weather are deliberately not templatable: the entry form already resolves
 both live from GPS, and a stored copy would be staler than one button press.
 
+**CSV import is idempotent** (`migrations/0072`). Re-importing a file you have already
+imported adds nothing; each repeated row is reported as *"Duplicate of an existing
+entry"* in the same summary that reports a bad row. The Import screen has a **Skip
+entries that already exist** checkbox, ticked by default, and the CLI has the matching
+`--allow-duplicates`. Four choices worth knowing:
+
+- **An entry is the same entry when its date, time and title match.** Content is
+  deliberately excluded — a re-export whose body text was reflowed or lightly edited is
+  still the same entry, and including it would import a second copy on every such edit.
+- **The check counts rather than answers yes/no.** `entry_time` and `title` both default
+  to `''`, so a bulk export can legitimately hold several untimed, untitled rows on one
+  day. The importer compares how many copies the *file* holds against how many were
+  *stored before the run began* and inserts the shortfall; a boolean would collapse them
+  all into one entry. Same reasoning as `countMatchingTransactions` in `stock-positions`.
+- **A match is declined, never overwritten.** Nothing in the importer updates an existing
+  entry, so an edit you made in the app can't be clobbered by a stale CSV.
+- **There is no `UNIQUE` index behind this.** `jrn_entries` still allows duplicates by
+  design (0027), because typing the same title twice on one day by hand is the writer's
+  business — uniqueness is an *import policy*, which is what lets the checkbox exist.
+  0072 adds a plain index on `(entry_date, entry_time, title)` to make the count cheap.
+
 This is also the module that made **Configuration a nav group**. `SectionPanel` renders a
 node with children as an accordion heading and drops it from the compact sheet, so a
 parent cannot also be a page — the long-standing `/configuration` route therefore stayed
@@ -220,6 +241,33 @@ until there is a setting worth persisting). Library: `src/lib/csv-analytics`,
 
 **Expense** (`expense`) — credit-card transactions imported from CSV, categorised
 by post-import rules, with a dashboard and charts. Library: `src/lib/expense`.
+
+The **Transactions** section is one grid under a `ViewModeSwitch`: **All**, or grouped by
+**Account**, **Billing cycle**, **Vendor** or **Category**. Every grouping expands to the
+*same* grid — identical columns, row actions, selection, bulk edit and export — because it
+is one table looked at differently, not five screens. The rollup itself is pure
+(`src/lib/expense/grouping.ts`), so the view only presents it. Four choices worth knowing:
+
+- **It is a control in the page body, not a nav tier.** `design.md` puts a control that acts
+  on the current page in the page body, so Transactions stays one section rather than
+  sprouting four.
+- **One group open at a time.** Several expanded grids on one page each carry their own
+  toolbar, paging and footer total, at which point nothing reads as a summary any more.
+- **A billing cycle belongs to a card, so cycles nest inside accounts.** Two cards closing
+  on different days have different Augusts; pooling "August" across cards would put one
+  label on several date ranges. `statement_close_day` therefore lives on the account
+  (`migrations/0070`) and the cycle is *derived* at read time — nothing about a period is
+  stored, so correcting a close day re-groups the history, which is what you want.
+- **The close day is on the statement, and clamps in short months.** A card closing on the
+  28th bills 29 Jul – 28 Aug; the 31st becomes 28 Feb (29th in a leap year), as every issuer
+  resolves it. A card still on `0` — never told a day — is flagged in Meta Data and grouped
+  on the default (28) rather than collapsing into one pile. The arithmetic is
+  `src/lib/expense/billing-cycle.ts`, which never constructs a `Date`: dates here are
+  `YYYY-MM-DD` strings, and `new Date(...)` would reinterpret them in the runtime's
+  timezone.
+
+Cycles are measured by **posting date, falling back to transaction date** — a statement is
+assembled from posting dates, but plenty of card exports omit the column.
 
 **Attendance** (`attendance`) — students, classes, enrollment, and daily
 registers with a printable report. A class may be registered several times a day;
@@ -381,7 +429,7 @@ hyphens turned to underscores — Expense's slugs are kebab (`meta-data`), as ar
 `slots.test.ts` enumerates every real section slug and asserts each resolves.
 
 **What does not get a slot:** row actions (pencil, trash, refresh) and state glyphs
-(`star` vs `star-filled`). Those are buttons and states rather than places — the same line
+(`star` vs `star-filled`, `heart` vs `heart-filled`). Those are buttons and states rather than places — the same line
 `ALWAYS_CLASSIC` already draws in `tree-icons.tsx`. Full reasoning, including why uploaded
 SVG is sanitized rather than stored verbatim, is in
 `migrations/0066_create_icon_slot_overrides.md`.

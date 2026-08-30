@@ -13,24 +13,32 @@ import type {
  * Compiles a user-written pattern into a matcher against a card's raw vendor
  * text.
  *
- * Two behaviours, chosen so the common case needs no punctuation:
- *  - **With `*`** the pattern is anchored and `*` matches any run of characters,
- *    so `AMAZON*` matches "AMAZON MKTPL*2X4Y" but not "PRIME AMAZON".
- *  - **Without any `*`** the pattern matches anywhere in the description, so a
- *    bare `TGI` behaves like `*TGI*`. Typing a vendor name and getting no
+ * `%` is the wildcard, standing for any run of characters. Two behaviours,
+ * chosen so the common case needs no punctuation:
+ *  - **With `%`** the pattern is anchored, so `AMAZON%` matches
+ *    "AMAZON MKTPL*2X4Y" but not "PRIME AMAZON".
+ *  - **Without any `%`** the pattern matches anywhere in the description, so a
+ *    bare `TGI` behaves like `%TGI%`. Typing a vendor name and getting no
  *    matches would be a trap.
  *
- * Matching is case-insensitive, and every other regex metacharacter is escaped —
- * card descriptions are full of `*`, `.`, `#` and `(`, so a pattern is never
- * treated as a regular expression.
+ * Matching is case-insensitive and **every** other character is literal —
+ * including `*`, which card descriptions are full of (`AMAZON.COM*2A34B5C6`,
+ * `SQ *JOES COFFEE`). That is why the wildcard is `%` and not `*`: an asterisk
+ * can't be both a wildcard and the literal character a statement actually
+ * prints, and the literal reading is the one users need. So
+ * `%COSTCO%ANNUAL RENEWAL%` finds "COSTCO *ANNUAL RENEWAL*" however the card
+ * spaces or punctuates it, while `COSTCO *ANNUAL` means exactly those
+ * characters, asterisk included.
+ *
+ * Splitting on the wildcard and escaping each segment keeps that promise in one
+ * step — there is no escape-then-unescape pass that a metacharacter could slip
+ * through.
  */
 export function compilePattern(pattern: string): RegExp {
   const trimmed = pattern.trim();
-  const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  // The escape above turned every literal * into \*; turn those back into
-  // wildcards. Nothing else can produce a \* sequence.
-  const withWildcards = escaped.replace(/\\\*/g, "[\\s\\S]*");
-  const body = trimmed.includes("*") ? `^${withWildcards}$` : `[\\s\\S]*${withWildcards}[\\s\\S]*`;
+  const literals = trimmed.split("%").map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const withWildcards = literals.join("[\\s\\S]*");
+  const body = trimmed.includes("%") ? `^${withWildcards}$` : `[\\s\\S]*${withWildcards}[\\s\\S]*`;
   return new RegExp(body, "i");
 }
 

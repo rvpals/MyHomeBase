@@ -1,5 +1,149 @@
 # Change History
 
+## 2026-08-29 23:17 — Five threads, and a wildcard that was lying to you
+
+A wide release: a fix to the rule language that was quietly matching too much, billing
+cycles in the Transactions screen, spend trends in Charts, favourite photographs, an
+idempotent journal import, and vendor icons fetched off the web. Migrations 0069–0073.
+
+### The rule wildcard is `%`, not `*`
+
+The one to read first, because it was a correctness bug rather than a missing feature.
+`*` was both the wildcard *and* one of the most common characters in the text it matched
+against — card descriptions print asterisks constantly (`AMAZON.COM*2A34B5C6`,
+`SQ *JOES COFFEE`, `UBER   *TRIP HELP.UBER.COM`). So the pattern language had no way to
+spell "an actual asterisk here," and every attempt to name one silently produced a
+wildcard: `AMAZON.COM*` read as "starts with AMAZON.COM" but also caught
+`AMAZON.COM RETURN CREDIT`.
+
+Every failure was in the **permissive** direction, which is why nothing looked broken.
+A rule that quietly matches too much is discovered months later, by which point
+transactions have been miscategorised.
+
+`%` was chosen on how often a character actually appears in statement text — it is
+effectively absent, and already reads as a wildcard from SQL `LIKE`. `#` was rejected for
+being exactly the same trap (`WALMART #` would have become "any Walmart-prefixed text").
+Migration 0069 rewrites every stored `*` to `%`, and the rewrite is **exact**: every `*`
+that reached the database was a wildcard, so translating it preserves behaviour precisely.
+No existing rule changes which descriptions it matches. That is also why it is
+unconditional — `*` is a literal from now on, so an untouched pattern would go hunting for
+asterisks and match nothing.
+
+### Transactions group by billing cycle
+
+Migration 0070 gives each card a `statement_close_day`, so the list can group spend the
+way the card actually bills it rather than by calendar month. A card closing on the 28th
+bills 29 Jul – 28 Aug; a card closing on the 5th bills a different stretch entirely.
+
+Nothing about a cycle is persisted — it is derived at read time from the date and the
+card's close day, because a billing period is a property of the *card*. Correcting a close
+day therefore re-groups the history silently, which is the behaviour you want: the old
+grouping was simply wrong. The default is `0`, a real state meaning "never set," rather
+than a plausible-looking `28` that would be indistinguishable from a day you had actually
+confirmed. Meta Data flags a card still sitting on `0`, so the guess is visible.
+
+A close day of 31 is stored as 31, not clamped — February resolves to the 28th when the
+cycle is derived, so "the end of the month" survives.
+
+### Charts grew month-over-month trends
+
+`trends.ts` rolls spend up by **calendar month**, not billing cycle, and the distinction is
+the point: a cycle belongs to one card, so cycles give no shared x-axis to compare spend
+across cards or categories. Cycles stay the right unit for reconciling one statement, which
+is what the grouped Transactions view uses them for. Periods come from the transaction date
+rather than the posting date, which plenty of card exports omit entirely. Totals are net, so
+a refund reduces its month — a gross number would disagree with every other total in the
+module.
+
+Nothing here constructs a `Date`: a `YYYY-MM` period is a substring of `YYYY-MM-DD`, and
+routing that through `new Date(...)` would reinterpret it in the runtime's timezone and move
+a purchase on the 1st into the previous month.
+
+### Vendor icons, fetched
+
+`src/lib/vendor-logos/` looks a vendor's icon up rather than making you find one. It asks
+DuckDuckGo's Instant Answer API what the vendor's website is, then downloads that domain's
+icon from Google's favicon service.
+
+**Both are free, keyless and account-free** — worth stating because the first version
+guessed `<name>.com` and the second tried Clearbit, which no longer resolves at all
+(HubSpot retired the free logo API). Guessing alone produced `unitedstatespostoffice.com`
+for USPS, `morrismuseum.com` for a museum that is a `.org` and `tgifriday.com` for TGI
+Fridays — four real vendors with good icons all reported as "no logo found."
+
+The guess is **kept as a fallback** rather than deleted, because search is quiet for
+exactly the cases guessing is good at: a small business DuckDuckGo has no article for,
+where `<name>.com` is simply correct. Between them they resolved 24 of 28 names on a real
+vendor list; search alone got 8, guessing alone got 17. A search that throws must not lose
+the guess — it is a hint, not a dependency.
+
+A 404 from Google still carries a body (a generic grey globe), so the **status** decides
+whether an icon was found, not the bytes. Otherwise a wrong domain would attach a
+meaningless globe to a vendor instead of reporting a miss.
+
+### Favourite photographs
+
+Migration 0073 adds `sys_fav_photo`. The home screen's random photo card draws one picture
+from anywhere in the archive and replaces it on the next click — that is the point of the
+card, but it means a photo you were glad to have seen is one button press from gone, and
+finding it again means knowing which of ~20 years of folders it came from. A heart on the
+title bar keeps it; a button beside Refresh reads the kept ones back with thumbnails and
+notes.
+
+The stored key is the path **from the configured photo root**, not the absolute path the
+request asked for. The photo root is a *setting*, so an absolute key would bake today's
+mount point into every row — remounting the share or fixing a typo in the setting would
+orphan every favourite at once. The absolute path stays derivable. Keys are
+case-**sensitive** (unlike `stk_ticker_favorites`, which folds case because `aapl` and
+`AAPL` are one symbol): these are filesystem paths on a Linux NAS, where `IMG_1.JPG` and
+`img_1.jpg` are two different files.
+
+The heart does not prompt for a note — starring is the frequent one-click action, and a
+modal on every press would tax the common case to serve the rare one. Notes are edited
+inline in the list. Nothing prunes a favourite: a photo missing today may be a share that
+is merely unmounted, so a stale row renders a broken-image placeholder with its note
+intact, and removing it is your call.
+
+### The journal CSV import is idempotent
+
+Re-importing the same export is now a no-op instead of a second full set of entries. An
+entry already exists when its date, time and title match; content is deliberately not
+compared, so a re-export with reflowed body text is the same entry. Nothing is ever
+*updated* — a match is declined, not overwritten. `--allow-duplicates` turns the check off
+for a file that genuinely holds another copy.
+
+It is **not** a UNIQUE index, for three reasons: migration 0027 explicitly allows multiple
+entries per date (two untitled, untimed entries on one day are a legal state), a unique
+index would abort outright on any database already holding duplicates — including ones an
+earlier run of this importer created — and uniqueness here is an *import policy*, not a data
+invariant. Typing the same title twice by hand is your business; importing a file twice is
+not. Keeping it out of the schema is what lets the escape hatch exist.
+
+Migrations 0071 and 0072 are the indexes this leans on. 0072 indexes the importer's match
+key; the honest gain is narrower than "scan → seek" — an existing date index already
+narrowed the range, and the win is the extra `entry_time` seek column plus the index
+becoming *covering*, so the count never touches the table. 0071 indexes the taxonomy join
+tables by **name**: 0027's indexes all lead with `entry_id`, which covers "which tags does
+entry 42 have" but cannot serve the opposite direction, because SQLite can only seek on a
+leading column. That made `listTopTags` — which runs on every dashboard render — a full
+scan plus two temp B-trees; it is now a covering walk with one.
+
+### Also
+
+- **Attendance exports CSV.** The Report screen gets an Export button and
+  `attendance-report --csv` writes the same file, through the same function, so the two
+  agree. A student with no entry on a date gets a **blank** cell, not an `A` — collapsing
+  that would turn "wasn't enrolled yet" into "missed the class" for anyone totalling the
+  column.
+- **Attendance cards can read "Lovelace, Ada"**, the order a paper register is usually in.
+  Card view only, and missing means off, so an install predating the setting doesn't
+  silently reorder every card.
+- **`ViewModeSwitch`** is registered in `components.md` — a segmented control for "same
+  data, re-cut," deliberately not `Tabs` (tabs put *different* content in one space and
+  read as separate places). Below 1024px it becomes a native `<select>`, done with
+  `max-lg:` on two elements rather than `useIsCompact()`, so the desktop classes can't
+  regress.
+
 ## 2026-08-29 09:45 — A vendor is somebody now
 
 **Vendors became a thing you can edit, not just a total.** Until now a vendor existed

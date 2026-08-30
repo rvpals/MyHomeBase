@@ -12,6 +12,7 @@ import {
   TRANSACTION_STATUSES,
   type CleanupLogEntry,
   type ExpenseCategory,
+  type ExpenseVendor,
   type PostImportRule,
   type RuleActionField,
 } from "@/lib/expense";
@@ -28,6 +29,7 @@ import {
 import {
   CategoryIconThumbnail,
   categoryIconSelectOptions,
+  vendorIconSelectOptions,
   categoryIconUrlsByName,
 } from "./expense-shared";
 
@@ -43,20 +45,30 @@ function PatternHelp() {
         <li>
           A rule is <strong className="text-ink">one condition</strong> on the statement description
           plus <strong className="text-ink">any number of fields to set</strong>. For example{" "}
-          <code className="font-mono text-brass-dark">*TGI*</code> &rarr; Vendor ={" "}
+          <code className="font-mono text-brass-dark">%TGI%</code> &rarr; Vendor ={" "}
           <span className="font-mono">TGI Friday</span>, Category ={" "}
           <span className="font-mono">Restaurant</span>.
         </li>
         <li>
-          <code className="font-mono text-brass-dark">*</code> stands for &ldquo;anything&rdquo;.{" "}
-          <code className="font-mono text-brass-dark">AMAZON*</code> matches descriptions that{" "}
-          <em>start with</em> AMAZON; <code className="font-mono text-brass-dark">*UBER*</code>{" "}
+          <code className="font-mono text-brass-dark">%</code> stands for &ldquo;anything&rdquo;.{" "}
+          <code className="font-mono text-brass-dark">AMAZON%</code> matches descriptions that{" "}
+          <em>start with</em> AMAZON; <code className="font-mono text-brass-dark">%UBER%</code>{" "}
           matches it anywhere. A pattern with <strong>no</strong>{" "}
-          <code className="font-mono text-brass-dark">*</code> matches anywhere by default, so{" "}
+          <code className="font-mono text-brass-dark">%</code> matches anywhere by default, so{" "}
           <code className="font-mono text-brass-dark">TGI</code> is the same as{" "}
-          <code className="font-mono text-brass-dark">*TGI*</code>.
+          <code className="font-mono text-brass-dark">%TGI%</code>.
         </li>
-        <li>Matching ignores case, and every other character is taken literally.</li>
+        <li>
+          Everything else is <strong>literal</strong>, including{" "}
+          <code className="font-mono text-brass-dark">*</code> and{" "}
+          <code className="font-mono text-brass-dark">#</code> — cards print those constantly, so{" "}
+          <code className="font-mono text-brass-dark">WALMART #2841</code> means that exact store.
+          To span an asterisk the card prints, put a{" "}
+          <code className="font-mono text-brass-dark">%</code> where it falls:{" "}
+          <code className="font-mono text-brass-dark">%COSTCO%ANNUAL RENEWAL%</code> finds{" "}
+          <span className="font-mono">COSTCO *ANNUAL RENEWAL*</span> however the card spaces it.
+        </li>
+        <li>Matching ignores case.</li>
         <li>
           When several rules match, the lowest <strong>priority</strong> number wins — put specific
           patterns above general ones.
@@ -86,6 +98,7 @@ const emptyRule = {
 
 function RuleForm({
   categories,
+  vendors,
   editing,
   prefillName,
   prefillDescription,
@@ -93,6 +106,7 @@ function RuleForm({
   onDone,
 }: {
   categories: ExpenseCategory[];
+  vendors: ExpenseVendor[];
   editing?: PostImportRule;
   /**
    * Seeds a *new* rule from ?name= / ?description= / ?vendorDescription=.
@@ -214,7 +228,7 @@ function RuleForm({
           <input
             value={form.pattern}
             onChange={(event) => setForm({ ...form, pattern: event.target.value })}
-            placeholder="*TGI*"
+            placeholder="%TGI%"
             className={`${INPUT_CLASS} font-mono`}
           />
         </label>
@@ -275,11 +289,25 @@ function RuleForm({
                   ariaLabel="Category to set"
                 />
               </div>
+            ) : action.fieldName === "vendor" ? (
+              // Same deal as the category above, and free text matters more here:
+              // the saved list is only the vendors you've curated under Meta Data,
+              // while the name a rule tidies *to* is often one you haven't saved.
+              // Picking from the list is the shortcut, not the constraint.
+              <div className="w-56">
+                <IconSelect
+                  options={vendorIconSelectOptions(vendors)}
+                  value={action.fieldValue}
+                  onChange={(fieldValue) => updateAction(index, { fieldValue })}
+                  placeholder="TGI Friday"
+                  ariaLabel="Vendor to set"
+                />
+              </div>
             ) : (
               <input
                 value={action.fieldValue}
                 onChange={(event) => updateAction(index, { fieldValue: event.target.value })}
-                placeholder={action.fieldName === "vendor" ? "TGI Friday" : "value"}
+                placeholder="value"
                 className={`${INPUT_CLASS} w-56`}
               />
             )}
@@ -497,6 +525,7 @@ function CleanupRunner({ unprocessedCount }: { unprocessedCount: number }) {
 export function ExpenseRulesView({
   rules,
   categories,
+  vendors,
   unprocessedCount,
   prefillName,
   prefillDescription,
@@ -504,6 +533,7 @@ export function ExpenseRulesView({
 }: {
   rules: PostImportRule[];
   categories: ExpenseCategory[];
+  vendors: ExpenseVendor[];
   unprocessedCount: number;
   /**
    * From ?name= / ?description= on the transaction-rules route, so "add a rule
@@ -522,7 +552,7 @@ export function ExpenseRulesView({
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted">
         Rules read the raw description from your statement and fill in the fields for you — for
-        example <span className="font-mono">*TGI*</span> setting the vendor to{" "}
+        example <span className="font-mono">%TGI%</span> setting the vendor to{" "}
         <span className="font-mono">TGI Friday</span> and the category to{" "}
         <span className="font-mono">Restaurant</span>. They run during import, and whenever you run
         the clean-up below.
@@ -538,6 +568,7 @@ export function ExpenseRulesView({
           `new:${prefillName ?? ""}:${prefillDescription ?? ""}:${prefillPattern ?? ""}`
         }
         categories={categories}
+        vendors={vendors}
         editing={editing}
         prefillName={prefillName}
         prefillDescription={prefillDescription}

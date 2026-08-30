@@ -37,7 +37,7 @@ function currentValue(transaction: ExpenseTransaction, fieldName: RuleActionFiel
 
 function explain(transaction: ExpenseTransaction, rules: ReturnType<typeof listRules>): void {
   // JSON-quoted so stray leading whitespace or odd characters are visible — a
-  // pattern containing "*" is anchored, so a leading space breaks the match.
+  // pattern containing "%" is anchored, so a leading space breaks the match.
   console.log(`\n#${transaction.id}  ${transaction.transactionDate}`);
   console.log(`  description : ${JSON.stringify(transaction.transactionDescription)}`);
   console.log(

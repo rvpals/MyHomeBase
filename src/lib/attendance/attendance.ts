@@ -35,9 +35,23 @@ import type {
   StudentAction,
 } from "./types";
 
-/** A student's display name. One definition, so every screen agrees. */
-export function formatStudentName(student: Student): string {
-  return `${student.firstName} ${student.lastName}`.trim();
+/**
+ * A student's display name. One definition, so every screen agrees.
+ *
+ * `lastNameFirst` gives "Lovelace, Ada" — the order a paper register is usually
+ * in. It is a display choice only: nothing stored ever changes shape, and the
+ * names captured into a saved session keep whatever form they had when written.
+ *
+ * A student with only one of the two names still reads sensibly either way: the
+ * comma is only placed when there is something on both sides of it.
+ */
+export function formatStudentName(student: Student, lastNameFirst = false): string {
+  const first = student.firstName.trim();
+  const last = student.lastName.trim();
+
+  if (!lastNameFirst) return `${first} ${last}`.trim();
+  if (!first || !last) return `${last}${first}`.trim();
+  return `${last}, ${first}`;
 }
 
 // ---------------------------------------------------------------------------

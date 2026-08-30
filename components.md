@@ -54,6 +54,7 @@ pattern instead of inventing one.
 | [`Comments`](#comments) | A note/instruction parked beside a feature, behind an info chip | [src/components/comments.tsx](src/components/comments.tsx) | yes |
 | [`CollapsibleCard`](#collapsiblecard) | A titled section that expands/collapses | [src/components/collapsible-card.tsx](src/components/collapsible-card.tsx) | yes |
 | [`Tabs`](#tabs) | One-of-N panels in the same space | [src/components/tabs.tsx](src/components/tabs.tsx) | yes |
+| [`ViewModeSwitch`](#viewmodeswitch) | **Same data, re-cut** — segmented control, `<select>` when narrow | [src/components/view-mode-switch.tsx](src/components/view-mode-switch.tsx) | yes |
 | [`ModuleCarousel`](#modulecarousel) | The home screen's module picker (grid on desktop, coverflow on phones) | [src/components/module-carousel.tsx](src/components/module-carousel.tsx) | yes |
 | [`TwoTierShell`](#twotiershell) | **The navigation shell** — module rail + section panel + header | [src/components/two-tier-shell.tsx](src/components/two-tier-shell.tsx) | yes |
 | [`ModuleRail`](#modulerail) | Tier 1 — the 64px module icon rail | [src/components/module-rail.tsx](src/components/module-rail.tsx) | yes |
@@ -605,7 +606,59 @@ const tabs: TabItem[] = [
 [stock-positions-view.tsx](src/app/(protected)/modules/[slug]/stock-positions-view.tsx),
 [stock-analytics-view.tsx](src/app/(protected)/modules/[slug]/stock-analytics-view.tsx);
 the About screen's Application / Change History split
-[admin/about/view.tsx](src/app/(protected)/admin/about/view.tsx).
+[admin/about/view.tsx](src/app/(protected)/admin/about/view.tsx); the Expense module's
+Charts and Analysis Main / Monthly comparison split
+[expense-charts-view.tsx](src/app/(protected)/modules/[slug]/expense-charts-view.tsx).
+
+---
+
+## ViewModeSwitch
+
+**Same data, shown a different way.** A segmented control for a set of mutually
+exclusive ways to look at one dataset — "view by account / billing cycle / vendor".
+
+**Not `Tabs`.** Tabs put *different content* in one space and read as separate places;
+this reads as one dataset being re-cut. Rule of thumb: if every option answers the same
+question about the same rows, use this; if the panels hold unrelated things, use `Tabs`.
+
+Below 1024px it renders a full-width native `<select>` instead of the segmented row — at
+four or five options the segments would wrap into a ragged block, and a native picker is
+easier to hit. Done with `max-lg:` / `lg:` on two elements rather than `useIsCompact()`,
+so the desktop classes provably can't regress.
+
+- **Source:** [src/components/view-mode-switch.tsx](src/components/view-mode-switch.tsx)
+- **Import:** `import { ViewModeSwitch, type ViewModeOption } from "@/components/view-mode-switch";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `options` | `readonly ViewModeOption<K>[]` — `{ key, label, hint? }` | Rendered in order. `hint` is the native tooltip. |
+| `value` | `K` | The selected key. Controlled — the caller owns the state. |
+| `onChange` | `(key: K) => void` | |
+| `label` | `string` | Shown before the control; also the group's accessible name. |
+| `className?` | `string` | |
+
+Generic over the key type, so a caller's own union (`TransactionGroupBy`) survives the
+round trip and `onChange` hands back that type rather than `string`.
+
+```tsx
+const [groupBy, setGroupBy] = useState<TransactionGroupBy>("all");
+
+<ViewModeSwitch
+  options={VIEW_MODE_OPTIONS}
+  value={groupBy}
+  onChange={setGroupBy}
+  label="View"
+/>
+```
+
+Rendered as a `radiogroup` with `aria-checked` per segment, since one of a set of
+mutually exclusive choices is what a radio is — and the visual fill alone doesn't
+convey the state to a screen reader.
+
+**Used by:** Expense — the Transactions screen's All / Account / Billing cycle / Vendor /
+Category switcher
+[expense-transactions-view.tsx](src/app/(protected)/modules/[slug]/expense-transactions-view.tsx).
 
 ---
 
@@ -1305,6 +1358,8 @@ shapes, so a shape vocabulary needs its own key next to the chart (see `MarkLege
 **Used by:** Stocks & ETFs — account performance history
 [stock-accounts-view.tsx](src/app/(protected)/modules/[slug]/stock-accounts-view.tsx), position
 price history [stock-analytics-view.tsx](src/app/(protected)/modules/[slug]/stock-analytics-view.tsx),
+the Expense module's spend-over-time trend
+[expense-charts-view.tsx](src/app/(protected)/modules/[slug]/expense-charts-view.tsx),
 and the "My past performance" chart in
 [ticker-viewer.tsx](src/components/ticker-viewer.tsx) *(the `renderDot` example)*.
 
@@ -2208,7 +2263,7 @@ they don't get their own registry section.
 | `CHART_CATEGORICAL_COLORS`, `CHART_STATUS_COLORS`, `CHART_CHROME` | [chart-colors.ts](src/components/chart-colors.ts) | The fixed 8-hue chart palette + grid/axis chrome. All charts read from here. |
 | `pointLabelContent` | [chart-point-labels.tsx](src/components/chart-point-labels.tsx) | Builds the `<LabelList content>` renderer every chart uses for value labels, so a labelled point looks identical on a line, a column and a bar. Labels wear the muted **text** token, never the series colour. |
 | `hasFullBars`, `normalizeCandleBar`, `candleDomain`, `candleGeometry` | [chart-candle.ts](src/lib/shared/chart-candle.ts) | `ChartCandle`'s rules — which series is complete enough to draw as candles, a bar's direction and consistent extremes, the axis window, and the body/wick geometry. In the lib, so they're tested. |
-| `TreeIcon`, `hasTreeIcon`, `useTreeIconIsColorful` | [tree-icons.tsx](src/components/tree-icons.tsx) | Resolves a section-panel icon key (`sliders`, `list`, `chart`, `upload`, `quote`, `grid`, `window`, `palette`, `info`, `history`, `users`, `database`, `shapes`, `shield`) to an SVG **in the reader's chosen icon set** — same `useIconSet()` context `ModuleIcon` reads, so a section panel matches the module rail. Falls back to the hand-drawn glyph in this file for any concept the active set lacks. Also carries the row-action glyphs `pencil`, `trash`, `refresh`, `search`, `flash`, `star` and `star-filled`, which stay hand-drawn and monochrome in *every* set: they're buttons, not destinations, and colored artwork on an inline delete weakens the destructive read. `star`/`star-filled` are the same silhouette outline and solid, because on a favorite toggle the fill *is* the state — a themed set redrawing one of them would lose that. `flash` is the one *filled* row action — an outlined bolt at 16px is two zig-zag strokes that read as noise, and the solid shape also says "this acts" rather than "this opens something". `useTreeIconIsColorful(name)` reports whether the active set will draw its own colors, so a caller can drop an accent tint that would otherwise muddy them. Renders `null` for an unknown key — fine in a row where the label carries the meaning, so check `hasTreeIcon` first anywhere the icon is the *only* content or an unknown key is a blank button. |
+| `TreeIcon`, `hasTreeIcon`, `useTreeIconIsColorful` | [tree-icons.tsx](src/components/tree-icons.tsx) | Resolves a section-panel icon key (`sliders`, `list`, `chart`, `upload`, `quote`, `grid`, `window`, `palette`, `info`, `history`, `users`, `database`, `shapes`, `shield`) to an SVG **in the reader's chosen icon set** — same `useIconSet()` context `ModuleIcon` reads, so a section panel matches the module rail. Falls back to the hand-drawn glyph in this file for any concept the active set lacks. Also carries the row-action glyphs `pencil`, `trash`, `refresh`, `search`, `flash`, `star`, `star-filled`, `heart` and `heart-filled`, which stay hand-drawn and monochrome in *every* set: they're buttons, not destinations, and colored artwork on an inline delete weakens the destructive read. `star`/`star-filled` are the same silhouette outline and solid, because on a favorite toggle the fill *is* the state — a themed set redrawing one of them would lose that. `heart`/`heart-filled` are the same pair for the home screen's favourite *photo* toggle — a second favourite mark on purpose, because the star means "a symbol I want to reach quickly" and the heart means "a picture I want to keep". `flash` is the one *filled* row action — an outlined bolt at 16px is two zig-zag strokes that read as noise, and the solid shape also says "this acts" rather than "this opens something". `useTreeIconIsColorful(name)` reports whether the active set will draw its own colors, so a caller can drop an accent tint that would otherwise muddy them. Renders `null` for an unknown key — fine in a row where the label carries the meaning, so check `hasTreeIcon` first anywhere the icon is the *only* content or an unknown key is a blank button. |
 | `AppIcon` | [app-icon.tsx](src/components/app-icon.tsx) | The app wordmark glyph. Takes raw `SVGProps`. |
 | `AdminIcon` | [admin-icon.tsx](src/components/admin-icon.tsx) | The Administration glyph. Takes raw `SVGProps`. |
 | `MODULE_ICON_GLYPHS`, `ModuleIconSetId` | [module-icon-sets.generated.ts](src/components/module-icon-sets.generated.ts) | Generated — do not hand-edit. |

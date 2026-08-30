@@ -319,25 +319,31 @@ function TransactionRulesInstructions() {
         <ul className="flex list-disc flex-col gap-1 pl-5">
           <li>
             A rule is <strong className="text-ink">one condition and any number of fields to
-            set</strong>. For example <Code>*TGI*</Code> &rarr; Vendor = <Code>TGI Friday</Code>,
+            set</strong>. For example <Code>%TGI%</Code> &rarr; Vendor = <Code>TGI Friday</Code>,
             Category = <Code>Restaurant</Code>. Use <strong className="text-ink">+ Add another
             field</strong> to set as many as you need — the fields available are Category, Vendor,
             Status and Note.
           </li>
           <li>
-            <Code>*</Code> means &ldquo;anything&rdquo;. <Code>AMAZON*</Code> matches descriptions
-            starting with AMAZON; <Code>*UBER*</Code> matches UBER anywhere. A pattern with no{" "}
-            <Code>*</Code> matches anywhere by default, so <Code>COSTCO</Code> behaves like{" "}
-            <Code>*COSTCO*</Code>.
+            <Code>%</Code> means &ldquo;anything&rdquo;. <Code>AMAZON%</Code> matches descriptions
+            starting with AMAZON; <Code>%UBER%</Code> matches UBER anywhere. A pattern with no{" "}
+            <Code>%</Code> matches anywhere by default, so <Code>COSTCO</Code> behaves like{" "}
+            <Code>%COSTCO%</Code>.
           </li>
           <li>
             Matching ignores case, and every other character is literal — the <Code>*</Code>,{" "}
             <Code>#</Code> and brackets that litter card descriptions are treated as plain text.
+            That is why the wildcard is <Code>%</Code> and not <Code>*</Code>: your statement prints
+            asterisks all the time, so <Code>WALMART #2841</Code> means that exact store, and{" "}
+            <Code>SQ *COFFEE</Code> means exactly those characters. To reach across an asterisk the
+            card printed, put a <Code>%</Code> where it falls —{" "}
+            <Code>%COSTCO%ANNUAL RENEWAL%</Code> finds{" "}
+            <Code>COSTCO *ANNUAL RENEWAL*</Code> however the card spaces or punctuates it.
           </li>
           <li>
             <strong className="text-ink">Priority</strong> decides who wins when several rules match:
             lowest number first. Put specific patterns above general ones, e.g.{" "}
-            <Code>AMAZON PRIME*</Code> (priority 0) before <Code>AMAZON*</Code> (priority 10). Only
+            <Code>AMAZON PRIME%</Code> (priority 0) before <Code>AMAZON%</Code> (priority 10). Only
             the first matching rule is applied.
           </li>
           <li>
@@ -363,7 +369,7 @@ function TransactionRulesInstructions() {
             transaction where <em>Processed</em> is no, runs the rules over it, and marks it
             processed. A progress bar and a log show each row as it goes:
             <span className="mt-1 block font-mono text-[11px] leading-5">
-              Processing 41 of 216 — #883 SQ *TGI FRIDAYS #221 — rule &ldquo;*TGI*&rdquo; used,
+              Processing 41 of 216 — #883 SQ *TGI FRIDAYS #221 — rule &ldquo;%TGI%&rdquo; used,
               vendor set to &ldquo;TGI Friday&rdquo;, category set to &ldquo;Restaurant&rdquo;
             </span>
           </li>
@@ -445,8 +451,24 @@ function ChartsInstructions() {
           The table underneath lists everything, credits included.
         </li>
         <li>
-          The figures cover <strong className="text-ink">every transaction</strong>, not a date
-          range — narrow by date under Transactions if you need a period view.
+          The <strong className="text-ink">Main</strong> tab covers{" "}
+          <strong className="text-ink">every transaction</strong>, not a date range — narrow by
+          date under Transactions if you need a different period.
+        </li>
+        <li>
+          <strong className="text-ink">Monthly comparison</strong> is the time view: net spend per
+          calendar month, and each category&apos;s movement from last month to this one, biggest
+          mover first.
+        </li>
+        <li>
+          Those months are <strong className="text-ink">calendar months</strong>, not billing
+          cycles. A cycle belongs to one card, so two cards closing on different days have
+          different &ldquo;Augusts&rdquo; and couldn&apos;t share an axis. Group by billing cycle
+          under Transactions to reconcile a statement.
+        </li>
+        <li>
+          The most recent month is usually <strong className="text-ink">still running</strong>, so
+          it will look like a drop until it&apos;s over.
         </li>
       </ul>
     </Section>

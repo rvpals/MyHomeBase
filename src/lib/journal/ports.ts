@@ -19,6 +19,21 @@ import type {
 } from "./types";
 import type { DecodedImage } from "@/lib/shared/image-upload";
 
+/**
+ * The fields that make two journal entries the same entry on import.
+ *
+ * Content is deliberately excluded: a re-export whose body text was reflowed or
+ * lightly edited is still the same entry, and including it would import a second
+ * copy on every such change. The cost of that choice is that two entries sharing
+ * a date, time and title are indistinguishable here — see
+ * `countEntriesMatching` for how the importer keeps that safe.
+ */
+export interface JournalEntryMatchKey {
+  date: string;
+  time: string;
+  title: string;
+}
+
 // The interface a journal use-case depends on. The real SQLite implementation
 // is wired in at wiring.ts; tests wire in an in-memory fake. Use-cases never see
 // the concrete class.
@@ -60,6 +75,21 @@ export interface JournalRepository {
   createEntry(input: EntryWriteData): JournalEntry;
   updateEntry(id: number, input: EntryWriteData): JournalEntry;
   deleteEntry(id: number): void;
+  /**
+   * How many stored entries carry this exact date, time and title — the CSV
+   * importer's duplicate check.
+   *
+   * A **count**, not a yes/no, for the same reason
+   * `countMatchingTransactions` is one: `entry_time` and `title` both default
+   * to `''`, so a bulk export can legitimately hold several untimed, untitled
+   * rows on one day. Only by comparing how many the file holds against how many
+   * are stored can the importer insert the shortfall and stay idempotent on
+   * re-import — a boolean would collapse all of them into one entry.
+   *
+   * Date, time and title are compared as stored, except that title is trimmed
+   * on both sides. Case is significant: a re-titled entry is a different entry.
+   */
+  countEntriesMatching(key: JournalEntryMatchKey): number;
   setEntryPinned(id: number, isPinned: boolean): JournalEntry;
   setEntryLocked(id: number, isLocked: boolean): JournalEntry;
 

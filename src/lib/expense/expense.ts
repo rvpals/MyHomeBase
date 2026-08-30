@@ -1,6 +1,7 @@
 import { decodeImageUpload } from "@/lib/shared/image-upload";
 import type { ExpenseRepository, TransactionFilter } from "./ports";
 import { matchesPattern, planForcedRuleApplication, planRuleApplication } from "./rules";
+import type { VendorLogoClient } from "../vendor-logos/ports";
 import {
   MAX_CARD_IMAGE_BYTES,
   MAX_CATEGORY_ICON_BYTES,
@@ -193,6 +194,69 @@ export function clearVendorIcon(repo: ExpenseRepository, name: string): void {
 /** Used only by the icon-serving route — never by anything rendering a list. */
 export function getVendorIcon(repo: ExpenseRepository, name: string): VendorIcon | undefined {
   return repo.getVendorIcon(name);
+}
+
+/** What one vendor's auto-populate attempt did. */
+export type VendorIconFetchOutcome =
+  /** A logo was found and stored. */
+  | "set"
+  /** The vendor already had an icon, so it was left alone. */
+  | "already-has-icon"
+  /** The service has no logo for this vendor — the ordinary miss. */
+  | "no-logo-found"
+  /** The lookup itself broke: a timeout, a DNS failure, the service down. */
+  | "failed";
+
+export interface VendorIconFetchResult {
+  name: string;
+  outcome: VendorIconFetchOutcome;
+  /** Where the icon came from, on a hit — so a wrong match is visible, not silent. */
+  domain?: string;
+}
+
+/**
+ * Fetches a logo for one vendor and stores it, for the bulk "auto-populate
+ * icons" run.
+ *
+ * **A vendor that already has an icon is skipped, never overwritten.** That is
+ * what makes the button safe to press twice: the second run picks up only what
+ * the first one missed, and an icon you chose by hand always beats a guessed
+ * one. Clearing the icon first is how you ask for a different logo.
+ *
+ * A missing logo and a broken lookup are different outcomes on purpose. A miss
+ * is the normal case — most of a card statement is businesses no logo service
+ * has heard of — while a failure means the run hit something worth knowing
+ * about. Neither throws: one bad vendor must not abandon the other thirty-nine.
+ *
+ * On a hit the vendor row is created if it didn't exist, exactly as a manual
+ * upload does, so auto-populating an unsaved vendor moves it to Saved.
+ */
+export async function autoPopulateVendorIcon(
+  repo: ExpenseRepository,
+  client: VendorLogoClient,
+  name: string,
+): Promise<VendorIconFetchResult> {
+  const trimmed = name.trim();
+  if (trimmed === "") return { name, outcome: "failed" };
+
+  const existing = repo.getVendorByName(trimmed);
+  if (existing?.iconMimeType) return { name: trimmed, outcome: "already-has-icon" };
+
+  let logo;
+  try {
+    logo = await client.fetch(trimmed);
+  } catch {
+    // The client throws only for a genuine transport problem; a "no such logo"
+    // comes back as undefined. Either way the run continues.
+    return { name: trimmed, outcome: "failed" };
+  }
+  if (!logo) return { name: trimmed, outcome: "no-logo-found" };
+
+  // Same path a manual upload takes, so the row-creating behaviour and the size
+  // and mime rules are the ones already proven there.
+  const vendor = existing ?? upsertVendor(repo, { name: trimmed });
+  repo.setVendorIcon(vendor.name, { data: logo.data, mimeType: logo.mimeType });
+  return { name: vendor.name, outcome: "set", domain: logo.domain };
 }
 
 // --- Transactions -----------------------------------------------------------

@@ -109,6 +109,7 @@ function SectionBody({
           actions={listStudentActions(deps.attendanceRepo)}
           selectedClassId={selectedClassId}
           today={today}
+          cardsUseLastNameFirst={settings.cardsUseLastNameFirst}
         />
       );
     }

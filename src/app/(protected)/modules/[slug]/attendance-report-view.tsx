@@ -7,6 +7,11 @@
 
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
+import {
+  attendanceDetailReportToCsv,
+  attendanceReportCsvFileName,
+  attendanceReportToCsv,
+} from "@/lib/attendance";
 import type {
   AttendanceClass,
   AttendanceDetailReport,
@@ -67,6 +72,37 @@ export function AttendanceReportView({
     // ?format=brief and no param at all mean the same thing.
     if (nextFormat !== "brief") params.set("format", nextFormat);
     router.push(`/modules/attendance/report?${params.toString()}`);
+  }
+
+  /**
+   * Downloads what is on screen. Which report is loaded already encodes the
+   * format, so this follows the render rather than re-reading `format` — the
+   * two can't disagree that way.
+   */
+  function handleExport() {
+    const file = detailReport
+      ? {
+          csv: attendanceDetailReportToCsv(detailReport),
+          name: attendanceReportCsvFileName(detailReport.className),
+        }
+      : report
+        ? {
+            csv: attendanceReportToCsv(report),
+            name: attendanceReportCsvFileName(report.className, report.attendanceDate),
+          }
+        : undefined;
+    if (!file) return;
+
+    // Same blob-and-anchor download DataGrid's Export CSV uses.
+    const blob = new Blob([file.csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${file.name}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -165,7 +201,14 @@ export function AttendanceReportView({
           </label>
         )}
 
-        {(report ?? detailReport) && <Button onClick={() => window.print()}>Print</Button>}
+        {(report ?? detailReport) && (
+          <>
+            <Button onClick={() => window.print()}>Print</Button>
+            <Button variant="secondary" onClick={handleExport}>
+              Export CSV
+            </Button>
+          </>
+        )}
       </div>
 
       {!selectedClassId ? (

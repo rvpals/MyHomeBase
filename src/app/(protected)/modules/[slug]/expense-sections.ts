@@ -38,7 +38,7 @@ export const EXPENSE_SECTION_INFO: Record<ExpenseSection, { label: string; descr
   },
   charts: {
     label: "Charts and Analysis",
-    description: "Where the money went, by category.",
+    description: "Where the money went, by category — and how this month compares to last.",
   },
   import: {
     label: "Import Transaction",
@@ -70,4 +70,21 @@ const BASE_PATH = "/modules/expense";
 /** The dashboard is the module root; every other section is a child route. */
 export function expenseSectionHref(section: ExpenseSection): string {
   return section === "main" ? BASE_PATH : `${BASE_PATH}/${section}`;
+}
+
+/**
+ * A link to the Transactions section with one group already open — what the Meta
+ * Data cards use, so clicking a card, category or vendor lands on just its rows.
+ *
+ * The grouping and the group key travel in the URL rather than in client state so
+ * the result is a real address: bookmarkable, shareable, and surviving a refresh
+ * or the back button. Same reasoning as the Journal's ?filter=.
+ *
+ * `groupKey` comes from the matching helper in `@/lib/expense` (`accountGroupKey`
+ * and friends) — don't hand-build the string here, or this and the grouping can
+ * drift apart and every link quietly opens nothing.
+ */
+export function expenseGroupHref(groupBy: string, groupKey: string): string {
+  const params = new URLSearchParams({ groupBy, group: groupKey });
+  return `${expenseSectionHref("transactions")}?${params.toString()}`;
 }

@@ -49,11 +49,15 @@ function SectionBody({
   prefillRuleName,
   prefillRuleDescription,
   prefillRulePattern,
+  requestedGroupBy,
+  requestedGroupKey,
 }: {
   section: ExpenseSection;
   prefillRuleName?: string;
   prefillRuleDescription?: string;
   prefillRulePattern?: string;
+  requestedGroupBy?: string;
+  requestedGroupKey?: string;
 }) {
   switch (section) {
     case "main": {
@@ -82,6 +86,8 @@ function SectionBody({
           accounts={listAccounts(deps.expenseRepo)}
           categories={listCategories(deps.expenseRepo)}
           vendors={listVendors(deps.expenseRepo)}
+          requestedGroupBy={requestedGroupBy}
+          requestedGroupKey={requestedGroupKey}
         />
       );
 
@@ -99,17 +105,24 @@ function SectionBody({
         />
       );
 
-    case "charts":
+    case "charts": {
+      // Read once and reused: the vendor rollup and the month-over-month cards
+      // both walk the whole table, and this section previously read it twice.
+      const transactions = listTransactions(deps.expenseRepo);
       return (
         <ExpenseChartsView
           totals={totalsByCategory(deps.expenseRepo)}
           // Rolled up from the rows in hand rather than through totalsByVendor,
           // so the vendor chart doesn't cost a second read of the table.
-          vendorTotals={vendorTotals(listTransactions(deps.expenseRepo))}
+          vendorTotals={vendorTotals(transactions)}
+          // The trend cards roll up per month client-side. Pure functions over
+          // rows the section already holds, so this costs no extra read.
+          transactions={transactions}
           categories={listCategories(deps.expenseRepo)}
           vendors={listVendors(deps.expenseRepo)}
         />
       );
+    }
 
     // Importing still *applies* the rules — that happens in the library
     // (`importExpenseCsv` / `runCleanupBatch`), not here. Only the editing UI
@@ -127,6 +140,7 @@ function SectionBody({
         <ExpenseRulesView
           rules={listRules(deps.expenseRepo)}
           categories={listCategories(deps.expenseRepo)}
+          vendors={listVendors(deps.expenseRepo)}
           unprocessedCount={countUnprocessed(deps.expenseRepo)}
           prefillName={prefillRuleName}
           prefillDescription={prefillRuleDescription}
@@ -147,6 +161,8 @@ export async function ExpenseSection({
   prefillRuleName,
   prefillRuleDescription,
   prefillRulePattern,
+  requestedGroupBy,
+  requestedGroupKey,
 }: {
   section: ExpenseSection;
   /**
@@ -156,6 +172,12 @@ export async function ExpenseSection({
   prefillRuleName?: string;
   prefillRuleDescription?: string;
   prefillRulePattern?: string;
+  /**
+   * From ?groupBy= / ?group= — opens the Transactions screen on one grouping
+   * with one group expanded, which is how the Meta Data cards link through.
+   */
+  requestedGroupBy?: string;
+  requestedGroupKey?: string;
 }) {
   // Defensive: an unknown section would otherwise crash on info.label. The route
   // already validates, so this only catches a future caller getting it wrong.
@@ -188,6 +210,8 @@ export async function ExpenseSection({
           prefillRuleName={prefillRuleName}
           prefillRuleDescription={prefillRuleDescription}
           prefillRulePattern={prefillRulePattern}
+          requestedGroupBy={requestedGroupBy}
+          requestedGroupKey={requestedGroupKey}
         />
       </div>
     </ExpenseShell>

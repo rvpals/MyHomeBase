@@ -84,6 +84,7 @@ export {
   setVendorIcon,
   clearVendorIcon,
   getVendorIcon,
+  autoPopulateVendorIcon,
   listTransactions,
   getTransaction,
   createTransaction,
@@ -104,6 +105,8 @@ export {
   DEFAULT_CLEANUP_BATCH_SIZE,
   type CleanupBatchResult,
   type ForcedRuleApplicationResult,
+  type VendorIconFetchOutcome,
+  type VendorIconFetchResult,
   type CleanupLogEntry,
 } from "./expense";
 export {
@@ -114,6 +117,44 @@ export {
   mergeVendorsWithTotals,
   type VendorListEntry,
 } from "./vendors";
+export {
+  DEFAULT_STATEMENT_CLOSE_DAY,
+  MIN_STATEMENT_CLOSE_DAY,
+  MAX_STATEMENT_CLOSE_DAY,
+  cycleForDate,
+  cycleLabel,
+  normalizeCloseDay,
+  type BillingCycle,
+} from "./billing-cycle";
+export {
+  TRANSACTION_GROUP_BYS,
+  TRANSACTION_GROUP_BY_LABELS,
+  UNCATEGORISED_GROUP_LABEL,
+  UNKNOWN_VENDOR_GROUP_LABEL,
+  UNDATED_GROUP_LABEL,
+  accountGroupKey,
+  categoryGroupKey,
+  cycleDateFor,
+  groupTransactions,
+  isTransactionGroupBy,
+  vendorGroupKeyForName,
+  type TransactionGroup,
+  type TransactionGroupBy,
+} from "./grouping";
+export {
+  DEFAULT_TREND_MONTHS,
+  UNCATEGORISED_TREND_LABEL,
+  categoryTotalsForMonth,
+  compareMonths,
+  latestMonth,
+  monthLabel,
+  monthOf,
+  monthRange,
+  monthlyTotals,
+  previousMonthOf,
+  type CategoryComparison,
+  type MonthlyTotal,
+} from "./trends";
 export {
   EXPENSE_SETTING_KEYS,
   DEFAULT_AUTO_IMPORT_INTERVAL_MINUTES,

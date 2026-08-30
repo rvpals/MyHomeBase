@@ -11,10 +11,16 @@ export async function importJournalCsvCommand(args: string[]): Promise<void> {
   const filePath = flags.file;
 
   if (!filePath) {
-    console.error("Usage: import-journal-csv --file <path> [--mapping <saved-mapping-name>]");
+    console.error(
+      "Usage: import-journal-csv --file <path> [--mapping <saved-mapping-name>] [--allow-duplicates]",
+    );
     process.exitCode = 1;
     return;
   }
+
+  // Duplicates are skipped unless asked for, matching the import screen's
+  // default: re-running the same import should be a no-op.
+  const skipDuplicates = !("allow-duplicates" in flags);
 
   try {
     const fileText = readFileSync(filePath, "utf8");
@@ -36,7 +42,9 @@ export async function importJournalCsvCommand(args: string[]): Promise<void> {
       ({ columnMapping, fieldOptions } = autoMapJournalHeaders(parseCsv(fileText).headers));
     }
 
-    const summary = importJournalCsv(deps.journalRepo, fileText, columnMapping, fieldOptions);
+    const summary = importJournalCsv(deps.journalRepo, fileText, columnMapping, fieldOptions, {
+      skipDuplicates,
+    });
     console.log(`Imported ${summary.importedCount}, skipped ${summary.skippedCount}.`);
     for (const result of summary.results) {
       if (result.status === "skipped") console.log(`  Row ${result.rowNumber}: ${result.reason}`);

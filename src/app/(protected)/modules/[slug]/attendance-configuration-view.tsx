@@ -1,8 +1,7 @@
 "use client";
 
-// The two Attendance preferences. Deliberately small — these were the only
-// settings the module needed; more can join them as key/value rows without a
-// migration.
+// The Attendance preferences. Deliberately small — these are the only settings
+// the module needs; more can join them as key/value rows without a migration.
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -29,6 +28,9 @@ export function AttendanceConfigurationView({
   const [reportDefaultsToToday, setReportDefaultsToToday] = useState(
     settings.reportDefaultsToToday,
   );
+  const [cardsUseLastNameFirst, setCardsUseLastNameFirst] = useState(
+    settings.cardsUseLastNameFirst,
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<string>();
   const [error, setError] = useState<string>();
@@ -41,6 +43,7 @@ export function AttendanceConfigurationView({
       const result = await saveAttendanceSettingsAction({
         defaultClassId: defaultClassId ? Number(defaultClassId) : undefined,
         reportDefaultsToToday,
+        cardsUseLastNameFirst,
       });
       if (!result.ok) {
         setError(result.error);
@@ -86,6 +89,24 @@ export function AttendanceConfigurationView({
           <span className="block text-sm text-muted">
             Turn this off to open on the most recent day that actually has attendance — useful if
             you print yesterday&apos;s register the next morning.
+          </span>
+        </span>
+      </label>
+
+      <label className="flex max-w-md items-start gap-3">
+        <input
+          type="checkbox"
+          checked={cardsUseLastNameFirst}
+          onChange={(event) => setCardsUseLastNameFirst(event.target.checked)}
+          className="mt-1"
+        />
+        <span>
+          <span className="block text-sm text-ink">
+            Use Last Name, First Name in attendance card
+          </span>
+          <span className="block text-sm text-muted">
+            Cards on the home screen read <em>Chen, Ava</em> instead of <em>Ava Chen</em> — the
+            order a paper register is usually in. The list view is unchanged.
           </span>
         </span>
       </label>

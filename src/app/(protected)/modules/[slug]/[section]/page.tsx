@@ -51,6 +51,8 @@ function renderSection(
   prefillRuleName: string | undefined,
   prefillRuleDescription: string | undefined,
   prefillRulePattern: string | undefined,
+  requestedGroupBy: string | undefined,
+  requestedGroupKey: string | undefined,
 ) {
   if (slug === ATTENDANCE_MODULE_SLUG && isAttendanceSection(section)) {
     return (
@@ -73,6 +75,8 @@ function renderSection(
         prefillRuleName={prefillRuleName}
         prefillRuleDescription={prefillRuleDescription}
         prefillRulePattern={prefillRulePattern}
+        requestedGroupBy={requestedGroupBy}
+        requestedGroupKey={requestedGroupKey}
       />
     );
   }
@@ -125,6 +129,11 @@ export default async function ModuleSectionPage({
     description?: string | string[];
     // The raw statement line to match on, seeding the rule's pattern field.
     vendorDescription?: string | string[];
+    // Which grouping the Expense Transactions screen opens on, and which group
+    // starts expanded. Set by the Meta Data cards, so clicking a category or a
+    // vendor lands on just its rows.
+    groupBy?: string | string[];
+    group?: string | string[];
   }>;
 }) {
   const { slug, section } = await params;
@@ -139,6 +148,8 @@ export default async function ModuleSectionPage({
     name,
     description,
     vendorDescription,
+    groupBy,
+    group,
   } = await searchParams;
   // A repeated ?filter= yields an array; take the first rather than joining, so a
   // crafted URL can't smuggle a second expression in.
@@ -162,6 +173,12 @@ export default async function ModuleSectionPage({
   const prefillRulePattern = Array.isArray(vendorDescription)
     ? vendorDescription[0]
     : vendorDescription;
+  // Same first-element rule once more. Both stay raw strings: the Transactions
+  // view validates the grouping against TRANSACTION_GROUP_BYS and matches the
+  // key against the groups it actually built, so a stale or crafted URL falls
+  // back to the ungrouped list rather than 404ing.
+  const requestedGroupBy = Array.isArray(groupBy) ? groupBy[0] : groupBy;
+  const requestedGroupKey = Array.isArray(group) ? group[0] : group;
 
   const appModule = getModuleBySlug(deps.moduleRepo, slug);
   if (!appModule) notFound();
@@ -186,6 +203,8 @@ export default async function ModuleSectionPage({
     prefillRuleName,
     prefillRuleDescription,
     prefillRulePattern,
+    requestedGroupBy,
+    requestedGroupKey,
   );
   if (!body) notFound();
 

@@ -16,7 +16,7 @@ import type {
   ImportSummary,
 } from "@/lib/csv-import";
 import { createEntry } from "./journal";
-import type { JournalRepository } from "./ports";
+import type { JournalEntryMatchKey, JournalRepository } from "./ports";
 import type { CreateEntryInput, EntryLocationInput } from "./schema";
 
 // The journal fields a CSV column can be mapped to, for the mapping UI. People
@@ -150,27 +150,82 @@ function recordToEntryInput(
   return { date, time, title, content, placeName, categories, tags, locations };
 }
 
+/** The key that decides whether a row is a duplicate: date + time + title. */
+function matchKeyFor(input: CreateEntryInput): JournalEntryMatchKey {
+  return { date: input.date, time: input.time ?? "", title: (input.title ?? "").trim() };
+}
+
 /**
  * Imports journal entries from CSV text using a column mapping and per-column
  * options. Best-effort: every parseable row is imported; each failing row is
  * recorded (never silently dropped) in the returned summary. The first record is
  * treated as the header row and skipped, and fully-blank lines are ignored.
+ *
+ * **Idempotent by default.** A row whose date, time and title already exist is
+ * reported as skipped rather than imported, so re-importing the same export is a
+ * no-op. Pass `{ skipDuplicates: false }` to import them anyway — the CSV is
+ * then taken at face value, which is what you want when a file deliberately
+ * holds a second copy of something.
+ *
+ * Content is not part of the match: a re-export with reflowed body text is the
+ * same entry. The consequence is that an edited entry's new text will NOT
+ * overwrite the stored one — nothing here ever updates an existing entry, it
+ * only declines to duplicate it.
  */
 export function importJournalCsv(
   repo: JournalRepository,
   fileText: string,
   columnMapping: ColumnMapping,
   fieldOptions: FieldOptionsMap = {},
+  options: { skipDuplicates?: boolean } = {},
 ): ImportSummary {
+  const skipDuplicates = options.skipDuplicates ?? true;
   const dataRecords = parseCsvRecords(fileText).slice(1); // drop the header row
   const results: ImportRowResult[] = [];
+
+  // How many copies of each key this file has produced so far, and how many the
+  // table held BEFORE the import began. The stored baseline is read once per
+  // distinct key and then reused: rows this run inserts must not inflate it, or
+  // the second legitimate identical row in one file would look like a duplicate
+  // of the first. Same reasoning as importTransactionsFromCsv.
+  const seenByKey = new Map<string, number>();
+  const storedByKey = new Map<string, number>();
 
   dataRecords.forEach((record, index) => {
     const rowNumber = index + 2; // 1-based, +1 for the header row
     if (record.every((cell) => cell.trim() === "")) return;
 
     try {
-      createEntry(repo, recordToEntryInput(record, columnMapping, fieldOptions));
+      const input = recordToEntryInput(record, columnMapping, fieldOptions);
+
+      if (skipDuplicates) {
+        const key = matchKeyFor(input);
+        // Tab-joined: a literal tab can't appear in a CSV cell that parsed as
+        // one field, so no two distinct keys can collide on this string.
+        const cacheKey = [key.date, key.time, key.title].join("\t");
+
+        let stored = storedByKey.get(cacheKey);
+        if (stored === undefined) {
+          stored = repo.countEntriesMatching(key);
+          storedByKey.set(cacheKey, stored);
+        }
+        const seen = seenByKey.get(cacheKey) ?? 0;
+
+        // Only skip once the file has produced as many copies as are already
+        // stored; beyond that this row is a genuine addition.
+        if (seen < stored) {
+          seenByKey.set(cacheKey, seen + 1);
+          results.push({
+            rowNumber,
+            status: "skipped",
+            reason: "Duplicate of an existing entry",
+          });
+          return;
+        }
+        seenByKey.set(cacheKey, seen + 1);
+      }
+
+      createEntry(repo, input);
       results.push({ rowNumber, status: "imported" });
     } catch (error) {
       results.push({

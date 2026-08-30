@@ -277,6 +277,7 @@ const EXPENSE_MIGRATIONS = [
   "0032_post_import_processing.sql",
   "0034_add_icon_image_to_expense_categories.sql",
   "0065_add_name_and_description_to_post_import_rules.sql",
+  "0070_add_statement_close_day_to_expense_accounts.sql",
 ];
 
 function memoryExpenseRepo(): { repo: ExpenseRepository; db: Database.Database } {
@@ -328,7 +329,7 @@ describe("runAutoImport", () => {
 
   it("still runs with the background switch off — that only gates the scheduler", () => {
     const { repo } = memoryExpenseRepo();
-    repo.createAccount({ name: "Visa Gold", description: "", creditLineCents: 0 });
+    repo.createAccount({ name: "Visa Gold", description: "", creditLineCents: 0, statementCloseDay: 28 });
     const folder = fakeFolder({ "/watch/Visa Gold/statement.csv": STATEMENT });
 
     const summary = runAutoImport(
@@ -360,7 +361,7 @@ describe("runAutoImport", () => {
 
   it("imports a statement into the card its sub-folder names, then renames it", () => {
     const { repo } = memoryExpenseRepo();
-    repo.createAccount({ name: "Visa Gold", description: "", creditLineCents: 0 });
+    repo.createAccount({ name: "Visa Gold", description: "", creditLineCents: 0, statementCloseDay: 28 });
     // The file itself can be named anything — the folder identifies the card.
     const folder = fakeFolder({ "/watch/Visa Gold/statement-jan.csv": STATEMENT });
 
@@ -393,7 +394,7 @@ describe("runAutoImport", () => {
 
   it("imports several files from one card folder", () => {
     const { repo } = memoryExpenseRepo();
-    repo.createAccount({ name: "Visa Gold", description: "", creditLineCents: 0 });
+    repo.createAccount({ name: "Visa Gold", description: "", creditLineCents: 0, statementCloseDay: 28 });
     const folder = fakeFolder({
       "/watch/Visa Gold/jan.csv": STATEMENT,
       "/watch/Visa Gold/feb.csv": `Date,Description,Amount\n08/01/2026,COSTCO WHSE #1234,88.10`,
@@ -414,8 +415,8 @@ describe("runAutoImport", () => {
 
   it("routes each card folder to its own account", () => {
     const { repo } = memoryExpenseRepo();
-    const visa = repo.createAccount({ name: "Visa Gold", description: "", creditLineCents: 0 });
-    const amex = repo.createAccount({ name: "Amex", description: "", creditLineCents: 0 });
+    const visa = repo.createAccount({ name: "Visa Gold", description: "", creditLineCents: 0, statementCloseDay: 28 });
+    const amex = repo.createAccount({ name: "Amex", description: "", creditLineCents: 0, statementCloseDay: 28 });
     const amexMapping: NamedMapping = { ...CHASE_MAPPING, id: 2, name: "Amex" };
 
     runAutoImport(ENABLED, {
@@ -435,11 +436,11 @@ describe("runAutoImport", () => {
 
   it("applies the fuzzy rules during the import", () => {
     const { repo } = memoryExpenseRepo();
-    repo.createAccount({ name: "Visa Gold", description: "", creditLineCents: 0 });
+    repo.createAccount({ name: "Visa Gold", description: "", creditLineCents: 0, statementCloseDay: 28 });
     repo.createRule({
       name: "Amazon",
       description: "",
-      pattern: "AMAZON*",
+      pattern: "AMAZON%",
       priority: 0,
       isEnabled: true,
       actions: [
@@ -497,7 +498,7 @@ describe("runAutoImport", () => {
 
   it("keeps going when one card folder fails and another succeeds", () => {
     const { repo } = memoryExpenseRepo();
-    repo.createAccount({ name: "Visa Gold", description: "", creditLineCents: 0 });
+    repo.createAccount({ name: "Visa Gold", description: "", creditLineCents: 0, statementCloseDay: 28 });
     const folder = fakeFolder({
       "/watch/Visa Gold/jan.csv": STATEMENT,
       "/watch/Ghost Card/jan.csv": STATEMENT,
@@ -517,7 +518,7 @@ describe("runAutoImport", () => {
 
   it("skips rows already imported when the same statement reappears", () => {
     const { repo } = memoryExpenseRepo();
-    repo.createAccount({ name: "Visa Gold", description: "", creditLineCents: 0 });
+    repo.createAccount({ name: "Visa Gold", description: "", creditLineCents: 0, statementCloseDay: 28 });
     const dependencies = {
       expenseRepo: repo,
       mappingRepo: fakeMappingRepo([CHASE_MAPPING]),
@@ -541,7 +542,7 @@ describe("runAutoImport", () => {
 
   it("ignores files in a card folder that aren't .csv", () => {
     const { repo } = memoryExpenseRepo();
-    repo.createAccount({ name: "Visa Gold", description: "", creditLineCents: 0 });
+    repo.createAccount({ name: "Visa Gold", description: "", creditLineCents: 0, statementCloseDay: 28 });
     const folder = fakeFolder({
       "/watch/Visa Gold/jan_20260101-000000.backup": STATEMENT,
     });

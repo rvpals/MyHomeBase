@@ -10,6 +10,7 @@ import { expenseTopSpendersCommand } from "./expense-top-spenders";
 import { explainRuleCommand } from "./explain-rule";
 import { expenseCreateRuleCommand } from "./expense-create-rule";
 import { normalizeIconOverridesCommand } from "./normalize-icon-overrides";
+import { favPhotosCommand } from "./fav-photos";
 import { favoriteQuotesCommand } from "./favorite-quotes";
 import { importJournalCsvCommand } from "./import-journal-csv";
 import { journalCalendarCommand } from "./journal-calendar";
@@ -52,6 +53,7 @@ const commands: Record<string, Command> = {
   "simulate-ticker": simulateTickerCommand,
   "market-indexes": marketIndexesCommand,
   "favorite-quotes": favoriteQuotesCommand,
+  "fav-photos": favPhotosCommand,
   "set-startup-message": setStartupMessageCommand,
   "user-preferences": userPreferencesCommand,
   "take-attendance": takeAttendanceCommand,
