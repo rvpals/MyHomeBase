@@ -71,6 +71,7 @@ pattern instead of inventing one.
 | [`CsvMappingTable`](#csvmappingtable) | Map a CSV's columns to target fields | [src/components/csv-mapping-table.tsx](src/components/csv-mapping-table.tsx) | yes |
 | [`IconSelect`](#iconselect) | A dropdown whose options carry an image | [src/components/icon-select.tsx](src/components/icon-select.tsx) | yes |
 | [`TokenPicker`](#tokenpicker) | **Several names on one record** — removable chips + a dropdown to add | [src/components/token-picker.tsx](src/components/token-picker.tsx) | yes |
+| [`ColorField`](#colorfield) | **One color** — a swatch that opens the OS picker + the hex typed out | [src/components/color-field.tsx](src/components/color-field.tsx) | yes |
 | [`ChartLine`](#chartline) | Time-series line chart | [src/components/chart-line.tsx](src/components/chart-line.tsx) | yes |
 | [`ChartBar`](#chartbar) | Category comparison / part-to-whole | [src/components/chart-bar.tsx](src/components/chart-bar.tsx) | yes |
 | [`ChartPie`](#chartpie) | Share of a whole — **max 5 slices** | [src/components/chart-pie.tsx](src/components/chart-pie.tsx) | yes |
@@ -1223,6 +1224,53 @@ action, not a held choice — and it disables itself once every option is chosen
 The component never registers a new name; a typed name is just a string in `value`
 until whatever saves the record decides what to do with it. Narrow screens stack
 the dropdown above the create field (`max-lg:flex-col`); chips wrap at any width.
+
+---
+
+## ColorField
+
+**One color on a form.** A swatch that opens the OS colour picker, with the hex
+spelled out beside it in a text field. **Reach for it whenever a record stores a
+colour** — the two halves exist because either alone is half a control: a bare
+`<input type="color">` gives no way to paste a brand hex, and a bare text field
+gives no way to explore a hue.
+
+- **Source:** [src/components/color-field.tsx](src/components/color-field.tsx)
+- **Import:** `import { ColorField } from "@/components/color-field";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `label` | `string` | Rendered above the control, and used to build both `aria-label`s. |
+| `value` | `string` | The current `#RRGGBB`. **May be mid-edit and invalid** — that's expected. |
+| `onChange` | `(next: string) => void` | Raises **every keystroke**, valid or not. The parent validates. |
+| `hint?` | `string` | Small muted line under the control — say what the colour paints. |
+| `error?` | `string` | Shown in place of `hint`, in the danger colour, and reddens the border. |
+| `disabled?` | `boolean` | |
+| `className?` | `string` | Merged last, e.g. `"sm:col-span-2"` to span a two-column form grid. |
+
+```tsx
+<ColorField
+  label="Brass"
+  hint="The accent: active nav, icons, primary buttons."
+  value={tokens.brass}
+  onChange={(next) => setToken("brass", next)}
+  error={fieldErrors.brass}
+/>
+```
+
+**Used by:** the theme builder's nine colour tokens,
+[theme-builder.tsx](src/app/(protected)/admin/configuration/themes/theme-builder.tsx).
+
+**Notes:** the component **does not validate** — it raises whatever is typed and
+shows whatever `error` you hand back, so one schema governs the form and the
+server. The text field keeps its own draft so a half-typed `#1A2` survives a
+re-render; it resyncs by comparing against the previous prop **during render**
+rather than in a `useEffect`, because a setState-in-effect fires a second render
+pass on every keystroke (ESLint flags it). The swatch falls back to `#000000`
+whenever the draft isn't a valid 6-digit hex, since `<input type="color">` accepts
+nothing else and would otherwise reset itself. Fixed swatch width by design — a
+stretching swatch reads as a banner, and the hex is what needs the room.
 
 ---
 

@@ -1,5 +1,119 @@
 # Change History
 
+## 2026-08-30 15:47 — An arcade, and themes you can build yourself
+
+Two features and a puzzle: the Games module with a shared high-score board, a second
+game built on it, and color themes moving out of the code into a screen an admin can
+use. Migrations 0074-0076.
+
+### The Games module
+
+A small arcade at **Games & Puzzles**, with three sections — Arcade (the game list, and
+the selected board inline), Scores, and Configuration. One table, `gam_scores`
+(migration 0074, new prefix `gam_`), registered by 0075. **2048** is the first game.
+
+The decision worth recording is that **the catalogue of games is code, not a table.**
+There is deliberately no `gam_games`. A game is only playable if the view that draws it
+exists in the build, so a row could name a game this deployment cannot run — and an
+admin could "add a game" by inserting a row and get a card that goes nowhere.
+`GAME_CATALOGUE` in `src/lib/games/catalogue.ts` is the registry, the same way
+`HOME_WIDGET_IDS` and the market-index symbol list are. The rule: *what the app can do
+is code; what the user did is data.*
+
+`game_key` is therefore not a foreign key — it references a catalogue key. A score
+consequently outlives its game being retired from the list, which is the point:
+deleting somebody's high score because a game was withdrawn is a worse outcome than a
+scoreboard row whose game is no longer listed.
+
+The board is **shared, not per-user**. It answers "who is best at this", so it is never
+filtered by whoever is looking. Scores are immutable and have no update path, and a
+score survives the account that set it being deleted, showing as *Unknown player*.
+
+`playedAt` is stamped by the use-case rather than taken from the caller: a
+client-supplied timestamp would let a crafted request backdate a score and win every
+tie-break in the board's `played_at ASC` ordering. The player comes from the session for
+the same reason. What is *not* defended against is a fabricated score — the board is not
+re-simulated server-side, which is accepted deliberately for a single-household arcade
+where the scoreboard is a bit of fun rather than a contested ranking. Verifying one
+would mean replaying every move on the server; `games-actions.ts` says so at the call
+site, so the next person doesn't assume it already happens.
+
+### Arrow Clearing
+
+The second game, and a proper logic puzzle. Every arrow occupies a straight run of one
+to four cells and points one way; click it and it flies off the board — but only if
+every cell between its **head** and the edge is empty. A blocked arrow bumps and stays
+put. Clear the board to win. Easy (5x5), Medium (7x7) and Hard (9x9).
+
+**Levels are generated in reverse, which is what guarantees they are solvable.** Arrows
+are "shot in" from outside the grid: each is placed only where its own exit is clear *at
+the moment it is placed*. Because clearing an arrow only ever frees cells, an arrow
+whose exit was clear when it was placed still has a clear exit once everything placed
+after it has gone — so replaying the placements backwards always empties the board. The
+obvious alternative, scattering arrows and then testing solvability, needs a search per
+candidate board and can fail, so it would need a retry loop with no bound. This
+construction cannot produce an unsolvable board at all. The test asserts it over 180
+generated boards rather than trusting the argument.
+
+Two details that decide the game and are pinned by tests:
+
+- **Only the path in front of the head is checked.** The tail follows exactly where the
+  head has already been, so a clear run for the head means the whole piece can leave.
+  Walking every cell of the arrow instead would find its own tail and report every arrow
+  as blocked by itself.
+- **A board in play can never become unwinnable.** Clearing an arrow only frees space,
+  so no move can strand you. `isStuck` exists anyway, so that a future change — moving
+  arrows rather than clearing them, say — cannot silently do it.
+
+**Three catalogue keys, not one game with a difficulty setting** (`arrow-clearing-easy`
+/ `-medium` / `-hard`). The scoreboard sorts on score alone, so a single shared key
+would rank an easy clear against a hard one. Scoring is 100 a cleared arrow less 15 a
+wasted click, floored at a tenth of full marks — so a badly-played big board still
+outranks a badly-played small one, where a floor of zero would call them equal.
+
+Hint highlights a random arrow that can currently leave, rather than following the
+generator's own solution order, which would walk you through the whole puzzle. Undo
+steps back one arrow and restores the miss count with it.
+
+Pieces are absolutely positioned over a **gapless** grid in percentages: a grid `gap`
+would make each cell's true offset drift from `index / size` by an accumulating
+fraction, so pieces would misalign further down the board. Sound effects are synthesized
+with the Web Audio API — no asset files — and the audio context is created on first
+gesture rather than on mount, because a browser blocks an autoplayed one and warns on
+every page load.
+
+### Color themes are data now, not code
+
+Migration 0076 adds `sys_color_themes` and moves the eight built-in themes into it, so
+an admin can build one at **Admin -> Configuration -> Color Themes** instead of asking
+for a code change. **On the day it runs the migration changes nothing visible** — the
+same eight themes are offered and the same one stays selected.
+
+The builder warns on unreadable color pairings using WCAG 2.1 contrast ratios, computed
+in `src/lib/color-themes/contrast.ts` — twenty lines of arithmetic rather than a
+dependency, since the formula is fixed by the spec and will not change. The check is
+deliberately **warn-only**: nothing rejects a theme. A house style can legitimately want
+a low-contrast pairing — the `line` token is barely visible against `paper` in every
+shipped theme, which is the entire point of a hairline — so the use-case reports and the
+UI shows what it reports.
+
+New `ColorField` component for the eleven color inputs: a swatch that opens the OS
+picker with the hex spelled out beside it. Either half alone is a broken control — a
+bare `<input type="color">` gives no way to paste a brand hex, and a bare text field no
+way to explore a hue.
+
+### Also
+
+- A `game` icon (a gamepad) across every installed icon set. Unlike the Music Library
+  addition, no set needed a placeholder — every package had a real controller glyph.
+- `game-scores` CLI command, the terminal counterpart of the Scores screen.
+- A motion section in `design.md`: keyframes are named classes in `globals.css`, animate
+  transform and opacity only, and every animation needs a `prefers-reduced-motion`
+  branch. That branch is a judgement call — decorative motion stops, but motion that is
+  the *only* feedback for an event has to survive in some form. The arrow bump becomes a
+  brightness flash rather than nothing, because it is the only visual sign that a move
+  was illegal.
+
 ## 2026-08-29 23:17 — Five threads, and a wildcard that was lying to you
 
 A wide release: a fix to the rule language that was quietly matching too much, billing

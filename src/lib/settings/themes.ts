@@ -7,6 +7,51 @@ export type FontKey =
   | "ibm-plex-mono"
   | "jetbrains-mono";
 
+/**
+ * Every font key, as a value rather than only a type.
+ *
+ * The union above cannot be iterated, and two things now need to: the zod schema that
+ * validates a user-built theme's font choice, and the admin builder's three font
+ * dropdowns. Both must agree with the `next/font/google` loaders in
+ * src/app/layout.tsx — a key here that nothing loads renders as the browser fallback.
+ * Adding a font means a loader there, an entry in `FONT_VAR_MAP` there, and a key here.
+ */
+export const FONT_KEYS = [
+  "space-grotesk",
+  "sora",
+  "familjen-grotesk",
+  "manrope",
+  "inter",
+  "ibm-plex-mono",
+  "jetbrains-mono",
+] as const satisfies readonly FontKey[];
+
+/** How each font is named on the builder's dropdowns. */
+export const FONT_LABELS: Record<FontKey, string> = {
+  "space-grotesk": "Space Grotesk",
+  sora: "Sora",
+  "familjen-grotesk": "Familjen Grotesk",
+  manrope: "Manrope",
+  inter: "Inter",
+  "ibm-plex-mono": "IBM Plex Mono",
+  "jetbrains-mono": "JetBrains Mono",
+};
+
+/** Which of the nine token slots are colors — the ones the builder shows a picker for. */
+export const COLOR_TOKEN_KEYS = [
+  "paper",
+  "paperRaised",
+  "ink",
+  "line",
+  "muted",
+  "mutedInverse",
+  "brass",
+  "brassDark",
+  "brassSoft",
+] as const;
+
+export type ColorTokenKey = (typeof COLOR_TOKEN_KEYS)[number];
+
 export interface ColorThemeFonts {
   display: FontKey;
   body: FontKey;

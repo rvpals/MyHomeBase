@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
+import { resolveActiveTheme } from "@/lib/color-themes";
 import { listModules } from "@/lib/modules";
-import { DEFAULT_COLOR_THEME_ID, getColorTheme, getSetting } from "@/lib/settings";
+import { getSetting } from "@/lib/settings";
 import { deps } from "@/lib/wiring";
 
 // The web-app manifest, which is what lets the app be installed to a phone's
@@ -17,8 +18,12 @@ import { deps } from "@/lib/wiring";
 // plus the `appleWebApp` metadata in layout.tsx.
 export default function manifest(): MetadataRoute.Manifest {
   const appName = getSetting(deps.settingsRepo, "application_name")?.value ?? "MyHomeBase";
-  const themeId = getSetting(deps.settingsRepo, "color_theme")?.value ?? DEFAULT_COLOR_THEME_ID;
-  const theme = getColorTheme(themeId);
+  // Reads the stored theme (migrations/0076) so a user-BUILT theme tints the splash
+  // screen and status bar too, not just the eight built-ins.
+  const theme = resolveActiveTheme(
+    deps.colorThemeRepo,
+    getSetting(deps.settingsRepo, "color_theme")?.value,
+  );
 
   return {
     // A stable identity, independent of `start_url`. Without it the browser

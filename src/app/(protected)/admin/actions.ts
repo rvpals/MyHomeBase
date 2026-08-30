@@ -9,6 +9,13 @@ import {
   setDashboardTextureImage,
   type DashboardTextureSettings,
 } from "@/lib/dashboard-texture";
+import {
+  createColorTheme,
+  deleteColorTheme,
+  duplicateColorTheme,
+  resetBuiltinTheme,
+  saveColorTheme,
+} from "@/lib/color-themes";
 import { clearOverride, saveOverride, ICON_OVERRIDE_MAX_BYTES } from "@/lib/icons";
 import {
   saveModuleSettings,
@@ -23,7 +30,14 @@ import {
   type Module,
   type ModuleUpdate,
 } from "@/lib/modules";
-import { resetSettingsToDefaults, updateSettings, type Setting } from "@/lib/settings";
+import {
+  DEFAULT_COLOR_THEME_ID,
+  getSetting,
+  resetSettingsToDefaults,
+  updateSettings,
+  type ColorThemeTokens,
+  type Setting,
+} from "@/lib/settings";
 import { isAdmin } from "@/lib/user";
 import { deps } from "@/lib/wiring";
 
@@ -326,6 +340,132 @@ export async function clearIconOverrideAction(
     return {
       ok: false,
       error: error instanceof Error ? error.message : "Could not remove that icon.",
+    };
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
+   Color themes (migrations/0076).
+
+   Themes are data now, so the Color Themes screen does more than pick one: it
+   creates, edits, duplicates, resets and deletes them. Each action below is its own
+   endpoint rather than folded into `saveAdminSettingsAction`'s batch, because the
+   builder saves one theme at a time and needs a per-theme error to show.
+
+   All five revalidate "layout": a theme change repaints the entire app, not this form.
+   ------------------------------------------------------------------------ */
+
+/** Mirrors the other result envelopes on this screen. */
+export interface ColorThemeResult {
+  ok: boolean;
+  error?: string;
+  /** The id that was written, so the view can select a newly created theme. */
+  id?: string;
+}
+
+/** What the builder posts. Validated by the lib schema, not here. */
+export interface ColorThemeFormInput {
+  id: string;
+  name: string;
+  description: string;
+  tokens: ColorThemeTokens;
+}
+
+export async function createColorThemeAction(
+  input: ColorThemeFormInput,
+): Promise<ColorThemeResult> {
+  try {
+    await requireAdmin();
+    const created = createColorTheme(deps.colorThemeRepo, { ...input, sortOrder: 100 });
+    revalidatePath("/", "layout");
+    return { ok: true, id: created.id };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not create that theme.",
+    };
+  }
+}
+
+/**
+ * Overwrites a theme, built-in or not.
+ *
+ * `sortOrder` is read from the existing row rather than taken from the form — the
+ * builder does not offer it, and defaulting it to 100 here would silently move every
+ * built-in to the end of the picker on its first edit.
+ */
+export async function saveColorThemeAction(
+  input: ColorThemeFormInput,
+): Promise<ColorThemeResult> {
+  try {
+    await requireAdmin();
+    const existing = deps.colorThemeRepo.get(input.id);
+    saveColorTheme(deps.colorThemeRepo, {
+      ...input,
+      sortOrder: existing?.sortOrder ?? 100,
+    });
+    revalidatePath("/", "layout");
+    return { ok: true, id: input.id };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not save that theme.",
+    };
+  }
+}
+
+export async function duplicateColorThemeAction(
+  sourceId: string,
+  newName: string,
+): Promise<ColorThemeResult> {
+  try {
+    await requireAdmin();
+    const copy = duplicateColorTheme(deps.colorThemeRepo, sourceId, newName);
+    revalidatePath("/", "layout");
+    return { ok: true, id: copy.id };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not duplicate that theme.",
+    };
+  }
+}
+
+/**
+ * Deletes a user theme.
+ *
+ * The active theme id is read HERE and passed in, rather than read inside the use-case:
+ * the use-case stays a function of its arguments, and the setting is a presentation-layer
+ * concern the action already has `deps` for.
+ */
+export async function deleteColorThemeAction(id: string): Promise<ColorThemeResult> {
+  try {
+    await requireAdmin();
+    const activeId =
+      getSetting(deps.settingsRepo, "color_theme")?.value ?? DEFAULT_COLOR_THEME_ID;
+    deleteColorTheme(deps.colorThemeRepo, { id }, activeId);
+    revalidatePath("/", "layout");
+    return { ok: true, id };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not delete that theme.",
+    };
+  }
+}
+
+/** Copies a built-in back to its definition in `COLOR_THEMES`. */
+export async function resetColorThemeAction(id: string): Promise<ColorThemeResult> {
+  try {
+    await requireAdmin();
+    resetBuiltinTheme(deps.colorThemeRepo, id);
+    revalidatePath("/", "layout");
+    return { ok: true, id };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not reset that theme.",
     };
   }
 }

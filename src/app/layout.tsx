@@ -15,6 +15,7 @@ import { IconSetProvider } from "@/components/icon-set-context";
 import { ViewportCorrector } from "@/components/viewport-corrector";
 import { ViewportProvider } from "@/components/viewport-context";
 import { getAppVersion } from "@/lib/app-version";
+import { resolveActiveTheme } from "@/lib/color-themes";
 import { getOverrideMap } from "@/lib/icons";
 import { listSplashImages } from "@/lib/pwa";
 import {
@@ -24,10 +25,8 @@ import {
 } from "@/lib/viewport";
 import type { ModuleIconSetId } from "@/components/module-icon-sets.generated";
 import {
-  DEFAULT_COLOR_THEME_ID,
   DEFAULT_ICON_SET_ID,
   type FontKey,
-  getColorTheme,
   getIconSet,
   getSetting,
 } from "@/lib/settings";
@@ -90,9 +89,16 @@ function getAppName(): string {
   return getSetting(deps.settingsRepo, "application_name")?.value ?? "MyHomeBase";
 }
 
+// Themes are DATA as of migration 0076, so this reads the row rather than the code
+// array. Still synchronous — better-sqlite3 is — which is what lets `generateViewport`
+// and `manifest.ts` keep calling it without becoming async. `resolveActiveTheme` always
+// answers: a selected id with no row falls back to the default, then to the code
+// definition, so a missing or unmigrated table renders a working page.
 function getActiveTheme() {
-  const themeId = getSetting(deps.settingsRepo, "color_theme")?.value ?? DEFAULT_COLOR_THEME_ID;
-  return getColorTheme(themeId);
+  return resolveActiveTheme(
+    deps.colorThemeRepo,
+    getSetting(deps.settingsRepo, "color_theme")?.value,
+  );
 }
 
 function getActiveIconSet() {
