@@ -1,5 +1,6 @@
 import { getAppVersion } from "@/lib/app-version";
 import { getChangeHistory } from "@/lib/change-history";
+import { listDeployments } from "@/lib/deployments";
 import { formatBytes, getSystemInfo } from "@/lib/system-info";
 import { deps } from "@/lib/wiring";
 import packageJson from "../../../../../package.json";
@@ -16,6 +17,7 @@ export default function AboutPage() {
   const systemInfo = getSystemInfo(deps.systemInfoRepo);
   const changeHistory = getChangeHistory(deps.changeHistoryRepo);
   const appVersion = getAppVersion(deps.buildIdRepo);
+  const deployments = listDeployments(deps.deploymentRepo);
 
   const stats = [
     { label: "Hostname", value: systemInfo.server.hostname },
@@ -64,6 +66,28 @@ export default function AboutPage() {
 
   const envRows = systemInfo.envVariables.map((variable) => ({ key: variable.key, value: variable.value }));
 
+  // Formatted here rather than in the view, like databaseRows above: the view is a client
+  // component, and a Date rendered there would format against the browser's locale on a
+  // phone and the server's on a desktop. `deployedAt` stays alongside its text so the grid
+  // can still sort on the raw ISO value.
+  const deploymentRows = deployments.map((deployment) => ({
+    id: deployment.id,
+    deployedAt: deployment.deployedAt,
+    deployedText: new Date(deployment.deployedAt).toLocaleString(),
+    builtAt: deployment.builtAt,
+    builtText: deployment.builtAt ? new Date(deployment.builtAt).toLocaleString() : null,
+    buildId: deployment.buildId,
+    appVersion: deployment.appVersion,
+    builtOnHost: deployment.builtOnHost,
+    nodeAbi: deployment.nodeAbi,
+    packageSizeBytes: deployment.packageSizeBytes,
+    packageSizeText: deployment.packageSizeBytes === null ? null : formatBytes(deployment.packageSizeBytes),
+    migrated: deployment.migrated,
+    buildOutput: deployment.buildOutput,
+    /** True for the build this server is running — the row worth pointing at. */
+    isCurrent: deployment.buildId !== null && deployment.buildId === appVersion.buildId,
+  }));
+
   return (
     <AboutView
       appName={packageJson.name}
@@ -76,6 +100,7 @@ export default function AboutPage() {
       databaseRows={databaseRows}
       envFilePath={systemInfo.envFilePath}
       envRows={envRows}
+      deployments={deploymentRows}
       changeHistoryMarkdown={changeHistory.markdown}
       changeHistorySummary={changeHistory.summary}
     />

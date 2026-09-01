@@ -12,6 +12,7 @@ import { clearCachesAndReload } from "@/components/app-version-watch";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
+import { Modal } from "@/components/modal";
 import { Tabs, type TabItem } from "@/components/tabs";
 import { UsageMeter } from "@/components/usage-meter";
 import {
@@ -23,6 +24,7 @@ import {
 } from "@/lib/change-history";
 import { formatBytes } from "@/lib/system-info";
 import { PAGE_CONTAINER } from "../../page-container";
+import { deleteDeploymentAction } from "./actions";
 
 interface StatItem {
   label: string;
@@ -50,6 +52,29 @@ interface DatabaseRow {
 interface EnvRow {
   key: string;
   value: string;
+}
+
+/**
+ * One deployment, formatted by the server page. Everything but `id`, `deployedAt` and
+ * `migrated` can be null — the build log that supplies those fields may not have shipped
+ * with the package (see migrations/0078_create_deployments.md), and the grid shows an em
+ * dash rather than dropping the row.
+ */
+interface DeploymentRow {
+  id: number;
+  deployedAt: string;
+  deployedText: string;
+  builtAt: string | null;
+  builtText: string | null;
+  buildId: string | null;
+  appVersion: string | null;
+  builtOnHost: string | null;
+  nodeAbi: number | null;
+  packageSizeBytes: number | null;
+  packageSizeText: string | null;
+  migrated: boolean;
+  buildOutput: string | null;
+  isCurrent: boolean;
 }
 
 function StatTile({ label, value }: StatItem) {
@@ -293,6 +318,7 @@ export function AboutView({
   databaseRows,
   envFilePath,
   envRows,
+  deployments,
   changeHistoryMarkdown,
   changeHistorySummary,
 }: {
@@ -307,6 +333,7 @@ export function AboutView({
   databaseRows: DatabaseRow[];
   envFilePath: string;
   envRows: EnvRow[];
+  deployments: DeploymentRow[];
   changeHistoryMarkdown: string | null;
   changeHistorySummary: ChangeHistorySummary | null;
 }) {
@@ -345,6 +372,132 @@ export function AboutView({
     // Once on mount. `refreshLog` closes over nothing that changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // The deployment pending deletion, or null when the confirm isn't up. Held here rather
+  // than as a boolean plus an id so the dialog can name what it is about to remove — and so
+  // there is no state in which it is open with nothing to delete.
+  const [pendingDelete, setPendingDelete] = useState<DeploymentRow | null>(null);
+  /** The deployment whose build log is on screen, or null when none is. */
+  const [viewingLog, setViewingLog] = useState<DeploymentRow | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    const result = await deleteDeploymentAction(pendingDelete.id);
+    setIsDeleting(false);
+    if (!result.ok) {
+      // Kept open on failure: closing would leave the row on screen with no explanation.
+      setDeleteError(result.error ?? "Failed to delete the deployment record.");
+      return;
+    }
+    // The action revalidates this route, so the grid re-renders without the row on its own.
+    setPendingDelete(null);
+  };
+
+  const deploymentColumns: DataGridColumn<DeploymentRow>[] = [
+    {
+      key: "deployed",
+      header: "Deployed",
+      value: (row) => row.deployedAt,
+      render: (row) => (
+        <span className="flex flex-wrap items-center gap-2">
+          {row.deployedText}
+          {/* The one row worth marking: the build this server is actually running. */}
+          {row.isCurrent ? (
+            <span className="shrink-0 rounded-full bg-brass-soft px-2 py-0.5 text-[0.65rem] font-medium uppercase tracking-wide text-brass-dark">
+              live
+            </span>
+          ) : null}
+        </span>
+      ),
+    },
+    {
+      key: "buildId",
+      header: "Build",
+      value: (row) => row.buildId ?? "",
+      render: (row) =>
+        row.buildId === null ? (
+          <span className="text-muted">—</span>
+        ) : (
+          <span className="break-all font-mono text-xs">{row.buildId}</span>
+        ),
+    },
+    {
+      key: "appVersion",
+      header: "Version",
+      value: (row) => row.appVersion ?? "",
+      render: (row) => row.appVersion ?? <span className="text-muted">—</span>,
+    },
+    {
+      key: "built",
+      header: "Built",
+      value: (row) => row.builtAt ?? "",
+      render: (row) => row.builtText ?? <span className="text-muted">—</span>,
+    },
+    {
+      key: "builtOnHost",
+      header: "Built on",
+      value: (row) => row.builtOnHost ?? "",
+      render: (row) => row.builtOnHost ?? <span className="text-muted">—</span>,
+    },
+    {
+      key: "packageSize",
+      header: "Package",
+      // Sorts on bytes, not on the formatted text — "9.9 MB" must not sort above "41.0 MB".
+      value: (row) => row.packageSizeBytes ?? 0,
+      render: (row) => row.packageSizeText ?? <span className="text-muted">—</span>,
+    },
+    {
+      key: "nodeAbi",
+      header: "Node ABI",
+      value: (row) => row.nodeAbi ?? 0,
+      render: (row) => row.nodeAbi ?? <span className="text-muted">—</span>,
+    },
+    {
+      key: "migrated",
+      header: "Migrated",
+      value: (row) => (row.migrated ? "yes" : "no"),
+      render: (row) =>
+        row.migrated ? (
+          <span className="rounded-full border border-emerald-400/40 px-2 py-0.5 text-[0.65rem] font-medium uppercase tracking-wide text-emerald-400">
+            yes
+          </span>
+        ) : (
+          <span className="text-muted">no</span>
+        ),
+    },
+    {
+      key: "buildOutput",
+      header: "Build log",
+      // No `value`: a few KB of console output is not a sortable, searchable or CSV-able
+      // cell, and it would wreck the row height inline — hence a button that opens it in a
+      // dialog. Its own dialog rather than DataGrid's record view: `setRecordIndex` is
+      // private to that component, so a cell cannot reach it, and "open the record" as a
+      // hint pointed at an unlabelled icon three columns to the left.
+      render: (row) =>
+        row.buildOutput === null ? (
+          <span className="text-muted">—</span>
+        ) : (
+          <Button size="sm" variant="secondary" onClick={() => setViewingLog(row)}>
+            View ({row.buildOutput.split("\n").length} lines)
+          </Button>
+        ),
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      // Row actions don't belong in a read-out of the record.
+      excludeFromRecordView: true,
+      render: (row) => (
+        <Button size="sm" variant="danger" onClick={() => setPendingDelete(row)}>
+          Delete
+        </Button>
+      ),
+    },
+  ];
 
   const databaseColumns: DataGridColumn<DatabaseRow>[] = [
     { key: "label", header: "File", value: (file) => file.label, render: (file) => file.label },
@@ -495,6 +648,33 @@ export function AboutView({
       ),
     },
     {
+      key: "deployments",
+      label: "Deployments",
+      content: (
+        <div className="mt-4">
+          <p className="text-sm text-muted">
+            One row per deployment that went live, newest first, with the build log the
+            package carried. Open a row&apos;s record to read its full build output.
+          </p>
+          <p className="mt-1 text-sm text-muted">
+            Recorded on the server as a new build starts, so a restart after a crash
+            doesn&apos;t appear here — only an actual publish does.
+          </p>
+          <div className="mt-4">
+            <DataGrid
+              columns={deploymentColumns}
+              rows={deployments}
+              getRowKey={(row) => row.id}
+              emptyMessage="No deployments recorded yet. The first one appears after the next publish."
+              exportFileName="deployments"
+              recordViewTitle={(row) => `Deployment ${row.deployedText}`}
+              storageKey="about-deployments"
+            />
+          </div>
+        </div>
+      ),
+    },
+    {
       key: "server-log",
       label: "Server Log",
       content: (
@@ -530,6 +710,70 @@ export function AboutView({
       <h1 className="mt-2 font-display text-3xl font-semibold text-ink">About</h1>
 
       <Tabs items={tabs} className="mt-8" />
+
+      {/* The build log, in the same bordered mono block the Server Log tab uses — long
+          lines stay legible and the surface stays quiet. `size="lg"` because a build log is
+          wide; it still wraps rather than scrolling sideways on a phone. */}
+      {viewingLog ? (
+        <Modal
+          title="Build log"
+          description={`Deployed ${viewingLog.deployedText}${
+            viewingLog.buildId ? ` — build ${viewingLog.buildId}` : ""
+          }.`}
+          size="lg"
+          onClose={() => setViewingLog(null)}
+          footer={
+            <Button variant="secondary" onClick={() => setViewingLog(null)}>
+              Close
+            </Button>
+          }
+        >
+          <pre className="max-h-[60vh] overflow-auto rounded-md border border-line bg-paper p-3 font-mono text-[11px] leading-5 whitespace-pre-wrap text-ink">
+            {viewingLog.buildOutput}
+          </pre>
+        </Modal>
+      ) : null}
+
+      {/* Guarded because the history is append-only: nothing recreates a deleted row short
+          of another deployment, so an accidental tap on a phone is unrecoverable. */}
+      {pendingDelete ? (
+        <Modal
+          title="Delete this deployment record?"
+          description={`Deployed ${pendingDelete.deployedText}${
+            pendingDelete.buildId ? ` — build ${pendingDelete.buildId}` : ""
+          }. This removes the record and its build log. It cannot be undone.`}
+          onClose={() => {
+            setPendingDelete(null);
+            setDeleteError(null);
+          }}
+          isBusy={isDeleting}
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setPendingDelete(null);
+                  setDeleteError(null);
+                }}
+                disabled={isDeleting}
+              >
+                Cancel
+              </Button>
+              <Button variant="danger" onClick={() => void confirmDelete()} disabled={isDeleting}>
+                {isDeleting ? "Deleting…" : "Delete"}
+              </Button>
+            </>
+          }
+        >
+          {deleteError ? (
+            <p className="text-sm text-red-400">{deleteError}</p>
+          ) : (
+            <p className="text-sm text-muted">
+              The deployment itself is unaffected — this only forgets that it happened.
+            </p>
+          )}
+        </Modal>
+      ) : null}
     </div>
   );
 }
