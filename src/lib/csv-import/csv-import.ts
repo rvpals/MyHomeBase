@@ -72,6 +72,7 @@ export function deleteNamedMapping(repo: CsvImportMappingRepository, id: number)
 export function summarizeImportResults(results: ImportRowResult[]): ImportSummary {
   return {
     importedCount: results.filter((result) => result.status === "imported").length,
+    updatedCount: results.filter((result) => result.status === "updated").length,
     skippedCount: results.filter((result) => result.status === "skipped").length,
     results,
   };

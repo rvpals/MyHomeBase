@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { FileDropzone } from "@/components/file-dropzone";
+import { Modal } from "@/components/modal";
 import type {
   ColumnMapping,
   CsvPreview,
@@ -12,8 +13,10 @@ import type {
   NamedMapping,
 } from "@/lib/csv-import";
 import { JOURNAL_IMPORT_FIELDS } from "@/lib/journal";
+import type { JournalImportPlan } from "@/lib/journal";
 import {
   deleteJournalMappingAction,
+  planJournalImportAction,
   previewJournalCsvAction,
   runJournalImportAction,
   saveJournalMappingAction,
@@ -60,6 +63,11 @@ export function JournalImportView({ namedMappings: initialNamedMappings }: { nam
   // a second copy of every entry. Unticking it is the deliberate escape hatch
   // for a file that really does hold another copy of something.
   const [skipDuplicates, setSkipDuplicates] = useState(true);
+  // Off by default, and deliberately harder to reach than the skip toggle: this
+  // is the one path in the module that rewrites entries you already have.
+  const [overwrite, setOverwrite] = useState(false);
+  // The dry run behind the confirmation dialog. Set only while the dialog is up.
+  const [plan, setPlan] = useState<JournalImportPlan | undefined>(undefined);
 
   async function handleFile(file: File) {
     setIsBusy(true);
@@ -154,17 +162,60 @@ export function JournalImportView({ namedMappings: initialNamedMappings }: { nam
     setNamedMappings((current) => current.filter((entry) => entry.id !== id));
   }
 
+  // Overwrite runs a dry pass first and opens the confirmation dialog; every
+  // other combination writes straight away, exactly as it did before.
   async function handleImport() {
+    if (!fileText) return;
+    if (!overwrite) {
+      await runImport();
+      return;
+    }
+
+    setIsBusy(true);
+    setError(undefined);
+    setSummary(undefined);
+    try {
+      const result = await planJournalImportAction(
+        fileText,
+        mapping,
+        fieldOptions,
+        skipDuplicates,
+        true,
+      );
+      if (!result.ok || !result.plan) {
+        setError(result.error ?? "Failed to inspect CSV.");
+        return;
+      }
+      if (result.plan.updateCount === 0) {
+        // Nothing would be overwritten, so there is nothing to confirm — the
+        // dialog would just be a speed bump in front of a plain import.
+        await runImport();
+        return;
+      }
+      setPlan(result.plan);
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function runImport() {
     if (!fileText) return;
     setIsBusy(true);
     setError(undefined);
     try {
-      const result = await runJournalImportAction(fileText, mapping, fieldOptions, skipDuplicates);
+      const result = await runJournalImportAction(
+        fileText,
+        mapping,
+        fieldOptions,
+        skipDuplicates,
+        overwrite,
+      );
       if (!result.ok) {
         setError(result.error);
         return;
       }
       setSummary(result.summary);
+      setPlan(undefined);
       router.refresh(); // re-fetch the entries list on the server
     } finally {
       setIsBusy(false);
@@ -318,27 +369,56 @@ export function JournalImportView({ namedMappings: initialNamedMappings }: { nam
           )}
 
           <div className="flex flex-col gap-3">
-            <label className="flex items-start gap-2 text-sm text-ink max-lg:py-1">
+            {/* Disabled, not hidden, while overwrite is on: the reader can still
+                see what the default behaviour would have been. */}
+            <label
+              className={`flex items-start gap-2 text-sm max-lg:py-1 ${
+                overwrite ? "text-muted" : "text-ink"
+              }`}
+            >
               <input
                 type="checkbox"
                 checked={skipDuplicates}
                 onChange={(event) => setSkipDuplicates(event.target.checked)}
-                disabled={isBusy}
+                disabled={isBusy || overwrite}
                 className="mt-0.5 accent-brass"
                 aria-describedby="journal-import-dedupe-hint"
               />
               <span>
                 Skip entries that already exist
                 <span id="journal-import-dedupe-hint" className="mt-0.5 block text-xs text-muted">
-                  An entry counts as existing when its date, time and title all match. Untick to
-                  import every row, even ones already in the journal.
+                  {overwrite
+                    ? "Superseded by \u201cOverwrite database from file\u201d \u2014 matching entries are updated, not skipped."
+                    : "An entry counts as existing when its date, time and title all match. Untick to import every row, even ones already in the journal."}
+                </span>
+              </span>
+            </label>
+
+            <label className="flex items-start gap-2 text-sm text-ink max-lg:py-1">
+              <input
+                type="checkbox"
+                checked={overwrite}
+                onChange={(event) => setOverwrite(event.target.checked)}
+                disabled={isBusy}
+                className="mt-0.5 accent-brass"
+                aria-describedby="journal-import-overwrite-hint"
+              />
+              <span>
+                Overwrite database from file
+                <span
+                  id="journal-import-overwrite-hint"
+                  className="mt-0.5 block text-xs text-muted"
+                >
+                  Replaces a matching entry with the row from the file, instead of leaving it
+                  alone. The whole entry is replaced, so a blank cell clears that field. You
+                  will see exactly which entries change before anything is written.
                 </span>
               </span>
             </label>
 
             <div>
               <Button onClick={handleImport} disabled={isBusy}>
-                {isBusy ? "Importing…" : "Import"}
+                {isBusy ? "Working…" : overwrite ? "Review changes" : "Import"}
               </Button>
             </div>
           </div>
@@ -346,7 +426,8 @@ export function JournalImportView({ namedMappings: initialNamedMappings }: { nam
           {summary && (
             <div className="rounded-md border border-line bg-paper p-3 text-sm">
               <p className="font-medium text-ink">
-                Imported {summary.importedCount}, skipped {summary.skippedCount}.
+                Imported {summary.importedCount}, updated {summary.updatedCount}, skipped{" "}
+                {summary.skippedCount}.
               </p>
               {summary.skippedCount > 0 && (
                 <ul className="mt-2 flex max-h-48 flex-col gap-1 overflow-y-auto text-xs text-muted">
@@ -362,6 +443,68 @@ export function JournalImportView({ namedMappings: initialNamedMappings }: { nam
             </div>
           )}
         </div>
+      )}
+
+      {plan && (
+        <Modal
+          title={`Overwrite ${plan.updateCount} existing ${
+            plan.updateCount === 1 ? "entry" : "entries"
+          }?`}
+          description="These stored entries will be replaced by the matching rows in the file. This cannot be undone."
+          onClose={() => setPlan(undefined)}
+          isBusy={isBusy}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setPlan(undefined)} disabled={isBusy}>
+                Cancel
+              </Button>
+              <Button onClick={runImport} disabled={isBusy}>
+                {isBusy ? "Overwriting…" : `Overwrite ${plan.updateCount}`}
+              </Button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-4">
+            <ul className="flex max-h-72 flex-col divide-y divide-line overflow-y-auto rounded-md border border-line">
+              {plan.rows
+                .filter((row) => row.action === "update")
+                .map((row) => (
+                  <li key={row.rowNumber} className="flex flex-col gap-0.5 px-3 py-2 text-sm">
+                    <span className="text-ink">{row.title || "(untitled)"}</span>
+                    <span className="text-xs text-muted">
+                      {row.date}
+                      {row.time ? ` ${row.time}` : ""} · row {row.rowNumber}
+                    </span>
+                  </li>
+                ))}
+            </ul>
+
+            {plan.createCount > 0 && (
+              <p className="text-sm text-muted">
+                {plan.createCount} new {plan.createCount === 1 ? "entry" : "entries"} will also be
+                added.
+              </p>
+            )}
+
+            {plan.skipCount > 0 && (
+              <div className="text-sm text-muted">
+                <p>
+                  {plan.skipCount} {plan.skipCount === 1 ? "row" : "rows"} will be skipped:
+                </p>
+                <ul className="mt-1 flex max-h-32 flex-col gap-1 overflow-y-auto text-xs">
+                  {plan.rows
+                    .filter((row) => row.action === "skip")
+                    .map((row) => (
+                      <li key={row.rowNumber}>
+                        Row {row.rowNumber}
+                        {row.title ? ` — ${row.title}` : ""}: {row.blockedReason}
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </Modal>
       )}
     </div>
   );

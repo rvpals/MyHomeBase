@@ -454,6 +454,22 @@ export class SqliteJournalRepository implements JournalRepository {
     return row.matches;
   }
 
+  findEntryIdsMatching(key: JournalEntryMatchKey): number[] {
+    // Same predicate and same index as countEntriesMatching — kept literally
+    // identical so the overwrite import can never target a row the duplicate
+    // check would not have counted.
+    const rows = this.db
+      .prepare(
+        `SELECT id FROM jrn_entries
+         WHERE entry_date = @date
+           AND entry_time = @time
+           AND TRIM(title) = @title
+         ORDER BY id`,
+      )
+      .all({ ...key, title: key.title.trim() }) as { id: number }[];
+    return rows.map((row) => row.id);
+  }
+
   setEntryPinned(id: number, isPinned: boolean): JournalEntry {
     this.db
       .prepare("UPDATE jrn_entries SET is_pinned = ? WHERE id = ?")

@@ -186,5 +186,16 @@ export {
   setPrefillTemplateEnabled,
   listPrefillSuggestions,
 } from "./prefill";
-export { importJournalCsv, autoMapJournalHeaders, JOURNAL_IMPORT_FIELDS } from "./csv-import";
+export {
+  importJournalCsv,
+  planJournalImport,
+  autoMapJournalHeaders,
+  JOURNAL_IMPORT_FIELDS,
+} from "./csv-import";
+export type {
+  JournalImportAction,
+  JournalImportOptions,
+  JournalImportPlan,
+  JournalImportPlanRow,
+} from "./csv-import";
 export { normalizeEntryTime } from "./time";

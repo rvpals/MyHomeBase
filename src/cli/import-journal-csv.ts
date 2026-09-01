@@ -12,7 +12,8 @@ export async function importJournalCsvCommand(args: string[]): Promise<void> {
 
   if (!filePath) {
     console.error(
-      "Usage: import-journal-csv --file <path> [--mapping <saved-mapping-name>] [--allow-duplicates]",
+      "Usage: import-journal-csv --file <path> [--mapping <saved-mapping-name>] "
+        + "[--allow-duplicates] [--overwrite]",
     );
     process.exitCode = 1;
     return;
@@ -21,6 +22,11 @@ export async function importJournalCsvCommand(args: string[]): Promise<void> {
   // Duplicates are skipped unless asked for, matching the import screen's
   // default: re-running the same import should be a no-op.
   const skipDuplicates = !("allow-duplicates" in flags);
+  // --overwrite updates a matched entry in place instead of skipping it, and
+  // takes precedence over --allow-duplicates just as the toggle does in the UI.
+  // Destructive and unattended here: the web screen confirms against a plan
+  // first, a CLI run has already made its choice by typing the flag.
+  const overwrite = "overwrite" in flags;
 
   try {
     const fileText = readFileSync(filePath, "utf8");
@@ -44,8 +50,12 @@ export async function importJournalCsvCommand(args: string[]): Promise<void> {
 
     const summary = importJournalCsv(deps.journalRepo, fileText, columnMapping, fieldOptions, {
       skipDuplicates,
+      overwrite,
     });
-    console.log(`Imported ${summary.importedCount}, skipped ${summary.skippedCount}.`);
+    console.log(
+      `Imported ${summary.importedCount}, updated ${summary.updatedCount}, ` +
+        `skipped ${summary.skippedCount}.`,
+    );
     for (const result of summary.results) {
       if (result.status === "skipped") console.log(`  Row ${result.rowNumber}: ${result.reason}`);
     }

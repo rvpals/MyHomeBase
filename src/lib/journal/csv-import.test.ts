@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { importJournalCsv } from "./csv-import";
+import { importJournalCsv, planJournalImport } from "./csv-import";
 import type { JournalRepository } from "./ports";
 import type { EntryLocation, JournalCategory, JournalEntry, JournalTag } from "./types";
 
@@ -53,8 +53,36 @@ function fakeRepo(): JournalRepository {
       entries.push(entry);
       return entry;
     },
-    updateEntry: () => {
-      throw new Error("not used");
+    // Real, not a throw: the overwrite import drives it. Replaces the whole
+    // aggregate like the SQL repository does, keeping id and createdAt.
+    updateEntry(id, input) {
+      const existing = entries.find((entry) => entry.id === id);
+      if (!existing) throw new Error(`Entry ${id} not found.`);
+      const locations: EntryLocation[] = input.locations.map((location, index) => ({
+        id: nextLocationId++,
+        entryId: id,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        locationName: location.locationName,
+        sortOrder: index,
+      }));
+      const updated: JournalEntry = {
+        ...existing,
+        date: input.date,
+        time: input.time,
+        title: input.title,
+        content: input.content,
+        placeName: input.placeName,
+        weather: input.weather,
+        isPinned: input.isPinned,
+        isLocked: input.isLocked,
+        categories: [...input.categories],
+        tags: [...input.tags],
+        locations,
+        updatedAt: now,
+      };
+      entries = entries.map((entry) => (entry.id === id ? updated : entry));
+      return updated;
     },
     deleteEntry(id) {
       entries = entries.filter((entry) => entry.id !== id);
@@ -68,11 +96,25 @@ function fakeRepo(): JournalRepository {
           entry.time === key.time &&
           entry.title.trim() === key.title.trim(),
       ).length,
+    // Same predicate as countEntriesMatching, ordered by id like the SQL.
+    findEntryIdsMatching: (key) =>
+      entries
+        .filter(
+          (entry) =>
+            entry.date === key.date &&
+            entry.time === key.time &&
+            entry.title.trim() === key.title.trim(),
+        )
+        .map((entry) => entry.id)
+        .sort((a, b) => a - b),
     setEntryPinned: () => {
       throw new Error("not used");
     },
-    setEntryLocked: () => {
-      throw new Error("not used");
+    setEntryLocked(id, isLocked) {
+      const existing = entries.find((entry) => entry.id === id);
+      if (!existing) throw new Error(`Entry ${id} not found.`);
+      existing.isLocked = isLocked;
+      return existing;
     },
     listCategories: () => [...categories],
     getCategoryByName: (name) => categories.find((category) => category.name === name),
@@ -389,6 +431,155 @@ describe("importJournalCsv", () => {
         "Duplicate of an existing entry",
         expect.stringContaining("date"),
       ]);
+    });
+  });
+
+  // `overwrite` answers the limitation the duplicate check creates: without it an
+  // edited entry can never be re-imported, because the match ignores content.
+  describe("overwrite", () => {
+    const row = (title: string, content = "Body", time = "13:45") =>
+      `"4/27/26","${time}","FAMILY","Trip","","","","${title}","${content}"`;
+
+    it("replaces a matching entry instead of skipping it", () => {
+      const repo = fakeRepo();
+      importJournalCsv(repo, `${HEADER}\n${row("Gym", "Old body")}`, MAPPING, OPTIONS);
+      const before = repo.listEntries()[0];
+
+      const summary = importJournalCsv(
+        repo,
+        `${HEADER}\n${row("Gym", "New body")}`,
+        MAPPING,
+        OPTIONS,
+        { overwrite: true },
+      );
+
+      expect(summary).toMatchObject({ importedCount: 0, updatedCount: 1, skippedCount: 0 });
+      const entries = repo.listEntries();
+      expect(entries).toHaveLength(1); // updated in place, not duplicated
+      expect(entries[0].id).toBe(before.id);
+      expect(entries[0].content).toBe("New body");
+    });
+
+    it("still inserts a row that matches nothing", () => {
+      const repo = fakeRepo();
+      importJournalCsv(repo, `${HEADER}\n${row("Gym")}`, MAPPING, OPTIONS);
+
+      const summary = importJournalCsv(
+        repo,
+        `${HEADER}\n${row("Gym", "Edited")}\n${row("Brand new")}`,
+        MAPPING,
+        OPTIONS,
+        { overwrite: true },
+      );
+
+      expect(summary).toMatchObject({ importedCount: 1, updatedCount: 1, skippedCount: 0 });
+      expect(repo.listEntries()).toHaveLength(2);
+    });
+
+    it("wins over skipDuplicates when both are asked for", () => {
+      const repo = fakeRepo();
+      importJournalCsv(repo, `${HEADER}\n${row("Gym", "Old")}`, MAPPING, OPTIONS);
+
+      const summary = importJournalCsv(repo, `${HEADER}\n${row("Gym", "New")}`, MAPPING, OPTIONS, {
+        skipDuplicates: true,
+        overwrite: true,
+      });
+
+      expect(summary).toMatchObject({ updatedCount: 1, skippedCount: 0 });
+      expect(repo.listEntries()[0].content).toBe("New");
+    });
+
+    it("refuses a locked entry and says why, leaving it untouched", () => {
+      const repo = fakeRepo();
+      importJournalCsv(repo, `${HEADER}\n${row("Gym", "Original")}`, MAPPING, OPTIONS);
+      repo.setEntryLocked(repo.listEntries()[0].id, true);
+
+      const summary = importJournalCsv(repo, `${HEADER}\n${row("Gym", "New")}`, MAPPING, OPTIONS, {
+        overwrite: true,
+      });
+
+      expect(summary).toMatchObject({ importedCount: 0, updatedCount: 0, skippedCount: 1 });
+      expect(summary.results[0].reason).toContain("Locked");
+      expect(repo.listEntries()[0].content).toBe("Original");
+    });
+
+    it("leaves the default behaviour alone when it is off", () => {
+      const repo = fakeRepo();
+      importJournalCsv(repo, `${HEADER}\n${row("Gym", "Old")}`, MAPPING, OPTIONS);
+
+      const summary = importJournalCsv(repo, `${HEADER}\n${row("Gym", "New")}`, MAPPING, OPTIONS);
+
+      expect(summary).toMatchObject({ importedCount: 0, updatedCount: 0, skippedCount: 1 });
+      expect(repo.listEntries()[0].content).toBe("Old");
+    });
+  });
+
+  // The dry run drives the confirmation dialog, so what it reports and what the
+  // import then does have to agree.
+  describe("planJournalImport", () => {
+    const row = (title: string, content = "Body", time = "13:45") =>
+      `"4/27/26","${time}","FAMILY","Trip","","","","${title}","${content}"`;
+
+    it("writes nothing", () => {
+      const repo = fakeRepo();
+      importJournalCsv(repo, `${HEADER}\n${row("Gym", "Old")}`, MAPPING, OPTIONS);
+
+      const plan = planJournalImport(
+        repo,
+        `${HEADER}\n${row("Gym", "New")}\n${row("Fresh")}`,
+        MAPPING,
+        OPTIONS,
+        { overwrite: true },
+      );
+
+      expect(plan).toMatchObject({ updateCount: 1, createCount: 1, skipCount: 0 });
+      expect(repo.listEntries()).toHaveLength(1);
+      expect(repo.listEntries()[0].content).toBe("Old");
+    });
+
+    it("names the entry each row would overwrite", () => {
+      const repo = fakeRepo();
+      importJournalCsv(repo, `${HEADER}\n${row("Gym", "Old")}`, MAPPING, OPTIONS);
+      const storedId = repo.listEntries()[0].id;
+
+      const plan = planJournalImport(repo, `${HEADER}\n${row("Gym", "New")}`, MAPPING, OPTIONS, {
+        overwrite: true,
+      });
+
+      expect(plan.rows[0]).toMatchObject({
+        rowNumber: 2,
+        action: "update",
+        entryId: storedId,
+        date: "2026-04-27",
+        time: "13:45",
+        title: "Gym",
+      });
+    });
+
+    it("matches what the import then does", () => {
+      const csv = `${HEADER}\n${row("Gym", "New")}\n${row("Fresh")}\n"bad","","","","","","","X",""`;
+      const repo = fakeRepo();
+      importJournalCsv(repo, `${HEADER}\n${row("Gym", "Old")}`, MAPPING, OPTIONS);
+
+      const plan = planJournalImport(repo, csv, MAPPING, OPTIONS, { overwrite: true });
+      const summary = importJournalCsv(repo, csv, MAPPING, OPTIONS, { overwrite: true });
+
+      expect(summary.updatedCount).toBe(plan.updateCount);
+      expect(summary.importedCount).toBe(plan.createCount);
+      expect(summary.skippedCount).toBe(plan.skipCount);
+    });
+
+    it("flags a locked entry before anything is written", () => {
+      const repo = fakeRepo();
+      importJournalCsv(repo, `${HEADER}\n${row("Gym", "Original")}`, MAPPING, OPTIONS);
+      repo.setEntryLocked(repo.listEntries()[0].id, true);
+
+      const plan = planJournalImport(repo, `${HEADER}\n${row("Gym", "New")}`, MAPPING, OPTIONS, {
+        overwrite: true,
+      });
+
+      expect(plan).toMatchObject({ updateCount: 0, skipCount: 1 });
+      expect(plan.rows[0].blockedReason).toContain("Locked");
     });
   });
 });

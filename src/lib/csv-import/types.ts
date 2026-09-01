@@ -85,12 +85,19 @@ export interface NamedMapping {
 
 export interface ImportRowResult {
   rowNumber: number;
-  status: "imported" | "skipped";
+  /**
+   * `updated` means the row matched an existing record and replaced it, rather
+   * than inserting a second copy. Only the journal import produces it today —
+   * every other importer emits `imported` or `skipped`, so their summaries
+   * simply report `updatedCount: 0`.
+   */
+  status: "imported" | "updated" | "skipped";
   reason?: string;
 }
 
 export interface ImportSummary {
   importedCount: number;
+  updatedCount: number;
   skippedCount: number;
   results: ImportRowResult[];
 }

@@ -90,6 +90,16 @@ export interface JournalRepository {
    * on both sides. Case is significant: a re-titled entry is a different entry.
    */
   countEntriesMatching(key: JournalEntryMatchKey): number;
+  /**
+   * The ids of every entry matching `key`, oldest first — the same predicate
+   * `countEntriesMatching` counts.
+   *
+   * The overwrite import needs the id, not just the tally, to update a matched
+   * entry in place. Ordered by id so that when a key has several copies, the
+   * Nth CSV row overwrites the Nth stored entry deterministically rather than
+   * whichever one SQLite happened to return first.
+   */
+  findEntryIdsMatching(key: JournalEntryMatchKey): number[];
   setEntryPinned(id: number, isPinned: boolean): JournalEntry;
   setEntryLocked(id: number, isLocked: boolean): JournalEntry;
 

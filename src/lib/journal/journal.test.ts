@@ -239,6 +239,17 @@ function fakeRepo(): JournalRepository {
           entry.time === key.time &&
           entry.title.trim() === key.title.trim(),
       ).length,
+    // Same predicate as countEntriesMatching, ordered by id like the SQL.
+    findEntryIdsMatching: (key) =>
+      entries
+        .filter(
+          (entry) =>
+            entry.date === key.date &&
+            entry.time === key.time &&
+            entry.title.trim() === key.title.trim(),
+        )
+        .map((entry) => entry.id)
+        .sort((a, b) => a - b),
     setEntryPinned(id, isPinned) {
       const existing = entries.find((entry) => entry.id === id);
       if (!existing) throw new Error(`Entry ${id} not found.`);

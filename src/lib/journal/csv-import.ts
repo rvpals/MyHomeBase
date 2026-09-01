@@ -15,7 +15,7 @@ import type {
   ImportRowResult,
   ImportSummary,
 } from "@/lib/csv-import";
-import { createEntry } from "./journal";
+import { createEntry, updateEntry } from "./journal";
 import type { JournalEntryMatchKey, JournalRepository } from "./ports";
 import type { CreateEntryInput, EntryLocationInput } from "./schema";
 import { normalizeEntryTime } from "./time";
@@ -159,6 +159,177 @@ function matchKeyFor(input: CreateEntryInput): JournalEntryMatchKey {
   return { date: input.date, time: input.time ?? "", title: (input.title ?? "").trim() };
 }
 
+/** How a CSV row will be resolved against what is already stored. */
+export type JournalImportAction = "create" | "update" | "skip";
+
+/** One row's resolution, as shown in the overwrite confirmation dialog. */
+export interface JournalImportPlanRow {
+  /** 1-based row number in the file, counting the header as row 1. */
+  rowNumber: number;
+  action: JournalImportAction;
+  /** The entry this row will overwrite. Set only when `action` is "update". */
+  entryId?: number;
+  /** The match key, for display. Empty strings when the row failed to parse. */
+  date: string;
+  time: string;
+  title: string;
+  /**
+   * Why this row will be skipped — a parse failure, an existing entry left
+   * alone, or a locked entry that overwrite is not allowed to touch. Set only
+   * when `action` is "skip".
+   */
+  blockedReason?: string;
+}
+
+export interface JournalImportPlan {
+  rows: JournalImportPlanRow[];
+  createCount: number;
+  updateCount: number;
+  skipCount: number;
+}
+
+export interface JournalImportOptions {
+  /**
+   * Skip a row whose date, time and title already exist. Default true, so
+   * re-importing the same export is a no-op. Ignored when `overwrite` is on.
+   */
+  skipDuplicates?: boolean;
+  /**
+   * Update the matched entry in place instead of skipping it. Takes precedence
+   * over `skipDuplicates` — the two would otherwise disagree about what to do
+   * with a duplicate, and "overwrite the database from the file" is the more
+   * specific instruction.
+   *
+   * Replaces the whole entry: a blank CSV cell clears the stored field. Merge
+   * semantics would need a per-field rule for what "blank" means, and the
+   * toggle does not promise that.
+   */
+  overwrite?: boolean;
+}
+
+// Walks the file once and decides what each row would do, without writing
+// anything. `planJournalImport` and `importJournalCsv` both drive this, so the
+// list shown in the confirmation dialog cannot drift from what the import then
+// does.
+//
+// `onRow` is called in file order with the decision and, for a create or an
+// update, the parsed input to write.
+function walkJournalCsv(
+  repo: JournalRepository,
+  fileText: string,
+  columnMapping: ColumnMapping,
+  fieldOptions: FieldOptionsMap,
+  options: JournalImportOptions,
+  onRow: (row: JournalImportPlanRow, input?: CreateEntryInput) => void,
+): void {
+  const overwrite = options.overwrite ?? false;
+  const skipDuplicates = options.skipDuplicates ?? true;
+  const dataRecords = parseCsvRecords(fileText).slice(1); // drop the header row
+
+  // How many copies of each key this file has produced so far, and the ids the
+  // table held BEFORE the import began. The stored ids are read once per
+  // distinct key and then reused: rows this run inserts must not inflate the
+  // baseline, or the second legitimate identical row in one file would look
+  // like a duplicate of the first. Same reasoning as importTransactionsFromCsv.
+  const seenByKey = new Map<string, number>();
+  const storedIdsByKey = new Map<string, number[]>();
+
+  dataRecords.forEach((record, index) => {
+    const rowNumber = index + 2; // 1-based, +1 for the header row
+    if (record.every((cell) => cell.trim() === "")) return;
+
+    let input: CreateEntryInput;
+    try {
+      input = recordToEntryInput(record, columnMapping, fieldOptions);
+    } catch (error) {
+      onRow({
+        rowNumber,
+        action: "skip",
+        date: "",
+        time: "",
+        title: "",
+        blockedReason: error instanceof Error ? error.message : "unknown error",
+      });
+      return;
+    }
+
+    const key = matchKeyFor(input);
+    const base = { rowNumber, date: key.date, time: key.time, title: key.title };
+
+    // Neither toggle is on: the file is taken at face value, every row inserts.
+    if (!overwrite && !skipDuplicates) {
+      onRow({ ...base, action: "create" }, input);
+      return;
+    }
+
+    // Tab-joined: a literal tab can't appear in a CSV cell that parsed as one
+    // field, so no two distinct keys can collide on this string.
+    const cacheKey = [key.date, key.time, key.title].join("\t");
+    let storedIds = storedIdsByKey.get(cacheKey);
+    if (storedIds === undefined) {
+      storedIds = repo.findEntryIdsMatching(key);
+      storedIdsByKey.set(cacheKey, storedIds);
+    }
+    const seen = seenByKey.get(cacheKey) ?? 0;
+    seenByKey.set(cacheKey, seen + 1);
+
+    // Beyond the stored count this row is a genuine addition, not a duplicate.
+    if (seen >= storedIds.length) {
+      onRow({ ...base, action: "create" }, input);
+      return;
+    }
+
+    if (!overwrite) {
+      onRow({ ...base, action: "skip", blockedReason: "Duplicate of an existing entry" });
+      return;
+    }
+
+    // The Nth copy in the file overwrites the Nth stored copy — ordered by id,
+    // so a key with several entries resolves deterministically.
+    const entryId = storedIds[seen];
+    const existing = repo.getEntryById(entryId);
+    if (existing?.isLocked) {
+      // Surfaced in the plan rather than thrown at write time, so a locked
+      // entry is visible in the confirmation dialog before anything is written.
+      onRow({ ...base, action: "skip", blockedReason: "Locked — unlock it before overwriting" });
+      return;
+    }
+
+    onRow({ ...base, action: "update", entryId }, input);
+  });
+}
+
+/**
+ * Works out what an import would do, without writing anything.
+ *
+ * Drives the overwrite confirmation dialog: the reader sees exactly which stored
+ * entries are about to be replaced, and can cancel. The decision logic is shared
+ * with `importJournalCsv`, so the preview and the write agree.
+ *
+ * Nothing locks the table between the two calls. In a single-user app the window
+ * is however long the dialog stays open; a row that changed in between is
+ * re-resolved on the real run rather than blindly applied.
+ */
+export function planJournalImport(
+  repo: JournalRepository,
+  fileText: string,
+  columnMapping: ColumnMapping,
+  fieldOptions: FieldOptionsMap = {},
+  options: JournalImportOptions = {},
+): JournalImportPlan {
+  const rows: JournalImportPlanRow[] = [];
+  walkJournalCsv(repo, fileText, columnMapping, fieldOptions, options, (row) => {
+    rows.push(row);
+  });
+
+  return {
+    rows,
+    createCount: rows.filter((row) => row.action === "create").length,
+    updateCount: rows.filter((row) => row.action === "update").length,
+    skipCount: rows.filter((row) => row.action === "skip").length,
+  };
+}
+
 /**
  * Imports journal entries from CSV text using a column mapping and per-column
  * options. Best-effort: every parseable row is imported; each failing row is
@@ -171,69 +342,41 @@ function matchKeyFor(input: CreateEntryInput): JournalEntryMatchKey {
  * then taken at face value, which is what you want when a file deliberately
  * holds a second copy of something.
  *
+ * Pass `{ overwrite: true }` to update matched entries in place instead. That is
+ * the answer to the limitation below, and it is destructive: call
+ * `planJournalImport` first and confirm with the reader.
+ *
  * Content is not part of the match: a re-export with reflowed body text is the
- * same entry. The consequence is that an edited entry's new text will NOT
- * overwrite the stored one — nothing here ever updates an existing entry, it
- * only declines to duplicate it.
+ * same entry. Without `overwrite` the consequence is that an edited entry's new
+ * text will NOT overwrite the stored one — the import only declines to
+ * duplicate it.
  */
 export function importJournalCsv(
   repo: JournalRepository,
   fileText: string,
   columnMapping: ColumnMapping,
   fieldOptions: FieldOptionsMap = {},
-  options: { skipDuplicates?: boolean } = {},
+  options: JournalImportOptions = {},
 ): ImportSummary {
-  const skipDuplicates = options.skipDuplicates ?? true;
-  const dataRecords = parseCsvRecords(fileText).slice(1); // drop the header row
   const results: ImportRowResult[] = [];
 
-  // How many copies of each key this file has produced so far, and how many the
-  // table held BEFORE the import began. The stored baseline is read once per
-  // distinct key and then reused: rows this run inserts must not inflate it, or
-  // the second legitimate identical row in one file would look like a duplicate
-  // of the first. Same reasoning as importTransactionsFromCsv.
-  const seenByKey = new Map<string, number>();
-  const storedByKey = new Map<string, number>();
-
-  dataRecords.forEach((record, index) => {
-    const rowNumber = index + 2; // 1-based, +1 for the header row
-    if (record.every((cell) => cell.trim() === "")) return;
+  walkJournalCsv(repo, fileText, columnMapping, fieldOptions, options, (row, input) => {
+    if (row.action === "skip" || !input) {
+      results.push({ rowNumber: row.rowNumber, status: "skipped", reason: row.blockedReason });
+      return;
+    }
 
     try {
-      const input = recordToEntryInput(record, columnMapping, fieldOptions);
-
-      if (skipDuplicates) {
-        const key = matchKeyFor(input);
-        // Tab-joined: a literal tab can't appear in a CSV cell that parsed as
-        // one field, so no two distinct keys can collide on this string.
-        const cacheKey = [key.date, key.time, key.title].join("\t");
-
-        let stored = storedByKey.get(cacheKey);
-        if (stored === undefined) {
-          stored = repo.countEntriesMatching(key);
-          storedByKey.set(cacheKey, stored);
-        }
-        const seen = seenByKey.get(cacheKey) ?? 0;
-
-        // Only skip once the file has produced as many copies as are already
-        // stored; beyond that this row is a genuine addition.
-        if (seen < stored) {
-          seenByKey.set(cacheKey, seen + 1);
-          results.push({
-            rowNumber,
-            status: "skipped",
-            reason: "Duplicate of an existing entry",
-          });
-          return;
-        }
-        seenByKey.set(cacheKey, seen + 1);
+      if (row.action === "update" && row.entryId !== undefined) {
+        updateEntry(repo, row.entryId, input);
+        results.push({ rowNumber: row.rowNumber, status: "updated" });
+      } else {
+        createEntry(repo, input);
+        results.push({ rowNumber: row.rowNumber, status: "imported" });
       }
-
-      createEntry(repo, input);
-      results.push({ rowNumber, status: "imported" });
     } catch (error) {
       results.push({
-        rowNumber,
+        rowNumber: row.rowNumber,
         status: "skipped",
         reason: error instanceof Error ? error.message : "unknown error",
       });

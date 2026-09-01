@@ -13,7 +13,8 @@ import {
   type ImportSummary,
   type NamedMapping,
 } from "@/lib/csv-import";
-import { autoMapJournalHeaders, importJournalCsv } from "@/lib/journal";
+import { autoMapJournalHeaders, importJournalCsv, planJournalImport } from "@/lib/journal";
+import type { JournalImportPlan } from "@/lib/journal";
 import { deps } from "@/lib/wiring";
 
 const JOURNAL_MODULE_PATH = "/modules/journal";
@@ -96,6 +97,32 @@ export async function deleteJournalMappingAction(id: number): Promise<ActionResu
   return { ok: true };
 }
 
+export interface JournalImportPlanResult extends ActionResult {
+  plan?: JournalImportPlan;
+}
+
+/**
+ * Works out what an overwrite import would do, without writing anything — the
+ * list the confirmation dialog shows before the reader commits.
+ */
+export async function planJournalImportAction(
+  fileText: string,
+  columnMapping: ColumnMapping,
+  fieldOptions: FieldOptionsMap,
+  skipDuplicates = true,
+  overwrite = false,
+): Promise<JournalImportPlanResult> {
+  try {
+    const plan = planJournalImport(deps.journalRepo, fileText, columnMapping, fieldOptions, {
+      skipDuplicates,
+      overwrite,
+    });
+    return { ok: true, plan };
+  } catch (error) {
+    return toErrorResult(error, "Failed to inspect CSV.");
+  }
+}
+
 export interface JournalImportResult extends ActionResult {
   summary?: ImportSummary;
 }
@@ -105,10 +132,12 @@ export async function runJournalImportAction(
   columnMapping: ColumnMapping,
   fieldOptions: FieldOptionsMap,
   skipDuplicates = true,
+  overwrite = false,
 ): Promise<JournalImportResult> {
   try {
     const summary = importJournalCsv(deps.journalRepo, fileText, columnMapping, fieldOptions, {
       skipDuplicates,
+      overwrite,
     });
     revalidatePath(JOURNAL_MODULE_PATH);
     return { ok: true, summary };
