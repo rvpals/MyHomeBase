@@ -202,14 +202,19 @@ export function Game2048View({ bestScore }: { bestScore: number }) {
       </div>
 
       {/*
-        The board is a square that scales with the viewport rather than reflowing:
-        `min(28rem, 88vw)` keeps it comfortably inside a phone width and caps it on a
-        desktop. Sizing the wrapper (not the cells) is what keeps the grid square at
-        every width, so no `max-lg:` grid override is needed.
+        The board is a square that scales with the viewport rather than reflowing.
+        Sizing the wrapper (not the cells) is what keeps the grid square at every
+        width, so no `max-lg:` grid override is needed.
+
+        Three terms, because the game plays full-bleed and each one binds on a
+        different screen: `34rem` caps it on a large monitor, `88vw` keeps it inside a
+        phone, and `58vh` is the one that matters in the dialog — a square capped only
+        by width overflows a short landscape window vertically and pushes the score
+        row and the New game button off-screen.
       */}
       <div
         className="mx-auto w-full"
-        style={{ maxWidth: "min(28rem, 88vw)" }}
+        style={{ maxWidth: "min(34rem, 88vw, 58vh)" }}
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
       >

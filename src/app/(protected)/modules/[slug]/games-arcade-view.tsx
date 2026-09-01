@@ -2,17 +2,26 @@
 
 import { useState } from "react";
 import { Button } from "@/components/button";
+import { Modal } from "@/components/modal";
 import { arrowDifficultyOf, formatScore, type GameSummary } from "@/lib/games";
 import { Game2048View } from "./game-2048-view";
 import { GameArrowsView } from "./game-arrows-view";
+import { GameTetrisView } from "./game-tetris-view";
 
-// The Arcade: the list of games, and the selected game's board below it.
+// The Arcade: the list of games, and the selected game played full-bleed over it.
 //
-// Which game is showing is client state rather than a search param, deliberately.
-// `modules.md` says anything a screen should survive a refresh or a bookmark on
-// belongs in the URL — but a game in progress does NOT survive a refresh (the board
-// is client state and is intentionally not persisted), so a URL that reopened the
-// game would restore an empty board and imply otherwise.
+// Play opens the game in a `Modal size="full"` rather than a card below the list.
+// A board squeezed into the content column — beside the module rail, under the
+// section panel and the instruction card — was the whole screen's least prominent
+// element, which is backwards for the one thing the page exists to do. Full-bleed
+// gives the board the viewport and drops the surrounding chrome while playing.
+//
+// A dialog rather than a route, deliberately. `modules.md` says anything a screen
+// should survive a refresh or a bookmark on belongs in the URL — but a game in
+// progress does NOT survive a refresh (the board is client state and is intentionally
+// not persisted), so a route would be bookmarkable and would reopen an empty board,
+// implying otherwise. `Modal` also brings Escape, the focus trap and the body-scroll
+// lock, all of which a hand-rolled overlay would have to re-solve.
 
 export function GamesArcadeView({ games }: { games: GameSummary[] }) {
   const [openKey, setOpenKey] = useState<string | undefined>(undefined);
@@ -28,50 +37,53 @@ export function GamesArcadeView({ games }: { games: GameSummary[] }) {
       <ul className="grid grid-cols-3 gap-4 max-lg:grid-cols-1">
         {games.map((entry) => (
           <li key={entry.game.key}>
-            <GameCard
-              summary={entry}
-              isOpen={entry.game.key === openKey}
-              onOpen={() => setOpenKey(entry.game.key)}
-              onClose={() => setOpenKey(undefined)}
-            />
+            <GameCard summary={entry} onOpen={() => setOpenKey(entry.game.key)} />
           </li>
         ))}
       </ul>
 
       {open && (
-        <section className="rounded-xl border border-line bg-paper-raised p-5 max-lg:p-3">
-          <header className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="font-display text-lg text-ink">{open.game.name}</h2>
-            <Button onClick={() => setOpenKey(undefined)} variant="secondary" size="sm">
-              Close
+        <Modal
+          title={open.game.name}
+          description={open.game.description}
+          onClose={() => setOpenKey(undefined)}
+          size="full"
+          footer={
+            <Button onClick={() => setOpenKey(undefined)} variant="secondary">
+              Back to the arcade
             </Button>
-          </header>
-          {/* One branch per playable game. A new game adds a case here and an entry
-              to GAME_CATALOGUE — no schema change, no nav change. */}
-          {open.game.key === "2048" && <Game2048View bestScore={open.best?.score ?? 0} />}
-          {/* The three Arrow Clearing keys are three boards of the same game, so they
-              share one view and pass their own difficulty. `arrowDifficultyOf` maps the
-              key back, which keeps the mapping in the library beside the keys. */}
-          {arrowDifficulty && (
-            <GameArrowsView difficulty={arrowDifficulty} bestScore={open.best?.score ?? 0} />
-          )}
-        </section>
+          }
+        >
+          {/*
+            Centred in the dialog body, which is `flex-1 overflow-auto`. `min-h-full`
+            with `justify-center` rather than a fixed height: the board centres in the
+            space available on a desktop, and on a short phone the controls stay
+            reachable by scrolling instead of being clipped.
+          */}
+          <div className="flex min-h-full flex-col items-center justify-center">
+            <div className="w-full max-w-3xl">
+              {/* One branch per playable game. A new game adds a case here and an
+                  entry to GAME_CATALOGUE — no schema change, no nav change. */}
+              {open.game.key === "2048" && <Game2048View bestScore={open.best?.score ?? 0} />}
+              {/* The three Arrow Clearing keys are three boards of the same game, so
+                  they share one view and pass their own difficulty. `arrowDifficultyOf`
+                  maps the key back, keeping that mapping in the library beside the
+                  keys. */}
+              {arrowDifficulty && (
+                <GameArrowsView difficulty={arrowDifficulty} bestScore={open.best?.score ?? 0} />
+              )}
+              {open.game.key === "tetris" && (
+                <GameTetrisView bestScore={open.best?.score ?? 0} />
+              )}
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );
 }
 
-function GameCard({
-  summary,
-  isOpen,
-  onOpen,
-  onClose,
-}: {
-  summary: GameSummary;
-  isOpen: boolean;
-  onOpen: () => void;
-  onClose: () => void;
-}) {
+function GameCard({ summary, onOpen }: { summary: GameSummary; onOpen: () => void }) {
   const { game, best, played } = summary;
   const playable = game.status === "available";
 
@@ -108,13 +120,8 @@ function GameCard({
         {best && <p className="mt-2 truncate text-xs text-muted">Held by {best.userName}</p>}
 
         {playable && (
-          <Button
-            onClick={isOpen ? onClose : onOpen}
-            variant={isOpen ? "secondary" : "primary"}
-            size="sm"
-            className="mt-3 w-full"
-          >
-            {isOpen ? "Close" : "Play"}
+          <Button onClick={onOpen} size="sm" className="mt-3 w-full">
+            Play
           </Button>
         )}
       </div>

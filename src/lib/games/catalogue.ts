@@ -24,28 +24,22 @@ export const GAME_CATALOGUE: readonly CatalogueGame[] = [
     status: "available",
     scoreUnit: "points",
   },
-  // Arrow Clearing is three catalogue entries rather than one game with a difficulty
-  // setting, because the scoreboard sorts on score alone: a 5x5 clear and a 9x9 clear
-  // posting to the same board would rank a much easier puzzle against a much harder
-  // one. Three keys give three honest boards.
-  {
-    key: "arrow-clearing-easy",
-    name: "Arrow Clearing — Easy",
-    description: "A 5x5 board. Clear every arrow off the edge, in the right order.",
-    status: "available",
-    scoreUnit: "points",
-  },
-  {
-    key: "arrow-clearing-medium",
-    name: "Arrow Clearing — Medium",
-    description: "A 7x7 board with more arrows in each other's way.",
-    status: "available",
-    scoreUnit: "points",
-  },
+  // One Arrow Clearing entry. It shipped as three (easy/medium/hard) and the two
+  // smaller boards were withdrawn in migration 0077 — the largest was already no
+  // challenge, so a ladder below it was pointless. The key still says `-hard` because
+  // it is stored in `gam_scores.game_key`: renaming it would orphan every score
+  // already posted against it, exactly as renaming an icon slot id orphans an upload.
   {
     key: "arrow-clearing-hard",
-    name: "Arrow Clearing — Hard",
-    description: "A 9x9 board. Every arrow blocks two others; find the thread.",
+    name: "Arrow Clearing",
+    description: "A 9x9 maze of arrows. Clear every one off the board, in the right order.",
+    status: "available",
+    scoreUnit: "points",
+  },
+  {
+    key: "tetris",
+    name: "Tetris",
+    description: "Stack the falling pieces, clear full lines, and outlast the speed.",
     status: "available",
     scoreUnit: "points",
   },
