@@ -11,3 +11,11 @@ export const readOnlySqlStatementSchema = sqlStatementSchema.refine(
   (sql) => /^\s*SELECT\b/i.test(sql),
   { message: "Only SELECT queries are allowed here." },
 );
+
+// A table name crossing the boundary. Kept to the characters SQLite identifiers
+// actually use here, so a name can never carry a quote or a semicolon into the
+// interpolated DELETE. The repository additionally checks the name exists.
+export const tableNameSchema = z
+  .string()
+  .min(1)
+  .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "Not a valid table name.");

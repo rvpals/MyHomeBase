@@ -1,5 +1,5 @@
 import type { SqlExplorerRepository } from "./ports";
-import { readOnlySqlStatementSchema, sqlStatementSchema } from "./schema";
+import { readOnlySqlStatementSchema, sqlStatementSchema, tableNameSchema } from "./schema";
 import type { SqlExecutionResult, TableInfo } from "./types";
 
 export function listTables(repo: SqlExplorerRepository): TableInfo[] {
@@ -34,4 +34,21 @@ export function executeReadOnlyQuery(
     throw new Error("Only SELECT queries are allowed here.");
   }
   return { columns: result.columns, rows: result.rows };
+}
+
+/** How many rows a table currently holds — the number the truncate warning quotes. */
+export function countTableRows(repo: SqlExplorerRepository, tableName: string): number {
+  return repo.countRows(tableNameSchema.parse(tableName));
+}
+
+/**
+ * Deletes every row from a table and resets its id counter, returning the count
+ * deleted.
+ *
+ * Irreversible and takes no backup — the caller is responsible for confirming
+ * with the reader first. Read the count with `countTableRows` to say how much is
+ * about to go.
+ */
+export function truncateTable(repo: SqlExplorerRepository, tableName: string): number {
+  return repo.truncateTable(tableNameSchema.parse(tableName));
 }

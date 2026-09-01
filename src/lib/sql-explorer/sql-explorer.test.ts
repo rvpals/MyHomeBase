@@ -1,6 +1,16 @@
-import { describe, expect, it } from "vitest";
-import { executeReadOnlyQuery, executeStatement, listTables } from "./sql-explorer";
+import { beforeEach, describe, expect, it } from "vitest";
+import {
+  countTableRows,
+  executeReadOnlyQuery,
+  executeStatement,
+  listTables,
+  truncateTable,
+} from "./sql-explorer";
 import type { SqlExplorerRepository } from "./ports";
+
+// Table names the fake was asked to truncate, so a test can assert the
+// use-case actually reached the repository (and only for the right table).
+let truncated: string[] = [];
 
 function fakeRepo(): SqlExplorerRepository {
   return {
@@ -16,6 +26,15 @@ function fakeRepo(): SqlExplorerRepository {
         return { kind: "query", columns: ["id"], rows: [[1], [2]] };
       }
       return { kind: "statement", changes: 1 };
+    },
+    countRows(tableName) {
+      if (tableName !== "widgets") throw new Error(`No such table: ${tableName}`);
+      return 42;
+    },
+    truncateTable(tableName) {
+      if (tableName !== "widgets") throw new Error(`No such table: ${tableName}`);
+      truncated.push(tableName);
+      return 42;
     },
   };
 }
@@ -77,7 +96,49 @@ describe("executeReadOnlyQuery", () => {
     const lyingRepo: SqlExplorerRepository = {
       listTables: () => [],
       executeStatement: () => ({ kind: "statement", changes: 5 }),
+      countRows: () => 0,
+      truncateTable: () => 0,
     };
     expect(() => executeReadOnlyQuery(lyingRepo, "SELECT 1")).toThrow();
   });
+});
+
+describe("countTableRows", () => {
+  it("returns the repository's count", () => {
+    expect(countTableRows(fakeRepo(), "widgets")).toBe(42);
+  });
+
+  it.each([[""], ["no-hyphens"], ["drop; DROP TABLE x"], ["bad name"], ["1st_table"], ['a"b']])(
+    "rejects %s before it reaches the repository",
+    (name) => {
+      expect(() => countTableRows(fakeRepo(), name)).toThrow();
+    },
+  );
+});
+
+describe("truncateTable", () => {
+  beforeEach(() => {
+    truncated = [];
+  });
+
+  it("returns the number of rows deleted", () => {
+    expect(truncateTable(fakeRepo(), "widgets")).toBe(42);
+  });
+
+  it("reaches the repository with the table name", () => {
+    truncateTable(fakeRepo(), "widgets");
+    expect(truncated).toEqual(["widgets"]);
+  });
+
+  it("propagates the repository's error for a table that doesn't exist", () => {
+    expect(() => truncateTable(fakeRepo(), "nope")).toThrow(/No such table/);
+  });
+
+  it.each([[""], ["users; DROP TABLE widgets"], ['widgets" --'], ["a b"], ["9lives"]])(
+    "rejects %s without touching the repository",
+    (name) => {
+      expect(() => truncateTable(fakeRepo(), name)).toThrow();
+      expect(truncated).toEqual([]);
+    },
+  );
 });
