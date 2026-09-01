@@ -18,6 +18,7 @@ import type {
 import { createEntry } from "./journal";
 import type { JournalEntryMatchKey, JournalRepository } from "./ports";
 import type { CreateEntryInput, EntryLocationInput } from "./schema";
+import { normalizeEntryTime } from "./time";
 
 // The journal fields a CSV column can be mapped to, for the mapping UI. People
 // is intentionally absent as a distinct field — a People column is mapped to
@@ -120,7 +121,10 @@ function recordToEntryInput(
         }
         break;
       case "time":
-        time = value;
+        // Normalized here, not just by createEntrySchema on write: matchKeyFor
+        // reads this object, so a raw "15:30:00" would be compared against a
+        // stored canonical "15:30" and the row would look new.
+        time = normalizeEntryTime(value);
         break;
       case "title":
         title = value;

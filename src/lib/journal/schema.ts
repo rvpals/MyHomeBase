@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { IMAGE_UPLOAD_MIME_TYPES, imageUploadSchema } from "@/lib/shared/image-upload";
+import { normalizeEntryTime } from "./time";
 
 // zod is the single source of truth for the shapes crossing every boundary
 // (web actions, CLI, importer). Entity schemas validate what the repository
@@ -56,7 +57,10 @@ const entryDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be fo
 
 export const createEntrySchema = z.object({
   date: entryDateSchema,
-  time: z.string().default(""),
+  // Canonicalized to HH:MM so the importer's date+time+title duplicate check
+  // can't be defeated by a file that writes seconds. Applies to updates too —
+  // updateEntrySchema is this schema.
+  time: z.string().default("").transform(normalizeEntryTime),
   title: z.string().default(""),
   content: z.string().default(""),
   placeName: z.string().default(""),

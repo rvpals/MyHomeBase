@@ -187,3 +187,4 @@ export {
   listPrefillSuggestions,
 } from "./prefill";
 export { importJournalCsv, autoMapJournalHeaders, JOURNAL_IMPORT_FIELDS } from "./csv-import";
+export { normalizeEntryTime } from "./time";
