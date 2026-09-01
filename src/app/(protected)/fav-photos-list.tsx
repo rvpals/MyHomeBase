@@ -1,22 +1,28 @@
 "use client";
 
-// The "My favorites" list behind the random photo card's heart button.
+// The My Favorite Photos list: the grid, the inline note editor, the lightbox, and the
+// two bulk actions.
 //
-// A one-off home-screen dialog, not a registered component, for the same reason
-// random-photo-widget.tsx is one: it exists to serve that card and nothing else asks
-// for a list of favourite photographs. If a second caller ever appears, this is the
-// moment to promote it — not before.
+// A one-off home-screen island, not a registered component, for the same reason
+// random-photo-widget.tsx is one: nothing else in the app asks for a list of favourite
+// photographs. If a second caller ever appears, this is the moment to promote it — not
+// before.
+//
+// This was the body of a dialog opened from the Random Photo card. It became its own
+// screen (`/favorite-photos`) once it grew bulk actions: selecting rows, downloading a
+// zip and deleting several favourites is work, and work wants a page with a URL and a
+// back button rather than an overlay you might dismiss halfway through. The card's
+// button now navigates here.
 
 import { useCallback, useState } from "react";
 import { Button } from "@/components/button";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
-import { Modal } from "@/components/modal";
 import { PhotoLightbox } from "@/components/photo-lightbox";
 import { TreeIcon } from "@/components/tree-icons";
 import type { FavPhoto } from "@/lib/fav-photos";
 import {
   listFavPhotosAction,
-  removeFavPhotoAction,
+  removeFavPhotosAction,
   setFavPhotoNoteAction,
 } from "./random-photo-actions";
 
@@ -76,7 +82,7 @@ function NoteCell({
       onBlur={commit}
       onKeyDown={(event) => {
         if (event.key === "Enter") event.currentTarget.blur();
-        // Escape abandons the edit rather than closing the dialog underneath it.
+        // Escape abandons the edit rather than bubbling anywhere.
         if (event.key === "Escape") {
           event.stopPropagation();
           setDraft(favorite.note);
@@ -93,25 +99,26 @@ function NoteCell({
   );
 }
 
-export function FavPhotosDialog({
+export function FavPhotosList({
   initialFavorites,
-  onClose,
   onChanged,
 }: {
-  /** The list as the card last read it, so the dialog opens with content. */
+  /** The list as the server read it for this page load, so the screen opens with content. */
   initialFavorites: FavPhoto[];
-  onClose: () => void;
   /**
    * Raised after any write, with the fresh list.
    *
-   * The card owns whether the *currently shown* photo is favourited, and removing it
-   * from this list has to un-fill its heart. Handing back the whole list rather than a
-   * "something changed" ping means the card re-derives that without a second read.
+   * Optional because the page has nobody to tell — it IS the list. The Random Photo
+   * card used to need this to un-fill its heart when the shown photo was removed here;
+   * kept on the props so that wiring is available again without a redesign if the list
+   * ever goes back inside something.
    */
-  onChanged: (favorites: FavPhoto[]) => void;
+  onChanged?: (favorites: FavPhoto[]) => void;
 }) {
   const [favorites, setFavorites] = useState(initialFavorites);
   const [error, setError] = useState<string | undefined>(undefined);
+  const [notice, setNotice] = useState<string | undefined>(undefined);
+  const [isBulkBusy, setIsBulkBusy] = useState(false);
   // An out-of-range index renders nothing, so one number means "closed" — the contract
   // PhotoLightbox documents.
   const [lightboxIndex, setLightboxIndex] = useState(-1);
@@ -122,7 +129,7 @@ export function FavPhotosDialog({
   const refresh = useCallback(async () => {
     const fresh = await listFavPhotosAction();
     setFavorites(fresh);
-    onChanged(fresh);
+    onChanged?.(fresh);
     return fresh;
   }, [onChanged]);
 
@@ -132,7 +139,7 @@ export function FavPhotosDialog({
       try {
         const written = await setFavPhotoNoteAction(relativePath, note);
         if (!written) {
-          // The row went away between opening the dialog and this blur.
+          // The row went away between opening the screen and this blur.
           setError("That photo is no longer a favourite, so the note wasn't saved.");
         }
         await refresh();
@@ -143,18 +150,119 @@ export function FavPhotosDialog({
     [refresh],
   );
 
+  /**
+   * Un-stars one or several favourites.
+   *
+   * One path for both the row's trash button and the bulk action, because they are the
+   * same operation at different sizes — and the server call takes a list either way.
+   * Only the bulk case confirms: a single row's button is one undo-able mistake, while
+   * "remove 40 photos" is not something to do on a mis-tap.
+   */
   const handleRemove = useCallback(
-    async (relativePath: string) => {
+    async (relativePaths: string[], onDone?: () => void) => {
+      if (relativePaths.length === 0) return;
       setError(undefined);
+      setNotice(undefined);
+
+      if (
+        relativePaths.length > 1 &&
+        !window.confirm(
+          `Remove ${relativePaths.length} photos from your favorites? The pictures themselves are not deleted.`,
+        )
+      ) {
+        return;
+      }
+
+      setIsBulkBusy(true);
       try {
-        await removeFavPhotoAction(relativePath);
+        const result = await removeFavPhotosAction(relativePaths);
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+        // The two numbers only differ when the list on screen was stale — a row removed
+        // on another device in the meantime. Worth saying, but not worth a sentence when
+        // everything went as asked.
+        setNotice(
+          result.missing > 0
+            ? `Removed ${result.removed} of ${relativePaths.length} — the rest were already gone.`
+            : `Removed ${result.removed} from favorites.`,
+        );
+        onDone?.();
         await refresh();
       } catch {
-        setError("Couldn't remove that favourite.");
+        setError("Couldn't remove those favourites.");
+      } finally {
+        setIsBulkBusy(false);
       }
     },
     [refresh],
   );
+
+  /**
+   * Downloads the selected photographs as one zip.
+   *
+   * A `fetch` and a blob rather than pointing an `<a download>` at the route, because
+   * the route is a POST — see the route's own comment for why the selection travels in
+   * a body instead of a query string. The cost is this function: the response has to be
+   * read, turned into a blob and saved by hand, and errors arrive as JSON rather than
+   * as a browser download failure. Worth it to keep 200 long paths out of a URL.
+   *
+   * The selection is deliberately KEPT afterwards. Downloading a set and then removing
+   * it is the obvious next move, and clearing the ticks would make the reader select
+   * all of it again.
+   */
+  const handleDownload = useCallback(async (rows: FavPhoto[]) => {
+    if (rows.length === 0) return;
+    setError(undefined);
+    setNotice(undefined);
+    setIsBulkBusy(true);
+
+    try {
+      const response = await fetch("/api/journal/photos/zip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paths: rows.map((row) => row.relativePath) }),
+      });
+
+      if (!response.ok) {
+        // The route reports the actionable cases (too many, too large, none readable)
+        // as JSON with a message meant to be shown.
+        const body = await response.json().catch(() => undefined);
+        setError(body?.error ?? "Couldn't build that download.");
+        return;
+      }
+
+      // The name the route chose, so the date in it comes from one place. Falls back
+      // only if the header is somehow absent.
+      const disposition = response.headers.get("Content-Disposition") ?? "";
+      const fileName = /filename="([^"]+)"/.exec(disposition)?.[1] ?? "favorite-photos.zip";
+      const missing = Number(response.headers.get("X-Missing-Photos") ?? "0");
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+
+      // A favourite whose file has gone is skipped by the route rather than failing the
+      // whole download, so the count is reported here instead of silently differing
+      // from what was selected.
+      setNotice(
+        missing > 0
+          ? `Downloaded ${rows.length - missing} of ${rows.length} — ${missing} could not be found in the archive.`
+          : `Downloaded ${rows.length} photo${rows.length === 1 ? "" : "s"}.`,
+      );
+    } catch {
+      setError("Couldn't download those photos.");
+    } finally {
+      setIsBulkBusy(false);
+    }
+  }, []);
 
   // A removal can leave the lightbox pointing past the end of a now-shorter list.
   // Clamped during render rather than corrected in an effect: an effect would paint one
@@ -222,7 +330,8 @@ export function FavPhotosDialog({
           <Button
             size="sm"
             variant="secondary"
-            onClick={() => void handleRemove(row.relativePath)}
+            disabled={isBulkBusy}
+            onClick={() => void handleRemove([row.relativePath])}
             title="Remove from favorites"
             ariaLabel={`Remove ${fileNameOf(row.relativePath)} from favorites`}
           >
@@ -234,8 +343,9 @@ export function FavPhotosDialog({
   ];
 
   return (
-    <Modal title="My favorite photos" size="lg" onClose={onClose}>
+    <div>
       {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
+      {notice && <p className="mb-3 text-sm text-muted">{notice}</p>}
 
       <DataGrid
         columns={columns}
@@ -244,8 +354,36 @@ export function FavPhotosDialog({
         emptyMessage="No favourite photos yet — press the heart on the random photo card to keep one."
         exportFileName="favorite-photos"
         storageKey="home:fav-photos"
-        // Clicking a row opens the photo. The note field and the remove button stop
-        // their own clicks from reaching it, so each control does one thing.
+        enableSelection
+        renderSelectionActions={(selectedRows, clearSelection) => (
+          <>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={isBulkBusy}
+              onClick={() => void handleDownload(selectedRows)}
+            >
+              {/* Text, not a glyph: there is no `download` icon in the set, and
+                  inventing one for a bulk action would be the wrong place to start. */}
+              {isBulkBusy ? "Working…" : `Download ${selectedRows.length}`}
+            </Button>
+            <Button
+              size="sm"
+              variant="danger"
+              disabled={isBulkBusy}
+              onClick={() =>
+                void handleRemove(
+                  selectedRows.map((row) => row.relativePath),
+                  clearSelection,
+                )
+              }
+            >
+              Remove from favorites
+            </Button>
+          </>
+        )}
+        // Clicking a row opens the photo. The note field, the checkbox and the remove
+        // button stop their own clicks from reaching it, so each control does one thing.
         onRowClick={(row) =>
           setLightboxIndex(favorites.findIndex((one) => one.relativePath === row.relativePath))
         }
@@ -267,6 +405,6 @@ export function FavPhotosDialog({
           onClose={() => setLightboxIndex(-1)}
         />
       )}
-    </Modal>
+    </div>
   );
 }

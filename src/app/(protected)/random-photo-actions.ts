@@ -3,6 +3,7 @@
 import {
   listFavPhotos,
   removeFavPhoto,
+  removeFavPhotos,
   setFavPhotoNote,
   toggleFavPhoto,
   type FavPhoto,
@@ -82,4 +83,40 @@ export async function setFavPhotoNoteAction(
  */
 export async function removeFavPhotoAction(relativePath: string): Promise<boolean> {
   return removeFavPhoto(deps.favPhotoRepo, relativePath);
+}
+
+/**
+ * What the list's bulk removal reports back.
+ *
+ * A result object rather than a throw, because every failure here is something the
+ * screen should print next to the button that caused it: a selection containing a
+ * malformed path is a bug worth seeing, not a reason to blank the list. Matches the
+ * `{ ok }` shape the expense module's bulk actions use.
+ */
+export type RemoveFavPhotosResult =
+  | { ok: true; removed: number; missing: number }
+  | { ok: false; error: string };
+
+/**
+ * Un-stars several favourites in one call, for the list's bulk action.
+ *
+ * One round trip for the whole selection rather than one per row: forty sequential
+ * server actions over an SMB-backed SQLite file is forty write locks, and the list
+ * would re-read itself forty times. The use-case validates every path before deleting
+ * any of them, so a bad selection fails whole — see `removeFavPhotos`.
+ *
+ * `missing` is a count, not the paths: the screen says "removed 3 of 5", and shipping
+ * the paths back would invite a caller to render a list nobody asked for.
+ */
+export async function removeFavPhotosAction(
+  relativePaths: string[],
+): Promise<RemoveFavPhotosResult> {
+  try {
+    const result = removeFavPhotos(deps.favPhotoRepo, relativePaths);
+    return { ok: true, removed: result.removed, missing: result.missing.length };
+  } catch {
+    // A path that fails the schema lands here. Deliberately not echoing the raw value
+    // back into the page.
+    return { ok: false, error: "Some of those photos couldn't be removed." };
+  }
 }

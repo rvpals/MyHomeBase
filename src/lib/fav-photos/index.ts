@@ -22,6 +22,15 @@ export {
   isFavPhoto,
   listFavPhotos,
   removeFavPhoto,
+  removeFavPhotos,
   setFavPhotoNote,
   toggleFavPhoto,
+  type FavPhotoBulkRemoval,
 } from "./fav-photos";
+export {
+  favPhotoArchiveName,
+  planFavPhotoDownload,
+  MAX_DOWNLOAD_BYTES,
+  MAX_DOWNLOAD_PHOTOS,
+  type FavPhotoDownloadEntry,
+} from "./download";

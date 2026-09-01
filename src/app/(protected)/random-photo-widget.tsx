@@ -14,7 +14,6 @@ import type { FavPhoto } from "@/lib/fav-photos";
 import { getIconSlot } from "@/lib/icons";
 import type { RandomPhotoPick } from "@/lib/journal-photos";
 import { calendarAgeSince, formatCalendarAge } from "@/lib/shared/date";
-import { FavPhotosDialog } from "./fav-photos-dialog";
 import {
   drawRandomPhotoAction,
   listFavPhotosAction,
@@ -109,9 +108,9 @@ export function RandomPhotoWidget({
    * Every favourite, read on the server for this page load.
    *
    * The whole list rather than a bare `isFavorite` for the drawn photo, because the
-   * card needs both answers: which glyph the heart shows, and what the dialog opens
-   * onto. One read serves both, and it means pressing "My favorites" shows the list
-   * immediately instead of opening onto a spinner.
+   * card needs two answers from it: which glyph the heart shows, and how many
+   * favourites there are to badge the link to `/favorite-photos` with. One read serves
+   * both.
    */
   initialFavorites: FavPhoto[];
   /** Spacing is the caller's call, as with the other home-screen cards. */
@@ -123,7 +122,6 @@ export function RandomPhotoWidget({
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [favorites, setFavorites] = useState(initialFavorites);
   const [isFavoriting, setIsFavoriting] = useState(false);
-  const [isListOpen, setIsListOpen] = useState(false);
 
   async function handleRefresh() {
     setIsDrawing(true);
@@ -218,14 +216,24 @@ export function RandomPhotoWidget({
             <RefreshIcon className={`h-4 w-4 ${isDrawing ? "animate-spin" : ""}`} />
           </Button>
 
+          {/* Navigates rather than opening a dialog. The list carries bulk selection,
+              a zip download and multi-row deletion now — work that wants a URL and a
+              back button, not an overlay that a stray Escape can dismiss halfway
+              through. `href` makes this a real link, so it also middle-clicks. */}
           <Button
             size="sm"
             variant="secondary"
-            onClick={() => setIsListOpen(true)}
+            href="/favorite-photos"
             title="My favorite photos"
             ariaLabel="My favorite photos"
           >
-            <TreeIcon name="heart-filled" className="h-4 w-4" />
+            {/* `photo-stack`, not `heart-filled`. This button is a destination; the
+                heart two controls to the left is a toggle whose fill says whether the
+                shown photo is kept. Sharing one glyph made the header read as two
+                hearts doing different jobs. No icon slot: `photo-stack` is in
+                `ALWAYS_CLASSIC` for the reason above, so a slot offering to override it
+                would be a control that does nothing. */}
+            <TreeIcon name="photo-stack" className="h-4 w-4" />
             {/* The count is the one piece of text in this row: it tells the reader
                 whether the list is worth opening before they open it. Hidden on a
                 phone, where three glyphs and a number crowd the title. */}
@@ -285,17 +293,6 @@ export function RandomPhotoWidget({
           index={0}
           onIndexChange={() => {}}
           onClose={() => setIsLightboxOpen(false)}
-        />
-      )}
-
-      {/* Mounted only while open, so it re-reads on each visit rather than holding a
-          stale list — and `initialFavorites` is the card's own state, which the toggle
-          above keeps current. */}
-      {isListOpen && (
-        <FavPhotosDialog
-          initialFavorites={favorites}
-          onChanged={setFavorites}
-          onClose={() => setIsListOpen(false)}
         />
       )}
     </CollapsibleCard>

@@ -5,6 +5,7 @@ import {
   isFavPhoto,
   listFavPhotos,
   removeFavPhoto,
+  removeFavPhotos,
   setFavPhotoNote,
   toggleFavPhoto,
 } from "./index";
@@ -225,5 +226,62 @@ describe("getFavPhoto", () => {
 
     expect(getFavPhoto(repo, PATH)?.note).toBe("Kept");
     expect(getFavPhoto(repo, OTHER)).toBeUndefined();
+  });
+});
+
+describe("removeFavPhotos", () => {
+  it("removes every selected favourite and counts them", () => {
+    const repo = fakeRepo();
+    addFavPhoto(repo, PATH);
+    addFavPhoto(repo, OTHER);
+
+    expect(removeFavPhotos(repo, [PATH, OTHER])).toEqual({ removed: 2, missing: [] });
+    expect(listFavPhotos(repo)).toEqual([]);
+  });
+
+  it("reports the ones that were already gone rather than failing", () => {
+    // The list on screen can be minutes old — a row removed on a phone in the meantime
+    // is a normal outcome, not an error, but the reader should be told the count
+    // differed from what they selected.
+    const repo = fakeRepo();
+    addFavPhoto(repo, PATH);
+
+    const result = removeFavPhotos(repo, [PATH, OTHER]);
+    expect(result.removed).toBe(1);
+    expect(result.missing).toEqual([OTHER]);
+  });
+
+  it("collapses a repeated path instead of reporting it missing", () => {
+    const repo = fakeRepo();
+    addFavPhoto(repo, PATH);
+
+    expect(removeFavPhotos(repo, [PATH, PATH])).toEqual({ removed: 1, missing: [] });
+  });
+
+  it("normalises paths, so a backslash selection still matches the stored row", () => {
+    const repo = fakeRepo();
+    addFavPhoto(repo, PATH);
+
+    const result = removeFavPhotos(repo, [PATH.split("/").join("\\")]);
+    expect(result).toEqual({ removed: 1, missing: [] });
+  });
+
+  it("removes nothing at all when one path in the selection is unsafe", () => {
+    // The whole point of validating up front: a half-applied bulk delete leaves the
+    // reader unable to say what they still have.
+    const repo = fakeRepo();
+    addFavPhoto(repo, PATH);
+    addFavPhoto(repo, OTHER);
+
+    expect(() => removeFavPhotos(repo, [PATH, "../../etc/passwd"])).toThrow();
+    expect(listFavPhotos(repo)).toHaveLength(2);
+  });
+
+  it("does nothing for an empty selection", () => {
+    const repo = fakeRepo();
+    addFavPhoto(repo, PATH);
+
+    expect(removeFavPhotos(repo, [])).toEqual({ removed: 0, missing: [] });
+    expect(listFavPhotos(repo)).toHaveLength(1);
   });
 });

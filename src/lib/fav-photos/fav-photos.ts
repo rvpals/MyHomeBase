@@ -108,6 +108,61 @@ export function removeFavPhoto(repo: FavPhotoRepository, rawPath: string): boole
 }
 
 /**
+ * The result of un-starring several photographs at once.
+ *
+ * Both numbers, rather than a bare count: "removed 3 of 5" is the honest report when
+ * the list on screen was read a while ago and two of the rows are already gone, and a
+ * single number can't say that. The list's bulk bar shows the difference only when
+ * there is one.
+ */
+export interface FavPhotoBulkRemoval {
+  /** How many rows this call actually deleted. */
+  removed: number;
+  /** Paths that were already not favourites — removed in another tab, or never starred. */
+  missing: string[];
+}
+
+/**
+ * Un-stars several photographs, reporting what actually changed.
+ *
+ * Not a loop over `removeFavPhoto` at the call site, for two reasons. Every path is
+ * validated BEFORE anything is deleted, so a selection containing one malformed path
+ * fails whole rather than half-applying — a partial bulk delete is the one outcome
+ * nobody can reason about afterwards. And the counting belongs next to the removing:
+ * the caller wants to say "removed 3 of 5", which means the two numbers have to be
+ * produced by whoever knows which rows were there.
+ *
+ * Duplicates within the selection are collapsed, so passing the same path twice
+ * removes it once and does not report the second as missing.
+ *
+ * Not a transaction. The individual removes are idempotent and independent, so the
+ * worst case of a failure partway is that some favourites are gone and the reader sees
+ * a shorter list than they expected — which is what they asked for, just less of it.
+ * Wrapping this in a transaction would buy atomicity nobody here can observe.
+ */
+export function removeFavPhotos(
+  repo: FavPhotoRepository,
+  rawPaths: string[],
+): FavPhotoBulkRemoval {
+  // Validate everything first — see above. `storedPath` throws on a bad path, so this
+  // whole line fails before the first delete.
+  const paths = [...new Set(rawPaths.map(storedPath))];
+
+  const missing: string[] = [];
+  let removed = 0;
+  for (const relativePath of paths) {
+    if (!repo.isFavorite(relativePath)) {
+      missing.push(relativePath);
+      continue;
+    }
+    repo.remove(relativePath);
+    removed += 1;
+  }
+
+  return { removed, missing };
+}
+
+/**
  * Rewrites the note on a favourite, reporting whether there was one to write to.
  *
  * `false` for a photo that is not starred, rather than starring it. The two actions are
