@@ -1,5 +1,92 @@
 # Change History
 
+## 2026-09-01 16:03 — Tetris, a deployment log, and an import that stops duplicating itself
+
+Six bodies of work, committed separately and released together. Migrations 0077-0078.
+
+### Journal import: entry time is normalized on the way in
+
+The bug that prompted this: re-importing a journal export created a second copy of every
+entry instead of skipping it. The duplicate check is `date + time + title` compared as
+literal strings, and two exports wrote the time differently — an earlier import stored
+`15:30:00`, a later one `15:30`. `"15:30" != "15:30:00"`, so `findEntryIdsMatching`
+returned nothing and every row was classified `create`. In the production database 327
+entries were stored with seconds and 334 without, and **326 distinct `date + title` pairs
+existed in both shapes** — the August import had been duplicated almost in full.
+
+`normalizeEntryTime` (`src/lib/journal/time.ts`) canonicalizes to 24-hour `HH:MM`:
+seconds dropped, hour zero-padded, empty left empty. It is applied as a `.transform()` on
+`createEntrySchema`, which `updateEntrySchema` aliases, so **every** write path — web
+form, CLI, importer — normalizes without each one remembering to. It is applied a second
+time in `recordToEntryInput`, deliberately: `matchKeyFor` reads that object *before*
+`createEntry` parses it, so without it the check would compare a raw CSV value against a
+stored canonical one and still miss.
+
+A value it cannot parse is returned trimmed but unchanged rather than rejected. Entry time
+has never been validated, so throwing would newly break an import that works today.
+
+**The existing duplicates were deliberately left in place** — this release fixes the cause,
+not the history. Consequence worth knowing: the first import after this normalizes to
+`HH:MM` and so still will not match the old `HH:MM:SS` rows. Going forward everything is
+consistent; those pre-existing rows are the one seam. Verified against the production data
+that no entry uses non-zero seconds, so the canonical form loses nothing.
+
+### SQL Explorer: a Truncate button
+
+Each row of the Tables card gains **Truncate** beside **Open**. It opens a confirmation
+reading *"There are N record(s) in table X, are you sure?"*, then empties the table and
+resets its id counter to 1.
+
+The count is read when the dialog opens rather than taken from the server-rendered table
+list, which can be minutes stale — "are you sure" is worth stating against the current
+number. The confirm button stays disabled until the count arrives, so the reader never
+confirms against a blank.
+
+SQLite has no `TRUNCATE`; this is `DELETE FROM` plus a `sqlite_sequence` clear in one
+transaction, so a delete that lands while the sequence reset fails cannot leave the counter
+high. The `sqlite_sequence` clear is guarded by an existence check — that table only exists
+once some table in the schema uses `AUTOINCREMENT`, and without the guard the statement
+errors outright on a database where none does.
+
+**A table name cannot be a bound parameter**, so it has to be interpolated into the SQL
+text. Two defences rather than one: `tableNameSchema` rejects anything that is not a plain
+identifier at the boundary, and the repository looks the name up in `sqlite_master` and
+uses the *stored* name, never the caller's string. The test asserts injection-shaped names
+throw *without reaching the repository*.
+
+This is a genuinely destructive control on the live database behind a single confirm click,
+which is the chosen trade-off for an admin tool whose page already warns there is no undo.
+It takes no backup of its own.
+
+### Tetris, and an Arrow Clearing that is actually a puzzle
+
+**Tetris** joins the arcade — the second game on the shared scoreboard, catalogue entry
+plus view, no schema change (a game is code, not a row).
+
+**Arrow Clearing** was rebuilt. It shipped with three boards, but the difficulty problem
+was never board size: measured over 40 generated 9x9 boards, roughly 12 of 22 arrows were
+already clearable on the first move, and 421 of 448 such arrows had their head on the board
+edge where nothing can ever block them. A third of every board could be cleared in any
+order. The generator was replaced and the Easy and Medium tiers withdrawn; migration 0077
+deletes their orphaned `gam_scores` rows.
+
+### A deployment history, with the build log attached
+
+New table `sys_deployments` (migration 0078, `sys_` prefix — platform bookkeeping, not a
+feature module) and a **Deployments** tab on the About screen listing them.
+
+The design constraint worth recording: the build runs on Windows, the database lives on the
+NAS, and writing a live WAL-mode SQLite file across SMB risks corrupting it. So the build
+log is *shipped* with the package and recorded on the NAS at startup, the same rule that
+already puts `set-startup-message.cjs` and the migration run there rather than in
+`REBUILD_PUBLISH_NAS.bat`.
+
+### Favourite photos: a page, and a zip download
+
+Favourite photos move out of a dialog into their own screen
+(`src/app/(protected)/favorite-photos/`), and can be downloaded together as a zip via a new
+`src/lib/zip/` and an API route that streams it.
+
 ## 2026-08-30 15:47 — An arcade, and themes you can build yourself
 
 Two features and a puzzle: the Games module with a shared high-score board, a second

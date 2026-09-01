@@ -73,6 +73,24 @@ export const ICON_SLOTS: IconSlot[] = [
     wired: true,
     namespace: "tree",
   },
+  // The Random Photo card's favourites BUTTON has deliberately no slot, unlike the
+  // screen it opens (below). It draws `photo-stack`, whose entire job is to be legibly
+  // not the heart toggle two controls to its left — and the pair only reads if both
+  // stay put. `photo-stack` is in `ALWAYS_CLASSIC` for that reason: a themed set's
+  // "favourites" artwork is very often a heart, which would collapse the distinction.
+  // A per-slot upload would still have worked (SlotIcon checks overrides before it
+  // consults the set), but offering to re-skin one half of a deliberate pair invites
+  // exactly the confusion the new glyph was drawn to remove.
+  {
+    id: "favorite_photos_page",
+    label: "My Favorite Photos screen",
+    group: "Home screen",
+    where:
+      "The My Favorite Photos screen → its breadcrumb, and the account menu's link to it.",
+    defaultConcept: "photo",
+    wired: true,
+    namespace: "tree",
+  },
 
   /* ---------------------------------------------------------------------------------
      Stocks & ETFs — nav sections. Section panel, left of each section name.
@@ -212,6 +230,36 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
 
+  /* The three cards of Watch & Test. One workflow, so they are badged as a set —
+     leaving one of the three text-only would read as an oversight rather than a choice. */
+  {
+    id: "stock_card_watch_lists",
+    label: "Watch Lists card",
+    group: "Stocks & ETFs cards",
+    where: "Stocks & ETFs → Watch & Test → the Watch Lists card header.",
+    defaultConcept: "list",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "stock_card_next_day_signals",
+    label: "Next-Day Signals card",
+    group: "Stocks & ETFs cards",
+    where: "Stocks & ETFs → Watch & Test → the Next-Day Signals card header.",
+    defaultConcept: "flash",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "stock_card_simulation",
+    label: "Simulation card",
+    group: "Stocks & ETFs cards",
+    where: "Stocks & ETFs → Watch & Test → the Simulation card header.",
+    defaultConcept: "magic",
+    wired: true,
+    namespace: "tree",
+  },
+
   /* ---------------------------------------------------------------------------------
      Journal — nav sections and card headers.
   --------------------------------------------------------------------------------- */
@@ -257,6 +305,15 @@ export const ICON_SLOTS: IconSlot[] = [
     group: "Journal sections",
     where: "Journal → section panel → Report.",
     defaultConcept: "chart",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "journal_section_import",
+    label: "Import",
+    group: "Journal sections",
+    where: "Journal → section panel → Import.",
+    defaultConcept: "upload",
     wired: true,
     namespace: "tree",
   },

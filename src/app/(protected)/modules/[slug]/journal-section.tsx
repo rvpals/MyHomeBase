@@ -29,6 +29,7 @@ import { JournalEntriesPanel } from "./journal-entries-panel";
 import { journalTaxonomyIconUrlsByName } from "./journal-shared";
 import { JournalShell } from "./journal-shell";
 import { JournalHomeHeader } from "./journal-search-view";
+import { JournalImportView } from "./journal-import-view";
 import { JournalPreferencesView } from "./journal-preferences-view";
 import { JournalTaxonomyView } from "./journal-taxonomy-view";
 import { JournalTemplatesView } from "./journal-templates-view";
@@ -78,7 +79,6 @@ function SectionBody({
           tagIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("tag", tags))}
           preferences={preferences}
           prefillTemplates={listEnabledPrefillTemplates(deps.journalRepo)}
-          namedMappings={listNamedMappings(deps.csvImportMappingRepo, "Journal")}
           canRunSql={isAdmin}
         />
       );
@@ -99,6 +99,12 @@ function SectionBody({
           selectedDate={selectedDate}
         />
       );
+
+    case "import":
+      // Used to be an "Import from CSV" card at the bottom of the home screen.
+      // It is its own section now: importing is an occasional, deliberate act,
+      // and the mapping table it renders wants the whole page width.
+      return <JournalImportView namedMappings={listNamedMappings(deps.csvImportMappingRepo, "Journal")} />;
 
     case "configuration": {
       const journalModule = getModuleBySlug(deps.moduleRepo, JOURNAL_MODULE_SLUG);

@@ -33,7 +33,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import path from "node:path";
 import { build } from "esbuild";
 
@@ -73,6 +73,29 @@ const BETTER_SQLITE3_VERSION = JSON.parse(
 function step(message) {
   console.log(`\n▸ ${message}`);
 }
+
+/**
+ * Everything this script printed, so the deployment can carry its own build log.
+ *
+ * `console.log` is teed rather than replaced -- the operator watching the build still sees
+ * every line in real time, and the same bytes accumulate here for `build-log.json`. Only
+ * this script's own output is captured: `npm run build` below runs with `stdio: "inherit"`
+ * and writes to the real stdout directly, so Next's output never reaches this buffer. That
+ * is deliberate -- a full Next build log is megabytes of bundler noise, and what is worth
+ * keeping is the deployment-shaped summary these steps print.
+ */
+const transcript = [];
+
+for (const level of ["log", "warn", "error"]) {
+  const original = console[level].bind(console);
+  console[level] = (...args) => {
+    transcript.push(args.map((arg) => (typeof arg === "string" ? arg : String(arg))).join(" "));
+    original(...args);
+  };
+}
+
+/** The build log shipped inside the package, read on the target by record-deployment.cjs. */
+const BUILD_LOG_FILENAME = "build-log.json";
 
 // ---------------------------------------------------------------------------
 
@@ -117,6 +140,26 @@ for (let pass = 0; pass < 5; pass += 1) {
   if (links.length === 0) break;
   for (const link of links) {
     const target = realpathSync(link.path);
+
+    // A link pointing AT the output (or at an ancestor of it, i.e. the repo root) must be
+    // deleted, not materialised. Copying it recurses: the copy lands inside OUT, contains
+    // OUT again, and each of the 5 passes goes one level deeper — producing
+    // `dist-nas/dist-nas/dist-nas/...` until robocopy hits the 260-character path limit and
+    // the publish dies with "ERROR 123 ... The filename, directory name, or volume label
+    // syntax is incorrect", naming a path a thousand characters long.
+    //
+    // Nothing on the NAS wants a copy of the build output inside the build output, so
+    // removing the link is the whole fix. `path.relative` is the containment test: it
+    // returns "" for OUT itself and a non-".." path for anything beneath it.
+    const outToTarget = path.relative(OUT, target);
+    const targetIsInsideOut = outToTarget === "" || !outToTarget.startsWith("..");
+    const targetContainsOut = !path.relative(target, OUT).startsWith("..");
+    if (targetIsInsideOut || targetContainsOut) {
+      rmSync(link.path, { recursive: true, force: true });
+      console.log(`  dropped self-referential link ${path.relative(OUT, link.path)} -> ${target}`);
+      continue;
+    }
+
     rmSync(link.path, { recursive: true, force: true });
     cpSync(target, link.path, { recursive: true, dereference: true });
     console.log(`  materialised ${path.relative(OUT, link.path)}`);
@@ -301,6 +344,22 @@ await build({
   logLevel: "warning",
 });
 
+step("Bundling the deployment recorder");
+// Same reasoning again: plain CJS so the NAS needs no tsx. start.sh runs this on a
+// triggered deploy to write one sys_deployments row, reading the build-log.json written
+// below. The write has to happen on the target, not here -- see
+// migrations/0078_create_deployments.md.
+await build({
+  entryPoints: [path.join(ROOT, "scripts", "record-deployment.ts")],
+  outfile: path.join(OUT, "record-deployment.cjs"),
+  bundle: true,
+  platform: "node",
+  target: "node20",
+  format: "cjs",
+  external: ["better-sqlite3"],
+  logLevel: "warning",
+});
+
 step("Verifying the folder is actually portable");
 // Any surviving symlink points at a path on this machine and will be broken on
 // the NAS — which is how the hash-named better-sqlite3 module failed the first
@@ -323,6 +382,54 @@ for (const file of walk(OUT)) {
 }
 console.log(`  ${checked} better-sqlite3 binaries, all AArch64`);
 
+// Every server chunk the build references must actually be in the output.
+//
+// Turbopack does not `require` these at boot. A page bundle asks for them by
+// literal path — `R.c("server/chunks/ssr/<hash>._.js")` — on the FIRST REQUEST to
+// that route, so a chunk missing from the shipped tree is invisible at startup
+// and surfaces days later as a 500 on one screen:
+//
+//     Error [ChunkLoadError]: Failed to load chunk server/chunks/ssr/src_<hash>._.js
+//
+// Nothing else in this script would notice: the symlink sweep and the ELF checks
+// above both pass on a tree with half its chunks absent. `next build` cannot
+// notice either, because the omission happens when the folder is assembled, not
+// when it is built.
+//
+// Two details that are easy to get wrong, both found by deleting a chunk and
+// checking this actually complained:
+//
+//   * The paths are relative to `.next/`, NOT to `.next/server/` where the
+//     referencing bundles live. Resolving from the wrong base reports every
+//     chunk as missing — a convincing false alarm.
+//   * Matching only `R.c("…")` is NOT enough. That catches the lazy loads in page
+//     bundles (170 of them here) but misses chunks named only as bare strings in
+//     `*_client-reference-manifest.js` — 246 are actually referenced. A chunk in
+//     that gap gets deleted with no complaint, which is exactly the silent hole
+//     this check exists to close. So match the quoted path itself, whatever
+//     names it.
+const nextDir = path.join(OUT, ".next");
+const chunkRefs = new Set();
+for (const file of walk(path.join(nextDir, "server"))) {
+  if (!file.endsWith(".js")) continue;
+  const source = readFileSync(file, "utf8");
+  for (const match of source.matchAll(/"(server\/chunks\/[^"]+\.js)"/g)) {
+    chunkRefs.add(match[1]);
+  }
+}
+
+const missingChunks = [...chunkRefs].filter(
+  (ref) => !existsSync(path.join(nextDir, ref)),
+);
+if (missingChunks.length > 0) {
+  throw new Error(
+    `${missingChunks.length} of ${chunkRefs.size} referenced server chunk(s) are missing from ` +
+      `the output, e.g. ${missingChunks[0]}. The deployed app would 500 on whichever route ` +
+      `loads one. This means the assembly step dropped files — do not publish this folder.`,
+  );
+}
+console.log(`  ${chunkRefs.size} referenced server chunks, all present`);
+
 step("Done");
 console.log(`  ${OUT}`);
 console.log(`  ${(directorySize(OUT) / 1024 / 1024).toFixed(1)} MB`);
@@ -334,6 +441,49 @@ console.log("\nOn the NAS:");
 console.log("  node migrate.cjs               # apply any pending migrations");
 console.log("  node server.js                 # start the app");
 console.log("  node set-startup-message.cjs   # announce the deployment (start.sh does this)");
+console.log("  node record-deployment.cjs     # log the deployment (start.sh does this)");
+
+// Written LAST, so the transcript it carries includes everything above -- including the
+// size and ABI lines, which are the two facts most worth having in a deployment record.
+//
+// This is the hand-off to the other machine. The build runs here on Windows; the database
+// that will hold this log lives on the NAS and must never be written over SMB (SQLite
+// locking over a network share is unreliable and the app holds the file open in WAL mode).
+// So the log travels with the package as a plain file, and record-deployment.cjs inserts
+// the row locally on the target as the new build comes up.
+//
+// A failure here must not fail the publish: the package is already built and correct, and
+// a missing build log costs a few columns in an admin table. record-deployment.cjs treats
+// an absent file as normal for exactly this reason.
+try {
+  const packageVersion = JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8")).version;
+  // The build id Next just generated -- the same string the About screen shows for the
+  // running build, which is what makes a deployment row joinable to what is live.
+  const buildId = readFileSync(path.join(OUT, ".next", "BUILD_ID"), "utf8").trim();
+
+  writeFileSync(
+    path.join(OUT, BUILD_LOG_FILENAME),
+    `${JSON.stringify(
+      {
+        buildId,
+        appVersion: packageVersion,
+        builtAt: new Date().toISOString(),
+        builtOnHost: hostname(),
+        nodeAbi: NODE_ABI,
+        packageSizeBytes: directorySize(OUT),
+        output: transcript.join("\n"),
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  console.log(`\nWrote ${BUILD_LOG_FILENAME} for the deployment record.`);
+} catch (error) {
+  console.warn(
+    `WARNING: could not write ${BUILD_LOG_FILENAME} (${error instanceof Error ? error.message : error}).`,
+  );
+  console.warn("  The package is fine; the deployment will be recorded without its build log.");
+}
 
 // ---------------------------------------------------------------------------
 

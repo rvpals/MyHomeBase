@@ -256,6 +256,12 @@ that are easy to get wrong:
   trigger-driven restart to announce the new deployment on the home screen. It
   imports from `src/lib/`, so it is bundled rather than compiled: the `@/` path
   alias has to be resolved at build time.
+- **Bundles `record-deployment.cjs`**, run by `start.sh` on the same trigger, which
+  writes one `sys_deployments` row so About → Deployments can show the history. It reads
+  **`build-log.json`**, also written into the package here: the build's own console
+  output, carried across because the build runs on Windows and the database it belongs in
+  is on the NAS, where SQLite must never be written over SMB. See
+  `migrations/0078_create_deployments.md`.
 
 It refuses to finish if any symlink survives or any driver copy isn't AArch64.
 
@@ -277,8 +283,9 @@ Verify on the NAS with `ls -a` (plain `ls` hides `.next`):
 
 ```bash
 ls -a /volume1/app/myhomebase
-# .next  CHANGE_HISTORY.md  data  migrate.cjs  migrations  node_modules  package.json
-# public  server.js  set-startup-message.cjs
+# .next  build-log.json  CHANGE_HISTORY.md  data  migrate.cjs  migrations
+# node_modules  package.json  public  record-deployment.cjs  server.js
+# set-startup-message.cjs
 ```
 
 ### 5.2 Configure
@@ -352,6 +359,11 @@ and switch to a new build when a publish leaves a `deploy.trigger` behind. After
 last one it also runs `set-startup-message.cjs`, so the next visitor to the home screen
 is told a new deployment is live; a crash-restart deliberately skips that.
 
+It also **records the deployment** (`record-deployment.cjs`), reading the
+`build-log.json` that shipped with the package, so About → Deployments lists what went
+live and when with the build's own log attached. Gated on the same trigger, so a
+crash-restart is never recorded as a deployment.
+
 A triggered deploy **also applies any pending migrations** (`migrate.cjs`) in the
 window after the old process stops and before the new one binds. Like the startup
 message, it's gated on that trigger, so a crash-restart never migrates — a new
@@ -372,6 +384,17 @@ chmod +x /volume1/app/myhomebase/start.sh
 > Keep the repo copy as the source of truth — it is **excluded from the publish** on
 > purpose, so a republish can't overwrite the file the boot task runs or strip its `+x`
 > bit. Re-copy it by hand on the rare occasion it changes.
+
+`COPY_NAS_START_SH.bat` at the repo root does both steps for you (and refuses to copy a
+CRLF `start.sh`, which would fail on the NAS with a bad-interpreter error that names the
+right file and explains nothing). Set `$NasUser` at the top of the `.ps1`, or pass it:
+
+```powershell
+.\COPY_NAS_START_SH.bat myuser
+```
+
+The `chmod +x` is not optional — DSM's boot task runs this exact path, so a `start.sh`
+that lands without its executable bit stops the app coming back on the next restart.
 
 
 Start it and confirm:
@@ -562,4 +585,5 @@ It's running detached — look in `/volume1/app/myhomebase/app.log`.
 | Build command | `npm run publish:nas` in `E:\Code\Claude_Project\MyHomeBase` → `dist-nas/` |
 | Build + deploy | `.\REBUILD_PUBLISH_NAS.bat` (SMB, preserves data/env/start.sh) |
 | Deploy only (manual) | `scp -r dist-nas/. ssh_user@NAS_DS223:/volume1/app/myhomebase/` |
+| Copy `start.sh` | `.\COPY_NAS_START_SH.bat` (scp + `chmod +x`; not shipped by the publish) |
 | SMB share | `\\NAS_DS223\app\myhomebase` |

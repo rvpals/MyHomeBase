@@ -12,6 +12,7 @@ export const JOURNAL_SECTIONS = [
   "calendar",
   "views",
   "report",
+  "import",
   "configuration",
   "templates",
   "metadata",
@@ -44,6 +45,10 @@ export const JOURNAL_SECTION_INFO: Record<JournalSection, { label: string; descr
   report: {
     label: "Report",
     description: "Summaries and reports from your journal.",
+  },
+  import: {
+    label: "Import",
+    description: "Bring journal entries in from a CSV file.",
   },
   configuration: {
     label: "Preferences",
@@ -83,6 +88,8 @@ export const JOURNAL_SECTION_ICONS: Record<JournalSection, string> = {
   calendar: "history",
   views: "window",
   report: "chart",
+  // `upload` — the same glyph Expense and Stock give their Import sections.
+  import: "upload",
   configuration: "sliders",
   // `note`, not `list` — that one is Entries', and two sections wearing the same
   // glyph is the collision modules.md warns about. A template is a jotting you

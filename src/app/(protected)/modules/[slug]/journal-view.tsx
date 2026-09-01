@@ -8,7 +8,6 @@ import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { SlotIcon } from "@/components/slot-icon";
 import { getIconSlot } from "@/lib/icons";
-import type { NamedMapping } from "@/lib/csv-import";
 import type {
   JournalEntry,
   JournalPreferences,
@@ -25,7 +24,6 @@ const STATS_SLOT = getIconSlot("journal_card_statistics")!;
 const TOP_TAGS_SLOT = getIconSlot("journal_heading_top_tags")!;
 const TOP_CATEGORIES_SLOT = getIconSlot("journal_heading_top_categories")!;
 const RECENT_SLOT = getIconSlot("journal_card_recent_entries")!;
-import { JournalImportView } from "./journal-import-view";
 import { runJournalSqlAction } from "./journal-actions";
 
 const COLUMNS: DataGridColumn<JournalEntry>[] = [
@@ -163,7 +161,6 @@ export function JournalView({
   tagIcons = {},
   preferences,
   prefillTemplates = [],
-  namedMappings,
   canRunSql = false,
 }: {
   entries: JournalEntry[];
@@ -177,7 +174,6 @@ export function JournalView({
   preferences: JournalPreferences;
   /** Enabled prefill templates, for the entry form's picker. */
   prefillTemplates?: JournalPrefillTemplate[];
-  namedMappings: NamedMapping[];
   /** Only admins may run SQL; the server action re-checks this. */
   canRunSql?: boolean;
 }) {
@@ -312,10 +308,6 @@ export function JournalView({
             />
           )}
         </div>
-      </CollapsibleCard>
-
-      <CollapsibleCard title="Import from CSV">
-        <JournalImportView namedMappings={namedMappings} />
       </CollapsibleCard>
     </div>
   );

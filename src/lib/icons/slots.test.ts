@@ -108,7 +108,7 @@ describe("sectionSlotId", () => {
         "charts", "import", "settings",
       ],
       journal: [
-        "main", "entries", "calendar", "views", "report",
+        "main", "entries", "calendar", "views", "report", "import",
         "configuration", "templates", "metadata", "configuration-group",
       ],
       expense: [

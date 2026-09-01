@@ -201,6 +201,11 @@ migration:
 Locations and weather are deliberately not templatable: the entry form already resolves
 both live from GPS, and a stored copy would be staler than one button press.
 
+**CSV import lives in its own section** — *Import*, top-level in the section panel
+between Report and the Configuration group. It used to be an "Import from CSV" card at the
+bottom of the home screen; importing is an occasional, deliberate act, and the mapping
+table wants the full page width.
+
 **CSV import is idempotent** (`migrations/0072`). Re-importing a file you have already
 imported adds nothing; each repeated row is reported as *"Duplicate of an existing
 entry"* in the same summary that reports a bad row. The Import screen has a **Skip
@@ -215,8 +220,18 @@ entries that already exist** checkbox, ticked by default, and the CLI has the ma
   day. The importer compares how many copies the *file* holds against how many were
   *stored before the run began* and inserts the shortfall; a boolean would collapse them
   all into one entry. Same reasoning as `countMatchingTransactions` in `stock-positions`.
-- **A match is declined, never overwritten.** Nothing in the importer updates an existing
-  entry, so an edit you made in the app can't be clobbered by a stale CSV.
+- **A match is declined by default, and overwritten only on request.** The plain import
+  never updates an existing entry, so an edit you made in the app can't be clobbered by a
+  stale CSV. The **Overwrite database from file** toggle (CLI: `--overwrite`) opts into the
+  opposite and takes precedence over the skip checkbox — the two would otherwise disagree
+  about what a duplicate means. It replaces the whole entry, so a blank cell clears that
+  field, and it refuses a **locked** entry rather than unlocking it.
+- **Overwrite confirms against a dry run.** `planJournalImport` walks the file and returns
+  what each row *would* do without writing; the screen lists the entries about to be
+  replaced and waits for Confirm or Cancel. Plan and import share one decision function
+  (`walkJournalCsv`), so the list can't drift from what the import then does. Nothing locks
+  the table between the two passes — in a single-user app the window is however long the
+  dialog stays open, and the real run re-resolves each row anyway.
 - **There is no `UNIQUE` index behind this.** `jrn_entries` still allows duplicates by
   design (0027), because typing the same title twice on one day by hand is the writer's
   business — uniqueness is an *import policy*, which is what lets the checkbox exist.
@@ -339,10 +354,10 @@ that never resolve; they stay on the button, which already reads "Try again". `i
 is never retried at all. So a track is asked about at most once, ever.
 
 **Games** (`games`) — a small arcade with a shared high-score board. Sections:
-**Arcade** (the list of games, and the selected board inline), **Scores**, and
+**Arcade** (the list of games; Play opens the board full-bleed), **Scores**, and
 **Configuration**. Library: `src/lib/games`. One table, `gam_scores`
-(`migrations/0074`); registered by `0075`. Two games so far: **2048**, and
-**Arrow Clearing** at three board sizes.
+(`migrations/0074`); registered by `0075`. Three games so far: **2048**,
+**Arrow Clearing**, and **Tetris**.
 
 Five choices worth knowing, all recorded in `0074`'s log:
 
@@ -394,13 +409,14 @@ and touch swipes.
 
 #### Arrow Clearing
 
-A logic puzzle: every arrow occupies a straight run of one to four cells and points one
-way. Click it and it flies off the board — but only if every cell between its **head**
-and the edge is empty. A blocked arrow bumps and stays. Clear the board to win. Rules in
-[game-arrows.ts](src/lib/games/game-arrows.ts), board in
+A logic puzzle, following the mechanic of the mobile game *Arrows – Puzzle Escape*. Each
+arrow is a **winding path** of up to eight cells with a head at the leading end; tap it
+and it snakes off the board along its own route — but only if the straight line from its
+head to the edge is clear. A blocked tap costs a life. Five lives, then the run ends.
+Rules in [game-arrows.ts](src/lib/games/game-arrows.ts), board in
 [game-arrows-view.tsx](src/app/(protected)/modules/[slug]/game-arrows-view.tsx).
 
-Three decisions worth keeping:
+Decisions worth keeping:
 
 - **Levels are generated in reverse, which is what guarantees they are solvable.**
   Arrows are "shot in" from outside: each is placed only where its own exit is clear *at
@@ -408,28 +424,244 @@ Three decisions worth keeping:
   exit was clear when placed still has a clear exit once everything placed after it has
   gone — so replaying the placements backwards always empties the board. Scattering
   arrows and then testing solvability would need a search per candidate and an unbounded
-  retry loop; this construction cannot produce a bad board at all. The generator's test
-  asserts it over 180 random boards rather than trusting the argument.
-- **Only the path in front of the head is checked.** The tail follows exactly where the
-  head has already been, so a head with a clear run means the whole piece can leave —
-  and walking every cell of the arrow would find its own tail and report every arrow as
-  blocked by itself. That regression has a test.
-- **Three catalogue keys, not one game with a difficulty column** (`arrow-clearing-easy`
-  / `-medium` / `-hard`, 5×5 / 7×7 / 9×9). The scoreboard sorts on score alone, so one
-  shared key would rank an easy clear against a hard one. `arrowDifficultyOf` maps a key
-  back to its difficulty so the three cards share one view.
+  retry loop; this construction cannot produce a bad board at all. The test asserts it
+  over 180 random boards rather than trusting the argument.
+- **Only the cells *ahead* of the head are checked — but they are checked against every
+  arrow, including this one.** The geometry does the exclusion: a straight arrow's tail is
+  entirely behind it, so it never appears in `pathAhead` and cannot report itself blocked.
+  A **winding** arrow can, and must: a U-shaped piece whose head points back into its own
+  tail can never leave the board, so tapping it is a bad move and costs a life.
 
-Scoring is 100 a cleared arrow less 15 a wasted click, floored at a tenth of full marks
-so a badly-played big board still outranks a badly-played small one. Pieces are drawn
-from the `brass` token at two opacities (head solid, tail at 35%) so they read in all
-eight themes, and are **absolutely positioned over a gapless grid in percentages** — a
-grid `gap` would make each cell's true offset drift from `index / size`, so pieces would
-misalign further down the board. Fly-off is a CSS transform and the blocked bump a
-keyframe in `globals.css`; both respect `prefers-reduced-motion`, the bump falling back
-to a brightness flash rather than nothing, since it is the only visual feedback for an
-illegal move. Sound effects are synthesized with the Web Audio API (no asset files) and
-the context is created on first gesture, never on mount — a browser blocks an autoplayed
-one and warns on every load.
+  This was wrong in both directions at once, from one bad assumption — that "the tail
+  follows exactly where the head has already been", which holds for a straight arrow and
+  fails as soon as paths turn. `isBlocked` excluded the arrow from its own check, so a
+  self-blocked piece cleared straight through its own tail; and `growPath` validated exits
+  against only the cells already on the board, so it *created* such pieces —
+  **265 across 10 boards, making every one of them unsolvable.** `growPath` now refuses
+  any tail cell in the head's exit lane, and `occupancy` no longer takes a `skipId` at
+  all. Three tests cover it: the U-shape rule, a winding arrow that bends away from its
+  lane (which must stay clear), and a generator invariant asserting no placed arrow blocks
+  itself.
+- **Placements are scored, because taking the first legal spot produced easy boards.**
+  This was measured, not guessed: with placements in shuffled order, a 9×9 came out with
+  ~12 of 22 arrows already free on move one, and **421 of 448** such arrows across 40
+  boards had their head sitting *on the board edge*, where `pathAhead` is empty and
+  nothing can ever block them. A third of every board was clearable in any order.
+  `findPlacement` now ranks candidates on `exit.length * 3 + cells.length` — depth
+  dominant so heads are pushed inward, length secondary so paths stay long. Ranking on
+  depth *alone* was also tried and was worse in a different way: it picks the deepest
+  head regardless of what fits behind it, which on a filling board meant 40 single-cell
+  arrows and no winding paths at all. Both terms are needed. Result: ~92% full, ~5 free
+  at the start. A test guards the ratio.
+- **Arrow lengths come from a weighted distribution, sampled once per placement.** A
+  board wants a mix — many 1-2 cell pieces, a good number of 3-5, a handful of long 6-12
+  snakes — and `LENGTH_WEIGHTS` encodes that. Two ways this has been got wrong, both
+  measured: asking `growPath` for the maximum every time produced a **barbell** (6.3
+  single-cell and 4.6 max-length arrows a board, nothing between), because a walk either
+  found room and ran to the cap or was boxed in at one cell. Then rolling the length
+  *inside* the candidate loop was worse in a subtler way — `findPlacement` evaluates
+  every free cell in every direction, so it rolled thousands of times and kept whichever
+  candidate rolled longest. A weighted sample is only a sample if it is drawn **once per
+  thing being decided**.
+- **Depth and length are satisfied in priority order, not summed.** Scoring
+  `depth * 3 + length` let the ranking re-pick the length. Scoring depth alone picked the
+  deepest head regardless of what fitted behind it — the deepest spots on a filling board
+  are cramped, so every arrow came out 1-2 cells and the board sat at 37% full. Now:
+  collect all legal heads, keep those within `DEPTH_BAND` of the deepest, then take the
+  first that can hold the rolled length (with the roomiest near-miss as fallback).
+- **`arrows` is a ceiling the generator will not reach, and raising it does nothing.**
+  Generation stops when no legal placement remains, and that saturation point is a
+  property of the *board size*: at 18x18 a target of 120 and a target of 170 both settled
+  at 84 arrows. To get more arrows, grow the board.
+- **Solvable is not the same as winnable, and only the second matters to a player.** This
+  shipped once as a 9x9 packed to 92% (~22 tangled pieces) against five lives. Every board
+  was solvable by construction and a greedy solver cleared 200 of 200 — but a person ran
+  out of lives with most of the board standing, and an end screen reading "15 arrows still
+  on the board" is indistinguishable from a broken generator. A test now plays every board
+  the careful way and requires it to come out empty, and the loss panel states outright
+  that the board had a solution.
+
+- **No single-cell arrows.** `MIN_ARROW_LENGTH` is 2 and `LENGTH_WEIGHTS[1]` is 0, so
+  every piece has a head *and* a tail. A one-cell arrow draws as a bare arrowhead with no
+  line behind it, which reads as a stray mark rather than part of the maze. `growPath` can
+  still return a 1-cell run when a spot is cramped; those are refused outright, even as the
+  fallback, which is what ends the run of placements late in generation.
+- **Generation is O(1) per candidate, via `OccupancyGrid`.** This is what makes a board
+  this size possible at all. The naive version — a `Set` of `"row,col"` keys plus
+  `pathAhead` per candidate — cost O(size^5) for a whole board: measured **16 seconds at
+  50x50**, which would visibly freeze the tab on "New board". The observation that removes
+  the inner walk: a head's straight run to the edge is clear exactly when no occupied cell
+  lies beyond it in that direction, so tracking the min/max occupied column per row (and
+  row per column) answers all four directions with a comparison. Those extremes only grow
+  as cells fill, so maintaining them is O(1) per cell. **41ms at 50x50** — a ~390x
+  speedup. Cells live in a flat `Uint8Array`, so there is no per-cell string allocation.
+  `ATTEMPT_LIMIT` bounds the path-growing loop, which is the other quadratic term.
+
+**Current shape** (50x50, target 1500): ~359 arrows over ~71% of the board, ~360 taps to
+clear. Lengths per board run roughly 76 at length 2, 155 mid (3-5), 79 long (6-8) and 48
+very long (9-12). Simulated, a careful player who only taps what is visibly free wins
+5/5; a random guesser never does. Generation takes ~41ms.
+
+Note that **board fill falls as the board grows** (~80% at 20x20, ~71% at 50x50): a larger
+grid has proportionally more interior, and the depth band keeps heads away from the edges,
+so the generator runs out of legal deep placements with more surface still open.
+
+The board is **SVG**, not a grid of divs: a run of bordered divs cannot draw the corner
+where a winding path turns, which `stroke-linejoin` gives for free. Arrows are drawn as
+**thin lines** — `STROKE` is 15% of a cell, not the 52% it first shipped at. A thick bar
+fills its cell so neighbouring pieces touch and the board reads as a mass of blocks
+rather than a maze of routes; the arrowhead is an open chevron scaled to the *cell* (not
+to the stroke, which made it vanish when the line was thinned), and an invisible stroke
+five times the width carries the pointer events, since a 1.6-unit line is far below a
+thumb-sized tap target. The clearing
+animation **straightens the piece as it leaves**, tadpole-fashion: the head runs down its
+exit lane and each tail cell follows the route the head took, so a U-shaped arrow is a
+straight line by the time it slips off the edge. It is modelled as a fixed-length chain on
+a track — the arrow's own cells with the exit lane appended in front — and advancing one
+`progress` value slides every cell forward along it.
+
+That runs on `requestAnimationFrame`, in `useClearingPoints`, and it has to: **CSS cannot
+interpolate an SVG `points` attribute** from one geometry to another, so a stylesheet can
+only ever slide the bent shape rigidly. Three earlier attempts, each wrong differently:
+`stroke-dashoffset` *retracts* a line rather than moving it; a CSS `transition` had no
+committed starting value (the element mounts already cleared) so the piece simply
+vanished; and a CSS keyframe transform moved the whole rigid shape sideways, which reads
+as furniture being dragged rather than an arrow escaping. `CLEAR_MS` is 700ms — across
+fifty cells, 420 outran the eye. Reduced motion is handled in the loop rather than in a
+media query, since the motion is no longer CSS to attach one to.
+
+A **Show grid lines** checkbox toggles the cell lattice, off by default — 98 hairlines at
+50x50 read as a grey wash behind the arrows, but the lattice genuinely helps when checking
+whether a head and a blocker share a row, so it is the player's call rather than a
+decision made for them. It is a deliberate one-off native `<input type="checkbox">`:
+`components.md` has no checkbox yet, and one control in one game is not the place to
+define the app's.
+
+**Zoom is the `viewBox`, not a CSS transform.** A 50x50 board puts a cell at about 12
+screen pixels — readable, but small to hit — so + / − / Fit step through fixed levels
+(1x to 6x, giving 12px to 72px cells) and dragging pans when zoomed in. Narrowing the
+viewBox shows a smaller slice of the same coordinate space, so the arrows, the hit areas
+and the clearing animation need to know nothing about it; a CSS transform on a wrapper
+would have scaled the stroke widths and tap targets along with everything else. Zooming
+keeps the centre of the view fixed rather than the origin, or pressing + would throw away
+whatever you were trying to look at. Stroke widths are divided by the zoom so their
+apparent weight holds steady. Fit-to-board stays the default: the overview is what makes
+the puzzle solvable.
+
+**A drag must never read as a tap.** `DRAG_SLOP` (6px) separates them — past that the
+gesture pans and the arrow under the finger is left alone, so dragging across the board
+does not clear everything it passes over. Two subtleties: the travel record is reset on
+*pointerdown*, not pointerup, because a click fires after pointerup and clearing it there
+would erase the flag microseconds before the click handler reads it; and the check lives
+in a plain function called from `onClick` at the call site rather than inside
+`onArrowClick`. That second point is a lint constraint worth knowing —
+`react-hooks/immutability` forbids modifying a ref that has been captured by a hook's
+dependency closure, so a ref written by raw pointer handlers has to stay out of every
+`useCallback`.
+
+**Any stroke on this board is measured in board units, not pixels**, and that has bitten
+twice. The viewBox is `size * CELL` units (500 at 50x50) scaled into roughly 600 CSS
+pixels, so one unit is about 1.2px: the grid shipped at `strokeWidth={0.12}`, which lands
+near 0.14px and the browser renders as *nothing at all* — the toggle appeared to be
+broken. The arrowhead had the same class of bug earlier, sized from the stroke width so
+that thinning the line erased it. Sound is synthesized via Web Audio (no asset files), with the context
+created on first gesture — a browser blocks an autoplayed one and warns on every load.
+
+Scoring is 100 a cleared arrow less 15 a wasted tap, floored at a tenth of full marks so
+a long fumbling run outranks a short one. A lost run still scores for what it cleared, so
+the number means "how far you got".
+
+#### Tetris
+
+The classic well: pieces fall, full rows clear, and the run ends when the stack reaches
+the spawn area. Rules in [game-tetris.ts](src/lib/games/game-tetris.ts), board in
+[game-tetris-view.tsx](src/app/(protected)/modules/[slug]/game-tetris-view.tsx).
+
+**The arcade's first real-time game**, and that is the only structurally new thing about
+it: 2048 and Arrow Clearing both advance only when the player acts, so neither needed a
+clock. Decisions worth keeping:
+
+- **Gravity is a pure `tick(state, random)`; only the timer lives in the view.** The
+  library owns the whole rule — including `dropIntervalMs(level)`, the difficulty curve —
+  and the view owns nothing but a `setInterval` that calls it at that period. A
+  `setInterval` is a browser concern and cannot live under `src/lib/`, but its *period*
+  is a game rule and must not leak into a `.tsx`. This is what makes drop speed, lock
+  delay and line clears testable without waiting on a real clock, and it is the same
+  trade `game-2048.ts` makes by taking its RNG as an argument.
+- **The interval re-subscribes on `level` only, deliberately.** Depending on the whole
+  state would restart the timer on every keypress, which lets a player postpone gravity
+  indefinitely by holding a key down — the piece would never fall. The `exhaustive-deps`
+  disable at that effect says so.
+- **Lock delay is a tick counter in state, not a timestamp.** A piece that locked the
+  instant it landed would make it impossible to slide one under an overhang, which is a
+  move the game is expected to allow. A counter rather than a wall-clock deadline is what
+  lets a test assert the grace period by ticking `LOCK_DELAY_TICKS + 1` times.
+- **Pieces are dealt a shuffled bag of all seven at a time**, not `random()` per piece.
+  The obvious implementation can deal five S-pieces in a row and starve you of an I for
+  thirty turns, both of which read as the game cheating rather than as bad luck. A bag
+  bounds the worst-case gap between two I pieces at twelve, which is the guarantee
+  players actually expect.
+- **Rotation is arithmetic, not four transcribed tables.** Turning a point clockwise in a
+  box of side *n* sends `(row, col)` to `(col, n - 1 - row)`; applying it `rotation`
+  times is cheaper to verify than four hand-written copies of each shape and cannot drift
+  out of sync the way four transcriptions can.
+- **A rotation that collides is nudged, not refused.** Without wall kicks, rotating flush
+  against a wall silently does nothing, which is the single most common way rotation
+  feels broken. The kick table is collapsed to one list per piece class rather than the
+  full per-rotation-pair SRS table: this arcade does not score T-spins, so the only thing
+  the exact table buys is which of two equally valid kicks wins in a rare cramped spot.
+  **O is returned untouched** — a square is the same square in every orientation, and
+  running it through the kick table would let it shuffle sideways for free.
+- **Hold is once per piece**, and that rule is load-bearing rather than traditional:
+  without it, holding swaps the same two pieces forever and gravity never advances, so a
+  player could park a game indefinitely.
+- **Top-out is checked on spawn**, not by looking for blocks in the buffer rows. A piece
+  may legitimately rest partly in the two hidden rows above the visible board without the
+  game being over; what ends a run is the *next* piece having nowhere to go.
+- **Pieces are one theme token at seven strengths**, not the traditional seven literal
+  colours — the same call the 2048 tile ramp makes, and for the same reason: the theme
+  provides one accent family, so a hardcoded cyan/yellow/purple palette would ignore the
+  active theme and read wrong in the light ones. Distinguishing them matters less here
+  anyway, since a tetromino is identified by its shape rather than by its fill.
+
+**A line clear is animated, and the state carries what the animation needs.** Clearing
+happens inside `lockPiece`, so a completed row is filled and gone in a single state
+transition — there is no frame in which it exists to be drawn, which is exactly why the
+first version read as "the row was never there". `clearLines` therefore reports *which*
+rows went, and `lockPiece` hangs a `lastClear` on the state: the row indexes, the board
+**with those rows still on it**, and an id. None of it is read by any rule; it exists so
+the view can play the clear out. The pre-clear board has to be carried rather than
+re-derived, because by the time the new state exists the rows are gone from `field`. The
+id is the piece count at the lock, and it is load-bearing: two clears of the same rows
+are otherwise identical values, so React would see no change and the animation would not
+restart.
+
+The effect itself is three layered pieces, because a clear is three coincident events —
+the row completes, it is destroyed, and the stack falls in. Animating only the last is
+what made it plain. So: the cells burst outward on a per-column delay struck from the
+middle of the row, a bar of light sweeps the full width (the part that says a *line* went
+rather than some blocks), and a four-row clear flashes the whole board edge, since the
+reward for stacking deep has to be visible and not merely numerical. Keyframes live in
+`globals.css` beside the Arrow Clearing ones, transform- and opacity-only so they stay
+off the layout path, with a `prefers-reduced-motion` fallback that keeps a plain fade —
+dropping the effect entirely would leave the board appearing to change on its own.
+
+**Gravity is suspended for exactly `LINE_CLEAR_MS`.** Otherwise the next piece falls over
+the top of the animation, and at a high level the effect never gets shown at all. That
+makes 320ms a gameplay number as much as a cosmetic one; the CSS reads it through a
+`--tetris-clear-ms` custom property set on the board, so the freeze and the keyframes
+cannot drift apart.
+
+The board is sized `min(18rem, 78vw, 26vh)` — the `vh` term halved from the usual budget
+because the well is twice as tall as it is wide. Below 1024px the next/hold panel moves
+above the board and a button pad appears under it (`max-lg:` only, so the desktop layout
+provably cannot regress); the pad uses `onPointerDown` rather than `onClick`, since a
+click fires on release and makes the controls feel a beat behind the board.
+
+Scoring is the classic table — 100/300/500/800 for one to four rows, times the level the
+rows were cleared *at* — plus 1 a row for a soft drop and 2 for a hard drop. The jump
+from 500 to 800 is the one number that changes how the game is played: it is the whole
+reason to stack deep rather than clear singles.
 
 #### Adding another game
 
@@ -493,6 +725,20 @@ when the game **ends** — once. Guard that call with a ref: `over` alone re-fir
 every subsequent render and posts the same score repeatedly. Nothing else in the
 module needs touching — the Arcade list, the scoreboard, the CLI and the Configuration
 screen are all driven off `GAME_CATALOGUE` and pick a new game up for free.
+
+**The game plays inside a `Modal size="full"`,** opened from the card's Play button —
+not as a card below the arcade list, which made the board the least prominent thing on
+a screen that exists to show it. Two consequences for a new game's view:
+
+- **Size the board against `vh` as well as `vw`.** A square capped only by width
+  overflows a short landscape window vertically and pushes its own controls
+  off-screen. Both existing games use a three-term `min()`: a `rem` cap for a large
+  monitor, a `vw` term for a phone, and a `vh` term for the dialog.
+- **Don't render a `Modal` inside it** — for a win overlay, a confirmation, anything.
+  Both instances register their Escape handler on `document` in the **capture** phase
+  and call `stopPropagation`, so the outer one wins and Escape closes the whole game
+  instead of the inner dialog; the two focus traps then fight over one tree. Arrow
+  Clearing's win panel is a plain bordered `div` for exactly this reason.
 
 Two things a new game does **not** get to decide, because they are module-wide: the
 score is stamped server-side (`played_at` from the use-case, never the client), and

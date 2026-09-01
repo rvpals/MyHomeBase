@@ -338,6 +338,44 @@ const HeartFilled: IconComponent = (props) => (
   </svg>
 );
 
+/* A stack of photographs with a heart on the top one: the mark for "the pictures I
+   have kept", on the Random Photo card's button that opens the My Favorite Photos
+   screen.
+
+   Its own glyph rather than reusing `heart`, and that distinction is the whole point.
+   The heart immediately to its left is a TOGGLE whose outline-vs-solid state says
+   whether THIS photograph is kept; this button is a DESTINATION. Drawn with the same
+   glyph, the card's header read as two hearts doing different things, which is how it
+   shipped and why it needed fixing.
+
+   Not `photo` either: that is the card's own title mark, and a header whose title icon
+   and last button are identical is no clearer than two hearts.
+
+   The stack is what carries "several, collected" — two offset rectangles behind the
+   front one. At 16px the back edges read as a thickness rather than as three countable
+   frames, which is the intent: the heart is the detail that has to survive, so it sits
+   in the front frame's open middle with nothing crossing it. */
+const PhotoStack: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    {/* The two frames behind, drawn as open edges rather than whole rectangles — a
+        full outline at this size closes into a grey block. */}
+    <path d="M7.5 5.5h9a1.5 1.5 0 0 1 1.5 1.5" />
+    <path d="M5.5 8h11.5" opacity="0.55" />
+    {/* The front frame, and the kept photograph's heart inside it.
+
+        The heart is FILLED while everything around it is stroked, which is not an
+        inconsistency: at 16px it is about 5px across, and an outline heart that small
+        loses its inner counter — the two strokes meet and it reads as a blob. Solid, it
+        stays a heart. `HeartFilled` and `star-filled` are drawn the same way. */}
+    <rect x="3.5" y="10" width="14" height="9.5" rx="1.6" />
+    <path
+      d="M10.5 17.2c-1.9-1.55-2.9-2.5-2.9-3.5a1.45 1.45 0 0 1 2.9-.5 1.45 1.45 0 0 1 2.9.5c0 1-1 1.95-2.9 3.5z"
+      fill="currentColor"
+      stroke="none"
+    />
+  </svg>
+);
+
 /* A framed photograph: a rounded rect, a sun, and a hill. The mark for "show me the
    pictures", used on the journal calendar's per-day and per-month photo buttons.
 
@@ -386,6 +424,7 @@ const TREE_ICONS = {
   "star-filled": StarFilled,
   heart: Heart,
   "heart-filled": HeartFilled,
+  "photo-stack": PhotoStack,
   photo: Photo,
 } as const;
 
@@ -426,6 +465,10 @@ const ALWAYS_CLASSIC = new Set<TreeIconName>([
   // artwork at that size is a coloured blob, and it would fight the day number it
   // sits beside.
   "photo",
+  // Sits beside the heart toggle in the Random Photo card's header. Its job is to be
+  // legibly NOT that heart, which a themed set's own "favourites" artwork — very often
+  // a heart — would undo.
+  "photo-stack",
 ]);
 
 /**

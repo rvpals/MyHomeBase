@@ -11,7 +11,7 @@ module is obvious from the name alone. New tables must follow this.
 
 | Prefix | Module | Example tables |
 |---|---|---|
-| `sys_` | Platform — not a feature module | `sys_modules`, `sys_app_settings`, `sys_module_settings`, `sys_user_preferences`, `sys_users`, `sys_user_module_access`, `sys_sessions`, `sys_schema_migrations`, `sys_daily_quotes`, `sys_scheduled_runs`, `sys_dashboard_texture`, `sys_module_texture`, `sys_fav_photo` |
+| `sys_` | Platform — not a feature module | `sys_modules`, `sys_app_settings`, `sys_module_settings`, `sys_user_preferences`, `sys_users`, `sys_user_module_access`, `sys_sessions`, `sys_schema_migrations`, `sys_daily_quotes`, `sys_scheduled_runs`, `sys_dashboard_texture`, `sys_module_texture`, `sys_fav_photo`, `sys_deployments` |
 | `stk_` | Stocks & ETFs (brokerage accounts **and** per-stock tables — one prefix) | `stk_investment_accounts`, `stk_stock_positions`, `stk_stock_transactions`, `stk_stock_watch_lists`, `stk_stock_volatility_cache`, `stk_ticker_risk_cache`, `stk_ticker_logos`, `stk_daily_snapshots` |
 | `csv_` | CSV Analysis (incl. user-generated per-entry tables from `buildTableName`) | `csv_analytics_entries`, `csv_chart_presets`, `csv_govee` |
 | `jrn_` | MyJournal | `jrn_entries`, `jrn_categories`, `jrn_tags`, `jrn_entry_categories`, `jrn_entry_tags`, `jrn_entry_locations`, `jrn_entry_images`, `jrn_saved_filters` |
@@ -273,6 +273,14 @@ and asserts each resolves. Extend those lists when adding a module.
 - **A glyph chosen to mean something specific.** `Comments` slots only its default
   `info` chip; a caller that asked for `note` or `clip` meant that, and routing all
   three through one slot would let a single upload overwrite three meanings.
+- **A glyph whose job is to contrast with the one beside it.** `photo-stack` — the
+  Random Photo card's button to the My Favorite Photos screen — sits two controls from
+  the `heart`/`heart-filled` toggle, and exists only to not be mistaken for it. It is in
+  `ALWAYS_CLASSIC` because a themed set's "favourites" artwork is usually a heart. The
+  screen it opens *does* have a slot (`favorite_photos_page`); the button doesn't. Note
+  that `ALWAYS_CLASSIC` blocks only the *themed sets* — `SlotIcon` checks a user's
+  upload before it consults the set — so keeping a glyph out of the slot registry is a
+  separate decision from keeping it out of the themed tables, and this needs both.
 
 ### Uploaded rasters are normalised, not stored as sent
 

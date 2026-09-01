@@ -60,14 +60,28 @@ if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then exit 0; fi
 # arrive with a new build, not because the process happened to die.
 if [ "$DEPLOYED" = "1" ] && [ -f "$APP/migrate.cjs" ]; then
   echo "$(date '+%Y-%m-%d %H:%M:%S') applying pending migrations" >> "$APP/app.log"
-  if ! /usr/local/bin/node --env-file-if-exists="$APP/.env" "$APP/migrate.cjs" \
-      >> "$APP/app.log" 2>&1; then
+  # Captured rather than appended straight to app.log, because the deployment record wants
+  # to know whether migrations ACTUALLY ran -- the runner exits 0 either way, so the exit
+  # code cannot answer that. The output still reaches app.log below, unchanged.
+  MIGRATE_OUTPUT=$(/usr/local/bin/node --env-file-if-exists="$APP/.env" "$APP/migrate.cjs" 2>&1)
+  MIGRATE_STATUS=$?
+  echo "$MIGRATE_OUTPUT" >> "$APP/app.log"
+  if [ "$MIGRATE_STATUS" -ne 0 ]; then
     # Deliberately fatal: bringing up a build whose schema didn't land is how
     # you get a half-working app writing to a database it disagrees with. The
     # every-minute task will retry, and app.log says what broke.
     echo "$(date '+%Y-%m-%d %H:%M:%S') MIGRATION FAILED — not starting the app" >> "$APP/app.log"
     exit 1
   fi
+  # A deploy with no schema change prints "No pending migrations." and must NOT be recorded
+  # as having migrated -- otherwise the flag is 1 on every single deploy and says nothing.
+  # Matching the runner's own wording is a little brittle, so the default is the safe one:
+  # if that line ever changes, this reads as "migrated" on a deploy that didn't, rather
+  # than hiding one that did.
+  case "$MIGRATE_OUTPUT" in
+    *"No pending migrations."*) ;;
+    *) MIGRATED=1 ;;
+  esac
 fi
 
 export NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0
@@ -86,4 +100,23 @@ echo $! > "$PIDFILE"
 if [ "$DEPLOYED" = "1" ] && [ -f "$APP/set-startup-message.cjs" ]; then
   /usr/local/bin/node --env-file-if-exists="$APP/.env" "$APP/set-startup-message.cjs" \
     >> "$APP/app.log" 2>&1
+fi
+
+# Log the deployment to sys_deployments, so the About screen can show a history with the
+# build log the package carried in build-log.json. Gated on DEPLOYED for the same reason
+# as the two steps above: a crash-restart is not a deployment and must not appear as one,
+# or the history stops meaning anything.
+#
+# Here rather than in REBUILD_PUBLISH_NAS.bat for the same reason as the startup message:
+# the batch file reaches the NAS only over SMB, and writing a live SQLite database across
+# a network share risks corrupting it. Running here also means `deployed_at` is when the
+# build actually went live, not when it finished building on Windows.
+#
+# --migrated is passed only when migrate.cjs really ran and succeeded above, so a recorded
+# row distinguishes a schema change from a plain code deploy.
+#
+# The recorder never exits non-zero, so a failure can't stop the app coming up.
+if [ "$DEPLOYED" = "1" ] && [ -f "$APP/record-deployment.cjs" ]; then
+  /usr/local/bin/node --env-file-if-exists="$APP/.env" "$APP/record-deployment.cjs" \
+    ${MIGRATED:+--migrated} >> "$APP/app.log" 2>&1
 fi

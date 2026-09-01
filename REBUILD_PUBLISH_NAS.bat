@@ -62,26 +62,47 @@ if not exist "%STAGING%\server.js" (
 
 echo.
 echo === Publishing to "%NAS_PATH%" ===
+REM The trigger is written BEFORE the copy, not after. This looks wrong and is
+REM deliberate -- writing it afterwards caused a real outage on 2026-08-30.
+REM
+REM Turbopack loads server chunks LAZILY: a page bundle resolves
+REM `R.c("server/chunks/ssr/<hash>.js")` on the first request to that route, not
+REM at boot. So between the copy landing and the keepalive task restarting -- up
+REM to a full minute, since the task runs every minute -- the OLD process is
+REM still serving traffic against a .next directory that has just been replaced.
+REM Any route it had not touched yet goes to disk for a chunk hash that /MIR has
+REM already deleted, and throws:
+REM
+REM     Error [ChunkLoadError]: Failed to load chunk server/chunks/ssr/src_<hash>._.js
+REM     Cannot find module '/volume1/app/myhomebase/.next/server/chunks/ssr/...'
+REM
+REM When that lands on a layout the browser gets a 500 with no stylesheet, which
+REM on a phone reads as "the app is completely broken" rather than as a deploy in
+REM progress. The failure is invisible here and invisible to `npm run verify` --
+REM it is not in the code, it is in the ordering.
+REM
+REM Writing the trigger first means the restart happens DURING or immediately
+REM after the copy instead of a minute behind it. The trade is a few seconds of
+REM connection refused (honest, and the PWA retries) instead of up to a minute of
+REM 500s served from a half-replaced build. If start.sh fires mid-copy the app
+REM comes up on an incomplete tree and dies; the every-minute keepalive then
+REM restarts it into the finished one, so this self-heals.
+echo %DATE% %TIME%> "%NAS_PATH%\deploy.trigger"
+if not exist "%NAS_PATH%\deploy.trigger" (
+    echo.
+    echo WARNING: could not write deploy.trigger. Continuing with the copy, but
+    echo          the NAS will keep serving the old build until it is restarted.
+)
+
 REM /MIR so removed files disappear from the destination instead of piling up
 REM across releases -- but robocopy never deletes anything matched by /XD or
 REM /XF, which is what keeps the live database, the secrets and the NAS-side
 REM launcher safe. Same pattern REBUILD_PUBLISH.bat relies on.
+REM
+REM deploy.trigger stays in /XF: it was just written above, and letting /MIR
+REM consider it would delete it again (it does not exist in staging).
 robocopy "%STAGING%" "%NAS_PATH%" /MIR /XD data /XF .env start.sh app.log app.pid deploy.trigger /R:2 /W:2 >nul
 if errorlevel 8 goto :robocopy_failed
-
-REM Ask the NAS to restart itself. start.sh checks for this file on every
-REM scheduled run, cycles the process and deletes it -- so a release needs no
-REM SSH. Written last, after the copy has fully landed, or the app could come
-REM back up on a half-copied build.
-echo %DATE% %TIME%> "%NAS_PATH%\deploy.trigger"
-REM Checked by existence, not by errorlevel: robocopy above exits 1 for "files
-REM were copied" (a success), and `echo` doesn't clear that, so an errorlevel
-REM test here reports a failure on every successful publish.
-if not exist "%NAS_PATH%\deploy.trigger" (
-    echo.
-    echo WARNING: could not write deploy.trigger. The new build is in place but
-    echo          the NAS will keep serving the old one until it is restarted.
-)
 
 echo.
 echo Published to %NAS_PATH%
@@ -98,8 +119,12 @@ if not exist "%NAS_PATH%\start.sh" (
     echo       Part 6 -- it is created once on the NAS, not shipped by this build.
 )
 echo.
-echo Restart requested. The "MyHomeBase keepalive" task picks up deploy.trigger
-echo on its next run and switches to the new build -- no SSH needed.
+echo Restart requested BEFORE the copy, so the NAS switches over as the new files
+echo land rather than up to a minute later -- see the comment above the trigger.
+echo Expect a few seconds of "connection refused" rather than 500s.
+echo.
+echo If the app is still down after ~2 minutes, check app.log: the keepalive task
+echo retries every minute and its last lines say what stopped it.
 echo.
 echo To switch over immediately: DSM -^> Task Scheduler -^> select
 echo "MyHomeBase keepalive" -^> Run.

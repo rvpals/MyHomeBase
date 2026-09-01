@@ -658,3 +658,176 @@ html[data-music-player="full"] {
     filter: brightness(1.35) saturate(1.6);
   }
 }
+
+/* NOTE: the slide-off animation used to live here as an `arrow-slide-off` keyframe
+   driven by --slide-x / --slide-y. It has been replaced by a requestAnimationFrame loop
+   in game-arrows-view.tsx (`useClearingPoints`), because the piece now *straightens* as
+   it leaves — the tail follows the head's route out, tadpole-fashion — and CSS cannot
+   interpolate an SVG `points` attribute from one geometry to another. A transform could
+   only ever slide the bent shape rigidly. */
+
+/* Arrow Clearing: the lane flash after a tap.
+
+   Two variants because the two outcomes want opposite treatment. A legal move fades
+   its lane out quickly so the arrow sliding along it is what you actually watch — held
+   at full strength it covered the piece, and the clear read as a green blip rather
+   than as travel. A blocked move has no animation to get out of the way of, so its red
+   lane holds and then fades, which is the only lasting sign of why the tap failed. */
+@keyframes arrow-route-flash {
+  0% {
+    opacity: 0.55;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes arrow-route-hold {
+  0%,
+  55% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Tetris: the line clear.
+
+   Three layered animations rather than one, because a line clear is three events that
+   happen to coincide — the row is completed, it is destroyed, and the stack falls into
+   the space. Animating only the last of those is what made this read as "the row was
+   never there": the board simply had one fewer line the next frame.
+
+   The sequence is deliberately short. `LINE_CLEAR_MS` in game-tetris-view.tsx holds the
+   matching duration, and gravity is suspended for exactly that long — any longer and a
+   fast player is left waiting on a cosmetic, which in a game with a clock is worse than
+   a plain clear. */
+
+/* 1. The row flashes white, then blows out. A cleared row should read as *destroyed*
+   rather than as tidied away, so the fill is driven past the accent to near-white at
+   the moment of the clear before collapsing. */
+@keyframes tetris-line-flash {
+  0% {
+    filter: brightness(1) saturate(1);
+    transform: scaleY(1);
+  }
+  35% {
+    filter: brightness(2.6) saturate(0.25);
+    transform: scaleY(1.12);
+  }
+  70% {
+    filter: brightness(2.2) saturate(0.3);
+    transform: scaleY(1);
+  }
+  100% {
+    filter: brightness(1.6) saturate(0.4);
+    transform: scaleY(0.06);
+    opacity: 0;
+  }
+}
+
+.animate-tetris-line {
+  animation: tetris-line-flash var(--tetris-clear-ms, 320ms) ease-out forwards;
+  /* Collapse toward the row's own centre, so the line implodes rather than sliding. */
+  transform-origin: center;
+}
+
+/* 2. The cells scatter outward from the middle of the row.
+
+   `--tetris-cell-delay` is set per cell by the view, from its distance to the centre
+   column, which makes the clear travel outward from where the piece landed instead of
+   every cell vanishing in lockstep. Purely transform and opacity, so it stays off the
+   layout path. */
+@keyframes tetris-cell-burst {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  40% {
+    transform: translateY(-8%) scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(18%) scale(0.35);
+    opacity: 0;
+  }
+}
+
+.animate-tetris-cell {
+  animation: tetris-cell-burst var(--tetris-clear-ms, 320ms) ease-out forwards;
+  animation-delay: var(--tetris-cell-delay, 0ms);
+}
+
+/* 3. A bar of light sweeps across the row as it goes.
+
+   This is the part that says "a LINE was completed" rather than "some blocks went":
+   it is the only element that spans the full width, and it is what makes a four-row
+   clear look different from four separate ones. */
+@keyframes tetris-line-sweep {
+  0% {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+.animate-tetris-sweep {
+  animation: tetris-line-sweep var(--tetris-clear-ms, 320ms) ease-out forwards;
+}
+
+/* A four-row clear is the whole point of stacking deep, so it gets a board-wide flash
+   the smaller clears do not — the reward has to be visible, not just numerical. */
+@keyframes tetris-tetris-flash {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  40% {
+    box-shadow:
+      0 0 0 2px var(--brass),
+      0 0 28px 6px var(--brass);
+  }
+}
+
+.animate-tetris-quad {
+  animation: tetris-tetris-flash var(--tetris-clear-ms, 320ms) ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The clear still has to be *legible* — a player who asked for less motion still
+     needs to see which rows went, or the board appears to change on its own. So the
+     movement is dropped and a plain fade is kept, rather than switching it all off. */
+  .animate-tetris-line,
+  .animate-tetris-cell {
+    animation: tetris-reduced-fade var(--tetris-clear-ms, 320ms) ease-out forwards;
+    animation-delay: 0ms;
+  }
+
+  .animate-tetris-sweep,
+  .animate-tetris-quad {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+@keyframes tetris-reduced-fade {
+  0% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+  40% {
+    opacity: 1;
+    filter: brightness(2.2) saturate(0.3);
+  }
+  100% {
+    opacity: 0;
+    filter: brightness(1.6);
+  }
+}

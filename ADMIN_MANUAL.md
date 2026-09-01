@@ -65,6 +65,29 @@ These are one-time, from setup, and a release quietly does nothing without them:
   `grep -c set-startup-message /volume1/app/myhomebase/start.sh` — `0` means
   publishes will go out silently. Nothing else breaks; the banner just never
   appears.
+
+  And a third job: it runs `record-deployment.cjs`, which writes the row that
+  About → Deployments lists. Check it with
+  `grep -c record-deployment /volume1/app/myhomebase/start.sh` — `0` means
+  deployments go unrecorded and that tab stays empty. Again nothing else breaks.
+
+  **Use `COPY_NAS_START_SH.bat` at the repo root rather than copying by hand.** It
+  does the `scp` *and* the `chmod +x` — the second is the part that matters, since
+  DSM's boot task runs this exact path and a `start.sh` that lands without its
+  executable bit stops the app coming back on the next restart. It also refuses to
+  copy a CRLF file, which would fail on the NAS with a bad-interpreter error that
+  names the right file and explains nothing.
+
+  ```powershell
+  .\COPY_NAS_START_SH.bat myuser        # or set $NasUser in the .ps1
+  ```
+
+  It passes `scp -O`, which forces the legacy SCP protocol: OpenSSH 9+ transfers
+  over the SFTP subsystem, DSM does not enable that by default, and a plain `scp`
+  authenticates fine and then dies with `subsystem request failed on channel 0` —
+  which reads like a network or credentials fault and is neither. If that still
+  fails the script falls back to piping the file through `ssh`, which needs no
+  subsystem at all.
 - **The keepalive task must be running every minute.** That interval *is* how
   long a release takes to go live.
 
@@ -184,16 +207,19 @@ taskkill /F /PID <pid>
 
 ## Scripts you can run without Claude
 
-Both of these exist to keep routine work out of a Claude session — the gates and
-the release mechanics are deterministic, and streaming their output through a
-model costs tokens for nothing. Each is a `.bat` wrapper at the repo root over a
-`.ps1` in `scripts/`; the wrapper picks `pwsh` and falls back to `powershell`,
-and passes every argument straight through, so use whichever you prefer.
+These exist to keep routine work out of a Claude session — the gates, the release
+mechanics and a file copy are all deterministic, and streaming their output
+through a model costs tokens for nothing. Each is a `.bat` wrapper at the repo root over a
+`.ps1`; the first two wrap a script in `scripts/` and pick `pwsh` with a fallback
+to `powershell`, while `COPY_NAS_START_SH` keeps its `.ps1` beside the `.bat` at
+the repo root. All of them pass every argument straight through, so use whichever
+you prefer.
 
 | File | What it does |
 |---|---|
 | `full_test.bat` → `scripts/full-test.ps1` | Every quality gate from `/verify`, in the same order |
 | `manual_release.bat` → `scripts/manual-release.ps1` | The mechanical steps of `/release` — backup, changelog, commit, push |
+| `COPY_NAS_START_SH.bat` → `COPY_NAS_START_SH.ps1` | Copies `start.sh` to the NAS and `chmod +x` it — the one file a publish never ships |
 
 ### `full_test.bat` — the whole quality gate
 
@@ -265,3 +291,8 @@ what keeps a release from destroying live state:
 NAS by hand, so a republish can't clobber the file the boot task runs or strip
 its `+x` bit. If `REBUILD_PUBLISH_NAS.bat` warns that there's no `start.sh` in
 the destination, see Part 6 of the setup instructions.
+
+The cost of that safety is that a change to `start.sh` has to be copied across
+deliberately — `COPY_NAS_START_SH.bat` does it, including the `chmod +x`. Run it
+whenever the repo's `start.sh` changes, and remember the two-way check above: the
+publish cannot tell you the NAS copy is out of date, because it never looks at it.

@@ -955,7 +955,12 @@ describe("importPositionsFromCsv", () => {
   it("imports a new position with all mapped fields", () => {
     const repo = fakeRepo();
     const summary = importPositionsFromCsv(repo, "Symbol,Name,Price,Qty\nAAPL,Apple Inc.,150.00,10", mapping);
-    expect(summary).toEqual({ importedCount: 1, skippedCount: 0, results: [{ rowNumber: 1, status: "imported" }] });
+    expect(summary).toEqual({
+      importedCount: 1,
+      updatedCount: 0,
+      skippedCount: 0,
+      results: [{ rowNumber: 1, status: "imported" }],
+    });
     const position = listPositions(repo)[0];
     expect(position.currentPriceCents).toBe(15000);
     expect(position.quantity).toBe(10);
@@ -1123,6 +1128,7 @@ describe("importPositionsFromCsv", () => {
     const summary = importPositionsFromCsv(repo, "Symbol,Name,Price,Qty\n,Apple Inc.,150.00,10", mapping);
     expect(summary).toEqual({
       importedCount: 0,
+      updatedCount: 0,
       skippedCount: 1,
       results: [{ rowNumber: 1, status: "skipped", reason: "Missing ticker" }],
     });
@@ -1173,7 +1179,7 @@ describe("importPositionsFromCsv", () => {
     it("imports nothing when every row is excluded", () => {
       const repo = fakeRepo();
       const summary = importPositionsFromCsv(repo, csv, mapping, { excludedRowIndexes: [0, 1, 2] });
-      expect(summary).toEqual({ importedCount: 0, skippedCount: 0, results: [] });
+      expect(summary).toEqual({ importedCount: 0, updatedCount: 0, skippedCount: 0, results: [] });
       expect(listPositions(repo)).toHaveLength(0);
     });
 
@@ -1365,6 +1371,7 @@ describe("importTransactionsFromCsv", () => {
     const summary = importTransactionsFromCsv(repo, csv, mapping);
     expect(summary).toEqual({
       importedCount: 0,
+      updatedCount: 0,
       skippedCount: 1,
       results: [{ rowNumber: 1, status: "skipped", reason: "Duplicate of an existing transaction" }],
     });

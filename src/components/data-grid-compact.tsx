@@ -13,10 +13,16 @@
 //
 // **Callers never choose this.** `DataGrid` delegates here when the layout is
 // compact, so every grid in the app gets it without touching a single call site.
-// It deliberately implements a *subset*: search, sort and row actions, which are
-// what a phone is used for. Column reordering, resizing, per-column filters, CSV
-// export and density belong to a pointer and a wide screen — they stay on the
-// full layout rather than being crammed in.
+// It deliberately implements a *subset*: search, sort, row actions and selection,
+// which are what a phone is used for. Column reordering, resizing, per-column filters,
+// CSV export and density belong to a pointer and a wide screen — they stay on the full
+// layout rather than being crammed in.
+//
+// Selection is here rather than being one of the omissions, because a bulk action is
+// not a wide-screen luxury: leaving it out silently dropped "Download" and "Remove
+// from favorites" below 1024px, so a phone could see the list and not act on it. It is
+// implemented as a checkbox in each card's top-right and the caller's action bar
+// pinned above the cards.
 
 import { useMemo, useState, type ReactNode } from "react";
 import type { CellValue, DataGridColumn } from "./data-grid";
@@ -30,6 +36,10 @@ export interface DataGridCompactProps<T> {
   showToolbar?: boolean;
   enableSearch?: boolean;
   onRowClick?: (row: T) => void;
+  /** Add a checkbox to each card. Default false. */
+  enableSelection?: boolean;
+  /** Rendered above the cards while rows are selected — the caller's bulk actions. */
+  renderSelectionActions?: (selectedRows: T[], clearSelection: () => void) => ReactNode;
   className?: string;
 }
 
@@ -68,11 +78,14 @@ export function DataGridCompact<T>({
   showToolbar = true,
   enableSearch = true,
   onRowClick,
+  enableSelection = false,
+  renderSelectionActions,
   className = "",
 }: DataGridCompactProps<T>) {
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<string>("");
   const [limit, setLimit] = useState(PAGE_STEP);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string | number>>(new Set());
 
   // The first column identifies the record, so it becomes the card's heading
   // rather than another label/value line.
@@ -95,6 +108,33 @@ export function DataGridCompact<T>({
     // reordered underneath them.
     return [...filtered].sort((a, b) => compareValues(column.value!(a), column.value!(b)));
   }, [rows, columns, query, sortKey]);
+
+  // Selection is always a subset of what the search currently shows, so the count in
+  // the action bar equals what a bulk action will touch — the same contract the full
+  // grid keeps. A row filtered out of view is dropped from the selection rather than
+  // acted on invisibly.
+  const selectedRows = visible.filter((row) => selectedKeys.has(getRowKey(row)));
+  const clearSelection = () => setSelectedKeys(new Set());
+  const allVisibleSelected = visible.length > 0 && selectedRows.length === visible.length;
+
+  function toggleRowSelection(row: T) {
+    const key = getRowKey(row);
+    setSelectedKeys((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    setSelectedKeys((current) => {
+      const next = new Set(current);
+      if (allVisibleSelected) for (const row of visible) next.delete(getRowKey(row));
+      else for (const row of visible) next.add(getRowKey(row));
+      return next;
+    });
+  }
 
   if (!leadColumn) return null;
 
@@ -132,6 +172,35 @@ export function DataGridCompact<T>({
         </div>
       )}
 
+      {enableSelection && visible.length > 0 && (
+        // Always present, not only once something is selected: on a phone the "Select
+        // all" control is the only way to act on a long list without tapping fifty
+        // cards, and a bar that appears only after the first tap hides that.
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-paper-raised p-2">
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              type="checkbox"
+              checked={allVisibleSelected}
+              onChange={toggleSelectAll}
+              className="h-4 w-4 accent-brass"
+            />
+            {selectedRows.length > 0 ? `${selectedRows.length} selected` : "Select all"}
+          </label>
+          {selectedRows.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              {renderSelectionActions?.(selectedRows, clearSelection)}
+              <button
+                type="button"
+                onClick={clearSelection}
+                className="text-xs text-muted underline hover:text-ink"
+              >
+                Clear
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {visible.length === 0 ? (
         <p className="rounded-lg border border-dashed border-line p-6 text-center text-sm text-muted">
           {rows.length === 0 ? emptyMessage : "Nothing matches that search."}
@@ -145,6 +214,9 @@ export function DataGridCompact<T>({
                 leadColumn={leadColumn}
                 detailColumns={detailColumns}
                 onRowClick={onRowClick}
+                isSelectable={enableSelection}
+                isSelected={selectedKeys.has(getRowKey(row))}
+                onToggleSelected={() => toggleRowSelection(row)}
               />
             </li>
           ))}
@@ -174,11 +246,17 @@ function CompactRow<T>({
   leadColumn,
   detailColumns,
   onRowClick,
+  isSelectable = false,
+  isSelected = false,
+  onToggleSelected,
 }: {
   row: T;
   leadColumn: DataGridColumn<T>;
   detailColumns: DataGridColumn<T>[];
   onRowClick?: (row: T) => void;
+  isSelectable?: boolean;
+  isSelected?: boolean;
+  onToggleSelected?: () => void;
 }) {
   const body: ReactNode = (
     <>
@@ -194,24 +272,47 @@ function CompactRow<T>({
     </>
   );
 
+  const cardClass = `rounded-xl border bg-paper-raised p-3 ${
+    isSelected ? "border-brass" : "border-line"
+  }`;
+
   // `data-compact-row` is a stable hook for the layout snapshot harness, which
   // counts cards the way it counts table rows.
-  if (!onRowClick) {
-    return (
-      <div data-compact-row className="rounded-xl border border-line bg-paper-raised p-3">
+  const card =
+    onRowClick === undefined ? (
+      <div data-compact-row className={cardClass}>
         {body}
       </div>
+    ) : (
+      <button
+        type="button"
+        data-compact-row
+        onClick={() => onRowClick(row)}
+        className={`w-full text-left transition-colors hover:border-brass/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${cardClass}`}
+      >
+        {body}
+      </button>
     );
-  }
 
+  if (!isSelectable) return card;
+
+  // The checkbox is a SIBLING of the card, not a child of it. A clickable card is a
+  // `<button>`, and an input inside a button is invalid HTML that browsers resolve by
+  // swallowing the input's clicks — so the checkbox would render and refuse to tick.
+  // Absolutely positioned over the card's top-right instead, which also keeps it clear
+  // of the lead column's text.
   return (
-    <button
-      type="button"
-      data-compact-row
-      onClick={() => onRowClick(row)}
-      className="w-full rounded-xl border border-line bg-paper-raised p-3 text-left transition-colors hover:border-brass/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
-    >
-      {body}
-    </button>
+    <div className="relative">
+      {card}
+      <label className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center">
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={() => onToggleSelected?.()}
+          aria-label="Select row"
+          className="h-4 w-4 accent-brass"
+        />
+      </label>
+    </div>
   );
 }

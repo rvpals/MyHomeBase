@@ -254,6 +254,11 @@ export function DataGrid<T>(props: DataGridProps<T>) {
         showToolbar={props.showToolbar}
         enableSearch={props.enableSearch}
         onRowClick={props.onRowClick}
+        // Forwarded, unlike the other wide-screen affordances: a bulk action is the
+        // reason the caller enabled selection, and dropping it below 1024px meant a
+        // phone could read the list but not act on it.
+        enableSelection={props.enableSelection}
+        renderSelectionActions={props.renderSelectionActions}
         className={props.className}
       />
     );

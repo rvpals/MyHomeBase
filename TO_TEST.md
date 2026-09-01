@@ -89,6 +89,12 @@ Tick a box when the check passes; leave it open and note the failure beside it.
 - [ ] **SQL Explorer**: list tables; a `SELECT` runs and returns a grid + result count;
       a non-SELECT (or a CTE) is rejected by the read-only guard; as admin, a real write
       statement applies and the affected table reflects it.
+- [ ] **SQL Explorer → Truncate**: the button sits beside Open on every table row; the
+      dialog quotes the *current* row count ("There are N record(s) in table X, are you
+      sure?") and the confirm button is disabled until that count lands; Cancel leaves the
+      table untouched; confirming empties it and the next insert gets id 1. Escape and an
+      overlay click are ignored while it is running. On a phone the column list truncates
+      instead of pushing Open/Truncate off the row.
 - [ ] **Daily Quote**: add a quote; **Import from Newsletter** parses a pasted 3-2-1 issue;
       the admin quote list shows them.
 - [ ] **Modules**: reorder with arrows; rename short/long names → rail, home grid, and nav
@@ -173,6 +179,9 @@ Run each with `npm run cli -- <command>`.
 - [ ] Show SQL (admin): re-runs the recent-entries query in the grid; Back to entries
       restores the list.
 - [ ] Import from CSV (journal) works with a saved or auto-derived mapping.
+- [ ] Re-importing the same journal export is a no-op — every row reports *skipped*, not
+      imported, whether the file writes time as `15:30` or `15:30:00`. A time typed as
+      `9:05` is stored as `09:05`, and an entry with no time still imports.
 
 ### Entries section (`/modules/journal/entries`)
 

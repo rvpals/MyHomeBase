@@ -187,7 +187,7 @@ and an optional "Show SQL" re-run dialog. Do not build another table.
 | `defaultDensity?` | `Density` | `"normal"` | |
 | `stickyHeader?` | `boolean` | `true` | |
 | `maxHeight?` | `string` | `"70vh"` | Pass `""` to remove the cap. |
-| `enableSelection?` | `boolean` | `false` | Adds a checkbox column. |
+| `enableSelection?` | `boolean` | `false` | Adds a checkbox column. Forwarded to the compact layout, so bulk actions survive below 1024px. |
 | `renderSelectionActions?` | `(selectedRows: T[], clearSelection: () => void) => ReactNode` | — | Bulk actions in the toolbar. Select-all covers the whole filtered set. |
 | `enableRecordView?` | `boolean` | `true` | Per-row button opening the whole record in a `Modal`. |
 | `recordViewTitle?` | `(row: T) => string` | `"Record"` | Heading for that modal. |
@@ -291,10 +291,21 @@ can't fix it, because a table's premise is that columns line up across rows and 
 room for them to. A card drops that premise: the first column becomes the heading (the
 thing that identifies the record) and the rest become label/value pairs.
 
-**It implements a deliberate subset** — search, sort and row click. Column
-reorder/resize, per-column filters, CSV export, density and selection stay on the full
-layout: they need a pointer and a wide screen, and cramming them in would recreate the
-problem.
+**It implements a deliberate subset** — search, sort, row click and selection. Column
+reorder/resize, per-column filters, CSV export and density stay on the full layout: they
+need a pointer and a wide screen, and cramming them in would recreate the problem.
+
+**Selection is in the subset, and wasn't at first.** `enableSelection` and
+`renderSelectionActions` were originally not forwarded here, so a grid with bulk actions
+showed the list and no way to act on it below 1024px — which is how the My Favorite
+Photos screen shipped its Download and Remove buttons to desktop only. A bulk action is
+not a wide-screen luxury. The compact form renders a checkbox in each card's top-right
+and pins the caller's action bar above the cards, with a "Select all" that is always
+visible: on a phone it is the only alternative to tapping fifty cards.
+
+The checkbox is a **sibling of the card, not a child**. A clickable card is a `<button>`,
+and an `<input>` inside a button is invalid HTML that browsers resolve by swallowing the
+input's clicks — the checkbox would render and refuse to tick.
 
 **Two things worth knowing if you touch it:**
 - It renders **50 cards at a time** with a "Show more" button. The full grid paginates;

@@ -7,6 +7,8 @@
 // client views. Mirrors expense-section.tsx.
 
 import { CollapsibleCard } from "@/components/collapsible-card";
+import { SlotIcon } from "@/components/slot-icon";
+import { getIconSlot } from "@/lib/icons";
 import { listAccounts, listPerformanceRecords } from "@/lib/investment-accounts";
 import { listModuleSettingsFor } from "@/lib/module-settings";
 import { getModuleBySlug } from "@/lib/modules";
@@ -43,6 +45,13 @@ import { StockTransactionsView } from "./stock-transactions-view";
 import { StockWatchlistView, type WatchListEntry } from "./stock-watchlist-view";
 
 const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
+
+// The three Watch & Test card badges. Resolved once at module scope; the registry is
+// static, so this is not I/O. Non-null because the ids are registered right here in the
+// repo — an unregistered one is a build-time mistake, not a runtime condition.
+const WATCH_LISTS_SLOT = getIconSlot("stock_card_watch_lists")!;
+const NEXT_DAY_SLOT = getIconSlot("stock_card_next_day_signals")!;
+const SIMULATION_SLOT = getIconSlot("stock_card_simulation")!;
 
 /**
  * The account list every section that needs one shares. `iconMimeType` and
@@ -149,13 +158,25 @@ function SectionBody({ section }: { section: StockSection }) {
       );
       return (
         <div className="flex flex-col gap-6">
-          <CollapsibleCard title="Watch Lists" defaultOpen>
+          <CollapsibleCard
+            title="Watch Lists"
+            titleIcon={<SlotIcon slot={WATCH_LISTS_SLOT} className="h-4 w-4" />}
+            defaultOpen
+          >
             <StockWatchlistView entries={watchListEntries} />
           </CollapsibleCard>
-          <CollapsibleCard title="Next-Day Signals" defaultOpen>
+          <CollapsibleCard
+            title="Next-Day Signals"
+            titleIcon={<SlotIcon slot={NEXT_DAY_SLOT} className="h-4 w-4" />}
+            defaultOpen
+          >
             <NextDayActionsView initialThresholds={loadThresholds()} />
           </CollapsibleCard>
-          <CollapsibleCard title="Simulation" defaultOpen>
+          <CollapsibleCard
+            title="Simulation"
+            titleIcon={<SlotIcon slot={SIMULATION_SLOT} className="h-4 w-4" />}
+            defaultOpen
+          >
             <StockSimulationView />
           </CollapsibleCard>
         </div>

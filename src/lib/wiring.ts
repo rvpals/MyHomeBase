@@ -14,6 +14,7 @@ import { SqliteColorThemeRepository } from "./color-themes/repository";
 import { SqliteCsvAnalyticsRepository } from "./csv-analytics/repository";
 import { SqliteCsvImportMappingRepository } from "./csv-import/repository";
 import { SqliteDashboardTextureRepository } from "./dashboard-texture/repository";
+import { SqliteDeploymentRepository } from "./deployments/repository";
 import { SqliteModuleTextureRepository } from "./module-texture/repository";
 import { SqliteDailyQuoteRepository } from "./daily-quote/repository";
 import { NodeCsvFolder } from "./expense/csv-folder";
@@ -186,6 +187,10 @@ export const deps = {
   sqlExplorerRepo: new SqliteSqlExplorerRepository(db),
   systemInfoRepo: new RealSystemInfoRepository(),
   changeHistoryRepo: new FileChangeHistoryRepository(),
+  // The deployment history the About screen lists (migrations/0078). Written on the
+  // deployment target by record-deployment.cjs as a new build comes up -- never from the
+  // build machine, which reaches the NAS only over SMB.
+  deploymentRepo: new SqliteDeploymentRepository(db),
   // Reads .next/BUILD_ID so an installed PWA can tell it is running a build
   // older than the one this server serves. Caches after the first read.
   buildIdRepo: new FileBuildIdRepository(),

@@ -29,6 +29,7 @@ import { getIconSlot } from "@/lib/icons";
 const MODULES_SLOT = getIconSlot("chrome_menu_modules_trigger")!;
 const ACCOUNT_SLOT = getIconSlot("chrome_menu_account")!;
 const ADMINISTRATION_SLOT = getIconSlot("chrome_menu_administration")!;
+const FAVORITE_PHOTOS_SLOT = getIconSlot("favorite_photos_page")!;
 
 export interface NavLink {
   slug: string;
@@ -192,6 +193,18 @@ export function UserMenu({
           >
             <SlotIcon slot={ACCOUNT_SLOT} className="h-4 w-4 shrink-0" />
             My account
+          </Link>
+          {/* Reachable cold, not only from the Random Photo card's button. The card is
+              where a favourite is made; this is for the times you want the list without
+              waiting for the right photograph to come up. */}
+          <Link
+            href="/favorite-photos"
+            role="menuitem"
+            onClick={close}
+            className={`${menuItem} ${menuItemIdle}`}
+          >
+            <SlotIcon slot={FAVORITE_PHOTOS_SLOT} className="h-4 w-4 shrink-0" />
+            My favorite photos
           </Link>
           <ViewportSwitch pinned={viewportPinned} variant="menu-item" onToggled={close} />
           {showAdmin && (

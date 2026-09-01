@@ -7,6 +7,7 @@ import { computeAnalyticsCommand } from "./compute-analytics";
 import { createCsvAnalyticsEntryCommand } from "./create-csv-analytics-entry";
 import { createUserCommand } from "./create-user";
 import { deleteCsvAnalyticsEntryCommand } from "./delete-csv-analytics-entry";
+import { deploymentsCommand } from "./deployments";
 import { expenseTopSpendersCommand } from "./expense-top-spenders";
 import { explainRuleCommand } from "./explain-rule";
 import { expenseCreateRuleCommand } from "./expense-create-rule";
@@ -59,6 +60,7 @@ const commands: Record<string, Command> = {
   "fav-photos": favPhotosCommand,
   "game-scores": gameScoresCommand,
   "set-startup-message": setStartupMessageCommand,
+  deployments: deploymentsCommand,
   "user-preferences": userPreferencesCommand,
   "take-attendance": takeAttendanceCommand,
   "attendance-report": attendanceReportCommand,
