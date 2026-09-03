@@ -17,6 +17,20 @@ function fakeRepo(): SqlExplorerRepository {
     listTables() {
       return [{ name: "widgets", columns: [{ name: "id", type: "INTEGER", isPrimaryKey: true, isNotNull: true }] }];
     },
+    listSchemaObjects() {
+      return [{ name: "widgets", kind: "table" as const, tableName: "", sql: "CREATE TABLE widgets (id INTEGER)" }];
+    },
+    readTablePage(tableName, limit) {
+      if (tableName !== "widgets") throw new Error(`No such table or view: ${tableName}`);
+      return {
+        tableName,
+        columns: ["id"],
+        rows: [[1], [2]],
+        totalRows: 2,
+        limit,
+        isTruncated: false,
+      };
+    },
     executeStatement(sql) {
       // Mirrors SqliteSqlExplorerRepository: trim first, then decide whether the
       // statement takes the read path. (Without the trim this fake would report a
@@ -95,6 +109,15 @@ describe("executeReadOnlyQuery", () => {
     // report success for a "statement" result.
     const lyingRepo: SqlExplorerRepository = {
       listTables: () => [],
+      listSchemaObjects: () => [],
+      readTablePage: (tableName, limit) => ({
+        tableName,
+        columns: [],
+        rows: [],
+        totalRows: 0,
+        limit,
+        isTruncated: false,
+      }),
       executeStatement: () => ({ kind: "statement", changes: 5 }),
       countRows: () => 0,
       truncateTable: () => 0,

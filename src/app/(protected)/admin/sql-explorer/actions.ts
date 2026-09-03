@@ -1,7 +1,7 @@
 "use server";
 
-import { countTableRows, executeStatement, truncateTable } from "@/lib/sql-explorer";
-import type { SqlExecutionResult } from "@/lib/sql-explorer";
+import { countTableRows, executeStatement, readTablePage, truncateTable } from "@/lib/sql-explorer";
+import type { SqlExecutionResult, TablePage } from "@/lib/sql-explorer";
 import { deps } from "@/lib/wiring";
 
 export interface ExecuteResult {
@@ -54,6 +54,28 @@ export async function truncateTableAction(tableName: string): Promise<TruncateRe
     return {
       ok: false,
       error: error instanceof Error ? error.message : "Failed to truncate the table.",
+    };
+  }
+}
+
+export interface TablePageResult {
+  ok: boolean;
+  page?: TablePage;
+  error?: string;
+}
+
+/**
+ * Backs the tree explorer's right-hand grid. Capped at TABLE_PAGE_LIMIT rows —
+ * the grid takes the rows it is given, so an uncapped read of a large table
+ * would be sent to the browser in full.
+ */
+export async function loadTablePageAction(tableName: string): Promise<TablePageResult> {
+  try {
+    return { ok: true, page: readTablePage(deps.sqlExplorerRepo, tableName) };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Failed to read the table.",
     };
   }
 }
