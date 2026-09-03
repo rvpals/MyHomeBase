@@ -1,6 +1,6 @@
 // Prints the two rollups the Expense dashboard's "Interesting stats" card shows.
 // Handy for eyeballing the vendor fuzzy-grouping against the real database.
-import { totalsByCategory, totalsByVendor } from "@/lib/expense";
+import { listTransactions, totalsByCategory, vendorSpendTotals } from "@/lib/expense";
 import { deps } from "@/lib/wiring";
 import { parseFlags } from "./parse-flags";
 
@@ -22,7 +22,10 @@ export function expenseTopSpendersCommand(args: string[]): void {
   }
 
   console.log(`Top ${limit} by vendor:`);
-  for (const total of totalsByVendor(deps.expenseRepo).slice(0, limit)) {
+  // `vendorSpendTotals` so the CLI ranks the same rows the dashboard does —
+  // payment and redemption lines derive a fictional vendor from statement prose
+  // and are excluded by sign. Reading the rows here keeps that one function call.
+  for (const total of vendorSpendTotals(listTransactions(deps.expenseRepo)).slice(0, limit)) {
     const name = total.vendor === "" ? "(unknown)" : total.vendor;
     console.log(
       `  ${formatCents(total.totalCents).padStart(12)}  ${name}` +

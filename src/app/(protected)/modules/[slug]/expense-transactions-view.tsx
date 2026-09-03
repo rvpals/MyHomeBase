@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ChangeEvent } from "react";
+import { useMemo, useRef, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
@@ -628,6 +628,30 @@ export function ExpenseTransactionsView({
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState<ExpenseTransaction | undefined>(undefined);
+  // The form card is *controlled* rather than left to its own `defaultOpen`.
+  // `defaultOpen` seeds `useState` once at mount, so a later `setEditing(row)`
+  // populated the form but left the card collapsed — the row's Edit button did
+  // nothing visible. Driving `open` from here means picking a row opens the card.
+  //
+  // Starts open only when there's nothing to list, which is the state where the
+  // form is the whole point of the screen.
+  const [isFormOpen, setIsFormOpen] = useState(transactions.length === 0);
+  // The form card sits at the top of the screen while the Edit button that fills
+  // it can be far down a long grid, so opening the card is not the same as the
+  // user seeing it. Scrolled to on edit, which is also what makes the change of
+  // focus legible rather than the page appearing not to react.
+  const formCardRef = useRef<HTMLDivElement>(null);
+
+  /** Loads one row into the form, opens the card, and brings it into view. */
+  function startEditing(row: ExpenseTransaction) {
+    setEditing(row);
+    setIsFormOpen(true);
+    // Deferred a frame: the body only mounts once `isFormOpen` is true, so
+    // scrolling now would measure the collapsed card.
+    requestAnimationFrame(() => {
+      formCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
   // Seeded from the URL when it names a grouping we know, else the flat list. An
   // unrecognised value falls back rather than throwing: these arrive from an
   // address bar, and a stale bookmark should still show the transactions.
@@ -808,7 +832,9 @@ export function ExpenseTransactionsView({
         <div className="flex items-center justify-center gap-1">
           <button
             type="button"
-            onClick={() => setEditing(row)}
+            // Not a bare `setEditing`: the form card is controlled, so naming the
+            // row is not enough to reveal it.
+            onClick={() => startEditing(row)}
             aria-label={`Edit transaction ${row.id}`}
             title="Edit"
             className="rounded-md p-1 text-brass-dark transition-colors hover:bg-brass-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
@@ -885,18 +911,32 @@ export function ExpenseTransactionsView({
 
   return (
     <div className="flex flex-col gap-6">
-      <CollapsibleCard
-        title={editing ? `Edit transaction #${editing.id}` : "Add a transaction"}
-        defaultOpen={Boolean(editing) || transactions.length === 0}
-      >
-        <TransactionForm
-          key={editing?.id ?? "new"}
-          accounts={accounts}
-          categories={categories}
-          editing={editing}
-          onDone={() => setEditing(undefined)}
-        />
-      </CollapsibleCard>
+      {/* The ref lives on a wrapper rather than on the card: `CollapsibleCard` is
+          shared and doesn't forward one, and a scroll target here is a local need
+          — not a reason to widen its API for every other caller. */}
+      <div ref={formCardRef} className="scroll-mt-4">
+        <CollapsibleCard
+          title={editing ? `Edit transaction #${editing.id}` : "Add a transaction"}
+          open={isFormOpen}
+          onOpenChange={(next) => {
+            setIsFormOpen(next);
+            // Collapsing the card abandons the edit, so the next open is a fresh
+            // "Add" rather than a half-finished row the title no longer names.
+            if (!next) setEditing(undefined);
+          }}
+        >
+          <TransactionForm
+            key={editing?.id ?? "new"}
+            accounts={accounts}
+            categories={categories}
+            editing={editing}
+            onDone={() => {
+              setEditing(undefined);
+              setIsFormOpen(false);
+            }}
+          />
+        </CollapsibleCard>
+      </div>
 
       <div className="flex flex-col gap-3">
         <ViewModeSwitch

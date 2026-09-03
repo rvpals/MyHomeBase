@@ -112,6 +112,7 @@ export {
 export {
   totalsByVendor,
   vendorTotals,
+  vendorSpendTotals,
   vendorGroupKey,
   vendorKeyFromDescription,
   mergeVendorsWithTotals,

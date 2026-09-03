@@ -13,12 +13,14 @@ import type { ExpenseRepository, TransactionFilter } from "./ports";
 import type { ExpenseTransaction, ExpenseVendor, VendorTotal } from "./types";
 
 /**
- * Payment aggregators that print their own name ahead of the merchant's, e.g.
- * "SQ *BLUE BOTTLE", "TST* THE DINER". Stripped so the brand rather than the
- * processor becomes the key. The trailing `*` is required, which is what keeps
- * this from eating a merchant whose name happens to start with these letters.
+ * Payment aggregators and ticketing agents that print their own name ahead of
+ * the merchant's, e.g. "SQ *BLUE BOTTLE", "TST* THE DINER", "TM *TICKETMASTER".
+ * Stripped so the brand rather than the processor becomes the key. The trailing
+ * `*` is required, which is what keeps this from eating a merchant whose name
+ * happens to start with these letters — without it, "TM" would swallow any shop
+ * beginning "TM…".
  */
-const PROCESSOR_PREFIX = /^(SQ|TST|PP|PAYPAL|SP|EB|WPY|IC|POS|PY)\s*\*+\s*/;
+const PROCESSOR_PREFIX = /^(SQ|TST|TM|PP|PAYPAL|SP|EB|WPY|IC|POS|PY)\s*\*+\s*/;
 
 /** Leading words with no brand identity of their own ("THE HOME DEPOT"). */
 const LEADING_FILLER = new Set(["THE", "A"]);
@@ -100,6 +102,36 @@ export function vendorTotals(transactions: ExpenseTransaction[]): VendorTotal[] 
 /** Spend per vendor straight from the repository, biggest total first. */
 export function totalsByVendor(repo: ExpenseRepository, filter?: TransactionFilter): VendorTotal[] {
   return vendorTotals(repo.listTransactions(filter));
+}
+
+/**
+ * The vendor rollups with non-spend groups dropped — what a "biggest spenders"
+ * list should rank.
+ *
+ * A card statement carries more than purchases: payments, reward redemptions and
+ * refunds. Those have no brand in their description, so `vendorKeyFromDescription`
+ * falls back to the leading word and invents vendors out of statement prose —
+ * "ONLINE PAYMENT THANK YOU" becomes ONLINE, "REDEEM CASH BACK" becomes REDEEM.
+ * They then compete for a top-five slot against real shops.
+ *
+ * Filtered on the **sign of the group's net** rather than on a list of banned
+ * words. A keyword list has to be fed every time an issuer rewrites its wording,
+ * and it would still miss the ones nobody predicted; money coming *back* to you
+ * is not spend regardless of what the line is called. So a group whose net is
+ * zero or negative is not a spender.
+ *
+ * The trade-off, and it is a real one: a genuine refund no longer reduces its
+ * vendor's total here, so a vendor you returned something to reads slightly high.
+ * That was accepted deliberately — a mis-ranked total is a smaller error than a
+ * fictional vendor at the top of the list. `vendorTotals` still returns the true
+ * net, so anything that wants the honest figure (the Meta Data list) keeps it.
+ *
+ * Kept separate from `vendorTotals` rather than folded into it, because the other
+ * two callers must NOT have this applied: the Meta Data list derives `isInUse`
+ * from the rollups, and a vendor whose net is negative is still very much in use.
+ */
+export function vendorSpendTotals(transactions: ExpenseTransaction[]): VendorTotal[] {
+  return vendorTotals(transactions).filter((total) => total.totalCents > 0);
 }
 
 /**

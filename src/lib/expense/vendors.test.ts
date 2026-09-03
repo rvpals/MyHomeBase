@@ -6,6 +6,7 @@ import {
   totalsByVendor,
   vendorGroupKey,
   vendorKeyFromDescription,
+  vendorSpendTotals,
   vendorTotals,
 } from "./vendors";
 
@@ -56,6 +57,14 @@ describe("vendorKeyFromDescription", () => {
   it("strips a payment-processor prefix", () => {
     expect(vendorKeyFromDescription("SQ *BLUE BOTTLE COFFEE")).toBe("BLUE");
     expect(vendorKeyFromDescription("TST* WILLOWS INN")).toBe("WILLOWS");
+    // Ticketmaster prints "TM *"; without the prefix the key would be "TM".
+    expect(vendorKeyFromDescription("TM  *TICKETMASTER 8004531463")).toBe("TICKETMASTER");
+  });
+
+  it("only strips a prefix when the marker `*` follows it", () => {
+    // The guard that stops "TM" eating a merchant that merely starts with it.
+    expect(vendorKeyFromDescription("TM LANDSCAPING LLC")).toBe("TM");
+    expect(vendorKeyFromDescription("SQUARE ONE BAKERY")).toBe("SQUARE");
   });
 
   it("skips leading filler words", () => {
@@ -134,6 +143,51 @@ describe("vendorTotals", () => {
 
   it("returns nothing for no transactions", () => {
     expect(vendorTotals([])).toEqual([]);
+  });
+});
+
+describe("vendorSpendTotals", () => {
+  it("drops the fictional vendors a payment or redemption line derives", () => {
+    // The bug this exists for: no vendor field, so the key comes from statement
+    // prose and "ONLINE"/"REDEEM" ranked against real shops on the dashboard.
+    const totals = vendorSpendTotals([
+      transaction({ id: 1, transactionDescription: "COSTCO WHSE #1017", amountCents: 12_000 }),
+      transaction({ id: 2, transactionDescription: "ONLINE PAYMENT THANK YOU", amountCents: -50_000 }),
+      transaction({ id: 3, transactionDescription: "REDEEM CASH BACK", amountCents: -2_500 }),
+    ]);
+
+    expect(totals).toEqual([
+      { vendor: "COSTCO", totalCents: 12_000, transactionCount: 1, isDerived: true },
+    ]);
+  });
+
+  it("keeps a vendor whose refunds do not outweigh its charges", () => {
+    const totals = vendorSpendTotals([
+      transaction({ id: 1, vendor: "Costco", amountCents: 10_000 }),
+      transaction({ id: 2, vendor: "Costco", amountCents: -2_500 }),
+    ]);
+
+    expect(totals).toEqual([
+      { vendor: "Costco", totalCents: 7_500, transactionCount: 2, isDerived: false },
+    ]);
+  });
+
+  it("drops a vendor that nets to zero or below", () => {
+    // Fully refunded, and a net credit. Neither is a "biggest spender".
+    expect(
+      vendorSpendTotals([
+        transaction({ id: 1, vendor: "Costco", amountCents: 5_000 }),
+        transaction({ id: 2, vendor: "Costco", amountCents: -5_000 }),
+      ]),
+    ).toEqual([]);
+
+    expect(
+      vendorSpendTotals([transaction({ id: 3, vendor: "Refunder", amountCents: -900 })]),
+    ).toEqual([]);
+  });
+
+  it("returns nothing for no transactions", () => {
+    expect(vendorSpendTotals([])).toEqual([]);
   });
 });
 

@@ -1,13 +1,15 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { CollapsibleCard } from "@/components/collapsible-card";
-import type {
-  CategoryTotal,
-  ExpenseCategory,
-  ExpenseVendor,
-  VendorTotal,
+import {
+  categoryGroupKey,
+  vendorGroupKeyForName,
+  type CategoryTotal,
+  type ExpenseCategory,
+  type ExpenseVendor,
+  type VendorTotal,
 } from "@/lib/expense";
-import { expenseSectionHref } from "./expense-sections";
+import { expenseGroupHref, expenseSectionHref } from "./expense-sections";
 import {
   CategoryIconThumbnail,
   categoryIconUrlsByName,
@@ -48,13 +50,26 @@ function Tile({
   );
 }
 
-/** One "name — n transaction(s) — $total" row. Shared by both rollup lists. */
+/**
+ * One "name — n transaction(s) — $total" row. Shared by both rollup lists.
+ *
+ * The whole row is the link, rather than just the name: every part of it —
+ * icon, count, total — is describing the same group, so there's no sub-target
+ * that would mean anything different.
+ *
+ * Deliberately not the `RowLink` from `expense-accounts-view.tsx`. That one is
+ * `flex-1` because it sits beside per-row edit and delete controls; these rows
+ * have no siblings to share width with, so reusing it would mean widening its
+ * contract for two callers that want different layouts.
+ */
 function SpendRow({
   label,
   isPlaceholder = false,
   iconUrl,
   transactionCount,
   totalCents,
+  href,
+  title,
 }: {
   label: string;
   /** Renders the name greyed out — it stands in for a missing value. */
@@ -62,15 +77,28 @@ function SpendRow({
   iconUrl?: string;
   transactionCount: number;
   totalCents: number;
+  /** Where the row's group lives on the Transactions screen. */
+  href: string;
+  title: string;
 }) {
   return (
-    <li className="flex items-center justify-between gap-3 rounded-md border border-line bg-paper px-3 py-1.5 text-sm">
-      <span className="flex min-w-0 items-center gap-2 text-ink">
-        <CategoryIconThumbnail iconUrl={iconUrl} />
-        <span className={`truncate ${isPlaceholder ? "text-muted" : ""}`}>{label}</span>
-        <span className="shrink-0 text-xs text-muted">{transactionCount} transaction(s)</span>
-      </span>
-      <span className="shrink-0 font-mono text-ink">{formatCents(totalCents)}</span>
+    <li>
+      <Link
+        href={href}
+        title={title}
+        // `py-2` rather than the old `py-1.5`: this is a touch target now, and
+        // the extra few pixels are what make it comfortable on a phone. The
+        // focus ring matches the Meta Data rows, so keyboard users get the same
+        // affordance on both screens.
+        className="flex items-center justify-between gap-3 rounded-md border border-line bg-paper px-3 py-2 text-sm transition-colors hover:border-brass/50 hover:bg-brass-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+      >
+        <span className="flex min-w-0 items-center gap-2 text-ink">
+          <CategoryIconThumbnail iconUrl={iconUrl} />
+          <span className={`truncate ${isPlaceholder ? "text-muted" : ""}`}>{label}</span>
+          <span className="shrink-0 text-xs text-muted">{transactionCount} transaction(s)</span>
+        </span>
+        <span className="shrink-0 font-mono text-ink">{formatCents(totalCents)}</span>
+      </Link>
     </li>
   );
 }
@@ -164,16 +192,30 @@ export function ExpenseDashboardView({
             isEmpty={topVendors.length === 0}
             emptyMessage="Nothing to show yet — add or import some transactions to see a breakdown."
           >
-            {topVendors.map((total) => (
-              <SpendRow
-                key={total.vendor || "unknown"}
-                label={total.vendor === "" ? "unknown" : total.vendor}
-                isPlaceholder={total.vendor === ""}
-                iconUrl={vendorIconFor(vendorIconUrls, total.vendor)}
-                transactionCount={total.transactionCount}
-                totalCents={total.totalCents}
-              />
-            ))}
+            {topVendors.map((total) => {
+              const name = total.vendor === "" ? "unknown" : total.vendor;
+              return (
+                <SpendRow
+                  key={total.vendor || "unknown"}
+                  label={name}
+                  isPlaceholder={total.vendor === ""}
+                  iconUrl={vendorIconFor(vendorIconUrls, total.vendor)}
+                  transactionCount={total.transactionCount}
+                  totalCents={total.totalCents}
+                  // Every row here is derived *from* transactions, so its group
+                  // always exists — unlike the Meta Data vendor list, where a
+                  // saved vendor with no rows renders unlinked.
+                  //
+                  // `total.vendor` is a display name, not a group key, so it goes
+                  // through the helper: that upper-cases to match `vendorGroupKey`,
+                  // which is what makes a vendor saved as "Costco" reach the group
+                  // derived as "COSTCO". An empty name yields `vendor-`, exactly
+                  // the key the unknown group is built with.
+                  href={expenseGroupHref("vendor", vendorGroupKeyForName(total.vendor))}
+                  title={`Show ${name} transactions`}
+                />
+              );
+            })}
           </SpendList>
 
           <SpendList
@@ -194,16 +236,25 @@ export function ExpenseDashboardView({
                 : "Nothing to show yet — categorise a few transactions to see a breakdown."
             }
           >
-            {topCategories.map((total) => (
-              <SpendRow
-                key={total.categoryName || "uncategorised"}
-                label={total.categoryName === "" ? "uncategorised" : total.categoryName}
-                isPlaceholder={total.categoryName === ""}
-                iconUrl={categoryIconUrls.get(total.categoryName)}
-                transactionCount={total.transactionCount}
-                totalCents={total.totalCents}
-              />
-            ))}
+            {topCategories.map((total) => {
+              const name = total.categoryName === "" ? "uncategorised" : total.categoryName;
+              return (
+                <SpendRow
+                  key={total.categoryName || "uncategorised"}
+                  label={name}
+                  isPlaceholder={total.categoryName === ""}
+                  iconUrl={categoryIconUrls.get(total.categoryName)}
+                  transactionCount={total.transactionCount}
+                  totalCents={total.totalCents}
+                  // Not upper-cased, matching `groupByCategory`: categories group
+                  // on the stored name verbatim, so "Gas" and "gas" are genuinely
+                  // different groups. An empty name yields `category-`, which is
+                  // the uncategorised group's own key.
+                  href={expenseGroupHref("category", categoryGroupKey(total.categoryName))}
+                  title={`Show ${name} transactions`}
+                />
+              );
+            })}
           </SpendList>
         </div>
       </CollapsibleCard>

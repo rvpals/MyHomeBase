@@ -17,6 +17,7 @@ import {
   mergeVendorsWithTotals,
   resolveExpenseSettings,
   totalsByCategory,
+  vendorSpendTotals,
   vendorTotals,
 } from "@/lib/expense";
 import { listModuleSettingsFor } from "@/lib/module-settings";
@@ -71,7 +72,12 @@ function SectionBody({
           toReconcileCount={transactions.filter((t) => t.status === "new").length}
           // The rows are already in hand, so roll them up here rather than
           // re-reading the table through totalsByVendor — same pure core either way.
-          topVendors={vendorTotals(transactions).slice(0, TOP_SPENDER_COUNT)}
+          //
+          // `vendorSpendTotals`, not `vendorTotals`: this is a "biggest spenders"
+          // list, and the plain rollup invents vendors from statement prose on
+          // payment and redemption lines ("ONLINE PAYMENT THANK YOU" -> ONLINE).
+          // Those net negative, so the sign filter drops them.
+          topVendors={vendorSpendTotals(transactions).slice(0, TOP_SPENDER_COUNT)}
           topCategories={totalsByCategory(deps.expenseRepo).slice(0, TOP_SPENDER_COUNT)}
           categories={listCategories(deps.expenseRepo)}
           vendors={listVendors(deps.expenseRepo)}
