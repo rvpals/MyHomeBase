@@ -89,7 +89,19 @@ export const photoRangeContentsSchema = z.object({
   path: ["to"],
 });
 
+/**
+ * What the viewer sends to read one folder in full.
+ *
+ * A path and nothing else -- no `date`, no `from`/`to`. That absence is the point: this
+ * is the boundary for "show me this folder", and a schema with an optional date would
+ * let a caller pass one and quietly get a filtered answer from an unfiltered use-case.
+ */
+export const photoFolderAllSchema = z.object({
+  relativePath: photoRelativePathSchema,
+});
+
 export type PhotoFolderLookupInput = z.infer<typeof photoFolderLookupSchema>;
 export type PhotoFolderContentsInput = z.infer<typeof photoFolderContentsSchema>;
+export type PhotoFolderAllInput = z.infer<typeof photoFolderAllSchema>;
 export type PhotoRangeInput = z.infer<typeof photoRangeSchema>;
 export type PhotoRangeContentsInput = z.infer<typeof photoRangeContentsSchema>;

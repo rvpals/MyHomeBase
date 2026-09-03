@@ -8,7 +8,7 @@
 // See components.md before adding another hand treatment.
 
 import { type ReactNode } from "react";
-import { PlayingCard, type PlayingCardSize } from "@/components/playing-card";
+import { PlayingCard, type CardDeal, type PlayingCardSize } from "@/components/playing-card";
 import { type Card } from "@/lib/games";
 
 /**
@@ -57,6 +57,18 @@ export interface CardHandProps {
   selectedIndex?: number;
   /** Makes each card clickable. Receives the card and its index. */
   onCardClick?: (card: Card, index: number) => void;
+  /**
+   * Flies the cards named here in from the deck; everything else is drawn in place.
+   *
+   * Card ids, not indices, because a card's index shifts as a hand grows and a split
+   * moves a card between hands — an index-based set would re-fly a settled card the
+   * moment another arrived beside it. The caller works out which ids are new; this
+   * component has no memory of the previous render.
+   *
+   * Returns `undefined` per card to skip it, so one call site can animate an arrival
+   * and leave its neighbours alone.
+   */
+  dealing?: (card: Card, index: number) => CardDeal | undefined;
   /** Caller-supplied classes, merged last so they win. */
   className?: string;
 }
@@ -82,6 +94,7 @@ export function CardHand({
   dimmed = false,
   selectedIndex,
   onCardClick,
+  dealing,
   className = "",
 }: CardHandProps) {
   const showHeader = Boolean(title || total || badge);
@@ -131,7 +144,12 @@ export function CardHand({
                 size={size}
                 dimmed={dimmed}
                 selected={selectedIndex === index}
+                // The whole hand rises when it is the one in play, reinforcing the ring
+                // below with a physical cue. Per-card rather than on the row, so each
+                // card keeps its own cast shadow.
+                lifted={active}
                 onClick={onCardClick ? () => onCardClick(card, index) : undefined}
+                dealing={dealing?.(card, index)}
                 className={index > 0 && layout === "fan" ? FAN_OVERLAP[size] : ""}
               />
             ))}

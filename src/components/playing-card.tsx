@@ -9,7 +9,17 @@
 // scales cleanly and re-themes with the app, where card art would be a fixed image
 // that suits exactly one palette.
 
+import { type CSSProperties } from "react";
 import { isCourt, isRedSuit, type Card, type Rank, type Suit } from "@/lib/games";
+
+/**
+ * The default flight time for a dealt card.
+ *
+ * Short on purpose. A card taking longer than this to land stops reading as a deal and
+ * starts reading as lag, and the controls stay live throughout — so a fast player is
+ * never waiting on it.
+ */
+export const DEAL_MS = 300;
 
 /**
  * Card sizes, all at the standard 2.5:3.5 poker ratio.
@@ -19,6 +29,28 @@ import { isCourt, isRedSuit, type Card, type Rank, type Suit } from "@/lib/games
  * card a player is being asked to look at.
  */
 export type PlayingCardSize = "sm" | "md" | "lg";
+
+/**
+ * Where a card flies in from, and when.
+ *
+ * The offsets are the card's starting position *relative to where it lands*, so they
+ * are per-seat: the dealer's row sits nearer the shoe than the player's, and one shared
+ * distance would send one of them travelling the wrong way. Fixed units rather than
+ * viewport ones, so a phone gets the same short legible flight instead of a card
+ * crossing the whole screen.
+ */
+export interface CardDeal {
+  /** Milliseconds before the flight starts. Sequences an opening deal; 0 for a lone hit. */
+  delayMs?: number;
+  /** Horizontal start offset, any CSS length. Default `"6rem"` (the shoe is to the right). */
+  fromX?: string;
+  /** Vertical start offset. Default `"-4rem"` (the shoe is above). */
+  fromY?: string;
+  /** Start rotation in degrees, straightening to 0 on arrival. Default `12`. */
+  spinDeg?: number;
+  /** Flight duration in milliseconds. Default `300`. */
+  durationMs?: number;
+}
 
 export interface PlayingCardProps {
   /**
@@ -37,8 +69,25 @@ export interface PlayingCardProps {
   dimmed?: boolean;
   /** Draws the selected/active ring. For a card the player has picked up or chosen. */
   selected?: boolean;
+  /**
+   * Raises the card off the table, for one in the hand being acted on.
+   *
+   * A physical cue that pairs with `CardHand`'s brass ring — the ring says which hand,
+   * the lift says it is the near one. Two cues rather than one because colour alone is
+   * a poor sole marker.
+   */
+  lifted?: boolean;
   /** Makes the card a button. Omit for a card that is only being displayed. */
   onClick?: () => void;
+  /**
+   * Flies the card in from a deck position instead of drawing it in place.
+   *
+   * For the frame a card *arrives* on, and only that frame — a card already on the
+   * table must not be given this, or it re-flies on every re-render. The caller decides
+   * which cards are new (Blackjack diffs card ids between renders) and where the deck
+   * is relative to this seat, because a component drawing one card cannot know either.
+   */
+  dealing?: CardDeal;
   /** Caller-supplied classes, merged last so they win. */
   className?: string;
 }
@@ -57,19 +106,19 @@ const SIZES: Record<PlayingCardSize, { box: string; index: string; pip: string; 
   sm: {
     box: "h-[68px] w-[48px] max-lg:h-[58px] max-lg:w-[41px]",
     index: "text-[0.6rem] max-lg:text-[0.55rem]",
-    pip: "text-[0.6rem] max-lg:text-[0.5rem]",
+    pip: "text-[0.5rem] max-lg:text-[0.45rem]",
     court: "text-lg max-lg:text-base",
   },
   md: {
     box: "h-[90px] w-[64px] max-lg:h-[75px] max-lg:w-[54px]",
     index: "text-xs max-lg:text-[0.65rem]",
-    pip: "text-sm max-lg:text-xs",
+    pip: "text-xs max-lg:text-[0.65rem]",
     court: "text-2xl max-lg:text-xl",
   },
   lg: {
     box: "h-[118px] w-[84px] max-lg:h-[96px] max-lg:w-[69px]",
     index: "text-sm max-lg:text-xs",
-    pip: "text-base max-lg:text-sm",
+    pip: "text-sm max-lg:text-xs",
     court: "text-3xl max-lg:text-2xl",
   },
 };
@@ -194,13 +243,31 @@ export function PlayingCard({
   empty = false,
   dimmed = false,
   selected = false,
+  lifted = false,
   onClick,
+  dealing,
   className = "",
 }: PlayingCardProps) {
   const geometry = SIZES[size];
   const base = `relative shrink-0 select-none rounded-lg border ${geometry.box}`;
   const ring = selected ? "ring-2 ring-brass ring-offset-1 ring-offset-paper" : "";
   const fade = dimmed ? "opacity-45" : "";
+
+  // The flight, when the caller says this card is arriving. `animate-card-deal` and its
+  // reduced-motion branch live in globals.css, per design.md — the custom properties are
+  // the only part that can be known here, because they come from the caller.
+  const flight = dealing ? "animate-card-deal" : "";
+  const flightStyle = dealing
+    ? ({
+        // Inline because these are per-card values; Tailwind cannot ship a class for
+        // every possible offset, delay and angle.
+        "--card-deal-delay": `${dealing.delayMs ?? 0}ms`,
+        "--card-deal-ms": `${dealing.durationMs ?? DEAL_MS}ms`,
+        "--card-deal-from-x": dealing.fromX ?? "6rem",
+        "--card-deal-from-y": dealing.fromY ?? "-4rem",
+        "--card-deal-spin": `${dealing.spinDeg ?? 12}deg`,
+      } as CSSProperties)
+    : undefined;
 
   // An empty slot: the position exists, nothing is in it. A dashed outline rather than
   // a gap, so a table does not reflow as cards arrive.
@@ -221,12 +288,18 @@ export function PlayingCard({
   const shell = [
     base,
     card ? "border-line bg-paper" : "border-brass-dark/40",
-    // A soft lift, so a card reads as an object on the table rather than a printed
-    // rectangle. Lighter than Button's hard offset — a row of cards with that much
-    // shadow each becomes noisy.
-    "shadow-[0_1px_2px_0_rgba(0,0,0,0.25)]",
+    // The card's physical treatment: thickness from a lit top edge and a shaded
+    // underside, plus a cast shadow onto the table. Named classes in globals.css per
+    // design.md — a face and a back are tuned differently, because a white sheen over
+    // the back's brass lattice would mute the pattern that makes it read as a back.
+    card ? "playing-card-face playing-card-rim" : "playing-card-back",
+    // Restates the cast, longer and softer, and raises the card 2px. It wins the
+    // box-shadow by being declared later in globals.css — equal specificity, so source
+    // order decides it, not this list's order.
+    lifted ? "playing-card-lifted" : "",
     ring,
     fade,
+    flight,
     className,
   ].join(" ");
 
@@ -237,6 +310,7 @@ export function PlayingCard({
         onClick={onClick}
         aria-label={label}
         aria-pressed={selected}
+        style={flightStyle}
         className={`${shell} transition-transform duration-150 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass motion-reduce:transition-none motion-reduce:hover:translate-y-0`}
       >
         {content}
@@ -245,7 +319,7 @@ export function PlayingCard({
   }
 
   return (
-    <div role="img" aria-label={label} className={shell}>
+    <div role="img" aria-label={label} style={flightStyle} className={shell}>
       {content}
     </div>
   );
@@ -271,18 +345,30 @@ function CardFace({ card, size }: { card: Card; size: PlayingCardSize }) {
         className={`bottom-0.5 right-1 rotate-180 ${geometry.index}`}
       />
 
-      <div className="absolute inset-0 flex items-center justify-center px-[22%] py-[8%]">
-        {isCourt(card.rank) ? (
-          <CourtPanel rank={card.rank} glyph={glyph} size={size} />
-        ) : card.rank === "A" ? (
-          // The ace's single oversized centre pip, as a real deck draws it.
-          <span aria-hidden className={geometry.court}>
-            {glyph}
-          </span>
-        ) : (
+      {/*
+        Two centre containers, because a pip field and a court panel want different
+        room. The pip field must clear the corner indices on all four sides or its outer
+        rows run underneath them — the vertical inset was 8%, about 9px on an `lg` card
+        against an index block ~28px tall, which is what made a 10 overlap its own suit.
+        A court panel and an ace sit between the indices instead of beside them, so they
+        keep the looser inset and stay the card's centrepiece.
+      */}
+      {isCourt(card.rank) || card.rank === "A" ? (
+        <div className="absolute inset-0 flex items-center justify-center px-[20%] py-[14%]">
+          {isCourt(card.rank) ? (
+            <CourtPanel rank={card.rank} glyph={glyph} size={size} />
+          ) : (
+            // The ace's single oversized centre pip, as a real deck draws it.
+            <span aria-hidden className={geometry.court}>
+              {glyph}
+            </span>
+          )}
+        </div>
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center px-[26%] py-[24%]">
           <PipField rank={card.rank} glyph={glyph} size={size} />
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -300,10 +386,21 @@ function Index({
   return (
     <span
       aria-hidden
-      className={`absolute flex flex-col items-center font-display leading-none ${className}`}
+      // `items-start`, not `items-center`. "10" is twice the width of every other rank,
+      // so centring hung the glyph under the middle of the two digits and pushed the
+      // whole block sideways into the pip field. Left-aligning pins both lines to the
+      // same edge whatever the rank's width.
+      //
+      // `leading-tight` rather than `leading-none`: at zero line spacing the glyph's
+      // ascender touches the digits' baseline, which is what made the 10 read as
+      // overlapping its own suit.
+      className={`absolute flex flex-col items-start font-display leading-tight ${className}`}
     >
-      <span className="tabular-nums">{rank}</span>
-      <span>{glyph}</span>
+      {/* A fixed column width so a one- and a two-character rank occupy the same
+          footprint, and the glyph below never sits wider than the rank above it.
+          `1ch` per digit against a tabular figure, which is exactly one digit wide. */}
+      <span className="w-[2ch] tabular-nums">{rank}</span>
+      <span className="w-[2ch]">{glyph}</span>
     </span>
   );
 }

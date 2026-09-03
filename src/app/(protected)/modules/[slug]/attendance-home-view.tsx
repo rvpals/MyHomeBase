@@ -25,11 +25,14 @@ import { AttendanceActionIcon } from "@/components/attendance-action-icon";
 import { Button } from "@/components/button";
 import { Comments } from "@/components/comments";
 import { Modal } from "@/components/modal";
-import type {
-  AttendanceSheet,
-  AttendanceStatus,
-  Student,
-  StudentAction,
+import {
+  CLASS_WEEKDAY_LABELS,
+  weekdayOfIsoDate,
+  type AttendanceSheet,
+  type AttendanceStatus,
+  type ClassWeekday,
+  type Student,
+  type StudentAction,
 } from "@/lib/attendance";
 import { saveAttendanceAction } from "./attendance-actions";
 
@@ -72,6 +75,18 @@ function studentName(student: Student, lastNameFirst = false): string {
   return `${last}, ${first}`;
 }
 
+/**
+ * A class's weekday for the picker, or "" when it has none.
+ *
+ * A class predating migration 0080 — or one created by the CSV importer — stores
+ * `CLASS_WEEKDAY_UNSET`, which isn't a key of the label map. Blank rather than
+ * "Unset": the option already reads fine without it, and the Classes screen is
+ * where a missing day is worth pointing out.
+ */
+function weekdayLabel(classWeekday: number): string {
+  return CLASS_WEEKDAY_LABELS[classWeekday as ClassWeekday] ?? "";
+}
+
 export function AttendanceHomeView({
   classes,
   sheet,
@@ -80,7 +95,7 @@ export function AttendanceHomeView({
   today,
   cardsUseLastNameFirst,
 }: {
-  classes: { id: number; name: string; enrolledCount: number }[];
+  classes: { id: number; name: string; classWeekday: number; enrolledCount: number }[];
   /** The chosen class's roster, or undefined when no class is selected. */
   sheet?: AttendanceSheet;
   /** The pickable actions, in catalog order. Empty is a valid state. */
@@ -93,13 +108,24 @@ export function AttendanceHomeView({
 }) {
   const router = useRouter();
 
+  // Which weekday `today` is, so the picker can mark the class that meets on it.
+  // Derived here rather than passed as a second prop: `today` is already on the
+  // wire and the mapping is a pure function of it.
+  const todayWeekday = weekdayOfIsoDate(today);
+
   return (
     <div className="flex flex-col gap-6">
       {classes.length > 0 && (
         <label className="flex max-w-sm flex-col gap-1">
           <span className={LABEL_CLASS}>Class</span>
           {/* The selection lives in the URL, so a teacher can bookmark their
-              first-period register and land straight on it. */}
+              first-period register and land straight on it.
+
+              The screen has already opened on today's class where there is one
+              (see resolveSelectedClassId in attendance-section.tsx), so this
+              labels the weekday against each option: the pre-selection is then
+              something the teacher can see the reason for rather than a value
+              that appeared on its own. */}
           <select
             value={selectedClassId ?? ""}
             onChange={(event) =>
@@ -112,11 +138,17 @@ export function AttendanceHomeView({
             className={SELECT_CLASS}
           >
             <option value="">Pick a class…</option>
-            {classes.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name} ({item.enrolledCount})
-              </option>
-            ))}
+            {classes.map((item) => {
+              const weekday = weekdayLabel(item.classWeekday);
+              const isToday = item.classWeekday === todayWeekday;
+
+              return (
+                <option key={item.id} value={item.id}>
+                  {item.name} ({item.enrolledCount})
+                  {weekday && ` · ${weekday}${isToday ? " — today" : ""}`}
+                </option>
+              );
+            })}
           </select>
         </label>
       )}

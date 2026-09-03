@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ATTENDANCE_ACTION_ICONS } from "./action-icons";
-import { ATTENDANCE_STATUSES } from "./types";
+import { ATTENDANCE_STATUSES, CLASS_WEEKDAYS, CLASS_WEEKDAY_UNSET } from "./types";
 
 /** YYYY-MM-DD. Rejects a timestamp so a date column never gains a time part. */
 const isoDateSchema = z
@@ -44,13 +44,68 @@ export type StudentWriteData = z.output<typeof createStudentSchema>;
 export const updateStudentSchema = createStudentSchema;
 export type UpdateStudentInput = z.input<typeof updateStudentSchema>;
 
+/**
+ * A class as it comes *out* of the database.
+ *
+ * Separate from `createClassSchema` because the two directions admit different
+ * weekdays: this one accepts `CLASS_WEEKDAY_UNSET` so a class predating
+ * migration 0080 stays readable, while the write schema below requires a real
+ * 1-5 so that `0` can never be stored by anything going through a form. Same
+ * readable-but-not-writable split `statement_close_day` uses in the Expense
+ * module (migration 0070).
+ */
+export const attendanceClassSchema = z.object({
+  id: z.number().int().positive(),
+  name: z.string().min(1),
+  description: z.string(),
+  // A literal union rather than z.enum: zod's enum takes strings, and these are
+  // the numbers Date.getDay() speaks.
+  classWeekday: z.union([
+    z.literal(CLASS_WEEKDAY_UNSET),
+    ...CLASS_WEEKDAYS.map((weekday) => z.literal(weekday)),
+  ]),
+  enrolledCount: z.number().int().min(0),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
 export const createClassSchema = z.object({
   name: z.string().trim().min(1, "Class name is required."),
   description: z.string().trim().default(""),
+  /**
+   * Which weekday the class meets on. Required, and only Monday to Friday: a
+   * class the home screen can't recognise as "today's" is the thing this field
+   * exists to prevent, so the form makes you choose rather than defaulting to a
+   * day you never confirmed.
+   *
+   * `z.coerce` because both boundaries hand this over as a string — an HTML
+   * `<select>` value and a CLI argument are both text.
+   */
+  classWeekday: z.coerce
+    .number({ message: "Pick the weekday this class meets on." })
+    .int()
+    .refine(
+      (value): value is (typeof CLASS_WEEKDAYS)[number] =>
+        (CLASS_WEEKDAYS as readonly number[]).includes(value),
+      "Pick a weekday from Monday to Friday.",
+    ),
 });
 
 export type CreateClassInput = z.input<typeof createClassSchema>;
-export type ClassWriteData = z.output<typeof createClassSchema>;
+
+/**
+ * What the repository is handed to store a class.
+ *
+ * `classWeekday` is widened back to `number` from the schema's 1-5, because the
+ * repository has one writer the form schema isn't the right gate for: the CSV
+ * roster importer, which stores `CLASS_WEEKDAY_UNSET` since a file names a class
+ * but says nothing about when it meets. The narrow bound still holds where it
+ * matters — `createClass`/`updateClass` parse through `createClassSchema`, so
+ * nothing reaching the repository from a form or the CLI can carry a `0`.
+ */
+export type ClassWriteData = Omit<z.output<typeof createClassSchema>, "classWeekday"> & {
+  classWeekday: number;
+};
 
 export const updateClassSchema = createClassSchema;
 export type UpdateClassInput = z.input<typeof updateClassSchema>;

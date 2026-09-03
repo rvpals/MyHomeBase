@@ -179,13 +179,22 @@ function ArcadeInstructions() {
         <p>
           Tap a cell and then a digit, or use the keyboard: the arrow keys move around the
           grid, <Key>1</Key>&ndash;<Key>9</Key> enter a digit, <Key>Backspace</Key> clears
-          a cell, and <Key>N</Key> or <Key>Space</Key> switches to notes.
+          a cell, <Key>N</Key> or <Key>Space</Key> switches to notes, and <Key>H</Key>
+          takes a hint.
         </p>
         <ul className="flex list-disc flex-col gap-1 pl-5">
           <li>
             <strong className="text-ink">Notes</strong> pencil small candidates into a
             cell instead of answering it, for when you have narrowed a cell to two or
             three possibilities but cannot yet choose. Answering a cell clears its notes.
+          </li>
+          <li>
+            <strong className="text-ink">Hint</strong> fills one cell in correctly. Select
+            a cell first to be told that one, or press it with nothing selected and the
+            game picks the cell you are closest to solving. If a cell already holds a
+            wrong digit, that is what gets corrected. Hinted digits are shown in grey
+            italics, so you can always see which answers were yours. There is no limit on
+            hints &mdash; they cost points instead, see below.
           </li>
           <li>
             Selecting a cell highlights its row, column and box, and picking a cell that
@@ -211,9 +220,18 @@ function ArcadeInstructions() {
           Sudoku scores <strong className="text-ink">points, not time</strong>, because the
           scoreboard ranks highest-first and a time in seconds would put the slowest player
           on top. A solve starts from the board&rsquo;s value &mdash; 2,000 easy, 3,500 medium,
-          5,000 hard &mdash; and loses 4 points a second and 100 per mistake, so a fast
-          clean run scores best and a hard board beats an easy one for the same time. A
-          finish never scores less than 100, however long it took.
+          5,000 hard &mdash; and loses 4 points a second, 100 per mistake and 250 per
+          hint, so a fast clean run scores best and a hard board beats an easy one for the
+          same time. A hint costs more than a mistake on purpose: a wrong guess still
+          leaves you to find the answer, a hint hands it over.
+        </p>
+        <p>
+          A finish never scores less than 100, however long it took &mdash;{" "}
+          <strong className="text-ink">unless you took a hint</strong>. Hints being
+          unlimited, that floor would otherwise mean tapping <strong className="text-ink">
+          Hint</strong> across the whole grid still banked 100 points for solving nothing,
+          so the first hint removes it and a heavily hinted board can score all the way
+          down to zero.
         </p>
       </Section>
 

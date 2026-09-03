@@ -85,6 +85,7 @@ pattern instead of inventing one.
 | [`Progress3D`](#progress3d) | **Any progress bar** — work underway, 0..max | [src/components/progress-3d.tsx](src/components/progress-3d.tsx) | no |
 | [`JournalViewer`](#journalviewer) | Full detail sheet for one journal entry | [src/components/journal-viewer.tsx](src/components/journal-viewer.tsx) | yes |
 | [`PhotoLightbox`](#photolightbox) | Full-screen photo overlay with prev/next over a set | [src/components/photo-lightbox.tsx](src/components/photo-lightbox.tsx) | yes |
+| [`PhotosViewer`](#photosviewer) | **Browse a whole folder** — stage, thumbnail strip, slide show | [src/components/photos-viewer.tsx](src/components/photos-viewer.tsx) | yes |
 | [`PhotoOfTheDay`](#photooftheday--photoofthedaybutton) / `PhotoOfTheDayButton` | **Photos for a date or a date range**, as a closable dialog | [src/components/photo-of-the-day.tsx](src/components/photo-of-the-day.tsx) | yes |
 | [`TickerViewer`](#tickerviewer) | Full record dialog for one ticker — 3 tabs of cards | [src/components/ticker-viewer.tsx](src/components/ticker-viewer.tsx) | yes |
 | [`IconSetProvider`](#iconsetprovider--useiconset) / `useIconSet` | Active module icon set (context) | [src/components/icon-set-context.tsx](src/components/icon-set-context.tsx) | yes |
@@ -1106,8 +1107,13 @@ every card game uses this** — do not hand-roll a rank-and-glyph rectangle.
 | `empty?` | `boolean` | A dashed outline for a table position that holds nothing yet. |
 | `dimmed?` | `boolean` | For a card out of play but still shown. |
 | `selected?` | `boolean` | Draws the brass ring — a card the player has picked. |
+| `lifted?` | `boolean` | Raises the card off the table — one in the hand being acted on. |
 | `onClick?` | `() => void` | Makes it a `<button>`. Omit for display only. |
+| `dealing?` | `CardDeal` | **Flies the card in from a deck.** Only on the frame it arrives — see the notes. |
 | `className?` | `string` | |
+
+`CardDeal` is `{ delayMs?, fromX?, fromY?, spinDeg?, durationMs? }` — where the card
+starts *relative to where it lands*, and when. `DEAL_MS` (300) is the default duration.
 
 ```tsx
 <PlayingCard card={hand.cards[0]} size="lg" />
@@ -1125,6 +1131,31 @@ is a property of the deck, not the palette. A face-down card is given **no** `ca
 at all rather than a card plus a hidden flag, so a concealed value is never in the DOM.
 Court cards are a large letter, not figure art: hand-drawn courts are a big asset job and
 turn to mud at 84px.
+
+A card is styled as a **physical object**, not a printed panel: `.playing-card-face`
+(a lit top edge, a shaded underside, a diagonal sheen and a two-stop cast),
+`.playing-card-rim` (the inner hairline that sells the cut corner) and
+`.playing-card-back` (the same thickness, no sheen — a white wash would mute the brass
+lattice that makes a back read as a back). All three are in
+[globals.css](src/app/globals.css) and follow `.card-embossed`'s **edge-based** bevel
+rather than `Button`'s hard offset, which is reserved for things that move when pressed.
+Every layer is translucent black/white over the theme's own `bg-paper`, so it works on a
+white Daybreak card as well as the dark themes. An `empty` slot keeps its flat dashed
+outline — a hole in the table is not an object on it.
+
+`lifted` restates the cast longer and softer and raises the card 2px via **margin, not
+`translateY`** — the deal animation owns `transform` on the same element and holds
+`translate(0,0)` when it lands, so a transform-based lift would be silently cancelled for
+any card that flew into an active hand.
+
+`dealing` must be passed **only on the frame a card arrives**, never for a card already
+on the table — a card given it on every render re-flies on every render. The component
+has no memory, deliberately: knowing which cards are new is the caller's job, and so is
+knowing where its deck sits. The animation itself is `animate-card-deal` in
+[globals.css](src/app/globals.css) (per design.md, keyframes are named classes there);
+this component only sets the custom properties. Under reduced motion the travel and spin
+drop to a plain fade, because a card *arriving* is a real event and one that simply
+materialises makes a table look like it changed on its own.
 
 ---
 
@@ -1148,10 +1179,11 @@ dealer's hand, or a shared board.
 | `layout?` | `"spread" \| "fan"` | Default `"spread"`. `fan` overlaps for a large hand. |
 | `hideFrom?` | `number` | Index from which cards are face down. `1` = a Blackjack hole card. |
 | `placeholders?` | `number` | Empty slots drawn when `cards` is empty. Default `2`. |
-| `active?` | `boolean` | Ring + tint for the hand in play. |
+| `active?` | `boolean` | Ring + tint for the hand in play, **and** lifts its cards off the table. |
 | `dimmed?` | `boolean` | For a folded or busted hand. |
 | `selectedIndex?` | `number` | Marks one card as chosen. |
 | `onCardClick?` | `(card, index) => void` | Makes each card clickable. |
+| `dealing?` | `(card, index) => CardDeal \| undefined` | Per card: a flight, or `undefined` to draw it in place. |
 | `className?` | `string` | |
 
 ```tsx
@@ -1174,6 +1206,19 @@ game's business, and Blackjack shows `"7/17"` for a soft hand where a poker game
 nothing at all. Keeping the number out of here is what stops game rules leaking into a
 shared component. Responsive through `PlayingCard`'s own `max-lg:` steps; `layout="fan"`
 is the answer for a hand too big to spread on a phone.
+
+`active` drives two cues, not one: the row's brass ring and tint, plus a physical lift on
+every card in it (`PlayingCard`'s `lifted`). The ring says *which* hand, the lift says it
+is the near one — deliberately two markers, since colour alone is a poor sole signal.
+
+`dealing` is a **callback, not a set of indices**: a card's index shifts as a hand grows
+and a split moves a card between hands, so an index-based flag would re-fly a settled
+card the moment another landed beside it. Match on `card.id`. Note that a card id is
+unique only *within* a shoe — `buildShoe` numbers cards deterministically, so a reshuffle
+reissues them all, and a caller tracking seen ids has to reset when the deck is rebuilt.
+Blackjack does this by resetting on an empty table
+([game-blackjack-view.tsx](src/app/(protected)/modules/[slug]/game-blackjack-view.tsx),
+`useDealtCards`).
 
 ---
 
@@ -2139,10 +2184,17 @@ properly" view.
 ```
 
 **Used by:** the journal entry's "Pictures of this date" card
-([journal-photos-card.tsx](src/app/(protected)/modules/[slug]/entries/[id]/journal-photos-card.tsx))
-and the My Favorite Photos screen
+([journal-photos-card.tsx](src/app/(protected)/modules/[slug]/entries/[id]/journal-photos-card.tsx)),
+the My Favorite Photos screen
 ([fav-photos-list.tsx](src/app/(protected)/fav-photos-list.tsx)), which drives the
-slideshow from a button above its grid.
+slideshow from a button above its grid, and the home screen's Random Photo card
+([random-photo-widget.tsx](src/app/(protected)/random-photo-widget.tsx)), which opens it
+on the single drawn photo.
+
+**Not the same component as [`PhotosViewer`](#photosviewer).** This one shows a SET the
+caller has already assembled and is the right choice for "enlarge this picture" — the
+caller owns the list, the index and the play state. Reach for `PhotosViewer` when the
+subject is a *folder* the reader wants to browse.
 
 **Notes.** Keys are bound on the **document**, not on a focused element: the overlay is
 opened by clicking a thumbnail elsewhere, so there is no reliable focus target and arrow
@@ -2177,6 +2229,101 @@ A caller that keeps `isPlaying` in state must clear it when the overlay closes f
 reason other than the close button — e.g. the favourites list can close it by *deleting
 rows* until the index is out of range, and a stale `true` would make the next ordinary
 click open into a slideshow.
+
+---
+
+## PhotosViewer
+
+**Browse a whole folder of photographs.** A full-screen overlay: one big photo on the
+stage, a scrolling strip of thumbnails under it, and a collapsible "Slide show" panel
+that sets the pace and the transition. Handed a *folder*, it finds out for itself what is
+in it.
+
+- **Source:** [src/components/photos-viewer.tsx](src/components/photos-viewer.tsx)
+- **Import:** `import { PhotosViewer, type ViewerPhoto, type ViewerFolderOutcome } from "@/components/photos-viewer";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `folderPath` | `string` | The folder to browse, as a path from the photo root. |
+| `initialPhotoPath?` | `string` | Which photo opens first. Matched against the listing by path, so a photo deleted since the caller drew it falls back to the start of the folder rather than an empty stage. Omit to open on the first photo. |
+| `onListFolder` | `(folderPath) => Promise<ViewerFolderOutcome>` | Reads the folder. **Must be a stable reference** — a module-scope server action, or `useCallback`. The load effect depends on it, so an inline arrow would re-read the folder in a loop. |
+| `photoUrl` | `(relativePath: string) => string` | Builds the URL for one photo's bytes. |
+| `onClose` | `() => void` | Raised by Escape and the close button. **Not** by a backdrop click — the stage covers the screen, so there is no backdrop to hit. |
+| `folderLabel?` | `string` | A friendlier folder name, shown above the file name. Falls back to the last segment of `folderPath`. |
+| `className?` | `string` | |
+
+```tsx
+{isFolderOpen && (
+  <PhotosViewer
+    folderPath={folderPath}
+    initialPhotoPath={pick.relativePath}
+    folderLabel={pick.folderName}
+    onListFolder={listAllPhotosInFolderAction}
+    photoUrl={photoUrl}
+    onClose={() => setIsFolderOpen(false)}
+  />
+)}
+```
+
+**Used by:** the home screen's Random Photo card
+([random-photo-widget.tsx](src/app/(protected)/random-photo-widget.tsx)) — its header's
+folder button opens the folder the drawn photograph came from, landing on that
+photograph, so the rest of the event is one click away.
+
+**Not the same component as [`PhotoLightbox`](#photolightbox).** That one takes a set the
+caller has already assembled, and the caller owns the list, the index and the play state.
+This one's subject is the folder: it owns all three, because the reader is browsing
+rather than enlarging. Both exist on purpose; neither replaced the other.
+
+**It owns no open/closed state** — guard it with `{isOpen && <PhotosViewer …>}` like every
+other overlay here. That is load-bearing rather than stylistic: it reads the folder on
+mount, so a permanently mounted instance would list the folder on every render of the
+host card whether or not anyone asked to see it.
+
+**It fetches nothing itself.** `onListFolder` is injected exactly as `PhotoOfTheDay`
+takes its lookups, which is what keeps the file free of any filesystem, archive or
+server-action type. `ViewerFolderOutcome` is declared in the component rather than
+imported from the action, so `src/components/` keeps no dependency on `src/app/`; the
+action's result type is structurally identical.
+
+**The thumbnail strip is a window, not the folder.** There is no thumbnail pipeline —
+the archive's port is read-only and forbids writing a cache into it
+([ports.ts](src/lib/journal-photos/ports.ts)), so a "thumbnail" here is the original
+multi-megabyte JPEG scaled by the browser. Mounting a 1,187-photo folder's worth would
+queue 1,187 full-size SMB reads and stall for minutes. So every photo gets a *slot*
+(keeping the scrollbar honest about the folder's size) but only the ~24 nearest the
+reader hold an `<img>`; the rest are placeholders. **Don't "fix" this by mapping every
+photo to an image.** If the strip ever needs to be genuinely fast, that is a cached
+pipeline behind a *new* port outside the archive, which is its own piece of work.
+
+**The slideshow.** Options live in `src/lib/journal-photos/slideshow.ts` — the intervals
+offered, the effects, and the defaults are data, so which choices are sensible is
+testable without mounting React. They are **not persisted**: a freshly opened viewer
+always starts at 5 seconds with no transition, so nobody wonders why tonight's slideshow
+inherited last month's pace. Three behaviours match `PhotoLightbox` deliberately:
+
+- **Any manual step stops the run** — arrows, keys, or a thumbnail click. A timer pulling
+  the photo away two seconds after someone chose it is the opposite of what was asked.
+- **The last photo ends it** rather than wrapping. Pressing Start *on* the last photo
+  restarts from the top instead, since that reader plainly meant "play the folder".
+- **One `setTimeout` per photo, keyed on the index** — not a repeating interval. Every
+  photo gets a full interval, including one arrived at by hand.
+
+Transitions are entry animations on a remounted `<img>` (`animate-photo-fade` /
+`animate-photo-slide` in [globals.css](src/app/globals.css)), **not** two stacked images
+cross-fading: these are multi-megabyte NAS reads, and holding the outgoing one mounted
+would double what is in flight. Against the opaque black stage a fade-in reads as a
+cross-fade anyway. Both collapse to a short fade under `prefers-reduced-motion`.
+
+**Narrow screens:** thumbnails shrink from 16px to 12px squares via `max-lg:`, the strip
+keeps scrolling horizontally, and the "Slide show" card is collapsed by default so the
+picture is the loudest thing on the screen. The stage carries `min-h-0` so it — not the
+strip — is what gives way on a short screen.
+
+Uses a plain `<img>`, not `next/image`: the bytes come from a session-gated route over a
+NAS share, which `next/image` can't optimize anyway. Portalled into `document.body` and
+carries `no-print`, for the same reasons `PhotoLightbox` documents.
 
 ---
 

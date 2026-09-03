@@ -9,6 +9,7 @@ export type {
   PhotoFolder,
   PhotoFolderContents,
   PhotoFolderKind,
+  FolderPhotos,
   PhotoFolderLookup,
   PhotoMatchSource,
   PhotoRootCheck,
@@ -20,14 +21,26 @@ export {
   photoRelativePathSchema,
   photoFolderLookupSchema,
   photoFolderContentsSchema,
+  photoFolderAllSchema,
   photoRangeSchema,
   photoRangeContentsSchema,
   type PhotoFolderLookupInput,
   type PhotoFolderContentsInput,
+  type PhotoFolderAllInput,
   type PhotoRangeInput,
   type PhotoRangeContentsInput,
 } from "./schema";
 export { listPhotoFoldersForDate, listPhotosInFolder, monthFolderLabel } from "./photos";
+export { listAllPhotosInFolder } from "./folder";
+export {
+  DEFAULT_SLIDESHOW_OPTIONS,
+  SLIDESHOW_EFFECT_CHOICES,
+  SLIDESHOW_INTERVAL_CHOICES,
+  normaliseSlideshowOptions,
+  slideshowIntervalMs,
+  type SlideshowEffect,
+  type SlideshowOptions,
+} from "./slideshow";
 export { listPhotoFoldersForRange } from "./range";
 export { pickRandomPhoto, type RandomPhotoPick } from "./random";
 export { diagnosePhotoArchive } from "./diagnose";

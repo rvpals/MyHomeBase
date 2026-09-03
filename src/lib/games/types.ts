@@ -454,11 +454,31 @@ export const SUDOKU_TIME_PENALTY = 4;
 export const SUDOKU_MISTAKE_PENALTY = 100;
 
 /**
+ * Points lost per hint taken.
+ *
+ * Hints are **unlimited**, so this penalty is the only thing stopping a player from
+ * having the board filled in for them. It is therefore priced above a mistake: 250 is
+ * about 62 seconds, or two and a half wrong guesses. A wrong guess still leaves you to
+ * work out the right answer; a hint hands it over, so it has to cost more.
+ *
+ * There is deliberately no hint cap. A cap would make the last hint on a hard board
+ * feel like a resource to hoard rather than a decision to weigh, and the price already
+ * does the job — see `SUDOKU_MIN_SCORE`, whose floor is lifted for a hinted board so
+ * that hinting your way to the end cannot bank a consolation score.
+ */
+export const SUDOKU_HINT_PENALTY = 250;
+
+/**
  * The least a solved board can score, however long it took.
  *
  * Without a floor, `base - elapsed * penalty` goes negative on a long session and a
  * finished puzzle would record 0 — indistinguishable from not having played, and a
  * dispiriting reward for grinding out a hard board. A finish is always worth something.
+ *
+ * **The floor is for time and mistakes, not for hints.** It applies only to a board
+ * solved with no hints; see `scoreGame`. Hints being unlimited, a floor that survived
+ * them would mean tapping Hint 81 times still scored `SUDOKU_MIN_SCORE`, which is a
+ * guaranteed payout for not playing. A hinted board can score all the way to 0.
  */
 export const SUDOKU_MIN_SCORE = 100;
 
@@ -471,11 +491,18 @@ export const SUDOKU_MIN_SCORE = 100;
  *
  * `notes` are the pencilled candidates, as a set of digits. Kept per cell rather than
  * in one board-wide map so that clearing a cell clears its notes with it.
+ *
+ * `hinted` marks a digit the game supplied rather than the player. It is NOT `given`:
+ * a hint lands mid-game and stays editable-looking to the rules that matter, so the
+ * two flags answer different questions — `given` is "was this on the board to begin
+ * with", `hinted` is "did I work this one out". Only the view reads it, to tint the
+ * cell so you can see what you were handed.
  */
 export interface SudokuCell {
   value: SudokuDigit;
   given: boolean;
   notes: readonly number[];
+  hinted: boolean;
 }
 
 /** Why a run ended, or `undefined` while it is still going. */
@@ -500,6 +527,11 @@ export interface SudokuState {
   mistakes: number;
   /** Digits entered so far, right or wrong. Drives nothing; shown as progress. */
   filled: number;
+  /**
+   * Hints taken so far. Unlimited, but each one costs `SUDOKU_HINT_PENALTY` and any
+   * hint at all lifts the score floor — so this is a running tally, not a budget.
+   */
+  hints: number;
   elapsedSeconds: number;
   outcome: SudokuOutcome;
 }

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/button";
 import {
   SUDOKU_DIFFICULTIES,
+  SUDOKU_HINT_PENALTY,
   SUDOKU_SETUP,
   SUDOKU_SIZE,
   clearCell,
@@ -11,6 +12,7 @@ import {
   enterDigit,
   peersOf,
   renderSudokuRows,
+  revealHint,
   scoreGame,
   startSudoku,
   tickSudoku,
@@ -134,6 +136,26 @@ export function GameSudokuView({ bestScore }: { bestScore: number }) {
 
   const erase = useCallback(() => apply(clearCell), [apply]);
 
+  /**
+   * Takes a hint. Not routed through `apply`, which requires a selected cell — a hint
+   * works with nothing selected, in which case the library picks the cell. The revealed
+   * cell is then selected so the player's eye lands on what changed.
+   */
+  const hint = useCallback(() => {
+    setState((current) => {
+      if (!current || current.outcome) return current;
+      const next = revealHint(current, selected);
+      // `revealHint` returns the same state when there is nothing to reveal — a given,
+      // an already-correct cell — so nothing moves and no hint is charged.
+      if (next === current) return current;
+      const revealed = next.cells.findIndex(
+        (cell, index) => cell.value !== current.cells[index].value,
+      );
+      if (revealed !== -1) setSelected(revealed);
+      return next;
+    });
+  }, [selected]);
+
   /** Moves the selection by one cell, clamped to the grid. Arrow-key navigation. */
   const nudge = useCallback((rowStep: number, colStep: number) => {
     setSelected((current) => {
@@ -159,6 +181,7 @@ export function GameSudokuView({ bestScore }: { bestScore: number }) {
         // Space toggles notes, matching the on-screen button.
         " ": () => setNoteMode((value) => !value),
         n: () => setNoteMode((value) => !value),
+        h: hint,
       };
 
       const action = handled[event.key];
@@ -176,7 +199,7 @@ export function GameSudokuView({ bestScore }: { bestScore: number }) {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [erase, nudge, press]);
+  }, [erase, hint, nudge, press]);
 
   const rows = state ? renderSudokuRows(state) : undefined;
 
@@ -203,6 +226,7 @@ export function GameSudokuView({ bestScore }: { bestScore: number }) {
         <div className="flex flex-wrap gap-2">
           <Stat label="Time" value={formatClock(state?.elapsedSeconds ?? 0)} />
           <Stat label="Mistakes" value={String(state?.mistakes ?? 0)} />
+          <Stat label="Hints" value={String(state?.hints ?? 0)} />
           <Stat label="Best" value={bestScore.toLocaleString()} />
         </div>
         <div className="flex flex-wrap gap-2">
@@ -267,7 +291,7 @@ export function GameSudokuView({ bestScore }: { bestScore: number }) {
                   role="gridcell"
                   aria-label={`Row ${rowIndex + 1}, column ${colIndex + 1}: ${
                     cell.value === 0 ? "empty" : cell.value
-                  }${cell.given ? ", given" : ""}`}
+                  }${cell.given ? ", given" : ""}${cell.hinted ? ", hinted" : ""}`}
                   aria-selected={isSelected}
                   onClick={() => setSelected(index)}
                   className={[
@@ -291,9 +315,14 @@ export function GameSudokuView({ bestScore }: { bestScore: number }) {
                         "text-red-400"
                       : cell.given
                         ? "text-ink"
-                        : // A player's own correct entry is tinted, so at a glance you
-                          // can tell your work from the puzzle's clues.
-                          "text-brass-dark",
+                        : cell.hinted
+                          ? // A hinted digit is drawn dimmer than the player's own work:
+                            // it is correct, but it is not something they solved, and the
+                            // board should still read as theirs at a glance.
+                            "text-muted italic"
+                          : // A player's own correct entry is tinted, so at a glance you
+                            // can tell your work from the puzzle's clues.
+                            "text-brass-dark",
                     // Text scales with the board, which is itself viewport-sized.
                     "text-[min(1.4rem,3.4vw)]",
                   ].join(" ")}
@@ -360,6 +389,21 @@ export function GameSudokuView({ bestScore }: { bestScore: number }) {
           <Button onClick={erase} variant="secondary" size="sm" disabled={solved}>
             Erase
           </Button>
+          {/*
+            Hints are unlimited, so this is never disabled for having been used — only
+            on a finished board. What stops a player leaning on it is the score: each
+            hint costs `SUDOKU_HINT_PENALTY` and the first one removes the score floor,
+            which the label states outright rather than springing at the end.
+          */}
+          <Button
+            onClick={hint}
+            variant="secondary"
+            size="sm"
+            disabled={solved}
+            title={`Reveal one cell — costs ${SUDOKU_HINT_PENALTY} points`}
+          >
+            Hint
+          </Button>
         </div>
       </div>
 
@@ -381,7 +425,12 @@ export function GameSudokuView({ bestScore }: { bestScore: number }) {
           <p className="mt-1 text-sm text-muted">
             {SUDOKU_SETUP[state.difficulty].label} board in {formatClock(state.elapsedSeconds)} with{" "}
             {state.mistakes.toLocaleString()}{" "}
-            {state.mistakes === 1 ? "mistake" : "mistakes"} — {liveScore.toLocaleString()} pts.
+            {state.mistakes === 1 ? "mistake" : "mistakes"}
+            {/* Hints are only mentioned when they were used — a clean solve should not
+                be reminded of a button it did not need. */}
+            {state.hints > 0 &&
+              ` and ${state.hints.toLocaleString()} ${state.hints === 1 ? "hint" : "hints"}`}{" "}
+            — {liveScore.toLocaleString()} pts.
           </p>
           <Button onClick={() => newGame(state.difficulty)} size="sm" className="mt-3">
             Play again
@@ -390,7 +439,8 @@ export function GameSudokuView({ bestScore }: { bestScore: number }) {
       )}
 
       <p className="text-center text-xs text-muted max-lg:hidden">
-        Arrows to move, 1-9 to enter a digit, Backspace to erase, N or Space for notes.
+        Arrows to move, 1-9 to enter a digit, Backspace to erase, N or Space for notes, H
+        for a hint.
       </p>
     </div>
   );
@@ -421,6 +471,7 @@ function emptyRows() {
       value: 0 as SudokuDigit,
       given: false,
       notes: [] as readonly number[],
+      hinted: false,
     })),
   );
 }

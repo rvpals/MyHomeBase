@@ -71,12 +71,52 @@ export interface RecordedStudentAction {
   name: string;
 }
 
+/**
+ * The weekdays a class can meet on, as `Date.getDay()` numbers.
+ *
+ * Monday to Friday only — this is a school timetable, so the picker never offers
+ * a weekend. The numbers match `Date.getDay()` (0 = Sunday) so "is this today's
+ * class?" is a comparison rather than a lookup.
+ */
+export const CLASS_WEEKDAYS = [1, 2, 3, 4, 5] as const;
+
+export type ClassWeekday = (typeof CLASS_WEEKDAYS)[number];
+
+/** What the picker and the grid call each weekday, keyed by its number. */
+export const CLASS_WEEKDAY_LABELS: Record<ClassWeekday, string> = {
+  1: "Monday",
+  2: "Tuesday",
+  3: "Wednesday",
+  4: "Thursday",
+  5: "Friday",
+};
+
+/**
+ * The stored value meaning "no weekday set".
+ *
+ * Every class predating migration 0080 carries it, and so does one created by
+ * the CSV roster importer — an import names a class but says nothing about when
+ * it meets. Readable but never writable: `createClassSchema` requires a real
+ * 1-5, so a class saved through the form always has a day. A class sitting here
+ * is simply never today's class.
+ */
+export const CLASS_WEEKDAY_UNSET = 0;
+
 /** A class a teacher takes attendance for. */
 export interface AttendanceClass {
   id: number;
   name: string;
   /** Empty when unrecorded. */
   description: string;
+  /**
+   * The weekday it meets on, 1 = Monday to 5 = Friday, or
+   * `CLASS_WEEKDAY_UNSET` when never chosen.
+   *
+   * Not narrowed to `ClassWeekday`, deliberately: the column can hold `0` for
+   * any class predating migration 0080, and a type that excluded it would make
+   * every such class unrepresentable.
+   */
+  classWeekday: number;
   /** How many students are enrolled. Derived in SQL, not stored. */
   enrolledCount: number;
   createdAt: string;

@@ -8,12 +8,14 @@ import { useState } from "react";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { PhotoLightbox } from "@/components/photo-lightbox";
+import { PhotosViewer } from "@/components/photos-viewer";
 import { SlotIcon } from "@/components/slot-icon";
 import { TreeIcon } from "@/components/tree-icons";
 import type { FavPhoto } from "@/lib/fav-photos";
 import { getIconSlot } from "@/lib/icons";
 import type { RandomPhotoPick } from "@/lib/journal-photos";
 import { calendarAgeSince, formatCalendarAge } from "@/lib/shared/date";
+import { listAllPhotosInFolderAction } from "./photos-viewer-actions";
 import {
   drawRandomPhotoAction,
   listFavPhotosAction,
@@ -46,6 +48,18 @@ const RANDOM_PHOTO_SLOT = getIconSlot("homescreen_card_random_photo");
 /** The URL for one photo's bytes. Encoded whole: these folder names contain spaces. */
 function photoUrl(relativePath: string): string {
   return `/api/journal/photos?path=${encodeURIComponent(relativePath)}`;
+}
+
+/**
+ * The folder a photo sits in — everything before the last slash.
+ *
+ * Derived here rather than added to `RandomPhotoPick`, because the pick already carries
+ * the full path and the answer is a string operation on it. `""` for a path with no
+ * slash, which the button treats as "nothing to open" rather than as the archive root.
+ */
+function folderPathOf(relativePath: string): string {
+  const lastSlash = relativePath.lastIndexOf("/");
+  return lastSlash <= 0 ? "" : relativePath.slice(0, lastSlash);
 }
 
 /**
@@ -120,6 +134,9 @@ export function RandomPhotoWidget({
   const [isDrawing, setIsDrawing] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  // The folder viewer, opened by the header's folder button. Separate from the lightbox
+  // above: that enlarges this one photograph, this browses the folder it came from.
+  const [isFolderOpen, setIsFolderOpen] = useState(false);
   const [favorites, setFavorites] = useState(initialFavorites);
   const [isFavoriting, setIsFavoriting] = useState(false);
 
@@ -159,6 +176,10 @@ export function RandomPhotoWidget({
   }
 
   const hasPhoto = pick.relativePath !== undefined;
+  // The folder the drawn photo came from, or `""` when there is nothing to browse.
+  // Derived rather than held: it is a function of the pick, and holding it would be a
+  // second thing to keep in step with the refresh button.
+  const folderPath = pick.relativePath === undefined ? "" : folderPathOf(pick.relativePath);
   // Derived from the list rather than held as its own flag, so removing the shown photo
   // from inside the dialog un-fills the heart without a second round trip.
   const isFavorited =
@@ -182,8 +203,9 @@ export function RandomPhotoWidget({
       className={className}
       defaultOpen
       headerAction={
-        // Three icon-only controls in one row: keep this photo, draw another, read the
-        // kept ones back. All in `headerAction` so none of them toggles the card.
+        // Four icon-only controls in one row: keep this photo, open the folder it came
+        // from, draw another, read the kept ones back. All in `headerAction` so none of
+        // them toggles the card.
         <div className="flex items-center gap-1">
           {/* Only offered when there is a photograph to keep — a heart on an empty card
               would have nothing to act on. */}
@@ -202,6 +224,31 @@ export function RandomPhotoWidget({
                 name={isFavorited ? "heart-filled" : "heart"}
                 className={`h-4 w-4 ${isFavorited ? "text-brass-dark" : ""}`}
               />
+            </Button>
+          )}
+
+          {/* Opens `PhotosViewer` on the folder this photograph came from, landing on
+              this photograph. The point is the pictures BESIDE it: a random draw shows
+              one frame from an event, and the rest of that event is one click away
+              rather than a search through the journal.
+
+              Only offered when there is a folder to open — a photo loose at the archive
+              root has no siblings to show, and a button that opens an empty viewer is
+              worse than no button. */}
+          {hasPhoto && folderPath !== "" && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setIsFolderOpen(true)}
+              title={`Open ${pick.folderName ?? "this photo's folder"}`}
+              ariaLabel={`Open ${pick.folderName ?? "this photo's folder"}`}
+            >
+              {/* `photo-folder`, not a plain folder: it sits beside a heart and a photo
+                  stack, and has to read as "the folder of pictures" in a row that is
+                  entirely about pictures. In ALWAYS_CLASSIC for that reason, so no icon
+                  slot — a slot offering to override it would be a control that does
+                  nothing. */}
+              <TreeIcon name="photo-folder" className="h-4 w-4" />
             </Button>
           )}
 
@@ -238,7 +285,11 @@ export function RandomPhotoWidget({
                 whether the list is worth opening before they open it. Hidden on a
                 phone, where three glyphs and a number crowd the title. */}
             {favorites.length > 0 && (
-              <span className="ml-1 text-xs max-lg:hidden">{favorites.length}</span>
+              // Hidden below `xl`, not `lg`: with the folder button added there are four
+              // glyphs in this row, and a number after them wrapped the title on a
+              // tablet. The count is a nicety — which list to open is still obvious
+              // without it — so it is the thing that goes when space is short.
+              <span className="ml-1 text-xs max-xl:hidden">{favorites.length}</span>
             )}
           </Button>
         </div>
@@ -293,6 +344,21 @@ export function RandomPhotoWidget({
           index={0}
           onIndexChange={() => {}}
           onClose={() => setIsLightboxOpen(false)}
+        />
+      )}
+
+      {/* The folder browser. Mounted only while open, because it reads the folder on
+          mount — keeping it mounted would list the folder on every draw, whether or not
+          anyone asked to see it. It owns no open state of its own, like every other
+          overlay in the app. */}
+      {isFolderOpen && folderPath !== "" && (
+        <PhotosViewer
+          folderPath={folderPath}
+          initialPhotoPath={pick.relativePath}
+          folderLabel={pick.folderName}
+          onListFolder={listAllPhotosInFolderAction}
+          photoUrl={photoUrl}
+          onClose={() => setIsFolderOpen(false)}
         />
       )}
     </CollapsibleCard>

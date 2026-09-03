@@ -294,6 +294,17 @@ on the report — the actions carry their own small glyph set
 `migrations/0051_create_attendance_student_actions.md` records why. The newest
 module and the cleanest template to copy. Library: `src/lib/attendance`.
 
+A class carries the **weekday it meets on** (`class_weekday`, 1 = Monday to
+5 = Friday, `migrations/0080`), and the home screen opens on today's register
+because of it. Precedence is most-specific-first: `?classId=` in the URL, then
+today's weekday class, then the configured default class setting, then nothing.
+The weekday deliberately does **not** reach the Report screen — which day *that*
+opens on is the `reportDefaultsToToday` setting's business. Monday-to-Friday only,
+so a weekend simply falls through to the default; a class predating the migration
+(or one the CSV importer created, since a file says nothing about when a class
+meets) stores `0`, is never any day's class, and shows as "—" until someone picks
+a day. The rule itself is pure and lives in `src/lib/attendance/weekday.ts`.
+
 **Music Library** (`music-library`) — catalogs audio files already on the NAS and
 streams them to a browser over HTTP Range. **Read-only by construction**: the
 `MusicFileStore` port has no write, move or delete method, so no code path can modify

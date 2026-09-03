@@ -7,10 +7,13 @@ import {
   emptyGrid,
   enterDigit,
   hasUniqueSolution,
+  hintTarget,
+  hintedCells,
   isSolved,
   peersOf,
   removeClues,
   renderRows,
+  revealHint,
   scoreGame,
   solvedGrid,
   startGame,
@@ -22,6 +25,7 @@ import {
   SUDOKU_BOX,
   SUDOKU_CELL_COUNT,
   SUDOKU_DIFFICULTIES,
+  SUDOKU_HINT_PENALTY,
   SUDOKU_MIN_SCORE,
   SUDOKU_MISTAKE_PENALTY,
   SUDOKU_SETUP,
@@ -88,6 +92,7 @@ function oneCellLeft(random = fixed): { state: SudokuState; index: number } {
     value: (at === index ? 0 : value) as SudokuDigit,
     given: at !== index,
     notes: [] as readonly number[],
+    hinted: false,
   }));
   return {
     state: {
@@ -96,6 +101,7 @@ function oneCellLeft(random = fixed): { state: SudokuState; index: number } {
       solution,
       mistakes: 0,
       filled: SUDOKU_CELL_COUNT - 1,
+      hints: 0,
       elapsedSeconds: 0,
       outcome: undefined,
     },
@@ -381,6 +387,127 @@ describe("wrongCells and digitCount", () => {
   });
 });
 
+describe("hintTarget", () => {
+  it("picks the most-constrained empty cell", () => {
+    const { state, index } = oneCellLeft();
+    // One hole left, so it is unambiguously the most constrained cell on the board.
+    expect(hintTarget(state)).toBe(index);
+  });
+
+  it("prefers a cell holding a wrong digit over any empty one", () => {
+    const state = startGame("easy", rng(7));
+    const empty = state.cells.findIndex((cell) => !cell.given);
+    const other = state.cells.findIndex((cell, at) => !cell.given && at !== empty);
+    const wrongDigit = ((((state.solution[other] ?? 1) % 9) + 1) as SudokuDigit);
+    const withWrong = enterDigit(state, other, wrongDigit);
+
+    expect(hintTarget(withWrong)).toBe(other);
+  });
+
+  it("has nothing to offer on a finished game", () => {
+    const { state, index } = oneCellLeft();
+    const solved = enterDigit(state, index, state.solution[index]);
+    expect(hintTarget(solved)).toBeUndefined();
+  });
+});
+
+describe("revealHint", () => {
+  it("fills the chosen cell with the correct digit and counts the hint", () => {
+    const state = startGame("easy", rng(3));
+    const index = state.cells.findIndex((cell) => !cell.given);
+    const hinted = revealHint(state, index);
+
+    expect(hinted.cells[index].value).toBe(state.solution[index]);
+    expect(hinted.cells[index].hinted).toBe(true);
+    expect(hinted.cells[index].given).toBe(false);
+    expect(hinted.hints).toBe(1);
+    expect(hinted.filled).toBe(state.filled + 1);
+    // A hint is not a mistake, however wrong the board was before it.
+    expect(hinted.mistakes).toBe(state.mistakes);
+  });
+
+  it("picks its own cell when none is given", () => {
+    const { state, index } = oneCellLeft();
+    const hinted = revealHint(state);
+
+    expect(hinted.cells[index].value).toBe(state.solution[index]);
+    expect(hinted.hints).toBe(1);
+  });
+
+  it("is unlimited — every hint counts and none is refused for being the nth", () => {
+    let state = startGame("easy", rng(11));
+    const blanks = state.cells.filter((cell) => !cell.given).length;
+
+    for (let taken = 0; taken < blanks; taken += 1) state = revealHint(state);
+
+    expect(state.hints).toBe(blanks);
+    expect(state.outcome).toBe("solved");
+  });
+
+  it("corrects a wrong digit without charging a second mistake", () => {
+    const state = startGame("easy", rng(5));
+    const index = state.cells.findIndex((cell) => !cell.given);
+    const wrongDigit = ((((state.solution[index] ?? 1) % 9) + 1) as SudokuDigit);
+    const wrong = enterDigit(state, index, wrongDigit);
+    const fixed_ = revealHint(wrong, index);
+
+    expect(wrong.mistakes).toBe(1);
+    expect(fixed_.cells[index].value).toBe(state.solution[index]);
+    expect(fixed_.mistakes).toBe(1);
+    expect(fixed_.hints).toBe(1);
+  });
+
+  it("clears the cell's notes, as entering a digit does", () => {
+    const state = startGame("easy", rng(9));
+    const index = state.cells.findIndex((cell) => !cell.given);
+    const noted = toggleNote(toggleNote(state, index, 3), index, 7);
+    expect(noted.cells[index].notes).toHaveLength(2);
+
+    expect(revealHint(noted, index).cells[index].notes).toEqual([]);
+  });
+
+  it("solves the board when it fills the last cell", () => {
+    const { state } = oneCellLeft();
+    const hinted = revealHint(state);
+
+    expect(hinted.outcome).toBe("solved");
+    expect(isSolved(hinted)).toBe(true);
+  });
+
+  it("refuses a given, an already-correct cell, and a finished game", () => {
+    const state = startGame("easy", rng(13));
+    const given = state.cells.findIndex((cell) => cell.given);
+    expect(revealHint(state, given)).toBe(state);
+
+    const index = state.cells.findIndex((cell) => !cell.given);
+    const correct = enterDigit(state, index, state.solution[index]);
+    expect(revealHint(correct, index)).toBe(correct);
+
+    const { state: nearly, index: last } = oneCellLeft();
+    const solved = enterDigit(nearly, last, nearly.solution[last]);
+    expect(revealHint(solved)).toBe(solved);
+  });
+
+  it("reports which cells were hinted", () => {
+    const state = startGame("easy", rng(17));
+    const first = state.cells.findIndex((cell) => !cell.given);
+    const second = state.cells.findIndex((cell, at) => !cell.given && at !== first);
+    const hinted = revealHint(revealHint(state, first), second);
+
+    expect(hintedCells(hinted)).toEqual([first, second].sort((a, b) => a - b));
+    expect(hintedCells(state)).toEqual([]);
+  });
+
+  it("leaves the original state untouched", () => {
+    const state = startGame("easy", rng(19));
+    const index = state.cells.findIndex((cell) => !cell.given);
+    revealHint(state, index);
+
+    expect(state.cells[index].value).toBe(0);
+    expect(state.hints).toBe(0);
+  });
+});
+
 describe("scoreGame", () => {
   it("scores nothing for a board that was never solved", () => {
     const { state } = oneCellLeft();
@@ -413,6 +540,32 @@ describe("scoreGame", () => {
     expect(scoreGame({ ...solved, elapsedSeconds: 100_000, mistakes: 500 })).toBe(
       SUDOKU_MIN_SCORE,
     );
+  });
+
+  it("charges each hint taken", () => {
+    const { state, index } = oneCellLeft();
+    const solved = enterDigit(state, index, state.solution[index]);
+    const withHints = { ...solved, hints: 3 };
+
+    expect(scoreGame(withHints)).toBe(
+      SUDOKU_SETUP.easy.base - 3 * SUDOKU_HINT_PENALTY,
+    );
+    expect(scoreGame(withHints)).toBeLessThan(scoreGame(solved));
+  });
+
+  it("prices a hint above a mistake, so hinting is never the cheap way out", () => {
+    expect(SUDOKU_HINT_PENALTY).toBeGreaterThan(SUDOKU_MISTAKE_PENALTY);
+  });
+
+  it("drops the floor once any hint was taken, so a hinted board can score zero", () => {
+    const { state, index } = oneCellLeft();
+    const solved = enterDigit(state, index, state.solution[index]);
+
+    // Unhinted: the floor protects a long honest grind.
+    expect(scoreGame({ ...solved, elapsedSeconds: 100_000 })).toBe(SUDOKU_MIN_SCORE);
+    // One hint removes that protection — otherwise hinting the whole board would
+    // still bank the floor, a guaranteed score for not solving anything.
+    expect(scoreGame({ ...solved, elapsedSeconds: 100_000, hints: 1 })).toBe(0);
   });
 
   it("pays a hard board more than an easy one for the same run", () => {

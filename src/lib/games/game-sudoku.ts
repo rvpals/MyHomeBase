@@ -1,6 +1,7 @@
 import {
   SUDOKU_BOX,
   SUDOKU_CELL_COUNT,
+  SUDOKU_HINT_PENALTY,
   SUDOKU_MIN_SCORE,
   SUDOKU_MISTAKE_PENALTY,
   SUDOKU_SETUP,
@@ -230,12 +231,19 @@ export function startGame(difficulty: SudokuDifficulty, random: Random): SudokuS
   const solution = solvedGrid(random);
   const puzzle = removeClues(solution, SUDOKU_SETUP[difficulty].clues, random);
 
+  const cells = puzzle.map((value) => ({ value, given: value !== 0, notes: [], hinted: false }));
+
   return {
     difficulty,
-    cells: puzzle.map((value) => ({ value, given: value !== 0, notes: [] })),
+    cells,
     solution,
     mistakes: 0,
-    filled: 0,
+    // Counted from the grid, not zero. A fresh board already holds its clues — 44 of
+    // them on easy — and every other writer (`enterDigit`, `revealHint`) recomputes
+    // this the same way, so a literal 0 here left `filled` disagreeing with the board
+    // until the first move silently corrected it.
+    filled: cells.filter((cell) => cell.value !== 0).length,
+    hints: 0,
     elapsedSeconds: 0,
     outcome: undefined,
   };
@@ -260,7 +268,12 @@ export function enterDigit(state: SudokuState, index: number, digit: SudokuDigit
   const wrong = digit !== 0 && digit !== state.solution[index];
   // Entering a digit clears that cell's notes: the pencilled candidates were working
   // towards this answer, and leaving them under it just clutters the cell.
-  const cells = replace(state.cells, index, { value: digit, given: false, notes: [] });
+  const cells = replace(state.cells, index, {
+    value: digit,
+    given: false,
+    notes: [],
+    hinted: false,
+  });
   const filled = cells.filter((entry) => entry.value !== 0).length;
 
   return {
@@ -293,6 +306,104 @@ export function toggleNote(state: SudokuState, index: number, digit: SudokuDigit
     : [...cell.notes, digit].sort((a, b) => a - b);
 
   return { ...state, cells: replace(state.cells, index, { ...cell, notes }) };
+}
+
+/**
+ * The cell a hint would fill if the player has not chosen one.
+ *
+ * The most-constrained empty cell: the one with fewest digits that still fit, counting
+ * only against what is currently on the board. That is the same heuristic
+ * `countSolutions` uses to prune, and here it does double duty — it is also the cell a
+ * human should have been able to crack next, so a hint reveals the answer you were
+ * closest to rather than one at random. Ties break towards the lowest index, which
+ * keeps the choice deterministic and the tests free of an RNG.
+ *
+ * `undefined` when nothing can be hinted: a full board, or a finished game. A cell
+ * holding a WRONG digit is a candidate — it is not empty, but it is not solved either,
+ * and being shown the truth is exactly what a hint is for.
+ */
+export function hintTarget(state: SudokuState): number | undefined {
+  if (state.outcome) return undefined;
+
+  // The board as a plain grid, built once. `canPlace` works on digits, and deriving
+  // this inside the loop would allocate 81 entries per cell inspected.
+  const grid: SudokuGrid = state.cells.map((cell) => cell.value);
+
+  let target: number | undefined;
+  let fewest = Number.POSITIVE_INFINITY;
+
+  for (let index = 0; index < SUDOKU_CELL_COUNT; index += 1) {
+    const cell = state.cells[index];
+    if (!cell || cell.given) continue;
+    // Already correct: nothing to reveal.
+    if (cell.value === state.solution[index]) continue;
+
+    // A wrong digit is the most useful hint on the board, so it wins outright rather
+    // than competing on candidate count — the player is provably stuck there.
+    if (cell.value !== 0) return index;
+
+    const candidates = DIGITS.filter((digit) => canPlace(grid, index, digit)).length;
+    if (candidates < fewest) {
+      target = index;
+      fewest = candidates;
+      if (candidates <= 1) break;
+    }
+  }
+  return target;
+}
+
+/**
+ * Fills a cell with its correct digit, at the cost of a hint.
+ *
+ * Hints are unlimited on purpose (see `SUDOKU_HINT_PENALTY`): the price is the brake,
+ * not a cap. Each one bumps `hints`, which costs points and lifts the score floor, so
+ * a player can always get unstuck and always pays for it.
+ *
+ * `index` is optional — omit it and the game picks via `hintTarget`, which is what the
+ * button does when no cell is selected. A hint over a wrong digit does NOT count a
+ * fresh mistake: that was charged when the digit was typed, and charging it twice would
+ * punish fixing an error more than leaving it.
+ *
+ * Refuses on a given, on a cell that is already correct, and on a finished game — none
+ * of those has anything to reveal, and charging for a no-op is a bug, not a policy.
+ */
+export function revealHint(state: SudokuState, index?: number): SudokuState {
+  if (state.outcome) return state;
+
+  const at = index ?? hintTarget(state);
+  if (at === undefined) return state;
+
+  const cell = state.cells[at];
+  if (!cell || cell.given) return state;
+
+  const answer = state.solution[at];
+  if (cell.value === answer) return state;
+
+  // Notes go with the digit, exactly as in `enterDigit`: the pencilled candidates were
+  // working towards this answer, and leaving them under it just clutters the cell.
+  const cells = replace(state.cells, at, {
+    value: answer,
+    given: false,
+    notes: [],
+    hinted: true,
+  });
+
+  return {
+    ...state,
+    cells,
+    filled: cells.filter((entry) => entry.value !== 0).length,
+    hints: state.hints + 1,
+    outcome: solvedBy(cells, state.solution) ? "solved" : undefined,
+  };
+}
+
+/** How many cells were filled by a hint. The view shows it; `scoreGame` charges it. */
+export function hintedCells(state: SudokuState): readonly number[] {
+  const hinted: number[] = [];
+  state.cells.forEach((cell, index) => {
+    if (cell.hinted) hinted.push(index);
+  });
+  return hinted;
 }
 
 /** Advances the clock by one second. The view's interval calls this; tests set it. */
@@ -343,9 +454,18 @@ export function scoreGame(state: SudokuState): number {
 
   const { base } = SUDOKU_SETUP[state.difficulty];
   const earned =
-    base - state.elapsedSeconds * SUDOKU_TIME_PENALTY - state.mistakes * SUDOKU_MISTAKE_PENALTY;
+    base -
+    state.elapsedSeconds * SUDOKU_TIME_PENALTY -
+    state.mistakes * SUDOKU_MISTAKE_PENALTY -
+    state.hints * SUDOKU_HINT_PENALTY;
 
-  return Math.max(SUDOKU_MIN_SCORE, earned);
+  // The floor is for an honest grind, not for a hinted board. Hints being unlimited,
+  // keeping the floor would mean tapping Hint across the whole grid still banked
+  // `SUDOKU_MIN_SCORE` — a guaranteed score for not solving anything. One hint drops
+  // the floor to 0. See `SUDOKU_MIN_SCORE`.
+  const floor = state.hints > 0 ? 0 : SUDOKU_MIN_SCORE;
+
+  return Math.max(floor, earned);
 }
 
 /** `cells` with one entry replaced. Kept here so no caller mutates the array. */

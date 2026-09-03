@@ -20,6 +20,7 @@ import {
   listStudents,
   listStudentsInClass,
   resolveAttendanceSettings,
+  resolveWeekdayClassId,
   type AttendanceReportFormat,
   type Student,
 } from "@/lib/attendance";
@@ -48,21 +49,46 @@ function loadSettings() {
 }
 
 /**
- * The class a screen should open on: whatever the URL asks for, else the
- * configured default, else nothing.
+ * The class a screen should open on. Most specific fact first:
+ *
+ * 1. whatever the URL asks for — an explicit request, so a teacher can bookmark
+ *    their first-period register and land on it whatever day it is;
+ * 2. the class that meets **today**, by weekday, when `today` is given;
+ * 3. the configured default class;
+ * 4. nothing — "Pick a class…".
+ *
+ * The weekday beats the configured default because it is the narrower claim: a
+ * default says "usually this one", a weekday says "this one, today". At the
+ * weekend, and on a weekday no class claims, step 2 finds nothing and the
+ * default still applies.
+ *
+ * `today` is optional, and only the **home** screen passes it. The Report screen
+ * is a place you go to read a past register, and which day *it* opens on is
+ * already the `reportDefaultsToToday` setting's business — letting the weekday
+ * reach in there would quietly override a preference the reader had set. It is a
+ * parameter rather than a second function because everything else about choosing
+ * a class is shared.
  *
  * A configured default that names a deleted class is ignored rather than
- * throwing — deleting a class doesn't reach into the settings rows.
+ * throwing — deleting a class doesn't reach into the settings rows. The weekday
+ * match can't go stale the same way, being derived from the live list.
  */
 function resolveSelectedClassId(
   requestedClassId: number | undefined,
-  classes: { id: number }[],
+  classes: { id: number; classWeekday: number }[],
   defaultClassId: number | undefined,
+  today?: string,
 ): number | undefined {
   const exists = (id: number | undefined) =>
     id !== undefined && classes.some((item) => item.id === id);
 
   if (exists(requestedClassId)) return requestedClassId;
+
+  if (today !== undefined) {
+    const weekdayClassId = resolveWeekdayClassId(classes, today);
+    if (weekdayClassId !== undefined) return weekdayClassId;
+  }
+
   if (exists(defaultClassId)) return defaultClassId;
   return undefined;
 }
@@ -90,6 +116,7 @@ function SectionBody({
         requestedClassId,
         classes,
         settings.defaultClassId,
+        today,
       );
 
       return (
@@ -97,6 +124,7 @@ function SectionBody({
           classes={classes.map((item) => ({
             id: item.id,
             name: item.name,
+            classWeekday: item.classWeekday,
             enrolledCount: item.enrolledCount,
           }))}
           sheet={

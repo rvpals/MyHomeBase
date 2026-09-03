@@ -6,6 +6,7 @@ import {
   deleteStudentAction,
   deleteStudents,
   enrollStudents,
+  getClassById,
   formatStudentName,
   getAttendanceReport,
   getAttendanceReportById,
@@ -277,7 +278,7 @@ function seedActions(repo: AttendanceRepository) {
 /** A repo with one class and three students already enrolled. */
 function seededRepo() {
   const repo = fakeRepo();
-  const mathClass = createClass(repo, { name: "Math 101" });
+  const mathClass = createClass(repo, { name: "Math 101", classWeekday: 1 });
   const ava = addStudent(repo, { firstName: "Ava", lastName: "Chen" });
   const ben = addStudent(repo, { firstName: "Ben", lastName: "Ortiz" });
   const chi = addStudent(repo, { firstName: "Chi", lastName: "Nguyen" });
@@ -411,7 +412,7 @@ describe("deleteStudents", () => {
 describe("createClass", () => {
   it("creates a class with no students", () => {
     const repo = fakeRepo();
-    const created = createClass(repo, { name: "Math 101", description: "Period 1" });
+    const created = createClass(repo, { name: "Math 101", description: "Period 1", classWeekday: 1 });
 
     expect(created.name).toBe("Math 101");
     expect(created.enrolledCount).toBe(0);
@@ -420,39 +421,89 @@ describe("createClass", () => {
 
   it("rejects a duplicate name, case-insensitively", () => {
     const repo = fakeRepo();
-    createClass(repo, { name: "Math 101" });
+    createClass(repo, { name: "Math 101", classWeekday: 1 });
 
-    expect(() => createClass(repo, { name: "math 101" })).toThrow(/already exists/);
+    expect(() => createClass(repo, { name: "math 101", classWeekday: 1 })).toThrow(/already exists/);
   });
 
   it("rejects a blank name", () => {
     const repo = fakeRepo();
-    expect(() => createClass(repo, { name: "   " })).toThrow();
+    expect(() => createClass(repo, { name: "   ", classWeekday: 1 })).toThrow();
+  });
+
+  it("stores the weekday the class meets on", () => {
+    const repo = fakeRepo();
+    const created = createClass(repo, { name: "Art 300", classWeekday: 4 });
+
+    expect(created.classWeekday).toBe(4);
+    expect(getClassById(repo, created.id)?.classWeekday).toBe(4);
+  });
+
+  it("accepts a weekday arriving as a string, as a form or the CLI sends it", () => {
+    const repo = fakeRepo();
+    expect(createClass(repo, { name: "Art 300", classWeekday: "4" }).classWeekday).toBe(4);
+  });
+
+  it("rejects a missing weekday", () => {
+    const repo = fakeRepo();
+    // @ts-expect-error -- the point of the test: the field is required, and an
+    // adapter that forgets it must fail at the boundary rather than store a 0.
+    expect(() => createClass(repo, { name: "Art 300" })).toThrow();
+  });
+
+  it("rejects a weekend, and anything outside Monday-to-Friday", () => {
+    const repo = fakeRepo();
+
+    // 0 is the stored "unset" marker and 6 is Saturday. Neither is choosable:
+    // this is a school timetable, and a class the home screen can't recognise as
+    // today's is what the field exists to prevent.
+    expect(() => createClass(repo, { name: "Sat", classWeekday: 6 })).toThrow(/Monday/);
+    expect(() => createClass(repo, { name: "Sun", classWeekday: 0 })).toThrow(/Monday/);
+    expect(() => createClass(repo, { name: "Nope", classWeekday: 9 })).toThrow(/Monday/);
   });
 });
 
 describe("updateClass", () => {
   it("allows a class to keep its own name", () => {
     const repo = fakeRepo();
-    const created = createClass(repo, { name: "Math 101" });
+    const created = createClass(repo, { name: "Math 101", classWeekday: 1 });
 
-    const updated = updateClass(repo, created.id, { name: "Math 101", description: "Period 2" });
+    const updated = updateClass(repo, created.id, { name: "Math 101", description: "Period 2", classWeekday: 1 });
     expect(updated.description).toBe("Period 2");
+  });
+
+  it("changes which weekday the class meets on", () => {
+    const repo = fakeRepo();
+    const created = createClass(repo, { name: "Math 101", classWeekday: 1 });
+
+    // Moving a class off Monday immediately changes which register the home
+    // screen opens on that day — the whole point of storing it.
+    const updated = updateClass(repo, created.id, { name: "Math 101", classWeekday: 3 });
+    expect(updated.classWeekday).toBe(3);
+  });
+
+  it("rejects moving a class to the weekend", () => {
+    const repo = fakeRepo();
+    const created = createClass(repo, { name: "Math 101", classWeekday: 1 });
+
+    expect(() =>
+      updateClass(repo, created.id, { name: "Math 101", classWeekday: 6 }),
+    ).toThrow(/Monday/);
   });
 
   it("rejects renaming onto another class's name", () => {
     const repo = fakeRepo();
-    createClass(repo, { name: "Math 101" });
-    const science = createClass(repo, { name: "Science 202" });
+    createClass(repo, { name: "Math 101", classWeekday: 1 });
+    const science = createClass(repo, { name: "Science 202", classWeekday: 2 });
 
-    expect(() => updateClass(repo, science.id, { name: "Math 101" })).toThrow(/already exists/);
+    expect(() => updateClass(repo, science.id, { name: "Math 101", classWeekday: 2 })).toThrow(/already exists/);
   });
 });
 
 describe("enrollStudents", () => {
   it("adds students to a class", () => {
     const repo = fakeRepo();
-    const mathClass = createClass(repo, { name: "Math 101" });
+    const mathClass = createClass(repo, { name: "Math 101", classWeekday: 1 });
     const ava = addStudent(repo, { firstName: "Ava", lastName: "Chen" });
     const ben = addStudent(repo, { firstName: "Ben", lastName: "Ortiz" });
 
@@ -474,7 +525,7 @@ describe("enrollStudents", () => {
 
   it("counts a repeated id in one request once", () => {
     const repo = fakeRepo();
-    const mathClass = createClass(repo, { name: "Math 101" });
+    const mathClass = createClass(repo, { name: "Math 101", classWeekday: 1 });
     const ava = addStudent(repo, { firstName: "Ava", lastName: "Chen" });
 
     const result = enrollStudents(repo, {
@@ -487,7 +538,7 @@ describe("enrollStudents", () => {
 
   it("lets a student belong to more than one class", () => {
     const { repo, ava } = seededRepo();
-    const science = createClass(repo, { name: "Science 202" });
+    const science = createClass(repo, { name: "Science 202", classWeekday: 2 });
 
     enrollStudents(repo, { classId: science.id, studentIds: [ava.id] });
 
@@ -506,7 +557,7 @@ describe("enrollStudents", () => {
 
   it("rejects an unknown student", () => {
     const repo = fakeRepo();
-    const mathClass = createClass(repo, { name: "Math 101" });
+    const mathClass = createClass(repo, { name: "Math 101", classWeekday: 1 });
 
     expect(() => enrollStudents(repo, { classId: mathClass.id, studentIds: [99] })).toThrow(
       /No student with the id 99/,
@@ -515,7 +566,7 @@ describe("enrollStudents", () => {
 
   it("rejects an empty selection", () => {
     const repo = fakeRepo();
-    const mathClass = createClass(repo, { name: "Math 101" });
+    const mathClass = createClass(repo, { name: "Math 101", classWeekday: 1 });
 
     expect(() => enrollStudents(repo, { classId: mathClass.id, studentIds: [] })).toThrow();
   });
@@ -702,7 +753,7 @@ describe("saveAttendance", () => {
     });
 
     updateStudent(repo, ava.id, { firstName: "Ava-Marie", lastName: "Chen" });
-    updateClass(repo, mathClass.id, { name: "Mathematics 101" });
+    updateClass(repo, mathClass.id, { name: "Mathematics 101", classWeekday: 1 });
 
     const report = getAttendanceReport(repo, {
       classId: mathClass.id,
@@ -779,7 +830,7 @@ describe("saveAttendance", () => {
 
   it("rejects an empty class", () => {
     const repo = fakeRepo();
-    const emptyClass = createClass(repo, { name: "Empty" });
+    const emptyClass = createClass(repo, { name: "Empty", classWeekday: 1 });
 
     expect(() =>
       saveAttendance(repo, {

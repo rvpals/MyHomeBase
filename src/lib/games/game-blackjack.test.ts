@@ -27,6 +27,7 @@ import {
 import {
   BLACKJACK_MAX_BET,
   BLACKJACK_MIN_BET,
+  BLACKJACK_PAYOUT,
   BLACKJACK_STARTING_CHIPS,
   DECKS_IN_SHOE,
   SHOE_RESHUFFLE_AT,
@@ -82,9 +83,29 @@ function cards(...ranks: Rank[]): Card[] {
  *
  * Deal order is player, dealer, player, dealer, so `stack("A", "5", "K", "9")` gives
  * the player A-K and the dealer 5-9.
+ *
+ * **The stack is padded to stay above `SHOE_RESHUFFLE_AT`.** `deal` replaces the shoe
+ * whenever it has dropped to the reshuffle mark, so a bare four-card shoe was thrown
+ * away and re-shuffled *before* the deal — the stack never reached the table and every
+ * test that named an exact hand got a random one instead. The padding sits behind the
+ * named ranks, which are drawn first, so it changes nothing a test can observe.
+ *
+ * The reshuffle threshold is imported rather than hardcoded here, so raising it can't
+ * silently reintroduce the same failure.
  */
 function stacked(ranks: Rank[], overrides: Partial<BlackjackState> = {}): BlackjackState {
-  return { ...startGame(fixed), shoe: cards(...ranks), ...overrides };
+  return { ...startGame(fixed), shoe: paddedShoe(ranks), ...overrides };
+}
+
+/**
+ * The named ranks on top, then enough filler to keep `deal` from reshuffling.
+ *
+ * Filler is a rank no assertion reads — the tests that care about a card name it in
+ * `ranks`, and the ones that don't are asserting on chips, phase or counts.
+ */
+function paddedShoe(ranks: Rank[]): Card[] {
+  const padding = Math.max(0, SHOE_RESHUFFLE_AT + 1 - ranks.length);
+  return [...cards(...ranks), ...cards(...(Array(padding).fill("2") as Rank[]))];
 }
 
 /** A hand, for the helpers that take one rather than a whole state. */
@@ -135,8 +156,17 @@ describe("handValue", () => {
     expect(handValue(cards("A", "A", "9"))).toEqual({ total: 21, soft: true });
   });
 
-  it("demotes every ace when the hand demands it", () => {
-    expect(handValue(cards("A", "A", "A", "8"))).toEqual({ total: 21, soft: false });
+  it("demotes only the aces it must, even when it holds three", () => {
+    // A+A+A+8 is 41 raw. Two aces drop to 1 (41 -> 31 -> 21) and the third stays at
+    // 11, so the hand is 21 and still **soft** — `soft` reports "an ace is currently
+    // counted as eleven", which is what makes a further hit safe.
+    expect(handValue(cards("A", "A", "A", "8"))).toEqual({ total: 21, soft: true });
+  });
+
+  it("reports a hard hand once every ace has been demoted", () => {
+    // A+A+A+9 is 42 raw and needs all three demotions to reach 12, leaving no ace at
+    // eleven — the case the previous test does not reach.
+    expect(handValue(cards("A", "A", "A", "9"))).toEqual({ total: 12, soft: false });
   });
 
   it("reports a genuine bust", () => {
@@ -350,8 +380,13 @@ describe("settle", () => {
     expect(payoutFor(["K", "9"], ["K", "8"])).toBe(BLACKJACK_MIN_BET * 2);
   });
 
-  it("pays a natural at three to two", () => {
-    expect(payoutFor(["A", "K"], ["K", "8"])).toBe(BLACKJACK_MIN_BET + BLACKJACK_MIN_BET * 1.5);
+  it("pays a natural at three to two, rounded to whole chips", () => {
+    // The payout is rounded, so an odd stake cannot pay a fractional chip: the minimum
+    // bet of 25 wins 38, not 37.5. Asserting the unrounded arithmetic here was the bug
+    // — it described a half-chip the bankroll has no way to hold.
+    expect(payoutFor(["A", "K"], ["K", "8"])).toBe(
+      BLACKJACK_MIN_BET + Math.round(BLACKJACK_MIN_BET * BLACKJACK_PAYOUT),
+    );
   });
 
   it("returns the stake on a push and nets nothing", () => {

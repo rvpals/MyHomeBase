@@ -33,6 +33,7 @@ interface ClassRow {
   id: number;
   name: string;
   description: string;
+  class_weekday: number;
   enrolled_count: number;
   created_at: string;
   updated_at: string;
@@ -91,6 +92,7 @@ function toClass(row: ClassRow): AttendanceClass {
     id: row.id,
     name: row.name,
     description: row.description,
+    classWeekday: row.class_weekday,
     enrolledCount: row.enrolled_count,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -243,7 +245,7 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
     // enrolledCount is derived rather than stored — a denormalized counter here
     // would have to be kept in step with every enroll and delete for no gain.
     return `
-      SELECT c.id, c.name, c.description, c.created_at, c.updated_at,
+      SELECT c.id, c.name, c.description, c.class_weekday, c.created_at, c.updated_at,
              (SELECT COUNT(*) FROM att_class_enrollments e WHERE e.class_id = c.id) AS enrolled_count
       FROM att_classes c
       ${where}
@@ -276,7 +278,8 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
   createClass(input: ClassWriteData): AttendanceClass {
     const result = this.db
       .prepare(
-        `INSERT INTO att_classes (name, description) VALUES (@name, @description)`,
+        `INSERT INTO att_classes (name, description, class_weekday)
+           VALUES (@name, @description, @classWeekday)`,
       )
       .run(input);
 
@@ -288,7 +291,9 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
   updateClass(id: number, input: ClassWriteData): AttendanceClass {
     this.db
       .prepare(
-        `UPDATE att_classes SET name = @name, description = @description WHERE id = @id`,
+        `UPDATE att_classes
+            SET name = @name, description = @description, class_weekday = @classWeekday
+          WHERE id = @id`,
       )
       .run({ ...input, id });
 

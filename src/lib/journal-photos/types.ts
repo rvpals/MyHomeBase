@@ -171,3 +171,29 @@ export interface PhotoFolderContents {
    */
   isEmptyAfterFilter: boolean;
 }
+
+/**
+ * Everything in one folder, for the viewer that browses a folder rather than a date.
+ *
+ * Distinct from `PhotoFolderContents`, which reports a FILTERED result and therefore
+ * carries `examined` and `isEmptyAfterFilter` to explain the filtering. Nothing is
+ * filtered here, so those two fields would always be "all of them" and "no" -- fields
+ * that can only hold one value are how a reader learns to stop trusting them.
+ */
+export interface FolderPhotos {
+  /** The folder that was read, normalised. */
+  relativePath: string;
+  /** Whether the folder was configured, readable and present. */
+  isAvailable: boolean;
+  /**
+   * Why nothing came back.
+   *
+   * `missing` is a folder that has moved or been renamed -- an ordinary case in an
+   * archive people reorganise, and different from an empty one. `unsafe-path` means
+   * the path never reached the filesystem. Everything else is carried verbatim from
+   * `PhotoRootCheck` so the viewer names the same fixes the journal card does.
+   */
+  reason?: PhotoRootCheck["kind"] | "missing" | "unsafe-path";
+  /** Every JPEG directly inside the folder, sorted by name. */
+  photos: PhotoFile[];
+}

@@ -7,7 +7,14 @@ import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { Modal } from "@/components/modal";
-import type { AttendanceClass, Student } from "@/lib/attendance";
+import {
+  CLASS_WEEKDAYS,
+  CLASS_WEEKDAY_LABELS,
+  CLASS_WEEKDAY_UNSET,
+  type AttendanceClass,
+  type ClassWeekday,
+  type Student,
+} from "@/lib/attendance";
 import {
   createClassAction,
   deleteClassAction,
@@ -23,6 +30,19 @@ const LABEL_CLASS = "text-xs font-medium uppercase tracking-wide text-muted";
 
 function studentName(student: Student): string {
   return `${student.firstName} ${student.lastName}`.trim();
+}
+
+/**
+ * A class's weekday, or "—" when it has none.
+ *
+ * A class predating migration 0080, or one the CSV importer created, stores
+ * `CLASS_WEEKDAY_UNSET` — which is not a key of the label map. This screen is
+ * where that gap matters, since it's where it gets filled in: editing the class
+ * and saving requires choosing a day, so the dash is a to-do rather than a
+ * permanent state.
+ */
+function weekdayLabel(classWeekday: number): string {
+  return CLASS_WEEKDAY_LABELS[classWeekday as ClassWeekday] ?? "—";
 }
 
 export function AttendanceClassesView({
@@ -61,6 +81,16 @@ export function AttendanceClassesView({
       header: "Description",
       value: (row) => row.description,
       render: (row) => row.description || "—",
+    },
+    {
+      key: "classWeekday",
+      header: "Weekday",
+      // Sorts and groups on the stored number, so Monday-to-Friday reads in
+      // timetable order rather than alphabetically (which would open the week on
+      // Friday). An unset class sorts first on 0, which is where a gap wanting
+      // attention belongs.
+      value: (row) => row.classWeekday,
+      render: (row) => weekdayLabel(row.classWeekday),
     },
     {
       key: "enrolledCount",
@@ -126,7 +156,11 @@ export function AttendanceClassesView({
       {editing && (
         <Modal title={`Edit ${editing.name}`} onClose={() => setEditing(undefined)}>
           <ClassForm
-            initial={{ name: editing.name, description: editing.description }}
+            initial={{
+              name: editing.name,
+              description: editing.description,
+              classWeekday: editing.classWeekday,
+            }}
             submitLabel="Save changes"
             onSubmit={(values) => updateClassAction(editing.id, values)}
             onSuccess={() => setEditing(undefined)}
@@ -277,17 +311,37 @@ function ClassRosterPanel({
   );
 }
 
+interface ClassFormValues {
+  name: string;
+  description: string;
+  /**
+   * 1 = Monday to 5 = Friday, or `CLASS_WEEKDAY_UNSET` for "not chosen yet".
+   *
+   * The blank state is representable because an existing class may genuinely
+   * have none — the edit form has to be able to *show* that rather than silently
+   * pre-selecting Monday. Saving still requires a real day: the `<select>` is
+   * `required`, and `createClassSchema` rejects `0` besides.
+   */
+  classWeekday: number;
+}
+
+const EMPTY_CLASS_FORM: ClassFormValues = {
+  name: "",
+  description: "",
+  classWeekday: CLASS_WEEKDAY_UNSET,
+};
+
 function ClassForm({
-  initial = { name: "", description: "" },
+  initial = EMPTY_CLASS_FORM,
   submitLabel,
   onSubmit,
   onSuccess,
   onCancel,
   resetOnSuccess = false,
 }: {
-  initial?: { name: string; description: string };
+  initial?: ClassFormValues;
   submitLabel: string;
-  onSubmit: (values: { name: string; description: string }) => Promise<{
+  onSubmit: (values: ClassFormValues) => Promise<{
     ok: boolean;
     error?: string;
   }>;
@@ -306,7 +360,7 @@ function ClassForm({
     startTransition(async () => {
       const result = await onSubmit(values);
       if (result.ok) {
-        if (resetOnSuccess) setValues({ name: "", description: "" });
+        if (resetOnSuccess) setValues(EMPTY_CLASS_FORM);
         onSuccess?.();
       } else {
         setError(result.error);
@@ -335,6 +389,30 @@ function ClassForm({
             className={INPUT_CLASS}
             placeholder="Optional"
           />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className={LABEL_CLASS}>Weekday</span>
+          {/* Required, and with no pre-selected day: the home screen opens on
+              today's class, so a wrong guess here would put the wrong register
+              in front of a teacher every week. Better to ask once.
+
+              Monday to Friday only — a school timetable, so the weekend is not
+              an option rather than an option nobody picks. */}
+          <select
+            required
+            value={values.classWeekday || ""}
+            onChange={(event) =>
+              setValues({ ...values, classWeekday: Number(event.target.value) })
+            }
+            className={INPUT_CLASS}
+          >
+            <option value="">Pick a day…</option>
+            {CLASS_WEEKDAYS.map((weekday) => (
+              <option key={weekday} value={weekday}>
+                {CLASS_WEEKDAY_LABELS[weekday]}
+              </option>
+            ))}
+          </select>
         </label>
       </div>
 

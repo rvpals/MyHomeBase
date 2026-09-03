@@ -249,11 +249,19 @@ describe("importAttendanceRoster", () => {
     expect(created).toBeDefined();
     expect(created?.name).toBe("ACC212 Section 1");
     expect(repo.listStudentsInClass(created!.id)).toHaveLength(4);
+    // No weekday: a CSV names a class but says nothing about when it meets, and
+    // a guessed Monday would be indistinguishable from a confirmed one. The
+    // class simply isn't any day's class until someone sets one.
+    expect(created?.classWeekday).toBe(0);
   });
 
   it("reuses a class that already has that name instead of creating a second one", () => {
     const repo = fakeRepo();
-    const existing = repo.createClass({ name: "ACC212 Section 1", description: "Fall term" });
+    const existing = repo.createClass({
+      name: "ACC212 Section 1",
+      description: "Fall term",
+      classWeekday: 2,
+    });
 
     const result = importAttendanceRoster(repo, SCHOOL_EXPORT_CSV, {
       className: "acc212 section 1", // different case on purpose

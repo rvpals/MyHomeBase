@@ -134,6 +134,8 @@ Reach for one of these before writing a new `shadow-[...]`:
 | `.card-raised-hover` | The same card's `:hover` | the cast grows and softens |
 | `.card-embossed` | An **opt-in bevel** for a card that should read as a thick slab — pair with `.card-raised-hover` | lit top edge + shadowed underside + ring + two-stop cast |
 | `.paper-texture` | A card that should read as a **physical sheet** — the journal's New Journal card | translucent fibre grid + diagonal sheen, no tint of its own |
+| `.playing-card-face` / `.playing-card-rim` / `.playing-card-back` | **Every playing card** — see [`PlayingCard`](components.md#playingcard) | lit top edge + shaded underside + diagonal sheen + inner hairline + two-stop cast |
+| `.playing-card-lifted` | A card in the **hand being acted on** | the same, cast grown; rises 2px by margin (see below) |
 | `.progress-3d-track` / `.progress-3d-fill` | The pair behind [`Progress3D`](components.md#progress3d) — **every progress bar** | a groove cut into the page (surface gradient + inset lip) holding a lit slab (accent gradient + `Button`'s hard offset shadow) |
 | `[data-dashboard-texture]` | The home dashboard's **admin-uploaded** background picture | a `fixed` `::before` behind the cards; opacity + blur from the stored settings |
 | `[data-module-texture]` | A **module's own** uploaded background picture (Music Library today) | the same mechanism, keyed per module; set by that module's shell |
@@ -143,6 +145,12 @@ Two things they encode that are easy to get wrong:
 - **A cast shadow falls away from the light**, so a bottom-pinned bar's must point *up*, at
   the content it overlaps — not down off the screen. That's the only difference between the
   two `nav-raised-*` classes, and it's why they're a pair rather than one class.
+- **A lift is a margin when something else owns `transform`.** `.playing-card-lifted`
+  raises a card with negative `margin-top` rather than `translateY`, because the deal
+  animation animates `transform` on that same element with `both` — it holds
+  `translate(0,0)` after landing, which would silently cancel a transform-based lift. If
+  you add a static offset to an animated element, check which property the animation
+  already claims.
 - **The ring goes outside the border, not instead of it.** `border-line` is deliberately
   low-contrast in every theme (Daybreak's is `#E7E2E4` on white), so definition comes from
   stacking a soft dark ring around it. Replacing the token with a literal would kill the
@@ -197,9 +205,20 @@ Don't extend this to another surface without the same justification. A texture b
 ### Motion: a named class in `globals.css`, and always a reduced-motion branch
 
 Same rule again — a keyframe animation is a named class in `globals.css`, never an
-arbitrary value at the call site. There are two so far: `progress-3d-indeterminate` (the
-sweep on a job that hasn't counted its work) and `animate-arrow-bump` (the shake an Arrow
-Clearing piece plays when its way out is blocked).
+arbitrary value at the call site. The ones that exist:
+
+| Class | What it is |
+|-------|------------|
+| `progress-3d-indeterminate` | The sweep on a job that hasn't counted its work. |
+| `animate-arrow-bump` | The shake an Arrow Clearing piece plays when its way out is blocked. |
+| `animate-tetris-line` / `-cell` / `-sweep` / `-quad` | The four layers of a Tetris line clear. |
+| `animate-card-deal` | A playing card flying from the deck to its seat. |
+
+Where an animation needs per-instance values — a stagger, a distance, a duration the
+view also has to know — they arrive as **CSS custom properties set inline** at the call
+site (`--card-deal-delay`, `--tetris-cell-delay`). The keyframe stays shared and named;
+only the numbers are local. That is also how a duration is kept from being written twice:
+the view owns the constant and passes it in.
 
 Animate **transforms and opacity only**, so the animation stays off the layout and paint
 path.
@@ -212,7 +231,9 @@ judgement call rather than a reflex `animation: none`:
 - **Motion that is the only feedback for an event must survive in some form.** The arrow
   bump is the *only* visual signal that a move was illegal, so under reduced motion it
   becomes a brightness flash instead of vanishing. Switching it off would leave a player
-  who asked for less motion with no idea why their tap did nothing.
+  who asked for less motion with no idea why their tap did nothing. A dealt card is the
+  same case for the same reason: the travel goes, a fade stays, because a card that
+  appears from nowhere makes the table look like it changed on its own.
 
 Ask which of those two a new animation is before writing its fallback.
 

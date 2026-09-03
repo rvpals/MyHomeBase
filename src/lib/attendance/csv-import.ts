@@ -13,7 +13,7 @@ import type {
 import { addStudent, enrollStudents } from "./attendance";
 import type { AttendanceRepository } from "./ports";
 import { importRosterSchema, type ImportRosterInput } from "./schema";
-import type { AttendanceClass, Student } from "./types";
+import { CLASS_WEEKDAY_UNSET, type AttendanceClass, type Student } from "./types";
 
 /**
  * The roster fields a CSV column can be mapped to, for the mapping UI.
@@ -256,7 +256,15 @@ export function importAttendanceRoster(
   }
 
   const existing = repo.getClassByName(className);
-  const attendanceClass = existing ?? repo.createClass({ name: className, description: "" });
+  // Created with no weekday. A CSV names a class but says nothing about when it
+  // meets, and guessing Monday here would be indistinguishable from a day the
+  // teacher had chosen — so the class simply isn't any day's class until someone
+  // sets one on the Classes screen. This is also why the importer goes straight
+  // to the repository rather than through `createClass`: that use-case's schema
+  // requires a real 1-5, which is right for a form and wrong for an import.
+  const attendanceClass =
+    existing ??
+    repo.createClass({ name: className, description: "", classWeekday: CLASS_WEEKDAY_UNSET });
 
   const { addedCount } = enrollStudents(repo, {
     classId: attendanceClass.id,

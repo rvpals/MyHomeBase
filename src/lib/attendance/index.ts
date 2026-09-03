@@ -1,6 +1,9 @@
 export {
   ATTENDANCE_REPORT_FORMATS,
   ATTENDANCE_STATUSES,
+  CLASS_WEEKDAYS,
+  CLASS_WEEKDAY_LABELS,
+  CLASS_WEEKDAY_UNSET,
   type AttendanceActionTally,
   type AttendanceClass,
   type AttendanceDetailCell,
@@ -13,6 +16,7 @@ export {
   type AttendanceSessionSummary,
   type AttendanceSheet,
   type AttendanceStatus,
+  type ClassWeekday,
   type RecordedStudentAction,
   type Student,
   type StudentAction,
@@ -22,6 +26,7 @@ export {
   type AttendanceActionIcon,
 } from "./action-icons";
 export {
+  attendanceClassSchema,
   attendanceReportQuerySchema,
   createClassSchema,
   createStudentActionSchema,
@@ -85,6 +90,7 @@ export {
   updateStudent,
   updateStudentAction,
 } from "./attendance";
+export { resolveWeekdayClassId, weekdayOfIsoDate } from "./weekday";
 export {
   attendanceDetailReportToCsv,
   attendanceReportCsvFileName,

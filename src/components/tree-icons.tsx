@@ -376,6 +376,30 @@ const PhotoStack: IconComponent = (props) => (
   </svg>
 );
 
+/* A folder with a photograph's horizon inside it: the mark for "open the folder this
+   picture came from", on the Random Photo card's header.
+
+   Deliberately NOT a plain folder. This button sits two controls from `photo-stack`
+   (favourites) and one from a heart, so a bare folder would read as "files" in a row
+   that is otherwise entirely about pictures. The tab and the hill together say
+   "a folder OF photos", which is what is on the other side of the click.
+
+   Drawn to survive 16px, the size it renders at in that header: the tab is one short
+   stroke, and the picture inside is a single hill and a sun rather than a scene — at
+   this size any more detail closes into a grey block, the same reason `PhotoStack`
+   draws its back frames as open edges. */
+const PhotoFolder: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    {/* The folder: tab, then the body as one rounded rect. */}
+    <path d="M3.5 7.5V6.4A1.4 1.4 0 0 1 4.9 5h3.4l1.6 2.5" />
+    <rect x="3.5" y="7.5" width="17" height="11.5" rx="1.6" />
+    {/* The photograph inside — a sun and a hill, the same two marks `Photo` uses, so
+        the pair read as the same subject at a glance. */}
+    <circle cx="8.4" cy="11.6" r="1.15" />
+    <path d="M4.6 17.2l3.6-3.1 2.5 2.1 2.6-2.9 5.9 5" />
+  </svg>
+);
+
 /* A framed photograph: a rounded rect, a sun, and a hill. The mark for "show me the
    pictures", used on the journal calendar's per-day and per-month photo buttons.
 
@@ -426,6 +450,7 @@ const TREE_ICONS = {
   "heart-filled": HeartFilled,
   "photo-stack": PhotoStack,
   photo: Photo,
+  "photo-folder": PhotoFolder,
 } as const;
 
 export type TreeIconName = keyof typeof TREE_ICONS;
@@ -469,6 +494,10 @@ const ALWAYS_CLASSIC = new Set<TreeIconName>([
   // legibly NOT that heart, which a themed set's own "favourites" artwork — very often
   // a heart — would undo.
   "photo-stack",
+  // Sits in the same header as `photo-stack` and the heart, and has the same job: to be
+  // legibly not either of them. A themed set's own folder artwork is usually a full-color
+  // manila folder, which at 16px beside two monochrome controls reads as a stray icon.
+  "photo-folder",
 ]);
 
 /**
