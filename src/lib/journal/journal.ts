@@ -242,6 +242,31 @@ export function deleteEntry(repo: JournalRepository, id: number): void {
   repo.deleteEntry(id);
 }
 
+/** What the journal holds right now — the numbers the clear-all warning quotes. */
+export interface JournalEntryTally {
+  totalCount: number;
+  /** How many of `totalCount` are locked. Locked entries are cleared too. */
+  lockedCount: number;
+}
+
+export function countAllEntries(repo: JournalRepository): JournalEntryTally {
+  return { totalCount: repo.countAllEntries(), lockedCount: repo.countLockedEntries() };
+}
+
+/**
+ * Empties the journal: every entry and its categories, tags and locations go,
+ * locked ones included. Returns how many entries were deleted.
+ *
+ * Unlike `deleteEntry` this does not refuse a locked entry — see
+ * `JournalRepository.deleteAllEntries` for why. The managed category and tag
+ * lists, their uploaded icons, the saved filters, the CSV mappings and the
+ * prefill templates all survive, so a cleared journal can be re-imported into
+ * the same setup.
+ */
+export function clearAllEntries(repo: JournalRepository): { deletedCount: number } {
+  return { deletedCount: repo.deleteAllEntries() };
+}
+
 export function setPinned(repo: JournalRepository, id: number, isPinned: boolean): JournalEntry {
   if (!repo.getEntryById(id)) throw new Error(`No journal entry with id ${id}.`);
   return repo.setEntryPinned(id, isPinned);

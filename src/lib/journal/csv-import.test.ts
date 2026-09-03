@@ -87,6 +87,13 @@ function fakeRepo(): JournalRepository {
     deleteEntry(id) {
       entries = entries.filter((entry) => entry.id !== id);
     },
+    countAllEntries: () => entries.length,
+    countLockedEntries: () => entries.filter((entry) => entry.isLocked).length,
+    deleteAllEntries() {
+      const deleted = entries.length;
+      entries = [];
+      return deleted;
+    },
     // Mirrors the SQL in repository.ts: exact date and time, title trimmed on
     // both sides, case significant.
     countEntriesMatching: (key) =>
@@ -200,6 +207,25 @@ function fakeRepo(): JournalRepository {
       throw new Error("not used");
     },
     listDistinctFieldValues: () => {
+      throw new Error("not used");
+    },
+    // The recycle bin (0079) is not part of importing; see recycle.test.ts.
+    recycleEntries: () => {
+      throw new Error("not used");
+    },
+    listRecycledEntries: () => {
+      throw new Error("not used");
+    },
+    restoreRecycledEntries: () => {
+      throw new Error("not used");
+    },
+    deleteRecycledEntriesForever: () => {
+      throw new Error("not used");
+    },
+    emptyRecycleBin: () => {
+      throw new Error("not used");
+    },
+    countRecycledEntries: () => {
       throw new Error("not used");
     },
   };

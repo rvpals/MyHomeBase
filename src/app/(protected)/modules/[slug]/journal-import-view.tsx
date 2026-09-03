@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Modal } from "@/components/modal";
+import { Tabs, type TabItem } from "@/components/tabs";
 import type {
   ColumnMapping,
   CsvPreview,
@@ -15,6 +16,8 @@ import type {
 import { JOURNAL_IMPORT_FIELDS } from "@/lib/journal";
 import type { JournalImportPlan } from "@/lib/journal";
 import {
+  clearAllJournalEntriesAction,
+  countJournalEntriesAction,
   deleteJournalMappingAction,
   planJournalImportAction,
   previewJournalCsvAction,
@@ -22,6 +25,7 @@ import {
   saveJournalMappingAction,
   updateJournalMappingAction,
 } from "./journal-import-actions";
+import type { JournalEntryTally } from "@/lib/journal";
 
 // Shared form-input styling from design.md.
 const INPUT_CLASS =
@@ -47,7 +51,23 @@ function readFileAsText(file: File): Promise<string> {
   });
 }
 
-export function JournalImportView({ namedMappings: initialNamedMappings }: { namedMappings: NamedMapping[] }) {
+export interface JournalImportViewProps {
+  namedMappings: NamedMapping[];
+  /**
+   * The Correct tab's content, passed in as a slot.
+   *
+   * A slot rather than props because that tab is a server-rendered panel (it
+   * reads every entry to group the duplicates) and this is a client component.
+   * Handing it the finished element keeps the CSV importer free of any
+   * knowledge of duplicate finding or the recycle bin.
+   */
+  correctSlot?: ReactNode;
+}
+
+export function JournalImportView({
+  namedMappings: initialNamedMappings,
+  correctSlot,
+}: JournalImportViewProps) {
   const router = useRouter();
   const [fileText, setFileText] = useState<string | undefined>(undefined);
   const [preview, setPreview] = useState<CsvPreview | undefined>(undefined);
@@ -68,6 +88,10 @@ export function JournalImportView({ namedMappings: initialNamedMappings }: { nam
   const [overwrite, setOverwrite] = useState(false);
   // The dry run behind the confirmation dialog. Set only while the dialog is up.
   const [plan, setPlan] = useState<JournalImportPlan | undefined>(undefined);
+  // The live entry count behind the clear-all dialog, read on click. Set only
+  // while that dialog is up.
+  const [clearTally, setClearTally] = useState<JournalEntryTally | undefined>(undefined);
+  const [clearedCount, setClearedCount] = useState<number | undefined>(undefined);
 
   async function handleFile(file: File) {
     setIsBusy(true);
@@ -222,7 +246,46 @@ export function JournalImportView({ namedMappings: initialNamedMappings }: { nam
     }
   }
 
-  return (
+  // Counts first, then opens the dialog, so the warning quotes the number the
+  // journal holds right now rather than one rendered with the page.
+  async function handleClearRequest() {
+    setIsBusy(true);
+    setError(undefined);
+    setClearedCount(undefined);
+    try {
+      const result = await countJournalEntriesAction();
+      if (!result.ok || !result.tally) {
+        setError(result.error ?? "Failed to count journal entries.");
+        return;
+      }
+      setClearTally(result.tally);
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function clearAllEntries() {
+    setIsBusy(true);
+    setError(undefined);
+    try {
+      const result = await clearAllJournalEntriesAction();
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setClearedCount(result.deletedCount);
+      setClearTally(undefined);
+      router.refresh();
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  // The three panels of the Data Management section. State stays here in the
+  // parent rather than moving into a component per tab: `error` and `isBusy`
+  // are shared, and a half-finished mapping must survive a trip to another tab
+  // and back, which unmounting the panel would throw away.
+  const importPanel = (
     <div className="flex flex-col gap-4">
       <FileDropzone onFile={handleFile} accept=".csv" disabled={isBusy} label="Drag a journal CSV here, or click to browse" />
 
@@ -508,4 +571,94 @@ export function JournalImportView({ namedMappings: initialNamedMappings }: { nam
       )}
     </div>
   );
+
+  // Supplied by the server section, not built here: the Correct tab reads the
+  // whole journal to find duplicates, which is a server job.
+  const correctPanel = correctSlot ?? (
+    <p className="text-sm text-muted">Nothing to correct here.</p>
+  );
+
+  const resetPanel = (
+    <div className="flex flex-col gap-4">
+      {/* No CSV needed to get here: emptying the journal is its own job, which is
+          why it is a tab of its own rather than a card under the importer. */}
+      <div className="flex flex-col gap-2 rounded-md border border-red-400/40 bg-paper p-3">
+        <h3 className="text-sm font-medium text-ink">Danger zone</h3>
+        <p className="text-xs text-muted">
+          Erases every journal entry, locked ones included. Your categories, tags and their
+          icons, saved filters, saved mappings and templates are kept, so a fresh import lands
+          in the same setup.
+        </p>
+        <div>
+          <Button variant="danger" size="sm" onClick={handleClearRequest} disabled={isBusy}>
+            {isBusy ? "Working…" : "Clear all journal entries"}
+          </Button>
+        </div>
+        {clearedCount !== undefined && (
+          <p className="text-xs text-muted">
+            Cleared {clearedCount} {clearedCount === 1 ? "entry" : "entries"}.
+          </p>
+        )}
+      </div>
+
+      {clearTally && (
+        <Modal
+          title={
+            clearTally.totalCount === 0
+              ? "Nothing to clear"
+              : `Erase all ${clearTally.totalCount} journal ${
+                  clearTally.totalCount === 1 ? "entry" : "entries"
+                }?`
+          }
+          description={
+            clearTally.totalCount === 0
+              ? "The journal is already empty."
+              : `There are ${clearTally.totalCount} journal ${
+                  clearTally.totalCount === 1 ? "entry" : "entries"
+                }. Are you sure you want to erase them all and reset? This cannot be undone.`
+          }
+          onClose={() => setClearTally(undefined)}
+          isBusy={isBusy}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setClearTally(undefined)} disabled={isBusy}>
+                {clearTally.totalCount === 0 ? "Close" : "Cancel"}
+              </Button>
+              {clearTally.totalCount > 0 && (
+                <Button variant="danger" onClick={clearAllEntries} disabled={isBusy}>
+                  {isBusy ? "Erasing…" : `Erase ${clearTally.totalCount}`}
+                </Button>
+              )}
+            </>
+          }
+        >
+          {clearTally.totalCount > 0 && (
+            <div className="flex flex-col gap-2 text-sm text-ink">
+              {clearTally.lockedCount > 0 && (
+                <p>
+                  {clearTally.lockedCount} of the {clearTally.totalCount}{" "}
+                  {clearTally.lockedCount === 1 ? "is" : "are"} locked. Locked entries are erased
+                  too.
+                </p>
+              )}
+              <p className="text-muted">
+                Categories, tags and their icons, saved filters, saved mappings and prefill
+                templates are kept.
+              </p>
+            </div>
+          )}
+        </Modal>
+      )}
+
+      {error && <p className="text-sm text-red-400">{error}</p>}
+    </div>
+  );
+
+  const tabs: TabItem[] = [
+    { key: "import", label: "Import", content: importPanel },
+    { key: "correct", label: "Correct", content: correctPanel },
+    { key: "reset", label: "Reset", content: resetPanel },
+  ];
+
+  return <Tabs items={tabs} />;
 }

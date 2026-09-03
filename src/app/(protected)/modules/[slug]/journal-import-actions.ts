@@ -13,8 +13,14 @@ import {
   type ImportSummary,
   type NamedMapping,
 } from "@/lib/csv-import";
-import { autoMapJournalHeaders, importJournalCsv, planJournalImport } from "@/lib/journal";
-import type { JournalImportPlan } from "@/lib/journal";
+import {
+  autoMapJournalHeaders,
+  clearAllEntries,
+  countAllEntries,
+  importJournalCsv,
+  planJournalImport,
+} from "@/lib/journal";
+import type { JournalEntryTally, JournalImportPlan } from "@/lib/journal";
 import { deps } from "@/lib/wiring";
 
 const JOURNAL_MODULE_PATH = "/modules/journal";
@@ -143,5 +149,37 @@ export async function runJournalImportAction(
     return { ok: true, summary };
   } catch (error) {
     return toErrorResult(error, "Failed to import CSV.");
+  }
+}
+
+export interface JournalEntryTallyResult extends ActionResult {
+  tally?: JournalEntryTally;
+}
+
+/**
+ * The live entry count behind the clear-all warning. Read on click rather than
+ * rendered with the page, so the number in the dialog is never a stale one from
+ * before an import.
+ */
+export async function countJournalEntriesAction(): Promise<JournalEntryTallyResult> {
+  try {
+    return { ok: true, tally: countAllEntries(deps.journalRepo) };
+  } catch (error) {
+    return toErrorResult(error, "Failed to count journal entries.");
+  }
+}
+
+export interface ClearJournalEntriesResult extends ActionResult {
+  deletedCount?: number;
+}
+
+/** Empties the journal. Entries only — categories, tags and filters survive. */
+export async function clearAllJournalEntriesAction(): Promise<ClearJournalEntriesResult> {
+  try {
+    const { deletedCount } = clearAllEntries(deps.journalRepo);
+    revalidatePath(JOURNAL_MODULE_PATH);
+    return { ok: true, deletedCount };
+  } catch (error) {
+    return toErrorResult(error, "Failed to clear journal entries.");
   }
 }

@@ -24,6 +24,7 @@ export type {
   JournalPrefillFieldValue,
   JournalPrefillFormValues,
   JournalPrefillTemplate,
+  RecycledJournalEntry,
 } from "./types";
 export {
   resolveJournalPreferences,
@@ -136,6 +137,9 @@ export {
   createEntry,
   updateEntry,
   deleteEntry,
+  countAllEntries,
+  clearAllEntries,
+  type JournalEntryTally,
   setPinned,
   setLocked,
   listCategories,
@@ -199,3 +203,50 @@ export type {
   JournalImportPlanRow,
 } from "./csv-import";
 export { normalizeEntryTime } from "./time";
+
+// Metadata backup and restore — the categories, tags, icons, templates, filters
+// and preferences behind the Meta Data section's "Back up all meta data" button.
+// Entries are not part of this; they have the CSV path above.
+export {
+  JOURNAL_METADATA_FORMAT,
+  JOURNAL_METADATA_FORMAT_VERSION,
+  journalMetadataBundleSchema,
+  parseMetadataBundle,
+  metadataExportFileName,
+  buildMetadataBundle,
+  serializeMetadataBundle,
+  planMetadataImport,
+  applyMetadataImport,
+  metadataPreferenceEntries,
+} from "./metadata-export";
+export type {
+  JournalMetadataBundle,
+  JournalMetadataIcon,
+  JournalMetadataTaxonomy,
+  JournalMetadataAction,
+  JournalMetadataPlan,
+  JournalMetadataPlanRow,
+  JournalMetadataRestoreSummary,
+} from "./metadata-export";
+
+// Duplicate finding for the Correct tab. Pure functions over a list of entries
+// — no repository, so the view can re-group a snapshot without a round trip.
+export {
+  DUPLICATE_EXCERPT_WORDS,
+  countDuplicateEntries,
+  excerptWords,
+  findDuplicateGroups,
+  toDuplicateRows,
+} from "./duplicates";
+export type { DuplicateEntry, DuplicateGroup, DuplicateRow } from "./duplicates";
+
+// The recycle bin behind the Correct tab's bulk delete (migration 0079).
+export {
+  countRecycledEntries,
+  deleteRecycledEntriesForever,
+  emptyRecycleBin,
+  listRecycledEntries,
+  recycleEntries,
+  restoreRecycledEntries,
+} from "./recycle";
+export type { PurgeResult, RecycleResult, RestoreResult } from "./recycle";

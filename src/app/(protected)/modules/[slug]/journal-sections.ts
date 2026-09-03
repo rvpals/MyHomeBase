@@ -47,8 +47,10 @@ export const JOURNAL_SECTION_INFO: Record<JournalSection, { label: string; descr
     description: "Summaries and reports from your journal.",
   },
   import: {
-    label: "Import",
-    description: "Bring journal entries in from a CSV file.",
+    // Slug stays "import" — it's the route and the icon-slot id, and renaming it
+    // would orphan an uploaded icon override. Only the label widens.
+    label: "Data Management",
+    description: "Import a CSV file, reset the journal, and bulk-correct entries.",
   },
   configuration: {
     label: "Preferences",

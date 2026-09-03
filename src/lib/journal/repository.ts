@@ -28,6 +28,7 @@ import type {
   JournalTag,
   JournalTaxonomyCount,
   JournalTaxonomyIcon,
+  RecycledJournalEntry,
   SavedJournalFilter,
 } from "./types";
 
@@ -60,6 +61,28 @@ interface LocationRow {
 interface PairingRow {
   entry_id: number;
   name: string;
+}
+
+// The bin's parent row (migration 0079). Same columns as EntryRow plus the two
+// the bin owns: `entry_id` (the id it had in jrn_entries) and `deleted_at`.
+interface RecycledEntryRow extends EntryRow {
+  entry_id: number;
+  deleted_at: string;
+}
+
+// Child rows in the bin key on the bin's own id, not the original entry id.
+interface RecycledPairingRow {
+  recycled_entry_id: number;
+  name: string;
+}
+
+interface RecycledLocationRow {
+  id: number;
+  recycled_entry_id: number;
+  latitude: number;
+  longitude: number;
+  location_name: string;
+  sort_order: number;
 }
 
 interface TaxonomyRow {
@@ -470,6 +493,35 @@ export class SqliteJournalRepository implements JournalRepository {
     return rows.map((row) => row.id);
   }
 
+  countAllEntries(): number {
+    const row = this.db.prepare("SELECT COUNT(*) AS total FROM jrn_entries").get() as {
+      total: number;
+    };
+    return row.total;
+  }
+
+  countLockedEntries(): number {
+    const row = this.db
+      .prepare("SELECT COUNT(*) AS total FROM jrn_entries WHERE is_locked = 1")
+      .get() as { total: number };
+    return row.total;
+  }
+
+  deleteAllEntries(): number {
+    // Counted inside the transaction so the number reported back is the number
+    // actually deleted, not a tally taken before a concurrent write.
+    return this.db.transaction(() => {
+      const { total } = this.db.prepare("SELECT COUNT(*) AS total FROM jrn_entries").get() as {
+        total: number;
+      };
+      this.db.prepare("DELETE FROM jrn_entry_categories").run();
+      this.db.prepare("DELETE FROM jrn_entry_tags").run();
+      this.db.prepare("DELETE FROM jrn_entry_locations").run();
+      this.db.prepare("DELETE FROM jrn_entries").run();
+      return total;
+    })();
+  }
+
   setEntryPinned(id: number, isPinned: boolean): JournalEntry {
     this.db
       .prepare("UPDATE jrn_entries SET is_pinned = ? WHERE id = ?")
@@ -735,6 +787,305 @@ export class SqliteJournalRepository implements JournalRepository {
 
   // Wipes an entry's child rows and re-inserts them from the input. Called only
   // inside createEntry/updateEntry transactions; sort_order follows array order.
+  // --- Recycle bin (migration 0079) ------------------------------------------
+  //
+  // An entry is four tables. Every operation below copies or removes all four in
+  // one transaction, so a crash mid-move can't leave an entry half in the bin.
+
+  recycleEntries(ids: number[]): number {
+    if (ids.length === 0) return 0;
+
+    const insertParent = this.db.prepare(
+      `INSERT INTO jrn_recycled_entries (
+         entry_id, entry_date, entry_time, title, content, place_name,
+         weather_temp, weather_unit, weather_description, weather_code,
+         is_pinned, is_locked, created_at, updated_at
+       )
+       SELECT id, entry_date, entry_time, title, content, place_name,
+              weather_temp, weather_unit, weather_description, weather_code,
+              is_pinned, is_locked, created_at, updated_at
+       FROM jrn_entries WHERE id = ?`,
+    );
+    // The children are re-keyed onto the new parent id, which is why each entry
+    // is moved one at a time rather than in a single set-based INSERT..SELECT:
+    // last_insert_rowid() is only unambiguous for a single-row insert.
+    const copyCategories = this.db.prepare(
+      `INSERT INTO jrn_recycled_entry_categories (recycled_entry_id, category_name)
+       SELECT ?, category_name FROM jrn_entry_categories WHERE entry_id = ?`,
+    );
+    const copyTags = this.db.prepare(
+      `INSERT INTO jrn_recycled_entry_tags (recycled_entry_id, tag_name)
+       SELECT ?, tag_name FROM jrn_entry_tags WHERE entry_id = ?`,
+    );
+    const copyLocations = this.db.prepare(
+      `INSERT INTO jrn_recycled_entry_locations
+         (recycled_entry_id, latitude, longitude, location_name, sort_order)
+       SELECT ?, latitude, longitude, location_name, sort_order
+       FROM jrn_entry_locations WHERE entry_id = ?`,
+    );
+
+    let moved = 0;
+    this.db.transaction(() => {
+      for (const id of ids) {
+        // An id that has already gone contributes no row here, so the whole
+        // move for it is skipped — the count the caller reports stays honest.
+        const result = insertParent.run(id);
+        if (result.changes === 0) continue;
+
+        const recycledId = Number(result.lastInsertRowid);
+        copyCategories.run(recycledId, id);
+        copyTags.run(recycledId, id);
+        copyLocations.run(recycledId, id);
+
+        // Reuses the same child-table list the ordinary delete uses, so the two
+        // paths can't drift on which tables an entry owns.
+        this.db.prepare("DELETE FROM jrn_entry_categories WHERE entry_id = ?").run(id);
+        this.db.prepare("DELETE FROM jrn_entry_tags WHERE entry_id = ?").run(id);
+        this.db.prepare("DELETE FROM jrn_entry_locations WHERE entry_id = ?").run(id);
+        this.db.prepare("DELETE FROM jrn_entries WHERE id = ?").run(id);
+        moved += 1;
+      }
+    })();
+
+    return moved;
+  }
+
+  listRecycledEntries(): RecycledJournalEntry[] {
+    const rows = this.db
+      .prepare(
+        // deleted_at DESC rides idx_jrn_recycled_entries_deleted_at; id DESC
+        // breaks the tie, because a bulk delete stamps one second on every row.
+        "SELECT * FROM jrn_recycled_entries ORDER BY deleted_at DESC, id DESC",
+      )
+      .all() as RecycledEntryRow[];
+
+    return this.hydrateRecycledEntries(rows);
+  }
+
+  restoreRecycledEntries(recycledIds: number[]): number {
+    if (recycledIds.length === 0) return 0;
+
+    const readParent = this.db.prepare("SELECT * FROM jrn_recycled_entries WHERE id = ?");
+    const idTaken = this.db.prepare("SELECT 1 FROM jrn_entries WHERE id = ?");
+    // Two inserts, differing only in whether they name `id`: restoring at the
+    // original id keeps any existing reference to that entry working, and
+    // letting SQLite assign one is the fallback when the id has been taken.
+    const insertAtId = this.db.prepare(
+      `INSERT INTO jrn_entries (
+         id, entry_date, entry_time, title, content, place_name,
+         weather_temp, weather_unit, weather_description, weather_code,
+         is_pinned, is_locked, created_at, updated_at
+       ) VALUES (
+         @id, @entry_date, @entry_time, @title, @content, @place_name,
+         @weather_temp, @weather_unit, @weather_description, @weather_code,
+         @is_pinned, @is_locked, @created_at, @updated_at
+       )`,
+    );
+    const insertFresh = this.db.prepare(
+      `INSERT INTO jrn_entries (
+         entry_date, entry_time, title, content, place_name,
+         weather_temp, weather_unit, weather_description, weather_code,
+         is_pinned, is_locked, created_at, updated_at
+       ) VALUES (
+         @entry_date, @entry_time, @title, @content, @place_name,
+         @weather_temp, @weather_unit, @weather_description, @weather_code,
+         @is_pinned, @is_locked, @created_at, @updated_at
+       )`,
+    );
+    const restoreCategories = this.db.prepare(
+      `INSERT INTO jrn_entry_categories (entry_id, category_name)
+       SELECT ?, category_name FROM jrn_recycled_entry_categories
+       WHERE recycled_entry_id = ?`,
+    );
+    const restoreTags = this.db.prepare(
+      `INSERT INTO jrn_entry_tags (entry_id, tag_name)
+       SELECT ?, tag_name FROM jrn_recycled_entry_tags WHERE recycled_entry_id = ?`,
+    );
+    const restoreLocations = this.db.prepare(
+      `INSERT INTO jrn_entry_locations (entry_id, latitude, longitude, location_name, sort_order)
+       SELECT ?, latitude, longitude, location_name, sort_order
+       FROM jrn_recycled_entry_locations WHERE recycled_entry_id = ? ORDER BY sort_order ASC`,
+    );
+
+    let restored = 0;
+    this.db.transaction(() => {
+      for (const recycledId of recycledIds) {
+        const row = readParent.get(recycledId) as RecycledEntryRow | undefined;
+        if (!row) continue;
+
+        const params = {
+          entry_date: row.entry_date,
+          entry_time: row.entry_time,
+          title: row.title,
+          content: row.content,
+          place_name: row.place_name,
+          weather_temp: row.weather_temp,
+          weather_unit: row.weather_unit,
+          weather_description: row.weather_description,
+          weather_code: row.weather_code,
+          is_pinned: row.is_pinned,
+          is_locked: row.is_locked,
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+        };
+
+        const canKeepId = idTaken.get(row.entry_id) === undefined;
+        const result = canKeepId
+          ? insertAtId.run({ ...params, id: row.entry_id })
+          : insertFresh.run(params);
+        const newEntryId = canKeepId ? row.entry_id : Number(result.lastInsertRowid);
+
+        restoreCategories.run(newEntryId, recycledId);
+        restoreTags.run(newEntryId, recycledId);
+        restoreLocations.run(newEntryId, recycledId);
+
+        // Out of the bin: the entry lives in jrn_entries again, and leaving the
+        // row here would let it be restored a second time.
+        this.deleteRecycledRows(recycledId);
+        restored += 1;
+
+        // The managed category/tag lists are deliberately NOT re-registered. A
+        // recycled entry's names were registered when it was first written, and
+        // deleteCategory/deleteTag detach names from live entries only — so a
+        // name can only be missing if the user deliberately deleted it, and
+        // silently resurrecting it here would undo that.
+      }
+    })();
+
+    return restored;
+  }
+
+  deleteRecycledEntriesForever(recycledIds: number[]): number {
+    if (recycledIds.length === 0) return 0;
+
+    const exists = this.db.prepare("SELECT 1 FROM jrn_recycled_entries WHERE id = ?");
+    let deleted = 0;
+    this.db.transaction(() => {
+      for (const recycledId of recycledIds) {
+        if (exists.get(recycledId) === undefined) continue;
+        this.deleteRecycledRows(recycledId);
+        deleted += 1;
+      }
+    })();
+
+    return deleted;
+  }
+
+  emptyRecycleBin(): number {
+    let deleted = 0;
+    this.db.transaction(() => {
+      deleted = this.countRecycledEntries();
+      // Unqualified DELETEs rather than a per-row loop: this is the one
+      // operation with nothing to preserve. Children first, so an interrupted
+      // run can never leave a parent row without them.
+      this.db.prepare("DELETE FROM jrn_recycled_entry_categories").run();
+      this.db.prepare("DELETE FROM jrn_recycled_entry_tags").run();
+      this.db.prepare("DELETE FROM jrn_recycled_entry_locations").run();
+      this.db.prepare("DELETE FROM jrn_recycled_entries").run();
+    })();
+
+    return deleted;
+  }
+
+  countRecycledEntries(): number {
+    const row = this.db.prepare("SELECT COUNT(*) AS total FROM jrn_recycled_entries").get() as {
+      total: number;
+    };
+    return row.total;
+  }
+
+  /** Removes one bin row and its children. The caller owns the transaction. */
+  private deleteRecycledRows(recycledId: number): void {
+    this.db
+      .prepare("DELETE FROM jrn_recycled_entry_categories WHERE recycled_entry_id = ?")
+      .run(recycledId);
+    this.db
+      .prepare("DELETE FROM jrn_recycled_entry_tags WHERE recycled_entry_id = ?")
+      .run(recycledId);
+    this.db
+      .prepare("DELETE FROM jrn_recycled_entry_locations WHERE recycled_entry_id = ?")
+      .run(recycledId);
+    this.db.prepare("DELETE FROM jrn_recycled_entries WHERE id = ?").run(recycledId);
+  }
+
+  /**
+   * Builds RecycledJournalEntry objects, reusing `entryToDomain` so the
+   * registered JournalViewer can render a bin row unchanged.
+   *
+   * `id` is set to the ORIGINAL entry id (`entry_id`), not the bin's row id —
+   * the viewer and its links expect the entry's own identity. `recycledId`
+   * carries the bin handle separately.
+   */
+  private hydrateRecycledEntries(rows: RecycledEntryRow[]): RecycledJournalEntry[] {
+    if (rows.length === 0) return [];
+
+    const idList = rows.map((row) => row.id).join(",");
+    const originalIdByRow = new Map(rows.map((row) => [row.id, row.entry_id]));
+
+    const categoriesByRow = this.groupRecycledPairings(
+      this.db
+        .prepare(
+          `SELECT recycled_entry_id, category_name AS name FROM jrn_recycled_entry_categories
+           WHERE recycled_entry_id IN (${idList}) ORDER BY id ASC`,
+        )
+        .all() as RecycledPairingRow[],
+    );
+    const tagsByRow = this.groupRecycledPairings(
+      this.db
+        .prepare(
+          `SELECT recycled_entry_id, tag_name AS name FROM jrn_recycled_entry_tags
+           WHERE recycled_entry_id IN (${idList}) ORDER BY id ASC`,
+        )
+        .all() as RecycledPairingRow[],
+    );
+
+    const locationsByRow = new Map<number, EntryLocation[]>();
+    const locationRows = this.db
+      .prepare(
+        `SELECT * FROM jrn_recycled_entry_locations
+         WHERE recycled_entry_id IN (${idList})
+         ORDER BY recycled_entry_id ASC, sort_order ASC`,
+      )
+      .all() as RecycledLocationRow[];
+    for (const row of locationRows) {
+      const existing = locationsByRow.get(row.recycled_entry_id) ?? [];
+      existing.push(
+        locationToDomain({
+          id: row.id,
+          // entryId points at the original entry, matching the `id` on the
+          // entry object this location hangs off.
+          entry_id: originalIdByRow.get(row.recycled_entry_id) ?? 0,
+          latitude: row.latitude,
+          longitude: row.longitude,
+          location_name: row.location_name,
+          sort_order: row.sort_order,
+        }),
+      );
+      locationsByRow.set(row.recycled_entry_id, existing);
+    }
+
+    return rows.map((row) => {
+      const entry = entryToDomain(
+        // The original id, so the viewer sees the entry's own identity.
+        { ...row, id: row.entry_id },
+        categoriesByRow.get(row.id) ?? [],
+        tagsByRow.get(row.id) ?? [],
+        locationsByRow.get(row.id) ?? [],
+      );
+      return { ...entry, recycledId: row.id, deletedAt: row.deleted_at };
+    });
+  }
+
+  private groupRecycledPairings(rows: RecycledPairingRow[]): Map<number, string[]> {
+    const grouped = new Map<number, string[]>();
+    for (const row of rows) {
+      const existing = grouped.get(row.recycled_entry_id) ?? [];
+      existing.push(row.name);
+      grouped.set(row.recycled_entry_id, existing);
+    }
+    return grouped;
+  }
+
   private replaceChildren(entryId: number, input: EntryWriteData): void {
     this.db.prepare("DELETE FROM jrn_entry_categories WHERE entry_id = ?").run(entryId);
     this.db.prepare("DELETE FROM jrn_entry_tags WHERE entry_id = ?").run(entryId);

@@ -15,6 +15,7 @@ import type {
   JournalTag,
   JournalTaxonomyCount,
   JournalTaxonomyIcon,
+  RecycledJournalEntry,
   SavedJournalFilter,
 } from "./types";
 import type { DecodedImage } from "@/lib/shared/image-upload";
@@ -100,6 +101,25 @@ export interface JournalRepository {
    * whichever one SQLite happened to return first.
    */
   findEntryIdsMatching(key: JournalEntryMatchKey): number[];
+  /** How many entries the journal holds in total, locked ones included. */
+  countAllEntries(): number;
+  /**
+   * How many of those entries are locked. A separate count rather than a filter
+   * on `listEntries` so the "clear everything" confirmation can say what it is
+   * about to take without loading every entry and its child rows to find out.
+   */
+  countLockedEntries(): number;
+  /**
+   * Deletes every entry and its child rows in one transaction, and returns how
+   * many entries went. The managed category and tag lists, their icons, and the
+   * saved filters are left alone — this empties the journal, it does not reset
+   * the module.
+   *
+   * Deliberately blind to `is_locked`: the lock guards a single entry against a
+   * stray click on its own delete button, not against a deliberate "clear
+   * everything" that the caller has already confirmed by count.
+   */
+  deleteAllEntries(): number;
   setEntryPinned(id: number, isPinned: boolean): JournalEntry;
   setEntryLocked(id: number, isLocked: boolean): JournalEntry;
 
@@ -162,4 +182,37 @@ export interface JournalRepository {
    * have nothing worth suggesting. Anything else returns [].
    */
   listDistinctFieldValues(field: JournalPrefillField, limit: number): string[];
+
+  // Recycle bin (migration 0079). "Deleting" a duplicate moves it here, so a
+  // mis-checked box is recoverable.
+
+  /**
+   * Moves `ids` out of jrn_entries and into the bin, with their categories,
+   * tags and locations, in one transaction. Returns how many entries moved.
+   *
+   * Ids that don't exist are skipped rather than throwing: the list the user
+   * ticked was rendered from a snapshot, and an entry deleted from another tab
+   * in the meantime is the outcome they asked for, not an error.
+   *
+   * Blind to `is_locked` on purpose — the bin is what makes that safe. See the
+   * migration log.
+   */
+  recycleEntries(ids: number[]): number;
+  /** Everything in the bin, newest deleted first. */
+  listRecycledEntries(): RecycledJournalEntry[];
+  /**
+   * Moves rows back into jrn_entries by their `recycledId`, with children, in
+   * one transaction. Returns how many were restored.
+   *
+   * Each entry goes back at its original id when that id is still free,
+   * otherwise at a fresh one. Unknown ids are skipped, same reasoning as
+   * `recycleEntries`.
+   */
+  restoreRecycledEntries(recycledIds: number[]): number;
+  /** Removes rows from the bin permanently, with children. Returns the count. */
+  deleteRecycledEntriesForever(recycledIds: number[]): number;
+  /** Empties the bin, children included. Returns how many entries went. */
+  emptyRecycleBin(): number;
+  /** How many entries the bin holds — for the confirm dialog's count. */
+  countRecycledEntries(): number;
 }

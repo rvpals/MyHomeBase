@@ -29,7 +29,12 @@ import { JournalEntriesPanel } from "./journal-entries-panel";
 import { journalTaxonomyIconUrlsByName } from "./journal-shared";
 import { JournalShell } from "./journal-shell";
 import { JournalHomeHeader } from "./journal-search-view";
+import { JournalCorrectPanel } from "./journal-correct-panel";
 import { JournalImportView } from "./journal-import-view";
+import {
+  JournalMetadataBackupButton,
+  JournalMetadataRestoreCard,
+} from "./journal-metadata-transfer-view";
 import { JournalPreferencesView } from "./journal-preferences-view";
 import { JournalTaxonomyView } from "./journal-taxonomy-view";
 import { JournalTemplatesView } from "./journal-templates-view";
@@ -104,7 +109,14 @@ function SectionBody({
       // Used to be an "Import from CSV" card at the bottom of the home screen.
       // It is its own section now: importing is an occasional, deliberate act,
       // and the mapping table it renders wants the whole page width.
-      return <JournalImportView namedMappings={listNamedMappings(deps.csvImportMappingRepo, "Journal")} />;
+      // The Correct tab is a server panel handed over as a slot: it reads the
+      // whole journal to group duplicates, which the client importer can't do.
+      return (
+        <JournalImportView
+          namedMappings={listNamedMappings(deps.csvImportMappingRepo, "Journal")}
+          correctSlot={<JournalCorrectPanel />}
+        />
+      );
 
     case "configuration": {
       const journalModule = getModuleBySlug(deps.moduleRepo, JOURNAL_MODULE_SLUG);
@@ -118,13 +130,21 @@ function SectionBody({
       // Categories & Tags used to sit under Preferences; it is its own section
       // now. Kept in a card (open by default) so it presents like Templates
       // rather than as a bare list bolted to the page heading.
+      //
+      // The restore card sits below it, and is collapsed by default: it's the
+      // rare half of the backup pair, and an always-open dropzone above the
+      // lists would push the thing the reader actually came for down the page.
+      // The download half is the title bar's button — see `sectionAction`.
       return (
-        <CollapsibleCard title="Categories & Tags" defaultOpen>
-          <JournalTaxonomyView
-            categories={listCategories(deps.journalRepo)}
-            tags={listTags(deps.journalRepo)}
-          />
-        </CollapsibleCard>
+        <div className="space-y-6">
+          <CollapsibleCard title="Categories & Tags" defaultOpen>
+            <JournalTaxonomyView
+              categories={listCategories(deps.journalRepo)}
+              tags={listTags(deps.journalRepo)}
+            />
+          </CollapsibleCard>
+          <JournalMetadataRestoreCard />
+        </div>
       );
 
     case "templates": {
@@ -203,8 +223,19 @@ export async function JournalSection({
         </JournalHomeHeader>
       ) : (
         <>
-          <h2 className="font-display text-2xl font-semibold text-ink">{info.label}</h2>
-          <p className="mt-1 text-sm text-muted">{info.description}</p>
+          {/* Title on the left, the section's own action on the right — the same
+              arrangement the home screen's header uses for New Entry, which is
+              why that one is a separate component. Wraps and goes full-width
+              under 1024px, so the button drops below the description rather
+              than squeezing the heading. Sections with no action render
+              exactly as they did before this row existed. */}
+          <div className="flex items-start justify-between gap-4 max-lg:flex-wrap">
+            <div className="min-w-0">
+              <h2 className="font-display text-2xl font-semibold text-ink">{info.label}</h2>
+              <p className="mt-1 text-sm text-muted">{info.description}</p>
+            </div>
+            {section === "metadata" && <JournalMetadataBackupButton />}
+          </div>
           <div className="mt-3 h-px w-full bg-line" />
           <div className="mt-6">
             <SectionBody

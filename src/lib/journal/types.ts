@@ -254,3 +254,23 @@ export interface JournalPrefillTemplate {
  * is a straight string set with no parsing in the view.
  */
 export type JournalPrefillFormValues = Record<JournalPrefillField, string>;
+
+/**
+ * An entry sitting in the recycle bin (migration 0079).
+ *
+ * Extends the entry shape rather than replacing it so the registered
+ * `JournalViewer` can render a recycled entry unchanged — the Recycled Entries
+ * card opens the same viewer the calendar does. `id` is therefore the *original*
+ * entry id, the one the viewer and its links expect.
+ *
+ * The bin's own row id is `recycledId`, which is what every recycle-bin
+ * operation (restore, purge) is keyed on. Keeping the two apart matters: the
+ * same original entry can be recycled, restored and recycled again, so
+ * `recycledId` is unique here and `id` is not.
+ */
+export interface RecycledJournalEntry extends JournalEntry {
+  /** `jrn_recycled_entries.id` — the handle for restore and purge. */
+  recycledId: number;
+  /** When it went into the bin. Orders the list, newest first. */
+  deletedAt: string;
+}

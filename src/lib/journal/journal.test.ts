@@ -6,6 +6,8 @@ import {
   deleteCategory,
   deleteEntry,
   deleteFilter,
+  countAllEntries,
+  clearAllEntries,
   deleteTag,
   findEntries,
   generateMissingTaxonomyIcons,
@@ -232,6 +234,13 @@ function fakeRepo(): JournalRepository {
     deleteEntry(id) {
       entries = entries.filter((entry) => entry.id !== id);
     },
+    countAllEntries: () => entries.length,
+    countLockedEntries: () => entries.filter((entry) => entry.isLocked).length,
+    deleteAllEntries() {
+      const deleted = entries.length;
+      entries = [];
+      return deleted;
+    },
     countEntriesMatching: (key) =>
       entries.filter(
         (entry) =>
@@ -387,6 +396,26 @@ function fakeRepo(): JournalRepository {
     },
     listDistinctFieldValues() {
       return [];
+    },
+    // The recycle bin (0079) has its own use-cases and its own fake in
+    // recycle.test.ts. Nothing in this file exercises it.
+    recycleEntries() {
+      throw new Error("not used in these tests");
+    },
+    listRecycledEntries() {
+      throw new Error("not used in these tests");
+    },
+    restoreRecycledEntries() {
+      throw new Error("not used in these tests");
+    },
+    deleteRecycledEntriesForever() {
+      throw new Error("not used in these tests");
+    },
+    emptyRecycleBin() {
+      throw new Error("not used in these tests");
+    },
+    countRecycledEntries() {
+      throw new Error("not used in these tests");
     },
   };
 }
@@ -670,6 +699,47 @@ describe("deleteEntry", () => {
     const repo = fakeRepo();
     const created = createEntry(repo, { date: "2026-07-27", isLocked: true });
     expect(() => deleteEntry(repo, created.id)).toThrow(/locked/);
+  });
+});
+
+describe("countAllEntries", () => {
+  it("counts every entry and says how many are locked", () => {
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2026-07-27" });
+    createEntry(repo, { date: "2026-07-28", isLocked: true });
+    createEntry(repo, { date: "2026-07-29", isLocked: true });
+    expect(countAllEntries(repo)).toEqual({ totalCount: 3, lockedCount: 2 });
+  });
+
+  it("reports zeroes for an empty journal", () => {
+    expect(countAllEntries(fakeRepo())).toEqual({ totalCount: 0, lockedCount: 0 });
+  });
+});
+
+describe("clearAllEntries", () => {
+  it("removes every entry, locked ones included, and reports the count", () => {
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2026-07-27" });
+    createEntry(repo, { date: "2026-07-28", isLocked: true });
+
+    expect(clearAllEntries(repo)).toEqual({ deletedCount: 2 });
+    expect(listEntries(repo)).toHaveLength(0);
+  });
+
+  it("leaves the managed category and tag lists and the saved filters alone", () => {
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2026-07-27", categories: ["Work"], tags: ["idea"] });
+    saveFilter(repo, { name: "Mine", filter: emptyFilter() });
+
+    clearAllEntries(repo);
+
+    expect(listCategories(repo).map((category) => category.name)).toEqual(["Work"]);
+    expect(listTags(repo).map((tag) => tag.name)).toEqual(["idea"]);
+    expect(listFilters(repo)).toHaveLength(1);
+  });
+
+  it("is a no-op on an empty journal", () => {
+    expect(clearAllEntries(fakeRepo())).toEqual({ deletedCount: 0 });
   });
 });
 
