@@ -88,6 +88,14 @@ export interface MusicQueueActions {
   setRepeatMode: (mode: RepeatMode) => Promise<QueueViewModel>;
 }
 
+/**
+ * Which analyser read a visualizer wants.
+ *
+ * `"frequency"` is the spectrum (how much energy at each pitch); `"waveform"` is the
+ * signal itself over time. Two different `AnalyserNode` methods, one shared node.
+ */
+export type SpectrumKind = "frequency" | "waveform";
+
 /** The minimum a player needs to show and stream a track. */
 export interface PlayableTrack {
   id: number;
@@ -125,6 +133,21 @@ interface MusicPlayerState {
   volume: number;
   /** A message for the listener when a track will not play. */
   error?: string;
+  /**
+   * Fills `into` with the current analyser reading, returning false when there is
+   * nothing to read.
+   *
+   * Fill-in-place and NOT React state, deliberately: a visualizer wants this sixty
+   * times a second, and routing that through `setState` would re-render the whole
+   * subtree at 60fps to animate a decoration. The caller owns the buffer and the
+   * frame loop; this just copies bytes into it.
+   *
+   * Returns false when the audio graph could not be built (see `ensureAnalyser`), or
+   * before the first track has played -- so a caller can simply not render.
+   */
+  readSpectrum: (into: Uint8Array<ArrayBuffer>, kind: SpectrumKind) => boolean;
+  /** How many bytes `readSpectrum` will fill, or 0 when there is no analyser. */
+  spectrumSize: number;
   /** Plays a track, replacing the queue with the list it came from. */
   play: (track: PlayableTrack, queue?: PlayableTrack[]) => void;
   /** Adds to the end of the queue without disturbing what is playing. */
@@ -196,6 +219,15 @@ export function MusicPlayerProvider({
   const [volume, setVolumeState] = useState(1);
   const [error, setError] = useState<string | undefined>(undefined);
 
+  // The Web Audio graph behind the visualizer. Three refs, all null until the first
+  // track plays -- see `ensureAnalyser`, which is the only thing that fills them.
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  // Re-rendered once when the graph appears, so a consumer that mounted before the
+  // first play can start drawing. A ref alone would never notify anyone.
+  const [spectrumSize, setSpectrumSize] = useState(0);
+
   // Created imperatively rather than rendered as JSX: nothing should be able to
   // unmount it by re-rendering, and it needs no DOM position.
   useEffect(() => {
@@ -225,6 +257,13 @@ export function MusicPlayerProvider({
       audio.pause();
       audio.src = "";
       audioRef.current = null;
+
+      // The graph outlives nothing: the element it was built from is going away, and a
+      // context left open holds an audio device handle.
+      void audioContextRef.current?.close().catch(() => undefined);
+      audioContextRef.current = null;
+      analyserRef.current = null;
+      sourceRef.current = null;
     };
   }, []);
 
@@ -259,10 +298,90 @@ export function MusicPlayerProvider({
     };
   }, []);
 
+  /**
+   * Builds the analyser graph, once, on the first track played.
+   *
+   * THIS FUNCTION CAN SILENCE THE APP IF IT IS CHANGED CARELESSLY. Three things about
+   * `createMediaElementSource` make it unlike any other call in this file:
+   *
+   *  1. It is **destructive**. Once an element is routed into a graph, its output no
+   *     longer reaches the speakers on its own -- it reaches whatever the graph is
+   *     connected to. Forget the `connect(destination)` below and every sound in the
+   *     app stops, on every page, with the transport still cheerfully counting up.
+   *  2. It is **permanent**. There is no way to detach an element from its source node,
+   *     which is why this runs against the one long-lived element rather than per track.
+   *  3. It **throws on a second call** for the same element, hence the `sourceRef` guard.
+   *
+   * Called from `startTrack` and nowhere else, because that only ever runs from a user
+   * gesture -- a browser will not let an `AudioContext` start without one, and building
+   * this on mount would produce a permanently suspended context.
+   *
+   * Every failure is swallowed: a visualizer is a decoration, and the correct outcome
+   * of "the graph would not build" is a player that still plays music without one.
+   */
+  const ensureAnalyser = useCallback(() => {
+    const audio = audioRef.current;
+    if (audio === null) return;
+
+    // Already built. Only ever resume -- browsers suspend a context that has been
+    // idle, and a suspended analyser reports silence while the audio plays fine.
+    if (sourceRef.current !== null) {
+      void audioContextRef.current?.resume().catch(() => undefined);
+      return;
+    }
+
+    try {
+      const Constructor =
+        window.AudioContext ??
+        (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (Constructor === undefined) return;
+
+      const context = new Constructor();
+      const analyser = context.createAnalyser();
+      // 2048 samples: enough bins that the log-scaled bass buckets are not empty,
+      // small enough that a frame's worth of work stays trivial.
+      analyser.fftSize = 2048;
+      // Smooths the bar decay between frames. Without it the bars strobe.
+      analyser.smoothingTimeConstant = 0.8;
+
+      const source = context.createMediaElementSource(audio);
+      source.connect(analyser);
+      // The line that keeps the app audible. See (1) above.
+      analyser.connect(context.destination);
+
+      audioContextRef.current = context;
+      analyserRef.current = analyser;
+      sourceRef.current = source;
+      setSpectrumSize(analyser.frequencyBinCount);
+
+      void context.resume().catch(() => undefined);
+    } catch {
+      // Left null. `readSpectrum` reports false and no visualizer renders.
+      audioContextRef.current = null;
+      analyserRef.current = null;
+      sourceRef.current = null;
+      setSpectrumSize(0);
+    }
+  }, []);
+
+  /** Copies the current analyser reading into the caller's buffer. */
+  const readSpectrum = useCallback((into: Uint8Array<ArrayBuffer>, kind: SpectrumKind): boolean => {
+    const analyser = analyserRef.current;
+    if (analyser === null || into.length < analyser.frequencyBinCount) return false;
+
+    if (kind === "frequency") analyser.getByteFrequencyData(into);
+    else analyser.getByteTimeDomainData(into);
+    return true;
+  }, []);
+
   /** Points the element at a track and plays it. The one place that touches `src`. */
   const startTrack = useCallback((track: PlayableTrack) => {
     const audio = audioRef.current;
     if (audio === null) return;
+
+    // Before `play()`, and from a gesture: this is the only moment the browser will
+    // let an AudioContext start.
+    ensureAnalyser();
 
     setError(undefined);
     setCurrent(track);
@@ -272,7 +391,7 @@ export function MusicPlayerProvider({
     // worth showing -- the listener pressed a button, so it will succeed. The error
     // event above covers the cases that actually matter.
     void audio.play().catch(() => undefined);
-  }, []);
+  }, [ensureAnalyser]);
 
   const play = useCallback(
     (track: PlayableTrack, nextQueue?: PlayableTrack[]) => {
@@ -328,9 +447,13 @@ export function MusicPlayerProvider({
       return;
     }
 
-    if (audio.paused) void audio.play().catch(() => undefined);
-    else audio.pause();
-  }, [current, playEntry, queue]);
+    if (audio.paused) {
+      // Resumes the AudioContext too: pressing play after a long pause is a gesture,
+      // and a suspended context would leave the visualizer flat while music played.
+      ensureAnalyser();
+      void audio.play().catch(() => undefined);
+    } else audio.pause();
+  }, [current, ensureAnalyser, playEntry, queue]);
 
   /**
    * Steps the queue. The SERVER decides where to -- it owns the repeat mode and the
@@ -476,6 +599,8 @@ export function MusicPlayerProvider({
       duration,
       volume,
       error,
+      readSpectrum,
+      spectrumSize,
       play,
       enqueue,
       playEntry,
@@ -498,6 +623,8 @@ export function MusicPlayerProvider({
       duration,
       volume,
       error,
+      readSpectrum,
+      spectrumSize,
       play,
       enqueue,
       playEntry,

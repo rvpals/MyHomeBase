@@ -45,6 +45,10 @@ export const musicSettingsSchema = z.object({
   // older form post) must keep working, and "off" is the safe reading -- see the field
   // doc on MusicSettings.
   autoFetchLyrics: z.boolean().default(false),
+  // Defaulted for the same reason as `autoFetchLyrics`: the configuration form does
+  // not own this one -- the player screen sets it -- so a save from that form must not
+  // be required to carry it.
+  visualizerMode: z.enum(["bars", "wave"]).default("bars"),
 });
 export type MusicSettingsInput = z.infer<typeof musicSettingsSchema>;
 

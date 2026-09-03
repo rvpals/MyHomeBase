@@ -4,6 +4,11 @@ import {
   isMusicExtension,
   type MusicExtension,
 } from "./formats";
+import {
+  DEFAULT_VISUALIZER_MODE,
+  isVisualizerMode,
+  type VisualizerMode,
+} from "./spectrum";
 
 // Module settings for the Music Library, stored as key/value rows in
 // sys_module_settings — the same mechanism Attendance, Expense auto-import and the
@@ -13,6 +18,7 @@ export const MUSIC_SETTING_KEYS = {
   scanExtensions: "music_scan_extensions",
   skipUnstreamable: "music_skip_unstreamable",
   autoFetchLyrics: "music_auto_fetch_lyrics",
+  visualizerMode: "music_visualizer_mode",
 } as const;
 
 export interface MusicSettings {
@@ -49,6 +55,15 @@ export interface MusicSettings {
    * the migration describes.
    */
   autoFetchLyrics: boolean;
+  /**
+   * Which visualizer the player screen draws -- frequency bars or a waveform.
+   *
+   * A display preference rather than a behaviour, and the only one here that costs
+   * nothing to get wrong. It is persisted anyway because it is the kind of choice
+   * someone makes once, and re-picking it on every visit is the sort of small
+   * friction that makes a screen feel unfinished.
+   */
+  visualizerMode: VisualizerMode;
 }
 
 /**
@@ -80,10 +95,16 @@ export function resolveMusicSettings(settings: ModuleSetting[]): MusicSettings {
   const rawAutoLyrics = byKey.get(MUSIC_SETTING_KEYS.autoFetchLyrics);
   const autoFetchLyrics = rawAutoLyrics?.trim().toLowerCase() === "true";
 
+  // Narrowed rather than cast: the stored value can be anything a hand-edited row
+  // holds, and an unrecognised mode falls back instead of reaching the canvas.
+  const rawMode = byKey.get(MUSIC_SETTING_KEYS.visualizerMode)?.trim().toLowerCase() ?? "";
+  const visualizerMode = isVisualizerMode(rawMode) ? rawMode : DEFAULT_VISUALIZER_MODE;
+
   return {
     scanExtensions: scanExtensions.length > 0 ? scanExtensions : [...DEFAULT_SCAN_EXTENSIONS],
     skipUnstreamable,
     autoFetchLyrics,
+    visualizerMode,
   };
 }
 
@@ -103,5 +124,6 @@ export function musicSettingsToEntries(settings: MusicSettings): { key: string; 
     { key: MUSIC_SETTING_KEYS.scanExtensions, value: [...new Set(extensions)].join(",") },
     { key: MUSIC_SETTING_KEYS.skipUnstreamable, value: String(settings.skipUnstreamable) },
     { key: MUSIC_SETTING_KEYS.autoFetchLyrics, value: String(settings.autoFetchLyrics) },
+    { key: MUSIC_SETTING_KEYS.visualizerMode, value: settings.visualizerMode },
   ];
 }

@@ -25,6 +25,7 @@ import {
   trackIdSchema,
   getCachedLyrics,
   isScanRunStale,
+  isVisualizerMode,
   listMusicFolders,
   musicFolderSchema,
   musicSettingsSchema,
@@ -37,6 +38,7 @@ import {
   type MusicExtension,
   type MusicRepository,
   type TrackLyrics,
+  type VisualizerMode,
 } from "@/lib/music";
 import { deps } from "@/lib/wiring";
 
@@ -118,6 +120,41 @@ export async function fetchLyricsAction(input: {
 export async function getAutoFetchLyricsAction(): Promise<boolean> {
   await requireUser();
   return readMusicSettings().autoFetchLyrics;
+}
+
+/**
+ * Which visualizer the player screen draws.
+ *
+ * Its own pair of actions rather than the configuration form's, for the same reason
+ * `getAutoFetchLyricsAction` above is separate: `getMusicSettingsAction` counts every
+ * track in the library, which is a wasteful thing to do to answer "bars or wave".
+ */
+export async function getVisualizerModeAction(): Promise<VisualizerMode> {
+  await requireUser();
+  return readMusicSettings().visualizerMode;
+}
+
+/**
+ * Stores the visualizer choice, leaving every other setting alone.
+ *
+ * `musicSettingsToEntries` writes the WHOLE settings set, so this reads the current
+ * values first and changes one field. Writing a bare entry list instead would blank
+ * the scan allowlist the moment someone pressed a button on the player screen.
+ */
+export async function setVisualizerModeAction(
+  mode: VisualizerMode,
+): Promise<{ ok: true } | { error: string }> {
+  await requireUser();
+  if (!isVisualizerMode(mode)) return { error: "That is not a visualizer mode." };
+
+  const musicModule = getModuleBySlug(deps.moduleRepo, MUSIC_LIBRARY_SLUG);
+  if (musicModule === undefined) return { error: "The Music Library module is not registered." };
+
+  saveModuleSettings(deps.moduleSettingsRepo, {
+    moduleId: musicModule.id,
+    entries: musicSettingsToEntries({ ...readMusicSettings(), visualizerMode: mode }),
+  });
+  return { ok: true };
 }
 
 export async function getLyricsAction(trackId: number): Promise<LyricsActionResult | undefined> {
@@ -376,7 +413,14 @@ export async function saveMusicSettingsAction(input: {
   autoFetchLyrics?: boolean;
 }): Promise<{ ok: true } | { error: string }> {
   await requireUser();
-  const parsed = musicSettingsSchema.safeParse(input);
+  // The visualizer mode is carried through from what is stored, not taken from the
+  // form: this screen has no control for it (the player screen does), and
+  // `musicSettingsToEntries` writes every key -- so omitting it here would silently
+  // reset someone's choice each time they saved the scan settings.
+  const parsed = musicSettingsSchema.safeParse({
+    ...input,
+    visualizerMode: readMusicSettings().visualizerMode,
+  });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Those settings are not valid." };
   }

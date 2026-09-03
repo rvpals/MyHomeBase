@@ -11,16 +11,20 @@
 // then metadata, then transport, then lyrics. Only the bar needed a different shape.
 
 import { useCallback, useEffect, useState, useTransition } from "react";
+import { AudioSpectrum } from "@/components/audio-spectrum";
 import { Button } from "@/components/button";
 import {
   albumCoverUrl,
   formatPlayerTime,
   useMusicPlayer,
 } from "@/components/music-player-provider";
+import { DEFAULT_VISUALIZER_MODE, type VisualizerMode } from "@/lib/music";
 import {
   fetchLyricsAction,
   getAutoFetchLyricsAction,
   getLyricsAction,
+  getVisualizerModeAction,
+  setVisualizerModeAction,
   type LyricsActionResult,
 } from "./music-actions";
 
@@ -96,6 +100,36 @@ export function MusicPlayerView() {
     };
   }, [currentId, autoFetch]);
 
+  // Which visualizer to draw. Read once per mount like the lyrics setting above, and
+  // for the same reason: it only changes when someone presses the button below.
+  const [visualizerMode, setVisualizerMode] = useState<VisualizerMode>(
+    DEFAULT_VISUALIZER_MODE,
+  );
+  useEffect(() => {
+    let cancelled = false;
+    void getVisualizerModeAction().then((stored) => {
+      if (!cancelled) setVisualizerMode(stored);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /**
+   * Switches the visualizer, optimistically.
+   *
+   * The canvas changes on the click and the write happens behind it -- a display
+   * toggle that waits on a database round trip feels broken, and the worst case of a
+   * failed write is that the choice does not survive a reload.
+   */
+  const onToggleVisualizer = useCallback(() => {
+    setVisualizerMode((previous) => {
+      const next = previous === "bars" ? "wave" : "bars";
+      void setVisualizerModeAction(next).catch(() => undefined);
+      return next;
+    });
+  }, []);
+
   const onFetchLyrics = useCallback(
     (force: boolean) => {
       if (currentId === undefined) return;
@@ -141,6 +175,39 @@ export function MusicPlayerView() {
             alt={`Cover art for ${current.title}`}
             className="aspect-square w-full rounded-xl border border-line object-cover"
           />
+        )}
+
+        {/* The visualizer, between the cover and the title. Renders only once the
+            audio graph exists -- `spectrumSize` is 0 until the first track plays, and
+            stays 0 if the graph could not be built, in which case the screen simply
+            has no visualizer rather than an empty box. */}
+        {player.spectrumSize > 0 && (
+          <div className="relative mt-4">
+            <AudioSpectrum
+              readSpectrum={player.readSpectrum}
+              spectrumSize={player.spectrumSize}
+              mode={visualizerMode}
+              isPlaying={isPlaying}
+            />
+            {/* Over the canvas rather than beside it: the canvas is decoration and the
+                button is the only thing here worth tabbing to, so it should not cost
+                the layout a row of its own. */}
+            <div className="absolute right-1 top-1">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={onToggleVisualizer}
+                title={
+                  visualizerMode === "bars" ? "Switch to waveform" : "Switch to bars"
+                }
+                ariaLabel={
+                  visualizerMode === "bars" ? "Switch to waveform" : "Switch to bars"
+                }
+              >
+                {visualizerMode === "bars" ? "Wave" : "Bars"}
+              </Button>
+            </div>
+          </div>
         )}
 
         <h2 className="mt-4 font-display text-xl text-ink">{current.title}</h2>

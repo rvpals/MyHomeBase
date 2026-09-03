@@ -104,6 +104,7 @@ describe("musicSettingsToEntries", () => {
         scanExtensions: [...original.scanExtensions],
         skipUnstreamable: original.skipUnstreamable,
         autoFetchLyrics: true,
+        visualizerMode: "wave",
       }).map((entry, index) => ({
         id: index + 1,
         moduleId: 7,
@@ -114,6 +115,7 @@ describe("musicSettingsToEntries", () => {
     expect(restored.scanExtensions).toEqual(["mp3", "flac", "ape"]);
     expect(restored.skipUnstreamable).toBe(false);
     expect(restored.autoFetchLyrics).toBe(true);
+    expect(restored.visualizerMode).toBe("wave");
   });
 
   it("never writes a blank value, which the settings schema rejects", () => {
@@ -121,6 +123,7 @@ describe("musicSettingsToEntries", () => {
       scanExtensions: [],
       skipUnstreamable: true,
       autoFetchLyrics: false,
+      visualizerMode: "bars",
     })) {
       expect(entry.value).not.toBe("");
     }
@@ -131,6 +134,7 @@ describe("musicSettingsToEntries", () => {
       scanExtensions: [],
       skipUnstreamable: true,
       autoFetchLyrics: false,
+      visualizerMode: "bars",
     });
     const extensions = entries.find((e) => e.key === MUSIC_SETTING_KEYS.scanExtensions);
     expect(extensions?.value).toBe("mp3,flac");

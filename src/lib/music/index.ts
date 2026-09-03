@@ -61,6 +61,14 @@ export {
 } from "./settings";
 
 export {
+  DEFAULT_VISUALIZER_MODE,
+  isVisualizerMode,
+  spectrumBars,
+  waveformPoints,
+  type VisualizerMode,
+} from "./spectrum";
+
+export {
   isSafeRelativePath,
   normaliseRelativePath,
   parentFolderOf,
