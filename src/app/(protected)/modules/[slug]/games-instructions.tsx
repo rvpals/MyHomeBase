@@ -27,8 +27,8 @@ function ArcadeInstructions() {
     <>
       <p className="text-sm text-muted">
         A small arcade. Pick a game, play it in the browser, and your result goes onto a
-        scoreboard shared by everyone in the house. Three games so far: 2048, the Arrow
-        Clearing maze puzzle, and Tetris.
+        scoreboard shared by everyone in the house. Six games so far: 2048, the Arrow
+        Clearing maze puzzle, Tetris, Sudoku, Blackjack, and Minesweeper.
       </p>
       <Section title="How this module is laid out">
         <ul className="flex list-disc flex-col gap-1 pl-5">
@@ -166,12 +166,184 @@ function ArcadeInstructions() {
         </p>
       </Section>
 
+      <Section title="Playing Sudoku">
+        <p>
+          Fill the 9&times;9 grid so every row, every column and every 3&times;3 box holds
+          the digits one to nine exactly once. The digits printed when the board is dealt
+          are fixed and cannot be changed; everything else is yours to work out. Pick{" "}
+          <strong className="text-ink">Easy</strong>,{" "}
+          <strong className="text-ink">Medium</strong> or{" "}
+          <strong className="text-ink">Hard</strong> at the top &mdash; fewer starting
+          digits means a harder board, and each one deals a new puzzle straight away.
+        </p>
+        <p>
+          Tap a cell and then a digit, or use the keyboard: the arrow keys move around the
+          grid, <Key>1</Key>&ndash;<Key>9</Key> enter a digit, <Key>Backspace</Key> clears
+          a cell, and <Key>N</Key> or <Key>Space</Key> switches to notes.
+        </p>
+        <ul className="flex list-disc flex-col gap-1 pl-5">
+          <li>
+            <strong className="text-ink">Notes</strong> pencil small candidates into a
+            cell instead of answering it, for when you have narrowed a cell to two or
+            three possibilities but cannot yet choose. Answering a cell clears its notes.
+          </li>
+          <li>
+            Selecting a cell highlights its row, column and box, and picking a cell that
+            already holds a digit highlights every other copy of that digit &mdash; which
+            is how you scan for where the next one has to go.
+          </li>
+          <li>
+            A digit already placed nine times is greyed out on the pad, since no cell
+            still wants one.
+          </li>
+          <li>
+            <strong className="text-ink">A wrong digit is not refused.</strong> It goes on
+            the board, in red, and counts as a mistake. Refusing it would let you find
+            every answer by trying all nine and watching which one stuck.
+          </li>
+          <li>
+            Every board has <strong className="text-ink">exactly one solution</strong>,
+            guaranteed when it is generated &mdash; you will never need to guess between
+            two valid answers.
+          </li>
+        </ul>
+        <p>
+          Sudoku scores <strong className="text-ink">points, not time</strong>, because the
+          scoreboard ranks highest-first and a time in seconds would put the slowest player
+          on top. A solve starts from the board&rsquo;s value &mdash; 2,000 easy, 3,500 medium,
+          5,000 hard &mdash; and loses 4 points a second and 100 per mistake, so a fast
+          clean run scores best and a hard board beats an easy one for the same time. A
+          finish never scores less than 100, however long it took.
+        </p>
+      </Section>
+
+      <Section title="Playing Blackjack">
+        <p>
+          Get closer to <strong className="text-ink">21</strong> than the dealer without
+          going over. Court cards are worth ten and an ace is worth one or eleven,
+          whichever suits your hand &mdash; so A&ndash;6 is a{" "}
+          <strong className="text-ink">soft 17</strong> that can take a card without
+          risk, and the total is shown both ways when it is soft.
+        </p>
+        <p>
+          A run is a <strong className="text-ink">bankroll, not a hand</strong>. You sit
+          down with 1,000 chips and bet between 25 and 250 a hand. The run ends when you
+          cash out or when you cannot cover the minimum bet, and{" "}
+          <strong className="text-ink">only a cash-out scores</strong> &mdash; going
+          broke records nothing. Knowing when to get up is the game.
+        </p>
+        <p>
+          <Key>H</Key> hits, <Key>S</Key> stands, <Key>D</Key> doubles, <Key>Enter</Key>{" "}
+          deals the next hand, and <Key>↑</Key> <Key>↓</Key> change the bet. Every
+          control is also a button, so a phone needs no keyboard.
+        </p>
+        <ul className="flex list-disc flex-col gap-1 pl-5">
+          <li>
+            <strong className="text-ink">The dealer stands on every 17</strong>, soft ones
+            included, and draws on anything less. There is no judgement involved &mdash;
+            you are playing against a rule you can see, which is what makes the decisions
+            calculable.
+          </li>
+          <li>
+            A <strong className="text-ink">blackjack</strong> &mdash; 21 on the first two
+            cards &mdash; pays three to two rather than even money, and beats a dealer who
+            reaches 21 with three cards. A 21 made after a split is just 21.
+          </li>
+          <li>
+            <strong className="text-ink">Double</strong> doubles your stake for exactly
+            one more card, and is only offered on your first two. It is the best bet on
+            the table on a hard 10 or 11, and a poor one almost everywhere else.
+          </li>
+          <li>
+            <strong className="text-ink">Split</strong> turns a matched pair into two
+            hands, each with its own stake, played out in turn. Once per round, and only
+            on a true pair &mdash; a king and a queen are both worth ten but are not one.
+          </li>
+          <li>
+            <strong className="text-ink">Going bust loses immediately</strong>, even if
+            the dealer then busts too. That is the whole of the house edge, and the reason
+            standing on a stiff hand is sometimes right.
+          </li>
+          <li>
+            Cards come from a six-deck shoe that is reshuffled between hands when it runs
+            low, so counting what has gone will not get you far.
+          </li>
+        </ul>
+        <p>
+          Your score is the chips you walk away with, so a cautious run that banks 1,200
+          beats a spectacular one that peaked at 4,000 and lost it. There is no insurance
+          and no surrender: both are bets you should decline, and a button for a bad bet
+          is just a trap.
+        </p>
+      </Section>
+
+      <Section title="Playing Minesweeper">
+        <p>
+          Every square either hides a mine or does not. Uncover one and it shows how
+          many of its eight neighbours are mined; uncover a mine and the run is over.
+          Clear every safe square to win &mdash; the flags are a notepad, not the goal,
+          and a board can be cleared without placing one. Pick{" "}
+          <strong className="text-ink">Beginner</strong> (9&times;9, 10 mines),{" "}
+          <strong className="text-ink">Intermediate</strong> (16&times;16, 40) or{" "}
+          <strong className="text-ink">Expert</strong> (30&times;16, 99) at the top.
+        </p>
+        <p>
+          Click to uncover and right-click to flag. On a phone, tap to uncover and{" "}
+          <strong className="text-ink">hold</strong> to flag, or turn on{" "}
+          <strong className="text-ink">Flag mode</strong> and every tap plants one
+          instead.
+        </p>
+        <ul className="flex list-disc flex-col gap-1 pl-5">
+          <li>
+            <strong className="text-ink">The first click is always safe</strong>, and so
+            is everything touching it. The mines are laid after you click, avoiding that
+            whole neighbourhood, so the opening move always opens up a region rather
+            than being a one-in-five gamble. The clock starts there too.
+          </li>
+          <li>
+            Uncovering a square with no mines around it{" "}
+            <strong className="text-ink">cascades</strong>, opening its neighbours and
+            theirs until it reaches numbers. Those numbers are the edge of what is
+            known, and where the actual puzzle starts.
+          </li>
+          <li>
+            Click a number whose mines you have all flagged and it{" "}
+            <strong className="text-ink">clears everything else around it</strong> in one
+            go. This is the move that makes Expert playable rather than 381 separate
+            clicks &mdash; a satisfied number is outlined so you can see it is available.
+            It is not a safety check, though: chord with a flag in the wrong place and
+            you uncover a real mine.
+          </li>
+          <li>
+            The mine counter is what is left after your flags, and it{" "}
+            <strong className="text-ink">can go negative</strong> if you place more than
+            there are. Nothing stops you &mdash; it is your notepad, and being told you
+            are wrong before you have finished the deduction would give the answer away.
+          </li>
+          <li>
+            A flagged square cannot be uncovered by accident, which is the practical
+            reason to flag at all.
+          </li>
+        </ul>
+        <p>
+          Minesweeper scores <strong className="text-ink">points, not time</strong>, for
+          the same reason Sudoku does: the board ranks highest-first, so seconds would
+          put the slowest player on top. A clear starts from the board&rsquo;s value
+          &mdash; 1,500 beginner, 3,500 intermediate, 6,000 expert &mdash; and loses 3
+          points a second, so a fast clear scores best and an expert board beats a
+          beginner one comfortably. A clear never scores less than 100. Hitting a mine
+          scores nothing at all.
+        </p>
+      </Section>
+
       <Section title="When a score is saved">
         <p>
           At the end of a game: for 2048, when no move is left; for Arrow Clearing, when
           the board is empty or the lives run out; for Tetris, when the well fills to the
-          top. Abandoning a game part-way saves nothing, so a refresh mid-game costs you
-          the board rather than posting a low score.
+          top; for Sudoku, when the last cell is filled in correctly; for Blackjack, when
+          you cash out or run out of chips; for Minesweeper, when the last safe square is
+          uncovered. Abandoning a game part-way saves nothing, so a
+          refresh mid-game costs you the board rather than posting a low score.
         </p>
       </Section>
     </>

@@ -5,7 +5,10 @@ import { Button } from "@/components/button";
 import { Modal } from "@/components/modal";
 import { arrowDifficultyOf, formatScore, type GameSummary } from "@/lib/games";
 import { Game2048View } from "./game-2048-view";
+import { GameBlackjackView } from "./game-blackjack-view";
 import { GameArrowsView } from "./game-arrows-view";
+import { GameMinesweeperView } from "./game-minesweeper-view";
+import { GameSudokuView } from "./game-sudoku-view";
 import { GameTetrisView } from "./game-tetris-view";
 
 // The Arcade: the list of games, and the selected game played full-bleed over it.
@@ -31,10 +34,13 @@ export function GamesArcadeView({ games }: { games: GameSummary[] }) {
   return (
     <div className="flex flex-col gap-6">
       {/*
-        Three across on a desktop, one on a phone. `max-lg:` first, so the desktop
-        classes are untouched and a wide screen cannot regress.
+        Two across on a desktop and three on a wide one, one on a phone. `max-lg:`
+        first, so the desktop classes are untouched and a wide screen cannot regress.
+        Two rather than three at the base width because the content column beside the
+        module rail is not wide enough for more, and two divides the catalogue evenly
+        more often than three does as games are added.
       */}
-      <ul className="grid grid-cols-3 gap-4 max-lg:grid-cols-1">
+      <ul className="grid grid-cols-2 gap-4 xl:grid-cols-3 max-lg:grid-cols-1">
         {games.map((entry) => (
           <li key={entry.game.key}>
             <GameCard summary={entry} onOpen={() => setOpenKey(entry.game.key)} />
@@ -74,6 +80,19 @@ export function GamesArcadeView({ games }: { games: GameSummary[] }) {
               )}
               {open.game.key === "tetris" && (
                 <GameTetrisView bestScore={open.best?.score ?? 0} />
+              )}
+              {/* One key for all three Sudoku boards -- the difficulty is picked inside
+                  the game, so unlike Arrow Clearing there is no key to map back here. */}
+              {open.game.key === "sudoku" && (
+                <GameSudokuView bestScore={open.best?.score ?? 0} />
+              )}
+              {open.game.key === "blackjack" && (
+                <GameBlackjackView bestScore={open.best?.score ?? 0} />
+              )}
+              {/* One key for all three Minesweeper boards, as with Sudoku -- the
+                  difficulty is picked inside the game. */}
+              {open.game.key === "minesweeper" && (
+                <GameMinesweeperView bestScore={open.best?.score ?? 0} />
               )}
             </div>
           </div>

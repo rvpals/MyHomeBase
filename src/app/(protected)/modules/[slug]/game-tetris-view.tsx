@@ -49,25 +49,31 @@ const LINE_CLEAR_MS = 320;
 /**
  * Piece fills, by kind.
  *
- * **One theme token at seven strengths**, not the traditional seven literal colours —
- * exactly the call `game-2048-view.tsx` records for its tile ramp, and for the same
- * reason: the theme provides a single accent family (`brass`), so a hardcoded cyan /
- * yellow / purple palette would ignore the active theme entirely and read wrong in the
- * light ones.
+ * **The classic tetromino palette, as fixed literal colours** — cyan I, yellow O,
+ * purple T, green S, red Z, blue J, orange L. This is the one place in the app where
+ * a literal colour beats a theme token, for the reason `design.md` records under
+ * *Exception — semantic red/green stays literal*: these seven colours are a
+ * thirty-year-old convention, not a brand accent. A player reads "cyan means the long
+ * bar" the way they read red as "down" on a stock, and recolouring the set per theme
+ * would break that recognition to serve a palette nobody is looking at while a piece
+ * is falling.
  *
- * The steps are spaced widely (25% apart at the bottom, where the eye separates fills
- * least well) so seven pieces stay distinguishable from each other. Telling them apart
- * matters far less here than in 2048 anyway: a tetromino is identified by its *shape*,
- * which is unmistakable, where a 2048 tile is identified only by its number.
+ * Shades are 300–500 rather than 600–700 on the same reasoning design.md gives for
+ * the semantic pair: the darker end reads as mud on the dark themes, which most of
+ * them are. Borders go one step darker than the fill for the bevel the empty cells
+ * and the 2048 tiles both have.
+ *
+ * (Superseded the previous seven-strengths-of-`brass` ramp, which followed the theme
+ * but left S, Z, J and L nearly indistinguishable at low opacity.)
  */
 const PIECE_STYLES: Record<PieceKind, string> = {
-  I: "bg-brass border-brass-dark",
-  O: "bg-brass/85 border-brass-dark",
-  T: "bg-brass/70 border-brass",
-  S: "bg-brass/55 border-brass/80",
-  Z: "bg-brass/40 border-brass/70",
-  J: "bg-brass/30 border-brass/60",
-  L: "bg-brass/20 border-brass/50",
+  I: "bg-cyan-400 border-cyan-600",
+  O: "bg-yellow-300 border-yellow-500",
+  T: "bg-purple-400 border-purple-600",
+  S: "bg-emerald-400 border-emerald-600",
+  Z: "bg-red-400 border-red-600",
+  J: "bg-blue-400 border-blue-600",
+  L: "bg-orange-400 border-orange-600",
 };
 
 /** The empty-cell treatment, matching 2048's board so the arcade reads as one app. */

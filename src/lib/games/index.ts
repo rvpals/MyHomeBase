@@ -1,19 +1,56 @@
 // The Games module's front door. Everything outside src/lib/games imports from here.
+
+// The deck primitives, shared by every card game and by the `PlayingCard` /
+// `CardHand` components. Game-agnostic — nothing here knows what a card is worth.
+export {
+  CARDS_IN_DECK,
+  COURT_RANKS,
+  RANKS,
+  SUITS,
+  buildShoe,
+  draw,
+  isCourt,
+  isRedSuit,
+  newDeck,
+  shuffle,
+  shuffledShoe,
+} from "./playing-cards";
 export {
   ARROW_DIFFICULTIES,
   ARROW_DIFFICULTY_SETUP,
   ARROW_LIVES,
+  BLACKJACK_BET_STEP,
+  BLACKJACK_MAX_BET,
+  BLACKJACK_MIN_BET,
+  BLACKJACK_PAYOUT,
+  BLACKJACK_STARTING_CHIPS,
+  BLACKJACK_TARGET,
   BOARD_SIZE,
   BUFFER_ROWS,
+  DEALER_STANDS_ON,
+  DECKS_IN_SHOE,
   DIRECTIONS,
   HARD_DROP_POINTS,
   LINES_PER_LEVEL,
   LINE_SCORES,
   LOCK_DELAY_TICKS,
+  MINESWEEPER_DIFFICULTIES,
+  MINESWEEPER_MIN_SCORE,
+  MINESWEEPER_SETUP,
+  MINESWEEPER_TIME_PENALTY,
   PIECE_KINDS,
   PLAYFIELD_HEIGHT,
   PLAYFIELD_WIDTH,
+  SHOE_RESHUFFLE_AT,
   SOFT_DROP_POINTS,
+  SUDOKU_BOX,
+  SUDOKU_CELL_COUNT,
+  SUDOKU_DIFFICULTIES,
+  SUDOKU_MIN_SCORE,
+  SUDOKU_MISTAKE_PENALTY,
+  SUDOKU_SETUP,
+  SUDOKU_SIZE,
+  SUDOKU_TIME_PENALTY,
   TOTAL_HEIGHT,
   WINNING_TILE,
   arrowDifficultyOf,
@@ -23,18 +60,36 @@ export {
   type ArrowDifficulty,
   type ArrowPuzzle,
   type ArrowState,
+  type BlackjackOutcome,
+  type BlackjackPhase,
+  type BlackjackState,
   type Board,
+  type Card,
   type CatalogueGame,
   type Cell,
   type Direction,
   type GameStatus,
+  type Hand,
+  type HandResult,
   type LineClear,
+  type MinesweeperCell,
+  type MinesweeperDifficulty,
+  type MinesweeperOutcome,
+  type MinesweeperState,
   type MoveResult,
   type PieceCell,
   type PieceKind,
   type Playfield,
+  type Rank,
   type Rotation,
   type Score,
+  type Suit,
+  type SudokuCell,
+  type SudokuDifficulty,
+  type SudokuDigit,
+  type SudokuGrid,
+  type SudokuOutcome,
+  type SudokuState,
   type TetrisOutcome,
   type TetrisState,
 } from "./types";
@@ -108,3 +163,78 @@ export {
   startGame,
   tick,
 } from "./game-tetris";
+// Sudoku. `canPlace`, `renderRows`, `startGame` and `tick` are also Tetris exports, so
+// the Sudoku ones are aliased rather than renamed in their own module: inside
+// `game-sudoku.ts` the short names are the clear ones, and it is only here, where every
+// game's surface meets, that they need a qualifier. `Random` is already exported above
+// from `game-2048` and is the same structural type, so it is not re-exported.
+export {
+  canPlace as canPlaceDigit,
+  clearCell,
+  countSolutions,
+  digitCount,
+  emptyGrid,
+  enterDigit,
+  hasUniqueSolution,
+  isSolved as isSudokuSolved,
+  peersOf,
+  removeClues,
+  renderRows as renderSudokuRows,
+  scoreGame,
+  solvedGrid,
+  startGame as startSudoku,
+  tick as tickSudoku,
+  toggleNote,
+  wrongCells,
+} from "./game-sudoku";
+// Blackjack. `startGame`, `scoreGame`, `split` and `deal` are the collisions this time
+// — `startGame` with three other games and `scoreGame` with Sudoku — so they are
+// aliased here for the same reason the Sudoku block above is: inside
+// `game-blackjack.ts` the short names read best, and only this file, where every
+// game's surface meets, needs the qualifier. `Random` is already exported from
+// `game-2048` and is the same structural type, so it is not re-exported.
+export {
+  activeHandOf,
+  canDouble,
+  canSplit,
+  cashOut,
+  clampBet,
+  deal as dealBlackjack,
+  dealerPlay,
+  dealerUpcard,
+  doubleDown,
+  handValue,
+  hit,
+  isBlackjack,
+  isBust,
+  newShoe,
+  nextRound,
+  scoreGame as scoreBlackjack,
+  setBet,
+  settle,
+  split,
+  stand,
+  startGame as startBlackjack,
+  totalOf,
+  valueOf,
+} from "./game-blackjack";
+// Minesweeper. `startGame`, `scoreGame`, `tick`, `renderRows` and `reveal` are the
+// collisions this time — `scoreGame` is already taken by Sudoku, which exports it
+// unaliased — so the Minesweeper ones are qualified here for the reason the two blocks
+// above are: inside `game-minesweeper.ts` the short names read best, and only this
+// file, where every game's surface meets, needs the qualifier. `Random` is already
+// exported from `game-2048` and is the same structural type, so it is not re-exported.
+export {
+  canChord,
+  chord,
+  isCleared,
+  layMines,
+  minesRemaining,
+  neighboursOf,
+  renderRows as renderMinesweeperRows,
+  reveal as revealCell,
+  scoreGame as scoreMinesweeper,
+  startGame as startMinesweeper,
+  tick as tickMinesweeper,
+  toggleFlag,
+} from "./game-minesweeper";

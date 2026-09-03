@@ -1,9 +1,19 @@
+import type { Card } from "./playing-cards";
+
 /**
  * The Games module's domain types.
  *
  * A game is identified by a `GameKey` — a string that names code, not a database
  * row. See `catalogue.ts` for why the catalogue is not a table.
+ *
+ * One exception to "the types live here": the deck primitives are in
+ * `playing-cards.ts`, because they belong to no single game. See the note in the
+ * Blackjack section below.
  */
+
+// Re-exported so `@/lib/games` presents one surface and a caller need not know which
+// file a card type came from.
+export type { Card, Random as CardRandom, Rank, Suit } from "./playing-cards";
 
 /** Whether a catalogue entry can actually be played yet. */
 export type GameStatus = "available" | "coming-soon";
@@ -369,3 +379,387 @@ export const LINES_PER_LEVEL = 10;
  * slide one under an overhang, which is a move the game is expected to allow.
  */
 export const LOCK_DELAY_TICKS = 2;
+
+/* ---------------------------------------------------------------------------------
+   Sudoku.
+--------------------------------------------------------------------------------- */
+
+/** Side of the grid, and of one box. Nine and three — the game is not parameterised. */
+export const SUDOKU_SIZE = 9;
+export const SUDOKU_BOX = 3;
+
+/** Cells in a full grid. Named because it is the length every grid array must have. */
+export const SUDOKU_CELL_COUNT = SUDOKU_SIZE * SUDOKU_SIZE;
+
+/**
+ * A digit a cell can hold: 1-9, or `0` for an empty cell.
+ *
+ * `0` rather than `undefined` for empty, unlike Tetris's `Playfield`, because a
+ * solver fills and unfills cells constantly and `0` makes "is this cell empty" a
+ * numeric test in the innermost loop of `countSolutions`.
+ */
+export type SudokuDigit = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+
+/**
+ * A grid, row-major, 81 cells — the same flat-array trade as 2048's `Board`: every
+ * row, column and box check is an index computation rather than a reshape.
+ */
+export type SudokuGrid = readonly SudokuDigit[];
+
+/** The three boards on offer. Stored nowhere — one catalogue key covers all three. */
+export const SUDOKU_DIFFICULTIES = ["easy", "medium", "hard"] as const;
+
+export type SudokuDifficulty = (typeof SUDOKU_DIFFICULTIES)[number];
+
+/**
+ * Clues left on the board, and what solving it is worth, per difficulty.
+ *
+ * `clues` is a target the remover works down to and may miss by a cell or two: it only
+ * removes a digit when the puzzle still has exactly one solution, so a stubborn grid
+ * stops early. That bound is the point — a puzzle with two solutions is not a Sudoku,
+ * and "guess which one I meant" is the single worst way this game can break.
+ *
+ * 17 is the proven minimum for a unique 9x9, so `hard` at 26 stays well clear of the
+ * pathological end where a board needs techniques this UI gives no help with.
+ *
+ * `base` is the score for an instant solve; see `SUDOKU_TIME_PENALTY` for the decay.
+ * Hard is worth ~2.5x easy, so a slow hard board still beats a fast easy one — the
+ * ladder exists to be climbed, not to be farmed at the bottom.
+ */
+export const SUDOKU_SETUP: Record<
+  SudokuDifficulty,
+  { clues: number; base: number; label: string }
+> = {
+  easy: { clues: 44, base: 2000, label: "Easy" },
+  medium: { clues: 34, base: 3500, label: "Medium" },
+  hard: { clues: 26, base: 5000, label: "Hard" },
+};
+
+/**
+ * Points lost per second elapsed, and per mistake.
+ *
+ * **Sudoku scores points, not seconds, and this is the reason.** The shared scoreboard
+ * ranks `ORDER BY score DESC` (`repository.ts`) and `getBestScore` takes the top row,
+ * so a time in seconds would crown the *slowest* player of the house. Converting time
+ * into points here keeps faster = higher and leaves the board every other game shares
+ * completely untouched. `scoreUnit` is therefore `"points"` for Sudoku even though the
+ * unit `"seconds"` exists in this file — nothing ranks by it.
+ *
+ * A mistake costs 100, about 25 seconds, so guessing is worse than thinking but a
+ * single slip does not end the run. There is no mistake limit: a Sudoku is a puzzle
+ * with one right answer, and locking someone out three cells from the end teaches
+ * nothing that a dented score does not.
+ */
+export const SUDOKU_TIME_PENALTY = 4;
+export const SUDOKU_MISTAKE_PENALTY = 100;
+
+/**
+ * The least a solved board can score, however long it took.
+ *
+ * Without a floor, `base - elapsed * penalty` goes negative on a long session and a
+ * finished puzzle would record 0 — indistinguishable from not having played, and a
+ * dispiriting reward for grinding out a hard board. A finish is always worth something.
+ */
+export const SUDOKU_MIN_SCORE = 100;
+
+/**
+ * A cell as the player sees it.
+ *
+ * `given` marks a starting clue: it is never editable and never wrong, which is why it
+ * is a flag here rather than derived by comparing against the puzzle later — the view
+ * asks the cell, not the history.
+ *
+ * `notes` are the pencilled candidates, as a set of digits. Kept per cell rather than
+ * in one board-wide map so that clearing a cell clears its notes with it.
+ */
+export interface SudokuCell {
+  value: SudokuDigit;
+  given: boolean;
+  notes: readonly number[];
+}
+
+/** Why a run ended, or `undefined` while it is still going. */
+export type SudokuOutcome = "solved" | undefined;
+
+/**
+ * A whole game, as one immutable value — the same shape of state as `TetrisState`.
+ *
+ * `solution` rides along so a wrong entry can be judged the instant it is typed,
+ * without re-running the solver on every keystroke. It is client state either way:
+ * the board is not persisted mid-game (see the note in `games-arcade-view.tsx`), so
+ * there is nothing to leak to a player who does not already have it in their tab.
+ *
+ * `elapsedSeconds` is carried on the state rather than read from a clock, so scoring
+ * is testable without waiting: the view ticks it once a second, a test sets it.
+ */
+export interface SudokuState {
+  difficulty: SudokuDifficulty;
+  cells: readonly SudokuCell[];
+  solution: SudokuGrid;
+  /** Wrong digits entered so far, across the whole run. Reported as `moves`. */
+  mistakes: number;
+  /** Digits entered so far, right or wrong. Drives nothing; shown as progress. */
+  filled: number;
+  elapsedSeconds: number;
+  outcome: SudokuOutcome;
+}
+
+/* ---------------------------------------------------------------------------------
+   Blackjack.
+--------------------------------------------------------------------------------- */
+
+/*
+ * The deck itself — `Card`, `Rank`, `Suit`, `SUITS`, `RANKS` — lives in
+ * `playing-cards.ts`, not here. Nothing about a deck is specific to Blackjack, and the
+ * shared `PlayingCard` / `CardHand` components render from those types: a component
+ * importing a Blackjack-owned `Card` would only look reusable.
+ *
+ * They are re-exported below so `@/lib/games` still exposes one surface.
+ */
+
+/**
+ * Decks in the shoe.
+ *
+ * Six is the usual casino shoe. It matters here for one reason only: with a single
+ * deck, counting what has gone is easy enough to change how the game is played, and
+ * this game deliberately offers no help with that. Six also means a reshuffle is rare
+ * enough not to interrupt.
+ */
+export const DECKS_IN_SHOE = 6;
+
+/**
+ * Cards left in the shoe below which it is rebuilt.
+ *
+ * A round can need a surprising number of cards — two hands after a split, each drawn
+ * out — so the shoe is replaced between rounds while it still has plenty, rather than
+ * risking running dry mid-hand. Reshuffling between rounds also means no hand is ever
+ * dealt across a shuffle, which would be its own small unfairness.
+ */
+export const SHOE_RESHUFFLE_AT = 15 * DECKS_IN_SHOE;
+
+/** Chips a run starts with. Round and generous enough to survive a bad opening streak. */
+export const BLACKJACK_STARTING_CHIPS = 1000;
+
+/**
+ * The smallest and largest bet, and the step the bet control moves in.
+ *
+ * A maximum exists so a run cannot be decided by one all-in hand: without it the
+ * highest-scoring strategy is to bet everything on the first hand and either double
+ * the record or bust in one move, which is a coin flip rather than a game. The cap is
+ * a share of the *starting* bankroll rather than the current one, so it does not creep
+ * upwards as a run goes well.
+ */
+export const BLACKJACK_MIN_BET = 25;
+export const BLACKJACK_MAX_BET = 250;
+export const BLACKJACK_BET_STEP = 25;
+
+/** What a hand is worth. Twenty-one, and the dealer's standing total. */
+export const BLACKJACK_TARGET = 21;
+
+/**
+ * The total the dealer must reach before standing.
+ *
+ * The dealer stands on **all** 17s, soft ones included — see `dealerPlay`. Hitting a
+ * soft 17 is the other common house rule and is slightly worse for the player; the
+ * simpler rule is also the one with fewer special cases to get wrong.
+ */
+export const DEALER_STANDS_ON = 17;
+
+/**
+ * What a natural blackjack pays, as a multiple of the bet.
+ *
+ * 3:2 — the traditional payout. The 6:5 tables now common in casinos are a house-edge
+ * increase dressed as a rule, and there is no house here to favour.
+ */
+export const BLACKJACK_PAYOUT = 1.5;
+
+/** How a settled hand finished, or `undefined` while it is still being played. */
+export type HandResult = "blackjack" | "win" | "push" | "lose" | "bust";
+
+/**
+ * One hand of cards and the chips riding on it.
+ *
+ * A list rather than a single hand on the state, because a split turns one hand into
+ * two that are played out in turn and settled separately. `bet` lives per hand for
+ * the same reason: a split copies the original stake onto the new hand, and a double
+ * doubles only the hand it was played on.
+ */
+export interface Hand {
+  cards: readonly Card[];
+  bet: number;
+  /** Whether this hand doubled down. It may take exactly one more card, then stands. */
+  doubled: boolean;
+  /**
+   * Whether this hand came from a split.
+   *
+   * A split hand that reaches 21 is 21, **not** a blackjack: a natural is two cards
+   * off the deal, and paying 3:2 on a split ace-ten would make splitting aces the only
+   * bet worth making. See `isBlackjack`.
+   */
+  fromSplit: boolean;
+  /** Set when the hand is settled; `undefined` while it is in play. */
+  result: HandResult | undefined;
+}
+
+/**
+ * Where a round is up to.
+ *
+ * `betting` — no cards out, the player is choosing a stake.
+ * `playing` — the player is acting on `activeHand`.
+ * `dealer`  — every player hand is finished and the dealer is drawing.
+ * `settled` — the round is scored and the chips have moved; next deal is allowed.
+ *
+ * A phase rather than a set of booleans because these are mutually exclusive and the
+ * view switches its whole control row on them. Booleans would permit "betting and
+ * dealer at once", which is not a state this game has.
+ */
+export type BlackjackPhase = "betting" | "playing" | "dealer" | "settled";
+
+/** Why a run ended, or `undefined` while it can still continue. */
+export type BlackjackOutcome = "cashed-out" | "broke" | undefined;
+
+/**
+ * A whole run, as one immutable value — the same shape as `TetrisState` and
+ * `SudokuState`.
+ *
+ * A run is a **bankroll**, not a hand: it starts at `BLACKJACK_STARTING_CHIPS` and
+ * ends when the player cashes out or cannot cover the minimum bet. That is what gives
+ * the game a score worth ranking — "hands won" would be a grind counter, where a chip
+ * count rewards knowing when to stop.
+ */
+export interface BlackjackState {
+  /** The undealt cards, next card first. Rebuilt when it runs low; see `SHOE_RESHUFFLE_AT`. */
+  shoe: readonly Card[];
+  /**
+   * The player's hands, left to right. One, or two after a split.
+   *
+   * Empty while `phase` is `betting` — there are no cards on the table before a deal.
+   */
+  hands: readonly Hand[];
+  /** Which hand the player is acting on. Meaningless unless `phase` is `playing`. */
+  activeHand: number;
+  /**
+   * The dealer's cards. The second is face down to the player until the dealer plays;
+   * that is a *view* concern — the state holds the real card, and `dealerUpcard`
+   * exposes only what the player is entitled to see.
+   */
+  dealer: readonly Card[];
+  chips: number;
+  /** The stake for the next deal, carried between rounds so it need not be re-picked. */
+  bet: number;
+  /** Hands played to a finish. Reported as `moves` on the scoreboard. */
+  handsPlayed: number;
+  /** The highest the bankroll has ever been this run. Shown so a peak is not forgotten. */
+  peakChips: number;
+  outcome: BlackjackOutcome;
+  phase: BlackjackPhase;
+}
+
+/* ---------------------------------------------------------------------------------
+   Minesweeper.
+--------------------------------------------------------------------------------- */
+
+/** The three boards on offer. One catalogue key covers all three, as with Sudoku. */
+export const MINESWEEPER_DIFFICULTIES = ["beginner", "intermediate", "expert"] as const;
+
+export type MinesweeperDifficulty = (typeof MINESWEEPER_DIFFICULTIES)[number];
+
+/**
+ * Board dimensions, mine count and what clearing it is worth, per difficulty.
+ *
+ * The three classic sizes, unchanged: 9x9/10, 16x16/40 and 30x16/99. They are not
+ * arbitrary — the mine densities (12%, 16%, 21%) are what make the three boards feel
+ * like a ladder rather than the same game at three scales, and a player who knows
+ * Minesweeper knows these numbers. Inventing our own would make a record here
+ * incomparable to the game everyone has already played.
+ *
+ * `base` is the score for an instant clear; see `MINESWEEPER_TIME_PENALTY` for the
+ * decay. Expert is worth 4x beginner, a steeper ladder than Sudoku's 2.5x because the
+ * mine density — not just the cell count — is what climbs: an expert board cannot be
+ * ground out by a patient beginner the way a hard Sudoku can.
+ */
+export const MINESWEEPER_SETUP: Record<
+  MinesweeperDifficulty,
+  { cols: number; rows: number; mines: number; base: number; label: string }
+> = {
+  beginner: { cols: 9, rows: 9, mines: 10, base: 1500, label: "Beginner" },
+  intermediate: { cols: 16, rows: 16, mines: 40, base: 3500, label: "Intermediate" },
+  expert: { cols: 30, rows: 16, mines: 99, base: 6000, label: "Expert" },
+};
+
+/**
+ * Points lost per second elapsed.
+ *
+ * **Minesweeper scores points, not seconds, for the reason Sudoku does** — the shared
+ * board ranks `ORDER BY score DESC` (`repository.ts`), so a time in seconds would put
+ * the slowest player of the house on top. Time is converted into points here and
+ * `scoreUnit` stays `"points"`, leaving the board every other game shares untouched.
+ *
+ * 3 a second, slightly gentler than Sudoku's 4: an expert board is 480 cells and the
+ * flagging alone is real work, so the decay has to leave a careful clear worth more
+ * than a lucky fast one.
+ */
+export const MINESWEEPER_TIME_PENALTY = 3;
+
+/**
+ * The least a cleared board can score, however long it took.
+ *
+ * Same reasoning as `SUDOKU_MIN_SCORE`: without a floor a long expert grind goes
+ * negative and records 0, which is indistinguishable from having hit a mine. A clear
+ * is always worth something.
+ */
+export const MINESWEEPER_MIN_SCORE = 100;
+
+/**
+ * A cell as the player sees it.
+ *
+ * `adjacent` is precomputed when the mines are laid rather than counted on reveal:
+ * the flood fill in `reveal` visits a cell's neighbours anyway, and re-deriving the
+ * count per visit turns each step into eight extra lookups on a 480-cell board.
+ *
+ * `mine` is on the state, not hidden from it. The board is client state and is never
+ * persisted mid-game (see the note in `games-arcade-view.tsx`), so there is nothing
+ * here a player with their own dev tools does not already have — the same trade
+ * `SudokuState.solution` makes.
+ */
+export interface MinesweeperCell {
+  mine: boolean;
+  revealed: boolean;
+  flagged: boolean;
+  /** Mines in the eight surrounding cells, 0-8. Meaningless when `mine` is true. */
+  adjacent: number;
+}
+
+/** Why a run ended, or `undefined` while it is still going. */
+export type MinesweeperOutcome = "cleared" | "hit-mine" | undefined;
+
+/**
+ * A whole game, as one immutable value — the same shape as `SudokuState`.
+ *
+ * `cells` is row-major and flat, 2048's and Sudoku's trade again: every neighbour
+ * lookup is index arithmetic rather than a reshape, and the flood fill pushes indexes
+ * onto a stack rather than coordinate pairs.
+ *
+ * **`mined` is false until the first reveal.** A fresh board has dimensions and
+ * nothing else; `reveal` lays the mines on the first click, excluding that cell and
+ * its neighbours. That is what makes the opening move safe rather than a coin flip —
+ * see `startGame` and `layMines`.
+ *
+ * `elapsedSeconds` is carried here rather than read from a clock, so scoring is
+ * testable without waiting: the view ticks it once a second, a test sets it.
+ */
+export interface MinesweeperState {
+  difficulty: MinesweeperDifficulty;
+  cols: number;
+  rows: number;
+  mines: number;
+  cells: readonly MinesweeperCell[];
+  /** Whether the mines have been laid. False on a fresh board; see `reveal`. */
+  mined: boolean;
+  /** Cells uncovered so far. Drives the win test; shown as progress. */
+  revealed: number;
+  /** Flags placed, right or wrong. Reported as `moves`, and drives the mine counter. */
+  flags: number;
+  elapsedSeconds: number;
+  outcome: MinesweeperOutcome;
+}

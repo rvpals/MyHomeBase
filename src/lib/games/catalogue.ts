@@ -43,6 +43,50 @@ export const GAME_CATALOGUE: readonly CatalogueGame[] = [
     status: "available",
     scoreUnit: "points",
   },
+  // One Sudoku entry covering all three boards, with the difficulty chosen inside the
+  // game rather than split into `sudoku-easy` / `-medium` / `-hard` keys. Three keys
+  // would mean three Arcade cards and three separate scoreboards for one game, which
+  // is the shape Arrow Clearing shipped with and had to withdraw in migration 0077.
+  //
+  // Points, not seconds, even though this is a timed game -- the shared board ranks
+  // `score DESC`, so a time in seconds would crown the slowest player in the house.
+  // `scoreGame` in `game-sudoku.ts` turns time into points; see `SUDOKU_TIME_PENALTY`.
+  {
+    key: "sudoku",
+    name: "Sudoku",
+    description: "Fill the grid so every row, column and box holds one to nine.",
+    status: "available",
+    scoreUnit: "points",
+  },
+  // Blackjack scores the chips a run banks, so `scoreUnit` is `"points"` and the
+  // scoreboard reads "1,450 pts" for what the game calls chips. A `"chips"` unit would
+  // be truer to the game but would mean a third unit for one entry; the mismatch is
+  // confined to the scoreboard column, where every game's number is a score anyway.
+  //
+  // Only a cash-out scores — a run that goes broke records 0, the same rule Sudoku
+  // applies to an abandoned board. See `scoreGame` in `game-blackjack.ts`.
+  {
+    key: "blackjack",
+    name: "Blackjack",
+    description: "Beat the dealer to twenty-one. Bank your chips before they go.",
+    status: "available",
+    scoreUnit: "points",
+  },
+  // One Minesweeper entry covering all three boards, with the difficulty chosen inside
+  // the game — the same call Sudoku makes, and for the same reason: three keys would
+  // mean three Arcade cards and three scoreboards for one game.
+  //
+  // Points, not seconds, even though this is the timed game people know by its clock.
+  // The shared board ranks `score DESC`, so seconds would crown the slowest player in
+  // the house; `scoreGame` in `game-minesweeper.ts` turns time into points. See
+  // `MINESWEEPER_TIME_PENALTY`.
+  {
+    key: "minesweeper",
+    name: "Minesweeper",
+    description: "Uncover every safe square. The numbers tell you where the mines are.",
+    status: "available",
+    scoreUnit: "points",
+  },
 ];
 
 /** The catalogue entry for `key`, or undefined when nothing matches. */
