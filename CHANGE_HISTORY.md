@@ -1,10 +1,117 @@
 # Change History
 
+## 2026-09-03 14:48 — Stocks: the refresh total counts up
+
+### [Changed] Stocks & ETFs: the Portfolio Summary total climbs as prices land
+
+The dashboard's refresh icon already walked the positions one ticker at a time and
+reported progress per symbol, but the **Portfolio Summary** card sat on its
+pre-refresh number for the whole walk and then jumped once at the end. On a
+thirty-odd position portfolio that is a long wait staring at a stale figure with a
+progress bar moving above it.
+
+The total and today's gain/loss now update after every quote, so the headline
+figure counts up while the bar fills. The line under them reads "refreshing
+prices — the total above is counting up" during the run, so a number that is
+mid-flight is labelled as such rather than looking final.
+
+**Only those two figures move.** Statistics, the period tiles and the three
+allocation charts still settle on the server's recompute when the walk finishes:
+re-sorting a bar chart on every quote is noise, and the period tiles are
+snapshot-derived so they genuinely cannot move until the snapshot is written.
+
+The arithmetic is a pure fold in the lib — `applyRefreshedPosition()` in
+`src/lib/stock-positions/stock-positions.ts` — and it takes the position's value
+and day move **both before and after** the re-price, so it is a swap rather than
+an addition. That is what makes it idempotent per ticker: refreshing the same
+symbol twice cannot count it twice. `refreshOnePositionAction` reads the position
+before refreshing to supply the "before", since `refreshPosition` upserts and the
+old value is gone by the time it returns.
+
+Six tests cover it, the load-bearing one being that folding position-by-position
+lands on exactly what `computePortfolioSummary` returns over the finished
+positions — the climbing number and the number the page settles on are computed
+two different ways, and that test is what stops them drifting.
+
+**A failed ticker is skipped rather than zeroed.** It keeps its stored value, so
+the running total stays a real portfolio value instead of dipping by one position
+mid-walk; the closing line still reports the failure count as before.
+
+The refresh icon and the summary card sit on opposite sides of a server boundary —
+`StockSection` renders the already-loaded `SectionBody` alongside the control, so
+neither can hand the other a prop — so the running total travels through a new
+module-local client context, `stock-refresh-progress-context.tsx`. Same shape as
+`journal-new-entry-context.tsx`, and like that one it is deliberately **not**
+registered in `components.md`: it is one module's wiring, not a reusable component.
+
+The final total deliberately stays on screen after the loop ends and is retired
+only when fresh server props arrive. `router.refresh()` is fire-and-forget, so
+clearing it the moment the walk finished would flash the pre-refresh number back
+for as long as the round trip took.
+
+The headline figures gained `tabular-nums` so the digits stop shuffling sideways
+as the number grows and shrinks, and the total carries `aria-live="polite"` so a
+screen reader hears it settle rather than announcing every intermediate value.
+
+No migration, no new dependency, no new icon slot — the existing `refresh` glyph
+and button are unchanged.
+
+## 2026-09-03 — Attendance: a class knows its weekday
+
+Migration 0080.
+
+### [Added] Attendance: the home screen opens on today's class
+
+A class now records the **weekday it meets on** — Monday to Friday, chosen on the
+Classes screen — and the home screen opens on today's register instead of on one
+statically configured class. A teacher with a different class each day stops
+picking from the dropdown every morning.
+
+The choice is most-specific-first: `?classId=` in the URL wins (so a bookmarked
+first-period register still lands where it points), then today's weekday class,
+then the existing default-class setting, then "Pick a class…". The weekday beats
+the configured default because it is the narrower claim — a default says "usually
+this one", a weekday says "this one, today".
+
+The picker labels each class with its day and marks today's, so the pre-selection
+is something you can see the reason for rather than a value that appeared on its
+own. The Classes grid gains a Weekday column, sorted on the stored number so the
+week reads Monday-to-Friday rather than alphabetically.
+
+Monday-to-Friday only: this is a school timetable, so the weekend is not an option
+rather than an option nobody picks. At the weekend nothing matches and the screen
+falls through to the configured default — no register rather than a wrong one.
+
+**Deliberately not the Report screen**, which shares the class-picking helper.
+Which day the report opens on is already the `reportDefaultsToToday` setting's
+business, and letting the weekday reach in would quietly override a preference the
+reader had set. The weekday step is a parameter only the home screen passes.
+
+Existing classes are **not back-filled**. Migration 0080 adds
+`class_weekday INTEGER NOT NULL DEFAULT 0`, and `0` is a real state meaning "never
+set": guessing Monday would be a lie indistinguishable from a confirmed day, and it
+would put the wrong register in front of a teacher with full confidence every
+Monday. Such a class is readable, is never any day's class, and shows as "—" on the
+Classes screen until someone picks a day. The CSV roster importer creates classes
+the same way — a file names a class but says nothing about when it meets.
+
+Readable but not writable, the same split `statement_close_day` uses (0070):
+`attendanceClassSchema` admits `0` so a pre-migration class still loads, while
+`createClassSchema` requires 1–5 so nothing going through the form or the CLI can
+store one. Two classes may share a weekday — a Monday morning and a Monday
+afternoon class is ordinary — so there is no unique index; the first by name wins
+and the dropdown stays usable.
+
+The rule is pure and lives in `src/lib/attendance/weekday.ts`, with nine tests
+covering the weekend, an unclaimed weekday, an unset class on a Sunday (0 is both
+"unset" and `getDay()`'s Sunday, which a naive equality check would collide), and
+ties.
+
 ## 2026-09-02 23:29 — A journal recycle bin, three new games, and a visualizer
 
 Nine bodies of work, committed separately and released together. Migration 0079.
 
-### Journal: a recycle bin, and a Correct tab to feed it
+### [Added] Journal: a recycle bin, and a Correct tab to feed it
 
 The Journal section called **Import** is now **Data Management**, holding three tabs:
 Import (the CSV importer, unchanged), **Correct** (new) and **Reset** (new). The route
@@ -54,7 +161,7 @@ entries recycled beforehand can be restored into an otherwise-empty journal. And
 `loadJournalCorrectDataAction` / `countRecycledEntriesAction` are exported but called
 from nowhere.
 
-### Journal: metadata backup and restore
+### [Added] Journal: metadata backup and restore
 
 Meta Data gains **Back up all meta data**, downloading a dated JSON file holding every
 category and tag with its description and icon bytes, every prefill template, every saved
@@ -82,7 +189,7 @@ BLOB this app serves from its own origin.
 `photoRoot` is exported for completeness but **never applied** — it is a per-install
 absolute path, and restoring it would silently break the entry viewer's photo card.
 
-### Games: Sudoku, Blackjack and Minesweeper
+### [Added] Games: Sudoku, Blackjack and Minesweeper
 
 The Arcade goes from three games to six.
 
@@ -119,7 +226,7 @@ S, Z, J and L nearly indistinguishable.
 the reasoning that the `played` count should reflect that somebody sat down. The
 instructions read as though nothing is written.
 
-### Music: a spectrum analyser on the player screen
+### [Added] Music: a spectrum analyser on the player screen
 
 Once a track is playing, a brass visualizer appears between the cover art and the title,
 with a **Bars/Wave** toggle over its top-right corner. The choice persists in
@@ -152,7 +259,7 @@ stored mode, or it would reset someone's choice on every save.
 
 **Not documented in the music instructions panel** — an omission, not a policy.
 
-### SQL Explorer: a schema browser, and prose for every table
+### [Added] SQL Explorer: a schema browser, and prose for every table
 
 The admin SQL Explorer splits into **SQL Query** (unchanged) and **Tables Explorer**. The
 new tab pairs a "Table references" card — hand-written prose on what each table is for,
@@ -173,7 +280,7 @@ unknown lands in a trailing "Unclassified" group. Table names are validated by s
 `Tabs` gained optional controlled mode for the tab-jumping; uncontrolled use is unchanged.
 `TreeNav` is new — two levels, no recursion, which is exactly what the schema tree needs.
 
-### Module carousel graphics are resized on upload
+### [Changed] Module carousel graphics are resized on upload
 
 Nothing resized these before: the control only *rejected* over 2 MB, so a 3000x3000 photo
 was stored whole and downloaded whole to be drawn in a 192px tile — around a hundred times
@@ -203,7 +310,7 @@ There is no undo but a database restore.
 gained a required `listAllCarouselImages()` — documented as backfill-only, since it reads
 BLOBs.
 
-### Favourite photos: a slideshow
+### [Added] Favourite photos: a slideshow
 
 The favourite-photos screen gains a **Slideshow** button above the grid, and the lightbox
 gains an optional play/pause control. Five seconds a photo.
@@ -216,12 +323,12 @@ of what was asked. The timer therefore advances the index directly rather than c
 full interval on the photo it lands on. The last photo **ends** the run rather than
 wrapping, so leaving it going finishes on a still picture.
 
-### Stocks: the indexes refresh is an icon
+### [Changed] Stocks: the indexes refresh is an icon
 
 The dashboard's "Refresh all" button became an icon-only control that spins while
 fetching, matching the other refresh on that screen.
 
-### Expense: the top-5 cards link through, and stop inventing vendors
+### [Added] Expense: the top-5 cards link through
 
 Each row of "Top 5 biggest spenders" on the Expense dashboard is now a link into
 Transactions with that vendor or category already expanded — the same URL contract the
@@ -244,10 +351,22 @@ already apply their own positive-only filter.
 rather than TM. The trailing `*` is still required, which is what stops it eating a
 merchant whose name merely starts with those letters.
 
-**Also fixed:** the Transactions grid's Edit button did nothing visible. The form card was
-uncontrolled, and `defaultOpen` is only read once at mount, so clicking Edit populated a
-form that stayed collapsed. The card is now controlled, and picking a row opens it and
-scrolls it into view.
+### [Fixed] Expense: the top-5 vendor cards invented vendors out of statement prose
+
+A payment or redemption line carries no vendor, so the rollup fell back to deriving a
+brand key from the description, and "ONLINE PAYMENT THANK YOU" became a vendor called
+ONLINE, ranked against real shops. `vendorSpendTotals` filters on the sign of the group's
+net rather than on a list of banned words: an issuer can reword its statements, but money
+coming back to you is not spend whatever the line is called.
+
+`TM` also joins the payment-processor prefixes, so `TM *TICKETMASTER` reads as
+TICKETMASTER rather than TM.
+
+### [Fixed] Expense: the Transactions grid's Edit button did nothing
+
+The form card was uncontrolled, and `defaultOpen` is only read once at mount, so clicking
+Edit populated a form that stayed collapsed. The card is now controlled, and picking a
+row opens it and scrolls it into view.
 
 ## 2026-09-01 16:03 — Tetris, a deployment log, and an import that stops duplicating itself
 

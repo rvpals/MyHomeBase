@@ -4,7 +4,7 @@
 // what it has returned since you bought in, and how the value is spread. Every
 // number arrives already computed by the lib — this file only formats and lays out.
 
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { ChartBar } from "@/components/chart-bar";
 import { ChartLine } from "@/components/chart-line";
 import { CollapsibleCard } from "@/components/collapsible-card";
@@ -15,6 +15,7 @@ import type { DailySnapshot, PeriodSummary, ToDateSummaries } from "@/lib/stock-
 import type { AllocationSlice, PortfolioSummary } from "@/lib/stock-positions";
 import { centsToDollars, formatCents } from "@/lib/shared/money";
 import { StockIndexesCard } from "./stock-indexes-card";
+import { useStockRefreshProgress } from "./stock-refresh-progress-context";
 
 function gainClass(cents: number): string {
   return cents < 0 ? "text-red-400" : "text-emerald-400";
@@ -77,6 +78,12 @@ function AllocationChart({
  * The two big numbers come from the live positions rather than the newest
  * snapshot, so they're right even before today's refresh — the snapshots feed
  * the chart and the table inside the child card.
+ *
+ * While the heading's refresh icon is walking the portfolio, those same two
+ * numbers come from the running total in `useStockRefreshProgress` instead, so
+ * they climb per ticker rather than jumping once at the end. Nothing else in the
+ * card moves mid-run: the history chart and table are snapshot-derived, and the
+ * snapshot isn't written until the walk finishes.
  */
 function PortfolioSummaryCard({
   summary,
@@ -85,6 +92,24 @@ function PortfolioSummaryCard({
   summary: PortfolioSummary;
   snapshots: DailySnapshot[];
 }) {
+  const { liveSummary, isRefreshing, setLiveSummary } = useStockRefreshProgress();
+
+  // The live total is what's shown while the walk is running, and it stays up
+  // afterwards until the server's re-render lands — `router.refresh()` is
+  // fire-and-forget, so dropping it the moment the loop ends would flash the
+  // pre-refresh number back for as long as the round trip takes.
+  const shown = liveSummary ?? summary;
+
+  // Fresh props arriving is the signal to let go: once the walk has finished and
+  // the server has re-rendered, the prop is authoritative and the live copy is
+  // just a stale duplicate. Keyed on the prop's total, so a re-render carrying
+  // the same data doesn't retire a still-climbing figure mid-walk.
+  useEffect(() => {
+    if (!isRefreshing) setLiveSummary(undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the prop's total is
+    // the trigger; `isRefreshing` is read as a guard, not depended on.
+  }, [summary.totalValueCents, summary.totalDayGainLossCents]);
+
   const history = snapshots.map((snapshot) => ({
     date: snapshot.snapshotDate,
     total: centsToDollars(snapshot.totalValueCents),
@@ -163,17 +188,30 @@ function PortfolioSummaryCard({
 
   return (
     <CollapsibleCard title="Portfolio Summary" defaultOpen>
-      <p className="font-display text-3xl text-ink">{formatCents(summary.totalValueCents)}</p>
-      <p className={`mt-1 text-sm font-medium ${gainClass(summary.totalDayGainLossCents)}`}>
-        {summary.totalDayGainLossCents >= 0 ? "▲" : "▼"} {formatCents(summary.totalDayGainLossCents)} (
-        {summary.dayChangePct >= 0 ? "+" : ""}
-        {summary.dayChangePct.toFixed(2)}%) today
+      {/* `aria-live="polite"` so a screen reader hears the total settle rather
+          than every intermediate value: polite waits for a pause, and the figure
+          changes once per ticker. `tabular-nums` keeps the digits from shuffling
+          sideways as the number grows and shrinks mid-walk. */}
+      <p
+        className={`font-display text-3xl tabular-nums text-ink transition-opacity ${
+          isRefreshing ? "opacity-80" : ""
+        }`}
+        aria-live="polite"
+      >
+        {formatCents(shown.totalValueCents)}
+      </p>
+      <p className={`mt-1 text-sm font-medium tabular-nums ${gainClass(shown.totalDayGainLossCents)}`}>
+        {shown.totalDayGainLossCents >= 0 ? "▲" : "▼"} {formatCents(shown.totalDayGainLossCents)} (
+        {shown.dayChangePct >= 0 ? "+" : ""}
+        {shown.dayChangePct.toFixed(2)}%) today
       </p>
       <p className="mt-1 text-xs text-muted">
-        {summary.positionCount} position(s) ·{" "}
-        {snapshots.length > 0
-          ? `${snapshots.length} day(s) of history since ${snapshots[0].snapshotDate}`
-          : "no history captured yet — press the refresh icon by the heading"}
+        {shown.positionCount} position(s) ·{" "}
+        {isRefreshing
+          ? "refreshing prices — the total above is counting up"
+          : snapshots.length > 0
+            ? `${snapshots.length} day(s) of history since ${snapshots[0].snapshotDate}`
+            : "no history captured yet — press the refresh icon by the heading"}
       </p>
 
       {/* Both views of the snapshot data live in one child card, collapsed by

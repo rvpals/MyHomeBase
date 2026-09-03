@@ -6,6 +6,7 @@ import {
   computeAverageCostBasisCents,
   computeDayMovesByType,
   computePortfolioSummary,
+  applyRefreshedPosition,
   computeTickerDayMoves,
   computeTransactionStats,
   createTransaction,
@@ -583,6 +584,97 @@ describe("computePortfolioSummary", () => {
       totalUnrealizedGainLossCents: 0,
       totalReturnPct: 0,
     });
+  });
+});
+
+describe("applyRefreshedPosition", () => {
+  const positions: StockPosition[] = [
+    makePosition({ ticker: "AAPL", valueCents: 150000, dayGainLossCents: 500, costCents: 100000 }),
+    makePosition({ ticker: "SPY", type: "ETF", valueCents: 180000, dayGainLossCents: -200 }),
+  ];
+
+  it("swaps one position's value and day move into the running total", () => {
+    const seeded = computePortfolioSummary(positions);
+    const running = applyRefreshedPosition(
+      seeded,
+      { valueCents: 150000, dayGainLossCents: 500 },
+      { valueCents: 155000, dayGainLossCents: 5500 },
+    );
+
+    expect(running.totalValueCents).toBe(335000);
+    expect(running.totalDayGainLossCents).toBe(5300);
+  });
+
+  it("lands on the same totals a full recompute would, after folding every position", () => {
+    // What a completed refresh looks like: both tickers re-priced. Folding one at
+    // a time must agree with summing the finished positions in one pass, or the
+    // climbing number and the number the page settles on would disagree.
+    const refreshed: StockPosition[] = [
+      makePosition({ ticker: "AAPL", valueCents: 155000, dayGainLossCents: 5500, costCents: 100000 }),
+      makePosition({ ticker: "SPY", type: "ETF", valueCents: 172000, dayGainLossCents: -8200 }),
+    ];
+
+    let running = computePortfolioSummary(positions);
+    for (const [index, after] of refreshed.entries()) {
+      running = applyRefreshedPosition(running, positions[index], after);
+    }
+
+    const recomputed = computePortfolioSummary(refreshed);
+    expect(running.totalValueCents).toBe(recomputed.totalValueCents);
+    expect(running.totalDayGainLossCents).toBe(recomputed.totalDayGainLossCents);
+    expect(running.dayChangePct).toBeCloseTo(recomputed.dayChangePct, 10);
+  });
+
+  it("is idempotent per ticker — refreshing the same one twice can't double-count it", () => {
+    const seeded = computePortfolioSummary(positions);
+    const before = { valueCents: 150000, dayGainLossCents: 500 };
+    const after = { valueCents: 155000, dayGainLossCents: 5500 };
+
+    const once = applyRefreshedPosition(seeded, before, after);
+    const twice = applyRefreshedPosition(once, after, after);
+
+    expect(twice.totalValueCents).toBe(once.totalValueCents);
+    expect(twice.totalDayGainLossCents).toBe(once.totalDayGainLossCents);
+  });
+
+  it("recomputes the day percent against the prior close, not the new value", () => {
+    const seeded = computePortfolioSummary([
+      makePosition({ valueCents: 100000, dayGainLossCents: 0 }),
+    ]);
+    const running = applyRefreshedPosition(
+      seeded,
+      { valueCents: 100000, dayGainLossCents: 0 },
+      { valueCents: 105000, dayGainLossCents: 5000 },
+    );
+
+    // +$50 on a $1000 prior close is +5%, not 5000/105000.
+    expect(running.dayChangePct).toBeCloseTo(5, 10);
+  });
+
+  it("leaves cost basis, dividend income and the type split alone", () => {
+    const seeded = computePortfolioSummary(positions);
+    const running = applyRefreshedPosition(
+      seeded,
+      { valueCents: 150000, dayGainLossCents: 500 },
+      { valueCents: 155000, dayGainLossCents: 5500 },
+    );
+
+    expect(running.totalCostCents).toBe(seeded.totalCostCents);
+    expect(running.annualDividendIncomeCents).toBe(seeded.annualDividendIncomeCents);
+    expect(running.stockValueCents).toBe(seeded.stockValueCents);
+    expect(running.etfValueCents).toBe(seeded.etfValueCents);
+    expect(running.positionCount).toBe(seeded.positionCount);
+  });
+
+  it("reports a zero percent when the prior close nets to nothing (no division by zero)", () => {
+    const seeded = computePortfolioSummary([makePosition({ valueCents: 0, dayGainLossCents: 0 })]);
+    const running = applyRefreshedPosition(
+      seeded,
+      { valueCents: 0, dayGainLossCents: 0 },
+      { valueCents: 5000, dayGainLossCents: 5000 },
+    );
+
+    expect(running.dayChangePct).toBe(0);
   });
 });
 

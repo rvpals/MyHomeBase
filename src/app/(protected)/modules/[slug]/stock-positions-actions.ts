@@ -6,13 +6,14 @@ import {
   createTransaction,
   deletePosition,
   deleteTransaction,
+  getPosition,
   listPositions,
   refreshAllPositions,
   refreshPosition,
   updateTransaction,
   upsertPosition,
 } from "@/lib/stock-positions";
-import type { PositionType, TransactionAction } from "@/lib/stock-positions";
+import type { PositionType, PositionValueMove, TransactionAction } from "@/lib/stock-positions";
 import { centsToDollars, dollarsToCents } from "@/lib/shared/money";
 import { deps } from "@/lib/wiring";
 
@@ -202,6 +203,14 @@ export interface RefreshOneResult extends ActionResult {
   /** Formatted price, e.g. "220.15". Absent when the fetch failed. */
   price?: string;
   name?: string;
+  /**
+   * What this position contributed to the portfolio total before and after the
+   * re-price, so the dashboard can swap one for the other and keep a running
+   * total climbing. Both absent when the fetch failed — a failed ticker keeps its
+   * stored value, so there's nothing to swap.
+   */
+  before?: PositionValueMove;
+  after?: PositionValueMove;
 }
 
 /**
@@ -214,6 +223,9 @@ export async function refreshOnePositionAction(
   ticker: string,
 ): Promise<RefreshOneResult> {
   try {
+    // Read before writing: `refreshPosition` upserts, so the pre-refresh value is
+    // gone by the time it returns, and the running total needs both ends.
+    const existing = getPosition(deps.stockPositionRepo, { accountId, ticker });
     const position = await refreshPosition(deps.stockPositionRepo, deps.marketDataClient, {
       accountId,
       ticker,
@@ -223,6 +235,14 @@ export async function refreshOnePositionAction(
       ticker,
       price: centsToDollars(position.currentPriceCents).toFixed(2),
       name: position.name,
+      before: {
+        valueCents: existing?.valueCents ?? 0,
+        dayGainLossCents: existing?.dayGainLossCents ?? 0,
+      },
+      after: {
+        valueCents: position.valueCents,
+        dayGainLossCents: position.dayGainLossCents,
+      },
     };
   } catch (error) {
     return {

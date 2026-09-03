@@ -36,6 +36,7 @@ import { StockImportView } from "./stock-import-view";
 import { StockInstructions } from "./stock-instructions";
 import { StockPositionsView } from "./stock-positions-view";
 import { StockRefreshControl } from "./stock-refresh-control";
+import { StockRefreshProgressProvider } from "./stock-refresh-progress-context";
 import { STOCK_SECTION_INFO, type StockSection } from "./stock-sections";
 import { StockShell } from "./stock-shell";
 import { StockSimulationView } from "./stock-simulation-view";
@@ -216,6 +217,12 @@ export async function StockSection({ section }: { section: StockSection }) {
   // Configuration or CSV Import the same icon beside the heading would read as
   // "reload this screen". Positions keeps its own Refresh All in its toolbar.
   const snapshots = section === "main" ? loadSnapshots(todayIsoLocal()) : [];
+  // The seed for the refresh's running total. Computed here as well as in
+  // `SectionBody` because the refresh icon and the summary card sit on opposite
+  // sides of that call — it's a reduce over already-loaded rows, not a second
+  // query, so the duplicate costs nothing.
+  const seedSummary =
+    section === "main" ? computePortfolioSummary(listPositions(deps.stockPositionRepo)) : undefined;
 
   return (
     // The two-tier shell: a module rail, a section panel and a utility header,
@@ -225,35 +232,42 @@ export async function StockSection({ section }: { section: StockSection }) {
     // `async` because the shell reads cookies for the session and the pinned
     // layout, which `next/headers` only exposes as a promise.
     <StockShell>
-      {/* The three controls are icon-width closed, so they share the title's line
-          at 390px. `flex-wrap` is still what lets the progress strip (`basis-full`)
-          and an opened search field or menu take a line of their own. */}
-      <div className="flex flex-wrap items-center gap-2">
-        <h2 className="font-display text-2xl font-semibold text-ink">{info.label}</h2>
-        {section === "main" && (
-          <>
-            <StockTickerSearch />
-            <StockFavoritesMenu />
-            <StockRefreshControl
-              lastSnapshotDate={snapshots[snapshots.length - 1]?.snapshotDate}
-            />
-          </>
-        )}
-      </div>
-      <p className="mt-1 text-sm text-muted">{info.description}</p>
-      <div className="mt-3 h-px w-full bg-line" />
+      {/* Wraps the heading and the body together so the refresh icon's running
+          total reaches the Portfolio Summary card, which is inside `SectionBody`
+          and so can't be handed a prop from here. Harmless on other sections —
+          nothing reads the context there. */}
+      <StockRefreshProgressProvider>
+        {/* The three controls are icon-width closed, so they share the title's line
+            at 390px. `flex-wrap` is still what lets the progress strip (`basis-full`)
+            and an opened search field or menu take a line of their own. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="font-display text-2xl font-semibold text-ink">{info.label}</h2>
+          {section === "main" && (
+            <>
+              <StockTickerSearch />
+              <StockFavoritesMenu />
+              <StockRefreshControl
+                lastSnapshotDate={snapshots[snapshots.length - 1]?.snapshotDate}
+                summary={seedSummary}
+              />
+            </>
+          )}
+        </div>
+        <p className="mt-1 text-sm text-muted">{info.description}</p>
+        <div className="mt-3 h-px w-full bg-line" />
 
-      {/* Each section gets only the guidance that applies to it — the whole
-          document above every screen was noise between heading and content. */}
-      <div className="mt-6">
-        <CollapsibleCard title="Instruction">
-          <StockInstructions section={section} />
-        </CollapsibleCard>
-      </div>
+        {/* Each section gets only the guidance that applies to it — the whole
+            document above every screen was noise between heading and content. */}
+        <div className="mt-6">
+          <CollapsibleCard title="Instruction">
+            <StockInstructions section={section} />
+          </CollapsibleCard>
+        </div>
 
-      <div className="mt-6">
-        <SectionBody section={section} />
-      </div>
+        <div className="mt-6">
+          <SectionBody section={section} />
+        </div>
+      </StockRefreshProgressProvider>
     </StockShell>
   );
 }

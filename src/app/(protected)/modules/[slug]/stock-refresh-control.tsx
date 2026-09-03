@@ -21,15 +21,28 @@ import { Comments } from "@/components/comments";
 import { Progress3D } from "@/components/progress-3d";
 import { TreeIcon } from "@/components/tree-icons";
 import { formatCents } from "@/lib/shared/money";
+import { applyRefreshedPosition, type PortfolioSummary } from "@/lib/stock-positions";
 import {
   listRefreshTargetsAction,
   refreshOnePositionAction,
 } from "./stock-positions-actions";
 import { refreshTickerProfilesAction } from "./stock-profiles-actions";
+import { useStockRefreshProgress } from "./stock-refresh-progress-context";
 import { captureDailySnapshotAction } from "./stock-snapshot-actions";
 
-export function StockRefreshControl({ lastSnapshotDate }: { lastSnapshotDate?: string }) {
+export function StockRefreshControl({
+  lastSnapshotDate,
+  summary,
+}: {
+  lastSnapshotDate?: string;
+  /**
+   * The portfolio total as the server rendered it — the seed the running total
+   * counts up from. Absent on a section that has no summary to move.
+   */
+  summary?: PortfolioSummary;
+}) {
   const router = useRouter();
+  const { setLiveSummary, setIsRefreshing } = useStockRefreshProgress();
   const [isRunning, setIsRunning] = useState(false);
   const [status, setStatus] = useState<string | undefined>(undefined);
   const [done, setDone] = useState<string | undefined>(undefined);
@@ -38,10 +51,17 @@ export function StockRefreshControl({ lastSnapshotDate }: { lastSnapshotDate?: s
 
   async function handleRefreshAll() {
     setIsRunning(true);
+    setIsRefreshing(true);
     setDone(undefined);
     setError(undefined);
     setProgress({ current: 0, total: 0 });
     setStatus("reading positions…");
+
+    // The running total starts from what the page is already showing and is
+    // swapped one position at a time, so the figure climbs from a real number
+    // rather than counting up from zero.
+    let running = summary;
+    setLiveSummary(running);
 
     try {
       const targets = await listRefreshTargetsAction();
@@ -62,6 +82,14 @@ export function StockRefreshControl({ lastSnapshotDate }: { lastSnapshotDate?: s
         const result = await refreshOnePositionAction(target.accountId, target.ticker);
         if (!result.ok) failedCount += 1;
         setProgress({ current: index + 1, total: targets.length });
+
+        // A failed ticker returns no before/after and so is skipped: it keeps its
+        // stored value, which leaves the running total a real portfolio value
+        // rather than dipping by one position.
+        if (running && result.before && result.after) {
+          running = applyRefreshedPosition(running, result.before, result.after);
+          setLiveSummary(running);
+        }
       }
 
       // Sectors for the allocation chart. Skipped for every ticker already
@@ -96,7 +124,13 @@ export function StockRefreshControl({ lastSnapshotDate }: { lastSnapshotDate?: s
       router.refresh();
     } finally {
       setIsRunning(false);
+      setIsRefreshing(false);
       setStatus(undefined);
+      // The final folded total deliberately stays on screen. `router.refresh()`
+      // is fire-and-forget, so clearing here would flash the card back to the
+      // pre-refresh server number for as long as the re-render takes; the card
+      // drops the live figure itself once fresh props arrive (see
+      // `PortfolioSummaryCard`), which is the moment the two agree.
     }
   }
 

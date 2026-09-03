@@ -42,6 +42,8 @@ export {
   annualIncomeCents,
   changePct,
   computePortfolioSummary,
+  applyRefreshedPosition,
+  type PositionValueMove,
   computeAllocation,
   computeDayMovesByType,
   computeTickerDayMoves,

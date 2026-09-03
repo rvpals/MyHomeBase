@@ -230,6 +230,45 @@ export function computePortfolioSummary(positions: StockPosition[]): PortfolioSu
   return summary;
 }
 
+/** What a re-priced position contributes to the two headline figures. */
+export interface PositionValueMove {
+  valueCents: number;
+  dayGainLossCents: number;
+}
+
+/**
+ * Folds one re-priced position into a running portfolio total, returning a new
+ * summary. Used by the dashboard's progressive refresh so the headline value and
+ * today's move climb as each quote lands, instead of jumping once at the end.
+ *
+ * Only the two headline figures move: value, today's gain/loss, and the percent
+ * derived from them. Cost basis, dividend income and the asset-class split are
+ * carried through untouched — a fresh quote doesn't change what you paid, and the
+ * rest of the dashboard settles on the server's recompute when the run finishes.
+ *
+ * `before` is the position as it was, so the fold is a swap rather than an
+ * addition: refreshing the same ticker twice can't count it twice.
+ */
+export function applyRefreshedPosition(
+  summary: PortfolioSummary,
+  before: PositionValueMove,
+  after: PositionValueMove,
+): PortfolioSummary {
+  const totalValueCents =
+    summary.totalValueCents - before.valueCents + after.valueCents;
+  const totalDayGainLossCents =
+    summary.totalDayGainLossCents - before.dayGainLossCents + after.dayGainLossCents;
+  const priorDayValueCents = totalValueCents - totalDayGainLossCents;
+
+  return {
+    ...summary,
+    totalValueCents,
+    totalDayGainLossCents,
+    dayChangePct:
+      priorDayValueCents === 0 ? 0 : (totalDayGainLossCents / priorDayValueCents) * 100,
+  };
+}
+
 /**
  * A move as a percentage of what it was worth before moving. The denominator is
  * `value − gain`, not `value`: a +$5 day on a portfolio now worth $105 is +5%, not
