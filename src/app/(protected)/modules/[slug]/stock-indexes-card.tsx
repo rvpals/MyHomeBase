@@ -6,13 +6,14 @@
 //
 // A client component because the numbers are fetched on demand rather than on
 // page load — eleven calls to an unauthenticated provider is not something to do
-// on every dashboard render. Press Refresh all and it fetches the lot. Every
+// on every dashboard render. Press the refresh button and it fetches the lot. Every
 // figure arrives already computed by `@/lib/market-indexes`; this file formats
 // and lays out, nothing else.
 
 import { useState } from "react";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
+import { TreeIcon } from "@/components/tree-icons";
 import type { IndexBoard, IndexQuote, IndexUnit } from "@/lib/market-indexes";
 import { centsToDollars, formatCents } from "@/lib/shared/money";
 import { loadIndexBoardAction } from "./stock-indexes-actions";
@@ -138,9 +139,23 @@ export function StockIndexesCard() {
     setBoard(result.board);
   }
 
+  // Icon-only, matching the dashboard's other refresh control, so `title` and
+  // `ariaLabel` carry the whole meaning. It spins while the fetch is in flight —
+  // that's the only progress signal an eleven-call round trip gets.
   const refreshButton = (
-    <Button size="sm" variant="secondary" onClick={refreshAll} disabled={loading}>
-      {loading ? "Refreshing…" : "Refresh all"}
+    <Button
+      size="sm"
+      variant="secondary"
+      onClick={refreshAll}
+      disabled={loading}
+      title="Refresh the major indexes"
+      ariaLabel="Refresh the major indexes"
+      className="px-2"
+    >
+      <TreeIcon
+        name="refresh"
+        className={`h-4 w-4 ${loading ? "animate-spin motion-reduce:animate-none" : ""}`}
+      />
     </Button>
   );
 
@@ -168,14 +183,14 @@ export function StockIndexesCard() {
           {board.failures.length > 0 && (
             <p className="text-xs text-brass-dark">
               Couldn&apos;t fetch: {board.failures.map((failure) => failure.label).join(", ")}. Press
-              Refresh all to try again.
+              Refresh to try again.
             </p>
           )}
         </div>
       ) : (
         !error && (
           <p className="rounded-md border border-dashed border-line p-4 text-center text-sm text-muted">
-            Press <span className="text-ink">Refresh all</span> to fetch the major indexes. They
+            Press <span className="text-ink">Refresh</span> to fetch the major indexes. They
             aren&apos;t loaded automatically, so opening the dashboard stays fast.
           </p>
         )
