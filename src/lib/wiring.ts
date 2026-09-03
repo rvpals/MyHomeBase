@@ -29,6 +29,7 @@ import { SqliteJournalRepository } from "./journal/repository";
 import { NodePhotoFileStore } from "./journal-photos/file-store";
 import { YahooFinanceClient } from "./market-data/yahoo-finance-client";
 import { SqliteModuleSettingsRepository } from "./module-settings/repository";
+import { SharpCarouselImageProcessor } from "./modules/carousel-image-processor";
 import { SqliteModuleRepository } from "./modules/repository";
 import { LrclibLyricsClient } from "./music/lrclib-client";
 import { NodeMusicFileStore } from "./music/file-store";
@@ -135,8 +136,12 @@ export const deps = {
   // page render; the raster BLOB is read only by src/app/api/icons/slots/[slot]/route.ts.
   iconOverridesRepo: new SqliteIconOverridesRepository(db),
   // Normalises an uploaded icon (strip flattened checkerboard, trim, downscale to PNG).
-  // The only consumer of `sharp`; publish-nas.mjs swaps its linux-arm64 build on deploy.
+  // One of two `sharp` consumers, with the carousel resizer below; publish-nas.mjs
+  // swaps the linux-arm64 build on deploy, which covers both.
   iconImageProcessor: new SharpIconImageProcessor(),
+  // Downscales an uploaded carousel graphic to 800px WebP. Also `sharp`, and also
+  // lazily imported — see the class comment for why that matters on the NAS.
+  carouselImageProcessor: new SharpCarouselImageProcessor(),
   journalRepo: new SqliteJournalRepository(db),
   /**
    * A read-only view of the photo archive at `root`.

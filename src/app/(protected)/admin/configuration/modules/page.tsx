@@ -114,6 +114,7 @@ export default function ModuleConfigurationPage() {
               slug={module.slug}
               moduleName={module.longName}
               hasImage={module.hasCarouselImage}
+              imageVersion={module.updatedAt}
             />
 
             <CollapsibleCard title={`Module Settings — ${module.longName}`} className="mt-4">

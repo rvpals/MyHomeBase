@@ -8,7 +8,13 @@ export {
   type ModuleInput,
   type ModuleUpdate,
 } from "./schema";
-export type { ModuleRepository } from "./ports";
+export type { CarouselImageProcessor, ModuleRepository } from "./ports";
+export {
+  CAROUSEL_IMAGE_MAX_EDGE,
+  CAROUSEL_IMAGE_WEBP_QUALITY,
+  resizeCarouselImage,
+  type ResizeCarouselImageResult,
+} from "./resize-carousel-image";
 export {
   listModules,
   getModuleBySlug,

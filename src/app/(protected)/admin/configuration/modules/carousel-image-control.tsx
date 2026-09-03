@@ -24,18 +24,25 @@ export function CarouselImageControl({
   slug,
   moduleName,
   hasImage,
+  imageVersion,
 }: {
   slug: string;
   moduleName: string;
   hasImage: boolean;
+  /** The module's `updatedAt`, used as the image URL's cache-buster. */
+  imageVersion?: string;
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [present, setPresent] = useState(hasImage);
   const [error, setError] = useState<string | undefined>(undefined);
   const [isBusy, setIsBusy] = useState(false);
-  // Bumped after a save so the <img> refetches — the route sends a 5-minute
-  // max-age, so without this a replaced image keeps showing the old bytes.
-  const [version, setVersion] = useState(0);
+  // The image URL's `?v=`. Seeded from the module's `updatedAt` rather than from
+  // 0, because the serving route now sends `immutable` with a one-year max-age:
+  // a counter local to this component would make the *same* URL mean different
+  // bytes in different sessions, and every one of them would keep the stale
+  // picture for a year. `updatedAt` changes on every write, so the replaced
+  // image always arrives under a URL nothing has cached.
+  const [version, setVersion] = useState(imageVersion ?? "");
 
   async function handleFile(file: File | undefined) {
     if (!file) return;
@@ -67,7 +74,10 @@ export function CarouselImageControl({
       const result = await saveModuleCarouselImageAction(body);
       if (result.ok) {
         setPresent(true);
-        setVersion((value) => value + 1);
+        // The server stamped a new `updatedAt`, but this component won't see it
+        // until the router refreshes, so a local timestamp stands in — it only
+        // has to differ from what came before.
+        setVersion(Date.now().toString());
       } else {
         setError(result.error);
       }
@@ -109,8 +119,10 @@ export function CarouselImageControl({
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-ink">Carousel graphic</p>
         <p className="mt-0.5 text-xs text-muted">
-          Shown large on the home screen. PNG, JPEG, WebP or GIF, up to 2&nbsp;MB — around
-          800&times;800 works well. Without one, the module&apos;s icon is used.
+          Shown large on the home screen. PNG, JPEG, WebP or GIF, up to 2&nbsp;MB. Large
+          images are downscaled to 800&times;800 and re-encoded as WebP on upload, so a
+          big photo is fine. An animated GIF is stored as it is, to keep it moving.
+          Without one, the module&apos;s icon is used.
         </p>
         {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
       </div>

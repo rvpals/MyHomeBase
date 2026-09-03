@@ -26,9 +26,12 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
   return new NextResponse(new Uint8Array(image.data), {
     headers: {
       "Content-Type": image.mimeType,
-      // Private: it's behind a session. Short max-age so a replaced image shows
-      // up quickly; the carousel also adds a ?v= cache-buster.
-      "Cache-Control": "private, max-age=300",
+      // Private: it's behind a session. Immutable and long-lived because every
+      // caller addresses this with a `?v=` built from `updated_at` — a replaced
+      // image arrives under a new URL, so there is nothing to revalidate. The
+      // old 5-minute max-age just meant re-downloading the artwork on every
+      // visit, which is exactly what made the carousel feel slow.
+      "Cache-Control": "private, max-age=31536000, immutable",
     },
   });
 }

@@ -10,7 +10,7 @@ import {
   setModuleIcon,
   updateModules,
 } from "./modules";
-import type { ModuleRepository } from "./ports";
+import type { CarouselImageProcessor, ModuleRepository } from "./ports";
 import { MAX_CAROUSEL_IMAGE_BYTES } from "./schema";
 import type { Module } from "./types";
 
@@ -31,6 +31,11 @@ function fakeRepo(seed: Module[]): ModuleRepository {
       state = state.map((module) =>
         module.slug === slug ? { ...module, hasCarouselImage: Boolean(image) } : module,
       );
+    },
+    listAllCarouselImages() {
+      return [...images.entries()]
+        .map(([slug, image]) => ({ slug, data: image.data, mimeType: image.mimeType }))
+        .sort((a, b) => a.slug.localeCompare(b.slug));
     },
     listModules({ includeHidden = false } = {}) {
       return state
@@ -217,11 +222,11 @@ describe("the carousel image", () => {
     return Buffer.alloc(bytes, 1).toString("base64");
   }
 
-  it("stores an upload and flips hasCarouselImage", () => {
+  it("stores an upload and flips hasCarouselImage", async () => {
     const repo = fakeRepo(sample);
     expect(getModuleBySlug(repo, "real-estate-investment")?.hasCarouselImage).toBe(false);
 
-    setModuleCarouselImage(repo, "real-estate-investment", {
+    await setModuleCarouselImage(repo, "real-estate-investment", {
       mimeType: "image/png",
       base64Data: payload(1_024),
     });
@@ -232,9 +237,9 @@ describe("the carousel image", () => {
     expect(stored?.data).toHaveLength(1_024);
   });
 
-  it("removing it clears the flag and the bytes", () => {
+  it("removing it clears the flag and the bytes", async () => {
     const repo = fakeRepo(sample);
-    setModuleCarouselImage(repo, "real-estate-investment", {
+    await setModuleCarouselImage(repo, "real-estate-investment", {
       mimeType: "image/png",
       base64Data: payload(64),
     });
@@ -245,9 +250,9 @@ describe("the carousel image", () => {
     expect(getModuleCarouselImage(repo, "real-estate-investment")).toBeUndefined();
   });
 
-  it("never puts image bytes on the listed modules", () => {
+  it("never puts image bytes on the listed modules", async () => {
     const repo = fakeRepo(sample);
-    setModuleCarouselImage(repo, "real-estate-investment", {
+    await setModuleCarouselImage(repo, "real-estate-investment", {
       mimeType: "image/png",
       base64Data: payload(4_096),
     });
@@ -261,47 +266,86 @@ describe("the carousel image", () => {
     expect(listed.find((m) => m.slug === "real-estate-investment")?.hasCarouselImage).toBe(true);
   });
 
-  it("rejects an image over the cap, and accepts one just under it", () => {
+  it("rejects an image over the cap, and accepts one just under it", async () => {
     const repo = fakeRepo(sample);
 
-    expect(() =>
+    await expect(
       setModuleCarouselImage(repo, "real-estate-investment", {
         mimeType: "image/png",
         base64Data: payload(MAX_CAROUSEL_IMAGE_BYTES + 1),
       }),
-    ).toThrow(/too large/i);
+    ).rejects.toThrow(/too large/i);
 
-    expect(() =>
+    await expect(
       setModuleCarouselImage(repo, "real-estate-investment", {
         mimeType: "image/png",
         base64Data: payload(MAX_CAROUSEL_IMAGE_BYTES),
       }),
-    ).not.toThrow();
+    ).resolves.not.toThrow();
   });
 
-  it("refuses SVG — these bytes are served from our own origin", () => {
+  it("resizes through the processor when one is supplied, and stores WebP", async () => {
+    const repo = fakeRepo(sample);
+    // Stands in for sharp: reports a huge source and returns short bytes.
+    const processor: CarouselImageProcessor = {
+      probe: async () => ({ width: 3000, height: 2000 }),
+      encodeWebp: async () => Buffer.from("tiny-webp-bytes"),
+    };
+
+    await setModuleCarouselImage(
+      repo,
+      "real-estate-investment",
+      { mimeType: "image/png", base64Data: payload(1_000_000) },
+      processor,
+    );
+
+    const stored = getModuleCarouselImage(repo, "real-estate-investment");
+    expect(stored?.mimeType).toBe("image/webp");
+    expect(stored?.data).toHaveLength("tiny-webp-bytes".length);
+  });
+
+  it("still enforces the cap on the incoming file, not the resized result", async () => {
+    const repo = fakeRepo(sample);
+    const processor: CarouselImageProcessor = {
+      probe: async () => ({ width: 3000, height: 3000 }),
+      encodeWebp: async () => Buffer.from("small"),
+    };
+
+    // Otherwise shrinking afterwards would let an arbitrarily huge body through.
+    await expect(
+      setModuleCarouselImage(
+        repo,
+        "real-estate-investment",
+        { mimeType: "image/png", base64Data: payload(MAX_CAROUSEL_IMAGE_BYTES + 1) },
+        processor,
+      ),
+    ).rejects.toThrow(/too large/i);
+    expect(getModuleBySlug(repo, "real-estate-investment")?.hasCarouselImage).toBe(false);
+  });
+
+  it("refuses SVG — these bytes are served from our own origin", async () => {
     const repo = fakeRepo(sample);
 
-    expect(() =>
+    await expect(
       setModuleCarouselImage(repo, "real-estate-investment", {
         // @ts-expect-error — the point of the test is that the enum rejects it.
         mimeType: "image/svg+xml",
         base64Data: payload(32),
       }),
-    ).toThrow();
+    ).rejects.toThrow();
 
     expect(getModuleBySlug(repo, "real-estate-investment")?.hasCarouselImage).toBe(false);
   });
 
-  it("rejects an unknown slug rather than silently updating nothing", () => {
+  it("rejects an unknown slug rather than silently updating nothing", async () => {
     const repo = fakeRepo(sample);
 
-    expect(() =>
+    await expect(
       setModuleCarouselImage(repo, "no-such-module", {
         mimeType: "image/png",
         base64Data: payload(32),
       }),
-    ).toThrow(/no-such-module/);
+    ).rejects.toThrow(/no-such-module/);
     expect(() => removeModuleCarouselImage(repo, "no-such-module")).toThrow(/no-such-module/);
   });
 });

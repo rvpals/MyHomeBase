@@ -35,8 +35,11 @@ export interface CarouselModule {
    */
   hasImage?: boolean;
   /**
-   * Cache-buster for the image URL. The route sends a 5-minute max-age, so
-   * without this a replaced graphic keeps showing the old bytes until it expires.
+   * Cache-buster for the image URL — the module's `updatedAt`.
+   *
+   * Now load-bearing rather than a nicety: the route sends `immutable` with a
+   * one-year max-age, so a replaced graphic is only ever seen because this
+   * changes and the new bytes arrive under a URL nothing has cached.
    */
   imageVersion?: string;
 }
@@ -188,9 +191,18 @@ export function ModuleCarousel({ modules, initialIndex = 0, className = "" }: Mo
                   } shadow-md hover:shadow-lg transition-shadow`}
                 >
                   {appModule.hasImage ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- DB-backed route, not a static asset next/image can optimize.
                     <img
                       src={`/api/modules/${encodeURIComponent(appModule.slug)}/carousel-image?v=${encodeURIComponent(appModule.imageVersion ?? "")}`}
                       alt={appModule.name}
+                      // Intrinsic size so the browser can lay the tile out before
+                      // the bytes land, and decode off the main thread. The grid
+                      // draws every module at once, so anything below the fold
+                      // waits its turn rather than competing.
+                      width={128}
+                      height={128}
+                      loading="lazy"
+                      decoding="async"
                       className="h-full w-full object-cover"
                     />
                   ) : (
@@ -297,6 +309,16 @@ export function ModuleCarousel({ modules, initialIndex = 0, className = "" }: Mo
                     // Only the centre is worth fetching eagerly; the neighbours
                     // are one rotation away at most.
                     loading={isActive ? "eager" : "lazy"}
+                    // `loading="lazy"` does nothing for the neighbours — they're
+                    // on screen, so the browser fetches them regardless, and all
+                    // five used to compete for bandwidth with the one being
+                    // looked at. The priority hint is what actually orders them.
+                    fetchPriority={isActive ? "high" : "low"}
+                    // Intrinsic size: the tile is already fixed by its container,
+                    // so this only saves the browser a decode-then-layout step.
+                    width={192}
+                    height={192}
+                    decoding="async"
                     className="h-full w-full object-cover"
                   />
                 ) : (

@@ -92,12 +92,20 @@ export async function saveModuleCarouselImageAction(
     const file = formData.get("image");
     if (!(file instanceof File)) return { ok: false, error: "No image was received." };
 
-    setModuleCarouselImage(deps.moduleRepo, slug, {
-      // Cast because the value came off a File and is unvalidated until the lib
-      // schema narrows it to the allowed set.
-      mimeType: file.type as never,
-      base64Data: Buffer.from(await file.arrayBuffer()).toString("base64"),
-    });
+    await setModuleCarouselImage(
+      deps.moduleRepo,
+      slug,
+      {
+        // Cast because the value came off a File and is unvalidated until the lib
+        // schema narrows it to the allowed set.
+        mimeType: file.type as never,
+        base64Data: Buffer.from(await file.arrayBuffer()).toString("base64"),
+      },
+      // Downscales to 800px WebP before it reaches the column. Without this a
+      // 2 MB original is stored whole and then downloaded whole to fill a 192px
+      // tile, which is what made the carousel paint in slowly.
+      deps.carouselImageProcessor,
+    );
     revalidatePath("/", "layout");
     return { ok: true };
   } catch (error) {

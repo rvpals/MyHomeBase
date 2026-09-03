@@ -4,7 +4,8 @@ import {
   type ImageUploadInput,
 } from "@/lib/shared/image-upload";
 import { DEFAULT_MODULES } from "./defaults";
-import type { ModuleRepository } from "./ports";
+import type { CarouselImageProcessor, ModuleRepository } from "./ports";
+import { resizeCarouselImage } from "./resize-carousel-image";
 import {
   MAX_CAROUSEL_IMAGE_BYTES,
   moduleIconNameSchema,
@@ -58,14 +59,25 @@ export function setModuleIcon(repo: ModuleRepository, slug: string, icon: string
 // rule for the whole app and must not be re-derived per module.
 // ---------------------------------------------------------------------------
 
-/** Replaces a module's carousel graphic. Throws on a bad type or an oversized file. */
-export function setModuleCarouselImage(
+/**
+ * Replaces a module's carousel graphic. Throws on a bad type or an oversized file.
+ *
+ * `processor` is optional so the CLI and the tests can store bytes verbatim, but
+ * the web upload always passes it — without it a 2 MB original is stored whole
+ * and then downloaded whole to fill a 192px tile. The cap stays checked against
+ * the *incoming* file, not the resized result: it is there to stop a huge
+ * request body, and shrinking afterwards shouldn't let a 50 MB upload through.
+ */
+export async function setModuleCarouselImage(
   repo: ModuleRepository,
   slug: string,
   input: ImageUploadInput,
-): void {
+  processor?: CarouselImageProcessor,
+): Promise<void> {
   requireModule(repo, slug);
-  repo.setCarouselImage(slug, decodeImageUpload(input, MAX_CAROUSEL_IMAGE_BYTES));
+  const decoded = decodeImageUpload(input, MAX_CAROUSEL_IMAGE_BYTES);
+  const stored = processor ? await resizeCarouselImage(processor, decoded) : decoded;
+  repo.setCarouselImage(slug, { data: stored.data, mimeType: stored.mimeType });
 }
 
 /** Clears it, so the carousel falls back to the module's icon glyph. */

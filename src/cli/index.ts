@@ -12,6 +12,7 @@ import { expenseTopSpendersCommand } from "./expense-top-spenders";
 import { explainRuleCommand } from "./explain-rule";
 import { expenseCreateRuleCommand } from "./expense-create-rule";
 import { normalizeIconOverridesCommand } from "./normalize-icon-overrides";
+import { resizeCarouselImagesCommand } from "./resize-carousel-images";
 import { gameScoresCommand } from "./game-scores";
 import { favPhotosCommand } from "./fav-photos";
 import { favoriteQuotesCommand } from "./favorite-quotes";
@@ -52,6 +53,7 @@ const commands: Record<string, Command> = {
   "explain-rule": explainRuleCommand,
   "expense-create-rule": expenseCreateRuleCommand,
   "normalize-icon-overrides": normalizeIconOverridesCommand,
+  "resize-carousel-images": resizeCarouselImagesCommand,
   "ticker-overview": tickerOverviewCommand,
   "simulate-ticker": simulateTickerCommand,
   "market-indexes": marketIndexesCommand,

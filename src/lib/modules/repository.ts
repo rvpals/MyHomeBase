@@ -99,6 +99,26 @@ export class SqliteModuleRepository implements ModuleRepository {
     return { data: row.data, mimeType: row.mimeType };
   }
 
+  // Also selects the BLOB, and also has exactly one caller: the resize backfill
+  // CLI. Ordered by slug so a dry run and the real run report in the same order.
+  listAllCarouselImages(): { slug: string; data: Buffer; mimeType: string }[] {
+    const rows = this.db
+      .prepare(
+        `SELECT slug,
+                carousel_image AS data,
+                carousel_image_mime_type AS mimeType
+           FROM sys_modules
+          WHERE carousel_image IS NOT NULL
+            AND carousel_image_mime_type IS NOT NULL
+          ORDER BY slug ASC`,
+      )
+      .all() as { slug: string; data: Buffer | null; mimeType: string | null }[];
+
+    return rows.flatMap((row) =>
+      row.data && row.mimeType ? [{ slug: row.slug, data: row.data, mimeType: row.mimeType }] : [],
+    );
+  }
+
   setIcon(slug: string, icon: ModuleIconName): void {
     this.db
       .prepare(

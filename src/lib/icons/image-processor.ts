@@ -2,7 +2,9 @@ import type { IconImageProcessor } from "./ports";
 import type { RawBitmap } from "./types";
 
 /**
- * The only file in the app that touches `sharp`.
+ * One of two files that touch `sharp` — the other is
+ * `lib/modules/carousel-image-processor.ts`, which follows the same shape for the
+ * same reasons.
  *
  * Kept to decode and encode alone, with every *decision* in `normalize-image.ts` — that
  * split is what lets the interesting logic be tested with a hand-built pixel array instead

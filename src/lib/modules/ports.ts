@@ -28,4 +28,31 @@ export interface ModuleRepository {
   getCarouselImage(slug: string): DecodedImage | undefined;
   /** Replaces the image, or clears it when given `undefined`. */
   setCarouselImage(slug: string, image: DecodedImage | undefined): void;
+  /**
+   * Every stored carousel image, bytes included. **For the resize backfill CLI
+   * only** — like `getCarouselImage`, this reads the BLOB, so anything that
+   * renders a list must keep using `listModules`.
+   */
+  listAllCarouselImages(): { slug: string; data: Buffer; mimeType: string }[];
+}
+
+/**
+ * Pixel work, behind a port.
+ *
+ * Same split as `IconImageProcessor`: `src/lib/` may not import `sharp` (it is a
+ * native module, and a use-case that reaches for one can't be tested without
+ * it), so the *decisions* — is this worth resizing? what does it become? — live
+ * in `resize-carousel-image.ts` as plain arithmetic, and only the decode/encode
+ * crosses this line.
+ */
+export interface CarouselImageProcessor {
+  /** Pixel dimensions, without decoding the whole bitmap. Throws if unreadable. */
+  probe(data: Buffer): Promise<{ width: number; height: number }>;
+  /**
+   * Re-encodes as WebP, scaled so it fits inside `maxEdge` square.
+   *
+   * Must never upscale and never crop: this is somebody's artwork, and a
+   * graphic that arrives smaller than the target is already fine as it is.
+   */
+  encodeWebp(data: Buffer, maxEdge: number, quality: number): Promise<Buffer>;
 }

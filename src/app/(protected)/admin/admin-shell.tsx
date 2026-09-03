@@ -31,6 +31,12 @@ export interface ModuleDraft {
    * it's carried only so the control can show the current state on first render.
    */
   hasCarouselImage: boolean;
+  /**
+   * Read-only here too, and the carousel image's cache-buster: the serving route
+   * sends `immutable`, so the upload control needs a `?v=` that changes with the
+   * bytes rather than a counter local to itself.
+   */
+  updatedAt?: string;
 }
 
 export interface ModuleSettingDraft {
@@ -84,6 +90,7 @@ function toDraft(module: Module): ModuleDraft {
     isVisible: module.isVisible,
     icon: module.icon,
     hasCarouselImage: module.hasCarouselImage,
+    updatedAt: module.updatedAt,
   };
 }
 
