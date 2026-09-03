@@ -24,6 +24,12 @@ module is obvious from the name alone. New tables must follow this.
 The `rei_` prefix (Real Estate Investment) was retired when that module was
 removed — see migration `0026_drop_real_estate_module`.
 
+**A new table also wants a line in
+[`src/lib/sql-explorer/table-reference.ts`](src/lib/sql-explorer/table-reference.ts)**,
+which is what the SQL Explorer's *Table references* card renders. Missing one isn't
+fatal — the table falls into an "Unclassified" group rather than disappearing — but the
+card is the only place the purpose of a table is stated in the running app.
+
 Rules for adding tables:
 
 - **New feature module** → choose a new lowercase 3-letter prefix. **Platform /
@@ -299,7 +305,7 @@ Two rules worth keeping if you touch this:
 - **Decisions live in `src/lib/icons/normalize-image.ts`, pixels in the adapter.** The
   arithmetic — is this border a checkerboard? where does the artwork end? — is plain maths
   over an RGBA array, testable with a hand-built canvas and no native module.
-  `image-processor.ts` is the only file that imports `sharp`.
+  `image-processor.ts` is the only file in `lib/icons/` that imports `sharp`.
 - **Detection declines rather than guesses.** A photo, a screenshot, or art that bleeds to
   the edge is left alone; a false positive would punch holes in someone's artwork, where a
   false negative merely costs a slightly worse icon. If normalisation throws, `saveOverride`
@@ -312,6 +318,25 @@ too small to pass the agreement threshold, and detection declined an image it sh
 have cleaned.
 
 `normalize-icon-overrides` (CLI) re-runs the pipeline over rows stored before it existed.
+
+## Carousel graphics get the same treatment
+
+Module carousel images (`sys_modules.carousel_image`) follow the identical shape, for the
+identical reason — they were stored at whatever size was uploaded, up to 2 MB, and then
+downloaded whole to fill a 192px tile, which made the home screen paint in slowly.
+
+- Decisions in `src/lib/modules/resize-carousel-image.ts` (plain arithmetic over a width
+  and a height), pixels in `src/lib/modules/carousel-image-processor.ts` behind the
+  `CarouselImageProcessor` port. Uploads are downscaled to fit 800px and re-encoded as
+  WebP; it never upscales and never crops.
+- **An animated GIF is passed through untouched.** `sharp` would flatten it to its first
+  frame, and unlike a 20px icon a carousel graphic is the thing being looked at.
+- `resize-carousel-images` (CLI, `--dry-run` first) backfills graphics stored before the
+  resizer existed. There is no undo but a database restore.
+- The serving route sends `immutable` with a one-year max-age, so **every caller must
+  address the image with `?v=<module.updatedAt>`**. A replaced graphic is only ever seen
+  because that URL changes; a version that isn't derived from `updatedAt` (a per-component
+  counter, say) would pin stale bytes in one browser for a year.
 
 **`sharp` is a native module**, so `scripts/publish-nas.mjs` swaps its linux-arm64 build at
 publish time, exactly as it does for `better-sqlite3`. Adding any further native dependency

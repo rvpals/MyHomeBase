@@ -54,6 +54,7 @@ pattern instead of inventing one.
 | [`Comments`](#comments) | A note/instruction parked beside a feature, behind an info chip | [src/components/comments.tsx](src/components/comments.tsx) | yes |
 | [`CollapsibleCard`](#collapsiblecard) | A titled section that expands/collapses | [src/components/collapsible-card.tsx](src/components/collapsible-card.tsx) | yes |
 | [`Tabs`](#tabs) | One-of-N panels in the same space | [src/components/tabs.tsx](src/components/tabs.tsx) | yes |
+| [`TreeNav`](#treenav) | **Two-level tree** — expandable groups, selectable leaves | [src/components/tree-nav.tsx](src/components/tree-nav.tsx) | yes |
 | [`ViewModeSwitch`](#viewmodeswitch) | **Same data, re-cut** — segmented control, `<select>` when narrow | [src/components/view-mode-switch.tsx](src/components/view-mode-switch.tsx) | yes |
 | [`ModuleCarousel`](#modulecarousel) | The home screen's module picker (grid on desktop, coverflow on phones) | [src/components/module-carousel.tsx](src/components/module-carousel.tsx) | yes |
 | [`TwoTierShell`](#twotiershell) | **The navigation shell** — module rail + section panel + header | [src/components/two-tier-shell.tsx](src/components/two-tier-shell.tsx) | yes |
@@ -65,6 +66,8 @@ pattern instead of inventing one.
 | [`MusicPlayerBar`](#musicplayerbar) | The persistent "what's playing" strip, above the section nav on every page | [src/components/music-player-bar.tsx](src/components/music-player-bar.tsx) | yes |
 | [`SelectionBar`](#selectionbar) | Tick several rows, then send them somewhere (with `useSelection`) | [src/components/selection-bar.tsx](src/components/selection-bar.tsx) | yes |
 | [`ViewportSwitch`](#viewportswitch) | The global compact/full switch | [src/components/viewport-switch.tsx](src/components/viewport-switch.tsx) | yes |
+| [`PlayingCard`](#playingcard) | **One playing card** — face, back, or empty slot | [src/components/playing-card.tsx](src/components/playing-card.tsx) | no |
+| [`CardHand`](#cardhand) | A row of cards with a title, total and badge | [src/components/card-hand.tsx](src/components/card-hand.tsx) | no |
 | [`Avatar`](#avatar) | A user's picture, or initials fallback | [src/components/avatar.tsx](src/components/avatar.tsx) | no |
 | [`TickerLogo`](#tickerlogo) | A stock/ETF logo, or a monogram fallback | [src/components/ticker-logo.tsx](src/components/ticker-logo.tsx) | yes |
 | [`FileDropzone`](#filedropzone) | Drag-and-drop file picker | [src/components/file-dropzone.tsx](src/components/file-dropzone.tsx) | yes |
@@ -91,8 +94,60 @@ pattern instead of inventing one.
 | [`IconOverrideProvider`](#iconoverrideprovider--useiconoverrides) / `useIconOverrides` | Per-slot icon overrides for the active set (context) | [src/components/icon-override-context.tsx](src/components/icon-override-context.tsx) | yes |
 | [`useCurrentPosition`](#usecurrentposition) | Read the device's GPS coordinates (hook) | [src/components/use-current-position.ts](src/components/use-current-position.ts) | yes |
 | [`AppVersionWatch`](#appversionwatch) | Prompts a stale installed PWA to reload after a deploy — mount in the layout | [src/components/app-version-watch.tsx](src/components/app-version-watch.tsx) | yes |
+| [`AudioSpectrum`](#audiospectrum) | **Audio visualizer** — frequency bars or a waveform, driven by an analyser | [src/components/audio-spectrum.tsx](src/components/audio-spectrum.tsx) | yes |
 
 Small helpers that are not full components: [see below](#unregistered-helpers).
+
+---
+
+## AudioSpectrum
+
+A canvas that draws whatever an audio analyser is currently reading — frequency bars or
+a waveform. Presentation only: it is handed a function that fills a byte buffer and it
+paints, so it knows nothing about tracks, cannot start or stop audio, and holds no
+preference of its own.
+
+- **Source:** [src/components/audio-spectrum.tsx](src/components/audio-spectrum.tsx)
+- **Import:** `import { AudioSpectrum } from "@/components/audio-spectrum";`
+- **Client component:** yes (canvas + `requestAnimationFrame`)
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `readSpectrum` | `(into: Uint8Array, kind: "frequency" \| "waveform") => boolean` | Fills the buffer with the current reading; `false` when there is nothing to read. `MusicPlayerProvider` supplies this. |
+| `spectrumSize` | `number` | How many bytes `readSpectrum` fills. **`0` renders nothing** — that is the "no analyser" signal. |
+| `mode?` | `"bars" \| "wave"` | Default `"bars"`. Controlled by the caller; the component stores no mode. |
+| `isPlaying` | `boolean` | Pauses the frame loop. A paused visualizer costs nothing rather than drawing silence. |
+| `barCount?` | `number` | Default `48`. Bars across the width, in `"bars"` mode only. |
+| `className?` | `string` | Merged last. |
+
+```tsx
+<AudioSpectrum
+  readSpectrum={player.readSpectrum}
+  spectrumSize={player.spectrumSize}
+  mode={visualizerMode}
+  isPlaying={isPlaying}
+/>
+```
+
+**Used by:** the Music Library player screen
+[music-player-view.tsx](src/app/(protected)/modules/[slug]/music-player-view.tsx), under
+the cover art, with a Bars/Wave toggle overlaid at its top-right.
+
+**Notes:** the frame loop never calls `setState` — a visualizer updates sixty times a
+second, and routing that through React would re-render the whole player screen to
+animate a decoration. The buffer is allocated once per mount, and the brass colors are
+read from the theme tokens once (`:root` is a single fixed theme, so per-frame reads
+would be pure waste). Bucketing lives in
+[src/lib/music/spectrum.ts](src/lib/music/spectrum.ts) where it is tested — bars are
+grouped **logarithmically**, because equal FFT buckets put nearly all of the audible
+music in the first two bars.
+
+**Reduced motion:** decorative, so it **stops entirely** — `design.md`'s first case.
+"Something is playing" is already said by the transport and the scrubber. The canvas
+clears rather than freezing on a last frame, and the media query is watched live so
+flipping the OS setting takes effect without a reload.
+
+**Narrow:** `h-16`, restyled to `h-10` below 1024px with a `max-lg:` variant.
 
 ---
 
@@ -602,8 +657,13 @@ One active panel at a time. Owns its own active-tab state.
 | Prop | Type | Notes |
 |------|------|-------|
 | `items` | `TabItem[]` — `{ key, label, content: ReactNode }` | Rendered in order. |
-| `defaultActiveKey?` | `string` | Defaults to the first item. |
+| `defaultActiveKey?` | `string` | Uncontrolled. Defaults to the first item. |
+| `activeKey?` | `string` | Controlled active tab. Pair with `onActiveKeyChange`. |
+| `onActiveKeyChange?` | `(key: string) => void` | Fired on a tab click. |
 | `className?` | `string` | |
+
+Uncontrolled by default. Pass `activeKey` + `onActiveKeyChange` only when
+something *outside* the strip has to switch tabs.
 
 ```tsx
 const tabs: TabItem[] = [
@@ -620,7 +680,49 @@ const tabs: TabItem[] = [
 the About screen's Application / Change History split
 [admin/about/view.tsx](src/app/(protected)/admin/about/view.tsx); the Expense module's
 Charts and Analysis Main / Monthly comparison split
-[expense-charts-view.tsx](src/app/(protected)/modules/[slug]/expense-charts-view.tsx).
+[expense-charts-view.tsx](src/app/(protected)/modules/[slug]/expense-charts-view.tsx); SQL
+Explorer's SQL Query / Tables Explorer split
+[admin/sql-explorer/view.tsx](src/app/(protected)/admin/sql-explorer/view.tsx) *(controlled
+— the table list's "Open" jumps to the query tab to show the result)*.
+
+---
+
+## TreeNav
+
+**Two levels, not arbitrary depth.** Expandable group rows with selectable leaves under
+each — a schema browser, a grouped picker. Selection is controlled by the caller;
+expansion is the component's own state.
+
+- **Source:** [src/components/tree-nav.tsx](src/components/tree-nav.tsx)
+- **Import:** `import { TreeNav, type TreeNavNode } from "@/components/tree-nav";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `nodes` | `TreeNavNode[]` — `{ id, label, badge?, emptyMessage?, children }` | Groups, in order. |
+| `selectedId?` | `string` | Id of the selected **leaf**. Controlled. |
+| `onSelect` | `(leafId: string, nodeId: string) => void` | Fired on a leaf click. |
+| `defaultExpandedIds?` | `string[]` | Groups open on first render. Defaults to the first. |
+| `className?` | `string` | |
+
+A leaf is `{ id, label, detail? }`; `detail` renders as a truncated second line. An empty
+group renders `emptyMessage` rather than collapsing away — "no views defined" is more
+useful than a node that silently isn't there.
+
+**Not a nav tier.** This is page content. The module rail and section panel are the
+navigation shell ([design.md](design.md)); don't reach for this to build a third one.
+
+```tsx
+<TreeNav
+  nodes={[{ id: "table", label: "Tables", badge: 68, children: tableLeaves }]}
+  selectedId={selectedId}
+  onSelect={(leafId) => setSelectedId(leafId)}
+/>
+```
+
+**Used by:** SQL Explorer's Tables Explorer tab
+[admin/sql-explorer/view.tsx](src/app/(protected)/admin/sql-explorer/view.tsx) — tables,
+views, indexes and triggers, with the selected object's rows or definition beside it.
 
 ---
 
@@ -984,6 +1086,94 @@ music player on published heights, and a transient bar shouldn't join that contr
 under the Dynamic Island. Responsive via `max-lg:` (centred on desktop, label-and-actions
 spread on a phone). Dismissible on purpose: an unskippable reload prompt mid-edit would
 lose what was being typed, and it returns on the next foreground.
+
+---
+
+## PlayingCard
+
+One playing card, drawn rather than illustrated: corner indices, the traditional pip
+layout per rank, a lettered panel for the courts, and a patterned back. **Every card in
+every card game uses this** — do not hand-roll a rank-and-glyph rectangle.
+
+- **Source:** [src/components/playing-card.tsx](src/components/playing-card.tsx)
+- **Import:** `import { PlayingCard } from "@/components/playing-card";`
+- **Client component:** no (it renders no hooks; it is used inside client views)
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `card?` | `Card` | From `@/lib/games`. **Omit for a face-down card** — a hole card or a stock pile. |
+| `size?` | `"sm" \| "md" \| "lg"` | Default `"md"`. 48/64/84px wide, all at the 2.5:3.5 poker ratio. |
+| `empty?` | `boolean` | A dashed outline for a table position that holds nothing yet. |
+| `dimmed?` | `boolean` | For a card out of play but still shown. |
+| `selected?` | `boolean` | Draws the brass ring — a card the player has picked. |
+| `onClick?` | `() => void` | Makes it a `<button>`. Omit for display only. |
+| `className?` | `string` | |
+
+```tsx
+<PlayingCard card={hand.cards[0]} size="lg" />
+<PlayingCard size="lg" />           {/* face down */}
+<PlayingCard size="lg" empty />     {/* an empty seat */}
+```
+
+**Used by:** [`CardHand`](#cardhand), and through it the Blackjack table
+([game-blackjack-view.tsx](src/app/(protected)/modules/[slug]/game-blackjack-view.tsx)).
+
+**Notes:** every size steps down one level below 1024px via `max-lg:`, so a caller picks
+one size and both screens work. Red suits are a **fixed** `text-red-500` across every
+theme — the same semantic exception `Button`'s `danger` variant makes, since a red suit
+is a property of the deck, not the palette. A face-down card is given **no** `card` prop
+at all rather than a card plus a hidden flag, so a concealed value is never in the DOM.
+Court cards are a large letter, not figure art: hand-drawn courts are a big asset job and
+turn to mud at 84px.
+
+---
+
+## CardHand
+
+A row of playing cards with an optional title, total and badge — one player's hand, a
+dealer's hand, or a shared board.
+
+- **Source:** [src/components/card-hand.tsx](src/components/card-hand.tsx)
+- **Import:** `import { CardHand } from "@/components/card-hand";`
+- **Client component:** no
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `cards` | `readonly Card[]` | Left to right. Empty draws `placeholders` empty slots. |
+| `title?` | `string` | Small heading — "Dealer", "You", "Board". |
+| `total?` | `string` | **Already formatted.** A string, not a number — see the notes. |
+| `totalNote?` | `string` | Muted note beside the total, e.g. `"showing"`. |
+| `badge?` | `ReactNode` | Right of the title row: a stake, a result chip, a turn marker. |
+| `size?` | `"sm" \| "md" \| "lg"` | Passed to `PlayingCard`. Default `"md"`. |
+| `layout?` | `"spread" \| "fan"` | Default `"spread"`. `fan` overlaps for a large hand. |
+| `hideFrom?` | `number` | Index from which cards are face down. `1` = a Blackjack hole card. |
+| `placeholders?` | `number` | Empty slots drawn when `cards` is empty. Default `2`. |
+| `active?` | `boolean` | Ring + tint for the hand in play. |
+| `dimmed?` | `boolean` | For a folded or busted hand. |
+| `selectedIndex?` | `number` | Marks one card as chosen. |
+| `onCardClick?` | `(card, index) => void` | Makes each card clickable. |
+| `className?` | `string` | |
+
+```tsx
+<CardHand
+  title="Dealer"
+  total={formatTotal(total, soft)}
+  totalNote={holeHidden ? "showing" : undefined}
+  cards={state.dealer}
+  hideFrom={holeHidden ? 1 : undefined}
+  size="lg"
+/>
+```
+
+**Used by:** the Blackjack table
+([game-blackjack-view.tsx](src/app/(protected)/modules/[slug]/game-blackjack-view.tsx)),
+for both the dealer row and each player hand.
+
+**Notes:** `total` is a **formatted string** on purpose — what a total means is the
+game's business, and Blackjack shows `"7/17"` for a soft hand where a poker game shows
+nothing at all. Keeping the number out of here is what stops game rules leaking into a
+shared component. Responsive through `PlayingCard`'s own `max-lg:` steps; `layout="fan"`
+is the answer for a hand too big to spread on a phone.
 
 ---
 
@@ -1932,6 +2122,9 @@ properly" view.
 | `index` | `number` | Which photo is shown. **An out-of-range index renders nothing**, so a single state variable can mean "closed". |
 | `onIndexChange` | `(index: number) => void` | Raised with the index to move to. The component never wraps past either end — it hides the arrow instead, so the caller decides if wrapping is wanted. |
 | `onClose` | `() => void` | Raised by Escape, the close button, and a backdrop click. |
+| `isPlaying?` | `boolean` | Advance on a timer. Controlled, so a caller can open **straight into** a running slideshow. Default `false`. |
+| `onPlayingChange?` | `(isPlaying: boolean) => void` | Raised by the play/pause button, by any manual step, and when the last photo ends the run. **Passing this is what makes the play/pause button appear** — omit both props for a plain viewer. |
+| `intervalMs?` | `number` | Milliseconds per photo. Defaults to `5000`. |
 | `className?` | `string` | |
 
 ```tsx
@@ -1946,7 +2139,10 @@ properly" view.
 ```
 
 **Used by:** the journal entry's "Pictures of this date" card
-([journal-photos-card.tsx](src/app/(protected)/modules/[slug]/entries/[id]/journal-photos-card.tsx)).
+([journal-photos-card.tsx](src/app/(protected)/modules/[slug]/entries/[id]/journal-photos-card.tsx))
+and the My Favorite Photos screen
+([fav-photos-list.tsx](src/app/(protected)/fav-photos-list.tsx)), which drives the
+slideshow from a button above its grid.
 
 **Notes.** Keys are bound on the **document**, not on a focused element: the overlay is
 opened by clicking a thumbnail elsewhere, so there is no reliable focus target and arrow
@@ -1961,6 +2157,26 @@ printed page has nothing to click.
 
 Uses a plain `<img>`, not `next/image` — these bytes come from a session-gated route over a
 NAS share, which `next/image` can't optimize anyway.
+
+**The slideshow.** `isPlaying` is *controlled* rather than internal state, because the
+caller's own "Slideshow" button has to open the overlay already running — internal state
+would need the reader to open a photo and then press play. Three behaviours are worth
+knowing before reusing it:
+
+- **A manual step pauses.** The arrows and ← / → both raise `onPlayingChange(false)`
+  before moving: taking hold of the controls means looking at this one properly, and a
+  timer pulling the photo away two seconds later is the opposite of what was asked.
+- **The last photo stops the run** — it does not wrap. Leaving a slideshow going finishes
+  on a still picture. (The component never wraps by hand either, so this is consistent
+  with the hidden arrow at each end.)
+- **It's one `setTimeout` per photo, keyed on the index**, not a repeating interval. So
+  every photo — including one arrived at by hand — gets a full `intervalMs`, and there is
+  no long-lived schedule to drift out of step with what's on screen.
+
+A caller that keeps `isPlaying` in state must clear it when the overlay closes for a
+reason other than the close button — e.g. the favourites list can close it by *deleting
+rows* until the index is out of range, and a stale `true` would make the next ordinary
+click open into a slideshow.
 
 ---
 

@@ -1,5 +1,254 @@
 # Change History
 
+## 2026-09-02 23:29 — A journal recycle bin, three new games, and a visualizer
+
+Nine bodies of work, committed separately and released together. Migration 0079.
+
+### Journal: a recycle bin, and a Correct tab to feed it
+
+The Journal section called **Import** is now **Data Management**, holding three tabs:
+Import (the CSV importer, unchanged), **Correct** (new) and **Reset** (new). The route
+slug and the icon-slot id stay `import` deliberately — renaming either would orphan an
+uploaded icon override.
+
+The **Correct** tab finds entries that share a date and a title and lets you delete the
+copies you don't want. Delete there means *move to the recycle bin*, which the second
+card on the tab lists: restore them, delete them forever, or empty the bin. Clicking any
+row opens the entry in the read-only viewer, prefixed `[DELETED]` when it is in the bin.
+
+The duplicate key is date + title compared case-insensitively, deliberately **looser**
+than the importer's date + time + title: the importer must not overwrite, and this screen
+must not hide. Untitled entries are skipped entirely — three of them on one day is noise,
+not a finding.
+
+**A journal entry is not a row**, which is what makes the bin four tables rather than
+one. Categories, tags and locations live in child tables, so a bin that copied only
+`jrn_entries` would restore an entry stripped of its taxonomy — silent data loss wearing
+a safety feature's clothes. Each child table gets a mirror, keyed on the bin's own id so
+a purge follows one key and the same entry can be recycled, restored and recycled again.
+
+`jrn_recycled_entries.id` is its own key with the original id kept in `entry_id`. A
+restore prefers that original id when it is still free, so a note referring to entry 42
+still resolves; if something else has taken it, the restore inserts at a fresh id rather
+than overwriting. The bin tables carry **no `updated_at` trigger** and their timestamps
+have no default: a row in the bin is immutable, and a trigger would overwrite the very
+`updated_at` the restore exists to preserve.
+
+Locked entries **can** be recycled, unlike `deleteEntry` which refuses them — the bin is
+what makes that safe — and `is_locked` travels into the bin and back, so unlocking is
+never a side effect of a round trip.
+
+The **Reset** tab clears every journal entry, locked ones included, keeping categories,
+tags, icons, filters, mappings and templates. This is not a bin operation: nothing
+cleared this way is recoverable.
+
+Migration 0079 adds the four tables and **drops `jrn_entry_images`**, created by 0027 for
+the standalone journal app's inline base64 attachments and never wired up here — journal
+photos come off the filesystem. No reader, no writer, and no migration has touched it
+since. That drop is not reversible.
+
+Two new icon slots: `journal_card_duplicates` and `journal_card_recycled_entries`.
+
+**Known gaps, recorded rather than fixed:** Reset does not empty the recycle bin, so
+entries recycled beforehand can be restored into an otherwise-empty journal. And
+`loadJournalCorrectDataAction` / `countRecycledEntriesAction` are exported but called
+from nowhere.
+
+### Journal: metadata backup and restore
+
+Meta Data gains **Back up all meta data**, downloading a dated JSON file holding every
+category and tag with its description and icon bytes, every prefill template, every saved
+filter and the module preferences. Below it, a card takes such a file back.
+
+Dropping a file only **plans**: a dialog reports per-kind tallies, how many icons would be
+replaced, and that nothing will be deleted and no entries change. Plan and apply derive
+from the same lookups so the dialog cannot drift from what the restore does, and the file
+is re-parsed server-side on confirm rather than trusting what round-tripped through the
+browser.
+
+Entries are deliberately excluded — they already have a CSV path that understands
+duplicates and overwriting, and folding them in would mean one file with two very
+different merge rules. Everything is keyed by **name**; ids and timestamps are omitted as
+install-local. The merge rule is **file wins, nothing deleted**: an existing category
+keeps its entry links but takes the file's description and icon, and a name the file
+doesn't mention is untouched. Deleting the difference would detach categories from every
+entry that used them, which is not something a button called "restore" should do.
+
+Icons inline as base64 rather than as a zip, because the point of the feature is a single
+file that round-trips. They are **re-validated** through `decodeImageUpload` on the way
+back in: a metadata bundle is a text file a reader can edit, and those bytes end up in a
+BLOB this app serves from its own origin.
+
+`photoRoot` is exported for completeness but **never applied** — it is a per-install
+absolute path, and restoring it would silently break the entry viewer's photo card.
+
+### Games: Sudoku, Blackjack and Minesweeper
+
+The Arcade goes from three games to six.
+
+**Sudoku** — Easy/Medium/Hard (44/34/26 clues), notes as a 3x3 mini-grid, row/column/box
+highlighting, and a digit that greys out on the pad once placed nine times. Wrong digits
+are **entered and counted**, not refused: refusing them would turn the board into an
+oracle you could solve by trying nine digits per cell.
+
+**Blackjack** — a bankroll run rather than a hand. 1000 chips, bets 25–250, a six-deck
+shoe. Dealer stands on all 17s; naturals pay 3:2; one split per round; no insurance or
+surrender, because a button for a bad bet is just a trap. The max bet is a share of the
+*starting* bankroll so a run cannot be decided by one all-in hand.
+
+**Minesweeper** — Beginner/Intermediate/Expert, long-press or a Flag mode toggle for
+touch, and chording folded into a plain click on a satisfied number. The first click is
+always safe including its neighbourhood, and mines are laid *on* that click rather than
+laid and relocated. Chording deliberately does not check your flags first — that would
+make it an oracle for verifying them.
+
+Each game is **one catalogue key**, with difficulty inside the game. Three keys is the
+shape Arrow Clearing shipped with and had to withdraw in migration 0077.
+
+The timed games score in **points, never seconds**: the shared scoreboard ranks by score
+descending, so a time in seconds would crown the slowest player in the house. Blackjack
+reports chips as points to avoid a third score unit.
+
+Deck primitives were lifted into `playing-cards.ts`, which knows nothing about what a card
+is worth, so `PlayingCard` and `CardHand` are genuinely reusable. The Arcade grid moved
+from three columns to two (three at `xl`), and **Tetris changed colour**: the seven
+strengths of `brass` became the classic literal tetromino palette, since the old ramp left
+S, Z, J and L nearly indistinguishable.
+
+**Worth knowing:** Blackjack is the only game that writes a scoreboard row for a loss, on
+the reasoning that the `played` count should reflect that somebody sat down. The
+instructions read as though nothing is written.
+
+### Music: a spectrum analyser on the player screen
+
+Once a track is playing, a brass visualizer appears between the cover art and the title,
+with a **Bars/Wave** toggle over its top-right corner. The choice persists in
+`sys_module_settings`, so it is **module-wide, not per-user** — one person's choice changes
+it for everyone.
+
+The bars are bucketed **logarithmically**, which is the whole reason `spectrum.ts` exists:
+with a 2048-point FFT at 48kHz, everything below 1kHz — most of what you hear as the song
+— lands in the first 4% of the bins, so equal groups give two bars that move and forty-six
+that sit flat. The waveform **picks peaks rather than averaging**, because averaging a
+waveform erases it: a symmetric oscillation sums back to the midpoint, so an averaged loud
+passage looks identical to silence.
+
+The frame loop never touches React state — a visualizer updates sixty times a second, and
+routing that through a `setState` would re-render the whole player screen to animate a
+decoration. Reduced motion **clears** the canvas rather than freezing it, since a frozen
+last frame reads as a stuck UI.
+
+**The sharp edge here is `createMediaElementSource`.** It is destructive and permanent: once
+the audio element is routed through the analyser its output no longer reaches the speakers,
+so a missing `connect(destination)` would silence every sound in the app on every page,
+with the transport still counting up. It is built once, behind a guard, only from a user
+gesture, and every failure is swallowed — a visualizer is a decoration, and the right
+outcome of "the graph would not build" is a player that still plays music.
+
+`setVisualizerModeAction` reads the current settings and changes one field, because the
+writer persists the whole set; a bare entry list would blank the scan allowlist the moment
+someone pressed the toggle. Symmetrically, saving the admin scan settings now injects the
+stored mode, or it would reset someone's choice on every save.
+
+**Not documented in the music instructions panel** — an omission, not a policy.
+
+### SQL Explorer: a schema browser, and prose for every table
+
+The admin SQL Explorer splits into **SQL Query** (unchanged) and **Tables Explorer**. The
+new tab pairs a "Table references" card — hand-written prose on what each table is for,
+grouped by module — with a two-pane browser: a tree of Tables / Views / Indexes / Triggers
+and a panel showing up to 500 rows, or the stored `CREATE` statement for an index or
+trigger. Per-object **Open in SQL** writes the `SELECT`, switches tabs and runs it.
+
+**BLOB cells are never sent**, only summarised as `<BLOB 24 KB>`: avatar, cover-art and
+card-image columns hold whole files, which would cost megabytes a row and render as line
+noise. The 500-row cap exists because the grid takes already-fetched rows, so nothing else
+stands between the browser and every row of `mus_tracks`.
+
+The reference prose is static rather than read from the database, because SQLite has
+nowhere to put a table comment. It can fall behind but can never *hide* a table: anything
+unknown lands in a trailing "Unclassified" group. Table names are validated by schema
+*and* resolved against `sqlite_master`, because a table name cannot be a bound parameter.
+
+`Tabs` gained optional controlled mode for the tab-jumping; uncontrolled use is unchanged.
+`TreeNav` is new — two levels, no recursion, which is exactly what the schema tree needs.
+
+### Module carousel graphics are resized on upload
+
+Nothing resized these before: the control only *rejected* over 2 MB, so a 3000x3000 photo
+was stored whole and downloaded whole to be drawn in a 192px tile — around a hundred times
+more pixels than the screen shows, which is what made the home carousel paint in slowly.
+
+Uploads are now downscaled to fit 800px and re-encoded as WebP. It never crops (that would
+silently trim someone's artwork) and never upscales (more bytes to look blurrier). **An
+animated GIF passes through untouched**, because `sharp` would flatten it to its first
+frame — and unlike a 20px icon, a carousel graphic is the thing being looked at.
+
+Decisions live in `resize-carousel-image.ts` as arithmetic over a width and a height;
+only decode and encode cross the `CarouselImageProcessor` port, which is what lets this be
+tested with a fake. `sharp` is imported **lazily**: `wiring.ts` is imported by every page,
+and a deploy that shipped the binding without libvips once filled `app.log` with
+`ERR_DLOPEN_FAILED` on ordinary page views. Deferred, that same install costs one failed
+upload and a readable message.
+
+The serving route now sends `immutable` with a one-year max-age, which is only safe because
+every caller addresses the image with `?v=<updatedAt>`. That forced a related fix: the
+admin control's version was a local counter starting at 0, which under a year-long cache
+would make one URL mean different bytes across sessions and pin a stale picture.
+
+`resize-carousel-images` (CLI, `--dry-run` first) backfills graphics stored before this.
+There is no undo but a database restore.
+
+**Signature changes:** `setModuleCarouselImage` is now `async`, and `ModuleRepository`
+gained a required `listAllCarouselImages()` — documented as backfill-only, since it reads
+BLOBs.
+
+### Favourite photos: a slideshow
+
+The favourite-photos screen gains a **Slideshow** button above the grid, and the lightbox
+gains an optional play/pause control. Five seconds a photo.
+
+Any manual step — arrow, key or click — **stops** the run: taking hold of the arrows means
+looking at this one properly, and a timer yanking it away two seconds later is the opposite
+of what was asked. The timer therefore advances the index directly rather than calling
+`goNext`, which pauses on purpose and would have shown exactly two photos. It uses one
+`setTimeout` keyed on the index rather than a repeating interval, so a manual step gets a
+full interval on the photo it lands on. The last photo **ends** the run rather than
+wrapping, so leaving it going finishes on a still picture.
+
+### Stocks: the indexes refresh is an icon
+
+The dashboard's "Refresh all" button became an icon-only control that spins while
+fetching, matching the other refresh on that screen.
+
+### Expense: the top-5 cards link through, and stop inventing vendors
+
+Each row of "Top 5 biggest spenders" on the Expense dashboard is now a link into
+Transactions with that vendor or category already expanded — the same URL contract the
+Meta Data cards use, so it is bookmarkable and survives a refresh.
+
+Those cards were also **inventing vendors out of statement prose**. A payment or
+redemption line carries no vendor, so the rollup fell back to deriving a brand key from
+the description, and "ONLINE PAYMENT THANK YOU" became a vendor called ONLINE, ranked
+against real shops. `vendorSpendTotals` filters on the **sign of the group's net** rather
+than on a list of banned words: an issuer can reword its statements, but money coming back
+to you is not spend whatever the line is called. The trade-off is that a genuine refund no
+longer reduces its vendor's total in this one list; `vendorTotals` still returns the true
+net for the Meta Data screen, which derives "in use" from it.
+
+Kept as a separate function rather than folded into `vendorTotals` for that reason — the
+Meta Data list would otherwise treat a net-negative vendor as unused, and the charts
+already apply their own positive-only filter.
+
+`TM` joins the payment-processor prefixes, so `TM *TICKETMASTER` reads as TICKETMASTER
+rather than TM. The trailing `*` is still required, which is what stops it eating a
+merchant whose name merely starts with those letters.
+
+**Also fixed:** the Transactions grid's Edit button did nothing visible. The form card was
+uncontrolled, and `defaultOpen` is only read once at mount, so clicking Edit populated a
+form that stayed collapsed. The card is now controlled, and picking a row opens it and
+scrolls it into view.
+
 ## 2026-09-01 16:03 — Tetris, a deployment log, and an import that stops duplicating itself
 
 Six bodies of work, committed separately and released together. Migrations 0077-0078.

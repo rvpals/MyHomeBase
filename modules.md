@@ -663,6 +663,76 @@ rows were cleared *at* — plus 1 a row for a soft drop and 2 for a hard drop. T
 from 500 to 800 is the one number that changes how the game is played: it is the whole
 reason to stack deep rather than clear singles.
 
+#### Sudoku
+
+Three difficulties — Easy, Medium and Hard, at 44 / 34 / 26 clues — chosen with a button
+that deals a new board immediately rather than arming a separate "New game". Rules in
+[game-sudoku.ts](src/lib/games/game-sudoku.ts).
+
+Decisions worth keeping:
+
+- **A wrong digit is entered, not refused.** It shows red and counts as a mistake.
+  Refusing it would turn the board into an oracle: you could find every answer by trying
+  nine digits in a cell and watching which one takes.
+- **`clues` is a target, not a guarantee.** The remover stops early on a stubborn grid
+  rather than ever producing a puzzle with two solutions. Removal is not rotationally
+  symmetric — difficulty over prettiness.
+- **The solver picks the most-constrained cell**, not the next empty one. Same lesson as
+  `OccupancyGrid` in `game-arrows.ts`, where a 50x50 board went from 16s to 41ms.
+- **`solution` rides on the client state.** The board is never persisted mid-game, so
+  there is nothing here a player with their own dev tools does not already have.
+- Generation runs inline on the main thread — tens of milliseconds. A worker would be the
+  answer if it ever grew.
+
+#### Blackjack
+
+A bankroll run rather than a single hand: 1000 chips, bets 25–250, a six-deck shoe
+reshuffled between rounds. Rules in
+[game-blackjack.ts](src/lib/games/game-blackjack.ts); the deck primitives are
+game-agnostic in [playing-cards.ts](src/lib/games/playing-cards.ts).
+
+Every rule choice has a reason, and they are the interesting part:
+
+- **Max bet is a share of the *starting* bankroll**, so a run cannot be decided by one
+  all-in hand and the ceiling does not creep upward as you win.
+- **Six decks**, because single-deck counting is easy enough to change how the game is
+  played.
+- **Dealer stands on all 17s**, soft included — simpler, and fewer special cases.
+- **Naturals pay 3:2, not 6:5.** The shorter price is a house-edge increase dressed as a
+  rule, and there is no house here.
+- **No insurance and no surrender.** A button for a bad bet is just a trap.
+- **Bust is checked first in `resultFor`** — the one rule that must not be reordered.
+- The stake leaves the bankroll at the deal, so `chips` always reads as chips in hand.
+- Chips are reported as `scoreUnit: "points"` to avoid a third unit. The scoreboard will
+  say "1,450 pts" for chips; that mismatch is confined to one column.
+- **It is the only game that saves a row for a loss**, on the reasoning that the
+  scoreboard's `played` count should reflect that somebody sat down.
+
+#### Minesweeper
+
+Beginner, Intermediate and Expert — 9x9/10, 16x16/40, 30x16/99. Rules in
+[game-minesweeper.ts](src/lib/games/game-minesweeper.ts).
+
+Decisions worth keeping:
+
+- **Mines are laid on the first click**, not up front and relocated. The first click and
+  its whole neighbourhood are guaranteed clear, and relocating a mine would change two
+  neighbourhoods' adjacent counts anyway. A fresh board is therefore deterministic, so it
+  can be built during render — unlike Sudoku and Blackjack, which must be seeded in a
+  mount effect to avoid a hydration mismatch.
+- **Chording does not check your flags first.** Clicking a satisfied number with a
+  misplaced flag detonates. Refusing would make the chord an oracle for verifying flags.
+- **Flood fill is an explicit stack, not recursion.** An expert blank region deep enough
+  to blow the call stack would take the tab with it.
+- **Neighbours are computed, not precomputed.** The hot path visits each cell once, so a
+  480-entry table built per board would cost more than the arithmetic it saves — the
+  opposite call to Sudoku's 81-cell `PEERS` table, and for a reason worth keeping
+  straight.
+- **The eight number colours are literal**, per design.md's *semantic red/green stays
+  literal* exception: at expert density you read the board by colour long before you read
+  the digits.
+- Expert scrolls horizontally rather than shrinking cells below a 1.75rem touch floor.
+
 #### Adding another game
 
 A game is **code plus one catalogue entry** — no migration, no new table, no nav
