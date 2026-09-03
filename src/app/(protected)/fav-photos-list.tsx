@@ -122,6 +122,9 @@ export function FavPhotosList({
   // An out-of-range index renders nothing, so one number means "closed" — the contract
   // PhotoLightbox documents.
   const [lightboxIndex, setLightboxIndex] = useState(-1);
+  // Whether the lightbox is advancing on its own. Lives here rather than inside the
+  // overlay because the Slideshow button below opens it already playing.
+  const [isPlaying, setIsPlaying] = useState(false);
 
   // Re-reads after every write, rather than patching the row locally. The list is
   // small and this is one round trip on an action the reader just took, which buys
@@ -270,6 +273,19 @@ export function FavPhotosList({
   // index as "show nothing", so closing it is a matter of not rendering it.
   const openIndex = lightboxIndex < favorites.length ? lightboxIndex : -1;
 
+  /** Opens the lightbox on the first photo, already running. */
+  function startSlideshow() {
+    if (favorites.length === 0) return;
+    setLightboxIndex(0);
+    setIsPlaying(true);
+  }
+
+  /** Closing stops the timer too, so re-opening a photo by hand is not a slideshow. */
+  function closeLightbox() {
+    setLightboxIndex(-1);
+    setIsPlaying(false);
+  }
+
   const columns: DataGridColumn<FavPhoto>[] = [
     {
       key: "thumbnail",
@@ -347,6 +363,28 @@ export function FavPhotosList({
       {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
       {notice && <p className="mb-3 text-sm text-muted">{notice}</p>}
 
+      {/* Above the grid, not in the selection bar: it plays the whole list, so it is
+          not an action on the ticked rows. `flex-wrap` so it sits on its own line on a
+          phone rather than squeezing anything. */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={favorites.length === 0}
+          onClick={startSlideshow}
+          title="Show every favourite, five seconds each"
+        >
+          {/* Text plus a character, matching the neighbouring "Download N" — there is
+              no play glyph in the icon set. */}
+          ▶ Slideshow
+        </Button>
+        {favorites.length > 0 && (
+          <span className="text-xs text-muted">
+            {favorites.length} photo{favorites.length === 1 ? "" : "s"}, 5 seconds each
+          </span>
+        )}
+      </div>
+
       <DataGrid
         columns={columns}
         rows={favorites}
@@ -384,9 +422,14 @@ export function FavPhotosList({
         )}
         // Clicking a row opens the photo. The note field, the checkbox and the remove
         // button stop their own clicks from reaching it, so each control does one thing.
-        onRowClick={(row) =>
-          setLightboxIndex(favorites.findIndex((one) => one.relativePath === row.relativePath))
-        }
+        // Clearing `isPlaying` matters as well as setting the index: a removal can
+        // close the overlay by shortening the list (see the clamp above), which leaves
+        // the play flag set with nothing rendered to consume it — and the next click on
+        // a row would then open straight into a running slideshow nobody asked for.
+        onRowClick={(row) => {
+          setIsPlaying(false);
+          setLightboxIndex(favorites.findIndex((one) => one.relativePath === row.relativePath));
+        }}
       />
 
       {/* The lightbox walks the whole favourites list, not just the row clicked, so
@@ -402,7 +445,9 @@ export function FavPhotosList({
           }))}
           index={openIndex}
           onIndexChange={setLightboxIndex}
-          onClose={() => setLightboxIndex(-1)}
+          onClose={closeLightbox}
+          isPlaying={isPlaying}
+          onPlayingChange={setIsPlaying}
         />
       )}
     </div>

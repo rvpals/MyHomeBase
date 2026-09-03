@@ -28,6 +28,19 @@ export interface PhotoLightboxProps {
   onIndexChange: (index: number) => void;
   /** Raised on Escape, on the close button, and on a click of the backdrop. */
   onClose: () => void;
+  /**
+   * Advance on a timer. Omit (or pass `false`) for a plain viewer.
+   *
+   * Controlled rather than internal state, so the caller can open straight into a
+   * running slideshow — which is what a "Slideshow" button elsewhere on the page has
+   * to do. Requires `onPlayingChange` to be useful: the overlay pauses itself in
+   * several places and has to tell the caller.
+   */
+  isPlaying?: boolean;
+  /** Raised when the overlay starts or stops playing — the play button, a manual step, the end of the set. */
+  onPlayingChange?: (isPlaying: boolean) => void;
+  /** Milliseconds per photo while playing. Defaults to 5000. */
+  intervalMs?: number;
   /** Caller-supplied classes, merged last so they win. */
   className?: string;
 }
@@ -37,19 +50,31 @@ export function PhotoLightbox({
   index,
   onIndexChange,
   onClose,
+  isPlaying = false,
+  onPlayingChange,
+  intervalMs = 5000,
   className = "",
 }: PhotoLightboxProps) {
   const photo = photos[index];
   const hasPrevious = index > 0;
   const hasNext = index < photos.length - 1;
 
+  // Both manual steps stop the slideshow: taking hold of the arrows (or the keys)
+  // means looking at this one properly, and a timer yanking the photo away two seconds
+  // later is the opposite of what was asked. Restarting is one click of play.
   const goPrevious = useCallback(() => {
-    if (index > 0) onIndexChange(index - 1);
-  }, [index, onIndexChange]);
+    if (index > 0) {
+      onPlayingChange?.(false);
+      onIndexChange(index - 1);
+    }
+  }, [index, onIndexChange, onPlayingChange]);
 
   const goNext = useCallback(() => {
-    if (index < photos.length - 1) onIndexChange(index + 1);
-  }, [index, photos.length, onIndexChange]);
+    if (index < photos.length - 1) {
+      onPlayingChange?.(false);
+      onIndexChange(index + 1);
+    }
+  }, [index, photos.length, onIndexChange, onPlayingChange]);
 
   // Keys are bound on the document rather than on a focused element: the overlay is
   // opened by clicking a thumbnail somewhere else, so there is no reliable focus
@@ -80,6 +105,30 @@ export function PhotoLightbox({
       document.body.style.overflow = previousOverflow;
     };
   }, [photo]);
+
+  // The slideshow timer.
+  //
+  // Depends on `index`, so it is torn down and restarted on every photo — which is
+  // exactly what gives a manual step (or the play button) a full interval on the photo
+  // it lands on, instead of inheriting the tail of the previous one. One `setTimeout`
+  // rather than a repeating `setInterval` for the same reason: there is no long-lived
+  // schedule to drift out of step with what is on screen.
+  //
+  // It advances by calling `onIndexChange` directly, NOT `goNext` — `goNext` pauses on
+  // purpose, and a timer that pauses itself would show exactly two photos.
+  useEffect(() => {
+    if (photo === undefined || !isPlaying) return;
+
+    // The last photo ends the slideshow rather than wrapping: asked for, and it means
+    // leaving it running finishes on a still picture instead of looping all evening.
+    if (index >= photos.length - 1) {
+      onPlayingChange?.(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => onIndexChange(index + 1), intervalMs);
+    return () => window.clearTimeout(timer);
+  }, [photo, isPlaying, index, photos.length, intervalMs, onIndexChange, onPlayingChange]);
 
   // Mounted into document.body via a portal, NOT inline where it is used.
   //
@@ -124,6 +173,22 @@ export function PhotoLightbox({
           <span className="text-xs text-white/60">
             {index + 1} / {photos.length}
           </span>
+          {/* Only offered when the caller wired up autoplay, and only while there is
+              somewhere left to go — a play button on the last photo would start a
+              slideshow that immediately stops itself. */}
+          {onPlayingChange && photos.length > 1 && (hasNext || isPlaying) && (
+            <button
+              type="button"
+              onClick={() => onPlayingChange(!isPlaying)}
+              aria-label={isPlaying ? "Pause slideshow" : "Play slideshow"}
+              title={isPlaying ? "Pause slideshow" : "Play slideshow"}
+              className="grid h-10 w-10 place-items-center rounded-full bg-white/10 text-sm leading-none text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            >
+              {/* Characters, not the icon set — the same call this overlay's other
+                  controls already make with ‹ › ×. */}
+              {isPlaying ? "❚❚" : "▶"}
+            </button>
+          )}
           {/* Large tap target: this is the primary way out on a phone, where there
               is no Escape key and the backdrop is mostly covered by the image. */}
           <button

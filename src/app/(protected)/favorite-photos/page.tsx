@@ -35,9 +35,9 @@ export default async function FavoritePhotosPage() {
     <HomeShell label="My favorite photos" icon="photo" href="/favorite-photos">
       <div className={`${PAGE_CONTAINER} p-4 max-lg:p-3`}>
         <p className="mb-4 text-sm text-muted">
-          Every photograph kept from the Random Photo card. Tick a few to download them as
-          one zip, or to remove them from your favorites — the pictures themselves stay in
-          the archive either way.
+          Every photograph kept from the Random Photo card. Press Slideshow to watch them
+          all, five seconds each, or tick a few to download them as one zip or remove them
+          from your favorites — the pictures themselves stay in the archive either way.
         </p>
         <FavPhotosList initialFavorites={favorites} />
       </div>
