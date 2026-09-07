@@ -1,0 +1,22 @@
+-- A custom uploaded icon per student action, so a teacher can mark "Late" or
+-- "Extra Credit" with their own artwork instead of picking from the ten glyphs
+-- ATTENDANCE_ACTION_ICONS hardcodes.
+--
+-- Why a column here rather than an entry in ICON_SLOTS: a slot id is
+-- code-registered and permanent (it is persisted in ico_slot_overrides.slot_id),
+-- but student actions are rows a teacher creates at runtime. There is no id to
+-- register at build time, so the per-row pattern is the only one that fits.
+--
+-- Stored as a BLOB with its mime type alongside, mirroring exp_categories.icon_image
+-- (migration 0034), stk_investment_accounts.icon_image (0037) and the journal
+-- taxonomy icons (0042): the bytes are served by a dedicated route rather than
+-- inlined as a base64 data URL, so they never bloat a JSON payload and the browser
+-- can cache them.
+--
+-- Reads of the catalog must keep selecting columns explicitly (STUDENT_ACTION_COLUMNS
+-- in the repository) so the blob never rides along with a picker or a register.
+--
+-- The existing `icon` column stays and keeps its meaning: it is the built-in glyph
+-- key, and it survives an upload being removed. An upload wins while it is present.
+ALTER TABLE att_student_actions ADD COLUMN icon_image BLOB;
+ALTER TABLE att_student_actions ADD COLUMN icon_image_mime_type TEXT;

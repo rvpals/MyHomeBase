@@ -4,7 +4,9 @@ import type {
   StudentActionWriteData,
   StudentWriteData,
 } from "./schema";
+import type { DecodedImage } from "@/lib/shared/image-upload";
 import type {
+  AttendanceActionIconRef,
   AttendanceClass,
   AttendanceRecord,
   AttendanceSessionSummary,
@@ -67,6 +69,14 @@ export interface AttendanceRepository {
    * so deleting the catalog row would leave past sessions half-described.
    */
   deleteStudentAction(id: number): void;
+  /**
+   * An action's uploaded icon bytes, or undefined when it has none. Its own
+   * method rather than a field on `StudentAction` so the blob is read only by
+   * the icon-serving route, never by a picker or a register.
+   */
+  getStudentActionIcon(id: number): AttendanceActionIconRef | undefined;
+  /** Stores or, with `undefined`, removes an action's uploaded icon. */
+  setStudentActionIcon(id: number, icon: DecodedImage | undefined): void;
 
   // Attendance
   /** One saved session by its id. A date alone no longer identifies one. */

@@ -8,6 +8,7 @@ import { cookies } from "next/headers";
 import {
   addStudent,
   attendanceSettingsToEntries,
+  clearStudentActionIcon,
   createClass,
   createStudentAction,
   deleteClass,
@@ -22,6 +23,7 @@ import {
   removeStudentFromClass,
   saveAttendance,
   setStudentActionActive,
+  setStudentActionIcon,
   updateClass,
   updateStudent,
   updateStudentAction as updateStudentActionUseCase,
@@ -32,6 +34,7 @@ import {
   type SaveAttendanceInput,
 } from "@/lib/attendance";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
+import type { ImageUploadInput } from "@/lib/shared/image-upload";
 import { saveModuleSettings } from "@/lib/module-settings";
 import { getModuleBySlug } from "@/lib/modules";
 import { deps } from "@/lib/wiring";
@@ -275,6 +278,38 @@ export async function deleteStudentActionAction(
     return { ok: true, recordedUses };
   } catch (error) {
     return { ok: false, error: toMessage(error, "Failed to delete the action.") };
+  }
+}
+
+/**
+ * Stores a teacher's own artwork for an action. The built-in glyph choice is left
+ * alone, so removing the upload later falls back to it.
+ *
+ * Base64 rather than raw bytes for the same reason as every other image upload in
+ * the app: it survives server-action serialization cleanly, and the use-case
+ * decodes it and enforces the type and size limits.
+ */
+export async function setStudentActionIconAction(
+  id: number,
+  mimeType: string,
+  base64Data: string,
+): Promise<ActionResult> {
+  try {
+    setStudentActionIcon(deps.attendanceRepo, id, { mimeType, base64Data } as ImageUploadInput);
+    revalidateAttendance();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: toMessage(error, "Failed to save the icon.") };
+  }
+}
+
+export async function clearStudentActionIconAction(id: number): Promise<ActionResult> {
+  try {
+    clearStudentActionIcon(deps.attendanceRepo, id);
+    revalidateAttendance();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: toMessage(error, "Failed to remove the icon.") };
   }
 }
 

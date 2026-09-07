@@ -106,6 +106,8 @@ function fakeRepo(): AttendanceRepository {
     updateStudentAction: notImplemented("updateStudentAction"),
     countRecordedUsesOfAction: notImplemented("countRecordedUsesOfAction"),
     deleteStudentAction: notImplemented("deleteStudentAction"),
+    getStudentActionIcon: notImplemented("getStudentActionIcon"),
+    setStudentActionIcon: notImplemented("setStudentActionIcon"),
 
     getAttendanceRecordById: notImplemented("getAttendanceRecordById"),
     listAttendanceRecords: notImplemented("listAttendanceRecords"),

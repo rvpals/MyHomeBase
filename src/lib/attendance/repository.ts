@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import type { DecodedImage } from "@/lib/shared/image-upload";
 import type { AttendanceRepository } from "./ports";
 import {
   studentSchema,
@@ -8,6 +9,7 @@ import {
   type StudentWriteData,
 } from "./schema";
 import type {
+  AttendanceActionIconRef,
   AttendanceClass,
   AttendanceEntry,
   AttendanceRecord,
@@ -61,6 +63,7 @@ interface StudentActionRow {
   code: string;
   description: string;
   icon: string;
+  icon_image_mime_type: string | null;
   sequence: number;
   is_active: number;
   created_at: string;
@@ -106,6 +109,7 @@ function toStudentAction(row: StudentActionRow): StudentAction {
     code: row.code,
     description: row.description,
     icon: row.icon,
+    iconMimeType: row.icon_image_mime_type ?? undefined,
     sequence: row.sequence,
     // SQLite has no boolean; the column is 0/1.
     isActive: row.is_active === 1,
@@ -128,8 +132,12 @@ const RECORD_COLUMNS = `
   recorded_by_user_id
 `;
 
+// Names every column but `icon_image`, deliberately: the mime type is enough for
+// a caller to know whether to build an icon URL, so an uploaded blob never rides
+// along with a picker, a register or a report. Only getStudentActionIcon reads it.
 const STUDENT_ACTION_COLUMNS = `
-  id, name, code, description, icon, sequence, is_active, created_at, updated_at
+  id, name, code, description, icon, icon_image_mime_type, sequence, is_active,
+  created_at, updated_at
 `;
 
 // Picker order. Sequence first so a teacher can put Late above Extra Credit,
@@ -434,6 +442,24 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
     // countRecordedUsesOfAction first and retires a used one instead. Recorded
     // rows are left alone regardless: they carry their own code and name.
     this.db.prepare("DELETE FROM att_student_actions WHERE id = ?").run(id);
+  }
+
+  getStudentActionIcon(id: number): AttendanceActionIconRef | undefined {
+    const row = this.db
+      .prepare("SELECT icon_image, icon_image_mime_type FROM att_student_actions WHERE id = ?")
+      .get(id) as { icon_image: Buffer | null; icon_image_mime_type: string | null } | undefined;
+    if (!row || !row.icon_image || !row.icon_image_mime_type) return undefined;
+    return { data: row.icon_image, mimeType: row.icon_image_mime_type };
+  }
+
+  setStudentActionIcon(id: number, icon: DecodedImage | undefined): void {
+    // Both columns move together, so a NULL blob can never be left with a
+    // dangling mime type that would make the row look like it has an upload.
+    this.db
+      .prepare(
+        "UPDATE att_student_actions SET icon_image = ?, icon_image_mime_type = ? WHERE id = ?",
+      )
+      .run(icon?.data ?? null, icon?.mimeType ?? null, id);
   }
 
   // -------------------------------------------------------------------------

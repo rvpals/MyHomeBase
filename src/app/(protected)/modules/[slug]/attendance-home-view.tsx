@@ -19,7 +19,7 @@
 // nothing else in the app marks a list of people present. If a second caller
 // appears, that's the moment to promote it.
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { memo, useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AttendanceActionIcon } from "@/components/attendance-action-icon";
 import { Button } from "@/components/button";
@@ -35,6 +35,7 @@ import {
   type StudentAction,
 } from "@/lib/attendance";
 import { saveAttendanceAction } from "./attendance-actions";
+import { hasStudentActionMark, studentActionIconUrl } from "./attendance-shared";
 
 const SELECT_CLASS =
   "rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
@@ -59,6 +60,17 @@ const CARD_NAME_CLASS = "font-display text-[13px] font-bold italic leading-tight
 type RegisterView = "list" | "card";
 
 const VIEW_STORAGE_KEY = "myhomebase:attendance-register-view";
+
+/**
+ * The "nothing noted" action set, shared by every unmarked student.
+ *
+ * Most of a register has no actions on it, so the lookup below falls back
+ * constantly. A fresh `new Set()` each time would be new *identity* each time,
+ * which is enough to defeat the `memo` on the row — 30 rows would re-render on
+ * every tap to discover nothing about them had changed. One frozen instance
+ * keeps those rows referentially stable.
+ */
+const NO_ACTION_IDS: ReadonlySet<number> = new Set<number>();
 
 /**
  * A student's display name. Mirrors `formatStudentName` in the lib.
@@ -202,15 +214,16 @@ function RegisterPanel({
   const [error, setError] = useState<string>();
   const [isPending, startTransition] = useTransition();
 
-  const actionsById = useMemo(
-    () => new Map(actions.map((action) => [action.id, action])),
-    [actions],
-  );
-
   // Read in an effect rather than in the initializer: touching localStorage
   // during the first render makes the server and client markup disagree.
+  //
+  // Which is also why `set-state-in-effect` is disabled here instead of obeyed.
+  // The stored view is unknowable during render — `window` does not exist on the
+  // server — so the one extra render this costs is the price of correct hydration,
+  // not an accident. It runs once on mount and never re-fires.
   useEffect(() => {
     const stored = window.localStorage.getItem(VIEW_STORAGE_KEY);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (stored === "list" || stored === "card") setView(stored);
   }, []);
 
@@ -219,7 +232,12 @@ function RegisterPanel({
     window.localStorage.setItem(VIEW_STORAGE_KEY, next);
   }
 
-  function toggle(studentId: number) {
+  // `useCallback` with no dependencies, which the functional-updater form below
+  // makes possible: the handler never needs to read `presentIds` directly, so
+  // its identity can stay fixed for the life of the register. That fixed
+  // identity is what lets the memoized rows skip re-rendering — a handler
+  // rebuilt each render would look like a changed prop to all 30 of them.
+  const toggle = useCallback((studentId: number) => {
     setPresentIds((current) => {
       const next = new Set(current);
       if (next.has(studentId)) next.delete(studentId);
@@ -227,7 +245,7 @@ function RegisterPanel({
       return next;
     });
     setMessage(undefined);
-  }
+  }, []);
 
   /**
    * Notes or un-notes one action for one student.
@@ -236,7 +254,7 @@ function RegisterPanel({
    * never arrived is a real thing a teacher records, so the two facts stay
    * independent — the same independence the stored model has.
    */
-  function toggleAction(studentId: number, actionId: number) {
+  const toggleAction = useCallback((studentId: number, actionId: number) => {
     setActionIdsByStudentId((current) => {
       const next = new Map(current);
       const forStudent = new Set(next.get(studentId) ?? []);
@@ -252,7 +270,7 @@ function RegisterPanel({
       return next;
     });
     setMessage(undefined);
-  }
+  }, []);
 
   function handleSave() {
     setError(undefined);
@@ -312,7 +330,12 @@ function RegisterPanel({
     students: sheet.students,
     presentIds,
     actionIdsByStudentId,
-    actionsById,
+    // The catalog straight off the props, in the display order the server sent
+    // it. One stable reference shared by every row: `ActionChips` used to
+    // spread a `Map` of it per row per render, and that fresh array identity
+    // each time was enough to stop the row's `memo` bailing out. Catalog order
+    // (not click order) is still what the chips read in — see ActionChips.
+    actionsInCatalogOrder: actions,
     hasActions: actions.length > 0,
     onToggle: toggle,
     onOpenActions: setPickerStudentId,
@@ -394,7 +417,7 @@ function RegisterPanel({
         <ActionPicker
           student={pickerStudent}
           actions={actions}
-          selectedIds={actionIdsByStudentId.get(pickerStudent.id) ?? new Set()}
+          selectedIds={actionIdsByStudentId.get(pickerStudent.id) ?? NO_ACTION_IDS}
           onToggle={(actionId) => toggleAction(pickerStudent.id, actionId)}
           onClose={() => setPickerStudentId(undefined)}
         />
@@ -466,7 +489,11 @@ interface RegisterProps {
   presentIds: Set<number>;
   /** studentId -> the action ids noted for them this session. */
   actionIdsByStudentId: Map<number, Set<number>>;
-  actionsById: Map<number, StudentAction>;
+  /**
+   * The catalog in display order, hoisted from `RegisterPanel` so the chips are
+   * ordered without each row rebuilding the list. See `actionsInCatalogOrder`.
+   */
+  actionsInCatalogOrder: StudentAction[];
   /** Whether the catalog holds anything. False hides the ⚡ button entirely. */
   hasActions: boolean;
   onToggle: (studentId: number) => void;
@@ -531,18 +558,20 @@ function ActionButton({
 /** The code chips for what a student has picked up, in catalog order. */
 function ActionChips({
   actionIds,
-  actionsById,
+  actionsInCatalogOrder,
   compact = false,
 }: {
-  actionIds: Set<number>;
-  actionsById: Map<number, StudentAction>;
+  actionIds: ReadonlySet<number>;
+  /** Already in display order — see `actionsInCatalogOrder` in `RegisterPanel`. */
+  actionsInCatalogOrder: StudentAction[];
   compact?: boolean;
 }) {
   if (actionIds.size === 0) return null;
 
   // Catalog order, not click order, so the same two actions always read the same
-  // way — matching how the report prints them.
-  const chosen = [...actionsById.values()].filter((action) => actionIds.has(action.id));
+  // way — matching how the report prints them. The ordered list arrives ready
+  // made; this only picks out the student's own.
+  const chosen = actionsInCatalogOrder.filter((action) => actionIds.has(action.id));
 
   return (
     <span className={`flex flex-wrap items-center ${compact ? "gap-0.5" : "gap-1"}`}>
@@ -556,6 +585,7 @@ function ActionChips({
         >
           <AttendanceActionIcon
             name={action.icon}
+            src={studentActionIconUrl(action)}
             className={compact ? "h-2.5 w-2.5" : "h-3 w-3"}
           />
           {action.code}
@@ -565,12 +595,103 @@ function ActionChips({
   );
 }
 
+/**
+ * One student's strip, memoized.
+ *
+ * This is the piece that keeps tapping responsive. Marking a student flips one
+ * entry in a `Set` held by `RegisterPanel`, which re-renders the panel and so
+ * re-runs this list — but only *this* student's `isPresent` actually changed.
+ * Without `memo`, React rebuilt and diffed all 30-odd rows on every tap to find
+ * that out; taps arriving faster than the frames could retire then queued up
+ * behind each other until the register stalled and caught up in a lurch.
+ *
+ * The props are deliberately primitives and stable references: `isPresent` a
+ * boolean, `actionIds` either the student's own set or the shared
+ * `NO_ACTION_IDS`, and the two handlers fixed by `useCallback` in the panel. All
+ * of them compare `===` for an untouched row, so `memo` bails out before doing
+ * any work.
+ */
+const StudentRow = memo(function StudentRow({
+  student,
+  isPresent,
+  actionIds,
+  actionsInCatalogOrder,
+  hasActions,
+  onToggle,
+  onOpenActions,
+  isPending,
+}: {
+  student: Student;
+  isPresent: boolean;
+  actionIds: ReadonlySet<number>;
+  actionsInCatalogOrder: StudentAction[];
+  hasActions: boolean;
+  onToggle: (studentId: number) => void;
+  onOpenActions: (studentId: number) => void;
+  isPending: boolean;
+}) {
+  const name = studentName(student);
+
+  return (
+    <li>
+      {/* The row is a container of two controls, not one control — see
+          ActionButton on why the ⚡ can't nest inside the tap target. */}
+      <div
+        className={`flex items-center gap-2 rounded-xl border pr-2 transition-colors ${
+          isPresent
+            ? "border-brass bg-brass-soft"
+            : "border-line bg-paper-raised hover:border-brass"
+        }`}
+      >
+        <button
+          type="button"
+          onClick={() => onToggle(student.id)}
+          aria-pressed={isPresent}
+          disabled={isPending}
+          className="flex min-w-0 flex-1 items-center justify-between gap-3 rounded-xl px-4 py-3 text-left disabled:opacity-60"
+        >
+          <span className="min-w-0">
+            <span className={`block truncate ${NAME_CLASS}`}>{name}</span>
+            <span className="flex flex-wrap items-center gap-2">
+              {student.studentIdentifier && (
+                <span className="truncate font-mono text-xs text-muted">
+                  {student.studentIdentifier}
+                </span>
+              )}
+              <ActionChips
+                actionIds={actionIds}
+                actionsInCatalogOrder={actionsInCatalogOrder}
+              />
+            </span>
+          </span>
+          <span
+            className={`shrink-0 rounded-md px-2 py-1 text-xs font-medium uppercase tracking-wide ${
+              isPresent ? "bg-brass text-paper" : "text-muted"
+            }`}
+          >
+            {isPresent ? "Present" : "—"}
+          </span>
+        </button>
+
+        {hasActions && (
+          <ActionButton
+            count={actionIds.size}
+            onClick={() => onOpenActions(student.id)}
+            disabled={isPending}
+            studentLabel={name}
+          />
+        )}
+      </div>
+    </li>
+  );
+});
+
 /** The long thin strip per student. One column on a phone, two once there's room. */
 function ListView({
   students,
   presentIds,
   actionIdsByStudentId,
-  actionsById,
+  actionsInCatalogOrder,
   hasActions,
   onToggle,
   onOpenActions,
@@ -578,61 +699,19 @@ function ListView({
 }: RegisterProps) {
   return (
     <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">
-      {students.map((student) => {
-        const isPresent = presentIds.has(student.id);
-        const actionIds = actionIdsByStudentId.get(student.id) ?? new Set<number>();
-        const name = studentName(student);
-
-        return (
-          <li key={student.id}>
-            {/* The row is a container of two controls, not one control — see
-                ActionButton on why the ⚡ can't nest inside the tap target. */}
-            <div
-              className={`flex items-center gap-2 rounded-xl border pr-2 transition-colors ${
-                isPresent
-                  ? "border-brass bg-brass-soft"
-                  : "border-line bg-paper-raised hover:border-brass"
-              }`}
-            >
-              <button
-                type="button"
-                onClick={() => onToggle(student.id)}
-                aria-pressed={isPresent}
-                disabled={isPending}
-                className="flex min-w-0 flex-1 items-center justify-between gap-3 rounded-xl px-4 py-3 text-left disabled:opacity-60"
-              >
-                <span className="min-w-0">
-                  <span className={`block truncate ${NAME_CLASS}`}>{name}</span>
-                  <span className="flex flex-wrap items-center gap-2">
-                    {student.studentIdentifier && (
-                      <span className="truncate font-mono text-xs text-muted">
-                        {student.studentIdentifier}
-                      </span>
-                    )}
-                    <ActionChips actionIds={actionIds} actionsById={actionsById} />
-                  </span>
-                </span>
-                <span
-                  className={`shrink-0 rounded-md px-2 py-1 text-xs font-medium uppercase tracking-wide ${
-                    isPresent ? "bg-brass text-paper" : "text-muted"
-                  }`}
-                >
-                  {isPresent ? "Present" : "—"}
-                </span>
-              </button>
-
-              {hasActions && (
-                <ActionButton
-                  count={actionIds.size}
-                  onClick={() => onOpenActions(student.id)}
-                  disabled={isPending}
-                  studentLabel={name}
-                />
-              )}
-            </div>
-          </li>
-        );
-      })}
+      {students.map((student) => (
+        <StudentRow
+          key={student.id}
+          student={student}
+          isPresent={presentIds.has(student.id)}
+          actionIds={actionIdsByStudentId.get(student.id) ?? NO_ACTION_IDS}
+          actionsInCatalogOrder={actionsInCatalogOrder}
+          hasActions={hasActions}
+          onToggle={onToggle}
+          onOpenActions={onOpenActions}
+          isPending={isPending}
+        />
+      ))}
     </ul>
   );
 }
@@ -655,11 +734,107 @@ function ListView({
  * makes. On a phone the list view is the better register anyway, and it has the
  * full-size button.
  */
+/**
+ * One student's card, memoized for the same reason as `StudentRow` — and more
+ * so: a card carries a pip, an initials disc and a name that all re-render on
+ * a state change, and the grid shows every student at once.
+ */
+const StudentCard = memo(function StudentCard({
+  student,
+  isPresent,
+  actionIds,
+  actionsInCatalogOrder,
+  hasActions,
+  onToggle,
+  onOpenActions,
+  isPending,
+  cardsUseLastNameFirst,
+}: {
+  student: Student;
+  isPresent: boolean;
+  actionIds: ReadonlySet<number>;
+  actionsInCatalogOrder: StudentAction[];
+  hasActions: boolean;
+  onToggle: (studentId: number) => void;
+  onOpenActions: (studentId: number) => void;
+  isPending: boolean;
+  cardsUseLastNameFirst: boolean;
+}) {
+  const initials = `${student.firstName.charAt(0)}${student.lastName.charAt(0)}`.toUpperCase();
+  const name = studentName(student, cardsUseLastNameFirst);
+
+  return (
+    <li>
+      {/* `relative` so the ⚡ can be positioned over the card without being
+          nested inside its button. */}
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => onToggle(student.id)}
+          aria-pressed={isPresent}
+          disabled={isPending}
+          className={`flex aspect-[3/4] w-full flex-col items-center justify-between rounded-lg border p-1.5 text-center transition-colors disabled:opacity-60 ${
+            isPresent
+              ? "border-brass bg-brass-soft"
+              : "border-line bg-paper-raised hover:border-brass"
+          }`}
+        >
+          {/* Corner pip, like a card's rank. */}
+          <span
+            className={`self-start rounded px-1 py-0 font-mono text-[9px] font-semibold ${
+              isPresent ? "bg-brass text-paper" : "text-muted"
+            }`}
+          >
+            {isPresent ? "P" : "—"}
+          </span>
+
+          <span
+            className={`flex h-7 w-7 items-center justify-center rounded-full font-display text-xs ${
+              isPresent ? "bg-brass text-paper" : "bg-paper text-muted"
+            }`}
+          >
+            {initials}
+          </span>
+
+          <span className="w-full">
+            <span className={`block truncate ${CARD_NAME_CLASS}`}>{name}</span>
+            {actionIds.size > 0 ? (
+              <ActionChips
+                actionIds={actionIds}
+                actionsInCatalogOrder={actionsInCatalogOrder}
+                compact
+              />
+            ) : (
+              student.studentIdentifier && (
+                <span className="block truncate font-mono text-[9px] text-muted">
+                  {student.studentIdentifier}
+                </span>
+              )
+            )}
+          </span>
+        </button>
+
+        {hasActions && (
+          <span className="absolute right-1 top-1">
+            <ActionButton
+              count={actionIds.size}
+              onClick={() => onOpenActions(student.id)}
+              disabled={isPending}
+              studentLabel={name}
+              compact
+            />
+          </span>
+        )}
+      </div>
+    </li>
+  );
+});
+
 function CardView({
   students,
   presentIds,
   actionIdsByStudentId,
-  actionsById,
+  actionsInCatalogOrder,
   hasActions,
   onToggle,
   onOpenActions,
@@ -668,74 +843,20 @@ function CardView({
 }: RegisterProps) {
   return (
     <ul className="tile-grid gap-2">
-      {students.map((student) => {
-        const isPresent = presentIds.has(student.id);
-        const actionIds = actionIdsByStudentId.get(student.id) ?? new Set<number>();
-        const initials = `${student.firstName.charAt(0)}${student.lastName.charAt(0)}`.toUpperCase();
-        const name = studentName(student, cardsUseLastNameFirst);
-
-        return (
-          <li key={student.id}>
-            {/* `relative` so the ⚡ can be positioned over the card without being
-                nested inside its button. */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => onToggle(student.id)}
-                aria-pressed={isPresent}
-                disabled={isPending}
-                className={`flex aspect-[3/4] w-full flex-col items-center justify-between rounded-lg border p-1.5 text-center transition-colors disabled:opacity-60 ${
-                  isPresent
-                    ? "border-brass bg-brass-soft"
-                    : "border-line bg-paper-raised hover:border-brass"
-                }`}
-              >
-                {/* Corner pip, like a card's rank. */}
-                <span
-                  className={`self-start rounded px-1 py-0 font-mono text-[9px] font-semibold ${
-                    isPresent ? "bg-brass text-paper" : "text-muted"
-                  }`}
-                >
-                  {isPresent ? "P" : "—"}
-                </span>
-
-                <span
-                  className={`flex h-7 w-7 items-center justify-center rounded-full font-display text-xs ${
-                    isPresent ? "bg-brass text-paper" : "bg-paper text-muted"
-                  }`}
-                >
-                  {initials}
-                </span>
-
-                <span className="w-full">
-                  <span className={`block truncate ${CARD_NAME_CLASS}`}>{name}</span>
-                  {actionIds.size > 0 ? (
-                    <ActionChips actionIds={actionIds} actionsById={actionsById} compact />
-                  ) : (
-                    student.studentIdentifier && (
-                      <span className="block truncate font-mono text-[9px] text-muted">
-                        {student.studentIdentifier}
-                      </span>
-                    )
-                  )}
-                </span>
-              </button>
-
-              {hasActions && (
-                <span className="absolute right-1 top-1">
-                  <ActionButton
-                    count={actionIds.size}
-                    onClick={() => onOpenActions(student.id)}
-                    disabled={isPending}
-                    studentLabel={name}
-                    compact
-                  />
-                </span>
-              )}
-            </div>
-          </li>
-        );
-      })}
+      {students.map((student) => (
+        <StudentCard
+          key={student.id}
+          student={student}
+          isPresent={presentIds.has(student.id)}
+          actionIds={actionIdsByStudentId.get(student.id) ?? NO_ACTION_IDS}
+          actionsInCatalogOrder={actionsInCatalogOrder}
+          hasActions={hasActions}
+          onToggle={onToggle}
+          onOpenActions={onOpenActions}
+          isPending={isPending}
+          cardsUseLastNameFirst={cardsUseLastNameFirst}
+        />
+      ))}
     </ul>
   );
 }
@@ -761,7 +882,7 @@ function ActionPicker({
 }: {
   student: Student;
   actions: StudentAction[];
-  selectedIds: Set<number>;
+  selectedIds: ReadonlySet<number>;
   onToggle: (actionId: number) => void;
   onClose: () => void;
 }) {
@@ -793,10 +914,15 @@ function ActionPicker({
                     isSelected ? "bg-brass text-paper" : "bg-paper text-muted"
                   }`}
                 >
-                  {/* Falls back to the code when the action has no glyph — an
-                      action is perfectly usable as its code alone. */}
-                  <AttendanceActionIcon name={action.icon} className="h-5 w-5" />
-                  {!action.icon && (
+                  {/* Falls back to the code when the action has neither an upload
+                      nor a glyph — an action is perfectly usable as its code
+                      alone. */}
+                  <AttendanceActionIcon
+                    name={action.icon}
+                    src={studentActionIconUrl(action)}
+                    className="h-5 w-5"
+                  />
+                  {!hasStudentActionMark(action) && (
                     <span className="font-mono text-[10px] font-semibold">{action.code}</span>
                   )}
                 </span>

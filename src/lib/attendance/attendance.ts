@@ -1,5 +1,7 @@
+import { decodeImageUpload, type ImageUploadInput } from "@/lib/shared/image-upload";
 import type { AttendanceRepository } from "./ports";
 import {
+  MAX_ATTENDANCE_ACTION_ICON_BYTES,
   attendanceReportQuerySchema,
   createClassSchema,
   createStudentActionSchema,
@@ -21,6 +23,7 @@ import {
   type UpdateStudentInput,
 } from "./schema";
 import type {
+  AttendanceActionIconRef,
   AttendanceActionTally,
   AttendanceClass,
   AttendanceDetailCell,
@@ -288,6 +291,38 @@ export function deleteStudentAction(
 
   repo.deleteStudentAction(id);
   return { deleted: true, recordedUses: 0 };
+}
+
+/**
+ * Stores a teacher's own artwork for an action, so it isn't limited to the ten
+ * built-in glyphs in `action-icons.ts`.
+ *
+ * The action must already exist — creating one as a side effect of an upload
+ * would let a stale id add an action nobody asked for. The built-in `icon` key is
+ * deliberately left alone: an upload wins while it is set, so keeping the glyph
+ * means removing the upload falls back to it instead of to nothing.
+ */
+export function setStudentActionIcon(
+  repo: AttendanceRepository,
+  id: number,
+  input: ImageUploadInput,
+): void {
+  requireStudentAction(repo, id);
+  repo.setStudentActionIcon(id, decodeImageUpload(input, MAX_ATTENDANCE_ACTION_ICON_BYTES));
+}
+
+/** Removes an action's upload, leaving the action and its built-in glyph intact. */
+export function clearStudentActionIcon(repo: AttendanceRepository, id: number): void {
+  requireStudentAction(repo, id);
+  repo.setStudentActionIcon(id, undefined);
+}
+
+/** Used only by the icon-serving route — never by anything rendering a list. */
+export function getStudentActionIcon(
+  repo: AttendanceRepository,
+  id: number,
+): AttendanceActionIconRef | undefined {
+  return repo.getStudentActionIcon(id);
 }
 
 /**

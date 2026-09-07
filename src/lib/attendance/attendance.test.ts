@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   addStudent,
   createClass,
+  clearStudentActionIcon,
   createStudentAction,
   deleteStudentAction,
   deleteStudents,
@@ -12,6 +13,7 @@ import {
   getAttendanceReportById,
   getAttendanceSheet,
   getStudentActionById,
+  getStudentActionIcon,
   listClasses,
   listRecordDatesForClass,
   listSessionsForClass,
@@ -20,11 +22,13 @@ import {
   removeStudentFromClass,
   saveAttendance,
   setStudentActionActive,
+  setStudentActionIcon,
   updateClass,
   updateStudent,
   updateStudentAction,
 } from "./attendance";
 import type { AttendanceRepository } from "./ports";
+import { MAX_ATTENDANCE_ACTION_ICON_BYTES } from "./schema";
 import type {
   ClassWriteData,
   SaveAttendanceData,
@@ -43,6 +47,9 @@ function fakeRepo(): AttendanceRepository {
   // class+date, because a class may now be registered several times a day.
   const records: AttendanceRecord[] = [];
   const studentActions = new Map<number, StudentAction>();
+  // The blob store, kept beside the catalog exactly as the real schema keeps it
+  // in columns the normal reads never select.
+  const actionIcons = new Map<number, { data: Buffer; mimeType: string }>();
 
   let nextStudentId = 1;
   let nextClassId = 1;
@@ -191,6 +198,19 @@ function fakeRepo(): AttendanceRepository {
     },
     deleteStudentAction(id) {
       studentActions.delete(id);
+    },
+    getStudentActionIcon(id) {
+      return actionIcons.get(id);
+    },
+    setStudentActionIcon(id, icon) {
+      const action = studentActions.get(id);
+      if (icon) {
+        actionIcons.set(id, icon);
+        if (action) studentActions.set(id, { ...action, iconMimeType: icon.mimeType });
+      } else {
+        actionIcons.delete(id);
+        if (action) studentActions.set(id, { ...action, iconMimeType: undefined });
+      }
     },
 
     getAttendanceRecordById(recordId) {
@@ -995,6 +1015,70 @@ describe("updateStudentAction", () => {
     expect(() => updateStudentAction(repo, 99, { name: "Late", code: "L" })).toThrow(
       /No student action with the id 99/,
     );
+  });
+});
+
+describe("setStudentActionIcon / clearStudentActionIcon / getStudentActionIcon", () => {
+  const tinyPngBase64 = Buffer.from("fake png bytes").toString("base64");
+
+  it("stores an upload and reports its mime type on the catalog row", () => {
+    const repo = fakeRepo();
+    const { late } = seedActions(repo);
+
+    setStudentActionIcon(repo, late.id, { mimeType: "image/png", base64Data: tinyPngBase64 });
+
+    expect(getStudentActionIcon(repo, late.id)?.mimeType).toBe("image/png");
+    expect(getStudentActionById(repo, late.id)?.iconMimeType).toBe("image/png");
+  });
+
+  it("leaves the built-in glyph in place, so removing the upload falls back to it", () => {
+    const repo = fakeRepo();
+    const { late } = seedActions(repo);
+
+    setStudentActionIcon(repo, late.id, { mimeType: "image/png", base64Data: tinyPngBase64 });
+    // The glyph key survives the upload — that is what makes the fallback work.
+    expect(getStudentActionById(repo, late.id)?.icon).toBe("turtle");
+
+    clearStudentActionIcon(repo, late.id);
+
+    expect(getStudentActionIcon(repo, late.id)).toBeUndefined();
+    expect(getStudentActionById(repo, late.id)?.iconMimeType).toBeUndefined();
+    expect(getStudentActionById(repo, late.id)?.icon).toBe("turtle");
+  });
+
+  it("refuses a type that isn't an allowed image", () => {
+    const repo = fakeRepo();
+    const { late } = seedActions(repo);
+
+    expect(() =>
+      // SVG is excluded on purpose: it can carry script and would be served from
+      // this app's own origin.
+      setStudentActionIcon(repo, late.id, {
+        mimeType: "image/svg+xml" as "image/png",
+        base64Data: tinyPngBase64,
+      }),
+    ).toThrow();
+    expect(getStudentActionIcon(repo, late.id)).toBeUndefined();
+  });
+
+  it("refuses an upload over the size cap", () => {
+    const repo = fakeRepo();
+    const { late } = seedActions(repo);
+    const tooBig = Buffer.alloc(MAX_ATTENDANCE_ACTION_ICON_BYTES + 1).toString("base64");
+
+    expect(() =>
+      setStudentActionIcon(repo, late.id, { mimeType: "image/png", base64Data: tooBig }),
+    ).toThrow(/too large/);
+    expect(getStudentActionIcon(repo, late.id)).toBeUndefined();
+  });
+
+  it("refuses to store against an action that doesn't exist", () => {
+    const repo = fakeRepo();
+
+    expect(() =>
+      setStudentActionIcon(repo, 99, { mimeType: "image/png", base64Data: tinyPngBase64 }),
+    ).toThrow(/No student action with the id 99/);
+    expect(() => clearStudentActionIcon(repo, 99)).toThrow(/No student action with the id 99/);
   });
 });
 

@@ -47,6 +47,14 @@ export interface StudentAction {
    * doesn't know, draws nothing — a catalog row can outlive a glyph.
    */
   icon: string;
+  /**
+   * The mime type of the teacher's uploaded icon, when there is one. Present
+   * without the bytes on purpose: the image itself is fetched from
+   * `/api/attendance/actions/[id]/icon` (see `AttendanceActionIconRef`) so it
+   * never travels with a catalog list. An upload wins over `icon` while it is
+   * set; removing it falls back to the built-in glyph.
+   */
+  iconMimeType?: string;
   /** Order in the picker. Ties break on name. */
   sequence: number;
   /**
@@ -65,6 +73,12 @@ export interface StudentAction {
  * same reasoning as `studentName` below. `actionId` is kept alongside them so a
  * tally across sessions can count the current catalog row even after a rename.
  */
+/** An uploaded action icon's bytes. Only the icon-serving route needs these. */
+export interface AttendanceActionIconRef {
+  data: Buffer;
+  mimeType: string;
+}
+
 export interface RecordedStudentAction {
   actionId: number;
   code: string;

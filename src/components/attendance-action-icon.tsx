@@ -13,8 +13,10 @@
 // module), and the registry is for components with more than one. If a second
 // module ever wants a per-row glyph menu, that's the moment to generalise it.
 //
-// Monochrome and `currentColor` throughout, so a chip's own text color drives
-// the glyph — the same contract `TreeIcon`'s hand-drawn set honours.
+// The built-in glyphs are monochrome and `currentColor` throughout, so a chip's
+// own text color drives them — the same contract `TreeIcon`'s hand-drawn set
+// honours. A teacher's uploaded icon (migration 0082) is the exception and draws
+// as its own bitmap: it wins over the glyph when set, and cannot tint.
 
 import type { ReactElement, SVGProps } from "react";
 
@@ -141,27 +143,45 @@ const ACTION_ICONS: Record<string, IconComponent> = {
  * `AttendanceActionIcon` renders `null` for an unknown one, which is right beside
  * a code (the code carries the meaning). Where the glyph is the only content, the
  * caller needs to check first and fall back — the same contract `hasTreeIcon`
- * provides.
+ * provides. Note this answers only for the *built-in* set: an action with an
+ * upload draws something regardless, so a caller deciding whether to show a code
+ * fallback must check the upload too.
  */
 export function hasAttendanceActionIcon(name?: string): boolean {
   return name !== undefined && name !== "" && name in ACTION_ICONS;
 }
 
 /**
- * One student-action glyph.
+ * One student-action mark: the teacher's own uploaded artwork when there is one,
+ * otherwise a built-in glyph.
  *
- * Renders nothing for a blank or unknown key rather than throwing: a stored icon
- * key can outlive the glyph it names, and an action is perfectly usable as its
- * code alone. Same forgiveness `resolveAttendanceSettings` applies to a stale
- * class id.
+ * `src` wins over `name` — an upload is a deliberate choice, and the glyph key is
+ * kept alongside it precisely so removing the upload falls back here rather than
+ * to nothing. Unlike the glyph, an upload cannot take `currentColor`: it draws as
+ * the image it is, at every size including the ~10px chip beside a student's name.
+ *
+ * Renders nothing when there is neither an upload nor a known glyph key, rather
+ * than throwing: a stored icon key can outlive the glyph it names, and an action
+ * is perfectly usable as its code alone. Same forgiveness
+ * `resolveAttendanceSettings` applies to a stale class id.
  */
 export function AttendanceActionIcon({
   name,
+  src,
   className,
 }: {
   name?: string;
+  /** URL of an uploaded icon, from `studentActionIconUrl`. Wins over `name`. */
+  src?: string;
   className?: string;
 }) {
+  if (src) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- icon bytes are served from our own DB-backed route, not a static asset next/image can optimize.
+      <img src={src} alt="" aria-hidden="true" className={`${className ?? ""} object-contain`} />
+    );
+  }
+
   if (!hasAttendanceActionIcon(name)) return null;
 
   const Icon = ACTION_ICONS[name as string];

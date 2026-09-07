@@ -9,27 +9,39 @@
 // rather than the user-selectable module/tree icon sets — see
 // src/components/attendance-action-icon.tsx for why.
 //
+// A teacher who wants something outside those ten glyphs can upload their own
+// artwork instead (migration 0082). That lives in the *edit* dialog only: the
+// upload is stored against a row id, and the add form has no id yet. So the flow
+// is add-then-upload, and the add form offers the built-in glyphs alone.
+//
 // Retiring rather than deleting is the main affordance on a used action. The grid
 // makes both available and the server action explains the refusal, so a teacher
 // never has to know the rule in advance.
 
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { AttendanceActionIcon } from "@/components/attendance-action-icon";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
+import { FileDropzone } from "@/components/file-dropzone";
 import { Modal } from "@/components/modal";
 import {
   ATTENDANCE_ACTION_ICONS,
+  ATTENDANCE_IMAGE_MIME_TYPES,
+  MAX_ATTENDANCE_ACTION_ICON_BYTES,
   type CreateStudentActionInput,
   type StudentAction,
 } from "@/lib/attendance";
 import {
+  clearStudentActionIconAction,
   createStudentActionAction,
   deleteStudentActionAction,
   setStudentActionActiveAction,
+  setStudentActionIconAction,
   updateStudentActionAction,
 } from "./attendance-actions";
+import { studentActionIconUrl } from "./attendance-shared";
 
 const INPUT_CLASS =
   "w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
@@ -72,12 +84,15 @@ export function AttendanceActionsView({ actions }: { actions: StudentAction[] })
       // column of. The code beside it is the sortable identity.
       sortable: false,
       minWidth: 56,
-      render: (row) => (
-        <span className="flex h-7 w-7 items-center justify-center rounded-md bg-brass-soft text-brass-dark">
-          <AttendanceActionIcon name={row.icon} className="h-4 w-4" />
-          {!row.icon && <span className="font-mono text-[10px]">—</span>}
-        </span>
-      ),
+      render: (row) => {
+        const uploaded = studentActionIconUrl(row);
+        return (
+          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-brass-soft text-brass-dark">
+            <AttendanceActionIcon name={row.icon} src={uploaded} className="h-4 w-4" />
+            {!uploaded && !row.icon && <span className="font-mono text-[10px]">—</span>}
+          </span>
+        );
+      },
     },
     {
       key: "code",
@@ -183,6 +198,9 @@ export function AttendanceActionsView({ actions }: { actions: StudentAction[] })
               sequence: editing.sequence,
               isActive: editing.isActive,
             }}
+            // Only the edit dialog gets the upload controls: they write against a
+            // row id, which an unsaved action doesn't have yet.
+            uploadFor={editing}
             submitLabel="Save changes"
             onSubmit={(values) => updateStudentActionAction(editing.id, values)}
             onSuccess={() => setEditing(undefined)}
@@ -202,6 +220,7 @@ export function AttendanceActionsView({ actions }: { actions: StudentAction[] })
  */
 function ActionForm({
   initial,
+  uploadFor,
   submitLabel,
   onSubmit,
   onSuccess,
@@ -209,6 +228,13 @@ function ActionForm({
   resetOnSuccess = false,
 }: {
   initial?: CreateStudentActionInput;
+  /**
+   * The saved row, when this form is editing one. Present only then, which is
+   * what gates the upload controls: they write against an id straight away
+   * rather than through `onSubmit`, so an unsaved action has nothing to attach
+   * artwork to.
+   */
+  uploadFor?: StudentAction;
   submitLabel: string;
   onSubmit: (values: CreateStudentActionInput) => Promise<{ ok: boolean; error?: string }>;
   onSuccess?: () => void;
@@ -299,7 +325,15 @@ function ActionForm({
 
       <div className="flex flex-col gap-1">
         <span className={LABEL_CLASS}>Icon</span>
-        <IconPicker value={icon} onChange={setIcon} />
+        <IconPicker
+          value={icon}
+          onChange={setIcon}
+          // Greyed out while an upload is in force, because the upload wins and a
+          // highlighted glyph would be claiming otherwise. Still clickable: the
+          // choice made here is the fallback once the upload is removed.
+          supersededBy={uploadFor && studentActionIconUrl(uploadFor)}
+        />
+        {uploadFor && <ActionIconUpload action={uploadFor} />}
       </div>
 
       <div className="card-grid gap-4">
@@ -346,6 +380,123 @@ function ActionForm({
   );
 }
 
+/** Reads a File as bare base64 (no data-URL prefix), which is what the action wants. */
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result ?? "");
+      resolve(result.slice(result.indexOf(",") + 1));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read the image."));
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Upload, replace or remove a teacher's own artwork for one action.
+ *
+ * Writes immediately rather than on the form's Save, matching how every other
+ * per-row image in the app behaves (expense card art, journal taxonomy icons):
+ * the bytes go to their own column through their own action, so folding them into
+ * the row save would mean holding a file in state for no benefit.
+ *
+ * Uploaded artwork draws as its own bitmap and can't take the chip's text colour,
+ * unlike the built-in glyphs — so a pale icon will look pale on the small chips.
+ * Said out loud in the hint rather than prevented, because a teacher choosing
+ * their own mark is entitled to choose a bad one.
+ */
+function ActionIconUpload({ action }: { action: StudentAction }) {
+  const router = useRouter();
+  const [error, setError] = useState<string>();
+  const [isBusy, setIsBusy] = useState(false);
+  const url = studentActionIconUrl(action);
+
+  async function handleFile(file: File) {
+    setError(undefined);
+    // Checked here as well as in the use-case so a large file is refused before
+    // it's read and shipped, not after.
+    if (file.size > MAX_ATTENDANCE_ACTION_ICON_BYTES) {
+      setError(
+        `"${file.name}" is too large — keep it under ${Math.round(MAX_ATTENDANCE_ACTION_ICON_BYTES / 1024)} KB.`,
+      );
+      return;
+    }
+    setIsBusy(true);
+    try {
+      const base64Data = await readFileAsBase64(file);
+      const result = await setStudentActionIconAction(action.id, file.type, base64Data);
+      if (!result.ok) setError(result.error);
+      else router.refresh();
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleRemove() {
+    setError(undefined);
+    setIsBusy(true);
+    try {
+      const result = await clearStudentActionIconAction(action.id);
+      if (!result.ok) setError(result.error);
+      else router.refresh();
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 flex flex-col gap-2 border-t border-line pt-3">
+      <span className={LABEL_CLASS}>Or upload your own</span>
+
+      {/* Stacks below 1024px — a 12px preview beside a dropzone has nowhere to go
+          on a phone. */}
+      <div className="flex items-center gap-3 max-lg:flex-col max-lg:items-stretch">
+        {url ? (
+          // eslint-disable-next-line @next/next/no-img-element -- icon bytes are served from our own DB-backed route, not a static asset next/image can optimize.
+          <img
+            src={url}
+            alt=""
+            className="h-12 w-12 shrink-0 rounded-lg border border-line object-contain max-lg:self-center"
+          />
+        ) : (
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-dashed border-line text-xs text-muted max-lg:self-center">
+            None
+          </div>
+        )}
+        <div className="flex-1">
+          <FileDropzone
+            accept={ATTENDANCE_IMAGE_MIME_TYPES.join(",")}
+            disabled={isBusy}
+            label={url ? "Drop a new icon here, or click to browse" : "Drop an icon here, or click to browse"}
+            onFile={handleFile}
+          />
+        </div>
+      </div>
+
+      <p className="text-xs text-muted">
+        A PNG, JPEG, WebP or GIF up to{" "}
+        {Math.round(MAX_ATTENDANCE_ACTION_ICON_BYTES / 1024)} KB. It replaces the glyph
+        everywhere the action appears, including the small code chips beside a student&apos;s
+        name — where a square, high-contrast image reads best.
+      </p>
+
+      {error && <p className="text-sm text-red-400">{error}</p>}
+
+      {url && (
+        <button
+          type="button"
+          disabled={isBusy}
+          onClick={handleRemove}
+          className="self-start text-xs text-muted hover:text-red-400"
+        >
+          Remove upload
+        </button>
+      )}
+    </div>
+  );
+}
+
 /**
  * Pick one glyph, or none.
  *
@@ -360,45 +511,59 @@ function ActionForm({
 function IconPicker({
   value,
   onChange,
+  supersededBy,
 }: {
   value: string;
   onChange: (next: string) => void;
+  /**
+   * URL of an upload that currently wins over this choice. When set, the grid
+   * dims and says so — the selection still matters as the fallback once the
+   * upload is removed, so it stays live rather than being disabled.
+   */
+  supersededBy?: string;
 }) {
   return (
-    <div className="flex flex-wrap gap-2">
-      {/* "None" first, so it reads as the starting state rather than as an
-          eleventh icon hidden at the end. */}
-      <button
-        type="button"
-        onClick={() => onChange("")}
-        aria-pressed={value === ""}
-        title="No icon — the code alone"
-        className={`flex h-11 w-11 items-center justify-center rounded-md border font-mono text-xs transition-colors ${
-          value === ""
-            ? "border-brass bg-brass text-paper"
-            : "border-line bg-paper text-muted hover:border-brass hover:text-ink"
-        }`}
-      >
-        —
-      </button>
-
-      {ATTENDANCE_ACTION_ICONS.map((name) => (
+    <div className={supersededBy ? "opacity-50 transition-opacity" : undefined}>
+      {supersededBy && (
+        <p className="mb-2 text-xs text-muted">
+          Your uploaded icon is in use. These stay as the fallback if you remove it.
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        {/* "None" first, so it reads as the starting state rather than as an
+            eleventh icon hidden at the end. */}
         <button
-          key={name}
           type="button"
-          onClick={() => onChange(name)}
-          aria-pressed={value === name}
-          title={name}
-          aria-label={name}
-          className={`flex h-11 w-11 items-center justify-center rounded-md border transition-colors ${
-            value === name
+          onClick={() => onChange("")}
+          aria-pressed={value === ""}
+          title="No icon — the code alone"
+          className={`flex h-11 w-11 items-center justify-center rounded-md border font-mono text-xs transition-colors ${
+            value === ""
               ? "border-brass bg-brass text-paper"
               : "border-line bg-paper text-muted hover:border-brass hover:text-ink"
           }`}
         >
-          <AttendanceActionIcon name={name} className="h-5 w-5" />
+          —
         </button>
-      ))}
+
+        {ATTENDANCE_ACTION_ICONS.map((name) => (
+          <button
+            key={name}
+            type="button"
+            onClick={() => onChange(name)}
+            aria-pressed={value === name}
+            title={name}
+            aria-label={name}
+            className={`flex h-11 w-11 items-center justify-center rounded-md border transition-colors ${
+              value === name
+                ? "border-brass bg-brass text-paper"
+                : "border-line bg-paper text-muted hover:border-brass hover:text-ink"
+            }`}
+          >
+            <AttendanceActionIcon name={name} className="h-5 w-5" />
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { IMAGE_UPLOAD_MIME_TYPES, imageUploadSchema } from "@/lib/shared/image-upload";
 import { ATTENDANCE_ACTION_ICONS } from "./action-icons";
 import { ATTENDANCE_STATUSES, CLASS_WEEKDAYS, CLASS_WEEKDAY_UNSET } from "./types";
 
@@ -215,3 +216,26 @@ export const attendanceReportQuerySchema = z.object({
 });
 
 export type AttendanceReportQuery = z.input<typeof attendanceReportQuerySchema>;
+
+// --- A student action's uploaded icon -----------------------------------------
+
+/**
+ * Cap for an uploaded action icon — the same 128 KB an expense category and a
+ * journal taxonomy icon get, because all three render tiny. The smallest place
+ * this draws is a ~10px chip beside a student's name.
+ */
+export const MAX_ATTENDANCE_ACTION_ICON_BYTES = 128 * 1024;
+
+// The upload shape and its type allowlist live in @/lib/shared/image-upload,
+// which every module storing image bytes shares — so the allowlist that keeps a
+// scriptable SVG out of a blob column can't drift apart per module.
+export const ATTENDANCE_IMAGE_MIME_TYPES = IMAGE_UPLOAD_MIME_TYPES;
+export const attendanceImageUploadSchema = imageUploadSchema;
+
+/** Identifies which action an icon upload or removal is for. */
+export const studentActionIconSchema = z.object({
+  actionId: z.number().int().positive(),
+  image: imageUploadSchema,
+});
+
+export type StudentActionIconInput = z.input<typeof studentActionIconSchema>;
