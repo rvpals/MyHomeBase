@@ -57,9 +57,34 @@ does before badging the nav.
 positions, transactions, watch lists, a daily-glance dashboard, ticker detail
 with news and risk, and CSV import from broker statements. Backed by several
 library modules (`stock-positions`, `stock-analytics`, `stock-watchlist`,
-`stock-daily-snapshot`, `investment-accounts`, `market-data`, `market-indexes`,
-`ticker-*`) that all share the one `stk_` table prefix — though several of the
-newest (`stock-simulation`, `market-indexes`) own no table at all.
+`stock-daily-snapshot`, `tax-lots`, `investment-accounts`, `market-data`,
+`market-indexes`, `ticker-*`) that all share the one `stk_` table prefix — though
+several of the newest (`stock-simulation`, `market-indexes`) own no table at all.
+
+The **Tax Lots** section scores each *purchase* rather than the blended position,
+because tax is assessed per lot: two buys of one stock can sit on opposite sides of
+the one-year long-term line. It owns `stk_tax_lots` (migration 0083) and the
+`src/lib/tax-lots` library module. Four choices worth knowing:
+
+- **Split normalization is the feature.** A lot is entered as the confirmation
+  printed it, and every split effective *strictly after* the buy date is applied —
+  strictly, because shares bought on an effective date already trade post-split.
+  Cost basis is invariant across the adjustment, which is the identity the tests
+  assert.
+- **The split table is hand-maintained code**, in `src/lib/tax-lots/splits.ts`, not
+  fetched. The market-data client can report split events, but an analyzer whose
+  cost basis silently changes when a provider revises its history is worse than one
+  you update deliberately.
+- **`is_split_adjusted` decides whether that table is applied at all**, since a
+  modern broker export is usually already restated. It defaults to "not adjusted":
+  over-applying is loud and obvious (400 shares becoming 16,000), under-applying is
+  quiet and looks plausible.
+- **XIRR reads "—", never 0%, when there is no answer** — a single purchase date, or
+  everything bought today. A zero there would be indistinguishable from a genuinely
+  flat return.
+
+Reachable from the CLI as `npm run cli -- tax-lots --ticker NVDA`, including a
+`--normalize` mode that restates one ad-hoc lot without storing it.
 
 The **Simulation** section answers "had I bought this then?" — one ticker, a share count,
 and any of ten windows (1 Week through MAX) ticked at once. It **adds no table and no

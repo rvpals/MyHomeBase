@@ -48,6 +48,7 @@ const GROUPS: TableReferenceGroup[] = [
       ["stk_stock_transactions", "Individual buy, sell and dividend transactions, deduplicated so re-importing a broker CSV is a safe no-op."],
       ["stk_daily_snapshots", "One row per calendar day of whole-portfolio value and gain/loss, split by stock, ETF and other."],
       ["stk_account_performance_records", "The manual performance history of one account — its total value on a given date."],
+      ["stk_tax_lots", "Historical purchase lots for the Tax Lot Analyzer, with a flag saying whether the shares are already split-adjusted."],
       ["stk_stock_watch_lists", "Named watch lists."],
       ["stk_stock_watch_list_items", "The tickers on a watch list, with hypothetical shares, the price when added and an optional reminder."],
       ["stk_ticker_favorites", "One row per starred ticker, read back as a newest-first jump list on the dashboard."],

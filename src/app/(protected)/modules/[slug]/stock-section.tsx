@@ -14,6 +14,7 @@ import { listModuleSettingsFor } from "@/lib/module-settings";
 import { getModuleBySlug } from "@/lib/modules";
 import { resolveThresholds } from "@/lib/next-day-actions";
 import { startOfYearIso, todayIsoLocal } from "@/lib/shared/date";
+import { centsToDollars } from "@/lib/shared/money";
 import { getCorrelationCache, getSharpeCache, listVolatilityCache } from "@/lib/stock-analytics";
 import { resolveDashboardWidgets, visibleDashboardWidgets } from "@/lib/stock-dashboard";
 import { listSnapshots, summarizeToDate } from "@/lib/stock-daily-snapshot";
@@ -25,6 +26,7 @@ import {
   UNASSIGNED_ACCOUNT_ID,
 } from "@/lib/stock-positions";
 import { listItems, listWatchLists } from "@/lib/stock-watchlist";
+import { analyzeTicker, listTaxLotTickers, listTaxLots } from "@/lib/tax-lots";
 import { loadSectorMap, resolveSector } from "@/lib/ticker-profiles";
 import { deps } from "@/lib/wiring";
 import { NextDayActionsView } from "./next-day-actions-view";
@@ -40,6 +42,11 @@ import { StockRefreshProgressProvider } from "./stock-refresh-progress-context";
 import { STOCK_SECTION_INFO, type StockSection } from "./stock-sections";
 import { StockShell } from "./stock-shell";
 import { StockSimulationView } from "./stock-simulation-view";
+import {
+  StockTaxLotsSummary,
+  StockTaxLotsTable,
+  type TaxLotsViewProps,
+} from "./stock-tax-lots-view";
 import { StockFavoritesMenu } from "./stock-favorites-menu";
 import { StockTickerSearch } from "./stock-ticker-search";
 import { StockTransactionsView } from "./stock-transactions-view";
@@ -50,6 +57,8 @@ const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
 // The three Watch & Test card badges. Resolved once at module scope; the registry is
 // static, so this is not I/O. Non-null because the ids are registered right here in the
 // repo — an unregistered one is a build-time mistake, not a runtime condition.
+const TAX_LOT_SUMMARY_SLOT = getIconSlot("stock_card_tax_lot_summary")!;
+const TAX_LOT_TABLE_SLOT = getIconSlot("stock_card_tax_lot_table")!;
 const WATCH_LISTS_SLOT = getIconSlot("stock_card_watch_lists")!;
 const NEXT_DAY_SLOT = getIconSlot("stock_card_next_day_signals")!;
 const SIMULATION_SLOT = getIconSlot("stock_card_simulation")!;
@@ -99,7 +108,71 @@ function loadSnapshots(today: string) {
   });
 }
 
-function SectionBody({ section }: { section: StockSection }) {
+/**
+ * The Tax Lots section's data.
+ *
+ * The current price and the per-share dividend come from the held position when
+ * there is one, summed across accounts the same way the rest of the module reads
+ * them. When the ticker isn't held (a lot kept after the position was closed, or
+ * entered ahead of buying), the price falls back to the newest lot's own price so
+ * the screen still renders — reported as `hasLivePrice: false` so the card says so
+ * rather than implying a quote.
+ *
+ * `trailingEPS` is fed the position's per-share annual DIVIDEND rate, which is what
+ * "yield on cost" conventionally measures. The library parameter keeps the name the
+ * spec gave it; nothing here stores an earnings figure.
+ */
+function loadTaxLotsData(requestedTicker: string | undefined): TaxLotsViewProps {
+  const tickers = listTaxLotTickers(deps.taxLotRepo);
+  // A requested ticker only wins if it actually has lots, so a stale bookmark
+  // falls back to the first stored one instead of rendering an empty screen.
+  const normalized = requestedTicker?.trim().toUpperCase();
+  const selectedTicker =
+    normalized && tickers.includes(normalized) ? normalized : tickers[0];
+
+  if (!selectedTicker) {
+    return { tickers, lots: [], storedLots: [], hasLivePrice: false, trailingEPS: 0 };
+  }
+
+  const positions = listPositions(deps.stockPositionRepo).filter(
+    (position) => position.ticker === selectedTicker,
+  );
+  const storedLots = listTaxLots(deps.taxLotRepo, selectedTicker);
+
+  const livePriceCents = positions.find((position) => position.currentPriceCents > 0)
+    ?.currentPriceCents;
+  const hasLivePrice = livePriceCents !== undefined;
+  // Newest lot last, so `at(-1)` is the most recent price paid.
+  const fallbackPriceCents = storedLots.at(-1)?.pricePerShareCents ?? 0;
+  const dividendRateCents =
+    positions.find((position) => position.dividendRateCents > 0)?.dividendRateCents ?? 0;
+
+  const trailingEPS = centsToDollars(dividendRateCents);
+  const analysis = analyzeTicker(deps.taxLotRepo, {
+    ticker: selectedTicker,
+    currentMarketPrice: centsToDollars(livePriceCents ?? fallbackPriceCents),
+    trailingEPS,
+    today: todayIsoLocal(),
+  });
+
+  return {
+    tickers,
+    selectedTicker,
+    storedLots,
+    hasLivePrice,
+    trailingEPS,
+    lots: analysis.lots,
+    summary: analysis.summary,
+  };
+}
+
+function SectionBody({
+  section,
+  requestedTicker,
+}: {
+  section: StockSection;
+  requestedTicker: string | undefined;
+}) {
   switch (section) {
     case "main": {
       const positions = listPositions(deps.stockPositionRepo);
@@ -193,6 +266,33 @@ function SectionBody({ section }: { section: StockSection }) {
         />
       );
 
+    case "tax-lots": {
+      const data = loadTaxLotsData(requestedTicker);
+      return (
+        <div className="flex flex-col gap-6">
+          <CollapsibleCard
+            title="Position Summary"
+            titleIcon={<SlotIcon slot={TAX_LOT_SUMMARY_SLOT} className="h-4 w-4" />}
+            defaultOpen
+          >
+            <StockTaxLotsSummary {...data} />
+          </CollapsibleCard>
+          {/* Only worth a card once there is something in it — an empty grid under
+              a heading reads as broken, and the summary half already explains that
+              nothing is recorded. */}
+          {data.lots.length > 0 && (
+            <CollapsibleCard
+              title="Lot Breakdown"
+              titleIcon={<SlotIcon slot={TAX_LOT_TABLE_SLOT} className="h-4 w-4" />}
+              defaultOpen
+            >
+              <StockTaxLotsTable {...data} />
+            </CollapsibleCard>
+          )}
+        </div>
+      );
+    }
+
     case "import":
       return <StockImportView accounts={loadAccountOptions()} />;
 
@@ -209,7 +309,14 @@ function SectionBody({ section }: { section: StockSection }) {
   }
 }
 
-export async function StockSection({ section }: { section: StockSection }) {
+export async function StockSection({
+  section,
+  requestedTicker,
+}: {
+  section: StockSection;
+  /** ?ticker= — which position the Tax Lots analyzer shows. */
+  requestedTicker?: string;
+}) {
   // Defensive: an unknown section would otherwise crash on info.label. The route
   // already validates, so this only catches a future caller getting it wrong.
   const info = STOCK_SECTION_INFO[section] ?? STOCK_SECTION_INFO.main;
@@ -265,7 +372,7 @@ export async function StockSection({ section }: { section: StockSection }) {
         </div>
 
         <div className="mt-6">
-          <SectionBody section={section} />
+          <SectionBody section={section} requestedTicker={requestedTicker} />
         </div>
       </StockRefreshProgressProvider>
     </StockShell>

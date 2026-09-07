@@ -47,6 +47,7 @@ import { SqliteStockAnalyticsRepository } from "./stock-analytics/repository";
 import { SqliteDailySnapshotRepository } from "./stock-daily-snapshot/repository";
 import { SqliteStockPositionRepository } from "./stock-positions/repository";
 import { SqliteStockWatchListRepository } from "./stock-watchlist/repository";
+import { SqliteTaxLotRepository } from "./tax-lots/repository";
 import { RealSystemInfoRepository } from "./system-info/repository";
 import { YahooTickerNewsClient } from "./ticker-news/yahoo-news-client";
 import { FmpTickerLogoClient } from "./ticker-logos/fmp-logo-client";
@@ -192,6 +193,10 @@ export const deps = {
   // Last-run bookkeeping for background jobs, keyed by job name (migrations/0061).
   scheduledRunRepo: new SqliteScheduledRunRepository(db),
   stockWatchListRepo: new SqliteStockWatchListRepository(db),
+  // Historical purchase lots for the Tax Lot Analyzer (migrations/0083). Storage
+  // only — every split normalization and return figure is a pure function over
+  // these rows, in src/lib/tax-lots.
+  taxLotRepo: new SqliteTaxLotRepository(db),
   stockAnalyticsRepo: new SqliteStockAnalyticsRepository(db),
   sqlExplorerRepo: new SqliteSqlExplorerRepository(db),
   systemInfoRepo: new RealSystemInfoRepository(),

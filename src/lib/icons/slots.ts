@@ -159,6 +159,15 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    id: "stock_section_tax_lots",
+    label: "Tax Lots",
+    group: "Stocks & ETFs sections",
+    where: "Stocks & ETFs → section panel → Tax Lots.",
+    defaultConcept: "history",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     id: "stock_section_settings",
     label: "Configuration",
     group: "Stocks & ETFs sections",
@@ -256,6 +265,29 @@ export const ICON_SLOTS: IconSlot[] = [
     group: "Stocks & ETFs cards",
     where: "Stocks & ETFs → Watch & Test → the Simulation card header.",
     defaultConcept: "magic",
+    wired: true,
+    namespace: "tree",
+  },
+
+  /* The two cards of Tax Lots: the metric row and the per-lot breakdown. Badged as
+     a pair for the same reason as Watch & Test above. The Long/Short-Term badges on
+     a lot row are state glyphs, not places, so they are deliberately not slotted —
+     see coding-guide.md, "Icons: use a slot, not a bare glyph name". */
+  {
+    id: "stock_card_tax_lot_summary",
+    label: "Tax Lot Summary card",
+    group: "Stocks & ETFs cards",
+    where: "Stocks & ETFs → Tax Lots → the Position Summary card header.",
+    defaultConcept: "chart",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "stock_card_tax_lot_table",
+    label: "Tax Lot Breakdown card",
+    group: "Stocks & ETFs cards",
+    where: "Stocks & ETFs → Tax Lots → the Lot Breakdown card header.",
+    defaultConcept: "list",
     wired: true,
     namespace: "tree",
   },

@@ -1315,6 +1315,61 @@ Repo is `deps.stockDailySnapshotRepo`. **No network anywhere in this module. No 
 `captureDailySnapshot` is the obvious nightly-scheduler candidate and is currently
 web-only.
 
+## tax-lots — `@/lib/tax-lots`
+
+Repo is `deps.taxLotRepo`. No network. **CLI: `tax-lots`.**
+
+The split-normalization and return maths for the Stocks & ETFs *Tax Lots* section.
+Two vocabularies run through the whole module and must not be mixed: **raw** is what
+the broker's confirmation printed on the buy date, **adjusted** is the same position
+restated in today's shares. Anything compared against a live market price must be
+adjusted.
+
+| Use-case | Signature | Zod |
+|---|---|---|
+| `analyzeTicker` | `(repo, context: LotAnalysisContext) => PortfolioAnalysis` — the one read both adapters drive | `analyzeLotsSchema` |
+| `analyzePortfolio` | `(lots, context) => PortfolioAnalysis` — pure; scores then sorts by buy date | — |
+| `analyzeLot` / `analyzeNormalizedLot` | `(lot, context, id?) => LotPerformance` — pure | — |
+| `summarizePortfolio` | `(scoredLots, context) => PortfolioLotSummary` — pure roll-up | — |
+| `buildCashFlows` | `(scoredLots, totalCurrentValue, today) => CashFlow[]` — pure; one outflow per purchase + a terminal inflow | — |
+| `listTaxLots` | `(repo, ticker?) => TaxLot[]` — oldest buy date first | — |
+| `listTaxLotTickers` | `(repo) => string[]` — sorted | — |
+| `getTaxLot` | `(repo, id) => TaxLot \| undefined` | — |
+| `createTaxLot` | `(repo, input) => TaxLot` | `createTaxLotSchema` |
+| `updateTaxLot` | `(repo, id, input) => TaxLot` | `updateTaxLotSchema` |
+| `deleteTaxLot` | `(repo, id) => void` — throws on an unknown id | `taxLotIdSchema` |
+| `normalizeLot` | `(rawLot, history) => NormalizedLot` — pure; shares `*` factor, price `/` factor | `normalizeLotSchema` |
+| `passthroughLot` | `(rawLot) => NormalizedLot` — factor 1, for an already-adjusted lot | — |
+| `normalizeStoredLot` | `(lot: TaxLot) => NormalizedLot` — branches on `isSplitAdjusted` | — |
+| `cumulativeSplitFactor` | `(buyDate, history) => number` — product of splits **strictly after** `buyDate` | — |
+| `splitHistoryFor` / `tickersWithSplits` / `splitsAppliedTo` | the hand-maintained `SPLIT_TABLE` | — |
+| `computeXirr` | `(flows: XirrFlow[], initialGuess = 0.1) => number \| undefined` — pure, no domain import | — |
+| `yearsBetween` / `classifyHoldingPeriod` / `computeCagr` / `computeYieldOnCost` | pure, no clock | — |
+
+`LotAnalysisContext { ticker, currentMarketPrice, trailingEPS, today }` — the price and
+date arrive as data, so nothing in the module reads a clock or a quote.
+
+Four things that look like bugs and are not:
+
+- **`cumulativeSplitFactor` is strictly-after on purpose.** Shares bought *on* an
+  effective date already trade post-split, so including that split reports 4x the
+  shares actually held. Dates compare as ISO strings — `YYYY-MM-DD` sorts
+  chronologically, which sidesteps every timezone question a `Date` would raise.
+- **`computeXirr` returns `undefined`, never 0**, for fewer than two flows, flows all
+  of one sign, or every flow on one date. A zero would be indistinguishable from a
+  genuinely flat return; callers render `—` (web) or `n/a` (CLI).
+- **XIRR uses 365 days/year, `yearsHeld` uses 365.25.** Not an inconsistency — 365 is
+  the market convention for XIRR (it is what Excel does), and the holding period is a
+  calendar question. They answer different things.
+- **`SPLIT_TABLE` is code, not fetched.** The market-data client can report split
+  events, but a fetched value is a suggestion to add a row, not a substitute for one:
+  a cost basis that silently changes when a provider revises its history is worse than
+  one you update deliberately.
+
+`TaxLotRepository` is deliberately CRUD-only — no aggregate query — so the maths lives
+in one place instead of half in SQL and half in TypeScript. Table is `stk_tax_lots`
+(migration 0083).
+
 ## stock-dashboard — `@/lib/stock-dashboard`
 
 No repo, no network — layout preference encoding only. Persistence goes through
@@ -1550,10 +1605,10 @@ There is no `src/lib/shared/index.ts`; import `@/lib/shared/<file>`.
 
 | | Count |
 |---|---|
-| Exported use-cases across `src/lib/` | ~234 |
-| Reachable from the CLI | ~25 |
-| Registered commands | 12 |
-| **Coverage** | **~13%** |
+| Exported use-cases across `src/lib/` | ~257 |
+| Reachable from the CLI | ~48 |
+| Registered commands | 35 |
+| **Coverage** | **~19%** |
 
 **Modules with zero CLI reach (19):** `auth`, `change-history`, `daily-quote`,
 `dashboard-texture`, `geocoding`, `investment-accounts`, `market-data`,
@@ -1873,6 +1928,55 @@ the date. Ties are broken in favour of whoever got there first, matching the scr
 unknown `--game`, a `--limit` over the cap). A zod failure is printed through
 `messageOf`, so it reads as one line rather than a wall of JSON.
 Source: [src/cli/game-scores.ts](src/cli/game-scores.ts)
+
+---
+
+## `tax-lots`
+
+The Tax Lot Analyzer from a terminal — the same `analyzeTicker` use-case the Stocks &
+ETFs *Tax Lots* section drives, printed as a table.
+
+```
+npm run cli -- tax-lots --ticker NVDA
+npm run cli -- tax-lots --ticker NVDA --price 175.50 --eps 0.04
+npm run cli -- tax-lots --ticker NVDA --today 2025-01-01
+npm run cli -- tax-lots --list
+npm run cli -- tax-lots --normalize --ticker NVDA --date 2019-03-15 --shares 10 --price 180
+```
+
+**Input** — all optional. `--ticker` defaults to the first ticker with stored lots.
+`--price` and `--eps` are dollars and override the held position's current price and
+dividend rate, which are otherwise read from `deps.stockPositionRepo` (the same
+fallback the web section uses). `--today` overrides the date the holding period is
+measured against, which is what makes the long-term boundary testable.
+
+`--list` prints just the tickers that have lots. `--normalize` restates one ad-hoc lot
+— ticker, date, raw shares, raw price — showing the splits that apply, the factor, the
+adjusted figures and the unchanged cost basis, **without storing anything**.
+
+**Both switches are valueless, and are stripped from argv before `parseFlags` runs.**
+`parseFlags` hands every `--flag` the next argv item, so `--normalize --ticker NVDA`
+would otherwise parse as `normalize: "--ticker"` and leave `ticker` unset. Removing
+them first makes flag order irrelevant — worth copying for the next command that wants
+a bare switch.
+
+**Calls** — `listTaxLotTickers`, `analyzeTicker`, and for `--normalize` the pure
+`splitHistoryFor` / `normalizeLot` / `splitsAppliedTo`. Validated through
+`analyzeLotsSchema` and `normalizeLotSchema`, so argv's raw strings become the typed
+input without a cast. **Adding this command required no change to `src/lib`** — the
+layering rule paying out.
+
+**Output** — one row per lot (buy date, adjusted shares, adjusted cost/share, cost
+basis, gain %, CAGR, yield on cost, LONG/SHORT), then the position summary: lots,
+adjusted shares, invested, current value, total gain, blended cost basis, XIRR, blended
+yield on cost and the long/short split. A trailing line counts the lots marked `*` —
+long-term *and* in profit, the tax-efficient ones to trim. XIRR prints
+`n/a (needs more than one purchase date)` rather than 0%.
+
+**Exit** — 0 including when nothing is recorded (a fact, not an error); 1 when no
+ticker can be resolved, when the ticker has no usable price and no `--price` was given,
+or when either schema rejects a flag.
+Source: [src/cli/tax-lots.ts](src/cli/tax-lots.ts)
 
 ---
 

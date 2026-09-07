@@ -1,5 +1,131 @@
 # Change History
 
+## 2026-09-06 23:06 — The Tax Lot Analyzer, and Mahjong against three bots
+
+### [Added] Stocks & ETFs: Tax Lots
+
+A new **Tax Lots** section that scores each *purchase* rather than the blended
+position, because tax is assessed per lot: two buys of one stock can sit on opposite
+sides of the one-year long-term line, and a single average cost basis hides that.
+
+Each lot is entered as the broker's confirmation printed it — date, shares, price,
+firm, note — and the section reports its split-adjusted shares and cost per share,
+cost basis, unrealized gain, CAGR, yield on cost, and whether it is long- or
+short-term. Above the table, the position rolls up: total invested, current value,
+blended cost basis, the long/short split, and the money-weighted return (XIRR).
+
+**Split normalization is the feature, and "strictly after" is the whole subtlety.**
+Every split effective *strictly after* a lot's buy date applies to it; one effective
+on or before that date is already baked into the price paid. Including the
+on-the-date split would report four times the shares actually held. Cost basis is
+invariant across the adjustment — a split changes how the same dollars divide into
+shares, never how many dollars were spent — and that identity is what the
+normalization tests assert. Dates compare as ISO strings, which is exact rather than
+lazy: `YYYY-MM-DD` sorts chronologically, so no timezone question arises.
+
+**`is_split_adjusted` decides whether the split table is applied at all**, since a
+modern broker export is usually already restated. It defaults to *not* adjusted:
+over-applying is loud and obvious (400 shares becoming 16,000), while under-applying
+is quiet and looks plausible.
+
+**The split table is hand-maintained code** (`src/lib/tax-lots/splits.ts`), not
+fetched. The market-data client can report split events, but a fetched value is a
+suggestion to add a row, not a substitute for one — an analyzer whose cost basis
+silently changes when a provider revises its history is worse than one you update
+deliberately. Ratios are new-per-old, so a reverse split is a fraction.
+
+**XIRR reads "—", never 0%.** The solver returns no answer for a single purchase
+date, for flows that are all one sign, or for everything bought today; a zero there
+would be indistinguishable from a genuinely flat return. It is Newton-Raphson with a
+bisection fallback, because Newton is fast but not globally convergent — from a
+far-off guess it can overshoot past -100%, where the discount term is undefined, and
+never recover. That is the *method* failing, not evidence the cash flows have no
+rate, so a poor initial guess must not be the difference between an answer and a
+blank cell. The solver takes dated amounts and returns a rate with no tax-lot import
+at all, so it is testable on textbook examples. It uses 365 days/year against
+`yearsHeld`'s 365.25 — not an inconsistency: 365 is the market convention for XIRR
+(what Excel does), and the holding period is a calendar question.
+
+A lot is flagged as a **trim candidate** only when it is long-term *and* in profit.
+A long-term lot at a loss is not a trimming candidate, it is a harvesting one, which
+is a different screen.
+
+Migration `0083` adds `stk_tax_lots`, kept separate from `stk_stock_transactions` on
+purpose: a transaction records **what the broker did**, a lot records **what you
+still hold**, and only the latter needs a flag saying which side of a split its share
+count is on. Deriving lots from transactions is the better long-term model but needs
+a sell-allocation policy (FIFO, LIFO, specific identification) this does not
+implement, so separate tables are the honest version of what is actually built.
+`shares` is REAL because fractional purchases are ordinary and normalization makes
+whole shares fractional anyway. Nothing is UNIQUE on `buy_date` — per
+`coding-guide.md`, buying a position in several lots through one day is completely
+ordinary, and at date granularity those rows are genuinely identical, so a unique
+constraint would silently drop every lot after the first.
+
+The repository is deliberately CRUD-only, with no aggregate query, so every figure
+above is a pure function over the returned rows rather than half SQL and half
+TypeScript. The current price and today's date arrive as data, so nothing in the
+module reads a clock or a quote.
+
+The selected ticker lives in `?ticker=`, making one position's breakdown a
+bookmarkable URL rather than client state; a stale ticker falls back to the first
+stored one instead of 404ing.
+
+Also a `tax-lots` CLI command — the same `analyzeTicker` use-case, plus a
+`--normalize` mode that restates one ad-hoc lot without storing it, and `--today` to
+move the long-term boundary for testing. **Adding it required no change to
+`src/lib`**, which is the layering rule paying out.
+
+### [Added] Games: Mahjong
+
+An eighth Arcade game, and the four-player one: Hong Kong rules, you against three
+bots. Distinct from Mahjong Match — they share the 144-tile set from
+`mahjong-tiles.ts` and nothing else, which is exactly the split that module exists to
+allow.
+
+The whole game is here — the wall and the deal, the call detector and win evaluator,
+the turn machine, fan scoring, and the bot policy. **One hand per game, not a full
+four-wind round**: every other Arcade game ends and posts one score, and a rotating
+dealer would mean carrying four hands of state for a scoreboard that records a single
+number.
+
+**Seats are positional, not named by wind.** The seat a player occupies and the wind
+they hold are two different things once a dealer rotates; this game does not rotate,
+so `SEAT_WINDS` maps one to the other and nothing has to track both. Play passes to
+`(seat + 1) % 4`, which is also the only direction a chow may be called from. You
+always sit South, fixed, so the view can rely on it.
+
+**A meld carries its actual tiles, not a face and a count** — so it can be drawn
+without the view reconstructing which copies were used, and so all 144 tiles stay
+conserved across wall, hands, melds and discards. That conservation is the invariant
+the tests assert.
+
+`getSanitizedState` returns opponents' concealed tiles as **counts, not faces**,
+while melds, flowers, ponds and the wall count stay visible because they are face up
+on a real table. It is kept as a *view* concern rather than a security boundary: with
+no network there is no client to distrust, but a view still needs to know which racks
+to draw face down, and putting it here means the answer is the same for the human and
+for a bot policy meant to play fair.
+
+The bots discard their lowest-value tile, breaking ties at random, and take a pung or
+kong whenever offered but a chow only when it does not break a pair — spending a
+paired tile on a run trades a near-triplet for a completed run and usually leaves the
+hand worse. Deliberately simple; weighing the hand's shape before and after a call is
+the genuine improvement, and the point at which a difficulty picker starts to be
+worth having.
+
+Scoring doubles per fan off the winning hand's Hong Kong total and caps at
+`MAHJONG_MAX_FAN`. A hand a bot won records 0, the same rule Blackjack applies to a
+broke run.
+
+Nothing mutates its argument, so a view holding the previous state still renders it
+unchanged, and the RNG arrives as a parameter — which is what makes a stacked wall
+testable.
+
+This is the tile game `MahjongWall` was built ahead of, and it uses all three of the
+component's layouts at once: `rack` for your own hand, `wall` with `hideFrom={0}` for
+each opponent's concealed tiles, and `pool` for their discards.
+
 ## 2026-09-06 21:50 — CSV custom views, Mahjong Match, uploaded action icons, and a compact grid that reads
 
 ### [Added] CSV Analysis: named views over a dataset

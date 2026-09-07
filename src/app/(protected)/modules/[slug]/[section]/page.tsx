@@ -56,6 +56,7 @@ function renderSection(
   prefillRulePattern: string | undefined,
   requestedGroupBy: string | undefined,
   requestedGroupKey: string | undefined,
+  requestedTicker: string | undefined,
 ) {
   if (slug === ATTENDANCE_MODULE_SLUG && isAttendanceSection(section)) {
     return (
@@ -106,7 +107,7 @@ function renderSection(
     return <MusicSection section={section} />;
   }
   if (slug === STOCK_ETFS_MODULE_SLUG && isStockSection(section)) {
-    return <StockSection section={section} />;
+    return <StockSection section={section} requestedTicker={requestedTicker} />;
   }
   return undefined;
 }
@@ -142,6 +143,9 @@ export default async function ModuleSectionPage({
     // vendor lands on just its rows.
     groupBy?: string | string[];
     group?: string | string[];
+    // Which ticker the Tax Lots analyzer is showing, so one position's lot
+    // breakdown is a bookmarkable URL rather than client state.
+    ticker?: string | string[];
   }>;
 }) {
   const { slug, section } = await params;
@@ -158,6 +162,7 @@ export default async function ModuleSectionPage({
     vendorDescription,
     groupBy,
     group,
+    ticker,
   } = await searchParams;
   // A repeated ?filter= yields an array; take the first rather than joining, so a
   // crafted URL can't smuggle a second expression in.
@@ -187,6 +192,10 @@ export default async function ModuleSectionPage({
   // back to the ungrouped list rather than 404ing.
   const requestedGroupBy = Array.isArray(groupBy) ? groupBy[0] : groupBy;
   const requestedGroupKey = Array.isArray(group) ? group[0] : group;
+  // Same first-element rule. Left raw: the section resolves it against the
+  // tickers that actually have lots, so a stale URL falls back to the first
+  // stored ticker rather than 404ing.
+  const requestedTicker = Array.isArray(ticker) ? ticker[0] : ticker;
 
   const appModule = getModuleBySlug(deps.moduleRepo, slug);
   if (!appModule) notFound();
@@ -213,6 +222,7 @@ export default async function ModuleSectionPage({
     prefillRulePattern,
     requestedGroupBy,
     requestedGroupKey,
+    requestedTicker,
   );
   if (!body) notFound();
 

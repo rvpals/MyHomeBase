@@ -13,6 +13,7 @@ export const STOCK_SECTIONS = [
   "accounts",
   "watch-test",
   "charts",
+  "tax-lots",
   "import",
   "settings",
 ] as const;
@@ -49,6 +50,11 @@ export const STOCK_SECTION_INFO: Record<StockSection, { label: string; descripti
     label: "Chart & Analysis",
     description: "Volatility, correlation and Sharpe ratio across the portfolio.",
   },
+  "tax-lots": {
+    label: "Tax Lots",
+    description:
+      "Split-adjusted purchase lots, their return and CAGR, and which are long-term.",
+  },
   import: {
     label: "CSV Import",
     description: "Define a reusable mapping per broker export, then import with it.",
@@ -67,6 +73,7 @@ export const STOCK_SECTION_ICONS: Record<StockSection, string> = {
   accounts: "database",
   "watch-test": "stock-quote",
   charts: "chart",
+  "tax-lots": "history",
   import: "upload",
   settings: "sliders",
 };

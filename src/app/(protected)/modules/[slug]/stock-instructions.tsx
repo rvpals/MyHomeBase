@@ -662,6 +662,74 @@ function SettingsInstructions() {
   );
 }
 
+function TaxLotsInstructions() {
+  return (
+    <>
+      <p className="text-sm text-muted">
+        Scores each purchase separately rather than as one blended position, because tax
+        is assessed per lot: two buys of the same stock can sit on opposite sides of the
+        one-year line and be taxed at very different rates.
+      </p>
+      <Section title="Split adjustment is the point">
+        <p>
+          Enter a lot exactly as your confirmation printed it and leave{" "}
+          <em>already split-adjusted</em> off. Every split since that purchase date is
+          applied for you — a 2019 NVDA buy of 10 shares at $180 is restated as 400 shares
+          at $4.50, which is what makes it comparable to today&apos;s price.
+        </p>
+        <p>
+          Turn the flag <em>on</em> only when your broker has already restated the lot.
+          Getting it wrong in that direction is loud and obvious (400 shares becoming
+          16,000); getting it wrong the other way is quiet and looks plausible, which is
+          why the flag defaults to off.
+        </p>
+        <p>
+          A ×N beside a purchase date is the cumulative factor that was applied. No marker
+          means nothing split since you bought.
+        </p>
+      </Section>
+      <Section title="Long term, short term, and what &quot;trim&quot; means">
+        <p>
+          A lot crosses to <em>long term</em> at exactly one year held, and only then can be
+          sold at the lower long-term capital-gains rate. Lots marked ✓ are long-term{" "}
+          <em>and</em> in profit — those are the tax-efficient ones to trim.
+        </p>
+        <p>
+          A long-term lot at a loss deliberately has no ✓. Selling it is loss harvesting,
+          a different decision from trimming a winner, and this screen doesn&apos;t advise
+          on it.
+        </p>
+      </Section>
+      <Section title="Reading the return figures">
+        <p>
+          <strong>CAGR</strong> annualizes one lot&apos;s growth from its own cost per share.{" "}
+          <strong>XIRR</strong> is the whole position&apos;s money-weighted return: it
+          discounts every purchase by how long that money was actually invested, so buying
+          more on the way up doesn&apos;t flatter the result the way a simple total return
+          would.
+        </p>
+        <p>
+          XIRR reads &quot;—&quot; when there is nothing to solve — a single purchase date, or
+          everything bought today. That is a genuine absence of an answer, not a zero
+          return.
+        </p>
+        <p>
+          <strong>Yield on cost</strong> measures the current per-share dividend against what
+          you paid, so a long-held lot shows a far higher yield than today&apos;s quoted one.
+          It reads &quot;—&quot; when the position reports no dividend.
+        </p>
+      </Section>
+      <Section title="Where the current price comes from">
+        <p>
+          The held position&apos;s last refreshed quote. If you no longer hold the ticker,
+          the newest lot&apos;s own price is used instead and the Current Value card says so
+          — refresh prices on Positions to get a real one.
+        </p>
+      </Section>
+    </>
+  );
+}
+
 export function StockInstructions({ section }: { section: StockSection }) {
   switch (section) {
     case "main":
@@ -676,6 +744,8 @@ export function StockInstructions({ section }: { section: StockSection }) {
       return <WatchTestInstructions />;
     case "charts":
       return <ChartsInstructions />;
+    case "tax-lots":
+      return <TaxLotsInstructions />;
     case "import":
       return <ImportInstructions />;
     case "settings":

@@ -12,7 +12,7 @@ module is obvious from the name alone. New tables must follow this.
 | Prefix | Module | Example tables |
 |---|---|---|
 | `sys_` | Platform — not a feature module | `sys_modules`, `sys_app_settings`, `sys_module_settings`, `sys_user_preferences`, `sys_users`, `sys_user_module_access`, `sys_sessions`, `sys_schema_migrations`, `sys_daily_quotes`, `sys_scheduled_runs`, `sys_dashboard_texture`, `sys_module_texture`, `sys_fav_photo`, `sys_deployments` |
-| `stk_` | Stocks & ETFs (brokerage accounts **and** per-stock tables — one prefix) | `stk_investment_accounts`, `stk_stock_positions`, `stk_stock_transactions`, `stk_stock_watch_lists`, `stk_stock_volatility_cache`, `stk_ticker_risk_cache`, `stk_ticker_logos`, `stk_daily_snapshots` |
+| `stk_` | Stocks & ETFs (brokerage accounts **and** per-stock tables — one prefix) | `stk_investment_accounts`, `stk_stock_positions`, `stk_stock_transactions`, `stk_stock_watch_lists`, `stk_stock_volatility_cache`, `stk_ticker_risk_cache`, `stk_ticker_logos`, `stk_daily_snapshots`, `stk_tax_lots` |
 | `csv_` | CSV Analysis (incl. user-generated per-entry tables from `buildTableName`) | `csv_analytics_entries`, `csv_chart_presets`, `csv_govee` |
 | `jrn_` | MyJournal | `jrn_entries`, `jrn_categories`, `jrn_tags`, `jrn_entry_categories`, `jrn_entry_tags`, `jrn_entry_locations`, `jrn_entry_images`, `jrn_saved_filters` |
 | `exp_` | Expense tracker | `exp_transactions`, `exp_creditcard_accounts`, `exp_categories`, `exp_vendors`, `exp_post_import_rules`, `exp_post_import_rule_actions` |
