@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { Suspense, type CSSProperties } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { ModuleCarousel } from "@/components/module-carousel";
@@ -14,8 +14,6 @@ import {
   type HomeWidgetId,
 } from "@/lib/home-dashboard";
 import { listTodayInHistory } from "@/lib/journal";
-import { listFavPhotos } from "@/lib/fav-photos";
-import { pickRandomPhoto } from "@/lib/journal-photos";
 import { listModules } from "@/lib/modules";
 import { getSetting, getStartupMessage } from "@/lib/settings";
 import { todayIsoLocal } from "@/lib/shared/date";
@@ -30,10 +28,9 @@ import { deps } from "@/lib/wiring";
 import { BadLoginAlert } from "./bad-login-alert";
 import { DailyQuoteWidget } from "./daily-quote-widget";
 import { HomeShell } from "./home-shell";
-import { photoStore } from "./modules/[slug]/journal-photo-root";
 import { StockDailyGlance } from "./modules/[slug]/stock-daily-glance";
 import { PAGE_CONTAINER } from "./page-container";
-import { RandomPhotoWidget } from "./random-photo-widget";
+import { RandomPhotoCard } from "./random-photo-card";
 import { StartupMessage } from "./startup-message";
 import { TodayInHistoryWidget } from "./today-in-history-widget";
 
@@ -87,16 +84,11 @@ export default async function Home({
   const todayInHistory = shows("todayInHistory")
     ? listTodayInHistory(deps.journalRepo, todayIsoLocal())
     : [];
-  // One photograph from anywhere in the archive, drawn fresh on every landing like the
-  // quote above. Three directory listings over the share and no file read -- the bytes
-  // are fetched separately by the browser from the image route. An unconfigured or
-  // unreachable archive comes back as a `reason` rather than throwing, so a NAS that is
-  // asleep cannot take the home screen down with it.
-  const randomPhoto = shows("randomPhoto") ? await pickRandomPhoto(photoStore()) : undefined;
-  // The favourites list, read alongside the draw and only when the card is shown. One
-  // small table read that serves both the heart's state and the list dialog's contents,
-  // so neither costs a round trip on first interaction.
-  const favoritePhotos = shows("randomPhoto") ? listFavPhotos(deps.favPhotoRepo) : [];
+  // One photograph from anywhere in the archive is drawn fresh on every landing like
+  // the quote above -- but NOT here. That draw walks the photo share over SMB, and
+  // awaiting it on this line made it the only async call on an otherwise synchronous
+  // screen, so nothing painted until the NAS answered. It now streams inside a
+  // <Suspense> boundary below; see random-photo-card.tsx.
 
   // Set by a deployment; blank once someone has clicked OK. Read here rather than
   // in the layout so it appears on the home screen specifically.
@@ -136,7 +128,10 @@ export default async function Home({
     carousel: true,
     dailyQuote: Boolean(quote),
     todayInHistory: true,
-    randomPhoto: Boolean(randomPhoto),
+    // Unknowable here now that the draw streams: whether the share has a photo to
+    // give is decided inside RandomPhotoCard, which renders null when it doesn't.
+    // So the slot is always claimed and may collapse once the NAS answers.
+    randomPhoto: true,
     stockGlance: positions.length > 0,
   };
   const drawnWidgets = visibleHomeWidgets(widgets).filter((id) => hasContent[id]);
@@ -214,17 +209,15 @@ export default async function Home({
                 />
               );
             case "randomPhoto":
-              // `randomPhoto` is undefined only when this card is hidden, in which
-              // case we aren't in this branch -- the check is what keeps the prop
-              // required rather than widening it for a case that can't happen.
-              return randomPhoto ? (
-                <RandomPhotoWidget
-                  key={id}
-                  className={spacing}
-                  initialPick={randomPhoto}
-                  initialFavorites={favoritePhotos}
-                />
-              ) : null;
+              // Streamed, so the SMB walk cannot hold up first paint. The fallback is
+              // deliberately empty rather than a skeleton: the card's height depends on
+              // the photograph, so a placeholder box would be the wrong size and shift
+              // the page twice instead of once.
+              return (
+                <Suspense key={id} fallback={null}>
+                  <RandomPhotoCard className={spacing} />
+                </Suspense>
+              );
             case "stockGlance":
               return positions.length > 0 ? (
                 <StockDailyGlance
