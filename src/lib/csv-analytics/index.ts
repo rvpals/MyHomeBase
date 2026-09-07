@@ -4,6 +4,13 @@ export type {
   CsvAnalyticEntry,
   CsvEntryData,
   CsvChartPreset,
+  CsvCustomView,
+  CsvSortDirection,
+  CsvViewCriterion,
+  CsvViewOperator,
+  CsvViewOperatorArity,
+  CsvViewOrderBy,
+  CsvViewPage,
   IngestMode,
   IngestResult,
 } from "./types";
@@ -14,9 +21,20 @@ export {
   createCsvAnalyticEntrySchema,
   updateCsvAnalyticEntrySchema,
   saveChartPresetSchema,
+  csvViewOperatorSchema,
+  csvSortDirectionSchema,
+  csvViewCriterionSchema,
+  csvViewOrderBySchema,
+  recordsPerPageSchema,
+  createCsvCustomViewSchema,
+  updateCsvCustomViewSchema,
+  readCustomViewPageSchema,
   type CreateCsvAnalyticEntryInput,
   type UpdateCsvAnalyticEntryInput,
   type SaveChartPresetInput,
+  type CreateCsvCustomViewInput,
+  type UpdateCsvCustomViewInput,
+  type ReadCustomViewPageInput,
 } from "./schema";
 export type { CsvAnalyticsRepository } from "./ports";
 export {
@@ -40,3 +58,28 @@ export {
   type CsvAnalyticsPreview,
   type UpdateEntryResult,
 } from "./csv-analytics";
+export {
+  CSV_VIEW_OPERATORS,
+  CSV_VIEW_OPERATOR_ARITY,
+  CSV_VIEW_OPERATOR_LABELS,
+  operatorArity,
+  compileViewQuery,
+  resolveSelectedColumns,
+  findUnknownColumns,
+  findIncompleteCriteria,
+  describeCriteria,
+  describeOrderBy,
+  type CompiledViewQuery,
+  type CompileViewQueryInput,
+} from "./view-query";
+export {
+  listCustomViews,
+  listAllCustomViews,
+  listEnabledCustomViews,
+  getCustomViewById,
+  createCustomView,
+  updateCustomView,
+  setCustomViewEnabled,
+  deleteCustomView,
+  readCustomViewPage,
+} from "./custom-views";

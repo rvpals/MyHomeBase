@@ -45,3 +45,73 @@ export interface IngestResult {
   inserted: number;
   skipped: number;
 }
+
+/**
+ * A criterion's operator. Closed set — the SQL for each lives in view-query.ts,
+ * and nothing outside this union ever reaches a query.
+ */
+export type CsvViewOperator =
+  | "equals"
+  | "notEquals"
+  | "greaterThan"
+  | "greaterThanOrEqual"
+  | "lessThan"
+  | "lessThanOrEqual"
+  | "contains"
+  | "notContains"
+  | "startsWith"
+  | "endsWith"
+  | "between"
+  | "isEmpty"
+  | "isNotEmpty"
+  | "in"
+  | "notIn";
+
+/** How many values an operator takes. Drives both validation and the builder UI. */
+export type CsvViewOperatorArity = "none" | "one" | "two" | "list";
+
+/** One filter condition. `values` length must match the operator's arity. */
+export interface CsvViewCriterion {
+  /** A name from the entry's columns[].name. */
+  column: string;
+  operator: CsvViewOperator;
+  /** Raw text as typed; coerced per the column's type when the query is compiled. */
+  values: string[];
+}
+
+export type CsvSortDirection = "asc" | "desc";
+
+export interface CsvViewOrderBy {
+  column: string;
+  direction: CsvSortDirection;
+}
+
+/** A named, saved query over one entry's physical table. */
+export interface CsvCustomView {
+  id: number;
+  entryId: number;
+  name: string;
+  description?: string;
+  /** Empty means every column, resolved at read time — see migration 0081. */
+  selectedColumns: string[];
+  /** ANDed together. */
+  criteria: CsvViewCriterion[];
+  /** Applied in array order. */
+  orderBy: CsvViewOrderBy[];
+  recordsPerPage: number;
+  isEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** One page of a view's results, plus what it took to know the page count. */
+export interface CsvViewPage {
+  columns: CsvColumnDefinition[];
+  rows: (string | number | null)[][];
+  /** Rows matching the view's criteria across every page, not just this one. */
+  totalRows: number;
+  /** 1-based. */
+  page: number;
+  pageCount: number;
+  recordsPerPage: number;
+}

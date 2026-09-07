@@ -1,5 +1,18 @@
-import type { CreateCsvAnalyticEntryInput, SaveChartPresetInput, UpdateCsvAnalyticEntryInput } from "./schema";
-import type { CsvAnalyticEntry, CsvChartPreset, CsvColumnDefinition, CsvEntryData, IngestResult } from "./types";
+import type {
+  CreateCsvAnalyticEntryInput,
+  CreateCsvCustomViewInput,
+  SaveChartPresetInput,
+  UpdateCsvCustomViewInput,
+} from "./schema";
+import type {
+  CsvAnalyticEntry,
+  CsvChartPreset,
+  CsvColumnDefinition,
+  CsvCustomView,
+  CsvEntryData,
+  CsvViewPage,
+  IngestResult,
+} from "./types";
 
 // The use-cases depend on THIS interface, not on a concrete database.
 export interface CsvAnalyticsRepository {
@@ -34,4 +47,22 @@ export interface CsvAnalyticsRepository {
   /** Upserts a preset by (entryId, name) — a repeat name overwrites its options. */
   saveChartPreset(input: SaveChartPresetInput): CsvChartPreset;
   deleteChartPreset(id: number): void;
+
+  /** Custom views for one entry, oldest first. Includes disabled ones. */
+  listCustomViews(entryId: number): CsvCustomView[];
+  /** Every custom view across every entry, for the builder's list. */
+  listAllCustomViews(): CsvCustomView[];
+  getCustomViewById(id: number): CsvCustomView | undefined;
+  isCustomViewNameTaken(entryId: number, name: string, excludingId?: number): boolean;
+  createCustomView(input: CreateCsvCustomViewInput): CsvCustomView;
+  updateCustomView(id: number, input: UpdateCsvCustomViewInput): CsvCustomView;
+  /** Flips just `is_enabled` — the rest of the definition is untouched. */
+  setCustomViewEnabled(id: number, isEnabled: boolean): CsvCustomView;
+  deleteCustomView(id: number): void;
+  /**
+   * Runs the view against its entry's physical table and returns one page.
+   * Compiles the SQL via `compileViewQuery`, so the repository holds no query logic
+   * of its own beyond binding and paging.
+   */
+  readCustomViewPage(view: CsvCustomView, page: number): CsvViewPage;
 }

@@ -1,6 +1,11 @@
 import type Database from "better-sqlite3";
 import type { CsvAnalyticsRepository } from "./ports";
-import type { CreateCsvAnalyticEntryInput, SaveChartPresetInput } from "./schema";
+import type {
+  CreateCsvAnalyticEntryInput,
+  CreateCsvCustomViewInput,
+  SaveChartPresetInput,
+  UpdateCsvCustomViewInput,
+} from "./schema";
 import {
   buildAddColumnSql,
   buildCreateTableSql,
@@ -10,13 +15,38 @@ import {
   coerceCellValue,
   quoteIdentifier,
 } from "./sql-builder";
-import type { CsvAnalyticEntry, CsvChartPreset, CsvColumnDefinition, CsvEntryData, IngestResult } from "./types";
+import type {
+  CsvAnalyticEntry,
+  CsvChartPreset,
+  CsvColumnDefinition,
+  CsvCustomView,
+  CsvEntryData,
+  CsvViewCriterion,
+  CsvViewOrderBy,
+  CsvViewPage,
+  IngestResult,
+} from "./types";
+import { compileViewQuery } from "./view-query";
 
 interface CsvChartPresetRow {
   id: number;
   entry_id: number;
   name: string;
   options_json: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface CsvCustomViewRow {
+  id: number;
+  entry_id: number;
+  name: string;
+  description: string | null;
+  selected_columns_json: string;
+  criteria_json: string;
+  order_by_json: string;
+  records_per_page: number;
+  is_enabled: number;
   created_at: string;
   updated_at: string;
 }
@@ -248,6 +278,9 @@ export class SqliteCsvAnalyticsRepository implements CsvAnalyticsRepository {
     this.db.transaction(() => {
       this.db.exec(buildDropTableSql(row.table_name));
       this.db.prepare("DELETE FROM csv_chart_presets WHERE entry_id = ?").run(id);
+      // Custom views name this entry's columns, so they mean nothing once it is gone.
+      // Cleaned up here rather than by a FK, per project convention (migration 0081).
+      this.db.prepare("DELETE FROM csv_custom_views WHERE entry_id = ?").run(id);
       this.db.prepare("DELETE FROM csv_analytics_entries WHERE id = ?").run(id);
     })();
   }
@@ -288,5 +321,154 @@ export class SqliteCsvAnalyticsRepository implements CsvAnalyticsRepository {
 
   deleteChartPreset(id: number): void {
     this.db.prepare("DELETE FROM csv_chart_presets WHERE id = ?").run(id);
+  }
+
+  // --- Custom views (migration 0081) ----------------------------------------------
+
+  private toCustomViewDomain(row: CsvCustomViewRow): CsvCustomView {
+    return {
+      id: row.id,
+      entryId: row.entry_id,
+      name: row.name,
+      description: row.description ?? undefined,
+      selectedColumns: JSON.parse(row.selected_columns_json) as string[],
+      criteria: JSON.parse(row.criteria_json) as CsvViewCriterion[],
+      orderBy: JSON.parse(row.order_by_json) as CsvViewOrderBy[],
+      recordsPerPage: row.records_per_page,
+      // SQLite has no boolean type — the 0/1 becomes a real boolean at this boundary
+      // so nothing above the repository compares against a number.
+      isEnabled: row.is_enabled === 1,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  listCustomViews(entryId: number): CsvCustomView[] {
+    const rows = this.db
+      .prepare("SELECT * FROM csv_custom_views WHERE entry_id = ? ORDER BY created_at ASC, id ASC")
+      .all(entryId) as CsvCustomViewRow[];
+    return rows.map((row) => this.toCustomViewDomain(row));
+  }
+
+  listAllCustomViews(): CsvCustomView[] {
+    const rows = this.db
+      .prepare("SELECT * FROM csv_custom_views ORDER BY entry_id ASC, created_at ASC, id ASC")
+      .all() as CsvCustomViewRow[];
+    return rows.map((row) => this.toCustomViewDomain(row));
+  }
+
+  getCustomViewById(id: number): CsvCustomView | undefined {
+    const row = this.db.prepare("SELECT * FROM csv_custom_views WHERE id = ?").get(id) as
+      | CsvCustomViewRow
+      | undefined;
+    return row ? this.toCustomViewDomain(row) : undefined;
+  }
+
+  isCustomViewNameTaken(entryId: number, name: string, excludingId?: number): boolean {
+    const row = this.db
+      .prepare("SELECT id FROM csv_custom_views WHERE entry_id = ? AND name = ? AND id != ?")
+      .get(entryId, name, excludingId ?? -1) as { id: number } | undefined;
+    return row !== undefined;
+  }
+
+  createCustomView(input: CreateCsvCustomViewInput): CsvCustomView {
+    const result = this.db
+      .prepare(
+        `INSERT INTO csv_custom_views
+           (entry_id, name, description, selected_columns_json, criteria_json,
+            order_by_json, records_per_page, is_enabled)
+         VALUES (@entryId, @name, @description, @selectedColumnsJson, @criteriaJson,
+                 @orderByJson, @recordsPerPage, @isEnabled)`,
+      )
+      .run({
+        entryId: input.entryId,
+        name: input.name,
+        description: input.description ?? null,
+        selectedColumnsJson: JSON.stringify(input.selectedColumns),
+        criteriaJson: JSON.stringify(input.criteria),
+        orderByJson: JSON.stringify(input.orderBy),
+        recordsPerPage: input.recordsPerPage,
+        isEnabled: input.isEnabled ? 1 : 0,
+      });
+
+    const created = this.getCustomViewById(Number(result.lastInsertRowid));
+    if (!created) throw new Error("Failed to read back newly created custom view.");
+    return created;
+  }
+
+  updateCustomView(id: number, input: UpdateCsvCustomViewInput): CsvCustomView {
+    this.db
+      .prepare(
+        `UPDATE csv_custom_views
+         SET name = @name, description = @description,
+             selected_columns_json = @selectedColumnsJson, criteria_json = @criteriaJson,
+             order_by_json = @orderByJson, records_per_page = @recordsPerPage,
+             is_enabled = @isEnabled
+         WHERE id = @id`,
+      )
+      .run({
+        id,
+        name: input.name,
+        description: input.description ?? null,
+        selectedColumnsJson: JSON.stringify(input.selectedColumns),
+        criteriaJson: JSON.stringify(input.criteria),
+        orderByJson: JSON.stringify(input.orderBy),
+        recordsPerPage: input.recordsPerPage,
+        isEnabled: input.isEnabled ? 1 : 0,
+      });
+
+    const updated = this.getCustomViewById(id);
+    if (!updated) throw new Error(`Failed to read back updated custom view ${id}.`);
+    return updated;
+  }
+
+  setCustomViewEnabled(id: number, isEnabled: boolean): CsvCustomView {
+    this.db
+      .prepare("UPDATE csv_custom_views SET is_enabled = @isEnabled WHERE id = @id")
+      .run({ id, isEnabled: isEnabled ? 1 : 0 });
+
+    const updated = this.getCustomViewById(id);
+    if (!updated) throw new Error(`Failed to read back custom view ${id} after enabling.`);
+    return updated;
+  }
+
+  deleteCustomView(id: number): void {
+    this.db.prepare("DELETE FROM csv_custom_views WHERE id = ?").run(id);
+  }
+
+  readCustomViewPage(view: CsvCustomView, page: number): CsvViewPage {
+    const entryRow = this.getRowById(view.entryId);
+    if (!entryRow) throw new Error(`CSV analytic entry ${view.entryId} not found.`);
+    const entryColumns = JSON.parse(entryRow.columns_json) as CsvColumnDefinition[];
+
+    // All query construction is in the pure compiler; this method only binds and pages.
+    const compiled = compileViewQuery({
+      tableName: entryRow.table_name,
+      entryColumns,
+      selectedColumns: view.selectedColumns,
+      criteria: view.criteria,
+      orderBy: view.orderBy,
+      recordsPerPage: view.recordsPerPage,
+      page,
+    });
+
+    const { count: totalRows } = this.db.prepare(compiled.countSql).get(...compiled.params) as {
+      count: number;
+    };
+    const rows = this.db
+      .prepare(compiled.sql)
+      .raw()
+      .all(...compiled.params) as (string | number | null)[][];
+
+    const recordsPerPage = Math.max(1, Math.floor(view.recordsPerPage));
+    return {
+      columns: compiled.columns,
+      rows,
+      totalRows,
+      page: Math.max(1, Math.floor(page)),
+      // An empty result is one (empty) page, not zero — the pager needs a page to be on.
+      pageCount: Math.max(1, Math.ceil(totalRows / recordsPerPage)),
+      recordsPerPage,
+    };
   }
 }

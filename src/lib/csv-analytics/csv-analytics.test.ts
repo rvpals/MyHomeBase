@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { CsvAnalyticsRepository } from "./ports";
+// One shared in-memory port implementation, so this suite and custom-views.test.ts
+// can't drift apart when the repository interface grows a method.
+import { fakeCsvAnalyticsRepo as fakeRepo } from "./fake-repository";
 import type { CreateCsvAnalyticEntryInput } from "./schema";
-import { buildTableName } from "./sql-builder";
 import {
   createEntry,
   deleteChartPreset,
@@ -13,133 +14,6 @@ import {
   saveChartPreset,
   updateEntry,
 } from "./csv-analytics";
-import type { CsvAnalyticEntry, CsvChartPreset } from "./types";
-
-function fakeRepo(): CsvAnalyticsRepository {
-  let nextId = 1;
-  const entries = new Map<number, CsvAnalyticEntry>();
-  // Standalone rows per entry so readTableData has something to return in tests.
-  const tableRows = new Map<number, (string | number | null)[][]>();
-  const presets = new Map<number, CsvChartPreset>();
-  let nextPresetId = 1;
-  const stamp = "2026-01-01T00:00:00.000Z";
-
-  function isTaken(tableName: string, excludingId?: number): boolean {
-    return [...entries.values()].some((entry) => entry.tableName === tableName && entry.id !== excludingId);
-  }
-
-  return {
-    listEntries: () => [...entries.values()],
-    getEntryById: (id) => entries.get(id),
-    isTableNameTaken: (tableName, excludingId) => isTaken(tableName, excludingId),
-    readTableData: (id, limit) => {
-      const entry = entries.get(id);
-      if (!entry) throw new Error(`CSV analytic entry ${id} not found.`);
-      const rows = tableRows.get(id) ?? [];
-      return { columns: entry.columns, rows: limit !== undefined ? rows.slice(0, limit) : rows };
-    },
-    createEntry: (input, rows) => {
-      const tableName = buildTableName(input.tableBaseName);
-      if (isTaken(tableName)) throw new Error(`A CSV analytic entry already uses table name "${tableName}".`);
-      const id = nextId++;
-      const entry: CsvAnalyticEntry = {
-        id,
-        name: input.name,
-        description: input.description,
-        tableName,
-        columns: input.columns,
-        primaryKeyFields: input.primaryKeyFields,
-        rowCount: rows.length,
-        createdAt: stamp,
-        updatedAt: stamp,
-      };
-      entries.set(id, entry);
-      tableRows.set(id, rows);
-      return entry;
-    },
-    appendRows: (id, rows) => {
-      const entry = entries.get(id);
-      if (!entry) throw new Error(`CSV analytic entry ${id} not found.`);
-      entries.set(id, { ...entry, rowCount: entry.rowCount + rows.length });
-      tableRows.set(id, [...(tableRows.get(id) ?? []), ...rows]);
-      return { inserted: rows.length, skipped: 0 };
-    },
-    truncateAndReload: (id, rows) => {
-      const entry = entries.get(id);
-      if (!entry) throw new Error(`CSV analytic entry ${id} not found.`);
-      entries.set(id, { ...entry, rowCount: rows.length });
-      tableRows.set(id, rows);
-      return { inserted: rows.length, skipped: 0 };
-    },
-    overwriteEntry: (id, input, rows) => {
-      const entry = entries.get(id);
-      if (!entry) throw new Error(`CSV analytic entry ${id} not found.`);
-      const updated: CsvAnalyticEntry = {
-        ...entry,
-        name: input.name,
-        description: input.description,
-        tableName: buildTableName(input.tableBaseName),
-        columns: input.columns,
-        primaryKeyFields: input.primaryKeyFields,
-        rowCount: rows.length,
-      };
-      entries.set(id, updated);
-      return updated;
-    },
-    updateMetadata: (id, input) => {
-      const entry = entries.get(id);
-      if (!entry) throw new Error(`CSV analytic entry ${id} not found.`);
-      const updated = { ...entry, name: input.name, description: input.description };
-      entries.set(id, updated);
-      return updated;
-    },
-    addColumns: (id, newColumns) => {
-      const entry = entries.get(id);
-      if (!entry) throw new Error(`CSV analytic entry ${id} not found.`);
-      const updated = { ...entry, columns: [...entry.columns, ...newColumns] };
-      entries.set(id, updated);
-      // Existing rows get NULL for each new column — no backfill.
-      const rows = tableRows.get(id) ?? [];
-      tableRows.set(
-        id,
-        rows.map((row) => [...row, ...newColumns.map(() => null)]),
-      );
-      return updated;
-    },
-    deleteEntry: (id) => {
-      entries.delete(id);
-      for (const [presetId, preset] of presets) {
-        if (preset.entryId === id) presets.delete(presetId);
-      }
-    },
-    listChartPresets: (entryId) =>
-      [...presets.values()].filter((preset) => preset.entryId === entryId),
-    saveChartPreset: (input) => {
-      const existing = [...presets.values()].find(
-        (preset) => preset.entryId === input.entryId && preset.name === input.name,
-      );
-      if (existing) {
-        const updated = { ...existing, optionsJson: input.optionsJson, updatedAt: stamp };
-        presets.set(existing.id, updated);
-        return updated;
-      }
-      const id = nextPresetId++;
-      const created: CsvChartPreset = {
-        id,
-        entryId: input.entryId,
-        name: input.name,
-        optionsJson: input.optionsJson,
-        createdAt: stamp,
-        updatedAt: stamp,
-      };
-      presets.set(id, created);
-      return created;
-    },
-    deleteChartPreset: (id) => {
-      presets.delete(id);
-    },
-  };
-}
 
 const SAMPLE_CSV = "User ID,Event At,Amount\n1,2026-01-01,10.5\n2,2026-01-02,20";
 
@@ -202,8 +76,9 @@ describe("createEntry", () => {
 
     expect(entry.columns.map((column) => column.name)).toEqual(["user_id", "event_at", "amount", "source"]);
     const data = readEntryData(repo, entry.id);
-    expect(data.rows[0]).toEqual(["1", "2026-01-01", "10.5", "NAS"]);
-    expect(data.rows[1]).toEqual(["2", "2026-01-02", "20", "NAS"]);
+    // Coerced per column type on the way in; `source` is text, so it stays a string.
+    expect(data.rows[0]).toEqual([1, "2026-01-01", 10.5, "NAS"]);
+    expect(data.rows[1]).toEqual([2, "2026-01-02", 20, "NAS"]);
   });
 
   it("rejects a new column with no value provided", () => {
@@ -308,11 +183,13 @@ describe("updateEntry", () => {
     ]);
 
     const data = readEntryData(repo, entry.id);
+    // Values come back coerced per column type (user_id integer, amount real), the
+    // same as the real repository, which coerces on insert.
     // Pre-existing rows (from creation) get NULL for the new column — no backfill.
-    expect(data.rows[0]).toEqual(["1", "2026-01-01", "10.5", null]);
+    expect(data.rows[0]).toEqual([1, "2026-01-01", 10.5, null]);
     // Newly appended rows all carry the typed value.
-    expect(data.rows[2]).toEqual(["3", "2026-01-03", "5", "NAS"]);
-    expect(data.rows[3]).toEqual(["4", "2026-01-04", "7", "NAS"]);
+    expect(data.rows[2]).toEqual([3, "2026-01-03", 5, "NAS"]);
+    expect(data.rows[3]).toEqual([4, "2026-01-04", 7, "NAS"]);
   });
 
   it("rejects a new column with no value provided", () => {
@@ -340,7 +217,8 @@ describe("readEntryData", () => {
     const data = readEntryData(repo, entry.id);
     expect(data.columns.map((column) => column.name)).toEqual(["user_id", "event_at", "amount"]);
     expect(data.rows).toHaveLength(2);
-    expect(data.rows[0]).toEqual(["1", "2026-01-01", "10.5"]);
+    // Coerced per column type on the way in, as the real repository does.
+    expect(data.rows[0]).toEqual([1, "2026-01-01", 10.5]);
   });
 
   it("honors a row limit", () => {

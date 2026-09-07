@@ -7,13 +7,17 @@ import { ChartXY, type ChartType } from "@/components/chart-xy";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type CellValue, type DataGridColumn } from "@/components/data-grid";
 import { FileDropzone } from "@/components/file-dropzone";
-import type {
-  CsvAnalyticEntry,
-  CsvChartPreset,
-  CsvColumnDefinition,
-  CsvColumnType,
-  CsvEntryData,
-  IngestMode,
+import {
+  describeCriteria,
+  describeOrderBy,
+  type CsvAnalyticEntry,
+  type CsvChartPreset,
+  type CsvColumnDefinition,
+  type CsvColumnType,
+  type CsvCustomView,
+  type CsvEntryData,
+  type CsvViewPage,
+  type IngestMode,
 } from "@/lib/csv-analytics";
 import {
   createCsvAnalyticsEntryAction,
@@ -22,6 +26,7 @@ import {
   listChartPresetsAction,
   previewCsvAnalyticsFileAction,
   readCsvAnalyticsDataAction,
+  readCsvCustomViewPageAction,
   saveChartPresetAction,
   updateCsvAnalyticsEntryAction,
 } from "./csv-analytics-actions";
@@ -61,6 +66,131 @@ function DataPanel({ data, exportName }: { data: CsvEntryData; exportName: strin
       emptyMessage="This table has no rows."
       exportFileName={exportName}
     />
+  );
+}
+
+/**
+ * An entry's rows read through a custom view, with the view's own pager.
+ *
+ * Paging is server-side here, unlike `DataPanel`: the view carries a records-per-page
+ * and the whole point is not to pull the entire table to show 25 rows. So the grid
+ * gets one page at a time (`defaultPageSize="ALL"`, `showStatusBar={false}`) and the
+ * pager below is the view's, not the grid's — two pagers over the same rows would
+ * disagree about what page you are on.
+ */
+function ViewDataPanel({ view, exportName }: { view: CsvCustomView; exportName: string }) {
+  const [page, setPage] = useState(1);
+  const [result, setResult] = useState<CsvViewPage | undefined>(undefined);
+  // Starts true: a fetch is always in flight from first mount, so false would render
+  // one frame of "no rows" before the loading indicator appeared.
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  // Same pattern as ChartBuilder above: entering the loading state (and resetting to
+  // page 1 when the view changes) is a reaction to the request key changing, so it is
+  // adjusted during render rather than in the effect. In an effect it committed one
+  // frame of the previous view's rows with no loading indicator, which is why React
+  // flags a synchronous setState there.
+  //
+  // The page is deliberately NOT part of the key that resets it — page 4 of a
+  // different view is meaningless, but page 4 of this one is exactly what was asked for.
+  const [requestedViewId, setRequestedViewId] = useState(view.id);
+  const effectivePage = requestedViewId === view.id ? page : 1;
+  if (requestedViewId !== view.id) {
+    setRequestedViewId(view.id);
+    setPage(1);
+    setLoading(true);
+    setError(undefined);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    readCsvCustomViewPageAction(view.id, effectivePage).then((response) => {
+      if (cancelled) return;
+      if (!response.ok || !response.page) setError(response.error ?? "Failed to read the view.");
+      else setResult(response.page);
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [view.id, effectivePage]);
+
+  /** Turning a page enters the loading state from the event, not from an effect. */
+  function goToPage(next: number) {
+    setPage(next);
+    setLoading(true);
+    setError(undefined);
+  }
+
+  const rowKeys = useMemo(
+    () => new Map((result?.rows ?? []).map((row, index) => [row, index] as const)),
+    [result],
+  );
+
+  if (error) return <p className="text-sm text-red-400">{error}</p>;
+  if (!result) return <p className="text-sm text-muted">Loading…</p>;
+
+  const columns: DataGridColumn<(string | number | null)[]>[] = result.columns.map(
+    (column, index) => ({
+      key: column.name,
+      header: column.sourceHeader,
+      value: (row) => row[index] as CellValue,
+      render: (row) => formatCell(row[index]),
+    }),
+  );
+
+  const firstOnPage = result.totalRows === 0 ? 0 : (result.page - 1) * result.recordsPerPage + 1;
+  const lastOnPage = Math.min(result.page * result.recordsPerPage, result.totalRows);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="rounded-md border border-line bg-paper-raised p-3 text-xs text-muted">
+        <p className="font-medium text-ink">{view.name}</p>
+        <p className="font-mono">{describeCriteria(view.criteria)}</p>
+        <p className="font-mono">Ordered by: {describeOrderBy(view.orderBy)}</p>
+      </div>
+
+      <DataGrid
+        columns={columns}
+        rows={result.rows}
+        getRowKey={(row) => rowKeys.get(row) ?? 0}
+        emptyMessage="No rows match this view."
+        exportFileName={exportName}
+        defaultPageSize="ALL"
+        showStatusBar={false}
+      />
+
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-paper-raised px-3 py-2 text-xs text-muted">
+        <span>
+          {result.totalRows === 0
+            ? "No records"
+            : `${firstOnPage}–${lastOnPage} of ${result.totalRows} records`}
+          {loading && " · loading…"}
+        </span>
+        <div className="flex items-center gap-2">
+          <span>
+            Page {result.page} of {result.pageCount}
+          </span>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={loading || result.page <= 1}
+            onClick={() => goToPage(Math.max(1, result.page - 1))}
+          >
+            Prev
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={loading || result.page >= result.pageCount}
+            onClick={() => goToPage(result.page + 1)}
+          >
+            Next
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -790,7 +920,14 @@ function EntryForm({ entry, onDone }: { entry?: CsvAnalyticEntry; onDone: () => 
   );
 }
 
-export function CsvAnalyticsView({ entries }: { entries: CsvAnalyticEntry[] }) {
+export function CsvAnalyticsView({
+  entries,
+  customViews = [],
+}: {
+  entries: CsvAnalyticEntry[];
+  /** Every enabled view across every entry — the dropdown filters to its own row. */
+  customViews?: CsvCustomView[];
+}) {
   const router = useRouter();
   const [showNewForm, setShowNewForm] = useState(false);
   const [editingId, setEditingId] = useState<number | undefined>(undefined);
@@ -798,10 +935,55 @@ export function CsvAnalyticsView({ entries }: { entries: CsvAnalyticEntry[] }) {
   const [panelData, setPanelData] = useState<CsvEntryData | undefined>(undefined);
   const [panelLoading, setPanelLoading] = useState(false);
   const [panelError, setPanelError] = useState<string | undefined>(undefined);
+  // The view each entry's dropdown is currently set to, keyed by entry id. Absent
+  // means "raw table" — which is also where a now-disabled selection lands, since a
+  // disabled view is no longer in `viewsByEntry`.
+  const [selectedViewByEntry, setSelectedViewByEntry] = useState<Record<number, number>>({});
+
+  const viewsByEntry = useMemo(() => {
+    const grouped = new Map<number, CsvCustomView[]>();
+    for (const view of customViews) {
+      grouped.set(view.entryId, [...(grouped.get(view.entryId) ?? []), view]);
+    }
+    return grouped;
+  }, [customViews]);
 
   async function openPanel(entry: CsvAnalyticEntry, mode: "data" | "chart") {
     setActivePanel({ entryId: entry.id, mode });
     if (mode !== "data") return; // the chart builder fetches its own (row-limited) data
+    // A view-backed panel fetches its own page in ViewDataPanel, so there's nothing
+    // to read here.
+    if (selectedViewByEntry[entry.id] !== undefined) return;
+    setPanelData(undefined);
+    setPanelError(undefined);
+    setPanelLoading(true);
+    try {
+      const result = await readCsvAnalyticsDataAction(entry.id);
+      if (!result.ok || !result.data) setPanelError(result.error ?? "Failed to read table data.");
+      else setPanelData(result.data);
+    } finally {
+      setPanelLoading(false);
+    }
+  }
+
+  /**
+   * Applies (or clears) a view on one entry's card. Opening the Data panel is part of
+   * choosing a view — picking one and then having to click "Show Data" separately reads
+   * as the selection not having taken.
+   */
+  async function applyView(entry: CsvAnalyticEntry, rawValue: string) {
+    const viewId = rawValue === "" ? undefined : Number(rawValue);
+    setSelectedViewByEntry((current) => {
+      const next = { ...current };
+      if (viewId === undefined) delete next[entry.id];
+      else next[entry.id] = viewId;
+      return next;
+    });
+
+    setActivePanel({ entryId: entry.id, mode: "data" });
+    if (viewId !== undefined) return; // ViewDataPanel reads its own page
+
+    // Cleared back to the raw table — fetch it, since ViewDataPanel is going away.
     setPanelData(undefined);
     setPanelError(undefined);
     setPanelLoading(true);
@@ -838,6 +1020,32 @@ export function CsvAnalyticsView({ entries }: { entries: CsvAnalyticEntry[] }) {
     },
     { key: "columns", header: "Columns", render: (entry) => entry.columns.length },
     { key: "rowCount", header: "Rows", render: (entry) => entry.rowCount },
+    {
+      key: "customView",
+      header: "View",
+      excludeFromRecordView: true,
+      render: (entry) => {
+        const available = viewsByEntry.get(entry.id) ?? [];
+        if (available.length === 0) {
+          return <span className="text-xs text-muted">No views</span>;
+        }
+        return (
+          <select
+            value={selectedViewByEntry[entry.id] ?? ""}
+            onChange={(event) => applyView(entry, event.target.value)}
+            aria-label={`Custom view for ${entry.name}`}
+            className="rounded-md border border-line bg-paper px-2 py-1 text-xs text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+          >
+            <option value="">Whole table</option>
+            {available.map((view) => (
+              <option key={view.id} value={view.id}>
+                {view.name}
+              </option>
+            ))}
+          </select>
+        );
+      },
+    },
     {
       key: "actions",
       header: "Actions",
@@ -879,6 +1087,14 @@ export function CsvAnalyticsView({ entries }: { entries: CsvAnalyticEntry[] }) {
 
   const editingEntry = entries.find((entry) => entry.id === editingId);
   const activeEntry = activePanel ? entries.find((entry) => entry.id === activePanel.entryId) : undefined;
+  // Resolved against `viewsByEntry` (enabled views only), so a view disabled since it
+  // was picked simply isn't found here and the panel falls back to the whole table.
+  const activeView =
+    activeEntry && activePanel?.mode === "data"
+      ? (viewsByEntry.get(activeEntry.id) ?? []).find(
+          (view) => view.id === selectedViewByEntry[activeEntry.id],
+        )
+      : undefined;
 
   return (
     <div className="flex flex-col gap-6">
@@ -923,7 +1139,9 @@ export function CsvAnalyticsView({ entries }: { entries: CsvAnalyticEntry[] }) {
 
       {activePanel && activeEntry && (
         <CollapsibleCard
-          title={`${activePanel.mode === "data" ? "Data" : "Chart"} — ${activeEntry.name}`}
+          title={`${activePanel.mode === "data" ? "Data" : "Chart"} — ${activeEntry.name}${
+            activeView ? ` · ${activeView.name}` : ""
+          }`}
           defaultOpen
         >
           <div className="flex flex-col gap-3">
@@ -934,6 +1152,10 @@ export function CsvAnalyticsView({ entries }: { entries: CsvAnalyticEntry[] }) {
             </div>
             {activePanel.mode === "chart" ? (
               <ChartBuilder entry={activeEntry} />
+            ) : activeView ? (
+              // The view reads its own page, so the card's shared loading/error state
+              // doesn't apply — ViewDataPanel owns both.
+              <ViewDataPanel view={activeView} exportName={activeEntry.tableName} />
             ) : panelLoading ? (
               <p className="text-sm text-muted">Loading…</p>
             ) : panelError ? (

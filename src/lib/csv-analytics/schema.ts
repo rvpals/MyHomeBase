@@ -109,3 +109,88 @@ export const saveChartPresetSchema = z.object({
 });
 
 export type SaveChartPresetInput = z.infer<typeof saveChartPresetSchema>;
+
+// --- Custom views (migration 0081) ------------------------------------------------
+
+export const csvViewOperatorSchema = z.enum([
+  "equals",
+  "notEquals",
+  "greaterThan",
+  "greaterThanOrEqual",
+  "lessThan",
+  "lessThanOrEqual",
+  "contains",
+  "notContains",
+  "startsWith",
+  "endsWith",
+  "between",
+  "isEmpty",
+  "isNotEmpty",
+  "in",
+  "notIn",
+]);
+
+export const csvSortDirectionSchema = z.enum(["asc", "desc"]);
+
+export const csvViewCriterionSchema = z.object({
+  column: z.string().min(1),
+  operator: csvViewOperatorSchema,
+  // Arity is checked against the operator in the use-case (findIncompleteCriteria),
+  // not here: the rule is per-operator and the same check has to run on read as well.
+  values: z.array(z.string()).default([]),
+});
+
+export const csvViewOrderBySchema = z.object({
+  column: z.string().min(1),
+  direction: csvSortDirectionSchema,
+});
+
+// 1000 rows a page is already more than a screen shows; the cap stops a typo'd
+// 1000000 from asking SQLite for the whole table under the guise of one page.
+const RECORDS_PER_PAGE_MIN = 1;
+const RECORDS_PER_PAGE_MAX = 1000;
+
+export const recordsPerPageSchema = z
+  .number()
+  .int()
+  .min(RECORDS_PER_PAGE_MIN)
+  .max(RECORDS_PER_PAGE_MAX);
+
+const viewDefinitionShape = {
+  name: z.string().min(1),
+  description: descriptionPreprocess,
+  /** Empty means every column — see migration 0081. */
+  selectedColumns: z.array(z.string()).default([]),
+  criteria: z.array(csvViewCriterionSchema).default([]),
+  orderBy: z.array(csvViewOrderBySchema).default([]),
+  recordsPerPage: recordsPerPageSchema.default(100),
+  isEnabled: z.boolean().default(true),
+};
+
+export const createCsvCustomViewSchema = z.object({
+  entryId: z.number().int().positive(),
+  ...viewDefinitionShape,
+});
+
+export type CreateCsvCustomViewInput = z.infer<typeof createCsvCustomViewSchema>;
+
+// Update carries the whole definition, not a patch: the builder posts the form as it
+// stands and every list is replaced wholesale (which is what the JSON columns store).
+// `entryId` is absent on purpose — a view cannot be moved to another entry, because
+// its column references would no longer mean anything.
+export const updateCsvCustomViewSchema = z.object(viewDefinitionShape);
+
+export type UpdateCsvCustomViewInput = z.infer<typeof updateCsvCustomViewSchema>;
+
+export const readCustomViewPageSchema = z.object({
+  viewId: z.number().int().positive(),
+  /** 1-based. */
+  page: z.number().int().min(1).default(1),
+});
+
+// `z.input`, not `z.infer`: `page` has a default, so it is optional for a *caller* and
+// only guaranteed present after `.parse`. Typing the use-case's parameter with the
+// output type would force every caller to pass the very field the default exists to
+// supply. The other view schemas use `z.infer` because their callers (the form, the
+// CLI) build the whole object anyway.
+export type ReadCustomViewPageInput = z.input<typeof readCustomViewPageSchema>;

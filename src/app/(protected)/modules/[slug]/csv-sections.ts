@@ -6,7 +6,7 @@
 // objects, so a lookup like CSV_SECTION_INFO[section] would come back undefined.
 // Same reasoning as music-sections.ts and expense-sections.ts.
 
-export const CSV_SECTIONS = ["main", "configuration"] as const;
+export const CSV_SECTIONS = ["main", "views", "configuration"] as const;
 
 export type CsvSection = (typeof CSV_SECTIONS)[number];
 
@@ -20,6 +20,10 @@ export const CSV_SECTION_INFO: Record<CsvSection, { label: string; description: 
     label: "Dashboard",
     description: "Import a CSV, then chart and browse what is in it.",
   },
+  views: {
+    label: "Custom Views",
+    description: "Build a saved view over a dataset: columns, criteria, order and page size.",
+  },
   configuration: {
     label: "Configuration",
     description: "Defaults for importing and charting CSV files.",
@@ -29,6 +33,9 @@ export const CSV_SECTION_INFO: Record<CsvSection, { label: string; description: 
 /** Section -> nav icon key, resolved by TreeIcon. */
 export const CSV_SECTION_ICONS: Record<CsvSection, string> = {
   main: "grid",
+  // `sliders` reads as "adjust how the data comes back", which is what a view is.
+  // There is no `filter` glyph in TREE_ICONS -- naming one would render blank.
+  views: "sliders",
   // `gear` rather than `sliders`: matches Music's Configuration, and both are
   // real TREE_ICONS concepts -- an invented key renders NOTHING rather than
   // falling back to a default.

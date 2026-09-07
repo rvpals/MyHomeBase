@@ -1,7 +1,11 @@
-import { listEntries as listCsvAnalyticsEntries } from "@/lib/csv-analytics";
+import {
+  listAllCustomViews,
+  listEntries as listCsvAnalyticsEntries,
+} from "@/lib/csv-analytics";
 import { deps } from "@/lib/wiring";
 import { CsvAnalyticsView } from "./csv-analytics-view";
 import { CsvConfigurationView } from "./csv-configuration-view";
+import { CsvCustomViewsView } from "./csv-custom-views-view";
 import { CsvShell } from "./csv-shell";
 import { CSV_SECTION_INFO, type CsvSection as CsvSectionName } from "./csv-sections";
 
@@ -26,7 +30,19 @@ export async function CsvSection({ section }: { section: CsvSectionName }) {
         </header>
 
         {section === "main" && (
-          <CsvAnalyticsView entries={listCsvAnalyticsEntries(deps.csvAnalyticsRepo)} />
+          <CsvAnalyticsView
+            entries={listCsvAnalyticsEntries(deps.csvAnalyticsRepo)}
+            // Enabled views only: the Dashboard's dropdown is the one place a view is
+            // "in circulation", which is exactly what disabling takes it out of. The
+            // Custom Views screen below reads the full list instead.
+            customViews={listAllCustomViews(deps.csvAnalyticsRepo).filter((view) => view.isEnabled)}
+          />
+        )}
+        {section === "views" && (
+          <CsvCustomViewsView
+            entries={listCsvAnalyticsEntries(deps.csvAnalyticsRepo)}
+            views={listAllCustomViews(deps.csvAnalyticsRepo)}
+          />
         )}
         {section === "configuration" && <CsvConfigurationView />}
       </div>
