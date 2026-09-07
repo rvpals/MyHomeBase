@@ -189,8 +189,13 @@ function FolderPicker({
 
   const segments = useMemo(() => (parent === "" ? [] : parent.split("/")), [parent]);
 
+  // `setIsLoading(true)` is the flagged call, and it is the correct one: the
+  // spinner has to be up *before* the server action is awaited, which is exactly
+  // what "synchronously in an effect" means here. Deriving it during render is
+  // impossible — whether a fetch is in flight is not a function of the props.
   useEffect(() => {
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsLoading(true);
     void listMagicFolderOptionsAction(parent)
       .then((options) => {

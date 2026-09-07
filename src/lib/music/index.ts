@@ -54,6 +54,19 @@ export {
 } from "./lyrics";
 
 export {
+  deriveStoryQuery,
+  slugifySongfacts,
+  songfactsCandidates,
+  songfactsSearchUrl,
+  songfactsUrl,
+  type SongStory,
+  type StoryQuery,
+  type StoryStatus,
+} from "./story";
+
+export { parseSongfacts, parseSongfactsSubject } from "./songfacts-parse";
+
+export {
   MUSIC_SETTING_KEYS,
   musicSettingsToEntries,
   resolveMusicSettings,
@@ -107,6 +120,7 @@ export {
 
 export {
   fetchLyricsSchema,
+  fetchStorySchema,
   musicExtensionSchema,
   musicFolderSchema,
   musicSettingsSchema,
@@ -114,6 +128,7 @@ export {
   trackIdSchema,
   trackSearchSchema,
   type FetchLyricsInput,
+  type FetchStoryInput,
   type MusicSettingsInput,
   type StartScanInput,
   type TrackSearchInput,
@@ -125,6 +140,7 @@ export type {
   LyricsLookupResult,
   MusicFileStore,
   MusicRepository,
+  StoryClient,
   TrackTags,
 } from "./ports";
 
@@ -134,6 +150,12 @@ export {
   type FetchLyricsDependencies,
   type FetchLyricsOutcome,
 } from "./lyrics-use-cases";
+
+export {
+  fetchTrackStory,
+  type FetchStoryDependencies,
+  type FetchStoryOutcome,
+} from "./story-use-cases";
 
 export {
   REPEAT_MODES,
@@ -200,3 +222,4 @@ export {
 //   import { MusicMetadataReader } from "@/lib/music/metadata-reader";
 //   import { SqliteMusicRepository } from "@/lib/music/repository";
 //   import { LrclibLyricsClient } from "@/lib/music/lrclib-client";
+//   import { SongfactsStoryClient } from "@/lib/music/songfacts-client";

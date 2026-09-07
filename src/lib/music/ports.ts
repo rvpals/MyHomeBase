@@ -7,6 +7,7 @@ import type {
   PlaylistEntry,
 } from "./browse";
 import type { LyricsQuery, LyricsStatus, TrackLyrics } from "./lyrics";
+import type { SongStory, StoryQuery } from "./story";
 import type { QueueEntry, QueueState, RepeatMode } from "./queue";
 import type {
   Album,
@@ -256,4 +257,24 @@ export interface LyricsLookupResult {
   /** What the service thinks it matched, for showing "matched: X - Y" in the player. */
   matchedArtist?: string;
   matchedTitle?: string;
+}
+
+/**
+ * Fetches the story behind a song from an external service.
+ *
+ * A port for the same reasons as `LyricsClient`: the use-case stays testable offline,
+ * and the provider can be swapped without touching a caller. Implemented by
+ * SongfactsStoryClient.
+ *
+ * Unlike lyrics, nothing here is cached -- see story-use-cases.ts -- so this is called
+ * once per track the listener actually plays.
+ */
+export interface StoryClient {
+  /**
+   * Looks up one song. Resolves to a status rather than rejecting when no page is
+   * found: Songfacts simply not covering a song is an answer, not a failure.
+   * Rejects only when the requests themselves could not be made, so the player can
+   * say "could not reach Songfacts" instead of "there is no story".
+   */
+  lookup(query: StoryQuery): Promise<SongStory>;
 }

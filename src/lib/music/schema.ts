@@ -73,6 +73,15 @@ export const fetchLyricsSchema = z.object({
 });
 export type FetchLyricsInput = z.infer<typeof fetchLyricsSchema>;
 
+/**
+ * Asking for the story behind a track.
+ *
+ * No `force`, unlike lyrics: nothing is cached, so every request is already fresh and
+ * there is no stored answer for a force to bypass.
+ */
+export const fetchStorySchema = z.object({ trackId: trackIdSchema });
+export type FetchStoryInput = z.infer<typeof fetchStorySchema>;
+
 /** Which of the eight Library views a request is for. */
 export const libraryViewSchema = z.enum(LIBRARY_VIEWS);
 

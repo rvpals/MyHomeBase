@@ -17,7 +17,9 @@ import {
   addToPlaylistSchema,
   browsePageSchema,
   fetchLyricsSchema,
+  fetchStorySchema,
   fetchTrackLyrics,
+  fetchTrackStory,
   libraryViewSchema,
   playlistIdSchema,
   playlistWriteSchema,
@@ -69,6 +71,19 @@ async function requireUser() {
   const currentUser = getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo);
   if (!currentUser) throw new Error("Not signed in.");
   return currentUser;
+}
+
+export interface StoryActionResult {
+  status: "found" | "not_found" | "failed" | "unsearchable";
+  /** The facts, in page order. Empty unless status is `found`. */
+  facts: string[];
+  /** The Songfacts page the facts came from, for the attribution link. */
+  sourceUrl?: string;
+  /** A Songfacts search to open by hand when our URL guesses missed. */
+  searchUrl?: string;
+  /** What Songfacts says the page is about, so landing on the wrong song is visible. */
+  matchedFor?: string;
+  message?: string;
 }
 
 export interface LyricsActionResult {
@@ -161,6 +176,56 @@ export async function getLyricsAction(trackId: number): Promise<LyricsActionResu
   await requireUser();
   const cached = getCachedLyrics(deps.musicRepo, trackId);
   return cached === undefined ? undefined : toResult(cached);
+}
+
+/**
+ * The story behind a track, fetched fresh from songfacts.com.
+ *
+ * Nothing is cached, by design -- the story is viewed, not stored, so there is no
+ * table behind this and no `force` to pass. The player calls it once per track.
+ */
+export async function fetchStoryAction(input: { trackId: number }): Promise<StoryActionResult> {
+  await requireUser();
+  const parsed = fetchStorySchema.parse(input);
+
+  const outcome = await fetchTrackStory(
+    { musicRepo: deps.musicRepo, storyClient: deps.storyClient },
+    parsed.trackId,
+  );
+
+  if (outcome.kind === "found") {
+    const { story } = outcome;
+    const matchedFor =
+      story.matchedTitle === undefined || story.matchedTitle === ""
+        ? undefined
+        : [story.matchedTitle, story.matchedArtist]
+            .filter((part) => part !== undefined && part !== "")
+            .join(" by ");
+    return { status: "found", facts: story.facts, sourceUrl: story.sourceUrl, matchedFor };
+  }
+
+  if (outcome.kind === "not-found") {
+    return {
+      status: "not_found",
+      facts: [],
+      searchUrl: outcome.searchUrl,
+      message: "No story found for this song on Songfacts.",
+    };
+  }
+
+  if (outcome.kind === "unsearchable") {
+    return { status: "unsearchable", facts: [], message: outcome.reason };
+  }
+
+  if (outcome.kind === "no-such-track") {
+    return { status: "failed", facts: [], message: "That track is no longer in the library." };
+  }
+
+  return {
+    status: "failed",
+    facts: [],
+    message: "Could not reach Songfacts. It will try again next time this song plays.",
+  };
 }
 
 /** A page of tracks for the library screen. */

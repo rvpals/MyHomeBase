@@ -1,0 +1,20 @@
+// A real Songfacts page's facts block, captured 2026-09-03 from
+// https://www.songfacts.com/facts/billy-joel/honesty
+//
+// Kept verbatim (only the surrounding page chrome is trimmed) so the parser is tested
+// against markup Songfacts actually served rather than markup we imagined. This is a
+// scrape: the ONLY thing that tells us the parse still works is a fixture that came
+// from the real site. If Songfacts restyles and the parser is fixed, re-capture this
+// rather than hand-editing it to match the new code.
+//
+// Note the things that make this a useful specimen: <b>/<i> tags inside a fact, a
+// <br><br> paragraph break, curly quotes, an accented name (Beyonce) and the ®
+// in the heading.
+export const SONGFACTS_HONESTY_HTML = String.raw`
+<h4>Songfacts®:</h4><ul class="songfacts-results"><li><div class="inner">This song makes the case that truth is harder to find than love. Joel sings about how he can find someone to comfort him with promises, but honesty is far more rare. You can be in love with someone, but it doesn't mean you're going to have truth.<br><br>It was the third single released from Joel's sixth album, <b>52nd Street</b>.</div></li><li><div class="inner">When Joel started writing this song, he started with the title "Home Again," but was looking for something more appropriate. At his Howard Stern town hall appearance in 2014, he explained: "I didn't have a lyric for it, so my drummer started to sing 'sodomy' - 'sodomy... such a lonely word.' So I had to come up with some lyrics fast."<br><br>The new lyrics worked, but they made Joel feel a bit hypocritical. "'Honesty' is the most bulls--t song I ever wrote," he admitted to SiriusXM in 2016. "I mean, who am I to preach to people, 'You gotta be honest with me.' I haven't always been honest in my life."</div></li><li><div class="inner">Beyoncé recorded this song in 2008. It appears on the Platinum Edition of her album <b>I Am... Sasha Fierce</b>.</div></li><li><div class="inner">The album was named after the famous street in Manhattan that served as the center of New York City's jazz scene in the '40s and '50s. Joel and his band recorded the album at A&R Recording Inc. on 52nd Street in the summer of 1978. "We didn't realize at the time but we were really leaning more into a jazzy style," he told SiriusXM in 2016. "And the studio was on 52nd Street, just off of 7th Avenue. So we decided, 'Well, hey, The Beatles could call an album <b>Abbey Road</b>, we can call an album <b>52nd Street</b>."</div></li><li><div class="inner">In the 2021 "Too Much Birthday" episode of <i>Succession</i>, Kendall Roy sings a very cringe-y version of "Honesty" at a lavish birthday party he throws for himself while also conniving against his family. This version was included on the season 3 soundtrack of the show.</div></li><li><div class="inner">According to Phil Ramone, the album's producer, Chinese food helped him get the sound he wanted. Joel's band loved to eat, and Ramone quickly learned he could use food to keep them in line. "The hands-down favorite among band members was Chinese food, and our debates over which sounded best - the pre-or post-Chinese food take - are legendary," the producer recalled in his 2007 book, <i>Making Records: The Scenes Behind the Music</i>. When their delivery order arrived, Ramone would open the control room door and let the aroma fill the studio where the guys were doing takes. After they came out and scarfed down their food, he would immediately send them back to work before they got too comfortable. <br><br>"Everyone would grumble, but they'd go out and pick up where they'd left off. Many songs - 'Honesty' for instance - sounded better <i>after</i> everyone had eaten. The food slowed their metabolism and curbed their aggression, which is exactly what the tempo of certain songs needed."</div></li></ul></div>
+`;
+
+/** A page that exists but carries no Songfacts list -- the shape of a real miss. */
+export const SONGFACTS_EMPTY_HTML = String.raw`
+<div class="songfacts"><h4>Songfacts®:</h4><p>We don't have any facts for this song yet.</p></div>
+`;

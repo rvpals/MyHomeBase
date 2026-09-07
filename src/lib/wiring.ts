@@ -32,6 +32,7 @@ import { SqliteModuleSettingsRepository } from "./module-settings/repository";
 import { SharpCarouselImageProcessor } from "./modules/carousel-image-processor";
 import { SqliteModuleRepository } from "./modules/repository";
 import { LrclibLyricsClient } from "./music/lrclib-client";
+import { SongfactsStoryClient } from "./music/songfacts-client";
 import { NodeMusicFileStore } from "./music/file-store";
 import { MusicMetadataReader } from "./music/metadata-reader";
 import { SqliteMusicRepository } from "./music/repository";
@@ -167,6 +168,9 @@ export const deps = {
   musicRoot,
   musicMetadataReader: new MusicMetadataReader(musicRoot),
   lyricsClient: new LrclibLyricsClient(),
+  // Scrapes songfacts.com, which has no API. Nothing is cached: the story is fetched
+  // for viewing when a track starts and lives only in the player's memory.
+  storyClient: new SongfactsStoryClient(),
   // Magic Playlists. Two ports rather than one: the candidate source only reads the
   // catalog, so a test can fake the eligible tracks without faking saved-list storage.
   magicListRepo: new SqliteMagicListRepository(db),

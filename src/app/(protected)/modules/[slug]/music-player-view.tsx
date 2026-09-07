@@ -1,6 +1,6 @@
 "use client";
 
-// The player screen: big artwork, the transport, and the lyrics panel.
+// The player screen: big artwork, the transport, and the words-and-story panel.
 //
 // Distinct from the persistent bar at the bottom of every page. The bar is "what is
 // playing"; this screen is where you go to look at a song -- read the words, see the
@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { AudioSpectrum } from "@/components/audio-spectrum";
 import { Button } from "@/components/button";
+import { Tabs, type TabItem } from "@/components/tabs";
 import {
   albumCoverUrl,
   formatPlayerTime,
@@ -21,11 +22,13 @@ import {
 import { DEFAULT_VISUALIZER_MODE, type VisualizerMode } from "@/lib/music";
 import {
   fetchLyricsAction,
+  fetchStoryAction,
   getAutoFetchLyricsAction,
   getLyricsAction,
   getVisualizerModeAction,
   setVisualizerModeAction,
   type LyricsActionResult,
+  type StoryActionResult,
 } from "./music-actions";
 
 export function MusicPlayerView() {
@@ -99,6 +102,45 @@ export function MusicPlayerView() {
       cancelled = true;
     };
   }, [currentId, autoFetch]);
+
+  // The story behind the song, fetched when the track starts playing rather than when
+  // the Story tab is opened -- so it is already there when you switch to it.
+  //
+  // Keyed by track id like `loaded` above, and for the same reason. Nothing is stored
+  // server-side (there is no story table), so this state IS the only copy: switching
+  // away and back re-fetches.
+  const [story, setStory] = useState<{ trackId: number; result: StoryActionResult }>();
+
+  // "Still looking" is derived, not a flag: a story belonging to another track is not
+  // this track's story, so the absence of a result for `currentId` already means the
+  // lookup is in flight. Deriving it also keeps the effect free of a synchronous
+  // setState, which would cost a cascading render on every track change.
+  const storyResult = story !== undefined && story.trackId === currentId ? story.result : undefined;
+  const isStoryFetching = currentId !== undefined && storyResult === undefined;
+
+  useEffect(() => {
+    if (currentId === undefined) return;
+
+    let cancelled = false;
+    void fetchStoryAction({ trackId: currentId })
+      .then((result) => {
+        if (!cancelled) setStory({ trackId: currentId, result });
+      })
+      .catch(() => {
+        // A thrown action still has to land somewhere, or the panel sits on
+        // "Looking..." forever.
+        if (!cancelled) {
+          setStory({
+            trackId: currentId,
+            result: { status: "failed", facts: [], message: "Could not reach Songfacts." },
+          });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentId]);
 
   // Which visualizer to draw. Read once per mount like the lyrics setting above, and
   // for the same reason: it only changes when someone presses the button below.
@@ -265,33 +307,54 @@ export function MusicPlayerView() {
         )}
       </div>
 
-      {/* Lyrics */}
+      {/* Words and story, one panel with two tabs. Uncontrolled: nothing outside the
+          strip needs to switch tabs, so Tabs owns its own active key. */}
       <section className="rounded-xl border border-line p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="font-display text-lg text-ink">Lyrics</h3>
-          <div className="flex items-center gap-2">
-            {/* One button, three jobs: fetch, retry a miss, refresh a hit. The label
-                changes so the listener knows which they are getting. */}
-            <Button
-              onClick={() => onFetchLyrics(lyrics?.status === "found")}
-              disabled={isFetching || isAutoFetching}
-            >
-              {isFetching || isAutoFetching
-                ? "Searching..."
-                : lyrics === undefined
-                  ? "Get lyrics"
-                  : lyrics.status === "found"
-                    ? "Refresh"
-                    : "Try again"}
-            </Button>
-          </div>
-        </div>
-
-        <LyricsPanel
-          lyrics={lyrics}
-          isFetching={isFetching || isAutoFetching}
-          hasLoadedCache={isLoadedForCurrent}
-          trackTitle={current.title}
+        <Tabs
+          items={[
+            {
+              key: "lyrics",
+              label: "Lyrics",
+              content: (
+                <div>
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    {/* One button, three jobs: fetch, retry a miss, refresh a hit. The
+                        label changes so the listener knows which they are getting. */}
+                    <Button
+                      onClick={() => onFetchLyrics(lyrics?.status === "found")}
+                      disabled={isFetching || isAutoFetching}
+                    >
+                      {isFetching || isAutoFetching
+                        ? "Searching..."
+                        : lyrics === undefined
+                          ? "Get lyrics"
+                          : lyrics.status === "found"
+                            ? "Refresh"
+                            : "Try again"}
+                    </Button>
+                  </div>
+                  <LyricsPanel
+                    lyrics={lyrics}
+                    isFetching={isFetching || isAutoFetching}
+                    hasLoadedCache={isLoadedForCurrent}
+                    trackTitle={current.title}
+                  />
+                </div>
+              ),
+            },
+            {
+              key: "story",
+              label: "Story",
+              content: (
+                <StoryPanel
+                  story={storyResult}
+                  isFetching={isStoryFetching}
+                  trackTitle={current.title}
+                />
+              ),
+            },
+          ] satisfies TabItem[]}
+          defaultActiveKey="lyrics"
         />
       </section>
     </div>
@@ -346,6 +409,84 @@ function LyricsPanel({
         <p className="mt-2 text-xs text-muted">Searched for: {lyrics.searchedFor}</p>
       )}
       {lyrics.status === "unsearchable" && (
+        <p className="mt-2 text-xs text-muted">
+          Tagging the file with a title and artist would let this work.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The story behind the song, from songfacts.com.
+ *
+ * Every unhappy state gets its own words, because they call for different things from
+ * the listener. A miss especially: Songfacts is addressed by a slug we *derive* from
+ * the tags, and their robots.txt disallows searching, so a miss is often our guess
+ * being wrong rather than an absent story. The search link is how that gets settled.
+ */
+function StoryPanel({
+  story,
+  isFetching,
+  trackTitle,
+}: {
+  story: StoryActionResult | undefined;
+  isFetching: boolean;
+  trackTitle: string;
+}) {
+  if (isFetching || story === undefined) {
+    return <p className="text-sm text-muted">Looking up the story behind {trackTitle}...</p>;
+  }
+
+  if (story.status === "found") {
+    return (
+      <div>
+        {/* One paragraph block per fact -- Songfacts publishes them as separate items
+            and running them together would lose that. */}
+        <div className="space-y-4">
+          {story.facts.map((fact, index) => (
+            <p
+              key={index}
+              className="whitespace-pre-wrap text-sm leading-relaxed text-ink"
+            >
+              {fact}
+            </p>
+          ))}
+        </div>
+        <p className="mt-4 border-t border-line pt-2 text-xs text-muted">
+          {story.matchedFor !== undefined && <>Matched {story.matchedFor} - </>}
+          from{" "}
+          <a
+            href={story.sourceUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="underline hover:text-ink"
+          >
+            songfacts.com
+          </a>
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <p className="text-sm text-muted">{story.message}</p>
+      {story.searchUrl !== undefined && (
+        <p className="mt-2 text-xs text-muted">
+          It is looked up by name, so a different spelling in the tags can miss.{" "}
+          <a
+            href={story.searchUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="underline hover:text-ink"
+          >
+            Search Songfacts for it
+          </a>
+          .
+        </p>
+      )}
+      {story.status === "unsearchable" && (
         <p className="mt-2 text-xs text-muted">
           Tagging the file with a title and artist would let this work.
         </p>
