@@ -296,6 +296,9 @@ export function JournalView({
               {...sqlProps}
             />
           ) : (
+            // `compactLayout="record"` puts a phone on the tabbed one-record-at-a-time
+            // layout: an entry is something you read, and a card that has to fit seven
+            // fields truncates most of them. Desktop is unaffected.
             <DataGrid
               columns={COLUMNS}
               rows={entries}
@@ -304,6 +307,7 @@ export function JournalView({
               enableExport
               exportFileName="journal-entries"
               onRowClick={(entry) => openEntry(entry.id)}
+              compactLayout="record"
               {...sqlProps}
             />
           )}

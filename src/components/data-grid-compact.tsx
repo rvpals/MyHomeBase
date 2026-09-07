@@ -207,10 +207,11 @@ export function DataGridCompact<T>({
         </p>
       ) : (
         <ul className="flex flex-col gap-2">
-          {visible.slice(0, limit).map((row) => (
+          {visible.slice(0, limit).map((row, index) => (
             <li key={getRowKey(row)}>
               <CompactRow
                 row={row}
+                rowIndex={index}
                 leadColumn={leadColumn}
                 detailColumns={detailColumns}
                 onRowClick={onRowClick}
@@ -243,6 +244,7 @@ export function DataGridCompact<T>({
 
 function CompactRow<T>({
   row,
+  rowIndex,
   leadColumn,
   detailColumns,
   onRowClick,
@@ -251,6 +253,8 @@ function CompactRow<T>({
   onToggleSelected,
 }: {
   row: T;
+  /** Position in the visible list, for the alternating card background. */
+  rowIndex: number;
   leadColumn: DataGridColumn<T>;
   detailColumns: DataGridColumn<T>[];
   onRowClick?: (row: T) => void;
@@ -260,19 +264,67 @@ function CompactRow<T>({
 }) {
   const body: ReactNode = (
     <>
-      <div className="font-display text-base text-ink">{leadColumn.render(row)}</div>
-      <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5">
+      <div className="font-display text-base text-ink [overflow-wrap:anywhere]">
+        {leadColumn.render(row)}
+      </div>
+      {/* Name on the left, value on the right — one field per row.
+          This was `grid-cols-2` with the label stacked over its value, which put
+          two *fields* side by side (Date next to Time, Categories next to Tags).
+          On a 390px phone that gave each value ~170px, so a title or a place name
+          was truncated to an ellipsis while the field beside it sat half empty,
+          and multi-word headers broke at whatever point they happened to reach.
+          `minmax(0,…)` on both tracks is what lets a long value wrap instead of
+          forcing the row wider than the card. */}
+      {/* Grid lines, so the pairs read as a grid rather than as floating text:
+          a horizontal hairline above each field, and a vertical seam between the
+          name and value columns. The seam is a right border on the `dt` rather
+          than a column gap with a background, so it stretches to the full height
+          of whichever side wrapped taller. `gap-x` becomes padding for the same
+          reason — a gap would leave the seam floating in the middle of it. */}
+      <dl className="mt-2 grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         {detailColumns.map((column) => (
-          <div key={column.key} className="min-w-0">
-            <dt className="text-[11px] uppercase tracking-wide text-muted">{column.header}</dt>
-            <dd className="truncate text-sm text-ink">{column.render(row)}</dd>
+          <div
+            key={column.key}
+            className="col-span-2 grid grid-cols-subgrid border-t border-line"
+          >
+            <dt className="border-r border-line py-1.5 pr-3 text-[11px] uppercase tracking-wide text-muted [overflow-wrap:anywhere]">
+              {column.header}
+            </dt>
+            {/* Clamped rather than truncated: two lines is enough to read a title
+                or a tag list, and the record view has the untruncated version.
+                A single `truncate` cut every long value at half a card. */}
+            <dd className="line-clamp-2 py-1.5 pl-3 text-sm text-ink [overflow-wrap:anywhere]">
+              {column.render(row)}
+            </dd>
           </div>
         ))}
       </dl>
     </>
   );
 
-  const cardClass = `rounded-xl border bg-paper-raised p-3 ${
+  // Zebra striping, the card-stack equivalent of alternating table rows: it marks
+  // where one record ends and the next begins, which a uniform stack doesn't.
+  //
+  // The stripe shifts whatever card surface the theme supplies rather than being a
+  // second literal color: five themes have a near-black `paperRaised` (#1A1F26 and
+  // friends), two are pure white, one is warm brown. A fixed grey would read
+  // correctly on one and wrong on the rest — design.md, "The token system, not
+  // literal colors".
+  //
+  // Mixed toward `--ink`, not toward black. A black wash was the first attempt and
+  // is invisible on the dark themes, which is where most of them are: 6% black on
+  // #1A1F26 lands on #191D24, about a one-point shift per channel. Because `--ink`
+  // is the theme's *contrasting* tone, mixing toward it lightens a dark card and
+  // darkens a light one — one rule, correct on both polarities.
+  //
+  // `color-mix` in a `background-color` is safe here even though `bg-paper-raised`
+  // sets the same property: this class comes later in the class list and both are
+  // plain utilities, so this simply wins. The earlier gradient trick was only
+  // needed to *layer* over the surface; mixing already accounts for it.
+  const stripeClass =
+    rowIndex % 2 === 1 ? "bg-[color-mix(in_srgb,var(--paper-raised)_94%,var(--ink))]" : "";
+
+  const cardClass = `rounded-xl border bg-paper-raised p-3 ${stripeClass} ${
     isSelected ? "border-brass" : "border-line"
   }`;
 

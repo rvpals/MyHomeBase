@@ -21,6 +21,7 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { Button } from "@/components/button";
 import { DataGridCompact } from "@/components/data-grid-compact";
+import { DataGridCompact2 } from "@/components/data-grid-compact-2";
 import { Modal } from "@/components/modal";
 import { useIsCompact } from "@/components/viewport-context";
 import {
@@ -182,6 +183,20 @@ export interface DataGridProps<T> {
    * called with the row. Use for "open this record" navigation.
    */
   onRowClick?: (row: T) => void;
+  /**
+   * Which compact layout to use below 1024px. Defaults to `"cards"`.
+   *
+   * - `"cards"` — `DataGridCompact`: one card per row, a stack you scroll. Better
+   *   for **scanning** ("which of these forty rows do I want?"), and the only one
+   *   that supports bulk selection.
+   * - `"record"` — `DataGridCompact2`: one record per tab, read in full with every
+   *   field wrapped, not truncated. Better for **reading** ("what does this one
+   *   record say?"). No search or selection.
+   *
+   * Callers still don't choose *whether* to go compact — only which shape suits
+   * the grid. Leave it unset unless the grid is one people read rather than scan.
+   */
+  compactLayout?: "cards" | "record";
   /** The SQL that produced these rows. With `onRunSql`, a "Show SQL" button appears. */
   sql?: string;
   /** Called with the edited SQL when the user runs it from the "Show SQL" dialog. */
@@ -243,6 +258,23 @@ function RecordViewIcon() {
  */
 export function DataGrid<T>(props: DataGridProps<T>) {
   const isCompact = useIsCompact();
+
+  if (isCompact && props.compactLayout === "record") {
+    // The reading layout. Takes a smaller subset again: it has its own sort, and
+    // no search or selection — a one-record-at-a-time panel is the wrong host for
+    // ticking boxes across a long list, so grids with bulk actions stay on cards.
+    return (
+      <DataGridCompact2
+        columns={props.columns}
+        rows={props.rows}
+        getRowKey={props.getRowKey}
+        emptyMessage={props.emptyMessage}
+        onRowClick={props.onRowClick}
+        enableSort={props.showToolbar}
+        className={props.className}
+      />
+    );
+  }
 
   if (isCompact) {
     return (
