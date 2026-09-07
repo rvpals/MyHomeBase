@@ -96,11 +96,13 @@ export function parseInlineMarkdown(text: string): InlineSpan[] {
 }
 
 function emptyCounts(): ChangeCounts {
-  return { total: 0, added: 0, changed: 0, fixed: 0 };
+  return { total: 0, added: 0, changed: 0, fixed: 0, removed: 0, untagged: 0 };
 }
 
-function tally(counts: ChangeCounts, kind: ChangeKind): void {
-  counts[kind] += 1;
+/** Record one counted item. `null` is a pre-convention section with no kind tag. */
+function tally(counts: ChangeCounts, kind: ChangeKind | null): void {
+  if (kind === null) counts.untagged += 1;
+  else counts[kind] += 1;
   counts.total += 1;
 }
 
@@ -110,30 +112,58 @@ function sumCounts(all: ChangeCounts[]): ChangeCounts {
     running.added += counts.added;
     running.changed += counts.changed;
     running.fixed += counts.fixed;
+    running.removed += counts.removed;
+    running.untagged += counts.untagged;
     return running;
   }, emptyCounts());
 }
 
 /**
- * Strip the tag off a `### ` heading or a top-level `- ` bullet, if it carries
- * one. Indented bullets are supporting detail for the item above them, not
- * items in their own right, so only column-zero bullets count.
+ * A `### ` heading that introduces commentary rather than a change, and so is
+ * skipped even though it has no kind tag.
+ *
+ * Matched on the heading text because nothing else in the markup separates these
+ * from a genuine untagged change: an "Also" section's body is sometimes tagged
+ * bullets and sometimes plain ones, so "does it have tagged children?" misreads
+ * half of them. This is the closed set the log actually uses — anything else
+ * untagged is treated as a change.
  */
-function itemKind(line: string): ChangeKind | null {
-  let body: string;
-  if (line.startsWith("### ")) body = line.slice(4);
-  else if (line.startsWith("- ")) body = line.slice(2);
-  else return null;
+const NOTE_HEADING_PATTERN = /^(also\b|known issues\b|behaviou?r worth knowing\b)/i;
 
-  return readChangeTag(body).kind;
+/**
+ * Decide whether a line is a countable change, and of which kind.
+ *
+ * Returns `null` for a line that is not an item at all, and
+ * `{ kind: null }` for an item that counts but carries no kind tag.
+ *
+ * The two item shapes are treated differently on purpose:
+ * - a `### ` heading is a change whether or not it is tagged, because the tagging
+ *   convention postdates part of this log — unless it is a note heading;
+ * - a `- ` bullet counts only when tagged, because an untagged bullet is detail
+ *   for the item above it. Indented bullets never count, tagged or not.
+ */
+function countableItem(line: string): { kind: ChangeKind | null } | null {
+  if (line.startsWith("### ")) {
+    const body = line.slice(4);
+    const { kind } = readChangeTag(body);
+    if (kind) return { kind };
+    return NOTE_HEADING_PATTERN.test(body.trim()) ? null : { kind: null };
+  }
+
+  if (line.startsWith("- ")) {
+    const { kind } = readChangeTag(line.slice(2));
+    return kind ? { kind } : null;
+  }
+
+  return null;
 }
 
 /**
  * Count the tagged changes in a change log, per release and in total.
  *
- * A release is a `## ` heading; a change is any tagged `### ` heading or
- * top-level `- ` bullet beneath it. Anything before the first release heading
- * (the document title) is ignored, as is any untagged line.
+ * A release is a `## ` heading; a change is a `### ` heading beneath it (tagged or
+ * not — see `countableItem`) or a tagged top-level `- ` bullet. Anything before the
+ * first release heading (the document title) is ignored.
  */
 export function summarizeChangeHistory(markdown: string): ChangeHistorySummary {
   const releases: ReleaseSummary[] = [];
@@ -150,8 +180,8 @@ export function summarizeChangeHistory(markdown: string): ChangeHistorySummary {
 
     if (!current) continue;
 
-    const kind = itemKind(line);
-    if (kind) tally(current.counts, kind);
+    const item = countableItem(line);
+    if (item) tally(current.counts, item.kind);
   }
 
   return {

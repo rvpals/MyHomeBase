@@ -1,20 +1,38 @@
 // Domain model for CHANGE_HISTORY.md — the release log rendered on Admin → About.
 //
-// Every logged change carries a kind tag written into the markdown itself
-// (`### [Added] …` or `- [Fixed] …`). The tag, not a keyword guess, is what the
-// counts are built from: an untagged heading is a container or a note, never a
-// change.
+// A logged change normally carries a kind tag written into the markdown itself
+// (`### [Added] …` or `- [Fixed] …`), and that tag — not a keyword guess — is
+// what classifies it.
+//
+// The tagging convention arrived partway through this log's life, so releases
+// before it write a change as a plain `### ` section with no tag at all. Those
+// sections are still changes and are counted as `untagged`: dropping them made
+// entire releases report "0 changes" on the About page while their bodies listed
+// five or six things that shipped. What an untagged `### ` is *not* allowed to be
+// is a note heading — "Also", "Known issues …" — whose body is commentary
+// rather than a change; those are still skipped. See NOTE_HEADING_PATTERN.
+//
+// Bullets are unchanged: only a *tagged* top-level `- ` bullet counts, because an
+// untagged bullet is supporting detail for the item above it.
 
-export const CHANGE_KINDS = ["added", "changed", "fixed"] as const;
+export const CHANGE_KINDS = ["added", "changed", "fixed", "removed"] as const;
 
 export type ChangeKind = (typeof CHANGE_KINDS)[number];
 
-/** How many changes of each kind, plus their sum. */
+/**
+ * How many changes of each kind, plus their sum.
+ *
+ * `untagged` holds the pre-convention `### ` sections that carry no kind tag. They
+ * count toward `total` but belong to no kind, so the four kind counts plus
+ * `untagged` always add up to `total`.
+ */
 export interface ChangeCounts {
   total: number;
   added: number;
   changed: number;
   fixed: number;
+  removed: number;
+  untagged: number;
 }
 
 /** One dated `## …` entry in the log. */

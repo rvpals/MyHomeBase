@@ -66,6 +66,7 @@ const GROUPS: TableReferenceGroup[] = [
     tables: [
       ["csv_analytics_entries", "The catalogue of imported datasets — display name, the physical table it owns, its column definitions and primary key."],
       ["csv_chart_presets", "Saved chart configurations for one dataset. Removed with the dataset."],
+      ["csv_custom_views", "Named saved views over one dataset — the columns to show, the criteria to filter by, the order and the page size. Removed with the dataset."],
       ["csv_import_mappings", "The most recently used column mapping per import type, offered as the starting point next time."],
       ["csv_named_mappings", "Named, reusable column-mapping presets a user saves and picks by name."],
     ],
