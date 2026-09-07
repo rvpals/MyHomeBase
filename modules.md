@@ -251,9 +251,34 @@ free one, since `WEEKDAY_LABELS` would need rotating too.
 
 **CSV Analysis** (`csv-analysis`) — import an arbitrary CSV, which creates a
 per-entry table (`csv_<name>`, from `buildTableName`), then chart and analyse it.
-Sections: Dashboard (the whole import/chart UI) and Configuration (a placeholder
-until there is a setting worth persisting). Library: `src/lib/csv-analytics`,
-`src/lib/csv-import`.
+Sections: Dashboard (the whole import/chart UI), Custom Views (the view builder) and
+Configuration (a placeholder until there is a setting worth persisting). Library:
+`src/lib/csv-analytics`, `src/lib/csv-import`.
+
+A **custom view** (`csv_custom_views`, migration 0081) is a named saved query over
+**one** dataset: the columns to show, criteria ANDed together, an ordered order-by
+list, and a records-per-page. It can be disabled — which keeps it on the Custom Views
+screen but drops it from the Dashboard dropdown — or deleted. Three things worth
+knowing before changing it:
+
+- **A view belongs to one dataset and cannot be moved.** Its criteria name that
+  dataset's columns, and a column name only means something inside one schema. So
+  the dataset is chosen *before* the builder opens, and `updateCsvCustomViewSchema`
+  has no `entryId` at all.
+- **The SQL is compiled in a pure function**, `compileViewQuery`
+  ([src/lib/csv-analytics/view-query.ts](src/lib/csv-analytics/view-query.ts)) — the
+  same injection-risk surface as `sql-builder.ts` and it follows the same rules:
+  identifiers are validated against the entry's real column list *and* quoted,
+  literals are always bound parameters. The repository only binds and pages.
+- **Read time forgives what save time refuses.** An empty `selectedColumns` means
+  "every column, whatever they are now", and a criterion naming a since-dropped
+  column is skipped rather than throwing — a view must survive its dataset gaining
+  or losing a column. The save path is strict instead (`findUnknownColumns`,
+  `findIncompleteCriteria`), because that is where the user can still fix it.
+
+Driveable from the terminal as `csv-views` ([src/cli/csv-views.ts](src/cli/csv-views.ts)):
+`list | show | create | update | enable | disable | delete | read | operators`, where
+`read` prints a page and is how the compiled SQL is exercised without a browser.
 
 **Expense** (`expense`) — credit-card transactions imported from CSV, categorised
 by post-import rules, with a dashboard and charts. Library: `src/lib/expense`.
@@ -315,6 +340,17 @@ scraped from Google, and never written to a `.lrc` file; see
 not playable, because no browser decodes them. A scan is two-phase so the progress bar
 can show a real percentage: a fast walk counts candidates, then a slower pass reads
 tags.
+
+The **Player** screen's panel has two tabs. **Lyrics** is the cached LRCLIB lookup above.
+**Story** is the background to the song from songfacts.com, fetched when a track starts
+playing (so it is already there when you switch tabs) and **deliberately not stored** --
+there is no story table and no migration, because it is something to read once rather than
+a record to keep. Songfacts has no API: the URL is *derived* from the artist and title
+(`/facts/billy-joel/honesty`), and their `robots.txt` disallows `/search`, so a handful of
+slug variants are tried and a miss offers the listener a search link rather than scraping a
+path we have been asked to leave alone. The scrape lives in
+`src/lib/music/songfacts-parse.ts`, apart from the client and tested against markup captured
+from the real site -- when Songfacts restyles, that is the one file to fix.
 
 The **Library** section is eight views over the one catalog — All Songs, Artists, Genres,
 Playlists, Most Played, Years, Folders and Folder Hierarchy — with the active view in the
@@ -694,6 +730,18 @@ Decisions worth keeping:
   there is nothing here a player with their own dev tools does not already have.
 - Generation runs inline on the main thread — tens of milliseconds. A worker would be the
   answer if it ever grew.
+- **The "Hint" card and the Hint *button* are different things, and only one is priced.**
+  The card (a collapsed `CollapsibleCard` under the number pad) lists the digits that
+  could still legally go in the selected cell — `candidatesFor`, computed from the board
+  as it stands, which is exactly what a player pencils in by hand. It reveals no answer,
+  so it costs no points and does not bump `hints`. The button fills in the solution's
+  digit and charges `SUDOKU_HINT_PENALTY`. The card carries its own warning line
+  ("you're defeating the purpose if you keep looking at this") because the honest brake
+  on a free aid is saying what it does to the puzzle, not hiding it.
+- **`candidatesFor` reads the board, never the solution.** A wrong digit in a peer
+  therefore narrows the list wrongly — which is correct: the card describes the position
+  the player has actually made, and an aid that silently corrected for their mistakes
+  would be the oracle the whole design avoids.
 
 #### Blackjack
 
@@ -743,6 +791,75 @@ Decisions worth keeping:
   literal* exception: at expert density you read the board by colour long before you read
   the digits.
 - Expert scrolls horizontally rather than shrinking cells below a 1.75rem touch floor.
+
+#### Mahjong Match
+
+The classic tile-matching solitaire: clear a 144-tile turtle by pairing free tiles. Easy
+(a 72-tile two-layer garden), Classic and Hard (both the turtle, differing only in the
+score they pay). Rules in
+[game-mahjong-match.ts](src/lib/games/game-mahjong-match.ts); the tile set is
+game-agnostic in [mahjong-tiles.ts](src/lib/games/mahjong-tiles.ts), the way
+`playing-cards.ts` is for Blackjack, and is drawn by
+[`MahjongTile`](components.md#mahjongtile).
+
+Decisions worth keeping:
+
+- **A tile is free only if nothing is on top of it *and* one long side is clear.** The
+  side rule is the one that is easy to miss and the whole reason the game has depth — a
+  tile with neighbours on both sides is pinned even under an open sky.
+- **Six board figures**, not one: turtle, pyramid, cat, cross and butterfly (all 144
+  tiles), plus the 72-tile beginner garden. The figure is picked **independently of
+  difficulty** — every full figure is the same tile count, so the shape is what a board
+  *looks like* and the difficulty is what a clear is *worth*. Folding them together would
+  have meant either six difficulties or a shape nobody could choose.
+- **Every figure is asserted structurally, not eyeballed.** The test checks all six for
+  the tile count, no coincident positions, an even total, contiguous layers, and that no
+  raised tile floats with nothing beneath it — then deals and plays each to a clear. Each
+  of those checks caught a real fault while the figures were being drawn: a butterfly with
+  two tiles floating over its wing notch, a turtle whose tail overlapped its shell, a cat
+  16 tiles short. They are exactly the faults that are invisible in review and obvious the
+  moment you look at the board.
+- **Coordinates are in half-steps, not tiles**, so a layer can be offset half a tile from
+  the one below. That is not cosmetic: with every layer on the same grid an upper tile
+  sits exactly on one lower tile and buries it permanently, and the endgame can reach two
+  tiles in a column where the buried one could only ever pair with the tile burying it.
+  Offsetting means an upper tile straddles four below, so no tile is held by exactly one
+  other.
+- **The board is dealt backwards**, taking two positions that are free *at that moment*
+  and giving them a matching pair. Replaying those assignments in reverse is a solution,
+  so a board is always clearable, and matching pairs land on positions that open up
+  together. This was briefly a plain random deal on the reasoning that unlimited shuffles
+  make a dead board harmless — measured, a random turtle needed **~17 shuffles** to
+  clear, which is a slot machine rather than a puzzle.
+- **`faceSet` returns faces pair-adjacent and must not be shuffled afterwards.** The
+  dealer takes two faces at a time and seats them on two mutually reachable positions. A
+  final shuffle destroys that adjacency and the solvability guarantee evaporates
+  silently — the board still looks fine, and measured, one pair in 36 still matched by
+  luck. This shipped wrong for an afternoon; there is now a test asserting the adjacency.
+- **Shuffles are unlimited, and priced rather than capped**, the same bargain Sudoku
+  strikes with hints. A cap plus a random line of play could leave a board that genuinely
+  cannot be finished, which is the one failure a puzzle must never have.
+- **A dead board is not an ending.** There is no `stuck` outcome — no legal move is a
+  prompt to shuffle, so the view highlights the Shuffle button rather than ending the run.
+- **Undo is free**, since the clock already prices it and a run lost to a mis-tap on a
+  crowded board is a frustration rather than a difficulty.
+- **Bonus tiles are taken all-or-nothing.** There is one of each flower and season, so
+  they pair across their *group* via `matches` rather than by face; a partial handful
+  would strand one.
+- **A hint gets its own visual treatment, not the selection ring.** Routing it through
+  `selected` was the first attempt and it did not work at all: every *free* tile already
+  carries a thin brass ring, so a hinted tile drawing a slightly thicker brass ring was
+  invisible among forty of them. A hint now gets a brass wash over the whole face plus a
+  pulsing glow — the loudest state a tile has, because it is answering "where do I even
+  look" across 144 tiles.
+- **A matched pair flies outward off the board**, one tile to each side, rather than
+  fading in place. A fade says "these two are gone"; a paired flight says "these two went
+  together", which is the fact the player wants confirmed. The view holds each cleared
+  pair mounted for the flight's duration — a cleared tile is otherwise unmounted on the
+  same frame it is matched, and an element that never renders cannot animate out.
+- The board keeps its true geometry on a phone and **scales/pans** rather than relaying
+  out — the geometry *is* the puzzle, so a per-breakpoint layout would change what the
+  game is.
 
 #### Adding another game
 
@@ -916,6 +1033,18 @@ The derivation is why slot ids for a section must equal `<namespace>_section_<sl
 hyphens turned to underscores — Expense's slugs are kebab (`meta-data`), as are all of
 `adminNav`'s. A mismatch doesn't throw; it silently stops matching the override, so
 `slots.test.ts` enumerates every real section slug and asserts each resolves.
+
+There are three derivations now, one per surface, kept as separate functions so each id
+shape stays independently greppable: `sectionSlotId` (nav sections), `tabSlotId` (the
+Music Library view tabs) and `gameSlotId` (the six Arcade game cards, keyed on
+`GAME_CATALOGUE`). The games test reads the catalogue directly rather than a hardcoded
+list, so **adding a game fails `slots.test.ts` until it has a slot** — the failure mode
+is a card with no icon, which is easy to miss in review.
+
+One wrinkle worth knowing: `games_card_arrow_clearing_hard` carries a `-hard` suffix for
+difficulties that no longer exist. The catalogue key kept it because renaming would
+orphan every score posted against it, and the slot id inherits it because renaming
+*that* would orphan an uploaded icon. Both are permanent for the same reason.
 
 **What does not get a slot:** row actions (pencil, trash, refresh) and state glyphs
 (`star` vs `star-filled`, `heart` vs `heart-filled`). Those are buttons and states rather than places — the same line
@@ -1102,7 +1231,7 @@ so a new job needs no new UI.
 
 Skip this whole step for a single-screen module — that's a legitimate shape.
 Every module currently shipping has a nav, though: CSV Analysis was the last
-single-screen one and gained Dashboard + Configuration.
+single-screen one and gained Dashboard + Configuration (and later Custom Views).
 
 Otherwise, these files under
 [src/app/(protected)/modules/[slug]/](src/app/(protected)/modules/[slug]/),

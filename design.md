@@ -136,6 +136,12 @@ Reach for one of these before writing a new `shadow-[...]`:
 | `.paper-texture` | A card that should read as a **physical sheet** — the journal's New Journal card | translucent fibre grid + diagonal sheen, no tint of its own |
 | `.playing-card-face` / `.playing-card-rim` / `.playing-card-back` | **Every playing card** — see [`PlayingCard`](components.md#playingcard) | lit top edge + shaded underside + diagonal sheen + inner hairline + two-stop cast |
 | `.playing-card-lifted` | A card in the **hand being acted on** | the same, cast grown; rises 2px by margin (see below) |
+| `.mahjong-tile` / `.mahjong-tile-face` / `.mahjong-tile-back` | **Every mahjong tile** — see [`MahjongTile`](components.md#mahjongtile) | a genuinely **extruded body** (a stack of hard 1px shadows walking down-right) + a face inset with a carved lip; `--tile-depth` sets the thickness per size |
+| `.mahjong-tile-lifted` | A tile **picked up off the table** | the extrusion *shortens* while the cast grows and softens; rises by margin, as the card does |
+| `.animate-mahjong-fly` | A **matched pair leaving the board** — see [`MahjongTile`](components.md#mahjongtile)'s `flying` | travels outward on `--fly-x`/`--fly-y`, spinning and shrinking; a plain fade under reduced motion |
+| `.mahjong-tile-hinted` | The tile a **hint** is pointing at | a themed brass wash over the fixed ivory face + a pulsing glow; the glow breathes, never the size — the fly animation owns `transform` |
+| `.mahjong-tile-tiltable` | A **clickable** tile, on hover/focus | a small `rotate3d` tilt toward the viewer — the one sanctioned 3D transform, and it goes entirely under reduced motion |
+| `.sudoku-board` / `.sudoku-box-seams` / `.sudoku-cell` / `.sudoku-cell-given` | The **sudoku board** — a tray, its six 3x3 seams, and a cell's bevel | a groove cut into the page (lit bottom lip + shaded top) holding low-bevelled slabs; the box seams are one continuous overlay layer above the cells, not thickened cell borders |
 | `.progress-3d-track` / `.progress-3d-fill` | The pair behind [`Progress3D`](components.md#progress3d) — **every progress bar** | a groove cut into the page (surface gradient + inset lip) holding a lit slab (accent gradient + `Button`'s hard offset shadow) |
 | `[data-dashboard-texture]` | The home dashboard's **admin-uploaded** background picture | a `fixed` `::before` behind the cards; opacity + blur from the stored settings |
 | `[data-module-texture]` | A **module's own** uploaded background picture (Music Library today) | the same mechanism, keyed per module; set by that module's shell |
@@ -151,6 +157,32 @@ Two things they encode that are easy to get wrong:
   `translate(0,0)` after landing, which would silently cancel a transform-based lift. If
   you add a static offset to an animated element, check which property the animation
   already claims.
+- **A mahjong tile is a fixed-palette object, not a themed surface.** Every other
+  surface in the app is a theme token; the tile is the documented exception. Its ivory
+  body, green back and red/green/blue pips are literal values (`--tile-face`,
+  `--tile-back`, `--tile-red`…) declared in `globals.css` and they do **not** invert. The
+  reasoning is the one `PlayingCard` already uses for a red heart and `Button` for
+  `danger`: a tile is a physical object made of a specific material, and one rendered in
+  Signal Deck's near-black `--paper` is not a dark-mode tile, it is a different object.
+  The extrusion still layers translucent black and white over it, so the 3D reads the
+  same on every theme — it just has a constant surface to work against. Don't extend this
+  to a panel or a card; "it's an object, not a surface" is the whole licence.
+- **A tile is thick; a card is a sheet.** `.playing-card-face` gives a card a lit top
+  edge, a shaded underside and a cast — the right amount of depth for something a
+  fraction of a millimetre deep. A mahjong tile is a ~15mm block, and drawing one with
+  the card treatment makes it read as a *picture* of a tile, so `.mahjong-tile` extrudes
+  a real body instead. Both stay **edge-based** and neither takes `Button`'s hard offset.
+  That's the rule for any new physical object: match the depth to the material, and
+  build it from lit/shadowed edges rather than joining the button vocabulary.
+- **A line that divides a grid belongs to the grid, not to the cells either side of
+  it.** The sudoku box borders were first drawn by thickening the border of every cell
+  on a 3x3 boundary, and it could not be made to look right: a 2px border inside a cell
+  that also has its own 1px border and a corner radius comes out doubled in places,
+  notched at every corner, and a half-pixel off wherever a viewport-sized board's
+  fractional cell width rounds the other way. `.sudoku-box-seams` draws all six as one
+  overlay layer on the board instead, with percentage gradient stops so they stay exact
+  at every width. Reach for the same split for any future divided grid.
+
 - **The ring goes outside the border, not instead of it.** `border-line` is deliberately
   low-contrast in every theme (Daybreak's is `#E7E2E4` on white), so definition comes from
   stacking a soft dark ring around it. Replacing the token with a literal would kill the
@@ -424,6 +456,18 @@ Icon-only is a deliberate trade — it costs discoverability on touch, where the
 hover, and buys the content the full width. The panel header repeats the module name in
 words, which is what keeps the rail honest: the glyph is never the only thing naming where
 you are.
+
+**The rail has a bottom utility zone**, below a divider and outside the module list's
+scroller: app-wide *destinations* that aren't modules. Today that is Administration's gear
+(admins only). Two rules if you add to it. It has to be a **destination**, not an action —
+an action that acts on the whole app belongs in tier 3, the header, per *Adding a UI
+element to the shell*; the rail is where-you-are, so anything living here needs a route and
+the same tint-plus-edge-bar active state as a module link. And it has to be **outside the
+`flex-1 overflow-y-auto` list**, or it scrolls out of reach the moment a reader has a dozen
+modules. Keep the zone to one or two items: it competes with the module list for a 64px
+column, and the modules are what the rail is for. Anything that isn't a destination, and
+anything compact also needs, goes to `UserMenu` instead — which is exactly why
+Administration is in *both* places rather than moved out of the menu.
 
 ### Tier 2 — the section panel
 

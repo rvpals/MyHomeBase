@@ -50,6 +50,7 @@ pattern instead of inventing one.
 | [`Button`](#button) | Any button or button-styled link | [src/components/button.tsx](src/components/button.tsx) | no |
 | [`DataGrid`](#datagrid) | **Result grid** — any table of records | [src/components/data-grid.tsx](src/components/data-grid.tsx) | yes |
 | [`DataGridCompact`](#datagridcompact) | `DataGrid`'s card list below 1024px — **not called directly** | [src/components/data-grid-compact.tsx](src/components/data-grid-compact.tsx) | yes |
+| [`DataGridCompact2`](#datagridcompact2) | `DataGrid`'s other compact form — one record per tab. Via `compactLayout="record"`, **not called directly** | [src/components/data-grid-compact-2.tsx](src/components/data-grid-compact-2.tsx) | yes |
 | [`Modal`](#modal) | **Any dialog** — overlay, panel, Esc/focus handling | [src/components/modal.tsx](src/components/modal.tsx) | yes |
 | [`Comments`](#comments) | A note/instruction parked beside a feature, behind an info chip | [src/components/comments.tsx](src/components/comments.tsx) | yes |
 | [`CollapsibleCard`](#collapsiblecard) | A titled section that expands/collapses | [src/components/collapsible-card.tsx](src/components/collapsible-card.tsx) | yes |
@@ -68,10 +69,13 @@ pattern instead of inventing one.
 | [`ViewportSwitch`](#viewportswitch) | The global compact/full switch | [src/components/viewport-switch.tsx](src/components/viewport-switch.tsx) | yes |
 | [`PlayingCard`](#playingcard) | **One playing card** — face, back, or empty slot | [src/components/playing-card.tsx](src/components/playing-card.tsx) | no |
 | [`CardHand`](#cardhand) | A row of cards with a title, total and badge | [src/components/card-hand.tsx](src/components/card-hand.tsx) | no |
+| [`MahjongTile`](#mahjongtile) | **One mahjong tile** — face, back, or empty slot | [src/components/mahjong-tile.tsx](src/components/mahjong-tile.tsx) | no |
+| [`MahjongWall`](#mahjongwall) | A rack, wall or discard pool of tiles, with a title and count | [src/components/mahjong-wall.tsx](src/components/mahjong-wall.tsx) | no |
 | [`Avatar`](#avatar) | A user's picture, or initials fallback | [src/components/avatar.tsx](src/components/avatar.tsx) | no |
 | [`TickerLogo`](#tickerlogo) | A stock/ETF logo, or a monogram fallback | [src/components/ticker-logo.tsx](src/components/ticker-logo.tsx) | yes |
 | [`FileDropzone`](#filedropzone) | Drag-and-drop file picker | [src/components/file-dropzone.tsx](src/components/file-dropzone.tsx) | yes |
 | [`CsvMappingTable`](#csvmappingtable) | Map a CSV's columns to target fields | [src/components/csv-mapping-table.tsx](src/components/csv-mapping-table.tsx) | yes |
+| [`FilterCriteriaRow`](#filtercriteriarow) | **One line of a filter builder** — column, operator, value(s), remove | [src/components/filter-criteria-row.tsx](src/components/filter-criteria-row.tsx) | yes |
 | [`IconSelect`](#iconselect) | A dropdown whose options carry an image | [src/components/icon-select.tsx](src/components/icon-select.tsx) | yes |
 | [`TokenPicker`](#tokenpicker) | **Several names on one record** — removable chips + a dropdown to add | [src/components/token-picker.tsx](src/components/token-picker.tsx) | yes |
 | [`ColorField`](#colorfield) | **One color** — a swatch that opens the OS picker + the hex typed out | [src/components/color-field.tsx](src/components/color-field.tsx) | yes |
@@ -94,6 +98,7 @@ pattern instead of inventing one.
 | [`SlotIcon`](#sloticon) | Render the icon for a named place in the app, honouring per-slot overrides | [src/components/slot-icon.tsx](src/components/slot-icon.tsx) | yes |
 | [`IconOverrideProvider`](#iconoverrideprovider--useiconoverrides) / `useIconOverrides` | Per-slot icon overrides for the active set (context) | [src/components/icon-override-context.tsx](src/components/icon-override-context.tsx) | yes |
 | [`useCurrentPosition`](#usecurrentposition) | Read the device's GPS coordinates (hook) | [src/components/use-current-position.ts](src/components/use-current-position.ts) | yes |
+| [`useGameSounds`](#usegamesounds) | Synthesized game sound effects — Web Audio tones, no files (hook) | [src/components/use-game-sounds.ts](src/components/use-game-sounds.ts) | yes |
 | [`AppVersionWatch`](#appversionwatch) | Prompts a stale installed PWA to reload after a deploy — mount in the layout | [src/components/app-version-watch.tsx](src/components/app-version-watch.tsx) | yes |
 | [`AudioSpectrum`](#audiospectrum) | **Audio visualizer** — frequency bars or a waveform, driven by an analyser | [src/components/audio-spectrum.tsx](src/components/audio-spectrum.tsx) | yes |
 
@@ -363,6 +368,27 @@ The checkbox is a **sibling of the card, not a child**. A clickable card is a `<
 and an `<input>` inside a button is invalid HTML that browsers resolve by swallowing the
 input's clicks — the checkbox would render and refuse to tick.
 
+**Reading long values.** Each field is its own row inside the card, name left and value
+right on a `minmax(0,2fr) minmax(0,3fr)` split, with `overflow-wrap: anywhere` on both
+sides and the value clamped to two lines. This replaced a `grid-cols-2` that put two
+*fields* side by side with each value `truncate`d: on a 390px phone that gave every value
+~170px, so titles and place names were ellipsized to nothing while the field beside them
+sat half empty. Values are now clipped only past two lines, and the record modal has the
+full text.
+
+**Grid lines and striping.** A hairline above each field plus a vertical seam between the
+name and value columns, so the pairs read as a grid. The seam is a right border on the
+`dt`, not a gap with a background, so it spans the full height when either side wraps
+taller — which is also why the columns use padding rather than `gap-x`. Cards alternate
+with a shifted surface, the card-stack equivalent of zebra rows: odd cards mix
+`--paper-raised` 94% toward `--ink`.
+
+**Mixed toward `--ink`, not toward black.** A translucent black wash was the first
+attempt and is invisible on the dark themes, which is most of them — 6% black on
+`#1A1F26` lands on `#191D24`, roughly one point per channel. `--ink` is the theme's
+contrasting tone, so mixing toward it lightens a dark card and darkens a light one:
+one rule, correct on both polarities, no per-theme values.
+
 **Two things worth knowing if you touch it:**
 - It renders **50 cards at a time** with a "Show more" button. The full grid paginates;
   without a cap a few thousand expense rows would become a few thousand cards, freezing
@@ -371,6 +397,88 @@ input's clicks — the checkbox would render and refuse to tick.
   implementation calls fifteen-odd hooks, and returning before them would change the hook
   count when the viewport flips — which it does, once, when the width corrector overrules
   the User-Agent guess.
+
+---
+
+## DataGridCompact2
+
+**`DataGrid`'s other compact form — one record per tab.** You do not call this either;
+`DataGrid` delegates to it below 1024px when the caller passes
+`compactLayout="record"`. The default is still `"cards"` (`DataGridCompact`).
+
+- **Source:** [src/components/data-grid-compact-2.tsx](src/components/data-grid-compact-2.tsx)
+- **Client component:** yes
+- **Used by:** the Journal home screen's "Recent entries" card
+  ([journal-view.tsx](src/app/(protected)/modules/[slug]/journal-view.tsx))
+
+`DataGridCompact` renders every row as its own card, so a page is a vertical stack you
+scroll. This takes the opposite bet: **one record on screen at a time, read in full.**
+The records in the current page become tabs across the top of a single container, and the
+panel below shows the selected record as a two-column field/value read-out — field name
+left, value right, **every column present and nothing truncated**. Both sides wrap.
+
+The trade is deliberate: a stack of cards is better for *scanning* ("which of these forty
+rows do I want?"), this is better for *reading* ("what does this one record say?"), since
+a card fitting fifteen fields truncates most of them. Which is right depends on the grid,
+which is why it ships alongside rather than replacing.
+
+**Callers choose the shape, not the switch.** One prop on the grid they already have:
+
+```tsx
+<DataGrid
+  columns={COLUMNS}
+  rows={entries}
+  getRowKey={(entry) => entry.id}
+  onRowClick={(entry) => openEntry(entry.id)}
+  compactLayout="record"   // default is "cards"
+/>
+```
+
+Pick `"record"` for a grid people **read** (a journal entry, one expense in full) and
+leave the default for one they **scan** (positions, a photo list with bulk actions).
+Selection is the hard constraint: a grid with `enableSelection` must stay on `"cards"`,
+because this layout has no checkbox — see below.
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `columns` | `DataGridColumn<T>[]` | Same column type as `DataGrid`. First column heads the panel; the rest become field/value rows. |
+| `rows` | `T[]` | Paged 5 at a time; never reordered. |
+| `getRowKey` | `(row: T) => string \| number` | React key for the tabs. |
+| `emptyMessage` | `string` | Shown in the container when there are no rows. |
+| `onRowClick` | `(row: T) => void` | Optional. Renders an "open" button under the record — the compact stand-in for a clickable row. Omit for a read-only panel. |
+| `openLabel` | `string` | Label for that button. Default `"Open record"`. |
+| `enableSort` | `boolean` | Show the "Sort by" control. Default true. `DataGrid` forwards its `showToolbar` here. |
+| `className` | `string` | Merged onto the container. |
+
+**Five records per page, which is also five tabs.** A 390px phone leaves ~360px inside
+the card, so five tabs get ~68px each — legible. Ten would be ~34px, which fits a bare
+digit and wraps to a second row as soon as it doesn't.
+
+**Tabs are labelled by position, not by the record's value.** A date or title doesn't fit
+68px and truncating gives a strip of ambiguous stubs; the lead column's value heads the
+panel instead, where it has the full width.
+
+**Sort is in the subset, and matters more here than in the card stack.** Only one record
+is on screen, so **record order is the only way to navigate** — without it, "find last
+Tuesday's entry" means paging blind through numbered tabs. The control sits *above* the
+container, not inside it: the container is one record, and a control that reorders the
+whole set doesn't belong within the thing it reorders. Changing the order returns you to
+record 1, because the tab you were on refers to a position that now holds something else.
+
+**Search and selection are deliberately out.**
+- *Selection* is the structural one: bulk actions mean "act on many records", and a
+  layout showing one at a time would have you tick, page, tick, page. Scanning layouts
+  get selection; reading layouts don't. A grid needing bulk actions belongs on `"cards"`.
+- *Search* is merely deferred — `DataGridCompact`'s `searchableText` would drop straight
+  in. Recent entries shows a bounded slice where searching five pages isn't a real need.
+  Add it when this layout reaches a long list.
+
+**Two things worth knowing if you touch it:**
+- The page is clamped in an **effect, not during render**, because `rows` is the caller's
+  and can shrink underneath it. Clamping in render would also reset the reader's position
+  on unrelated re-renders.
+- `DataGrid` dispatches to it **before** the `"cards"` branch and as a sibling component,
+  for the same hook-count reason documented on `DataGridCompact`.
 
 ---
 
@@ -387,6 +495,7 @@ that's what this was extracted from.
 | Prop | Type | Notes |
 |------|------|-------|
 | `title` | `string` | Heading, and the dialog's accessible name. |
+| `titleIcon?` | `ReactNode` | Small glyph left of the title, for a dialog that *is* a place (the Arcade's boards badge themselves with the game's icon). **Decorative only** — `title` remains the accessible name, so pass an `aria-hidden` icon (`SlotIcon`/`TreeIcon` already are). Stays `shrink-0`. |
 | `description?` | `ReactNode` | Sub-heading under the title — context, not actions. |
 | `children` | `ReactNode` | The body. The only part that scrolls. |
 | `footer?` | `ReactNode` | Bottom-right action bar; pass `Button`s in reading order. |
@@ -684,7 +793,9 @@ Charts and Analysis Main / Monthly comparison split
 [expense-charts-view.tsx](src/app/(protected)/modules/[slug]/expense-charts-view.tsx); SQL
 Explorer's SQL Query / Tables Explorer split
 [admin/sql-explorer/view.tsx](src/app/(protected)/admin/sql-explorer/view.tsx) *(controlled
-— the table list's "Open" jumps to the query tab to show the result)*.
+— the table list's "Open" jumps to the query tab to show the result)*; the Music Library
+player's Lyrics / Story split
+[music-player-view.tsx](src/app/(protected)/modules/[slug]/music-player-view.tsx).
 
 ---
 
@@ -916,11 +1027,20 @@ layout only — `TwoTierShell` swaps in a dropdown on compact.
 |------|------|-------|
 | `links` | `ModuleRailLink[]` | `{ slug, name, href, icon, hint? }`. |
 | `isActive` | `(href: string) => boolean` | Supplied by the shell, which owns the pathname. |
+| `showAdmin` | `boolean` | Default `false`. Shows the Administration gear in the bottom zone. |
 
 Active state is a tint **and** an accent edge bar — at 64px with no label, a tint alone is
 easy to miss. The width comes from `--module-rail-width`; never hardcode `64px`.
 
+**Three zones, top to bottom:** the app mark, the scrolling module list (`flex-1`), and a
+bottom utility zone holding the Administration gear. The utility zone sits *outside* the
+scroller so it stays reachable with a dozen modules loaded. Administration is chrome, not
+a module — it has no row in `sys_modules` — so it gets a divider and its own `AdminIcon`
+glyph rather than joining the list.
+
 **Responsive:** renders `null` on compact by the shell's choice, rather than restyling.
+Administration therefore reaches compact only through `UserMenu`, which keeps its own
+Administration row for exactly that reason.
 
 ---
 
@@ -1222,6 +1342,212 @@ Blackjack does this by resetting on an empty table
 
 ---
 
+## MahjongTile
+
+One mahjong tile, drawn rather than illustrated: a numeral over its suit mark, the
+traditional dot lattice for the circles suit, a glyph for the honours, a panel for the
+bonus tiles, and a grained back. **Every tile in every tile game uses this** — do not
+hand-roll a glyph-in-a-rectangle, and do not reach for the Unicode mahjong block (see
+the notes).
+
+- **Source:** [src/components/mahjong-tile.tsx](src/components/mahjong-tile.tsx)
+- **Import:** `import { MahjongTile } from "@/components/mahjong-tile";`
+- **Client component:** no (it renders no hooks; it is used inside client views)
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `tile?` | `Tile` | From `@/lib/games`. **Omit for a face-down tile** — another player's rack, an undealt wall. |
+| `size?` | `"sm" \| "md" \| "lg"` | Default `"md"`. 34/48/66px wide, all at a tile's 3:4 ratio. |
+| `empty?` | `boolean` | A dashed outline for a board position that holds nothing yet. |
+| `dimmed?` | `boolean` | For a tile out of play but still shown. |
+| `selected?` | `boolean` | Draws the brass ring — the first tile of an attempted pair. |
+| `free?` | `boolean` | A warm edge marking a tile as **playable**. For a solitaire layout — see the notes. |
+| `lifted?` | `boolean` | Raises the tile off the table — one being acted on. |
+| `onClick?` | `() => void` | Makes it a `<button>`, and enables the hover tilt. Omit for display only. |
+| `dealing?` | `TileDeal` | **Flies the tile in from the wall.** Only on the frame it arrives. |
+| `flying?` | `TileFly` | **Flies the tile off the board** — a matched pair leaving. The tile must stay mounted; see the notes. |
+| `hinted?` | `boolean` | Marks the tile as half of a hinted pair. Its own prop, **not** `selected` — see the notes. |
+| `className?` | `string` | |
+
+`TileDeal` is `{ delayMs?, fromX?, fromY?, spinDeg?, durationMs? }` — the same shape as
+`CardDeal`, and where the tile starts *relative to where it lands*. `TILE_DEAL_MS` (300)
+is the default duration, matching `PlayingCard`'s `DEAL_MS` on purpose: a table that
+deals cards in 300ms and tiles in 500 reads as two different apps.
+
+```tsx
+<MahjongTile tile={rack[0]} size="lg" />
+<MahjongTile size="lg" />           {/* face down */}
+<MahjongTile size="lg" empty />     {/* an empty board position */}
+```
+
+**Used by:** [Mahjong Match](src/app/(protected)/modules/[slug]/game-mahjong-match-view.tsx),
+which positions tiles individually rather than in a rack, and
+[`MahjongWall`](#mahjongwall) — which currently has no callers of its own.
+
+**Notes:** every size steps down one level below 1024px via `max-lg:`, so a caller picks
+one size and both screens work.
+
+**The tile does not follow the colour theme, and that is deliberate.** Its ivory body,
+green back and pip colours are fixed values (`--tile-face`, `--tile-back`, `--tile-red`,
+`--tile-green`, `--tile-blue`) declared in [globals.css](src/app/globals.css) — the one
+sanctioned exception to design.md's theme-token rule, on the grounds that a tile is a
+physical object made of a specific material rather than a surface. Using `bg-paper` here
+turned the tile near-black on the dark themes, which is not a dark-mode tile but a
+different object. The 3D still composites translucent black and white over the fixed
+body, so the extrusion reads identically on every theme.
+
+**Faces follow the real set's conventions, drawn from parts.** The Unicode mahjong block
+(U+1F000–1F02B) would be a one-liner and is deliberately not used: those glyphs are
+emoji-coloured on Windows, monochrome on macOS and missing on many Android builds, so the
+same board would render three different ways. What is drawn instead:
+
+| Suit / group | Face | Colour |
+|---|---|---|
+| Bamboo (條) | **Drawn canes** in the traditional row arrangement (`BAMBOO_ROWS`); the 1 is a bird | green |
+| Circles (筒) | Concentric **rings** on the traditional 3x3 lattice (`CIRCLE_LAYOUTS`) | blue |
+| Characters (萬) | A **Chinese numeral** over 萬 — 一萬, 二萬 … — never an Arabic digit | red |
+| Winds | 東 南 西 北 | blue |
+| Dragons | 中 / 發 / a **blue frame** for the white dragon, as a set prints it | red / green / blue |
+| Flowers, Seasons | The glyph with the group ordinal in the corner | per tile |
+
+Bamboo is the one that is easy to get wrong and was wrong at first: 條 means *stick*, so
+a bamboo tile prints that many canes. A numeral there is not a stylisation, it is a
+different tile. A face-down tile is given **no** `tile` prop at all rather than a tile
+plus a hidden flag, so a concealed value is never in the DOM.
+
+**A hint is `hinted`, not `selected`.** Routing a hint through `selected` was the first
+attempt and it failed outright: every *free* tile already draws a thin brass ring, so a
+hinted tile drawing a slightly thicker brass ring was invisible among forty of them.
+`hinted` gets `.mahjong-tile-hinted` — a brass wash across the whole face plus a pulsing
+glow — and suppresses the free ring on that tile so there is only one brass edge to read.
+It is deliberately the loudest state a tile has, because it answers "where do I even
+look" across a 144-tile board.
+
+**`flying` needs the tile to stay mounted.** A board that unmounts a cleared tile on the
+frame it is matched will never show the animation — an element that does not render cannot
+animate out. The caller holds each cleared pair for `TILE_FLY_MS` before dropping it; see
+`flyingPair` in
+[game-mahjong-match-view.tsx](src/app/(protected)/modules/[slug]/game-mahjong-match-view.tsx).
+The caller also owns the *direction*, because only it knows where each half of the pair
+sat: the two tiles should leave **outward**, one to each side, which is what makes the exit
+read as "those two went together" rather than as two tiles that happened to vanish at once.
+
+**`free` marks the playable tiles, rather than dimming the blocked ones.** A solitaire
+layout has most of its 144 tiles buried, and dimming the majority is far too heavy — so
+the minority that can be picked up gets the warm edge instead. Omit it entirely for a
+rack, where every tile is playable.
+
+A tile is styled as a **thick block, not a sheet** — this is the one real visual
+difference from a playing card and the reason the CSS is a separate set of rules rather
+than shared: `.mahjong-tile` (the extruded body — a stack of hard 1px shadows walking
+down and right, so the sides are a solid mass rather than a blur), `.mahjong-tile-face`
+(the printed face inset into the body with a carved lip, bright top-left and dark
+bottom-right — a surface sunk *into* the tile), `.mahjong-tile-back` (the same
+extrusion, no sheen, a vertical bamboo grain) and `.mahjong-tile-lifted`. All are in
+[globals.css](src/app/globals.css) and follow `.card-embossed`'s **edge-based** bevel
+rather than `Button`'s hard offset, which stays reserved for things that move when
+pressed. `--tile-depth` carries the thickness per size (3/5/7), driving both how far the
+extrusion walks and how far a lifted tile rises. Every layer is translucent black/white
+over the theme's own `bg-paper`, so it reads on a white Daybreak surface as well as the
+dark themes. An `empty` slot keeps its flat dashed outline — a hole in the board is not
+an object on it.
+
+`lifted` **shortens** the extrusion while growing and softening the cast, which reads as
+a tile held up off the table; scaling both up would just make a bigger tile. The rise is
+**margin, not `translateY`** — the deal animation owns `transform` on the same element
+and holds `translate(0,0)` when it lands, so a transform-based lift would be silently
+cancelled for any tile that flew in.
+
+A **clickable** tile also gets `.mahjong-tile-tiltable`: a small `rotate3d` tilt toward
+the viewer on hover and focus, which is the one place a tile earns a real 3D transform —
+it is being *turned* in the hand, and a flat lift cannot say that. `perspective` sits on
+the tile rather than the rack, so the tilt is measured from each tile's own centre;
+on a parent, tiles at the end of a long rack would skew toward the middle. Under reduced
+motion the tilt goes entirely (unlike a dealt tile's fade) — it only says "you can pick
+this up", which the pointer and the ring already say.
+
+`dealing` must be passed **only on the frame a tile arrives**, never for one already on
+the table, or it re-flies on every render. The animation is `animate-card-deal` in
+[globals.css](src/app/globals.css) — shared with `PlayingCard`, since a tile and a card
+arrive the same way and a second identical keyframe set would be a copy to keep in sync.
+
+---
+
+## MahjongWall
+
+A group of mahjong tiles with an optional title, count and badge — a player's rack, the
+undealt wall, or the discard pool. The tile twin of [`CardHand`](#cardhand).
+
+- **Source:** [src/components/mahjong-wall.tsx](src/components/mahjong-wall.tsx)
+- **Import:** `import { MahjongWall } from "@/components/mahjong-wall";`
+- **Client component:** no
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `tiles` | `readonly Tile[]` | Left to right. Empty draws `placeholders` empty slots. |
+| `title?` | `string` | Small heading — "Your rack", "Wall", "Discards". |
+| `count?` | `string` | **Already formatted.** A string, not a number — see the notes. |
+| `countNote?` | `string` | Muted note beside the count, e.g. `"to draw"`. |
+| `badge?` | `ReactNode` | Right of the title row: a seat wind, a score, a turn marker. |
+| `size?` | `"sm" \| "md" \| "lg"` | Passed to `MahjongTile`. Default `"md"`. |
+| `layout?` | `"rack" \| "wall" \| "pool"` | Default `"rack"`. See the table below. |
+| `hideFrom?` | `number` | Index from which tiles are face down. `0` = another player's rack. |
+| `placeholders?` | `number` | Empty slots drawn when `tiles` is empty. Default `4`. |
+| `active?` | `boolean` | Ring + tint for the group in play, **and** lifts its tiles off the table. |
+| `dimmed?` | `boolean` | Dims the whole group. |
+| `selectedIndex?` | `number` | Index of a selected tile. |
+| `freeIds?` | `ReadonlySet<number>` | Tile **ids** that are playable. Omit and every tile reads as playable. |
+| `onTileClick?` | `(tile, index) => void` | Makes each tile clickable. |
+| `dealing?` | `(tile, index) => TileDeal \| undefined` | Per tile: a flight, or `undefined` to draw it in place. |
+| `className?` | `string` | |
+
+The three layouts, which differ only in spacing — one component rather than three,
+because the title row, the count, the deal animation and the click handling are identical:
+
+| `layout` | Shape | For |
+|---|---|---|
+| `rack` | A wrapping row, tiles nearly touching | A player's own hand, read tile by tile |
+| `wall` | Tightly overlapped, only each left edge showing | The undealt wall — the only way 84 tiles fit on a phone |
+| `pool` | A loose wrapped grid with gaps | The discard pile, where any single tile still has to be readable |
+
+```tsx
+<MahjongWall
+  title="Your rack"
+  count={String(rack.length)}
+  tiles={sortTiles(rack)}
+  size="lg"
+  active={isMyTurn}
+  onTileClick={(tile) => discard(tile)}
+/>
+```
+
+**Used by:** nothing yet — built ahead of the tile game that will use it, at Min's
+request.
+
+**Notes:** `count` is a **formatted string** on purpose, the same reasoning as
+`CardHand`'s `total` — what a count means is the game's business ("13" for a rack,
+"84 left" for a wall), and keeping the number out is what stops game rules leaking into
+a shared component. Responsive through `MahjongTile`'s own `max-lg:` steps; the `wall`
+overlap is deliberately **shallower** than `CardHand`'s fan, because pulling a tile as
+far as a card hides the extruded side that makes a stack read as a stack.
+
+`active` drives two cues: the group's brass ring and tint, plus a physical lift on every
+tile in it. The ring says *which* group, the lift says it is the near one — two markers,
+since colour alone is a poor sole signal.
+
+`freeIds` and `dealing` both key on **`tile.id`, not an index**, because a tile's index
+shifts as a rack is sorted and as tiles are cleared — an index-based set would mark the
+wrong tile the moment its neighbour moved. Note that a tile id is unique only *within* a
+wall: `buildWall` numbers tiles deterministically, so a rebuilt wall reissues them all,
+and a caller tracking seen ids has to reset when the wall is rebuilt (`CardHand`'s entry
+records the same trap for a reshuffled shoe).
+
+The tile row carries a little bottom and right padding, so the bottom row's extrusion
+and cast are not clipped by the container — without it the tiles look pasted on rather
+than resting on something.
+
+---
+
 ## Avatar
 
 A user's profile picture, or an initials circle when they have none.
@@ -1366,6 +1692,73 @@ can't remove a row you can't see. Excluded rows render dimmed and struck through
 disappearing, so the row numbers keep matching the file. The index a row is keyed by is its
 index in `sampleRows`, which is why the caller must pass rows in file order when exclusion is
 on.
+
+---
+
+## FilterCriteriaRow
+
+**One line of a filter builder.** A column dropdown, an operator dropdown, the value
+input(s), and a remove button. The reason it exists rather than three inlined `<select>`s:
+**the number of value inputs follows the operator** — "is empty" renders none, "between"
+renders two, "is one of" renders one field read as a comma-separated list.
+
+- **Source:** [src/components/filter-criteria-row.tsx](src/components/filter-criteria-row.tsx)
+- **Import:** `import { FilterCriteriaRow, type FilterCriteriaOperatorOption } from "@/components/filter-criteria-row";`
+  (also exports `type FilterCriteriaArity`, `type FilterCriteriaColumnOption`)
+- **Client component:** yes.
+- **Holds no state and validates nothing.** The caller owns the criteria array; whether a
+  definition is saveable is a library decision (see
+  [src/lib/csv-analytics/view-query.ts](src/lib/csv-analytics/view-query.ts) →
+  `findIncompleteCriteria`).
+
+| Prop | Type | Default | Notes |
+|------|------|---------|-------|
+| `columns` | `FilterCriteriaColumnOption[]` | — | `{ value, label }` — label is usually the original CSV header. |
+| `operators` | `FilterCriteriaOperatorOption[]` | — | `{ value, label, arity }`. **`arity` is what drives the value inputs.** |
+| `column` | `string` | — | `""` renders the "Pick a column…" placeholder. |
+| `operator` | `string` | — | |
+| `values` | `string[]` | — | Positional. One-value reads `[0]`; `two` reads both; `list` reads `[0]` as CSV text. |
+| `onColumnChange` | `(column: string) => void` | — | |
+| `onOperatorChange` | `(operator: string) => void` | — | The caller decides what happens to `values` — see below. |
+| `onValuesChange` | `(values: string[]) => void` | — | Raised with the whole array, already updated. |
+| `onRemove` | `() => void` | — | |
+| `disabled?` | `boolean` | `false` | Disables the remove button, e.g. mid-save. |
+| `listHint?` | `string` | `"Comma-separated"` | Placeholder for a `list` operator. |
+| `className?` | `string` | — | Merged last. |
+
+```tsx
+const OPERATOR_OPTIONS: FilterCriteriaOperatorOption[] = CSV_VIEW_OPERATORS.map((operator) => ({
+  value: operator,
+  label: CSV_VIEW_OPERATOR_LABELS[operator],
+  arity: CSV_VIEW_OPERATOR_ARITY[operator],
+}));
+
+<FilterCriteriaRow
+  columns={entry.columns.map((c) => ({ value: c.name, label: c.sourceHeader }))}
+  operators={OPERATOR_OPTIONS}
+  column={criterion.column}
+  operator={criterion.operator}
+  values={criterion.values}
+  onColumnChange={(column) => update(index, { column })}
+  onOperatorChange={(operator) => update(index, { operator, values: [""] })}
+  onValuesChange={(values) => update(index, { values })}
+  onRemove={() => remove(index)}
+/>
+```
+
+**It does not clear `values` when the operator changes** — deliberately. What was typed
+for "between" is not what "is one of" means, but throwing away someone's input is a
+domain decision, not a rendering one, so the caller makes it. The CSV Analysis builder
+resets to `[""]` (or `[]` for a no-value operator), which is the behaviour to copy.
+
+**Below 1024px it stacks.** The four-up grid becomes one column inside a bordered card,
+and each cell grows its own label — the wide layout has a header row above the list to
+align against, and the stacked one doesn't. Done with `max-lg:` only, so the desktop
+grid provably can't regress. A caller rendering several rows should hide its header row
+with `max-lg:hidden` to match.
+
+**Used by:** CSV Analysis custom views —
+[csv-custom-views-view.tsx](src/app/(protected)/modules/[slug]/csv-custom-views-view.tsx)
 
 ---
 
@@ -2672,6 +3065,84 @@ chains it into `reverseGeocodeAction` and `fetchWeatherAction`.
 Why it's a component and not `src/lib/`: geolocation is a browser global, and nothing under
 `src/lib/` may depend on the browser or React. The hook is the adapter; the coordinates it
 returns go to `lib` use-cases through server actions.
+
+---
+
+## useGameSounds
+
+Synthesized sound effects for the arcade's games — short tones built with Web Audio, so a
+game that uses this ships no audio files and makes no network requests.
+
+- **Source:** [src/components/use-game-sounds.ts](src/components/use-game-sounds.ts)
+- **Import:** `import { useGameSounds } from "@/components/use-game-sounds";`
+- **Client component:** yes (it's a hook — the caller must be `"use client"`)
+
+```tsx
+const [soundOn, setSoundOn] = useState(true);
+const sounds = useGameSounds(soundOn);
+
+// One tone.
+sounds.play({ startHz: 220, endHz: 200, durationMs: 40, type: "square", peak: 0.025 });
+
+// A sequence — `afterMs` is measured from now, not from the previous note.
+sounds.playSequence([
+  { startHz: 523, endHz: 523, durationMs: 140, type: "triangle" },
+  { startHz: 659, endHz: 659, durationMs: 140, type: "triangle", afterMs: 130 },
+]);
+```
+
+A `ToneSpec` is a pitch sweep: `startHz` → `endHz` over `durationMs`, at an oscillator
+`type` (`sine` soft, `triangle` brighter, `square` a chiptune click, `sawtooth` a buzz)
+and a `peak` gain. **Keep `peak` low** — around `0.03` for a cue that fires on every
+keypress, up to the `0.09` default for a once-per-game fanfare.
+
+**Give each game its own cue vocabulary.** The hook deliberately knows nothing about
+"a line cleared" or "a piece locked"; wrap it in a local `useSounds` that names the
+events, the way both callers below do. What's shared is the context lifecycle and the
+envelope — the fiddly part — not the sounds themselves.
+
+**Used by:** all six arcade games, each with its own vocabulary —
+[Tetris](src/app/(protected)/modules/[slug]/game-tetris-view.tsx)
+(move/rotate/lock/hard-drop/hold/line-clear/level-up/game-over),
+[Arrow Clearing](src/app/(protected)/modules/[slug]/game-arrows-view.tsx)
+(clear/bump/win/game-over),
+[2048](src/app/(protected)/modules/[slug]/game-2048-view.tsx)
+(slide/merge/promote/win/over),
+[Minesweeper](src/app/(protected)/modules/[slug]/game-minesweeper-view.tsx)
+(reveal/cascade/flag/boom/cleared),
+[Sudoku](src/app/(protected)/modules/[slug]/game-sudoku-view.tsx)
+(place/mistake/erase/note/hint/solved) and
+[Blackjack](src/app/(protected)/modules/[slug]/game-blackjack-view.tsx)
+(card/chip/shuffle/bust/win/lose/push/blackjack/cash-out/broke). Every one pairs it with
+a "Sound on / Sound off" `Button` in the header, defaulting to on.
+
+**Two patterns worth copying.** Where a game holds one immutable state object, the cues
+read off a *diff* against a previous-state ref in an effect, rather than firing from the
+handlers — one place catches every path into `setState`, and it sidesteps the Strict Mode
+double-invocation you get by playing inside an updater. And where a view staggers a deal
+or an animation, pass the same delays as `afterMs` so the audio tracks the picture;
+Blackjack resolves a whole round in one state update and spreads the round's cues back
+out over the deal that way.
+
+**Three things worth knowing:**
+
+- **The AudioContext starts on the first cue, not on mount.** Browsers refuse to start
+  one without a user gesture, and an autoplay-blocked context logs a console warning on
+  every page load. Don't try to warm it up early.
+- **Passing `enabled: false` releases the audio device** and cancels any sequence in
+  flight — it isn't just a volume of zero. A "muted" game still holding the device open
+  is the thing a laptop battery notices. Unmuting builds a fresh context on the next cue.
+- **`play` is a no-op where Web Audio is missing**, so callers never need to feature-detect.
+
+Why it's a component and not `src/lib/`: Web Audio is a browser global, and nothing under
+`src/lib/` may depend on the browser or React. Same split as
+[`useCurrentPosition`](#usecurrentposition) — the game *rules* stay pure in
+`src/lib/games/`, and this is the adapter that makes a noise about them.
+
+Not [`MusicPlayerProvider`](#musicplayerprovider): that models "the thing the user is
+listening to" — one `<audio>` element, a queue, a now-playing bar. A game cue is the
+opposite (dozens a second, no source file, nothing to show), and routing them through the
+player would fight its state on every keypress.
 
 ---
 

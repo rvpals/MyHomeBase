@@ -1,5 +1,229 @@
 # Change History
 
+## 2026-09-06 21:50 — CSV custom views, Mahjong Match, uploaded action icons, and a compact grid that reads
+
+### [Added] CSV Analysis: named views over a dataset
+
+A new **Custom Views** section on the CSV Analysis module. Pick a dataset, click Build
+View, and name a saved query over it: which columns to show, criteria to filter by, how
+to order, and how many records a page holds.
+
+**Criteria are a filter builder, not a text box.** Fifteen operators — `=`, `<>`, `>`,
+`>=`, `<`, `<=`, contains, does not contain, starts with, ends with, between, is empty,
+is not empty, is one of, is not one of — ANDed together. The number of value inputs
+follows the operator's arity, so `between` asks for two and `is empty` asks for none.
+
+Saved views then appear as a **View** dropdown on every dataset row on the Dashboard,
+defaulting to "Whole table". Picking one re-reads the table through it and pages
+server-side, with the criteria restated above the rows so you can see what you are
+looking at.
+
+**Leaving the column list empty means "every column, whatever they are now"** rather
+than freezing the view to the columns that existed when it was built — so a view
+survives its dataset gaining a column on the next import.
+
+**Strict on write, forgiving on read.** Saving rejects unknown columns, criteria that
+do not fill their operator, and duplicate order-by columns. Reading silently skips a
+column that has since vanished and falls back to all columns if nothing survives. The
+asymmetry is deliberate: a typo should be refused at the point you make it, but a view
+should outlive an Overwrite ingest rather than becoming unopenable.
+
+**Disabling is enforced in the domain, not hidden in the UI.** A disabled view throws
+if something asks to read it, and the Dashboard resolves a selection only against
+enabled views, so a stale pick falls back to the whole table instead of erroring.
+
+The SQL is compiled by a pure function (`src/lib/csv-analytics/view-query.ts`) with no
+database import — identifiers are checked against the dataset's real column list *and*
+quoted, every literal is a bound parameter, and operators come from a closed enum so no
+operator text reaches SQL. `LIMIT`/`OFFSET` are the only interpolated numbers, forced
+through `Math.floor` on validated positive integers.
+
+Migration `0081` adds `csv_custom_views`. Its three `_json` columns are an explicit
+exception on the grounds already recorded for `csv_chart_presets.options_json` (0022)
+and `jrn_saved_filters.filter_json` (0043): variable-shape lists, replaced wholesale on
+every save, never queried by SQL. `records_per_page` and `is_enabled` are real columns
+because both are read on the query path.
+
+Also a `csv-views` CLI command — `list`, `show`, `create`, `update`, `enable`,
+`disable`, `delete`, `read`, `operators` — so a view can be built and its compiled SQL
+exercised without a browser.
+
+### [Added] Games: Mahjong Match
+
+A seventh Arcade game. Clear a 144-tile board by matching free tiles two at a time,
+across five figures (Turtle, Pyramid, Cat, Cross, Butterfly) and three difficulties.
+Hints, undo and shuffle are unlimited but **priced** — 100 and 400 points — rather than
+capped, because a capped shuffle plus a random deal could leave a genuinely
+unfinishable board, and a last shuffle becomes a resource to hoard rather than a
+decision to weigh.
+
+**Every board is solvable by construction.** The deal runs *backwards*: from the full
+layout, repeatedly take two positions that are free at that moment and seat a matching
+pair there. Replaying that in reverse is a complete solution. A plain random turtle
+needed roughly **17 shuffles on average** to clear — a board that demands a shuffle
+every few pairs is not a puzzle, it is a slot machine.
+
+That guarantee is fragile in an instructive way: a stray shuffle of the face list
+destroyed it silently, leaving about 1 pair in 36 matching by luck, and it shipped that
+way for an afternoon. There is now a bounded depth-first search in the tests that
+*finds* a solution rather than trusting the dealer to have produced one.
+
+**Layouts are hand-written coordinate tables, not generated** — anything generated from
+a rule comes out a symmetric pyramid, which is a different game to look at. Layers are
+offset by half a tile rather than stacked on the same grid, so no tile is ever held by
+exactly one other; without that the endgame can strand two tiles in a column where the
+buried one could only pair with the tile burying it.
+
+Tiles are drawn from parts rather than using the Unicode mahjong block, which renders
+emoji-coloured on Windows, monochrome on macOS and missing on many Android builds. The
+tile also deliberately keeps its ivory face and green back on every colour theme: a
+tile is a physical object, not a themed surface.
+
+Scores are points, not seconds, because the shared scoreboard ranks descending and
+seconds would crown the slowest player in the house. No migration.
+
+Seven Arcade cards also gained icon slots (`games_card_2048` through
+`games_card_mahjong_match`), so every game's card art is now overridable.
+
+### [Added] Attendance: upload your own icon for a student action
+
+Editing a student action now offers **"Or upload your own"** below the glyph picker. The
+upload replaces the glyph everywhere the action appears — the Actions grid, the register's
+action picker, and the code chips beside each student's name.
+
+**The glyph choice survives an upload** and is shown dimmed with a note saying so,
+because it is the fallback for when the upload is removed. Removing the upload falls
+back to the glyph rather than to nothing.
+
+Upload is on Edit only, not Add: the write needs a row id, which an unsaved action does
+not have. Uploads apply immediately rather than on Save, matching expense card art and
+journal taxonomy icons.
+
+Migration `0082` adds `icon_image` and `icon_image_mime_type` to `att_student_actions`.
+This is a per-row column rather than an icon slot deliberately — a slot id is
+code-registered and permanent, but a student action is a row a teacher creates at
+runtime, so there is no id to register at build time. The bytes never ride along with a
+list: reads select columns explicitly, and a dedicated session-gated route serves the
+image with a cache-buster. SVG is excluded (script-carrying, served from our own
+origin) and the cap is 128 KB, the same as the other tiny uploaded icons.
+
+### [Changed] The register stops stalling on a big class
+
+Tapping a name on a 30-student register re-rendered all thirty rows, and taps queued up
+until the screen stalled and caught up in a lurch. Rows are now memoised and the
+toggle handlers are stable, so a tap re-renders one row.
+
+### [Changed] Compact grids: long values are readable
+
+Every grid below 1024px renders as a card per row, and each card put **two fields side
+by side** with the value truncated to one line. On a 390px phone that gave each value
+about 170px, so a journal title or a place name was ellipsized to nothing while the
+field beside it sat half empty — the data was missing, not merely cramped.
+
+Each field now gets its own row: name on the left, value on the right, both wrapping,
+with the value clamped at two lines instead of one. Cards alternate shade and the pairs
+carry grid lines, so where one record ends and the next begins is visible.
+
+The alternating shade is mixed toward the theme's own ink rather than being a
+translucent black wash. Black over a near-black card is invisible — 6% black on
+`#1A1F26` moves it about one point per channel — and five of the eight themes have a
+near-black card surface while two are pure white. Mixing toward the contrasting tone
+lightens a dark card and darkens a light one, from one rule.
+
+### [Added] A second compact grid layout, for reading rather than scanning
+
+`DataGrid` now takes `compactLayout="record"`, which on a phone shows **one record at a
+time** as tabs across a single card, every field in full with nothing truncated. The
+Journal home screen's Recent entries uses it.
+
+The card stack is better for scanning — *which of these forty rows do I want?* — and
+this is better for reading — *what does this one record say?* Which fits depends on the
+grid, so both ship and the default is unchanged. Sort is included because with one
+record on screen, record order is the only way to navigate. Selection is deliberately
+excluded: bulk actions across a list you can only see one row of at a time would mean
+tick, page, tick, page, so grids with bulk actions stay on the card stack.
+
+### [Fixed] An absolute path could escape the photo folder on download
+
+`planFavPhotoDownload` normalised each path *before* validating it. Normalising drops
+empty segments, so `/etc/passwd` became `etc/passwd` and the absolute-path check then
+had nothing to catch — an absolute path arriving from a browser was quietly rewritten
+into a plausible relative one and accepted.
+
+The traversal form (`../../etc/passwd`) was always rejected, because `..` survives
+normalisation. That is precisely why this went unnoticed: the case everybody tests
+worked. Paths are now validated as they arrive and again after normalising.
+
+### [Fixed] Five tests that never matched their code
+
+Four asserted behaviour the code had never had, and had been failing quietly: an
+archive name with its date hyphens stripped, a journal CSV time keeping its seconds
+after `normalizeEntryTime` was introduced to drop them, an O piece compared as an
+ordered list when rotation preserves the cell set but not its order, and a wall kick
+the SRS table does not contain. The fifth filled a Tetris board's spawn rows across
+every column, so the rows completed and cleared before the next piece spawned — the
+test had deleted the top-out it was asserting.
+
+## 2026-09-03 22:58 — Music: the story behind the song, beside the lyrics
+
+### [Added] Music Library player: a Lyrics / Story tab pair
+
+The player's lyric panel is now a two-tab container. **Lyrics** is exactly what it
+was. **Story** is the background to the song — who wrote it, what it is about, who
+covered it — from [songfacts.com](https://www.songfacts.com).
+
+**It is fetched when the track starts playing, not when the tab is opened**, so the
+story is already there when you switch to it rather than making you wait on a lookup
+you triggered by clicking.
+
+**Nothing is stored.** No table, no migration. The story is something to read while a
+song plays, not a record to keep, so it lives in the player's memory for as long as
+that track is up and is fetched again next time. That is a deliberate difference from
+lyrics, which *are* cached — a lyric is looked at repeatedly and is stable, and
+`migrations/0054` argues that case at length.
+
+**Songfacts has no API, so this is a scrape**, and the design is shaped around one
+constraint: their `robots.txt` disallows `/search` for every user agent. Lyrics can
+fall back on LRCLIB's free-text search when an exact lookup misses; there is no
+sanctioned equivalent here. So the URL is *derived* from the artist and title —
+`/facts/billy-joel/honesty` — and a small number of slug variants are tried in order:
+the plain slug, the artist with and without a leading `the-` (tags disagree with
+Songfacts about this constantly, in both directions), and the title without a `:`
+subtitle. Four requests at the very most, usually one.
+
+When the guesses miss, the panel says so and offers a Songfacts search link for the
+listener to open themselves. That is the honest outcome: a miss is often our slug
+guess being wrong rather than an absent story, and settling it by hand costs one
+click and fetches nothing we were asked to leave alone.
+
+The three unhappy states are kept distinct because they ask different things of you —
+`unsearchable` (the file has no artist tag; tagging it fixes this, and no request is
+made), `not_found` (the guesses missed) and `failed` (Songfacts was unreachable —
+nothing is wrong with the song). Collapsing them would mislead.
+
+**The parse is isolated on purpose.** `src/lib/music/songfacts-parse.ts` is pure and
+sits apart from the client that fetches, and it is tested against markup captured from
+the real page rather than markup invented to match the code — a fixture that did not
+come from the live site would prove only that the regexes agree with themselves. When
+Songfacts restyles their pages, that one file is the fix. No HTML parser dependency was
+added: the facts live in a single predictable block, nothing builds a DOM, and the
+output is plain text React escapes on render.
+
+Running the client against the live site is what caught the one real bug here: the
+JSON-LD block Songfacts publishes HTML-escapes accented characters even though the
+fact bodies do not, so "Beyoncé" was arriving as `Beyonc&eacute;` and would have been
+displayed that way in the "matched" line. Reading the markup would not have found it.
+
+The player shows what Songfacts thinks the page is *about* alongside the attribution,
+because the URL is a guess — a mistagged file can land on a real page for a different
+song, and that should be visible rather than presented as this song's story.
+
+Files: `src/lib/music/story.ts`, `story-use-cases.ts`, `songfacts-parse.ts`,
+`songfacts-client.ts`, `songfacts.fixture.ts` (+ three test files),
+`src/lib/music/{ports,schema,index}.ts`, `src/lib/wiring.ts`,
+`src/app/(protected)/modules/[slug]/{music-actions.ts,music-player-view.tsx}`.
+Reuses the existing `Tabs` component. 37 new tests.
+
 ## 2026-09-03 14:48 — Stocks: the refresh total counts up
 
 ### [Changed] Stocks & ETFs: the Portfolio Summary total climbs as prices land
