@@ -599,6 +599,18 @@ export const ICON_SLOTS: IconSlot[] = [
     wired: true,
     namespace: "tree",
   },
+  {
+    id: "games_card_mahjong",
+    label: "Mahjong",
+    group: "Games cards",
+    where: "Games & Puzzles → Arcade → the Mahjong card (the four-player game).",
+    // Shares the tile glyph with Mahjong Match above: both are mahjong, and a second
+    // hand-drawn tile concept would be the same picture under another name. An upload
+    // against either slot still overrides only that card.
+    defaultConcept: "game-mahjong",
+    wired: true,
+    namespace: "tree",
+  },
 
   /* ---------------------------------------------------------------------------------
      Expense — nav sections.

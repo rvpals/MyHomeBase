@@ -10,6 +10,7 @@ import { Game2048View } from "./game-2048-view";
 import { GameBlackjackView } from "./game-blackjack-view";
 import { GameArrowsView } from "./game-arrows-view";
 import { GameMahjongMatchView } from "./game-mahjong-match-view";
+import { GameMahjongView } from "./game-mahjong-view";
 import { GameMinesweeperView } from "./game-minesweeper-view";
 import { GameSudokuView } from "./game-sudoku-view";
 import { GameTetrisView } from "./game-tetris-view";
@@ -114,6 +115,11 @@ export function GamesArcadeView({ games }: { games: GameSummary[] }) {
                   Minesweeper — the difficulty is picked inside the game. */}
               {open.game.key === "mahjong-match" && (
                 <GameMahjongMatchView bestScore={open.best?.score ?? 0} />
+              )}
+              {/* The four-player game against three bots, distinct from Mahjong Match
+                  above — they share the tile set and nothing else. */}
+              {open.game.key === "mahjong" && (
+                <GameMahjongView bestScore={open.best?.score ?? 0} />
               )}
             </div>
           </div>

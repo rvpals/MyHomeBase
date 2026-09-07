@@ -1019,3 +1019,236 @@ export interface MahjongMatchState {
   elapsedSeconds: number;
   outcome: MahjongMatchOutcome;
 }
+
+/* -----------------------------------------------------------------------------------
+   Mahjong — the four-player tile game, Hong Kong rules, against three bots.
+
+   The tile set is NOT here, for the reason the Mahjong Match block above says: `Tile`,
+   the 144 tiles, `tileFace` and `sortTiles` live in `mahjong-tiles.ts` and belong to no
+   single game. What lives here is what *this* game adds — who sits where, what a meld
+   is, whose turn it is, and what a hand is worth.
+
+   One hand per game, not a full four-wind round. Every other game in the Arcade ends
+   and posts one score, and a rotating dealer would mean carrying four hands of state
+   for a scoreboard that records a single number.
+----------------------------------------------------------------------------------- */
+
+/**
+ * The four seats, in the order play passes.
+ *
+ * Indices into the seat arrays below, and the *turn order* itself: the player to a
+ * seat's left is `(seat + 1) % 4`, which is the only direction chow may be called from.
+ * Deliberately positional rather than named by wind, because the seat a player occupies
+ * and the wind they hold are two different things once a dealer rotates — this game does
+ * not rotate, so `SEAT_WINDS` maps one to the other and nothing has to track both.
+ */
+export const SEATS = [0, 1, 2, 3] as const;
+
+export type Seat = (typeof SEATS)[number];
+
+/** The human always sits South; the other three seats are bots. Fixed, so a view can rely on it. */
+export const HUMAN_SEAT: Seat = 1;
+
+/**
+ * The wind each seat holds. East deals, so seat 0 is the dealer.
+ *
+ * `WINDS` from `mahjong-tiles.ts` is already in seat-rotation order, so `SEAT_WINDS` is
+ * that array indexed by seat. It is re-exported from `game-mahjong.ts` rather than
+ * aliased here, because this file imports types only — a value import would make a
+ * types module carry runtime code.
+ */
+
+/** How many tiles a non-dealer holds after the deal. The dealer holds one more. */
+export const HAND_SIZE = 13;
+
+/**
+ * Tiles held back as the dead wall — never drawn into play.
+ *
+ * HK rules have no dora indicator to reveal, so the dead wall's only job here is to end
+ * the hand in a draw with tiles still on the table, which is what stops the last few
+ * discards from being forced. Fourteen is the conventional count.
+ */
+export const DEAD_WALL_SIZE = 14;
+
+/** What a meld is. `pair` is the eye; the other three are the sets a hand needs four of. */
+export const MELD_KINDS = ["chow", "pung", "kong", "pair"] as const;
+
+export type MeldKind = (typeof MELD_KINDS)[number];
+
+/**
+ * One completed set in front of a player.
+ *
+ * `tiles` carries the actual tiles rather than a face and a count, so a meld can be
+ * drawn by `MahjongWall` without the view reconstructing which copies were used — and
+ * so the 144 tiles remain conserved across wall, hands, melds and discards, which is
+ * the invariant the tests assert.
+ *
+ * `concealed` is what a self-drawn kong is and a claimed one is not. It changes nothing
+ * about play here but is scored, so it is recorded when the meld is formed rather than
+ * inferred later, when the information is gone.
+ */
+export interface Meld {
+  kind: MeldKind;
+  tiles: readonly Tile[];
+  concealed: boolean;
+  /** Which seat's discard completed this meld, or `undefined` when self-drawn. */
+  claimedFrom: Seat | undefined;
+}
+
+/** One player's tiles. */
+export interface MahjongHand {
+  seat: Seat;
+  /** The concealed tiles, sorted. Face up for the human, face down for a bot. */
+  tiles: readonly Tile[];
+  /** Melds laid down, oldest first. Always face up. */
+  melds: readonly Meld[];
+  /** Bonus tiles set aside. Each scores a fan and is replaced by a fresh draw. */
+  flowers: readonly Tile[];
+  /** What this seat has thrown, oldest first — its own row of the pond. */
+  discards: readonly Tile[];
+}
+
+/**
+ * The phase of one turn.
+ *
+ * The state machine your spec asks for, minus the transport-driven states: with no
+ * network there is no window in which responses arrive out of order, so
+ * `RESOLVING_CALLS` collapses into the action that resolves them.
+ *
+ * `awaiting-calls` is the only phase where the seat to play is not `state.turn` — the
+ * discard is on the table and up to three other seats may claim it.
+ */
+export const MAHJONG_PHASES = ["awaiting-discard", "awaiting-calls", "ended"] as const;
+
+export type MahjongPhase = (typeof MAHJONG_PHASES)[number];
+
+/** The calls a player may make on a discard, plus the two ways to win and to decline. */
+export const MAHJONG_ACTIONS = ["discard", "chow", "pung", "kong", "win", "pass"] as const;
+
+export type MahjongAction = (typeof MAHJONG_ACTIONS)[number];
+
+/**
+ * One call a seat may make on the tile currently on the table.
+ *
+ * Offered by `getAvailableCalls`, which returns every legal call rather than the best
+ * one — choosing is the player's job, or the bot policy's. `tiles` names the concealed
+ * tiles that would be spent, because a chow on a 3 can be made with 1-2, 2-4 or 4-5 and
+ * the player has to be able to pick which.
+ */
+export interface MahjongCall {
+  seat: Seat;
+  action: Extract<MahjongAction, "chow" | "pung" | "kong" | "win">;
+  /** The concealed tiles this call would consume, alongside the claimed discard. */
+  tiles: readonly Tile[];
+}
+
+/** How a hand ended, or `playing` while it has not. */
+export const MAHJONG_OUTCOMES = ["playing", "won", "lost", "draw"] as const;
+
+export type MahjongOutcome = (typeof MAHJONG_OUTCOMES)[number];
+
+/**
+ * A whole hand of mahjong.
+ *
+ * One immutable object, as with every other game here: each action returns a new state
+ * and a caller holding the old one still sees it unchanged.
+ *
+ * **`wall` is the live wall only.** The dead wall is sliced off at the deal and never
+ * modelled, because nothing in HK rules ever reads it — a hand where `wall` empties is a
+ * draw, which is exactly the rule the dead wall exists to produce.
+ */
+export interface MahjongState {
+  hands: readonly MahjongHand[];
+  /** Tiles left to draw. The pond is each hand's own `discards`. */
+  wall: readonly Tile[];
+  /** Whose turn it is. In `awaiting-calls`, the seat that just discarded. */
+  turn: Seat;
+  phase: MahjongPhase;
+  /** The tile on the table awaiting calls, or `undefined` outside `awaiting-calls`. */
+  liveDiscard: Tile | undefined;
+  /** Calls still open on `liveDiscard`, highest priority first. Empty otherwise. */
+  openCalls: readonly MahjongCall[];
+  /**
+   * The tile just drawn, so a view can mark it apart from the sorted rack.
+   *
+   * By id rather than by position: the rack is re-sorted on every draw, so an index
+   * would point at a different tile by the time it was read.
+   */
+  drawnId: number | undefined;
+  /** Which seat won, or `undefined` for a draw or a hand still in play. */
+  winner: Seat | undefined;
+  /**
+   * Whether the winner drew their own winning tile rather than claiming a discard.
+   *
+   * Carried on the state because it is invisible in the tiles: a hand that went out on
+   * a claimed discard holds exactly the same fourteen tiles as one that drew the same
+   * tile, and Self Drawn is a fan. `false` on a hand still in play or a drawn one.
+   */
+  selfDrawn: boolean;
+  outcome: MahjongOutcome;
+}
+
+/* -----------------------------------------------------------------------------------
+   Mahjong scoring — Hong Kong fan.
+
+   A deliberately small pattern set. HK scoring in the wild runs to dozens of patterns
+   and house rules disagree on most of them; what is here is the set a casual player
+   recognises and expects, and each one is cheap to explain in the instructions card.
+   The alternative, Chinese Official's 81 patterns, is a scoring module larger than the
+   rest of the game — see the plan for why it was not taken.
+
+   `fan` is the doubling exponent a pattern is worth, exactly as at a real table. The
+   score a game records is derived from the fan total by `scoreGame`, so these numbers
+   stay in the vocabulary a player would use and the points conversion lives in one place.
+----------------------------------------------------------------------------------- */
+
+/** One scoring pattern a finished hand matched. */
+export interface MahjongFan {
+  /** Stable identifier. Not stored anywhere, so it may be renamed freely. */
+  id: string;
+  /** What the instructions card and the win banner call it. */
+  label: string;
+  /** Doubles this pattern is worth. */
+  fan: number;
+}
+
+/**
+ * The base fan every win earns just for going out.
+ *
+ * Without it a plain hand with no pattern would score zero and read as a loss on the
+ * scoreboard, which is wrong — going out at all is the achievement the game is about.
+ */
+export const MAHJONG_BASE_FAN = 1;
+
+/** Fan per bonus tile held. Flowers and seasons each score one, the usual house rule. */
+export const MAHJONG_FLOWER_FAN = 1;
+
+/**
+ * What one fan is worth in scoreboard points.
+ *
+ * A win is `MAHJONG_POINTS_PER_FAN << fan`, so each fan genuinely doubles rather than
+ * adding — the whole point of counting in fan. 100 keeps a modest win in three figures
+ * and a big hand in five, which reads sensibly beside the other games in the Arcade
+ * without needing its own column format.
+ */
+export const MAHJONG_POINTS_PER_FAN = 100;
+
+/**
+ * The most fan a hand can bank, however many patterns it matched.
+ *
+ * A cap because the score is an exponent: an uncapped stack of patterns produces
+ * numbers that dwarf every other game on the shared scoreboard, and one freak hand
+ * would own the record forever. Thirteen is the traditional limit hand value, so the
+ * ceiling is the one a real table already uses.
+ */
+export const MAHJONG_MAX_FAN = 13;
+
+/** How a finished hand scored, for the win banner and the score record. */
+export interface MahjongScore {
+  /** Every pattern the hand matched, best first. */
+  fans: readonly MahjongFan[];
+  /** Fan total, already capped at `MAHJONG_MAX_FAN`. */
+  fan: number;
+  /** Scoreboard points the fan total converts to. */
+  points: number;
+}

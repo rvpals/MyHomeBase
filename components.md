@@ -1381,8 +1381,9 @@ deals cards in 300ms and tiles in 500 reads as two different apps.
 ```
 
 **Used by:** [Mahjong Match](src/app/(protected)/modules/[slug]/game-mahjong-match-view.tsx),
-which positions tiles individually rather than in a rack, and
-[`MahjongWall`](#mahjongwall) — which currently has no callers of its own.
+which positions tiles individually rather than in a rack,
+[Mahjong](src/app/(protected)/modules/[slug]/game-mahjong-view.tsx) for the live discard
+and each seat's melds, and [`MahjongWall`](#mahjongwall).
 
 **Notes:** every size steps down one level below 1024px via `max-lg:`, so a caller picks
 one size and both screens work.
@@ -1521,8 +1522,10 @@ because the title row, the count, the deal animation and the click handling are 
 />
 ```
 
-**Used by:** nothing yet — built ahead of the tile game that will use it, at Min's
-request.
+**Used by:** [Mahjong](src/app/(protected)/modules/[slug]/game-mahjong-view.tsx) — the
+four-player game, which is the tile game it was built ahead of. It uses all three
+layouts at once: `rack` for your own hand, `wall` with `hideFrom={0}` for each
+opponent's concealed tiles, and `pool` for their discards.
 
 **Notes:** `count` is a **formatted string** on purpose, the same reasoning as
 `CardHand`'s `total` — what a count means is the game's business ("13" for a rack,

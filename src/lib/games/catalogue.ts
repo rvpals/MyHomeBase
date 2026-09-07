@@ -102,6 +102,21 @@ export const GAME_CATALOGUE: readonly CatalogueGame[] = [
     status: "available",
     scoreUnit: "points",
   },
+  // The four-player tile game, against three bots. Distinct from Mahjong Match above,
+  // which is the tile-matching solitaire — they share the 144-tile set from
+  // `mahjong-tiles.ts` and nothing else, which is exactly the split that module exists
+  // to allow.
+  //
+  // Points, from the winning hand's Hong Kong fan total: `scoreGame` in
+  // `game-mahjong.ts` doubles per fan and caps at `MAHJONG_MAX_FAN`. A hand a bot won
+  // records 0, the same rule Blackjack applies to a broke run.
+  {
+    key: "mahjong",
+    name: "Mahjong",
+    description: "The four-player tile game, Hong Kong rules. You against three opponents.",
+    status: "available",
+    scoreUnit: "points",
+  },
 ];
 
 /** The catalogue entry for `key`, or undefined when nothing matches. */
