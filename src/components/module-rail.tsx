@@ -19,6 +19,7 @@
 
 import Link from "next/link";
 import { getIconSlot } from "@/lib/icons";
+import { AdminIcon } from "./admin-icon";
 import { AppIcon } from "./app-icon";
 import { ModuleIcon } from "./module-icons";
 import { SlotIcon } from "./slot-icon";
@@ -40,10 +41,16 @@ export interface ModuleRailProps {
   links: ModuleRailLink[];
   /** Whether a given module's href is the one currently open. */
   isActive: (href: string) => boolean;
+  /**
+   * Whether to show the Administration button in the bottom zone. False for
+   * everyone but an administrator, and the rail is the only place it appears
+   * on the full layout.
+   */
+  showAdmin?: boolean;
   className?: string;
 }
 
-export function ModuleRail({ links, isActive, className = "" }: ModuleRailProps) {
+export function ModuleRail({ links, isActive, showAdmin = false, className = "" }: ModuleRailProps) {
   return (
     // `.shell-rail` (globals.css) owns the fixed position, the width and the
     // safe-area insets. Only the surface treatment is here — same split as
@@ -106,6 +113,43 @@ export function ModuleRail({ links, isActive, className = "" }: ModuleRailProps)
           );
         })}
       </div>
+
+      {/* The utility zone: below the scroller, so it never scrolls out of reach
+          and never competes with the module list for the same space. Sits
+          outside the `overflow-y-auto` div deliberately — the module list can
+          grow to a dozen entries, and this has to stay put when it does.
+
+          Administration is chrome, not a module — no row in the module table —
+          so it is separated by a divider and keeps its own gear glyph rather
+          than joining the list above. It stays in the user menu as well, which
+          is where compact reaches it: this rail doesn't render down there. */}
+      {showAdmin && (
+        <>
+          <div className="h-px w-8 shrink-0 bg-line" aria-hidden />
+          <Link
+            href="/admin"
+            title="Administration"
+            aria-label="Administration"
+            aria-current={isActive("/admin") ? "page" : undefined}
+            className={`relative mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
+              isActive("/admin")
+                ? "bg-brass-soft text-brass-dark"
+                : "text-muted hover:bg-line/60 hover:text-ink"
+            }`}
+          >
+            {/* Same active treatment as a module link above: at 64px with no
+                label a tint alone is easy to miss against the rail's own
+                raised surface. */}
+            {isActive("/admin") && (
+              <span
+                className="absolute left-0 top-1/2 h-6 w-0.5 -translate-y-1/2 rounded-r bg-brass"
+                aria-hidden
+              />
+            )}
+            <AdminIcon className="h-5 w-5" />
+          </Link>
+        </>
+      )}
     </nav>
   );
 }

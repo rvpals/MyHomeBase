@@ -46,6 +46,11 @@ export interface TwoTierShellProps {
   /** The current module, badged in the panel and named in the breadcrumb. */
   module: { name: string; icon: string; href: string };
   currentUser: { id: number; fullName: string; avatarMimeType?: string; updatedAt?: string };
+  /**
+   * Administrator? Shows the Administration gear in the rail's bottom zone and
+   * the Administration row in the user menu. One flag for both, so the two can
+   * never disagree about who is allowed there.
+   */
   showAdmin: boolean;
   logoutAction: () => Promise<void>;
   viewportPinned: boolean;
@@ -122,8 +127,9 @@ export function TwoTierShell({
   return (
     <>
       {/* Tier 1. Renders only on the full layout — on compact the same list is
-          the header's dropdown, below. */}
-      {!isCompact && <ModuleRail links={links} isActive={isActive} />}
+          the header's dropdown, below. `showAdmin` puts the Administration gear
+          in the rail's bottom zone; on compact it only reaches the user menu. */}
+      {!isCompact && <ModuleRail links={links} isActive={isActive} showAdmin={showAdmin} />}
 
       {/* Tier 2. Owns its own fork: a fixed column on full, a bottom trigger
           and sheet on compact. */}

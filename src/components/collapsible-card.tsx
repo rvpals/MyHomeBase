@@ -64,19 +64,24 @@ export function CollapsibleCard({
       className={`card-raised card-raised-hover rounded-xl border border-line bg-paper-raised transition-shadow motion-reduce:transition-none ${className}`}
     >
       {/* A row rather than one big button, so `headerAction` can hold a real button. */}
-      <div className="flex items-center gap-2 px-4 py-3">
+      <div className="flex items-center gap-2 px-4 py-3 max-lg:items-start">
         <button
           type="button"
           onClick={toggle}
           aria-expanded={isOpen}
-          className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left text-sm font-medium text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+          className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left text-sm font-medium text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass max-lg:items-start"
         >
           {/* The icon and the title share a min-w-0 flex row so the title still
               truncates, while the glyph keeps its size rather than being
-              squeezed by a long one. */}
-          <span className="flex min-w-0 items-center gap-2">
+              squeezed by a long one. Narrow, there's no room to truncate into —
+              a title like "Random photo - 21 years, 2 months, 3 days ago" would
+              be all ellipsis — so on phones it wraps instead and the row tops
+              out its items so the glyph stays beside the first line. */}
+          <span className="flex min-w-0 items-center gap-2 max-lg:items-start">
             {titleIcon && <span className="shrink-0 text-brass-dark">{titleIcon}</span>}
-            <span className="truncate">{title}</span>
+            <span className="truncate max-lg:whitespace-normal max-lg:break-words max-lg:[overflow-wrap:anywhere] max-lg:overflow-visible">
+              {title}
+            </span>
           </span>
           <span
             className={`shrink-0 text-muted transition-transform motion-reduce:transition-none ${

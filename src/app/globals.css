@@ -1012,6 +1012,407 @@ html[data-music-player="full"] {
 }
 
 /* ---------------------------------------------------------------------------
+   The mahjong tile's own palette — fixed, and deliberately outside the theme.
+
+   Every other surface in this app is a theme token, and this is the documented
+   exception. A mahjong tile is not a surface: it is a **physical object made of
+   a specific material**, and that material is bone-white with the pips painted
+   on it. A tile is ivory the way a heart on a playing card is red — which is
+   the exception `.playing-card-face` already takes for `text-red-500`, and the
+   same one `Button`'s `danger` variant takes. A tile rendered in Signal Deck's
+   near-black `--paper` is not a dark-mode tile, it is a *different object*.
+
+   So these are literal values rather than `var(--paper)`, and they do not
+   invert. The extrusion above still layers translucent black and white over
+   them, so the 3D reads identically on every theme — what changes is only that
+   it now has a constant surface to work against.
+
+   The pip colours are the real set's: green bamboo, blue circles, red
+   characters, blue winds, and the three dragons in red / green / blue. These
+   are what a player recognises a tile by at a glance, so they are as fixed as
+   the ivory is.
+--------------------------------------------------------------------------- */
+
+:root {
+  /* The tile body — warm bone, not a neutral grey. Real tiles are slightly
+     yellow, and a pure #FFF reads as plastic. */
+  --tile-face: #f4f1e8;
+  /* The printed panel inset into the body, a shade lighter so the carved lip
+     below has something to catch. */
+  --tile-panel: #faf8f2;
+  /* The tile's edge. Warm and low-contrast — a cut edge on bone, not a border. */
+  --tile-edge: #d8d2c0;
+  /* The back: the green-backed tile most sets use. */
+  --tile-back: #1f6b4f;
+  --tile-back-edge: #17543d;
+
+  /* The painted pips. The conventional colours of a real set. */
+  --tile-red: #c0392b;
+  --tile-green: #1e7a4a;
+  --tile-blue: #1f4e9c;
+  --tile-ink: #2a2a28;
+}
+
+/* ---------------------------------------------------------------------------
+   A mahjong tile as a physical object.
+
+   A playing card and a mahjong tile are both things lying on a table, but they
+   are not the same *material*, and the whole reason these are separate rules
+   rather than a shared one is that a tile is thick. A card is a stiff sheet:
+   `.playing-card-face` gives it a lit top edge, a shaded underside and a cast,
+   and that is the correct amount of depth for something a fraction of a
+   millimetre deep. A tile is a ~15mm ivory-and-bamboo block, and drawing one
+   with the card treatment is what makes it read as a *picture* of a tile.
+
+   So a tile gets a genuinely extruded body, built in the same vocabulary the
+   rest of the app uses — a lit top edge and a shadowed underside, and never
+   `Button`'s hard `0 3px 0 0` offset, for the reason design.md and
+   `.card-embossed` both record: the offset says "a switch that moves when you
+   press it", and a tile is a thing you pick up. Same licence `.card-embossed`
+   was granted, taken the same way.
+
+   How the depth is made, in three parts:
+
+     1. `.mahjong-tile` — the body. A long stack of 1px vertical shadows walks
+        the tile down and right, one per pixel of thickness, so the sides are a
+        solid mass rather than a blur. This is the extrusion, and it is why a
+        tile reads as tall even standing still.
+     2. `.mahjong-tile-face` — the printed face inset into the body's top, with
+        its own lip. A real tile's face is a slab of bone set into bamboo and
+        sits slightly *below* the surrounding rim, which is the detail that
+        most sells it as carved rather than printed.
+     3. `.mahjong-tile-back` — the reverse: the bamboo backing, no face inset,
+        a warmer grain.
+
+   Every layer is translucent black or white over whatever surface the active
+   theme supplies, never a literal grey or a literal ivory — the same rule
+   `.paper-texture` and the card rules follow, and for the same reason: a colour
+   tuned for Signal Deck is wrong on Daybreak and wrong again on BMS. These
+   darken and lighten the theme's own surface instead of replacing it.
+
+   Alphas stay inside design.md's safe range (white <= 0.12, black <= 0.45) with
+   the same single exception the card and the embossed card take: the 1px top
+   highlight runs brighter because it is an edge catching light, not a wash.
+--------------------------------------------------------------------------- */
+
+/* The tile body — the extrusion.
+
+   The `--tile-depth` custom property is the tile's thickness in pixels, set per
+   size by the component (a `sm` tile in a crowded rack is thinner than an `lg`
+   one, exactly as a scale model would be). It drives the two things that have
+   to agree: how far the stacked side shadows walk, and how far a lifted tile
+   rises.
+
+   The side stack is written out rather than generated because CSS cannot loop a
+   box-shadow, and a blur-based fake reads as a glow rather than a side. Six
+   steps at `lg`, scaled by the depth property — beyond about six the extra
+   layers are invisible and only cost paint time. */
+.mahjong-tile {
+  --tile-depth: 6;
+  border-radius: 0.45rem;
+  /* The fixed ivory body. Set here rather than by a Tailwind class on the
+     element, so the sheen's `background-image` below composites over it. */
+  background-color: var(--tile-face);
+  border-color: var(--tile-edge);
+  color: var(--tile-ink);
+  background-image: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.11) 0%,
+    rgba(255, 255, 255, 0.04) 30%,
+    transparent 58%,
+    rgba(0, 0, 0, 0.08) 100%
+  );
+  box-shadow:
+    /* The lit top edge and the underside — the pair that is the tile's own
+       thickness, as on every other surface in the app. */
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -2px 3px -1px rgba(0, 0, 0, 0.24),
+    /* The extruded right-and-down side, one layer per pixel of depth. Each is
+       a hard-edged offset with no blur, so together they form a solid flank.
+       They darken as they descend, because the lower a face is the further it
+       has turned from the lamp above the table. */
+      calc(var(--tile-depth) * 0.16px) calc(var(--tile-depth) * 0.16px) 0
+      rgba(0, 0, 0, 0.13),
+    calc(var(--tile-depth) * 0.33px) calc(var(--tile-depth) * 0.33px) 0 rgba(0, 0, 0, 0.15),
+    calc(var(--tile-depth) * 0.5px) calc(var(--tile-depth) * 0.5px) 0 rgba(0, 0, 0, 0.17),
+    calc(var(--tile-depth) * 0.66px) calc(var(--tile-depth) * 0.66px) 0 rgba(0, 0, 0, 0.19),
+    calc(var(--tile-depth) * 0.83px) calc(var(--tile-depth) * 0.83px) 0 rgba(0, 0, 0, 0.21),
+    calc(var(--tile-depth) * 1px) calc(var(--tile-depth) * 1px) 0 rgba(0, 0, 0, 0.23),
+    /* A hairline ring outside the border, so `border-line` still inverts per
+       theme rather than being replaced by a literal. */ 0 0 0 1px rgba(0, 0, 0, 0.2),
+    /* The cast onto the felt, in two stops — tight then wide, so a rack of
+       touching tiles does not go muddy underneath. Offset down-right to agree
+       with the side stack: one lamp above and behind the player, not a
+       different sun per tile. */ calc(var(--tile-depth) * 0.4px)
+      calc(var(--tile-depth) * 0.7px) 6px -2px rgba(0, 0, 0, 0.3),
+    calc(var(--tile-depth) * 0.6px) calc(var(--tile-depth) * 1.6px) 16px -6px rgba(0, 0, 0, 0.36);
+}
+
+/* The printed face, inset into the body.
+
+   Drawn on a pseudo-element rather than as more insets on the body, because it
+   needs its own radius and its own lip and the body is already spending
+   `box-shadow` on the extrusion. The lip is the giveaway detail: a bright top-
+   left edge and a dark bottom-right one, which is a surface sunk *into* the
+   tile — the exact inverse of the body's own lit-top/dark-bottom, and what
+   makes the bone slab read as carved in rather than printed on. */
+.mahjong-tile-face::before {
+  content: "";
+  position: absolute;
+  /* Insets more on the right and bottom than the top and left: the sides that
+     face away from the lamp show more of the tile's own body, which is what
+     gives the face its offset-within-a-frame look. */
+  inset: 3px 4px 4px 3px;
+  border-radius: 0.3rem;
+  background-color: var(--tile-panel);
+  background-image: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.07) 0%,
+    transparent 55%,
+    rgba(0, 0, 0, 0.05) 100%
+  );
+  box-shadow:
+    inset 1px 1px 1px rgba(0, 0, 0, 0.18),
+    inset -1px -1px 0 rgba(255, 255, 255, 0.1);
+  pointer-events: none;
+}
+
+/* The reverse: the bamboo backing.
+
+   No face inset and no sheen — a back has to read as obviously not a face at a
+   glance, even at `sm`, and a white wash across the grain mutes the very
+   pattern doing that work. It keeps the body's extrusion (a tile is the same
+   thickness either way up) and deepens the underside a little, which is what
+   stops a face-down tile reading as *lighter* than the faces beside it once the
+   sheen is gone. Same adjustment `.playing-card-back` makes. */
+.mahjong-tile-back {
+  background-color: var(--tile-back);
+  border-color: var(--tile-back-edge);
+  background-image: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 -2px 3px -1px rgba(0, 0, 0, 0.3),
+    calc(var(--tile-depth) * 0.16px) calc(var(--tile-depth) * 0.16px) 0 rgba(0, 0, 0, 0.15),
+    calc(var(--tile-depth) * 0.33px) calc(var(--tile-depth) * 0.33px) 0 rgba(0, 0, 0, 0.17),
+    calc(var(--tile-depth) * 0.5px) calc(var(--tile-depth) * 0.5px) 0 rgba(0, 0, 0, 0.19),
+    calc(var(--tile-depth) * 0.66px) calc(var(--tile-depth) * 0.66px) 0 rgba(0, 0, 0, 0.21),
+    calc(var(--tile-depth) * 0.83px) calc(var(--tile-depth) * 0.83px) 0 rgba(0, 0, 0, 0.23),
+    calc(var(--tile-depth) * 1px) calc(var(--tile-depth) * 1px) 0 rgba(0, 0, 0, 0.25),
+    0 0 0 1px rgba(0, 0, 0, 0.22),
+    calc(var(--tile-depth) * 0.4px) calc(var(--tile-depth) * 0.7px) 6px -2px rgba(0, 0, 0, 0.3),
+    calc(var(--tile-depth) * 0.6px) calc(var(--tile-depth) * 1.6px) 16px -6px rgba(0, 0, 0, 0.36);
+}
+
+/* A tile picked up off the table.
+
+   Reads as *lifted*, not as bigger: the extrusion shortens (you are looking
+   more squarely at a tile held up than at one lying down) while the cast grows
+   and softens and moves further away. Shortening the sides while lengthening
+   the shadow is the whole trick — scaling both up just makes a larger tile.
+
+   The rise is `margin`, not `translateY`, for the reason `.playing-card-lifted`
+   documents: the deal animation owns `transform` on this same element and runs
+   with `both`, so it holds `translate(0, 0)` after landing and would silently
+   cancel a transform-based lift. The compensating bottom margin keeps the row's
+   height unchanged so nothing below it shifts. */
+.mahjong-tile-lifted {
+  margin-top: calc(var(--tile-depth) * -0.5px);
+  margin-bottom: calc(var(--tile-depth) * 0.5px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -2px 3px -1px rgba(0, 0, 0, 0.24),
+    calc(var(--tile-depth) * 0.14px) calc(var(--tile-depth) * 0.14px) 0 rgba(0, 0, 0, 0.13),
+    calc(var(--tile-depth) * 0.28px) calc(var(--tile-depth) * 0.28px) 0 rgba(0, 0, 0, 0.15),
+    calc(var(--tile-depth) * 0.42px) calc(var(--tile-depth) * 0.42px) 0 rgba(0, 0, 0, 0.17),
+    calc(var(--tile-depth) * 0.56px) calc(var(--tile-depth) * 0.56px) 0 rgba(0, 0, 0, 0.19),
+    calc(var(--tile-depth) * 0.7px) calc(var(--tile-depth) * 0.7px) 0 rgba(0, 0, 0, 0.21),
+    0 0 0 1px rgba(0, 0, 0, 0.22),
+    calc(var(--tile-depth) * 0.8px) calc(var(--tile-depth) * 2px) 10px -2px rgba(0, 0, 0, 0.34),
+    calc(var(--tile-depth) * 1.2px) calc(var(--tile-depth) * 4px) 28px -8px rgba(0, 0, 0, 0.42);
+}
+
+/* The tile a player is choosing between, on hover.
+
+   A small tilt toward the viewer, which is the one place a tile earns a real 3D
+   transform: it is being *turned* in the hand, and a flat lift cannot say that.
+   Cheap — `rotate3d` on a composited layer, no layout — and it wins nothing
+   from the deal animation because a tile is never hovered mid-flight.
+
+   `perspective` lives here rather than on the rack so the tilt is measured from
+   the tile's own centre; on a parent, tiles at the edge of a long rack would
+   skew toward the middle as though each were a different distance away. */
+.mahjong-tile-tiltable {
+  perspective: 340px;
+  transition:
+    transform 140ms cubic-bezier(0.2, 0.8, 0.3, 1),
+    box-shadow 140ms ease-out;
+}
+
+.mahjong-tile-tiltable:hover,
+.mahjong-tile-tiltable:focus-visible {
+  transform: rotate3d(1, -0.35, 0, 7deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The tilt is decoration, unlike a dealt tile's arrival — it says "you can
+     pick this up", which the pointer already says. So it goes entirely rather
+     than being softened, and the hover cue falls back to the ring the component
+     draws anyway. */
+  .mahjong-tile-tiltable {
+    transition: none;
+  }
+
+  .mahjong-tile-tiltable:hover,
+  .mahjong-tile-tiltable:focus-visible {
+    transform: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   A matched pair flying off the board.
+
+   The two tiles leave *together and outward* — one to each side — rather than
+   fading where they sat. That is the whole point: a fade says "these two are
+   gone", where a paired flight says "these two went together", which is the one
+   fact the player wants confirmed after a match. It also gives the eye
+   something to follow away from the gap, so the board underneath is read as
+   newly exposed rather than as a hole that appeared.
+
+   The direction is per-tile and arrives as `--fly-x` / `--fly-y`, because only
+   the view knows where each half of the pair sat — the left tile should exit
+   left. Same reasoning as `--card-deal-from-x` on a dealt card, and the
+   mirror-image of it: a deal flies *in* from a known place, this flies *out*
+   toward one.
+
+   Deliberately NOT the deal animation reversed. A dealt tile lands flat and
+   square, because it is coming to rest; a cleared tile spins and shrinks as it
+   goes, because it is being tossed aside. Reusing `card-deal-fly` with a
+   negative duration was the obvious shortcut and reads as a tile being
+   un-dealt, which is what `undo` means here — a different event that must not
+   look the same.
+--------------------------------------------------------------------------- */
+@keyframes mahjong-tile-fly {
+  0% {
+    transform: translate(0, 0) rotate(0deg) scale(1);
+    opacity: 1;
+  }
+  /* Held opaque most of the way, so the tile is seen *travelling* rather than
+     dissolving on the spot. The fade is only there to stop it popping out of
+     existence at the end of its arc. */
+  55% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--fly-x, 4rem), var(--fly-y, -3rem))
+      rotate(var(--fly-spin, 24deg)) scale(0.55);
+    opacity: 0;
+  }
+}
+
+.animate-mahjong-fly {
+  animation: mahjong-tile-fly var(--fly-ms, 420ms) cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+  /* The tile is leaving, so it must not intercept a click on whatever is under
+     it — a player tapping the next pair mid-flight would otherwise hit a tile
+     that is already gone from the game state. */
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* A pair clearing is a real event, not decoration, so it keeps a cue — but
+     the travel and the spin go, as they do for a dealt card. A short fade in
+     place still says "those two left" without anything flying across the
+     board. */
+  .animate-mahjong-fly {
+    animation: mahjong-tile-fade var(--fly-ms, 420ms) ease-out both;
+  }
+}
+
+@keyframes mahjong-tile-fade {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   A hinted tile.
+
+   The loudest state a tile has, on purpose. A hint answers "where do I even
+   look" across a board of up to 144 tiles, so it has to be findable in one
+   sweep of the eye — and it competes against a board where every *free* tile
+   already carries a thin brass ring. Routing the hint through the same ring was
+   the first attempt and it read as nothing at all: a slightly thicker brass
+   edge among forty brass edges.
+
+   So a hint is a **wash plus a pulse**, neither of which any other tile state
+   uses. The wash tints the whole face rather than its edge, which is what makes
+   it register peripherally; the pulse is what makes it register at all on a
+   board the player is already scanning.
+
+   The tint is `--brass` over the fixed ivory face, not a literal colour: the
+   tile body does not follow the theme, but the app's *accent* still should, so
+   a hint on the BMS palette is purple where the tile stays ivory. That split is
+   deliberate — the object is fixed, the annotation on it is themed.
+--------------------------------------------------------------------------- */
+.mahjong-tile-hinted {
+  /* Layered over the face's own sheen, so the tile keeps its material and gains
+     a colour cast rather than being repainted. */
+  background-image:
+    linear-gradient(0deg, color-mix(in srgb, var(--brass) 42%, transparent) 0%,
+      color-mix(in srgb, var(--brass) 42%, transparent) 100%),
+    linear-gradient(
+      155deg,
+      rgba(255, 255, 255, 0.11) 0%,
+      rgba(255, 255, 255, 0.04) 30%,
+      transparent 58%,
+      rgba(0, 0, 0, 0.08) 100%
+    );
+  animation: mahjong-tile-pulse 900ms ease-in-out infinite;
+}
+
+/* The pulse breathes the ring's glow rather than the tile's size or position.
+
+   Not a scale or a bounce: a hinted tile sits inside a stack, and growing it
+   would push it visually over its neighbours and misrepresent which tile is on
+   top. A glow is the one property that can grow without lying about the
+   geometry. It also leaves `transform` free, which matters because the fly-away
+   animation owns that property on this same element — a pulse using it would
+   fight the exit of a hinted pair the moment the player took the hint. */
+@keyframes mahjong-tile-pulse {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      inset 0 -2px 3px -1px rgba(0, 0, 0, 0.24),
+      0 0 0 1px rgba(0, 0, 0, 0.2),
+      0 0 6px 1px color-mix(in srgb, var(--brass) 55%, transparent);
+  }
+  50% {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      inset 0 -2px 3px -1px rgba(0, 0, 0, 0.24),
+      0 0 0 1px rgba(0, 0, 0, 0.2),
+      0 0 14px 4px color-mix(in srgb, var(--brass) 85%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The wash stays — it is the part carrying the information — and only the
+     breathing stops. A hint that vanished entirely under reduced motion would
+     make a paid-for aid do nothing, which is worse than a static highlight. */
+  .mahjong-tile-hinted {
+    animation: none;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      inset 0 -2px 3px -1px rgba(0, 0, 0, 0.24),
+      0 0 0 1px rgba(0, 0, 0, 0.2),
+      0 0 12px 3px color-mix(in srgb, var(--brass) 75%, transparent);
+  }
+}
+
+/* ---------------------------------------------------------------------------
    PhotosViewer slideshow transitions
    ---------------------------------------------------------------------------
    Entry animations on a remounted <img>, not a cross-fade between two stacked
@@ -1060,4 +1461,141 @@ html[data-music-player="full"] {
   .animate-photo-slide {
     animation: photo-fade 200ms ease-out both;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   The sudoku board.
+
+   Three classes, and the split is the whole point of the design:
+
+     1. `.sudoku-board` — the tray the 81 cells sit in. A groove cut into the
+        page, same reasoning as `.progress-3d-track`: the cells are objects
+        resting in it, so its lip is lit at the bottom and shaded at the top,
+        the inverse of a raised surface.
+     2. `.sudoku-box-seams` — the six lines dividing the nine 3x3 boxes, drawn
+        as ONE overlay layer stretched across the whole grid.
+     3. `.sudoku-cell` — a cell's own low bevel.
+
+   Why the seams moved off the cells. The first version thickened the border of
+   every cell sitting on a box boundary. That cannot be made to look right: a
+   2px border drawn inside a cell that also has a 1px border of its own and a
+   2px corner radius produces a line that is doubled in places, notched at
+   every corner, and lands a half-pixel off wherever the fractional cell width
+   of a viewport-sized board rounds the other way. A seam is not a property of
+   a cell — it is a line on the board — so it is drawn on the board, once,
+   where it can be continuous and pixel-exact.
+
+   The seams are a background-image on a pseudo-element rather than six
+   absolutely-positioned divs so the count stays zero-DOM, and they are
+   `linear-gradient` hard stops rather than a `repeating-linear-gradient`
+   because a repeat quantises to a whole number of cells and drifts across a
+   board whose width is `min(22rem, 88vw, 52vh)`. Percentage stops are exact at
+   every width.
+
+   Each seam is a lit/shadowed pair, not a single grey: a dark line with a
+   bright line beneath it reads as a groove pressed into the tray, which is the
+   3D the board wants. Translucent black and white only, so it inverts with
+   every theme — the same constraint `.paper-texture` follows. */
+.sudoku-board {
+  background-image: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.12) 0%,
+    transparent 12%,
+    transparent 88%,
+    rgba(255, 255, 255, 0.03) 100%
+  );
+  box-shadow:
+    /* The groove's lip: shaded at the top where the wall faces away from the
+       lamp, lit along the bottom where it catches it. */
+    inset 0 2px 4px -1px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(0, 0, 0, 0.22),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.07),
+    /* A hairline ring outside `border-line`, which is deliberately
+       low-contrast in every theme and cannot carry the edge alone. */ 0 0 0 1px
+      rgba(0, 0, 0, 0.18),
+    /* The tray's own cast onto the page. */ 0 2px 6px -2px rgba(0, 0, 0, 0.26),
+    0 8px 20px -10px rgba(0, 0, 0, 0.3);
+}
+
+.sudoku-box-seams::after {
+  content: "";
+  position: absolute;
+  /* Spans exactly the 81 cells and stops at the tray's inner wall rather than
+     running into its lip. `inset` is measured from the padding box (the
+     pseudo-element's containing block is the board's *padding* box, not its
+     border box), so this is the board's `p-2` alone and the 1px border is
+     already excluded — no need to add it back. */
+  inset: 0.5rem;
+  pointer-events: none;
+  /* Above the cells: a seam is drawn on the board's surface, over the pieces
+     lying on it, which is also what keeps a selected cell's brass fill from
+     covering the line through it. */
+  z-index: 1;
+  background-image:
+    /* The two vertical seams, at a third and two thirds. Each is 2px of dark
+       with 1px of light on its right — the far wall of the groove. */
+    linear-gradient(
+      90deg,
+      transparent calc(33.3333% - 1px),
+      rgba(0, 0, 0, 0.42) calc(33.3333% - 1px),
+      rgba(0, 0, 0, 0.42) calc(33.3333% + 1px),
+      rgba(255, 255, 255, 0.08) calc(33.3333% + 1px),
+      rgba(255, 255, 255, 0.08) calc(33.3333% + 2px),
+      transparent calc(33.3333% + 2px)
+    ),
+    linear-gradient(
+      90deg,
+      transparent calc(66.6666% - 1px),
+      rgba(0, 0, 0, 0.42) calc(66.6666% - 1px),
+      rgba(0, 0, 0, 0.42) calc(66.6666% + 1px),
+      rgba(255, 255, 255, 0.08) calc(66.6666% + 1px),
+      rgba(255, 255, 255, 0.08) calc(66.6666% + 2px),
+      transparent calc(66.6666% + 2px)
+    ),
+    /* The two horizontal seams, the same construction rotated. */
+    linear-gradient(
+      180deg,
+      transparent calc(33.3333% - 1px),
+      rgba(0, 0, 0, 0.42) calc(33.3333% - 1px),
+      rgba(0, 0, 0, 0.42) calc(33.3333% + 1px),
+      rgba(255, 255, 255, 0.08) calc(33.3333% + 1px),
+      rgba(255, 255, 255, 0.08) calc(33.3333% + 2px),
+      transparent calc(33.3333% + 2px)
+    ),
+    linear-gradient(
+      180deg,
+      transparent calc(66.6666% - 1px),
+      rgba(0, 0, 0, 0.42) calc(66.6666% - 1px),
+      rgba(0, 0, 0, 0.42) calc(66.6666% + 1px),
+      rgba(255, 255, 255, 0.08) calc(66.6666% + 1px),
+      rgba(255, 255, 255, 0.08) calc(66.6666% + 2px),
+      transparent calc(66.6666% + 2px)
+    );
+}
+
+/* A cell: a thin slab lying in the tray.
+
+   Deliberately a *low* bevel — the depth budget of the board belongs to the
+   seams, and 81 strongly-bevelled cells fight them and read as bubble wrap.
+   One lit top edge, one shaded underside, one hairline. The same lit-top/
+   dark-bottom pair as every other raised surface in the app, just quieter. */
+.sudoku-cell {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.14),
+    0 1px 0 rgba(0, 0, 0, 0.1);
+}
+
+/* A given (one of the puzzle's own clues) is pressed *into* the board rather
+   than resting on it: the player cannot move it, and inverting the bevel says
+   so without spending a colour.
+
+   Mutually exclusive with `.sudoku-cell`, not layered over it — both spend the
+   whole `box-shadow` property, so a cell that carried both would resolve by
+   stylesheet order rather than by anything the call site can see. The view
+   picks exactly one. */
+.sudoku-cell-given {
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.22),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.05);
 }
