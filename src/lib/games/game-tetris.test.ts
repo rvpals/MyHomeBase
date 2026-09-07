@@ -98,9 +98,19 @@ describe("cellsOf", () => {
   });
 
   it("returns an O piece unchanged in every rotation", () => {
-    const base = cellsOf({ kind: "O", rotation: 0, row: 3, col: 3 });
+    // Compared as a SET, not a list. `cellsOf` describes which cells a piece occupies;
+    // nothing downstream (collision, lock, ghost, the view) cares what order they come
+    // in. Turning the 2x2 box maps its four cells onto themselves but visits them in a
+    // different order, so an order-sensitive `toEqual` would fail on a piece that has
+    // provably not moved.
+    const asSet = (piece: Parameters<typeof cellsOf>[0]) =>
+      cellsOf(piece)
+        .map((cell) => `${cell.row},${cell.col}`)
+        .sort();
+
+    const base = asSet({ kind: "O", rotation: 0, row: 3, col: 3 });
     for (const rotation of [1, 2, 3] as const) {
-      expect(cellsOf({ kind: "O", rotation, row: 3, col: 3 })).toEqual(base);
+      expect(asSet({ kind: "O", rotation, row: 3, col: 3 })).toEqual(base);
     }
   });
 
@@ -186,10 +196,16 @@ describe("rotate", () => {
     // An I flat against the left wall cannot turn in place — its vertical form needs a
     // column the box does not reach. Without kicks this silently does nothing, which
     // is the single most common way rotation feels broken.
-    const state = stateWith(emptyField(), { kind: "I", rotation: 1, row: 5, col: -2 });
+    // `col: -1`, not `-2`. At -2 the horizontal form needs a +2 nudge and `KICKS.I`
+    // offers only -2 and +1, so the turn is legitimately refused — the test was asserting
+    // a kick the SRS table does not contain, rather than a broken implementation. At -1
+    // the `[1, 0]` offset is what rescues the turn, which is the behaviour under test.
+    const state = stateWith(emptyField(), { kind: "I", rotation: 1, row: 5, col: -1 });
     const turned = rotate(state, 1);
     expect(turned).not.toBe(state);
     expect(canPlace(turned.field, turned.active)).toBe(true);
+    // Specifically kicked right, off the wall.
+    expect(turned.active.col).toBe(0);
   });
 
   it("leaves an O piece completely untouched", () => {
@@ -368,10 +384,18 @@ describe("lockPiece", () => {
   });
 
   it("tops out when the new piece cannot be placed", () => {
-    // Fill the spawn area so the next piece has nowhere to go.
+    // Fill the spawn area so the next piece has nowhere to go — but leave the LAST
+    // column empty in every row.
+    //
+    // Filling every column made these rows complete, so `lockPiece` cleared all four
+    // before spawning and the piece then had the whole board to itself: the test was
+    // asserting a top-out it had just deleted the cause of. A gap keeps the rows
+    // incomplete, so they survive the clear and genuinely block the spawn. Column 9 is
+    // outside every piece's spawn box (spawns are centred, widest is I at cols 3-6), so
+    // leaving it open does not give the new piece anywhere to go.
     const blocked: { row: number; col: number }[] = [];
     for (let row = 0; row < BUFFER_ROWS + 2; row += 1) {
-      for (let col = 0; col < PLAYFIELD_WIDTH; col += 1) blocked.push({ row, col });
+      for (let col = 0; col < PLAYFIELD_WIDTH - 1; col += 1) blocked.push({ row, col });
     }
     const state = stateWith(fieldWith(blocked), {
       kind: "O",

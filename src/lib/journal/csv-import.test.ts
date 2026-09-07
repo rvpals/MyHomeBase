@@ -265,7 +265,10 @@ describe("importJournalCsv", () => {
 
     const [entry] = repo.listEntries();
     expect(entry.date).toBe("2026-04-27"); // M/D/YY -> ISO
-    expect(entry.time).toBe("13:45:00"); // kept for fidelity
+    // Normalized to HH:MM, not kept verbatim: `normalizeEntryTime` drops the seconds
+    // component on purpose, because two imports of the same events wrote "15:30" and
+    // "15:30:00" and the date+time+title duplicate check then saw every row as new.
+    expect(entry.time).toBe("13:45");
     expect(entry.categories).toEqual(["FAMILY", "MEDICAL"]); // comma split
     // Tags (space split) merged with People (comma split), de-duped by createEntry.
     expect(entry.tags).toEqual(["Shufen", "Medical", "Liang", "Ting"]);

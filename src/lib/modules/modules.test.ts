@@ -189,12 +189,14 @@ describe("setModuleIcon", () => {
   it("changes just the glyph, leaving the other fields alone", () => {
     const repo = fakeRepo(sample);
     setModuleIcon(repo, "real-estate-investment", "wallet");
-    const module = getModuleBySlug(repo, "real-estate-investment");
-    expect(module?.icon).toBe("wallet");
+    // Named `found`, not `module`: assigning to `module` shadows Node's own
+    // global and trips @next/next/no-assign-module-variable.
+    const found = getModuleBySlug(repo, "real-estate-investment");
+    expect(found?.icon).toBe("wallet");
     // The point of a separate write: nothing else on the row moves.
-    expect(module?.shortName).toBe("Real Estate");
-    expect(module?.sequence).toBe(1);
-    expect(module?.isVisible).toBe(true);
+    expect(found?.shortName).toBe("Real Estate");
+    expect(found?.sequence).toBe(1);
+    expect(found?.isVisible).toBe(true);
   });
 
   it("sets the icon on a hidden module too", () => {

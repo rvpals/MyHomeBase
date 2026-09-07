@@ -25,7 +25,11 @@ describe("planFavPhotoDownload", () => {
     ]);
 
     expect(plan[0]!.entryName).toBe("IMG_0001.jpg");
-    expect(plan[1]!.entryName).toBe("2021 - 2021 07 04 Fireworks - IMG_0001.jpg");
+    // The folder keeps its hyphens: `sanitiseNameSegment` strips only what Windows and
+    // macOS actually refuse (`<>:"/\|?*` and control characters). A date is the most
+    // common folder name in this archive, and `2021 07 04` is not the name anyone would
+    // recognise.
+    expect(plan[1]!.entryName).toBe("2021 - 2021-07-04 Fireworks - IMG_0001.jpg");
     // Whatever the names, they must differ — that is the contract `buildZip` relies on.
     expect(new Set(plan.map((entry) => entry.entryName)).size).toBe(2);
   });
