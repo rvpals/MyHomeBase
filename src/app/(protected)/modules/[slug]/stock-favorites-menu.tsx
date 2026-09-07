@@ -47,9 +47,13 @@ export function StockFavoritesMenu() {
   // Loaded when the menu opens rather than on mount: the list changes from inside
   // the viewer dialog, so fetching on open is also what keeps it fresh after a
   // star is flipped without needing the dashboard to revalidate.
+  // Same shape as the other fetch-on-open effects: the flagged `setIsLoading(true)`
+  // must run before the awaited action, so the menu shows a spinner rather than an
+  // empty list. Not a cascading render — it settles once the rows arrive.
   useEffect(() => {
     if (!isOpen) return;
     let stale = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsLoading(true);
     void listFavoriteQuotesAction()
       .then((rows) => {

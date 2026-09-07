@@ -94,6 +94,7 @@ const KIND_CHIP: Record<ChangeKind, string> = {
   added: "bg-brass-soft text-brass-dark",
   changed: "border border-line text-muted",
   fixed: "border border-emerald-400/40 text-emerald-400",
+  removed: "border border-rose-400/40 text-rose-400",
 };
 
 function KindBadge({ kind, count }: { kind: ChangeKind; count?: number }) {
@@ -115,10 +116,21 @@ function CountsCard({ label, caption, counts }: { label: string; caption: string
         {counts.total}{" "}
         <span className="text-base text-muted">{counts.total === 1 ? "change" : "changes"}</span>
       </p>
+      {/* `removed` and `untagged` are conditional: `[Removed]` is rare, and
+          `untagged` only appears for releases written before the kind-tag
+          convention — showing either as a permanent "0" would add noise to
+          every other release. */}
       <div className="mt-3 flex flex-wrap gap-2">
         <KindBadge kind="added" count={counts.added} />
         <KindBadge kind="changed" count={counts.changed} />
         <KindBadge kind="fixed" count={counts.fixed} />
+        {counts.removed > 0 ? <KindBadge kind="removed" count={counts.removed} /> : null}
+        {counts.untagged > 0 ? (
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-line px-2 py-0.5 text-[0.65rem] font-medium uppercase tracking-wide text-muted">
+            <span className="font-mono">{counts.untagged}</span>
+            untagged
+          </span>
+        ) : null}
       </div>
       <p className="mt-3 text-xs text-muted">{caption}</p>
     </div>
@@ -368,9 +380,15 @@ export function AboutView({
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refreshLog();
     // Once on mount. `refreshLog` closes over nothing that changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    //
+    // `set-state-in-effect` is disabled rather than satisfied: the setState calls
+    // are inside `refreshLog`'s awaited branches, so they land after the fetch
+    // resolves, not synchronously in this effect. There is no cascading render to
+    // avoid — the log simply isn't known until the request comes back.
+    // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
   }, []);
 
   // The deployment pending deletion, or null when the confirm isn't up. Held here rather

@@ -127,8 +127,13 @@ export function PhotosViewer({
   // AbortController: the action is a server call whose result we simply stop applying,
   // and a reader who reopens on a different folder must not see the first one's photos
   // arrive late and win.
+  // The two flagged calls set the loading flag and clear the last error before the
+  // folder read is awaited, so the viewer shows "loading" rather than the previous
+  // folder's photos. Neither is derivable during render — whether a request is in
+  // flight is not a function of `folderPath` alone.
   useEffect(() => {
     let isStale = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsLoading(true);
     setError(undefined);
 
@@ -215,12 +220,17 @@ export function PhotosViewer({
   //
   // It advances with `setIndex` directly, NOT `goNext`, which pauses on purpose: a timer
   // that paused itself would show exactly two photos.
+  // `setIsPlaying(false)` on the last photo is the flagged call. It stays in the
+  // effect: "the run has finished" is a real state transition, not a derived value
+  // — the reader can still press play again from the last photo, so it cannot be
+  // computed from `index` and `photos.length` without making the button dead.
   useEffect(() => {
     if (!isPlaying || photos.length === 0) return;
 
     // The last photo ends the run rather than wrapping, matching `PhotoLightbox`:
     // leaving it going finishes on a still picture instead of looping all evening.
     if (index >= photos.length - 1) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsPlaying(false);
       return;
     }
