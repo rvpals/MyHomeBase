@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/button";
+import { useGameSounds } from "@/components/use-game-sounds";
 import {
   MINESWEEPER_DIFFICULTIES,
   MINESWEEPER_SETUP,
@@ -60,6 +61,74 @@ const NUMBER_COLOURS: Record<number, string> = {
   8: "text-muted",
 };
 
+/* ---------------------------------------------------------------------------------
+   Sound. Synthesized rather than loaded, so the game ships no audio files.
+--------------------------------------------------------------------------------- */
+
+/**
+ * Minesweeper's cue vocabulary, over the arcade's shared beeper.
+ *
+ * `useGameSounds` owns the audio context and the envelope; what lives here is only
+ * *what a Minesweeper event sounds like*.
+ */
+function useSounds(enabled: boolean) {
+  const sounds = useGameSounds(enabled);
+
+  return useMemo(
+    () => ({
+      /** One cell uncovered: a dry, quiet tick. */
+      reveal: () =>
+        sounds.play({ startHz: 300, endHz: 270, durationMs: 40, type: "square", peak: 0.025 }),
+      /**
+       * A flood fill opening several cells at once.
+       *
+       * Pitched up with the size of the cascade — a two-cell opening and a
+       * fifty-cell one are the difference between a nudge and a breakthrough, and the
+       * board gives no other feedback about which just happened. Capped so a huge
+       * opening on an expert board does not shriek.
+       */
+      cascade: (cells: number) => {
+        const reach = Math.min(cells, 40) / 40;
+        sounds.play({
+          startHz: 280,
+          endHz: 420 + reach * 520,
+          durationMs: 150 + reach * 180,
+          type: "triangle",
+          peak: 0.05,
+        });
+      },
+      /** Planting a flag. */
+      flag: () =>
+        sounds.play({ startHz: 620, endHz: 720, durationMs: 60, type: "sine", peak: 0.04 }),
+      /** Taking one back — the same shape, inverted. */
+      unflag: () =>
+        sounds.play({ startHz: 720, endHz: 560, durationMs: 60, type: "sine", peak: 0.035 }),
+      /** The first click of a board, when the mines are laid and the clock starts. */
+      start: () =>
+        sounds.play({ startHz: 400, endHz: 560, durationMs: 90, type: "sine", peak: 0.04 }),
+      /** A mine. The one cue in the game that is allowed to be startling. */
+      boom: () =>
+        sounds.playSequence([
+          { startHz: 180, endHz: 40, durationMs: 500, type: "sawtooth", peak: 0.1 },
+          { startHz: 90, endHz: 30, durationMs: 620, type: "square", peak: 0.06 },
+        ]),
+      /** A cleared board. */
+      cleared: () =>
+        sounds.playSequence(
+          [523, 659, 784, 1047].map((hz, index) => ({
+            startHz: hz,
+            endHz: hz,
+            durationMs: index === 3 ? 300 : 120,
+            type: "triangle" as OscillatorType,
+            peak: 0.08,
+            afterMs: index * 95,
+          })),
+        ),
+    }),
+    [sounds],
+  );
+}
+
 export function GameMinesweeperView({ bestScore }: { bestScore: number }) {
   // Built during render rather than seeded in a mount effect, unlike Sudoku: a fresh
   // Minesweeper board is deterministic — the mines are not laid until the first click
@@ -72,6 +141,57 @@ export function GameMinesweeperView({ bestScore }: { bestScore: number }) {
   // Guards the one-shot save: `outcome` alone would re-fire on every re-render after
   // the clear, posting the same score repeatedly.
   const savedRef = useRef(false);
+
+  const [soundOn, setSoundOn] = useState(true);
+
+  const sounds = useSounds(soundOn);
+
+  /**
+   * The cues, read off the change in state rather than fired from a handler.
+   *
+   * One state object holds the whole board, so a diff says exactly what a click did —
+   * and it says it for a chord and a plain reveal alike, which the handlers themselves
+   * cannot distinguish without repeating `canChord`.
+   *
+   * Everything here keys on a counter, never on `elapsedSeconds`: the clock ticks a new
+   * state object once a second, and anything that fired on "state changed" would click
+   * steadily through a game.
+   */
+  const previousRef = useRef<MinesweeperState | undefined>(undefined);
+  useEffect(() => {
+    const previous = previousRef.current;
+    previousRef.current = state;
+
+    // First observation, or a board that was just replaced: nothing meaningful to
+    // compare against. Detected by identity — `newGame` builds a whole new state, and
+    // every rule returns a *derived* object, so only a reset breaks the chain.
+    //
+    // Not `state.revealed === 0`: flagging before the first reveal is ordinary play and
+    // must still make a noise.
+    if (!previous || previous.difficulty !== state.difficulty) return;
+    if (state.revealed === 0 && state.flags === 0 && !state.mined) return;
+
+    if (!previous.outcome && state.outcome === "hit-mine") {
+      sounds.boom();
+      return;
+    }
+    if (!previous.outcome && state.outcome === "cleared") {
+      sounds.cleared();
+      return;
+    }
+
+    // The first click lays the mines and starts the clock. It also reveals, so this is
+    // a lead-in rather than the whole cue.
+    if (!previous.mined && state.mined) sounds.start();
+
+    const opened = state.revealed - previous.revealed;
+    if (opened > 1) sounds.cascade(opened);
+    else if (opened === 1) sounds.reveal();
+
+    // Flags move one at a time, so the sign is the whole story.
+    if (state.flags > previous.flags) sounds.flag();
+    else if (state.flags < previous.flags) sounds.unflag();
+  }, [state, sounds]);
 
   // A long press on a touchscreen flags. The timer id lives in a ref rather than
   // state because changing it must not re-render — a re-render mid-press would be a
@@ -307,6 +427,18 @@ export function GameMinesweeperView({ bestScore }: { bestScore: number }) {
         </Button>
         <Button onClick={() => newGame(state.difficulty)} variant="secondary" size="sm">
           New board
+        </Button>
+        {/* Beside the other controls rather than up with the difficulty group, which is
+            a one-of-three choice this doesn't belong to. Not `disabled` on a finished
+            board — muting the win or loss sting is a reasonable thing to want. */}
+        <Button
+          onClick={() => setSoundOn((value) => !value)}
+          variant="secondary"
+          size="sm"
+          aria-pressed={soundOn}
+          title={soundOn ? "Mute sound effects" : "Unmute sound effects"}
+        >
+          {soundOn ? "Sound on" : "Sound off"}
         </Button>
       </div>
 

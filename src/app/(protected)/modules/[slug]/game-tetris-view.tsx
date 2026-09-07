@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/button";
+import { useGameSounds } from "@/components/use-game-sounds";
 import {
   BUFFER_ROWS,
   PLAYFIELD_HEIGHT,
@@ -79,6 +80,172 @@ const PIECE_STYLES: Record<PieceKind, string> = {
 /** The empty-cell treatment, matching 2048's board so the arcade reads as one app. */
 const EMPTY_STYLE = "bg-paper border-line";
 
+/* ---------------------------------------------------------------------------------
+   Sound. Synthesized rather than loaded, so the game ships no audio files.
+--------------------------------------------------------------------------------- */
+
+/**
+ * Tetris's cue vocabulary, over the arcade's shared beeper.
+ *
+ * `useGameSounds` owns the audio context and the envelope; what lives here is only
+ * *what a Tetris event sounds like*, which is the part no other game can share.
+ */
+function useSounds(enabled: boolean) {
+  const sounds = useGameSounds(enabled);
+
+  return useMemo(
+    () => ({
+      /*
+        Every cue here is filtered and none uses `square` or `sawtooth`.
+
+        The first pass did use them, and it sounded metallic and noisy — for four
+        reasons worth recording, because they are easy to reintroduce:
+
+          1. `square`/`sawtooth` carry harmonics all the way up. At low volume through
+             laptop speakers that upper content is most of what you hear, and it reads
+             as electronic harshness rather than as a pitch.
+          2. A 40ms cue is too short to *be* a note. You hear the attack transient
+             instead, which is broadband — i.e. noise.
+          3. Nothing rolled off the top, so every harmonic arrived intact.
+          4. A 10ms attack is itself a click, whatever waveform is underneath it.
+
+        So: sine and triangle only, cutoffs low enough to leave the fundamental and a
+        couple of harmonics, lengths roughly doubled, and softer attacks. Still short
+        enough not to drone when a key is held.
+      */
+      /** A soft, woody tick as the piece steps sideways. */
+      move: () =>
+        sounds.play({
+          startHz: 200,
+          endHz: 185,
+          durationMs: 70,
+          type: "sine",
+          peak: 0.03,
+          cutoffHz: 700,
+          attackMs: 16,
+        }),
+      /** A rotation: same character, pitched up so the two stay distinguishable. */
+      turn: () =>
+        sounds.play({
+          startHz: 330,
+          endHz: 300,
+          durationMs: 80,
+          type: "triangle",
+          peak: 0.032,
+          cutoffHz: 1100,
+          attackMs: 16,
+        }),
+      /** A piece coming to rest: a low, rounded thud. */
+      lock: () =>
+        sounds.play({
+          startHz: 150,
+          endHz: 95,
+          durationMs: 150,
+          type: "sine",
+          peak: 0.055,
+          cutoffHz: 600,
+          attackMs: 14,
+        }),
+      /**
+       * A hard drop.
+       *
+       * Was `sawtooth` — the single harshest cue in the game, and the one that fires
+       * hardest. A filtered triangle keeps the weight and drops the buzz.
+       */
+      slam: () =>
+        sounds.play({
+          startHz: 190,
+          endHz: 55,
+          durationMs: 220,
+          type: "triangle",
+          peak: 0.07,
+          cutoffHz: 900,
+          attackMs: 12,
+        }),
+      /** Swapping into the hold slot: a short two-note flick. */
+      hold: () =>
+        sounds.playSequence([
+          { startHz: 460, endHz: 460, durationMs: 90, type: "sine", peak: 0.04, cutoffHz: 1600, attackMs: 14 },
+          {
+            startHz: 620,
+            endHz: 620,
+            durationMs: 110,
+            type: "sine",
+            peak: 0.04,
+            cutoffHz: 1800,
+            attackMs: 14,
+            afterMs: 70,
+          },
+        ]),
+      /**
+       * A cleared line: bells.
+       *
+       * Notes from a pentatonic scale (C–D–E–G–A), which has no semitone clashes — so
+       * however many ring together, and however much they overlap as they decay, the
+       * result stays consonant. A regular major scale would put a second next to a third
+       * and sour the four-row peal, which is the one that most needs to sound like a
+       * reward.
+       *
+       * The peal grows with the clear: one row is a single struck bell, four rows are
+       * four rising ones with the last held longest. Brightness rises with the run too,
+       * so the top of a tetris sparkles rather than merely being higher.
+       */
+      clear: (rows: number) => {
+        const notes = [523.25, 587.33, 659.25, 783.99, 880.0];
+        const count = Math.min(Math.max(rows, 1), 4);
+        // A bigger clear starts higher up the scale as well as ringing more bells, so
+        // a tetris opens brighter than a single instead of merely lasting longer.
+        const from = count - 1;
+
+        for (let index = 0; index < count; index += 1) {
+          const last = index === count - 1;
+          sounds.playBell({
+            hz: notes[Math.min(from + index, notes.length - 1)],
+            // The final bell rings on after the others have faded — that tail is what
+            // makes a peal feel finished rather than cut off.
+            durationMs: last ? 1100 : 620,
+            peak: last ? 0.085 : 0.06,
+            brightness: 0.4 + index * 0.12,
+            afterMs: index * 110,
+          });
+        }
+      },
+      /** Two rising notes on reaching a new level. */
+      levelUp: () =>
+        sounds.playSequence([
+          { startHz: 620, endHz: 620, durationMs: 130, type: "sine", peak: 0.06, cutoffHz: 2000, attackMs: 14 },
+          {
+            startHz: 930,
+            endHz: 930,
+            durationMs: 260,
+            type: "sine",
+            peak: 0.06,
+            cutoffHz: 2600,
+            attackMs: 14,
+            afterMs: 120,
+          },
+        ]),
+      /**
+       * A top-out.
+       *
+       * The one place a little grit still earns its keep, but heavily filtered — a bare
+       * sawtooth here was closer to a fault buzzer than to a game over.
+       */
+      gameOver: () =>
+        sounds.play({
+          startHz: 320,
+          endHz: 55,
+          durationMs: 800,
+          type: "triangle",
+          peak: 0.08,
+          cutoffHz: 700,
+          attackMs: 25,
+        }),
+    }),
+    [sounds],
+  );
+}
+
 export function GameTetrisView({ bestScore }: { bestScore: number }) {
   // Lazily initialised, and only ever on the client.
   //
@@ -89,6 +256,9 @@ export function GameTetrisView({ bestScore }: { bestScore: number }) {
   const [state, setState] = useState<TetrisState | undefined>(undefined);
   const [paused, setPaused] = useState(false);
   const [saveNote, setSaveNote] = useState<string | undefined>(undefined);
+  const [soundOn, setSoundOn] = useState(true);
+
+  const sounds = useSounds(soundOn);
 
   // Guards the one-shot save: `outcome` alone would re-fire on every re-render after
   // the game ends, posting the same score repeatedly.
@@ -131,6 +301,9 @@ export function GameTetrisView({ bestScore }: { bestScore: number }) {
        Starting a timed animation in response to a state change is exactly what an
        effect is for; there is no render-time equivalent. */
     setClearing(clear);
+    // The cue rides the same effect as the animation, so the two are always in step —
+    // and it is keyed on `clearId` for the same reason, so a repeated clear re-fires.
+    sounds.clear(clear.rows.length);
     const timer = window.setTimeout(() => setClearing(undefined), LINE_CLEAR_MS);
     return () => window.clearTimeout(timer);
     // `clearId` only: depending on the object would restart the timer on every
@@ -164,6 +337,53 @@ export function GameTetrisView({ bestScore }: { bestScore: number }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state?.level, over, paused, clearing, state === undefined]);
 
+  /**
+   * The cues that belong to events rather than to keypresses.
+   *
+   * A lock, a level change and a top-out are all things the *game* does — gravity can
+   * cause any of them with no input at all — so they are detected by comparing against
+   * the previous state rather than fired from a control handler. `pieces` increments on
+   * every lock, which makes it the one counter that catches a piece coming to rest
+   * however it got there.
+   *
+   * A lock that completed a line stays silent: `clear` fires for that same transition
+   * and the thud only muddies it.
+   */
+  const previousRef = useRef<{ pieces: number; level: number; over: boolean } | undefined>(
+    undefined,
+  );
+
+  /*
+    A hard drop locks the piece in the same transition, so `pieces` increments and the
+    lock cue would land on top of the slam. The slam is the heavier, more specific sound
+    of the two, so it wins and swallows the thud that follows it. Set by `slam` below,
+    consumed by the effect here.
+  */
+  const slamLockRef = useRef(false);
+  useEffect(() => {
+    if (!state) {
+      previousRef.current = undefined;
+      return;
+    }
+
+    const previous = previousRef.current;
+    previousRef.current = { pieces: state.pieces, level: state.level, over };
+
+    // First observation of a new game: nothing to compare against, and a cue here would
+    // fire on mount before the player has touched anything.
+    if (!previous) return;
+
+    if (over && !previous.over) {
+      sounds.gameOver();
+      return;
+    }
+    const locked = state.pieces > previous.pieces;
+    const slammed = slamLockRef.current;
+    if (locked) slamLockRef.current = false;
+    if (locked && !slammed && !state.lastClear) sounds.lock();
+    if (state.level > previous.level) sounds.levelUp();
+  }, [state, over, sounds]);
+
   // Save once, when the game ends. In an effect rather than inside the tick because
   // the final score is only known after React has applied the state update.
   useEffect(() => {
@@ -179,21 +399,58 @@ export function GameTetrisView({ bestScore }: { bestScore: number }) {
     });
   }, [over, state]);
 
-  /** Applies one pure rule to the current state. Every control goes through here. */
+  /**
+   * Applies one pure rule to the current state. Every control goes through here.
+   *
+   * `onApplied` fires only when the rule actually changed something. Every refusing
+   * rule in `game-tetris.ts` — a move into a wall, a rotation with no kick that fits, a
+   * second hold — returns the *same object* it was handed, so referential inequality is
+   * an exact test for "the move happened". That is what keeps a piece pressed against
+   * the left wall silent instead of ticking ten times a second.
+   *
+   * The cue is fired from inside the updater, which React may invoke twice under Strict
+   * Mode. Playing a 40ms click twice is inaudible, and the alternative — threading the
+   * result back out through an effect — would cost a render per keypress on the one
+   * screen in the app with a 60fps budget.
+   */
   const apply = useCallback(
-    (rule: (current: TetrisState, random: () => number) => TetrisState) => {
-      setState((current) => (current && !current.outcome ? rule(current, Math.random) : current));
+    (
+      rule: (current: TetrisState, random: () => number) => TetrisState,
+      onApplied?: () => void,
+    ) => {
+      setState((current) => {
+        if (!current || current.outcome) return current;
+        const next = rule(current, Math.random);
+        if (next !== current) onApplied?.();
+        return next;
+      });
     },
     [],
   );
 
-  const moveLeft = useCallback(() => apply((s) => moveHorizontal(s, -1)), [apply]);
-  const moveRight = useCallback(() => apply((s) => moveHorizontal(s, 1)), [apply]);
-  const rotateCw = useCallback(() => apply((s) => rotate(s, 1)), [apply]);
-  const rotateCcw = useCallback(() => apply((s) => rotate(s, -1)), [apply]);
+  const moveLeft = useCallback(
+    () => apply((s) => moveHorizontal(s, -1), sounds.move),
+    [apply, sounds],
+  );
+  const moveRight = useCallback(
+    () => apply((s) => moveHorizontal(s, 1), sounds.move),
+    [apply, sounds],
+  );
+  const rotateCw = useCallback(() => apply((s) => rotate(s, 1), sounds.turn), [apply, sounds]);
+  const rotateCcw = useCallback(() => apply((s) => rotate(s, -1), sounds.turn), [apply, sounds]);
+  // Soft drop is silent by design: gravity moves the piece down anyway, so a cue here
+  // would fire on a held Down key at the drop rate and drown out everything else. The
+  // lock thud at the end of the fall is the feedback.
   const drop = useCallback(() => apply(softDrop), [apply]);
-  const slam = useCallback(() => apply(hardDrop), [apply]);
-  const hold = useCallback(() => apply(holdPiece), [apply]);
+  const slam = useCallback(
+    () =>
+      apply(hardDrop, () => {
+        slamLockRef.current = true;
+        sounds.slam();
+      }),
+    [apply, sounds],
+  );
+  const hold = useCallback(() => apply(holdPiece, sounds.hold), [apply, sounds]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -265,6 +522,16 @@ export function GameTetrisView({ bestScore }: { bestScore: number }) {
           </Button>
           <Button onClick={newGame} variant="secondary" size="sm">
             New game
+          </Button>
+          {/* Worded exactly as Arrow Clearing's, so the arcade's two noisy games
+              present the same control. */}
+          <Button
+            onClick={() => setSoundOn((value) => !value)}
+            variant="secondary"
+            size="sm"
+            title={soundOn ? "Mute sound effects" : "Unmute sound effects"}
+          >
+            {soundOn ? "Sound on" : "Sound off"}
           </Button>
         </div>
       </div>

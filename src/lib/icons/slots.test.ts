@@ -1,13 +1,39 @@
 import { describe, expect, it } from "vitest";
+import { GAME_CATALOGUE } from "@/lib/games";
 import { MODULE_ICON_NAMES } from "@/lib/modules";
 import {
   ICON_SLOTS,
+  gameSlotId,
   getIconSlot,
   groupedIconSlots,
   isIconSlotId,
   sectionSlotId,
   tabSlotId,
 } from "./slots";
+
+
+// The `tree`-namespace concepts TreeIcon can draw, mirrored for this test.
+//
+// `TREE_ICONS` lives in a .tsx that imports React, and nothing under src/lib may import
+// react — so this test cannot read it directly without breaking the library boundary.
+// (`src/lib/music/browse-icons.fixture.ts` mirrors the same table for the same reason;
+// kept separate because that one is scoped to the concepts Music's browse views use.)
+//
+// Previously this test only asserted a tree default was non-empty, which made it blind
+// to the exact failure it documents — a default naming a concept no table has renders
+// blank. Enumerating them costs one line per new glyph.
+//
+// If tree-icons.tsx gains or loses a concept, update this list.
+const TREE_CONCEPTS = [
+  "flash", "note", "clip", "shield", "refresh", "pencil", "trash", "sliders", "gear",
+  "classroom", "list", "newspaper", "plus", "chart", "upload", "quote", "stock-quote",
+  "grid", "window", "palette", "info", "history", "users", "database", "shapes",
+  "search", "magic", "player", "star", "star-filled", "heart", "heart-filled",
+  "photo-stack", "photo", "photo-folder",
+  // The seven Arcade game cards.
+  "game-2048", "game-arrows", "game-tetris", "game-sudoku", "game-blackjack",
+  "game-minesweeper", "game-mahjong",
+] as const;
 
 describe("ICON_SLOTS", () => {
   it("has no duplicate ids", () => {
@@ -48,7 +74,7 @@ describe("ICON_SLOTS", () => {
       if (slot.namespace === "module") {
         expect(MODULE_ICON_NAMES as readonly string[], slot.id).toContain(slot.defaultConcept);
       } else {
-        expect(slot.defaultConcept.length, slot.id).toBeGreaterThan(0);
+        expect(TREE_CONCEPTS as readonly string[], slot.id).toContain(slot.defaultConcept);
       }
     }
   });
@@ -157,6 +183,30 @@ describe("tabSlotId", () => {
   it("converts kebab view slugs to snake", () => {
     expect(tabSlotId("music", "all-songs")).toBe("music_tab_all_songs");
     expect(tabSlotId("music", "folder-tree")).toBe("music_tab_folder_tree");
+  });
+});
+
+describe("gameSlotId", () => {
+  it("derives a registered id for every game in the catalogue", () => {
+    // The Arcade derives a card's slot from its catalogue key, so the same silent
+    // failure applies as for sections and tabs. Read from GAME_CATALOGUE rather than a
+    // hardcoded list, so adding a game fails here until it has a slot — a card with a
+    // missing slot renders no icon at all, which is easy to miss in review.
+    for (const game of GAME_CATALOGUE) {
+      const id = gameSlotId(game.key);
+      expect(getIconSlot(id), `${game.key} -> ${id}`).toBeDefined();
+    }
+  });
+
+  it("converts kebab game keys to snake", () => {
+    expect(gameSlotId("sudoku")).toBe("games_card_sudoku");
+    expect(gameSlotId("arrow-clearing-hard")).toBe("games_card_arrow_clearing_hard");
+  });
+
+  it("does not choke on a game key that never had a slot", () => {
+    // A score outlives its game leaving the catalogue, so the Scores grid can ask for
+    // a key that was never registered. That must be undefined, not a throw.
+    expect(getIconSlot(gameSlotId("withdrawn-game"))).toBeUndefined();
   });
 });
 

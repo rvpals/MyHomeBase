@@ -309,6 +309,26 @@ export function toggleNote(state: SudokuState, index: number, digit: SudokuDigit
 }
 
 /**
+ * Which digits could still legally go in a cell, given what is on the board.
+ *
+ * The candidate list a human pencils in by hand: every digit with no clash against the
+ * cell's row, column or box. Derived from the board as it currently stands, NOT from
+ * the solution — a wrong digit elsewhere therefore narrows this list wrongly, which is
+ * correct behaviour. This is a reasoning aid, not an oracle.
+ *
+ * Empty for a given or a cell already holding a digit — there is nothing left to
+ * choose there — and empty for a cell whose peers have used up all nine digits, which
+ * is itself the useful answer: something already on the board is wrong.
+ */
+export function candidatesFor(state: SudokuState, index: number): readonly SudokuDigit[] {
+  const cell = state.cells[index];
+  if (!cell || cell.given || cell.value !== 0) return [];
+
+  const grid: SudokuGrid = state.cells.map((entry) => entry.value);
+  return DIGITS.filter((digit) => canPlace(grid, index, digit));
+}
+
+/**
  * The cell a hint would fill if the player has not chosen one.
  *
  * The most-constrained empty cell: the one with fewest digits that still fit, counting

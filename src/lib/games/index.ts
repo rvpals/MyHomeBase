@@ -15,6 +15,42 @@ export {
   shuffle,
   shuffledShoe,
 } from "./playing-cards";
+// The mahjong tile set — the tile twin of the deck above, and game-agnostic for the same
+// reason: nothing here knows what a tile scores. Rendered by the `MahjongTile` /
+// `MahjongWall` components.
+//
+// `shuffle` and `draw` are the collisions, since a deck exports both under those names.
+// The tile versions are aliased here for the reason the game blocks below are: inside
+// `mahjong-tiles.ts` the short names are the clear ones, and only this file, where every
+// surface meets, needs the qualifier. The two `shuffle`s are the same generic function
+// duplicated rather than shared — a deck and a tile set are independent primitives, and
+// a common `src/lib/games/shuffle.ts` is worth adding only if a third one appears.
+export {
+  BONUS_KINDS,
+  BONUS_TILES,
+  COPIES_PER_TILE,
+  DISTINCT_TILES,
+  DRAGONS,
+  FLOWERS,
+  HONOUR_KINDS,
+  SEASONS,
+  TILES_IN_SET,
+  TILE_RANKS,
+  TILE_SUITS,
+  WINDS,
+  buildWall,
+  draw as drawTiles,
+  groupByFace,
+  isBonus,
+  isHonour,
+  isSimple,
+  isTerminal,
+  matches as tilesMatch,
+  shuffle as shuffleTiles,
+  shuffledWall,
+  sortTiles,
+  tileFace,
+} from "./mahjong-tiles";
 export {
   ARROW_DIFFICULTIES,
   ARROW_DIFFICULTY_SETUP,
@@ -34,6 +70,13 @@ export {
   LINES_PER_LEVEL,
   LINE_SCORES,
   LOCK_DELAY_TICKS,
+  MAHJONG_FIGURES,
+  MAHJONG_MATCH_DIFFICULTIES,
+  MAHJONG_MATCH_HINT_PENALTY,
+  MAHJONG_MATCH_MIN_SCORE,
+  MAHJONG_MATCH_SETUP,
+  MAHJONG_MATCH_SHUFFLE_PENALTY,
+  MAHJONG_MATCH_TIME_PENALTY,
   MINESWEEPER_DIFFICULTIES,
   MINESWEEPER_MIN_SCORE,
   MINESWEEPER_SETUP,
@@ -65,14 +108,21 @@ export {
   type BlackjackPhase,
   type BlackjackState,
   type Board,
+  type BoardTile,
   type Card,
   type CatalogueGame,
   type Cell,
   type Direction,
+  type Dragon,
+  type Flower,
   type GameStatus,
   type Hand,
   type HandResult,
   type LineClear,
+  type MahjongLayoutName,
+  type MahjongMatchDifficulty,
+  type MahjongMatchOutcome,
+  type MahjongMatchState,
   type MinesweeperCell,
   type MinesweeperDifficulty,
   type MinesweeperOutcome,
@@ -84,6 +134,7 @@ export {
   type Rank,
   type Rotation,
   type Score,
+  type Season,
   type Suit,
   type SudokuCell,
   type SudokuDifficulty,
@@ -93,6 +144,12 @@ export {
   type SudokuState,
   type TetrisOutcome,
   type TetrisState,
+  type Tile,
+  type TileKind,
+  type TileRank,
+  type TilePosition,
+  type TileSuit,
+  type Wind,
 } from "./types";
 export { GAME_CATALOGUE, findGame, isKnownGame, listPlayableGames } from "./catalogue";
 export {
@@ -171,6 +228,7 @@ export {
 // from `game-2048` and is the same structural type, so it is not re-exported.
 export {
   canPlace as canPlaceDigit,
+  candidatesFor as sudokuCandidatesFor,
   clearCell,
   countSolutions,
   digitCount,
@@ -242,3 +300,29 @@ export {
   tick as tickMinesweeper,
   toggleFlag,
 } from "./game-minesweeper";
+// Mahjong Match. `startGame`, `scoreGame` and `tick` are the collisions again, plus
+// `undo` and `findPair` which are new. Aliased here for the reason the blocks above are:
+// inside `game-mahjong-match.ts` the short names read best, and only this file, where
+// every game's surface meets, needs the qualifier. `Random` is already exported from
+// `game-2048` and is the same structural type, so it is not re-exported.
+export {
+  TILE_SPAN,
+  boardBounds,
+  canShuffle,
+  faceSet,
+  findPair,
+  freeTiles,
+  hasMove,
+  isFree,
+  MAHJONG_LAYOUTS,
+  layoutPositions,
+  paintOrder,
+  reshuffle,
+  scoreGame as scoreMahjongMatch,
+  selectTile,
+  startGame as startMahjongMatch,
+  takeHint,
+  tick as tickMahjongMatch,
+  tilesLeft,
+  undo as undoMahjongMatch,
+} from "./game-mahjong-match";

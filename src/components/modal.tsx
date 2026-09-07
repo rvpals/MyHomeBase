@@ -28,6 +28,15 @@ const KEEP_VISIBLE_Y = 52;
 export interface ModalProps {
   /** Heading text, announced as the dialog's accessible name. */
   title: string;
+  /**
+   * Optional glyph shown left of the title, for a dialog that *is* a place — the
+   * Arcade's game boards badge themselves with the game's icon.
+   *
+   * Deliberately separate from `title`, which stays a `string` because it is the
+   * dialog's accessible name via `aria-labelledby`. Letting a caller pass a node there
+   * would have put the icon's markup inside the accessible name instead of beside it.
+   */
+  titleIcon?: ReactNode;
   /** Optional sub-heading under the title — context, not actions. */
   description?: ReactNode;
   /** The dialog body. */
@@ -85,6 +94,7 @@ const FOCUSABLE_SELECTOR =
 
 export function Modal({
   title,
+  titleIcon,
   description,
   children,
   footer,
@@ -289,7 +299,8 @@ export function Modal({
           }`}
         >
           <div>
-            <h3 id={titleId} className="font-display text-lg text-ink">
+            <h3 id={titleId} className="flex items-center gap-2 font-display text-lg text-ink">
+              {titleIcon}
               {title}
             </h3>
             {description && (

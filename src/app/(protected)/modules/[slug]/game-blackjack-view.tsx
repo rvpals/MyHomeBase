@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/button";
+import { useGameSounds } from "@/components/use-game-sounds";
 import { CardHand } from "@/components/card-hand";
 import { DEAL_MS, PlayingCard, type CardDeal } from "@/components/playing-card";
 import {
@@ -74,6 +75,110 @@ const RESULT_LABELS: Record<HandResult, string> = {
   bust: "Bust",
 };
 
+/* ---------------------------------------------------------------------------------
+   Sound. Synthesized rather than loaded, so the game ships no audio files.
+--------------------------------------------------------------------------------- */
+
+/**
+ * Blackjack's cue vocabulary, over the arcade's shared beeper.
+ *
+ * `useGameSounds` owns the audio context and the envelope; what lives here is only
+ * *what a Blackjack event sounds like*.
+ */
+function useSounds(enabled: boolean) {
+  const sounds = useGameSounds(enabled);
+
+  return useMemo(
+    () => ({
+      /**
+       * One card landing.
+       *
+       * Short and papery — a whole opening deal is four of these in 270ms, and anything
+       * with a tail would run them together into a buzz.
+       */
+      card: (afterMs = 0) =>
+        sounds.playSequence([
+          { startHz: 900, endHz: 380, durationMs: 55, type: "triangle", peak: 0.04, afterMs },
+        ]),
+      /** Moving the stake up or down. */
+      chip: () =>
+        sounds.play({ startHz: 640, endHz: 820, durationMs: 45, type: "sine", peak: 0.035 }),
+      /** A fresh shoe. Longer and grainier — six decks going back in the box. */
+      shuffle: () =>
+        sounds.playSequence([
+          { startHz: 180, endHz: 320, durationMs: 260, type: "sawtooth", peak: 0.035 },
+          { startHz: 220, endHz: 140, durationMs: 240, type: "sawtooth", peak: 0.03, afterMs: 130 },
+        ]),
+      /** A hand over 21. */
+      bust: (afterMs = 0) =>
+        sounds.playSequence([
+          { startHz: 260, endHz: 70, durationMs: 420, type: "sawtooth", peak: 0.075, afterMs },
+        ]),
+      /** A hand taken. */
+      win: (afterMs = 0) =>
+        sounds.playSequence([
+          { startHz: 587, endHz: 587, durationMs: 110, type: "triangle", peak: 0.06, afterMs },
+          {
+            startHz: 880,
+            endHz: 880,
+            durationMs: 200,
+            type: "triangle",
+            peak: 0.06,
+            afterMs: afterMs + 100,
+          },
+        ]),
+      /** A hand lost to the dealer. Softer than a bust — this one was not your doing. */
+      lose: (afterMs = 0) =>
+        sounds.playSequence([
+          { startHz: 330, endHz: 200, durationMs: 300, type: "sine", peak: 0.05, afterMs },
+        ]),
+      /** A stand-off. Deliberately flat: nothing happened. */
+      push: (afterMs = 0) =>
+        sounds.playSequence([
+          { startHz: 420, endHz: 420, durationMs: 180, type: "sine", peak: 0.04, afterMs },
+        ]),
+      /** A natural. The best two cards in the game deserve the best sound in it. */
+      blackjack: (afterMs = 0) =>
+        sounds.playSequence(
+          [659, 784, 988, 1319].map((hz, index) => ({
+            startHz: hz,
+            endHz: hz,
+            durationMs: index === 3 ? 320 : 110,
+            type: "triangle" as OscillatorType,
+            peak: 0.08,
+            afterMs: afterMs + index * 90,
+          })),
+        ),
+      /** Walking away with the chips. */
+      cashOut: () =>
+        sounds.playSequence(
+          [523, 659, 784, 1047].map((hz, index) => ({
+            startHz: hz,
+            endHz: hz,
+            durationMs: index === 3 ? 340 : 120,
+            type: "sine" as OscillatorType,
+            peak: 0.075,
+            afterMs: index * 100,
+          })),
+        ),
+      /** Out of chips. */
+      broke: (afterMs = 0) =>
+        sounds.playSequence([
+          { startHz: 300, endHz: 50, durationMs: 700, type: "sawtooth", peak: 0.085, afterMs },
+        ]),
+    }),
+    [sounds],
+  );
+}
+
+/** Every card id on the table, player seats and dealer alike. */
+function cardIdsOf(state: BlackjackState): number[] {
+  const ids: number[] = [];
+  for (const hand of state.hands) for (const card of hand.cards) ids.push(card.id);
+  for (const card of state.dealer) ids.push(card.id);
+  return ids;
+}
+
 export function GameBlackjackView({ bestScore }: { bestScore: number }) {
   // Lazily initialised, and only ever on the client — the shoe is shuffled, so
   // building it during SSR would render different markup on the server than the client
@@ -85,6 +190,88 @@ export function GameBlackjackView({ bestScore }: { bestScore: number }) {
   // Guards the one-shot save: `outcome` alone would re-fire on every re-render after
   // the run ended, posting the same score repeatedly.
   const savedRef = useRef(false);
+
+  const [soundOn, setSoundOn] = useState(true);
+
+  const sounds = useSounds(soundOn);
+
+  /**
+   * The cues, read off the change in state.
+   *
+   * The library resolves a whole round in **one** state update — a natural settles
+   * inside `deal`, and `stand` can draw the dealer out, settle every hand and end the
+   * run without any intermediate state reaching React. So there is nothing to hook per
+   * step; everything about a round has to be recovered by diffing one transition.
+   *
+   * The cues are then spread back out over time to match the deal animation, which the
+   * view *does* stage: `afterMs` on each one lines it up with the cards it is about.
+   * Firing them all at the transition would land the whole round's audio while the
+   * first card was still in the air.
+   */
+  const previousRef = useRef<BlackjackState | undefined>(undefined);
+  useEffect(() => {
+    const previous = previousRef.current;
+    previousRef.current = state;
+    if (!state || !previous) return;
+
+    // A new run replaces the table wholesale; a fresh shoe is not a reshuffle cue.
+    if (state.handsPlayed < previous.handsPlayed) return;
+
+    // A shuffle is the only way the shoe grows — every other path draws from it.
+    if (state.shoe.length > previous.shoe.length) sounds.shuffle();
+
+    // Cards arriving anywhere on the table, in the order they would really be dealt.
+    // Same slot maths as `useDealtCards`, which paces the animation: player seats on
+    // even slots, dealer on odd, rebased so the batch starts immediately.
+    const before = new Set(cardIdsOf(previous));
+    const arriving: number[] = [];
+    state.hands.forEach((hand) => {
+      hand.cards.forEach((card, index) => {
+        if (!before.has(card.id)) arriving.push(index * 2);
+      });
+    });
+    state.dealer.forEach((card, index) => {
+      if (!before.has(card.id)) arriving.push(index * 2 + 1);
+    });
+
+    let settleAt = 0;
+    if (arriving.length > 0) {
+      const earliest = Math.min(...arriving);
+      const delays = arriving.map((slot) => (slot - earliest) * DEAL_STAGGER_MS);
+      for (const delay of delays) sounds.card(delay);
+      // Hold the round's verdict until the last card has landed, not merely left the
+      // shoe: a "you win" over a card still in flight reads as a bug.
+      settleAt = Math.max(...delays) + DEAL_MS;
+    }
+
+    // The bet moved. Guarded on the value, not on identity — `setBet` returns a new
+    // object even when the clamp leaves the stake where it was.
+    if (state.bet !== previous.bet && state.phase === "betting") sounds.chip();
+
+    // Results land all at once at settle, so they are read wholesale rather than
+    // diffed per hand — a split changes `hands.length` and index-matching would be
+    // wrong across it.
+    const settled = previous.phase !== "settled" && state.phase === "settled";
+    if (settled) {
+      // A split can win one seat and bust the other; both deserve their cue, spaced so
+      // the pair is legible rather than played as a chord.
+      state.hands.forEach((hand, index) => {
+        const at = settleAt + index * 260;
+        if (hand.result === "blackjack") sounds.blackjack(at);
+        else if (hand.result === "win") sounds.win(at);
+        else if (hand.result === "bust") sounds.bust(at);
+        else if (hand.result === "lose") sounds.lose(at);
+        else if (hand.result === "push") sounds.push(at);
+      });
+    }
+
+    if (!previous.outcome && state.outcome === "cashed-out") sounds.cashOut();
+    // Going broke arrives bundled with the losing hand that caused it, so it queues
+    // behind that hand's cue rather than playing over it.
+    if (!previous.outcome && state.outcome === "broke") {
+      sounds.broke(settleAt + state.hands.length * 260 + 220);
+    }
+  }, [state, sounds]);
 
   const newRun = useCallback(() => {
     setState(startBlackjack(Math.random));
@@ -214,6 +401,15 @@ export function GameBlackjackView({ bestScore }: { bestScore: number }) {
           </Button>
           <Button onClick={newRun} variant="secondary" size="sm">
             New run
+          </Button>
+          <Button
+            onClick={() => setSoundOn((value) => !value)}
+            variant="secondary"
+            size="sm"
+            aria-pressed={soundOn}
+            title={soundOn ? "Mute sound effects" : "Unmute sound effects"}
+          >
+            {soundOn ? "Sound on" : "Sound off"}
           </Button>
         </div>
       </div>
@@ -415,6 +611,15 @@ export function GameBlackjackView({ bestScore }: { bestScore: number }) {
  * therefore lands in slot `n * 2`, +1 for the dealer. A lone hit is the only card
  * arriving, so it is rebased to slot 0 and gets no stagger.
  */
+// `react-hooks/refs` flags every `arrivals.current` / `seen.current` touch
+// below as "Cannot access refs during render", and here that is the point rather than
+// a mistake — see the doc comment above. The flight has to start in the same commit
+// that mounts the card, so the arrival map must be computed during the render that
+// reports it; moving this into an effect reintroduces exactly the one-frame "card
+// drawn in place, then jumps back to the shoe" glitch it was written to avoid, and
+// state would re-render for a value that is read once and never matters again.
+// Scoped to this hook, not the file.
+/* eslint-disable react-hooks/refs */
 function useDealtCards(state: BlackjackState | undefined): (card: Card) => number | undefined {
   const seen = useRef<Set<number>>(new Set());
   const arrivals = useRef<Map<number, number>>(new Map());
@@ -470,6 +675,7 @@ function useDealtCards(state: BlackjackState | undefined): (card: Card) => numbe
 
   return useCallback((card: Card) => arrivals.current.get(card.id), []);
 }
+/* eslint-enable react-hooks/refs */
 
 /** Builds the `dealing` callback for one row, or `undefined` when nothing is arriving there. */
 function dealFor(

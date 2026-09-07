@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/button";
+import { useGameSounds } from "@/components/use-game-sounds";
 import {
   BOARD_SIZE,
   applyMove,
   hasWon,
+  highestTile,
   isGameOver,
   spawnTile,
   startBoard,
@@ -75,6 +77,62 @@ const KEY_DIRECTIONS: Record<string, Direction> = {
 /** How far a touch must travel before it counts as a swipe rather than a tap. */
 const SWIPE_THRESHOLD_PX = 30;
 
+/* ---------------------------------------------------------------------------------
+   Sound. Synthesized rather than loaded, so the game ships no audio files.
+--------------------------------------------------------------------------------- */
+
+/** What a single move turned out to be, as the thing worth hearing about it. */
+type MoveSound = "slide" | "merge" | "bigMerge" | "promote" | "win" | "over";
+
+/**
+ * 2048's cue vocabulary, over the arcade's shared beeper.
+ *
+ * `useGameSounds` owns the audio context and the envelope; what lives here is only
+ * *what a 2048 event sounds like*.
+ */
+function useSounds(enabled: boolean) {
+  const sounds = useGameSounds(enabled);
+
+  return useMemo(
+    () => ({
+      /** A soft tick as the tiles slide with nothing combining. */
+      slide: () =>
+        sounds.play({ startHz: 240, endHz: 210, durationMs: 45, type: "sine", peak: 0.03 }),
+      /** Two tiles combining: a short rising blip. */
+      merge: () =>
+        sounds.play({ startHz: 440, endHz: 660, durationMs: 110, type: "triangle", peak: 0.05 }),
+      /** A move that combined several tiles at once, or one large pair. */
+      bigMerge: () =>
+        sounds.playSequence([
+          { startHz: 440, endHz: 660, durationMs: 110, type: "triangle", peak: 0.06 },
+          { startHz: 660, endHz: 880, durationMs: 140, type: "triangle", peak: 0.06, afterMs: 80 },
+        ]),
+      /** A new highest tile — the run's real progress marker. */
+      promote: () =>
+        sounds.playSequence([
+          { startHz: 587, endHz: 587, durationMs: 100, type: "sine", peak: 0.06 },
+          { startHz: 880, endHz: 880, durationMs: 200, type: "sine", peak: 0.06, afterMs: 95 },
+        ]),
+      /** Reaching 2048. */
+      win: () =>
+        sounds.playSequence(
+          [523, 659, 784, 1047].map((hz, index) => ({
+            startHz: hz,
+            endHz: hz,
+            durationMs: index === 3 ? 300 : 120,
+            type: "triangle" as OscillatorType,
+            peak: 0.08,
+            afterMs: index * 95,
+          })),
+        ),
+      /** No moves left. */
+      over: () =>
+        sounds.play({ startHz: 320, endHz: 60, durationMs: 640, type: "sawtooth", peak: 0.08 }),
+    }),
+    [sounds],
+  );
+}
+
 export function Game2048View({ bestScore }: { bestScore: number }) {
   // Lazily initialised, and only ever on the client.
   //
@@ -89,10 +147,33 @@ export function Game2048View({ bestScore }: { bestScore: number }) {
   const [won, setWon] = useState(false);
   const [over, setOver] = useState(false);
   const [saveNote, setSaveNote] = useState<string | undefined>(undefined);
+  const [soundOn, setSoundOn] = useState(true);
+
+  const sounds = useSounds(soundOn);
 
   // Guards the one-shot save: `over` alone would re-fire on every re-render after the
   // game ends, posting the same score repeatedly.
   const savedRef = useRef(false);
+
+  /**
+   * The cue a move earned, parked until after the render that move caused.
+   *
+   * `move` decides what happened inside a `setState` updater, which is the only place
+   * the pre-move board and the result are both in scope — but React may run an updater
+   * twice under Strict Mode, and playing there would double every sound. So the updater
+   * only *records*, and the effect below plays it once the state has settled.
+   */
+  const pendingRef = useRef<MoveSound[]>([]);
+  const [flushId, setFlushId] = useState(0);
+
+  useEffect(() => {
+    const queued = pendingRef.current;
+    pendingRef.current = [];
+    for (const cue of queued) sounds[cue]();
+    // `flushId` only: `sounds` changes identity when the toggle flips, and replaying the
+    // last move's cues on a mute press would be a bug rather than a feature.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flushId]);
 
   const newGame = useCallback(() => {
     setBoard(startBoard(Math.random));
@@ -122,6 +203,10 @@ export function Game2048View({ bestScore }: { bestScore: number }) {
       const result = applyMove(current, direction);
       // A move into a wall must not spawn a tile — otherwise holding a key against
       // an edge fills the board for free.
+      //
+      // Note `result.moved` rather than a reference check: `applyMove` allocates a new
+      // board on every call, refused or not, so `result.board !== current` is always
+      // true and would make a wall bump sound like a slide.
       if (!result.moved) return current;
 
       const next = spawnTile(result.board, Math.random);
@@ -129,8 +214,31 @@ export function Game2048View({ bestScore }: { bestScore: number }) {
       setMoves((value) => value + 1);
       if (hasWon(next)) setWon(true);
       if (isGameOver(next)) setOver(true);
+
+      // Recorded, not played — see `pendingRef`. Each move earns exactly one movement
+      // cue, plus at most one event cue on top of it.
+      //
+      // *Assigned* rather than appended: a Strict Mode double-invocation runs this
+      // block twice for one real move, and appending would queue every cue twice.
+      // Overwriting is idempotent — the second pass computes the same list.
+      const cues: MoveSound[] = [];
+      // `gained` is the sum of the merged tiles, so a big number means either one large
+      // pair or several at once; both deserve the fuller sound.
+      if (result.gained === 0) cues.push("slide");
+      else cues.push(result.gained >= 64 ? "bigMerge" : "merge");
+      // Against `current`, not `next`: the spawned tile is a 2 or a 4 and can never be
+      // the new maximum, but comparing to `next` would still be misleading on a board
+      // whose only 2 just merged away.
+      if (highestTile(result.board) > highestTile(current)) cues.push("promote");
+      if (hasWon(next) && !hasWon(current)) cues.push("win");
+      if (isGameOver(next)) cues.push("over");
+      pendingRef.current = cues;
+
       return next;
     });
+    // Wakes the flush effect. Outside the updater, so it runs once per real move even
+    // if the updater itself was invoked twice.
+    setFlushId((value) => value + 1);
   }, []);
 
   // Save once, when the game ends. In an effect rather than inside `move` because the
@@ -196,9 +304,21 @@ export function Game2048View({ bestScore }: { bestScore: number }) {
           <Stat label="Best" value={shownBest.toLocaleString()} />
           <Stat label="Moves" value={moves.toLocaleString()} />
         </div>
-        <Button onClick={newGame} variant="secondary" size="sm">
-          New game
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={newGame} variant="secondary" size="sm">
+            New game
+          </Button>
+          {/* Worded as the other games' toggle, so the arcade presents one control. */}
+          <Button
+            onClick={() => setSoundOn((value) => !value)}
+            variant="secondary"
+            size="sm"
+            aria-pressed={soundOn}
+            title={soundOn ? "Mute sound effects" : "Unmute sound effects"}
+          >
+            {soundOn ? "Sound on" : "Sound off"}
+          </Button>
+        </div>
       </div>
 
       {/*

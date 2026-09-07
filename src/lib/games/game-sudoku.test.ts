@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   canPlace,
+  candidatesFor,
   clearCell,
   countSolutions,
   digitCount,
@@ -384,6 +385,45 @@ describe("wrongCells and digitCount", () => {
     // Eight of this digit are on the board as givens; the ninth is the empty cell.
     expect(digitCount(state, digit)).toBe(8);
     expect(digitCount(enterDigit(state, index, digit), digit)).toBe(9);
+  });
+});
+
+describe("candidatesFor", () => {
+  it("offers only the one digit that fits when a single cell is left", () => {
+    const { state, index } = oneCellLeft();
+    expect(candidatesFor(state, index)).toEqual([state.solution[index]]);
+  });
+
+  it("offers nothing for a given or for a cell already holding a digit", () => {
+    const { state, index } = oneCellLeft();
+    const given = state.cells.findIndex((cell) => cell.given);
+    expect(candidatesFor(state, given)).toEqual([]);
+
+    const filled = enterDigit(state, index, state.solution[index]);
+    expect(candidatesFor(filled, index)).toEqual([]);
+  });
+
+  it("narrows as peers are filled in, and reads the board rather than the solution", () => {
+    const state = startGame("easy", rng(11));
+    const index = state.cells.findIndex((cell) => !cell.given);
+    const before = candidatesFor(state, index);
+    expect(before.length).toBeGreaterThan(1);
+    expect(before).toContain(state.solution[index]);
+
+    // A wrong digit in a peer removes it from this cell's list — the list describes the
+    // board as it stands, so a mistake elsewhere misleads here on purpose.
+    const peer = peersOf(index).find((at) => state.cells[at].value === 0);
+    expect(peer).toBeDefined();
+    const intruder = before.find((digit) => digit !== state.solution[index]);
+    expect(intruder).toBeDefined();
+
+    const after = candidatesFor(enterDigit(state, peer as number, intruder as SudokuDigit), index);
+    expect(after).not.toContain(intruder);
+  });
+
+  it("returns nothing for an index off the board", () => {
+    const { state } = oneCellLeft();
+    expect(candidatesFor(state, SUDOKU_CELL_COUNT)).toEqual([]);
   });
 });
 

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/button";
+import { CollapsibleCard } from "@/components/collapsible-card";
+import { useGameSounds } from "@/components/use-game-sounds";
 import {
   SUDOKU_DIFFICULTIES,
   SUDOKU_HINT_PENALTY,
@@ -15,6 +17,7 @@ import {
   revealHint,
   scoreGame,
   startSudoku,
+  sudokuCandidatesFor,
   tickSudoku,
   toggleNote,
   type SudokuDifficulty,
@@ -43,6 +46,75 @@ function formatClock(seconds: number): string {
   return `${minutes}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
+/* ---------------------------------------------------------------------------------
+   Sound. Synthesized rather than loaded, so the game ships no audio files.
+--------------------------------------------------------------------------------- */
+
+/**
+ * Sudoku's cue vocabulary, over the arcade's shared beeper.
+ *
+ * `useGameSounds` owns the audio context and the envelope; what lives here is only
+ * *what a Sudoku event sounds like*.
+ *
+ * Quieter than the arcade's action games on purpose. This is a board people sit with
+ * for twenty minutes, so the routine cues are near-subliminal and only a mistake or a
+ * solve is allowed to be assertive.
+ */
+function useSounds(enabled: boolean) {
+  const sounds = useGameSounds(enabled);
+
+  return useMemo(
+    () => ({
+      /** A digit that matches the solution: a soft, clean placement. */
+      place: () =>
+        sounds.play({ startHz: 520, endHz: 560, durationMs: 60, type: "sine", peak: 0.035 }),
+      /**
+       * A wrong digit.
+       *
+       * The one cue the player must not be able to miss — it is the only feedback that
+       * a mistake was scored, and the board shows it only as a colour.
+       */
+      mistake: () =>
+        sounds.play({ startHz: 240, endHz: 150, durationMs: 220, type: "sawtooth", peak: 0.07 }),
+      /** Clearing a cell. */
+      erase: () =>
+        sounds.play({ startHz: 320, endHz: 240, durationMs: 55, type: "sine", peak: 0.03 }),
+      /** Pencilling a candidate in. */
+      note: () =>
+        sounds.play({ startHz: 700, endHz: 740, durationMs: 35, type: "square", peak: 0.02 }),
+      /** Rubbing one out — the same tick, falling. */
+      unnote: () =>
+        sounds.play({ startHz: 740, endHz: 640, durationMs: 35, type: "square", peak: 0.02 }),
+      /** A hint: the game filling a cell in for you, which should feel like a small debt. */
+      hint: () =>
+        sounds.playSequence([
+          { startHz: 880, endHz: 880, durationMs: 70, type: "sine", peak: 0.045 },
+          { startHz: 660, endHz: 660, durationMs: 150, type: "sine", peak: 0.045, afterMs: 70 },
+        ]),
+      /** A solved grid. */
+      solved: () =>
+        sounds.playSequence(
+          [523, 659, 784, 1047, 1319].map((hz, index) => ({
+            startHz: hz,
+            endHz: hz,
+            durationMs: index === 4 ? 360 : 120,
+            type: "triangle" as OscillatorType,
+            peak: 0.075,
+            afterMs: index * 100,
+          })),
+        ),
+    }),
+    [sounds],
+  );
+}
+
+/** Total pencilled candidates on the board. A note toggle moves this by exactly one. */
+function countNotes(state: SudokuState): number {
+  let total = 0;
+  for (const cell of state.cells) total += cell.notes.length;
+  return total;
+}
+
 export function GameSudokuView({ bestScore }: { bestScore: number }) {
   // Lazily initialised, and only ever on the client — the board is random, so building
   // it during SSR would render different markup on the server than the client and trip
@@ -57,6 +129,60 @@ export function GameSudokuView({ bestScore }: { bestScore: number }) {
   // Guards the one-shot save: `outcome` alone would re-fire on every re-render after
   // the solve, posting the same score repeatedly.
   const savedRef = useRef(false);
+
+  const [soundOn, setSoundOn] = useState(true);
+
+  const sounds = useSounds(soundOn);
+
+  /**
+   * The cues, read off the change in state rather than fired from the handlers.
+   *
+   * Every rule returns one immutable `SudokuState`, so a diff of the counters says
+   * exactly what a keystroke did — and it says it for `press`, `erase` and `hint`
+   * alike, which between them use three different code paths into `setState`.
+   *
+   * Nothing here keys on `elapsedSeconds`: the clock produces a new state every second,
+   * and a cue on "state changed" would tick through the whole puzzle.
+   */
+  const previousRef = useRef<SudokuState | undefined>(undefined);
+  useEffect(() => {
+    const previous = previousRef.current;
+    previousRef.current = state;
+
+    // A new board replaces `solution` wholesale; comparing across that tells you
+    // nothing, and the mount seed would otherwise cue on the opening grid.
+    if (!state || !previous || previous.solution !== state.solution) return;
+
+    if (!previous.outcome && state.outcome === "solved") {
+      sounds.solved();
+      return;
+    }
+    if (state.mistakes > previous.mistakes) {
+      sounds.mistake();
+      return;
+    }
+    if (state.hints > previous.hints) {
+      sounds.hint();
+      return;
+    }
+
+    // `filled` counts cells holding a digit, right or wrong, so it separates a
+    // placement from an erase without having to find which cell moved.
+    if (state.filled > previous.filled) {
+      sounds.place();
+      return;
+    }
+    if (state.filled < previous.filled) {
+      sounds.erase();
+      return;
+    }
+
+    // Nothing counted changed, so this was a note. Total them rather than hunting the
+    // cell: a toggle moves exactly one candidate, and the sign is the whole story.
+    const noteDelta = countNotes(state) - countNotes(previous);
+    if (noteDelta > 0) sounds.note();
+    else if (noteDelta < 0) sounds.unnote();
+  }, [state, sounds]);
 
   const newGame = useCallback((level: SudokuDifficulty) => {
     // Generation runs a bounded backtracking solver per removed clue. It is fast
@@ -217,6 +343,19 @@ export function GameSudokuView({ bestScore }: { bestScore: number }) {
   /** The digit in the selected cell, so every copy of it can be picked out. */
   const selectedDigit = selected === undefined ? 0 : (state?.cells[selected]?.value ?? 0);
 
+  /**
+   * The candidates for the selected cell, for the Hint card.
+   *
+   * `undefined` when there is nothing to list — no selection, or a cell that already
+   * holds a digit — which is what the card turns into its prompt. An empty array is a
+   * different answer and stays one: the cell has no legal digit left, meaning something
+   * already on the board is wrong.
+   */
+  const candidates = useMemo(
+    () => (state && selected !== undefined ? sudokuCandidatesFor(state, selected) : undefined),
+    [selected, state],
+  );
+
   const liveScore = state ? scoreGame(state) : 0;
 
   return (
@@ -246,6 +385,17 @@ export function GameSudokuView({ bestScore }: { bestScore: number }) {
               {SUDOKU_SETUP[level].label}
             </Button>
           ))}
+          {/* After the difficulty group, not inside it — this is a separate decision
+              that happens to share the row. */}
+          <Button
+            onClick={() => setSoundOn((value) => !value)}
+            variant="secondary"
+            size="sm"
+            aria-pressed={soundOn}
+            title={soundOn ? "Mute sound effects" : "Unmute sound effects"}
+          >
+            {soundOn ? "Sound on" : "Sound off"}
+          </Button>
         </div>
       </div>
 
@@ -260,7 +410,7 @@ export function GameSudokuView({ bestScore }: { bestScore: number }) {
       */}
       <div className="mx-auto w-full" style={{ maxWidth: "min(22rem, 88vw, 52vh)" }}>
         <div
-          className="grid gap-px rounded-xl border border-line bg-paper-raised p-2"
+          className="sudoku-board sudoku-box-seams relative grid gap-0 rounded-xl border border-line bg-paper-raised p-2"
           style={{
             gridTemplateColumns: `repeat(${SUDOKU_SIZE}, minmax(0, 1fr))`,
             aspectRatio: "1 / 1",
@@ -295,12 +445,13 @@ export function GameSudokuView({ bestScore }: { bestScore: number }) {
                   aria-selected={isSelected}
                   onClick={() => setSelected(index)}
                   className={[
-                    "relative flex items-center justify-center rounded-[2px] border font-display tabular-nums",
-                    // The 3x3 boxes, drawn as a heavier inner edge on the cells at a
-                    // box seam rather than as nine nested containers — a wrapper per
-                    // box would break the single 81-cell grid that keeps the board
-                    // square at every width.
-                    boxEdges(rowIndex, colIndex),
+                    "relative flex items-center justify-center rounded-[2px] border border-line/50 font-display tabular-nums",
+                    // The cell's own low bevel. The 3x3 box seams are NOT here: they
+                    // are one continuous overlay on the board itself
+                    // (`.sudoku-box-seams`), because a seam is a line on the board
+                    // rather than a property of the cells either side of it. See the
+                    // sudoku block in `globals.css`.
+                    cell.given ? "sudoku-cell-given" : "sudoku-cell",
                     isSelected
                       ? "border-brass bg-brass/25"
                       : isPeer
@@ -407,6 +558,54 @@ export function GameSudokuView({ bestScore }: { bestScore: number }) {
         </div>
       </div>
 
+      {/*
+        The Hint card: the candidates for whichever cell is selected — the same list a
+        player would pencil in by hand, computed by `sudokuCandidatesFor` from the board
+        as it stands. It costs nothing and is not counted as a hint, because it reveals
+        no answer: unlike the Hint *button*, which fills in the solution's digit, this
+        only restates what the board already implies. Collapsed by default, and it says
+        outright what leaning on it does to the puzzle.
+      */}
+      <div className="mx-auto w-full max-w-md">
+        <CollapsibleCard title="Hint">
+          <p className="text-xs text-brass-dark">
+            You&rsquo;re defeating the purpose if you keep looking at this.
+          </p>
+
+          <div className="mt-3">
+            {candidates === undefined ? (
+              <p className="text-sm text-muted">
+                Tap an empty cell to see which digits could still go in it.
+              </p>
+            ) : candidates.length === 0 ? (
+              <p className="text-sm text-muted">
+                Nothing fits here — a digit already on the board must be wrong.
+              </p>
+            ) : (
+              <>
+                <div className="flex flex-wrap gap-1.5">
+                  {candidates.map((digit) => (
+                    <span
+                      key={digit}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-paper font-display text-base tabular-nums text-ink"
+                    >
+                      {digit}
+                    </span>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs text-muted">
+                  {candidates.length === 1
+                    ? "One digit fits."
+                    : `${candidates.length} digits fit.`}{" "}
+                  Row {Math.floor((selected ?? 0) / SUDOKU_SIZE) + 1}, column{" "}
+                  {((selected ?? 0) % SUDOKU_SIZE) + 1}.
+                </p>
+              </>
+            )}
+          </div>
+        </CollapsibleCard>
+      </div>
+
       <div aria-live="polite" className="min-h-6 text-center text-sm">
         {solved && <span className="text-ink">Solved!</span>}
         {!solved && noteMode && <span className="text-muted">Notes on.</span>}
@@ -444,24 +643,6 @@ export function GameSudokuView({ bestScore }: { bestScore: number }) {
       </p>
     </div>
   );
-}
-
-/**
- * The heavier borders that mark the 3x3 boxes.
- *
- * Applied per cell rather than by nesting nine box containers, which would break the
- * single 81-cell grid the square aspect ratio depends on. `ink/25` rather than a
- * dedicated token: the theme carries one line colour, and a box seam only has to read
- * heavier than the cell grid, which a translucent foreground does in every theme.
- *
- * Only the leading edges are drawn — a seam belongs to one of the two cells that meet at it, and giving it to
- * both would render it twice as thick as the outer border.
- */
-function boxEdges(row: number, col: number): string {
-  const classes: string[] = [];
-  if (row % 3 === 0 && row !== 0) classes.push("border-t-2 border-t-ink/25");
-  if (col % 3 === 0 && col !== 0) classes.push("border-l-2 border-l-ink/25");
-  return classes.join(" ");
 }
 
 /** A blank 9x9, drawn before the client-side board exists. Matches the SSR output. */

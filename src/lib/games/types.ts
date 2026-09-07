@@ -1,4 +1,5 @@
 import type { Card } from "./playing-cards";
+import type { Tile } from "./mahjong-tiles";
 
 /**
  * The Games module's domain types.
@@ -6,14 +7,27 @@ import type { Card } from "./playing-cards";
  * A game is identified by a `GameKey` — a string that names code, not a database
  * row. See `catalogue.ts` for why the catalogue is not a table.
  *
- * One exception to "the types live here": the deck primitives are in
- * `playing-cards.ts`, because they belong to no single game. See the note in the
- * Blackjack section below.
+ * Two exceptions to "the types live here": the deck primitives are in
+ * `playing-cards.ts` and the mahjong tile primitives in `mahjong-tiles.ts`, because
+ * neither belongs to a single game. See the note in the Blackjack section below.
  */
 
 // Re-exported so `@/lib/games` presents one surface and a caller need not know which
 // file a card type came from.
 export type { Card, Random as CardRandom, Rank, Suit } from "./playing-cards";
+
+// The same for the tile set, which no game owns either. `Random` is the same structural
+// type as the deck's, so it is not re-exported a second time under another name.
+export type {
+  Dragon,
+  Flower,
+  Season,
+  Tile,
+  TileKind,
+  TileRank,
+  TileSuit,
+  Wind,
+} from "./mahjong-tiles";
 
 /** Whether a catalogue entry can actually be played yet. */
 export type GameStatus = "available" | "coming-soon";
@@ -794,4 +808,214 @@ export interface MinesweeperState {
   flags: number;
   elapsedSeconds: number;
   outcome: MinesweeperOutcome;
+}
+
+/* -----------------------------------------------------------------------------------
+   Mahjong Match — the classic tile-matching solitaire.
+
+   The tile set itself is NOT here. `Tile`, `TileSuit`, the 144 tiles and `tilesMatch`
+   live in `mahjong-tiles.ts`, because a tile set belongs to no single game — the same
+   split `playing-cards.ts` makes for the deck. What lives here is what *this* game
+   adds: where a tile sits in the stack, when it is free to lift, and what a clear is
+   worth.
+----------------------------------------------------------------------------------- */
+
+/** The three boards, as the difficulty picker offers them. */
+export const MAHJONG_MATCH_DIFFICULTIES = ["easy", "classic", "hard"] as const;
+
+export type MahjongMatchDifficulty = (typeof MAHJONG_MATCH_DIFFICULTIES)[number];
+
+/**
+ * A tile's position in the stack.
+ *
+ * `layer` counts up from the table, so 0 is the bottom and a higher layer sits on top.
+ * `col` and `row` are in **half-steps**, which is the detail that makes a real turtle
+ * possible: the classic layout offsets some rows by half a tile, and the four-tile cap
+ * on top of the turtle sits between the columns below it. Integer coordinates cannot
+ * express that, and a layout that cannot offset is a rectangle rather than a turtle.
+ *
+ * So a tile occupies `[col, col + 2)` and `[row, row + 2)` in these units, and two
+ * tiles overlap when their spans overlap in both axes — which is exactly what
+ * `isFree`'s blocking test needs, and why the unit is half a tile rather than a whole
+ * one.
+ */
+export interface TilePosition {
+  layer: number;
+  col: number;
+  row: number;
+}
+
+/**
+ * A tile on the board: what it is, where it sits, and whether it has gone.
+ *
+ * `tile` carries the face; `position` carries the geometry. Kept as two fields rather
+ * than a flattened row because `tile` is the shared `Tile` from `mahjong-tiles.ts` and
+ * must stay exactly that — the moment this game spreads a tile's fields into its own
+ * shape, `MahjongTile` can no longer render it and the shared component was pointless.
+ *
+ * `cleared` marks a lifted tile rather than removing it from the array. Two reasons:
+ * `undo` needs the tile back in its position, and a slot's index stays stable for a
+ * React key across the whole run.
+ */
+export interface BoardTile {
+  tile: Tile;
+  position: TilePosition;
+  cleared: boolean;
+}
+
+/**
+ * Board shape and what clearing it is worth, per difficulty.
+ *
+ * `layout` names the coordinate table in `game-mahjong-match.ts` rather than holding
+ * it: the tables are 40-plus positions each and belong beside the code that walks
+ * them, while this record is the tuning a reader comes here to compare.
+ *
+ * **Shuffles are unlimited**, so there is no allowance here. A stuck board is always
+ * recoverable, which is what lets the deal be a plain random one — see `startGame`.
+ * What stops a player shuffling their way through the game is the price
+ * (`MAHJONG_MATCH_SHUFFLE_PENALTY`), the same way Sudoku prices its unlimited hints
+ * rather than capping them.
+ *
+ * `base` is the score for an instant clear; see `MAHJONG_MATCH_TIME_PENALTY`. Hard is
+ * worth 3x easy: the tile count doubles and the board is five layers deep rather than
+ * two, so far more of it is buried at any moment.
+ */
+export const MAHJONG_MATCH_SETUP: Record<
+  MahjongMatchDifficulty,
+  { layout: MahjongLayoutName; base: number; label: string }
+> = {
+  easy: { layout: "garden", base: 2000, label: "Easy" },
+  classic: { layout: "turtle", base: 4500, label: "Classic" },
+  hard: { layout: "turtle", base: 6000, label: "Hard" },
+};
+
+/**
+ * The board figure a player can pick, independently of difficulty.
+ *
+ * Separate from `MAHJONG_MATCH_SETUP` on purpose. Difficulty is what a clear is *worth*;
+ * the figure is what it *looks like* — and they are genuinely independent, because every
+ * full figure is the same 144 tiles. Folding them together would mean either six
+ * difficulties or a shape nobody can choose.
+ *
+ * `garden` is absent: it is the 72-tile beginner board, so offering it as a "shape" for
+ * a Classic run would silently halve the game.
+ */
+export const MAHJONG_FIGURES: readonly { layout: MahjongLayoutName; label: string }[] = [
+  { layout: "turtle", label: "Turtle" },
+  { layout: "pyramid", label: "Pyramid" },
+  { layout: "cat", label: "Cat" },
+  { layout: "cross", label: "Cross" },
+  { layout: "butterfly", label: "Butterfly" },
+];
+
+/** The coordinate tables a board can be built from. Defined in `game-mahjong-match.ts`. */
+export type MahjongLayoutName =
+  | "garden"
+  | "turtle"
+  | "pyramid"
+  | "cat"
+  | "cross"
+  | "butterfly";
+
+/**
+ * Points lost per second elapsed.
+ *
+ * **Points, not seconds, for the reason Sudoku and Minesweeper are** — the shared board
+ * ranks `ORDER BY score DESC` (`repository.ts`), so a time in seconds would put the
+ * slowest player in the house on top. Time becomes points here and `scoreUnit` stays
+ * `"points"`, leaving the board every game shares untouched.
+ *
+ * 2 a second, gentler than Minesweeper's 3 and Sudoku's 4. A 144-tile board takes
+ * several minutes to clear even played well — most of that time is *looking*, which is
+ * the game — so a decay tuned for a 480-cell minefield would leave a good clear worth
+ * less than its floor.
+ */
+export const MAHJONG_MATCH_TIME_PENALTY = 2;
+
+/**
+ * Points lost per hint taken.
+ *
+ * Hints are unlimited, so this price is the only thing stopping a player having the
+ * board played for them. Cheaper than Sudoku's 250 because it hands over far less: a
+ * Sudoku hint gives a digit that was the whole puzzle, where this only points at one of
+ * several pairs already on the table. It is the *looking* it shortcuts, not the solving.
+ */
+export const MAHJONG_MATCH_HINT_PENALTY = 100;
+
+/**
+ * Points lost per shuffle.
+ *
+ * Priced well above a hint: a shuffle rescues a board that was otherwise dead, which is
+ * worth more than being shown a pair you could have found.
+ *
+ * **Unlimited**, like a Sudoku hint, so this price is the only thing rationing it. A cap
+ * would make the last shuffle on a hard board a resource to hoard rather than a decision
+ * to weigh — and worse, a capped shuffle plus a random deal could leave a board that
+ * genuinely cannot be finished, which is the one failure a puzzle must never have.
+ */
+export const MAHJONG_MATCH_SHUFFLE_PENALTY = 400;
+
+/**
+ * The least a cleared board can score, however long it took.
+ *
+ * Same reasoning as `SUDOKU_MIN_SCORE` and `MINESWEEPER_MIN_SCORE`: without a floor a
+ * long grind goes negative and records 0, which is indistinguishable from never having
+ * finished. A clear is always worth something.
+ */
+export const MAHJONG_MATCH_MIN_SCORE = 150;
+
+/**
+ * Why a run ended, or `undefined` while it is still going.
+ *
+ * **There is no `stuck`.** Shuffles are unlimited, so a board with no legal move is
+ * never over — the player shuffles and carries on. A run therefore ends only by being
+ * cleared, or by being abandoned, which is not a state the board can be in.
+ *
+ * Kept as a union rather than a bare optional so a future ending (a timed mode, say) is
+ * an added member instead of a type change at every call site.
+ */
+export type MahjongMatchOutcome = "cleared" | undefined;
+
+/**
+ * A whole game, as one immutable value — the same shape as `SudokuState`.
+ *
+ * `tiles` is flat and its order is the layout's order, not a reshape by layer: `isFree`
+ * tests one tile against every other uncleared tile, so any grouping would have to be
+ * flattened again on the first call. The view sorts by layer for painting, which is a
+ * render concern and stays there.
+ *
+ * **`selected` is an index into `tiles`, not a `Tile`.** Two copies of one face are
+ * different board positions, and a face-based selection could not tell them apart —
+ * clicking one would highlight both.
+ *
+ * `elapsedSeconds` is carried on the state rather than read from a clock, so scoring is
+ * testable without waiting: the view ticks it once a second, a test sets it.
+ */
+export interface MahjongMatchState {
+  difficulty: MahjongMatchDifficulty;
+  tiles: readonly BoardTile[];
+  /** Index into `tiles` of the tile awaiting a partner, or `undefined` for none. */
+  selected: number | undefined;
+  /** Pairs cleared so far. Doubled, this is the tile count; reported as `moves`. */
+  pairsCleared: number;
+  /**
+   * Hints taken. Unlimited, but each costs `MAHJONG_MATCH_HINT_PENALTY` — a running
+   * tally, not a budget, the same call `SudokuState.hints` makes.
+   */
+  hints: number;
+  /**
+   * Shuffles used. Unlimited, but each costs `MAHJONG_MATCH_SHUFFLE_PENALTY` — a
+   * running tally, not a budget, the same call `hints` above makes.
+   */
+  shuffles: number;
+  /**
+   * The pairs lifted, most recent last, so `undo` can put one back.
+   *
+   * Indexes into `tiles` rather than the tiles themselves: undo has to restore a tile
+   * to *its own position*, and a `Tile` alone does not say which of the two matching
+   * slots it came from.
+   */
+  history: readonly (readonly [number, number])[];
+  elapsedSeconds: number;
+  outcome: MahjongMatchOutcome;
 }

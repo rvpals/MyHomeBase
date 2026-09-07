@@ -441,6 +441,15 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    id: "csv_section_views",
+    label: "Custom Views",
+    group: "CSV Analysis sections",
+    where: "CSV Data Analysis → section panel → Custom Views.",
+    defaultConcept: "sliders",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     id: "csv_section_configuration",
     label: "Configuration",
     group: "CSV Analysis sections",
@@ -477,6 +486,84 @@ export const ICON_SLOTS: IconSlot[] = [
     group: "Games sections",
     where: "Games & Puzzles → section panel → Configuration.",
     defaultConcept: "gear",
+    wired: true,
+    namespace: "tree",
+  },
+
+  /* ---------------------------------------------------------------------------------
+     Games — the six Arcade cards.
+
+     Ids are derived from the catalogue key by `gameSlotId`, not named per call site:
+     the cards render from `listPlayableGames()`, so there is no one call site to name.
+     That makes these ids load-bearing on `GAME_CATALOGUE` keys — `slots.test.ts`
+     asserts every playable game resolves to an entry here.
+
+     `arrow_clearing_hard` carries the legacy `-hard` suffix because the key does. The
+     two smaller boards were withdrawn in migration 0077 but the key stayed, since
+     renaming it would orphan every score posted against it — and renaming the slot id
+     to suit would equally orphan an uploaded icon. Both are permanent for the same
+     reason, so the ugliness stays.
+  --------------------------------------------------------------------------------- */
+  {
+    id: "games_card_2048",
+    label: "2048",
+    group: "Games cards",
+    where: "Games & Puzzles → Arcade → the 2048 card.",
+    defaultConcept: "game-2048",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "games_card_arrow_clearing_hard",
+    label: "Arrow Clearing",
+    group: "Games cards",
+    where: "Games & Puzzles → Arcade → the Arrow Clearing card.",
+    defaultConcept: "game-arrows",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "games_card_tetris",
+    label: "Tetris",
+    group: "Games cards",
+    where: "Games & Puzzles → Arcade → the Tetris card.",
+    defaultConcept: "game-tetris",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "games_card_sudoku",
+    label: "Sudoku",
+    group: "Games cards",
+    where: "Games & Puzzles → Arcade → the Sudoku card.",
+    defaultConcept: "game-sudoku",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "games_card_blackjack",
+    label: "Blackjack",
+    group: "Games cards",
+    where: "Games & Puzzles → Arcade → the Blackjack card.",
+    defaultConcept: "game-blackjack",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "games_card_minesweeper",
+    label: "Minesweeper",
+    group: "Games cards",
+    where: "Games & Puzzles → Arcade → the Minesweeper card.",
+    defaultConcept: "game-minesweeper",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "games_card_mahjong_match",
+    label: "Mahjong Match",
+    group: "Games cards",
+    where: "Games & Puzzles → Arcade → the Mahjong Match card.",
+    defaultConcept: "game-mahjong",
     wired: true,
     namespace: "tree",
   },
@@ -998,6 +1085,24 @@ export function sectionSlotId(namespace: string, sectionId: string): string {
  */
 export function tabSlotId(namespace: string, tabId: string): string {
   return `${namespace}_tab_${tabId.replace(/-/g, "_")}`;
+}
+
+/**
+ * The slot id for one Arcade game card, derived from its catalogue key.
+ *
+ * The Arcade renders its cards from `listPlayableGames()`, so — like the section nav and
+ * the Music tab strip — there is no per-card call site to name a slot at. Hyphens become
+ * underscores, so `arrow-clearing-hard` addresses `games_card_arrow_clearing_hard`.
+ *
+ * Kept separate from `sectionSlotId`/`tabSlotId` for the same reason those are separate
+ * from each other: `_card_` vs `_section_` is what says which surface an override
+ * belongs to, and each id shape must stay independently greppable.
+ *
+ * A mismatch does not throw, it silently stops matching an override, so `slots.test.ts`
+ * asserts every key in `GAME_CATALOGUE` resolves to a registered slot.
+ */
+export function gameSlotId(gameKey: string): string {
+  return `games_card_${gameKey.replace(/-/g, "_")}`;
 }
 
 /** Slot ids are a closed set at runtime; an unknown one must never reach the database. */

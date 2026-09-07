@@ -415,6 +415,87 @@ const Photo: IconComponent = (props) => (
   </svg>
 );
 
+/* ---------------------------------------------------------------------------------
+   The six Arcade games. One glyph each, so a game card is recognisable before its
+   name is read.
+
+   These are the only glyphs with no entry in `scripts/gen-icon-glyphs.mjs`, and that
+   is deliberate rather than an omission: no icon set ships "a 2048 tile" or "a sudoku
+   box", and the near-misses (a generic grid, a gamepad) would make three of the six
+   cards indistinguishable. `TreeIcon` falls back to the hand-drawn glyph for anything
+   the active set doesn't cover, so these draw identically in every set.
+
+   All six are drawn to survive 16px, which is the size they render at in a card
+   header: few strokes, no interior detail that closes up.
+--------------------------------------------------------------------------------- */
+
+/* 2048: a rounded tile with a doubling arrow. Two nested tiles read as merging, which
+   is the whole game — a bare square would be indistinguishable from `grid`. */
+const Game2048: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <rect x="3" y="3" width="11" height="11" rx="2" />
+    <rect x="10" y="10" width="11" height="11" rx="2" />
+  </svg>
+);
+
+/* Arrow Clearing: one arrow, pointing up-right off the board. The game is a maze of
+   directional arrows, so a single unambiguous arrowhead is the clearest mark. */
+const GameArrows: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <path d="M6 18L18 6" />
+    <path d="M11 6h7v7" />
+  </svg>
+);
+
+/* Tetris: an S-tetromino, drawn as four cells. The most recognisable piece silhouette
+   that still reads at 16px — an I-piece is just a bar, and an L is an arrow. */
+const GameTetris: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <path d="M3 14.5h7v-5h11v5h-7v5H3z" />
+    <path d="M10 9.5v5" />
+  </svg>
+);
+
+/* Sudoku: a 3x3 box with one cell filled. The filled cell is what separates this from
+   `grid`, and it says "put a number here" without drawing an illegible digit. */
+const GameSudoku: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <path d="M9 3v18M15 3v18M3 9h18M3 15h18" />
+    <rect x="9" y="9" width="6" height="6" fill="currentColor" stroke="none" />
+  </svg>
+);
+
+/* Blackjack: two overlapping cards. The offset pair is the mark for a dealt hand;
+   a single card would read as a document or a window. */
+const GameBlackjack: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <rect x="8.5" y="4" width="11" height="15" rx="2" />
+    <path d="M12.5 20.5H6a1.5 1.5 0 01-1.5-1.5V7" />
+  </svg>
+);
+
+/* Minesweeper: a mine — a filled disc with spikes. Filled rather than outlined
+   because at 16px an outlined disc behind spikes reads as a gear. */
+const GameMinesweeper: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <circle cx="12" cy="12" r="5.5" fill="currentColor" stroke="none" />
+    <path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2" />
+  </svg>
+);
+
+/* Mahjong Match: a tile with a bamboo mark, drawn as a rounded upright rectangle with
+   a stack line behind it. The offset back edge is what says "a thick block in a stack"
+   rather than "a card" at 16px, which is the distinction that matters next to the
+   Blackjack glyph in the same list. */
+const GameMahjongMatch: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <rect x="8.5" y="4.5" width="12" height="15" rx="2" />
+    <path d="M8.5 7.5h-3a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h3" />
+    <path d="M14.5 9v6M12.5 11h4" />
+  </svg>
+);
+
 const TREE_ICONS = {
   flash: Flash,
   note: Note,
@@ -451,6 +532,13 @@ const TREE_ICONS = {
   "photo-stack": PhotoStack,
   photo: Photo,
   "photo-folder": PhotoFolder,
+  "game-2048": Game2048,
+  "game-arrows": GameArrows,
+  "game-tetris": GameTetris,
+  "game-sudoku": GameSudoku,
+  "game-blackjack": GameBlackjack,
+  "game-minesweeper": GameMinesweeper,
+  "game-mahjong": GameMahjongMatch,
 } as const;
 
 export type TreeIconName = keyof typeof TREE_ICONS;

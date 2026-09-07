@@ -1,7 +1,9 @@
 "use client";
 
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
-import { formatScore, type Score } from "@/lib/games";
+import { SlotIcon } from "@/components/slot-icon";
+import { findGame, formatScore, type Score } from "@/lib/games";
+import { gameSlotId, getIconSlot } from "@/lib/icons";
 
 // The shared high-score board. One DataGrid — the app's mandated table, which already
 // handles search, sorting, column filters, CSV export and paging, and which delegates
@@ -32,8 +34,23 @@ export function GamesScoresView({ scores }: { scores: Score[] }) {
     {
       key: "game",
       header: "Game",
+      // The stored key stays the `value`, so sorting, the column filter and the CSV
+      // export keep grouping by the thing scores are actually keyed on — a score whose
+      // game has been retired from the catalogue still sorts with its siblings.
       value: (row) => row.gameKey,
-      render: (row) => <span className="text-ink">{row.gameKey}</span>,
+      // The cell shows the catalogue's name and icon instead, which is what a reader
+      // recognises: the raw key reads `arrow-clearing-hard`, including a difficulty
+      // suffix for boards that no longer exist. Falls back to the key when the game has
+      // left the catalogue, since a score deliberately outlives its game.
+      render: (row) => {
+        const slot = getIconSlot(gameSlotId(row.gameKey));
+        return (
+          <span className="flex items-center gap-2 text-ink">
+            {slot && <SlotIcon slot={slot} className="h-4 w-4 shrink-0 text-brass-dark" />}
+            {findGame(row.gameKey)?.name ?? row.gameKey}
+          </span>
+        );
+      },
     },
     {
       key: "player",

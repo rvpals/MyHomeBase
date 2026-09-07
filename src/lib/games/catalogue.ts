@@ -87,6 +87,21 @@ export const GAME_CATALOGUE: readonly CatalogueGame[] = [
     status: "available",
     scoreUnit: "points",
   },
+  // One Mahjong Match entry covering all three boards, the difficulty chosen inside the
+  // game — the call Sudoku and Minesweeper both make, for the reason they record: three
+  // keys would mean three Arcade cards and three scoreboards for one game.
+  //
+  // Points, not seconds, even though it is timed. The shared board ranks `score DESC`, so
+  // seconds would crown the slowest player in the house; `scoreGame` in
+  // `game-mahjong-match.ts` turns time into points and also charges for hints and
+  // shuffles. See `MAHJONG_MATCH_TIME_PENALTY`.
+  {
+    key: "mahjong-match",
+    name: "Mahjong Match",
+    description: "Clear the turtle by matching free tiles, two at a time.",
+    status: "available",
+    scoreUnit: "points",
+  },
 ];
 
 /** The catalogue entry for `key`, or undefined when nothing matches. */

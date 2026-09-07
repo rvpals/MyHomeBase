@@ -12,6 +12,7 @@ export {
   groupedIconSlots,
   sectionSlotId,
   tabSlotId,
+  gameSlotId,
 } from "./slots";
 export {
   iconOverrideInputSchema,

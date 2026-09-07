@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/button";
+import { useGameSounds } from "@/components/use-game-sounds";
 import {
   ARROW_DIFFICULTY_SETUP,
   ARROW_LIVES,
@@ -123,82 +124,33 @@ function pointsOf(cells: readonly Cell[]): string {
 --------------------------------------------------------------------------------- */
 
 /**
- * A tiny Web Audio beeper.
+ * Arrow Clearing's cue vocabulary, over the arcade's shared beeper.
  *
- * The AudioContext is created on the first *user gesture*, never on mount: browsers
- * refuse to start one without an interaction, and an autoplay-blocked context logs a
- * console warning on every load. Held in a ref because a context is expensive and a
- * board may see hundreds of taps.
+ * `useGameSounds` owns the audio context and the envelope; what lives here is only
+ * *what an Arrow Clearing event sounds like*.
  */
 function useSounds(enabled: boolean) {
-  const contextRef = useRef<AudioContext | null>(null);
-
-  const context = useCallback((): AudioContext | undefined => {
-    if (!enabled) return undefined;
-    if (!contextRef.current) {
-      const Ctor =
-        window.AudioContext ??
-        (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!Ctor) return undefined;
-      contextRef.current = new Ctor();
-    }
-    return contextRef.current;
-  }, [enabled]);
-
-  // Release the hardware when the game is closed; a leaked context keeps the audio
-  // device awake for the life of the tab.
-  useEffect(() => {
-    return () => {
-      void contextRef.current?.close();
-      contextRef.current = null;
-    };
-  }, []);
-
-  const tone = useCallback(
-    (startHz: number, endHz: number, durationMs: number, type: OscillatorType = "sine") => {
-      const audio = context();
-      if (!audio) return;
-
-      const now = audio.currentTime;
-      const oscillator = audio.createOscillator();
-      const gain = audio.createGain();
-
-      oscillator.type = type;
-      oscillator.frequency.setValueAtTime(startHz, now);
-      oscillator.frequency.exponentialRampToValueAtTime(
-        Math.max(1, endHz),
-        now + durationMs / 1000,
-      );
-
-      // A quick attack and a ramp to (near) silence: a gain that stops at a non-zero
-      // value clicks audibly, and exponentialRamp cannot reach exactly 0.
-      gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.exponentialRampToValueAtTime(0.09, now + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + durationMs / 1000);
-
-      oscillator.connect(gain).connect(audio.destination);
-      oscillator.start(now);
-      oscillator.stop(now + durationMs / 1000 + 0.02);
-    },
-    [context],
-  );
+  const sounds = useGameSounds(enabled);
 
   return useMemo(
     () => ({
       /** A rising whoosh as the piece snakes away. */
-      clear: () => tone(360, 1020, 420, "triangle"),
+      clear: () =>
+        sounds.play({ startHz: 360, endHz: 1020, durationMs: 420, type: "triangle" }),
       /** A short low thud for a piece that could not move. */
-      bump: () => tone(180, 90, 150, "square"),
+      bump: () => sounds.play({ startHz: 180, endHz: 90, durationMs: 150, type: "square" }),
       /** A heavier descending tone when that thud also cost the last life. */
-      gameOver: () => tone(300, 70, 620, "sawtooth"),
+      gameOver: () =>
+        sounds.play({ startHz: 300, endHz: 70, durationMs: 620, type: "sawtooth" }),
       /** Three rising notes on a cleared board. */
-      win: () => {
-        tone(523, 523, 140, "triangle");
-        window.setTimeout(() => tone(659, 659, 140, "triangle"), 130);
-        window.setTimeout(() => tone(784, 784, 260, "triangle"), 260);
-      },
+      win: () =>
+        sounds.playSequence([
+          { startHz: 523, endHz: 523, durationMs: 140, type: "triangle" },
+          { startHz: 659, endHz: 659, durationMs: 140, type: "triangle", afterMs: 130 },
+          { startHz: 784, endHz: 784, durationMs: 260, type: "triangle", afterMs: 260 },
+        ]),
     }),
-    [tone],
+    [sounds],
   );
 }
 

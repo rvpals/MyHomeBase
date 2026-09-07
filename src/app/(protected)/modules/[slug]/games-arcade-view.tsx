@@ -3,10 +3,13 @@
 import { useState } from "react";
 import { Button } from "@/components/button";
 import { Modal } from "@/components/modal";
+import { SlotIcon } from "@/components/slot-icon";
 import { arrowDifficultyOf, formatScore, type GameSummary } from "@/lib/games";
+import { gameSlotId, getIconSlot } from "@/lib/icons";
 import { Game2048View } from "./game-2048-view";
 import { GameBlackjackView } from "./game-blackjack-view";
 import { GameArrowsView } from "./game-arrows-view";
+import { GameMahjongMatchView } from "./game-mahjong-match-view";
 import { GameMinesweeperView } from "./game-minesweeper-view";
 import { GameSudokuView } from "./game-sudoku-view";
 import { GameTetrisView } from "./game-tetris-view";
@@ -25,6 +28,18 @@ import { GameTetrisView } from "./game-tetris-view";
 // not persisted), so a route would be bookmarkable and would reopen an empty board,
 // implying otherwise. `Modal` also brings Escape, the focus trap and the body-scroll
 // lock, all of which a hand-rolled overlay would have to re-solve.
+
+/**
+ * The icon for one game, or nothing when the catalogue has an entry the registry
+ * doesn't. Renders `null` rather than throwing: a missing glyph should cost a card its
+ * decoration, not the whole Arcade — the name below it still carries the meaning.
+ * `slots.test.ts` asserts the two lists agree, so this shouldn't fire in practice.
+ */
+function GameIcon({ gameKey, className }: { gameKey: string; className?: string }) {
+  const slot = getIconSlot(gameSlotId(gameKey));
+  if (!slot) return null;
+  return <SlotIcon slot={slot} className={className} />;
+}
 
 export function GamesArcadeView({ games }: { games: GameSummary[] }) {
   const [openKey, setOpenKey] = useState<string | undefined>(undefined);
@@ -51,14 +66,15 @@ export function GamesArcadeView({ games }: { games: GameSummary[] }) {
       {open && (
         <Modal
           title={open.game.name}
+          titleIcon={<GameIcon gameKey={open.game.key} className="h-5 w-5 text-brass-dark" />}
           description={open.game.description}
           onClose={() => setOpenKey(undefined)}
           size="full"
-          footer={
-            <Button onClick={() => setOpenKey(undefined)} variant="secondary">
-              Back to the arcade
-            </Button>
-          }
+          // No `footer`, deliberately: `Modal` omits the whole bottom bar when it is
+          // absent, which gives a full-bleed game the extra ~50px and drops a row of
+          // chrome from under the board. Leaving the game is still three ways available
+          // — the header's ✕, Escape, and an overlay click — so a dedicated "back"
+          // button was a second copy of an exit that was never missing.
         >
           {/*
             Centred in the dialog body, which is `flex-1 overflow-auto`. `min-h-full`
@@ -94,6 +110,11 @@ export function GamesArcadeView({ games }: { games: GameSummary[] }) {
               {open.game.key === "minesweeper" && (
                 <GameMinesweeperView bestScore={open.best?.score ?? 0} />
               )}
+              {/* One key for all three Mahjong Match boards, as with Sudoku and
+                  Minesweeper — the difficulty is picked inside the game. */}
+              {open.game.key === "mahjong-match" && (
+                <GameMahjongMatchView bestScore={open.best?.score ?? 0} />
+              )}
             </div>
           </div>
         </Modal>
@@ -110,7 +131,11 @@ function GameCard({ summary, onOpen }: { summary: GameSummary; onOpen: () => voi
     <article className="flex h-full flex-col justify-between rounded-xl border border-line bg-paper-raised p-4">
       <div>
         <div className="flex items-baseline justify-between gap-2">
-          <h3 className="font-display text-base text-ink">{game.name}</h3>
+          <h3 className="flex items-center gap-2 font-display text-base text-ink">
+            {/* `shrink-0` so a long game name wraps rather than squashing the glyph. */}
+            <GameIcon gameKey={game.key} className="h-4 w-4 shrink-0 text-brass-dark" />
+            {game.name}
+          </h3>
           {!playable && (
             <span className="rounded bg-brass-soft px-1.5 py-0.5 text-[0.65rem] uppercase tracking-wide text-brass-dark">
               Soon
