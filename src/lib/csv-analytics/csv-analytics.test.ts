@@ -4,11 +4,13 @@ import { describe, expect, it } from "vitest";
 import { fakeCsvAnalyticsRepo as fakeRepo } from "./fake-repository";
 import type { CreateCsvAnalyticEntryInput } from "./schema";
 import {
+  bulkEditRows,
   createEntry,
   deleteChartPreset,
   deleteEntry,
   listChartPresets,
   listEntries,
+  nonEditableColumns,
   previewCsvFile,
   readEntryData,
   saveChartPreset,
@@ -287,5 +289,187 @@ describe("chart presets", () => {
     const preset = saveChartPreset(repo, { entryId: entry.id, name: "Temp", optionsJson: "{}" });
     deleteChartPreset(repo, preset.id);
     expect(listChartPresets(repo, entry.id)).toHaveLength(0);
+  });
+});
+
+describe("readEntryData row ids", () => {
+  it("returns one row id per row, parallel to rows", () => {
+    const repo = fakeRepo();
+    const entry = createEntry(repo, sampleCreateInput());
+    const data = readEntryData(repo, entry.id);
+    expect(data.rowIds).toHaveLength(data.rows.length);
+    // Distinct, so each row is separately addressable.
+    expect(new Set(data.rowIds).size).toBe(data.rows.length);
+  });
+
+  it("caps row ids with the same limit as rows", () => {
+    const repo = fakeRepo();
+    const entry = createEntry(repo, sampleCreateInput());
+    const data = readEntryData(repo, entry.id, 1);
+    expect(data.rows).toHaveLength(1);
+    expect(data.rowIds).toHaveLength(1);
+  });
+});
+
+describe("nonEditableColumns", () => {
+  it("lists the entry's primary key fields", () => {
+    const repo = fakeRepo();
+    const entry = createEntry(repo, sampleCreateInput());
+    expect(nonEditableColumns(entry)).toEqual(["user_id", "event_at"]);
+  });
+
+  it("is empty for an entry with a surrogate key", () => {
+    const repo = fakeRepo();
+    const entry = createEntry(repo, sampleCreateInput({ primaryKeyFields: [] }));
+    expect(nonEditableColumns(entry)).toEqual([]);
+  });
+});
+
+describe("bulkEditRows", () => {
+  /** An entry with a surrogate key, so every user column is editable. */
+  function surrogateEntry() {
+    const repo = fakeRepo();
+    const entry = createEntry(repo, sampleCreateInput({ primaryKeyFields: [] }));
+    return { repo, entry };
+  }
+
+  it("applies one value to every selected row and leaves the rest alone", () => {
+    const { repo, entry } = surrogateEntry();
+    const before = readEntryData(repo, entry.id);
+
+    const result = bulkEditRows(repo, entry.id, before.rowIds, { amount: "99.5" });
+    expect(result.updated).toBe(2);
+    expect(result.fields).toEqual(["amount"]);
+
+    const after = readEntryData(repo, entry.id);
+    expect(after.rows.map((row) => row[2])).toEqual([99.5, 99.5]);
+    // Untouched columns keep their values.
+    expect(after.rows.map((row) => row[0])).toEqual([1, 2]);
+    expect(after.rows.map((row) => row[1])).toEqual(["2026-01-01", "2026-01-02"]);
+  });
+
+  it("only writes the selected rows", () => {
+    const { repo, entry } = surrogateEntry();
+    const before = readEntryData(repo, entry.id);
+
+    const result = bulkEditRows(repo, entry.id, [before.rowIds[0]], { amount: "1" });
+    expect(result.updated).toBe(1);
+
+    const after = readEntryData(repo, entry.id);
+    expect(after.rows[0][2]).toBe(1);
+    expect(after.rows[1][2]).toBe(20); // the row that wasn't selected
+  });
+
+  it("coerces each value per the column's declared type", () => {
+    const { repo, entry } = surrogateEntry();
+    const before = readEntryData(repo, entry.id);
+
+    // "7.9" into an integer column is unparseable as an integer, so it clears —
+    // exactly what an import of the same cell would do.
+    bulkEditRows(repo, entry.id, before.rowIds, { user_id: "7.9", amount: "3.25" });
+
+    const after = readEntryData(repo, entry.id);
+    expect(after.rows[0][0]).toBeNull();
+    expect(after.rows[0][2]).toBe(3.25);
+  });
+
+  it("clears a column for an explicit null and for an empty string", () => {
+    const { repo, entry } = surrogateEntry();
+    const before = readEntryData(repo, entry.id);
+
+    bulkEditRows(repo, entry.id, [before.rowIds[0]], { amount: null });
+    bulkEditRows(repo, entry.id, [before.rowIds[1]], { amount: "" });
+
+    const after = readEntryData(repo, entry.id);
+    expect(after.rows[0][2]).toBeNull();
+    expect(after.rows[1][2]).toBeNull();
+  });
+
+  it("dedupes a repeated row id", () => {
+    const { repo, entry } = surrogateEntry();
+    const before = readEntryData(repo, entry.id);
+    const rowId = before.rowIds[0];
+
+    const result = bulkEditRows(repo, entry.id, [rowId, rowId, rowId], { amount: "5" });
+    expect(result.updated).toBe(1);
+  });
+
+  it("orders the written fields by the entry's column order, not the caller's", () => {
+    const { repo, entry } = surrogateEntry();
+    const before = readEntryData(repo, entry.id);
+    // Object built back-to-front on purpose.
+    const result = bulkEditRows(repo, entry.id, before.rowIds, { amount: "1", user_id: "2" });
+    expect(result.fields).toEqual(["user_id", "amount"]);
+  });
+
+  it("refuses a primary key column", () => {
+    const repo = fakeRepo();
+    const entry = createEntry(repo, sampleCreateInput()); // composite PK
+    const before = readEntryData(repo, entry.id);
+    expect(() => bulkEditRows(repo, entry.id, before.rowIds, { user_id: "9" })).toThrow(
+      /Primary key column/,
+    );
+  });
+
+  it("still edits a non-key column on an entry with a composite key", () => {
+    const repo = fakeRepo();
+    const entry = createEntry(repo, sampleCreateInput());
+    const before = readEntryData(repo, entry.id);
+    expect(bulkEditRows(repo, entry.id, before.rowIds, { amount: "4" }).updated).toBe(2);
+  });
+
+  it("throws for an unknown column rather than skipping it", () => {
+    const { repo, entry } = surrogateEntry();
+    const before = readEntryData(repo, entry.id);
+    expect(() =>
+      bulkEditRows(repo, entry.id, before.rowIds, { amount: "1", nope: "x" }),
+    ).toThrow(/Unknown column/);
+
+    // And nothing was written — an unknown column can't half-apply an edit.
+    expect(readEntryData(repo, entry.id).rows[0][2]).toBe(10.5);
+  });
+
+  it("throws for an empty selection", () => {
+    const { repo, entry } = surrogateEntry();
+    expect(() => bulkEditRows(repo, entry.id, [], { amount: "1" })).toThrow();
+  });
+
+  it("throws for an empty change set", () => {
+    const { repo, entry } = surrogateEntry();
+    const before = readEntryData(repo, entry.id);
+    expect(() => bulkEditRows(repo, entry.id, before.rowIds, {})).toThrow();
+  });
+
+  it("throws for an unknown entry", () => {
+    const { repo } = surrogateEntry();
+    expect(() => bulkEditRows(repo, 999, [1], { amount: "1" })).toThrow(/not found/);
+  });
+
+  it("chunks a selection past the parameter ceiling and still writes every row", () => {
+    const repo = fakeRepo();
+    // 900 rows — more than one chunk of 400, and past SQLite's 999 parameter limit
+    // had the selection gone into a single IN (…) list.
+    const header = "User ID,Event At,Amount\n";
+    const body = Array.from(
+      { length: 900 },
+      (_unused, index) => `${index + 1},2026-01-01,1`,
+    ).join("\n");
+    const csv = `${header}${body}`;
+    const preview = previewCsvFile(csv);
+    const entry = createEntry(repo, {
+      name: "Many",
+      description: undefined,
+      tableBaseName: "many",
+      columns: preview.suggestedColumns,
+      primaryKeyFields: [],
+      fileText: csv,
+    });
+
+    const before = readEntryData(repo, entry.id);
+    expect(before.rowIds).toHaveLength(900);
+
+    const result = bulkEditRows(repo, entry.id, before.rowIds, { amount: "2" });
+    expect(result.updated).toBe(900);
+    expect(readEntryData(repo, entry.id).rows.every((row) => row[2] === 2)).toBe(true);
   });
 });

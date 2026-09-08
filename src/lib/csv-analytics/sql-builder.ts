@@ -72,6 +72,59 @@ export function buildCreateTableSql(
   return `CREATE TABLE ${quoteIdentifier(tableName)} (\n${columnLines.join(",\n")}\n)`;
 }
 
+/**
+ * The alias the rowid is read back under. Not a column name a CSV can produce —
+ * `slugifyIdentifier` strips the leading underscore off any header, so no declared
+ * column can ever collide with it.
+ */
+export const ROWID_ALIAS = "_rowid";
+
+/**
+ * Builds the SELECT that `readTableData` uses: the declared columns in definition
+ * order, plus `rowid` last under `ROWID_ALIAS`.
+ *
+ * The rowid goes LAST so the value arrays returned by a `.raw()` read still line up
+ * 1:1 with `columns` by index — the caller slices it off the end.
+ */
+export function buildSelectRowsSql(
+  tableName: string,
+  columns: CsvColumnDefinition[],
+  limit?: number,
+): string {
+  const columnList = columns.map((column) => quoteIdentifier(column.name)).join(", ");
+  const limitClause = limit !== undefined && limit > 0 ? ` LIMIT ${Math.floor(limit)}` : "";
+  return `SELECT ${columnList}, rowid AS ${quoteIdentifier(ROWID_ALIAS)} FROM ${quoteIdentifier(tableName)}${limitClause}`;
+}
+
+/**
+ * Builds the UPDATE for a bulk edit: one value per named field, applied to every
+ * rowid in the selection.
+ *
+ * Same two rules as everything else in this file. `fields` are column *names*, so
+ * they are identifiers — the caller has already validated each one against the
+ * entry's real column list (`bulkEditRows` does), and they are still quoted here.
+ * Every value is a bound parameter: `@<name>` per field, then positional `?`s for
+ * the rowids, in that order.
+ *
+ * `rowIdCount` builds the `IN (?, ?, …)` list. Zero rowids would make an UPDATE that
+ * matches nothing but reads as valid SQL, so it throws instead — a bulk edit with an
+ * empty selection is a caller bug, not a no-op worth executing.
+ */
+export function buildBulkUpdateSql(
+  tableName: string,
+  fields: string[],
+  rowIdCount: number,
+): string {
+  if (fields.length === 0) throw new Error("A bulk update needs at least one field to set.");
+  if (rowIdCount <= 0) throw new Error("A bulk update needs at least one row id.");
+
+  const assignments = fields
+    .map((field) => `${quoteIdentifier(field)} = @${field}`)
+    .join(", ");
+  const placeholders = new Array(Math.floor(rowIdCount)).fill("?").join(", ");
+  return `UPDATE ${quoteIdentifier(tableName)} SET ${assignments} WHERE rowid IN (${placeholders})`;
+}
+
 export function buildDropTableSql(tableName: string): string {
   return `DROP TABLE IF EXISTS ${quoteIdentifier(tableName)}`;
 }

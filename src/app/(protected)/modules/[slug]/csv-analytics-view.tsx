@@ -1,17 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { ChartXY, type ChartType } from "@/components/chart-xy";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type CellValue, type DataGridColumn } from "@/components/data-grid";
 import { FileDropzone } from "@/components/file-dropzone";
+import { Modal } from "@/components/modal";
 import {
   describeCriteria,
   describeOrderBy,
+  nonEditableColumns,
   type CsvAnalyticEntry,
   type CsvChartPreset,
+  type CsvBulkEditChanges,
   type CsvColumnDefinition,
   type CsvColumnType,
   type CsvCustomView,
@@ -20,6 +23,7 @@ import {
   type IngestMode,
 } from "@/lib/csv-analytics";
 import {
+  bulkEditCsvRowsAction,
   createCsvAnalyticsEntryAction,
   deleteChartPresetAction,
   deleteCsvAnalyticsEntryAction,
@@ -45,10 +49,204 @@ function toChartNumber(value: string | number | null): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-/** Renders an entry's table rows in a sortable, exportable grid. */
-function DataPanel({ data, exportName }: { data: CsvEntryData; exportName: string }) {
+const BULK_INPUT_CLASS =
+  "w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass disabled:opacity-40";
+
+/**
+ * Bulk edit for the selected rows: tick a column to include it, type the value every
+ * selected row should get. A ticked column left blank clears it — that is what "apply
+ * this value to all" has to mean.
+ *
+ * Local to this view rather than a shared component, exactly as the Expense dialog is:
+ * the field list here is *derived from the dataset's own columns*, which no other grid
+ * can reuse. Promote it if a third grid needs the same shape.
+ *
+ * Primary-key columns are listed but disabled. Setting the same value on every selected
+ * row would collide the key the moment two rows are selected, so `bulkEditRows` refuses
+ * them outright — this only surfaces that rule instead of letting the user find it in a
+ * constraint error.
+ */
+function BulkEditDialog({
+  entry,
+  columns,
+  rowIds,
+  onCancel,
+  onApplied,
+}: {
+  entry: CsvAnalyticEntry;
+  columns: CsvColumnDefinition[];
+  rowIds: number[];
+  onCancel: () => void;
+  onApplied: (updated: number) => void;
+}) {
+  const [enabled, setEnabled] = useState<Set<string>>(new Set());
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [error, setError] = useState<string | undefined>(undefined);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const locked = useMemo(() => new Set(nonEditableColumns(entry)), [entry]);
+
+  function toggleColumn(name: string) {
+    setEnabled((current) => {
+      const next = new Set(current);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
+
+  async function handleApply() {
+    // Only the ticked columns go into the change set; every other column on every
+    // selected row is left untouched.
+    const changes: CsvBulkEditChanges = {};
+    for (const column of columns) {
+      if (!enabled.has(column.name) || locked.has(column.name)) continue;
+      changes[column.name] = values[column.name] ?? "";
+    }
+
+    setIsSaving(true);
+    setError(undefined);
+    try {
+      const result = await bulkEditCsvRowsAction(entry.id, rowIds, changes);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      onApplied(result.updated ?? 0);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  /**
+   * The control per column type. Coercion is the server's job either way
+   * (`coerceCellValue`, the same path an import takes), so these only make the common
+   * case easier to type — they are not the validation.
+   */
+  function renderControl(column: CsvColumnDefinition) {
+    const isEnabled = enabled.has(column.name);
+    const shared = {
+      disabled: !isEnabled,
+      className: BULK_INPUT_CLASS,
+      value: values[column.name] ?? "",
+      "aria-label": column.sourceHeader,
+      onChange: (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+        setValues((current) => ({ ...current, [column.name]: event.target.value })),
+    };
+
+    if (column.type === "boolean") {
+      return (
+        <select {...shared}>
+          <option value="">— clear this column —</option>
+          <option value="true">true</option>
+          <option value="false">false</option>
+        </select>
+      );
+    }
+
+    const placeholder = isEnabled ? "Leave blank to clear this column" : "";
+    if (column.type === "integer" || column.type === "real") {
+      return (
+        <input
+          {...shared}
+          type="number"
+          step={column.type === "integer" ? "1" : "any"}
+          placeholder={placeholder}
+        />
+      );
+    }
+    if (column.type === "date") return <input {...shared} type="date" />;
+    return <input {...shared} placeholder={placeholder} />;
+  }
+
+  const editableTicked = [...enabled].filter((name) => !locked.has(name));
+
+  return (
+    <Modal
+      title={`Bulk edit ${rowIds.length} row(s)`}
+      description="Tick a column to apply its value to every selected row. Unticked columns are left as they are, and a ticked column left blank clears it. Values are coerced to the column's type, exactly as an import would."
+      onClose={onCancel}
+      isBusy={isSaving}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onCancel} disabled={isSaving}>
+            Cancel
+          </Button>
+          <Button onClick={handleApply} disabled={isSaving || editableTicked.length === 0}>
+            {isSaving ? "Applying…" : `Apply to ${rowIds.length}`}
+          </Button>
+        </>
+      }
+    >
+      {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
+
+      <div className="flex flex-col gap-3">
+        {columns.map((column) => {
+          const isLocked = locked.has(column.name);
+          return (
+            <div
+              key={column.name}
+              className="grid grid-cols-1 items-center gap-2 sm:grid-cols-[12rem_1fr]"
+            >
+              <label className="flex items-center gap-2 text-sm font-medium text-ink">
+                <input
+                  type="checkbox"
+                  checked={enabled.has(column.name)}
+                  disabled={isLocked}
+                  onChange={() => toggleColumn(column.name)}
+                  className="h-4 w-4 rounded border-line text-brass disabled:opacity-40"
+                />
+                <span className={isLocked ? "text-muted" : undefined}>
+                  {column.sourceHeader}
+                  <span className="ml-1 font-mono text-xs text-muted">{column.type}</span>
+                </span>
+              </label>
+              {isLocked ? (
+                <p className="text-xs text-muted">
+                  Primary key — every selected row would get the same key.
+                </p>
+              ) : (
+                renderControl(column)
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Renders an entry's table rows in a sortable, exportable grid, with selection and
+ * bulk edit when the panel is showing the raw table.
+ *
+ * Rows are keyed by their real SQLite rowid (`data.rowIds`, parallel to `data.rows`)
+ * rather than by array position: position is not identity, and a bulk edit has to name
+ * the rows it writes. That is also why selection is offered here and not in
+ * `ViewDataPanel` — a custom view's compiled SELECT carries no rowid, so its rows
+ * aren't addressable.
+ */
+function DataPanel({
+  data,
+  exportName,
+  entry,
+  onEdited,
+}: {
+  data: CsvEntryData;
+  exportName: string;
+  /** Omit for a read-only grid — selection and bulk edit disappear with it. */
+  entry?: CsvAnalyticEntry;
+  onEdited?: () => void;
+}) {
+  const [bulkEdit, setBulkEdit] = useState<
+    { rowIds: number[]; clearSelection: () => void } | undefined
+  >(undefined);
+  // What the last bulk edit did. Kept after the selection clears, so the confirmation
+  // outlives the ticks it refers to.
+  const [bulkResult, setBulkResult] = useState<string | undefined>(undefined);
+
   const rowKeys = useMemo(
-    () => new Map(data.rows.map((row, index) => [row, index] as const)),
+    () => new Map(data.rows.map((row, index) => [row, data.rowIds[index]] as const)),
     [data],
   );
   const columns: DataGridColumn<(string | number | null)[]>[] = data.columns.map((column, index) => ({
@@ -58,14 +256,76 @@ function DataPanel({ data, exportName }: { data: CsvEntryData; exportName: strin
     render: (row) => formatCell(row[index]),
   }));
 
+  /**
+   * The rowids for a set of picked rows, dropping any the map doesn't know.
+   *
+   * The filter is not defensive noise: sending a placeholder id for a row we can't
+   * identify would edit whatever row happens to own that id. Better to edit fewer
+   * rows than the wrong ones, and the count in the dialog title shows what will
+   * actually be written.
+   */
+  function rowIdsOf(picked: (string | number | null)[][]): number[] {
+    return picked
+      .map((row) => rowKeys.get(row))
+      .filter((rowId): rowId is number => rowId !== undefined);
+  }
+
   return (
-    <DataGrid
-      columns={columns}
-      rows={data.rows}
-      getRowKey={(row) => rowKeys.get(row) ?? 0}
-      emptyMessage="This table has no rows."
-      exportFileName={exportName}
-    />
+    <div className="flex flex-col gap-2">
+      <DataGrid
+        columns={columns}
+        rows={data.rows}
+        // -1 can't collide with a real rowid (SQLite's are positive), so an
+        // unidentifiable row is inert rather than aliasing another row's key.
+        getRowKey={(row) => rowKeys.get(row) ?? -1}
+        emptyMessage="This table has no rows."
+        exportFileName={exportName}
+        enableSelection={entry !== undefined}
+        renderSelectionActions={
+          entry === undefined
+            ? undefined
+            : (selectedRows, clearSelection) => {
+                const rowIds = rowIdsOf(selectedRows);
+                return (
+                  <Button
+                    size="sm"
+                    // Nothing ticked means nothing to edit: the use-case rejects an
+                    // empty selection, so opening the dialog could only end in an
+                    // error the user can't act on.
+                    disabled={rowIds.length === 0}
+                    onClick={() => setBulkEdit({ rowIds, clearSelection })}
+                  >
+                    Bulk edit
+                  </Button>
+                );
+              }
+        }
+      />
+
+      {entry && (
+        <p className="text-xs text-muted">
+          Tick rows to bulk edit them — search and the column filters narrow what
+          {" "}
+          &ldquo;select all&rdquo; covers.
+          {bulkResult && <span className="ml-2 font-medium text-brass-dark">{bulkResult}</span>}
+        </p>
+      )}
+
+      {bulkEdit && entry && (
+        <BulkEditDialog
+          entry={entry}
+          columns={data.columns}
+          rowIds={bulkEdit.rowIds}
+          onCancel={() => setBulkEdit(undefined)}
+          onApplied={(updated) => {
+            setBulkResult(`Updated ${updated} row(s).`);
+            bulkEdit.clearSelection();
+            setBulkEdit(undefined);
+            onEdited?.();
+          }}
+        />
+      )}
+    </div>
   );
 }
 
@@ -149,6 +409,7 @@ function ViewDataPanel({ view, exportName }: { view: CsvCustomView; exportName: 
         <p className="font-medium text-ink">{view.name}</p>
         <p className="font-mono">{describeCriteria(view.criteria)}</p>
         <p className="font-mono">Ordered by: {describeOrderBy(view.orderBy)}</p>
+        <p className="mt-1">Read-only — clear the view to select and bulk edit rows.</p>
       </div>
 
       <DataGrid
@@ -948,22 +1209,33 @@ export function CsvAnalyticsView({
     return grouped;
   }, [customViews]);
 
+  /**
+   * Reads one entry's raw table into the panel. Shared by opening the panel, clearing
+   * a view off it, and re-reading it after a bulk edit — all three want exactly this,
+   * and a bulk edit has to re-read: the rows on screen are now stale, and so are the
+   * rowids if the write changed a primary key column (it can't, but the read is the
+   * thing that proves it).
+   */
+  const loadPanelData = useCallback(async (entryId: number, keepRows = false) => {
+    if (!keepRows) setPanelData(undefined);
+    setPanelError(undefined);
+    setPanelLoading(true);
+    try {
+      const result = await readCsvAnalyticsDataAction(entryId);
+      if (!result.ok || !result.data) setPanelError(result.error ?? "Failed to read table data.");
+      else setPanelData(result.data);
+    } finally {
+      setPanelLoading(false);
+    }
+  }, []);
+
   async function openPanel(entry: CsvAnalyticEntry, mode: "data" | "chart") {
     setActivePanel({ entryId: entry.id, mode });
     if (mode !== "data") return; // the chart builder fetches its own (row-limited) data
     // A view-backed panel fetches its own page in ViewDataPanel, so there's nothing
     // to read here.
     if (selectedViewByEntry[entry.id] !== undefined) return;
-    setPanelData(undefined);
-    setPanelError(undefined);
-    setPanelLoading(true);
-    try {
-      const result = await readCsvAnalyticsDataAction(entry.id);
-      if (!result.ok || !result.data) setPanelError(result.error ?? "Failed to read table data.");
-      else setPanelData(result.data);
-    } finally {
-      setPanelLoading(false);
-    }
+    await loadPanelData(entry.id);
   }
 
   /**
@@ -984,16 +1256,7 @@ export function CsvAnalyticsView({
     if (viewId !== undefined) return; // ViewDataPanel reads its own page
 
     // Cleared back to the raw table — fetch it, since ViewDataPanel is going away.
-    setPanelData(undefined);
-    setPanelError(undefined);
-    setPanelLoading(true);
-    try {
-      const result = await readCsvAnalyticsDataAction(entry.id);
-      if (!result.ok || !result.data) setPanelError(result.error ?? "Failed to read table data.");
-      else setPanelData(result.data);
-    } finally {
-      setPanelLoading(false);
-    }
+    await loadPanelData(entry.id);
   }
 
   async function handleDelete(entry: CsvAnalyticEntry) {
@@ -1161,7 +1424,16 @@ export function CsvAnalyticsView({
             ) : panelError ? (
               <p className="text-sm text-red-400">{panelError}</p>
             ) : panelData ? (
-              <DataPanel data={panelData} exportName={activeEntry.tableName} />
+              <DataPanel
+                data={panelData}
+                exportName={activeEntry.tableName}
+                entry={activeEntry}
+                // Re-read the rows the edit just changed. `keepRows` holds the old
+                // rows on screen through the fetch: blanking them would collapse the
+                // card to "Loading…" and lose the scroll position right after an
+                // edit, which reads as the edit having wiped the table.
+                onEdited={() => loadPanelData(activeEntry.id, true)}
+              />
             ) : null}
           </div>
         </CollapsibleCard>

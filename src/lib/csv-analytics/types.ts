@@ -27,6 +27,21 @@ export interface CsvAnalyticEntry {
 export interface CsvEntryData {
   columns: CsvColumnDefinition[];
   rows: (string | number | null)[][];
+  /**
+   * SQLite `rowid` per row, parallel to `rows` — `rowIds[i]` identifies `rows[i]`.
+   *
+   * A parallel array rather than a field on the row so `rows` keeps its exact shape:
+   * every chart, export and cell lookup indexes by the column's position in `columns`,
+   * and prepending a key would shift all of them.
+   *
+   * This is what makes a row writable. `rows` alone is anonymous values — the declared
+   * columns are not necessarily unique, so position in the array is the only other
+   * handle, and that is not stable across reads. Every physical table has a rowid
+   * whichever shape `buildCreateTableSql` gave it: with no `primaryKeyFields` the
+   * surrogate `_row_id INTEGER PRIMARY KEY AUTOINCREMENT` *is* the rowid, and a
+   * composite-PK table still carries the implicit one.
+   */
+  rowIds: number[];
 }
 
 /** A named, saved set of chart-builder options for one entry. `optionsJson` is opaque to lib. */

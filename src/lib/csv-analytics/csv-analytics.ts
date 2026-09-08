@@ -2,13 +2,15 @@ import { parseCsv } from "@/lib/shared/csv";
 import type { CsvAnalyticsRepository } from "./ports";
 import {
   createCsvAnalyticEntrySchema,
+  csvBulkEditSchema,
   saveChartPresetSchema,
   updateCsvAnalyticEntrySchema,
   type CreateCsvAnalyticEntryInput,
+  type CsvBulkEditChanges,
   type SaveChartPresetInput,
   type UpdateCsvAnalyticEntryInput,
 } from "./schema";
-import { dedupeColumnNames, inferColumnType } from "./sql-builder";
+import { coerceCellValue, dedupeColumnNames, inferColumnType } from "./sql-builder";
 import type {
   CsvAnalyticEntry,
   CsvChartPreset,
@@ -199,4 +201,111 @@ export function saveChartPreset(repo: CsvAnalyticsRepository, input: SaveChartPr
 
 export function deleteChartPreset(repo: CsvAnalyticsRepository, id: number): void {
   repo.deleteChartPreset(id);
+}
+
+// --- Bulk edit ---------------------------------------------------------------
+
+/**
+ * How many rowids go into one UPDATE. SQLite's default host-parameter ceiling is 999,
+ * and the change values need a few of those, so the selection is applied in chunks
+ * rather than refused. The repository runs every chunk in one transaction, so a
+ * chunked edit is still all-or-nothing.
+ */
+const BULK_UPDATE_CHUNK_SIZE = 400;
+
+/**
+ * Which columns a bulk edit may never write, for one entry.
+ *
+ * An entry's `primaryKeyFields` are excluded because a bulk edit sets the *same* value
+ * on every selected row: writing a PK column would collide the key the moment two rows
+ * are selected, failing the whole batch. Nothing is gained by letting the user discover
+ * that from a SQLite constraint error, so the rule is stated here and the UI reads it
+ * to disable those fields. An entry with no `primaryKeyFields` has a surrogate
+ * `_row_id` that is not in `columns` at all, so there is nothing to protect.
+ */
+export function nonEditableColumns(entry: CsvAnalyticEntry): string[] {
+  return [...entry.primaryKeyFields];
+}
+
+export interface CsvBulkEditResult {
+  /** Rows actually written, as reported by SQLite. */
+  updated: number;
+  /** The column names that were set, in the entry's column order. */
+  fields: string[];
+}
+
+/**
+ * Applies the same value to the same columns across a selection of rows.
+ *
+ * Only the columns named in `changes` are written; every other column on each row is
+ * left alone, so this cannot clobber the parts of a row the caller wasn't editing.
+ *
+ * Three rules, all enforced here rather than in the UI so the CLI gets them too:
+ *
+ *   - **A named column must exist on the entry.** An unknown name throws rather than
+ *     being skipped — unlike a *view*, which forgives a since-dropped column because
+ *     it was saved before the schema changed. A bulk edit is composed against the
+ *     schema as it is right now, so an unknown column means the caller is confused,
+ *     and silently writing the other columns would be a half-applied edit.
+ *   - **A primary-key column is refused** (see `nonEditableColumns`).
+ *   - **Values are coerced per the column's declared type**, through the same
+ *     `coerceCellValue` an import uses. So a bulk edit can't put text in an integer
+ *     column, and an unparseable value becomes NULL exactly as it would on import.
+ *     `null` (or an empty string) clears the column.
+ */
+export function bulkEditRows(
+  repo: CsvAnalyticsRepository,
+  entryId: number,
+  rowIds: number[],
+  changes: CsvBulkEditChanges,
+): CsvBulkEditResult {
+  const validated = csvBulkEditSchema.parse({ entryId, rowIds, changes });
+
+  const entry = repo.getEntryById(validated.entryId);
+  if (!entry) throw new Error(`CSV analytic entry ${validated.entryId} not found.`);
+
+  const columnsByName = new Map(entry.columns.map((column) => [column.name, column]));
+  // `Object.keys`, and a Set from it, rather than the `in` operator anywhere below:
+  // the change set arrives as parsed JSON from a server action or a CLI flag, and `in`
+  // would also answer true for inherited keys like "constructor", letting a column
+  // name nobody declared reach the field list.
+  const changedColumns = Object.keys(validated.changes);
+  const changed = new Set(changedColumns);
+  const unknown = changedColumns.filter((name) => !columnsByName.has(name));
+  if (unknown.length > 0) {
+    throw new Error(`Unknown column(s) for this dataset: ${unknown.join(", ")}.`);
+  }
+
+  const protectedColumns = new Set(nonEditableColumns(entry));
+  const refused = changedColumns.filter((name) => protectedColumns.has(name));
+  if (refused.length > 0) {
+    throw new Error(
+      `Primary key column(s) can't be bulk edited: ${refused.join(", ")}. Every selected row would get the same key.`,
+    );
+  }
+
+  // Coerce in the entry's column order, so the generated SQL is stable regardless of
+  // the order the caller happened to build the object in.
+  const fields = entry.columns
+    .map((column) => column.name)
+    .filter((name) => changed.has(name));
+
+  const values: Record<string, string | number | null> = {};
+  for (const name of fields) {
+    const raw = validated.changes[name];
+    const column = columnsByName.get(name);
+    if (!column) continue; // unreachable — checked above; keeps the map lookup honest
+    values[name] = raw === null ? null : coerceCellValue(raw, column.type);
+  }
+
+  // Dedupe: a selection can repeat a rowid, and the IN (…) list shouldn't.
+  const uniqueRowIds = [...new Set(validated.rowIds)];
+
+  const chunks: number[][] = [];
+  for (let index = 0; index < uniqueRowIds.length; index += BULK_UPDATE_CHUNK_SIZE) {
+    chunks.push(uniqueRowIds.slice(index, index + BULK_UPDATE_CHUNK_SIZE));
+  }
+
+  const updated = repo.bulkUpdateRows(validated.entryId, chunks, fields, values);
+  return { updated, fields };
 }

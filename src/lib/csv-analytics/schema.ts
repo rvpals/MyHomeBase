@@ -194,3 +194,42 @@ export const readCustomViewPageSchema = z.object({
 // supply. The other view schemas use `z.infer` because their callers (the form, the
 // CLI) build the whole object anyway.
 export type ReadCustomViewPageInput = z.input<typeof readCustomViewPageSchema>;
+
+// --- Bulk edit ---------------------------------------------------------------
+
+/**
+ * The rows a bulk edit applies to: SQLite rowids, as read back with the data.
+ *
+ * Capped so one request can't build an `IN (…)` list past SQLite's parameter limit
+ * (999 by default, and the change values take a few of those too). The Dashboard's
+ * "select all" is bounded by the row limit the panel was fetched with, which can be
+ * 40000, so this is a real ceiling rather than a formality — the use case pages
+ * through the selection instead of refusing it.
+ */
+export const csvRowIdsSchema = z
+  .array(z.number().int().positive())
+  .min(1, "Select at least one row to edit.");
+
+/**
+ * The change set: column name -> the value every selected row should get, as typed.
+ *
+ * Values stay STRINGS here and are coerced per the column's real type by
+ * `coerceCellValue` in the use case — the same path an imported cell takes, so a
+ * bulk edit can't write a value an import wouldn't. `null` is the explicit "clear
+ * this column" signal; an empty string coerces to null anyway, which is what makes
+ * "ticked and left blank clears it" work from the UI without a special case.
+ */
+export const csvBulkEditChangesSchema = z
+  .record(z.string().min(1), z.union([z.string(), z.null()]))
+  .refine((changes) => Object.keys(changes).length > 0, {
+    message: "Enable at least one column to change.",
+  });
+
+export const csvBulkEditSchema = z.object({
+  entryId: z.number().int().positive(),
+  rowIds: csvRowIdsSchema,
+  changes: csvBulkEditChangesSchema,
+});
+
+export type CsvBulkEditInput = z.infer<typeof csvBulkEditSchema>;
+export type CsvBulkEditChanges = z.infer<typeof csvBulkEditChangesSchema>;

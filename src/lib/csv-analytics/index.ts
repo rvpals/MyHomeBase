@@ -29,6 +29,11 @@ export {
   createCsvCustomViewSchema,
   updateCsvCustomViewSchema,
   readCustomViewPageSchema,
+  csvRowIdsSchema,
+  csvBulkEditChangesSchema,
+  csvBulkEditSchema,
+  type CsvBulkEditInput,
+  type CsvBulkEditChanges,
   type CreateCsvAnalyticEntryInput,
   type UpdateCsvAnalyticEntryInput,
   type SaveChartPresetInput,
@@ -55,7 +60,10 @@ export {
   listChartPresets,
   saveChartPreset,
   deleteChartPreset,
+  bulkEditRows,
+  nonEditableColumns,
   type CsvAnalyticsPreview,
+  type CsvBulkEditResult,
   type UpdateEntryResult,
 } from "./csv-analytics";
 export {

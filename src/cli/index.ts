@@ -6,6 +6,7 @@ import { colorThemesCommand } from "./color-themes";
 import { computeAnalyticsCommand } from "./compute-analytics";
 import { createCsvAnalyticsEntryCommand } from "./create-csv-analytics-entry";
 import { createUserCommand } from "./create-user";
+import { csvBulkEditCommand } from "./csv-bulk-edit";
 import { csvViewsCommand } from "./csv-views";
 import { deleteCsvAnalyticsEntryCommand } from "./delete-csv-analytics-entry";
 import { deploymentsCommand } from "./deployments";
@@ -49,6 +50,7 @@ const commands: Record<string, Command> = {
   "create-csv-analytics-entry": createCsvAnalyticsEntryCommand,
   "delete-csv-analytics-entry": deleteCsvAnalyticsEntryCommand,
   "csv-views": csvViewsCommand,
+  "csv-bulk-edit": csvBulkEditCommand,
   "import-journal-csv": importJournalCsvCommand,
   "journal-calendar": journalCalendarCommand,
   "journal-templates": journalTemplatesCommand,

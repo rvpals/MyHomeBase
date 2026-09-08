@@ -29,6 +29,26 @@ export function fakeCsvAnalyticsRepo(): CsvAnalyticsRepository {
   const entries = new Map<number, CsvAnalyticEntry>();
   // Standalone rows per entry so readTableData has something to return in tests.
   const tableRows = new Map<number, (string | number | null)[][]>();
+  // Parallel to tableRows, mirroring the rowid the real table hands back. Assigned
+  // from one counter per entry and never reused, so an insert after a bulk edit can't
+  // hand back an id the edit just wrote — the same guarantee SQLite's rowid gives.
+  const tableRowIds = new Map<number, number[]>();
+  const nextRowIdByEntry = new Map<number, number>();
+
+  /** Mints `count` fresh rowids for an entry, continuing where its last insert stopped. */
+  function mintRowIds(entryId: number, count: number): number[] {
+    let next = nextRowIdByEntry.get(entryId) ?? 1;
+    const minted: number[] = [];
+    for (let index = 0; index < count; index += 1) minted.push(next++);
+    nextRowIdByEntry.set(entryId, next);
+    return minted;
+  }
+
+  /** Replaces an entry's rows wholesale, minting a fresh rowid for each. */
+  function setRows(entryId: number, rows: (string | number | null)[][]): void {
+    tableRows.set(entryId, rows);
+    tableRowIds.set(entryId, mintRowIds(entryId, rows.length));
+  }
   const presets = new Map<number, CsvChartPreset>();
   let nextPresetId = 1;
   const views = new Map<number, CsvCustomView>();
@@ -175,7 +195,39 @@ export function fakeCsvAnalyticsRepo(): CsvAnalyticsRepository {
       const entry = entries.get(id);
       if (!entry) throw new Error(`CSV analytic entry ${id} not found.`);
       const rows = tableRows.get(id) ?? [];
-      return { columns: entry.columns, rows: limit !== undefined ? rows.slice(0, limit) : rows };
+      const rowIds = tableRowIds.get(id) ?? [];
+      const capped = limit !== undefined && limit > 0;
+      return {
+        columns: entry.columns,
+        rows: capped ? rows.slice(0, limit) : rows,
+        rowIds: capped ? rowIds.slice(0, limit) : rowIds,
+      };
+    },
+    bulkUpdateRows: (entryId, chunks, fields, values) => {
+      const entry = entries.get(entryId);
+      if (!entry) throw new Error(`CSV analytic entry ${entryId} not found.`);
+      const rows = tableRows.get(entryId) ?? [];
+      const rowIds = tableRowIds.get(entryId) ?? [];
+
+      // Index of each field in the entry's column order — the same positional
+      // mapping the row arrays use everywhere else in this module.
+      const indexByName = new Map(entry.columns.map((column, index) => [column.name, index]));
+
+      const targets = new Set(chunks.flat());
+      let updated = 0;
+      rowIds.forEach((rowId, rowIndex) => {
+        if (!targets.has(rowId)) return;
+        const row = [...rows[rowIndex]];
+        for (const field of fields) {
+          const columnIndex = indexByName.get(field);
+          if (columnIndex === undefined) continue;
+          row[columnIndex] = values[field] ?? null;
+        }
+        rows[rowIndex] = row;
+        updated += 1;
+      });
+      tableRows.set(entryId, rows);
+      return updated;
     },
     createEntry: (input, rows) => {
       const tableName = buildTableName(input.tableBaseName);
@@ -195,24 +247,23 @@ export function fakeCsvAnalyticsRepo(): CsvAnalyticsRepository {
         updatedAt: STAMP,
       };
       entries.set(id, entry);
-      tableRows.set(id, rows.map((row) => coerceRow(input.columns, row)));
+      setRows(id, rows.map((row) => coerceRow(input.columns, row)));
       return entry;
     },
     appendRows: (id, rows) => {
       const entry = entries.get(id);
       if (!entry) throw new Error(`CSV analytic entry ${id} not found.`);
       entries.set(id, { ...entry, rowCount: entry.rowCount + rows.length });
-      tableRows.set(id, [
-        ...(tableRows.get(id) ?? []),
-        ...rows.map((row) => coerceRow(entry.columns, row)),
-      ]);
+      const appended = rows.map((row) => coerceRow(entry.columns, row));
+      tableRows.set(id, [...(tableRows.get(id) ?? []), ...appended]);
+      tableRowIds.set(id, [...(tableRowIds.get(id) ?? []), ...mintRowIds(id, appended.length)]);
       return { inserted: rows.length, skipped: 0 };
     },
     truncateAndReload: (id, rows) => {
       const entry = entries.get(id);
       if (!entry) throw new Error(`CSV analytic entry ${id} not found.`);
       entries.set(id, { ...entry, rowCount: rows.length });
-      tableRows.set(id, rows.map((row) => coerceRow(entry.columns, row)));
+      setRows(id, rows.map((row) => coerceRow(entry.columns, row)));
       return { inserted: rows.length, skipped: 0 };
     },
     overwriteEntry: (id, input, rows) => {
@@ -228,7 +279,7 @@ export function fakeCsvAnalyticsRepo(): CsvAnalyticsRepository {
         rowCount: rows.length,
       };
       entries.set(id, updated);
-      tableRows.set(id, rows.map((row) => coerceRow(input.columns, row)));
+      setRows(id, rows.map((row) => coerceRow(input.columns, row)));
       return updated;
     },
     updateMetadata: (id, input) => {
@@ -253,6 +304,10 @@ export function fakeCsvAnalyticsRepo(): CsvAnalyticsRepository {
     },
     deleteEntry: (id) => {
       entries.delete(id);
+      // The real repository drops the physical table; here that is the row storage.
+      tableRows.delete(id);
+      tableRowIds.delete(id);
+      nextRowIdByEntry.delete(id);
       for (const [presetId, preset] of presets) {
         if (preset.entryId === id) presets.delete(presetId);
       }

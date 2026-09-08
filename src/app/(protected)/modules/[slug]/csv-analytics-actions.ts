@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import {
+  bulkEditRows,
   createCustomView,
   createEntry,
   deleteChartPreset,
@@ -21,6 +22,7 @@ import {
   type CreateCsvCustomViewInput,
   type CsvAnalyticsPreview,
   type CsvChartPreset,
+  type CsvBulkEditChanges,
   type CsvColumnDefinition,
   type CsvCustomView,
   type CsvEntryData,
@@ -48,6 +50,11 @@ export interface EntryDataResult extends ActionResult {
 
 export interface ChartPresetsResult extends ActionResult {
   presets?: CsvChartPreset[];
+}
+
+export interface BulkEditResult extends ActionResult {
+  /** Rows actually written. */
+  updated?: number;
 }
 
 export interface CreateEntryInput {
@@ -269,4 +276,25 @@ export async function readCsvCustomViewPageAction(
   } catch (error) {
     return toErrorResult(error, "Failed to read the view.");
   }
+}
+
+/**
+ * Applies one value per named column to every selected row of a dataset.
+ *
+ * Revalidates: the grid's row count and the entry list are server-rendered, and the
+ * caller re-reads the panel's data afterwards to show the new values.
+ */
+export async function bulkEditCsvRowsAction(
+  entryId: number,
+  rowIds: number[],
+  changes: CsvBulkEditChanges,
+): Promise<BulkEditResult> {
+  let updated: number;
+  try {
+    updated = bulkEditRows(deps.csvAnalyticsRepo, entryId, rowIds, changes).updated;
+  } catch (error) {
+    return toErrorResult(error, "Failed to apply the bulk edit.");
+  }
+  revalidatePath(CSV_ANALYSIS_MODULE_PATH);
+  return { ok: true, updated };
 }

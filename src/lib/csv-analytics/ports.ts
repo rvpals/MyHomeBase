@@ -38,6 +38,20 @@ export interface CsvAnalyticsRepository {
   addColumns(id: number, newColumns: CsvColumnDefinition[]): CsvAnalyticEntry;
   /** Drops the entry's old physical table, creates a new one from `input`, loads its rows. */
   overwriteEntry(id: number, input: CreateCsvAnalyticEntryInput, rows: string[][]): CsvAnalyticEntry;
+  /**
+   * Applies `values` to `fields` on every rowid in `chunks`, as ONE transaction.
+   *
+   * The use case pre-chunks the selection (SQLite's host-parameter ceiling) and has
+   * already validated the field names against the entry's columns and coerced every
+   * value — the repository only builds the UPDATE and binds. Returns rows changed
+   * across every chunk.
+   */
+  bulkUpdateRows(
+    entryId: number,
+    chunks: number[][],
+    fields: string[],
+    values: Record<string, string | number | null>,
+  ): number;
   updateMetadata(id: number, input: { name: string; description?: string }): CsvAnalyticEntry;
   /** Deletes the metadata row, drops the physical table, and removes the entry's chart presets. */
   deleteEntry(id: number): void;

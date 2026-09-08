@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { CsvColumnDefinition } from "./types";
 import {
+  buildBulkUpdateSql,
   buildCreateTableSql,
   buildDropTableSql,
   buildInsertSql,
+  buildSelectRowsSql,
   buildTableName,
   coerceCellValue,
   dedupeColumnNames,
@@ -178,5 +180,54 @@ describe("inferColumnType", () => {
 
   it("falls back to text when every sample is blank", () => {
     expect(inferColumnType(["", "  "])).toBe("text");
+  });
+});
+
+describe("buildSelectRowsSql", () => {
+  const columns: CsvColumnDefinition[] = [
+    { name: "user_id", sourceHeader: "User ID", type: "integer" },
+    { name: "amount", sourceHeader: "Amount", type: "real" },
+  ];
+
+  it("selects the declared columns in order, with rowid appended last", () => {
+    expect(buildSelectRowsSql("csv_events", columns)).toBe(
+      'SELECT "user_id", "amount", rowid AS "_rowid" FROM "csv_events"',
+    );
+  });
+
+  it("appends a floored LIMIT when one is given", () => {
+    expect(buildSelectRowsSql("csv_events", columns, 10.9)).toContain("LIMIT 10");
+  });
+
+  it("omits the LIMIT for a zero or absent limit", () => {
+    expect(buildSelectRowsSql("csv_events", columns, 0)).not.toContain("LIMIT");
+    expect(buildSelectRowsSql("csv_events", columns)).not.toContain("LIMIT");
+  });
+});
+
+describe("buildBulkUpdateSql", () => {
+  it("assigns each field from a named parameter and matches rowids positionally", () => {
+    expect(buildBulkUpdateSql("csv_events", ["amount", "note"], 3)).toBe(
+      'UPDATE "csv_events" SET "amount" = @amount, "note" = @note WHERE rowid IN (?, ?, ?)',
+    );
+  });
+
+  it("quotes every identifier it interpolates", () => {
+    const sql = buildBulkUpdateSql('weird"table', ['weird"col'], 1);
+    expect(sql).toContain('UPDATE "weird""table"');
+    expect(sql).toContain('"weird""col" =');
+  });
+
+  it("binds one placeholder per row id", () => {
+    const sql = buildBulkUpdateSql("csv_events", ["amount"], 5);
+    expect(sql.match(/\?/g)).toHaveLength(5);
+  });
+
+  it("throws with no fields to set", () => {
+    expect(() => buildBulkUpdateSql("csv_events", [], 1)).toThrow(/at least one field/);
+  });
+
+  it("throws with no row ids — an UPDATE matching nothing is a caller bug", () => {
+    expect(() => buildBulkUpdateSql("csv_events", ["amount"], 0)).toThrow(/at least one row id/);
   });
 });

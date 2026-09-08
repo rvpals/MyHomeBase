@@ -8,9 +8,11 @@ import type {
 } from "./schema";
 import {
   buildAddColumnSql,
+  buildBulkUpdateSql,
   buildCreateTableSql,
   buildDropTableSql,
   buildInsertSql,
+  buildSelectRowsSql,
   buildTableName,
   coerceCellValue,
   quoteIdentifier,
@@ -120,15 +122,50 @@ export class SqliteCsvAnalyticsRepository implements CsvAnalyticsRepository {
     const columns = JSON.parse(row.columns_json) as CsvColumnDefinition[];
 
     // Select columns explicitly in definition order (skips the surrogate _row_id key)
-    // so returned row arrays line up 1:1 with `columns`.
-    const columnList = columns.map((column) => quoteIdentifier(column.name)).join(", ");
-    const limitClause = limit !== undefined && limit > 0 ? ` LIMIT ${Math.floor(limit)}` : "";
-    const rows = this.db
-      .prepare(`SELECT ${columnList} FROM ${quoteIdentifier(row.table_name)}${limitClause}`)
+    // so returned row arrays line up 1:1 with `columns`, plus `rowid` appended last.
+    // The rowid is what makes a row addressable for a bulk edit; it is split off here
+    // rather than left in the array so `rows` keeps exactly the shape it always had.
+    const raw = this.db
+      .prepare(buildSelectRowsSql(row.table_name, columns, limit))
       .raw()
       .all() as (string | number | null)[][];
 
-    return { columns, rows };
+    const rows: (string | number | null)[][] = [];
+    const rowIds: number[] = [];
+    for (const values of raw) {
+      rows.push(values.slice(0, columns.length));
+      rowIds.push(Number(values[columns.length]));
+    }
+
+    return { columns, rows, rowIds };
+  }
+
+  bulkUpdateRows(
+    entryId: number,
+    chunks: number[][],
+    fields: string[],
+    values: Record<string, string | number | null>,
+  ): number {
+    const row = this.getRowById(entryId);
+    if (!row) throw new Error(`CSV analytic entry ${entryId} not found.`);
+
+    // One transaction across every chunk: the chunking exists only to stay under
+    // SQLite's host-parameter ceiling, so a selection split into four UPDATEs must
+    // still land all-or-nothing.
+    const run = this.db.transaction(() => {
+      let updated = 0;
+      for (const chunk of chunks) {
+        if (chunk.length === 0) continue;
+        const statement = this.db.prepare(buildBulkUpdateSql(row.table_name, fields, chunk.length));
+        // Named params for the field values, positional for the rowids — the order
+        // buildBulkUpdateSql lays them out in.
+        const result = statement.run(values, ...chunk);
+        updated += result.changes;
+      }
+      return updated;
+    });
+
+    return run();
   }
 
   /** Inserts every row, coercing each cell per its column's type. Returns rows actually written. */
