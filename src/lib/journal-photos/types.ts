@@ -127,6 +127,51 @@ export interface PhotoFile {
   takenAt?: string;
 }
 
+/**
+ * Where a photograph's date came from, in descending order of confidence.
+ *
+ * `exif` is the camera's own record of when the shutter fired. `file-name` and `folder`
+ * are inferred from the archive's naming conventions -- good evidence, but evidence
+ * rather than metadata. `none` means nothing could be established.
+ *
+ * Carried so a viewer can be HONEST about which it is showing. "The camera says
+ * 14:35:01" and "the file is called IMG_20190609" are different claims, and collapsing
+ * them into one date field would present a guess as a fact.
+ *
+ * Deliberately a superset of `PhotoMatchSource`, which has the same three evidence
+ * kinds but no `none` -- a photo that appears in a match result was matched *somehow*,
+ * whereas one being inspected on its own may have nothing at all.
+ */
+export type PhotoDateSource = "exif" | "file-name" | "folder" | "none";
+
+/**
+ * What one photograph can say about itself: where it is, and when it was taken.
+ *
+ * Read on demand for the single photo a reader is looking at -- see `readPhotoDetails`
+ * for why this is never gathered for a whole folder.
+ *
+ * The date and time are SEPARATE fields, and both are strings exactly as the camera
+ * wrote them. No `Date`, no ISO instant, no timezone: an EXIF timestamp is local
+ * wall-clock time with no offset recorded, so there is nothing to convert from and any
+ * conversion would shift an evening photo onto the next day.
+ */
+export interface PhotoDetails {
+  /** Path from the photo root — the same key `FavPhoto` and the image route use. */
+  relativePath: string;
+  /** `YYYY-MM-DD`, absent when no date could be established at all. */
+  takenAtDate?: string;
+  /**
+   * `HH:MM:SS`, absent whenever there is no trustworthy clock time.
+   *
+   * Only ever present alongside an `exif` source: an inferred date comes from a name,
+   * and a name that carries a time (`IMG_20190609_143501`) is still not the camera
+   * saying so. Absent, too, when EXIF held a zeroed or out-of-range clock.
+   */
+  takenAtTime?: string;
+  /** Which of the three kinds of evidence produced the date, or `none`. */
+  takenAtSource: PhotoDateSource;
+}
+
 /** The result of looking up which folders hold photos for a date. */
 export interface PhotoFolderLookup {
   /**

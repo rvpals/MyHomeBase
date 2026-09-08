@@ -4,18 +4,20 @@
 // daily-quote-widget.tsx: the server draws the first photograph, and the refresh button
 // draws another without reloading the page, so only the picture changes.
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
-import { PhotoLightbox } from "@/components/photo-lightbox";
-import { PhotosViewer } from "@/components/photos-viewer";
+import { PhotoViewer } from "@/components/photo-viewer";
 import { SlotIcon } from "@/components/slot-icon";
 import { TreeIcon } from "@/components/tree-icons";
 import type { FavPhoto } from "@/lib/fav-photos";
 import { getIconSlot } from "@/lib/icons";
 import type { RandomPhotoPick } from "@/lib/journal-photos";
 import { calendarAgeSince, formatCalendarAge } from "@/lib/shared/date";
-import { listAllPhotosInFolderAction } from "./photos-viewer-actions";
+import {
+  listAllPhotosInFolderAction,
+  readPhotoDetailsAction,
+} from "./photos-viewer-actions";
 import {
   drawRandomPhotoAction,
   listFavPhotosAction,
@@ -133,10 +135,14 @@ export function RandomPhotoWidget({
   const [pick, setPick] = useState(initialPick);
   const [isDrawing, setIsDrawing] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
-  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
-  // The folder viewer, opened by the header's folder button. Separate from the lightbox
-  // above: that enlarges this one photograph, this browses the folder it came from.
-  const [isFolderOpen, setIsFolderOpen] = useState(false);
+
+  // The viewer, opened by clicking the picture or the header's folder button.
+  //
+  // ONE flag, where there used to be two. The card previously wired the picture to a
+  // lightbox and the folder glyph to a folder browser -- an invisible distinction that
+  // sent the obvious gesture to the lesser overlay, with no heart and no way to reach
+  // the pictures beside it. Both now open the same viewer on the same folder.
+  const [isViewerOpen, setIsViewerOpen] = useState(false);
   const [favorites, setFavorites] = useState(initialFavorites);
   const [isFavoriting, setIsFavoriting] = useState(false);
 
@@ -174,6 +180,43 @@ export function RandomPhotoWidget({
       setIsFavoriting(false);
     }
   }
+
+  /**
+   * The viewer's favourite predicate — is THIS path kept?
+   *
+   * Separate from `isFavorited` below, which answers the same question about the one
+   * photo the card is showing. The viewer browses the whole folder, so it needs to ask
+   * per photo, and reads the answer out of the list this card already holds rather than
+   * fetching its own.
+   *
+   * `useCallback` because `PhotoViewer` re-derives on every photo change and a fresh
+   * function each render would be pointless churn; keyed on `favorites` so starring
+   * from inside the viewer refills the heart once the list comes back.
+   */
+  const isPhotoFavorited = useCallback(
+    (relativePath: string) =>
+      favorites.some((favorite) => favorite.relativePath === relativePath),
+    [favorites],
+  );
+
+  /**
+   * The viewer's toggle. Takes the path and reports the state it landed in.
+   *
+   * Not `handleToggleFavorite`: that one is bound to the drawn photo the card is
+   * showing, whereas the viewer stars whatever is on its own stage.
+   *
+   * The re-read IS awaited, and that is the viewer's contract rather than an
+   * oversight — `onToggleFavorite` must not resolve until `isFavorite` would give the
+   * new answer, because the viewer drops its optimistic override on resolve and hands
+   * the glyph back to the predicate. Returning early would show the old glyph for a
+   * render. Awaiting it also leaves the card's own heart and the favourites badge in
+   * step with whatever was starred while browsing.
+   */
+  const toggleFavoriteByPath = useCallback(async (relativePath: string) => {
+    const landed = await toggleFavPhotoAction(relativePath);
+    setFavorites(await listFavPhotosAction());
+    return landed;
+  }, []);
 
   const hasPhoto = pick.relativePath !== undefined;
   // The folder the drawn photo came from, or `""` when there is nothing to browse.
@@ -227,10 +270,10 @@ export function RandomPhotoWidget({
             </Button>
           )}
 
-          {/* Opens `PhotosViewer` on the folder this photograph came from, landing on
-              this photograph. The point is the pictures BESIDE it: a random draw shows
-              one frame from an event, and the rest of that event is one click away
-              rather than a search through the journal.
+          {/* Opens the same viewer the picture itself opens, on the folder this
+              photograph came from. KEPT ALONGSIDE the picture click rather than removed:
+              the glyph names what the gesture does, which a bare photo does not, and it
+              is the only affordance a keyboard reader can tab to.
 
               Only offered when there is a folder to open — a photo loose at the archive
               root has no siblings to show, and a button that opens an empty viewer is
@@ -239,7 +282,7 @@ export function RandomPhotoWidget({
             <Button
               size="sm"
               variant="secondary"
-              onClick={() => setIsFolderOpen(true)}
+              onClick={() => setIsViewerOpen(true)}
               title={`Open ${pick.folderName ?? "this photo's folder"}`}
               ariaLabel={`Open ${pick.folderName ?? "this photo's folder"}`}
             >
@@ -304,7 +347,7 @@ export function RandomPhotoWidget({
               landscape one from dominating a desktop -- one rule, both boundaries. */}
           <button
             type="button"
-            onClick={() => setIsLightboxOpen(true)}
+            onClick={() => setIsViewerOpen(true)}
             className="block w-full cursor-zoom-in"
           >
             {/* eslint-disable-next-line @next/next/no-img-element -- the bytes come from
@@ -330,37 +373,49 @@ export function RandomPhotoWidget({
         </div>
       )}
 
-      {/* One photo, so there is nothing to page through -- the lightbox is here for the
-          full-size view, and its arrows hide themselves at a single-item list. */}
-      {isLightboxOpen && pick.relativePath !== undefined && (
-        <PhotoLightbox
-          photos={[
-            {
-              src: photoUrl(pick.relativePath),
-              caption: pick.name ?? "",
-              subcaption: pick.folderName,
-            },
-          ]}
-          index={0}
-          onIndexChange={() => {}}
-          onClose={() => setIsLightboxOpen(false)}
-        />
+      {/* The viewer, for both the picture click and the folder glyph.
+
+          Mounted only while open, because in folder mode it reads the folder on mount —
+          keeping it mounted would list the folder on every draw, whether or not anyone
+          asked to see it. It owns no open state of its own, like every other overlay in
+          the app.
+
+          TWO SHAPES, one component. Normally the folder form, so the reader lands on the
+          drawn photo with the rest of the event beside it. A photo loose at the archive
+          root has no folder to list, so it gets the single-photo set form instead —
+          without that branch the obvious gesture would do nothing for those photos,
+          which is the bug this whole change set out to fix. */}
+      {isViewerOpen && pick.relativePath !== undefined && (
+        folderPath !== "" ? (
+          <PhotoViewer
+            folderPath={folderPath}
+            initialPhotoPath={pick.relativePath}
+            folderLabel={pick.folderName}
+            onListFolder={listAllPhotosInFolderAction}
+            photoUrl={photoUrl}
+            onPhotoDetails={readPhotoDetailsAction}
+            isFavorite={isPhotoFavorited}
+            onToggleFavorite={toggleFavoriteByPath}
+            onClose={() => setIsViewerOpen(false)}
+          />
+        ) : (
+          <PhotoViewer
+            photos={[
+              {
+                name: pick.name ?? "",
+                relativePath: pick.relativePath,
+                subcaption: pick.folderName,
+              },
+            ]}
+            photoUrl={photoUrl}
+            onPhotoDetails={readPhotoDetailsAction}
+            isFavorite={isPhotoFavorited}
+            onToggleFavorite={toggleFavoriteByPath}
+            onClose={() => setIsViewerOpen(false)}
+          />
+        )
       )}
 
-      {/* The folder browser. Mounted only while open, because it reads the folder on
-          mount — keeping it mounted would list the folder on every draw, whether or not
-          anyone asked to see it. It owns no open state of its own, like every other
-          overlay in the app. */}
-      {isFolderOpen && folderPath !== "" && (
-        <PhotosViewer
-          folderPath={folderPath}
-          initialPhotoPath={pick.relativePath}
-          folderLabel={pick.folderName}
-          onListFolder={listAllPhotosInFolderAction}
-          photoUrl={photoUrl}
-          onClose={() => setIsFolderOpen(false)}
-        />
-      )}
     </CollapsibleCard>
   );
 }

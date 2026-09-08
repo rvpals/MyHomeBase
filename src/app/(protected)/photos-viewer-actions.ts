@@ -4,7 +4,10 @@ import { cookies } from "next/headers";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import {
   listAllPhotosInFolder,
+  photoDetailsSchema,
   photoFolderAllSchema,
+  readPhotoDetails,
+  type PhotoDetails,
   type PhotoFile,
 } from "@/lib/journal-photos";
 import { deps } from "@/lib/wiring";
@@ -50,6 +53,45 @@ export async function listAllPhotosInFolderAction(
   } catch {
     // An SMB share that drops mid-listing lands here. Same vocabulary as the root
     // check, so the viewer has one set of reasons to render.
+    return { ok: false, error: "The photo archive isn't answering." };
+  }
+}
+
+/** What the viewer gets back when it asks about the photo on its stage. */
+export interface PhotoDetailsResult {
+  ok: boolean;
+  details?: PhotoDetails;
+  error?: string;
+}
+
+/**
+ * The full path and capture timestamp of ONE photograph.
+ *
+ * Called per photo the reader actually looks at, not per photo in the folder -- see
+ * `readPhotoDetails` for why that split is the performance design. The listing action
+ * above opens no files at all; this one opens the first 128KB of exactly one.
+ *
+ * The path makes a round trip through the browser, so it is parsed here even though the
+ * listing we served produced it. `photoDetailsSchema` runs the same
+ * `isSafeRelativePath` refinement that guards the image route, and the use-case checks
+ * it again before reading.
+ */
+export async function readPhotoDetailsAction(
+  relativePath: string,
+): Promise<PhotoDetailsResult> {
+  const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
+  if (getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo) === undefined) {
+    return { ok: false, error: "Not signed in." };
+  }
+
+  const parsed = photoDetailsSchema.safeParse({ relativePath });
+  if (!parsed.success) return { ok: false, error: "Not a valid photo path." };
+
+  try {
+    return { ok: true, details: await readPhotoDetails(photoStore(), parsed.data) };
+  } catch {
+    // The use-case already swallows a failed header read and reports "none", so this
+    // only catches the store itself failing to construct -- an unset archive path.
     return { ok: false, error: "The photo archive isn't answering." };
   }
 }

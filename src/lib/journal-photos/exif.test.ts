@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { buildJpegWithExif } from "./exif.fixture";
-import { parseExifDate, readExifDate } from "./exif";
+import {
+  parseExifDate,
+  parseExifDateTime,
+  readExifDate,
+  readExifDateTime,
+} from "./exif";
 
 // The parser has to be right about the awkward cases, not just the happy one: every
 // failure mode here shows up as a photo silently missing from (or wrongly appearing
@@ -106,5 +111,79 @@ describe("parseExifDate", () => {
     expect(parseExifDate("")).toBeUndefined();
     expect(parseExifDate("not a date")).toBeUndefined();
     expect(parseExifDate("19:06:09")).toBeUndefined();
+  });
+});
+
+describe("parseExifDateTime", () => {
+  it("keeps the clock time the date-only parser discards", () => {
+    expect(parseExifDateTime("2019:06:09 14:35:01")).toEqual({
+      date: "2019-06-09",
+      time: "14:35:01",
+    });
+  });
+
+  it("accepts the dashed and T-separated forms real files contain", () => {
+    expect(parseExifDateTime("2019-06-09 14:35:01")).toEqual({
+      date: "2019-06-09",
+      time: "14:35:01",
+    });
+    expect(parseExifDateTime("2019:06:09T14:35:01")).toEqual({
+      date: "2019-06-09",
+      time: "14:35:01",
+    });
+  });
+
+  it("returns the date alone when there is no time to read", () => {
+    // The date is the more valuable half, so a missing or unusable clock must never
+    // cost it. `time` is ABSENT rather than undefined -- it crosses a server-action
+    // boundary, where the two do not survive as the same thing.
+    expect(parseExifDateTime("2019:06:09")).toEqual({ date: "2019-06-09" });
+    expect(parseExifDateTime("2019:06:09 14:35")).toEqual({ date: "2019-06-09" });
+    expect(Object.hasOwn(parseExifDateTime("2019:06:09") ?? {}, "time")).toBe(false);
+  });
+
+  it("treats a zeroed clock as unset rather than as midnight", () => {
+    // Cameras write this as a placeholder. Reporting it as a real capture instant
+    // would put a photo at midnight on a day it was taken in the afternoon.
+    expect(parseExifDateTime("2019:06:09 00:00:00")).toEqual({ date: "2019-06-09" });
+  });
+
+  it("drops an out-of-range clock but keeps the date", () => {
+    expect(parseExifDateTime("2019:06:09 24:00:00")).toEqual({ date: "2019-06-09" });
+    expect(parseExifDateTime("2019:06:09 12:60:00")).toEqual({ date: "2019-06-09" });
+    expect(parseExifDateTime("2019:06:09 12:00:60")).toEqual({ date: "2019-06-09" });
+  });
+
+  it("rejects the same bad dates the date-only parser does", () => {
+    expect(parseExifDateTime("0000:00:00 00:00:00")).toBeUndefined();
+    expect(parseExifDateTime("2019:02:30 12:00:00")).toBeUndefined();
+    expect(parseExifDateTime(undefined)).toBeUndefined();
+    expect(parseExifDateTime("not a date")).toBeUndefined();
+  });
+});
+
+describe("readExifDateTime", () => {
+  it("reads the capture timestamp out of a JPEG", () => {
+    const bytes = buildJpegWithExif({ dateTimeOriginal: "2019:06:09 14:35:01" });
+    expect(readExifDateTime(bytes)).toEqual({ date: "2019-06-09", time: "14:35:01" });
+  });
+
+  it("reads it from a big-endian file too", () => {
+    const bytes = buildJpegWithExif({
+      dateTimeOriginal: "2019:06:09 14:35:01",
+      bigEndian: true,
+    });
+    expect(readExifDateTime(bytes)).toEqual({ date: "2019-06-09", time: "14:35:01" });
+  });
+
+  it("is undefined for a file carrying no EXIF", () => {
+    expect(readExifDateTime(buildJpegWithExif({ withoutExif: true }))).toBeUndefined();
+  });
+
+  it("agrees with readExifDate on the date half", () => {
+    // `readExifDate` delegates here, so this pins the two together: a caller that only
+    // wants the day must keep getting exactly what it got before.
+    const bytes = buildJpegWithExif({ dateTimeOriginal: "2019:06:09 14:35:01" });
+    expect(readExifDate(bytes)).toBe(readExifDateTime(bytes)?.date);
   });
 });

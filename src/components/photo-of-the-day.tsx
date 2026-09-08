@@ -19,7 +19,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/button";
 import { Modal } from "@/components/modal";
-import { PhotoLightbox, type LightboxPhoto } from "@/components/photo-lightbox";
+import { PhotoViewer, type ViewerPhoto } from "@/components/photo-viewer";
 import { SlotIcon } from "@/components/slot-icon";
 import { getIconSlot } from "@/lib/icons";
 import type { PhotoFile, PhotoFolder } from "@/lib/journal-photos";
@@ -181,7 +181,10 @@ export function PhotoOfTheDay({
   // own scan result so re-opening one doesn't re-scan the month.
   const [folderStates, setFolderStates] = useState<Record<string, FolderState>>({});
   const [openFolders, setOpenFolders] = useState<string[]>([]);
-  const [lightbox, setLightbox] = useState<{ photos: LightboxPhoto[]; index: number } | undefined>(
+  // The open viewer, or `undefined`. The INDEX here is only the one it opens on --
+  // `PhotoViewer` owns the index once it is up, so this is not updated as the reader
+  // arrows through.
+  const [viewer, setViewer] = useState<{ photos: ViewerPhoto[]; index: number } | undefined>(
     undefined,
   );
 
@@ -247,11 +250,11 @@ export function PhotoOfTheDay({
     if (folderStates[folder.relativePath] === undefined) void loadFolder(folder, false);
   }
 
-  function openLightbox(folder: PhotoFolder, photos: PhotoFile[], index: number) {
-    setLightbox({
+  function openViewer(folder: PhotoFolder, photos: PhotoFile[], index: number) {
+    setViewer({
       photos: photos.map((photo) => ({
-        src: photoUrl(photo.relativePath),
-        caption: photo.name,
+        name: photo.name,
+        relativePath: photo.relativePath,
         subcaption: folder.name,
       })),
       index,
@@ -369,7 +372,7 @@ export function PhotoOfTheDay({
                         };
                       })
                     }
-                    onOpenPhoto={(photos, index) => openLightbox(folder, photos, index)}
+                    onOpenPhoto={(photos, index) => openViewer(folder, photos, index)}
                   />
                 ))}
 
@@ -386,12 +389,19 @@ export function PhotoOfTheDay({
         )}
       </Modal>
 
-      {lightbox && (
-        <PhotoLightbox
-          photos={lightbox.photos}
-          index={lightbox.index}
-          onIndexChange={(index) => setLightbox({ photos: lightbox.photos, index })}
-          onClose={() => setLightbox(undefined)}
+      {/* The SET form: this card has already scanned the folders for the date, so the
+          photos are in hand and re-reading a folder would discard that work.
+
+          `key` on the opening index remounts the viewer when a different thumbnail is
+          clicked — `initialIndex` is read once at mount, so without it a second click
+          would reopen on the first photo. */}
+      {viewer && (
+        <PhotoViewer
+          key={viewer.index}
+          photos={viewer.photos}
+          initialIndex={viewer.index}
+          photoUrl={photoUrl}
+          onClose={() => setViewer(undefined)}
         />
       )}
     </>

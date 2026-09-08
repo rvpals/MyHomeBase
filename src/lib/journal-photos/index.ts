@@ -12,6 +12,8 @@ export type {
   FolderPhotos,
   PhotoFolderLookup,
   PhotoMatchSource,
+  PhotoDateSource,
+  PhotoDetails,
   PhotoRootCheck,
   PhotoArchiveDiagnosis,
 } from "./types";
@@ -22,16 +24,19 @@ export {
   photoFolderLookupSchema,
   photoFolderContentsSchema,
   photoFolderAllSchema,
+  photoDetailsSchema,
   photoRangeSchema,
   photoRangeContentsSchema,
   type PhotoFolderLookupInput,
   type PhotoFolderContentsInput,
   type PhotoFolderAllInput,
+  type PhotoDetailsInput,
   type PhotoRangeInput,
   type PhotoRangeContentsInput,
 } from "./schema";
 export { listPhotoFoldersForDate, listPhotosInFolder, monthFolderLabel } from "./photos";
 export { listAllPhotosInFolder } from "./folder";
+export { readPhotoDetails } from "./photo-details";
 export {
   DEFAULT_SLIDESHOW_OPTIONS,
   SLIDESHOW_EFFECT_CHOICES,
@@ -44,7 +49,14 @@ export {
 export { listPhotoFoldersForRange } from "./range";
 export { pickRandomPhoto, type RandomPhotoPick } from "./random";
 export { diagnosePhotoArchive } from "./diagnose";
-export { EXIF_HEADER_BYTES, readExifDate, parseExifDate } from "./exif";
+export {
+  EXIF_HEADER_BYTES,
+  readExifDate,
+  parseExifDate,
+  readExifDateTime,
+  parseExifDateTime,
+  type ExifDateTime,
+} from "./exif";
 export {
   dateFromFileName,
   dayFolderDateOf,
@@ -62,4 +74,5 @@ export {
   resolvePhotoPath,
   yearFolderOf,
 } from "./paths";
+export { photoJournalDate, type PhotoJournalDateInput } from "./viewer-date";
 export { NodePhotoFileStore } from "./file-store";

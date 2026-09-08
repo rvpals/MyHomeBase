@@ -1,7 +1,7 @@
 "use client";
 
-// The My Favorite Photos list: the grid, the inline note editor, the lightbox, and the
-// two bulk actions.
+// The My Favorite Photos list: the grid, the inline note editor, the photo viewer, and
+// the two bulk actions.
 //
 // A one-off home-screen island, not a registered component, for the same reason
 // random-photo-widget.tsx is one: nothing else in the app asks for a list of favourite
@@ -17,9 +17,10 @@
 import { useCallback, useState } from "react";
 import { Button } from "@/components/button";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
-import { PhotoLightbox } from "@/components/photo-lightbox";
+import { PhotoViewer } from "@/components/photo-viewer";
 import { TreeIcon } from "@/components/tree-icons";
 import type { FavPhoto } from "@/lib/fav-photos";
+import { readPhotoDetailsAction } from "./photos-viewer-actions";
 import {
   listFavPhotosAction,
   removeFavPhotosAction,
@@ -119,12 +120,13 @@ export function FavPhotosList({
   const [error, setError] = useState<string | undefined>(undefined);
   const [notice, setNotice] = useState<string | undefined>(undefined);
   const [isBulkBusy, setIsBulkBusy] = useState(false);
-  // An out-of-range index renders nothing, so one number means "closed" — the contract
-  // PhotoLightbox documents.
-  const [lightboxIndex, setLightboxIndex] = useState(-1);
-  // Whether the lightbox is advancing on its own. Lives here rather than inside the
-  // overlay because the Slideshow button below opens it already playing.
-  const [isPlaying, setIsPlaying] = useState(false);
+  // Which photo the viewer OPENS on; `-1` means closed. Only the opening index, not the
+  // current one -- `PhotoViewer` owns the index once it is up, so this is not kept in
+  // step as the reader arrows through.
+  const [openAtIndex, setOpenAtIndex] = useState(-1);
+  // Whether it opens already running, for the Slideshow button above the grid. Read
+  // once at mount by the viewer, which owns the play state afterwards.
+  const [openPlaying, setOpenPlaying] = useState(false);
 
   // Re-reads after every write, rather than patching the row locally. The list is
   // small and this is one round trip on an action the reader just took, which buys
@@ -267,23 +269,22 @@ export function FavPhotosList({
     }
   }, []);
 
-  // A removal can leave the lightbox pointing past the end of a now-shorter list.
-  // Clamped during render rather than corrected in an effect: an effect would paint one
-  // frame of the wrong photo first, and `PhotoLightbox` already treats an out-of-range
-  // index as "show nothing", so closing it is a matter of not rendering it.
-  const openIndex = lightboxIndex < favorites.length ? lightboxIndex : -1;
+  // A removal can leave the opening index past the end of a now-shorter list. Clamped
+  // during render rather than corrected in an effect: an effect would paint one frame of
+  // the wrong photo first, so closing it is a matter of not rendering it.
+  const openIndex = openAtIndex < favorites.length ? openAtIndex : -1;
 
-  /** Opens the lightbox on the first photo, already running. */
+  /** Opens the viewer on the first photo, already running. */
   function startSlideshow() {
     if (favorites.length === 0) return;
-    setLightboxIndex(0);
-    setIsPlaying(true);
+    setOpenAtIndex(0);
+    setOpenPlaying(true);
   }
 
-  /** Closing stops the timer too, so re-opening a photo by hand is not a slideshow. */
-  function closeLightbox() {
-    setLightboxIndex(-1);
-    setIsPlaying(false);
+  /** Closing clears the autoplay flag too, so opening a photo by hand is not a show. */
+  function closeViewer() {
+    setOpenAtIndex(-1);
+    setOpenPlaying(false);
   }
 
   const columns: DataGridColumn<FavPhoto>[] = [
@@ -422,32 +423,45 @@ export function FavPhotosList({
         )}
         // Clicking a row opens the photo. The note field, the checkbox and the remove
         // button stop their own clicks from reaching it, so each control does one thing.
-        // Clearing `isPlaying` matters as well as setting the index: a removal can
-        // close the overlay by shortening the list (see the clamp above), which leaves
-        // the play flag set with nothing rendered to consume it — and the next click on
-        // a row would then open straight into a running slideshow nobody asked for.
+        // Clearing the autoplay flag matters as well as setting the index: a removal
+        // can close the overlay by shortening the list (see the clamp above), which
+        // leaves the flag set with nothing rendered to consume it — and the next click
+        // on a row would then open straight into a running slideshow nobody asked for.
         onRowClick={(row) => {
-          setIsPlaying(false);
-          setLightboxIndex(favorites.findIndex((one) => one.relativePath === row.relativePath));
+          setOpenPlaying(false);
+          setOpenAtIndex(favorites.findIndex((one) => one.relativePath === row.relativePath));
         }}
       />
 
-      {/* The lightbox walks the whole favourites list, not just the row clicked, so
-          prev/next browses what was kept. */}
+      {/* The viewer walks the whole favourites list, not just the row clicked, so
+          prev/next browses what was kept.
+
+          The SET form: this list is a filtered selection of paths from all over the
+          archive, which no single folder listing could produce. `key` on the opening
+          index remounts it when a different row is clicked, which is what makes
+          `initialIndex` — read once at mount — land on the right photo every time
+          rather than only the first.
+
+          No favourite props: every photo here is already a favourite by definition, so a
+          heart would be permanently filled and its only use would be removing the row
+          out from under the overlay. The grid's own remove control does that, in the
+          place where the consequence is visible. */}
       {openIndex >= 0 && (
-        <PhotoLightbox
+        <PhotoViewer
+          key={openIndex}
           photos={favorites.map((favorite) => ({
-            src: photoUrl(favorite.relativePath),
+            name: fileNameOf(favorite.relativePath),
+            relativePath: favorite.relativePath,
             // The note is the better caption when there is one — it is what the reader
             // wrote about the picture. The file name is the fallback, not the headline.
             caption: favorite.note !== "" ? favorite.note : fileNameOf(favorite.relativePath),
             subcaption: folderOf(favorite.relativePath),
           }))}
-          index={openIndex}
-          onIndexChange={setLightboxIndex}
-          onClose={closeLightbox}
-          isPlaying={isPlaying}
-          onPlayingChange={setIsPlaying}
+          initialIndex={openIndex}
+          autoPlay={openPlaying}
+          photoUrl={photoUrl}
+          onPhotoDetails={readPhotoDetailsAction}
+          onClose={closeViewer}
         />
       )}
     </div>

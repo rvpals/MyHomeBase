@@ -100,8 +100,21 @@ export const photoFolderAllSchema = z.object({
   relativePath: photoRelativePathSchema,
 });
 
+/**
+ * One photograph to inspect, for `readPhotoDetails`.
+ *
+ * A file path where `photoFolderAllSchema` takes a folder path, but the same
+ * `photoRelativePathSchema` guards both -- the traversal rules are identical and the
+ * distinction between a file and a folder is not something a string can carry. The
+ * use-case re-checks the path itself before any read.
+ */
+export const photoDetailsSchema = z.object({
+  relativePath: photoRelativePathSchema,
+});
+
 export type PhotoFolderLookupInput = z.infer<typeof photoFolderLookupSchema>;
 export type PhotoFolderContentsInput = z.infer<typeof photoFolderContentsSchema>;
 export type PhotoFolderAllInput = z.infer<typeof photoFolderAllSchema>;
+export type PhotoDetailsInput = z.infer<typeof photoDetailsSchema>;
 export type PhotoRangeInput = z.infer<typeof photoRangeSchema>;
 export type PhotoRangeContentsInput = z.infer<typeof photoRangeContentsSchema>;

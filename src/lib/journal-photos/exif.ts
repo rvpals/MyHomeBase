@@ -56,6 +56,51 @@ export const EXIF_HEADER_BYTES = 128 * 1024;
  * last resort rather than an equal.
  */
 export function readExifDate(bytes: Uint8Array): string | undefined {
+  // Delegates rather than walking the IFDs itself: there is one parser here and this is
+  // the narrower question asked of it. Keeping two copies of the segment walk is how
+  // they drift, and a fix applied to one byte-order quirk has to land in both.
+  return readExifDateTime(bytes)?.date;
+}
+
+/**
+ * A capture timestamp: the day, and the clock time when the camera wrote one.
+ *
+ * `time` is separate from `date` rather than one ISO string, because the two carry
+ * different confidence. Every camera writes a date; a zeroed or truncated time field is
+ * common enough that a caller wanting to show only the day must not have to strip a
+ * fabricated `00:00:00` off the end and guess whether it was real.
+ *
+ * NO TIMEZONE, AND NO CONVERSION. An EXIF timestamp is local wall-clock time at the
+ * shutter with no offset recorded, so there is nothing to convert *from*. Passing it
+ * through `Date` would silently reinterpret it as UTC (or as the server's zone) and
+ * shift an evening photo onto the next day — which is exactly the bug this comment
+ * exists to prevent. The strings are handed on as the camera wrote them.
+ */
+export interface ExifDateTime {
+  /** `YYYY-MM-DD`. */
+  date: string;
+  /** `HH:MM:SS`, or absent when the file carries no usable time. */
+  time?: string;
+}
+
+/**
+ * The capture date and time, or `undefined` when the bytes carry none.
+ *
+ * `undefined` covers every failure the same way -- not a JPEG, no EXIF segment, no
+ * date tag, a buffer that stopped mid-structure, a corrupt offset. The caller's next
+ * move is the same in all of those cases (fall back to the file name), and a photo
+ * with unreadable metadata must never fail the folder scan it appears in.
+ *
+ * Tag preference is DateTimeOriginal -> DateTimeDigitized -> DateTime: the first is
+ * when the shutter fired, which is the question being asked. `DateTime` is only the
+ * last-known modification and can have been rewritten by an editing tool, so it is a
+ * last resort rather than an equal.
+ *
+ * A tag that yields a date but no time does NOT fall through to the next candidate: the
+ * shutter time from a better tag beats a modification time that happens to be more
+ * precise. Whichever tag wins supplies both halves.
+ */
+export function readExifDateTime(bytes: Uint8Array): ExifDateTime | undefined {
   const exifStart = findExifSegment(bytes);
   if (exifStart === undefined) return undefined;
 
@@ -83,8 +128,8 @@ export function readExifDate(bytes: Uint8Array): string | undefined {
   for (const candidate of candidates) {
     if (candidate === undefined) continue;
     const raw = readAsciiValue(bytes, tiffStart, candidate, isLittleEndian);
-    const date = parseExifDate(raw);
-    if (date !== undefined) return date;
+    const parsed = parseExifDateTime(raw);
+    if (parsed !== undefined) return parsed;
   }
 
   return undefined;
@@ -101,21 +146,73 @@ export function readExifDate(bytes: Uint8Array): string | undefined {
  * Exported for its own tests: this is where a malformed value has to be caught.
  */
 export function parseExifDate(raw: string | undefined): string | undefined {
+  return parseExifDateTime(raw)?.date;
+}
+
+/**
+ * Turns an EXIF timestamp into a date and, when there is one, a time.
+ *
+ * The spec's format is `YYYY:MM:DD HH:MM:SS`, but real files also contain the dashed
+ * form and a trailing NUL, so both are accepted. A blank or zeroed timestamp
+ * (`0000:00:00 00:00:00`) means "unset" and is rejected rather than returned as a
+ * date -- cameras and editing tools both write it.
+ *
+ * The TIME half is optional and independently validated: a file with a good date and a
+ * zeroed, out-of-range or truncated clock yields the date with no time, rather than
+ * nothing at all. Losing the day because the seconds field was `60` would throw away
+ * the more valuable of the two.
+ *
+ * `24:00:00` is rejected along with anything higher. It is a legal end-of-day marker in
+ * some interchange formats but no camera means it as a capture instant, and accepting it
+ * would put a photo an hour outside the day it belongs to.
+ *
+ * Exported for its own tests: this is where a malformed value has to be caught.
+ */
+export function parseExifDateTime(raw: string | undefined): ExifDateTime | undefined {
   if (raw === undefined) return undefined;
 
-  const match = raw.trim().match(/^(\d{4})[:-](\d{2})[:-](\d{2})/);
+  const text = raw.trim();
+  const match = text.match(/^(\d{4})[:-](\d{2})[:-](\d{2})/);
   if (!match) return undefined;
 
   const [, year, month, day] = match;
   if (year === "0000" || month === "00" || day === "00") return undefined;
 
-  const candidate = `${year}-${month}-${day}`;
-  const parsed = new Date(`${candidate}T00:00:00Z`);
+  const date = `${year}-${month}-${day}`;
+  const parsed = new Date(`${date}T00:00:00Z`);
   if (Number.isNaN(parsed.getTime())) return undefined;
   // Round-tripping rejects 2019-02-30, which a range check on the parts would accept.
-  if (parsed.toISOString().slice(0, 10) !== candidate) return undefined;
+  // `T00:00:00Z` and `slice(0, 10)` keep this arithmetic in UTC, so the check cannot
+  // depend on where the server happens to be.
+  if (parsed.toISOString().slice(0, 10) !== date) return undefined;
 
-  return candidate;
+  return { date, ...parseTimeHalf(text) };
+}
+
+/**
+ * The clock half of an EXIF timestamp, as a spreadable `{ time }` or `{}`.
+ *
+ * Returns an object rather than `string | undefined` so the caller can spread it and
+ * leave `time` genuinely ABSENT instead of present-and-undefined -- which matters
+ * because `ExifDateTime` is handed across a server-action boundary, where an explicit
+ * `undefined` and a missing key do not survive as the same thing.
+ */
+function parseTimeHalf(text: string): { time?: string } {
+  const match = text.match(/^\d{4}[:-]\d{2}[:-]\d{2}[T ](\d{2}):(\d{2}):(\d{2})/);
+  if (!match) return {};
+
+  const [, hour, minute, second] = match;
+  // A zeroed clock is "unset" rather than midnight -- the same convention the date half
+  // follows. Real midnight captures exist but are rare enough that reporting a
+  // camera's placeholder as a fact is the worse error.
+  if (hour === "00" && minute === "00" && second === "00") return {};
+
+  const hours = Number(hour);
+  const minutes = Number(minute);
+  const seconds = Number(second);
+  if (hours > 23 || minutes > 59 || seconds > 59) return {};
+
+  return { time: `${hour}:${minute}:${second}` };
 }
 
 /**
