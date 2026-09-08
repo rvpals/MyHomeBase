@@ -194,7 +194,9 @@ export {
   importJournalCsv,
   planJournalImport,
   autoMapJournalHeaders,
+  defaultJournalFieldOptions,
   JOURNAL_IMPORT_FIELDS,
+  JOURNAL_LIST_FIELDS,
 } from "./csv-import";
 export type {
   JournalImportAction,

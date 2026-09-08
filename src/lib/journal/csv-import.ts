@@ -37,18 +37,53 @@ export const JOURNAL_IMPORT_FIELDS = [
 const DEFAULT_DATE_FORMAT = "YYYY-MM-DD";
 const DEFAULT_LIST_DELIMITER = ",";
 
+// Fields whose cell holds several values, so they need a delimiter to be split.
+// Exported so the mapping UI can offer the delimiter control on exactly these
+// fields rather than keeping its own list that can drift from this one.
+export const JOURNAL_LIST_FIELDS = ["categories", "tags"] as const;
+
+/**
+ * The options a freshly-mapped column should start with, per target field.
+ *
+ * The mapping UI must *write* these into its field options rather than merely
+ * displaying them as a fallback: a `<select>`'s rendered value fires no change
+ * event, so a default that lives only in the control is invisible to the import
+ * and the reader is shown a delimiter that was never actually chosen. That is
+ * how a space-separated Tags column silently imported as one long tag.
+ *
+ * Tags default to space and categories to comma because that is what this
+ * export does — the same split `JOURNAL_HEADER_RULES` applies when auto-mapping
+ * recognizes the header. Here it also covers the case auto-map can't: the user
+ * picking a field by hand.
+ */
+export function defaultJournalFieldOptions(field: string): FieldOptions | undefined {
+  switch (field) {
+    case "date":
+      return { dateFormat: "M/D/YY" };
+    case "tags":
+      return { delimiter: " " };
+    case "categories":
+      return { delimiter: DEFAULT_LIST_DELIMITER };
+    default:
+      return undefined;
+  }
+}
+
 // Header (lower-cased) -> journal field + the options that match this export's
 // conventions: dates are M/D/YY, categories comma-separated, tags space-separated,
 // and a People column feeds tags (comma-separated names). Headers not listed here
 // are left unmapped for the user to map manually.
 const JOURNAL_HEADER_RULES: Record<string, { field: string; options?: FieldOptions }> = {
-  date: { field: "date", options: { dateFormat: "M/D/YY" } },
+  date: { field: "date" },
   time: { field: "time" },
-  category: { field: "categories", options: { delimiter: "," } },
-  categories: { field: "categories", options: { delimiter: "," } },
-  tags: { field: "tags", options: { delimiter: " " } },
+  category: { field: "categories" },
+  categories: { field: "categories" },
+  tags: { field: "tags" },
   places: { field: "locations" },
   "place name": { field: "placeName" },
+  // The one header whose options differ from its field's default: a People
+  // column feeds tags, but holds comma-separated names ("Liang, Ting") rather
+  // than this export's space-separated tag words.
   people: { field: "tags", options: { delimiter: "," } },
   title: { field: "title" },
   content: { field: "content" },
@@ -69,7 +104,10 @@ export function autoMapJournalHeaders(headers: string[]): {
     const rule = JOURNAL_HEADER_RULES[header.trim().toLowerCase()];
     if (!rule) return;
     columnMapping[String(index)] = rule.field;
-    if (rule.options) fieldOptions[String(index)] = rule.options;
+    // A header-specific override wins; otherwise the field's own default, so
+    // auto-map and a hand-picked field land on the same options.
+    const options = rule.options ?? defaultJournalFieldOptions(rule.field);
+    if (options) fieldOptions[String(index)] = options;
   });
   return { columnMapping, fieldOptions };
 }

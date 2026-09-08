@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { importJournalCsv, planJournalImport } from "./csv-import";
+import {
+  autoMapJournalHeaders,
+  defaultJournalFieldOptions,
+  importJournalCsv,
+  JOURNAL_LIST_FIELDS,
+  planJournalImport,
+} from "./csv-import";
 import type { JournalRepository } from "./ports";
 import type { EntryLocation, JournalCategory, JournalEntry, JournalTag } from "./types";
 
@@ -610,5 +616,85 @@ describe("importJournalCsv", () => {
       expect(plan).toMatchObject({ updateCount: 0, skipCount: 1 });
       expect(plan.rows[0].blockedReason).toContain("Locked");
     });
+  });
+});
+
+// Regression: an 08/27/2026 row of the real Journal export imported as the
+// single tag "House AC_Unit Maintenance Contractor Repair GFCI Electrical"
+// instead of seven tags. The Tags cell is space-separated, but the mapping UI
+// showed "Comma" — its delimiter default lived only in the `<select>`'s value
+// prop, which fires no change event, so nothing was ever written into field
+// options and the importer fell back to its own comma default.
+describe("tags delimiter defaults", () => {
+  const HEADERS = ["Date", "Time", "Category", "Tags", "Title", "Content"];
+  const TAG_CELL = "House AC_Unit Maintenance Contractor Repair GFCI Electrical";
+  const EXPECTED_TAGS = [
+    "House",
+    "AC_Unit",
+    "Maintenance",
+    "Contractor",
+    "Repair",
+    "GFCI",
+    "Electrical",
+  ];
+
+  function csv(): string {
+    return [
+      HEADERS.map((header) => `"${header}"`).join(","),
+      `"08/27/2026","","HOUSE","${TAG_CELL}","AK follow up visit","He came back."`,
+    ].join("\n");
+  }
+
+  it("splits a space-separated Tags column into individual tags when auto-mapped", () => {
+    const repo = fakeRepo();
+    const { columnMapping, fieldOptions } = autoMapJournalHeaders(HEADERS);
+
+    const summary = importJournalCsv(repo, csv(), columnMapping, fieldOptions);
+
+    expect(summary.importedCount).toBe(1);
+    const entry = repo.listEntries()[0];
+    expect(entry.tags).toEqual(EXPECTED_TAGS);
+  });
+
+  it("keeps the space delimiter when the user re-picks Tags in the field dropdown", () => {
+    // What the view now does on a field change: replace the column's options
+    // with the newly chosen field's defaults. Previously it deleted them, which
+    // silently reverted this column to the comma default.
+    const { columnMapping, fieldOptions } = autoMapJournalHeaders(HEADERS);
+    const repicked = { ...fieldOptions, "3": defaultJournalFieldOptions("tags")! };
+
+    const repo = fakeRepo();
+    const summary = importJournalCsv(repo, csv(), columnMapping, repicked);
+
+    expect(summary.importedCount).toBe(1);
+    expect(repo.listEntries()[0].tags).toEqual(EXPECTED_TAGS);
+  });
+
+  it("defaults a hand-picked Tags column to space and Categories to comma", () => {
+    // The two list fields split differently in this export, so the default has
+    // to be per-field rather than one shared fallback.
+    expect(defaultJournalFieldOptions("tags")).toEqual({ delimiter: " " });
+    expect(defaultJournalFieldOptions("categories")).toEqual({ delimiter: "," });
+    expect(defaultJournalFieldOptions("date")).toEqual({ dateFormat: "M/D/YY" });
+    expect(defaultJournalFieldOptions("title")).toBeUndefined();
+  });
+
+  it("still reads a People column as comma-separated names", () => {
+    // People feeds tags but overrides the field default — "Liang, Ting" is two
+    // people, not one tag and not four space-split words.
+    const headers = ["Date", "People", "Title"];
+    const { columnMapping, fieldOptions } = autoMapJournalHeaders(headers);
+    expect(fieldOptions["1"]).toEqual({ delimiter: "," });
+
+    const repo = fakeRepo();
+    const text = ['"Date","People","Title"', '"08/27/2026","Liang, Ting","Visit"'].join("\n");
+    importJournalCsv(repo, text, columnMapping, fieldOptions);
+
+    expect(repo.listEntries()[0].tags).toEqual(["Liang", "Ting"]);
+  });
+
+  it("exposes exactly the list-valued fields the importer splits", () => {
+    // Guards the view's delimiter control against drifting from the importer.
+    expect([...JOURNAL_LIST_FIELDS]).toEqual(["categories", "tags"]);
   });
 });

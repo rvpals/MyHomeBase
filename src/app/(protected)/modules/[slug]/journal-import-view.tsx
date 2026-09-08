@@ -13,7 +13,11 @@ import type {
   ImportSummary,
   NamedMapping,
 } from "@/lib/csv-import";
-import { JOURNAL_IMPORT_FIELDS } from "@/lib/journal";
+import {
+  defaultJournalFieldOptions,
+  JOURNAL_IMPORT_FIELDS,
+  JOURNAL_LIST_FIELDS,
+} from "@/lib/journal";
 import type { JournalImportPlan } from "@/lib/journal";
 import {
   clearAllJournalEntriesAction,
@@ -40,7 +44,9 @@ const DELIMITER_CHOICES = [
 ];
 
 // Fields whose cell can hold several values, so they expose a delimiter choice.
-const LIST_FIELDS = new Set(["categories", "tags"]);
+// The field list lives in the journal lib so this control and the importer can't
+// disagree about which fields are list-valued.
+const LIST_FIELDS = new Set<string>(JOURNAL_LIST_FIELDS);
 
 function readFileAsText(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -124,10 +130,18 @@ export function JournalImportView({
       else next[key] = field;
       return next;
     });
-    // Drop options that no longer apply to the newly chosen field.
+    // Replace this column's options with the new field's defaults. Seeding them
+    // explicitly (rather than clearing and letting each control render a
+    // fallback) is what makes the shown delimiter the one the import will use:
+    // a `<select>`'s value prop fires no change event, so an unwritten default
+    // is invisible to the import. Carrying the old options over instead would
+    // be worse — a comma left behind from Categories would silently apply to
+    // Tags.
     setFieldOptions((current) => {
       const next = { ...current };
-      delete next[key];
+      const defaults = defaultJournalFieldOptions(field);
+      if (defaults) next[key] = defaults;
+      else delete next[key];
       return next;
     });
   }
@@ -360,10 +374,15 @@ export function JournalImportView({
                         )}
                         {field && LIST_FIELDS.has(field) && (
                           <select
-                            value={options.delimiter ?? ","}
+                            // No `?? ","` fallback: the value must be the one
+                            // the import will actually use, so an unset option
+                            // shows the placeholder rather than quietly
+                            // claiming "Comma" was chosen.
+                            value={options.delimiter ?? ""}
                             onChange={(event) => updateOption(index, { delimiter: event.target.value })}
                             className={SMALL_INPUT_CLASS}
                           >
+                            <option value="">Split on: choose…</option>
                             {DELIMITER_CHOICES.map((choice) => (
                               <option key={choice.label} value={choice.value}>
                                 Split on: {choice.label}
