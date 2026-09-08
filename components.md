@@ -88,8 +88,7 @@ pattern instead of inventing one.
 | [`UsageMeter`](#usagemeter) | A stat tile whose value is part of a known total | [src/components/usage-meter.tsx](src/components/usage-meter.tsx) | no |
 | [`Progress3D`](#progress3d) | **Any progress bar** — work underway, 0..max | [src/components/progress-3d.tsx](src/components/progress-3d.tsx) | no |
 | [`JournalViewer`](#journalviewer) | Full detail sheet for one journal entry | [src/components/journal-viewer.tsx](src/components/journal-viewer.tsx) | yes |
-| [`PhotoLightbox`](#photolightbox) | Full-screen photo overlay with prev/next over a set | [src/components/photo-lightbox.tsx](src/components/photo-lightbox.tsx) | yes |
-| [`PhotosViewer`](#photosviewer) | **Browse a whole folder** — stage, thumbnail strip, slide show | [src/components/photos-viewer.tsx](src/components/photos-viewer.tsx) | yes |
+| [`PhotoViewer`](#photoviewer) | **THE photo viewer** — stage, thumbnail strip, slide show, capture details, Journal link, favourite heart | [src/components/photo-viewer.tsx](src/components/photo-viewer.tsx) | yes |
 | [`PhotoOfTheDay`](#photooftheday--photoofthedaybutton) / `PhotoOfTheDayButton` | **Photos for a date or a date range**, as a closable dialog | [src/components/photo-of-the-day.tsx](src/components/photo-of-the-day.tsx) | yes |
 | [`TickerViewer`](#tickerviewer) | Full record dialog for one ticker — 3 tabs of cards | [src/components/ticker-viewer.tsx](src/components/ticker-viewer.tsx) | yes |
 | [`IconSetProvider`](#iconsetprovider--useiconset) / `useIconSet` | Active module icon set (context) | [src/components/icon-set-context.tsx](src/components/icon-set-context.tsx) | yes |
@@ -299,7 +298,8 @@ Row-click navigation:
 - User Management — [user-management/view.tsx](src/app/(protected)/admin/user-management/view.tsx) *(cells rendering `Avatar`)*
 - Expense transactions — [expense-transactions-view.tsx](src/app/(protected)/modules/[slug]/expense-transactions-view.tsx) *(row selection + bulk edit/delete)*
 - Stocks & ETFs simulation — [stock-simulation-view.tsx](src/app/(protected)/modules/[slug]/stock-simulation-view.tsx) *(a fixed ten-row table: `showToolbar={false}` with `defaultPageSize="ALL"`, keeping sort and the status bar's CSV export)*
-- CSV Analysis, SQL Explorer, Stocks & ETFs (accounts / positions / watchlist / analytics / next-day actions)
+- CSV Analysis — [csv-analytics-view.tsx](src/app/(protected)/modules/[slug]/csv-analytics-view.tsx) *(row selection + bulk edit over an **arbitrary** schema: the dialog's fields are the dataset's own columns, so the grid is keyed by the table's real SQLite `rowid` rather than by row position)*
+- SQL Explorer, Stocks & ETFs (accounts / positions / watchlist / analytics / next-day actions)
 
 **Filter operators.** A column filter box is a substring match by default, and also
 understands `>100`, `>=100`, `<50`, `<=50`, `!=new`, `=new` (exact) and `100..200` /
@@ -331,6 +331,15 @@ Expense transactions grid
 `renderSelectionActions` gets the selected rows plus a `clearSelection` callback — keep
 hold of that callback if the action opens a dialog, and call it once the write lands so
 the ticks don't outlive the rows they referred to.
+
+**Selection needs real row identity, and `getRowKey` is where that bites.** A grid over
+rows the caller *owns* (a transaction, a user) has an `id` to hand back. A grid over
+anonymous rows — CSV Analysis reads its tables as bare `(string | number | null)[]`
+arrays — has only array position, and position is not identity: it changes with sort
+order and doesn't survive a re-read, so a bulk action keyed on it can write the wrong
+rows. CSV Analysis therefore carries the table's SQLite `rowid` alongside the values
+(`CsvEntryData.rowIds`) and keys the grid by that. If a new grid can't answer "what
+names this row in the database", it isn't ready for `enableSelection` yet.
 
 **Below 1024px it isn't a table.** `DataGrid` is a thin dispatcher: it reads
 `useIsCompact()` and renders either the full table or [`DataGridCompact`](#datagridcompact).
@@ -2547,164 +2556,225 @@ instead of squeezing the date.
 
 ---
 
-## PhotoLightbox
+## PhotoViewer
 
-A full-screen overlay showing one photo at a time, with keyboard and on-screen navigation
-through a set. Reach for this whenever a grid of thumbnails needs a "look at this one
-properly" view.
+**THE photograph viewer.** One full-screen overlay: a big stage, a scrolling thumbnail
+strip, a collapsible "Slide show" panel, the capture details, a **My Journal** link and a
+**favourite heart**. Every full-screen photograph in the app goes through this.
 
-- **Source:** [src/components/photo-lightbox.tsx](src/components/photo-lightbox.tsx)
-- **Import:** `import { PhotoLightbox, type LightboxPhoto } from "@/components/photo-lightbox";`
+- **Source:** [src/components/photo-viewer.tsx](src/components/photo-viewer.tsx)
+- **Import:** `import { PhotoViewer, type ViewerPhoto, type ViewerFolderOutcome, type ViewerPhotoDetails } from "@/components/photo-viewer";`
 - **Client component:** yes
+
+**It replaced `PhotoLightbox` and `PhotosViewer`, which are gone.** Those split the job by
+*who owned the set* — one took a caller-assembled list, the other read a folder itself —
+and then diverged on features: the folder one grew the strip, the heart and the Journal
+link; the set one grew the play/pause control. A reader clicking a photograph got
+whichever the call site happened to use, so on the home screen the picture click opened
+the lesser overlay (no heart, no siblings) while a small folder glyph beside it opened the
+good one. Merging them is what makes "enlarge this picture" and "browse this folder" the
+same experience. If you are looking for either old name, this is the component.
+
+### How it gets its photos — exactly one of two ways
+
+A **discriminated props union**, so a caller cannot pass both or neither and still
+typecheck. That is what keeps this from being a two-mode blob: every call site is one
+shape or the other, and the branch inside is a single `useEffect`.
 
 | Prop | Type | Notes |
 |------|------|-------|
-| `photos` | `LightboxPhoto[]` — `{ src, caption, subcaption? }` | Plain data: URLs the caller already built, not records. `caption` is both the header text and the image's `alt`; `subcaption` is a second, dimmer line (the journal uses it for the folder a photo came from). |
-| `index` | `number` | Which photo is shown. **An out-of-range index renders nothing**, so a single state variable can mean "closed". |
-| `onIndexChange` | `(index: number) => void` | Raised with the index to move to. The component never wraps past either end — it hides the arrow instead, so the caller decides if wrapping is wanted. |
-| `onClose` | `() => void` | Raised by Escape, the close button, and a backdrop click. |
-| `isPlaying?` | `boolean` | Advance on a timer. Controlled, so a caller can open **straight into** a running slideshow. Default `false`. |
-| `onPlayingChange?` | `(isPlaying: boolean) => void` | Raised by the play/pause button, by any manual step, and when the last photo ends the run. **Passing this is what makes the play/pause button appear** — omit both props for a plain viewer. |
-| `intervalMs?` | `number` | Milliseconds per photo. Defaults to `5000`. |
-| `className?` | `string` | |
+| `photos` | `ViewerPhoto[]` | **Set form.** The caller assembled the list. Mutually exclusive with `folderPath`. |
+| `folderPath` | `string` | **Folder form.** The folder to browse, as a path from the photo root. |
+| `onListFolder` | `(folderPath) => Promise<ViewerFolderOutcome>` | Folder form only, and required there. Reads the folder. **Must be a stable reference** — a module-scope server action or `useCallback`; the load effect depends on it, so an inline arrow would re-read in a loop. |
+| `initialPhotoPath?` | `string` | Folder form only. Which photo to land on, matched against the listing **by path** — a photo deleted since the caller drew it falls back to the start of the folder rather than an empty stage. |
+| `initialIndex?` | `number` | Set form. Which photo to open on. Read **once at mount** — see the `key` note below. |
 
-```tsx
-{lightbox && (
-  <PhotoLightbox
-    photos={lightbox.photos}
-    index={lightbox.index}
-    onIndexChange={(index) => setLightbox({ ...lightbox, index })}
-    onClose={() => setLightbox(undefined)}
-  />
-)}
-```
-
-**Used by:** the journal entry's "Pictures of this date" card
-([journal-photos-card.tsx](src/app/(protected)/modules/[slug]/entries/[id]/journal-photos-card.tsx)),
-the My Favorite Photos screen
-([fav-photos-list.tsx](src/app/(protected)/fav-photos-list.tsx)), which drives the
-slideshow from a button above its grid, and the home screen's Random Photo card
-([random-photo-widget.tsx](src/app/(protected)/random-photo-widget.tsx)), which opens it
-on the single drawn photo.
-
-**Not the same component as [`PhotosViewer`](#photosviewer).** This one shows a SET the
-caller has already assembled and is the right choice for "enlarge this picture" — the
-caller owns the list, the index and the play state. Reach for `PhotosViewer` when the
-subject is a *folder* the reader wants to browse.
-
-**Notes.** Keys are bound on the **document**, not on a focused element: the overlay is
-opened by clicking a thumbnail elsewhere, so there is no reliable focus target and arrow
-keys have to work without clicking the overlay first. Only Escape / ← / → are
-`preventDefault`ed, so other shortcuts still work. Body scroll is locked while it's up —
-on a phone a swipe would otherwise scroll the page behind the photo.
-
-The image is `object-contain`, so a portrait photo and a panorama both fit without cropping.
-Close and prev/next are 40–48px circles rather than small glyphs, because on a phone they
-are the only way out and the backdrop is mostly covered by the image. Carries `no-print`: a
-printed page has nothing to click.
-
-Uses a plain `<img>`, not `next/image` — these bytes come from a session-gated route over a
-NAS share, which `next/image` can't optimize anyway.
-
-**The slideshow.** `isPlaying` is *controlled* rather than internal state, because the
-caller's own "Slideshow" button has to open the overlay already running — internal state
-would need the reader to open a photo and then press play. Three behaviours are worth
-knowing before reusing it:
-
-- **A manual step pauses.** The arrows and ← / → both raise `onPlayingChange(false)`
-  before moving: taking hold of the controls means looking at this one properly, and a
-  timer pulling the photo away two seconds later is the opposite of what was asked.
-- **The last photo stops the run** — it does not wrap. Leaving a slideshow going finishes
-  on a still picture. (The component never wraps by hand either, so this is consistent
-  with the hidden arrow at each end.)
-- **It's one `setTimeout` per photo, keyed on the index**, not a repeating interval. So
-  every photo — including one arrived at by hand — gets a full `intervalMs`, and there is
-  no long-lived schedule to drift out of step with what's on screen.
-
-A caller that keeps `isPlaying` in state must clear it when the overlay closes for a
-reason other than the close button — e.g. the favourites list can close it by *deleting
-rows* until the index is out of range, and a stale `true` would make the next ordinary
-click open into a slideshow.
-
----
-
-## PhotosViewer
-
-**Browse a whole folder of photographs.** A full-screen overlay: one big photo on the
-stage, a scrolling strip of thumbnails under it, and a collapsible "Slide show" panel
-that sets the pace and the transition. Handed a *folder*, it finds out for itself what is
-in it.
-
-- **Source:** [src/components/photos-viewer.tsx](src/components/photos-viewer.tsx)
-- **Import:** `import { PhotosViewer, type ViewerPhoto, type ViewerFolderOutcome } from "@/components/photos-viewer";`
-- **Client component:** yes
+### Shared props
 
 | Prop | Type | Notes |
 |------|------|-------|
-| `folderPath` | `string` | The folder to browse, as a path from the photo root. |
-| `initialPhotoPath?` | `string` | Which photo opens first. Matched against the listing by path, so a photo deleted since the caller drew it falls back to the start of the folder rather than an empty stage. Omit to open on the first photo. |
-| `onListFolder` | `(folderPath) => Promise<ViewerFolderOutcome>` | Reads the folder. **Must be a stable reference** — a module-scope server action, or `useCallback`. The load effect depends on it, so an inline arrow would re-read the folder in a loop. |
 | `photoUrl` | `(relativePath: string) => string` | Builds the URL for one photo's bytes. |
 | `onClose` | `() => void` | Raised by Escape and the close button. **Not** by a backdrop click — the stage covers the screen, so there is no backdrop to hit. |
+| `autoPlay?` | `boolean` | Open with the slide show already running, for a "Slideshow" button elsewhere on the page. Read **once at mount**. |
+| `onPhotoDetails?` | `(relativePath) => Promise<ViewerPhotoDetails>` | The path and capture timestamp of the photo on the stage. **Lazy, one photo at a time** — see below. Omit to hide the details line. Stable reference. |
+| `isFavorite?` | `(relativePath) => boolean` | Whether the photo on the stage is kept. A **predicate**, not a list. Wrap in `useCallback`. |
+| `onToggleFavorite?` | `(relativePath) => Promise<boolean>` | Flips it. **Must not resolve until `isFavorite` would return the new answer.** Reject to report a failed write. |
 | `folderLabel?` | `string` | A friendlier folder name, shown above the file name. Falls back to the last segment of `folderPath`. |
 | `className?` | `string` | |
 
+`ViewerPhoto` is `{ name, relativePath, caption?, subcaption? }`. `caption` exists because
+the favourites screen captions with the **note** the reader wrote — that is what they said
+about the picture, and `IMG_20190609_143501.jpg` is not; it falls back to `name`.
+
 ```tsx
-{isFolderOpen && (
-  <PhotosViewer
+// Folder form — browsing, with details, the heart and the Journal link.
+{isViewerOpen && (
+  <PhotoViewer
     folderPath={folderPath}
     initialPhotoPath={pick.relativePath}
     folderLabel={pick.folderName}
     onListFolder={listAllPhotosInFolderAction}
     photoUrl={photoUrl}
-    onClose={() => setIsFolderOpen(false)}
+    onPhotoDetails={readPhotoDetailsAction}
+    isFavorite={isPhotoFavorited}
+    onToggleFavorite={toggleFavoriteByPath}
+    onClose={() => setIsViewerOpen(false)}
+  />
+)}
+
+// Set form — the caller already has the photos.
+{openIndex >= 0 && (
+  <PhotoViewer
+    key={openIndex}
+    photos={favorites.map((f) => ({ name: fileNameOf(f.relativePath), relativePath: f.relativePath, caption: f.note }))}
+    initialIndex={openIndex}
+    autoPlay={openPlaying}
+    photoUrl={photoUrl}
+    onPhotoDetails={readPhotoDetailsAction}
+    onClose={closeViewer}
   />
 )}
 ```
 
 **Used by:** the home screen's Random Photo card
-([random-photo-widget.tsx](src/app/(protected)/random-photo-widget.tsx)) — its header's
-folder button opens the folder the drawn photograph came from, landing on that
-photograph, so the rest of the event is one click away.
+([random-photo-widget.tsx](src/app/(protected)/random-photo-widget.tsx)) — where the
+picture click *and* the folder glyph now open the same viewer; the My Favorite Photos
+screen ([fav-photos-list.tsx](src/app/(protected)/fav-photos-list.tsx)), set form with
+`autoPlay` for its Slideshow button; and [PhotoOfTheDay](#photooftheday--photoofthedaybutton),
+set form over folders it has already scanned.
 
-**Not the same component as [`PhotoLightbox`](#photolightbox).** That one takes a set the
-caller has already assembled, and the caller owns the list, the index and the play state.
-This one's subject is the folder: it owns all three, because the reader is browsing
-rather than enlarging. Both exist on purpose; neither replaced the other.
+**It owns its index and play state.** That is the difference between a viewer and a
+controlled overlay, and it is why the callers that used to hold a `lightboxIndex` no
+longer do. `initialIndex` and `autoPlay` set the *opening* state only. **Consequence:
+`key` your call site on the opening index** (`key={openIndex}`) when a caller can open on
+different photos from the same mounted position — otherwise the second click reopens on
+the first photo, because `initialIndex` is read once.
 
-**It owns no open/closed state** — guard it with `{isOpen && <PhotosViewer …>}` like every
-other overlay here. That is load-bearing rather than stylistic: it reads the folder on
-mount, so a permanently mounted instance would list the folder on every render of the
-host card whether or not anyone asked to see it.
+**It owns no open/closed state** — guard it with `{isOpen && <PhotoViewer …>}` like every
+other overlay here. Load-bearing rather than stylistic: in folder form it reads the folder
+on mount, so a permanently mounted instance would list the folder on every render of the
+host.
 
-**It fetches nothing itself.** `onListFolder` is injected exactly as `PhotoOfTheDay`
-takes its lookups, which is what keeps the file free of any filesystem, archive or
-server-action type. `ViewerFolderOutcome` is declared in the component rather than
-imported from the action, so `src/components/` keeps no dependency on `src/app/`; the
-action's result type is structurally identical.
+### The capture details, and why they are lazy
 
-**The thumbnail strip is a window, not the folder.** There is no thumbnail pipeline —
-the archive's port is read-only and forbids writing a cache into it
-([ports.ts](src/lib/journal-photos/ports.ts)), so a "thumbnail" here is the original
+The line under the stage shows the **relative path** and the **capture date-time**, read
+through `onPhotoDetails` → `readPhotoDetailsAction` → `readPhotoDetails`
+([photo-details.ts](src/lib/journal-photos/photo-details.ts)).
+
+**One photo at a time, and that is the performance design, not an accident.** Reading EXIF
+means opening a file over SMB. `listAllPhotosInFolder` is deliberately built to open *zero*
+files, and doing a header read per photo up front would put 1,187 SMB reads behind a
+folder listing and stall the viewer for minutes — while doing it for the one picture
+someone is actually looking at is invisible. Results are **cached by path** inside the
+viewer, so arrowing back and forth re-reads nothing.
+
+**Three states a reader can distinguish:** `Reading…`, a timestamp, or **`Not available`**.
+The timestamp carries **where it came from** — "from the camera" (EXIF), "from the file
+name", or "from the folder name" — because those are different claims and presenting an
+inferred date in the same words as an EXIF one would dress a guess up as a fact.
+
+**No timezone is shown, and no conversion happens.** An EXIF timestamp is local wall-clock
+time at the shutter with no offset recorded, so there is nothing to convert *from*. Passing
+it through `Date` would reinterpret it as UTC and shift an evening photo onto the next day.
+`readExifDateTime` returns the date and time as separate strings for the same reason.
+
+The **relative** path is shown, not an absolute one: the archive root is server-side
+configuration, and putting the NAS host in the DOM would leak infrastructure for no reader
+benefit. `break-all` rather than `truncate`, because a path is the one thing here worth
+reading in full and its interesting end is what a truncation would cut.
+
+### The favourite heart
+
+Backed by [`@/lib/fav-photos`](src/lib/fav-photos/) — the same rows the home card and
+`/favorite-photos` read. **Both props or neither:** the heart isn't rendered unless
+`isFavorite` and `onToggleFavorite` are both given, so a caller with no notion of
+favourites gets a viewer without the control rather than a dead one. A predicate rather
+than a `Set<string>` because the viewer walks hundreds of photos and the caller already
+holds the list it read for its own screen.
+
+**The heart is optimistic, hence the contract on `onToggleFavorite`.** A write is a
+NAS-backed SQLite round trip and the caller re-reads its list after it — a visible delay,
+and a reader here is arrowing through a folder fast. So the viewer flips a local override
+the instant the heart is clicked, then **drops that override when the promise resolves**
+and hands the glyph back to `isFavorite`. So: **don't resolve until `isFavorite` would
+return the new answer** (await your own re-read), or the glyph flicks back for a render.
+**Reject** to report a failed write — the viewer restores the previous glyph, silently,
+because this header has nowhere to print a message and a heart springing back already
+reads as "that didn't take". The override is dropped on resolve rather than kept, so it
+can't go stale against a change made on another screen; it deliberately survives moving
+between photos, since starring and immediately arrowing on is the flow it exists for.
+
+**`F` toggles it**, alongside Escape and the arrows on the same document-level handler.
+Modifier-free only — `Ctrl`/`Cmd+F` is the browser's find — and inert when the favourite
+props are absent. The shortcut is as much the point as the button: reaching for the header
+means leaving the arrow keys, which is the interruption it avoids.
+
+**Starring does not pause the slide show**, unlike the arrows (which do, on purpose). A
+reader who stars mid-run is saying "this one" *about* what the timer is showing them, so
+stopping the show would make the gesture cost them the thing they were enjoying.
+
+Filled vs outline `heart` carries the state (both in `ALWAYS_CLASSIC`, so they stay
+hand-drawn under any icon style), with `aria-pressed` so a screen reader hears one toggle
+in two states rather than two buttons. **No icon slot** — a state glyph on a toggle, not a
+mark for a *place*. The fill is `text-brass`, not the home card's `text-brass-dark`, which
+is too near black to read on this stage.
+
+### The My Journal link
+
+Links to the journal's calendar for the day the photo was taken —
+`/modules/journal/calendar?scope=month&anchor=<date>&date=<date>`, landing on that month
+with that day selected.
+
+**EXIF first when the details have arrived**, then
+[`photoJournalDate`](src/lib/journal-photos/viewer-date.ts)'s name-based guess (file name,
+then folder name). Deliberately the same precedence `readPhotoDetails` follows, so the
+link and the details line can never claim two different days for one picture. When no date
+can be established **the link is simply not rendered** — opening the journal on a guessed
+day is worse than offering nothing.
+
+Navigates in the **same tab**: the destination is somewhere to read rather than glance at,
+and Ctrl/middle-click still gives a second tab. Known cost — the viewer holds no URL
+state, so Back returns to the page behind it, not to this photo.
+
+**It prefetches on hover, and that is not decoration.** `<Link>`'s built-in prefetch never
+fires here: Next triggers it when a link crosses into the viewport, and this one is inside
+a portal that mounts *already on screen*, so there is no crossing to observe. The click
+therefore started its RSC fetch cold and took seconds to paint. The fix is a manual
+`router.prefetch` on `onMouseEnter` / `onFocus` / `onTouchStart` — hover rather than mount,
+because the date changes with every photo and eager prefetching would fire a request for
+each picture the reader arrows past. Next dedupes, so a wobbling cursor costs nothing.
+**Don't replace this with `prefetch={true}`.** Any future overlay with a link out has the
+same blind spot and wants the same treatment.
+
+### The header, the strip, and the slide show
+
+Four controls in one row, all in the `bg-white/10` pill family: **heart**, **My Journal**,
+the `n / total` counter, **close**. Plain `<button>`/`<Link>` rather than
+[`Button`](#button) — this header is opaque black, where `Button`'s `secondary` variant is
+paper-on-paper with a `--line` shadow and reads as a pale slab. The header carries its
+**own opaque background** because the app's `z-40` bar sits exactly here and at anything
+less its nav links read straight through.
+
+**The thumbnail strip is a window, not the set.** There is no thumbnail pipeline — the
+archive's port is read-only and forbids writing a cache into it
+([ports.ts](src/lib/journal-photos/ports.ts)), so a "thumbnail" is the original
 multi-megabyte JPEG scaled by the browser. Mounting a 1,187-photo folder's worth would
-queue 1,187 full-size SMB reads and stall for minutes. So every photo gets a *slot*
-(keeping the scrollbar honest about the folder's size) but only the ~24 nearest the
-reader hold an `<img>`; the rest are placeholders. **Don't "fix" this by mapping every
-photo to an image.** If the strip ever needs to be genuinely fast, that is a cached
-pipeline behind a *new* port outside the archive, which is its own piece of work.
+queue 1,187 full-size reads over SMB. So every photo gets a **slot** (keeping the scrollbar
+honest about the set's size) but only those within `THUMBNAIL_WINDOW` of the reader hold an
+`<img>`; the rest are `bg-white/10` placeholders. Moving through the set slides the window,
+so pictures ahead are already loading. A single scrolling row, not a wrapping grid: the
+strip's job is "where am I", which a line preserves and a block of rows loses.
 
-**The slideshow.** Options live in `src/lib/journal-photos/slideshow.ts` — the intervals
-offered, the effects, and the defaults are data, so which choices are sensible is
-testable without mounting React. They are **not persisted**: a freshly opened viewer
-always starts at 5 seconds with no transition, so nobody wonders why tonight's slideshow
-inherited last month's pace. Three behaviours match `PhotoLightbox` deliberately:
-
-- **Any manual step stops the run** — arrows, keys, or a thumbnail click. A timer pulling
-  the photo away two seconds after someone chose it is the opposite of what was asked.
-- **The last photo ends it** rather than wrapping. Pressing Start *on* the last photo
-  restarts from the top instead, since that reader plainly meant "play the folder".
-- **One `setTimeout` per photo, keyed on the index** — not a repeating interval. Every
-  photo gets a full interval, including one arrived at by hand.
+**The slide show.** Interval and transition are chosen in a `CollapsibleCard`, collapsed by
+default. Options are **not persisted** — a freshly opened viewer starts from
+`DEFAULT_SLIDESHOW_OPTIONS`, so tonight's show never inherits last month's pace. One
+`setTimeout` **keyed on the index**, not a repeating interval, so every photo — including
+one arrived at by hand — gets a full interval and no long-lived schedule drifts out of step
+with the screen. The last photo **ends** the run rather than wrapping. Starting from the
+last photo restarts from the top, since the reader plainly meant "play the set". Both
+manual steps (arrows and keys) stop the show; only the heart doesn't. The panel is only
+rendered for a set of more than one — a slide show over a single photo would be a control
+that exists to say no.
 
 Transitions are entry animations on a remounted `<img>` (`animate-photo-fade` /
 `animate-photo-slide` in [globals.css](src/app/globals.css)), **not** two stacked images
@@ -2713,13 +2783,30 @@ would double what is in flight. Against the opaque black stage a fade-in reads a
 cross-fade anyway. Both collapse to a short fade under `prefers-reduced-motion`.
 
 **Narrow screens:** thumbnails shrink from 16px to 12px squares via `max-lg:`, the strip
-keeps scrolling horizontally, and the "Slide show" card is collapsed by default so the
-picture is the loudest thing on the screen. The stage carries `min-h-0` so it — not the
-strip — is what gives way on a short screen.
+keeps scrolling horizontally, and the `n / total` counter hides — the strip already says
+the same thing, and the heart and Journal link outrank it. The heart stays visible at every
+width. The stage carries `min-h-0` so it — not the strip — is what gives way on a short
+screen.
+
+**Keys are bound on the document**, not a focused element: the viewer is opened by clicking
+something elsewhere, so there is no reliable focus target and the arrows must work without
+clicking the stage first. Only Escape / ← / → / F are `preventDefault`ed, so other
+shortcuts still work. Body scroll is locked while it's up — on a phone a swipe would
+otherwise move the page behind the photo.
 
 Uses a plain `<img>`, not `next/image`: the bytes come from a session-gated route over a
-NAS share, which `next/image` can't optimize anyway. Portalled into `document.body` and
-carries `no-print`, for the same reasons `PhotoLightbox` documents.
+NAS share, which `next/image` can't optimize anyway. The image is `object-contain`, so a
+portrait shot and a panorama both fit uncropped. Close and prev/next are 40–48px circles
+rather than small glyphs, because on a phone they are the only way out. Portalled into
+`document.body` — `fixed inset-0 z-50` is only as good as its stacking context, and
+rendered inside a card this came out *behind* the app's own `z-40` bar. Carries `no-print`:
+a printed page is the page, not a screen overlay.
+
+**It fetches nothing itself.** `onListFolder`, `onPhotoDetails`, `isFavorite` and
+`onToggleFavorite` are all injected, which is what keeps the file free of any filesystem,
+archive or server-action type. `ViewerFolderOutcome` and `ViewerPhotoDetails` are declared
+in the component rather than imported from the actions, so `src/components/` keeps no
+dependency on `src/app/`; the actions' result types are structurally identical.
 
 ---
 
@@ -2727,7 +2814,7 @@ carries `no-print`, for the same reasons `PhotoLightbox` documents.
 
 **The photographs for a date, or for a span of dates.** A dialog that lists the archive
 folders matching what you asked for, opens each one into a thumbnail grid on demand, and
-hands a click off to [`PhotoLightbox`](#photolightbox). `PhotoOfTheDayButton` is the small
+hands a click off to [`PhotoViewer`](#photoviewer). `PhotoOfTheDayButton` is the small
 picture-glyph control that opens it.
 
 - **Source:** [src/components/photo-of-the-day.tsx](src/components/photo-of-the-day.tsx)
@@ -2804,15 +2891,18 @@ route.
 
 | Tab | Cards | Source |
 |---|---|---|
-| **Our data** | Holdings · Transactions · Watchlist & income | what MyHomeBase recorded |
+| **Our data** | Holdings · Transactions · Watchlist & income | what MyHomeBase recorded, plus today's session in the Today box |
 | **Market** | Quote · Price History · Events · Risks · News | the market-data provider |
 | **Yahoo Finance Detail** | Market Data · Company Profile · Analysis recommendations · Valuation & Trading · Financials · Key statistics | the provider's reference record |
 
 The grouping is the feature — a reader should never have to guess whether a number came from
-their broker export or from Yahoo. The one place the two meet is the **My past performance**
+their broker export or from Yahoo. The two meet in two places, both inside "Our data": the **My past performance**
 chart inside Transactions, which plots your trades against the market's close either side of
 each one, marks dividends, splits and reported quarters on the same line, and lists every
-plotted point with a Note column and a per-row News button.
+plotted point with a Note column and a per-row News button; and the **Today** box in Holdings,
+which adds the session's high, low and mid plus a small price line under the day's move. Both
+are captioned with where they came from and when, so a provider figure on this tab can't be
+mistaken for a recorded one.
 
 - **Source:** [src/components/ticker-viewer.tsx](src/components/ticker-viewer.tsx)
 - **Import:** `import { TickerViewer, type TickerFavoriteControl, type TickerPanelGroup, type TickerPanelState } from "@/components/ticker-viewer";`
@@ -2828,6 +2918,7 @@ plotted point with a Note column and a per-row News button.
 | `onSelectGroup` | `(group: TickerPanelGroup) => void` | Fired by the tab strip. |
 | `onClose` | `() => void` | Passed through to `Modal`. |
 | `ownData` | `TickerPanelState<TickerOwnData>` | Feeds all three "Our data" cards. |
+| `intraday?` | `TickerPanelState<TickerIntradaySeries>` | Today's session, drawn in the Holdings card's **Today** box: high / low / mid, then a bare price line. A provider call on an otherwise-local tab — that's deliberate, since the figures are only "as of when you opened this" if fetched on open. **Optional** — omit it and the Today box shows just the move. A failure costs the chart, never the move. |
 | `tradeTimeline` | `TickerPanelState<TickerTradeTimeline>` | The "My past performance" chart inside Transactions. A provider call, so the table renders first and the chart fills in. |
 | `quote` / `priceSeries` / `events` / `risk` / `news` | `TickerPanelState<…>` | One per Market card. |
 | `detail` | `TickerPanelState<TickerYahooDetail>` | Feeds **all six** Yahoo cards from one fetch. |

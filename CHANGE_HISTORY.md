@@ -1,5 +1,152 @@
 # Change History
 
+## 2026-09-08 15:21 — One photo viewer, and a capture timestamp
+
+### [Changed] Photographs: one viewer, everywhere
+
+There were **two** full-screen photo overlays, and which one you got depended on where
+you clicked. `PhotoLightbox` took a set the caller had already assembled; `PhotosViewer`
+was handed a folder and read it itself. That split was defensible — they differed on who
+owned the photo list — but they then diverged on *features*, and that was not: the folder
+one grew a thumbnail strip, a Journal link and a favourite heart, while the set one grew
+the play/pause control.
+
+The result on the home screen: clicking the **photograph** opened the lightbox on a
+one-item list — no heart, no siblings, arrows that hid themselves — while a small folder
+glyph beside it opened the good viewer on the whole event. Nobody would guess that. The
+obvious gesture led to the worse overlay.
+
+Both are now **one component**, `PhotoViewer`
+([photo-viewer.tsx](src/components/photo-viewer.tsx)), and the two old files are deleted.
+It still accepts its photos either way, but through a **discriminated props union** —
+`photos={[...]}` or `folderPath` + `onListFolder`, never both, never neither. That union
+is what keeps a merged component from becoming a two-mode blob: every call site is one
+shape or the other and it typechecks, so the branch inside is a single effect rather than
+a maze of optional props.
+
+It owns the index and the play state in both shapes. That is what distinguishes a viewer
+from a controlled overlay, and it removed the `lightboxIndex` state from two callers.
+`initialIndex` and `autoPlay` set only the *opening* state — which has one consequence
+worth knowing: **`key` the call site on the opening index** when one mounted position can
+open on different photos, or the second click reopens on the first photo.
+
+On the home card the picture click and the folder glyph now open the same viewer on the
+same folder. The glyph stayed rather than being removed as redundant: it names what the
+gesture does, which a bare photograph does not, and it is the only affordance a keyboard
+reader can reach.
+
+### [Added] Photographs: where it is, and when it was taken
+
+The viewer now shows the photo's **path** and its **capture date and time**, read from
+EXIF ([photo-details.ts](src/lib/journal-photos/photo-details.ts)).
+
+**Read lazily, one photo at a time**, and that is the whole design rather than an
+optimisation. `listAllPhotosInFolder` is deliberately built to open *zero* files — a
+folder browse is a directory listing. Reading EXIF means opening a file over SMB, so
+gathering timestamps for a 1,187-photo folder up front would put 1,187 reads behind every
+folder open and stall the viewer for minutes; doing it for the one picture on the stage is
+invisible. So there is deliberately **no `includeDetails` flag** on the listing to reach
+for. Results are cached by path inside the viewer, so arrowing back and forth re-reads
+nothing.
+
+When there is no timestamp the line says **"Not available"** — the honest answer, and
+there is nothing to retry. When there is one, it says **where it came from**: "from the
+camera", "from the file name", or "from the folder name". Those are different claims.
+Presenting a date inferred from `IMG_20190609_143501.jpg` in the same words as one the
+camera recorded would dress a guess up as a fact, so `readPhotoDetails` reports its
+evidence (`exif` → `file-name` → `folder` → `none`) rather than just a date.
+
+**No timezone is shown and no conversion happens.** An EXIF timestamp is local wall-clock
+time at the shutter with no offset recorded, so there is nothing to convert *from*.
+Passing it through `Date` would reinterpret it as UTC and shift an evening photo onto the
+next day. `readExifDateTime` keeps the date and time as separate strings for the same
+reason — every camera writes a date, while a zeroed or truncated clock field is common
+enough that a caller wanting only the day must not have to strip a fabricated `00:00:00`
+and guess whether it was real.
+
+`readExifDate` still exists and still returns just the day; it now delegates to the new
+reader, so there is one IFD walk rather than two copies to drift apart.
+
+### [Added] Photographs: the favourite heart, and the Journal link
+
+Every full-screen photograph now carries both.
+
+The **heart** writes the same `fav_photo` rows the home card and `/favorite-photos`
+already use, so starring in the viewer and starring on the card are the same act. It is
+**optimistic** — a write is a NAS-backed SQLite round trip and a reader here is arrowing
+through a folder fast, so the glyph flips at once, then hands itself back to the caller's
+list when the write resolves. Which puts a contract on the toggle: it must not resolve
+until the favourites list would report the new answer, or the heart flicks back for a
+render. A rejected write restores the previous glyph silently — this header has nowhere to
+print a message, and a heart springing back already reads as "that didn't take".
+
+**`F` toggles it**, modifier-free so `Ctrl+F` stays the browser's find. The shortcut is as
+much the point as the button: reaching for the header means leaving the arrow keys, which
+is the interruption it avoids. And **starring does not pause the slide show**, unlike the
+arrows, which do — a reader who stars mid-run is saying "this one" *about* what the timer
+is showing them, so stopping the show would make the gesture cost them the thing they were
+enjoying.
+
+**My Journal** opens the calendar on the day the photo was taken. It now prefers the EXIF
+date once the details arrive and falls back to the name-based guess — the same precedence
+`readPhotoDetails` follows, deliberately kept in step so the link and the details line can
+never claim two different days for one picture. When no date can be established the link
+is simply not rendered.
+
+### [Added] CSV Analytics: bulk edit, and a CLI for it
+
+Tick rows on the Dashboard's Data card and apply one value per column to all of them
+(`bulkEditRows`, [csv-analytics.ts](src/lib/csv-analytics/csv-analytics.ts)), with a
+matching `csv-bulk-edit` command carrying `columns`, `rows` and `apply` subcommands.
+
+The read now carries **`rowIds` parallel to `rows`** — a rowid is the only stable handle
+on a row, since the declared columns are not necessarily unique and array position changes
+with sort order. Parallel rather than prepended, so every existing chart, export and cell
+lookup that indexes by column position is untouched. This needed no migration: every
+physical table already has a rowid whichever shape it was created with. Primary-key
+columns are refused (`nonEditableColumns`), stated in the lib and read by the dialog
+rather than enforced in the UI.
+
+### [Added] Stocks & ETFs: today's session in the ticker viewer
+
+`getTickerIntradaySeries` fetches one trading session bar by bar, drawn in the Holdings
+card's **Today** box as high / low / mid plus a bare price line
+([ticker-overview](src/lib/ticker-overview/)). Takes no range or interval — there is one
+session to fetch and the bar size is the module's choice, not a knob for the boundary.
+
+A separate shape from `TickerPriceSeries` rather than a sixth range on it: that one is
+keyed by calendar date and summarized over a window of daily closes, and neither is true
+inside a single session. Its figures are a **snapshot, not live** — the provider returns
+bars up to the moment of the fetch, so the high, low and average describe the session so
+far, which is why `asOf` is not optional. `sessionDate` is named because it is not always
+today: outside trading hours the provider returns the last completed session.
+
+### [Fixed] Journal: a space-separated Tags column imported as one long tag
+
+A hand-mapped column's default field options were only ever *rendered* in the mapping
+UI's `<select>`, never written into the mapping. A `<select>`'s rendered value fires no
+change event, so the default was invisible to the import: picking Tags by hand left the
+delimiter unset and the whole cell became a single tag.
+
+`defaultJournalFieldOptions` ([csv-import.ts](src/lib/journal/csv-import.ts)) now supplies
+those defaults from the lib and the UI writes them in — tags split on a space, categories
+on a comma, matching what auto-mapping already applied when it recognized the header.
+`JOURNAL_LIST_FIELDS` names the multi-value fields so the UI offers the delimiter control
+on exactly those, rather than keeping a list of its own that can drift.
+
+### [Changed] Games: Mahjong's pickers, and the board's outer frame
+
+The difficulty and figure pickers became `<select>` dropdowns instead of rows of buttons,
+with their options derived from the library's own catalogues rather than retyped, so there
+is no second source of truth for the labels.
+
+The board gained a closed outer frame, drawn on the same overlay as the interior seams so
+it is the same colour and the same 2px and meets them exactly at the edge. Without it the
+grid's edge was carried only by `border-line` — deliberately low-contrast in every theme —
+so the outermost cells read as floating loose while the inner ones looked firmly boxed.
+The seam gradients are now measured from the border box, since the new frame otherwise
+shrank the padding box enough to slide every interior seam off its cell boundary.
+
 ## 2026-09-06 23:06 — The Tax Lot Analyzer, and Mahjong against three bots
 
 ### [Added] Stocks & ETFs: Tax Lots

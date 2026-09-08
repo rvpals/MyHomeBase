@@ -43,6 +43,31 @@ const GAME_KEY = "mahjong-match";
 const HINT_MS = 2500;
 
 /**
+ * The pickers' options, derived from the library's own tables rather than retyped.
+ *
+ * Both catalogues already carry the label, so these are a rename into `{ key, label }`
+ * and not a second source of truth. Built once at module scope because neither depends
+ * on state.
+ */
+const DIFFICULTY_OPTIONS: readonly { key: MahjongMatchDifficulty; label: string }[] =
+  MAHJONG_MATCH_DIFFICULTIES.map((level) => ({
+    key: level,
+    label: MAHJONG_MATCH_SETUP[level].label,
+  }));
+
+const FIGURE_OPTIONS: readonly { key: MahjongLayoutName; label: string }[] =
+  MAHJONG_FIGURES.map((entry) => ({ key: entry.layout, label: entry.label }));
+
+/**
+ * The pickers' `<select>` skin — the same one photo-viewer and chart-toolbar use.
+ *
+ * Copied rather than shared: it is three utilities, and the alternative is a registered
+ * component for two dropdowns on one game screen.
+ */
+const SELECT_CLASS =
+  "w-full rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
+
+/**
  * Half a tile, in pixels. The unit the layout's coordinates are in.
  *
  * Exactly half an `md` `MahjongTile`'s box (48x64), because a `TilePosition` is in
@@ -304,37 +329,53 @@ export function GameMahjongMatchView({ bestScore }: { bestScore: number }) {
         <Stat label="Best" value={bestScore.toLocaleString()} />
       </div>
 
-      {/* The difficulty picker. Three boards behind one catalogue key, as Sudoku does. */}
-      <div className="flex flex-wrap items-center justify-center gap-2">
-        {MAHJONG_MATCH_DIFFICULTIES.map((level) => (
-          <Button
-            key={level}
-            onClick={() => newGame(level, figure)}
-            variant={difficulty === level ? "primary" : "secondary"}
-          >
-            {MAHJONG_MATCH_SETUP[level].label}
-          </Button>
-        ))}
-      </div>
-
       {/*
-        The figure picker. Hidden on Easy, which is the 72-tile beginner board and has no
-        alternative shapes — showing five buttons that all rebuild the same board would
-        be worse than showing none.
+        Difficulty and figure, as dropdowns at every width.
+
+        Buttons before: eight of them across two rows, which on a phone ate a third of
+        the board's height and on a desktop was still a wall of chrome above the game.
+        A board figure is a *setting* you pick once and forget, not a mode you flip
+        between mid-run, so a compact picker is the honest control for it — and the
+        board wants every pixel it can get.
+
+        Picking either one starts a fresh board, which is why these are `newGame` calls
+        rather than plain setters. The figure picker is hidden on Easy: that is the
+        72-tile beginner board, which has no alternative shapes, so all five options
+        would rebuild the same board.
       */}
-      {difficulty !== "easy" && (
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          {MAHJONG_FIGURES.map((entry) => (
-            <Button
-              key={entry.layout}
-              onClick={() => newGame(difficulty, entry.layout)}
-              variant={figure === entry.layout ? "primary" : "secondary"}
+      <div className="flex flex-wrap items-end justify-center gap-3">
+        <label className="text-sm">
+          <span className="mb-1 block text-muted">Difficulty</span>
+          <select
+            value={difficulty}
+            onChange={(event) => newGame(event.target.value as MahjongMatchDifficulty, figure)}
+            className={SELECT_CLASS}
+          >
+            {DIFFICULTY_OPTIONS.map((option) => (
+              <option key={option.key} value={option.key}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {difficulty !== "easy" && (
+          <label className="text-sm">
+            <span className="mb-1 block text-muted">Figure</span>
+            <select
+              value={figure}
+              onChange={(event) => newGame(difficulty, event.target.value as MahjongLayoutName)}
+              className={SELECT_CLASS}
             >
-              {entry.label}
-            </Button>
-          ))}
-        </div>
-      )}
+              {FIGURE_OPTIONS.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
 
       <Board
         state={state}

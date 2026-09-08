@@ -1527,6 +1527,22 @@ html[data-music-player="full"] {
      already excluded — no need to add it back. */
   inset: 0.5rem;
   pointer-events: none;
+  /* The outer frame: the same line as the interior seams, closed around all
+     nine boxes. Without it the grid's edge is carried only by `border-line`,
+     which is deliberately low-contrast in every theme, so the outermost cells
+     read as floating loose while the inner ones are firmly boxed. Drawn as a
+     border on this same overlay rather than on the board so it is the same
+     colour and the same 2px as a seam and meets them exactly at the edge. */
+  border: 2px solid rgba(0, 0, 0, 0.42);
+  /* The frame's outer lip, lit the way the seams' far walls are. */
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  /* The seam gradients below are percentages of the box the background is
+     measured from, and that box defaults to the *padding* box — which the 2px
+     frame above shrinks by 4px in each axis under the global `border-box`.
+     That is enough to slide every interior seam off its cell boundary, so the
+     background is measured from the border box instead and a seam's third
+     stays a third of the actual grid. */
+  background-origin: border-box;
   /* Above the cells: a seam is drawn on the board's surface, over the pieces
      lying on it, which is also what keeps a selected cell's brass fill from
      covering the line through it. */

@@ -305,6 +305,46 @@ Driveable from the terminal as `csv-views` ([src/cli/csv-views.ts](src/cli/csv-v
 `list | show | create | update | enable | disable | delete | read | operators`, where
 `read` prints a page and is how the compiled SQL is exercised without a browser.
 
+**Bulk edit** on the Dashboard's Data card: tick rows, then apply one value per column
+to all of them (`bulkEditRows`, [csv-analytics.ts](src/lib/csv-analytics/csv-analytics.ts)).
+Four things decided here, because each one is a trap:
+
+- **Rows are addressed by SQLite `rowid`, not by position.** `readTableData` returns
+  anonymous value arrays, so before this there was nothing to name a row with — and
+  array position is not identity, since it changes with sort order and doesn't survive
+  a re-read. The read now carries `rowIds` parallel to `rows`
+  ([types.ts](src/lib/csv-analytics/types.ts)), *parallel* rather than prepended so
+  every existing chart/export/cell lookup that indexes by column position is untouched.
+  A rowid exists whichever shape `buildCreateTableSql` gave the table: with no
+  `primaryKeyFields` the surrogate `_row_id INTEGER PRIMARY KEY AUTOINCREMENT` **is**
+  the rowid, and a composite-PK table still has the implicit one. That's why this works
+  without a migration.
+- **Primary-key columns are refused, not just hidden.** A bulk edit writes the *same*
+  value to every selected row, so setting a PK column collides the key the moment two
+  rows are selected. `nonEditableColumns` states the rule in the lib and the dialog
+  reads it to disable those fields — the UI is not the enforcement.
+- **Values are coerced through `coerceCellValue`, the import path.** So a bulk edit can
+  never write a value an import wouldn't, and an unparseable one becomes NULL exactly
+  as it would on import. `null` or an empty string clears the column, which is what
+  makes "ticked and left blank clears it" work without a special case.
+- **An unknown column throws; a view's missing column doesn't.** The opposite of the
+  read-time forgiveness above, and deliberately: a *view* was saved before the schema
+  changed, so it tolerates a dropped column, but a bulk edit is composed against the
+  schema as it is right now — an unknown name means the caller is confused, and writing
+  the other columns anyway would half-apply the edit.
+
+**Custom-view rows are read-only.** A view's compiled SELECT carries no rowid and can
+project a subset of columns, so its rows aren't addressable; the panel says so and asks
+you to clear the view to edit. Selection is also scoped to what the panel *fetched* —
+the Data card's row limit (5000/10000/40000/ALL) bounds what "select all" can mean.
+
+The selection is chunked at 400 rowids per `UPDATE` to stay under SQLite's 999
+host-parameter ceiling, but every chunk runs in one transaction, so a chunked edit is
+still all-or-nothing. Driveable as `csv-bulk-edit`
+([src/cli/csv-bulk-edit.ts](src/cli/csv-bulk-edit.ts)): `columns | rows | apply`, where
+`rows` prints each row with the rowid that `apply --rows` takes, and `--all` covers the
+whole table.
+
 **Expense** (`expense`) — credit-card transactions imported from CSV, categorised
 by post-import rules, with a dashboard and charts. Library: `src/lib/expense`.
 

@@ -37,6 +37,7 @@ Twenty-seven commands, registered in [src/cli/index.ts:33-61](src/cli/index.ts#L
 | [`list-csv-analytics`](#list-csv-analytics) | read | no |
 | [`create-csv-analytics-entry`](#create-csv-analytics-entry) | write (creates a table) | no |
 | [`delete-csv-analytics-entry`](#delete-csv-analytics-entry) | write (drops a table) | no |
+| [`csv-bulk-edit`](#csv-bulk-edit) | read (`columns`/`rows`), write (`apply`) | no |
 | [`import-journal-csv`](#import-journal-csv) | write | no |
 | [`journal-calendar`](#journal-calendar) | read | no |
 | [`journal-templates`](#journal-templates) | read (writes with `set`/`enable`/`disable`/`delete`) | no |
@@ -173,6 +174,49 @@ npm run cli -- delete-csv-analytics-entry 3
 **Output** — `Deleted entry "Sales 2026" (id 3) and dropped table csv_sales_2026.`
 **Exit** — 0; 1 on a non-integer id (prints usage) or an id that doesn't exist.
 Source: [src/cli/delete-csv-analytics-entry.ts](src/cli/delete-csv-analytics-entry.ts)
+
+---
+
+## `csv-bulk-edit`
+
+Applies the same value to the same columns across many rows of one dataset — the same
+use-case the Dashboard's Data card drives, per ARCHITECTURE.md's rule that a use-case is
+callable from both places. Three subcommands: `columns` and `rows` read, `apply` writes.
+
+```
+npm run cli -- csv-bulk-edit columns --entry 3
+npm run cli -- csv-bulk-edit rows --entry 3 --limit 20
+npm run cli -- csv-bulk-edit apply --entry 3 --rows 4,5,6 --set "city=Oslo" --set "amount=100"
+npm run cli -- csv-bulk-edit apply --entry 3 --all --set "processed=1"
+npm run cli -- csv-bulk-edit apply --entry 3 --rows 4 --clear notes
+```
+
+**Input** — `--entry <id>` (required, all three). `rows` takes `--limit <n>`. `apply`
+takes either `--rows <id,id,…>` or `--all`, plus `--set "col=value"` (repeatable, once
+per column) and/or `--clear <col>` to write NULL.
+
+**`--rows` takes SQLite rowids, not row positions** — the ones `rows` prints in its first
+column, and the same handle the grid uses. A rowid is the only stable identifier for a
+row: the declared columns are not necessarily unique, and position in a result set is not
+stable across reads. See `CsvEntryData.rowIds`.
+
+`--set` repeats, so it is re-scanned from argv directly rather than read from
+`parseFlags`, which keeps only the last occurrence of a key — the same approach
+`csv-views` uses for `--where`. `--clear col` and `--set col=` do the same thing; both
+exist because an empty `--set` is easy to write by accident.
+
+**Calls** — `getEntryById`, `readEntryData` and `nonEditableColumns` for the two read
+subcommands; `bulkEditRows(deps.csvAnalyticsRepo, entryId, rowIds, changes)` for `apply`.
+
+**Output** — `columns` prints the entry header then one line per column with its type and
+source header, marking the ones that can't be written. `rows` prints a tab-separated
+table headed `rowid`, then `N of M row(s)`. `apply` reports how many rows were written
+and which columns were set.
+
+**Exit** — 0; 1 on a missing or non-integer `--entry`, an id that doesn't exist, no
+selection (`--rows` and `--all` both absent), no changes, or a column that can't be
+written. Prints usage with no subcommand.
+Source: [src/cli/csv-bulk-edit.ts](src/cli/csv-bulk-edit.ts)
 
 ---
 
@@ -909,19 +953,34 @@ All take `deps.csvAnalyticsRepo`.
 | `previewCsvFile` | `(fileText: string) => CsvAnalyticsPreview` — pure | — | **CLI** |
 | `listEntries` | `(repo) => CsvAnalyticEntry[]` | — | **CLI** |
 | `getEntryById` | `(repo, id) => CsvAnalyticEntry \| undefined` | — | **CLI** |
-| `readEntryData` | `(repo, id, limit?) => CsvEntryData` | — | web only |
+| `readEntryData` | `(repo, id, limit?) => CsvEntryData` — carries `rowIds` parallel to `rows` | — | **CLI** |
 | `createEntry` | `(repo, input: CreateCsvAnalyticEntryInput) => CsvAnalyticEntry` | `createCsvAnalyticEntrySchema` | **CLI** |
 | `updateEntry` | `(repo, id, input) => UpdateEntryResult` | `updateCsvAnalyticEntrySchema` | web only |
 | `deleteEntry` | `(repo, id) => void` — drops the table | — | **CLI** |
 | `listChartPresets` | `(repo, entryId) => CsvChartPreset[]` | — | web only |
 | `saveChartPreset` | `(repo, input) => CsvChartPreset` — upserts by (entryId, name) | `saveChartPresetSchema` | web only |
 | `deleteChartPreset` | `(repo, id) => void` | — | web only |
+| `bulkEditRows` | `(repo, entryId, rowIds, changes) => CsvBulkEditResult` — one value per column across many rows | `csvBulkEditSchema` | **CLI** |
+| `nonEditableColumns` | `(entry) => string[]` — the primary-key fields, which a bulk edit refuses | — | **CLI** |
 
 `updateEntry`'s `ingest.mode` is `"append" | "truncate" | "overwrite"`; append and
 truncate throw when headers don't match. File contents travel as strings, so all of
 this is JSON-safe apart from the repo.
 
 `CsvColumnType = "text"|"integer"|"real"|"date"|"datetime"|"boolean"`
+
+**`CsvEntryData.rowIds` is what makes a row writable.** A parallel array rather than a
+field on the row, so `rows` keeps its exact shape — every chart, export and cell lookup
+indexes by a column's position in `columns`, and prepending a key would shift all of
+them. Every physical table has a rowid whichever shape `buildCreateTableSql` gave it:
+with no `primaryKeyFields` the surrogate `_row_id INTEGER PRIMARY KEY AUTOINCREMENT` *is*
+the rowid, and a composite-PK table still carries the implicit one.
+
+`bulkEditRows` writes only the columns named in `changes`, leaving every other column on
+each selected row alone, and refuses `nonEditableColumns` (the primary-key fields) —
+rewriting a key would silently repoint a row. It reads change keys via `Object.keys`
+rather than the `in` operator, since the change set arrives as parsed JSON from a server
+action or a CLI flag and `in` answers true for inherited keys like `constructor`.
 
 ## csv-import — `@/lib/csv-import`
 
@@ -1143,9 +1202,20 @@ All take `deps.journalRepo`. Everything JSON-serializable apart from the repo.
 | `deleteTag` | `(repo, name) => void` | — | web only |
 | `importJournalCsv` | `(repo, fileText, columnMapping, fieldOptions = {}, options = {}) => ImportSummary` — `options.skipDuplicates` defaults to `true`; idempotent on re-import | indirect | **CLI** |
 | `autoMapJournalHeaders` | `(headers: string[]) => { columnMapping, fieldOptions }` — pure | — | **CLI** |
+| `defaultJournalFieldOptions` | `(field: string) => FieldOptions \| undefined` — pure; the options a hand-mapped column starts with | — | **CLI** |
 
 `listTodayInHistory` takes the reference date as an argument rather than reading the
 clock. `createEntry` auto-registers unknown categories and tags.
+
+**A mapping UI must WRITE `defaultJournalFieldOptions` into its field options, not just
+display them as a fallback.** A `<select>`'s rendered value fires no change event, so a
+default living only in the control is invisible to the import — which is how a
+space-separated Tags column silently imported as one long tag. Tags default to a space
+delimiter and categories to a comma, matching the split `JOURNAL_HEADER_RULES` applies
+when auto-mapping recognizes the header; this also covers the case auto-map cannot, a
+field the user picks by hand. `JOURNAL_LIST_FIELDS = ["categories", "tags"]` names the
+fields whose cell holds several values, so the UI offers the delimiter control on exactly
+those rather than keeping a list of its own that can drift.
 
 `JournalEntry { id, date, time, title, content, placeName, weather?, isPinned, isLocked, categories: string[], tags: string[], locations: EntryLocation[], createdAt, updatedAt }`
 
@@ -1162,12 +1232,31 @@ alter the archive.
 |---|---|---|---|
 | `listPhotoFoldersForDate` | `(store, date) => Promise<PhotoFolderLookup>` — reads folder NAMES only, opens no files | `photoFolderLookupSchema` | web only |
 | `listPhotosInFolder` | `(store, { date, relativePath, includeAll? }) => Promise<PhotoFolderContents>` — for a month folder, reads each JPEG's EXIF header | `photoFolderContentsSchema` | web only |
+| `listAllPhotosInFolder` | `(store, { relativePath }) => Promise<FolderPhotos>` — every JPEG in one folder, **no file opened** | `photoFolderAllSchema` | web only |
+| `readPhotoDetails` | `(store, { relativePath }) => Promise<PhotoDetails>` — ONE photo's path and capture timestamp; one partial read | `photoDetailsSchema` | web only |
 | `readExifDate` | `(bytes: Uint8Array) => string \| undefined` — pure JPEG/TIFF header parser | — | pure |
+| `readExifDateTime` | `(bytes) => ExifDateTime \| undefined` — the same walk, keeping the clock time | — | pure |
 | `dateFromFileName` | `(fileName) => string \| undefined` — pure, the no-EXIF fallback | — | pure |
 
 Split into two calls deliberately: listing folders is one directory read, while scanning a
 month folder opens every JPEG in it (~8ms per file cold over SMB, so ~10s for 1,400
 photos). The card asks for folders first and scans a folder only when it is opened.
+
+**`listAllPhotosInFolder` and `readPhotoDetails` are split for the same reason, and the
+split is load-bearing.** The first answers "what is in this folder" from a directory
+listing and **opens no files at all**; the second answers "where is this one photo and when
+was it taken" and opens the first 128KB of exactly one. `PhotoViewer` calls the first once
+per folder and the second once per photo the reader actually looks at. Folding the
+timestamp into the listing would put a per-photo SMB read behind every folder open and
+stall a 1,187-photo folder for minutes — so there is deliberately no `includeDetails` flag
+on the listing to reach for.
+
+`readPhotoDetails` reports **which evidence** produced its date (`exif` → `file-name` →
+`folder` → `none`) rather than just the date, because those are different claims and a
+viewer showing an inferred date as though the camera recorded it would be presenting a
+guess as a fact. `readExifDateTime` keeps the date and time as **separate strings, with no
+timezone and no `Date` round-trip** — EXIF is local wall-clock time at the shutter with no
+offset recorded, so a conversion would shift an evening photo onto the next day.
 
 **The archive's convention** — photo root → year folder → two folder kinds:
 
@@ -1438,15 +1527,27 @@ The only module with a multi-repo deps object, and the only one with reversed ar
 | `getTickerEvents` | `(events, marketData, { ticker }) => Promise<TickerEventFeed>` ⚠️ 2 calls — **both args satisfied by `deps.marketDataClient`** | `tickerOverviewSchema` | **CLI** |
 | `getTickerNewsFeed` | `(deps.tickerNewsClient, { ticker, limit? }, today = todayIsoLocal()) => Promise<TickerNewsFeed>` ⚠️ 1 call | `tickerNewsFeedSchema` (limit default 10, max 25) | **CLI** |
 | `getTickerTradeTimeline` | `({ marketData, news?, events? }, transactions, { ticker }, today?) => Promise<TickerTradeTimeline>` ⚠️ up to 3 calls | `tickerOverviewSchema` | web only |
+| `getTickerIntradaySeries` | `(deps.marketDataClient, { ticker }) => Promise<TickerIntradaySeries>` ⚠️ 1 call — one session, bar by bar | `tickerIntradaySchema` (= `tickerOverviewSchema`) | web only |
 
 Risk cache rows **never expire** — pass `refresh: true` to recompute. The trade timeline
 makes zero calls when the ticker has no transactions, and the caller supplies
 `transactions` (the DB read is the caller's job).
 
+`getTickerIntradaySeries` takes **no range or interval**: there is exactly one session to
+fetch and the bar size is the module's choice, not a knob for the boundary — which is why
+its schema is just `tickerOverviewSchema` under another name. `TickerIntradaySeries` is a
+separate shape from `TickerPriceSeries` rather than a sixth range on it, because that one
+is keyed by calendar date and summarized over a window of daily closes and neither is
+true within a single session. **Its figures are a snapshot, not live** — the provider
+returns bars up to the moment of the fetch, so `highCents`/`lowCents`/`averageCents`
+describe the session *so far*, hence the non-optional `asOf`. `sessionDate` is named
+because it is not always today: outside trading hours the provider returns the last
+completed session.
+
 Pure helpers: `summarizeHoldings`, `summarizeIncome`, `summarizeTrades`,
 `computeWatchDrift`, `toClosePoints`, `closeOnOrBefore`, `summarizePriceSeries`,
-`rankStories`, `describeMarketEvent`, `buildTickerEvents`, `transactionDate`,
-`historyRangeCovering`, `buildTradeTimeline`.
+`summarizeIntradaySeries`, `rankStories`, `describeMarketEvent`, `buildTickerEvents`,
+`transactionDate`, `historyRangeCovering`, `buildTradeTimeline`, `computeTradeMoveSince`.
 `TICKER_HISTORY_RANGES = ["1mo","3mo","6mo","1y","5y"]`
 
 ## ticker-detail — `@/lib/ticker-detail`
