@@ -7,6 +7,8 @@ export type {
   TickerHolding,
   TickerHoldingTotals,
   TickerIncome,
+  TickerIntradayPoint,
+  TickerIntradaySeries,
   TickerNewsFeed,
   TickerOwnData,
   TickerPriceSeries,
@@ -23,10 +25,12 @@ export type {
 export { TICKER_HISTORY_RANGES } from "./types";
 export {
   tickerHistoryRangeSchema,
+  tickerIntradaySchema,
   tickerNewsFeedSchema,
   tickerOverviewSchema,
   tickerPriceSeriesSchema,
   tickerRiskSchema,
+  type TickerIntradayInput,
   type TickerNewsFeedInput,
   type TickerOverviewInput,
   type TickerPriceSeriesInput,
@@ -36,6 +40,7 @@ export type { TickerOwnDataDeps, TickerRiskCacheRepository } from "./ports";
 export { SqliteTickerRiskCacheRepository } from "./repository";
 export {
   getTickerEvents,
+  getTickerIntradaySeries,
   getTickerNewsFeed,
   getTickerOwnData,
   getTickerPriceSeries,
@@ -52,6 +57,7 @@ export {
   rankStories,
   summarizeHoldings,
   summarizeIncome,
+  summarizeIntradaySeries,
   summarizePriceSeries,
   summarizeTrades,
   toClosePoints,

@@ -327,36 +327,11 @@ export function StockDailyGlance({
       defaultOpen
       className={className}
       // This used to be a footnote below the mover lists. It explains the
-      // Total value / Per share selector, which sits at the top of the card —
-      // so as a footnote it was ~400px below the control it described, past two
-      // lists the reader had to scroll through first.
+      // Total value / Per share selector at the top of the card body — so as a
+      // footnote it was ~400px below the control it described, past two lists
+      // the reader had to scroll through first.
       headerAction={
         <div className="flex items-center gap-2">
-          {/* The selector governs the mover lists only. Per-share is meaningless
-              for the buckets above, which mix securities at different prices. */}
-          <div className="flex items-center gap-1 text-xs">
-            <span className="mr-1 text-muted">Measure by</span>
-            {(["total", "perShare"] as const).map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => setMeasure(option)}
-                aria-pressed={measure === option}
-                title={
-                  option === "total"
-                    ? "Shares × price move — the effect on your portfolio"
-                    : "The move on one share — the security's own move, whatever you hold"
-                }
-                className={`rounded-md border px-2 py-1 font-medium transition-colors ${
-                  measure === option
-                    ? "border-brass bg-brass-soft text-brass-dark"
-                    : "border-line text-muted hover:bg-paper-raised"
-                }`}
-              >
-                {option === "total" ? "Total value" : "Per share"}
-              </button>
-            ))}
-          </div>
           <Comments
             title="Explanation"
             label="Explanation"
@@ -375,17 +350,41 @@ export function StockDailyGlance({
         </div>
       }
     >
+      {/* The selector governs the mover lists only — per-share is meaningless
+          for the buckets below, which mix securities at different prices. It
+          sits at the top of the card rather than in the title bar so the title
+          bar stays a title, and so it wraps instead of crowding on a phone. */}
+      <div className="mb-4 flex flex-wrap items-center gap-1 text-xs">
+        <span className="mr-1 text-muted">Measure by</span>
+        {(["total", "perShare"] as const).map((option) => (
+          <button
+            key={option}
+            type="button"
+            onClick={() => setMeasure(option)}
+            aria-pressed={measure === option}
+            title={
+              option === "total"
+                ? "Shares × price move — the effect on your portfolio"
+                : "The move on one share — the security's own move, whatever you hold"
+            }
+            className={`rounded-md border px-2 py-1 font-medium transition-colors ${
+              measure === option
+                ? "border-brass bg-brass-soft text-brass-dark"
+                : "border-line text-muted hover:bg-paper-raised"
+            }`}
+          >
+            {option === "total" ? "Total value" : "Per share"}
+          </button>
+        ))}
+      </div>
+
       <div className="rounded-xl border border-line p-4">
         <BucketTable moves={moves} />
       </div>
 
-      {/* The selector that governs these lists now lives in the card header,
-          next to the title. */}
-      <h4 className="mt-6 text-xs font-medium uppercase tracking-wide text-muted">
-        Top movers today
-      </h4>
-
-      <div className="mt-3 grid grid-cols-1 gap-6 xl:grid-cols-2">
+      {/* No "Top movers today" heading: each list already says "Top 5 gainers"
+          / "Top 5 losers", so the heading only repeated them. */}
+      <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
         <MoverList
           title={`Top ${MOVER_COUNT} gainers`}
           moves={gainers}

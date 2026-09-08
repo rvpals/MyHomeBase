@@ -39,6 +39,8 @@ import type {
   TickerEvent,
   TickerEventFeed,
   TickerHistoryRange,
+  TickerHoldingTotals,
+  TickerIntradaySeries,
   TickerNewsFeed,
   TickerOwnData,
   TickerPriceSeries,
@@ -75,6 +77,14 @@ export interface TickerViewerProps {
   onClose: () => void;
 
   ownData: TickerPanelState<TickerOwnData>;
+  /**
+   * Today's session, drawn under the Today figure in the Holdings panel. Market
+   * data on an otherwise-local tab, which is the point: its high, low and
+   * average are only "as of when the reader opened this" if they're fetched on
+   * open. **Optional** — omit it and the Today line renders alone, so a caller
+   * with no market client still gets a working panel.
+   */
+  intraday?: TickerPanelState<TickerIntradaySeries>;
   /**
    * Powers the "My past performance" chart in the Transactions panel. Market
    * data, so it loads on demand like the Market panels do — the trade table
@@ -366,7 +376,157 @@ function Panel<T>({
 // Panels — our data
 // ---------------------------------------------------------------------------
 
-function HoldingsPanel({ data }: { data: TickerOwnData }) {
+/**
+ * Today's price line, as a bare inline SVG.
+ *
+ * Deliberately *not* `ChartLine`: that component always draws both axes and
+ * reserves 72px for the y-axis labels, which is most of the width in a box this
+ * size, and it carries a toolbar and a tooltip a two-inch line doesn't want.
+ * Hiding its axes would mean a prop that changes a shared component for every
+ * existing caller. So this is the simple version — one path, one baseline, no
+ * interaction.
+ *
+ * Not promoted to `src/components/` yet: it's one call site. If a second wants
+ * an intraday line, that's the moment to name it and register it.
+ */
+function IntradayLine({ series }: { series: TickerIntradaySeries }) {
+  // Two points is the minimum that makes a line; one print is a dot, not a day.
+  if (series.points.length < 2) return null;
+
+  const prices = series.points.map((point) => point.priceCents);
+  const baseline = series.previousCloseCents > 0 ? series.previousCloseCents : undefined;
+  // The baseline joins the extent so the previous-close rule is always in frame —
+  // otherwise a day that gapped up would draw it off the top of the box.
+  const high = Math.max(...prices, baseline ?? -Infinity);
+  const low = Math.min(...prices, baseline ?? Infinity);
+  const span = high - low;
+
+  // A viewBox in abstract units, scaled by CSS: the SVG stretches to whatever
+  // width the container gives it without recomputing anything.
+  const WIDTH = 300;
+  const HEIGHT = 64;
+  const PAD = 2;
+
+  const x = (index: number) =>
+    series.points.length === 1 ? 0 : (index / (series.points.length - 1)) * WIDTH;
+  // Flat days would divide by zero; pin them to the middle instead.
+  const y = (cents: number) =>
+    span === 0 ? HEIGHT / 2 : PAD + ((high - cents) / span) * (HEIGHT - PAD * 2);
+
+  const path = series.points
+    .map((point, index) => `${index === 0 ? "M" : "L"}${x(index).toFixed(2)},${y(point.priceCents).toFixed(2)}`)
+    .join(" ");
+
+  // Up or down on the day, so the line agrees with the figure above it. Uses the
+  // same semantic red/green as `moveClass`, via `currentColor`.
+  const stroke = series.changeCents > 0 ? "#34d399" : series.changeCents < 0 ? "#f87171" : "#9ca3af";
+
+  return (
+    <svg
+      viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+      // Free to distort: the shape of the day is what's being read, not an
+      // aspect ratio, and the container's width is what there is.
+      preserveAspectRatio="none"
+      className="mt-3 h-16 w-full max-lg:h-12"
+      role="img"
+      aria-label={`${series.ticker} price through ${formatDate(series.sessionDate)}`}
+    >
+      {baseline != null && (
+        // Where the day started from. Without it the line has no zero and a
+        // gentle drift looks the same as a crash.
+        <line
+          x1={0}
+          x2={WIDTH}
+          y1={y(baseline)}
+          y2={y(baseline)}
+          stroke="currentColor"
+          strokeWidth={1}
+          strokeDasharray="3 3"
+          className="text-muted"
+          vectorEffect="non-scaling-stroke"
+        />
+      )}
+      <path
+        d={path}
+        fill="none"
+        stroke={stroke}
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        // Keeps the stroke an even weight despite the non-uniform scaling above.
+        vectorEffect="non-scaling-stroke"
+      />
+    </svg>
+  );
+}
+
+/** One of the session's three range figures. */
+function RangeFigure({ label, cents }: { label: string; cents: number }) {
+  return (
+    <span className="text-muted">
+      {label} <span className="font-mono text-ink">{formatCents(cents)}</span>
+    </span>
+  );
+}
+
+/**
+ * The Today box: the day's move, then the session's range, then its shape.
+ *
+ * The three figures and the chart are a snapshot taken when the viewer opened —
+ * so the box says which session it drew and at what time, rather than leaving a
+ * reader to assume a number that stopped updating is live.
+ */
+function TodayBox({
+  totals,
+  intraday,
+}: {
+  totals: TickerHoldingTotals;
+  intraday?: TickerPanelState<TickerIntradaySeries>;
+}) {
+  const series = intraday?.data;
+  const hasSession = series != null && series.points.length > 0;
+
+  return (
+    <div className="mt-3 rounded-xl border border-line p-4">
+      <span className="text-xs font-medium uppercase tracking-wide text-muted">Today</span>{" "}
+      <Move cents={totals.dayGainLossCents} pct={totals.dayChangePct} />
+
+      {hasSession && (
+        <>
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+            <RangeFigure label="High" cents={series.highCents} />
+            <RangeFigure label="Low" cents={series.lowCents} />
+            {/* Named "Mid" rather than "Avg": it is the midpoint of the high and
+                low, and calling a midpoint an average invites the reader to
+                think it's the mean of the day's prices. */}
+            <RangeFigure label="Mid" cents={series.averageCents} />
+          </div>
+          <IntradayLine series={series} />
+          <p className="mt-1 text-xs text-muted">
+            {formatDate(series.sessionDate)} · as of {formatDateTime(series.asOf)}
+          </p>
+        </>
+      )}
+
+      {/* A missing session costs the chart, never the move above it: the Today
+          figure comes from our own rows and is already true. */}
+      {intraday?.isLoading && !hasSession && (
+        <p className="mt-2 text-xs text-muted">Fetching today&apos;s prices…</p>
+      )}
+      {intraday?.error && !hasSession && (
+        <p className="mt-2 text-xs text-muted">Today&apos;s price chart is unavailable.</p>
+      )}
+    </div>
+  );
+}
+
+function HoldingsPanel({
+  data,
+  intraday,
+}: {
+  data: TickerOwnData;
+  intraday?: TickerPanelState<TickerIntradaySeries>;
+}) {
   const { totals, holdings } = data;
 
   if (!data.isHeld) {
@@ -396,10 +556,7 @@ function HoldingsPanel({ data }: { data: TickerOwnData }) {
         />
       </StatGrid>
 
-      <div className="mt-3 rounded-xl border border-line p-4">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted">Today</span>{" "}
-        <Move cents={totals.dayGainLossCents} pct={totals.dayChangePct} />
-      </div>
+      <TodayBox totals={totals} intraday={intraday} />
 
       <SectionTitle>By account</SectionTitle>
       <Table head={["Account", "Shares", "Unit cost", "Cost", "Value", "Today", "Unrealized"]}>
@@ -1913,6 +2070,7 @@ export function TickerViewer({
   onSelectGroup,
   onClose,
   ownData,
+  intraday,
   tradeTimeline,
   quote,
   priceSeries,
@@ -1991,7 +2149,7 @@ export function TickerViewer({
           <>
             <CollapsibleCard title="Holdings" defaultOpen>
               <Panel state={ownData} loadingLabel="Reading your records…">
-                {(data) => <HoldingsPanel data={data} />}
+                {(data) => <HoldingsPanel data={data} intraday={intraday} />}
               </Panel>
             </CollapsibleCard>
 

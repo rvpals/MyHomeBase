@@ -24,6 +24,7 @@ import {
   buildTradeTimeline,
   computeWatchDrift,
   getTickerEvents,
+  getTickerIntradaySeries,
   getTickerNewsFeed,
   getTickerOwnData,
   getTickerPriceSeries,
@@ -34,6 +35,7 @@ import {
   rankStories,
   summarizeHoldings,
   summarizeIncome,
+  summarizeIntradaySeries,
   summarizePriceSeries,
   computeTradeMoveSince,
   summarizeTrades,
@@ -1221,5 +1223,158 @@ describe("getTickerTradeTimeline", () => {
         "2026-08-05",
       ),
     ).rejects.toThrow(/No history/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Intraday — one session's bars, and the figures the panel captions them with
+// ---------------------------------------------------------------------------
+
+describe("summarizeIntradaySeries", () => {
+  /**
+   * Bars inside one session. A fixed epoch so the assertions on `sessionDate`
+   * and the "HH:MM" axis are stable, and 300-second steps because the fetch
+   * asks for 5-minute bars.
+   */
+  function bars(closesCents: number[]): PricePoint[] {
+    return closesCents.map((closeCents, index) => ({
+      timestamp: 1_700_000_000 + index * 300,
+      closeCents,
+    }));
+  }
+
+  const NOW = new Date("2026-02-03T18:30:00.000Z");
+
+  it("summarizes a session from its bars", () => {
+    const series = summarizeIntradaySeries("AAPL", bars([10_000, 10_400, 9_800, 10_200]), 10_000, NOW);
+
+    expect(series.ticker).toBe("AAPL");
+    expect(series.points).toHaveLength(4);
+    expect(series.lastPriceCents).toBe(10_200);
+    expect(series.highCents).toBe(10_400);
+    expect(series.lowCents).toBe(9_800);
+    // The move is measured against the previous close, not the first bar.
+    expect(series.changeCents).toBe(200);
+    expect(series.changePct).toBeCloseTo(2);
+    expect(series.asOf).toBe(NOW.toISOString());
+  });
+
+  it("averages the midpoint of the high and low, not the mean of the closes", () => {
+    // Three bars sit at the bottom of the range and one at the top: a mean of
+    // the closes would be dragged down near 10_000, while the midpoint of the
+    // range stays halfway between the extremes. This is the distinction the
+    // figure is chosen for, so it's pinned.
+    const series = summarizeIntradaySeries("AAPL", bars([10_000, 10_000, 10_000, 20_000]), 10_000, NOW);
+
+    expect(series.highCents).toBe(20_000);
+    expect(series.lowCents).toBe(10_000);
+    expect(series.averageCents).toBe(15_000);
+  });
+
+  it("rounds a half-cent midpoint to whole cents", () => {
+    // 10_001 + 10_002 = 20_003, an odd sum: the midpoint is a half-cent no
+    // price ever traded at, so it rounds.
+    const series = summarizeIntradaySeries("AAPL", bars([10_001, 10_002]), 10_000, NOW);
+
+    expect(series.averageCents).toBe(10_002);
+    expect(Number.isInteger(series.averageCents)).toBe(true);
+  });
+
+  it("orders bars oldest first and drops ones with no price", () => {
+    const scrambled: PricePoint[] = [
+      { timestamp: 1_700_000_600, closeCents: 10_300 },
+      { timestamp: 1_700_000_000, closeCents: 10_100 },
+      // A bar the provider reported with no trade in it.
+      { timestamp: 1_700_000_300, closeCents: 0 },
+    ];
+    const series = summarizeIntradaySeries("AAPL", scrambled, 10_000, NOW);
+
+    expect(series.points).toHaveLength(2);
+    expect(series.points.map((point) => point.priceCents)).toEqual([10_100, 10_300]);
+    // Last bar wins as the session's price, after the sort.
+    expect(series.lastPriceCents).toBe(10_300);
+  });
+
+  it("names the session the bars came from, which need not be today", () => {
+    const series = summarizeIntradaySeries("AAPL", bars([10_000]), 10_000, NOW);
+
+    // Read off the bar's own timestamp, not `now` — outside trading hours the
+    // provider returns the last completed session.
+    const expected = new Date(1_700_000_000 * 1000);
+    const pad = (value: number) => String(value).padStart(2, "0");
+    expect(series.sessionDate).toBe(
+      `${expected.getFullYear()}-${pad(expected.getMonth() + 1)}-${pad(expected.getDate())}`,
+    );
+    expect(series.sessionDate).not.toBe("2026-02-03");
+  });
+
+  it("returns an empty session rather than throwing when the provider had no bars", () => {
+    const series = summarizeIntradaySeries("AAPL", [], 10_000, NOW);
+
+    expect(series.points).toEqual([]);
+    expect(series.sessionDate).toBe("");
+    expect(series.highCents).toBe(0);
+    expect(series.lowCents).toBe(0);
+    expect(series.averageCents).toBe(0);
+    // The baseline is still known; only the session is missing.
+    expect(series.previousCloseCents).toBe(10_000);
+  });
+
+  it("reports a zero move rather than dividing by a zero baseline", () => {
+    const series = summarizeIntradaySeries("AAPL", bars([10_000]), 0, NOW);
+
+    expect(series.changePct).toBe(0);
+    expect(Number.isFinite(series.changePct)).toBe(true);
+  });
+});
+
+describe("getTickerIntradaySeries", () => {
+  const SESSION: PricePoint[] = [
+    { timestamp: 1_700_000_000, closeCents: 19_000 },
+    { timestamp: 1_700_000_300, closeCents: 19_600 },
+  ];
+
+  it("fetches one session and measures it against the quote's previous close", async () => {
+    const client = fakeMarketClient({ AAPL: SESSION });
+    const series = await getTickerIntradaySeries(client, { ticker: "aapl" });
+
+    // The ticker is upper-cased at the boundary, as everywhere else.
+    expect(series.ticker).toBe("AAPL");
+    expect(series.previousCloseCents).toBe(19_000);
+    expect(series.lastPriceCents).toBe(19_600);
+    expect(series.changeCents).toBe(600);
+  });
+
+  it("still charts the session when the quote fails", async () => {
+    const client: MarketDataClient = {
+      async getQuote() {
+        throw new Error("provider down");
+      },
+      async getHistory() {
+        return SESSION;
+      },
+    };
+    const series = await getTickerIntradaySeries(client, { ticker: "AAPL" });
+
+    // No baseline, so no meaningful move — but the bars and the range figures
+    // are all still there.
+    expect(series.previousCloseCents).toBe(0);
+    expect(series.changePct).toBe(0);
+    expect(series.points).toHaveLength(2);
+    expect(series.highCents).toBe(19_600);
+  });
+
+  it("throws when the provider has no bars for the symbol", async () => {
+    const client = fakeMarketClient({ AAPL: SESSION });
+
+    await expect(getTickerIntradaySeries(client, { ticker: "NOPE" })).rejects.toThrow(
+      /No history for NOPE/,
+    );
+  });
+
+  it("rejects an empty ticker at the boundary", async () => {
+    const client = fakeMarketClient({ AAPL: SESSION });
+
+    await expect(getTickerIntradaySeries(client, { ticker: "  " })).rejects.toThrow();
   });
 });

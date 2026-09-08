@@ -9,6 +9,7 @@ import { listTransactions } from "@/lib/stock-positions";
 import { getTickerDetail, type TickerYahooDetail } from "@/lib/ticker-detail";
 import {
   getTickerEvents,
+  getTickerIntradaySeries,
   getTickerNewsFeed,
   getTickerOwnData,
   getTickerPriceSeries,
@@ -17,6 +18,7 @@ import {
   getTickerTradeTimeline,
   type TickerEventFeed,
   type TickerHistoryRange,
+  type TickerIntradaySeries,
   type TickerNewsFeed,
   type TickerOwnData,
   type TickerPriceSeries,
@@ -73,6 +75,23 @@ export async function fetchTickerPriceSeriesAction(
     return { ok: true, data: await getTickerPriceSeries(deps.marketDataClient, { ticker, range }) };
   } catch (error) {
     return failed(error, "Could not load the price history.");
+  }
+}
+
+/**
+ * Today's session for the intraday chart on "Our data".
+ *
+ * A provider call on the tab that is otherwise all local rows — which is the
+ * point: the high, low and average are only "as of when you opened this" if
+ * they're fetched when you open it.
+ */
+export async function fetchTickerIntradayAction(
+  ticker: string,
+): Promise<PanelResult<TickerIntradaySeries>> {
+  try {
+    return { ok: true, data: await getTickerIntradaySeries(deps.marketDataClient, { ticker }) };
+  } catch (error) {
+    return failed(error, "Could not load today's prices.");
   }
 }
 

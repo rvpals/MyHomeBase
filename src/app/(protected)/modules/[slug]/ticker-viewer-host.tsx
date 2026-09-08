@@ -26,6 +26,7 @@ import {
 import {
   fetchTickerDetailAction,
   fetchTickerEventsAction,
+  fetchTickerIntradayAction,
   fetchTickerNewsFeedAction,
   fetchTickerOwnDataAction,
   fetchTickerPriceSeriesAction,
@@ -151,6 +152,10 @@ function TickerViewerHostInner({
   const tradeTimeline = useLazyPanel(onOwnTab, ticker, () =>
     fetchTickerTradeTimelineAction(ticker),
   );
+  // Today's session, for the chart under the Today figure. Same deal as the
+  // timeline above: a provider call that loads with the "Our data" tab, so its
+  // high/low/average are as of the moment the reader opened the viewer.
+  const intraday = useLazyPanel(onOwnTab, ticker, () => fetchTickerIntradayAction(ticker));
   const quote = useLazyPanel(onMarketTab, ticker, () => fetchTickerQuoteAction(ticker));
   const priceSeries = useLazyPanel(onMarketTab, `${ticker}:${range}`, () =>
     fetchTickerPriceSeriesAction(ticker, range),
@@ -203,6 +208,7 @@ function TickerViewerHostInner({
       onSelectGroup={setActiveGroup}
       onClose={onClose}
       ownData={ownData}
+      intraday={intraday}
       tradeTimeline={tradeTimeline}
       quote={quote}
       priceSeries={priceSeries}

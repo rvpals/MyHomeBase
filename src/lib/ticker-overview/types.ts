@@ -211,6 +211,55 @@ export interface TickerPriceSeries {
   averageVolume?: number;
 }
 
+/** One intraday print. `time` is local "HH:MM" — the axis a session is read on. */
+export interface TickerIntradayPoint {
+  time: string;
+  priceCents: number;
+}
+
+/**
+ * One trading session, bar by bar, plus the figures the panel captions it with.
+ *
+ * A separate shape from `TickerPriceSeries` rather than a sixth range on it:
+ * that series is keyed by calendar date and summarized over a window of daily
+ * closes, and neither is true within a single session. This one is keyed by
+ * clock time and is only ever one day long.
+ *
+ * **Everything here is a snapshot, not a live figure.** The provider returns the
+ * session's bars up to the moment of the fetch, so `highCents`, `lowCents` and
+ * `averageCents` describe the session *so far* — which is why `asOf` is not
+ * optional. A reader who leaves the dialog open is looking at history.
+ */
+export interface TickerIntradaySeries {
+  ticker: string;
+  /** Oldest first, so it charts left to right. Empty when the provider had none. */
+  points: TickerIntradayPoint[];
+  /**
+   * The session these bars belong to, local-calendar "YYYY-MM-DD". Named
+   * because it is not always today: outside trading hours the provider returns
+   * the last completed session, and the panel says which one it drew.
+   */
+  sessionDate: string;
+  /** The baseline the day's move is measured from. 0 when unknown. */
+  previousCloseCents: number;
+  /** The session's last print — what the move and the chart's right edge show. */
+  lastPriceCents: number;
+  changeCents: number;
+  changePct: number;
+  /** Highest and lowest bar close seen in the session so far. */
+  highCents: number;
+  lowCents: number;
+  /**
+   * The midpoint of `highCents` and `lowCents` — deliberately that, not the mean
+   * of the bars. It answers "the middle of today's trading range", so it moves
+   * only when the range widens and is unaffected by how long the price sat at
+   * either end.
+   */
+  averageCents: number;
+  /** ISO instant the bars were fetched. What "so far" means, precisely. */
+  asOf: string;
+}
+
 /** Risk and range statistics computed from a year of the provider's closes. */
 export interface TickerRisk {
   ticker: string;

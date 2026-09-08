@@ -25,6 +25,15 @@ export const tickerPriceSeriesSchema = tickerOverviewSchema.extend({
 
 export type TickerPriceSeriesInput = z.infer<typeof tickerPriceSeriesSchema>;
 
+/**
+ * Today's session takes no range or interval from the caller: there is exactly
+ * one session to fetch and the bar size is this module's choice, not a knob for
+ * the boundary to turn. So it validates the ticker and nothing else.
+ */
+export const tickerIntradaySchema = tickerOverviewSchema;
+
+export type TickerIntradayInput = z.infer<typeof tickerIntradaySchema>;
+
 export const tickerRiskSchema = tickerOverviewSchema.extend({
   /**
    * Skip the stored figures and recompute from the provider. False by default:

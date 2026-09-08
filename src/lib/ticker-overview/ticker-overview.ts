@@ -36,6 +36,7 @@ import {
 import { isPrimarySubject, type RawNewsStory, type TickerNewsClient } from "@/lib/ticker-news";
 import type { TickerOwnDataDeps, TickerRiskCacheRepository } from "./ports";
 import {
+  tickerIntradaySchema,
   tickerNewsFeedSchema,
   tickerOverviewSchema,
   tickerPriceSeriesSchema,
@@ -49,6 +50,7 @@ import type {
   TickerHolding,
   TickerHoldingTotals,
   TickerIncome,
+  TickerIntradaySeries,
   TickerNewsFeed,
   TickerOwnData,
   TickerPriceSeries,
@@ -84,6 +86,18 @@ const INTERVAL_BY_RANGE: Record<TickerHistoryRange, string> = {
   "1y": "1d",
   "5y": "1wk",
 };
+
+/**
+ * The intraday chart's window and bar size. One session, five-minute bars —
+ * ~78 points, enough to show the shape of a day without fetching 390.
+ *
+ * Note what this costs: the high and low are the extremes of these *bars*, so a
+ * spike that opened and closed inside one five-minute window is not in them. A
+ * `1m` interval would catch it, at five times the points. Five minutes is the
+ * deliberate trade.
+ */
+const INTRADAY_RANGE = "1d";
+const INTRADAY_INTERVAL = "5m";
 
 // ---------------------------------------------------------------------------
 // Pure helpers — the arithmetic, testable without a repository or a network.
@@ -507,6 +521,99 @@ export async function getTickerPriceSeries(
   const { ticker, range } = tickerPriceSeriesSchema.parse(input);
   const history = await client.getHistory(ticker, range, INTERVAL_BY_RANGE[range]);
   return summarizePriceSeries(ticker, range, history);
+}
+
+/** Local clock time of a bar, "HH:MM" — the axis one session is read on. */
+function toLocalTime(date: Date): string {
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+/**
+ * Today's session, bar by bar, with the range figures worked out.
+ *
+ * Pure, so the arithmetic is testable without a network: hand it the bars and
+ * the previous close and it summarizes them. `getTickerIntradaySeries` is the
+ * thin fetching wrapper.
+ *
+ * The three figures are all "so far" — computed from whatever bars came back,
+ * which is the session up to the moment of the fetch. `averageCents` is the
+ * **midpoint of the high and low**, not the mean of the closes: it names the
+ * middle of the day's range, so it holds still while the price wanders inside
+ * that range and only moves when a new extreme is set.
+ */
+export function summarizeIntradaySeries(
+  ticker: string,
+  bars: PricePoint[],
+  previousCloseCents: number,
+  now: Date = new Date(),
+): TickerIntradaySeries {
+  const ordered = bars
+    .filter((bar) => bar.closeCents > 0)
+    .sort((a, b) => a.timestamp - b.timestamp);
+
+  const empty: TickerIntradaySeries = {
+    ticker,
+    points: [],
+    sessionDate: "",
+    previousCloseCents,
+    lastPriceCents: 0,
+    changeCents: 0,
+    changePct: 0,
+    highCents: 0,
+    lowCents: 0,
+    averageCents: 0,
+    asOf: now.toISOString(),
+  };
+  if (ordered.length === 0) return empty;
+
+  const points = ordered.map((bar) => ({
+    time: toLocalTime(new Date(bar.timestamp * 1000)),
+    priceCents: bar.closeCents,
+  }));
+  const closes = ordered.map((bar) => bar.closeCents);
+  const lastPriceCents = closes[closes.length - 1];
+  const highCents = Math.max(...closes);
+  const lowCents = Math.min(...closes);
+
+  return {
+    ticker,
+    points,
+    // Read off the bars, not the clock: outside trading hours the provider
+    // returns the last completed session, and the panel must caption what it
+    // actually drew rather than asserting "today".
+    sessionDate: toIsoDateLocal(new Date(ordered[ordered.length - 1].timestamp * 1000)),
+    previousCloseCents,
+    lastPriceCents,
+    changeCents: lastPriceCents - previousCloseCents,
+    changePct: percentOf(lastPriceCents - previousCloseCents, previousCloseCents),
+    highCents,
+    lowCents,
+    // Integer cents: a midpoint of two odd cent values would otherwise carry a
+    // half-cent no price ever traded at.
+    averageCents: Math.round((highCents + lowCents) / 2),
+    asOf: now.toISOString(),
+  };
+}
+
+/**
+ * One session's bars for the intraday chart, current as of this call.
+ *
+ * Two provider calls, in parallel: the bars, and the quote for the previous
+ * close the day's move is measured against. The quote is what already supplies
+ * that baseline everywhere else, and `getHistory` doesn't return it.
+ */
+export async function getTickerIntradaySeries(
+  client: MarketDataClient,
+  input: { ticker: string },
+): Promise<TickerIntradaySeries> {
+  const { ticker } = tickerIntradaySchema.parse(input);
+  const [bars, quote] = await Promise.all([
+    client.getHistory(ticker, INTRADAY_RANGE, INTRADAY_INTERVAL),
+    // A missing baseline costs the move line, not the chart — so a quote that
+    // fails degrades to 0 rather than failing the whole panel.
+    client.getQuote(ticker).catch(() => undefined),
+  ]);
+  return summarizeIntradaySeries(ticker, bars, quote?.previousCloseCents ?? 0);
 }
 
 /**
