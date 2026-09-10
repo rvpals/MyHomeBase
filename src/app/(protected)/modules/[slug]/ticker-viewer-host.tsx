@@ -12,6 +12,7 @@
 // hits the provider on a first-ever calculation or an explicit Recalculate.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   TickerViewer,
   type TickerPanelGroup,
@@ -19,6 +20,7 @@ import {
 } from "@/components/ticker-viewer";
 import { TickerLogo } from "@/components/ticker-logo";
 import type { TickerHistoryRange } from "@/lib/ticker-overview";
+import { encodeAdhocLots, lotsFromTrades } from "@/lib/tax-lots";
 import {
   isFavoriteTickerAction,
   toggleFavoriteTickerAction,
@@ -135,6 +137,7 @@ function TickerViewerHostInner({
   onClose,
   initialGroup = "own",
 }: TickerViewerHostProps) {
+  const router = useRouter();
   const [activeGroup, setActiveGroup] = useState<TickerPanelGroup>(initialGroup);
   const [range, setRange] = useState<TickerHistoryRange>("1y");
   // Bumped by Recalculate. It's part of the risk panel's request key, so the
@@ -201,6 +204,28 @@ function TickerViewerHostInner({
       .finally(() => setIsSavingFavorite(false));
   }, [ticker]);
 
+  /**
+   * Sends this ticker's recorded buys to the Tax Lots analyzer.
+   *
+   * The mapping is `lotsFromTrades`, a `lib/tax-lots` function — which rows count
+   * as lots, and what a broker export's numbers mean, are domain decisions and must
+   * come out the same here as from the CLI. This handler only navigates.
+   *
+   * No fetch: `ownData` is already loaded (the Transactions card is rendering from
+   * it), so the trades are in hand. The button is only offered once they are.
+   */
+  const calculateTaxLots = useCallback(() => {
+    const trades = ownData.data?.trades.transactions;
+    if (!trades) return;
+
+    const { lots } = lotsFromTrades(trades);
+    const query = new URLSearchParams({ ticker });
+    // With no buys there is nothing to analyze, so the link goes to the ticker's
+    // stored lots instead of an ad-hoc set the schema would reject.
+    if (lots.length > 0) query.set("lots", encodeAdhocLots(lots));
+    router.push(`/modules/stock-etfs/tax-lots?${query.toString()}`);
+  }, [ownData.data, router, ticker]);
+
   return (
     <TickerViewer
       ticker={ticker}
@@ -219,6 +244,13 @@ function TickerViewerHostInner({
       range={range}
       onSelectRange={setRange}
       onRecalculateRisk={recalculateRisk}
+      // Withheld until the trades are loaded and there is at least one buy — a
+      // button that navigates to an empty analysis is worse than no button.
+      onCalculateTaxLots={
+        ownData.data && ownData.data.trades.transactions.length > 0
+          ? calculateTaxLots
+          : undefined
+      }
       favorite={{ isFavorite, onToggle: toggleFavorite, isSaving: isSavingFavorite }}
     />
   );

@@ -17,11 +17,21 @@ export {
   taxLotIdSchema,
   analyzeLotsSchema,
   normalizeLotSchema,
+  adhocLotSchema,
+  analyzeAdhocLotsSchema,
+  saveAdhocLotsSchema,
+  tickerLotsSchema,
+  multiTickerLotsSchema,
   type CreateTaxLotInput,
   type UpdateTaxLotInput,
   type TaxLotIdInput,
   type AnalyzeLotsInput,
   type NormalizeLotInput,
+  type AdhocLotInput,
+  type AnalyzeAdhocLotsInput,
+  type SaveAdhocLotsInput,
+  type TickerLotsInput,
+  type MultiTickerLotsInput,
 } from "./schema";
 export type { TaxLotRepository } from "./ports";
 export {
@@ -45,6 +55,9 @@ export {
   summarizePortfolio,
   analyzePortfolio,
   analyzeTicker,
+  analyzeAdhocLots,
+  saveAdhocLots,
+  type SaveAdhocLotsResult,
   listTaxLots,
   listTaxLotTickers,
   getTaxLot,
@@ -54,3 +67,22 @@ export {
   type LotAnalysisContext,
   type PortfolioAnalysis,
 } from "./tax-lots";
+export {
+  encodeAdhocLots,
+  decodeAdhocLots,
+  encodeTickerLots,
+  decodeTickerLots,
+} from "./adhoc-url";
+export {
+  analyzeMultipleTickers,
+  summarizeAcrossTickers,
+  type MultiTickerAnalysis,
+  type MultiTickerTotals,
+  type TickerAnalysisSection,
+  type TickerPricing,
+} from "./multi-ticker";
+export {
+  lotsFromTrades,
+  type RecordedTrade,
+  type LotsFromTradesResult,
+} from "./from-transactions";

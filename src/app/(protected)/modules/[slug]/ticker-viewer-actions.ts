@@ -27,6 +27,10 @@ import {
   type TickerTradeTimeline,
 } from "@/lib/ticker-overview";
 import { deps } from "@/lib/wiring";
+import { requireModuleAccess } from "../../require-access";
+
+/** The module these actions belong to, matched exactly by `requireModuleAccess`. */
+const ACCESS_MODULE_SLUG = "stock-etfs";
 
 /** Every panel resolves to the same shape, so the viewer handles them uniformly. */
 export interface PanelResult<T> {
@@ -42,6 +46,7 @@ function failed(error: unknown, fallback: string): PanelResult<never> {
 export async function fetchTickerOwnDataAction(
   ticker: string,
 ): Promise<PanelResult<TickerOwnData>> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     return {
       ok: true,
@@ -60,6 +65,7 @@ export async function fetchTickerOwnDataAction(
 }
 
 export async function fetchTickerQuoteAction(ticker: string): Promise<PanelResult<TickerQuote>> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     return { ok: true, data: await getTickerQuote(deps.marketDataClient, { ticker }) };
   } catch (error) {
@@ -71,6 +77,7 @@ export async function fetchTickerPriceSeriesAction(
   ticker: string,
   range: TickerHistoryRange,
 ): Promise<PanelResult<TickerPriceSeries>> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     return { ok: true, data: await getTickerPriceSeries(deps.marketDataClient, { ticker, range }) };
   } catch (error) {
@@ -88,6 +95,7 @@ export async function fetchTickerPriceSeriesAction(
 export async function fetchTickerIntradayAction(
   ticker: string,
 ): Promise<PanelResult<TickerIntradaySeries>> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     return { ok: true, data: await getTickerIntradaySeries(deps.marketDataClient, { ticker }) };
   } catch (error) {
@@ -104,6 +112,7 @@ export async function fetchTickerRiskAction(
   ticker: string,
   refresh = false,
 ): Promise<PanelResult<TickerRisk>> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     return {
       ok: true,
@@ -125,6 +134,7 @@ export async function fetchTickerRiskAction(
 export async function fetchTickerEventsAction(
   ticker: string,
 ): Promise<PanelResult<TickerEventFeed>> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     return {
       ok: true,
@@ -142,6 +152,7 @@ export async function fetchTickerEventsAction(
 export async function fetchTickerDetailAction(
   ticker: string,
 ): Promise<PanelResult<TickerYahooDetail>> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     return { ok: true, data: await getTickerDetail(deps.marketDataClient, { ticker }) };
   } catch (error) {
@@ -152,6 +163,7 @@ export async function fetchTickerDetailAction(
 export async function fetchTickerNewsFeedAction(
   ticker: string,
 ): Promise<PanelResult<TickerNewsFeed>> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     return { ok: true, data: await getTickerNewsFeed(deps.tickerNewsClient, { ticker }) };
   } catch (error) {
@@ -167,6 +179,7 @@ export async function fetchTickerNewsFeedAction(
 export async function fetchTickerTradeTimelineAction(
   ticker: string,
 ): Promise<PanelResult<TickerTradeTimeline>> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const transactions = listTransactions(deps.stockPositionRepo, ticker);
     return {

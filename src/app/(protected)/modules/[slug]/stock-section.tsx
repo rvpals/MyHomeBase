@@ -26,7 +26,20 @@ import {
   UNASSIGNED_ACCOUNT_ID,
 } from "@/lib/stock-positions";
 import { listItems, listWatchLists } from "@/lib/stock-watchlist";
-import { analyzeTicker, listTaxLotTickers, listTaxLots } from "@/lib/tax-lots";
+import {
+  analyzeAdhocLots,
+  analyzeMultipleTickers,
+  analyzeTicker,
+  decodeAdhocLots,
+  decodeTickerLots,
+  listTaxLotTickers,
+  listTaxLots,
+  lotsFromTrades,
+  multiTickerLotsSchema,
+  type AdhocLotInput,
+  type MultiTickerAnalysis,
+  type TickerPricing,
+} from "@/lib/tax-lots";
 import { loadSectorMap, resolveSector } from "@/lib/ticker-profiles";
 import { deps } from "@/lib/wiring";
 import { NextDayActionsView } from "./next-day-actions-view";
@@ -42,6 +55,8 @@ import { StockRefreshProgressProvider } from "./stock-refresh-progress-context";
 import { STOCK_SECTION_INFO, type StockSection } from "./stock-sections";
 import { StockShell } from "./stock-shell";
 import { StockSimulationView } from "./stock-simulation-view";
+import { StockTaxLotsMultiView } from "./stock-tax-lots-multi-view";
+import type { TaxLotTickerOption } from "./stock-tax-lots-ticker-picker";
 import {
   StockTaxLotsSummary,
   StockTaxLotsTable,
@@ -109,6 +124,187 @@ function loadSnapshots(today: string) {
 }
 
 /**
+ * Every ticker that has at least one BUY transaction, for the "Add by tickers"
+ * picker.
+ *
+ * Sourced from the ledger rather than from held positions, because the aggregate is
+ * built from transactions — a symbol sold out of last year still has lots worth
+ * analyzing, and excluding it would make the picker quietly narrower than the
+ * feature behind it. Held symbols carry a flag so the picker can mark them.
+ */
+function loadTickerOptions(): TaxLotTickerOption[] {
+  const held = new Set(
+    listPositions(deps.stockPositionRepo).map((position) => position.ticker),
+  );
+  const byTicker = new Map<string, number>();
+
+  for (const transaction of listTransactions(deps.stockPositionRepo)) {
+    if (transaction.action.trim().toUpperCase() !== "BUY") continue;
+    if (transaction.numberOfShares <= 0) continue;
+    byTicker.set(transaction.ticker, (byTicker.get(transaction.ticker) ?? 0) + 1);
+  }
+
+  return [...byTicker.entries()]
+    .map(([ticker, buyCount]) => ({ ticker, buyCount, isHeld: held.has(ticker) }))
+    .sort((left, right) => left.ticker.localeCompare(right.ticker));
+}
+
+/**
+ * Resolves each ticker's market price and dividend rate from its held position.
+ *
+ * One pass over the position rows rather than a query per ticker: the multi-ticker
+ * screen can be showing thirty symbols, and this is a local SQLite read either way,
+ * but a single scan keeps it one read regardless of how many were picked.
+ */
+function loadPricing(tickers: string[]): Map<string, TickerPricing> {
+  const wanted = new Set(tickers);
+  const positions = listPositions(deps.stockPositionRepo).filter((position) =>
+    wanted.has(position.ticker),
+  );
+  const pricing = new Map<string, TickerPricing>();
+
+  for (const ticker of tickers) {
+    const forTicker = positions.filter((position) => position.ticker === ticker);
+    const livePriceCents = forTicker.find((position) => position.currentPriceCents > 0)
+      ?.currentPriceCents;
+    const dividendRateCents =
+      forTicker.find((position) => position.dividendRateCents > 0)?.dividendRateCents ?? 0;
+
+    pricing.set(ticker, {
+      ticker,
+      // 0 tells `analyzeMultipleTickers` to fall back to the newest lot passed in.
+      currentMarketPrice: livePriceCents ? centsToDollars(livePriceCents) : 0,
+      hasLivePrice: livePriceCents !== undefined,
+      trailingEPS: centsToDollars(dividendRateCents),
+    });
+  }
+
+  return pricing;
+}
+
+/**
+ * Builds each picked ticker's lots from its recorded buys.
+ *
+ * `?seedTickers=NVDA,AAPL` carries only the symbols, so a link stays short however
+ * many transactions are behind it and always reflects the CURRENT ledger rather than
+ * a snapshot — re-opening a bookmarked selection after importing new trades picks
+ * them up. The mapping is `lotsFromTrades`, so which rows count is a `lib` decision.
+ *
+ * Tickers with no usable buys are dropped rather than rendered as empty sections;
+ * `undefined` comes back when that leaves nothing at all.
+ */
+function loadSeededMultiTickerData(
+  requestedSeedTickers: string | undefined,
+): MultiTickerAnalysis | undefined {
+  if (!requestedSeedTickers) return undefined;
+
+  // De-duplicated, so a hand-edited URL can't render the same ticker twice (and
+  // double it inside the grand total).
+  const symbols = [
+    ...new Set(
+      requestedSeedTickers
+        .split(",")
+        .map((symbol) => symbol.trim().toUpperCase())
+        .filter(Boolean),
+    ),
+  ];
+  if (symbols.length === 0) return undefined;
+
+  const entries = symbols
+    .map((ticker) => ({
+      ticker,
+      lots: lotsFromTrades(listTransactions(deps.stockPositionRepo, ticker)).lots,
+    }))
+    .filter((entry) => entry.lots.length > 0);
+  if (entries.length === 0) return undefined;
+
+  const parsed = multiTickerLotsSchema.safeParse({
+    today: todayIsoLocal(),
+    tickers: entries,
+  });
+  if (!parsed.success) return undefined;
+
+  return analyzeMultipleTickers(parsed.data, loadPricing(symbols));
+}
+
+/**
+ * The multi-ticker analysis, when `?tickers=` carried several symbols' lots.
+ *
+ * Returns undefined on an unusable payload, so the caller falls back exactly as it
+ * does for a bad `?lots=` — a stale bookmark should land on the stored screen, not
+ * an error page.
+ */
+function loadMultiTickerData(requestedTickers: string | undefined): MultiTickerAnalysis | undefined {
+  const decoded = decodeTickerLots(requestedTickers);
+  if (!decoded) return undefined;
+
+  // Parsed through the schema even though the decoder already validated each lot:
+  // the ticker *count* cap and the min(1) live here, and this is the boundary.
+  const parsed = multiTickerLotsSchema.safeParse({ today: todayIsoLocal(), tickers: decoded });
+  if (!parsed.success) return undefined;
+
+  const symbols = parsed.data.tickers.map((entry) => entry.ticker);
+  return analyzeMultipleTickers(parsed.data, loadPricing(symbols));
+}
+
+/**
+ * The Tax Lots section's data when the transactions came in on the URL.
+ *
+ * The market context is resolved the same way the stored path resolves it — from the
+ * held position when there is one — so an ad-hoc set and a saved one are scored
+ * against the same price. Where they differ is the fallback: with nothing stored to
+ * fall back to, an unheld ticker is priced at the newest transaction PASSED IN, and
+ * `hasLivePrice: false` makes the card say so rather than implying a quote.
+ */
+function loadAdhocTaxLotsData(
+  tickers: string[],
+  requestedTicker: string | undefined,
+  adhocLots: AdhocLotInput[],
+): TaxLotsViewProps {
+  // Unlike the stored path, the ticker is NOT resolved against what has lots — the
+  // whole point is analyzing a symbol you have not recorded yet. It only has to be
+  // present; the schema uppercases and length-checks it.
+  const ticker = requestedTicker?.trim().toUpperCase() ?? "";
+
+  const positions = listPositions(deps.stockPositionRepo).filter(
+    (position) => position.ticker === ticker,
+  );
+  const livePriceCents = positions.find((position) => position.currentPriceCents > 0)
+    ?.currentPriceCents;
+  const hasLivePrice = livePriceCents !== undefined;
+  // Newest passed-in lot wins, matching the stored path's `at(-1)` on buy date.
+  const newestPassedIn = [...adhocLots].sort((left, right) =>
+    left.buyDate.localeCompare(right.buyDate),
+  ).at(-1);
+  const dividendRateCents =
+    positions.find((position) => position.dividendRateCents > 0)?.dividendRateCents ?? 0;
+  const trailingEPS = centsToDollars(dividendRateCents);
+
+  const analysis = analyzeAdhocLots({
+    ticker,
+    currentMarketPrice: livePriceCents
+      ? centsToDollars(livePriceCents)
+      : (newestPassedIn?.pricePerShare ?? 0),
+    trailingEPS,
+    today: todayIsoLocal(),
+    lots: adhocLots,
+  });
+
+  return {
+    tickers,
+    selectedTicker: ticker,
+    // Empty, and that is the signal the view keys off: an ad-hoc lot has no stored
+    // row, so Edit and Delete have nothing to act on and are not offered.
+    storedLots: [],
+    hasLivePrice,
+    trailingEPS,
+    lots: analysis.lots,
+    summary: analysis.summary,
+    adhocLots,
+  };
+}
+
+/**
  * The Tax Lots section's data.
  *
  * The current price and the per-share dividend come from the held position when
@@ -122,8 +318,19 @@ function loadSnapshots(today: string) {
  * "yield on cost" conventionally measures. The library parameter keeps the name the
  * spec gave it; nothing here stores an earnings figure.
  */
-function loadTaxLotsData(requestedTicker: string | undefined): TaxLotsViewProps {
+function loadTaxLotsData(
+  requestedTicker: string | undefined,
+  requestedLots: string | undefined,
+): TaxLotsViewProps {
   const tickers = listTaxLotTickers(deps.taxLotRepo);
+
+  // Ad-hoc mode: transactions arrived in the URL, so they are what gets scored and
+  // nothing is read from storage. A payload that fails to decode — a stale
+  // bookmark, a truncated paste — falls through to the stored view rather than
+  // erroring, which is why `decodeAdhocLots` returns undefined instead of throwing.
+  const adhocLots = decodeAdhocLots(requestedLots);
+  if (adhocLots) return loadAdhocTaxLotsData(tickers, requestedTicker, adhocLots);
+
   // A requested ticker only wins if it actually has lots, so a stale bookmark
   // falls back to the first stored one instead of rendering an empty screen.
   const normalized = requestedTicker?.trim().toUpperCase();
@@ -169,9 +376,15 @@ function loadTaxLotsData(requestedTicker: string | undefined): TaxLotsViewProps 
 function SectionBody({
   section,
   requestedTicker,
+  requestedLots,
+  requestedTickerLots,
+  requestedSeedTickers,
 }: {
   section: StockSection;
   requestedTicker: string | undefined;
+  requestedLots: string | undefined;
+  requestedTickerLots: string | undefined;
+  requestedSeedTickers: string | undefined;
 }) {
   switch (section) {
     case "main": {
@@ -267,7 +480,26 @@ function SectionBody({
       );
 
     case "tax-lots": {
-      const data = loadTaxLotsData(requestedTicker);
+      // Multi-ticker wins when present: an explicit selection is what the reader
+      // just asked for, and it carries its own grand total rather than one
+      // ticker's summary. `?tickers=` (full payload) is checked before
+      // `?seedTickers=` (symbols only) so an edited set survives a refresh.
+      const multi =
+        loadMultiTickerData(requestedTickerLots) ??
+        loadSeededMultiTickerData(requestedSeedTickers);
+      if (multi) {
+        return (
+          <CollapsibleCard
+            title="Positions Summary"
+            titleIcon={<SlotIcon slot={TAX_LOT_SUMMARY_SLOT} className="h-4 w-4" />}
+            defaultOpen
+          >
+            <StockTaxLotsMultiView sections={multi.sections} totals={multi.totals} />
+          </CollapsibleCard>
+        );
+      }
+
+      const data = loadTaxLotsData(requestedTicker, requestedLots);
       return (
         <div className="flex flex-col gap-6">
           <CollapsibleCard
@@ -275,7 +507,7 @@ function SectionBody({
             titleIcon={<SlotIcon slot={TAX_LOT_SUMMARY_SLOT} className="h-4 w-4" />}
             defaultOpen
           >
-            <StockTaxLotsSummary {...data} />
+            <StockTaxLotsSummary {...data} tickerOptions={loadTickerOptions()} />
           </CollapsibleCard>
           {/* Only worth a card once there is something in it — an empty grid under
               a heading reads as broken, and the summary half already explains that
@@ -312,10 +544,27 @@ function SectionBody({
 export async function StockSection({
   section,
   requestedTicker,
+  requestedLots,
+  requestedTickerLots,
+  requestedSeedTickers,
 }: {
   section: StockSection;
   /** ?ticker= — which position the Tax Lots analyzer shows. */
   requestedTicker?: string;
+  /**
+   * ?lots= — an encoded set of transactions to analyze WITHOUT storing them, which
+   * puts the Tax Lots screen in ad-hoc mode. Left raw here: the section decodes it
+   * with the module's own function, and an unusable payload falls back to the
+   * stored lots rather than 404ing a link someone bookmarked.
+   */
+  requestedLots?: string;
+  /** ?tickers= — several symbols each with their own encoded lots. */
+  requestedTickerLots?: string;
+  /**
+   * ?seedTickers= — a comma-separated symbol list whose lots are built from the
+   * recorded buys. What the "Add by tickers" picker emits.
+   */
+  requestedSeedTickers?: string;
 }) {
   // Defensive: an unknown section would otherwise crash on info.label. The route
   // already validates, so this only catches a future caller getting it wrong.
@@ -372,7 +621,13 @@ export async function StockSection({
         </div>
 
         <div className="mt-6">
-          <SectionBody section={section} requestedTicker={requestedTicker} />
+          <SectionBody
+            section={section}
+            requestedTicker={requestedTicker}
+            requestedLots={requestedLots}
+            requestedTickerLots={requestedTickerLots}
+            requestedSeedTickers={requestedSeedTickers}
+          />
         </div>
       </StockRefreshProgressProvider>
     </StockShell>

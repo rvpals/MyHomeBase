@@ -113,6 +113,17 @@ export interface TickerViewerProps {
   onRecalculateRisk: () => void;
 
   /**
+   * Sends this ticker's recorded buys to the Tax Lots analyzer. **Optional** —
+   * omit it and no button renders, so a caller with no tax-lots route still gets
+   * a working Transactions card.
+   *
+   * A callback rather than an href because the host owns the mapping: which rows
+   * count as lots, and how they are encoded, are `lib/tax-lots` decisions, and a
+   * presentational component must not be the thing that knows them.
+   */
+  onCalculateTaxLots?: () => void;
+
+  /**
    * The favorite star in the header. **Optional** — omit it and no star renders,
    * so this component stays usable by a caller that has no favorites store.
    *
@@ -2082,6 +2093,7 @@ export function TickerViewer({
   onSelectRange,
   ranges = DEFAULT_RANGES,
   onRecalculateRisk,
+  onCalculateTaxLots,
   favorite,
   className = "",
 }: TickerViewerProps) {
@@ -2153,7 +2165,21 @@ export function TickerViewer({
               </Panel>
             </CollapsibleCard>
 
-            <CollapsibleCard title="Transactions" defaultOpen>
+            {/* Calculate Tax Lots goes in `headerAction` for the same reason
+                Recalculate does on the Risks card: it stays reachable with the
+                card collapsed, and it acts on the whole trade set rather than on
+                any one row in the table. */}
+            <CollapsibleCard
+              title="Transactions"
+              defaultOpen
+              headerAction={
+                onCalculateTaxLots && (
+                  <Button size="sm" variant="secondary" onClick={onCalculateTaxLots}>
+                    Calculate Tax Lots
+                  </Button>
+                )
+              }
+            >
               <Panel state={ownData} loadingLabel="Reading your records…">
                 {(data) => <TradesPanel data={data} timeline={tradeTimeline} />}
               </Panel>

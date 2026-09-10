@@ -12,9 +12,15 @@
 // column in the schema, and is converted to dollars once on the way in. The maths
 // then runs in dollars so the formulas read exactly as specified.
 
-import { centsToDollars } from "../shared/money";
+import { centsToDollars, dollarsToCents } from "../shared/money";
 import { normalizeLot, passthroughLot, splitHistoryFor } from "./splits";
-import type { CreateTaxLotInput, UpdateTaxLotInput } from "./schema";
+import type {
+  AdhocLotInput,
+  AnalyzeAdhocLotsInput,
+  CreateTaxLotInput,
+  SaveAdhocLotsInput,
+  UpdateTaxLotInput,
+} from "./schema";
 import type { TaxLotRepository } from "./ports";
 import type {
   CashFlow,
@@ -253,4 +259,116 @@ export function analyzeTicker(
   context: LotAnalysisContext,
 ): PortfolioAnalysis {
   return analyzePortfolio(listTaxLots(repo, context.ticker), context);
+}
+
+/* ---------------------------------------------------------------------------------
+   Ad-hoc analysis. Transactions in, aggregate out, nothing stored.
+--------------------------------------------------------------------------------- */
+
+/**
+ * Restates an ad-hoc transaction as the in-memory `TaxLot` the maths already takes.
+ *
+ * `id` is deliberately 0: nothing was stored, so there is no row to edit or delete,
+ * and the view keys off it to hide those actions. The timestamps are empty for the
+ * same reason — an ad-hoc lot has no creation history to report.
+ */
+function toUnsavedLot(ticker: string, lot: AdhocLotInput): TaxLot {
+  return {
+    id: 0,
+    ticker,
+    buyDate: lot.buyDate,
+    shares: lot.shares,
+    // Dollars in, cents stored: the one conversion, done here rather than in three
+    // adapters, so the URL, the form and the CLI flag all round the same way.
+    pricePerShareCents: dollarsToCents(lot.pricePerShare),
+    isSplitAdjusted: lot.isSplitAdjusted,
+    brokerageFirm: lot.brokerageFirm,
+    note: lot.note,
+    createdAt: "",
+    updatedAt: "",
+  };
+}
+
+/**
+ * Scores a set of passed-in transactions and rolls them up.
+ *
+ * No repository parameter, because there is no storage in this path — which is what
+ * makes it callable from a URL, a form keystroke and a CLI flag alike. Every figure
+ * comes from `analyzePortfolio`, the same function the stored screen uses, so a
+ * saved lot and an ad-hoc one with the same numbers report the same basis, the same
+ * holding period and the same XIRR.
+ */
+export function analyzeAdhocLots(input: AnalyzeAdhocLotsInput): PortfolioAnalysis {
+  const lots = input.lots.map((lot) => toUnsavedLot(input.ticker, lot));
+  return analyzePortfolio(lots, {
+    ticker: input.ticker,
+    currentMarketPrice: input.currentMarketPrice,
+    trailingEPS: input.trailingEPS,
+    today: input.today,
+  });
+}
+
+/** What a save attempt did. Reported per-lot rather than as a single count so the
+ *  screen can say "3 saved, 2 already recorded" instead of just "done". */
+export interface SaveAdhocLotsResult {
+  saved: TaxLot[];
+  /** Lots that matched one already stored, and were therefore not inserted again. */
+  skipped: AdhocLotInput[];
+}
+
+/**
+ * True when a stored lot already records this transaction.
+ *
+ * Identity is `(buyDate, shares, pricePerShareCents)` — the three fields that make a
+ * purchase the purchase it is. Brokerage and note are deliberately excluded: the
+ * same buy re-seeded from the ledger can arrive with a note the stored copy lacks,
+ * and treating that as a different lot would double the position, which is exactly
+ * the failure this check exists to prevent. Price is compared in integer cents, so
+ * there is no float-equality question.
+ */
+function isAlreadyStored(candidate: TaxLot, stored: TaxLot[]): boolean {
+  return stored.some(
+    (lot) =>
+      lot.buyDate === candidate.buyDate &&
+      lot.shares === candidate.shares &&
+      lot.pricePerShareCents === candidate.pricePerShareCents,
+  );
+}
+
+/**
+ * Persists an ad-hoc set, skipping transactions already recorded for the ticker.
+ *
+ * The duplicate check is what makes this button safe to press twice — and pressing
+ * it twice is the likely accident, since the set usually arrives seeded from the
+ * ledger the lots were derived from. Candidates are checked against the growing
+ * stored list, so two identical rows in ONE submission also collapse to one.
+ */
+export function saveAdhocLots(
+  repo: TaxLotRepository,
+  input: SaveAdhocLotsInput,
+): SaveAdhocLotsResult {
+  const stored = listTaxLots(repo, input.ticker);
+  const result: SaveAdhocLotsResult = { saved: [], skipped: [] };
+
+  for (const lot of input.lots) {
+    const candidate = toUnsavedLot(input.ticker, lot);
+    if (isAlreadyStored(candidate, stored)) {
+      result.skipped.push(lot);
+      continue;
+    }
+    const created = createTaxLot(repo, {
+      ticker: input.ticker,
+      buyDate: candidate.buyDate,
+      shares: candidate.shares,
+      pricePerShareCents: candidate.pricePerShareCents,
+      isSplitAdjusted: candidate.isSplitAdjusted,
+      brokerageFirm: candidate.brokerageFirm,
+      note: candidate.note,
+    });
+    result.saved.push(created);
+    // Appended so a repeated row inside this same submission is caught too.
+    stored.push(created);
+  }
+
+  return result;
 }

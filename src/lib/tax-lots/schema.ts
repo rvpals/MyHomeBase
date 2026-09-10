@@ -73,3 +73,93 @@ export const normalizeLotSchema = z.object({
 });
 
 export type NormalizeLotInput = z.infer<typeof normalizeLotSchema>;
+
+/* ---------------------------------------------------------------------------------
+   Ad-hoc analysis — a set of transactions passed in, scored, and never stored.
+
+   The stored path answers "how is the position I recorded doing?". This one answers
+   "how would THESE purchases look?", which is a different question: the lots arrive
+   as input, carry no id, and are gone when the request ends. Both run through the
+   same `analyzePortfolio`, so the two screens can never disagree about a figure.
+--------------------------------------------------------------------------------- */
+
+/**
+ * One transaction as the ad-hoc analyzer takes it.
+ *
+ * Price is in **dollars** here, not cents — unlike `createTaxLotSchema`. This shape
+ * is the boundary for a URL and a CLI flag, where the value is whatever the
+ * confirmation printed ("180.50"); cents are a storage concern, converted once
+ * inside the use-case. `z.coerce` because both of those sources deliver strings.
+ */
+export const adhocLotSchema = z.object({
+  buyDate: isoDateSchema,
+  shares: z.coerce.number().positive("Shares must be greater than zero."),
+  pricePerShare: z.coerce.number().nonnegative(),
+  // Same default and same reasoning as `createTaxLotSchema`: assume the figures are
+  // historical, since that is the case that needs the split table applied.
+  isSplitAdjusted: z.coerce.boolean().default(false),
+  brokerageFirm: z.string().trim().default(""),
+  note: z.string().default(""),
+});
+
+export type AdhocLotInput = z.infer<typeof adhocLotSchema>;
+
+/**
+ * The whole ad-hoc request: the market context, plus the transactions to score.
+ *
+ * `min(1)` because an aggregate over nothing is not an analysis — the caller should
+ * see an error rather than a screen of zeros that looks like a real flat position.
+ * Capped at 200 so a crafted URL can't turn one request into an unbounded loop.
+ */
+export const analyzeAdhocLotsSchema = z.object({
+  ticker: tickerSchema,
+  currentMarketPrice: z.coerce.number().nonnegative(),
+  trailingEPS: z.coerce.number().default(0),
+  today: isoDateSchema,
+  lots: z
+    .array(adhocLotSchema)
+    .min(1, "Pass at least one transaction to analyze.")
+    .max(200, "That is more transactions than this screen will analyze at once."),
+});
+
+export type AnalyzeAdhocLotsInput = z.infer<typeof analyzeAdhocLotsSchema>;
+
+/**
+ * Saving an ad-hoc set into storage. Identical to the analysis input minus the
+ * market context, which is only needed to *score* lots, never to record them.
+ */
+export const saveAdhocLotsSchema = z.object({
+  ticker: tickerSchema,
+  lots: z.array(adhocLotSchema).min(1).max(200),
+});
+
+export type SaveAdhocLotsInput = z.infer<typeof saveAdhocLotsSchema>;
+
+/* ---------------------------------------------------------------------------------
+   Multi-ticker ad-hoc analysis — several symbols, each with its own lots.
+--------------------------------------------------------------------------------- */
+
+/** One ticker and the transactions being analyzed for it. */
+export const tickerLotsSchema = z.object({
+  ticker: tickerSchema,
+  lots: z.array(adhocLotSchema).min(1).max(200),
+});
+
+export type TickerLotsInput = z.infer<typeof tickerLotsSchema>;
+
+/**
+ * The multi-ticker request.
+ *
+ * Capped at 30 tickers: the screen renders a full metric row and lot table per
+ * ticker, so this is a readability limit as much as a safety one — past a couple of
+ * dozen dividers nobody is reading the sections, they want a portfolio view.
+ */
+export const multiTickerLotsSchema = z.object({
+  today: isoDateSchema,
+  tickers: z
+    .array(tickerLotsSchema)
+    .min(1, "Pick at least one ticker to analyze.")
+    .max(30, "That is more tickers than this screen will analyze at once."),
+});
+
+export type MultiTickerLotsInput = z.infer<typeof multiTickerLotsSchema>;

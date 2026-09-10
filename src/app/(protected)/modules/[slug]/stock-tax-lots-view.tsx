@@ -10,12 +10,23 @@ import { Button } from "@/components/button";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { Modal } from "@/components/modal";
 import { dollarsToCents } from "@/lib/shared/money";
-import type { LotPerformance, PortfolioLotSummary, TaxLot } from "@/lib/tax-lots";
+import { encodeAdhocLots } from "@/lib/tax-lots";
+import type {
+  AdhocLotInput,
+  LotPerformance,
+  PortfolioLotSummary,
+  TaxLot,
+} from "@/lib/tax-lots";
 import {
   createTaxLotAction,
   deleteTaxLotAction,
+  saveAdhocLotsAction,
   updateTaxLotAction,
 } from "./stock-tax-lots-actions";
+import {
+  StockTaxLotsTickerPicker,
+  type TaxLotTickerOption,
+} from "./stock-tax-lots-ticker-picker";
 
 /** Everything the section loaded for one ticker. */
 export interface TaxLotsViewProps {
@@ -30,6 +41,20 @@ export interface TaxLotsViewProps {
   /** True when the price came from a held position rather than being assumed. */
   hasLivePrice: boolean;
   trailingEPS: number;
+  /**
+   * The transactions passed in on the URL, when the screen is in ad-hoc mode.
+   *
+   * Present means "these figures were calculated, not recorded" — which changes
+   * three things: a banner says so, the rows become editable, and Edit/Delete are
+   * withheld because there is no stored row behind them. Absent is the ordinary
+   * stored-lot screen.
+   */
+  adhocLots?: AdhocLotInput[];
+  /**
+   * Every ticker with recorded buys, for the "Add by tickers" picker. Optional so
+   * the table half of this file can be rendered without it.
+   */
+  tickerOptions?: TaxLotTickerOption[];
 }
 
 const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
@@ -305,8 +330,12 @@ function buildLotColumns(
   storedLots: TaxLot[],
   onEdit: (lot: TaxLot | undefined) => void,
   onDelete: (lot: LotPerformance) => void,
+  /** Ad-hoc rows have no stored row behind them, so the actions column is
+   *  omitted rather than rendered with both buttons disabled — a dead control
+   *  reads as a bug, an absent one reads as "not applicable here". */
+  isAdhoc = false,
 ): DataGridColumn<LotPerformance>[] {
-  return [
+  const columns: DataGridColumn<LotPerformance>[] = [
     {
       key: "buyDate",
       header: "Purchase Date",
@@ -404,27 +433,222 @@ function buildLotColumns(
       value: (lot) => lot.taxClassification,
       render: (lot) => <TaxStatusBadge lot={lot} />,
     },
-    {
-      key: "actions",
-      header: "",
-      excludeFromRecordView: true,
-      render: (lot) => (
-        <div className="flex gap-1">
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => onEdit(storedLots.find((stored) => stored.id === lot.id))}
-            disabled={lot.id === undefined}
-          >
-            Edit
-          </Button>
-          <Button size="sm" variant="secondary" onClick={() => onDelete(lot)}>
-            Delete
-          </Button>
-        </div>
-      ),
-    },
   ];
+
+  if (isAdhoc) return columns;
+
+  columns.push({
+    key: "actions",
+    header: "",
+    excludeFromRecordView: true,
+    render: (lot) => (
+      <div className="flex gap-1">
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => onEdit(storedLots.find((stored) => stored.id === lot.id))}
+          disabled={lot.id === undefined}
+        >
+          Edit
+        </Button>
+        <Button size="sm" variant="secondary" onClick={() => onDelete(lot)}>
+          Delete
+        </Button>
+      </div>
+    ),
+  });
+
+  return columns;
+}
+
+/** The class every input on this screen shares. Kept in one place so the ad-hoc
+ *  row editor and the add/edit dialog cannot drift apart visually. */
+const FIELD_CLASS = "rounded-md border border-line bg-transparent px-2 py-1.5 text-sm text-ink";
+
+/**
+ * The ad-hoc transaction editor: the rows that produced the summary above, editable.
+ *
+ * Every edit re-encodes the whole set into `?lots=` and navigates, rather than
+ * holding a local draft and calling the analyze action. That is the deliberate
+ * choice: the URL is the only place an ad-hoc analysis lives, so making it the
+ * single source of truth means what you see always matches what a bookmark or a
+ * shared link would reproduce. `router.replace` rather than `push`, so editing six
+ * rows does not leave six entries to back through.
+ *
+ * Narrow screens: the row is a `max-lg:` two-column grid with labels, so a phone
+ * gets a stacked form instead of a table squeezed to unreadability. Above 1024px
+ * it is one line per transaction.
+ */
+function AdhocLotEditor({
+  ticker,
+  adhocLots,
+}: {
+  ticker: string;
+  adhocLots: AdhocLotInput[];
+}) {
+  const router = useRouter();
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | undefined>(undefined);
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  /** Re-encodes the set and navigates. The server re-scores it. */
+  function commit(lots: AdhocLotInput[]) {
+    // Clearing the last row leaves ad-hoc mode rather than analyzing nothing — the
+    // schema requires at least one lot, and a screen of zeros reads as a real flat
+    // position instead of an empty form.
+    const query = new URLSearchParams({ ticker });
+    if (lots.length > 0) query.set("lots", encodeAdhocLots(lots));
+    router.replace(`/modules/stock-etfs/tax-lots?${query.toString()}`);
+  }
+
+  function updateRow(index: number, patch: Partial<AdhocLotInput>) {
+    commit(adhocLots.map((lot, at) => (at === index ? { ...lot, ...patch } : lot)));
+  }
+
+  function removeRow(index: number) {
+    commit(adhocLots.filter((_, at) => at !== index));
+  }
+
+  function addRow() {
+    const last = adhocLots.at(-1);
+    // Seeded from the previous row: entering five lots from one broker means
+    // changing a date and a price, not retyping the brokerage five times.
+    commit([
+      ...adhocLots,
+      {
+        buyDate: last?.buyDate ?? "",
+        shares: last?.shares ?? 0,
+        pricePerShare: last?.pricePerShare ?? 0,
+        isSplitAdjusted: last?.isSplitAdjusted ?? true,
+        brokerageFirm: last?.brokerageFirm ?? "",
+        note: "",
+      },
+    ]);
+  }
+
+  async function handleSave() {
+    setIsSaving(true);
+    setError(undefined);
+    setSaveMessage(undefined);
+
+    const result = await saveAdhocLotsAction({ ticker, lots: adhocLots });
+    setIsSaving(false);
+
+    if (!result.ok) {
+      setError(result.error ?? "Failed to save those lots.");
+      return;
+    }
+    // Both counts are reported. A silent "done" after a second press would leave
+    // no way to tell whether it did nothing or doubled the position.
+    const saved = result.savedCount ?? 0;
+    const skipped = result.skippedCount ?? 0;
+    setSaveMessage(
+      skipped > 0
+        ? `${saved} saved, ${skipped} already recorded.`
+        : `${saved} lot${saved === 1 ? "" : "s"} saved.`,
+    );
+    router.refresh();
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* One row per transaction. Above 1024px each is a single line; below it the
+          fields stack into a labelled two-column form. */}
+      <div className="flex flex-col gap-3">
+        {adhocLots.map((lot, index) => (
+          <div
+            key={index}
+            className="grid items-end gap-2 rounded-lg border border-line p-3 max-lg:grid-cols-2 lg:grid-cols-[auto_auto_auto_auto_1fr_auto_auto]"
+          >
+            <label className="flex flex-col gap-1 text-xs">
+              <span className="text-muted">Date</span>
+              <input
+                type="date"
+                value={lot.buyDate}
+                onChange={(event) => updateRow(index, { buyDate: event.target.value })}
+                className={FIELD_CLASS}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs">
+              <span className="text-muted">Shares</span>
+              <input
+                type="number"
+                step="any"
+                min="0"
+                value={lot.shares}
+                onChange={(event) => updateRow(index, { shares: Number(event.target.value) })}
+                className={`${FIELD_CLASS} lg:w-24`}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs">
+              <span className="text-muted">Price / share</span>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={lot.pricePerShare}
+                onChange={(event) =>
+                  updateRow(index, { pricePerShare: Number(event.target.value) })
+                }
+                className={`${FIELD_CLASS} lg:w-28`}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs">
+              <span className="text-muted">Brokerage</span>
+              <input
+                value={lot.brokerageFirm}
+                onChange={(event) => updateRow(index, { brokerageFirm: event.target.value })}
+                className={`${FIELD_CLASS} lg:w-32`}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs max-lg:col-span-2">
+              <span className="text-muted">Note</span>
+              <input
+                value={lot.note}
+                onChange={(event) => updateRow(index, { note: event.target.value })}
+                className={FIELD_CLASS}
+              />
+            </label>
+            {/* Editable per row, because a set seeded from a broker export arrives
+                flagged adjusted and a hand-added historical row must not be. */}
+            <label
+              className="flex items-center gap-2 text-xs text-muted"
+              title="Off applies every split since the purchase date; on takes the numbers as already restated in today's shares."
+            >
+              <input
+                type="checkbox"
+                checked={lot.isSplitAdjusted}
+                onChange={(event) => updateRow(index, { isSplitAdjusted: event.target.checked })}
+              />
+              <span>Adjusted</span>
+            </label>
+            <Button size="sm" variant="secondary" onClick={() => removeRow(index)}>
+              Remove
+            </Button>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <Button variant="secondary" onClick={addRow}>
+          Add a transaction
+        </Button>
+        <Button onClick={() => void handleSave()} disabled={isSaving}>
+          {isSaving ? "Saving…" : "Save these as my lots"}
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={() =>
+            router.replace(`/modules/stock-etfs/tax-lots?ticker=${encodeURIComponent(ticker)}`)
+          }
+        >
+          Back to saved lots
+        </Button>
+        {saveMessage && <span className="text-sm text-emerald-400">{saveMessage}</span>}
+        {error && <span className="text-sm text-red-400">{error}</span>}
+      </div>
+    </div>
+  );
 }
 
 export function StockTaxLotsSummary({
@@ -434,18 +658,41 @@ export function StockTaxLotsSummary({
   summary,
   hasLivePrice,
   trailingEPS,
+  adhocLots,
+  tickerOptions,
 }: TaxLotsViewProps) {
   const router = useRouter();
   const [isAdding, setIsAdding] = useState(false);
+  const [isPickingTickers, setIsPickingTickers] = useState(false);
+  // Ad-hoc mode changes what this card is: a calculation over passed-in rows
+  // rather than a report on stored ones. The picker and Add are withheld, since
+  // neither acts on the set being analyzed.
+  const isAdhoc = adhocLots !== undefined && adhocLots.length > 0;
 
 
   const trimCandidates = lots.filter((lot) => lot.isTrimCandidate);
 
   return (
     <div className="flex flex-col gap-6">
+      {/* The ad-hoc banner. First thing on the card, because every number below it
+          is a calculation over unsaved input — a reader must never mistake this
+          for their recorded position. */}
+      {isAdhoc && (
+        <div className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-4">
+          <p className="text-sm font-medium text-amber-300">
+            Calculated from {adhocLots.length} transaction
+            {adhocLots.length === 1 ? "" : "s"} — not saved
+          </p>
+          <p className="mt-1 text-xs text-muted">
+            These figures come from the transactions below, not from your recorded tax
+            lots. Edit them freely; nothing is stored until you press Save.
+          </p>
+        </div>
+      )}
+
       {/* Ticker picker and Add. `flex-wrap` so the two sit on one line on a
           desktop and stack on a narrow screen without a viewport query. */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className={`flex flex-wrap items-center gap-3 ${isAdhoc ? "hidden" : ""}`}>
         {tickers.length > 0 && (
           <label className="flex items-center gap-2 text-sm">
             <span className="text-muted">Ticker</span>
@@ -466,6 +713,14 @@ export function StockTaxLotsSummary({
           </label>
         )}
         <Button onClick={() => setIsAdding(true)}>Add a lot</Button>
+        {/* Analyzes several symbols at once from the recorded buys. Withheld when
+            there is no ledger to build from — a picker that opens empty is worse
+            than a button that isn't there. */}
+        {tickerOptions && tickerOptions.length > 0 && (
+          <Button variant="secondary" onClick={() => setIsPickingTickers(true)}>
+            Add by tickers
+          </Button>
+        )}
       </div>
 
       {!summary || lots.length === 0 ? (
@@ -550,8 +805,22 @@ export function StockTaxLotsSummary({
         </>
       )}
 
+      {/* The rows that produced the figures above, editable. Below the summary
+          because the summary is the answer and these are its inputs — the same
+          order the stored screen puts the breakdown table in. */}
+      {isAdhoc && (
+        <AdhocLotEditor ticker={selectedTicker ?? ""} adhocLots={adhocLots} />
+      )}
+
       {isAdding && (
         <LotFormDialog ticker={selectedTicker ?? ""} onClose={() => setIsAdding(false)} />
+      )}
+
+      {isPickingTickers && tickerOptions && (
+        <StockTaxLotsTickerPicker
+          options={tickerOptions}
+          onClose={() => setIsPickingTickers(false)}
+        />
       )}
     </div>
   );
@@ -559,9 +828,10 @@ export function StockTaxLotsSummary({
 
 /** The sortable per-lot breakdown. `DataGrid` gives sorting, CSV export and the
  *  one-card-per-lot compact layout below 1024px for free. */
-export function StockTaxLotsTable({ lots, storedLots }: TaxLotsViewProps) {
+export function StockTaxLotsTable({ lots, storedLots, adhocLots }: TaxLotsViewProps) {
   const router = useRouter();
   const [editing, setEditing] = useState<TaxLot | undefined>(undefined);
+  const isAdhoc = adhocLots !== undefined && adhocLots.length > 0;
 
   async function handleDelete(lot: LotPerformance) {
     if (lot.id === undefined) return;
@@ -571,14 +841,23 @@ export function StockTaxLotsTable({ lots, storedLots }: TaxLotsViewProps) {
     else window.alert(result.error);
   }
 
-  const columns = buildLotColumns(storedLots, setEditing, handleDelete);
+  const columns = buildLotColumns(storedLots, setEditing, handleDelete, isAdhoc);
 
   return (
     <>
       <DataGrid
         columns={columns}
         rows={lots}
-        getRowKey={(lot) => String(lot.id ?? `${lot.buyDate}-${lot.adjustedShares}`)}
+        // Ad-hoc lots all carry id 0, so the stored id would collide across every
+        // row. Keyed on the fields instead — and on cost per share as well as
+        // shares, since two same-day buys of the same size at different prices are
+        // ordinary and must not collapse into one row. `DataGrid` re-sorts, so a
+        // positional key would follow the wrong row after a sort anyway.
+        getRowKey={(lot) =>
+          isAdhoc
+            ? `${lot.buyDate}-${lot.adjustedShares}-${lot.adjustedCostPerShare}`
+            : String(lot.id ?? `${lot.buyDate}-${lot.adjustedShares}`)
+        }
         emptyMessage="No lots recorded for this ticker."
       />
       {editing && (
