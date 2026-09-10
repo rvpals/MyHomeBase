@@ -1,7 +1,5 @@
 "use server";
 
-import { cookies } from "next/headers";
-import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import {
   advanceQueue,
   clearQueue,
@@ -23,6 +21,10 @@ import {
   type PlayQueue,
 } from "@/lib/music";
 import { deps } from "@/lib/wiring";
+import { requireModuleAccess } from "../../require-access";
+
+/** The module these actions belong to, matched exactly by `requireModuleAccess`. */
+const ACCESS_MODULE_SLUG = "music-library";
 
 // Server actions for the play queue. Its own file rather than more of music-actions.ts,
 // which is already long and covers a different concern.
@@ -30,13 +32,6 @@ import { deps } from "@/lib/wiring";
 // Thin by the same rule as every other adapter here: parse with a lib schema, call a lib
 // use-case, return what it returned. Every one of these hands back the whole PlayQueue,
 // because the caller is a screen that must now render it -- see queue-use-cases.ts.
-
-async function requireUser() {
-  const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
-  const currentUser = getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo);
-  if (!currentUser) throw new Error("Not signed in.");
-  return currentUser;
-}
 
 /**
  * A serialisable view of the queue.
@@ -98,7 +93,7 @@ function toViewModel(queue: PlayQueue): QueueViewModel {
 }
 
 export async function getQueueAction(): Promise<QueueViewModel> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   return toViewModel(getPlayQueue(deps));
 }
 
@@ -106,19 +101,19 @@ export async function setQueueAction(input: {
   trackIds: number[];
   startIndex?: number;
 }): Promise<QueueViewModel> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   return toViewModel(setQueue(setQueueSchema.parse(input), deps));
 }
 
 export async function enqueueTracksAction(input: {
   trackIds: number[];
 }): Promise<QueueViewModel> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   return toViewModel(enqueueTracks(enqueueSchema.parse(input), deps));
 }
 
 export async function playQueueEntryAction(entryId: number): Promise<QueueViewModel> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   return toViewModel(playQueueEntry({ entryId: queueEntryIdSchema.parse(entryId) }, deps));
 }
 
@@ -132,7 +127,7 @@ export async function advanceQueueAction(isManual: boolean): Promise<{
   queue: QueueViewModel;
   playingEntryId?: number;
 }> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const result = advanceQueue({ isManual }, deps);
   return {
     queue: toViewModel(result.queue),
@@ -144,23 +139,23 @@ export async function rewindQueueAction(): Promise<{
   queue: QueueViewModel;
   playingEntryId?: number;
 }> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const result = rewindQueue(deps);
   return { queue: toViewModel(result.queue), playingEntryId: result.playing?.entry.id };
 }
 
 export async function shuffleQueueAction(): Promise<QueueViewModel> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   return toViewModel(shuffleQueue(deps));
 }
 
 export async function removeQueueEntryAction(entryId: number): Promise<QueueViewModel> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   return toViewModel(removeQueueEntry({ entryId: queueEntryIdSchema.parse(entryId) }, deps));
 }
 
 export async function clearQueueAction(): Promise<QueueViewModel> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   return toViewModel(clearQueue(deps));
 }
 
@@ -171,18 +166,18 @@ export async function clearQueueAction(): Promise<QueueViewModel> {
  * there when you come back. See `closeQueue`.
  */
 export async function closeQueueAction(): Promise<QueueViewModel> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   return toViewModel(closeQueue(deps));
 }
 
 export async function setRepeatModeAction(repeatMode: string): Promise<QueueViewModel> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   return toViewModel(setRepeatMode({ repeatMode: repeatModeSchema.parse(repeatMode) }, deps));
 }
 
 export async function reorderQueueAction(input: {
   orderedEntryIds: number[];
 }): Promise<QueueViewModel> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   return toViewModel(reorderQueue(reorderQueueSchema.parse(input), deps));
 }

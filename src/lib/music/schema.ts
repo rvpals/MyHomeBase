@@ -48,7 +48,9 @@ export const musicSettingsSchema = z.object({
   // Defaulted for the same reason as `autoFetchLyrics`: the configuration form does
   // not own this one -- the player screen sets it -- so a save from that form must not
   // be required to carry it.
-  visualizerMode: z.enum(["bars", "wave"]).default("bars"),
+  visualizerMode: z
+    .enum(["bars", "fire", "wave", "circular", "galaxy"])
+    .default("bars"),
 });
 export type MusicSettingsInput = z.infer<typeof musicSettingsSchema>;
 
@@ -81,6 +83,19 @@ export type FetchLyricsInput = z.infer<typeof fetchLyricsSchema>;
  */
 export const fetchStorySchema = z.object({ trackId: trackIdSchema });
 export type FetchStoryInput = z.infer<typeof fetchStorySchema>;
+
+/**
+ * Asking for the YouTube video for a track.
+ *
+ * Has a `force`, like lyrics and unlike story: the pick IS cached
+ * (`mus_track_video`), so Refresh needs a way to bypass a cached hit and replace a
+ * wrong video. A cached *miss* is retried without it.
+ */
+export const fetchVideoSchema = z.object({
+  trackId: trackIdSchema,
+  force: z.boolean().default(false),
+});
+export type FetchVideoInput = z.infer<typeof fetchVideoSchema>;
 
 /** Which of the eight Library views a request is for. */
 export const libraryViewSchema = z.enum(LIBRARY_VIEWS);

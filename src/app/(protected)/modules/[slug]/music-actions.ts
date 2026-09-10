@@ -20,6 +20,9 @@ import {
   fetchStorySchema,
   fetchTrackLyrics,
   fetchTrackStory,
+  fetchTrackVideo,
+  fetchVideoSchema,
+  readCachedVideo,
   libraryViewSchema,
   playlistIdSchema,
   playlistWriteSchema,
@@ -43,6 +46,10 @@ import {
   type VisualizerMode,
 } from "@/lib/music";
 import { deps } from "@/lib/wiring";
+import { requireModuleAccess } from "../../require-access";
+
+/** The module these actions belong to, matched exactly by `requireModuleAccess`. */
+const ACCESS_MODULE_SLUG = "music-library";
 
 // Server actions for the Music Library. Thin on purpose: validate at the boundary,
 // call a use-case, return data. Nothing here decides anything -- the decisions live in
@@ -94,6 +101,20 @@ export interface LyricsActionResult {
   message?: string;
 }
 
+export interface VideoActionResult {
+  status: "found" | "not_found" | "failed" | "unsearchable";
+  /** The 11-character YouTube id. Present only when status is `found`. */
+  videoId?: string;
+  /** The title as YouTube reported it, so landing on the wrong song is visible. */
+  videoTitle?: string;
+  channel?: string;
+  /** A YouTube search to run by hand when we would not pick a video. */
+  searchUrl?: string;
+  /** True when this came from `mus_track_video` rather than a fresh scrape. */
+  fromCache?: boolean;
+  message?: string;
+}
+
 /**
  * Fetches lyrics for a track, or returns the cached answer.
  *
@@ -105,7 +126,7 @@ export async function fetchLyricsAction(input: {
   trackId: number;
   force?: boolean;
 }): Promise<LyricsActionResult> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const parsed = fetchLyricsSchema.parse(input);
 
   const outcome = await fetchTrackLyrics(
@@ -133,7 +154,7 @@ export async function fetchLyricsAction(input: {
  * the rest of that payload.
  */
 export async function getAutoFetchLyricsAction(): Promise<boolean> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   return readMusicSettings().autoFetchLyrics;
 }
 
@@ -145,7 +166,7 @@ export async function getAutoFetchLyricsAction(): Promise<boolean> {
  * track in the library, which is a wasteful thing to do to answer "bars or wave".
  */
 export async function getVisualizerModeAction(): Promise<VisualizerMode> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   return readMusicSettings().visualizerMode;
 }
 
@@ -159,7 +180,7 @@ export async function getVisualizerModeAction(): Promise<VisualizerMode> {
 export async function setVisualizerModeAction(
   mode: VisualizerMode,
 ): Promise<{ ok: true } | { error: string }> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   if (!isVisualizerMode(mode)) return { error: "That is not a visualizer mode." };
 
   const musicModule = getModuleBySlug(deps.moduleRepo, MUSIC_LIBRARY_SLUG);
@@ -173,7 +194,7 @@ export async function setVisualizerModeAction(
 }
 
 export async function getLyricsAction(trackId: number): Promise<LyricsActionResult | undefined> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const cached = getCachedLyrics(deps.musicRepo, trackId);
   return cached === undefined ? undefined : toResult(cached);
 }
@@ -185,7 +206,7 @@ export async function getLyricsAction(trackId: number): Promise<LyricsActionResu
  * table behind this and no `force` to pass. The player calls it once per track.
  */
 export async function fetchStoryAction(input: { trackId: number }): Promise<StoryActionResult> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const parsed = fetchStorySchema.parse(input);
 
   const outcome = await fetchTrackStory(
@@ -228,6 +249,106 @@ export async function fetchStoryAction(input: { trackId: number }): Promise<Stor
   };
 }
 
+/**
+ * The YouTube video for a track.
+ *
+ * Cached in `mus_track_video`, so the common case makes no request at all. Fetched
+ * only when the listener presses "Find video" -- never automatically, because a scrape
+ * of a free service for a video nobody asked to watch is not a request worth making.
+ *
+ * `force` is the Refresh path and bypasses a cached hit. A cached *miss* is retried
+ * without it: no miss here is ever permanent.
+ */
+export async function fetchVideoAction(input: {
+  trackId: number;
+  force?: boolean;
+}): Promise<VideoActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  const parsed = fetchVideoSchema.parse(input);
+
+  const outcome = await fetchTrackVideo(
+    { musicRepo: deps.musicRepo, videoClient: deps.videoClient },
+    parsed.trackId,
+    parsed.force,
+  );
+
+  if (outcome.kind === "found") {
+    return {
+      status: "found",
+      videoId: outcome.video.videoId,
+      videoTitle: outcome.video.videoTitle,
+      channel: outcome.video.channel,
+      searchUrl: outcome.searchUrl,
+      fromCache: outcome.fromCache,
+    };
+  }
+
+  if (outcome.kind === "not-found") {
+    return {
+      status: "not_found",
+      searchUrl: outcome.searchUrl,
+      message: "No video found for this song on YouTube.",
+    };
+  }
+
+  if (outcome.kind === "unsearchable") {
+    return { status: "unsearchable", message: outcome.reason };
+  }
+
+  if (outcome.kind === "no-such-track") {
+    return { status: "failed", message: "That track is no longer in the library." };
+  }
+
+  return {
+    status: "failed",
+    searchUrl: outcome.searchUrl,
+    message: "Could not reach YouTube. Try again in a moment.",
+  };
+}
+
+/**
+ * The cached video for a track, without going near the network.
+ *
+ * What the Video tab calls on mount: a track already looked up shows its video
+ * straight away, and the button reads "Refresh" instead of "Find video".
+ */
+export async function getVideoAction(trackId: number): Promise<VideoActionResult | undefined> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  const parsedId = trackIdSchema.parse(trackId);
+
+  const outcome = readCachedVideo({ musicRepo: deps.musicRepo }, parsedId);
+  if (outcome === undefined) return undefined;
+
+  if (outcome.kind === "found") {
+    return {
+      status: "found",
+      videoId: outcome.video.videoId,
+      videoTitle: outcome.video.videoTitle,
+      channel: outcome.video.channel,
+      searchUrl: outcome.searchUrl,
+      fromCache: true,
+    };
+  }
+
+  if (outcome.kind === "not-found") {
+    return {
+      status: "not_found",
+      searchUrl: outcome.searchUrl,
+      message: "No video found for this song on YouTube.",
+    };
+  }
+
+  if (outcome.kind === "failed") {
+    return {
+      status: "failed",
+      searchUrl: outcome.searchUrl,
+      message: "The last search could not reach YouTube.",
+    };
+  }
+
+  return undefined;
+}
+
 /** A page of tracks for the library screen. */
 export async function searchTracksAction(input: {
   search?: string;
@@ -236,7 +357,7 @@ export async function searchTracksAction(input: {
   limit?: number;
   offset?: number;
 }) {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const { tracks, totalCount } = searchLibraryTracks(deps.musicRepo, input);
   return { tracks, totalCount };
 }
@@ -276,6 +397,7 @@ function toResult(lyrics: TrackLyrics): LyricsActionResult {
 
 /** Re-renders the module's pages after something changed. */
 export async function revalidateMusicAction() {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   revalidatePath("/modules/music-library");
 }
 
@@ -295,7 +417,7 @@ export async function startScanAction(input: {
   folder?: string;
   extensions?: string[];
 }): Promise<{ scanRunId: number } | { error: string }> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
 
   const existing = deps.musicRepo.getActiveScanRun();
   if (existing !== undefined && !isScanRunStale(existing, new Date())) {
@@ -390,7 +512,7 @@ export interface ScanStatusView {
 
 /** The current (or a specific) scan's progress, for polling. */
 export async function getScanStatusAction(scanRunId?: number): Promise<ScanStatusView | undefined> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   // Reconcile first: a scan killed with its process left a 'running' row that would
   // otherwise win getActiveScanRun() forever and show as frozen.
   deps.musicRepo.failAbandonedScanRuns();
@@ -421,7 +543,7 @@ export async function getScanStatusAction(scanRunId?: number): Promise<ScanStatu
 
 /** The last few scans, so the screen can show history rather than only "now". */
 export async function listRecentScansAction(limit = 5): Promise<ScanStatusView[]> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   deps.musicRepo.failAbandonedScanRuns();
   return deps.musicRepo.listRecentScanRuns(limit).map((run) => ({
     id: run.id,
@@ -446,7 +568,7 @@ export async function listRecentScansAction(limit = 5): Promise<ScanStatusView[]
 export async function listFoldersAction(
   folder: string,
 ): Promise<{ available: boolean; folders: { name: string; relativePath: string; hasChildren: boolean }[] }> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const parsed = musicFolderSchema.safeParse(folder);
   if (!parsed.success) return { available: true, folders: [] };
   return listMusicFolders(deps.musicFileStore, parsed.data);
@@ -461,7 +583,7 @@ export async function getMusicSettingsAction(): Promise<{
   musicRootConfigured: boolean;
   trackCount: number;
 }> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const settings = readMusicSettings();
   return {
     scanExtensions: settings.scanExtensions,
@@ -477,7 +599,7 @@ export async function saveMusicSettingsAction(input: {
   skipUnstreamable: boolean;
   autoFetchLyrics?: boolean;
 }): Promise<{ ok: true } | { error: string }> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   // The visualizer mode is carried through from what is stored, not taken from the
   // form: this screen has no control for it (the player screen does), and
   // `musicSettingsToEntries` writes every key -- so omitting it here would silently
@@ -504,18 +626,18 @@ export async function saveMusicSettingsAction(input: {
 // --- browse views (the Library section's eight tabs) ---------------------------
 
 export async function listArtistsAction(input: { search?: string; limit?: number; offset?: number }) {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const page = browsePageSchema.parse(input);
   return deps.musicRepo.listArtists(page);
 }
 
 export async function listGenresAction() {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   return deps.musicRepo.listGenres();
 }
 
 export async function listYearsAction() {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   return deps.musicRepo.listYears();
 }
 
@@ -524,14 +646,14 @@ export async function listFoldersFlatAction(input: {
   limit?: number;
   offset?: number;
 }) {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const page = browsePageSchema.parse(input);
   return deps.musicRepo.listTrackFolders(page);
 }
 
 /** One level of the folder tree. Reads the catalog, so it works with the NAS asleep. */
 export async function listFolderTreeAction(folder: string) {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const parsed = musicFolderSchema.safeParse(folder);
   if (!parsed.success) return [];
   return deps.musicRepo.listFolderChildren(parsed.data);
@@ -550,7 +672,7 @@ export async function listGroupTracksAction(input: {
   limit?: number;
   offset?: number;
 }) {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const view = libraryViewSchema.parse(input.view);
   const page = browsePageSchema.parse({ limit: input.limit, offset: input.offset });
 
@@ -573,7 +695,7 @@ export async function listGroupTracksAction(input: {
 // --- most played ---------------------------------------------------------------
 
 export async function listMostPlayedAction(input: { limit?: number; offset?: number }) {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const page = browsePageSchema.parse(input);
   return deps.musicRepo.listMostPlayed(page);
 }
@@ -586,6 +708,7 @@ export async function listMostPlayedAction(input: { limit?: number; offset?: num
  * definition of a play -- see migrations/0056 for what that does and does not measure.
  */
 export async function recordPlayAction(trackId: number): Promise<void> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const currentUser = await requireUser();
     deps.musicRepo.recordPlay(trackIdSchema.parse(trackId), currentUser.id);
@@ -597,12 +720,12 @@ export async function recordPlayAction(trackId: number): Promise<void> {
 // --- playlists ------------------------------------------------------------------
 
 export async function listPlaylistsAction() {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   return deps.musicRepo.listPlaylists();
 }
 
 export async function getPlaylistTracksAction(playlistId: number) {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const id = playlistIdSchema.parse(playlistId);
   return {
     playlist: deps.musicRepo.getPlaylist(id),
@@ -614,7 +737,7 @@ export async function createPlaylistAction(input: {
   name: string;
   description?: string;
 }): Promise<{ id: number } | { error: string }> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const parsed = playlistWriteSchema.safeParse(input);
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "That playlist is not valid." };
@@ -635,7 +758,7 @@ export async function renamePlaylistAction(input: {
   name: string;
   description?: string;
 }): Promise<{ ok: true } | { error: string }> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const id = playlistIdSchema.parse(input.playlistId);
   const parsed = playlistWriteSchema.safeParse(input);
   if (!parsed.success) {
@@ -651,7 +774,7 @@ export async function renamePlaylistAction(input: {
 }
 
 export async function deletePlaylistAction(playlistId: number): Promise<{ ok: true }> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   // Deletes the list only. No track row and no music file is touched.
   deps.musicRepo.deletePlaylist(playlistIdSchema.parse(playlistId));
   revalidatePath("/modules/music-library");
@@ -662,7 +785,7 @@ export async function addToPlaylistAction(input: {
   playlistId: number;
   trackIds: number[];
 }): Promise<{ ok: true; added: number } | { error: string }> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const parsed = addToPlaylistSchema.safeParse(input);
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Nothing to add." };
@@ -673,7 +796,7 @@ export async function addToPlaylistAction(input: {
 }
 
 export async function removeFromPlaylistAction(playlistTrackId: number): Promise<{ ok: true }> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   // Removes ONE entry, not every copy of the track -- a playlist may hold it twice.
   deps.musicRepo.removePlaylistEntry(playlistIdSchema.parse(playlistTrackId));
   revalidatePath("/modules/music-library");
@@ -684,7 +807,7 @@ export async function reorderPlaylistAction(input: {
   playlistId: number;
   orderedPlaylistTrackIds: number[];
 }): Promise<{ ok: true }> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const parsed = reorderPlaylistSchema.parse(input);
   deps.musicRepo.reorderPlaylist(parsed.playlistId, parsed.orderedPlaylistTrackIds);
   return { ok: true };
@@ -706,8 +829,9 @@ export interface MusicTextureResult {
 
 /** Replaces the module's background picture. */
 export async function saveMusicTextureImageAction(formData: FormData): Promise<MusicTextureResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
-    await requireUser();
+    await requireModuleAccess(ACCESS_MODULE_SLUG);
     const file = formData.get("image");
     if (!(file instanceof File)) return { ok: false, error: "No image was received." };
 
@@ -731,8 +855,9 @@ export async function saveMusicTextureImageAction(formData: FormData): Promise<M
 
 /** Clears the picture, returning the module to the theme's flat paper. */
 export async function removeMusicTextureImageAction(): Promise<MusicTextureResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
-    await requireUser();
+    await requireModuleAccess(ACCESS_MODULE_SLUG);
     removeModuleTextureImage(deps.moduleTextureRepo, MUSIC_LIBRARY_SLUG);
     revalidatePath("/modules/music-library", "layout");
     return { ok: true };
@@ -748,8 +873,9 @@ export async function removeMusicTextureImageAction(): Promise<MusicTextureResul
 export async function saveMusicTextureSettingsAction(
   input: ModuleTextureSettings,
 ): Promise<MusicTextureResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
-    await requireUser();
+    await requireModuleAccess(ACCESS_MODULE_SLUG);
     saveModuleTextureSettings(deps.moduleTextureRepo, MUSIC_LIBRARY_SLUG, input);
     revalidatePath("/modules/music-library", "layout");
     return { ok: true };
@@ -769,7 +895,7 @@ export async function getMusicTextureAction(): Promise<{
   mode: ModuleTextureMode;
   blur: number;
 }> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const texture = getModuleTexture(deps.moduleTextureRepo, MUSIC_LIBRARY_SLUG);
   return {
     hasImage: texture.hasImage,

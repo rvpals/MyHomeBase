@@ -9,6 +9,8 @@ import type {
 import { MUSIC_FORMATS, type MusicExtension } from "./formats";
 import type { LyricsStatus, TrackLyrics } from "./lyrics";
 import type { MusicRepository } from "./ports";
+import type { TrackVideo } from "./video";
+import type { VideoStatus } from "@/lib/youtube";
 import { isRepeatMode, type QueueEntry, type QueueState, type RepeatMode } from "./queue";
 import type {
   Album,
@@ -90,6 +92,19 @@ interface LyricsRow {
   track_id: number;
   status: string;
   lyrics: string;
+  source: string;
+  search_artist: string;
+  search_title: string;
+  fetched_at: string;
+}
+
+interface VideoRow {
+  track_id: number;
+  status: string;
+  video_id: string;
+  video_title: string;
+  channel: string;
+  duration_seconds: number | null;
   source: string;
   search_artist: string;
   search_title: string;
@@ -188,6 +203,23 @@ function toLyrics(row: LyricsRow): TrackLyrics {
     trackId: row.track_id,
     status: row.status as LyricsStatus,
     lyrics: row.lyrics,
+    source: row.source,
+    searchArtist: row.search_artist,
+    searchTitle: row.search_title,
+    fetchedAt: row.fetched_at,
+  };
+}
+
+function toVideo(row: VideoRow): TrackVideo {
+  return {
+    trackId: row.track_id,
+    status: row.status as VideoStatus,
+    videoId: row.video_id,
+    videoTitle: row.video_title,
+    channel: row.channel,
+    // NULL is a live stream with no length, which must stay undefined rather than
+    // becoming a 0 that ranking would read as a real duration.
+    durationSeconds: row.duration_seconds ?? undefined,
     source: row.source,
     searchArtist: row.search_artist,
     searchTitle: row.search_title,
@@ -1136,6 +1168,56 @@ export class SqliteMusicRepository implements MusicRepository {
         source: lyrics.source,
         searchArtist: lyrics.searchArtist,
         searchTitle: lyrics.searchTitle,
+      });
+  }
+
+  // --- video ---
+
+  getTrackVideo(trackId: number): TrackVideo | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT track_id, status, video_id, video_title, channel, duration_seconds,
+                source, search_artist, search_title, fetched_at
+         FROM mus_track_video WHERE track_id = ?`,
+      )
+      .get(trackId) as VideoRow | undefined;
+    return row === undefined ? undefined : toVideo(row);
+  }
+
+  saveTrackVideo(video: Omit<TrackVideo, "fetchedAt">): void {
+    // Replaces rather than accumulates, as with lyrics: there is no pick history worth
+    // keeping, and the unique index on track_id makes that explicit rather than
+    // relying on the caller to delete first.
+    this.db
+      .prepare(
+        `INSERT INTO mus_track_video
+           (track_id, status, video_id, video_title, channel, duration_seconds,
+            source, search_artist, search_title, fetched_at)
+         VALUES (@trackId, @status, @videoId, @videoTitle, @channel, @durationSeconds,
+                 @source, @searchArtist, @searchTitle, datetime('now'))
+         ON CONFLICT (track_id) DO UPDATE SET
+           status = excluded.status,
+           video_id = excluded.video_id,
+           video_title = excluded.video_title,
+           channel = excluded.channel,
+           duration_seconds = excluded.duration_seconds,
+           source = excluded.source,
+           search_artist = excluded.search_artist,
+           search_title = excluded.search_title,
+           fetched_at = excluded.fetched_at`,
+      )
+      .run({
+        trackId: video.trackId,
+        status: video.status,
+        videoId: video.videoId,
+        videoTitle: video.videoTitle,
+        channel: video.channel,
+        // better-sqlite3 will not bind undefined; NULL is the honest value for a live
+        // stream, which genuinely has no length.
+        durationSeconds: video.durationSeconds ?? null,
+        source: video.source,
+        searchArtist: video.searchArtist,
+        searchTitle: video.searchTitle,
       });
   }
 

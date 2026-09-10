@@ -118,6 +118,42 @@ describe("musicSettingsToEntries", () => {
     expect(restored.visualizerMode).toBe("wave");
   });
 
+  it("round-trips every visualizer mode", () => {
+    for (const mode of ["bars", "fire", "wave", "circular", "galaxy"] as const) {
+      const restored = resolveMusicSettings(
+        musicSettingsToEntries({
+          scanExtensions: ["mp3"],
+          skipUnstreamable: true,
+          autoFetchLyrics: false,
+          visualizerMode: mode,
+        }).map((entry, index) => ({
+          id: index + 1,
+          moduleId: 7,
+          key: entry.key,
+          value: entry.value,
+        })),
+      );
+      expect(restored.visualizerMode).toBe(mode);
+    }
+  });
+
+  it("round-trips the fire mode", () => {
+    const restored = resolveMusicSettings(
+      musicSettingsToEntries({
+        scanExtensions: ["mp3"],
+        skipUnstreamable: true,
+        autoFetchLyrics: false,
+        visualizerMode: "fire",
+      }).map((entry, index) => ({
+        id: index + 1,
+        moduleId: 7,
+        key: entry.key,
+        value: entry.value,
+      })),
+    );
+    expect(restored.visualizerMode).toBe("fire");
+  });
+
   it("never writes a blank value, which the settings schema rejects", () => {
     for (const entry of musicSettingsToEntries({
       scanExtensions: [],

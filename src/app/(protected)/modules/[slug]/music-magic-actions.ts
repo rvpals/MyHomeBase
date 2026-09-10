@@ -1,8 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { cookies } from "next/headers";
-import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import type { Track } from "@/lib/music";
 import {
   countMagicCandidates,
@@ -24,19 +22,16 @@ import {
   type MagicListSummary,
 } from "@/lib/music-magic";
 import { deps } from "@/lib/wiring";
+import { requireModuleAccess } from "../../require-access";
+
+/** The module these actions belong to, matched exactly by `requireModuleAccess`. */
+const ACCESS_MODULE_SLUG = "music-library";
 
 // Server actions for Magic Playlists. Thin on purpose: validate at the boundary, call a
 // use-case, return data. Nothing here decides anything -- the decisions live in
 // src/lib/music-magic.
 
 const MUSIC_LIBRARY_PATH = "/modules/music-library/magic";
-
-async function requireUser() {
-  const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
-  const currentUser = getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo);
-  if (!currentUser) throw new Error("Not signed in.");
-  return currentUser;
-}
 
 /**
  * The dependency bundle the use-cases take.
@@ -89,7 +84,7 @@ export interface MagicGenerationResult {
 
 /** The options the three flat criteria pickers offer. */
 export async function listMagicOptionsAction() {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   return listMagicPickerOptions(magicDeps());
 }
 
@@ -103,13 +98,13 @@ export async function listMagicOptionsAction() {
 export async function listMagicFolderOptionsAction(
   parentPath: string,
 ): Promise<MagicFolderOption[]> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   return listMagicFolderOptions(magicDeps(), parentPath);
 }
 
 /** Generates a playlist from criteria, saving nothing. */
 export async function generateMagicAction(criteria: unknown): Promise<MagicGenerationResult> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const generated = generateMagicPlaylist(magicDeps(), criteria);
   return {
     tracks: generated.tracks.map(toPlaylistTrack),
@@ -120,12 +115,12 @@ export async function generateMagicAction(criteria: unknown): Promise<MagicGener
 
 /** How many tracks the current criteria match, for the form's live count. */
 export async function countMagicCandidatesAction(criteria: unknown): Promise<number> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   return countMagicCandidates(magicDeps(), criteria);
 }
 
 export async function listMagicListsAction(): Promise<MagicListSummary[]> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   return listMagicLists(magicDeps());
 }
 
@@ -145,7 +140,7 @@ export async function saveMagicListAction(input: {
   description?: string;
   criteria: unknown;
 }): Promise<SavedMagicListResult | { error: string }> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const result = saveMagicList(magicDeps(), input);
   if (!result.ok) return { error: describeMagicFailure(result.failure) };
 
@@ -169,7 +164,7 @@ export async function updateMagicListAction(input: {
   description?: string;
   criteria: unknown;
 }): Promise<{ ok: true } | { error: string }> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const result = updateMagicList(magicDeps(), input);
   if (!result.ok) return { error: describeMagicFailure(result.failure) };
   revalidatePath(MUSIC_LIBRARY_PATH);
@@ -180,7 +175,7 @@ export async function updateMagicListAction(input: {
 export async function loadMagicListAction(
   magicListId: number,
 ): Promise<SavedMagicListResult | { error: string }> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const result = loadMagicList(magicDeps(), magicListId);
   if (!result.ok) return { error: describeMagicFailure(result.failure) };
 
@@ -198,7 +193,7 @@ export async function loadMagicListAction(
 export async function regenerateMagicListAction(
   magicListId: number,
 ): Promise<SavedMagicListResult | { error: string }> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const result = regenerateMagicList(magicDeps(), magicListId);
   if (!result.ok) return { error: describeMagicFailure(result.failure) };
 
@@ -219,7 +214,7 @@ export async function regenerateMagicListAction(
 export async function deleteMagicListAction(
   magicListId: number,
 ): Promise<{ ok: true } | { error: string }> {
-  await requireUser();
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const result = deleteMagicList(magicDeps(), magicListId);
   if (!result.ok) return { error: describeMagicFailure(result.failure) };
   revalidatePath(MUSIC_LIBRARY_PATH);

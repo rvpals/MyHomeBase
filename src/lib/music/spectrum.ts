@@ -9,16 +9,89 @@
 // Both functions return values in 0..1 with the caller's requested length, so a canvas
 // can multiply by its own height and know nothing about FFT bin counts.
 
-/** How a visualizer reads the analyser. Mirrors `SpectrumKind` in the player provider. */
-export type VisualizerMode = "bars" | "wave";
+/**
+ * How a visualizer reads the analyser. Mirrors `SpectrumKind` in the player provider.
+ *
+ * `bars` and `fire` are the same arithmetic drawn at different widths -- see
+ * `BAR_STYLES` -- while `wave` is the only one that reads the time domain.
+ */
+export type VisualizerMode = "bars" | "fire" | "wave" | "circular" | "galaxy";
+
+/** The modes, in the order a picker should list them. */
+export const VISUALIZER_MODES: readonly VisualizerMode[] = [
+  "bars",
+  "fire",
+  "wave",
+  "circular",
+  "galaxy",
+];
 
 /** The mode used when nothing is stored, or when a stored value is unrecognised. */
 export const DEFAULT_VISUALIZER_MODE: VisualizerMode = "bars";
 
 /** Narrows an arbitrary string to a mode, for reading a settings row back. */
 export function isVisualizerMode(value: string): value is VisualizerMode {
-  return value === "bars" || value === "wave";
+  return (VISUALIZER_MODES as readonly string[]).includes(value);
 }
+
+/**
+ * The modes that only make sense filling a screen.
+ *
+ * A circle and an orbiting particle field both need height as much as width, and the
+ * inline visualizer is a 64px strip (40px on a phone) -- squashed into that, a circle
+ * is an ellipse and a galaxy is a smear. Rather than resize the player's layout around
+ * the mode, these two render only in the fullscreen view, and the strip falls back to
+ * `INLINE_FALLBACK_MODE` while one of them is selected.
+ */
+export const FULLSCREEN_ONLY_MODES: readonly VisualizerMode[] = ["circular", "galaxy"];
+
+/** What the inline strip draws when the chosen mode cannot render there. */
+export const INLINE_FALLBACK_MODE: VisualizerMode = "bars";
+
+/** Whether `mode` can be drawn in the short inline strip. */
+export function isInlineMode(mode: VisualizerMode): boolean {
+  return !FULLSCREEN_ONLY_MODES.includes(mode);
+}
+
+/**
+ * The mode the inline strip should actually draw, given the chosen one.
+ *
+ * Returning a drawable mode rather than "nothing" is deliberate: a strip that empties
+ * itself when you pick `galaxy` reads as a bug, and the player still wants *something*
+ * moving next to the transport.
+ */
+export function inlineModeFor(mode: VisualizerMode): VisualizerMode {
+  return isInlineMode(mode) ? mode : INLINE_FALLBACK_MODE;
+}
+
+/** Which time-domain / frequency reading a mode needs from the analyser. */
+export function spectrumKindFor(mode: VisualizerMode): "frequency" | "waveform" {
+  return mode === "wave" ? "waveform" : "frequency";
+}
+
+/**
+ * How a bar-drawing mode lays its bars out.
+ *
+ * Here rather than in the canvas because it is the entire difference between `bars`
+ * and `fire`: same buckets, same draw call, different geometry. Keeping the numbers
+ * beside the mode they belong to means adding a third bar style is a row in this
+ * record, not another branch in a draw function.
+ *
+ * `widthFraction` is the share of each bar's slot that the bar itself fills; the
+ * remainder is the gap. Wide bars with a hairline gap read as a chart, narrow bars
+ * with a wide gap read as flame.
+ */
+export interface BarStyle {
+  /** Bars across the full width. */
+  count: number;
+  /** 0..1 -- how much of its slot each bar fills. */
+  widthFraction: number;
+}
+
+export const BAR_STYLES: Record<"bars" | "fire", BarStyle> = {
+  bars: { count: 48, widthFraction: 0.7 },
+  fire: { count: 96, widthFraction: 0.4 },
+};
 
 /**
  * Buckets frequency magnitudes into `barCount` bars, each 0..1.
@@ -126,6 +199,95 @@ export function waveformPoints(samples: Uint8Array, width: number): number[] {
   }
 
   return points;
+}
+
+/**
+ * The average level across a slice of the spectrum, 0..1.
+ *
+ * `from`/`to` are fractions of the *usable* range, so `energyBand(bytes, 0, 0.1)` is
+ * "the bottom tenth" -- roughly the bass -- without a caller needing to know the FFT
+ * size. Both visualizers below drive their motion from this rather than from a single
+ * bin, because one bin is noisy enough to make a ring jitter.
+ */
+export function energyBand(frequencies: Uint8Array, from: number, to: number): number {
+  if (frequencies.length === 0) return 0;
+
+  const usable = Math.max(1, Math.floor(frequencies.length * 0.6));
+  const start = clampIndex(Math.floor(usable * clampUnit(from)), usable);
+  const end = Math.max(clampIndex(Math.ceil(usable * clampUnit(to)), usable), start + 1);
+
+  let total = 0;
+  for (let bin = start; bin < end; bin += 1) total += frequencies[bin] ?? 0;
+
+  return clampUnit(total / (end - start) / 255);
+}
+
+/** One particle's fixed place in the galaxy -- the part that never changes. */
+export interface GalaxyParticle {
+  /** 0..1 of the maximum radius. */
+  orbit: number;
+  /** Starting angle, radians. */
+  phase: number;
+  /** Relative angular speed. Inner particles orbit faster, as in a real disc. */
+  speed: number;
+  /** 0..1, so a field does not look stamped from one dot. */
+  size: number;
+}
+
+/**
+ * Builds the galaxy's particle field.
+ *
+ * Deterministic from `seed` rather than `Math.random()`: a fixed field can be built
+ * once and reused every frame, and a test can assert on it. The alternative -- random
+ * per mount -- would also mean the layout changed every time you opened the view,
+ * which reads as instability rather than as variety.
+ *
+ * `sqrt` on the orbit spreads particles evenly over the *disc's area*; a linear radius
+ * would crowd them all into the middle, because a ring's circumference grows with r.
+ */
+export function galaxyParticles(count: number, seed = 1): GalaxyParticle[] {
+  const particles: GalaxyParticle[] = [];
+  let state = seed;
+
+  // A small LCG. Not a good random number generator, and it does not need to be --
+  // it needs to be the same sequence every time and cheap.
+  const next = (): number => {
+    state = (state * 1664525 + 1013904223) % 4294967296;
+    return state / 4294967296;
+  };
+
+  for (let index = 0; index < Math.max(0, count); index += 1) {
+    const orbit = Math.sqrt(next());
+    particles.push({
+      orbit,
+      phase: next() * Math.PI * 2,
+      // Keplerian-ish: closer in, faster round. Floored so the outermost still drifts.
+      speed: 0.35 + (1 - orbit) * 0.9,
+      size: 0.4 + next() * 0.6,
+    });
+  }
+
+  return particles;
+}
+
+/**
+ * Where a particle sits at a given moment, in unit coordinates centred on 0.
+ *
+ * `bass` pushes the whole field outward -- the ring breathes with the low end, which
+ * is the part of a track a listener already feels. Returned as -1..1 so the caller
+ * multiplies by its own radius and this stays free of canvas dimensions.
+ */
+export function galaxyPosition(
+  particle: GalaxyParticle,
+  elapsedSeconds: number,
+  bass: number,
+): { x: number; y: number } {
+  const angle = particle.phase + elapsedSeconds * particle.speed;
+  // Capped expansion: at full bass the field grows by half, not without limit, so a
+  // loud passage cannot fling every particle off the canvas.
+  const radius = clampUnit(particle.orbit * (1 + clampUnit(bass) * 0.5));
+
+  return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
 }
 
 /** Holds an index inside the array, so a read can never fall off the end. */

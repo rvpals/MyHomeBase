@@ -56,7 +56,7 @@ export interface MusicSettings {
    */
   autoFetchLyrics: boolean;
   /**
-   * Which visualizer the player screen draws -- frequency bars or a waveform.
+   * Which visualizer the player screen draws -- bars, fire, or a waveform.
    *
    * A display preference rather than a behaviour, and the only one here that costs
    * nothing to get wrong. It is persisted anyway because it is the kind of choice

@@ -8,6 +8,7 @@ import type {
 } from "./browse";
 import type { LyricsQuery, LyricsStatus, TrackLyrics } from "./lyrics";
 import type { SongStory, StoryQuery } from "./story";
+import type { TrackVideo } from "./video";
 import type { QueueEntry, QueueState, RepeatMode } from "./queue";
 import type {
   Album,
@@ -231,6 +232,10 @@ export interface MusicRepository {
   getTrackLyrics(trackId: number): TrackLyrics | undefined;
   saveTrackLyrics(lyrics: Omit<TrackLyrics, "fetchedAt">): void;
   countLyricsByStatus(): Record<LyricsStatus, number>;
+
+  // --- video (cached on demand; see migrations/0086) ---
+  getTrackVideo(trackId: number): TrackVideo | undefined;
+  saveTrackVideo(video: Omit<TrackVideo, "fetchedAt">): void;
 }
 
 /**

@@ -76,6 +76,18 @@ export {
 export {
   DEFAULT_VISUALIZER_MODE,
   isVisualizerMode,
+  VISUALIZER_MODES,
+  FULLSCREEN_ONLY_MODES,
+  INLINE_FALLBACK_MODE,
+  isInlineMode,
+  inlineModeFor,
+  spectrumKindFor,
+  BAR_STYLES,
+  type BarStyle,
+  energyBand,
+  galaxyParticles,
+  galaxyPosition,
+  type GalaxyParticle,
   spectrumBars,
   waveformPoints,
   type VisualizerMode,
@@ -121,6 +133,7 @@ export {
 export {
   fetchLyricsSchema,
   fetchStorySchema,
+  fetchVideoSchema,
   musicExtensionSchema,
   musicFolderSchema,
   musicSettingsSchema,
@@ -129,6 +142,7 @@ export {
   trackSearchSchema,
   type FetchLyricsInput,
   type FetchStoryInput,
+  type FetchVideoInput,
   type MusicSettingsInput,
   type StartScanInput,
   type TrackSearchInput,
@@ -144,6 +158,8 @@ export type {
   TrackTags,
 } from "./ports";
 
+export { isRetryable, type TrackVideo } from "./video";
+
 export {
   fetchTrackLyrics,
   getCachedLyrics,
@@ -156,6 +172,13 @@ export {
   type FetchStoryDependencies,
   type FetchStoryOutcome,
 } from "./story-use-cases";
+
+export {
+  fetchTrackVideo,
+  readCachedVideo,
+  type FetchVideoDependencies,
+  type FetchVideoOutcome,
+} from "./video-use-cases";
 
 export {
   REPEAT_MODES,

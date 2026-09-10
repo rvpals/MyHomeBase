@@ -18,8 +18,14 @@ import {
   albumCoverUrl,
   formatPlayerTime,
   useMusicPlayer,
+  type SpectrumKind,
 } from "@/components/music-player-provider";
+// `inlineModeFor` / `isInlineMode` are deliberately not imported any more: the
+// visualizer now lives in the Visual tab, which has room for every mode, so there is
+// no 64px strip to degrade a circular or particle mode down to.
 import { DEFAULT_VISUALIZER_MODE, type VisualizerMode } from "@/lib/music";
+import { FullscreenStage, canGoFullscreen } from "@/components/fullscreen-stage";
+import { VideoPanel } from "./music-video-panel";
 import {
   fetchLyricsAction,
   fetchStoryAction,
@@ -30,6 +36,24 @@ import {
   type LyricsActionResult,
   type StoryActionResult,
 } from "./music-actions";
+
+/**
+ * The visualizer choices, in the order they read.
+ *
+ * Module-level rather than rebuilt per render: it is a constant, and a fresh array
+ * every render would be new identity for no reason.
+ */
+const VISUALIZER_OPTIONS: readonly { key: VisualizerMode; label: string }[] = [
+  { key: "bars", label: "Bars" },
+  { key: "fire", label: "Fire" },
+  { key: "wave", label: "Wave" },
+  { key: "circular", label: "Circular spectrum" },
+  { key: "galaxy", label: "Particle galaxy" },
+];
+
+/** The shared field styling every other `<select>` in the app uses. */
+const SELECT_CLASS =
+  "w-full rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
 
 export function MusicPlayerView() {
   const player = useMusicPlayer();
@@ -161,16 +185,32 @@ export function MusicPlayerView() {
    * Switches the visualizer, optimistically.
    *
    * The canvas changes on the click and the write happens behind it -- a display
-   * toggle that waits on a database round trip feels broken, and the worst case of a
+   * choice that waits on a database round trip feels broken, and the worst case of a
    * failed write is that the choice does not survive a reload.
    */
-  const onToggleVisualizer = useCallback(() => {
-    setVisualizerMode((previous) => {
-      const next = previous === "bars" ? "wave" : "bars";
-      void setVisualizerModeAction(next).catch(() => undefined);
-      return next;
-    });
+  const onPickVisualizer = useCallback((next: VisualizerMode) => {
+    setVisualizerMode(next);
+    void setVisualizerModeAction(next).catch(() => undefined);
   }, []);
+
+  // Whether the stage is up. Mounting `FullscreenStage` is what requests fullscreen,
+  // so this must only ever be set from a click -- the browser rejects the request
+  // outside a user gesture.
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const onExitFullscreen = useCallback(() => setIsFullscreen(false), []);
+
+  /**
+   * Stops the music so a YouTube video can be heard.
+   *
+   * `toggle` rather than a dedicated pause, because the provider exposes no `pause`
+   * and the Video panel only calls this while the music is playing -- it checks
+   * `isPlaying` first, so toggle cannot start a paused track here.
+   */
+  const onPauseForVideo = useCallback(() => {
+    // Optional-chained because this sits above the `player.current === undefined`
+    // guard, where the provider may not have mounted yet.
+    if (player?.isPlaying === true) player.toggle();
+  }, [player]);
 
   const onFetchLyrics = useCallback(
     (force: boolean) => {
@@ -217,39 +257,6 @@ export function MusicPlayerView() {
             alt={`Cover art for ${current.title}`}
             className="aspect-square w-full rounded-xl border border-line object-cover"
           />
-        )}
-
-        {/* The visualizer, between the cover and the title. Renders only once the
-            audio graph exists -- `spectrumSize` is 0 until the first track plays, and
-            stays 0 if the graph could not be built, in which case the screen simply
-            has no visualizer rather than an empty box. */}
-        {player.spectrumSize > 0 && (
-          <div className="relative mt-4">
-            <AudioSpectrum
-              readSpectrum={player.readSpectrum}
-              spectrumSize={player.spectrumSize}
-              mode={visualizerMode}
-              isPlaying={isPlaying}
-            />
-            {/* Over the canvas rather than beside it: the canvas is decoration and the
-                button is the only thing here worth tabbing to, so it should not cost
-                the layout a row of its own. */}
-            <div className="absolute right-1 top-1">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={onToggleVisualizer}
-                title={
-                  visualizerMode === "bars" ? "Switch to waveform" : "Switch to bars"
-                }
-                ariaLabel={
-                  visualizerMode === "bars" ? "Switch to waveform" : "Switch to bars"
-                }
-              >
-                {visualizerMode === "bars" ? "Wave" : "Bars"}
-              </Button>
-            </div>
-          </div>
         )}
 
         <h2 className="mt-4 font-display text-xl text-ink">{current.title}</h2>
@@ -307,8 +314,9 @@ export function MusicPlayerView() {
         )}
       </div>
 
-      {/* Words and story, one panel with two tabs. Uncontrolled: nothing outside the
-          strip needs to switch tabs, so Tabs owns its own active key. */}
+      {/* Words, story and the visualizer picker, one panel with three tabs.
+          Uncontrolled: nothing outside the strip needs to switch tabs, so Tabs owns
+          its own active key. */}
       <section className="rounded-xl border border-line p-4">
         <Tabs
           items={[
@@ -353,10 +361,159 @@ export function MusicPlayerView() {
                 />
               ),
             },
+            {
+              key: "video",
+              label: "Video",
+              content: (
+                <VideoPanel
+                  trackId={current.id}
+                  trackTitle={current.title}
+                  isPlaying={isPlaying}
+                  onPauseMusic={onPauseForVideo}
+                />
+              ),
+            },
+            {
+              key: "visual",
+              label: "Visual",
+              content: (
+                <VisualPanel
+                  mode={visualizerMode}
+                  onPick={onPickVisualizer}
+                  hasSpectrum={player.spectrumSize > 0}
+                  onOpenFullscreen={() => setIsFullscreen(true)}
+                  readSpectrum={player.readSpectrum}
+                  spectrumSize={player.spectrumSize}
+                  isPlaying={isPlaying}
+                />
+              ),
+            },
           ] satisfies TabItem[]}
           defaultActiveKey="lyrics"
         />
       </section>
+
+      {/* The stage. Rendered last and only while open -- mounting it is what requests
+          fullscreen, and unmounting it is what leaves. The audio is untouched by any
+          of this: it lives in `MusicPlayerProvider` above this screen, so the track
+          keeps playing and the analyser keeps reading while the stage is up. */}
+      {isFullscreen && (
+        <FullscreenStage onExit={onExitFullscreen} label="Music visualizer">
+          <AudioSpectrum
+            readSpectrum={player.readSpectrum}
+            spectrumSize={player.spectrumSize}
+            mode={visualizerMode}
+            isPlaying={isPlaying}
+            fill
+          />
+        </FullscreenStage>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The Visual tab: the visualizer itself, and the picker for which one it draws.
+ *
+ * The canvas lives **here**, inside the tab container, rather than as a strip under
+ * the cover art. Two things follow from that, and both are why it is worth doing:
+ *
+ *   - **It gets real room.** The strip was 64px tall, which is too little for a
+ *     circular spectrum or a particle field, so those modes used to fall back to bars
+ *     inline and only appear for real on the fullscreen stage. In the panel they draw
+ *     as themselves, and `inlineModeFor` is no longer needed on this screen.
+ *   - **It only animates while the tab is open.** `Tabs` renders one panel at a time,
+ *     so switching to Lyrics unmounts the canvas and stops the frame loop. That is a
+ *     feature rather than a cost: nothing is drawing sixty times a second behind a
+ *     panel of song lyrics. The audio is untouched either way -- it lives in
+ *     `MusicPlayerProvider`, well above this component.
+ *
+ * A plain `<select>` rather than `ViewModeSwitch`: the segmented control is a *wide*
+ * control that degrades to a dropdown, and what is wanted here is a dropdown at every
+ * width. This is the same field markup the rest of the app's selects use.
+ */
+function VisualPanel({
+  mode,
+  onPick,
+  hasSpectrum,
+  onOpenFullscreen,
+  readSpectrum,
+  spectrumSize,
+  isPlaying,
+}: {
+  mode: VisualizerMode;
+  onPick: (next: VisualizerMode) => void;
+  hasSpectrum: boolean;
+  onOpenFullscreen: () => void;
+  readSpectrum: (into: Uint8Array<ArrayBuffer>, kind: SpectrumKind) => boolean;
+  spectrumSize: number;
+  isPlaying: boolean;
+}) {
+  // Read on the client only: `document.fullscreenEnabled` does not exist on the
+  // server, and iOS Safari on iPhone has no element fullscreen at all. A control that
+  // cannot work should not be offered.
+  const [canFullscreen, setCanFullscreen] = useState(false);
+  useEffect(() => setCanFullscreen(canGoFullscreen()), []);
+
+  return (
+    <div>
+      {/* The visualizer. Renders only once the audio graph exists -- `spectrumSize`
+          is 0 until the first track plays, and stays 0 if the graph could not be
+          built, in which case the panel shows the note below instead of an empty box.
+
+          `fill` with a fixed-height box, as on the fullscreen stage: the canvas takes
+          the space it is given rather than a hardcoded strip height. `aspect-video`
+          would be squarer than these modes want on a desktop panel, so the height is
+          set directly and scales down narrow. */}
+      {hasSpectrum && (
+        <div className="mb-4 h-56 w-full overflow-hidden rounded-lg border border-line bg-paper-raised max-lg:h-40">
+          <AudioSpectrum
+            readSpectrum={readSpectrum}
+            spectrumSize={spectrumSize}
+            // The true mode, not `inlineModeFor(mode)`: the panel is tall enough for
+            // every visualizer, which is the point of moving it here.
+            mode={mode}
+            isPlaying={isPlaying}
+            fill
+          />
+        </div>
+      )}
+      {/* Capped rather than full-bleed: a three-option picker stretched across a
+          desktop panel reads as a form field someone forgot to size. */}
+      <label className="block max-w-xs text-sm">
+        <span className="mb-1 block font-medium text-muted">Visualizer</span>
+        <select
+          value={mode}
+          onChange={(event) => onPick(event.target.value as VisualizerMode)}
+          className={SELECT_CLASS}
+        >
+          {VISUALIZER_OPTIONS.map((option) => (
+            <option key={option.key} value={option.key}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {canFullscreen && (
+        <div className="mt-3">
+          <Button variant="secondary" onClick={onOpenFullscreen} disabled={!hasSpectrum}>
+            Fullscreen
+          </Button>
+        </div>
+      )}
+
+      {/* No "this one only works fullscreen" note any more: the panel is tall enough
+          for every mode, so what the picker selects is what draws above. Fullscreen is
+          now purely about size, not about which visualizers are available. */}
+
+      {/* The choice is still worth making and worth saving with no analyser -- it is
+          what the next track will use -- so the picker stays live and this only
+          explains the missing canvas. */}
+      {!hasSpectrum && (
+        <p className="mt-3 text-xs text-muted">
+          The visualizer appears once a track is playing.
+        </p>
+      )}
     </div>
   );
 }

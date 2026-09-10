@@ -12,9 +12,8 @@
 // transport row with a full scrubber and volume does not shrink into 375px, it has to
 // be a different arrangement.
 
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Button } from "@/components/button";
 import { useIsCompact } from "@/components/viewport-context";
 import {
   albumCoverUrl,
@@ -26,15 +25,27 @@ export function MusicPlayerBar() {
   const player = useMusicPlayer();
   const isCompact = useIsCompact();
 
+  // Minimized shrinks the bar to a floating puck in the bottom-right corner. Local
+  // state, not persisted: it is a "get this out of my way for a moment" gesture, and
+  // a reload landing on a hidden player would be worse than one that shows the bar
+  // again. The audio is untouched either way -- it lives in `MusicPlayerProvider`,
+  // above this component, so minimizing never interrupts playback.
+  const [isMinimized, setIsMinimized] = useState(false);
+
+  const minimize = useCallback(() => setIsMinimized(true), []);
+  const restore = useCallback(() => setIsMinimized(false), []);
+
   // Which shape is on screen, or null for nothing playing. Computed before the
   // early return below because the effect that publishes it is a hook, and hooks
   // can't sit after a conditional return.
   const shape =
     player === undefined || player.current === undefined
       ? null
-      : isCompact
-        ? "compact"
-        : "full";
+      : isMinimized
+        ? "minimized"
+        : isCompact
+          ? "compact"
+          : "full";
 
   // Mirrored onto <html> so globals.css can reserve `.app-main` padding for the
   // bar — the same seam `TreeNav` uses for `data-treenav`, and for the same
@@ -60,6 +71,64 @@ export function MusicPlayerBar() {
   const total = duration > 0 ? duration : (current.durationSeconds ?? 0);
   const fraction = total > 0 ? Math.min(position / total, 1) : 0;
 
+  /**
+   * Closing also un-minimizes.
+   *
+   * Without this, closing from the puck and then playing something new would bring the
+   * player back already minimized -- the state would outlive the session it belonged
+   * to, which is not what a one-off "hide this" gesture should do.
+   */
+  const close = () => {
+    setIsMinimized(false);
+    stop();
+  };
+
+  // Minimized: one floating button, bottom-right. Everything else is gone -- the
+  // point is to reclaim the bottom edge, so a puck with a scrubber and three
+  // transport buttons on it would defeat the purpose. Tapping it restores the bar.
+  if (isMinimized) {
+    return (
+      <div className="music-player-puck">
+        <button
+          type="button"
+          onClick={restore}
+          aria-label={`Restore the player: ${current.title}`}
+          title={`Restore the player: ${current.title}`}
+          // A 56px circle: bigger than the 44px minimum because it is a lone target
+          // floating over content rather than one of a row, and it carries the cover
+          // art, which needs the room to read as artwork.
+          className="nav-raised-top relative grid h-14 w-14 place-items-center overflow-hidden rounded-full border border-line bg-paper-raised text-ink hover:bg-brass-soft"
+        >
+          {coverUrl === undefined ? (
+            <MusicNoteGlyph />
+          ) : (
+            <img src={coverUrl} alt="" className="h-full w-full object-cover" />
+          )}
+          {/* A ring of progress around the puck, so the minimized player still says
+              how far through the track it is. `conic-gradient` rather than an SVG
+              arc: one element, no geometry, and it degrades to a full ring rather
+              than to nothing. */}
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 rounded-full"
+            style={{
+              background: `conic-gradient(var(--brass) ${fraction * 360}deg, transparent 0deg)`,
+              mask: "radial-gradient(circle, transparent 0 78%, black 79%)",
+              WebkitMask: "radial-gradient(circle, transparent 0 78%, black 79%)",
+            }}
+          />
+          {/* Paused is worth showing on a puck that has no transport: without it a
+              stopped track and a playing one look identical. */}
+          {!isPlaying && (
+            <span className="absolute inset-0 grid place-items-center bg-paper/60">
+              <PauseGlyph />
+            </span>
+          )}
+        </button>
+      </div>
+    );
+  }
+
   if (isCompact) {
     return (
       <div className="music-player-pinned border-t border-line bg-paper-raised">
@@ -81,7 +150,10 @@ export function MusicPlayerBar() {
             {isPlaying ? <PauseGlyph /> : <PlayGlyph />}
           </TransportButton>
           <QueueButton count={queue.length} />
-          <TransportButton onClick={stop} label="Close the player">
+          <TransportButton onClick={minimize} label="Minimize the player">
+            <MinimizeGlyph />
+          </TransportButton>
+          <TransportButton onClick={close} label="Close the player">
             <CloseGlyph />
           </TransportButton>
         </div>
@@ -128,9 +200,16 @@ export function MusicPlayerBar() {
 
         <QueueButton count={queue.length} />
 
-        <Button size="sm" variant="secondary" onClick={stop}>
-          Close
-        </Button>
+        {/* Minimize then close, in that order -- the window-chrome convention, and it
+            puts the destructive one at the far edge. Both are icon buttons now: a text
+            "Close" next to an icon minimize read as two different kinds of control,
+            and the pair is the same idiom the compact bar already used. */}
+        <TransportButton onClick={minimize} label="Minimize the player">
+          <MinimizeGlyph />
+        </TransportButton>
+        <TransportButton onClick={close} label="Close the player">
+          <CloseGlyph />
+        </TransportButton>
       </div>
     </div>
   );
@@ -228,6 +307,24 @@ function PauseGlyph() {
   return (
     <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current" aria-hidden="true">
       <path d="M6 5h4v14H6zm8 0h4v14h-4z" />
+    </svg>
+  );
+}
+
+/** The window-chrome minimize rule: a single bar on the baseline, like `_`. */
+function MinimizeGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current" aria-hidden="true">
+      <path d="M5 17h14v2H5z" />
+    </svg>
+  );
+}
+
+/** Stands in for missing cover art on the minimized puck. */
+function MusicNoteGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-6 w-6 fill-current" aria-hidden="true">
+      <path d="M9 18a3 3 0 1 1-2-2.83V6l11-2v3L9 8.6z" />
     </svg>
   );
 }
