@@ -1,8 +1,13 @@
 "use client";
 
-// One-off home-screen widget (not a registered shared component), mirroring
-// daily-quote-widget.tsx: the server draws the first photograph, and the refresh button
-// draws another without reloading the page, so only the picture changes.
+// One-off widget for the Picture Gallery's home screen (not a registered shared
+// component), mirroring daily-quote-widget.tsx: the server draws the first photograph,
+// and the refresh button draws another without reloading the page, so only the picture
+// changes.
+//
+// Lived at (protected)/random-photo-widget.tsx while this was an app home-screen card.
+// The name `RandomPhotoWidget` is unchanged -- it names the card, which is still what
+// this is.
 
 import { useCallback, useState } from "react";
 import { Button } from "@/components/button";
@@ -17,12 +22,12 @@ import { calendarAgeSince, formatCalendarAge } from "@/lib/shared/date";
 import {
   listAllPhotosInFolderAction,
   readPhotoDetailsAction,
-} from "./photos-viewer-actions";
+} from "../../photos-viewer-actions";
 import {
   drawRandomPhotoAction,
   listFavPhotosAction,
   toggleFavPhotoAction,
-} from "./random-photo-actions";
+} from "./gallery-photo-actions";
 
 function RefreshIcon({ className = "" }: { className?: string }) {
   return (
@@ -125,16 +130,28 @@ export function RandomPhotoWidget({
    *
    * The whole list rather than a bare `isFavorite` for the drawn photo, because the
    * card needs two answers from it: which glyph the heart shows, and how many
-   * favourites there are to badge the link to `/favorite-photos` with. One read serves
-   * both.
+   * favourites there are to badge the link to the Favorite photos section with.
+   * One read serves both.
    */
   initialFavorites: FavPhoto[];
-  /** Spacing is the caller's call, as with the other home-screen cards. */
+  /** Spacing is the caller's call, as with the other cards in this module. */
   className?: string;
 }) {
   const [pick, setPick] = useState(initialPick);
   const [isDrawing, setIsDrawing] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
+
+  /**
+   * Whether the drawn photograph's bytes are still on their way.
+   *
+   * Separate from `isDrawing`, which only covers the server's walk. The walk is the
+   * fast half -- tens of milliseconds -- and the image is the slow one, several
+   * hundred for a megabyte of JPEG. Clearing the spinner when the walk returned left
+   * the card claiming to be done while it still showed the PREVIOUS photograph, with
+   * the new file name already in the caption beneath it. The button is busy until the
+   * picture the reader asked for is actually on screen.
+   */
+  const [isImageLoading, setIsImageLoading] = useState(false);
 
   // The viewer, opened by clicking the picture or the header's folder button.
   //
@@ -150,11 +167,16 @@ export function RandomPhotoWidget({
     setIsDrawing(true);
     setError(undefined);
     try {
-      setPick(await drawRandomPhotoAction());
+      const drawn = await drawRandomPhotoAction();
+      // Armed BEFORE the pick is stored, so there is no render in between where the
+      // new caption is showing and nothing is marked as loading.
+      setIsImageLoading(drawn.relativePath !== undefined);
+      setPick(drawn);
     } catch {
       // The action already turns a failed walk into a `reason`; this only catches the
       // request itself failing, which would otherwise leave the button spinning.
       setError("Couldn't draw another photo.");
+      setIsImageLoading(false);
     } finally {
       setIsDrawing(false);
     }
@@ -299,11 +321,17 @@ export function RandomPhotoWidget({
             size="sm"
             variant="secondary"
             onClick={handleRefresh}
-            disabled={isDrawing}
+            // Disabled for the whole draw, image included. Clicking again while a
+            // photograph was still arriving started a second draw whose bytes could
+            // land in either order, so a fast third click could leave the card on
+            // the second photo's picture under the third one's caption.
+            disabled={isDrawing || isImageLoading}
             title="Show a different photo"
             ariaLabel="Show a different photo"
           >
-            <RefreshIcon className={`h-4 w-4 ${isDrawing ? "animate-spin" : ""}`} />
+            <RefreshIcon
+              className={`h-4 w-4 ${isDrawing || isImageLoading ? "animate-spin" : ""}`}
+            />
           </Button>
 
           {/* Navigates rather than opening a dialog. The list carries bulk selection,
@@ -313,7 +341,7 @@ export function RandomPhotoWidget({
           <Button
             size="sm"
             variant="secondary"
-            href="/favorite-photos"
+            href="/modules/picture-gallery/favorites"
             title="My favorite photos"
             ariaLabel="My favorite photos"
           >
@@ -345,19 +373,47 @@ export function RandomPhotoWidget({
               only add a round trip. `max-h` in viewport units rather than a fixed
               height is what keeps a portrait shot from filling a phone screen and a
               landscape one from dominating a desktop -- one rule, both boundaries. */}
+          {/* `relative` so the loading overlay below can sit over the picture.
+              `min-h` holds the card open while a fresh <img> is still transparent
+              -- without it the figure collapses to the caption and the whole page
+              jumps on every draw. */}
           <button
             type="button"
             onClick={() => setIsViewerOpen(true)}
-            className="block w-full cursor-zoom-in"
+            className={`relative block w-full cursor-zoom-in ${
+              isImageLoading ? "min-h-[40vh]" : ""
+            }`}
           >
             {/* eslint-disable-next-line @next/next/no-img-element -- the bytes come from
                 our own session-guarded route over an SMB share, not a static asset
                 next/image can optimize. */}
             <img
+              // Keyed on the path so a draw MOUNTS a new element instead of
+              // mutating this one's `src`. Mutating it keeps the decoded previous
+              // photograph on screen until the new bytes arrive; a fresh element
+              // has nothing to show, so the dimmed placeholder below is what the
+              // reader sees during the load rather than the wrong picture.
+              key={pick.relativePath}
               src={photoUrl(pick.relativePath)}
               alt={caption ?? "A photograph from the archive"}
-              className="mx-auto max-h-[60vh] w-auto rounded-lg object-contain"
+              className={`mx-auto max-h-[60vh] w-auto rounded-lg object-contain transition-opacity duration-200 ${
+                isImageLoading ? "opacity-0" : "opacity-100"
+              }`}
+              // The load is the slow half of a draw, so the card's busy state ends
+              // here rather than when the server's walk returned. `onError` too --
+              // a photo whose bytes fail must not leave the button spinning
+              // forever.
+              onLoad={() => setIsImageLoading(false)}
+              onError={() => setIsImageLoading(false)}
             />
+
+            {/* Only while the bytes are in flight. Absolute so it does not add to
+                the figure's height -- the `min-h` above is what reserves the room. */}
+            {isImageLoading && (
+              <span className="absolute inset-0 flex items-center justify-center">
+                <RefreshIcon className="h-6 w-6 animate-spin text-muted" />
+              </span>
+            )}
           </button>
 
           <figcaption className="mt-3 text-center text-sm text-muted break-words">

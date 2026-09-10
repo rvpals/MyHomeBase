@@ -10,7 +10,11 @@ import {
 } from "@/lib/fav-photos";
 import { pickRandomPhoto, type RandomPhotoPick } from "@/lib/journal-photos";
 import { deps } from "@/lib/wiring";
-import { photoStore } from "./modules/[slug]/journal-photo-root";
+import { requireModuleAccess } from "../../require-access";
+import { photoStore } from "./journal-photo-root";
+
+/** The module these actions belong to, matched exactly by `requireModuleAccess`. */
+const ACCESS_MODULE_SLUG = "picture-gallery";
 
 /**
  * Draws a fresh photograph for the home-screen card's refresh button.
@@ -29,6 +33,7 @@ import { photoStore } from "./modules/[slug]/journal-photo-root";
  * the bytes.
  */
 export async function drawRandomPhotoAction(): Promise<RandomPhotoPick> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     return await pickRandomPhoto(photoStore());
   } catch {
@@ -53,11 +58,13 @@ export async function drawRandomPhotoAction(): Promise<RandomPhotoPick> {
  * route.
  */
 export async function toggleFavPhotoAction(relativePath: string): Promise<boolean> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   return toggleFavPhoto(deps.favPhotoRepo, relativePath);
 }
 
 /** Every favourite, newest first — what the "My favorites" dialog opens onto. */
 export async function listFavPhotosAction(): Promise<FavPhoto[]> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   return listFavPhotos(deps.favPhotoRepo);
 }
 
@@ -72,6 +79,7 @@ export async function setFavPhotoNoteAction(
   relativePath: string,
   note: string,
 ): Promise<boolean> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   return setFavPhotoNote(deps.favPhotoRepo, relativePath, note);
 }
 
@@ -82,6 +90,7 @@ export async function setFavPhotoNoteAction(
  * toggle here would re-favourite a photo whose row another tab had already deleted.
  */
 export async function removeFavPhotoAction(relativePath: string): Promise<boolean> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   return removeFavPhoto(deps.favPhotoRepo, relativePath);
 }
 
@@ -111,6 +120,7 @@ export type RemoveFavPhotosResult =
 export async function removeFavPhotosAction(
   relativePaths: string[],
 ): Promise<RemoveFavPhotosResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const result = removeFavPhotos(deps.favPhotoRepo, relativePaths);
     return { ok: true, removed: result.removed, missing: result.missing.length };

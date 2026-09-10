@@ -9,10 +9,13 @@
 // before.
 //
 // This was the body of a dialog opened from the Random Photo card. It became its own
-// screen (`/favorite-photos`) once it grew bulk actions: selecting rows, downloading a
-// zip and deleting several favourites is work, and work wants a page with a URL and a
-// back button rather than an overlay you might dismiss halfway through. The card's
-// button now navigates here.
+// screen once it grew bulk actions: selecting rows, downloading a zip and deleting
+// several favourites is work, and work wants a page with a URL and a back button
+// rather than an overlay you might dismiss halfway through. The card's button now
+// navigates here.
+//
+// That screen was `/favorite-photos`, belonging to no module; it is now the Picture
+// Gallery module's "Favorite photos" section, and the old route is gone.
 
 import { useCallback, useState } from "react";
 import { Button } from "@/components/button";
@@ -20,12 +23,12 @@ import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { PhotoViewer } from "@/components/photo-viewer";
 import { TreeIcon } from "@/components/tree-icons";
 import type { FavPhoto } from "@/lib/fav-photos";
-import { readPhotoDetailsAction } from "./photos-viewer-actions";
+import { readPhotoDetailsAction } from "../../photos-viewer-actions";
 import {
   listFavPhotosAction,
   removeFavPhotosAction,
   setFavPhotoNoteAction,
-} from "./random-photo-actions";
+} from "./gallery-photo-actions";
 
 /** The URL for one photo's bytes. Encoded whole: these folder names contain spaces. */
 function photoUrl(relativePath: string): string {

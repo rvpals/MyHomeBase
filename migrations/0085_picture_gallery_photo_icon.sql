@@ -1,0 +1,15 @@
+-- Repoints the Picture Gallery module icon off the borrowed `heart` glyph.
+--
+-- 0084 seeded this module with `heart` as an acknowledged compromise: the right glyph
+-- was a photograph, MODULE_ICON_NAMES had none, and adding a concept means drawing it
+-- for the hand-drawn "classic" set and naming a candidate in all 12 generated sets.
+-- `photo` — a landscape frame with a sun and a mountain horizon — is now that concept,
+-- so the compromise can go. Exactly the follow-up 0055 was to 0053.
+--
+-- Mirrored in src/lib/modules/defaults.ts (DEFAULT_MODULES) — keep both in sync, since
+-- "Reset to Default" restores the table from that list.
+--
+-- Scoped by slug AND by the old value, as 0050 and 0055 were: if someone has already
+-- picked a different icon for this module, that choice is theirs and this migration
+-- leaves it alone.
+UPDATE sys_modules SET icon = 'photo' WHERE slug = 'picture-gallery' AND icon = 'heart';
