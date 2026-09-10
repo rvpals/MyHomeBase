@@ -37,6 +37,7 @@ are the `snake_case` equivalents.
 | `attendance` | Attendance | Class Attendance | Take daily attendance for a class. | 6 | `roster` | `att_` |
 | `music-library` | Music Library | My Music Library | Browse and stream your music collection. | 7 | `music` | `mus_` |
 | `games` | Games | Games & Puzzles | Play a quick game and keep a high-score board. | 8 | `game` | `gam_` |
+| `picture-gallery` | Picture Gallery | My Picture Gallery | Browse the photo archive and the pictures you have kept. | 9 | `photo` | — |
 
 Sequence 1 is deliberately vacant: it belonged to the Real Estate module, retired
 in `migrations/0026_drop_real_estate_module`. Its `rei_` prefix is retired with
@@ -44,6 +45,9 @@ it and must not be reused.
 
 `sys_` is the platform prefix — settings, users, sessions, module registration
 itself. It is not a feature module and never appears in the table above.
+
+Picture Gallery has **no table prefix** because it owns no table — see its entry
+under *Per-module detail*.
 
 Short name is what the UI shows (home grid, app bar, nav badge). Long name is the
 fuller title for admin screens. Both are **admin-editable at runtime**, so no
@@ -83,8 +87,42 @@ the one-year long-term line. It owns `stk_tax_lots` (migration 0083) and the
   everything bought today. A zero there would be indistinguishable from a genuinely
   flat return.
 
-Reachable from the CLI as `npm run cli -- tax-lots --ticker NVDA`, including a
-`--normalize` mode that restates one ad-hoc lot without storing it.
+The section runs in three modes, all through the same `analyzePortfolio` maths so
+they can never report different figures for the same lots:
+
+- **Stored** (`?ticker=NVDA`) — the recorded lots for one position, editable.
+- **Ad-hoc** (`?lots=…`) — transactions passed in on the URL, scored and **not
+  saved**. The URL is the state, which is what makes an analysis bookmarkable when
+  nothing is persisted; an unusable payload falls back to the stored view rather
+  than 404ing. "Save these as my lots" writes them through `createTaxLot`, skipping
+  any already recorded on `(buyDate, shares, pricePerShareCents)` — that duplicate
+  check is what makes the button safe to press twice, since the set usually arrives
+  seeded from the ledger it was derived from.
+- **Multi-ticker** (`?tickers=…` or `?seedTickers=NVDA,AAPL`) — several symbols,
+  each with its own divider-separated section, plus a grand total. What the
+  **Add by tickers** picker emits. `?seedTickers=` carries only the symbols, so a
+  link stays short and always reflects the *current* ledger; `?tickers=` carries a
+  full edited payload so a refresh reproduces exactly what was on screen.
+
+Two entry points seed a set from the recorded trades, both via `lotsFromTrades`:
+the ticker viewer's **Calculate Tax Lots** button (Our data tab → Transactions
+card) and the **Add by tickers** picker. Both keep only **buys** and report how
+many sells were skipped — a tax lot is a purchase, and which lots a sale consumed
+is a decision the ledger doesn't record. Seeded rows are flagged
+`isSplitAdjusted: true`, because a broker reports today's shares; re-applying the
+split table would report 40× a 2019 NVDA position.
+
+The multi-ticker total deliberately omits a **blended cost basis** and any share
+count: dollars per share across different symbols is not a unit, and a
+plausible-looking nonsense number is worse than an absent one. The combined
+**XIRR** *is* reported, solved once over every purchase in the selection rather
+than averaged from the per-ticker rates — an average weights a $500 position the
+same as a $50,000 one.
+
+Reachable from the CLI as `npm run cli -- tax-lots --ticker NVDA`, plus
+`--normalize` (restate one ad-hoc lot), `--adhoc --lot date:shares:price` (repeatable,
+storing nothing unless `--save`), `--from-trades --ticker NVDA` (seed from the
+ledger) and `--tickers NVDA,AAPL,MSFT` (the multi-ticker roll-up).
 
 The **Simulation** section answers "had I bought this then?" — one ticker, a share count,
 and any of ten windows (1 Week through MAX) ticked at once. It **adds no table and no
@@ -1008,12 +1046,57 @@ score is stamped server-side (`played_at` from the use-case, never the client), 
 the board is not re-simulated on the server — see the fifth bullet above for why that
 trade is deliberate and what changing it would cost.
 
+**Picture Gallery** (`picture-gallery`) — the photo archive, gathered into one place.
+Two sections: **Home screen**, the Random Photo card, and **Favorite photos**, the
+list of kept pictures. Both screens existed before the module and were moved into it
+rather than rebuilt (migration 0084).
+
+It is the app's one module that **owns no table, no prefix, and no library module**.
+Everything it shows already exists: the archive is the folder configured in the
+Journal module and read through `src/lib/journal-photos`, and the kept pictures are
+`fav_photos` from migration 0073. A third copy of either would be a synchronisation
+problem invented for its own sake. Its files under `modules/[slug]/` are all
+`gallery-*` presentation over those two library modules.
+
+Four choices worth knowing:
+
+- **The module is where the pictures are, not where the home screen is.** The Random
+  Photo card was a home-screen widget and the favourites list was `/favorite-photos`,
+  a screen belonging to no module. Neither had anywhere to live; both were reached
+  from a card header. Giving them a module is what makes the section panel the way in.
+- **Retiring the home-screen card needed no migration.** The layout is the
+  `home_widgets` app setting, and `resolveHomeWidgets` **drops an id that is no longer
+  a card** — so removing `randomPhoto` from the catalogue cleans up every saved layout
+  on read. That drop rule was written for exactly this, and this is the first card to
+  use it.
+- **The card's icon slot id did not change.** It is still
+  `homescreen_card_random_photo` even though the card is not on the home screen any
+  more, because a slot id is permanent once an upload exists against it — renaming it
+  would silently orphan a user's uploaded glyph. Only the group and `where` copy moved.
+- **`iconNamespace` is `gallery`, not the slug.** `sectionSlotId` snake-cases the
+  *section* slug but passes the namespace through as given, so the hyphenated
+  `picture-gallery` would derive `picture-gallery_section_main` — an id matching no
+  slot, which fails silently by never picking up an override. Every other module's
+  namespace is one word, so this had never come up; `slots.test.ts` catches it.
+
+The module icon is **`photo`**, a concept added for it in migration 0085 — a landscape
+frame with a filled sun and a mountain horizon. 0084 seeded the module with a borrowed
+`heart` because `MODULE_ICON_NAMES` had no photography glyph, exactly as Music Library
+wore `heart` between 0053 and 0055; 0085 is the same follow-up. The horizon inside the
+frame is the load-bearing part of the drawing: an empty rectangle with a dot reads as
+UI chrome at 16px, a rectangle with a skyline reads as a picture. All 12 generated sets
+had a real photo glyph, so none needed a compromise.
+
+There is **no CLI command**, because there is no use-case here to drive: both screens
+call `journal-photos` and `fav-photos`, whose logic is already reachable from the
+terminal where it lives.
+
 ### Icons
 
 `icon` must be one of `MODULE_ICON_NAMES` in
 [src/lib/modules/icon-names.ts](src/lib/modules/icon-names.ts): `building`,
 `home`, `briefcase`, `wallet`, `chart`, `folder`, `shield`, `heart`, `book`,
-`tool`, `journal`, `roster`, `music`, `game`.
+`tool`, `journal`, `roster`, `music`, `game`, `photo`.
 
 **Prefer the closest existing fit.** Adding a concept is not a one-line change: it
 has to be drawn by hand for the "classic" set *and* named in `TREE_CAND`-style
@@ -1026,7 +1109,12 @@ Journal and Attendance, which both sat on `book` until
 bound journal with a quill) and `roster` (a class register). It happened again with
 Music Library, which borrowed `heart` from `0053` until
 `migrations/0055_music_library_music_icon.md` added `music` (a beamed pair of eighth
-notes) — worth reading as the worked example of what a new concept costs.
+notes) — worth reading as the worked example of what a new concept costs. Picture
+Gallery repeated the pattern exactly: `heart` from `0084`, then `photo` in
+`migrations/0085_picture_gallery_photo_icon.md`.
+
+Both follow-ups scope their `UPDATE` by slug **and** by the old icon value, so a
+module whose icon an admin has already changed by hand is left alone.
 
 **Changing which of those names a module uses is an admin action, not a migration.**
 Admin → Configuration → Module Configuration carries a glyph grid per module
@@ -1176,8 +1264,10 @@ Four things worth knowing before touching it:
   security signal, shown only to admins while failures are unreviewed). Neither is a
   card you arrange.
 - **A hidden card skips its own fetch.** The layout is read before any card data, so an
-  unticked Random Photo costs no directory listings over the photo share and an unticked
-  Daily Glance reads no positions. Hiding a card makes the page cheaper, not just quieter.
+  unticked Daily Glance reads no positions. Hiding a card makes the page cheaper, not
+  just quieter. (The clearest case used to be Random Photo, whose directory listings
+  over the photo share an untick skipped entirely — that card has since moved to the
+  Picture Gallery module, migration 0084.)
 - **Spacing is positional, not per-card.** The carousel used to be first and carried no
   top margin while the others hardcoded `mt-8`. Once any card can be first, the gap has
   to follow position — and it follows the first *drawn* card, not the first ticked one,
@@ -1360,8 +1450,13 @@ first element of a repeated value; never join) and passed down. Not client state
 ### 9. Views and server actions
 
 - `<module>-<section>-view.tsx` per screen, client components taking plain data.
-- `<module>-actions.ts` — `"use server"`. Each action validates with the module's
-  zod schema, calls the use-case through `index.ts`, and revalidates. No logic.
+- `<module>-actions.ts` — `"use server"`. Each action **starts with
+  `await requireModuleAccess(<SLUG>)`**, then validates with the module's zod
+  schema, calls the use-case through `index.ts`, and revalidates. No logic.
+  A server action is its own POST endpoint: neither the `(protected)` layout nor
+  the page's own check runs before one fires, so leaving the guard off means any
+  signed-in user can call it whether or not they were granted the module. See
+  *11. Access*.
 - `<module>-instructions.tsx` — per-section guidance. Give each section only its
   own text; the whole document above every screen is noise.
 
@@ -1385,10 +1480,55 @@ the recent example.
 
 ### 11. Access
 
-A module is granted per-user through `sys_user_module_access`. Both route files
-already enforce it via `userHasModuleAccess`, so a new module needs no new
-plumbing — but a freshly seeded module is granted to nobody. Grant it in admin
-*User Management*, or the module 404s for everyone including you.
+A module is granted per-user through `sys_user_module_access`. Admins bypass the
+table by role, so a module added after an admin account exists needs no backfilled
+grant. A freshly seeded module is granted to nobody else: grant it in admin
+*User Management*, or the module 404s for every non-admin.
+
+Enforcement is in **two** places, and a new module has to do the second one itself:
+
+1. **Reads (routes)** — `page.tsx` and `[section]/page.tsx` already call
+   `userHasModuleAccess` and `notFound()` on failure, so adding your branch to both
+   is all a route needs. (`notFound`, not `redirect`, so an ungranted module is
+   indistinguishable from one that doesn't exist.)
+2. **Writes and reads through server actions** — **not covered by the routes.** Every
+   exported action in `<module>-actions.ts` must begin with
+   `await requireModuleAccess(<SLUG>)` from
+   [src/app/(protected)/require-access.ts](src/app/(protected)/require-access.ts).
+   A server action is a POST endpoint of its own; the layout's session redirect and
+   the page's access check never run before it, so hiding a module from the rail does
+   nothing to stop its actions being invoked directly.
+
+```ts
+// <module>-actions.ts
+import { requireModuleAccess } from "../../require-access";
+
+/** The module these actions belong to, matched exactly by `requireModuleAccess`. */
+const ACCESS_MODULE_SLUG = "your-slug";
+
+export async function doSomethingAction(input: Input): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  // ...validate, call the use-case, revalidate
+}
+```
+
+Three rules that have already caused bugs:
+
+- **Pass the module's full slug, never a route path and never a prefix.** The guard
+  resolves it with `getModuleBySlug`, a `WHERE slug = ?` equality lookup. Do not
+  match with `startsWith`/`includes`: a prefix test would let `stock-etfs` authorise
+  a future `stock-etfs-pro`, and `journal` authorise anything beginning with it.
+  Paths are not slugs and some are deeper than one segment
+  (`/modules/journal/metadata`).
+- **The guard throws.** In an action that returns `{ ok, error }`, either put it
+  inside the existing `try` or wrap it, so a denial renders as an inline error
+  instead of an unhandled rejection.
+- **A guard is not optional on a read action.** `list…`/`get…` actions leak another
+  module's data just as effectively as a write corrupts it.
+
+For an action that no module owns — a home-screen widget every signed-in reader
+sees — use `requireUser()` from the same file instead. Admin-only actions use
+`requireAdmin()`; the `/admin` layout redirect does not protect them either.
 
 ## Checklist
 
@@ -1410,6 +1550,8 @@ module is a much smaller job with its own four-step recipe — see *Per-module d
 - [ ] Section/tab slug lists in `src/lib/icons/slots.test.ts` extended
 - [ ] Branch added in **both** `page.tsx` and `[section]/page.tsx`
 - [ ] Views, `-actions.ts`, `-instructions.tsx`
+- [ ] **Every exported server action starts with `await requireModuleAccess(<SLUG>)`**
+      (full slug, exact match — no prefix/`startsWith`)
 - [ ] Reused registered components; anything new added to `components.md`
 - [ ] Works at 1024px and below, and you can say how
 - [ ] CLI command added and registered in `CLI_registry.md`

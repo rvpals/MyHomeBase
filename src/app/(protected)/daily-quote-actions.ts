@@ -2,6 +2,7 @@
 
 import { getRandomQuote, type DailyQuote } from "@/lib/daily-quote";
 import { deps } from "@/lib/wiring";
+import { requireUser } from "./require-access";
 
 export interface DrawQuoteResult {
   ok: boolean;
@@ -16,6 +17,7 @@ export interface DrawQuoteResult {
  */
 export async function drawRandomQuoteAction(): Promise<DrawQuoteResult> {
   try {
+    await requireUser();
     const quote = getRandomQuote(deps.dailyQuoteRepo);
     if (!quote) return { ok: false, error: "No quotes are available." };
     return { ok: true, quote };

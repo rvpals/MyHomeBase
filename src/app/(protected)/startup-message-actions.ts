@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { clearStartupMessage } from "@/lib/settings";
 import { deps } from "@/lib/wiring";
+import { requireUser } from "./require-access";
 
 export interface DismissStartupMessageResult {
   ok: boolean;
@@ -17,6 +18,7 @@ export interface DismissStartupMessageResult {
  */
 export async function dismissStartupMessageAction(): Promise<DismissStartupMessageResult> {
   try {
+    await requireUser();
     clearStartupMessage(deps.settingsRepo);
     // Without this, navigating back to the home screen can replay a cached RSC
     // payload that still carries the message.

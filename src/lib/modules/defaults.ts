@@ -9,7 +9,10 @@ import type { ModuleSeed } from "./types";
 // and Attendance icons off the shared `book` glyph) and
 // migrations/0055_music_library_music_icon.sql (which moved Music Library off the
 // borrowed `heart` onto a real music glyph), and
-// migrations/0075_seed_games_module.sql.
+// migrations/0075_seed_games_module.sql, and
+// migrations/0084_seed_picture_gallery_module.sql, as amended by
+// migrations/0085_picture_gallery_photo_icon.sql (which moved Picture Gallery off
+// the borrowed `heart` onto a real photo glyph).
 // "Reset to Default" restores the table to exactly this list — keep both in sync.
 export const DEFAULT_MODULES: ModuleSeed[] = [
   {
@@ -74,5 +77,14 @@ export const DEFAULT_MODULES: ModuleSeed[] = [
     sequence: 8,
     isVisible: true,
     icon: "game",
+  },
+  {
+    slug: "picture-gallery",
+    shortName: "Picture Gallery",
+    longName: "My Picture Gallery",
+    description: "Browse the photo archive and the pictures you have kept.",
+    sequence: 9,
+    isVisible: true,
+    icon: "photo",
   },
 ];

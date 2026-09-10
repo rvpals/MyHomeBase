@@ -19,7 +19,6 @@ export const HOME_WIDGET_IDS = [
   "carousel",
   "dailyQuote",
   "todayInHistory",
-  "randomPhoto",
   "stockGlance",
 ] as const;
 
@@ -50,12 +49,6 @@ export const HOME_WIDGET_INFO: Record<HomeWidgetId, HomeWidgetInfo> = {
     label: "Today in History",
     description:
       "Journal entries written on this day in earlier years. Draws an empty state rather than nothing when there are none.",
-  },
-  randomPhoto: {
-    id: "randomPhoto",
-    label: "Random Photo",
-    description:
-      "One photograph drawn from anywhere in the journal archive. Hiding it also skips the directory listings over the photo share, so an unreachable NAS costs the home screen nothing.",
   },
   stockGlance: {
     id: "stockGlance",

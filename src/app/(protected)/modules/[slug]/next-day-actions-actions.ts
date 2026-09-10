@@ -11,6 +11,8 @@ import {
   type NextDayActionThresholdsInput,
 } from "@/lib/next-day-actions";
 import { deps } from "@/lib/wiring";
+import { requireModuleAccess } from "../../require-access";
+
 
 const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
 const STOCK_ETFS_MODULE_PATH = "/modules/stock-etfs";
@@ -22,6 +24,7 @@ export interface RunScanResult {
 }
 
 export async function runNextDayActionsScanAction(): Promise<RunScanResult> {
+  await requireModuleAccess(STOCK_ETFS_MODULE_SLUG);
   try {
     const appModule = getModuleBySlug(deps.moduleRepo, STOCK_ETFS_MODULE_SLUG);
     if (!appModule) throw new Error("Stocks & ETFs module not found.");
@@ -47,6 +50,7 @@ export interface SaveThresholdsResult {
 export async function saveNextDayThresholdsAction(
   input: NextDayActionThresholdsInput,
 ): Promise<SaveThresholdsResult> {
+  await requireModuleAccess(STOCK_ETFS_MODULE_SLUG);
   try {
     const appModule = getModuleBySlug(deps.moduleRepo, STOCK_ETFS_MODULE_SLUG);
     if (!appModule) throw new Error("Stocks & ETFs module not found.");

@@ -148,6 +148,21 @@ const Game: IconComponent = (props) => (
   </svg>
 );
 
+// A photograph: a landscape frame with a sun and a mountain horizon. The mountain
+// is what makes this read as a *picture* rather than as a plain window or card at
+// the 16px the app bar draws it — an empty rectangle with a dot is a UI chrome
+// shape, a rectangle with a skyline in it is a photo. The sun is filled for the
+// same reason Music's noteheads are: a hairline circle that small either vanishes
+// or reads as a stray tick.
+const Photo: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <circle cx="8.2" cy="9.8" r="1.35" fill="currentColor" stroke="none" />
+    <path d="M3.4 16.5l4.4-4.1a1.6 1.6 0 0 1 2.2 0l2.7 2.6" />
+    <path d="M11.4 16.9l3.6-3.9a1.6 1.6 0 0 1 2.3 0l3.3 3.5" />
+  </svg>
+);
+
 const ICONS: Record<ModuleIconName, IconComponent> = {
   building: Building,
   home: Home,
@@ -163,6 +178,7 @@ const ICONS: Record<ModuleIconName, IconComponent> = {
   roster: Roster,
   music: Music,
   game: Game,
+  photo: Photo,
 };
 
 // The original hand-drawn set, kept as the "classic" option and the fallback for any

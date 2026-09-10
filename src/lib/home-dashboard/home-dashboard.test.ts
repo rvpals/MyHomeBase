@@ -37,21 +37,20 @@ describe("resolveHomeWidgets", () => {
 
   it("reads a stored order back", () => {
     const widgets = resolveHomeWidgets(
-      "randomPhoto,carousel,dailyQuote,todayInHistory,stockGlance",
+      "stockGlance,carousel,dailyQuote,todayInHistory",
     );
     expect(widgets.map((widget) => widget.id)).toEqual([
-      "randomPhoto",
+      "stockGlance",
       "carousel",
       "dailyQuote",
       "todayInHistory",
-      "stockGlance",
     ]);
     expect(widgets.every((widget) => widget.visible)).toBe(true);
   });
 
   it("reads a hyphen prefix as hidden", () => {
     const widgets = resolveHomeWidgets(
-      "carousel,-dailyQuote,todayInHistory,randomPhoto,stockGlance",
+      "carousel,-dailyQuote,todayInHistory,stockGlance",
     );
     expect(widgets.find((widget) => widget.id === "dailyQuote")?.visible).toBe(false);
     expect(widgets.find((widget) => widget.id === "carousel")?.visible).toBe(true);
@@ -78,12 +77,11 @@ describe("resolveHomeWidgets", () => {
     // The regression stock-dashboard learned the hard way: appending would put a card
     // shipped at the top of the catalogue at the bottom of everyone's saved layout.
     // `carousel` is first in the catalogue and absent here, so it must come back first.
-    const widgets = resolveHomeWidgets("dailyQuote,todayInHistory,randomPhoto,stockGlance");
+    const widgets = resolveHomeWidgets("dailyQuote,todayInHistory,stockGlance");
     expect(widgets.map((widget) => widget.id)).toEqual([
       "carousel",
       "dailyQuote",
       "todayInHistory",
-      "randomPhoto",
       "stockGlance",
     ]);
     expect(widgets.find((widget) => widget.id === "carousel")?.visible).toBe(true);
@@ -91,20 +89,20 @@ describe("resolveHomeWidgets", () => {
 
   it("appends a missing card when nothing in the catalogue follows it", () => {
     // `stockGlance` is last in the catalogue, so it has no successor to anchor before.
-    const widgets = resolveHomeWidgets("carousel,dailyQuote,todayInHistory,randomPhoto");
+    const widgets = resolveHomeWidgets("carousel,dailyQuote,todayInHistory");
     expect(widgets.at(-1)?.id).toBe("stockGlance");
   });
 
   it("keeps a deliberate reorder when adding a missing card back", () => {
-    // The user put randomPhoto first; restoring carousel must not undo that.
-    const widgets = resolveHomeWidgets("randomPhoto,dailyQuote,todayInHistory,stockGlance");
+    // The user put stockGlance first; restoring carousel must not undo that.
+    const widgets = resolveHomeWidgets("stockGlance,dailyQuote,todayInHistory");
     const ids = widgets.map((widget) => widget.id);
-    expect(ids.indexOf("randomPhoto")).toBeLessThan(ids.indexOf("dailyQuote"));
+    expect(ids.indexOf("stockGlance")).toBeLessThan(ids.indexOf("dailyQuote"));
     expect(widgets).toHaveLength(HOME_WIDGET_IDS.length);
   });
 
   it("survives stray whitespace around tokens", () => {
-    const widgets = resolveHomeWidgets(" carousel , -dailyQuote ,, randomPhoto ");
+    const widgets = resolveHomeWidgets(" carousel , -dailyQuote ,, stockGlance ");
     expect(widgets.find((widget) => widget.id === "dailyQuote")?.visible).toBe(false);
     expect(widgets).toHaveLength(HOME_WIDGET_IDS.length);
   });
@@ -112,13 +110,13 @@ describe("resolveHomeWidgets", () => {
 
 describe("homeWidgetsToValue", () => {
   it("round-trips a layout through the stored encoding", () => {
-    const layout = toggleHomeWidget(defaultHomeWidgets(), "randomPhoto");
+    const layout = toggleHomeWidget(defaultHomeWidgets(), "stockGlance");
     expect(resolveHomeWidgets(homeWidgetsToValue(layout))).toEqual(layout);
   });
 
   it("marks hidden cards with a hyphen and leaves visible ones bare", () => {
     expect(homeWidgetsToValue(toggleHomeWidget(defaultHomeWidgets(), "dailyQuote"))).toBe(
-      "carousel,-dailyQuote,todayInHistory,randomPhoto,stockGlance",
+      "carousel,-dailyQuote,todayInHistory,stockGlance",
     );
   });
 
@@ -161,15 +159,15 @@ describe("moveHomeWidget", () => {
   });
 
   it("returns the list unchanged for an id that is not in it", () => {
-    const widgets = defaultHomeWidgets().filter((widget) => widget.id !== "randomPhoto");
-    expect(moveHomeWidget(widgets, "randomPhoto", "up")).toEqual(widgets);
+    const widgets = defaultHomeWidgets().filter((widget) => widget.id !== "stockGlance");
+    expect(moveHomeWidget(widgets, "stockGlance", "up")).toEqual(widgets);
   });
 });
 
 describe("toggleHomeWidget", () => {
   it("flips one card and leaves the rest alone", () => {
-    const toggled = toggleHomeWidget(defaultHomeWidgets(), "randomPhoto");
-    expect(toggled.find((widget) => widget.id === "randomPhoto")?.visible).toBe(false);
+    const toggled = toggleHomeWidget(defaultHomeWidgets(), "stockGlance");
+    expect(toggled.find((widget) => widget.id === "stockGlance")?.visible).toBe(false);
     expect(toggled.filter((widget) => widget.visible)).toHaveLength(HOME_WIDGET_IDS.length - 1);
   });
 
@@ -183,14 +181,13 @@ describe("visibleHomeWidgets", () => {
   it("lists only visible ids, in order", () => {
     const widgets = moveHomeWidget(
       toggleHomeWidget(defaultHomeWidgets(), "dailyQuote"),
-      "randomPhoto",
+      "stockGlance",
       "up",
     );
     expect(visibleHomeWidgets(widgets)).toEqual([
       "carousel",
-      "randomPhoto",
-      "todayInHistory",
       "stockGlance",
+      "todayInHistory",
     ]);
   });
 

@@ -3,6 +3,10 @@
 import { todayIsoLocal } from "@/lib/shared/date";
 import { getTopStory, type TopNewsStory } from "@/lib/ticker-news";
 import { deps } from "@/lib/wiring";
+import { requireModuleAccess } from "../../require-access";
+
+/** The module these actions belong to, matched exactly by `requireModuleAccess`. */
+const ACCESS_MODULE_SLUG = "stock-etfs";
 
 export interface TopStoryResult {
   ok: boolean;
@@ -20,6 +24,7 @@ export interface TopStoryResult {
  * now".
  */
 export async function fetchTopStoryAction(ticker: string): Promise<TopStoryResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const story = await getTopStory(deps.tickerNewsClient, ticker, todayIsoLocal());
     return { ok: true, story };

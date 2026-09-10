@@ -22,6 +22,10 @@ import {
   type NamedMapping,
 } from "@/lib/csv-import";
 import { deps } from "@/lib/wiring";
+import { requireModuleAccess } from "../../require-access";
+
+/** The module these actions belong to, matched exactly by `requireModuleAccess`. */
+const ACCESS_MODULE_SLUG = "attendance";
 
 const ATTENDANCE_MODULE_PATH = "/modules/attendance";
 const ROSTER_IMPORT_TYPE = "Roster" as const;
@@ -51,6 +55,7 @@ export interface RosterPreviewResult extends ActionResult {
 }
 
 export async function previewRosterCsvAction(fileText: string): Promise<RosterPreviewResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const preview = previewCsv(fileText);
     const { columnMapping, fieldOptions } = autoMapAttendanceHeaders(preview.headers);
@@ -71,6 +76,7 @@ export async function saveRosterMappingAction(
   columnMapping: ColumnMapping,
   fieldOptions: FieldOptionsMap,
 ): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     createNamedMapping(deps.csvImportMappingRepo, {
       name,
@@ -91,6 +97,7 @@ export async function updateRosterMappingAction(
   columnMapping: ColumnMapping,
   fieldOptions: FieldOptionsMap,
 ): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     updateNamedMapping(deps.csvImportMappingRepo, id, { name, columnMapping, fieldOptions });
   } catch (error) {
@@ -101,6 +108,7 @@ export async function updateRosterMappingAction(
 }
 
 export async function deleteRosterMappingAction(id: number): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     deleteNamedMapping(deps.csvImportMappingRepo, id);
   } catch (error) {
@@ -120,6 +128,7 @@ export async function runRosterImportAction(
   columnMapping: ColumnMapping,
   fieldOptions: FieldOptionsMap,
 ): Promise<RosterImportActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const summary = importAttendanceRoster(deps.attendanceRepo, fileText, {
       className,

@@ -33,6 +33,7 @@ import { SharpCarouselImageProcessor } from "./modules/carousel-image-processor"
 import { SqliteModuleRepository } from "./modules/repository";
 import { LrclibLyricsClient } from "./music/lrclib-client";
 import { SongfactsStoryClient } from "./music/songfacts-client";
+import { YouTubeVideoClient } from "./youtube";
 import { NodeMusicFileStore } from "./music/file-store";
 import { MusicMetadataReader } from "./music/metadata-reader";
 import { SqliteMusicRepository } from "./music/repository";
@@ -172,6 +173,10 @@ export const deps = {
   // Scrapes songfacts.com, which has no API. Nothing is cached: the story is fetched
   // for viewing when a track starts and lives only in the player's memory.
   storyClient: new SongfactsStoryClient(),
+  // Reads youtube.com's public results page, which needs no key -- the official Data
+  // API v3 bills 100 quota units per search against 10,000/day. The pick IS cached
+  // (mus_track_video), and is only ever fetched on an explicit button press.
+  videoClient: new YouTubeVideoClient(),
   // Magic Playlists. Two ports rather than one: the candidate source only reads the
   // catalog, so a test can fake the eligible tracks without faking saved-list storage.
   magicListRepo: new SqliteMagicListRepository(db),

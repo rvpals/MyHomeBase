@@ -42,8 +42,10 @@ import { saveModuleSettings } from "@/lib/module-settings";
 import type { ImageUploadInput } from "@/lib/shared/image-upload";
 import { getCurrentWeather, type CurrentWeather, type TemperatureUnit } from "@/lib/weather";
 import { deps } from "@/lib/wiring";
+import { requireModuleAccess } from "../../require-access";
 import { diagnosePhotoArchive, type PhotoArchiveDiagnosis } from "@/lib/journal-photos";
 import { configuredPhotoRoot, isPhotoRootFromSetting } from "./journal-photo-root";
+
 
 const JOURNAL_MODULE_PATH = "/modules/journal";
 const JOURNAL_MODULE_SLUG = "journal";
@@ -98,6 +100,7 @@ export interface NewJournalEntryInput {
 }
 
 export async function createJournalEntryAction(input: NewJournalEntryInput): Promise<ActionResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
     createEntry(deps.journalRepo, {
       date: input.date,
@@ -128,6 +131,7 @@ export async function updateJournalEntryAction(
   id: number,
   input: NewJournalEntryInput,
 ): Promise<ActionResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
     updateEntry(deps.journalRepo, id, {
       date: input.date,
@@ -150,6 +154,7 @@ export async function updateJournalEntryAction(
 }
 
 export async function setEntryLockAction(id: number, isLocked: boolean): Promise<ActionResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
     setLocked(deps.journalRepo, id, isLocked);
   } catch (error) {
@@ -163,6 +168,7 @@ export async function setEntryLockAction(id: number, isLocked: boolean): Promise
 // The use-case refuses to delete a locked entry, so a locked entry surfaces that
 // error here rather than being silently skipped.
 export async function deleteJournalEntryAction(id: number): Promise<ActionResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
     deleteEntry(deps.journalRepo, id);
   } catch (error) {
@@ -175,6 +181,7 @@ export async function deleteJournalEntryAction(id: number): Promise<ActionResult
 // --- categories --------------------------------------------------------------
 
 export async function saveJournalCategoryAction(input: UpsertCategoryInput): Promise<ActionResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
     upsertCategory(deps.journalRepo, input);
   } catch (error) {
@@ -185,6 +192,7 @@ export async function saveJournalCategoryAction(input: UpsertCategoryInput): Pro
 }
 
 export async function deleteJournalCategoryAction(name: string): Promise<ActionResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
     deleteCategory(deps.journalRepo, name);
   } catch (error) {
@@ -204,6 +212,7 @@ export async function saveJournalCategoryIconAction(
   mimeType: string,
   base64Data: string,
 ): Promise<ActionResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
     setCategoryIcon(deps.journalRepo, name, { mimeType, base64Data } as ImageUploadInput);
   } catch (error) {
@@ -220,6 +229,7 @@ export async function saveJournalCategoryIconAction(
  * so there are no bytes to ship up and nothing the caller could substitute.
  */
 export async function generateJournalCategoryIconAction(name: string): Promise<ActionResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
     await generateCategoryIcon(deps.journalRepo, name);
   } catch (error) {
@@ -230,6 +240,7 @@ export async function generateJournalCategoryIconAction(name: string): Promise<A
 }
 
 export async function clearJournalCategoryIconAction(name: string): Promise<ActionResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
     clearCategoryIcon(deps.journalRepo, name);
   } catch (error) {
@@ -242,6 +253,7 @@ export async function clearJournalCategoryIconAction(name: string): Promise<Acti
 // --- tags ----------------------------------------------------------------
 
 export async function saveJournalTagAction(input: UpsertTagInput): Promise<ActionResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
     upsertTag(deps.journalRepo, input);
   } catch (error) {
@@ -252,6 +264,7 @@ export async function saveJournalTagAction(input: UpsertTagInput): Promise<Actio
 }
 
 export async function deleteJournalTagAction(name: string): Promise<ActionResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
     deleteTag(deps.journalRepo, name);
   } catch (error) {
@@ -266,6 +279,7 @@ export async function saveJournalTagIconAction(
   mimeType: string,
   base64Data: string,
 ): Promise<ActionResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
     setTagIcon(deps.journalRepo, name, { mimeType, base64Data } as ImageUploadInput);
   } catch (error) {
@@ -277,6 +291,7 @@ export async function saveJournalTagIconAction(
 
 /** Generates a tag's icon from its name. Same shape as the category version. */
 export async function generateJournalTagIconAction(name: string): Promise<ActionResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
     await generateTagIcon(deps.journalRepo, name);
   } catch (error) {
@@ -298,6 +313,7 @@ export async function generateJournalTagIconAction(name: string): Promise<Action
 export async function generateMissingJournalIconsAction(
   kind?: TaxonomyKind,
 ): Promise<GenerateIconsResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
   let summary: GenerateIconsSummary;
   try {
     summary = await generateMissingTaxonomyIcons(deps.journalRepo, kind);
@@ -309,6 +325,7 @@ export async function generateMissingJournalIconsAction(
 }
 
 export async function clearJournalTagIconAction(name: string): Promise<ActionResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
     clearTagIcon(deps.journalRepo, name);
   } catch (error) {
@@ -332,6 +349,7 @@ export interface JournalEntriesResult extends ActionResult {
 export async function findJournalEntriesAction(
   filter: JournalFilter,
 ): Promise<JournalEntriesResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
     return { ok: true, entries: findEntries(deps.journalRepo, filter, ENTRIES_RESULT_LIMIT) };
   } catch (error) {
@@ -344,6 +362,7 @@ export async function saveJournalFilterAction(
   name: string,
   filter: JournalFilter,
 ): Promise<JournalFilterListResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
     saveFilter(deps.journalRepo, { name, filter });
     // The caller re-renders the dropdown from this, so hand back the new list
@@ -357,6 +376,7 @@ export async function saveJournalFilterAction(
 }
 
 export async function deleteJournalFilterAction(id: number): Promise<JournalFilterListResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
     deleteFilter(deps.journalRepo, id);
     const filters = listFilters(deps.journalRepo);
@@ -377,6 +397,7 @@ export interface JournalSearchResult extends ActionResult {
 
 /** The home screen's search: matches date, time, title, content, place, category, and tag. */
 export async function searchJournalEntriesAction(term: string): Promise<JournalSearchResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
     return { ok: true, entries: searchEntries(deps.journalRepo, term, SEARCH_RESULT_LIMIT) };
   } catch (error) {
@@ -389,6 +410,7 @@ export async function fetchWeatherAction(
   longitude: number,
   unit: TemperatureUnit,
 ): Promise<WeatherResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
     return { ok: true, weather: await getCurrentWeather(deps.weatherClient, { latitude, longitude, unit }) };
   } catch (error) {
@@ -408,6 +430,7 @@ export interface JournalSqlResult extends ActionResult {
  * `canRunSql` prop only hides the button and is not a security boundary.
  */
 export async function runJournalSqlAction(sql: string): Promise<JournalSqlResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
     const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
     const currentUser = getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo);
@@ -425,6 +448,7 @@ export async function runJournalSqlAction(sql: string): Promise<JournalSqlResult
 export async function saveJournalPreferencesAction(
   preferences: JournalPreferences,
 ): Promise<ActionResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
     const journalModule = getModuleBySlug(deps.moduleRepo, JOURNAL_MODULE_SLUG);
     if (!journalModule) return { ok: false, error: "Journal module not found." };
@@ -458,6 +482,7 @@ export interface PhotoAccessResult extends ActionResult {
  * not yet saved; omit it to check what is currently stored.
  */
 export async function checkPhotoAccessAction(candidatePath?: string): Promise<PhotoAccessResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
     const trimmed = candidatePath?.trim() ?? "";
     const isCandidate = trimmed !== "";
@@ -486,6 +511,7 @@ export interface GeoSearchResult extends ActionResult {
 }
 
 export async function searchPlacesAction(query: string): Promise<GeoSearchResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
     return { ok: true, places: await searchPlaces(deps.geocodingClient, { query }) };
   } catch (error) {
@@ -501,6 +527,7 @@ export async function reverseGeocodeAction(
   latitude: number,
   longitude: number,
 ): Promise<ReverseGeocodeResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
     return { ok: true, place: await reverseGeocode(deps.geocodingClient, { latitude, longitude }) };
   } catch (error) {

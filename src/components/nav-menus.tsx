@@ -198,7 +198,7 @@ export function UserMenu({
               where a favourite is made; this is for the times you want the list without
               waiting for the right photograph to come up. */}
           <Link
-            href="/favorite-photos"
+            href="/modules/picture-gallery/favorites"
             role="menuitem"
             onClick={close}
             className={`${menuItem} ${menuItemIdle}`}

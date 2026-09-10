@@ -44,6 +44,11 @@ those in a sentence and get on with it.
 - Business logic goes in `src/lib/` as functions that take data and return data — never in a `.tsx`, a route, or a CLI command.
 - Nothing under `src/lib/` may import from `react` or `next`.
 - Every use-case must be callable identically from the web app and the CLI. Validate boundary input with the module's zod schema.
+- **Every exported server action authorises on its first line** —
+  `requireModuleAccess(<FULL_SLUG>)` for anything a module owns, else
+  `requireAdmin()` / `requireUser()`, from `src/app/(protected)/require-access.ts`.
+  An action is its own POST endpoint, so no layout or page check protects it. Match
+  the module's **full slug exactly** — never a prefix, never a route path.
 - New library logic ships with a colocated Vitest test (success + failure paths) — except flagged one-offs.
 - UI is reuse-first. If something looks reusable and isn't in `components.md`, ask *"should this be reusable? give it a name,"* then create it in `src/components/` and register it.
 - **Every UI change must work on a phone and on a desktop.** One boundary,

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { deleteDeployment } from "@/lib/deployments";
 import { deps } from "@/lib/wiring";
+import { requireAdmin } from "../../require-access";
 
 export interface ActionResult {
   ok: boolean;
@@ -19,6 +20,7 @@ export interface ActionResult {
  */
 export async function deleteDeploymentAction(id: number): Promise<ActionResult> {
   try {
+    await requireAdmin();
     deleteDeployment(deps.deploymentRepo, id);
   } catch (error) {
     return {

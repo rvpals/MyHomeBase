@@ -6,6 +6,10 @@ import {
   type SimulationResult,
 } from "@/lib/stock-simulation";
 import { deps } from "@/lib/wiring";
+import { requireModuleAccess } from "../../require-access";
+
+/** The module these actions belong to, matched exactly by `requireModuleAccess`. */
+const ACCESS_MODULE_SLUG = "stock-etfs";
 
 export interface RunSimulationActionResult {
   ok: boolean;
@@ -23,6 +27,7 @@ export async function runSimulationAction(input: {
   shares: number;
   ranges: string[];
 }): Promise<RunSimulationActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const parsed = runSimulationSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid simulation input." };

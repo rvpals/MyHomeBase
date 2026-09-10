@@ -4,6 +4,10 @@ import { revalidatePath } from "next/cache";
 import { listPositions } from "@/lib/stock-positions";
 import { refreshTickerProfiles } from "@/lib/ticker-profiles";
 import { deps } from "@/lib/wiring";
+import { requireModuleAccess } from "../../require-access";
+
+/** The module these actions belong to, matched exactly by `requireModuleAccess`. */
+const ACCESS_MODULE_SLUG = "stock-etfs";
 
 const STOCK_ETFS_MODULE_PATH = "/modules/stock-etfs";
 
@@ -27,6 +31,7 @@ export interface RefreshProfilesActionResult {
  * thrown and the caller reports it as a footnote.
  */
 export async function refreshTickerProfilesAction(): Promise<RefreshProfilesActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const tickers = listPositions(deps.stockPositionRepo).map((position) => position.ticker);
     const result = await refreshTickerProfiles(

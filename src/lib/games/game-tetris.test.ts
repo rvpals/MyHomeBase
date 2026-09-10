@@ -20,6 +20,7 @@ import {
 } from "./game-tetris";
 import {
   BUFFER_ROWS,
+  LINE_SCORES,
   LOCK_DELAY_TICKS,
   PLAYFIELD_WIDTH,
   TOTAL_HEIGHT,
@@ -298,7 +299,10 @@ describe("lockPiece", () => {
   });
 
   it("scores a single line at the current level", () => {
-    // Nine columns filled, the O completing two of them — one line, 100 x level 1.
+    // Every column but two filled, the O completing that pair — one line at level 1.
+    // Asserted against `LINE_SCORES` rather than a literal: the table is scaled to the
+    // board's width, so a hardcoded number here breaks whenever the board is resized
+    // and says nothing about whether the *scoring* is right.
     const state = stateWith(
       fieldWith([...fullRow(TOTAL_HEIGHT - 1, [4, 5])]),
       { kind: "O", rotation: 0, row: TOTAL_HEIGHT - 2, col: 4 },
@@ -306,7 +310,7 @@ describe("lockPiece", () => {
     const locked = lockPiece(state, fixed);
 
     expect(locked.lines).toBe(1);
-    expect(locked.score).toBe(100);
+    expect(locked.score).toBe(LINE_SCORES[1]);
   });
 
   it("multiplies the line score by the level the lines were cleared at", () => {
@@ -315,7 +319,7 @@ describe("lockPiece", () => {
       { kind: "O", rotation: 0, row: TOTAL_HEIGHT - 2, col: 4 },
       { level: 3 },
     );
-    expect(lockPiece(state, fixed).score).toBe(300);
+    expect(lockPiece(state, fixed).score).toBe(LINE_SCORES[1] * 3);
   });
 
   it("scores a four-line clear far above four singles", () => {
@@ -331,7 +335,9 @@ describe("lockPiece", () => {
     const locked = lockPiece(state, fixed);
 
     expect(locked.lines).toBe(4);
-    expect(locked.score).toBe(800);
+    expect(locked.score).toBe(LINE_SCORES[4]);
+    // The point of the table: a tetris beats four separate singles.
+    expect(LINE_SCORES[4]).toBeGreaterThan(LINE_SCORES[1] * 4);
   });
 
   it("reports the clear it produced, with the board still showing the full rows", () => {

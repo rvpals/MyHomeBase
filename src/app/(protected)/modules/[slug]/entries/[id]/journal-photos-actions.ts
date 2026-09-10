@@ -1,7 +1,5 @@
 "use server";
 
-import { cookies } from "next/headers";
-import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import {
   listPhotoFoldersForDate,
   listPhotoFoldersForRange,
@@ -14,14 +12,17 @@ import {
   type PhotoFolder,
   type PhotoFolderLookup,
 } from "@/lib/journal-photos";
-import { deps } from "@/lib/wiring";
 import { photoStore } from "../../journal-photo-root";
+import { requireModuleAccess } from "../../../../require-access";
+
+/** The module these actions belong to, matched exactly by `requireModuleAccess`. */
+const JOURNAL_MODULE_SLUG = "journal";
 
 // Thin adapters over the journal-photos use-cases: validate, call, return. No logic.
 //
-// Both check the session themselves rather than leaning on the (protected) layout.
-// The layout guards the *page*, but these reach the filesystem, so the check belongs
-// on the call that does it — the same reasoning as the image route.
+// Each checks Journal module access itself rather than leaning on the (protected)
+// layout. The layout guards the *page*, but these reach the filesystem, so the check
+// belongs on the call that does it — the same reasoning as the image route.
 
 export interface PhotoFoldersResult {
   ok: boolean;
@@ -44,7 +45,7 @@ export interface PhotoContentsResult {
 
 /** Which folders in the archive hold photos for an entry's date. Cheap: names only. */
 export async function findPhotoFoldersAction(date: string): Promise<PhotoFoldersResult> {
-  if (!(await hasSession())) return { ok: false, error: "Not signed in." };
+  if (!(await hasModuleAccess())) return { ok: false, error: "Not signed in." };
 
   const parsed = photoFolderLookupSchema.safeParse({ date });
   if (!parsed.success) return { ok: false, error: "Not a valid entry date." };
@@ -74,7 +75,7 @@ export async function listPhotosInFolderAction(
   relativePath: string,
   includeAll = false,
 ): Promise<PhotoContentsResult> {
-  if (!(await hasSession())) return { ok: false, error: "Not signed in." };
+  if (!(await hasModuleAccess())) return { ok: false, error: "Not signed in." };
 
   const parsed = photoFolderContentsSchema.safeParse({ date, relativePath, includeAll });
   if (!parsed.success) return { ok: false, error: "Not a valid photo folder." };
@@ -92,9 +93,20 @@ export async function listPhotosInFolderAction(
   }
 }
 
-async function hasSession(): Promise<boolean> {
-  const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
-  return getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo) !== undefined;
+/**
+ * A session *and* a grant for the Journal module.
+ *
+ * Returns a boolean rather than throwing, because every caller here reports the
+ * refusal through its own `{ ok: false }` result. The slug is matched exactly by
+ * `requireModuleAccess`.
+ */
+async function hasModuleAccess(): Promise<boolean> {
+  try {
+    await requireModuleAccess(JOURNAL_MODULE_SLUG);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -108,7 +120,7 @@ export async function findPhotoFoldersInRangeAction(
   from: string,
   to: string,
 ): Promise<PhotoFoldersResult> {
-  if (!(await hasSession())) return { ok: false, error: "Not signed in." };
+  if (!(await hasModuleAccess())) return { ok: false, error: "Not signed in." };
 
   const parsed = photoRangeSchema.safeParse({ from, to });
   if (!parsed.success) {
@@ -141,7 +153,7 @@ export async function listPhotosInFolderForRangeAction(
   relativePath: string,
   includeAll = false,
 ): Promise<PhotoContentsResult> {
-  if (!(await hasSession())) return { ok: false, error: "Not signed in." };
+  if (!(await hasModuleAccess())) return { ok: false, error: "Not signed in." };
 
   const parsed = photoRangeContentsSchema.safeParse({ from, to, relativePath, includeAll });
   if (!parsed.success) {

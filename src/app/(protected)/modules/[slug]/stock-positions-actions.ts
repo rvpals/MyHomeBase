@@ -16,6 +16,10 @@ import {
 import type { PositionType, PositionValueMove, TransactionAction } from "@/lib/stock-positions";
 import { centsToDollars, dollarsToCents } from "@/lib/shared/money";
 import { deps } from "@/lib/wiring";
+import { requireModuleAccess } from "../../require-access";
+
+/** The module these actions belong to, matched exactly by `requireModuleAccess`. */
+const ACCESS_MODULE_SLUG = "stock-etfs";
 
 const STOCK_ETFS_MODULE_PATH = "/modules/stock-etfs";
 
@@ -66,6 +70,7 @@ function toErrorResult(error: unknown, fallback: string): ActionResult {
 }
 
 export async function upsertPositionAction(input: PositionFormInput): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     upsertPosition(deps.stockPositionRepo, {
       accountId: input.accountId,
@@ -97,6 +102,7 @@ export async function upsertPositionAction(input: PositionFormInput): Promise<Ac
 }
 
 export async function deletePositionAction(accountId: number, ticker: string): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     deletePosition(deps.stockPositionRepo, { accountId, ticker });
   } catch (error) {
@@ -107,6 +113,7 @@ export async function deletePositionAction(accountId: number, ticker: string): P
 }
 
 export async function createTransactionAction(input: TransactionFormInput): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     createTransaction(deps.stockPositionRepo, {
       transactionAt: input.transactionAt,
@@ -129,6 +136,7 @@ export async function updateTransactionAction(
   transactionId: number,
   input: TransactionFormInput,
 ): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     updateTransaction(deps.stockPositionRepo, transactionId, {
       transactionAt: input.transactionAt,
@@ -158,6 +166,7 @@ export interface QuoteResult {
 }
 
 export async function fetchQuoteAction(ticker: string): Promise<QuoteResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const quote = await lookupQuote(deps.marketDataClient, ticker);
     return {
@@ -191,6 +200,7 @@ export interface RefreshTarget {
  * returns once.
  */
 export async function listRefreshTargetsAction(): Promise<RefreshTarget[]> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   return listPositions(deps.stockPositionRepo).map((position) => ({
     accountId: position.accountId,
     ticker: position.ticker,
@@ -222,6 +232,7 @@ export async function refreshOnePositionAction(
   accountId: number,
   ticker: string,
 ): Promise<RefreshOneResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     // Read before writing: `refreshPosition` upserts, so the pre-refresh value is
     // gone by the time it returns, and the running total needs both ends.
@@ -254,6 +265,7 @@ export async function refreshOnePositionAction(
 }
 
 export async function refreshAllPositionsAction(): Promise<RefreshAllResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const { refreshed, failed } = await refreshAllPositions(deps.stockPositionRepo, deps.marketDataClient);
     revalidatePath(STOCK_ETFS_MODULE_PATH);
@@ -264,6 +276,7 @@ export async function refreshAllPositionsAction(): Promise<RefreshAllResult> {
 }
 
 export async function deleteTransactionAction(transactionId: number): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     deleteTransaction(deps.stockPositionRepo, transactionId);
   } catch (error) {

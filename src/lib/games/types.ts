@@ -231,17 +231,27 @@ export const PIECE_KINDS = ["I", "O", "T", "S", "Z", "J", "L"] as const;
 
 export type PieceKind = (typeof PIECE_KINDS)[number];
 
-/** Playfield width in cells. Ten is the standard board and the rotation tables assume it. */
-export const PLAYFIELD_WIDTH = 10;
+/**
+ * Playfield width in cells.
+ *
+ * Fourteen rather than the standard ten: this board is deliberately roomier, which
+ * makes a line harder to complete and a game longer to lose. `LINE_SCORES` is scaled to
+ * match — see the note there.
+ *
+ * Nothing here assumes a particular width. The rotation kicks are *relative* offsets,
+ * and `spawnPiece` centres by arithmetic, so both follow this constant. (An earlier
+ * comment claimed the rotation tables assumed ten; they do not.)
+ */
+export const PLAYFIELD_WIDTH = 14;
 
 /**
  * Visible playfield height in cells.
  *
- * Twenty is the standard visible board. Pieces spawn *above* it (see `SPAWN_ROW`), so
- * the grid actually stored is taller than this — `PLAYFIELD_HEIGHT` is what the view
- * draws, not what the state holds.
+ * Twenty-four rather than the standard twenty, for the same reason the board is wider.
+ * Pieces spawn *above* it (see `SPAWN_ROW`), so the grid actually stored is taller than
+ * this — `PLAYFIELD_HEIGHT` is what the view draws, not what the state holds.
  */
-export const PLAYFIELD_HEIGHT = 20;
+export const PLAYFIELD_HEIGHT = 24;
 
 /**
  * Hidden rows above the visible playfield, where a piece spawns.
@@ -373,11 +383,16 @@ export interface TetrisState {
 /**
  * Points for clearing 1-4 lines at once, before the level multiplier.
  *
- * The classic Nintendo table. The jump from 500 to 800 for a fourth line is the whole
- * reason to stack deep rather than clear singles, so it is the one number here that
- * changes how the game is played.
+ * The classic Nintendo table (100/300/500/800) scaled by 1.4, because this board is
+ * `PLAYFIELD_WIDTH` 14 rather than the standard 10: a line takes 40% more cells to
+ * complete, so an unscaled table would quietly pay 40% less per unit of work and make
+ * every score incomparable with the classic game's for the wrong reason.
+ *
+ * The *ratios* are untouched, which is the part that matters — the jump to a fourth
+ * line is still the whole reason to stack deep rather than clear singles, and it is the
+ * one number here that changes how the game is played.
  */
-export const LINE_SCORES: Record<number, number> = { 1: 100, 2: 300, 3: 500, 4: 800 };
+export const LINE_SCORES: Record<number, number> = { 1: 140, 2: 420, 3: 700, 4: 1120 };
 
 /** Points per cell dropped, for a soft drop and a hard drop respectively. */
 export const SOFT_DROP_POINTS = 1;

@@ -24,6 +24,11 @@ module is obvious from the name alone. New tables must follow this.
 The `rei_` prefix (Real Estate Investment) was retired when that module was
 removed — see migration `0026_drop_real_estate_module`.
 
+**Picture Gallery is absent from this table on purpose: it owns no table, so it has
+no prefix.** It presents the photo share (via `journal-photos`) and `fav_photos`,
+both of which already belong to other modules. Don't invent a prefix for it to close
+the gap — see `modules.md` → *Per-module detail* → **Picture Gallery**.
+
 **A new table also wants a line in
 [`src/lib/sql-explorer/table-reference.ts`](src/lib/sql-explorer/table-reference.ts)**,
 which is what the SQL Explorer's *Table references* card renders. Missing one isn't

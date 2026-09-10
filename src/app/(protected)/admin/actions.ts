@@ -50,6 +50,7 @@ export interface SaveAdminSettingsInput {
 }
 
 export async function saveAdminSettingsAction(input: SaveAdminSettingsInput): Promise<void> {
+  await requireAdmin();
   updateModules(deps.moduleRepo, input.modules);
   updateSettings(deps.settingsRepo, [
     { key: "application_name", value: input.applicationName },
@@ -88,6 +89,7 @@ export async function saveModuleCarouselImageAction(
   formData: FormData,
 ): Promise<ModuleImageResult> {
   try {
+    await requireAdmin();
     const slug = String(formData.get("slug") ?? "");
     const file = formData.get("image");
     if (!(file instanceof File)) return { ok: false, error: "No image was received." };
@@ -129,6 +131,7 @@ export async function saveModuleIconAction(
   icon: string,
 ): Promise<ModuleImageResult> {
   try {
+    await requireAdmin();
     setModuleIcon(deps.moduleRepo, slug, icon);
     revalidatePath("/", "layout");
     return { ok: true };
@@ -142,6 +145,7 @@ export async function saveModuleIconAction(
 
 export async function removeModuleCarouselImageAction(slug: string): Promise<ModuleImageResult> {
   try {
+    await requireAdmin();
     removeModuleCarouselImage(deps.moduleRepo, slug);
     revalidatePath("/", "layout");
     return { ok: true };

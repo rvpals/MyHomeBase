@@ -460,6 +460,58 @@ html[data-music-player="full"] {
   --music-player-height: 4.5rem;
 }
 
+/* Minimized: the bar is a floating button in the bottom-right corner, so it
+   reserves NO page padding. Deliberately 0px rather than the button's own size --
+   the puck floats *over* the content instead of pushing it up, which is the whole
+   point of minimizing, and a corner button overlapping the last line of a page is
+   not the same problem a full-width bar would be. */
+html[data-music-player="minimized"] {
+  --music-player-height: 0px;
+}
+
+/* The minimized puck. Fixed to the bottom-right, clear of the compact section
+   trigger the same way `.music-player-pinned` is, and at the same z-30 so it sits
+   under AppChrome's top bar and any modal. `inset-inline: auto` is not needed --
+   unlike the pinned bar this sets only `right`, so it stays a corner element at
+   every width. */
+.music-player-puck {
+  position: fixed;
+  right: 1rem;
+  bottom: calc(var(--section-trigger-height) + 1rem + env(safe-area-inset-bottom));
+  z-index: 30;
+}
+
+/* The player's "fire" visualizer.
+   ------------------------------------------------------------------
+   Tokens rather than literals in the canvas, per design.md -- the other two
+   visualizer modes draw in brass and read those the same way.
+
+   Three stops, not two, because a two-stop ramp from deep red to yellow passes
+   through a muddy orange in the middle; naming the mid stop keeps the hot part
+   of the gradient in the top third where the bar tips are. Deliberately NOT the
+   brass palette: fire is the one place in the app that is meant to look like a
+   different material, which is the whole point of offering it as a mode. */
+:root {
+  /* The base, at the foot of a bar. Deep ember, dark enough to sit on --paper
+     without glowing. */
+  --flame-base: #7a1803;
+  /* The body of the flame. */
+  --flame-mid: #e8590c;
+  /* The tips. Pale yellow, not white -- white reads as a blown-out highlight. */
+  --flame-tip: #ffd43a;
+}
+
+/* The "galaxy" visualizer's particles.
+   ------------------------------------------------------------------
+   Two hues so the field has depth rather than reading as one flat dust
+   cloud: the core colour for particles near the centre, the rim colour
+   for the outer orbits, interpolated by radius. Brass-adjacent on
+   purpose -- unlike fire, this one belongs to the app's palette. */
+:root {
+  --galaxy-core: #9df5e0;
+  --galaxy-rim: #2b7fd4;
+}
+
 /* Intrinsic grids for a *collection of the same thing* — cards, tiles.
    ------------------------------------------------------------------
    `design.md`'s 1024px boundary answers "which layout shape", and it answers it

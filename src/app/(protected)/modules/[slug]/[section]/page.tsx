@@ -11,6 +11,8 @@ import { CsvSection } from "../csv-section";
 import { isCsvSection } from "../csv-sections";
 import { ExpenseSection } from "../expense-section";
 import { isExpenseSection } from "../expense-sections";
+import { GallerySection } from "../gallery-section";
+import { isGallerySection } from "../gallery-sections";
 import { GamesSection } from "../games-section";
 import { isGamesSection } from "../games-sections";
 import { isJournalSection } from "../journal-sections";
@@ -26,6 +28,7 @@ const EXPENSE_MODULE_SLUG = "expense";
 const GAMES_MODULE_SLUG = "games";
 const JOURNAL_MODULE_SLUG = "journal";
 const MUSIC_LIBRARY_MODULE_SLUG = "music-library";
+const PICTURE_GALLERY_MODULE_SLUG = "picture-gallery";
 const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
 
 /**
@@ -57,6 +60,9 @@ function renderSection(
   requestedGroupBy: string | undefined,
   requestedGroupKey: string | undefined,
   requestedTicker: string | undefined,
+  requestedLots: string | undefined,
+  requestedTickerLots: string | undefined,
+  requestedSeedTickers: string | undefined,
 ) {
   if (slug === ATTENDANCE_MODULE_SLUG && isAttendanceSection(section)) {
     return (
@@ -106,8 +112,19 @@ function renderSection(
   if (slug === MUSIC_LIBRARY_MODULE_SLUG && isMusicSection(section)) {
     return <MusicSection section={section} />;
   }
+  if (slug === PICTURE_GALLERY_MODULE_SLUG && isGallerySection(section)) {
+    return <GallerySection section={section} />;
+  }
   if (slug === STOCK_ETFS_MODULE_SLUG && isStockSection(section)) {
-    return <StockSection section={section} requestedTicker={requestedTicker} />;
+    return (
+      <StockSection
+        section={section}
+        requestedTicker={requestedTicker}
+        requestedLots={requestedLots}
+        requestedTickerLots={requestedTickerLots}
+        requestedSeedTickers={requestedSeedTickers}
+      />
+    );
   }
   return undefined;
 }
@@ -146,6 +163,18 @@ export default async function ModuleSectionPage({
     // Which ticker the Tax Lots analyzer is showing, so one position's lot
     // breakdown is a bookmarkable URL rather than client state.
     ticker?: string | string[];
+    // An encoded set of transactions for the Tax Lots analyzer to score without
+    // storing them — set by the ticker viewer's Calculate Tax Lots button. In the
+    // URL rather than client state because the ad-hoc analysis persists nowhere
+    // else: the link IS the saved analysis.
+    lots?: string | string[];
+    // Several tickers, each with its own encoded lots — an edited multi-ticker
+    // selection, so a refresh reproduces exactly what was on screen.
+    tickers?: string | string[];
+    // A comma-separated symbol list whose lots are built from the recorded buys.
+    // What the "Add by tickers" picker emits: short, and always current with the
+    // ledger rather than a snapshot of it.
+    seedTickers?: string | string[];
   }>;
 }) {
   const { slug, section } = await params;
@@ -163,6 +192,9 @@ export default async function ModuleSectionPage({
     groupBy,
     group,
     ticker,
+    lots,
+    tickers,
+    seedTickers,
   } = await searchParams;
   // A repeated ?filter= yields an array; take the first rather than joining, so a
   // crafted URL can't smuggle a second expression in.
@@ -196,6 +228,14 @@ export default async function ModuleSectionPage({
   // tickers that actually have lots, so a stale URL falls back to the first
   // stored ticker rather than 404ing.
   const requestedTicker = Array.isArray(ticker) ? ticker[0] : ticker;
+  // Same first-element rule. Also left raw: the section decodes it with the Tax
+  // Lots module's own function, and an unusable payload falls back to the stored
+  // lots rather than 404ing.
+  const requestedLots = Array.isArray(lots) ? lots[0] : lots;
+  // Same first-element rule, same fallback: the section decodes both and drops to
+  // the stored view on anything it can't use.
+  const requestedTickerLots = Array.isArray(tickers) ? tickers[0] : tickers;
+  const requestedSeedTickers = Array.isArray(seedTickers) ? seedTickers[0] : seedTickers;
 
   const appModule = getModuleBySlug(deps.moduleRepo, slug);
   if (!appModule) notFound();
@@ -223,6 +263,9 @@ export default async function ModuleSectionPage({
     requestedGroupBy,
     requestedGroupKey,
     requestedTicker,
+    requestedLots,
+    requestedTickerLots,
+    requestedSeedTickers,
   );
   if (!body) notFound();
 

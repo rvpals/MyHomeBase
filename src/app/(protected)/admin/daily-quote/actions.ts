@@ -9,6 +9,7 @@ import {
   type UpdateQuoteInput,
 } from "@/lib/daily-quote";
 import { deps } from "@/lib/wiring";
+import { requireAdmin } from "../../require-access";
 
 export interface ActionResult {
   ok: boolean;
@@ -21,6 +22,7 @@ function toErrorResult(error: unknown, fallback: string): ActionResult {
 
 export async function createQuoteAction(input: CreateQuoteInput): Promise<ActionResult> {
   try {
+    await requireAdmin();
     createQuote(deps.dailyQuoteRepo, input);
   } catch (error) {
     return toErrorResult(error, "Failed to create quote.");
@@ -32,6 +34,7 @@ export async function createQuoteAction(input: CreateQuoteInput): Promise<Action
 
 export async function updateQuoteAction(id: number, input: UpdateQuoteInput): Promise<ActionResult> {
   try {
+    await requireAdmin();
     updateQuote(deps.dailyQuoteRepo, id, input);
   } catch (error) {
     return toErrorResult(error, "Failed to update quote.");
@@ -53,6 +56,12 @@ export interface ImportQuotesResult extends ActionResult {
  * and every failure is reported back.
  */
 export async function importQuotesAction(inputs: CreateQuoteInput[]): Promise<ImportQuotesResult> {
+  try {
+    await requireAdmin();
+  } catch (error) {
+    return toErrorResult(error, "Failed to import quotes.");
+  }
+
   const failures: { index: number; reason: string }[] = [];
   let importedCount = 0;
 
@@ -75,6 +84,7 @@ export async function importQuotesAction(inputs: CreateQuoteInput[]): Promise<Im
 
 export async function deleteQuoteAction(id: number): Promise<ActionResult> {
   try {
+    await requireAdmin();
     deleteQuote(deps.dailyQuoteRepo, id);
   } catch (error) {
     return toErrorResult(error, "Failed to delete quote.");

@@ -61,6 +61,10 @@ import { runExpenseAutoImport } from "@/lib/expense/auto-import-runner";
 import { getModuleBySlug } from "@/lib/modules";
 import { removeModuleSetting, saveModuleSettingsPartial } from "@/lib/module-settings";
 import { deps } from "@/lib/wiring";
+import { requireModuleAccess } from "../../require-access";
+
+/** The module these actions belong to, matched exactly by `requireModuleAccess`. */
+const ACCESS_MODULE_SLUG = "expense";
 
 const EXPENSE_MODULE_PATH = "/modules/expense";
 const EXPENSE_IMPORT_TYPE = "Expense" as const;
@@ -86,6 +90,7 @@ export async function saveAccountAction(
   id: number | undefined,
   input: SaveAccountInput,
 ): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     if (id === undefined) createAccount(deps.expenseRepo, input);
     else updateAccount(deps.expenseRepo, id, input);
@@ -106,6 +111,7 @@ export async function saveAccountImageAction(
   mimeType: string,
   base64Data: string,
 ): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     setAccountImage(deps.expenseRepo, id, { mimeType, base64Data } as ExpenseImageUploadInput);
   } catch (error) {
@@ -116,6 +122,7 @@ export async function saveAccountImageAction(
 }
 
 export async function clearAccountImageAction(id: number): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     clearAccountImage(deps.expenseRepo, id);
   } catch (error) {
@@ -126,6 +133,7 @@ export async function clearAccountImageAction(id: number): Promise<ActionResult>
 }
 
 export async function deleteAccountAction(id: number): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     deleteAccount(deps.expenseRepo, id);
   } catch (error) {
@@ -138,6 +146,7 @@ export async function deleteAccountAction(id: number): Promise<ActionResult> {
 // --- categories -------------------------------------------------------------
 
 export async function saveCategoryAction(input: SaveCategoryInput): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     upsertCategory(deps.expenseRepo, input);
   } catch (error) {
@@ -148,6 +157,7 @@ export async function saveCategoryAction(input: SaveCategoryInput): Promise<Acti
 }
 
 export async function deleteCategoryAction(name: string): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     deleteCategory(deps.expenseRepo, name);
   } catch (error) {
@@ -167,6 +177,7 @@ export async function saveCategoryIconAction(
   mimeType: string,
   base64Data: string,
 ): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     setCategoryIcon(deps.expenseRepo, name, {
       mimeType,
@@ -180,6 +191,7 @@ export async function saveCategoryIconAction(
 }
 
 export async function clearCategoryIconAction(name: string): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     clearCategoryIcon(deps.expenseRepo, name);
   } catch (error) {
@@ -196,6 +208,7 @@ export async function clearCategoryIconAction(name: string): Promise<ActionResul
 // that is already saved just updates its description.
 
 export async function saveVendorAction(input: SaveVendorInput): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     upsertVendor(deps.expenseRepo, input);
   } catch (error) {
@@ -206,6 +219,7 @@ export async function saveVendorAction(input: SaveVendorInput): Promise<ActionRe
 }
 
 export async function deleteVendorAction(name: string): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     deleteVendor(deps.expenseRepo, name);
   } catch (error) {
@@ -226,6 +240,7 @@ export async function saveVendorIconAction(
   mimeType: string,
   base64Data: string,
 ): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     setVendorIcon(deps.expenseRepo, name, {
       mimeType,
@@ -257,6 +272,7 @@ export interface AutoPopulateVendorIconsResult extends ActionResult {
 export async function autoPopulateVendorIconsAction(
   names: string[],
 ): Promise<AutoPopulateVendorIconsResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const results = await Promise.all(
       names.map((name) => autoPopulateVendorIcon(deps.expenseRepo, deps.vendorLogoClient, name)),
@@ -269,6 +285,7 @@ export async function autoPopulateVendorIconsAction(
 }
 
 export async function clearVendorIconAction(name: string): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     clearVendorIcon(deps.expenseRepo, name);
   } catch (error) {
@@ -284,6 +301,7 @@ export async function saveTransactionAction(
   id: number | undefined,
   input: SaveTransactionInput,
 ): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     if (id === undefined) {
       const userId = await currentUserId();
@@ -300,6 +318,7 @@ export async function saveTransactionAction(
 }
 
 export async function deleteTransactionAction(id: number): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     deleteTransaction(deps.expenseRepo, id);
   } catch (error) {
@@ -315,6 +334,7 @@ export interface BulkActionResult extends ActionResult {
 }
 
 export async function deleteTransactionsAction(ids: number[]): Promise<BulkActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const count = deleteTransactions(deps.expenseRepo, ids);
     revalidatePath(EXPENSE_MODULE_PATH);
@@ -328,6 +348,7 @@ export async function bulkEditTransactionsAction(
   ids: number[],
   changes: BulkTransactionEditInput,
 ): Promise<BulkActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const count = bulkEditTransactions(deps.expenseRepo, ids, changes);
     revalidatePath(EXPENSE_MODULE_PATH);
@@ -343,6 +364,7 @@ export async function saveRuleAction(
   id: number | undefined,
   input: SavePostImportRuleInput,
 ): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     if (id === undefined) createRule(deps.expenseRepo, input);
     else updateRule(deps.expenseRepo, id, input);
@@ -354,6 +376,7 @@ export async function saveRuleAction(
 }
 
 export async function deleteRuleAction(id: number): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     deleteRule(deps.expenseRepo, id);
   } catch (error) {
@@ -378,6 +401,7 @@ export async function deleteRuleAction(id: number): Promise<ActionResult> {
  *     just set on the other screen.
  */
 export async function saveExpenseFolderAction(autoImportPath: string): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const expenseModule = getModuleBySlug(deps.moduleRepo, "expense");
     if (!expenseModule) return { ok: false, error: "Expense module not found." };
@@ -416,6 +440,7 @@ export interface AutoImportResult extends ActionResult {
  * request, and testing a folder before arming the service is exactly what it's for.
  */
 export async function runAutoImportNowAction(): Promise<AutoImportResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const summary = runExpenseAutoImport({ force: true });
     revalidatePath(EXPENSE_MODULE_PATH);
@@ -435,6 +460,7 @@ export interface CleanupBatchActionResult extends ActionResult {
  * report anything until it finished.
  */
 export async function runCleanupBatchAction(batchSize: number): Promise<CleanupBatchActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     return { ok: true, result: runCleanupBatch(deps.expenseRepo, batchSize) };
   } catch (error) {
@@ -448,6 +474,7 @@ export interface UnprocessedCountResult extends ActionResult {
 
 /** The size of the queue, read before a run so the progress bar has a total. */
 export async function countUnprocessedAction(): Promise<UnprocessedCountResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     return { ok: true, count: countUnprocessed(deps.expenseRepo) };
   } catch (error) {
@@ -457,6 +484,7 @@ export async function countUnprocessedAction(): Promise<UnprocessedCountResult> 
 
 /** Re-queues everything, so a newly added rule can reach older transactions. */
 export async function resetProcessedAction(): Promise<UnprocessedCountResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const count = resetProcessedFlags(deps.expenseRepo);
     revalidatePath(EXPENSE_MODULE_PATH);
@@ -480,6 +508,7 @@ export interface ForcedRuleActionResult extends ActionResult {
 export async function applyRuleToExistingAction(
   ruleId: number,
 ): Promise<ForcedRuleActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const result = applyRuleToExistingTransactions(deps.expenseRepo, ruleId);
     revalidatePath(EXPENSE_MODULE_PATH);
@@ -491,6 +520,7 @@ export async function applyRuleToExistingAction(
 
 /** Called once at the end of a run so the page picks up every change. */
 export async function refreshExpenseViewAction(): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   revalidatePath(EXPENSE_MODULE_PATH);
   return { ok: true };
 }
@@ -502,6 +532,7 @@ export interface PatternPreviewResult extends ActionResult {
 
 /** Backs the live "N transactions match" hint while a rule is being written. */
 export async function previewPatternAction(pattern: string): Promise<PatternPreviewResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     if (pattern.trim() === "") return { ok: true, matchCount: 0, samples: [] };
     const preview = previewPatternMatches(deps.expenseRepo, pattern);
@@ -519,6 +550,7 @@ export interface ExpensePreviewResult extends ActionResult {
 }
 
 export async function previewExpenseCsvAction(fileText: string): Promise<ExpensePreviewResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     return {
       ok: true,
@@ -536,6 +568,7 @@ export async function saveExpenseMappingAction(
   columnMapping: ColumnMapping,
   fieldOptions: FieldOptionsMap,
 ): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     if (id === undefined) {
       createNamedMapping(deps.csvImportMappingRepo, {
@@ -555,6 +588,7 @@ export async function saveExpenseMappingAction(
 }
 
 export async function deleteExpenseMappingAction(id: number): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     deleteNamedMapping(deps.csvImportMappingRepo, id);
   } catch (error) {
@@ -574,6 +608,7 @@ export async function runExpenseImportAction(
   fieldOptions: FieldOptionsMap,
   options: { transactionAccountId: number; invertAmounts: boolean; skipDuplicates: boolean; applyRules: boolean },
 ): Promise<ExpenseImportResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const userId = await currentUserId();
     if (userId === undefined) return { ok: false, error: "You must be signed in." };

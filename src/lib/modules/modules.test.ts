@@ -164,6 +164,7 @@ describe("resetModulesToDefaults", () => {
       "attendance",
       "music-library",
       "games",
+      "picture-gallery",
     ]);
   });
 

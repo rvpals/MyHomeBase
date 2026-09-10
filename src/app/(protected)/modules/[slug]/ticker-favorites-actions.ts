@@ -16,6 +16,10 @@ import {
   type FavoriteQuote,
 } from "@/lib/ticker-favorites";
 import { deps } from "@/lib/wiring";
+import { requireModuleAccess } from "../../require-access";
+
+/** The module these actions belong to, matched exactly by `requireModuleAccess`. */
+const ACCESS_MODULE_SLUG = "stock-etfs";
 
 export interface ToggleFavoriteResult {
   ok: boolean;
@@ -26,6 +30,7 @@ export interface ToggleFavoriteResult {
 
 /** The favorited symbols, newest first. */
 export async function listFavoriteTickersAction(): Promise<string[]> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   return listFavoriteTickers(deps.tickerFavoriteRepo);
 }
 
@@ -37,11 +42,13 @@ export async function listFavoriteTickersAction(): Promise<string[]> {
  * isn't held comes back without a price.
  */
 export async function listFavoriteQuotesAction(): Promise<FavoriteQuote[]> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   return listFavoriteQuotes(deps.tickerFavoriteRepo, deps.stockPositionRepo);
 }
 
 /** Whether one symbol is starred — what the viewer's star renders from on open. */
 export async function isFavoriteTickerAction(ticker: string): Promise<boolean> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   return isFavoriteUseCase(deps.tickerFavoriteRepo, ticker);
 }
 
@@ -52,6 +59,7 @@ export async function isFavoriteTickerAction(ticker: string): Promise<boolean> {
  * optimistic button can roll back to the truth instead of to its own assumption.
  */
 export async function toggleFavoriteTickerAction(ticker: string): Promise<ToggleFavoriteResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const isFavorite = toggleFavoriteUseCase(deps.tickerFavoriteRepo, ticker);
     return { ok: true, isFavorite };

@@ -13,6 +13,10 @@ import {
   type VolatilityResult,
 } from "@/lib/stock-analytics";
 import { deps } from "@/lib/wiring";
+import { requireModuleAccess } from "../../require-access";
+
+/** The module these actions belong to, matched exactly by `requireModuleAccess`. */
+const ACCESS_MODULE_SLUG = "stock-etfs";
 
 const STOCK_ETFS_MODULE_PATH = "/modules/stock-etfs";
 
@@ -31,6 +35,7 @@ export interface RecomputeVolatilityResult extends ActionResult {
 }
 
 export async function recomputeAllVolatilityAction(): Promise<RecomputeVolatilityResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const positions = deps.stockPositionRepo.listPositions();
   const results: VolatilityResult[] = [];
   const failed: { ticker: string; error: string }[] = [];
@@ -54,6 +59,7 @@ export async function recomputeAllVolatilityAction(): Promise<RecomputeVolatilit
 }
 
 export async function clearVolatilityCacheAction(): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     clearVolatilityCache(deps.stockAnalyticsRepo);
   } catch (error) {
@@ -68,6 +74,7 @@ export interface ComputeCorrelationResult extends ActionResult {
 }
 
 export async function computeCorrelationAction(): Promise<ComputeCorrelationResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const positions = deps.stockPositionRepo.listPositions();
     const result = await computeCorrelationMatrix(deps.stockAnalyticsRepo, deps.marketDataClient, positions);
@@ -79,6 +86,7 @@ export async function computeCorrelationAction(): Promise<ComputeCorrelationResu
 }
 
 export async function clearCorrelationCacheAction(): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     clearCorrelationCache(deps.stockAnalyticsRepo);
   } catch (error) {
@@ -96,6 +104,7 @@ export async function computeSharpeAction(
   riskFreeRatePct: string,
   lookbackDays: string,
 ): Promise<ComputeSharpeResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const positions = deps.stockPositionRepo.listPositions();
     const result = await computeSharpe(deps.stockAnalyticsRepo, deps.marketDataClient, positions, {

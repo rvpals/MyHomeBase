@@ -5,6 +5,10 @@ import { todayIsoLocal } from "@/lib/shared/date";
 import { captureDailySnapshot, type DailySnapshot } from "@/lib/stock-daily-snapshot";
 import { listPositions } from "@/lib/stock-positions";
 import { deps } from "@/lib/wiring";
+import { requireModuleAccess } from "../../require-access";
+
+/** The module these actions belong to, matched exactly by `requireModuleAccess`. */
+const ACCESS_MODULE_SLUG = "stock-etfs";
 
 const STOCK_ETFS_MODULE_PATH = "/modules/stock-etfs";
 
@@ -24,6 +28,7 @@ export interface CaptureSnapshotResult {
  * overwrites the same day.
  */
 export async function captureDailySnapshotAction(): Promise<CaptureSnapshotResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const snapshot = captureDailySnapshot(
       deps.stockDailySnapshotRepo,

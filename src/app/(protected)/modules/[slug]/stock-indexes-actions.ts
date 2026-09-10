@@ -2,6 +2,10 @@
 
 import { indexBoardSchema, loadIndexBoard, type IndexBoard } from "@/lib/market-indexes";
 import { deps } from "@/lib/wiring";
+import { requireModuleAccess } from "../../require-access";
+
+/** The module these actions belong to, matched exactly by `requireModuleAccess`. */
+const ACCESS_MODULE_SLUG = "stock-etfs";
 
 export interface LoadIndexBoardActionResult {
   ok: boolean;
@@ -22,6 +26,7 @@ export interface LoadIndexBoardActionResult {
 export async function loadIndexBoardAction(input: {
   symbols?: string[];
 } = {}): Promise<LoadIndexBoardActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const parsed = indexBoardSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid index request." };

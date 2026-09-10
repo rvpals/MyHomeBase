@@ -15,6 +15,10 @@ import {
   type TickerSuggestion,
 } from "@/lib/ticker-search";
 import { deps } from "@/lib/wiring";
+import { requireModuleAccess } from "../../require-access";
+
+/** The module these actions belong to, matched exactly by `requireModuleAccess`. */
+const ACCESS_MODULE_SLUG = "stock-etfs";
 
 export interface TickerSearchResult {
   suggestions: TickerSuggestion[];
@@ -41,6 +45,7 @@ function loadKnownTickers() {
 }
 
 export async function searchTickersAction(query: string): Promise<TickerSearchResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   const parsed = tickerQuerySchema.safeParse(query);
   if (!parsed.success) return { suggestions: [], isExactKnown: false };
 

@@ -12,6 +12,10 @@ import {
 } from "@/lib/investment-accounts";
 import { dollarsToCents } from "@/lib/shared/money";
 import { deps } from "@/lib/wiring";
+import { requireModuleAccess } from "../../require-access";
+
+/** The module these actions belong to, matched exactly by `requireModuleAccess`. */
+const ACCESS_MODULE_SLUG = "stock-etfs";
 
 const STOCK_ETFS_MODULE_PATH = "/modules/stock-etfs";
 
@@ -37,6 +41,7 @@ function toErrorResult(error: unknown, fallback: string): ActionResult {
 }
 
 export async function createAccountAction(input: AccountFormInput): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     createAccount(deps.investmentAccountRepo, {
       name: input.name,
@@ -54,6 +59,7 @@ export async function updateAccountAction(
   accountId: number,
   input: AccountFormInput,
 ): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     updateAccount(deps.investmentAccountRepo, accountId, {
       name: input.name,
@@ -68,6 +74,7 @@ export async function updateAccountAction(
 }
 
 export async function deleteAccountAction(accountId: number): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     deleteAccount(deps.investmentAccountRepo, accountId);
   } catch (error) {
@@ -81,6 +88,7 @@ export async function addPerformanceRecordAction(
   accountId: number,
   input: PerformanceRecordFormInput,
 ): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     addPerformanceRecord(deps.investmentAccountRepo, {
       accountId,
@@ -96,6 +104,7 @@ export async function addPerformanceRecordAction(
 }
 
 export async function deletePerformanceRecordAction(recordId: number): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     deletePerformanceRecord(deps.investmentAccountRepo, recordId);
   } catch (error) {
@@ -114,6 +123,7 @@ export async function saveAccountIconAction(
   mimeType: string,
   base64Data: string,
 ): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     setAccountIcon(deps.investmentAccountRepo, accountId, {
       // Cast because the value came off a File and is unvalidated until the lib
@@ -129,6 +139,7 @@ export async function saveAccountIconAction(
 }
 
 export async function clearAccountIconAction(accountId: number): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     clearAccountIcon(deps.investmentAccountRepo, accountId);
   } catch (error) {

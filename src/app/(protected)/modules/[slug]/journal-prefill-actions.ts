@@ -14,6 +14,10 @@ import {
   type SavePrefillTemplateInput,
 } from "@/lib/journal";
 import { deps } from "@/lib/wiring";
+import { requireModuleAccess } from "../../require-access";
+
+/** The module these actions belong to, matched exactly by `requireModuleAccess`. */
+const ACCESS_MODULE_SLUG = "journal";
 
 const JOURNAL_TEMPLATES_PATH = "/modules/journal/templates";
 // The New Entry form's dropdown lives on the module root, so a template change
@@ -39,6 +43,7 @@ function revalidate(): void {
 export async function savePrefillTemplateAction(
   input: SavePrefillTemplateInput,
 ): Promise<PrefillTemplateResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   let template: JournalPrefillTemplate;
   try {
     template = savePrefillTemplate(deps.journalRepo, input);
@@ -50,6 +55,7 @@ export async function savePrefillTemplateAction(
 }
 
 export async function deletePrefillTemplateAction(id: number): Promise<PrefillTemplateResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     deletePrefillTemplate(deps.journalRepo, id);
   } catch (error) {
@@ -63,6 +69,7 @@ export async function setPrefillTemplateEnabledAction(
   id: number,
   isEnabled: boolean,
 ): Promise<PrefillTemplateResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   let template: JournalPrefillTemplate;
   try {
     template = setPrefillTemplateEnabled(deps.journalRepo, id, isEnabled);

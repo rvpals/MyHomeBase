@@ -1,5 +1,169 @@
 # Change History
 
+## 2026-09-09 22:28 — Every server action authorises, and a Picture Gallery
+
+### [Security] Every exported server action authorises on its first line
+
+A server action is **its own POST endpoint**. Neither the `(protected)` layout's session
+redirect nor the page's own access check runs before one fires — those guard *rendering*,
+and an action can be invoked without ever rendering anything. So hiding a module from a
+user's rail did exactly nothing to stop that user calling the module's actions directly.
+The access grants were real on the screen and absent underneath it.
+
+All **43 action files** now authorise on the first line of every exported action, through
+one shared guard — [require-access.ts](src/app/(protected)/require-access.ts):
+
+- `requireModuleAccess(<FULL_SLUG>)` for anything a module owns,
+- `requireAdmin()` for the admin screens,
+- `requireUser()` for the home-screen widgets no module owns (every signed-in reader sees
+  those, so a session is the whole rule).
+
+**The slug is matched exactly**, and that is a deliberate constraint rather than an
+implementation detail. `getModuleBySlug` is a `WHERE slug = ?` equality lookup — nothing
+does `startsWith`. A prefix test would let `stock-etfs` authorise a future
+`stock-etfs-pro`, and would make `journal` authorise anything merely beginning with it.
+Route paths are not slugs either, and some are deeper than one segment
+(`/modules/journal/metadata`), so the module's own slug is what gets passed.
+
+An **unknown slug throws** rather than denying. A typo'd slug that quietly returned "no
+such module → no access" would be indistinguishable from a real denial in the logs; one
+that quietly returned *access* would be a hole. Failing loudly means a bad slug is a
+crash in development, not a silent grant in production.
+
+The decision itself stays in `lib` — `userHasModuleAccess` and `isAdmin` are unchanged.
+The guard is only the adapter that reads the cookie and enforces the answer, which is why
+none of this is business logic living in a route.
+
+Two files keep a private equivalent rather than importing the shared one, and both are
+correct as they stand: `admin/actions.ts` has its own `requireAdmin`, and
+`user-management/actions.ts` its own `getActingAdminId` (which already checked
+authenticated *and* admin — it needed no change in this release). Folding those two into
+the shared guard is a tidy-up, not a fix.
+
+One variation worth knowing: `journal-photos-actions.ts` wraps the guard in a
+boolean-returning `hasModuleAccess()` instead of letting it throw, because every caller
+there reports refusal through its own `{ ok: false, error }` result rather than an
+exception.
+
+The rule is now written down in three places so it survives the next feature —
+[CLAUDE.md](CLAUDE.md)'s always-on rules, [ARCHITECTURE.md](ARCHITECTURE.md)'s Server
+Actions section, and its definition-of-done list, which gained "every new or touched
+server action authorises on its first line — because a layout never guards an action."
+
+### [Added] Picture Gallery: a module for the pictures, instead of a corner of the home screen
+
+The random photo card and the favourites list lived on the home screen as loose files —
+`random-photo-card.tsx`, `fav-photos-list.tsx`, and a `/favorite-photos` page that existed
+outside the module system entirely. They were a module in everything but registration:
+their own screens, their own actions, their own navigation need.
+
+They are now the **Picture Gallery** module (`picture-gallery`), seeded by
+[0084](migrations/0084_seed_picture_gallery_module.sql) and mirrored in `DEFAULT_MODULES`
+so "Reset to Default" restores it. Two sections: **Home screen** (the photo drawn at
+random) and **Favorite photos** (the ones you kept, as a slideshow or a download).
+
+The home screen section is the **module root**, not a child route — so the card sits at
+`/modules/picture-gallery`, matching the shape every other module uses for its first
+section, rather than at a redundant `/home-screen` path below it.
+
+**Picture Gallery owns no table, and that is on purpose.** It presents the photo share
+(through `journal-photos`) and `sys_fav_photo`, both of which already belong elsewhere. It
+therefore has **no 3-letter prefix**, and [coding-guide.md](coding-guide.md) now says so
+explicitly — so the next person doesn't invent one to close what looks like a gap in the
+table.
+
+The module icon took two migrations, deliberately.
+[0084](migrations/0084_seed_picture_gallery_module.sql) seeded it as `heart` — an
+acknowledged compromise, because the right glyph was a photograph and `MODULE_ICON_NAMES`
+had none. Adding a concept means drawing it for the hand-drawn "classic" set and naming a
+candidate in all 12 generated sets. `photo` — a landscape frame with a sun and a mountain
+horizon — is now that concept, and [0085](migrations/0085_picture_gallery_photo_icon.sql)
+repoints the module onto it. That migration is **scoped by slug AND by the old value**
+(`WHERE slug = 'picture-gallery' AND icon = 'heart'`), so anyone who had already chosen a
+different icon keeps their choice. Exactly the follow-up 0055 was to 0053.
+
+### [Added] Music Library: the song on YouTube
+
+The player has a **Video tab**. Press *Find video* and it looks the track up on YouTube,
+shows the thumbnail, and plays it inline
+([music-video-panel.tsx](src/app/(protected)/modules/[slug]/music-video-panel.tsx), with
+the ranking in [src/lib/youtube/](src/lib/youtube/)).
+
+**Nothing is fetched until asked, and nothing is ever fetched on a scan.** This library
+has 20,272 tracks; auto-fetching during a scan would mean 20,272 scrapes of a free service
+that charges nothing and owes us nothing, which is not a reasonable way to behave. The
+button is explicit for exactly that reason, and the thumbnail-first design means merely
+*opening* the tab is silent.
+
+Answers are cached in `mus_track_video`
+([0086](migrations/0086_create_music_track_video.sql)) — the same shape as
+`mus_track_lyrics` (0054) and for the same reasons: a lookup has states a nullable column
+cannot express, and the payload has no business riding along in a browse query that reads
+fifty tracks at a time. A second visit to a track costs zero requests.
+
+`status` carries the retry policy: `found`, `not_found`, and `failed` — the last two both
+retryable, and kept distinct so a network blip is never remembered as "there is no video
+for this song". Unlike lyrics there is **no terminal miss**: LRCLIB can authoritatively say
+a track has no words, but YouTube can never say a song has no video, only that we did not
+find one. `source` records who chose the pick, so a later refetch can't silently overwrite
+a hand-pinned one. `search_artist`/`search_title` record what was actually queried — not
+always what the tags say, since an untagged file falls back to its filename — because
+without them a wrong pick is impossible to diagnose.
+
+**Playing the video pauses the music.** Otherwise the local audio and YouTube play over
+each other, and the local track is the one the listener can see a transport for, so it is
+the one that yields.
+
+### [Added] Stocks & ETFs: analyze several tickers at once, and link to an analysis
+
+Tax Lots can now take **more than one ticker**
+([multi-ticker.ts](src/lib/tax-lots/multi-ticker.ts)). Each ticker runs through the same
+`analyzeAdhocLots` the single-ticker screen uses and this layer only sums across the
+results — which is what guarantees the per-ticker figures match the single-ticker screen
+exactly, rather than being a second implementation that drifts.
+
+**What is deliberately not summed:** blended cost basis and long/short *share counts*.
+Dollars per share of "NVDA and AAPL mixed" is not a unit, and shares of different symbols
+do not add up; a grand total printing either would be plausible-looking nonsense, which is
+worse than an absent number. Every dollar figure is summed, and so is the XIRR — the cash
+flows are all real money with real dates, so solving one rate across the basket answers a
+genuine question a per-share average cannot.
+
+On screen the **total comes first** and each ticker gets a real divider rather than just
+spacing — six sections of near-identical metric cards otherwise let NVDA's gain get read
+as AAPL's.
+
+An analysis is also now **linkable**. The ad-hoc analyzer stores nothing, so the URL *is*
+the state ([adhoc-url.ts](src/lib/tax-lots/adhoc-url.ts)) — which makes it bookmarkable,
+refresh-proof, and reachable from the ticker viewer's Transactions card, whose new
+*Calculate tax lots* header action sends a ticker's recorded buys straight into the
+analyzer. Lots are encoded as delimited tuples rather than JSON, because twenty
+transactions of pretty JSON would blow past what a browser and server accept on a query
+string, and the result stays readable in the address bar. Decoding **never throws**: a
+stale bookmark, a truncated copy-paste and a hand-edited param are all ordinary, and the
+screen's answer to all three is to fall back to the stored view.
+
+### [Added] `FullscreenStage`, and a visualizer worth going fullscreen for
+
+A new shared component,
+[FullscreenStage](src/components/fullscreen-stage.tsx) — a black, chromeless container
+that fills the *physical screen* through the real Fullscreen API.
+
+Not a `fixed inset-0` overlay, which is the tempting version: an overlay still sits inside
+the browser window, so the tab strip, the URL bar and the OS taskbar stay visible. For
+something whose entire purpose is to be looked at, that chrome is the thing you are trying
+to get rid of. `Modal size="full"` remains the right answer for a dialog that wants the
+viewport; this is the right answer for a display.
+
+**Exit is deliberately not a button of our own.** Escape already exits fullscreen at the
+browser level and cannot be intercepted, so a custom handler would either duplicate it or
+fight it — instead the component listens for the exit and reports it upward, and the
+caller stops rendering the stage. Leaving it mounted would show a black box mid-page.
+
+The audio spectrum uses it, and gained two modes — `circular` and `galaxy` — that are
+**fullscreen-only**, plus a `fill` prop so it can fill the stage instead of sitting in a
+fixed-height strip. Both are registered in [components.md](components.md).
+
 ## 2026-09-08 15:21 — One photo viewer, and a capture timestamp
 
 ### [Changed] Photographs: one viewer, everywhere

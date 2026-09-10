@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { addItem, createWatchList, deleteItem, deleteWatchList, renameWatchList } from "@/lib/stock-watchlist";
 import { deps } from "@/lib/wiring";
+import { requireModuleAccess } from "../../require-access";
+
+/** The module these actions belong to, matched exactly by `requireModuleAccess`. */
+const ACCESS_MODULE_SLUG = "stock-etfs";
 
 const STOCK_ETFS_MODULE_PATH = "/modules/stock-etfs";
 
@@ -16,6 +20,7 @@ function toErrorResult(error: unknown, fallback: string): ActionResult {
 }
 
 export async function createWatchListAction(name: string): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     createWatchList(deps.stockWatchListRepo, { name });
   } catch (error) {
@@ -26,6 +31,7 @@ export async function createWatchListAction(name: string): Promise<ActionResult>
 }
 
 export async function renameWatchListAction(watchListId: number, name: string): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     renameWatchList(deps.stockWatchListRepo, watchListId, { name });
   } catch (error) {
@@ -36,6 +42,7 @@ export async function renameWatchListAction(watchListId: number, name: string): 
 }
 
 export async function deleteWatchListAction(watchListId: number): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     deleteWatchList(deps.stockWatchListRepo, watchListId);
   } catch (error) {
@@ -55,6 +62,7 @@ export async function addWatchListItemAction(
   watchListId: number,
   input: AddWatchListItemFormInput,
 ): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     await addItem(deps.stockWatchListRepo, deps.marketDataClient, {
       watchListId,
@@ -70,6 +78,7 @@ export async function addWatchListItemAction(
 }
 
 export async function deleteWatchListItemAction(itemId: number): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     deleteItem(deps.stockWatchListRepo, itemId);
   } catch (error) {

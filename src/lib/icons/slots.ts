@@ -65,10 +65,15 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    // Id kept as `homescreen_*` though the card now lives in the Picture Gallery
+    // module: a slot id is permanent once an upload exists against it, and renaming
+    // this one would silently orphan that override. The group and `where` below are
+    // free to move with the card because they are only copy.
     id: "homescreen_card_random_photo",
     label: "Random Photo card",
-    group: "Home screen",
-    where: "Home screen → the Random Photo card header, immediately left of the title.",
+    group: "Picture Gallery",
+    where:
+      "Picture Gallery → Home screen → the Random Photo card header, immediately left of the title.",
     defaultConcept: "photo",
     wired: true,
     namespace: "tree",
@@ -518,6 +523,28 @@ export const ICON_SLOTS: IconSlot[] = [
     group: "Games sections",
     where: "Games & Puzzles → section panel → Configuration.",
     defaultConcept: "gear",
+    wired: true,
+    namespace: "tree",
+  },
+
+  /* ---------------------------------------------------------------------------------
+     Picture Gallery — nav sections.
+  --------------------------------------------------------------------------------- */
+  {
+    id: "gallery_section_main",
+    label: "Home screen",
+    group: "Picture Gallery sections",
+    where: "My Picture Gallery → section panel → Home screen.",
+    defaultConcept: "photo",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "gallery_section_favorites",
+    label: "Favorite photos",
+    group: "Picture Gallery sections",
+    where: "My Picture Gallery → section panel → Favorite photos.",
+    defaultConcept: "heart-filled",
     wired: true,
     namespace: "tree",
   },

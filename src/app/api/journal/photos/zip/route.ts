@@ -24,7 +24,7 @@ import { photoStore } from "@/app/(protected)/modules/[slug]/journal-photo-root"
 //
 // The cost of POST is that a plain `<a download>` can't trigger it, so the client
 // fetches this and saves the blob itself. That trade is made deliberately in
-// `fav-photos-list.tsx`, which explains the other half of it.
+// `gallery-fav-photos-list.tsx`, which explains the other half of it.
 //
 // The zip is assembled WHOLE IN MEMORY and returned as one response. Streaming it
 // entry-by-entry would hold less at once, but a store-only zip's central directory is

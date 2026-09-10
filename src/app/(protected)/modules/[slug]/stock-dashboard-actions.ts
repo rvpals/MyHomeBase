@@ -5,6 +5,8 @@ import { saveModuleSettings } from "@/lib/module-settings";
 import { getModuleBySlug } from "@/lib/modules";
 import { dashboardWidgetsToEntries, type DashboardWidgetsInput } from "@/lib/stock-dashboard";
 import { deps } from "@/lib/wiring";
+import { requireModuleAccess } from "../../require-access";
+
 
 const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
 const STOCK_ETFS_MODULE_PATH = "/modules/stock-etfs";
@@ -22,6 +24,7 @@ export interface SaveDashboardWidgetsResult {
 export async function saveDashboardWidgetsAction(
   widgets: DashboardWidgetsInput,
 ): Promise<SaveDashboardWidgetsResult> {
+  await requireModuleAccess(STOCK_ETFS_MODULE_SLUG);
   try {
     const appModule = getModuleBySlug(deps.moduleRepo, STOCK_ETFS_MODULE_SLUG);
     if (!appModule) throw new Error("Stocks & ETFs module not found.");

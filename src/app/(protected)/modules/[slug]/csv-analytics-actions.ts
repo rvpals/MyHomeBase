@@ -32,6 +32,10 @@ import {
   type UpdateCsvCustomViewInput,
 } from "@/lib/csv-analytics";
 import { deps } from "@/lib/wiring";
+import { requireModuleAccess } from "../../require-access";
+
+/** The module these actions belong to, matched exactly by `requireModuleAccess`. */
+const ACCESS_MODULE_SLUG = "csv-analysis";
 
 const CSV_ANALYSIS_MODULE_PATH = "/modules/csv-analysis";
 
@@ -89,6 +93,7 @@ function toErrorResult(error: unknown, fallback: string): ActionResult {
 }
 
 export async function previewCsvAnalyticsFileAction(fileText: string): Promise<PreviewResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const preview = previewCsvFile(fileText);
     return { ok: true, preview };
@@ -98,6 +103,7 @@ export async function previewCsvAnalyticsFileAction(fileText: string): Promise<P
 }
 
 export async function readCsvAnalyticsDataAction(id: number, limit?: number): Promise<EntryDataResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const data = readEntryData(deps.csvAnalyticsRepo, id, limit);
     return { ok: true, data };
@@ -107,6 +113,7 @@ export async function readCsvAnalyticsDataAction(id: number, limit?: number): Pr
 }
 
 export async function listChartPresetsAction(entryId: number): Promise<ChartPresetsResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const presets = listChartPresets(deps.csvAnalyticsRepo, entryId);
     return { ok: true, presets };
@@ -120,6 +127,7 @@ export async function saveChartPresetAction(
   name: string,
   optionsJson: string,
 ): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     saveChartPreset(deps.csvAnalyticsRepo, { entryId, name, optionsJson });
     return { ok: true };
@@ -129,6 +137,7 @@ export async function saveChartPresetAction(
 }
 
 export async function deleteChartPresetAction(id: number): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     deleteChartPreset(deps.csvAnalyticsRepo, id);
     return { ok: true };
@@ -138,6 +147,7 @@ export async function deleteChartPresetAction(id: number): Promise<ActionResult>
 }
 
 export async function createCsvAnalyticsEntryAction(input: CreateEntryInput): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     createEntry(deps.csvAnalyticsRepo, input);
   } catch (error) {
@@ -151,6 +161,7 @@ export async function updateCsvAnalyticsEntryAction(
   id: number,
   input: UpdateEntryInput,
 ): Promise<UpdateEntryActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const result = updateEntry(deps.csvAnalyticsRepo, id, input);
     revalidatePath(CSV_ANALYSIS_MODULE_PATH);
@@ -161,6 +172,7 @@ export async function updateCsvAnalyticsEntryAction(
 }
 
 export async function deleteCsvAnalyticsEntryAction(id: number): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     deleteEntry(deps.csvAnalyticsRepo, id);
   } catch (error) {
@@ -190,6 +202,7 @@ export interface CustomViewPageResult extends ActionResult {
 }
 
 export async function listCsvCustomViewsAction(entryId: number): Promise<CustomViewsResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     return { ok: true, views: listCustomViews(deps.csvAnalyticsRepo, entryId) };
   } catch (error) {
@@ -198,6 +211,7 @@ export async function listCsvCustomViewsAction(entryId: number): Promise<CustomV
 }
 
 export async function listAllCsvCustomViewsAction(): Promise<CustomViewsResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     return { ok: true, views: listAllCustomViews(deps.csvAnalyticsRepo) };
   } catch (error) {
@@ -207,6 +221,7 @@ export async function listAllCsvCustomViewsAction(): Promise<CustomViewsResult> 
 
 /** Only the views an entry may offer in its dropdown — enabled ones. */
 export async function listEnabledCsvCustomViewsAction(entryId: number): Promise<CustomViewsResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     return { ok: true, views: listEnabledCustomViews(deps.csvAnalyticsRepo, entryId) };
   } catch (error) {
@@ -217,6 +232,7 @@ export async function listEnabledCsvCustomViewsAction(entryId: number): Promise<
 export async function createCsvCustomViewAction(
   input: CreateCsvCustomViewInput,
 ): Promise<CustomViewResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const view = createCustomView(deps.csvAnalyticsRepo, input);
     revalidatePath(CSV_ANALYSIS_MODULE_PATH);
@@ -230,6 +246,7 @@ export async function updateCsvCustomViewAction(
   id: number,
   input: UpdateCsvCustomViewInput,
 ): Promise<CustomViewResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const view = updateCustomView(deps.csvAnalyticsRepo, id, input);
     revalidatePath(CSV_ANALYSIS_MODULE_PATH);
@@ -243,6 +260,7 @@ export async function setCsvCustomViewEnabledAction(
   id: number,
   isEnabled: boolean,
 ): Promise<CustomViewResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const view = setCustomViewEnabled(deps.csvAnalyticsRepo, id, isEnabled);
     revalidatePath(CSV_ANALYSIS_MODULE_PATH);
@@ -253,6 +271,7 @@ export async function setCsvCustomViewEnabledAction(
 }
 
 export async function deleteCsvCustomViewAction(id: number): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     deleteCustomView(deps.csvAnalyticsRepo, id);
   } catch (error) {
@@ -271,6 +290,7 @@ export async function readCsvCustomViewPageAction(
   viewId: number,
   page: number,
 ): Promise<CustomViewPageResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     return { ok: true, page: readCustomViewPage(deps.csvAnalyticsRepo, { viewId, page }) };
   } catch (error) {
@@ -289,6 +309,7 @@ export async function bulkEditCsvRowsAction(
   rowIds: number[],
   changes: CsvBulkEditChanges,
 ): Promise<BulkEditResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   let updated: number;
   try {
     updated = bulkEditRows(deps.csvAnalyticsRepo, entryId, rowIds, changes).updated;

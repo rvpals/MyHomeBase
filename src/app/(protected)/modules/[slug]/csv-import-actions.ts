@@ -32,6 +32,10 @@ import {
   TRANSACTION_IMPORT_FIELDS,
 } from "@/lib/stock-positions";
 import { deps } from "@/lib/wiring";
+import { requireModuleAccess } from "../../require-access";
+
+/** The module these actions belong to, matched exactly by `requireModuleAccess`. */
+const ACCESS_MODULE_SLUG = "stock-etfs";
 
 const STOCK_ETFS_MODULE_PATH = "/modules/stock-etfs";
 
@@ -72,6 +76,7 @@ export async function previewCsvAction(
   importType: StockImportType,
   fileText: string,
 ): Promise<PreviewResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const preview = previewCsv(fileText);
     const allowed = allowedFields(importType);
@@ -107,6 +112,7 @@ export async function saveNamedMappingAction(
    */
   accountNameChoices: Record<string, number> = {},
 ): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const accountNameMapping = toAccountNameMapping(
       accountNameChoices,
@@ -136,6 +142,7 @@ export async function saveNamedMappingAction(
 }
 
 export async function deleteNamedMappingAction(id: number): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     deleteNamedMapping(deps.csvImportMappingRepo, id);
   } catch (error) {
@@ -158,6 +165,7 @@ export async function previewAccountNamesAction(
   /** What the loaded named mapping remembered, if one is applied. */
   savedAccountNameMapping: AccountNameMapping = {},
 ): Promise<AccountNamesResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const accounts = listAccounts(deps.investmentAccountRepo);
     return {
@@ -194,6 +202,7 @@ export async function executeImportAction(
    */
   rowValueOverrides: Record<number, Record<string, string>> = {},
 ): Promise<ExecuteImportResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     let summary: ImportSummary;
     if (importType === "Position") {

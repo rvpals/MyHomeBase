@@ -1,4 +1,4 @@
-import { Suspense, type CSSProperties } from "react";
+import type { CSSProperties } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { ModuleCarousel } from "@/components/module-carousel";
@@ -30,7 +30,6 @@ import { DailyQuoteWidget } from "./daily-quote-widget";
 import { HomeShell } from "./home-shell";
 import { StockDailyGlance } from "./modules/[slug]/stock-daily-glance";
 import { PAGE_CONTAINER } from "./page-container";
-import { RandomPhotoCard } from "./random-photo-card";
 import { StartupMessage } from "./startup-message";
 import { TodayInHistoryWidget } from "./today-in-history-widget";
 
@@ -84,11 +83,6 @@ export default async function Home({
   const todayInHistory = shows("todayInHistory")
     ? listTodayInHistory(deps.journalRepo, todayIsoLocal())
     : [];
-  // One photograph from anywhere in the archive is drawn fresh on every landing like
-  // the quote above -- but NOT here. That draw walks the photo share over SMB, and
-  // awaiting it on this line made it the only async call on an otherwise synchronous
-  // screen, so nothing painted until the NAS answered. It now streams inside a
-  // <Suspense> boundary below; see random-photo-card.tsx.
 
   // Set by a deployment; blank once someone has clicked OK. Read here rather than
   // in the layout so it appears on the home screen specifically.
@@ -128,10 +122,6 @@ export default async function Home({
     carousel: true,
     dailyQuote: Boolean(quote),
     todayInHistory: true,
-    // Unknowable here now that the draw streams: whether the share has a photo to
-    // give is decided inside RandomPhotoCard, which renders null when it doesn't.
-    // So the slot is always claimed and may collapse once the NAS answers.
-    randomPhoto: true,
     stockGlance: positions.length > 0,
   };
   const drawnWidgets = visibleHomeWidgets(widgets).filter((id) => hasContent[id]);
@@ -207,16 +197,6 @@ export default async function Home({
                   todayInHistory={todayInHistory}
                   icon={journalModule?.icon}
                 />
-              );
-            case "randomPhoto":
-              // Streamed, so the SMB walk cannot hold up first paint. The fallback is
-              // deliberately empty rather than a skeleton: the card's height depends on
-              // the photograph, so a placeholder box would be the wrong size and shift
-              // the page twice instead of once.
-              return (
-                <Suspense key={id} fallback={null}>
-                  <RandomPhotoCard className={spacing} />
-                </Suspense>
               );
             case "stockGlance":
               return positions.length > 0 ? (

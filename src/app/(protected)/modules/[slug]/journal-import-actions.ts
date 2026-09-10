@@ -22,6 +22,10 @@ import {
 } from "@/lib/journal";
 import type { JournalEntryTally, JournalImportPlan } from "@/lib/journal";
 import { deps } from "@/lib/wiring";
+import { requireModuleAccess } from "../../require-access";
+
+/** The module these actions belong to, matched exactly by `requireModuleAccess`. */
+const ACCESS_MODULE_SLUG = "journal";
 
 const JOURNAL_MODULE_PATH = "/modules/journal";
 const JOURNAL_IMPORT_TYPE = "Journal" as const;
@@ -44,6 +48,7 @@ export interface JournalPreviewResult extends ActionResult {
 }
 
 export async function previewJournalCsvAction(fileText: string): Promise<JournalPreviewResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const preview = previewCsv(fileText);
     const { columnMapping, fieldOptions } = autoMapJournalHeaders(preview.headers);
@@ -64,6 +69,7 @@ export async function saveJournalMappingAction(
   columnMapping: ColumnMapping,
   fieldOptions: FieldOptionsMap,
 ): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     createNamedMapping(deps.csvImportMappingRepo, {
       name,
@@ -84,6 +90,7 @@ export async function updateJournalMappingAction(
   columnMapping: ColumnMapping,
   fieldOptions: FieldOptionsMap,
 ): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     updateNamedMapping(deps.csvImportMappingRepo, id, { name, columnMapping, fieldOptions });
   } catch (error) {
@@ -94,6 +101,7 @@ export async function updateJournalMappingAction(
 }
 
 export async function deleteJournalMappingAction(id: number): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     deleteNamedMapping(deps.csvImportMappingRepo, id);
   } catch (error) {
@@ -118,6 +126,7 @@ export async function planJournalImportAction(
   skipDuplicates = true,
   overwrite = false,
 ): Promise<JournalImportPlanResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const plan = planJournalImport(deps.journalRepo, fileText, columnMapping, fieldOptions, {
       skipDuplicates,
@@ -140,6 +149,7 @@ export async function runJournalImportAction(
   skipDuplicates = true,
   overwrite = false,
 ): Promise<JournalImportResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const summary = importJournalCsv(deps.journalRepo, fileText, columnMapping, fieldOptions, {
       skipDuplicates,
@@ -162,6 +172,7 @@ export interface JournalEntryTallyResult extends ActionResult {
  * before an import.
  */
 export async function countJournalEntriesAction(): Promise<JournalEntryTallyResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     return { ok: true, tally: countAllEntries(deps.journalRepo) };
   } catch (error) {
@@ -175,6 +186,7 @@ export interface ClearJournalEntriesResult extends ActionResult {
 
 /** Empties the journal. Entries only — categories, tags and filters survive. */
 export async function clearAllJournalEntriesAction(): Promise<ClearJournalEntriesResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const { deletedCount } = clearAllEntries(deps.journalRepo);
     revalidatePath(JOURNAL_MODULE_PATH);

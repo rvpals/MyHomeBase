@@ -104,8 +104,17 @@ lines that translate between the framework and `lib/`:
 - **Route Handlers (`api/*/route.ts`)**: parse and validate the request with a `lib`
   schema, call a `lib` function, serialize the return value. If a handler is longer
   than ~15 lines, logic has leaked into it.
-- **Server Actions (`actions.ts`)**: validate input with a `lib` schema, call a `lib`
-  use-case, return its result. The action does not implement the use-case.
+- **Server Actions (`actions.ts`)**: **authorise first**, then validate input with a
+  `lib` schema, call a `lib` use-case, and return its result. The action does not
+  implement the use-case. Authorising means one call on the first line —
+  `requireModuleAccess(<SLUG>)` for anything a module owns, `requireAdmin()` for an
+  admin screen, `requireUser()` for a home-screen widget no module owns — all from
+  [src/app/(protected)/require-access.ts](src/app/(protected)/require-access.ts).
+  **An action is its own POST endpoint: no layout and no page check runs before it
+  fires**, so a route-group layout does not protect it and neither does hiding the
+  UI that calls it. The decision itself stays in `lib` (`userHasModuleAccess`,
+  `isAdmin`); the guard is only the adapter that reads the cookie and enforces the
+  answer.
 - **Middleware**: routing and auth gating only. Auth *decisions* come from a `lib`
   function; middleware just enforces the answer. **Caveat:** Next's default middleware
   runtime is Edge, which can't load native addons (e.g. `better-sqlite3`) — if a `lib`
@@ -283,6 +292,10 @@ router, no database.
 - A shared component in `src/components/` that fetches data or holds business logic.
 - Creating a reusable component without registering it (or registering one that doesn't
   exist).
+- An exported server action with no authorisation on its first line — relying on the
+  `(protected)` or `/admin` layout, or on the UI not being reachable, to gate it.
+- Authorising a module by prefix (`slug.startsWith(...)`) or by route path instead of
+  matching the module's full slug exactly.
 - Any `react`/`next` import inside `src/lib/`.
 
 ## Definition of done for any change
@@ -291,14 +304,17 @@ router, no database.
 2. No `react`/`next` imports were added under `src/lib/`.
 3. Inputs crossing a boundary (routes, actions, CLI commands) are validated with a `lib`
    schema.
-4. The use-case is reachable and behaves identically from both the web app and the CLI.
-5. New library logic ships with colocated unit tests (success + failure paths) using a
+4. Every new or touched server action authorises on its first line — the module's full
+   slug via `requireModuleAccess`, or `requireAdmin`/`requireUser` where that is the
+   rule — because a layout never guards an action.
+5. The use-case is reachable and behaves identically from both the web app and the CLI.
+6. New library logic ships with colocated unit tests (success + failure paths) using a
    fake repository — unless it's a flagged one-off.
-6. Presentation changes only touched rendering, events, and view state.
-7. If you wrote something as a one-off instead of a module, you said so in one line.
-8. UI reuse was checked against `components.md` first; any new shared component is
+7. Presentation changes only touched rendering, events, and view state.
+8. If you wrote something as a one-off instead of a module, you said so in one line.
+9. UI reuse was checked against `components.md` first; any new shared component is
    registered there.
-9. The change is a small, reviewable diff.
+10. The change is a small, reviewable diff.
 
 ## Suggested enforcement (wire this up early)
 

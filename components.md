@@ -52,6 +52,7 @@ pattern instead of inventing one.
 | [`DataGridCompact`](#datagridcompact) | `DataGrid`'s card list below 1024px — **not called directly** | [src/components/data-grid-compact.tsx](src/components/data-grid-compact.tsx) | yes |
 | [`DataGridCompact2`](#datagridcompact2) | `DataGrid`'s other compact form — one record per tab. Via `compactLayout="record"`, **not called directly** | [src/components/data-grid-compact-2.tsx](src/components/data-grid-compact-2.tsx) | yes |
 | [`Modal`](#modal) | **Any dialog** — overlay, panel, Esc/focus handling | [src/components/modal.tsx](src/components/modal.tsx) | yes |
+| [`FullscreenStage`](#fullscreenstage) | **A real fullscreen display** — chromeless black stage via the Fullscreen API | [src/components/fullscreen-stage.tsx](src/components/fullscreen-stage.tsx) | yes |
 | [`Comments`](#comments) | A note/instruction parked beside a feature, behind an info chip | [src/components/comments.tsx](src/components/comments.tsx) | yes |
 | [`CollapsibleCard`](#collapsiblecard) | A titled section that expands/collapses | [src/components/collapsible-card.tsx](src/components/collapsible-card.tsx) | yes |
 | [`Tabs`](#tabs) | One-of-N panels in the same space | [src/components/tabs.tsx](src/components/tabs.tsx) | yes |
@@ -107,10 +108,11 @@ Small helpers that are not full components: [see below](#unregistered-helpers).
 
 ## AudioSpectrum
 
-A canvas that draws whatever an audio analyser is currently reading — frequency bars or
-a waveform. Presentation only: it is handed a function that fills a byte buffer and it
-paints, so it knows nothing about tracks, cannot start or stop audio, and holds no
-preference of its own.
+A canvas that draws whatever an audio analyser is currently reading — frequency bars,
+narrow flame-coloured bars, a waveform, a radial spectrum, or an orbiting particle
+field. Presentation only: it is handed a function
+that fills a byte buffer and it paints, so it knows nothing about tracks, cannot start
+or stop audio, and holds no preference of its own.
 
 - **Source:** [src/components/audio-spectrum.tsx](src/components/audio-spectrum.tsx)
 - **Import:** `import { AudioSpectrum } from "@/components/audio-spectrum";`
@@ -120,9 +122,9 @@ preference of its own.
 |------|------|-------|
 | `readSpectrum` | `(into: Uint8Array, kind: "frequency" \| "waveform") => boolean` | Fills the buffer with the current reading; `false` when there is nothing to read. `MusicPlayerProvider` supplies this. |
 | `spectrumSize` | `number` | How many bytes `readSpectrum` fills. **`0` renders nothing** — that is the "no analyser" signal. |
-| `mode?` | `"bars" \| "wave"` | Default `"bars"`. Controlled by the caller; the component stores no mode. |
+| `mode?` | `"bars" \| "fire" \| "wave" \| "circular" \| "galaxy"` | Default `"bars"`. Controlled by the caller; the component stores no mode. `circular` and `galaxy` are **fullscreen-only** — see below. |
 | `isPlaying` | `boolean` | Pauses the frame loop. A paused visualizer costs nothing rather than drawing silence. |
-| `barCount?` | `number` | Default `48`. Bars across the width, in `"bars"` mode only. |
+| `fill?` | `boolean` | Default `false` (a fixed-height strip). `true` fills the container — for [`FullscreenStage`](#fullscreenstage). |
 | `className?` | `string` | Merged last. |
 
 ```tsx
@@ -136,7 +138,9 @@ preference of its own.
 
 **Used by:** the Music Library player screen
 [music-player-view.tsx](src/app/(protected)/modules/[slug]/music-player-view.tsx), under
-the cover art, with a Bars/Wave toggle overlaid at its top-right.
+the cover art. The mode is picked from a dropdown in the **Visual** tab of the panel
+below it — a tab rather than a control overlaid on the canvas, which at a narrow width
+would cover the thing it configures.
 
 **Notes:** the frame loop never calls `setState` — a visualizer updates sixty times a
 second, and routing that through React would re-render the whole player screen to
@@ -146,6 +150,28 @@ would be pure waste). Bucketing lives in
 [src/lib/music/spectrum.ts](src/lib/music/spectrum.ts) where it is tested — bars are
 grouped **logarithmically**, because equal FFT buckets put nearly all of the audible
 music in the first two bars.
+
+**`bars` vs `fire`** are the same buckets and the same draw call, differing only in
+geometry and palette: `BAR_STYLES` in
+[spectrum.ts](src/lib/music/spectrum.ts) gives each a bar count and the fraction of its
+slot a bar fills (wide with a hairline gap reads as a chart, narrow with a wide gap
+reads as flame). `fire` draws in the `--flame-*` tokens rather than brass — the one
+place in the app deliberately meant to look like a different material. Adding a fourth
+bar style is a row in that record, not a branch in the draw function.
+
+**`circular` and `galaxy` only render fullscreen.** Both need height as much as width,
+and the inline strip is 64px (40px on a phone) — squashed into that, a circle is an
+ellipse and a galaxy is a smear. Callers ask
+[`inlineModeFor()`](src/lib/music/spectrum.ts) what the strip should draw; it
+substitutes `bars` for a fullscreen-only mode rather than blanking, because a strip
+that empties itself reads as a bug. `FULLSCREEN_ONLY_MODES` is the list, so adding a
+sixth mode does not mean hunting for the branch that hides it.
+
+**Galaxy's motion is in the lib too** — `galaxyParticles()` builds a deterministic
+field (seeded, not `Math.random()`, so it neither reshuffles per mount nor resists
+testing) and `galaxyPosition()` places a particle at a moment. Bass expands the ring,
+treble lifts its brightness, both via `energyBand()`. The canvas allocates the field
+once per mount and only paints.
 
 **Reduced motion:** decorative, so it **stops entirely** — `design.md`'s first case.
 "Something is playing" is already said by the transport and the scrubber. The canvas
@@ -490,6 +516,51 @@ record 1, because the tab you were on refers to a position that now holds someth
   for the same hook-count reason documented on `DataGridCompact`.
 
 ---
+
+## FullscreenStage
+
+**A real fullscreen display.** A black, chromeless container that fills the *physical
+screen* via the Fullscreen API, for content whose whole purpose is to be looked at.
+
+**Not a substitute for [`Modal`](#modal).** `Modal size="full"` fills the viewport but
+stays inside the browser window, keeping the tab strip, URL bar and its own title bar.
+Use `Modal` for a dialog that wants room; use this when the chrome itself is the thing
+you are trying to get rid of.
+
+- **Source:** [src/components/fullscreen-stage.tsx](src/components/fullscreen-stage.tsx)
+- **Import:** `import { FullscreenStage, canGoFullscreen } from "@/components/fullscreen-stage";`
+- **Client component:** yes (Fullscreen API + `document` listeners)
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `children` | `ReactNode` | What goes on the stage. Nothing else is drawn. |
+| `onExit` | `() => void` | Fired when the viewer leaves — Escape, the browser's own control, or a rejected request. **Stop rendering the stage in response**, or a black box is left mid-page. |
+| `label` | `string` | Accessible name, e.g. `"Music visualizer"`. Not drawn. |
+| `className?` | `string` | Merged last. |
+
+```tsx
+{isFullscreen && (
+  <FullscreenStage onExit={() => setIsFullscreen(false)} label="Music visualizer">
+    <AudioSpectrum {...spectrumProps} fill />
+  </FullscreenStage>
+)}
+```
+
+**Mounting it is what requests fullscreen**, and unmounting is what leaves. So it must
+only ever be mounted from a click — `requestFullscreen()` is rejected outside a user
+gesture, and a rejection reports `onExit` rather than throwing.
+
+**Gate the control with `canGoFullscreen()`.** iOS Safari on iPhone has no element
+fullscreen; a button that cannot work is worse than no button. Read it in an effect,
+not during render — `document.fullscreenEnabled` doesn't exist on the server.
+
+**There is no close button, deliberately.** Escape exits fullscreen at the browser
+level and cannot be intercepted, so a custom one would duplicate or fight it.
+
+**Used by:** the Music Library player screen
+[music-player-view.tsx](src/app/(protected)/modules/[slug]/music-player-view.tsx), for
+the visualizer. Audio is unaffected — it lives in `MusicPlayerProvider` above the
+screen, so the track keeps playing while the stage is up.
 
 ## Modal
 
@@ -2636,10 +2707,11 @@ about the picture, and `IMG_20190609_143501.jpg` is not; it falls back to `name`
 )}
 ```
 
-**Used by:** the home screen's Random Photo card
-([random-photo-widget.tsx](src/app/(protected)/random-photo-widget.tsx)) — where the
-picture click *and* the folder glyph now open the same viewer; the My Favorite Photos
-screen ([fav-photos-list.tsx](src/app/(protected)/fav-photos-list.tsx)), set form with
+**Used by:** the Picture Gallery module's Random Photo card
+([gallery-random-photo-widget.tsx](src/app/(protected)/modules/[slug]/gallery-random-photo-widget.tsx))
+— where the picture click *and* the folder glyph now open the same viewer; its
+Favorite photos section
+([gallery-fav-photos-list.tsx](src/app/(protected)/modules/[slug]/gallery-fav-photos-list.tsx)), set form with
 `autoPlay` for its Slideshow button; and [PhotoOfTheDay](#photooftheday--photoofthedaybutton),
 set form over folders it has already scanned.
 
@@ -2926,6 +2998,7 @@ mistaken for a recorded one.
 | `onSelectRange` | `(range: TickerHistoryRange) => void` | Fired by the 1M/3M/6M/1Y/5Y buttons. |
 | `ranges?` | `readonly TickerHistoryRange[]` | Windows to offer. Defaults to all five. |
 | `onRecalculateRisk` | `() => void` | The Risks card's header action. Risk is cached indefinitely, so this is the only thing that refreshes it. |
+| `onCalculateTaxLots?` | `() => void` | The Transactions card's header action, on the Our data tab: sends this ticker's recorded buys to the Tax Lots analyzer. **Optional** — omit it and no button renders, so a caller with no tax-lots route still gets a working card. A callback rather than an href because the host owns the mapping (`lotsFromTrades` + `encodeAdhocLots` from `lib/tax-lots`); this component must not know which rows count as lots. |
 | `favorite?` | `TickerFavoriteControl` — `{ isFavorite, onToggle, isSaving? }` | The star in the header. **Optional** — omit it and no star renders, so a caller with no favorites store still works. Controlled by the host, which owns the state and the server action; the press feels instant because the host flips its own state before the round trip. `isSaving` disables the star in flight so it can't be double-pressed. |
 | `className?` | `string` | Applied to the `Modal` panel, merged last. |
 
@@ -3330,6 +3403,16 @@ Takes no props — it reads everything from `useMusicPlayer()`.
 Carries a **queue button** (a badge with the queued-track count) linking to
 `/modules/music-library/queue`, in both the compact and desktop arms.
 
+**Minimize and close.** Both arms end with two icon buttons, in window-chrome order:
+`_` minimizes, `X` closes (`stop()`). Minimizing shrinks the whole bar to a **56px
+floating puck in the bottom-right corner** — cover art, a conic-gradient progress ring,
+and a pause badge when the track is not playing; tapping it restores the bar. The audio
+is never touched by either shape, since it lives in `MusicPlayerProvider` above this
+component. Minimized state is local and deliberately **not** persisted: it is a "get out
+of my way for a moment" gesture, and a reload landing on a hidden player would be worse
+than one that shows the bar again. Closing also clears it, so a newly played track never
+comes back already minimized.
+
 ```tsx
 <MusicPlayerBar />
 ```
@@ -3350,10 +3433,15 @@ it in would add a platform binary to the NAS deploy for no benefit.
 1.5rem for the puck, `0px` with no nav on the page) and the player's
 `.music-player-pinned` reads it as its `bottom`. The player used to sit at `bottom-0` and
 covered the section nav — the one control you always want reachable. It now mirrors its
-own presence onto `html[data-music-player="compact" | "full"]`, the same seam `SectionPanel`
-uses, which is what lets the server-rendered `.app-main` reserve room for a bar whose
-presence only the client knows. Adding anything else to that edge means publishing a
-height the same way, not adding another `bottom-0`.
+own presence onto `html[data-music-player="compact" | "full" | "minimized"]`, the same seam
+`SectionPanel` uses, which is what lets the server-rendered `.app-main` reserve room for a
+bar whose presence only the client knows. Adding anything else to that edge means
+publishing a height the same way, not adding another `bottom-0`.
+
+`minimized` publishes `--music-player-height: 0px` on purpose: the puck **floats over**
+content rather than pushing it up, which is the point of minimizing. Its own offset comes
+from `.music-player-puck`, which clears the compact section trigger the same way the
+pinned bar does.
 
 ## SelectionBar
 

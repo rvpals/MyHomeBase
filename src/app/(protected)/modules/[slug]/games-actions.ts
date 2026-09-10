@@ -5,6 +5,10 @@ import { revalidatePath } from "next/cache";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { recordScore } from "@/lib/games";
 import { deps } from "@/lib/wiring";
+import { requireModuleAccess } from "../../require-access";
+
+/** The module these actions belong to, matched exactly by `requireModuleAccess`. */
+const ACCESS_MODULE_SLUG = "games";
 
 // No logic here: each action resolves the player, validates through the module's zod
 // schema (inside the use-case), and revalidates. The rules of 2048 live in
@@ -32,6 +36,7 @@ export async function saveScoreAction(
   score: number,
   moves: number,
 ): Promise<SaveScoreResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
     const currentUser = getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo);

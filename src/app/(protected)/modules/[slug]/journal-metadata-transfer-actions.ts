@@ -11,6 +11,8 @@ import {
 import { saveModuleSettingsPartial } from "@/lib/module-settings";
 import { getModuleBySlug } from "@/lib/modules";
 import { deps } from "@/lib/wiring";
+import { requireModuleAccess } from "../../require-access";
+
 
 // The restore half of the Meta Data section's backup feature. The export half is
 // a GET route (src/app/api/journal/metadata/export/route.ts) because a download
@@ -54,6 +56,7 @@ export interface JournalMetadataPlanResult extends ActionResult {
 export async function planJournalMetadataImportAction(
   formData: FormData,
 ): Promise<JournalMetadataPlanResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
     const { text, error } = await readBundleText(formData);
     if (error) return { ok: false, error };
@@ -84,6 +87,7 @@ export interface JournalMetadataRestoreResult extends ActionResult {
 export async function runJournalMetadataImportAction(
   formData: FormData,
 ): Promise<JournalMetadataRestoreResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
     const { text, error } = await readBundleText(formData);
     if (error) return { ok: false, error };

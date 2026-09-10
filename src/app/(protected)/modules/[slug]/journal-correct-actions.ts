@@ -14,6 +14,10 @@ import {
 } from "@/lib/journal";
 import type { DuplicateGroup, JournalEntry, RecycledJournalEntry } from "@/lib/journal";
 import { deps } from "@/lib/wiring";
+import { requireModuleAccess } from "../../require-access";
+
+/** The module these actions belong to, matched exactly by `requireModuleAccess`. */
+const ACCESS_MODULE_SLUG = "journal";
 
 const JOURNAL_MODULE_PATH = "/modules/journal";
 
@@ -40,6 +44,7 @@ export interface CorrectDataResult extends ActionResult {
 }
 
 export async function loadJournalCorrectDataAction(): Promise<CorrectDataResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     return { ok: true, ...readCorrectData() };
   } catch (error) {
@@ -61,6 +66,7 @@ export interface RecycleEntriesResult extends CorrectDataResult {
  * would be one of the two lists out of date.
  */
 export async function recycleJournalEntriesAction(ids: number[]): Promise<RecycleEntriesResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const { movedCount, skippedCount } = recycleEntries(deps.journalRepo, ids);
     revalidatePath(JOURNAL_MODULE_PATH);
@@ -78,6 +84,7 @@ export interface RestoreEntriesResult extends CorrectDataResult {
 export async function restoreJournalEntriesAction(
   recycledIds: number[],
 ): Promise<RestoreEntriesResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const { restoredCount, skippedCount } = restoreRecycledEntries(deps.journalRepo, recycledIds);
     revalidatePath(JOURNAL_MODULE_PATH);
@@ -94,6 +101,7 @@ export interface PurgeEntriesResult extends CorrectDataResult {
 export async function deleteRecycledForeverAction(
   recycledIds: number[],
 ): Promise<PurgeEntriesResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const { deletedCount } = deleteRecycledEntriesForever(deps.journalRepo, recycledIds);
     revalidatePath(JOURNAL_MODULE_PATH);
@@ -104,6 +112,7 @@ export async function deleteRecycledForeverAction(
 }
 
 export async function emptyRecycleBinAction(): Promise<PurgeEntriesResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const { deletedCount } = emptyRecycleBin(deps.journalRepo);
     revalidatePath(JOURNAL_MODULE_PATH);
@@ -119,6 +128,7 @@ export interface RecycleBinCountResult extends ActionResult {
 
 /** Read on click, so the "empty the bin" warning quotes the live number. */
 export async function countRecycledEntriesAction(): Promise<RecycleBinCountResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     return { ok: true, totalCount: countRecycledEntries(deps.journalRepo) };
   } catch (error) {
@@ -158,6 +168,7 @@ export interface JournalEntryResult extends ActionResult {
  * the modal fetches the entry it is about to show.
  */
 export async function getJournalEntryAction(id: number): Promise<JournalEntryResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const entry = getEntry(deps.journalRepo, id);
     if (!entry) return { ok: false, error: `No journal entry with id ${id}.` };

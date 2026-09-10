@@ -3,6 +3,7 @@
 import { countTableRows, executeStatement, readTablePage, truncateTable } from "@/lib/sql-explorer";
 import type { SqlExecutionResult, TablePage } from "@/lib/sql-explorer";
 import { deps } from "@/lib/wiring";
+import { requireAdmin } from "../../require-access";
 
 export interface ExecuteResult {
   ok: boolean;
@@ -12,6 +13,7 @@ export interface ExecuteResult {
 
 export async function executeSqlAction(sql: string): Promise<ExecuteResult> {
   try {
+    await requireAdmin();
     const result = executeStatement(deps.sqlExplorerRepo, sql);
     return { ok: true, result };
   } catch (error) {
@@ -28,6 +30,7 @@ export interface CountRowsResult {
 /** Backs the truncate warning's row count, read when the dialog opens. */
 export async function countTableRowsAction(tableName: string): Promise<CountRowsResult> {
   try {
+    await requireAdmin();
     return { ok: true, count: countTableRows(deps.sqlExplorerRepo, tableName) };
   } catch (error) {
     return {
@@ -49,6 +52,7 @@ export interface TruncateResult {
  */
 export async function truncateTableAction(tableName: string): Promise<TruncateResult> {
   try {
+    await requireAdmin();
     return { ok: true, deleted: truncateTable(deps.sqlExplorerRepo, tableName) };
   } catch (error) {
     return {
@@ -71,6 +75,7 @@ export interface TablePageResult {
  */
 export async function loadTablePageAction(tableName: string): Promise<TablePageResult> {
   try {
+    await requireAdmin();
     return { ok: true, page: readTablePage(deps.sqlExplorerRepo, tableName) };
   } catch (error) {
     return {

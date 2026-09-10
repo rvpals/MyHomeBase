@@ -403,12 +403,18 @@ export function GameSudokuView({ bestScore }: { bestScore: number }) {
         The board is a 9x9 grid that scales with the viewport rather than reflowing —
         the same trade as the Tetris playfield, and the reason this needs no separate
         compact component. Three terms, each binding on a different screen: `22rem`
-        caps it on a large monitor, `88vw` keeps it inside a phone, and `52vh` is the
+        caps it on a large monitor, `92vw` keeps it inside a phone, and `58vh` is the
         one that matters in the full-bleed dialog, where a board capped only by width
         overflows a short landscape window and pushes the number pad off-screen. The
         board is square, so the `vh` term needs no conversion.
+
+        All three terms are raised together, deliberately. Each binds on a different
+        screen, so lifting only the `rem` cap would grow the desktop board and leave
+        a phone and a short landscape window exactly as they were. These match
+        `game-2048-view.tsx`, the closest analogue — also a square grid with its
+        controls stacked beneath it — so the two read as the same size of board.
       */}
-      <div className="mx-auto w-full" style={{ maxWidth: "min(22rem, 88vw, 52vh)" }}>
+      <div className="mx-auto w-full" style={{ maxWidth: "min(34rem, 92vw, 58vh)" }}>
         <div
           className="sudoku-board sudoku-box-seams relative grid gap-0 rounded-xl border border-line bg-paper-raised p-2"
           style={{
@@ -474,8 +480,10 @@ export function GameSudokuView({ bestScore }: { bestScore: number }) {
                           : // A player's own correct entry is tinted, so at a glance you
                             // can tell your work from the puzzle's clues.
                             "text-brass-dark",
-                    // Text scales with the board, which is itself viewport-sized.
-                    "text-[min(1.4rem,3.4vw)]",
+                    // Text scales with the board, which is itself viewport-sized. Both
+                    // terms track the board's own caps — a glyph size left behind when
+                    // the board grew would sit small in the middle of a large cell.
+                    "text-[min(2.1rem,3.6vw)]",
                   ].join(" ")}
                 >
                   {cell.value !== 0 ? (
@@ -488,7 +496,7 @@ export function GameSudokuView({ bestScore }: { bestScore: number }) {
                     */
                     <span
                       aria-hidden
-                      className="grid h-full w-full grid-cols-3 grid-rows-3 text-[min(0.55rem,1.4vw)] leading-none text-muted"
+                      className="grid h-full w-full grid-cols-3 grid-rows-3 text-[min(0.85rem,1.5vw)] leading-none text-muted"
                     >
                       {PAD_DIGITS.map((digit) => (
                         <span key={digit} className="flex items-center justify-center">
@@ -510,7 +518,13 @@ export function GameSudokuView({ bestScore }: { bestScore: number }) {
         mouse, and hiding it would leave a desktop player with no visible way to enter
         anything. A count per digit greys out one that is fully placed.
       */}
-      <div className="mx-auto flex w-full max-w-md flex-col gap-2">
+      <div
+        className="mx-auto flex w-full flex-col gap-2"
+        /* The same cap as the board above, not a `max-w-*` step: the pad is read as
+           the board's base, so a pad narrower than the board it sits under looks
+           like a mistake. These two widths have to be changed together. */
+        style={{ maxWidth: "min(34rem, 92vw, 58vh)" }}
+      >
         <div className="grid grid-cols-9 gap-1.5 max-lg:gap-1">
           {PAD_DIGITS.map((digit) => {
             const placed = state ? digitCount(state, digit) >= SUDOKU_SIZE : false;

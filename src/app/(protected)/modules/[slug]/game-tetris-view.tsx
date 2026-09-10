@@ -538,7 +538,7 @@ export function GameTetrisView({ bestScore }: { bestScore: number }) {
 
       {/*
         Board and side panel. Side by side on a desktop; on a phone the panel drops
-        above the board as a single row, since a 10-wide board plus a column beside it
+        above the board as a single row, since a 14-wide board plus a column beside it
         leaves neither enough width.
       */}
       <div className="flex items-start justify-center gap-4 max-lg:flex-col max-lg:items-center">
@@ -552,18 +552,22 @@ export function GameTetrisView({ bestScore }: { bestScore: number }) {
         </aside>
 
         {/*
-          The board is a 10x20 grid that scales with the viewport rather than
-          reflowing. Sizing the wrapper (not the cells) keeps the aspect ratio at
-          every width.
+          The board is a `PLAYFIELD_WIDTH` x `PLAYFIELD_HEIGHT` grid that scales with the
+          viewport rather than reflowing. Sizing the wrapper (not the cells) keeps the
+          aspect ratio at every width.
 
           Three terms, because the game plays full-bleed and each binds on a different
-          screen: `18rem` caps it on a large monitor, `78vw` keeps it inside a phone,
-          and `52vh` is the one that matters in the dialog — a tall board capped only
-          by width overflows a short landscape window and pushes the controls
-          off-screen. The board is half as wide as it is tall, so the `vh` term is
-          halved to convert a height budget into a width.
+          screen: `26rem` caps it on a large monitor, `92vw` keeps it inside a phone, and
+          the `vh` term is the one that matters in the dialog — a tall board capped only
+          by width overflows a short landscape window and pushes the controls off-screen.
+
+          That last term converts a *height* budget into a width, so it carries the
+          board's ratio: at 14x24 the board is 14/24 ≈ 0.58 as wide as it is tall, so a
+          72vh allowance becomes `42vh` of width. (It was `26vh` when the board was 10x20
+          and exactly half as wide as tall — the number moved because the shape did, not
+          because the height budget changed much.)
         */}
-        <div className="w-full" style={{ maxWidth: "min(18rem, 78vw, 26vh)" }}>
+        <div className="w-full" style={{ maxWidth: "min(26rem, 92vw, 42vh)" }}>
           <div
             // `relative` so the sweep bars can be absolutely positioned over the rows
             // they belong to. A four-row clear also flashes the whole board's edge.
@@ -572,7 +576,9 @@ export function GameTetrisView({ bestScore }: { bestScore: number }) {
             }`}
             style={{
               gridTemplateColumns: `repeat(${PLAYFIELD_WIDTH}, minmax(0, 1fr))`,
-              aspectRatio: "1 / 2",
+              // From the constants rather than a literal, so the board cannot end up
+              // drawn at a different shape from the one the rules are played on.
+              aspectRatio: `${PLAYFIELD_WIDTH} / ${PLAYFIELD_HEIGHT}`,
               // One source of truth for the duration: the CSS keyframes read this
               // rather than hardcoding a second copy of LINE_CLEAR_MS.
               ["--tetris-clear-ms" as string]: `${LINE_CLEAR_MS}ms`,
@@ -621,7 +627,7 @@ export function GameTetrisView({ bestScore }: { bestScore: number }) {
             {/*
               The light bar that sweeps each clearing row. Positioned in percentages of
               the board rather than added to the grid, so it can span the full width
-              without disturbing the ten-column layout underneath it.
+              without disturbing the grid layout underneath it.
 
               `pointer-events-none` because it sits over the board while the touch pad
               is live; without it a tap landing during a clear would hit the overlay.
@@ -639,7 +645,7 @@ export function GameTetrisView({ bestScore }: { bestScore: number }) {
               };
 
               // Two absolutely-positioned siblings rather than a wrapper: a wrapping
-              // element would be a GRID ITEM, taking a cell in the ten-column layout
+              // element would be a GRID ITEM, taking a cell in the grid layout
               // and pushing the last row along. `absolute` takes these out of the flow
               // entirely, so the grid underneath is untouched.
               return [

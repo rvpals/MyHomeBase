@@ -1,7 +1,5 @@
 "use server";
 
-import { cookies } from "next/headers";
-import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import {
   listAllPhotosInFolder,
   photoDetailsSchema,
@@ -10,8 +8,11 @@ import {
   type PhotoDetails,
   type PhotoFile,
 } from "@/lib/journal-photos";
-import { deps } from "@/lib/wiring";
 import { photoStore } from "./modules/[slug]/journal-photo-root";
+import { requireModuleAccess } from "./require-access";
+
+/** The module these actions belong to, matched exactly by `requireModuleAccess`. */
+const ACCESS_MODULE_SLUG = "picture-gallery";
 
 // The boundary for `PhotosViewer`: one folder, in full.
 //
@@ -38,9 +39,11 @@ export interface FolderPhotosResult {
 export async function listAllPhotosInFolderAction(
   relativePath: string,
 ): Promise<FolderPhotosResult> {
-  const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
-  if (getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo) === undefined) {
-    return { ok: false, error: "Not signed in." };
+  // Reports the denial rather than throwing, to keep this action's `{ ok }` contract.
+  try {
+    await requireModuleAccess(ACCESS_MODULE_SLUG);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Not signed in." };
   }
 
   const parsed = photoFolderAllSchema.safeParse({ relativePath });
@@ -79,9 +82,11 @@ export interface PhotoDetailsResult {
 export async function readPhotoDetailsAction(
   relativePath: string,
 ): Promise<PhotoDetailsResult> {
-  const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
-  if (getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo) === undefined) {
-    return { ok: false, error: "Not signed in." };
+  // Reports the denial rather than throwing, to keep this action's `{ ok }` contract.
+  try {
+    await requireModuleAccess(ACCESS_MODULE_SLUG);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Not signed in." };
   }
 
   const parsed = photoDetailsSchema.safeParse({ relativePath });
