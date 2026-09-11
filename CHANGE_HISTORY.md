@@ -1,5 +1,159 @@
 # Change History
 
+## 2026-09-10 — Albums, and a home screen that reads as paper
+
+### [Home] The daily quote, handwritten on a sheet
+
+The Daily Quote card now renders its quote in **Great Vibes**, a copperplate calligraphy
+face, on a card carrying `.paper-texture` — the treatment that makes a card read as a
+physical sheet. Nothing about the quote itself changed: the random draw, the refresh
+button and the Quotes Editor link are the same code they were.
+
+**The script face is deliberately not a theme font.** It is absent from `FONT_KEYS`, so
+the theme builder never offers it and nobody can pick copperplate as their *body* face —
+which would render the whole app unreadable. It is exposed as its own `--font-script`
+token instead, pointing straight at its loader. That is a documented exception to
+design.md's "fonts are theme-driven, never hardcode a family", not a violation of it, and
+the rule now says so.
+
+The attribution and category badge stay in the theme's body font. Cursive on a person's
+name plus a pill tag stops reading as a quotation and starts reading as an invitation.
+
+### [Home] No utility header, and the profile menu moves into the rail
+
+On the **full layout only**, the home screen no longer renders tier 3. Its breadcrumb read
+just "Home" — a word the rail's own logo already says — so the bar was an empty rule above
+the content, and the first card sat flush against it.
+
+**Compact still gets the header, and that is load-bearing rather than cautious.** Down
+there the module rail does not render at all and the header carries `ModuleMenu`, so
+honouring `hideHeader` on a phone would leave the home screen with no way to reach any
+module — the dead end design.md warns about. The flag is ignored on compact by
+construction, not by a caller remembering to.
+
+With tier 3 gone the avatar needed somewhere to live, so `ModuleRail` gained a `profile`
+slot below the Administration gear. **That is an action in a zone design.md reserves for
+destinations**, and it is allowed only because the rule assumes a header exists to catch
+actions — on that one screen it doesn't. Every other screen, and every phone, keeps its
+profile in the header. `UserMenu` took a `placement` prop for it: the panel opens
+rightward out of the 48px column instead of down-and-left out of a full-width bar.
+
+`/account` shares `HomeShell` and **keeps its header** — the flag is opt-in.
+
+### [Design] The nav columns are physical slabs again
+
+The module rail and section panel now carry `.shell-slab-raised`: `Button`'s hard offset
+shadow, rotated to point right, plus a full-strength hairline ring.
+
+**This reinstates a retired exception, deliberately.** design.md's signature rule is that
+no *surface* takes the button treatment; the old left `Sidebar` was the one exception and
+it went away with edge-based navigation. It is back for these two columns, and the rule
+now records that rather than contradicting it.
+
+The offset is **translucent black, not `var(--line)`**. Borrowing the theme's border token
+is what `Button` does, and it was the first thing tried here — but on a light theme
+`--line` is `#D6DEDC`, so a 4px bar of it beside a white rail on a white page is
+invisible. A button gets away with it because its own fill sits above the offset and gives
+an edge to read against; a full-height column has no such contrast on either side.
+
+The rail also takes `z-31` against the panel's `z-30`. They were equal, and the panel
+starts exactly where the rail ends — so the panel painted straight over the rail's new
+offset and it vanished on every module page.
+
+### [Design] The module rail is 48px
+
+Down from 64px, with its icon buttons at 40px (`h-10 w-10`) and its dividers at 24px, so
+the proportions hold. `--module-rail-width` is a published contract that the rail, the
+panel's left offset and `.app-main`'s padding all read, so this was one value.
+
+**40px is under the 44px minimum tap target**, and that is only acceptable because the
+rail is a pointer-only surface that renders nothing on compact. 48px is the floor for the
+same reason: narrower means shrinking the buttons again, and they have nothing left to
+give.
+
+The home screen's first widget gained a small `mt-4`. The gap is positional — whichever
+card an admin puts first gets it — and it is deliberately smaller than the `mt-8` between
+cards, because it separates a card from the window edge rather than from another card.
+
+### [Picture Gallery] Albums
+
+An **album** is a named, ordered set of photographs the reader assembles by hand — from
+any folders, in any order. New section in the Picture Gallery: make one, open it, rename
+it, delete it, play it as a slideshow, and export every picture in it as one zip.
+
+**This gives Picture Gallery its first table, library module and prefix.** Until now it
+was the app's one module that owned nothing: it presented the Journal's photo folder
+through `journal-photos` and the kept pictures from `sys_fav_photo`, and both docs said
+so at length. An album is the first concept that is genuinely its own, so migration
+**0087** creates `pho_albums` and `pho_album_photos` and the module takes the `pho_`
+prefix — named for its *domain* (photos), not for albums, so the second table it ever
+gains still fits the namespace.
+
+**An album stores paths, never bytes.** Same decision as a favourite, and the consequence
+is the one that matters: deleting an album cannot delete a photograph, and neither can
+removing a picture from one. Both confirm dialogs say so, because "delete album" is a
+sentence a reader can reasonably read the other way. A picture can be in any number of
+albums at once.
+
+**Names are unique, case-insensitively.** Two albums called "Croatia" are two albums the
+reader cannot tell apart in a nav list or a menu — so they would have no way to know they
+had made the mistake, let alone which one they were opening. The use-case checks first to
+produce a readable message; the unique index is what keeps that true when two tabs submit
+at once.
+
+### [Picture Gallery] A + button on every photograph
+
+`PhotoViewer` gained an **add-to-album menu** beside the favourite heart: every album,
+with a tick against the ones already holding this picture, plus **Create a new album…**.
+
+It creates **inline**. Someone browsing a folder who wants a new album wants it *for the
+picture in front of them*, and sending them to the Albums section to make one first would
+cost them both their place in the folder and the photograph that prompted it.
+
+Three details that are contracts rather than polish:
+
+- **The ticks are optimistic on the same contract as the heart** — `onAddToAlbum` must not
+  resolve until `albumIdsFor` would return the new answer, or the tick flicks off for a
+  render. Unlike the heart, this menu has room to print a failure, so it does.
+- **The menu belongs to one photograph.** Its open state is *which path it was opened
+  for*, not a boolean, so arrowing to the next picture closes it by rendering rather than
+  by a reset effect — which is also what kept `react-hooks/set-state-in-effect` quiet.
+- **It stays open after a successful add**, because filing one picture into two albums is
+  ordinary. An already-filed album stays as a ticked, disabled row, so the menu also
+  answers "which albums is this in".
+
+All four props are wired once in
+[`useAlbumFiling`](src/app/(protected)/modules/[slug]/use-album-filing.ts) and spread onto
+every viewer in the module — the Random Photo card, Favorite photos, and Albums itself.
+
+### [Refactor] The zip planner moved out of `fav-photos`
+
+`planFavPhotoDownload` was never about favourites — it takes archive paths and returns
+archive paths with collision-free names. Albums became its second caller, so it moved to
+**`src/lib/photo-download`** rather than being copied, per *promote on the second caller*.
+`favPhotoArchiveName` became `photoArchiveName(label, date)`, which **sanitises the
+label** because an album's name is the reader's own text and reaches a
+`Content-Disposition` header — an album called `Summer / Croatia` would otherwise write a
+path separator into a download name.
+
+`/api/journal/photos/zip` now accepts `{ albumId }` as well as `{ paths }`, and expands
+the album server-side. That means an export is of the album **as stored**, in its own
+order, rather than as whatever a stale tab last rendered.
+
+### [Icons] A new `album` glyph
+
+A bound book with a picture on its cover, for the Albums nav row —
+slot `gallery_section_albums`. Its own glyph rather than reusing `photo-folder`, which
+means *where on disk these are*; an album is the opposite idea, pictures gathered by hand
+from any number of folders.
+
+Hand-drawn only, like `photo`, `photo-stack` and `photo-folder` — it is deliberately not
+in `TREE_CONCEPTS`, so no icon set bakes one and every set draws this. (A themed set's
+"album" is usually a vinyl record.) The first drawing mounted a *framed* photograph on the
+cover; rendering it at true 16px showed the frame, sun and ridge closing into a dark blob
+inside about 7px, so the frame is gone and the picture prints straight onto the cover.
+That is recorded in the glyph's comment so it is not reintroduced.
+
 ## 2026-09-09 22:28 — Every server action authorises, and a Picture Gallery
 
 ### [Security] Every exported server action authorises on its first line

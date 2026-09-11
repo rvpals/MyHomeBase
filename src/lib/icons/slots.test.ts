@@ -29,7 +29,7 @@ const TREE_CONCEPTS = [
   "classroom", "list", "newspaper", "plus", "chart", "upload", "quote", "stock-quote",
   "grid", "window", "palette", "info", "history", "users", "database", "shapes",
   "search", "magic", "player", "star", "star-filled", "heart", "heart-filled",
-  "photo-stack", "photo", "photo-folder",
+  "photo-stack", "photo", "photo-folder", "album",
   // The seven Arcade game cards.
   "game-2048", "game-arrows", "game-tetris", "game-sudoku", "game-blackjack",
   "game-minesweeper", "game-mahjong",
@@ -145,7 +145,7 @@ describe("sectionSlotId", () => {
       csv: ["main", "configuration"],
       games: ["main", "scores", "configuration"],
       music: ["main", "magic", "player", "queue", "scan", "configuration"],
-      gallery: ["main", "favorites"],
+      gallery: ["main", "favorites", "albums"],
       admin: [
         "configuration", "configuration-modules", "configuration-application",
         // Under the Display Settings group, but the ids stayed `configuration-*` so

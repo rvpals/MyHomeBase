@@ -2,18 +2,20 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
+import { getAlbum } from "@/lib/albums";
 import {
   MAX_DOWNLOAD_BYTES,
   MAX_DOWNLOAD_PHOTOS,
-  favPhotoArchiveName,
-  planFavPhotoDownload,
-} from "@/lib/fav-photos";
+  photoArchiveName,
+  planPhotoDownload,
+} from "@/lib/photo-download";
 import { buildZip, type ZipEntry } from "@/lib/zip";
 import { deps } from "@/lib/wiring";
 import { photoStore } from "@/app/(protected)/modules/[slug]/journal-photo-root";
 
-// Bundles several photographs into one zip download, for the My Favorite Photos
-// screen's bulk "Download" action.
+// Bundles several photographs into one zip download: the My Favorite Photos screen's
+// bulk "Download" action, and the Picture Gallery's "Export" on an album (whole, or a
+// selection within it).
 //
 // A POST rather than a GET, which is unusual for something that only reads. The reason
 // is the payload: a selection of 200 photographs is several kilobytes of paths, and
@@ -34,16 +36,24 @@ import { photoStore } from "@/app/(protected)/modules/[slug]/journal-photo-root"
 // one click and the server reading the entire archive into RAM.
 
 /**
- * What the screen sends.
+ * What the screen sends — one of two shapes.
  *
- * The paths themselves are NOT validated here — `planFavPhotoDownload` runs them
- * through the photo archive's own path schema, which is the same refinement guarding
- * the single-photo route. This schema's job is only to establish that the body is a
- * list of strings of a plausible length before any of it is trusted.
+ * `{ paths }` is an explicit selection, from the Favorite photos grid or from a
+ * selection inside an album. `{ albumId }` is "export this whole album", which the
+ * server expands itself: an album can hold more photographs than a URL or a click
+ * handler wants to enumerate, and the client would only be echoing back a list it
+ * just received. Expanding here also means the export is of the album *as stored*,
+ * not as some stale tab last rendered it.
+ *
+ * The paths themselves are NOT validated by this schema — `planPhotoDownload` runs
+ * them through the photo archive's own path refinement, the same one guarding the
+ * single-photo route. This schema's job is only to establish the body's shape before
+ * any of it is trusted.
  */
-const requestSchema = z.object({
-  paths: z.array(z.string()).min(1).max(MAX_DOWNLOAD_PHOTOS),
-});
+const requestSchema = z.union([
+  z.object({ paths: z.array(z.string()).min(1).max(MAX_DOWNLOAD_PHOTOS) }),
+  z.object({ albumId: z.number().int().positive() }),
+]);
 
 export async function POST(request: Request) {
   const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
@@ -65,12 +75,50 @@ export async function POST(request: Request) {
     );
   }
 
+  // An album request is expanded here into the paths it holds, and names the archive
+  // after itself. An explicit selection keeps the favourites' constant label — it is
+  // a basket the reader assembled, which has no name of its own.
+  let requestedPaths: string[];
+  let archiveLabel: string;
+
+  if ("albumId" in parsed.data) {
+    const album = getAlbum(deps.albumRepo, parsed.data.albumId);
+    if (album === undefined) {
+      return NextResponse.json({ error: "That album no longer exists." }, { status: 404 });
+    }
+    if (album.photos.length === 0) {
+      // An empty zip is a valid file that opens onto nothing, which reads as a broken
+      // feature — the same call the all-missing case below makes.
+      return NextResponse.json(
+        { error: "That album has no photos in it yet." },
+        { status: 400 },
+      );
+    }
+    // The ceiling is checked here as well as in the planner, so an oversized album
+    // gets a message naming the album rather than the planner's generic refusal.
+    if (album.photos.length > MAX_DOWNLOAD_PHOTOS) {
+      return NextResponse.json(
+        {
+          error: `“${album.name}” has ${album.photos.length} photos — ${MAX_DOWNLOAD_PHOTOS} is the most one download can hold. Select some of them instead.`,
+        },
+        { status: 400 },
+      );
+    }
+    // In the album's own order, which is the whole point of an album: the zip's
+    // entries come out in the sequence the reader arranged.
+    requestedPaths = album.photos.map((photo) => photo.relativePath);
+    archiveLabel = album.name;
+  } else {
+    requestedPaths = parsed.data.paths;
+    archiveLabel = "favorite-photos";
+  }
+
   // Throws on a path that fails the archive's schema, or a selection past the ceiling.
   // Reported as a 400 with the message, because both are things the reader can act on
   // ("too many photos") rather than server faults.
   let plan;
   try {
-    plan = planFavPhotoDownload(parsed.data.paths);
+    plan = planPhotoDownload(requestedPaths);
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "That selection can't be downloaded." },
@@ -121,7 +169,7 @@ export async function POST(request: Request) {
   }
 
   const archive = buildZip(entries);
-  const fileName = favPhotoArchiveName(new Date());
+  const fileName = photoArchiveName(archiveLabel, new Date());
 
   return new NextResponse(new Uint8Array(archive), {
     headers: {

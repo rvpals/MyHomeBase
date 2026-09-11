@@ -147,6 +147,16 @@ const GROUPS: TableReferenceGroup[] = [
     ],
   },
   {
+    prefix: "pho_",
+    module: "Picture Gallery",
+    summary:
+      "Albums only. The photographs themselves live on the NAS and are read through the Journal's configured photo root; the kept ones are sys_fav_photo.",
+    tables: [
+      ["pho_albums", "One row per album — its name (unique, case-insensitively) and description. Deleting one never touches a photograph."],
+      ["pho_album_photos", "Which photographs are in which album, and in what order. Stores archive paths, not bytes, so a picture can be in any number of albums."],
+    ],
+  },
+  {
     prefix: "ico_",
     module: "Icon customisation",
     summary: "Platform-wide, not a feature module.",

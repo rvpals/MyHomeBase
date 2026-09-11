@@ -88,6 +88,21 @@ or `src/components`. Adding an eighth face means a `next/font/google` loader **a
 entry in `FONT_VAR_MAP` in `src/app/layout.tsx`, plus a key in `FONT_KEYS`; miss any one
 and a theme naming it silently renders the browser fallback.
 
+### The one exception: `font-script`
+
+There is a fourth face, **Great Vibes** (copperplate calligraphy), exposed as
+`--font-script` in `globals.css` and reachable as the `font-script` Tailwind class. It is
+**not** a theme face and is deliberately absent from `FONT_KEYS`, so the theme builder
+never offers it — nobody can pick script as their body font. It points straight at its
+`next/font/google` loader in `src/app/layout.tsx` and does not change with the theme.
+
+It exists for decorative type — handwriting where handwriting is the point. Today its
+only caller is the Daily Quote card on the home screen. Before using it anywhere else,
+ask whether that surface is genuinely decorative; script is much less legible than the
+theme trio, so it does not belong in anything a user has to read carefully or at length,
+and never below ~20px. Adding a second decorative face is a design decision, not a
+mechanical one — raise it rather than adding another `--font-*` var.
+
 ## The signature: buttons are switches, cards are calm
 
 The defining visual idea of this app is that **buttons are physical** — a hard-edged
@@ -115,11 +130,18 @@ Don't blur this line by giving a card a hard shadow or a button a soft one.
   `Button` is made of, so it borrows the same 3px offset in the same direction and reads as
   part of the same world. That's [`Progress3D`](components.md#progress3d), and it's the
   whole licence: don't extend the reasoning to a card or a panel.
-- **No surface takes the button treatment.** The old left `Sidebar` was the one exception —
-  a raised slab with `Button`'s hard offset shadow rotated to point right. It was retired
-  with the move to edge-based navigation, and the exception went with it. The nav
-  surfaces are quiet: a hairline border and a soft low-opacity shadow, nothing more.
-  Don't give a panel a hard shadow without asking.
+- **No surface takes the button treatment, except the two nav columns.** The rule still
+  holds everywhere else: a card, a bar, a sheet or a page surface gets a hairline border
+  and a soft low-opacity shadow, never the hard offset. **Don't give a new panel a hard
+  shadow without asking.**
+
+  The exception is `.shell-slab-raised`, carried by `ModuleRail` and `SectionPanel` — the
+  hard offset rotated to point right, so both columns read as physical slabs standing off
+  the page. This is the old left `Sidebar`'s treatment, retired with the move to
+  edge-based navigation and deliberately reinstated for these two surfaces. It is not a
+  precedent to extend: the two columns share one class and one depth because they sit
+  edge to edge and differing depths would read as breakage, and the rail takes `z-31`
+  against the panel's `z-30` so its offset isn't painted over.
 
 ### The elevation classes — reuse these, don't hand-roll a shadow
 
@@ -133,6 +155,7 @@ Reach for one of these before writing a new `shadow-[...]`:
 | `.card-raised` | A card's resting lift — `CollapsibleCard` | inset highlight + hairline ring + tight cast |
 | `.card-raised-hover` | The same card's `:hover` | the cast grows and softens |
 | `.card-embossed` | An **opt-in bevel** for a card that should read as a thick slab — pair with `.card-raised-hover` | lit top edge + shadowed underside + ring + two-stop cast |
+| `.shell-slab-raised` | The **module rail and section panel** — the sanctioned surface exception | `Button`'s hard `4px` offset, rotated to point right, in translucent black (not `--line`, which vanishes on light themes) + a hairline ring |
 | `.paper-texture` | A card that should read as a **physical sheet** — the journal's New Journal card | translucent fibre grid + diagonal sheen, no tint of its own |
 | `.playing-card-face` / `.playing-card-rim` / `.playing-card-back` | **Every playing card** — see [`PlayingCard`](components.md#playingcard) | lit top edge + shaded underside + diagonal sheen + inner hairline + two-stop cast |
 | `.playing-card-lifted` | A card in the **hand being acted on** | the same, cast grown; rises 2px by margin (see below) |
@@ -279,7 +302,7 @@ covers the responsive and safe-area idioms. Full reasoning under "Phone and desk
 | `.card-grid` | A variable-length row of roomy cards; columns size themselves, capped at 24rem |
 | `.tile-grid` | The same for small fixed-ratio tiles, capped at 7rem |
 | `.music-player-pinned` | The music player's bar, pinned above whatever the section nav occupies |
-| `--module-rail-width` | Tier 1's width (64px). Read it — never hardcode the number |
+| `--module-rail-width` | Tier 1's width (48px). Read it — never hardcode the number |
 | `--section-panel-width` | Tier 2's width (240px), `0px` when the panel is closed |
 | `--section-trigger-height` | What the compact section trigger occupies on the bottom edge |
 | `.shell-rail` / `.shell-panel` | Tier 1 and tier 2 as fixed columns, insets included |
@@ -414,7 +437,7 @@ you switch module.
 
 | Tier | Desktop (`full`) | Compact | Component |
 |---|---|---|---|
-| 1 — modules | 64px icon rail, fixed left | dropdown in the app bar | `ModuleRail` |
+| 1 — modules | 48px icon rail, fixed left | dropdown in the app bar | `ModuleRail` |
 | 2 — sections | 240px panel, collapsible | bottom trigger + sheet | `SectionPanel` |
 | 3 — utility | slim top bar: breadcrumb, actions, profile | same bar, breadcrumb truncates | `AppHeader` |
 
@@ -436,8 +459,8 @@ with no sections; don't reach for it just to hide a panel you were too lazy to p
 
 ### The fixed dimensions are contracts, not suggestions
 
-**64px and 240px are published as `--module-rail-width` and `--section-panel-width`** in
-`globals.css`. Read them; never re-measure and never hardcode `64px` at a call site. They
+**48px and 240px are published as `--module-rail-width` and `--section-panel-width`** in
+`globals.css`. Read them; never re-measure and never hardcode the number at a call site. They
 are the same seam `--music-player-height` already is, and for the same reason: `.app-main` is
 owned by a *server* layout that cannot see the client state driving the panel's collapse,
 so the client mirrors its presence onto `<html data-sectionpanel>` and CSS does the padding.
@@ -448,8 +471,9 @@ one bar quietly ends up on top of another. Compose with what's published.
 
 ### Tier 1 — the module rail
 
-64px, icon-only, named by `title` tooltip. Active state is **a tint *and* an accent edge
-bar** (`absolute left-0 w-0.5 bg-brass`), not a tint alone: at 64px wide with no label a
+48px, icon-only, named by `title` tooltip — the 40px buttons plus 4px each side. Active
+state is **a tint *and* an accent edge
+bar** (`absolute left-0 w-0.5 bg-brass`), not a tint alone: at that width with no label a
 tint is easy to miss against the rail's own `paper-raised` surface.
 
 Icon-only is a deliberate trade — it costs discoverability on touch, where there is no
@@ -464,16 +488,26 @@ an action that acts on the whole app belongs in tier 3, the header, per *Adding 
 element to the shell*; the rail is where-you-are, so anything living here needs a route and
 the same tint-plus-edge-bar active state as a module link. And it has to be **outside the
 `flex-1 overflow-y-auto` list**, or it scrolls out of reach the moment a reader has a dozen
-modules. Keep the zone to one or two items: it competes with the module list for a 64px
+modules. Keep the zone to one or two items: it competes with the module list for a 48px
 column, and the modules are what the rail is for. Anything that isn't a destination, and
 anything compact also needs, goes to `UserMenu` instead — which is exactly why
 Administration is in *both* places rather than moved out of the menu.
+
+**The one exception: the home screen's profile menu.** The home screen hides tier 3 on
+the full layout (its only crumb is "Home", which the rail's logo already says), so
+`HomeShell` passes `TwoTierShell` a `hideHeader` and the rail takes `UserMenu` in its
+bottom zone via a `profile` slot. That is an action in a zone reserved for destinations,
+and it is allowed *only* because the rule above assumes a header exists to catch actions —
+on that one screen it doesn't. Every other screen keeps its profile in the header, and
+`hideHeader` is **ignored on compact**, where this bar carries the module switcher and
+dropping it would leave no way out of the page. If you find yourself wanting a second
+exception, move the avatar to the rail everywhere instead of growing the list.
 
 ### Tier 2 — the section panel
 
 240px, and **open or closed — there is no middle state.** `«` in the panel header closes
 it; `»` in the header brings it back. Deliberately *not* the three-state
-full/rail/strip model the old `TreeNav` used: a 64px icon rail for sections next to a 64px
+full/rail/strip model the old `TreeNav` used: a 48px icon rail for sections next to a 48px
 icon rail for modules is two ambiguous glyph columns side by side, which is worse than
 either extreme.
 
@@ -492,7 +526,7 @@ when the panel is closed, so it is never decorative — don't drop it to make ro
 
 The compact fork is a genuinely *different component*, not a restyle, which is why it reads
 `useIsCompact()` rather than `max-lg:` — see "Fork a component only when restyling
-genuinely can't do it" below. A 64px rail and a 240px panel side by side is 304px of chrome
+genuinely can't do it" below. A 48px rail and a 240px panel side by side is 288px of chrome
 on a 390px phone.
 
 - **Modules** move into the app bar as a dropdown — the module switcher *is* the title.
@@ -701,7 +735,7 @@ mean the same thing on every screen in the app.
    `--section-trigger-height`, `--music-player-height`). Anything that needs the page to reserve space publishes its
    own height and mirrors its presence onto `<html data-*>`, because `.app-main` belongs to
    a server layout that can't see client state.
-2. **Say how it behaves at both sizes before you build it.** 64px + 240px is 304px of
+2. **Say how it behaves at both sizes before you build it.** 48px + 240px is 288px of
    chrome — on a 390px phone that is most of the screen. Every tier has a compact form; a
    new element needs one too, and "it shrinks" is not an answer if the honest answer is "it
    moves into the sheet".
@@ -714,7 +748,12 @@ mean the same thing on every screen in the app.
    against a light theme (Daybreak) before calling it done: `paperRaised` is *lighter* than
    `paper` there, the inverse of the dark themes, and a rail-plus-panel design loses the
    surface separation the dark themes give it for free.
-6. **Reuse the shell's components** rather than a parallel implementation. If none of
+6. **A screen that hides a tier has to rehome what lived there.** `hideHeader` drops
+   tier 3 on the full layout only; the home screen sets it, and moves the profile menu
+   into the rail rather than losing it. Anything that hides a surface owes the same
+   accounting — and no screen may hide the header on compact, which needs it to switch
+   module at all.
+7. **Reuse the shell's components** rather than a parallel implementation. If none of
    `ModuleRail` / `SectionPanel` / `AppHeader` fits, that's the signal to stop and ask
    whether it's a new registered component — per `components.md`'s process — not to add a
    fourth surface.

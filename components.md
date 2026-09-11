@@ -60,7 +60,7 @@ pattern instead of inventing one.
 | [`ViewModeSwitch`](#viewmodeswitch) | **Same data, re-cut** — segmented control, `<select>` when narrow | [src/components/view-mode-switch.tsx](src/components/view-mode-switch.tsx) | yes |
 | [`ModuleCarousel`](#modulecarousel) | The home screen's module picker (grid on desktop, coverflow on phones) | [src/components/module-carousel.tsx](src/components/module-carousel.tsx) | yes |
 | [`TwoTierShell`](#twotiershell) | **The navigation shell** — module rail + section panel + header | [src/components/two-tier-shell.tsx](src/components/two-tier-shell.tsx) | yes |
-| [`ModuleRail`](#modulerail) | Tier 1 — the 64px module icon rail | [src/components/module-rail.tsx](src/components/module-rail.tsx) | yes |
+| [`ModuleRail`](#modulerail) | Tier 1 — the 48px module icon rail | [src/components/module-rail.tsx](src/components/module-rail.tsx) | yes |
 | [`SectionPanel`](#sectionpanel) | Tier 2 — the 240px section panel / compact bottom sheet | [src/components/section-panel.tsx](src/components/section-panel.tsx) | yes |
 | [`AppHeader`](#appheader) | Tier 3 — the utility bar: breadcrumb, global actions, profile | [src/components/app-header.tsx](src/components/app-header.tsx) | yes |
 | [`NavMenus`](#navmenus) | The shared module switcher and profile dropdowns | [src/components/nav-menus.tsx](src/components/nav-menus.tsx) | yes |
@@ -1074,6 +1074,7 @@ data and gets the chrome placed for it. Full design rationale:
 | `viewportPinned` | `boolean` | Whether the reader pinned the layout by hand. |
 | `extraCrumbs` | `Breadcrumb[]` | Appended after `[Module] › [Section]` — a record's name, say. Rarely needed. |
 | `headerActions` | `ReactNode` | **Whole-app** actions only. Page actions belong on the page. |
+| `hideHeader` | `boolean` | Default `false`. Drops tier 3 on the **full layout only** and moves the profile menu into the rail. Ignored on compact, which needs the header to switch module. Only the home screen sets it. |
 
 **Usage** — from a server component that can read `deps`, as in
 [`stock-shell.tsx`](src/app/(protected)/modules/[slug]/stock-shell.tsx):
@@ -1086,7 +1087,7 @@ data and gets the chrome placed for it. Full design rationale:
 
 **Don't place the tiers yourself.** Their widths are published as CSS variables and
 `.app-main`'s padding is derived from them; a caller positioning a tier by hand becomes the
-fourth thing that has to agree on 64px and the first to drift.
+fourth thing that has to agree on the rail width and the first to drift.
 
 **Responsive:** has a compact mode — the rail becomes a dropdown in the header and the
 panel becomes a bottom sheet. That fork is a genuinely different component, which is why it
@@ -1096,7 +1097,7 @@ reads `useIsCompact()` rather than `max-lg:`.
 
 ## ModuleRail
 
-Tier 1: a 64px icon-only column of modules, fixed to the left edge. Renders on the `full`
+Tier 1: a 48px icon-only column of modules, fixed to the left edge. Renders on the `full`
 layout only — `TwoTierShell` swaps in a dropdown on compact.
 
 - **Source:** [src/components/module-rail.tsx](src/components/module-rail.tsx)
@@ -1108,12 +1109,20 @@ layout only — `TwoTierShell` swaps in a dropdown on compact.
 | `links` | `ModuleRailLink[]` | `{ slug, name, href, icon, hint? }`. |
 | `isActive` | `(href: string) => boolean` | Supplied by the shell, which owns the pathname. |
 | `showAdmin` | `boolean` | Default `false`. Shows the Administration gear in the bottom zone. |
+| `profile` | `ReactNode` | Optional. The profile menu, below Administration. Passed only by the home screen, whose full layout has no header for it. A slot, so the rail never imports auth. |
 
-Active state is a tint **and** an accent edge bar — at 64px with no label, a tint alone is
-easy to miss. The width comes from `--module-rail-width`; never hardcode `64px`.
+Active state is a tint **and** an accent edge bar — at 48px with no label, a tint alone is
+easy to miss. The width comes from `--module-rail-width` (48px: the 40px buttons plus 4px
+each side); never hardcode the number. The buttons are deliberately under the 44px minimum
+tap target — the rail is pointer-only and renders nothing on compact.
+
+**Elevation:** `.shell-slab-raised` — `Button`'s hard offset shadow turned to point right,
+shared with `SectionPanel`. The sanctioned exception to design.md's "no surface takes the
+button treatment"; see that rule before copying it anywhere else.
 
 **Three zones, top to bottom:** the app mark, the scrolling module list (`flex-1`), and a
-bottom utility zone holding the Administration gear. The utility zone sits *outside* the
+bottom utility zone holding the Administration gear — and, on the home screen only, the
+profile menu beneath it. The utility zone sits *outside* the
 scroller so it stays reachable with a dozen modules loaded. Administration is chrome, not
 a module — it has no row in `sys_modules` — so it gets a divider and its own `AdminIcon`
 glyph rather than joining the list.
@@ -1142,7 +1151,7 @@ column on `full`, a bottom trigger row plus a sheet on compact.
 | `isOpen` / `onOpenChange` | `boolean` / `(open) => void` | Desktop only; the header's `»` is the way back. |
 
 **Open or closed — there is no middle state**, deliberately unlike the old `TreeNav`'s
-full/rail/strip. A 64px icon rail for sections beside the 64px rail for modules is two
+full/rail/strip. A 48px icon rail for sections beside the 48px rail for modules is two
 ambiguous glyph columns side by side.
 
 Nested groups are an accordion on desktop and **flattened away on compact** — a phone has
@@ -1189,7 +1198,7 @@ The two dropdown menus the navigation shares. Both are placed by
 | Export | What |
 |---|---|
 | `ModuleMenu` | The compact layout's module switcher, folded into `AppHeader`. Props: `links: NavLink[]`, `isActive: (href) => boolean`. |
-| `UserMenu` | The profile menu — account, layout switch, Administration, log out. Props: `currentUser`, `showAdmin`, `logoutAction`, `viewportPinned`, `isAdminRoute`. |
+| `UserMenu` | The profile menu — account, layout switch, Administration, log out. Props: `currentUser`, `showAdmin`, `logoutAction`, `viewportPinned`, `isAdminRoute`, `placement`. `placement` is `"header"` (default, panel opens down-left) or `"rail"` (opens rightward from the bottom, for the home screen's 48px column). |
 | `NavLink` | `{ slug, name, href, icon, hint? }` — one module, shared by the rail and the menu. |
 
 This file was `AppChrome`, a top bar on every page. That bar is gone with the move to the
@@ -2630,11 +2639,12 @@ instead of squeezing the date.
 ## PhotoViewer
 
 **THE photograph viewer.** One full-screen overlay: a big stage, a scrolling thumbnail
-strip, a collapsible "Slide show" panel, the capture details, a **My Journal** link and a
-**favourite heart**. Every full-screen photograph in the app goes through this.
+strip, a collapsible "Slide show" panel, the capture details, a **My Journal** link, a
+**favourite heart** and an **add-to-album (+) menu**. Every full-screen photograph in the
+app goes through this.
 
 - **Source:** [src/components/photo-viewer.tsx](src/components/photo-viewer.tsx)
-- **Import:** `import { PhotoViewer, type ViewerPhoto, type ViewerFolderOutcome, type ViewerPhotoDetails } from "@/components/photo-viewer";`
+- **Import:** `import { PhotoViewer, type ViewerPhoto, type ViewerFolderOutcome, type ViewerPhotoDetails, type ViewerAlbum } from "@/components/photo-viewer";`
 - **Client component:** yes
 
 **It replaced `PhotoLightbox` and `PhotosViewer`, which are gone.** Those split the job by
@@ -2670,6 +2680,10 @@ shape or the other, and the branch inside is a single `useEffect`.
 | `onPhotoDetails?` | `(relativePath) => Promise<ViewerPhotoDetails>` | The path and capture timestamp of the photo on the stage. **Lazy, one photo at a time** — see below. Omit to hide the details line. Stable reference. |
 | `isFavorite?` | `(relativePath) => boolean` | Whether the photo on the stage is kept. A **predicate**, not a list. Wrap in `useCallback`. |
 | `onToggleFavorite?` | `(relativePath) => Promise<boolean>` | Flips it. **Must not resolve until `isFavorite` would return the new answer.** Reject to report a failed write. |
+| `albums?` | `ViewerAlbum[]` | The albums the `+` menu offers. **An empty array is meaningful** — the menu then offers only "Create a new album". |
+| `albumIdsFor?` | `(relativePath) => number[] \| undefined` | Which albums hold this photo, for the ticks. `undefined` means "not looked up yet" and renders un-ticked rather than asserting absence. |
+| `onAddToAlbum?` | `(albumId, relativePath) => Promise<void>` | Files it. **Must not resolve until `albumIdsFor` would return the new answer** — same contract as the heart. Reject to report a failed write. |
+| `onCreateAlbum?` | `(name, relativePath) => Promise<{ ok: true, album } \| { ok: false, error }>` | Makes an album and files the photo into it. Optional *within* the album group: omit for a picker that cannot create. |
 | `folderLabel?` | `string` | A friendlier folder name, shown above the file name. Falls back to the last segment of `folderPath`. |
 | `className?` | `string` | |
 
@@ -2790,6 +2804,54 @@ hand-drawn under any icon style), with `aria-pressed` so a screen reader hears o
 in two states rather than two buttons. **No icon slot** — a state glyph on a toggle, not a
 mark for a *place*. The fill is `text-brass`, not the home card's `text-brass-dark`, which
 is too near black to read on this stage.
+
+### The add-to-album (+) menu
+
+Backed by [`@/lib/albums`](src/lib/albums/). **`albums`, `albumIdsFor` and
+`onAddToAlbum` are all three or none** — the button is not rendered unless every one is
+given, so a caller with no notion of albums gets a viewer without the control rather
+than a dead one. `onCreateAlbum` is separately optional: omitting only that gives a
+picker that can file into existing albums but not make new ones.
+
+**An empty `albums` array is not the same as omitting the props.** It means "this reader
+has no albums yet", and the menu then shows only *Create a new album…* — which is how a
+first album gets made from the picture that prompted it, rather than from an empty
+screen elsewhere.
+
+**The ticks are optimistic on the same contract as the heart.** The menu flips a local
+override the moment a row is clicked and **drops it when the promise resolves**, handing
+the answer back to `albumIdsFor` — so *don't resolve until `albumIdsFor` would return the
+new answer* (await your own re-read), or the tick flicks off for a render. Unlike the
+heart, this menu has somewhere to print a failure, so a rejection shows a message in the
+menu instead of silently reverting.
+
+**The menu belongs to one photograph.** Its open state is stored as *which path it was
+opened for*, not as a boolean, so arrowing to the next picture closes it as a matter of
+rendering rather than via a reset effect. Filing one picture into two albums is ordinary,
+so it **stays open after a successful add**; an already-filed album stays visible as a
+ticked, disabled row, which is what lets the menu also answer "which albums is this in".
+
+**"Create a new album…" creates inline** rather than linking to the Albums section. A
+reader browsing a folder who wants a new album wants it *for the picture in front of
+them*, and navigating away would cost them both their place in the folder and the
+photograph that prompted it. A duplicate name comes back as `{ ok: false, error }` and is
+shown under the field with the text preserved for editing.
+
+No icon slot — `plus` is a row action on a toolbar, not a mark for a *place*, so it stays
+hand-drawn beside the heart. The dropdown renders **inside the viewer's own portal**,
+which already owns `z-50`, so it never competes with the app shell or a `Modal`.
+
+**The header is `relative z-10` so the menu is not clipped by the picture.** Header and
+stage are siblings in one flex column, and the stage is `relative` — so it made a
+stacking context that, coming later in DOM order, painted over the header and cut the
+dropdown off at the picture frame. The ordering is local to this portal; the stage keeps
+its `relative`, which its prev/next buttons need. The list caps at `max-h-[50dvh]` rather
+than a fixed height, so it cannot run off the bottom of a landscape phone.
+
+The wiring for all four props lives in one hook,
+[`useAlbumFiling`](src/app/(protected)/modules/[slug]/use-album-filing.ts) — it is in
+`app/` rather than `components/` because it calls this module's server actions, which
+`src/components/` may not import. Spread it: `<PhotoViewer {...useAlbumFiling()} … />`.
 
 ### The My Journal link
 

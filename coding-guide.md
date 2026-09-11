@@ -20,14 +20,21 @@ module is obvious from the name alone. New tables must follow this.
 | `ico_` | Icon customisation — platform-wide, not a feature module | `ico_slot_overrides` |
 | `mus_` | Music Library | `mus_tracks`, `mus_albums`, `mus_scan_runs`, `mus_track_lyrics`, `mus_playlists`, `mus_playlist_tracks`, `mus_play_events`, `mus_magic_list`, `mus_magic_list_tracks`, `mus_play_queue`, `mus_play_queue_state` |
 | `gam_` | Games | `gam_scores` |
+| `pho_` | Picture Gallery | `pho_albums`, `pho_album_photos` |
 
 The `rei_` prefix (Real Estate Investment) was retired when that module was
 removed — see migration `0026_drop_real_estate_module`.
 
-**Picture Gallery is absent from this table on purpose: it owns no table, so it has
-no prefix.** It presents the photo share (via `journal-photos`) and `fav_photos`,
-both of which already belong to other modules. Don't invent a prefix for it to close
-the gap — see `modules.md` → *Per-module detail* → **Picture Gallery**.
+**Picture Gallery had no prefix until migration 0087**, and the reason it now has one is
+worth knowing. The module was built presenting *other modules'* data — the archive is the
+folder configured in Journal and read through `journal-photos`, the kept pictures are
+`sys_fav_photo` — so it owned nothing and a prefix would have been a namespace with
+nothing in it. Albums are the first concept that is genuinely its own, so `pho_` arrives
+with them. See `modules.md` → *Per-module detail* → **Picture Gallery**.
+
+Note the prefix is `pho_` (photo, the module's domain) and not `alb_` (album, the first
+table needing one) — a prefix is a **module namespace**, so it has to still fit the second
+table this module gains.
 
 **A new table also wants a line in
 [`src/lib/sql-explorer/table-reference.ts`](src/lib/sql-explorer/table-reference.ts)**,

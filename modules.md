@@ -37,7 +37,7 @@ are the `snake_case` equivalents.
 | `attendance` | Attendance | Class Attendance | Take daily attendance for a class. | 6 | `roster` | `att_` |
 | `music-library` | Music Library | My Music Library | Browse and stream your music collection. | 7 | `music` | `mus_` |
 | `games` | Games | Games & Puzzles | Play a quick game and keep a high-score board. | 8 | `game` | `gam_` |
-| `picture-gallery` | Picture Gallery | My Picture Gallery | Browse the photo archive and the pictures you have kept. | 9 | `photo` | — |
+| `picture-gallery` | Picture Gallery | My Picture Gallery | Browse the photo archive and the pictures you have kept. | 9 | `photo` | `pho_` |
 
 Sequence 1 is deliberately vacant: it belonged to the Real Estate module, retired
 in `migrations/0026_drop_real_estate_module`. Its `rei_` prefix is retired with
@@ -46,8 +46,9 @@ it and must not be reused.
 `sys_` is the platform prefix — settings, users, sessions, module registration
 itself. It is not a feature module and never appears in the table above.
 
-Picture Gallery has **no table prefix** because it owns no table — see its entry
-under *Per-module detail*.
+Picture Gallery gained the `pho_` prefix in migration 0087, with Albums — its first
+tables. Everything else it shows still belongs to other modules; see its entry under
+*Per-module detail*.
 
 Short name is what the UI shows (home grid, app bar, nav badge). Long name is the
 fuller title for admin screens. Both are **admin-editable at runtime**, so no
@@ -1047,18 +1048,44 @@ the board is not re-simulated on the server — see the fifth bullet above for w
 trade is deliberate and what changing it would cost.
 
 **Picture Gallery** (`picture-gallery`) — the photo archive, gathered into one place.
-Two sections: **Home screen**, the Random Photo card, and **Favorite photos**, the
-list of kept pictures. Both screens existed before the module and were moved into it
-rather than rebuilt (migration 0084).
+Three sections: **Home screen**, the Random Photo card; **Favorite photos**, the list of
+kept pictures; and **Albums**, collections the reader assembles by hand. The first two
+existed before the module and were moved into it rather than rebuilt (migration 0084);
+Albums is the module's own (migration 0087).
 
-It is the app's one module that **owns no table, no prefix, and no library module**.
-Everything it shows already exists: the archive is the folder configured in the
-Journal module and read through `src/lib/journal-photos`, and the kept pictures are
-`fav_photos` from migration 0073. A third copy of either would be a synchronisation
-problem invented for its own sake. Its files under `modules/[slug]/` are all
-`gallery-*` presentation over those two library modules.
+For its first two sections it **owns nothing**: the archive is the folder configured in
+the Journal module and read through `src/lib/journal-photos`, and the kept pictures are
+`sys_fav_photo` from migration 0073. A third copy of either would be a synchronisation
+problem invented for its own sake, so those screens are all `gallery-*` presentation over
+two other modules' libraries.
 
-Four choices worth knowing:
+**Albums changed that, and only that.** An album — a named, ordered set of paths — is the
+one concept here that is genuinely this module's own, so it brought the module its first
+library module (`src/lib/albums`), its first tables (`pho_albums`, `pho_album_photos`)
+and its first prefix. The prefix is `pho_`, named for the module's *domain* rather than
+for albums, so a second Picture Gallery table has somewhere to live. Everything the older
+sections show is still read from where it already lived.
+
+An album stores **paths, never bytes**, exactly as a favourite does. The consequence that
+matters: deleting an album cannot delete a photograph, and neither can removing a picture
+from one. Both screens say so on the confirm dialog, because "delete album" is a sentence
+a reader can reasonably read the other way.
+
+Two more choices worth knowing about Albums specifically:
+
+- **Filing happens in the viewer, not on the Albums screen.** The `+` button in
+  `PhotoViewer`'s header opens a menu of every album plus *Create a new album…*, which
+  creates **inline**. Someone browsing a folder who wants a new album wants it for the
+  picture in front of them; sending them to the Albums section to make one first would
+  cost them their place in the folder and the photograph that prompted it.
+- **Export and slideshow are reused, not rebuilt.** The slideshow is `PhotoViewer` with
+  `autoPlay`, and the zip is the existing `/api/journal/photos/zip` route — which now
+  accepts `{ albumId }` as well as `{ paths }`, so the server expands the album itself
+  and exports it *as stored*, in its own order, rather than as some stale tab rendered
+  it. The download planner moved out of `fav-photos` into `src/lib/photo-download` when
+  Albums became its second caller.
+
+Four more, from when the module was first assembled:
 
 - **The module is where the pictures are, not where the home screen is.** The Random
   Photo card was a home-screen widget and the favourites list was `/favorite-photos`,
@@ -1087,9 +1114,12 @@ frame is the load-bearing part of the drawing: an empty rectangle with a dot rea
 UI chrome at 16px, a rectangle with a skyline reads as a picture. All 12 generated sets
 had a real photo glyph, so none needed a compromise.
 
-There is **no CLI command**, because there is no use-case here to drive: both screens
-call `journal-photos` and `fav-photos`, whose logic is already reachable from the
-terminal where it lives.
+There is **no CLI command** yet. For the first two sections there is nothing to drive —
+they call `journal-photos` and `fav-photos`, whose logic is already reachable from the
+terminal where it lives. The album use-cases *are* real use-cases and take plain data, so
+they are CLI-ready by construction (`createAlbum(deps.albumRepo, input)` and friends);
+adding commands for them would need no change to `src/lib/albums`, which is the test
+`ARCHITECTURE.md` sets.
 
 ### Icons
 

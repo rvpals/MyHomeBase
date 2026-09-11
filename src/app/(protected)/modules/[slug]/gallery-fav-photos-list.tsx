@@ -17,7 +17,7 @@
 // That screen was `/favorite-photos`, belonging to no module; it is now the Picture
 // Gallery module's "Favorite photos" section, and the old route is gone.
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Button } from "@/components/button";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { PhotoViewer } from "@/components/photo-viewer";
@@ -29,6 +29,7 @@ import {
   removeFavPhotosAction,
   setFavPhotoNoteAction,
 } from "./gallery-photo-actions";
+import { useAlbumFiling } from "./use-album-filing";
 
 /** The URL for one photo's bytes. Encoded whole: these folder names contain spaces. */
 function photoUrl(relativePath: string): string {
@@ -130,6 +131,11 @@ export function FavPhotosList({
   // Whether it opens already running, for the Slideshow button above the grid. Read
   // once at mount by the viewer, which owns the play state afterwards.
   const [openPlaying, setOpenPlaying] = useState(false);
+
+  // The viewer's "add to album" plumbing. A favourite and an album are different acts
+  // -- keeping a picture, versus filing it somewhere -- so a photo can be both, and
+  // this screen offers the second while being the list of the first.
+  const albumFiling = useAlbumFiling();
 
   // Re-reads after every write, rather than patching the row locally. The list is
   // small and this is one round trip on an action the reader just took, which buys
@@ -271,6 +277,28 @@ export function FavPhotosList({
       setIsBulkBusy(false);
     }
   }, []);
+
+  /**
+   * The viewer's photo set.
+   *
+   * Memoised rather than built inline in the JSX: this screen re-renders on every note
+   * keystroke, every selection tick and every bulk-action state change, and an inline
+   * `.map()` would hand `PhotoViewer` a new array — and so a new `photo` object — each
+   * time. Anything inside the viewer keyed on the photo object rather than on its path
+   * is reset by that.
+   */
+  const viewerPhotos = useMemo(
+    () =>
+      favorites.map((favorite) => ({
+        name: fileNameOf(favorite.relativePath),
+        relativePath: favorite.relativePath,
+        // The note is the better caption when there is one — it is what the reader
+        // wrote about the picture. The file name is the fallback, not the headline.
+        caption: favorite.note !== "" ? favorite.note : fileNameOf(favorite.relativePath),
+        subcaption: folderOf(favorite.relativePath),
+      })),
+    [favorites],
+  );
 
   // A removal can leave the opening index past the end of a now-shorter list. Clamped
   // during render rather than corrected in an effect: an effect would paint one frame of
@@ -452,18 +480,12 @@ export function FavPhotosList({
       {openIndex >= 0 && (
         <PhotoViewer
           key={openIndex}
-          photos={favorites.map((favorite) => ({
-            name: fileNameOf(favorite.relativePath),
-            relativePath: favorite.relativePath,
-            // The note is the better caption when there is one — it is what the reader
-            // wrote about the picture. The file name is the fallback, not the headline.
-            caption: favorite.note !== "" ? favorite.note : fileNameOf(favorite.relativePath),
-            subcaption: folderOf(favorite.relativePath),
-          }))}
+          photos={viewerPhotos}
           initialIndex={openIndex}
           autoPlay={openPlaying}
           photoUrl={photoUrl}
           onPhotoDetails={readPhotoDetailsAction}
+          {...albumFiling}
           onClose={closeViewer}
         />
       )}

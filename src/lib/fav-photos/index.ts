@@ -27,10 +27,8 @@ export {
   toggleFavPhoto,
   type FavPhotoBulkRemoval,
 } from "./fav-photos";
-export {
-  favPhotoArchiveName,
-  planFavPhotoDownload,
-  MAX_DOWNLOAD_BYTES,
-  MAX_DOWNLOAD_PHOTOS,
-  type FavPhotoDownloadEntry,
-} from "./download";
+// The zip-download planner used to live here as `download.ts`. Nothing in it was ever
+// about favourites — it takes archive paths and returns archive paths with names — so
+// when Albums became a second caller it moved to `@/lib/photo-download` rather than
+// being copied. Import it from there; it is deliberately NOT re-exported through this
+// front door, because a module's index should name what the module owns.

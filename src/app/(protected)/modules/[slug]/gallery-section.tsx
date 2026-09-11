@@ -1,7 +1,9 @@
 import { Suspense } from "react";
 import { CollapsibleCard } from "@/components/collapsible-card";
+import { listAlbums } from "@/lib/albums";
 import { listFavPhotos } from "@/lib/fav-photos";
 import { deps } from "@/lib/wiring";
+import { AlbumsView } from "./gallery-albums-view";
 import { FavPhotosList } from "./gallery-fav-photos-list";
 import { GalleryInstructions } from "./gallery-instructions";
 import { RandomPhotoCard } from "./gallery-random-photo-card";
@@ -55,6 +57,16 @@ export async function GallerySection({ section }: { section: GallerySectionName 
             // is a household's shared archive and a photograph one person keeps is one
             // everybody sees. See migrations/0073_create_fav_photo.md.
             <FavPhotosList initialFavorites={listFavPhotos(deps.favPhotoRepo)} />
+          )}
+          {section === "albums" && (
+            // Read on the server so the grid paints with content instead of opening
+            // onto a spinner, exactly as Favorites does. Only the summaries — the
+            // count and cover come from SQL, so this does not touch the archive at
+            // all; an album's photographs are read when one is opened.
+            //
+            // Albums are not per-user, matching favourites: this is a household's
+            // shared archive, and an album one person makes is one everybody sees.
+            <AlbumsView initialAlbums={listAlbums(deps.albumRepo)} />
           )}
         </div>
       </div>

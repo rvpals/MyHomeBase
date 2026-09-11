@@ -94,6 +94,18 @@ export interface ViewerPhotoDetails {
   error?: string;
 }
 
+/**
+ * One album in the `+` menu.
+ *
+ * Declared here rather than imported from `@/lib/albums`, for the same boundary reason
+ * as `ViewerFolderOutcome`: `src/components/` keeps no dependency on a library module's
+ * domain types beyond what it is handed. The album record is structurally assignable.
+ */
+export interface ViewerAlbum {
+  id: number;
+  name: string;
+}
+
 /** Props shared by both ways of supplying photos. */
 interface PhotoViewerCommonProps {
   /** Builds the URL for one photo's bytes. */
@@ -155,6 +167,57 @@ interface PhotoViewerCommonProps {
    * rather than leaving the click's intention on screen.
    */
   onToggleFavorite?: (relativePath: string) => Promise<boolean>;
+  /**
+   * The albums the `+` menu offers, and the plumbing to file a photo into one.
+   *
+   * ALL THREE OR NONE, exactly like the favourite pair above: the button is rendered
+   * only when `albums`, `onAddToAlbum` and `albumIdsFor` are all given, so a caller
+   * with no notion of albums gets a viewer without the control rather than a dead one.
+   *
+   * `albums` is the full list, held by the caller — the viewer does not fetch it. It
+   * may be empty, and that is a meaningful state rather than a reason to hide the
+   * button: the menu then offers only "New album", which is how a reader with no
+   * albums yet makes their first one from the picture that prompted it.
+   */
+  albums?: ViewerAlbum[];
+  /**
+   * Which albums already hold a given photo, for the menu's ticks.
+   *
+   * A callback rather than a map, and it takes the path, because the viewer walks
+   * hundreds of pictures and the answer differs per photo. The caller already holds
+   * whatever it read, so this keeps no second copy to fall out of step with it.
+   *
+   * Returning `undefined` means "not known yet" — the menu shows the row without a
+   * tick rather than asserting the photo is absent, which is the honest rendering
+   * while a lookup is still in flight.
+   */
+  albumIdsFor?: (relativePath: string) => number[] | undefined;
+  /**
+   * Files the photo on the stage into an album.
+   *
+   * MUST NOT RESOLVE UNTIL `albumIdsFor` WOULD RETURN THE NEW ANSWER — the same
+   * contract `onToggleFavorite` carries, and for the same reason: the menu drops its
+   * optimistic tick when the promise resolves, so resolving early makes the tick flick
+   * off for a render. Await your own re-read.
+   *
+   * Reject to report a failed write; the menu restores the previous tick and shows a
+   * short message in the menu itself, which unlike the header has room for one.
+   */
+  onAddToAlbum?: (albumId: number, relativePath: string) => Promise<void>;
+  /**
+   * Makes a new album and files the photo into it, resolving to the album.
+   *
+   * Separate from `onAddToAlbum` because it is a different operation, not a special
+   * case of one: it can fail on a duplicate name, which is a message about the text
+   * the reader just typed rather than about the photo.
+   *
+   * Resolving to `{ ok: false, error }` reports a name clash inline. Rejecting is for
+   * an unexpected failure.
+   */
+  onCreateAlbum?: (
+    name: string,
+    relativePath: string,
+  ) => Promise<{ ok: true; album: ViewerAlbum } | { ok: false; error: string }>;
   /** Caller-supplied classes, merged last so they win. */
   className?: string;
 }
@@ -236,6 +299,10 @@ export function PhotoViewer({
   onPhotoDetails,
   isFavorite,
   onToggleFavorite,
+  albums,
+  albumIdsFor,
+  onAddToAlbum,
+  onCreateAlbum,
   className = "",
 }: PhotoViewerProps) {
   // The folder read's result. Unused when the caller supplied a set — `photos` below
@@ -288,6 +355,32 @@ export function PhotoViewer({
   // effect has not yet come back through the caller's own state.
   const [favoriteOverrides, setFavoriteOverrides] = useState<Record<string, boolean>>({});
   const [isTogglingFavorite, setIsTogglingFavorite] = useState(false);
+
+  // The `+` menu: whether it is open, which albums this viewer has just filed the photo
+  // into, and what to say if a write failed.
+  //
+  // `albumOverrides` is keyed by `"<albumId>|<path>"` and holds only the additions this
+  // viewer has made whose effect has not yet come back through `albumIdsFor` — the same
+  // shape and the same reasoning as `favoriteOverrides`. Filing is one-way here (the
+  // menu adds; unfiling happens in the album, where the consequence is visible), so
+  // this only ever holds `true`.
+  // WHICH PHOTO the menu is open for, not a bare `isOpen` flag.
+  //
+  // That is what makes "the menu closes when you arrow to the next picture" derived
+  // state rather than an effect that resets a boolean. The menu is about one
+  // photograph -- it must not survive a change of subject, or it would show the
+  // previous picture's ticks against the new one -- and storing the subject means the
+  // rule is enforced by the render itself. The effect version also tripped
+  // `react-hooks/set-state-in-effect`, correctly: it was a cascading render for
+  // something that was never independent state.
+  const [albumMenuPath, setAlbumMenuPath] = useState<string | undefined>(undefined);
+  const [albumOverrides, setAlbumOverrides] = useState<Record<string, boolean>>({});
+  const [albumBusyId, setAlbumBusyId] = useState<number | undefined>(undefined);
+  const [albumError, setAlbumError] = useState<string | undefined>(undefined);
+  // The inline "New album" field: `undefined` means the row is a button, a string means
+  // it has become an input holding that draft.
+  const [newAlbumName, setNewAlbumName] = useState<string | undefined>(undefined);
+  const [isCreatingAlbum, setIsCreatingAlbum] = useState(false);
 
   const stripRef = useRef<HTMLDivElement>(null);
 
@@ -450,6 +543,161 @@ export function PhotoViewer({
     }
   }, [photo, onToggleFavorite, isPhotoFavorite]);
 
+  // Whether the `+` menu is offered at all. All three props or none — a list with no
+  // way to file into it is a menu that cannot act, and a filer with no list has nothing
+  // to show. `albums` being EMPTY is fine and deliberate: the menu then offers only
+  // "New album", which is how a first album gets made from the picture that prompted it.
+  const canFileIntoAlbum =
+    albums !== undefined &&
+    albumIdsFor !== undefined &&
+    onAddToAlbum !== undefined &&
+    photo !== undefined;
+
+  /** Which albums hold the photo on the stage, including this viewer's own additions. */
+  const albumIdsForPhoto = useMemo(() => {
+    if (photo === undefined || albumIdsFor === undefined) return new Set<number>();
+    const known = albumIdsFor(photo.relativePath) ?? [];
+    const ids = new Set(known);
+    for (const [key, isIn] of Object.entries(albumOverrides)) {
+      const [albumId, path] = key.split("|");
+      if (path === photo.relativePath && isIn) ids.add(Number(albumId));
+    }
+    return ids;
+  }, [photo, albumIdsFor, albumOverrides]);
+
+  // Open only while the menu's subject is still the photo on the stage. Arrowing on
+  // closes it with no effect and no extra render -- see `albumMenuPath` above.
+  const isAlbumMenuOpen =
+    photo !== undefined && albumMenuPath === photo.relativePath;
+
+  /**
+   * Opens or closes the menu for the photo currently on the stage.
+   *
+   * Toggling is computed against `isAlbumMenuOpen` -- what is actually on screen --
+   * rather than against the raw `albumMenuPath`. Those differ whenever the stored path
+   * is stale (a photo change, or a close this component did not perform), and comparing
+   * against the raw value in that state would toggle the button into doing nothing
+   * visible: it would clear a path that was already not showing a menu.
+   */
+  const toggleAlbumMenu = useCallback(() => {
+    if (photo === undefined) return;
+    setAlbumMenuPath(isAlbumMenuOpen ? undefined : photo.relativePath);
+    // The inline create field and any error belong to one opening of the menu, so both
+    // are cleared as it is toggled rather than lingering into the next one.
+    setNewAlbumName(undefined);
+    setAlbumError(undefined);
+  }, [photo, isAlbumMenuOpen]);
+
+  // A click anywhere else closes the menu.
+  //
+  // THREE THINGS HERE ARE DELIBERATE, and all three were bugs first.
+  //
+  // `click`, not `mousedown`. A `mousedown` listener fires BEFORE the button's own
+  // `click` handler and unmounted the menu underneath the press, so the click landed
+  // on nothing and every row in the dropdown appeared dead. The trade `mousedown`
+  // bought (the menu closing a few milliseconds sooner when dismissing) is worth
+  // nothing next to the menu not working at all.
+  //
+  // `closest("[data-album-menu]")`, not `ref.contains()`. Equivalent while the menu is
+  // one subtree, but it keeps working if any part of it is ever portalled elsewhere,
+  // which is exactly the kind of change that would silently reintroduce the fault.
+  //
+  // A capture-phase listener would also fire too early; this is the bubble phase on
+  // purpose, so React's own handler has already run by the time we close.
+  useEffect(() => {
+    if (!isAlbumMenuOpen) return;
+    function onDocumentClick(event: MouseEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target === null) return;
+
+      // A target React has already unmounted is NOT an outside click.
+      //
+      // Clicking an album row ticks it, which re-renders that row -- so by the time the
+      // click bubbles up here the original node can already be detached, and
+      // `closest()` on a detached node returns null. That read as "clicked outside" and
+      // closed the menu straight after a successful add, which then left `albumMenuPath`
+      // pointing at a photo whose menu was shut: the next press of `+` toggled it back
+      // to that same path and appeared to do nothing at all.
+      if (!target.isConnected) return;
+
+      if (target.closest("[data-album-menu]") == null) setAlbumMenuPath(undefined);
+    }
+    document.addEventListener("click", onDocumentClick);
+    return () => document.removeEventListener("click", onDocumentClick);
+  }, [isAlbumMenuOpen]);
+
+  /**
+   * Files the photo on the stage into an album.
+   *
+   * Optimistic, on the same contract as the heart: the tick appears at once, and the
+   * override is DROPPED when the promise resolves so `albumIdsFor` becomes authoritative
+   * again. Unlike the heart this has somewhere to print a failure, so it does.
+   *
+   * The menu STAYS OPEN after a successful add. Filing one picture into two albums is
+   * ordinary, and closing would make the second one a fresh trip through the button.
+   */
+  const addToAlbum = useCallback(
+    async (albumId: number) => {
+      if (photo === undefined || onAddToAlbum === undefined) return;
+
+      const path = photo.relativePath;
+      const key = `${albumId}|${path}`;
+      setAlbumError(undefined);
+      setAlbumBusyId(albumId);
+      setAlbumOverrides((current) => ({ ...current, [key]: true }));
+      try {
+        await onAddToAlbum(albumId, path);
+        setAlbumOverrides((current) => {
+          if (current[key] === undefined) return current;
+          const settled = { ...current };
+          delete settled[key];
+          return settled;
+        });
+      } catch {
+        setAlbumOverrides((current) => {
+          const reverted = { ...current };
+          delete reverted[key];
+          return reverted;
+        });
+        setAlbumError("Couldn't add it to that album.");
+      } finally {
+        setAlbumBusyId(undefined);
+      }
+    },
+    [photo, onAddToAlbum],
+  );
+
+  /**
+   * Makes a new album from the menu and files the photo into it.
+   *
+   * INLINE rather than sending the reader to the Albums screen, which is the whole
+   * point of the row: someone browsing a folder who wants a new album wants it for the
+   * picture in front of them, and navigating away to make one loses both their place
+   * in the folder and the photograph that prompted it.
+   */
+  const createAlbumInline = useCallback(async () => {
+    if (photo === undefined || onCreateAlbum === undefined) return;
+    const name = (newAlbumName ?? "").trim();
+    if (name === "") return;
+
+    setAlbumError(undefined);
+    setIsCreatingAlbum(true);
+    try {
+      const result = await onCreateAlbum(name, photo.relativePath);
+      if (!result.ok) {
+        // A duplicate name. Reported in the menu, with the field kept so the reader can
+        // edit what they typed rather than retype it.
+        setAlbumError(result.error);
+        return;
+      }
+      setNewAlbumName(undefined);
+    } catch {
+      setAlbumError("Couldn't create that album.");
+    } finally {
+      setIsCreatingAlbum(false);
+    }
+  }, [photo, onCreateAlbum, newAlbumName]);
+
   // Warms the journal route on hover/focus, a beat before the click.
   //
   // WHY THIS IS MANUAL rather than `<Link prefetch>`: Next prefetches a link when it
@@ -487,6 +735,19 @@ export function PhotoViewer({
   // work without the reader clicking the stage first.
   useEffect(() => {
     function handleKey(event: KeyboardEvent) {
+      // Typing in a field is not a viewer shortcut. Without this, naming a new album
+      // meant `f` toggled the favourite and an arrow key moved to another photograph
+      // -- which also unmounted the field, since the menu belongs to one photo.
+      const target = event.target as HTMLElement | null;
+      if (
+        target !== null &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
       if (event.key === "Escape") onClose();
       else if (event.key === "ArrowLeft") goPrevious();
       else if (event.key === "ArrowRight") {
@@ -581,8 +842,15 @@ export function PhotoViewer({
       aria-label={label === "" ? "Photograph" : `Photos in ${label}`}
     >
       {/* The header carries its own opaque background: the app's `z-40` bar sits exactly
-          here, and at anything less than opaque its nav links read straight through. */}
-      <div className="flex items-start justify-between gap-3 bg-black px-4 py-3 text-white">
+          here, and at anything less than opaque its nav links read straight through.
+
+          `relative z-10` puts it ABOVE the stage below. Both are children of the same
+          flex column with no ordering between them, and the stage is `relative` -- so
+          it makes a stacking context that, coming later in DOM order, painted over this
+          one. The album dropdown overflows the header's box, so it was being clipped
+          behind the picture frame. Local ordering inside this portal only; the portal
+          itself is the thing at `z-50`. */}
+      <div className="relative z-10 flex items-start justify-between gap-3 bg-black px-4 py-3 text-white">
         <div className="min-w-0">
           {subcaption !== undefined && (
             <p className="truncate text-sm text-white/60">{subcaption}</p>
@@ -624,6 +892,169 @@ export function PhotoViewer({
                 className={`h-5 w-5 ${isPhotoFavorite ? "text-brass" : ""}`}
               />
             </button>
+          )}
+
+          {/* Files this photograph into an album.
+
+              Second in the row, after the heart: both are controls that CHANGE
+              something, and they belong together ahead of the ones that navigate.
+
+              `plus` rather than an album glyph, and deliberately no icon slot -- this
+              is a row action on a toolbar, not a mark for a PLACE, so it stays
+              hand-drawn like the heart beside it (see ALWAYS_CLASSIC in
+              tree-icons.tsx).
+
+              The menu is positioned INSIDE the viewer's own portal, which already owns
+              `z-50`. It therefore needs no z-index of its own and cannot fight the
+              app's shell surfaces or a Modal -- see design.md, "Adding a UI element to
+              the shell". */}
+          {canFileIntoAlbum && (
+            <div data-album-menu className="relative">
+              <button
+                type="button"
+                onClick={toggleAlbumMenu}
+                aria-haspopup="menu"
+                aria-expanded={isAlbumMenuOpen}
+                aria-label="Add to album"
+                title="Add to album"
+                className={PILL_CLASS}
+              >
+                <TreeIcon name="plus" className="h-5 w-5" />
+              </button>
+
+              {isAlbumMenuOpen && (
+                /* `right-0` so it hangs from the button's right edge and cannot run off
+                   the screen on a phone, where this sits near the viewport edge.
+                   `max-h` plus scrolling because the album list is unbounded, and
+                   `w-64` caps it well inside a 390px screen. */
+                <div
+                  role="menu"
+                  className="absolute right-0 top-12 z-20 w-64 overflow-hidden rounded-lg border border-white/15 bg-neutral-900 text-white shadow-2xl ring-1 ring-black/50"
+                >
+                  <p className="border-b border-white/10 px-3 py-2 text-xs uppercase tracking-wide text-white/50">
+                    Add to album
+                  </p>
+
+                  {/* Capped against the VIEWPORT, not a fixed 16rem: the menu hangs
+                      from a header about 56px down, so on a landscape phone (~390px
+                      tall) a fixed cap plus the create row and an error line would run
+                      off the bottom of the screen with no way to reach the last album.
+                      `50dvh` leaves room for both and shrinks with the window. */}
+                  <div className="max-h-[50dvh] overflow-y-auto">
+                    {albums.length === 0 ? (
+                      <p className="px-3 py-3 text-sm text-white/60">
+                        No albums yet &mdash; make the first one below.
+                      </p>
+                    ) : (
+                      albums.map((album) => {
+                        const isIn = albumIdsForPhoto.has(album.id);
+                        return (
+                          <button
+                            key={album.id}
+                            type="button"
+                            role="menuitem"
+                            // Already filed: the row stays visible and reads as done
+                            // rather than disappearing, so the menu answers "which
+                            // albums is this in" as well as offering the ones it is not.
+                            disabled={isIn || albumBusyId !== undefined}
+                            onClick={() => void addToAlbum(album.id)}
+                            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors hover:bg-white/10 disabled:cursor-default disabled:hover:bg-transparent"
+                          >
+                            <span
+                              aria-hidden="true"
+                              className={`w-4 shrink-0 text-center ${isIn ? "text-brass" : "text-transparent"}`}
+                            >
+                              &#10003;
+                            </span>
+                            <span className={`truncate ${isIn ? "text-white/50" : ""}`}>
+                              {album.name}
+                            </span>
+                            {albumBusyId === album.id && (
+                              <span className="ml-auto shrink-0 text-xs text-white/50">
+                                &hellip;
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* The way to a NEW album, without leaving the picture. Only offered
+                      when the caller supplied `onCreateAlbum`; a caller that wants a
+                      read-only picker simply omits it. */}
+                  {onCreateAlbum !== undefined && (
+                    <div className="border-t border-white/10">
+                      {newAlbumName === undefined ? (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => setNewAlbumName("")}
+                          className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-brass transition-colors hover:bg-white/10"
+                        >
+                          <TreeIcon name="plus" className="h-4 w-4 shrink-0" />
+                          Create a new album&hellip;
+                        </button>
+                      ) : (
+                        <form
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            void createAlbumInline();
+                          }}
+                          className="flex flex-col gap-2 p-3"
+                        >
+                          <input
+                            type="text"
+                            value={newAlbumName}
+                            onChange={(event) => setNewAlbumName(event.target.value)}
+                            // Escape backs out of the field rather than closing the
+                            // whole viewer -- the document handler would otherwise read
+                            // it as "close the photo", which is two steps too many.
+                            onKeyDown={(event) => {
+                              if (event.key === "Escape") {
+                                event.stopPropagation();
+                                setNewAlbumName(undefined);
+                                setAlbumError(undefined);
+                              }
+                            }}
+                            autoFocus
+                            maxLength={120}
+                            placeholder="Album name"
+                            aria-label="New album name"
+                            className="w-full rounded border border-white/20 bg-black/40 px-2 py-1.5 text-sm text-white placeholder:text-white/40 focus:border-brass focus:outline-none"
+                          />
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setNewAlbumName(undefined);
+                                setAlbumError(undefined);
+                              }}
+                              className="rounded px-2 py-1 text-xs text-white/60 hover:text-white"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="submit"
+                              disabled={isCreatingAlbum || newAlbumName.trim() === ""}
+                              className="rounded bg-brass px-2 py-1 text-xs font-medium text-black disabled:opacity-50"
+                            >
+                              {isCreatingAlbum ? "Creating…" : "Create & add"}
+                            </button>
+                          </div>
+                        </form>
+                      )}
+                    </div>
+                  )}
+
+                  {albumError !== undefined && (
+                    <p className="border-t border-white/10 px-3 py-2 text-xs text-red-300">
+                      {albumError}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
           )}
 
           {/* Opens the journal's calendar on the day this photograph was taken, with
@@ -755,6 +1186,18 @@ export function PhotoViewer({
                       src={photoUrl(candidate.relativePath)}
                       alt=""
                       loading="lazy"
+                      // Decoded OFF the main thread. These are full-size NAS JPEGs, not
+                      // thumbnails (there is no thumbnail pipeline -- see
+                      // THUMBNAIL_WINDOW), so a burst of synchronous multi-megapixel
+                      // decodes blocks input long enough to swallow a click on the
+                      // header's own controls while the strip fills.
+                      decoding="async"
+                      // Intrinsic size, so a slot reserves its box before the bytes
+                      // land. Without it each arriving image relayouts the row, which
+                      // is both jank and a moving target for a finger already on its
+                      // way down.
+                      width={64}
+                      height={64}
                       className="h-full w-full object-cover"
                     />
                   ) : (

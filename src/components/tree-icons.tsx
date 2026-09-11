@@ -415,6 +415,47 @@ const Photo: IconComponent = (props) => (
   </svg>
 );
 
+/* A photo album: a bound book, with a picture on its cover.
+
+   The mark for the Picture Gallery's Albums section — "a collection someone assembled
+   and named", as against the three photo glyphs already here, which all mean "pictures"
+   in some arrangement. That distinction is the reason it is drawn rather than reusing
+   one of them:
+
+     `photo`         one framed picture. The module's own mark, and the Home screen
+                     section — a header whose title icon and nav row match says nothing.
+     `photo-folder`  a folder of pictures, i.e. WHERE ON DISK they are. An album is the
+                     opposite idea: photographs from any number of folders, gathered by
+                     hand. Reusing it would say the section browses the archive.
+     `photo-stack`   several pictures with a heart, already spoken for by Favorites.
+
+   The BINDING is what carries "album" and it is the only part that must survive 16px:
+   the spine band down the left, drawn as a second vertical rule inset from the cover
+   edge. A book without it is a rounded rectangle, which is `window` — and the Albums
+   row sits in the same panel as Home screen and Favorite photos, so the three have to
+   be told apart at a glance in a 20px column.
+
+   The picture on the cover is a sun and a hill, the same two marks `photo` and
+   `photo-folder` use, so all four read as one subject.
+
+   It is printed DIRECTLY ON THE COVER with no frame around it, which is the one thing
+   here that was got wrong first and fixed by rendering it. A mounted photograph — the
+   obvious drawing, a little rect with the scene inside — leaves the scene about 7px
+   wide once the cover and spine have taken their share, and at 16px the frame, the sun
+   and the ridge close into a single dark blob. Dropping the frame buys those pixels
+   back for the two marks that carry the meaning, and the cover's own outline already
+   does the framing. */
+const Album: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    {/* The cover, and the spine band inset from its left edge. */}
+    <rect x="4" y="3.5" width="16" height="17" rx="1.8" />
+    <path d="M7.5 3.5v17" />
+    {/* The picture, printed straight onto the cover — no frame around it. */}
+    <circle cx="11.7" cy="9.3" r="1.15" />
+    <path d="M9.4 15.2l3-2.7 2 1.75 2.3-2.1" />
+  </svg>
+);
+
 /* ---------------------------------------------------------------------------------
    The six Arcade games. One glyph each, so a game card is recognisable before its
    name is read.
@@ -532,6 +573,7 @@ const TREE_ICONS = {
   "photo-stack": PhotoStack,
   photo: Photo,
   "photo-folder": PhotoFolder,
+  album: Album,
   "game-2048": Game2048,
   "game-arrows": GameArrows,
   "game-tetris": GameTetris,

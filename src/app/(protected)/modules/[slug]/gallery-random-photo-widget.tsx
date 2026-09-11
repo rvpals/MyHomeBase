@@ -9,7 +9,7 @@
 // The name `RandomPhotoWidget` is unchanged -- it names the card, which is still what
 // this is.
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { PhotoViewer } from "@/components/photo-viewer";
@@ -28,6 +28,7 @@ import {
   listFavPhotosAction,
   toggleFavPhotoAction,
 } from "./gallery-photo-actions";
+import { useAlbumFiling } from "./use-album-filing";
 
 function RefreshIcon({ className = "" }: { className?: string }) {
   return (
@@ -163,6 +164,11 @@ export function RandomPhotoWidget({
   const [favorites, setFavorites] = useState(initialFavorites);
   const [isFavoriting, setIsFavoriting] = useState(false);
 
+  // The viewer's "add to album" plumbing. A hook rather than four more pieces of state
+  // here, because the favourites screen and the albums screen need exactly the same
+  // four props -- see use-album-filing.ts.
+  const albumFiling = useAlbumFiling();
+
   async function handleRefresh() {
     setIsDrawing(true);
     setError(undefined);
@@ -239,6 +245,29 @@ export function RandomPhotoWidget({
     setFavorites(await listFavPhotosAction());
     return landed;
   }, []);
+
+  // The single-photo set for the viewer's SET form, memoised on the three values that
+  // identify the picture rather than rebuilt inline in the JSX.
+  //
+  // WHY THIS IS NOT COSMETIC: this card re-renders every time its <img> fires `onLoad`
+  // (see `setIsImageLoading` below), and an inline `photos={[...]}` would hand
+  // `PhotoViewer` a new array -- and so a new `photo` object -- on each of those
+  // renders. Anything inside the viewer keyed on the photo object rather than on its
+  // path gets reset by that, which is a whole class of "the overlay forgot what I was
+  // doing" bugs for something the reader never touched.
+  const viewerPhotos = useMemo(
+    () =>
+      pick.relativePath === undefined
+        ? []
+        : [
+            {
+              name: pick.name ?? "",
+              relativePath: pick.relativePath,
+              subcaption: pick.folderName,
+            },
+          ],
+    [pick.relativePath, pick.name, pick.folderName],
+  );
 
   const hasPhoto = pick.relativePath !== undefined;
   // The folder the drawn photo came from, or `""` when there is nothing to browse.
@@ -452,21 +481,17 @@ export function RandomPhotoWidget({
             onPhotoDetails={readPhotoDetailsAction}
             isFavorite={isPhotoFavorited}
             onToggleFavorite={toggleFavoriteByPath}
+            {...albumFiling}
             onClose={() => setIsViewerOpen(false)}
           />
         ) : (
           <PhotoViewer
-            photos={[
-              {
-                name: pick.name ?? "",
-                relativePath: pick.relativePath,
-                subcaption: pick.folderName,
-              },
-            ]}
+            photos={viewerPhotos}
             photoUrl={photoUrl}
             onPhotoDetails={readPhotoDetailsAction}
             isFavorite={isPhotoFavorited}
             onToggleFavorite={toggleFavoriteByPath}
+            {...albumFiling}
             onClose={() => setIsViewerOpen(false)}
           />
         )

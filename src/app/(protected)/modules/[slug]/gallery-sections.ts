@@ -10,7 +10,7 @@
 // every other module uses for its first section -- so the Random Photo card lives at
 // /modules/picture-gallery, not at a /home-screen path below it. Favorites is a child
 // route.
-export const GALLERY_SECTIONS = ["main", "favorites"] as const;
+export const GALLERY_SECTIONS = ["main", "favorites", "albums"] as const;
 
 export type GallerySection = (typeof GALLERY_SECTIONS)[number];
 
@@ -31,6 +31,11 @@ export const GALLERY_SECTION_INFO: Record<
     label: "Favorite photos",
     description: "The photographs you've kept. Watch them as a slideshow, or download a few.",
   },
+  albums: {
+    label: "Albums",
+    description:
+      "Collections you've put together. Play one as a slideshow, or export every picture in it.",
+  },
 };
 
 /** Section -> nav icon key, resolved by TreeIcon. */
@@ -42,6 +47,10 @@ export const GALLERY_SECTION_ICONS: Record<GallerySection, string> = {
   // Filled rather than outline: in the nav it is a label, not the card's toggle, so
   // there is no empty state for an outline to mean.
   favorites: "heart-filled",
+  // `album` — a bound book with a picture on its cover, drawn for this section. Not
+  // `photo-folder`, which is the archive's folder structure; an album is pictures
+  // gathered by hand, which is the opposite idea and has to read as one at 16px.
+  albums: "album",
 };
 
 const BASE_PATH = "/modules/picture-gallery";

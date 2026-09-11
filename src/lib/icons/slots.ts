@@ -548,6 +548,18 @@ export const ICON_SLOTS: IconSlot[] = [
     wired: true,
     namespace: "tree",
   },
+  {
+    id: "gallery_section_albums",
+    label: "Albums",
+    group: "Picture Gallery sections",
+    where: "My Picture Gallery → section panel → Albums.",
+    // `album`, a glyph drawn for this section — a bound book with a picture on its
+    // cover. Not `photo-folder`, which means "where on disk these are"; an album is
+    // the opposite idea, pictures gathered by hand from any number of folders.
+    defaultConcept: "album",
+    wired: true,
+    namespace: "tree",
+  },
 
   /* ---------------------------------------------------------------------------------
      Games — the six Arcade cards.

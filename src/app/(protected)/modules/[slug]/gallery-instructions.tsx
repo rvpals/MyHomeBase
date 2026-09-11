@@ -32,6 +32,10 @@ function HomeScreenInstructions() {
             <strong className="text-ink">Favorite photos</strong> — every picture you&apos;ve
             kept, as a list you can select from.
           </li>
+          <li>
+            <strong className="text-ink">Albums</strong> — collections you put together
+            yourself, from any folders, in any order.
+          </li>
         </ul>
       </Section>
       <Section title="The card's buttons">
@@ -100,7 +104,59 @@ function FavoritesInstructions() {
   );
 }
 
+function AlbumsInstructions() {
+  return (
+    <>
+      <p className="text-sm text-muted">
+        An album is a set of photographs you choose — from any folder, in any order. Like
+        favorites, albums are shared by the whole household rather than being per-person.
+      </p>
+      <Section title="Making one">
+        <ul className="flex list-disc flex-col gap-1 pl-5">
+          <li>
+            <strong className="text-ink">New album</strong> asks for a name and, if you
+            want one, a description. Names have to be different from each other.
+          </li>
+          <li>
+            To put a picture in it, open any photograph and press the{" "}
+            <strong className="text-ink">+</strong> button in the top bar. That menu lists
+            every album, and can make a new one on the spot without losing your place.
+          </li>
+          <li>
+            A photograph can be in as many albums as you like, and putting it in one
+            neither moves nor copies the file.
+          </li>
+        </ul>
+      </Section>
+      <Section title="What you can do with one">
+        <ul className="flex list-disc flex-col gap-1 pl-5">
+          <li>
+            <strong className="text-ink">Open</strong> it to see every picture in it; click
+            any one to open the viewer and arrow through the album.
+          </li>
+          <li>
+            <strong className="text-ink">Slideshow</strong> plays the album from the start,
+            in the album&apos;s own order.
+          </li>
+          <li>
+            <strong className="text-ink">Export</strong> downloads every picture as one zip
+            file. Tick some of them first and the button exports just those.
+          </li>
+        </ul>
+      </Section>
+      <Section title="Deleting an album, and removing a photo from one">
+        <p>
+          Neither touches your photographs. Deleting an album removes the album only, and
+          removing a picture from an album just unfiles it — in both cases every file stays
+          in the archive exactly where it was.
+        </p>
+      </Section>
+    </>
+  );
+}
+
 export function GalleryInstructions({ section }: { section: GallerySection }) {
   if (section === "favorites") return <FavoritesInstructions />;
+  if (section === "albums") return <AlbumsInstructions />;
   return <HomeScreenInstructions />;
 }

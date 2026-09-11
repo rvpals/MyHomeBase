@@ -55,6 +55,7 @@ import { FmpTickerLogoClient } from "./ticker-logos/fmp-logo-client";
 import { SearchingVendorLogoClient } from "./vendor-logos/searching-vendor-logo-client";
 import { DuckDuckGoVendorDomainClient } from "./vendor-logos/duckduckgo-domain-client";
 import { GoogleFaviconIconClient } from "./vendor-logos/google-favicon-icon-client";
+import { SqliteAlbumRepository } from "./albums/repository";
 import { SqliteFavPhotoRepository } from "./fav-photos/repository";
 import { SqliteTickerFavoriteRepository } from "./ticker-favorites/repository";
 import { SqliteTickerLogoRepository } from "./ticker-logos/repository";
@@ -230,6 +231,10 @@ export const deps = {
   // photo root, not an absolute one, so a favourite survives the share being remounted
   // or `photo_root` being corrected.
   favPhotoRepo: new SqliteFavPhotoRepository(db),
+  // Photo albums (migrations/0087). The Picture Gallery module's own tables — the
+  // first it has ever had; everything else it shows belongs to journal-photos or
+  // fav-photos. Membership is stored as archive paths, same as a favourite.
+  albumRepo: new SqliteAlbumRepository(db),
   tickerRiskCacheRepo: new SqliteTickerRiskCacheRepository(db),
   tickerProfileRepo: new SqliteTickerProfileRepository(db),
   // Sector data rides on the quoteSummary client the detail tab already uses —
