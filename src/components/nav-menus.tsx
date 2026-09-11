@@ -148,12 +148,23 @@ export function UserMenu({
   logoutAction,
   viewportPinned,
   isAdminRoute,
+  placement = "header",
 }: {
   currentUser: { id: number; fullName: string; avatarMimeType?: string; updatedAt?: string };
   showAdmin: boolean;
   logoutAction: () => Promise<void>;
   viewportPinned: boolean;
   isAdminRoute: boolean;
+  /**
+   * Where the trigger sits, which decides where the panel opens.
+   *
+   * `header` (the default, and every screen but one) is the last control in a
+   * full-width bar, so the panel hangs down and to the left. `rail` is the home
+   * screen's bottom utility zone in a 64px column — the same panel there would
+   * open off the left edge of the window, so it opens rightward from the
+   * bottom instead. Opt-in: the header case is untouched.
+   */
+  placement?: "header" | "rail";
 }) {
   const { containerRef, isOpen, setIsOpen } = useDropdown();
   const close = () => setIsOpen(false);
@@ -180,7 +191,13 @@ export function UserMenu({
       {isOpen && (
         // Right-aligned: this is the last thing in the bar, so a left-aligned
         // panel would hang off the screen edge on compact.
-        <div role="menu" aria-label="Account" className={`${menuPanel} right-0 min-w-56`}>
+        <div
+          role="menu"
+          aria-label="Account"
+          className={`${menuPanel} min-w-56 ${
+            placement === "rail" ? "bottom-0 left-full ml-2" : "right-0"
+          }`}
+        >
           <p className="truncate px-2.5 py-1.5 text-xs font-medium uppercase tracking-wide text-muted">
             {currentUser.fullName}
           </p>

@@ -129,7 +129,7 @@ export default async function Home({
   return (
     // The home screen belongs to no module, so it gets the rail and the header
     // but no section panel — see `home-shell.tsx`.
-    <HomeShell label="Home" icon="home" href="/?home=1">
+    <HomeShell label="Home" icon="home" href="/?home=1" hideHeader>
       {/* The texture layer attaches to this wrapper, not to a nested element:
           its `::before` is `fixed` and must cover the viewport and sit behind
           the cards. The attribute is absent when nothing was uploaded. */}
@@ -156,9 +156,15 @@ export default async function Home({
           // The gap belongs to the position, not the card. Previously the carousel
           // was always first and so carried no top margin while the others hardcoded
           // `mt-8`; once any card can be first, that spacing has to be positional or
-          // the top of the page gains a stray gap and a demoted carousel butts up
-          // against the card above it.
-          const spacing = position === 0 ? "" : "mt-8";
+          // a demoted carousel butts up against the card above it.
+          //
+          // The first card gets a smaller gap rather than none: this screen hides
+          // the utility header on the full layout, so there is no bar above it to
+          // sit under and the card would otherwise touch the top of the viewport.
+          // Smaller than `mt-8` because it's separating the card from the window
+          // edge, not from another card — the same reason it isn't just `mt-8`
+          // for everyone.
+          const spacing = position === 0 ? "mt-4" : "mt-8";
           switch (id) {
             case "carousel":
               return (

@@ -12,8 +12,8 @@
 // do it". The caller doesn't choose; `TwoTierShell` passes `isCompact` down.
 //
 // **Open or closed — there is no middle state.** Deliberately not `TreeNav`'s
-// three-state full/rail/strip model: a 64px icon rail for *sections* sitting
-// next to the 64px icon rail for *modules* is two ambiguous glyph columns side
+// three-state full/rail/strip model: a 48px icon rail for *sections* sitting
+// next to the 48px icon rail for *modules* is two ambiguous glyph columns side
 // by side, which reads worse than either extreme.
 
 import Link from "next/link";
@@ -382,7 +382,7 @@ function SectionPanelBody({
   return (
     <nav
       aria-label={`${module.name} sections`}
-      className={`shell-panel flex flex-col border-r border-line bg-paper-raised ${className}`}
+      className={`shell-panel shell-slab-raised flex flex-col border-r border-line bg-paper-raised ${className}`}
     >
       <div className="flex items-center gap-2 border-b border-line px-3 py-2.5">
         {/* The module named in words. This is what makes the icon-only rail

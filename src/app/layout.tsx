@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import {
   Familjen_Grotesk,
+  Great_Vibes,
   Inter,
   IBM_Plex_Mono,
   JetBrains_Mono,
@@ -71,6 +72,16 @@ const jetbrainsMono = JetBrains_Mono({
   variable: "--font-jetbrains-mono",
   subsets: ["latin"],
   weight: ["400", "500"],
+});
+
+// Deliberately NOT a theme face: it is absent from FONT_KEYS, so the theme
+// builder never offers it and nobody can pick copperplate script as their body
+// font. It is exposed as its own `--font-script` token (globals.css) for the one
+// piece of decorative UI that wants handwriting — the Daily Quote card.
+const greatVibes = Great_Vibes({
+  variable: "--font-great-vibes",
+  subsets: ["latin"],
+  weight: ["400"],
 });
 
 // Maps a theme's font choice to the CSS variable the matching next/font/google
@@ -193,7 +204,7 @@ export default async function RootLayout({
       // (`TreeNav`) a module renders. Deliberately not a media query: the
       // layout can be pinned, so a wide window can be in compact.
       data-viewport={viewport}
-      className={`${spaceGrotesk.variable} ${sora.variable} ${familjenGrotesk.variable} ${manrope.variable} ${inter.variable} ${plexMono.variable} ${jetbrainsMono.variable} h-full antialiased`}
+      className={`${spaceGrotesk.variable} ${sora.variable} ${familjenGrotesk.variable} ${manrope.variable} ${inter.variable} ${plexMono.variable} ${jetbrainsMono.variable} ${greatVibes.variable} h-full antialiased`}
     >
       <head>
         <style>{themeCss}</style>

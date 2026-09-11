@@ -74,7 +74,11 @@ export function DailyQuoteWidget({
       // replace from Admin > Display Settings > Icons. With nothing uploaded it renders the
       // active set's quote-marks glyph, exactly as it did before.
       titleIcon={QUOTE_SLOT ? <SlotIcon slot={QUOTE_SLOT} className="h-4 w-4" /> : undefined}
-      className={className}
+      // `paper-texture` makes the card read as a physical sheet under the
+      // handwriting — the sanctioned use of the class (see design.md > Type and
+      // the surface-treatment rules). Composed with, not replacing, the caller's
+      // `className`: that carries the widget's spacing on the dashboard.
+      className={`paper-texture ${className ?? ""}`}
       headerAction={
         <div className="flex items-center gap-2">
           {isAdmin && (
@@ -91,8 +95,14 @@ export function DailyQuoteWidget({
       }
     >
       <figure>
-        <blockquote className="font-display text-xl italic leading-relaxed text-ink">
-          &ldquo;{quote.quote}&rdquo;
+        {/* Copperplate script (`font-script`), not the theme display face — the
+            quote is the one piece of decorative type in the app. No `italic`:
+            Great Vibes already slants, and italicising a script face double-
+            slants it. The quote marks are gone too; the calligraphy reads as a
+            quotation on its own. Sized down narrow because script is markedly
+            less legible small. */}
+        <blockquote className="font-script text-3xl leading-snug text-ink max-lg:text-2xl">
+          {quote.quote}
         </blockquote>
 
         <figcaption className="mt-4 flex items-center justify-between gap-3">

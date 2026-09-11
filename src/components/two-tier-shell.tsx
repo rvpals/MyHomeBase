@@ -9,9 +9,9 @@
 // tiers placed for it. It does **not** position them itself: the widths are
 // published in globals.css and `.app-main`'s padding is derived from them, so a
 // caller placing a tier by hand would be the fourth thing that has to agree on
-// 64px and the first one to drift.
+// the rail width and the first one to drift.
 //
-// **The compact fork is a different component, not a restyle.** A 64px rail plus
+// **The compact fork is a different component, not a restyle.** A 48px rail plus
 // a 240px panel is 304px of chrome on a 390px phone, so down there the rail
 // becomes a dropdown in the header and the panel becomes a bottom sheet. That's
 // why this reads `useIsCompact()` rather than `max-lg:` — and because the layout
@@ -61,6 +61,17 @@ export interface TwoTierShellProps {
   extraCrumbs?: Breadcrumb[];
   /** Whole-app actions for the header. Page actions belong on the page. */
   headerActions?: ReactNode;
+  /**
+   * Drops tier 3 on the **full layout only** — the home screen, whose breadcrumb
+   * reads just "Home" and whose bar is therefore an empty rule above the content.
+   *
+   * Never honoured on compact, and that is load-bearing rather than cautious: on
+   * compact the rail does not render and this header carries `ModuleMenu`, so
+   * obeying it there would leave the screen with no module switcher at all — the
+   * dead end design.md warns about. A screen that sets this must give the profile
+   * menu somewhere else to live on full; `HomeShell` puts it in the rail.
+   */
+  hideHeader?: boolean;
   children: ReactNode;
 }
 
@@ -75,6 +86,7 @@ export function TwoTierShell({
   viewportPinned,
   extraCrumbs,
   headerActions,
+  hideHeader = false,
   children,
 }: TwoTierShellProps) {
   const pathname = usePathname();
@@ -118,6 +130,17 @@ export function TwoTierShell({
     .flatMap((section) => [section, ...(section.children ?? [])])
     .find((section) => section.href === pathname);
 
+  // Shared by the two places the menu can render — the header and, on the home
+  // screen's full layout, the rail. One object so the two can never disagree
+  // about who may see Administration.
+  const userMenuProps = {
+    currentUser,
+    showAdmin,
+    logoutAction,
+    viewportPinned,
+    isAdminRoute: pathname.startsWith("/admin"),
+  };
+
   const crumbs: Breadcrumb[] = [
     { label: module.name, href: module.href, icon: module.icon },
     ...(activeSection ? [{ label: activeSection.label, href: activeSection.href }] : []),
@@ -129,7 +152,15 @@ export function TwoTierShell({
       {/* Tier 1. Renders only on the full layout — on compact the same list is
           the header's dropdown, below. `showAdmin` puts the Administration gear
           in the rail's bottom zone; on compact it only reaches the user menu. */}
-      {!isCompact && <ModuleRail links={links} isActive={isActive} showAdmin={showAdmin} />}
+      {!isCompact && (
+        <ModuleRail
+          links={links}
+          isActive={isActive}
+          showAdmin={showAdmin}
+          // Only when tier 3 is gone: otherwise the avatar would appear twice.
+          profile={hideHeader ? <UserMenu {...userMenuProps} placement="rail" /> : undefined}
+        />
+      )}
 
       {/* Tier 2. Owns its own fork: a fixed column on full, a bottom trigger
           and sheet on compact. */}
@@ -146,27 +177,24 @@ export function TwoTierShell({
       {/* Tier 3, plus the page. Both sit in the content column, which
           `.app-main`'s padding-left has already offset past the tiers — so the
           header starts where the panel ends without re-deriving the width. */}
-      <AppHeader
-        crumbs={crumbs}
-        moduleSwitcher={isCompact ? <ModuleMenu links={links} isActive={isActive} /> : undefined}
-        actions={headerActions}
-        profile={
-          <UserMenu
-            currentUser={currentUser}
-            showAdmin={showAdmin}
-            logoutAction={logoutAction}
-            viewportPinned={viewportPinned}
-            isAdminRoute={pathname.startsWith("/admin")}
-          />
-        }
-        // Only when there's something to bring back: compact has the bottom
-        // trigger instead, and an open panel has its own `«`.
-        // An empty `sections` means there is no tier 2 to bring back — the
-        // home and account screens sit outside every module.
-        onExpandPanel={
-          !isCompact && !panelOpen && sections.length > 0 ? () => setPanelOpen(true) : undefined
-        }
-      />
+      {/* `isCompact ||` first, and deliberately: compact folds the module
+          switcher into this bar, so honouring `hideHeader` there would strand
+          the reader with no way out of the page. */}
+      {(isCompact || !hideHeader) && (
+        <AppHeader
+          crumbs={crumbs}
+          moduleSwitcher={isCompact ? <ModuleMenu links={links} isActive={isActive} /> : undefined}
+          actions={headerActions}
+          profile={<UserMenu {...userMenuProps} />}
+          // Only when there's something to bring back: compact has the bottom
+          // trigger instead, and an open panel has its own `«`.
+          // An empty `sections` means there is no tier 2 to bring back — the
+          // home and account screens sit outside every module.
+          onExpandPanel={
+            !isCompact && !panelOpen && sections.length > 0 ? () => setPanelOpen(true) : undefined
+          }
+        />
+      )}
 
       {children}
     </>

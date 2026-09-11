@@ -8,9 +8,13 @@
 //
 // Two tiers rather than three. There is no tier 2 here because there is no
 // module to have sections: `TwoTierShell` treats an empty `sections` as "no
-// panel", so the content column starts right after the 64px rail. The rail
+// panel", so the content column starts right after the rail. The rail
 // itself already carries the Home link, so the home screen is reachable from
 // every page including this one.
+//
+// The home screen also passes `hideHeader`, dropping tier 1's sibling — the
+// utility header — on the full layout, which leaves it with the rail alone.
+// /account is the other caller and keeps its header; see the prop's own note.
 //
 // Mirrors the module shells (`journal-shell.tsx` and friends): a server
 // component, reading `deps` for the module list, the current user and their
@@ -30,6 +34,7 @@ export async function HomeShell({
   label,
   icon,
   href,
+  hideHeader = false,
   children,
 }: {
   /** The breadcrumb's only crumb — "Home" or "My account". */
@@ -38,6 +43,13 @@ export async function HomeShell({
   icon: string;
   /** Where the crumb points. It's the last crumb, so it renders unlinked. */
   href: string;
+  /**
+   * Drops the utility header on the full layout. The home screen sets it — its
+   * only crumb is "Home", which the rail's own logo already says — and the
+   * profile menu moves into the rail's bottom zone to compensate. Off by
+   * default, so /account (the other caller) keeps its header.
+   */
+  hideHeader?: boolean;
   children: ReactNode;
 }) {
   const cookieStore = await cookies();
@@ -75,6 +87,7 @@ export async function HomeShell({
       showAdmin={isAdmin(currentUser)}
       logoutAction={logoutAction}
       viewportPinned={cookieStore.get(VIEWPORT_PINNED_COOKIE)?.value === "1"}
+      hideHeader={hideHeader}
     >
       {children}
     </TwoTierShell>

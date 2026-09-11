@@ -9,7 +9,7 @@ Strict layering: **all logic lives in `src/lib/`; the presentation layers
 - **Before styling any UI (colors, type, buttons, cards) or building a new module's view:** read `./design.md` and follow it — colors and fonts are theme tokens, not literal values.
 - **Before adding or moving any navigation/chrome element:** read `./design.md` →
   *Navigation: the two-tier shell* and *Adding a UI element to the shell*. Navigation is a
-  64px module rail + a 240px section panel + a utility header; put the control in the tier
+  48px module rail + a 240px section panel + a utility header; put the control in the tier
   that matches what it does, and never hand-roll a new `fixed` bar.
 - **Creating a new reusable component:** start from `./src/components/_component-template.tsx`.
 - **Before adding a table, column, or schema change:** read `./coding-guide.md` (table naming, migration conventions).
