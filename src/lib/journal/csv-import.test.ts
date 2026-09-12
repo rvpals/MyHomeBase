@@ -53,6 +53,9 @@ function fakeRepo(): JournalRepository {
         categories: [...input.categories],
         tags: [...input.tags],
         locations,
+        source: input.source,
+        externalId: input.externalId,
+        externalContent: input.externalContent,
         createdAt: now,
         updatedAt: now,
       };
@@ -85,6 +88,9 @@ function fakeRepo(): JournalRepository {
         categories: [...input.categories],
         tags: [...input.tags],
         locations,
+        source: input.source,
+        externalId: input.externalId,
+        externalContent: input.externalContent,
         updatedAt: now,
       };
       entries = entries.map((entry) => (entry.id === id ? updated : entry));
@@ -120,6 +126,14 @@ function fakeRepo(): JournalRepository {
         )
         .map((entry) => entry.id)
         .sort((a, b) => a - b),
+    // The CSV importer never calls this — it matches on date+time+title, not on
+    // a source id — but the port requires it.
+    findEntryIdsBySource: (source, externalId) =>
+      externalId.trim() === "" ? []
+      : entries
+          .filter((entry) => entry.source === source && entry.externalId === externalId.trim())
+          .map((entry) => entry.id)
+          .sort((a, b) => a - b),
     setEntryPinned: () => {
       throw new Error("not used");
     },

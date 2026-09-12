@@ -101,6 +101,21 @@ export interface JournalRepository {
    * whichever one SQLite happened to return first.
    */
   findEntryIdsMatching(key: JournalEntryMatchKey): number[];
+  /**
+   * The ids of every entry carrying this `(source, external_id)` pair, oldest
+   * first — the calendar importer's duplicate check (migration 0088).
+   *
+   * Separate from `findEntryIdsMatching` because the two importers match on
+   * different keys on purpose: a CSV row has no stable identity, so it is
+   * matched on date+time+title, while a calendar event has a UID that survives
+   * being renamed or rescheduled. Matching an .ics on date+time+title would
+   * duplicate every event the reader ever edited in Google Calendar.
+   *
+   * Returns [] for a blank `externalId` rather than every hand-written entry:
+   * an event with no UID has no identity to match on, and the '' / '' pair is
+   * shared by the whole hand-written journal.
+   */
+  findEntryIdsBySource(source: string, externalId: string): number[];
   /** How many entries the journal holds in total, locked ones included. */
   countAllEntries(): number;
   /**
@@ -215,4 +230,5 @@ export interface JournalRepository {
   emptyRecycleBin(): number;
   /** How many entries the bin holds — for the confirm dialog's count. */
   countRecycledEntries(): number;
+
 }

@@ -50,7 +50,6 @@ function renderSection(
   filterQuery: string | undefined,
   requestedClassId: number | undefined,
   requestedDate: string | undefined,
-  requestedRecordId: number | undefined,
   requestedFormat: string | undefined,
   calendarScope: string | undefined,
   calendarAnchor: string | undefined,
@@ -70,7 +69,6 @@ function renderSection(
         section={section}
         requestedClassId={requestedClassId}
         requestedDate={requestedDate}
-        requestedRecordId={requestedRecordId}
         requestedFormat={requestedFormat}
       />
     );
@@ -145,7 +143,6 @@ export default async function ModuleSectionPage({
     filter?: string | string[];
     classId?: string | string[];
     date?: string | string[];
-    recordId?: string | string[];
     format?: string | string[];
     scope?: string | string[];
     anchor?: string | string[];
@@ -182,7 +179,6 @@ export default async function ModuleSectionPage({
     filter,
     classId,
     date,
-    recordId,
     format,
     scope,
     anchor,
@@ -202,8 +198,6 @@ export default async function ModuleSectionPage({
   const rawClassId = Array.isArray(classId) ? classId[0] : classId;
   const requestedClassId = Number(rawClassId) || undefined;
   const requestedDate = Array.isArray(date) ? date[0] : date;
-  const rawRecordId = Array.isArray(recordId) ? recordId[0] : recordId;
-  const requestedRecordId = Number(rawRecordId) || undefined;
   // Which report shape to render. Left as a raw string here -- the section
   // validates it against ATTENDANCE_REPORT_FORMATS, so an unknown value falls
   // back to "brief" rather than 404ing a legitimate URL.
@@ -253,7 +247,6 @@ export default async function ModuleSectionPage({
     filterQuery,
     requestedClassId,
     requestedDate,
-    requestedRecordId,
     requestedFormat,
     calendarScope,
     calendarAnchor,

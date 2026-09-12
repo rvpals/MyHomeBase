@@ -43,8 +43,8 @@ function fakeRepo(): AttendanceRepository {
   const classes = new Map<number, AttendanceClass>();
   // classId -> the ids enrolled, insertion-ordered.
   const enrollments = new Map<number, Set<number>>();
-  // Every saved session, insertion-ordered. A list rather than a map keyed on
-  // class+date, because a class may now be registered several times a day.
+  // Every saved register, insertion-ordered. At most one per class+date, which
+  // `saveAttendance` below upholds the way the unique index does.
   const records: AttendanceRecord[] = [];
   const studentActions = new Map<number, StudentAction>();
   // The blob store, kept beside the catalog exactly as the real schema keeps it
@@ -55,6 +55,8 @@ function fakeRepo(): AttendanceRepository {
   let nextClassId = 1;
   let nextRecordId = 1;
   let nextActionId = 1;
+  // Counts writes rather than records, so an update still advances the clock.
+  let writeCount = 0;
 
   const rosterOrder = (a: Student, b: Student) =>
     a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName) || a.id - b.id;
@@ -224,17 +226,32 @@ function fakeRepo(): AttendanceRepository {
         )
         .sort((a, b) => b.id - a.id);
     },
+    findAttendanceRecordForDate(classId, attendanceDate) {
+      return records.find(
+        (record) => record.classId === classId && record.attendanceDate === attendanceDate,
+      );
+    },
     saveAttendance(input: SaveAttendanceData, className, studentNames, actionsById) {
-      // A distinct minute per save, so sessionLabel and the newest-first
-      // ordering are observable in tests.
-      const minute = String(30 + records.length).padStart(2, "0");
+      // A distinct minute per write, so a label change is observable when a
+      // register is updated.
+      const minute = String(30 + writeCount++).padStart(2, "0");
       const recordedAt = `2026-08-16T14:${minute}:00Z`;
+
+      // Upsert, mirroring the real repository: one register per class per day, so
+      // saving a day again updates that record and keeps its id (migration 0092).
+      const existingIndex = records.findIndex(
+        (record) =>
+          record.classId === input.classId && record.attendanceDate === input.attendanceDate,
+      );
+
       const record: AttendanceRecord = {
-        id: nextRecordId++,
+        id: existingIndex >= 0 ? records[existingIndex].id : nextRecordId++,
         classId: input.classId,
         className,
         attendanceDate: input.attendanceDate,
         recordedAt,
+        // Local HH:MM in the real repository. The fixture's instants are UTC-noon
+        // so the minute -- the part these tests assert on -- is offset-independent.
         sessionLabel: recordedAt.slice(11, 16),
         recordedByUserId: input.recordedByUserId,
         entries: input.entries.map((entry) => ({
@@ -249,10 +266,12 @@ function fakeRepo(): AttendanceRepository {
           }),
         })),
       };
-      // Appends. Saving again for the same class and date is a second session,
-      // not a replacement — the unique index that used to forbid that is gone
-      // (migration 0049).
-      records.push(record);
+
+      // Replaces the entries wholesale rather than merging, which is what the real
+      // repository's DELETE-then-INSERT does.
+      if (existingIndex >= 0) records[existingIndex] = record;
+      else records.push(record);
+
       return record;
     },
     listSessionsForClass(classId) {
@@ -593,17 +612,17 @@ describe("enrollStudents", () => {
 });
 
 describe("getAttendanceSheet", () => {
-  it("returns the enrolled students and no sessions for a fresh day", () => {
+  it("returns the enrolled students and no register for a fresh day", () => {
     const { repo, mathClass } = seededRepo();
 
     const sheet = getAttendanceSheet(repo, mathClass.id, "2026-08-16");
 
     expect(sheet.className).toBe("Math 101");
     expect(sheet.students).toHaveLength(3);
-    expect(sheet.sessions).toEqual([]);
+    expect(sheet.session).toBeUndefined();
   });
 
-  it("lists the day's sessions once attendance has been taken", () => {
+  it("returns the day's register once attendance has been taken", () => {
     const { repo, mathClass, ava, ben, chi } = seededRepo();
     saveAttendance(repo, {
       classId: mathClass.id,
@@ -617,11 +636,33 @@ describe("getAttendanceSheet", () => {
     });
 
     const sheet = getAttendanceSheet(repo, mathClass.id, "2026-08-16");
-    expect(sheet.sessions).toHaveLength(1);
-    expect(sheet.sessions[0].entries).toHaveLength(3);
+    expect(sheet.session?.entries).toHaveLength(3);
   });
 
-  it("lists several sessions newest first", () => {
+  it("carries the saved marks back, so re-opening a day is an edit", () => {
+    // The behaviour the screen depends on: what was saved is what comes back, so
+    // seeding the register from `session` shows the teacher their own marks.
+    const { repo, mathClass, ava, ben, chi } = seededRepo();
+    saveAttendance(repo, {
+      classId: mathClass.id,
+      attendanceDate: "2026-08-16",
+      recordedByUserId: 1,
+      entries: [
+        { studentId: ava.id, status: "present" },
+        { studentId: ben.id, status: "absent" },
+        { studentId: chi.id, status: "present" },
+      ],
+    });
+
+    const sheet = getAttendanceSheet(repo, mathClass.id, "2026-08-16");
+    const present = sheet.session?.entries
+      .filter((entry) => entry.status === "present")
+      .map((entry) => entry.studentId);
+
+    expect(present).toEqual([ava.id, chi.id]);
+  });
+
+  it("keeps one register when a day is saved repeatedly", () => {
     const { repo, mathClass, ava, ben, chi } = seededRepo();
     const everyone = [ava, ben, chi];
 
@@ -638,8 +679,26 @@ describe("getAttendanceSheet", () => {
     }
 
     const sheet = getAttendanceSheet(repo, mathClass.id, "2026-08-16");
-    expect(sheet.sessions).toHaveLength(3);
-    expect(sheet.sessions[0].id).toBeGreaterThan(sheet.sessions[2].id);
+    expect(sheet.session).toBeDefined();
+    // One register, and the date is listed once rather than three times.
+    expect(listRecordDatesForClass(repo, mathClass.id)).toEqual(["2026-08-16"]);
+  });
+
+  it("keeps the register of another date untouched", () => {
+    const { repo, mathClass, ava } = seededRepo();
+
+    for (const date of ["2026-08-16", "2026-08-17"]) {
+      saveAttendance(repo, {
+        classId: mathClass.id,
+        attendanceDate: date,
+        recordedByUserId: 1,
+        entries: [{ studentId: ava.id, status: "present" }],
+      });
+    }
+
+    expect(getAttendanceSheet(repo, mathClass.id, "2026-08-16").session).toBeDefined();
+    expect(getAttendanceSheet(repo, mathClass.id, "2026-08-17").session).toBeDefined();
+    expect(listRecordDatesForClass(repo, mathClass.id)).toHaveLength(2);
   });
 
   it("rejects an unknown class", () => {
@@ -669,35 +728,70 @@ describe("saveAttendance", () => {
     expect(record.entries.find((entry) => entry.studentId === ava.id)?.studentName).toBe("Ava Chen");
   });
 
-  it("keeps a second save for the same day as its own session", () => {
+  it("updates the day's register in place instead of adding a second one", () => {
     const { repo, mathClass, ava, ben, chi } = seededRepo();
     const everyone = [ava, ben, chi];
 
-    const morning = saveAttendance(repo, {
+    const first = saveAttendance(repo, {
       classId: mathClass.id,
       attendanceDate: "2026-08-16",
       recordedByUserId: 1,
       entries: everyone.map((student) => ({ studentId: student.id, status: "absent" as const })),
     });
 
-    const afternoon = saveAttendance(repo, {
+    const corrected = saveAttendance(repo, {
       classId: mathClass.id,
       attendanceDate: "2026-08-16",
       recordedByUserId: 1,
       entries: everyone.map((student) => ({ studentId: student.id, status: "present" as const })),
     });
 
-    // Two sessions, and the morning's register survives the afternoon's.
-    expect(afternoon.id).not.toBe(morning.id);
-    expect(listSessionsForClass(repo, mathClass.id)).toHaveLength(2);
-    expect(getAttendanceReportById(repo, morning.id)?.absentCount).toBe(3);
-    expect(getAttendanceReportById(repo, afternoon.id)?.presentCount).toBe(3);
-
-    // The date list still shows the day once, not twice.
+    // Same record, corrected -- not a second one alongside the first.
+    expect(corrected.id).toBe(first.id);
+    expect(listSessionsForClass(repo, mathClass.id)).toHaveLength(1);
     expect(listRecordDatesForClass(repo, mathClass.id)).toEqual(["2026-08-16"]);
+
+    // And the correction is what the register now reads, with no trace of the
+    // superseded save.
+    const report = getAttendanceReportById(repo, first.id);
+    expect(report?.presentCount).toBe(3);
+    expect(report?.absentCount).toBe(0);
   });
 
-  it("labels each session with its HH:MM", () => {
+  it("drops a mark that the edit removed", () => {
+    // The un-tick case: a payload is the whole truth about the day, so someone
+    // saved present and then left out must come back absent rather than keeping
+    // their earlier mark.
+    const { repo, mathClass, ava, ben, chi } = seededRepo();
+
+    saveAttendance(repo, {
+      classId: mathClass.id,
+      attendanceDate: "2026-08-16",
+      recordedByUserId: 1,
+      entries: [
+        { studentId: ava.id, status: "present" },
+        { studentId: ben.id, status: "present" },
+        { studentId: chi.id, status: "present" },
+      ],
+    });
+
+    saveAttendance(repo, {
+      classId: mathClass.id,
+      attendanceDate: "2026-08-16",
+      recordedByUserId: 1,
+      entries: [
+        { studentId: ava.id, status: "present" },
+        { studentId: ben.id, status: "absent" },
+        { studentId: chi.id, status: "present" },
+      ],
+    });
+
+    const sheet = getAttendanceSheet(repo, mathClass.id, "2026-08-16");
+    const benEntry = sheet.session?.entries.find((entry) => entry.studentId === ben.id);
+    expect(benEntry?.status).toBe("absent");
+  });
+
+  it("re-labels the register with the time of the latest save", () => {
     const { repo, mathClass, ava, ben, chi } = seededRepo();
     const everyone = [ava, ben, chi];
 
@@ -715,10 +809,12 @@ describe("saveAttendance", () => {
     });
 
     expect(first.sessionLabel).toMatch(/^\d{2}:\d{2}$/);
+    // Same record, later label: it says when the day was last touched.
+    expect(second.id).toBe(first.id);
     expect(second.sessionLabel).not.toBe(first.sessionLabel);
   });
 
-  it("reports the latest session when asked by date alone", () => {
+  it("reports the day's register when asked by date alone", () => {
     const { repo, mathClass, ava, ben, chi } = seededRepo();
     const everyone = [ava, ben, chi];
 
@@ -735,7 +831,7 @@ describe("saveAttendance", () => {
       entries: everyone.map((student) => ({ studentId: student.id, status: "present" as const })),
     });
 
-    // "Print today" means the most recent register, not the first.
+    // A date identifies one register, and it reads as the latest save left it.
     const report = getAttendanceReport(repo, {
       classId: mathClass.id,
       attendanceDate: "2026-08-16",

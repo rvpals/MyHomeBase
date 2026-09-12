@@ -13,12 +13,14 @@ import { deploymentsCommand } from "./deployments";
 import { expenseTopSpendersCommand } from "./expense-top-spenders";
 import { explainRuleCommand } from "./explain-rule";
 import { expenseCreateRuleCommand } from "./expense-create-rule";
+import { exportPortfolioCommand } from "./export-portfolio";
 import { normalizeIconOverridesCommand } from "./normalize-icon-overrides";
 import { resizeCarouselImagesCommand } from "./resize-carousel-images";
 import { gameScoresCommand } from "./game-scores";
 import { favPhotosCommand } from "./fav-photos";
 import { favoriteQuotesCommand } from "./favorite-quotes";
 import { importJournalCsvCommand } from "./import-journal-csv";
+import { importJournalIcsCommand } from "./import-journal-ics";
 import { journalCalendarCommand } from "./journal-calendar";
 import { journalTemplatesCommand } from "./journal-templates";
 import { listCsvAnalyticsCommand } from "./list-csv-analytics";
@@ -52,9 +54,11 @@ const commands: Record<string, Command> = {
   "csv-views": csvViewsCommand,
   "csv-bulk-edit": csvBulkEditCommand,
   "import-journal-csv": importJournalCsvCommand,
+  "import-journal-ics": importJournalIcsCommand,
   "journal-calendar": journalCalendarCommand,
   "journal-templates": journalTemplatesCommand,
   "expense-top-spenders": expenseTopSpendersCommand,
+  "export-portfolio": exportPortfolioCommand,
   "explain-rule": explainRuleCommand,
   "expense-create-rule": expenseCreateRuleCommand,
   "normalize-icon-overrides": normalizeIconOverridesCommand,

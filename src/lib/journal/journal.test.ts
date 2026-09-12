@@ -88,6 +88,9 @@ function fakeRepo(): JournalRepository {
       categories: [...input.categories],
       tags: [...input.tags],
       locations: toLocations(id, input.locations),
+      source: input.source,
+      externalId: input.externalId,
+      externalContent: input.externalContent,
       createdAt: now,
       updatedAt: now,
     };
@@ -259,6 +262,14 @@ function fakeRepo(): JournalRepository {
         )
         .map((entry) => entry.id)
         .sort((a, b) => a - b),
+    // Mirrors the SQL's guard: a blank external id matches nothing, rather than
+    // every hand-written entry.
+    findEntryIdsBySource: (source, externalId) =>
+      externalId.trim() === "" ? []
+      : entries
+          .filter((entry) => entry.source === source && entry.externalId === externalId.trim())
+          .map((entry) => entry.id)
+          .sort((a, b) => a - b),
     setEntryPinned(id, isPinned) {
       const existing = entries.find((entry) => entry.id === id);
       if (!existing) throw new Error(`Entry ${id} not found.`);
@@ -606,6 +617,48 @@ describe("listTodayInHistory", () => {
 
   it("rejects a malformed reference date", () => {
     expect(() => listTodayInHistory(fakeRepo(), "July 29, 2026")).toThrow();
+  });
+
+  // Migration 0088: an imported calendar can hold hundreds of routine events on
+  // one date, and they must not crowd out the written entries this card exists
+  // to resurface.
+  it("excludes entries carrying the Log category", () => {
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2024-07-29", title: "swim practice", categories: ["Log"] });
+    createEntry(repo, { date: "2023-07-29", title: "a real entry" });
+
+    const result = listTodayInHistory(repo, "2026-07-29");
+
+    expect(result).toHaveLength(1);
+    expect(result[0].entry.title).toBe("a real entry");
+  });
+
+  it("excludes a Log entry whatever the case of the category name", () => {
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2024-07-29", title: "lower", categories: ["log"] });
+    createEntry(repo, { date: "2023-07-29", title: "upper", categories: ["LOG"] });
+    createEntry(repo, { date: "2022-07-29", title: "padded", categories: [" Log "] });
+
+    expect(listTodayInHistory(repo, "2026-07-29")).toEqual([]);
+  });
+
+  it("keeps an entry that has other categories but not Log", () => {
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2024-07-29", title: "trip", categories: ["Travel", "Family"] });
+
+    const result = listTodayInHistory(repo, "2026-07-29");
+
+    expect(result).toHaveLength(1);
+    expect(result[0].entry.title).toBe("trip");
+  });
+
+  // "Logbook" contains "log" but is a different category, so a substring test
+  // here would hide entries the reader never marked as logs.
+  it("does not exclude a category that merely contains the word log", () => {
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2024-07-29", title: "kept", categories: ["Logbook"] });
+
+    expect(listTodayInHistory(repo, "2026-07-29")).toHaveLength(1);
   });
 });
 

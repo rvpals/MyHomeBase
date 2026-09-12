@@ -28,6 +28,13 @@ const nextConfig: NextConfig = {
       // was unreachable — an 800 KB PNG already failed, with a framework error
       // rather than the app's own message. 4 MB leaves room for the largest
       // upload the lib allows plus its encoding overhead.
+      // Calendar import does NOT need this raised. A 2.4 MB .ics failing to
+      // upload looked like a body-size problem and is not: a server action's
+      // arguments are JSON-encoded at roughly 1.13x, so 2.4 MB stays well under
+      // 4 MB. The real limit it hit was React's array-slot counter, which
+      // charges one slot per string character in a multi-argument call — fixed
+      // by sending the file as a FormData blob instead. See
+      // journal-calendar-import-actions.ts.
       bodySizeLimit: "4mb",
     },
   },

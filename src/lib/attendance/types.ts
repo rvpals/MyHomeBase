@@ -156,8 +156,11 @@ export interface AttendanceEntry {
 }
 
 /**
- * One saved attendance session: a class, on a date, with a status for every
+ * One saved attendance register: a class, on a date, with a status for every
  * student enrolled at the time.
+ *
+ * At most one exists per class per date — a unique index enforces it — so saving
+ * a day twice updates this record rather than adding another.
  *
  * `className` is denormalized for the same reason as `studentName` above.
  */
@@ -170,10 +173,15 @@ export interface AttendanceRecord {
   /** Full ISO timestamp of the save. */
   recordedAt: string;
   /**
-   * `HH:MM`, derived from `recordedAt` when the session was saved.
+   * `HH:MM` on the **local** clock, from when the register was last saved.
    *
-   * Stored rather than re-derived because a class may be registered several
-   * times a day, so this is what distinguishes two sessions in a picker.
+   * Local, not UTC. `attendanceDate` is a local-calendar date, and before
+   * migration 0092 this was sliced straight out of the UTC ISO timestamp — which
+   * put the two on different clocks and labelled an 11pm register "03:01". See
+   * `toLocalTimeLabel`.
+   *
+   * Stored rather than re-derived so a reader can see when the day's register was
+   * last touched without re-parsing a timestamp at every call site.
    */
   sessionLabel: string;
   recordedByUserId: number;
@@ -190,18 +198,19 @@ export interface AttendanceSheet {
   attendanceDate: string;
   students: Student[];
   /**
-   * Sessions already saved for this class and date, newest first.
+   * The register already saved for this class and date, or `undefined` on a day
+   * not yet taken.
    *
-   * Saving never replaces one of these — each save is its own session — so this
-   * is shown as history rather than as a warning. Empty on a day not yet
-   * registered.
+   * Not history but **the thing being edited**: the register screen seeds its
+   * marks from this, so re-opening a class shows what was saved last time and
+   * saving again updates that same record.
    */
-  sessions: AttendanceRecord[];
+  session?: AttendanceRecord;
 }
 
 /** The roll-up a report shows for one saved session. */
 export interface AttendanceReport {
-  /** The session this reports on — a date alone no longer identifies one. */
+  /** The register this reports on. One per class per date. */
   recordId: number;
   classId: number;
   className: string;
@@ -271,10 +280,8 @@ export interface AttendanceDetailRow {
 /**
  * The whole-term grid for one class.
  *
- * Columns are **dates**, not sessions: a class registered twice in a day
- * contributes one column carrying its *latest* session, which is the same rule
- * `getAttendanceReport` uses for "today". The brief format is where an individual
- * session is still reachable.
+ * One column per date the class was taken. Since migration 0092 a date holds at
+ * most one register, so a column is a register rather than a pick among several.
  */
 export interface AttendanceDetailReport {
   classId: number;

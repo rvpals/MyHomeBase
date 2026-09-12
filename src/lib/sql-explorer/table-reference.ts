@@ -113,7 +113,7 @@ const GROUPS: TableReferenceGroup[] = [
       ["att_students", "The student roster — names, school identifier, email and a note."],
       ["att_classes", "The classes attendance is taken for."],
       ["att_class_enrollments", "Join table recording which students are in which class."],
-      ["att_attendance_records", "One saved attendance session — the class, the date, who recorded it and a session label."],
+      ["att_attendance_records", "One class's register for one day — at most one row per class per date. Carries who recorded it and a local-clock HH:MM label."],
       ["att_attendance_entries", "One student's present/absent status within one session."],
       ["att_student_actions", "The configurable catalogue of per-student marks, such as Late or Extra Credit. Retired ones stay for history."],
       ["att_attendance_entry_actions", "Records that a student got a particular mark in a particular session."],

@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { toLocalTimeLabel } from "@/lib/shared/date";
 import type { DecodedImage } from "@/lib/shared/image-upload";
 import type { AttendanceRepository } from "./ports";
 import {
@@ -638,37 +639,98 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
     return rows.map((row) => this.toRecord(row));
   }
 
+  findAttendanceRecordForDate(classId: number, attendanceDate: string): AttendanceRecord | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT ${RECORD_COLUMNS}
+         FROM att_attendance_records
+         WHERE class_id = ? AND attendance_date = ?`,
+      )
+      .get(classId, attendanceDate) as RecordRow | undefined;
+    return row ? this.toRecord(row) : undefined;
+  }
+
   saveAttendance(
     input: SaveAttendanceData,
     className: string,
     studentNames: Map<number, string>,
     actionsById: Map<number, StudentAction>,
   ): AttendanceRecord {
-    const recordedAt = new Date().toISOString();
-    // HH:MM out of the ISO timestamp, stored so a picker can label the session
-    // without re-parsing. Same slice the 0049 backfill uses.
-    const sessionLabel = recordedAt.slice(11, 16);
+    const now = new Date();
+    const recordedAt = now.toISOString();
+    // The instant stays UTC -- that is what an instant is -- but the label is read
+    // off the LOCAL clock, because it labels a record already filed under a local
+    // calendar date (`attendance_date` comes from `todayIsoLocal`). Slicing HH:MM
+    // out of the ISO string instead, as this did before migration 0092, put the
+    // two on different clocks: a register taken at 23:01 was stored under the
+    // right day and labelled "03:01".
+    const sessionLabel = toLocalTimeLabel(now);
 
-    // Append, never replace: a class may be registered several times a day, so
-    // an afternoon register must not overwrite the morning's. Still one
-    // transaction, so a failure can't leave a record with no entries.
+    // Upsert, never append: one record per class per day. Re-registering a class
+    // is a correction of the day's register, not a second fact about it, so the
+    // existing row is updated in place and keeps its id -- which is what lets a
+    // report already linked to that id keep resolving.
+    //
+    // One transaction, so a failure can't leave a record with no entries, and
+    // can't leave the old entries deleted with nothing written in their place.
     const write = this.db.transaction(() => {
-      const result = this.db
+      const existing = this.db
         .prepare(
-          `INSERT INTO att_attendance_records
-             (class_id, class_name, attendance_date, recorded_at, session_label, recorded_by_user_id)
-           VALUES (@classId, @className, @attendanceDate, @recordedAt, @sessionLabel, @recordedByUserId)`,
+          `SELECT id FROM att_attendance_records WHERE class_id = ? AND attendance_date = ?`,
         )
-        .run({
-          classId: input.classId,
-          className,
-          attendanceDate: input.attendanceDate,
-          recordedAt,
-          sessionLabel,
-          recordedByUserId: input.recordedByUserId,
-        });
+        .get(input.classId, input.attendanceDate) as { id: number } | undefined;
 
-      const recordId = Number(result.lastInsertRowid);
+      let recordId: number;
+
+      if (existing) {
+        recordId = existing.id;
+        // class_name is refreshed as well: the teacher is re-saving the register
+        // now, so now is when the name is captured. recorded_at moves to the edit
+        // time so the label says when the register was last touched.
+        this.db
+          .prepare(
+            `UPDATE att_attendance_records
+             SET class_name = @className, recorded_at = @recordedAt,
+                 session_label = @sessionLabel, recorded_by_user_id = @recordedByUserId
+             WHERE id = @recordId`,
+          )
+          .run({
+            className,
+            recordedAt,
+            sessionLabel,
+            recordedByUserId: input.recordedByUserId,
+            recordId,
+          });
+
+        // The payload is the whole truth about the day, so the previous entries go
+        // rather than being merged: a student un-ticked in this edit must lose
+        // their `present`, and an action un-noted must disappear. Neither table
+        // declares a FOREIGN KEY, so nothing cascades -- both deletes are explicit.
+        this.db
+          .prepare(`DELETE FROM att_attendance_entry_actions WHERE attendance_record_id = ?`)
+          .run(recordId);
+        this.db
+          .prepare(`DELETE FROM att_attendance_entries WHERE attendance_record_id = ?`)
+          .run(recordId);
+      } else {
+        const result = this.db
+          .prepare(
+            `INSERT INTO att_attendance_records
+               (class_id, class_name, attendance_date, recorded_at, session_label, recorded_by_user_id)
+             VALUES (@classId, @className, @attendanceDate, @recordedAt, @sessionLabel, @recordedByUserId)`,
+          )
+          .run({
+            classId: input.classId,
+            className,
+            attendanceDate: input.attendanceDate,
+            recordedAt,
+            sessionLabel,
+            recordedByUserId: input.recordedByUserId,
+          });
+
+        recordId = Number(result.lastInsertRowid);
+      }
+
       const insertEntry = this.db.prepare(
         `INSERT INTO att_attendance_entries
            (attendance_record_id, student_id, student_name, status)

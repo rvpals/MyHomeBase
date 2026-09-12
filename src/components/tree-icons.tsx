@@ -250,6 +250,38 @@ const Note: IconComponent = (props) => (
   </svg>
 );
 
+// A wall calendar: the page, the binding bar across the top, two rings above it,
+// and a single marked day.
+//
+// The header bar is filled rather than outlined so the glyph still reads as a
+// calendar at 16px, where an empty bar and the page below it merge into one
+// rectangle. Only one day is marked, not a full 4x3 grid of dots -- at nav-row
+// size a complete grid turns to grey mush, and one dot still says "a date".
+const Calendar: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <rect x="3.5" y="5" width="17" height="15.5" rx="2" />
+    <path d="M3.5 9.5h17" fill="currentColor" stroke="currentColor" />
+    <line x1="8" y1="3" x2="8" y2="6" />
+    <line x1="16" y1="3" x2="16" y2="6" />
+    <circle cx="8.5" cy="13.5" r="1.1" fill="currentColor" stroke="none" />
+  </svg>
+);
+
+// A clipboard: the board, the clip at its top, and two ruled lines.
+//
+// The mark for the Log section -- a running record of things that happened,
+// which is what a clipboard reads as. Distinct from `note` (a jotting you start
+// from, used by Templates) and from `list` (Entries), the two glyphs it sits
+// nearest in the section panel.
+const Clipboard: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <path d="M9 4.5H7a1.5 1.5 0 0 0-1.5 1.5v13A1.5 1.5 0 0 0 7 20.5h10a1.5 1.5 0 0 0 1.5-1.5V6A1.5 1.5 0 0 0 17 4.5h-2" />
+    <rect x="9" y="2.5" width="6" height="4" rx="1.2" />
+    <line x1="8.5" y1="11.5" x2="15.5" y2="11.5" />
+    <line x1="8.5" y1="15" x2="13" y2="15" />
+  </svg>
+);
+
 // A paper clip. Drawn as one open stroke rather than a closed loop: at nav-row
 // size the inner gap of a true double-bend fills in and the glyph turns into a
 // solid blob.
@@ -540,6 +572,8 @@ const GameMahjongMatch: IconComponent = (props) => (
 const TREE_ICONS = {
   flash: Flash,
   note: Note,
+  calendar: Calendar,
+  clipboard: Clipboard,
   clip: Clip,
   shield: Shield,
   refresh: Refresh,

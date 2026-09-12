@@ -34,6 +34,7 @@ import {
   historyRangeCovering,
   rankStories,
   summarizeHoldings,
+  summarizePortfolioWeight,
   summarizeIncome,
   summarizeIntradaySeries,
   summarizePriceSeries,
@@ -117,6 +118,7 @@ function fakeDeps({
   items = [] as StockWatchListItem[],
 } = {}): TickerOwnDataDeps {
   const positionRepo = {
+    listPositions: () => [...positions],
     listPositionsByTicker: (ticker: string) =>
       positions.filter((row) => row.ticker.toUpperCase() === ticker.toUpperCase()),
     listTransactions: (ticker?: string) =>
@@ -214,6 +216,171 @@ describe("summarizeHoldings", () => {
     const noBasis = summarizeHoldings([holding({ costCents: 0, unrealizedGainLossCents: 0 })]);
     expect(noBasis.totalReturnPct).toBe(0);
     expect(noBasis.averageUnitCostCents).toBe(0);
+  });
+});
+
+describe("summarizePortfolioWeight", () => {
+  const names = new Map([
+    [1, "Fidelity"],
+    [2, "Schwab"],
+  ]);
+
+  it("measures a ticker against every held position", () => {
+    const weight = summarizePortfolioWeight(
+      "NVDA",
+      [
+        position({ ticker: "NVDA", valueCents: 250_000 }),
+        position({ ticker: "AAPL", valueCents: 500_000 }),
+        position({ ticker: "MSFT", valueCents: 250_000 }),
+      ],
+      names,
+    );
+
+    expect(weight.portfolioValueCents).toBe(1_000_000);
+    expect(weight.valueCents).toBe(250_000);
+    expect(weight.weightPct).toBeCloseTo(25);
+    expect(weight.holdingCount).toBe(3);
+    expect(weight.evenWeightPct).toBeCloseTo(100 / 3);
+    expect(weight.largestWeightPct).toBeCloseTo(50);
+  });
+
+  it("sums a ticker held in several accounts into one ranked holding", () => {
+    const weight = summarizePortfolioWeight(
+      "NVDA",
+      [
+        position({ ticker: "NVDA", accountId: 1, valueCents: 300_000 }),
+        position({ ticker: "NVDA", accountId: 2, valueCents: 100_000 }),
+        position({ ticker: "AAPL", accountId: 1, valueCents: 600_000 }),
+      ],
+      names,
+    );
+
+    // One holding of 400_000, not two of 300_000 and 100_000.
+    expect(weight.valueCents).toBe(400_000);
+    expect(weight.holdingCount).toBe(2);
+    expect(weight.weightPct).toBeCloseTo(40);
+    expect(weight.rank).toBe(2);
+  });
+
+  it("ranks the largest holding first", () => {
+    const portfolio = [
+      position({ ticker: "NVDA", valueCents: 900_000 }),
+      position({ ticker: "AAPL", valueCents: 100_000 }),
+    ];
+
+    expect(summarizePortfolioWeight("NVDA", portfolio, names).rank).toBe(1);
+    expect(summarizePortfolioWeight("AAPL", portfolio, names).rank).toBe(2);
+  });
+
+  it("gives tied holdings the same rank", () => {
+    const portfolio = [
+      position({ ticker: "NVDA", valueCents: 100_000 }),
+      position({ ticker: "AAPL", valueCents: 100_000 }),
+      position({ ticker: "MSFT", valueCents: 300_000 }),
+    ];
+
+    expect(summarizePortfolioWeight("NVDA", portfolio, names).rank).toBe(2);
+    expect(summarizePortfolioWeight("AAPL", portfolio, names).rank).toBe(2);
+  });
+
+  it("ignores closed-out rows, which are not holdings", () => {
+    const weight = summarizePortfolioWeight(
+      "NVDA",
+      [
+        position({ ticker: "NVDA", valueCents: 250_000 }),
+        position({ ticker: "AAPL", valueCents: 750_000 }),
+        position({ ticker: "TSLA", quantity: 0, valueCents: 0 }),
+      ],
+      names,
+    );
+
+    expect(weight.holdingCount).toBe(2);
+    expect(weight.weightPct).toBeCloseTo(25);
+  });
+
+  it("reports a ticker that is not held as zero, unranked", () => {
+    const weight = summarizePortfolioWeight(
+      "NVDA",
+      [position({ ticker: "AAPL", valueCents: 500_000 })],
+      names,
+    );
+
+    expect(weight.valueCents).toBe(0);
+    expect(weight.weightPct).toBe(0);
+    expect(weight.rank).toBe(0);
+    expect(weight.byAccount).toEqual([]);
+  });
+
+  it("does not divide by zero on an empty or worthless portfolio", () => {
+    expect(summarizePortfolioWeight("NVDA", [], names)).toMatchObject({
+      portfolioValueCents: 0,
+      weightPct: 0,
+      rank: 0,
+      holdingCount: 0,
+      evenWeightPct: 0,
+      largestWeightPct: 0,
+    });
+
+    const worthless = summarizePortfolioWeight(
+      "NVDA",
+      [position({ ticker: "NVDA", valueCents: 0 })],
+      names,
+    );
+    expect(worthless.weightPct).toBe(0);
+    expect(worthless.portfolioValueCents).toBe(0);
+  });
+
+  it("weighs each account against that account's own holdings", () => {
+    const weight = summarizePortfolioWeight(
+      "NVDA",
+      [
+        position({ ticker: "NVDA", accountId: 1, valueCents: 100_000 }),
+        position({ ticker: "AAPL", accountId: 1, valueCents: 300_000 }),
+        position({ ticker: "NVDA", accountId: 2, valueCents: 150_000 }),
+        position({ ticker: "AAPL", accountId: 2, valueCents: 50_000 }),
+      ],
+      names,
+    );
+
+    // Largest in-account weight first: Schwab is 75% NVDA, Fidelity 25%.
+    expect(weight.byAccount.map((row) => row.accountName)).toEqual(["Schwab", "Fidelity"]);
+    expect(weight.byAccount[0]).toMatchObject({
+      accountValueCents: 200_000,
+      valueCents: 150_000,
+    });
+    expect(weight.byAccount[0].weightPct).toBeCloseTo(75);
+    expect(weight.byAccount[1].weightPct).toBeCloseTo(25);
+  });
+
+  it("names the pseudo-account rather than showing its id", () => {
+    const weight = summarizePortfolioWeight(
+      "NVDA",
+      [position({ ticker: "NVDA", accountId: 0, valueCents: 100_000 })],
+      names,
+    );
+
+    expect(weight.byAccount[0].accountName).toBe("Unassigned");
+  });
+
+  it("falls back to the id for an account with no name on record", () => {
+    const weight = summarizePortfolioWeight(
+      "NVDA",
+      [position({ ticker: "NVDA", accountId: 99, valueCents: 100_000 })],
+      names,
+    );
+
+    expect(weight.byAccount[0].accountName).toBe("Account 99");
+  });
+
+  it("matches the ticker case-insensitively", () => {
+    const weight = summarizePortfolioWeight(
+      "nvda",
+      [position({ ticker: "NVDA", valueCents: 100_000 })],
+      names,
+    );
+
+    expect(weight.weightPct).toBeCloseTo(100);
+    expect(weight.rank).toBe(1);
   });
 });
 
@@ -478,6 +645,27 @@ describe("getTickerOwnData", () => {
     expect(result.watchEntries[0].watchListName).toBe("Long-term");
     expect(result.watchEntries[0].changeSinceAddedPct).toBeCloseTo(25, 6);
     expect(result.cusip).toBe("037833100");
+  });
+
+  it("weighs the ticker against the whole portfolio, not just its own rows", () => {
+    const deps = fakeDeps({
+      positions: [
+        position({ ticker: "AAPL", accountId: 1, valueCents: 200_000 }),
+        position({ ticker: "NVDA", accountId: 1, valueCents: 600_000 }),
+        position({ ticker: "MSFT", accountId: 2, valueCents: 200_000 }),
+      ],
+      accounts: [{ id: 1, name: "Fidelity IRA" } as InvestmentAccount],
+    });
+
+    const result = getTickerOwnData({ ticker: "AAPL" }, deps);
+
+    // 200k of a 1M portfolio — the other two tickers are in the denominator
+    // even though `listPositionsByTicker` never returned them.
+    expect(result.portfolioWeight.portfolioValueCents).toBe(1_000_000);
+    expect(result.portfolioWeight.weightPct).toBeCloseTo(20);
+    expect(result.portfolioWeight.rank).toBe(2);
+    expect(result.portfolioWeight.holdingCount).toBe(3);
+    expect(result.portfolioWeight.byAccount[0].accountName).toBe("Fidelity IRA");
   });
 
   it("labels the id-0 pseudo-account rather than looking it up", () => {

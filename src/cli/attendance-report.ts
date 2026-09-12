@@ -19,9 +19,9 @@ import { parseFlags } from "./parse-flags";
  *   attendance-report --class "Math 101" --session 12
  *   attendance-report --class "Math 101" --csv
  *
- * Without --session the day's latest register is printed, since a class may be
- * registered more than once a day. `--list-dates` is kept as an alias for
- * --list-sessions.
+ * A class and a date identify one register, so --date is normally all you need.
+ * `--session <id>` still fetches a register by its record id, which is what
+ * --list-sessions prints; `--list-dates` is kept as an alias for it.
  *
  * `--csv` writes the same session to stdout as CSV instead of the readable
  * listing, so it can be redirected to a file. It goes through the same
@@ -56,7 +56,7 @@ export async function attendanceReportCommand(args: string[]): Promise<void> {
       console.log(`${attendanceClass.name} has no attendance recorded yet.`);
       return;
     }
-    console.log(`${attendanceClass.name} — ${sessions.length} session(s) recorded:`);
+    console.log(`${attendanceClass.name} — ${sessions.length} day(s) recorded:`);
     for (const session of sessions) {
       console.log(
         `  #${session.recordId}  ${session.attendanceDate} ${session.sessionLabel}  ` +
@@ -67,7 +67,7 @@ export async function attendanceReportCommand(args: string[]): Promise<void> {
   }
 
   const attendanceDate = flags.date || todayIsoLocal();
-  // A specific session when asked for by id, else the day's latest.
+  // By record id when asked for, else the class's register for the date.
   const recordId = Number(flags.session);
   const report = recordId
     ? getAttendanceReportById(deps.attendanceRepo, recordId)

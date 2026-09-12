@@ -114,14 +114,24 @@ stored, and insert the shortfall. The database can't make that call — it can't
 real second lot from an accidental re-import. Worked through in
 `migrations/0038_add_brokerage_firm_to_stock_transactions.md`.
 
-`att_attendance_records` briefly carried a documented exception to this rule — it was
-unique on `(class_id, attendance_date)` to make re-taking attendance overwrite the day.
-**That exception is retired** (`migrations/0049_allow_multiple_attendance_sessions.md`):
-a class may now be registered several times a day, so the date genuinely doesn't
-identify a session and the rule applies here with no carve-out. The index is still
-there for lookups, just not `UNIQUE`. Worth knowing as a worked example of how such an
-exception dies: the premise was "there is no second event by specification", and the
-specification changed.
+`att_attendance_records` carries a documented exception to this rule: it is unique on
+`(class_id, attendance_date)`, so re-taking attendance **overwrites** the day rather
+than appending a second register.
+
+That exception has been retired once and reinstated, which makes it the best worked
+example in the schema of how such a carve-out lives and dies:
+
+- `migrations/0049_allow_multiple_attendance_sessions.md` **dropped** it, on the premise
+  that "a morning and an afternoon register are two facts, not a correction of one".
+- `migrations/0092_one_attendance_record_per_class_day.md` **restored** it, because that
+  premise was never true of how the module is used. One register per class per day is
+  the real specification, and without the constraint re-opening a class showed a blank
+  sheet while every re-save left another row behind.
+
+The lesson cuts both ways. An exception dies when its premise ("there is no second event
+by specification") stops holding — and it comes back when the premise was mis-stated in
+the first place. Check the premise against actual use, not against what the domain could
+conceivably support.
 
 ### A settings value is blank, never NULL
 

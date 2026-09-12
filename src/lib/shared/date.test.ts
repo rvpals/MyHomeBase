@@ -8,6 +8,7 @@ import {
   startOfYearIso,
   toIsoDateLocal,
   todayIsoLocal,
+  toLocalTimeLabel,
 } from "./date";
 
 describe("toIsoDateLocal / todayIsoLocal", () => {
@@ -23,6 +24,32 @@ describe("toIsoDateLocal / todayIsoLocal", () => {
     // 23:30 local on 4 Aug is already 5 Aug in UTC for any negative offset, which
     // is exactly the case toISOString() would get wrong.
     expect(todayIsoLocal(new Date(2026, 7, 4, 23, 30))).toBe("2026-08-04");
+  });
+});
+
+describe("toLocalTimeLabel", () => {
+  it("formats an instant as a local HH:MM", () => {
+    expect(toLocalTimeLabel(new Date(2026, 7, 4, 14, 30))).toBe("14:30");
+  });
+
+  it("zero-pads both fields", () => {
+    expect(toLocalTimeLabel(new Date(2026, 7, 4, 9, 5))).toBe("09:05");
+  });
+
+  it("reads the local clock, not the UTC one, late in the evening", () => {
+    // The bug this helper exists to prevent: at 23:01 local on 16 Aug, a UTC
+    // slice yields "03:01" — a late-evening register labelled as an early-morning
+    // one, and labelled that on a date that was filed from the local clock.
+    const lateEvening = new Date(2026, 7, 16, 23, 1);
+    expect(toLocalTimeLabel(lateEvening)).toBe("23:01");
+    expect(toIsoDateLocal(lateEvening)).toBe("2026-08-16");
+  });
+
+  it("stays on the same day as toIsoDateLocal for any instant", () => {
+    // The invariant that matters: label and date never come from different clocks.
+    const justBeforeMidnight = new Date(2026, 11, 31, 23, 59);
+    expect(toIsoDateLocal(justBeforeMidnight)).toBe("2026-12-31");
+    expect(toLocalTimeLabel(justBeforeMidnight)).toBe("23:59");
   });
 });
 

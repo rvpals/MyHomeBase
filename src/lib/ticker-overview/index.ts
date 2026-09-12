@@ -1,4 +1,5 @@
 export type {
+  TickerAccountWeight,
   TickerClosePoint,
   TickerEvent,
   TickerEventFeed,
@@ -11,6 +12,7 @@ export type {
   TickerIntradaySeries,
   TickerNewsFeed,
   TickerOwnData,
+  TickerPortfolioWeight,
   TickerPriceSeries,
   TickerQuote,
   TickerRisk,
@@ -57,6 +59,7 @@ export {
   rankStories,
   summarizeHoldings,
   summarizeIncome,
+  summarizePortfolioWeight,
   summarizeIntradaySeries,
   summarizePriceSeries,
   summarizeTrades,

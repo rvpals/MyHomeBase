@@ -3,17 +3,21 @@
 // Taking attendance: pick a class from the dropdown, tap the students who are
 // here, note anything about the day with the ⚡ button, save.
 //
-// Nobody is marked to begin with. Tapping toggles a student present, and at save
-// time everyone still unmarked is recorded absent — so the screen starts empty
-// without a saved session ever being ambiguous about who was missing.
+// On a day not yet taken, nobody is marked to begin with. Tapping toggles a
+// student present, and at save time everyone still unmarked is recorded absent —
+// so the screen starts empty without a saved register ever being ambiguous about
+// who was missing.
+//
+// On a day already taken the screen opens as an EDIT of that register: the saved
+// marks and noted actions are seeded back in (see `presentIdsOf`), and saving
+// updates the same record rather than writing a second one. One register per
+// class per day — migration 0092.
 //
 // The ⚡ button opens the action picker for one student: Late, Extra Credit, or
 // whatever else the Student actions screen holds. Actions are independent of
 // present/absent — a student can be marked late while still absent (they never
 // turned up and the register notes why) — so the picker never touches the status.
 //
-// Each save is its own timestamped session, so a class registered twice in a day
-// keeps both. Earlier sessions show above the sheet as history.
 //
 // The tap list is one-off UI for this screen rather than a registered component —
 // nothing else in the app marks a list of people present. If a second caller
@@ -28,6 +32,7 @@ import { Modal } from "@/components/modal";
 import {
   CLASS_WEEKDAY_LABELS,
   weekdayOfIsoDate,
+  type AttendanceRecord,
   type AttendanceSheet,
   type AttendanceStatus,
   type ClassWeekday,
@@ -185,6 +190,37 @@ export function AttendanceHomeView({
 }
 
 /**
+ * Who was marked present in a saved register — the seed for an edit.
+ *
+ * Only `present` is carried over. `absent` is the absence of a mark, exactly as
+ * it is at save time, so a student saved absent comes back un-ticked rather than
+ * ticked-as-absent.
+ */
+function presentIdsOf(session: AttendanceRecord | undefined): Set<number> {
+  if (!session) return new Set();
+  return new Set(
+    session.entries.filter((entry) => entry.status === "present").map((entry) => entry.studentId),
+  );
+}
+
+/** What was noted against each student in a saved register, keyed by student. */
+function actionIdsByStudentIdOf(
+  session: AttendanceRecord | undefined,
+): Map<number, Set<number>> {
+  const seeded = new Map<number, Set<number>>();
+  if (!session) return seeded;
+
+  for (const entry of session.entries) {
+    // Skip the empty ones, so the map's size stays a truthful count of who has
+    // something noted — the same invariant `toggleAction` maintains.
+    if (entry.actions.length === 0) continue;
+    seeded.set(entry.studentId, new Set(entry.actions.map((action) => action.actionId)));
+  }
+
+  return seeded;
+}
+
+/**
  * The register: a titled container holding the view switch and the student list.
  */
 function RegisterPanel({
@@ -199,14 +235,30 @@ function RegisterPanel({
   /** Whether the **card** view reads "Chen, Ava". The list view never does. */
   cardsUseLastNameFirst: boolean;
 }) {
-  // Nobody starts marked — the whole point of the change. Unmarked and absent
-  // are the same stored fact, so this is a set of who is *here*.
-  const [presentIds, setPresentIds] = useState<Set<number>>(new Set());
+  // A day already taken opens as an **edit** of what was saved: the marks come
+  // back ticked, the noted actions come back noted, and saving updates that same
+  // record. A day not yet taken starts with nobody marked, since unmarked and
+  // absent are the same stored fact.
+  //
+  // Seeded through `key` on the component rather than an effect that watches the
+  // sheet — see `RegisterPanel`'s call site. That keeps this a plain initializer:
+  // no effect can race the first paint and no edit-in-progress is ever clobbered
+  // by a re-render.
+  const [presentIds, setPresentIds] = useState<Set<number>>(() => presentIdsOf(sheet.session));
   // studentId -> the action ids noted for them. Absent from the map means none,
   // which is the common case for most of a register.
-  const [actionIdsByStudentId, setActionIdsByStudentId] = useState<Map<number, Set<number>>>(
-    new Map(),
+  const [actionIdsByStudentId, setActionIdsByStudentId] = useState<Map<number, Set<number>>>(() =>
+    actionIdsByStudentIdOf(sheet.session),
   );
+  // Its own `useRouter` rather than a prop: the panel refreshes the sheet after a
+  // save so the day's register comes back as `sheet.session`.
+  const router = useRouter();
+  // The register as it was when this screen opened, for the "loaded existing…"
+  // hint. Frozen at mount rather than read from `sheet.session` live, because the
+  // refresh after a save repopulates that — and a hint saying a register was
+  // *loaded* must not appear in response to the teacher having just saved it.
+  // Remounting on a class or date change (see the `key`) re-reads it.
+  const [loadedSession] = useState(sheet.session);
   // Which student's action picker is open, if any.
   const [pickerStudentId, setPickerStudentId] = useState<number>();
   const [view, setView] = useState<RegisterView>("list");
@@ -295,14 +347,19 @@ function RegisterPanel({
 
       if (result.ok) {
         setMessage(
-          `Saved${result.sessionLabel ? ` session ${result.sessionLabel}` : ""} — ${presentIds.size} present, ${entries.length - presentIds.size} absent${
+          `${sheet.session ? "Updated" : "Saved"}${
+            result.sessionLabel ? ` at ${result.sessionLabel}` : ""
+          } — ${presentIds.size} present, ${entries.length - presentIds.size} absent${
             notedCount > 0 ? `, ${notedCount} with an action noted` : ""
           }.`,
         );
-        // A saved session is history now; clear the sheet so the next register
-        // starts empty rather than inheriting the last one's marks.
-        setPresentIds(new Set());
-        setActionIdsByStudentId(new Map());
+        // The marks deliberately stay on screen. This is the day's register, not
+        // a session that has been filed away: clearing it here would tell the
+        // teacher their work had vanished, and a save no longer starts a new one.
+        //
+        // `router.refresh()` re-reads the sheet so `sheet.session` is populated
+        // on the next render, which is what flips the button to "Update".
+        router.refresh();
       } else {
         setError(result.error);
       }
@@ -352,8 +409,13 @@ function RegisterPanel({
           content={
             <div className="flex flex-col gap-2">
               <p>
-                Nobody is marked to begin with. Tap a student to mark them present; anyone left
-                unmarked is saved as absent.
+                On a day not yet taken, nobody is marked to begin with. Tap a student to mark
+                them present; anyone left unmarked is saved as absent.
+              </p>
+              <p>
+                Coming back to a class you have already registered today loads what you saved,
+                so you can correct it. Saving again updates that register rather than adding a
+                second one — there is one register per class per day.
               </p>
               <p>
                 The ⚡ button on a student notes what happened to them today — late, extra
@@ -361,10 +423,6 @@ function RegisterPanel({
                 independent of present and absent, so you can mark someone late whether or not
                 they turned up. Noted actions show as code chips on the student and are saved
                 with the session.
-              </p>
-              <p>
-                Each save is its own session, so registering the same class twice in a day keeps
-                both rather than replacing the earlier one.
               </p>
             </div>
           }
@@ -383,13 +441,19 @@ function RegisterPanel({
           </p>
         )}
 
-        {sheet.sessions.length > 0 && <SessionHistory sheet={sheet} />}
+        {loadedSession && !message && <SavedNotice session={loadedSession} />}
 
         {view === "list" ? <ListView {...registerProps} /> : <CardView {...registerProps} />}
 
         <div className="flex flex-wrap items-center gap-3">
           <Button onClick={handleSave} disabled={isPending}>
-            {isPending ? "Saving…" : "Save attendance"}
+            {isPending
+              ? sheet.session
+                ? "Updating…"
+                : "Saving…"
+              : sheet.session
+                ? "Update attendance"
+                : "Save attendance"}
           </Button>
           <Button
             variant="secondary"
@@ -455,32 +519,30 @@ function ViewSwitch({
   );
 }
 
-/** Sessions already saved today — history, since a save never replaces one. */
-function SessionHistory({ sheet }: { sheet: AttendanceSheet }) {
+/**
+ * "This day is already saved — you're editing it."
+ *
+ * Replaced the old session-history strip, which listed every save of the day as
+ * a separate chip. With one register per day there is nothing to list: the marks
+ * on screen *are* the saved register, so the only fact worth stating is when it
+ * was last touched.
+ */
+function SavedNotice({ session }: { session: AttendanceRecord }) {
+  const present = session.entries.filter((entry) => entry.status === "present").length;
+
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className={LABEL_CLASS}>
-        Already saved today ({sheet.sessions.length})
-      </span>
-      {sheet.sessions.map((session) => {
-        const present = session.entries.filter((entry) => entry.status === "present").length;
-        // Every action noted in that session, so history shows what was recorded
-        // and not just how many turned up.
-        const codes = [
-          ...new Set(session.entries.flatMap((entry) => entry.actions.map((a) => a.code))),
-        ];
-        return (
-          <span
-            key={session.id}
-            className="rounded-md bg-brass-soft px-2 py-0.5 font-mono text-xs text-brass-dark"
-            title={`Recorded ${session.recordedAt}`}
-          >
-            {session.sessionLabel} · {present}/{session.entries.length} present
-            {codes.length > 0 && ` · ${codes.join(" ")}`}
-          </span>
-        );
-      })}
-    </div>
+    <p
+      className="rounded-md border border-line bg-paper-raised px-3 py-2 text-sm text-muted"
+      title={`Recorded ${session.recordedAt}`}
+    >
+      Loaded existing attendance for{" "}
+      <span className="text-ink">{session.className}</span> from{" "}
+      <span className="font-mono text-brass-dark">
+        {session.attendanceDate} {session.sessionLabel}
+      </span>{" "}
+      — {present} of {session.entries.length} present. Change the marks and save
+      again to update it.
+    </p>
   );
 }
 

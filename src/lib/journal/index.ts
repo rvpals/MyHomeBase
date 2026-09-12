@@ -25,6 +25,12 @@ export type {
   JournalPrefillFormValues,
   JournalPrefillTemplate,
   RecycledJournalEntry,
+  IcsEvent,
+  IcsImportFilter,
+  IcsImportPresets,
+  IcsImportAction,
+  IcsImportPlan,
+  IcsImportPlanRow,
 } from "./types";
 export {
   resolveJournalPreferences,
@@ -66,6 +72,11 @@ export {
   type SaveJournalFilterInput,
   type SavePrefillTemplateInput,
   type PrefillTemplateWriteData,
+  icsImportFilterSchema,
+  icsImportPresetsSchema,
+  icsSelectionSchema,
+  type IcsImportFilterInput,
+  type IcsImportPresetsInput,
 } from "./schema";
 export {
   JOURNAL_CALENDAR_SCOPES,
@@ -161,6 +172,9 @@ export {
   type TaxonomyKind,
   listTopTags,
   listTopCategories,
+  LOG_CATEGORY_NAME,
+  isLogEntry,
+  listLogEntries,
 } from "./journal";
 export {
   GENERATED_ICON_MIME_TYPE,
@@ -204,6 +218,22 @@ export type {
   JournalImportPlan,
   JournalImportPlanRow,
 } from "./csv-import";
+
+// Calendar (.ics) import — the Calendar Import section. `ics-parse` is a pure
+// format reader with no opinion about journals; `ics-import` is the use-case.
+export { parseIcsEvents, parseIcsDateTime, type IcsDateTime } from "./ics-parse";
+export {
+  ICS_SOURCE,
+  emptyIcsFilter,
+  emptyIcsPresets,
+  filterIcsEvents,
+  icsEventToEntryInput,
+  importIcsEvents,
+  mergeRefreshedEntry,
+  splitExternalContent,
+  planIcsImport,
+  readIcsFile,
+} from "./ics-import";
 export { normalizeEntryTime } from "./time";
 
 // Metadata backup and restore — the categories, tags, icons, templates, filters

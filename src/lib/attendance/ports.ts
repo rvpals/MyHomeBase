@@ -79,18 +79,34 @@ export interface AttendanceRepository {
   setStudentActionIcon(id: number, icon: DecodedImage | undefined): void;
 
   // Attendance
-  /** One saved session by its id. A date alone no longer identifies one. */
+  /** One saved session by its id. */
   getAttendanceRecordById(recordId: number): AttendanceRecord | undefined;
   /**
-   * Every session for a class on a date, newest first. Usually one; more when
-   * the class was registered again the same day.
+   * The class's register for a date, or `undefined` when the day was never
+   * taken.
+   *
+   * Singular since migration 0092: a unique index makes (class, date) identify
+   * at most one record, so a date *does* identify a register again.
+   */
+  findAttendanceRecordForDate(
+    classId: number,
+    attendanceDate: string,
+  ): AttendanceRecord | undefined;
+  /**
+   * Every session for a class on a date, newest first.
+   *
+   * Returns 0 or 1 rows since migration 0092. Kept as a list for the callers that
+   * iterate it; `findAttendanceRecordForDate` is the direct way to ask.
    */
   listAttendanceRecords(classId: number, attendanceDate: string): AttendanceRecord[];
   /**
-   * Appends a session. **Never replaces one** — a class may be registered
-   * several times a day, and an afternoon register must not overwrite the
-   * morning's. The record and its entries are still one transaction, so a
-   * failure can't leave a session with no entries.
+   * Writes the class's register for the date — **updating** the day's record when
+   * one exists, inserting when it doesn't.
+   *
+   * Re-registering a class corrects the day rather than adding to it, so the
+   * existing row keeps its id and its entries are replaced wholesale from the
+   * payload. One transaction throughout, so a failure can neither leave a record
+   * with no entries nor delete the old entries without writing the new ones.
    */
   saveAttendance(
     input: SaveAttendanceData,
@@ -104,8 +120,8 @@ export interface AttendanceRepository {
     actionsById: Map<number, StudentAction>,
   ): AttendanceRecord;
   /**
-   * Every session a class has, newest first — what the report's picker lists.
-   * Carries the counts so the picker can label each one without a second read.
+   * Every register a class has, newest first — one per date it was taken.
+   * Carries the counts so a date list can label each one without a second read.
    */
   listSessionsForClass(classId: number): AttendanceSessionSummary[];
   /**

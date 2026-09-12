@@ -11,7 +11,6 @@ import {
   ATTENDANCE_REPORT_FORMATS,
   buildAttendanceDetailReport,
   getAttendanceReport,
-  getAttendanceReportById,
   getAttendanceSheet,
   listClasses,
   listRecordDatesForClass,
@@ -97,13 +96,11 @@ function SectionBody({
   section,
   requestedClassId,
   requestedDate,
-  requestedRecordId,
   requestedFormat,
 }: {
   section: AttendanceSection;
   requestedClassId?: number;
   requestedDate?: string;
-  requestedRecordId?: number;
   /** Raw `?format=`; validated here rather than in the route. */
   requestedFormat?: string;
 }) {
@@ -214,29 +211,16 @@ function SectionBody({
           : recordedDates[0];
       const selectedDate = requestedDate ?? fallbackDate;
 
-      const sessionsOnDate = sessions.filter(
-        (session) => session.attendanceDate === selectedDate,
-      );
-
-      // A specific session if the URL names one *and* it belongs to the selected
-      // class and date — otherwise the day's latest. Checking membership rather
-      // than trusting the id stops a hand-edited URL reporting another class's
-      // register under this class's heading.
-      const requestedSession =
-        requestedRecordId !== undefined &&
-        sessionsOnDate.some((session) => session.recordId === requestedRecordId)
-          ? requestedRecordId
-          : undefined;
-
+      // A class and a date identify one register since migration 0092, so the
+      // report is looked up by date alone — no session to disambiguate, and no
+      // `recordId` in the URL to validate against this class.
       const report =
         !selectedClassId || format !== "brief"
           ? undefined
-          : requestedSession !== undefined
-            ? getAttendanceReportById(deps.attendanceRepo, requestedSession)
-            : getAttendanceReport(deps.attendanceRepo, {
-                classId: selectedClassId,
-                attendanceDate: selectedDate,
-              });
+          : getAttendanceReport(deps.attendanceRepo, {
+              classId: selectedClassId,
+              attendanceDate: selectedDate,
+            });
 
       return (
         <AttendanceReportView
@@ -247,7 +231,6 @@ function SectionBody({
           selectedClassId={selectedClassId}
           selectedDate={selectedDate}
           recordedDates={recordedDates}
-          sessionsOnDate={sessionsOnDate}
         />
       );
     }
@@ -269,16 +252,13 @@ export async function AttendanceSection({
   section,
   requestedClassId,
   requestedDate,
-  requestedRecordId,
   requestedFormat,
 }: {
   section: AttendanceSection;
   /** From ?classId= — which class the home screen and report open on. */
   requestedClassId?: number;
-  /** From ?date= — which day the report shows. */
+  /** From ?date= — which day the report shows. A date identifies one register. */
   requestedDate?: string;
-  /** From ?recordId= — which of the day's sessions the report shows. */
-  requestedRecordId?: number;
   /** Raw `?format=`; validated here rather than in the route. */
   requestedFormat?: string;
 }) {
@@ -328,7 +308,6 @@ export async function AttendanceSection({
           section={section}
           requestedClassId={requestedClassId}
           requestedDate={requestedDate}
-          requestedRecordId={requestedRecordId}
           requestedFormat={requestedFormat}
         />
       </div>

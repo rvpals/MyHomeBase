@@ -17,6 +17,7 @@ import { deps } from "@/lib/wiring";
 import { logoutAction } from "../../../login/actions";
 import {
   JOURNAL_CONFIGURATION_SECTIONS,
+  JOURNAL_DATA_MANAGEMENT_SECTIONS,
   JOURNAL_SECTIONS,
   JOURNAL_SECTION_ICONS,
   JOURNAL_SECTION_INFO,
@@ -62,14 +63,27 @@ export async function JournalShell({ children }: { children: ReactNode }) {
     icon: JOURNAL_SECTION_ICONS[section],
   });
 
-  // One level of nesting: everything is flat except the Configuration group,
-  // which collects Preferences (the long-standing /configuration route) and
-  // Templates. The heading itself carries no `href` — `SectionPanel` renders a
-  // node with children as an accordion label rather than a link, and drops it
-  // from the compact sheet, so giving it one would be a route nothing reaches.
-  const grouped = new Set<string>(JOURNAL_CONFIGURATION_SECTIONS);
+  // One level of nesting, and two accordion groups: Data Management (CSV Import
+  // + Calendar Import) and Configuration (Preferences, Templates, Meta Data).
+  //
+  // Neither heading carries an `href` — `SectionPanel` renders a node with
+  // children as an accordion label rather than a link, and drops it from the
+  // compact sheet entirely, so giving one a route would be a destination nothing
+  // reaches. Both groups are appended after the flat sections, so the panel
+  // reads: the places you go, then the two groups you configure and feed.
+  const grouped = new Set<string>([
+    ...JOURNAL_CONFIGURATION_SECTIONS,
+    ...JOURNAL_DATA_MANAGEMENT_SECTIONS,
+  ]);
   const sections: SectionNode[] = [
     ...JOURNAL_SECTIONS.filter((section) => !grouped.has(section)).map(toNode),
+    {
+      id: "import-group",
+      label: "Data Management",
+      hint: "Bring entries in, and tidy what's there.",
+      icon: "upload",
+      children: JOURNAL_DATA_MANAGEMENT_SECTIONS.map(toNode),
+    },
     {
       id: "configuration-group",
       label: "Configuration",

@@ -325,6 +325,8 @@ Row-click navigation:
 - Expense transactions — [expense-transactions-view.tsx](src/app/(protected)/modules/[slug]/expense-transactions-view.tsx) *(row selection + bulk edit/delete)*
 - Stocks & ETFs simulation — [stock-simulation-view.tsx](src/app/(protected)/modules/[slug]/stock-simulation-view.tsx) *(a fixed ten-row table: `showToolbar={false}` with `defaultPageSize="ALL"`, keeping sort and the status bar's CSV export)*
 - CSV Analysis — [csv-analytics-view.tsx](src/app/(protected)/modules/[slug]/csv-analytics-view.tsx) *(row selection + bulk edit over an **arbitrary** schema: the dialog's fields are the dataset's own columns, so the grid is keyed by the table's real SQLite `rowid` rather than by row position)*
+- MyJournal Calendar Import — [journal-calendar-import-view.tsx](src/app/(protected)/modules/[slug]/journal-calendar-import-view.tsx) *(selection as a **pick-what-to-import** list: the ticked rows are the import's input, and rows the plan marked unimportable are filtered out of the action rather than disabled)*
+- MyJournal Log — [journal-log-view.tsx](src/app/(protected)/modules/[slug]/journal-log-view.tsx) *(row click opens `JournalViewer` in a `Modal`; bulk delete to the recycle bin)*
 - SQL Explorer, Stocks & ETFs (accounts / positions / watchlist / analytics / next-day actions)
 
 **Filter operators.** A column filter box is a substring match by default, and also
@@ -820,7 +822,7 @@ combination, see the ticker viewer's Risks card
 [daily-quote-widget.tsx](<src/app/(protected)/daily-quote-widget.tsx>).
 
 Also both tabs of the ticker viewer
-[ticker-viewer.tsx](src/components/ticker-viewer.tsx) — three cards on "Our data",
+[ticker-viewer.tsx](src/components/ticker-viewer.tsx) — four cards on "Our data",
 four on "Market", all `defaultOpen`. That dialog used to nest a second tab strip
 inside the first; **a stack of open cards replaced it** because the sub-tabs hid
 sections a reader wanted side by side and gave no clue which ones had anything in

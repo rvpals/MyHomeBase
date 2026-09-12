@@ -52,7 +52,9 @@ import type {
   TickerIncome,
   TickerIntradaySeries,
   TickerNewsFeed,
+  TickerAccountWeight,
   TickerOwnData,
+  TickerPortfolioWeight,
   TickerPriceSeries,
   TickerQuote,
   TickerRisk,
@@ -133,6 +135,90 @@ export function summarizeHoldings(holdings: TickerHolding[]): TickerHoldingTotal
       totals.quantity > 0 && totals.costCents > 0
         ? Math.round(totals.costCents / totals.quantity)
         : 0,
+  };
+}
+
+/**
+ * What share of the portfolio one ticker is.
+ *
+ * `portfolio` is every position row, across every account and ticker; only the
+ * ones with shares count, because a closed-out row still sits in the table at
+ * zero and would otherwise inflate `holdingCount` with holdings nobody has.
+ *
+ * Weights are per *ticker*, not per row: a symbol split across three accounts
+ * is one holding ranked once, which is the question being asked ("what is NVDA
+ * to me?"). The same rule gives `holdingCount` and the rank a consistent
+ * universe.
+ *
+ * Ties rank by value descending, so the largest is #1. A ticker that isn't held
+ * comes back zeroed with `rank: 0` rather than being ranked last among rows it
+ * isn't part of.
+ */
+export function summarizePortfolioWeight(
+  ticker: string,
+  portfolio: Pick<StockPosition, "ticker" | "accountId" | "quantity" | "valueCents">[],
+  accountNameById: Map<number, string>,
+): TickerPortfolioWeight {
+  const symbol = ticker.toUpperCase();
+  const held = portfolio.filter((position) => position.quantity > 0);
+
+  const valueByTicker = new Map<string, number>();
+  for (const position of held) {
+    const key = position.ticker.toUpperCase();
+    valueByTicker.set(key, (valueByTicker.get(key) ?? 0) + position.valueCents);
+  }
+
+  const portfolioValueCents = [...valueByTicker.values()].reduce((sum, value) => sum + value, 0);
+  const valueCents = valueByTicker.get(symbol) ?? 0;
+  const holdingCount = valueByTicker.size;
+
+  // Rank is "how many holdings are worth more, plus one" — which needs no sort
+  // and gives tied values the same rank rather than an arbitrary order.
+  const rank = valueByTicker.has(symbol)
+    ? [...valueByTicker.values()].filter((value) => value > valueCents).length + 1
+    : 0;
+
+  const largestWeightPct = percentOf(
+    [...valueByTicker.values()].reduce((largest, value) => Math.max(largest, value), 0),
+    portfolioValueCents,
+  );
+
+  // Each account's own total, so a weight inside an account is measured against
+  // that account rather than against the portfolio.
+  const valueByAccount = new Map<number, number>();
+  for (const position of held) {
+    valueByAccount.set(
+      position.accountId,
+      (valueByAccount.get(position.accountId) ?? 0) + position.valueCents,
+    );
+  }
+
+  const byAccount: TickerAccountWeight[] = held
+    .filter((position) => position.ticker.toUpperCase() === symbol)
+    .map((position) => {
+      const accountValueCents = valueByAccount.get(position.accountId) ?? 0;
+      return {
+        accountId: position.accountId,
+        accountName:
+          position.accountId === UNASSIGNED_ACCOUNT_ID
+            ? UNASSIGNED_ACCOUNT_NAME
+            : accountNameById.get(position.accountId) ?? `Account ${position.accountId}`,
+        valueCents: position.valueCents,
+        accountValueCents,
+        weightPct: percentOf(position.valueCents, accountValueCents),
+      };
+    })
+    .sort((a, b) => b.weightPct - a.weightPct);
+
+  return {
+    valueCents,
+    portfolioValueCents,
+    weightPct: percentOf(valueCents, portfolioValueCents),
+    rank,
+    holdingCount,
+    largestWeightPct,
+    evenWeightPct: holdingCount > 0 ? 100 / holdingCount : 0,
+    byAccount,
   };
 }
 
@@ -414,6 +500,10 @@ export function getTickerOwnData(
   const accountNameById = new Map(
     deps.accounts.listAccounts().map((account) => [account.id, account.name]),
   );
+  // The whole portfolio, for the weight below. A second local read on a
+  // use-case that is still database-only — the "cheap enough to run when the
+  // viewer opens" property is about not touching the network, and this doesn't.
+  const portfolio = deps.positions.listPositions();
 
   const holdings: TickerHolding[] = positions
     .map((position) => ({
@@ -475,6 +565,7 @@ export function getTickerOwnData(
       positions[0]?.currentPriceCents ?? 0,
     ),
     watchEntries,
+    portfolioWeight: summarizePortfolioWeight(ticker, portfolio, accountNameById),
     assetClass: firstWith("assetClass"),
     assetStrategy: firstWith("assetStrategy"),
     cusip: firstWith("cusip"),

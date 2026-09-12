@@ -45,6 +45,9 @@ interface EntryRow {
   weather_code: number | null;
   is_pinned: number;
   is_locked: number;
+  source: string;
+  external_id: string;
+  external_content: string;
   created_at: string;
   updated_at: string;
 }
@@ -211,6 +214,9 @@ function entryToDomain(
     categories,
     tags,
     locations,
+    source: row.source,
+    externalId: row.external_id,
+    externalContent: row.external_content,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
@@ -414,11 +420,11 @@ export class SqliteJournalRepository implements JournalRepository {
       `INSERT INTO jrn_entries
          (entry_date, entry_time, title, content, place_name,
           weather_temp, weather_unit, weather_description, weather_code,
-          is_pinned, is_locked)
+          is_pinned, is_locked, source, external_id, external_content)
        VALUES
          (@date, @time, @title, @content, @placeName,
           @weatherTemp, @weatherUnit, @weatherDescription, @weatherCode,
-          @isPinned, @isLocked)`,
+          @isPinned, @isLocked, @source, @externalId, @externalContent)`,
     );
 
     const id = this.db.transaction(() => {
@@ -439,7 +445,9 @@ export class SqliteJournalRepository implements JournalRepository {
          entry_date = @date, entry_time = @time, title = @title, content = @content,
          place_name = @placeName, weather_temp = @weatherTemp, weather_unit = @weatherUnit,
          weather_description = @weatherDescription, weather_code = @weatherCode,
-         is_pinned = @isPinned, is_locked = @isLocked
+         is_pinned = @isPinned, is_locked = @isLocked,
+         source = @source, external_id = @externalId,
+         external_content = @externalContent
        WHERE id = @id`,
     );
 
@@ -490,6 +498,25 @@ export class SqliteJournalRepository implements JournalRepository {
          ORDER BY id`,
       )
       .all({ ...key, title: key.title.trim() }) as { id: number }[];
+    return rows.map((row) => row.id);
+  }
+
+  findEntryIdsBySource(source: string, externalId: string): number[] {
+    // A blank external id matches nothing on purpose: '' is what every
+    // hand-written entry carries, so querying it would return the entire
+    // journal and the importer would treat each new event as a duplicate of
+    // some unrelated entry. Guarded here rather than at the call site so no
+    // future caller can reintroduce that.
+    if (externalId.trim() === "") return [];
+
+    // Rides idx_jrn_entries_source_external (migration 0088).
+    const rows = this.db
+      .prepare(
+        `SELECT id FROM jrn_entries
+         WHERE source = ? AND external_id = ?
+         ORDER BY id`,
+      )
+      .all(source, externalId.trim()) as { id: number }[];
     return rows.map((row) => row.id);
   }
 
@@ -799,11 +826,13 @@ export class SqliteJournalRepository implements JournalRepository {
       `INSERT INTO jrn_recycled_entries (
          entry_id, entry_date, entry_time, title, content, place_name,
          weather_temp, weather_unit, weather_description, weather_code,
-         is_pinned, is_locked, created_at, updated_at
+         is_pinned, is_locked, source, external_id, external_content,
+         created_at, updated_at
        )
        SELECT id, entry_date, entry_time, title, content, place_name,
               weather_temp, weather_unit, weather_description, weather_code,
-              is_pinned, is_locked, created_at, updated_at
+              is_pinned, is_locked, source, external_id, external_content,
+              created_at, updated_at
        FROM jrn_entries WHERE id = ?`,
     );
     // The children are re-keyed onto the new parent id, which is why each entry
@@ -874,22 +903,26 @@ export class SqliteJournalRepository implements JournalRepository {
       `INSERT INTO jrn_entries (
          id, entry_date, entry_time, title, content, place_name,
          weather_temp, weather_unit, weather_description, weather_code,
-         is_pinned, is_locked, created_at, updated_at
+         is_pinned, is_locked, source, external_id, external_content,
+         created_at, updated_at
        ) VALUES (
          @id, @entry_date, @entry_time, @title, @content, @place_name,
          @weather_temp, @weather_unit, @weather_description, @weather_code,
-         @is_pinned, @is_locked, @created_at, @updated_at
+         @is_pinned, @is_locked, @source, @external_id, @external_content,
+         @created_at, @updated_at
        )`,
     );
     const insertFresh = this.db.prepare(
       `INSERT INTO jrn_entries (
          entry_date, entry_time, title, content, place_name,
          weather_temp, weather_unit, weather_description, weather_code,
-         is_pinned, is_locked, created_at, updated_at
+         is_pinned, is_locked, source, external_id, external_content,
+         created_at, updated_at
        ) VALUES (
          @entry_date, @entry_time, @title, @content, @place_name,
          @weather_temp, @weather_unit, @weather_description, @weather_code,
-         @is_pinned, @is_locked, @created_at, @updated_at
+         @is_pinned, @is_locked, @source, @external_id, @external_content,
+         @created_at, @updated_at
        )`,
     );
     const restoreCategories = this.db.prepare(
@@ -1212,6 +1245,7 @@ export class SqliteJournalRepository implements JournalRepository {
     }
     return grouped;
   }
+
 }
 
 // Maps a create/update input to the named SQL parameters, collapsing the
@@ -1229,5 +1263,9 @@ function entryParams(input: EntryWriteData): Record<string, string | number | nu
     weatherCode: input.weather ? input.weather.code : null,
     isPinned: input.isPinned ? 1 : 0,
     isLocked: input.isLocked ? 1 : 0,
+    source: input.source,
+    externalId: input.externalId,
+    externalContent: input.externalContent,
   };
 }
+

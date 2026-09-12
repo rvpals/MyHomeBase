@@ -6,6 +6,7 @@
 // A server component, so it can talk to `deps` directly and hand plain data to the
 // client views. Mirrors expense-section.tsx.
 
+import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { SlotIcon } from "@/components/slot-icon";
 import { getIconSlot } from "@/lib/icons";
@@ -16,6 +17,7 @@ import { resolveThresholds } from "@/lib/next-day-actions";
 import { startOfYearIso, todayIsoLocal } from "@/lib/shared/date";
 import { centsToDollars } from "@/lib/shared/money";
 import { getCorrelationCache, getSharpeCache, listVolatilityCache } from "@/lib/stock-analytics";
+import { buildPortfolioExport } from "@/lib/portfolio-export";
 import { resolveDashboardWidgets, visibleDashboardWidgets } from "@/lib/stock-dashboard";
 import { listSnapshots, summarizeToDate } from "@/lib/stock-daily-snapshot";
 import {
@@ -44,6 +46,7 @@ import { loadSectorMap, resolveSector } from "@/lib/ticker-profiles";
 import { deps } from "@/lib/wiring";
 import { NextDayActionsView } from "./next-day-actions-view";
 import { StockAccountsView, type AccountEntry } from "./stock-accounts-view";
+import { StockAiExportView } from "./stock-ai-export-view";
 import { StockAnalyticsView } from "./stock-analytics-view";
 import { StockConfigurationView } from "./stock-configuration-view";
 import { StockDashboardView } from "./stock-dashboard-view";
@@ -52,7 +55,7 @@ import { StockInstructions } from "./stock-instructions";
 import { StockPositionsView } from "./stock-positions-view";
 import { StockRefreshControl } from "./stock-refresh-control";
 import { StockRefreshProgressProvider } from "./stock-refresh-progress-context";
-import { STOCK_SECTION_INFO, type StockSection } from "./stock-sections";
+import { STOCK_SECTION_INFO, stockSectionHref, type StockSection } from "./stock-sections";
 import { StockShell } from "./stock-shell";
 import { StockSimulationView } from "./stock-simulation-view";
 import { StockTaxLotsMultiView } from "./stock-tax-lots-multi-view";
@@ -525,6 +528,29 @@ function SectionBody({
       );
     }
 
+    case "ai-export": {
+      // The counts are the exported scope, not the whole ledger: the view says
+      // "49 positions across 3 accounts", and that has to agree with what the
+      // export actually contains once the retirement plans are dropped.
+      const preview = buildPortfolioExport({
+        positions: listPositions(deps.stockPositionRepo),
+        accounts: listAccounts(deps.investmentAccountRepo).map((account) => ({
+          id: account.id,
+          name: account.name,
+        })),
+        sectorsByTicker: new Map(),
+        asOf: todayIsoLocal(),
+        focus: [],
+      });
+      return (
+        <StockAiExportView
+          holdingCount={preview.summary.holdingCount}
+          accountCount={preview.summary.accountCount}
+          totalMarketValue={preview.summary.totalMarketValue}
+        />
+      );
+    }
+
     case "import":
       return <StockImportView accounts={loadAccountOptions()} />;
 
@@ -606,6 +632,17 @@ export async function StockSection({
                 lastSnapshotDate={snapshots[snapshots.length - 1]?.snapshotDate}
                 summary={seedSummary}
               />
+              {/* The dashboard's way into the export screen. A link rather than a
+                  second copy of the dialog: one implementation, one place it can
+                  drift from. */}
+              <Button
+                href={stockSectionHref("ai-export")}
+                variant="secondary"
+                size="sm"
+                className="ml-auto"
+              >
+                Export for AI
+              </Button>
             </>
           )}
         </div>

@@ -10,6 +10,7 @@ import { listNamedMappings } from "@/lib/csv-import";
 import {
   JOURNAL_PREFILL_FIELDS,
   listCategories,
+  listLogEntries,
   listEnabledPrefillTemplates,
   listPrefillSuggestions,
   listPrefillTemplates,
@@ -30,7 +31,9 @@ import { journalTaxonomyIconUrlsByName } from "./journal-shared";
 import { JournalShell } from "./journal-shell";
 import { JournalHomeHeader } from "./journal-search-view";
 import { JournalCorrectPanel } from "./journal-correct-panel";
+import { JournalCalendarImportView } from "./journal-calendar-import-view";
 import { JournalImportView } from "./journal-import-view";
+import { JournalLogView } from "./journal-log-view";
 import {
   JournalMetadataBackupButton,
   JournalMetadataRestoreCard,
@@ -117,6 +120,31 @@ function SectionBody({
           correctSlot={<JournalCorrectPanel />}
         />
       );
+
+    case "calendar-import": {
+      // The managed lists feed the preset fields' autocomplete. Read here on the
+      // server, like every other section's data.
+      return (
+        <JournalCalendarImportView
+          categories={listCategories(deps.journalRepo)}
+          tags={listTags(deps.journalRepo)}
+        />
+      );
+    }
+
+    case "log": {
+      // The icon maps are the same pair the home screen builds — the viewer
+      // modal renders an entry's categories and tags with their icons.
+      const logCategories = listCategories(deps.journalRepo);
+      const logTags = listTags(deps.journalRepo);
+      return (
+        <JournalLogView
+          entries={listLogEntries(deps.journalRepo)}
+          categoryIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("category", logCategories))}
+          tagIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("tag", logTags))}
+        />
+      );
+    }
 
     case "configuration": {
       const journalModule = getModuleBySlug(deps.moduleRepo, JOURNAL_MODULE_SLUG);

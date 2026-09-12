@@ -126,6 +126,53 @@ export function findEntries(
   return repo.findEntries(journalFilterSchema.parse(filter), limit);
 }
 
+/**
+ * The category that marks an entry as a logged activity rather than something
+ * written — seeded by migration 0088, and the default the calendar import
+ * applies.
+ *
+ * A constant, not a literal at each call site: the name is the natural key, and
+ * a typo in one place would silently re-admit every logged entry into the Today
+ * in History widget.
+ */
+export const LOG_CATEGORY_NAME = "Log";
+
+/** True when an entry carries the Log category, compared case-insensitively. */
+export function isLogEntry(entry: JournalEntry): boolean {
+  // NOCASE is how jrn_categories compares names elsewhere, so "log" typed into
+  // the entry form is the same category as the seeded "Log".
+  return entry.categories.some(
+    (category) => category.trim().toLowerCase() === LOG_CATEGORY_NAME.toLowerCase(),
+  );
+}
+
+/**
+ * Every entry carrying the Log category, newest journal date first — the Log
+ * section's list.
+ *
+ * Built on `findEntries` with a one-condition filter rather than a new query, so
+ * the Log list is sorted, limited and SQL-built by exactly the same path the
+ * Entries browser uses. `hasAny` is the taxonomy operator, and the comparison
+ * is the NOCASE one the stored filter SQL already applies to category names.
+ */
+export function listLogEntries(repo: JournalRepository, limit = 500): JournalEntry[] {
+  return findEntries(
+    repo,
+    {
+      join: "AND",
+      groups: [
+        {
+          join: "AND",
+          conditions: [
+            { field: "category", operator: "hasAny", values: [LOG_CATEGORY_NAME] },
+          ],
+        },
+      ],
+    },
+    limit,
+  );
+}
+
 export function listFilters(repo: JournalRepository): SavedJournalFilter[] {
   return repo.listFilters();
 }
@@ -185,6 +232,12 @@ export function listTodayInHistory(
 
   return repo
     .listEntriesByMonthDay(monthDay)
+    // Logged activities are excluded here and nowhere else. The widget is a
+    // handful of slots for "what happened on this day years ago", and an
+    // imported calendar can hold hundreds of routine events per date -- they
+    // would crowd out every written entry the card exists to resurface.
+    // Entries, Calendar and search still show them.
+    .filter((entry) => !isLogEntry(entry))
     .map((entry) => ({ entry, yearsAgo: referenceYear - Number(entry.date.slice(0, 4)) }))
     .filter((candidate) => candidate.yearsAgo > 0)
     .sort((a, b) => a.yearsAgo - b.yearsAgo);

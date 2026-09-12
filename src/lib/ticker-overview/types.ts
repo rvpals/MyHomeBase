@@ -107,6 +107,49 @@ export interface TickerTrades {
   lastTradeAt?: string;
 }
 
+/** One account's share of this ticker, measured inside that account alone. */
+export interface TickerAccountWeight {
+  accountId: number;
+  accountName: string;
+  /** This ticker's value in the account. */
+  valueCents: number;
+  /** Everything the account holds, this ticker included. */
+  accountValueCents: number;
+  /** `valueCents` against `accountValueCents`, 0-100. 0 when the account is empty. */
+  weightPct: number;
+}
+
+/**
+ * How much of the portfolio this one ticker is.
+ *
+ * The denominator is every position with shares — the same base
+ * `next-day-actions` measures its allocation against, so the two figures agree
+ * rather than quietly differing by a rounding rule or an empty row. Cash and
+ * anything an account holds outside a position row are *not* in it: this is a
+ * share of the holdings, not of net worth.
+ *
+ * A ticker that isn't held reports zeroes and `rank: 0` — an honest "none of
+ * it" rather than a missing section.
+ */
+export interface TickerPortfolioWeight {
+  /** This ticker's value across every account. */
+  valueCents: number;
+  /** Summed value of every held position, this ticker included. */
+  portfolioValueCents: number;
+  /** `valueCents` against `portfolioValueCents`, 0-100. 0 when nothing is held. */
+  weightPct: number;
+  /** 1 is the largest holding. 0 when this ticker isn't held. */
+  rank: number;
+  /** How many distinct tickers are held, so `rank` reads as "#3 of 27". */
+  holdingCount: number;
+  /** The largest single holding's weight, for "the biggest is 12%" context. */
+  largestWeightPct: number;
+  /** An equal split across `holdingCount`. 0 when nothing is held. */
+  evenWeightPct: number;
+  /** Per-account weights, largest first. Empty when the ticker isn't held. */
+  byAccount: TickerAccountWeight[];
+}
+
 /** The ticker's presence on one watchlist, and how it has moved since. */
 export interface TickerWatchEntry {
   itemId: number;
@@ -146,6 +189,8 @@ export interface TickerOwnData {
   income: TickerIncome;
   trades: TickerTrades;
   watchEntries: TickerWatchEntry[];
+  /** This ticker as a share of every held position. */
+  portfolioWeight: TickerPortfolioWeight;
   /** Broker-reported identifiers and buckets, taken from the first holding. */
   assetClass: string;
   assetStrategy: string;

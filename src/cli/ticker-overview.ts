@@ -58,6 +58,11 @@ export async function tickerOverviewCommand(args: string[]): Promise<void> {
         ` · unrealized ${signed(own.totals.unrealizedGainLossCents)}` +
         ` (${own.totals.totalReturnPct.toFixed(2)}%)`,
     );
+    console.log(
+      `  Portfolio weight ${own.portfolioWeight.weightPct.toFixed(2)}%` +
+        ` · #${own.portfolioWeight.rank} of ${own.portfolioWeight.holdingCount} holdings` +
+        ` · portfolio ${formatCents(own.portfolioWeight.portfolioValueCents)}`,
+    );
     for (const holding of own.holdings) {
       console.log(
         `    ${holding.accountName}: ${holding.quantity} sh · ${formatCents(holding.valueCents)}` +

@@ -25,7 +25,8 @@ import {
 //
 // If tree-icons.tsx gains or loses a concept, update this list.
 const TREE_CONCEPTS = [
-  "flash", "note", "clip", "shield", "refresh", "pencil", "trash", "sliders", "gear",
+  "flash", "note", "calendar", "clipboard", "clip", "shield", "refresh", "pencil",
+  "trash", "sliders", "gear",
   "classroom", "list", "newspaper", "plus", "chart", "upload", "quote", "stock-quote",
   "grid", "window", "palette", "info", "history", "users", "database", "shapes",
   "search", "magic", "player", "star", "star-filled", "heart", "heart-filled",
@@ -131,11 +132,12 @@ describe("sectionSlotId", () => {
     const sections: Record<string, string[]> = {
       stock: [
         "main", "positions", "transactions", "accounts", "watch-test",
-        "charts", "import", "settings",
+        "charts", "tax-lots", "ai-export", "import", "settings",
       ],
       journal: [
-        "main", "entries", "calendar", "views", "report", "import",
-        "configuration", "templates", "metadata", "configuration-group",
+        "main", "entries", "calendar", "views", "report", "log", "import",
+        "calendar-import", "configuration", "templates", "metadata",
+        "configuration-group", "import-group",
       ],
       expense: [
         "main", "transactions", "meta-data", "charts",

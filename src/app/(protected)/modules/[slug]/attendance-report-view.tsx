@@ -19,7 +19,6 @@ import type {
   AttendanceEntry,
   AttendanceReport,
   AttendanceReportFormat,
-  AttendanceSessionSummary,
 } from "@/lib/attendance";
 
 const INPUT_CLASS =
@@ -35,10 +34,9 @@ export function AttendanceReportView({
   selectedClassId,
   selectedDate,
   recordedDates,
-  sessionsOnDate,
 }: {
   classes: AttendanceClass[];
-  /** Which shape to render. The date/session pickers only apply to "brief". */
+  /** Which shape to render. The date picker only applies to "brief". */
   format: AttendanceReportFormat;
   /** Undefined when the class/date pair has no saved attendance, or on "detail". */
   report?: AttendanceReport;
@@ -48,11 +46,6 @@ export function AttendanceReportView({
   selectedDate: string;
   /** The dates this class has records for, newest first. */
   recordedDates: string[];
-  /**
-   * The sessions on the selected date, newest first. More than one when the
-   * class was registered again the same day.
-   */
-  sessionsOnDate: AttendanceSessionSummary[];
 }) {
   const router = useRouter();
 
@@ -61,13 +54,11 @@ export function AttendanceReportView({
   function go(
     nextClassId: number | undefined,
     nextDate: string,
-    nextRecordId?: number,
     nextFormat: AttendanceReportFormat = format,
   ) {
     const params = new URLSearchParams();
     if (nextClassId) params.set("classId", String(nextClassId));
     params.set("date", nextDate);
-    if (nextRecordId) params.set("recordId", String(nextRecordId));
     // Omitted when brief so the default shape keeps a clean, shareable URL —
     // ?format=brief and no param at all mean the same thing.
     if (nextFormat !== "brief") params.set("format", nextFormat);
@@ -131,12 +122,7 @@ export function AttendanceReportView({
           <select
             value={format}
             onChange={(event) =>
-              go(
-                selectedClassId,
-                selectedDate,
-                undefined,
-                event.target.value as AttendanceReportFormat,
-              )
+              go(selectedClassId, selectedDate, event.target.value as AttendanceReportFormat)
             }
             className={INPUT_CLASS}
           >
@@ -160,28 +146,6 @@ export function AttendanceReportView({
           </label>
         )}
 
-        {/* Only shown when the day actually holds more than one register —
-            a picker with a single option is noise. */}
-        {format === "brief" && sessionsOnDate.length > 1 && (
-          <label className="flex flex-col gap-1">
-            <span className={LABEL_CLASS}>Session</span>
-            <select
-              value={report?.recordId ?? ""}
-              onChange={(event) =>
-                go(selectedClassId, selectedDate, Number(event.target.value) || undefined)
-              }
-              className={INPUT_CLASS}
-            >
-              {sessionsOnDate.map((session, index) => (
-                <option key={session.recordId} value={session.recordId}>
-                  {session.sessionLabel}
-                  {index === 0 ? " (latest)" : ""} · {session.presentCount}/
-                  {session.presentCount + session.absentCount} present
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
 
         {format === "brief" && recordedDates.length > 0 && (
           <label className="flex flex-col gap-1">

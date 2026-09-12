@@ -35,6 +35,9 @@ export const journalEntrySchema = z.object({
   categories: z.array(z.string()),
   tags: z.array(z.string()),
   locations: z.array(entryLocationSchema),
+  source: z.string(),
+  externalId: z.string(),
+  externalContent: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -70,6 +73,12 @@ export const createEntrySchema = z.object({
   categories: z.array(z.string()).default([]),
   tags: z.array(z.string()).default([]),
   locations: z.array(entryLocationInputSchema).default([]),
+  // Provenance (migration 0088). Both default to "" so every existing caller --
+  // the entry form, the CSV importer, the CLI -- keeps compiling and keeps
+  // writing hand-written entries exactly as before.
+  source: z.string().default(""),
+  externalId: z.string().default(""),
+  externalContent: z.string().default(""),
 });
 
 // Input type (what callers pass): fields with a default are optional. This is
@@ -373,3 +382,37 @@ export function parseStoredPrefillFields(
   }
   return parsed;
 }
+
+// --- Calendar (.ics) import --------------------------------------------------
+//
+// What the Calendar Import wizard sends across the boundary. The web action and
+// the CLI both parse with these, so a bad filter or preset fails identically in
+// either.
+
+export const icsImportFilterSchema = z.object({
+  // Date bounds are optional and may be "", which means unbounded — the wizard's
+  // date inputs start empty and an empty input must not be a validation error.
+  fromDate: z.union([entryDateSchema, z.literal("")]).default(""),
+  toDate: z.union([entryDateSchema, z.literal("")]).default(""),
+  summaryContains: z.string().default(""),
+  summaryExcludes: z.string().default(""),
+  requireSummary: z.boolean().default(false),
+  includeAllDay: z.boolean().default(true),
+});
+
+export type IcsImportFilterInput = z.input<typeof icsImportFilterSchema>;
+
+export const icsImportPresetsSchema = z.object({
+  categories: z.array(z.string()).default([]),
+  tags: z.array(z.string()).default([]),
+  placeName: z.string().default(""),
+  notePrefix: z.string().default(""),
+  // Defaults to true: the safe behaviour is the default, and a full replace is
+  // the deliberate act. See 0089.
+  preserveLocalEdits: z.boolean().default(true),
+});
+
+export type IcsImportPresetsInput = z.input<typeof icsImportPresetsSchema>;
+
+/** The row indexes the reader ticked. Non-negative ints, de-duped by the use-case. */
+export const icsSelectionSchema = z.array(z.number().int().nonnegative());

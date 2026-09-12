@@ -26,8 +26,10 @@ import { parseFlags } from "./parse-flags";
  * the Student actions screen (`L`, `EC`), matched case-insensitively — an id would
  * be unusable from a terminal, where the code is the thing a teacher knows.
  *
- * Each run **appends** a session rather than replacing one: a class may be
- * registered several times a day.
+ * Each run writes **the** register for the class and date — one per day. Running
+ * it again for a day already taken updates that record rather than adding a
+ * second one, and the `--present` list is the whole truth about the day, so
+ * anyone omitted the second time is recorded absent.
  */
 export async function takeAttendanceCommand(args: string[]): Promise<void> {
   const flags = parseFlags(args);
@@ -132,12 +134,15 @@ export async function takeAttendanceCommand(args: string[]): Promise<void> {
     actionIds: actionIdsByStudentId.get(student.id) ?? [],
   }));
 
-  if (sheet.sessions.length > 0) {
-    // Not a warning: this appends a session rather than replacing one.
+  if (sheet.session) {
+    // Worth stating plainly: this REPLACES the day's register rather than adding
+    // to it, and the command's `--present` list is the whole truth about the day,
+    // so anyone saved present earlier but not named now becomes absent.
     console.log(
-      `${sheet.sessions.length} session(s) already saved for ${attendanceDate} (${sheet.sessions
-        .map((session) => session.sessionLabel)
-        .join(", ")}). This adds another.`,
+      `${attendanceDate} already has a register for ${attendanceClass.name} ` +
+        `(saved ${sheet.session.sessionLabel}, ${
+          sheet.session.entries.filter((entry) => entry.status === "present").length
+        } present). This updates it — anyone not named now is recorded absent.`,
     );
   }
 
@@ -151,7 +156,7 @@ export async function takeAttendanceCommand(args: string[]): Promise<void> {
 
     const presentCount = record.entries.filter((entry) => entry.status === "present").length;
     console.log(
-      `Saved ${record.className} for ${record.attendanceDate} (session ${record.sessionLabel}): ${presentCount} present, ${record.entries.length - presentCount} absent.`,
+      `Saved ${record.className} for ${record.attendanceDate} (at ${record.sessionLabel}): ${presentCount} present, ${record.entries.length - presentCount} absent.`,
     );
     const actionsByStudentId = new Map(
       record.entries.map((entry) => [entry.studentId, entry.actions]),

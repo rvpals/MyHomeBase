@@ -601,6 +601,105 @@ function HoldingsPanel({
   );
 }
 
+/**
+ * A weight drawn as a bar, with the even split marked on it.
+ *
+ * The tick is what makes the bar say something a number alone doesn't: at 27
+ * holdings an even split is 3.7%, so a 25% position reads as heavily
+ * concentrated at a glance rather than after arithmetic. Bar and tick are both
+ * capped at 100% so a rounding overshoot can't push either outside the track.
+ */
+function WeightBar({ weightPct, evenPct }: { weightPct: number; evenPct: number }) {
+  const width = Math.min(Math.max(weightPct, 0), 100);
+  const tick = Math.min(Math.max(evenPct, 0), 100);
+
+  return (
+    <div className="relative mt-3 h-2 w-full rounded-full bg-line/40" aria-hidden>
+      <div className="h-2 rounded-full bg-brass" style={{ width: `${width}%` }} />
+      {evenPct > 0 && (
+        <span
+          className="absolute top-[-2px] h-3 w-px bg-ink/40"
+          style={{ left: `${tick}%` }}
+          title={`An even split would be ${formatPlainPct(evenPct)}`}
+        />
+      )}
+    </div>
+  );
+}
+
+function PortfolioWeightPanel({ data }: { data: TickerOwnData }) {
+  const weight = data.portfolioWeight;
+
+  // Nothing held means no share of anything — and the denominator alone would
+  // be a number about the portfolio, not about this ticker.
+  if (!data.isHeld || weight.portfolioValueCents === 0) {
+    return (
+      <Empty>
+        {data.ticker} is not part of the portfolio
+        {data.isWatched ? " — it is only on a watchlist." : "."}
+      </Empty>
+    );
+  }
+
+  const concentration =
+    weight.evenWeightPct > 0 ? weight.weightPct / weight.evenWeightPct : 0;
+
+  return (
+    <div>
+      <StatGrid>
+        <StatTile
+          label="% of portfolio"
+          value={formatPlainPct(weight.weightPct)}
+          hint={`Even split would be ${formatPlainPct(weight.evenWeightPct)}`}
+        />
+        <StatTile
+          label="Rank"
+          value={`#${formatCount(weight.rank)}`}
+          hint={`of ${formatCount(weight.holdingCount)} holdings`}
+        />
+        <StatTile label="Position value" value={formatCents(weight.valueCents)} />
+        <StatTile
+          label="Portfolio value"
+          value={formatCents(weight.portfolioValueCents)}
+          hint="Every held position"
+        />
+      </StatGrid>
+
+      <WeightBar weightPct={weight.weightPct} evenPct={weight.evenWeightPct} />
+
+      <p className="mt-2 text-xs text-muted">
+        {weight.rank === 1
+          ? `${data.ticker} is the largest holding.`
+          : `The largest holding is ${formatPlainPct(weight.largestWeightPct)}.`}
+        {concentration > 0 && ` ${data.ticker} is ${concentration.toFixed(1)}× an even split.`}
+      </p>
+
+      {/* Only worth showing when the symbol sits in more than one account —
+          with a single account this table would repeat the figures above. */}
+      {weight.byAccount.length > 1 && (
+        <>
+          <SectionTitle>Weight within each account</SectionTitle>
+          <Table head={["Account", "Value", "Account total", "% of account"]}>
+            {weight.byAccount.map((row) => (
+              <tr key={row.accountId}>
+                <Cell align="left">{row.accountName}</Cell>
+                <Cell>{formatCents(row.valueCents)}</Cell>
+                <Cell>{formatCents(row.accountValueCents)}</Cell>
+                <Cell>{formatPlainPct(row.weightPct)}</Cell>
+              </tr>
+            ))}
+          </Table>
+        </>
+      )}
+
+      <p className="mt-3 text-xs text-muted">
+        Measured against every position with shares. Cash and anything held outside a
+        position row are not counted.
+      </p>
+    </div>
+  );
+}
+
 /** What each timeline point is, for the table's "Point" column. */
 const TIMELINE_LABELS: Record<TickerTimelinePoint["kind"], string> = {
   prevClose: "Close, day before",
@@ -2162,6 +2261,14 @@ export function TickerViewer({
             <CollapsibleCard title="Holdings" defaultOpen>
               <Panel state={ownData} loadingLabel="Reading your records…">
                 {(data) => <HoldingsPanel data={data} intraday={intraday} />}
+              </Panel>
+            </CollapsibleCard>
+
+            {/* Sits under Holdings: it answers "how much of me is this?", which
+                only means anything once the position itself has been read. */}
+            <CollapsibleCard title="Portfolio weight" defaultOpen>
+              <Panel state={ownData} loadingLabel="Reading your records…">
+                {(data) => <PortfolioWeightPanel data={data} />}
               </Panel>
             </CollapsibleCard>
 

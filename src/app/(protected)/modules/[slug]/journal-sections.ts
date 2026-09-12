@@ -12,7 +12,9 @@ export const JOURNAL_SECTIONS = [
   "calendar",
   "views",
   "report",
+  "log",
   "import",
+  "calendar-import",
   "configuration",
   "templates",
   "metadata",
@@ -46,11 +48,21 @@ export const JOURNAL_SECTION_INFO: Record<JournalSection, { label: string; descr
     label: "Report",
     description: "Summaries and reports from your journal.",
   },
+  log: {
+    label: "Log",
+    description: "Logged activities — everything carrying the Log category.",
+  },
   import: {
     // Slug stays "import" — it's the route and the icon-slot id, and renaming it
-    // would orphan an uploaded icon override. Only the label widens.
-    label: "Data Management",
+    // would orphan an uploaded icon override. The label narrows to "CSV Import"
+    // now that it is one child of the Data Management group rather than the whole
+    // of it; the group heading above it carries the wider name.
+    label: "CSV Import",
     description: "Import a CSV file, reset the journal, and bulk-correct entries.",
+  },
+  "calendar-import": {
+    label: "Calendar Import",
+    description: "Import events from a Google Calendar .ics export.",
   },
   configuration: {
     label: "Preferences",
@@ -83,6 +95,23 @@ export const JOURNAL_CONFIGURATION_SECTIONS: readonly JournalSection[] = [
   "metadata",
 ];
 
+/**
+ * The sections under the "Data Management" group heading, in panel order.
+ *
+ * Same arrangement as the Configuration group above, and for the same reason:
+ * the heading is synthesised in `journal-shell.tsx` with no route of its own,
+ * so "Data Management" is a label rather than a destination.
+ *
+ * `import` stays first and keeps its slug — it is the existing route and the
+ * existing icon-slot id, and renaming either would orphan an uploaded icon. Only
+ * its label narrowed, to "CSV Import", now that it names one child instead of
+ * the whole group.
+ */
+export const JOURNAL_DATA_MANAGEMENT_SECTIONS: readonly JournalSection[] = [
+  "import",
+  "calendar-import",
+];
+
 /** Section → nav icon key, resolved by TreeIcon. */
 export const JOURNAL_SECTION_ICONS: Record<JournalSection, string> = {
   main: "grid",
@@ -92,6 +121,12 @@ export const JOURNAL_SECTION_ICONS: Record<JournalSection, string> = {
   report: "chart",
   // `upload` — the same glyph Expense and Stock give their Import sections.
   import: "upload",
+  // A wall calendar, for the section that reads one. Hand-drawn in
+  // tree-icons.tsx: no Iconify set in TREE_ICON_GLYPHS covers this concept.
+  "calendar-import": "calendar",
+  // A clipboard — a running record of things that happened. Deliberately not
+  // `list` (Entries') or `note` (Templates'), the two it sits nearest.
+  log: "clipboard",
   configuration: "sliders",
   // `note`, not `list` — that one is Entries', and two sections wearing the same
   // glyph is the collision modules.md warns about. A template is a jotting you

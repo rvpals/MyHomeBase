@@ -62,7 +62,7 @@ export function TodayInHistoryWidget({
         <Comments
           title="About"
           label="About"
-          content="This card displays what happened # number of years ago on the same month and date of today."
+          content="This card displays what happened # number of years ago on the same month and date of today. Click any entry to open it — the entry page also shows the pictures taken on that date."
         />
       }
     >

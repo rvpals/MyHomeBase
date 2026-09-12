@@ -173,6 +173,15 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    id: "stock_section_ai_export",
+    label: "Export for AI Analysis",
+    group: "Stocks & ETFs sections",
+    where: "Stocks & ETFs → section panel → Export for AI Analysis.",
+    defaultConcept: "quote",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     id: "stock_section_settings",
     label: "Configuration",
     group: "Stocks & ETFs sections",
@@ -378,6 +387,37 @@ export const ICON_SLOTS: IconSlot[] = [
     group: "Journal sections",
     where: "Journal → section panel → Meta Data.",
     defaultConcept: "shapes",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "journal_section_calendar_import",
+    label: "Calendar Import",
+    group: "Journal sections",
+    where: "Journal → section panel → Data Management → Calendar Import.",
+    defaultConcept: "calendar",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "journal_section_log",
+    label: "Log",
+    group: "Journal sections",
+    where: "Journal → section panel → Log.",
+    defaultConcept: "clipboard",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    // Not in JOURNAL_SECTION_ICONS — the shell synthesises this accordion heading to wrap
+    // CSV Import and Calendar Import, so it needs a slot of its own. Data Management keeps
+    // its own `journal_section_import` slot as the CSV child's icon, because that id is
+    // already persisted against uploads and renaming it would orphan them.
+    id: "journal_section_import_group",
+    label: "Data Management (group)",
+    group: "Journal sections",
+    where: "Journal → section panel → the Data Management group header (wraps CSV Import and Calendar Import).",
+    defaultConcept: "upload",
     wired: true,
     namespace: "tree",
   },

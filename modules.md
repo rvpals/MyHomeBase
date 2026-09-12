@@ -125,6 +125,36 @@ Reachable from the CLI as `npm run cli -- tax-lots --ticker NVDA`, plus
 storing nothing unless `--save`), `--from-trades --ticker NVDA` (seed from the
 ledger) and `--tickers NVDA,AAPL,MSFT` (the multi-ticker roll-up).
 
+The **Export for AI Analysis** section packages the portfolio as a prompt to paste
+into any LLM. It **adds no table and no migration** — everything is derived from
+the positions and accounts already stored, recomputed per request. Its library
+module, `src/lib/portfolio-export`, aggregates holdings **by ticker across
+accounts** (so a symbol held in two accounts is one row carrying both), renders
+Markdown or JSON, and prepends an analyst brief that states the data dictionary,
+the caveats and the requested output shape.
+
+Two decisions worth knowing:
+
+- **Account type is inferred from the account's name**, not stored — `inferAccountKind`
+  reads "ROTH", "401K", "VOYA", "Health Savings" and falls back to `Taxable`. There is no
+  `account_type` column, so adding one would have meant a migration plus a field to
+  maintain by hand. Only `Taxable` and the IRAs export by default; employer plans and the
+  HSA are listed as deliberately excluded, because they hold a balance but no positions
+  and an opaque number helps no analysis.
+- **Account names never leave the machine.** They carry an institution and sometimes an
+  employer, so the payload replaces each with its tax treatment (`Taxable Account 1`,
+  `Roth IRA`). Security *names* are untouched — "JP Morgan Chase & Co." is a holding,
+  not an account, and a blanket scrub would corrupt it.
+
+Expense ratios are reported as `null` everywhere: nothing in the app tracks one, and the
+prompt tells the model to supply its own and flag them as unverified rather than letting
+it silently invent figures.
+
+Reachable from the CLI as `npm run cli -- export-portfolio`, plus `--format json`,
+`--focus fees,tax` and `--kinds "Roth IRA"`. Piping to a file is the point — the same
+text the modal copies, available to a script. See `export_for_AI_Analysis.md` for the
+full feature write-up.
+
 The **Simulation** section answers "had I bought this then?" — one ticker, a share count,
 and any of ten windows (1 Week through MAX) ticked at once. It **adds no table and no
 migration**: nothing is saved, because a run is a question rather than a position, and
@@ -212,8 +242,9 @@ reminder. `0058` records why that isn't unified, and why nothing prunes a favori
 position was sold.
 
 **Journal** (`journal`) — dated entries with categories, tags, locations (with a
-map), and images; saved filters; CSV import. A filter query travels in the URL
-(`?filter=`) so a filtered list is linkable. Library: `src/lib/journal`.
+map), and images; saved filters; CSV and calendar (`.ics`) import; a Log section for
+logged activities. A filter query travels in the URL (`?filter=`) so a filtered list is
+linkable. Library: `src/lib/journal`.
 
 The **Calendar** section shows those entries as a grid, in one of three ranges —
 week, month or year — with the range, the period and the clicked day all in the URL
@@ -265,10 +296,12 @@ migration:
 Locations and weather are deliberately not templatable: the entry form already resolves
 both live from GPS, and a stored copy would be staler than one button press.
 
-**CSV import lives in its own section** — *Import*, top-level in the section panel
-between Report and the Configuration group. It used to be an "Import from CSV" card at the
-bottom of the home screen; importing is an occasional, deliberate act, and the mapping
-table wants the full page width.
+**CSV import lives in its own section** — *CSV Import*, now the first child of the
+**Data Management** group in the section panel. It used to be an "Import from CSV" card at
+the bottom of the home screen; importing is an occasional, deliberate act, and the mapping
+table wants the full page width. Its route is still `/import` and its icon slot is still
+`journal_section_import`; only the label narrowed when Calendar Import joined it under the
+group heading.
 
 **CSV import is idempotent** (`migrations/0072`). Re-importing a file you have already
 imported adds nothing; each repeated row is reported as *"Duplicate of an existing
@@ -301,11 +334,75 @@ entries that already exist** checkbox, ticked by default, and the CLI has the ma
   business — uniqueness is an *import policy*, which is what lets the checkbox exist.
   0072 adds a plain index on `(entry_date, entry_time, title)` to make the count cheap.
 
-This is also the module that made **Configuration a nav group**. `SectionPanel` renders a
-node with children as an accordion heading and drops it from the compact sheet, so a
-parent cannot also be a page — the long-standing `/configuration` route therefore stayed
-put and became the group's first child, relabelled *Preferences*, with *Templates*
-alongside it.
+**Calendar import** reads a Google Calendar `.ics` export (`migrations/0088`). Data
+Management → **Calendar Import** takes an unzipped `.ics`, narrows it by date range and
+title text, applies a set of fields to every entry it creates, and lets you tick which
+events to keep. Parsing is `src/lib/journal/ics-parse.ts`; the use-case is `ics-import.ts`.
+Five choices worth knowing:
+
+- **No Google API, no OAuth, no key, no network call.** It reads a file the reader
+  exported by hand (Settings → Import & export → Export). That was the whole appeal over
+  the Calendar API, which would need a Cloud project and a stored refresh token to read
+  data the reader can already download. The `.ics` parser is ~150 lines of
+  line-unfolding, escaping and three date-time shapes — tested rather than depended on.
+- **Matched on the `VEVENT`'s `UID`, not on date+time+title.** The CSV importer's key is
+  right for a CSV, which has no stable identity, and wrong here: rename an event in Google
+  or move its time and the `UID` survives, so a date+time+title match would import a
+  second copy of every event the reader ever edited. `jrn_entries.source` /
+  `external_id` hold the provenance, and re-importing **refreshes** a matched entry in
+  place rather than duplicating it. A locked entry is refused, as with CSV overwrite —
+  though protecting a *note* no longer needs a lock, since 0089's option does that by
+  default.
+- **A repeating event imports as one entry — its first occurrence.** A series exports as
+  a single `VEVENT` with an `RRULE`, and expanding it was declined as more machinery than
+  the feature needs. The parser flags `isRecurring` so the screen says "first only" out
+  loud in the row rather than leaving the reader to wonder where the other 51 went.
+- **Wall-clock time is taken at face value; only a `Z` value is converted.** A
+  `TZID`-qualified `DTSTART` is the time the reader wrote on their calendar, and
+  converting it into the server's zone is how a 6pm practice becomes a 22:00 entry. An
+  explicitly-UTC value is the one case where the file says the reading is *not* local.
+- **Four cards, not a stepper.** Adjusting a filter and immediately seeing what it caught
+  is the loop the screen exists for, and a wizard that hides step 2 while showing step 4
+  fights it. The event list is a `DataGrid` — its selection, search, filters and compact
+  layout are why no new table component was written.
+- **A refresh keeps what you wrote** (`migrations/0089`). *Keep my own notes and edits
+  when refreshing an event*, ticked by default, means a re-import updates the calendar's
+  fields (title, date, time, place) but leaves your half of the note, your pin, your map
+  points, and any tag you added by hand — categories and tags **merge** with the presets
+  rather than replacing them. `jrn_entries.external_content` remembers the DESCRIPTION the
+  importer last wrote, so "yours" is what's left after subtracting it, rather than a
+  marker line in your prose. Where that subtraction can't be trusted — an entry imported
+  before 0089, or one whose calendar half you rewrote — the text is kept **verbatim** and
+  only the calendar's other fields update. Untick it (CLI: `--replace`) for the old
+  replace-the-whole-entry behaviour.
+
+The **Log** section lists every entry carrying the `Log` category — logged activities
+rather than written entries, which is where calendar imports land. One `DataGrid` with
+search, filters, CSV export and a bulk delete that moves rows to the **recycle bin**
+(0079) rather than destroying them; clicking a row opens the same `JournalViewer` the
+calendar and Correct tab use. Two choices worth knowing:
+
+- **`Log` is a seeded category, not a column or a new kind of record.** An activity log
+  *is* a journal entry with most fields blank — a date, a title, a time, a place, and an
+  optional note are all fields `jrn_entries` already had (0027). A parallel table would
+  have duplicated the entry shape and then needed its own viewer, calendar, filters and
+  recycle bin, plus a merge step for "what happened on this date".
+- **The category is excluded from Today in History and nowhere else.** An imported
+  calendar can hold hundreds of routine events on one date, which would crowd out the
+  written entries that card exists to resurface. `listTodayInHistory` filters it in the
+  use-case (a one-line `.filter()`, since entries already carry their categories), so
+  Entries, Calendar and search still show log entries — they are visible and filterable,
+  not hidden.
+
+This is also the module that made **Configuration a nav group**, and now **Data
+Management** too. `SectionPanel` renders a node with children as an accordion heading and
+drops it from the compact sheet, so a parent cannot also be a page — the long-standing
+`/configuration` route therefore stayed put and became the group's first child, relabelled
+*Preferences*, with *Templates* alongside it. Data Management followed the same shape when
+Calendar Import arrived: the existing `/import` route **kept its slug and its
+`journal_section_import` icon slot** (renaming either would orphan an uploaded icon) and
+became the group's first child, relabelled *CSV Import*, with the group heading carrying
+the wider name.
 
 Week start is **hardcoded to Sunday**, in one place: `startOfWeek` in
 `calendar.ts`, which every grid builder goes through. Making it a journal preference

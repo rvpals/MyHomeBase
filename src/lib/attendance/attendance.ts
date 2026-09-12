@@ -355,10 +355,11 @@ export function setStudentActionActive(
 
 /**
  * Everything the home screen needs to take attendance for one class on one date:
- * who is enrolled, and any sessions already saved that day.
+ * who is enrolled, and the register already saved that day if there is one.
  *
- * The sessions are history, not a warning — saving appends a new one rather than
- * replacing them.
+ * `session` is what makes re-opening a class an *edit*: the screen seeds its
+ * marks from it, so the second visit shows what was saved on the first rather
+ * than a blank sheet.
  *
  * The caller supplies the date rather than this reading the clock — a use-case
  * that depends on the current time isn't testable without freezing it, and both
@@ -376,16 +377,20 @@ export function getAttendanceSheet(
     className: attendanceClass.name,
     attendanceDate,
     students: repo.listStudentsInClass(classId),
-    sessions: repo.listAttendanceRecords(classId, attendanceDate),
+    session: repo.findAttendanceRecordForDate(classId, attendanceDate),
   };
 }
 
 /**
- * Saves a session's attendance, **appending** rather than replacing.
+ * Saves the class's register for the date — one record per class per day.
  *
- * A class may be registered several times a day (a morning and an afternoon
- * register are two facts, not a correction of one), so each save is its own
- * timestamped session.
+ * Saving a day that already has a register **updates it in place**, keeping its
+ * id: re-registering a class is a correction of the day, not a second fact about
+ * it. So a teacher can re-open a class, adjust who was there, and save again
+ * without leaving two versions of the same afternoon behind.
+ *
+ * The payload is the whole truth about the day, not a patch — a student left
+ * un-ticked in an edit ends up `absent`, and an un-noted action disappears.
  *
  * The caller sends only the students it marked present; everyone else enrolled
  * is written `absent`. That is what lets the screen start with nobody marked
@@ -500,7 +505,7 @@ function tallyActions(entries: AttendanceEntry[]): AttendanceActionTally[] {
   return [...byActionId.values()];
 }
 
-/** Rolls a saved session up into its report shape. */
+/** Rolls a saved register up into its report shape. */
 function toReport(record: AttendanceRecord): AttendanceReport {
   return {
     recordId: record.id,
@@ -517,7 +522,8 @@ function toReport(record: AttendanceRecord): AttendanceReport {
 }
 
 /**
- * The report for one saved session, or undefined when there is no such session.
+ * The report for one saved register by id, or undefined when there is no such
+ * record. Still used by the CLI, which takes a record id directly.
  *
  * "Never taken" is deliberately distinct from "everyone absent" — a teacher
  * needs to be able to tell those apart, which is why a save writes a row for
@@ -532,20 +538,24 @@ export function getAttendanceReportById(
 }
 
 /**
- * The report for a class on a date. With several sessions that day the **latest**
- * is reported, since that's what a teacher printing "today" means; pass a
- * `recordId` to `getAttendanceReportById` to pick a specific one.
+ * The report for a class on a date.
+ *
+ * A date identifies one register since migration 0092, so there is nothing to
+ * disambiguate — `findAttendanceRecordForDate` returns it or nothing.
  */
 export function getAttendanceReport(
   repo: AttendanceRepository,
   query: AttendanceReportQuery,
 ): AttendanceReport | undefined {
   const validated = attendanceReportQuerySchema.parse(query);
-  const [latest] = repo.listAttendanceRecords(validated.classId, validated.attendanceDate);
-  return latest ? toReport(latest) : undefined;
+  const record = repo.findAttendanceRecordForDate(
+    validated.classId,
+    validated.attendanceDate,
+  );
+  return record ? toReport(record) : undefined;
 }
 
-/** Every session a class has, newest first — the report's picker. */
+/** Every register a class has, newest first — one per date it was taken. */
 export function listSessionsForClass(
   repo: AttendanceRepository,
   classId: number,
@@ -569,13 +579,10 @@ export function listRecordDatesForClass(repo: AttendanceRepository, classId: num
  *
  * Two decisions worth knowing, both of which the shape depends on:
  *
- * 1. **One column per date, carrying that day's LATEST session.** A class can be
- *    registered more than once a day (migration 0049 dropped the unique index
- *    that used to make a save overwrite the day), so a date can hold several
- *    sessions. Taking the latest matches `getAttendanceReport`'s rule for
- *    "today"; the brief format is where a specific session is still reachable.
+ * 1. **One column per date.** Since migration 0092 a unique index makes that the
+ *    stored shape too, so a column is simply the day's register.
  *
- * 2. **Rows come from the sessions, not the current roster.** A student who has
+ * 2. **Rows come from the registers, not the current roster.** A student who has
  *    since been unenrolled still attended the days they attended, and a report
  *    must keep reading the way it did when it was printed — the same reasoning
  *    that makes `studentName` a stored value rather than a live lookup.
@@ -591,8 +598,10 @@ export function buildAttendanceDetailReport(
   const attendanceClass = requireClass(repo, classId);
   const records = repo.listAttendanceRecordsForClass(classId);
 
-  // The latest session per date. The repository returns oldest first, so a plain
-  // overwrite as we walk leaves the newest of each day in place.
+  // Keyed by date. At most one record per date exists (migration 0092's unique
+  // index), so this is a straight index rather than a collapse -- the overwrite
+  // it would do is retained only as a safety net for a database predating the
+  // migration.
   const latestByDate = new Map<string, AttendanceRecord>();
   for (const record of records) latestByDate.set(record.attendanceDate, record);
 

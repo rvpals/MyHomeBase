@@ -1,5 +1,125 @@
 # Change History
 
+## 2026-09-11 — Calendar into the journal, a portfolio brief for an LLM, and one attendance register per day
+
+### [MyJournal] Calendar Import — a Google or Outlook `.ics` becomes journal entries
+
+A new **Calendar Import** section reads an iCalendar export, shows every event it found
+as a pick-list, and turns the ticked rows into ordinary journal entries. Events land in
+a seeded **Log** category, which separates a *logged activity* from something you sat
+down and wrote.
+
+**A re-import recognises an event you already have, even after you edited it in Google.**
+Entries now carry `source` (`''` hand-written, `'ics'`, `'csv'`) and `external_id` — the
+`VEVENT`'s `UID` — so identity survives a rename or a time change. The CSV importer keeps
+matching on date + time + title, because a CSV carries no stable id; the two importers
+match differently on purpose, each on the strongest key its format actually offers.
+Matched the CSV way, moving "Swim practice" from 6:00 to 6:30 would have made it a *new*
+entry and quietly filled the journal with near-copies of every event ever adjusted.
+
+**Your own notes survive a refresh** — the "Keep my own notes and edits" option, ticked by
+default. `external_content` stores what the calendar sent, so the importer can tell its own
+text from yours and rewrite only the former. Before this, typing "Skylar got a personal
+best today" under an imported practice and re-exporting next month lost the note.
+
+The recycle bin mirror gained the same three columns. `recycleEntries` copies by name, so a
+column missing from the mirror is silently dropped — recycling an imported entry and
+restoring it would have blanked its `source` and `external_id`, and the next import, unable
+to match it, would have made a second copy. Exactly the failure `external_id` exists to
+prevent, arriving by the back door.
+
+Migrations `0088` and `0089`. The index on `(source, external_id)` is deliberately **not**
+UNIQUE: every hand-written entry carries `('', '')` and that is most of the table, so a
+unique index would permit exactly one of them.
+
+### [MyJournal] Why a 2.4 MB calendar failed, and the staging table that didn't fix it
+
+Selecting a large Outlook export failed with Next's opaque "An error occurred in the Server
+Components render", over a server log reading `Maximum array nesting exceeded`. Migration
+`0090` moved parsed events into a staging table and paged over them. **It was the wrong
+fix for a misdiagnosis**, and `0091` drops the table.
+
+The real mechanism, found by reproducing against the installed React: React wraps a
+**multi-argument** action call in an array and its decoder charges that array **one slot
+per character** of every string inside it. The limit is 1,000,001, so any file over ~1 MB
+of text trips it — regardless of how few events it holds. Three earlier theories are
+recorded in the migration log with why each was wrong, including one invented figure, since
+each looked convincing at the time.
+
+`0090` had already been applied to the NAS at deployment #51, so its `sys_schema_migrations`
+row is left in place on purpose; the file is gone and `0091` undoes its effect. A reader
+finding 0090 missing from the folder but present in the history table is looking at the
+right thing.
+
+### [Attendance] One register per class per day, and labels on the local clock
+
+Two bugs reported as one symptom — "it shows there are multiple attendance records".
+
+**Every session label was written from the UTC clock.** `saveAttendance` took
+`attendance_date` from `todayIsoLocal()` but sliced its label out of
+`new Date().toISOString()`. Two clocks for one event: on this server every stored label
+read four hours ahead, and two records were filed under one date while their `recorded_at`
+read the next. `src/lib/shared/date.ts` opens by warning against precisely this, and the
+attendance repository was the one place not using the helper.
+
+**Each save appended a new record.** `0049` had dropped the UNIQUE index on
+`(class_id, attendance_date)`, arguing a morning and an afternoon register are two facts
+rather than a correction of one. In practice the module is used one-register-per-day, so
+re-opening a class showed a **blank** sheet and re-saving left another row behind. The two
+bugs compounded: a label reading `20:32` for a 16:32 register looks wrong, which invites a
+re-save, and every re-save appended.
+
+`0092` merges the duplicates — newest `recorded_at` wins per class-day, presence **unioned**
+across the day's rows (a student ticked at 22:31 and missed at 22:58 was there that day),
+noted actions unioned and deduplicated — then restores the UNIQUE index. Re-opening a class
+now seeds the sheet from the saved register, so an edit starts from what you recorded
+instead of from blank.
+
+`coding-guide.md`'s worked example of "how a documented exception dies" now records the
+whole arc: retired by `0049`, reinstated by `0092`, because the premise was mis-stated
+rather than outdated.
+
+### [Stocks & ETFs] Export for AI Analysis — the portfolio as a prompt
+
+A new section packages holdings, weights, cost basis and returns into Markdown or JSON
+behind an analyst brief that states the data dictionary, the caveats and the output shape
+wanted. Copy it, download it, or pipe it from the CLI.
+
+**Account names never leave the machine.** They carry an institution and often an employer,
+so each is replaced by its tax treatment — `Taxable Account 1`, `Roth IRA`. Security *names*
+are untouched: "JP Morgan Chase & Co." is a holding, not an account, and a blanket scrub
+would have corrupted it.
+
+**Tax treatment is inferred from the account name**, not stored — `inferAccountKind` reads
+"ROTH", "401K", "VOYA", "Health Savings" and falls back to `Taxable`. Adding an
+`account_type` column would have meant a migration plus a field to maintain by hand. Only
+Taxable and the IRAs export by default; employer plans and the HSA are listed as
+deliberately excluded, because they hold a balance but no positions and an opaque number
+helps no analysis.
+
+Expense ratios report as `null` everywhere, and the prompt tells the model to supply its own
+and flag them unverified — rather than leaving it free to invent figures silently. No table,
+no migration, nothing paid: every number is recomputed per request from what is already
+stored. Full write-up in `export_for_AI_Analysis.md`; CLI as
+`npm run cli -- export-portfolio`, with `--format json`, `--focus fees,tax` and `--kinds`.
+
+### [Stocks & ETFs] A fourth card on the ticker viewer's own-data tab
+
+`src/lib/ticker-overview` gained a holdings breakdown: the same symbol across several
+accounts, each account's quantity, basis, day move and unrealised gain, plus the totals.
+Our-own-data and provider figures stay in separate types and separate tabs, so a number's
+provenance is never a guess and nothing blends the two into one blended figure.
+
+### [Icons] Four new slots
+
+`stock_section_ai_export`, `journal_section_calendar_import`, `journal_section_log`, and
+`journal_section_import_group` for the synthesised Data Management accordion heading.
+
+CSV Import keeps its existing `journal_section_import` id as the child's icon even though
+its label narrowed to "CSV Import" — **that id is already persisted against uploads, and
+renaming it would orphan them.** Its route is still `/import`.
+
+
 ## 2026-09-10 — Albums, and a home screen that reads as paper
 
 ### [Home] The daily quote, handwritten on a sheet

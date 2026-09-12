@@ -35,6 +35,27 @@ export interface JournalEntry {
   categories: string[]; // category names, referencing JournalCategory.name
   tags: string[]; // tag names, referencing JournalTag.name
   locations: EntryLocation[];
+  /**
+   * Where this entry came from: `""` written by hand, `"ics"` imported from an
+   * iCalendar export, `"csv"` from the CSV importer. See migration 0088.
+   */
+  source: string;
+  /**
+   * The source's own id for this entry -- for `"ics"`, the VEVENT's UID. `""`
+   * when the entry has no external identity. This is what makes re-importing
+   * the same calendar export a no-op.
+   */
+  externalId: string;
+  /**
+   * The DESCRIPTION (plus any note prefix) the calendar importer last wrote into
+   * `content`, verbatim — migration 0089.
+   *
+   * Lets a re-import tell the reader's own writing from the text it put there
+   * itself: whatever of `content` is not this is theirs, and only this part is
+   * replaced. `""` for a hand-written entry, and for anything imported before
+   * 0089 — read as "all of the content is the reader's".
+   */
+  externalContent: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -273,4 +294,109 @@ export interface RecycledJournalEntry extends JournalEntry {
   recycledId: number;
   /** When it went into the bin. Orders the list, newest first. */
   deletedAt: string;
+}
+
+// --- Calendar (.ics) import --------------------------------------------------
+//
+// The shapes behind the Calendar Import section: a parsed calendar event, the
+// filter that narrows a file's events down, the field presets applied to every
+// imported one, and the plan shown before anything is written.
+//
+// Recurrence is reported, never expanded: a recurring series exports as one
+// VEVENT and imports as one entry. `IcsEvent.isRecurring` exists so the UI can
+// say that out loud.
+
+/** One VEVENT, reduced to what a journal entry can be built from. */
+export interface IcsEvent {
+  /** The VEVENT's UID. `""` if the file omitted it — see `IcsImportPlanRow`. */
+  uid: string;
+  /** SUMMARY — becomes the entry's title. */
+  summary: string;
+  /** DESCRIPTION — becomes the entry's content. */
+  description: string;
+  /** LOCATION — becomes the entry's place name, unless a preset overrides it. */
+  location: string;
+  /** DTSTART's date, YYYY-MM-DD. */
+  date: string;
+  /** DTSTART's time, HH:MM. `""` for an all-day event. */
+  time: string;
+  isAllDay: boolean;
+  /** DTEND's date, or `""` when the event had no DTEND. */
+  endDate: string;
+  /** DTEND's time, or `""`. */
+  endTime: string;
+  /** True when the VEVENT carried an RRULE, so only its first occurrence imports. */
+  isRecurring: boolean;
+  /** X-WR-CALNAME from the file, or `""`. Same for every event in one file. */
+  calendarName: string;
+}
+
+/**
+ * How the wizard's step 2 narrows a file down. Every field is optional and they
+ * combine with AND — an empty filter matches every event.
+ */
+export interface IcsImportFilter {
+  /** Inclusive lower bound on the event date, YYYY-MM-DD. `""` = unbounded. */
+  fromDate?: string;
+  /** Inclusive upper bound, YYYY-MM-DD. `""` = unbounded. */
+  toDate?: string;
+  /** Case-insensitive substring the summary must contain. `""` = no constraint. */
+  summaryContains?: string;
+  /** Case-insensitive substring the summary must NOT contain. */
+  summaryExcludes?: string;
+  /** When true, drop events with an empty SUMMARY — they'd import untitled. */
+  requireSummary?: boolean;
+  /** When false, drop all-day events, keeping only timed ones. Default true. */
+  includeAllDay?: boolean;
+}
+
+/**
+ * The fields applied to every imported entry, set once in the wizard's step 3.
+ *
+ * Categories and tags are *added* to every entry. `placeName` is an override:
+ * when non-empty it replaces the event's LOCATION, which is the escape hatch
+ * for a calendar whose location field holds a full postal address.
+ */
+export interface IcsImportPresets {
+  categories: string[];
+  tags: string[];
+  /** Replaces LOCATION when non-empty. */
+  placeName?: string;
+  /** Prepended to the event's DESCRIPTION as the entry's content, if set. */
+  notePrefix?: string;
+  /**
+   * On an event already imported, keep the fields the reader owns rather than
+   * replacing the whole entry (migration 0089). Default **true**.
+   *
+   * The calendar's own fields (title, date, time, place) are overwritten either
+   * way. What this protects is the reader's half of `content`, their pin and
+   * lock, their weather and GPS points, and any category or tag they added by
+   * hand — those merge with the presets instead of being replaced.
+   *
+   * `false` restores the pre-0089 behaviour: a matched event is replaced whole.
+   */
+  preserveLocalEdits?: boolean;
+}
+
+/** What an import would do with one event. */
+export type IcsImportAction = "create" | "update" | "skip";
+
+/** One event's resolution, shown in the selection table before the import runs. */
+export interface IcsImportPlanRow {
+  /** Index into the *filtered* event list — the selection key. */
+  eventIndex: number;
+  action: IcsImportAction;
+  /** The entry this row would overwrite. Set only when `action` is "update". */
+  entryId?: number;
+  /** The event itself, for display. */
+  event: IcsEvent;
+  /** Why this row will be skipped. Set only when `action` is "skip". */
+  blockedReason?: string;
+}
+
+export interface IcsImportPlan {
+  rows: IcsImportPlanRow[];
+  createCount: number;
+  updateCount: number;
+  skipCount: number;
 }

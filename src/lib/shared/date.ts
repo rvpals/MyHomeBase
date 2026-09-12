@@ -35,6 +35,24 @@ export function todayIsoLocal(now: Date = new Date()): string {
   return toIsoDateLocal(now);
 }
 
+/**
+ * An instant as a local-clock `HH:MM`, for labelling something already filed
+ * under a local-calendar date.
+ *
+ * The counterpart to `toIsoDateLocal`, and it exists because the obvious
+ * shortcut is wrong in a way that is easy to ship: `toISOString().slice(11, 16)`
+ * reads the *UTC* clock, so a register taken at 23:01 in a negative-offset
+ * timezone gets labelled "03:01" — and worse, labelled 03:01 on a day it was
+ * already correctly filed under, because the date came from the local clock and
+ * the label came from the UTC one. Two clocks for one event is the bug; this
+ * keeps the label on the same clock as the date.
+ *
+ * Pair with `toIsoDateLocal(instant)`, never with a UTC date slice.
+ */
+export function toLocalTimeLabel(instant: Date): string {
+  return `${pad(instant.getHours())}:${pad(instant.getMinutes())}`;
+}
+
 /** Parses "YYYY-MM-DD" as a local-midnight Date. Throws on anything else. */
 export function parseIsoDateLocal(isoDate: string): Date {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate.trim());
