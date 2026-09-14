@@ -8,6 +8,7 @@ import type { StoredColorTheme } from "@/lib/color-themes";
 import { COLOR_THEMES } from "@/lib/settings";
 import {
   createColorThemeAction,
+  generateColorThemesAction,
   deleteColorThemeAction,
   duplicateColorThemeAction,
   resetColorThemeAction,
@@ -60,6 +61,9 @@ export function ColorThemesView({
   const [builderError, setBuilderError] = useState<string | undefined>();
   const [rowError, setRowError] = useState<string | undefined>();
   const [confirmDelete, setConfirmDelete] = useState<StoredColorTheme | undefined>();
+  const [isGenerating, setIsGenerating] = useState(false);
+  // Cleared on the next generate so the count never describes an earlier batch.
+  const [generatedCount, setGeneratedCount] = useState<number | undefined>();
   const [busyId, setBusyId] = useState<string | undefined>();
 
   /** Every row action answers the same shape, so they are handled uniformly. */
@@ -122,9 +126,39 @@ export function ColorThemesView({
         >
           New theme
         </Button>
+        {/* The "surprise me" path beside the builder: five themes, saved straight away.
+            Every generated theme has already passed the same contrast check the builder
+            shows, so this cannot add one the builder would flag. */}
+        <Button
+          variant="secondary"
+          disabled={isGenerating}
+          title="Generate five new themes and save them"
+          onClick={async () => {
+            setRowError(undefined);
+            setGeneratedCount(undefined);
+            setIsGenerating(true);
+            try {
+              const result = await generateColorThemesAction();
+              if (!result.ok) setRowError(result.error ?? "Could not generate themes.");
+              else {
+                setGeneratedCount(result.count);
+                router.refresh();
+              }
+            } finally {
+              setIsGenerating(false);
+            }
+          }}
+        >
+          {isGenerating ? "Generating…" : "Generate New Theme"}
+        </Button>
         <span className="text-xs text-muted">
           {themes.length} theme{themes.length === 1 ? "" : "s"}
         </span>
+        {generatedCount !== undefined && (
+          <span className="text-xs text-brass-dark">
+            Added {generatedCount} new theme{generatedCount === 1 ? "" : "s"}.
+          </span>
+        )}
       </div>
 
       {rowError && (
@@ -141,6 +175,9 @@ export function ColorThemesView({
           // by an older migration and since removed from `COLOR_THEMES` cannot.
           const canReset =
             theme.isBuiltin && COLOR_THEMES.some((entry) => entry.id === theme.id);
+          // The floor `deleteColorTheme` enforces: something has to remain for
+          // `resolveActiveTheme` to answer with, and an empty picker offers no way back.
+          const isLastTheme = themes.length <= 1;
 
           return (
             <div
@@ -244,21 +281,28 @@ export function ColorThemesView({
                     Reset
                   </Button>
                 )}
-                {!theme.isBuiltin && (
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    disabled={isBusy || theme.id === savedThemeId}
-                    title={
-                      theme.id === savedThemeId
-                        ? "This theme is in use — switch to another one first"
-                        : "Delete this theme"
-                    }
-                    onClick={() => setConfirmDelete(theme)}
-                  >
-                    Delete
-                  </Button>
-                )}
+                {/* Built-ins are deletable too. The two refusals mirror
+                    `deleteColorTheme` exactly — the theme in use, and the last one
+                    standing — so the button is disabled for the same reasons the
+                    use-case would throw, rather than letting the reader find out
+                    from an error. A deleted built-in comes back via Reset. */}
+                <Button
+                  size="sm"
+                  variant="danger"
+                  disabled={isBusy || theme.id === savedThemeId || isLastTheme}
+                  title={
+                    theme.id === savedThemeId
+                      ? "This theme is in use — switch to another one first"
+                      : isLastTheme
+                        ? "The only theme left — create another one first"
+                        : theme.isBuiltin
+                          ? "Delete this built-in theme (Reset brings it back)"
+                          : "Delete this theme"
+                  }
+                  onClick={() => setConfirmDelete(theme)}
+                >
+                  Delete
+                </Button>
                 {theme.isBuiltin && (
                   <span
                     className="ml-auto text-[10px] uppercase tracking-wider"
@@ -288,7 +332,13 @@ export function ColorThemesView({
       {confirmDelete && (
         <Modal
           title={`Delete ${confirmDelete.name}?`}
-          description="This cannot be undone."
+          // A built-in is recoverable — Reset upserts it from the code definition —
+          // so it would be a lie to tell an admin this cannot be undone.
+          description={
+            confirmDelete.isBuiltin
+              ? "A built-in can be restored later with Reset."
+              : "This cannot be undone."
+          }
           onClose={() => setConfirmDelete(undefined)}
           isBusy={busyId === confirmDelete.id}
           size="sm"
@@ -318,6 +368,10 @@ export function ColorThemesView({
           <p className="text-sm text-muted">
             The theme is removed from the picker. Only a theme that is not in use can be
             deleted, so nothing on screen changes colour.
+            {confirmDelete.isBuiltin
+              ? " Because this one ships with the app, Reset will bring it back with its"
+                + " original colours and fonts."
+              : ""}
           </p>
         </Modal>
       )}

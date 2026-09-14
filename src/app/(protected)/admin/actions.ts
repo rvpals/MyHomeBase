@@ -12,6 +12,7 @@ import {
 import {
   createColorTheme,
   deleteColorTheme,
+  generateColorThemes,
   duplicateColorTheme,
   resetBuiltinTheme,
   saveColorTheme,
@@ -368,6 +369,9 @@ export async function clearIconOverrideAction(
    All five revalidate "layout": a theme change repaints the entire app, not this form.
    ------------------------------------------------------------------------ */
 
+/** How many themes one click of "Generate themes" writes. */
+const GENERATED_THEME_COUNT = 5;
+
 /** Mirrors the other result envelopes on this screen. */
 export interface ColorThemeResult {
   ok: boolean;
@@ -382,6 +386,36 @@ export interface ColorThemeFormInput {
   name: string;
   description: string;
   tokens: ColorThemeTokens;
+}
+
+/**
+ * Generates five themes and saves them immediately.
+ *
+ * No preview step, deliberately: this is the "surprise me" path next to the builder, and
+ * a preview would make it a slower way to do what the builder already does well. An admin
+ * who dislikes one deletes it — which built-ins are now deletable too, so the delete path
+ * is the same for every theme on the screen.
+ *
+ * `count` is fixed here rather than taken from the client: it decides how many rows a
+ * single click writes, so it is not the caller's to choose.
+ */
+export async function generateColorThemesAction(): Promise<ColorThemeResult & { count?: number }> {
+  try {
+    await requireAdmin();
+    // `Date.now()` is the seed, so two clicks give different themes. The use-case takes
+    // it as a parameter precisely so the tests can pin it.
+    const created = generateColorThemes(deps.colorThemeRepo, GENERATED_THEME_COUNT, Date.now());
+    revalidatePath("/", "layout");
+    if (created.length === 0) {
+      return { ok: false, error: "Could not generate any new themes — try again." };
+    }
+    return { ok: true, id: created[0].id, count: created.length };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not generate themes.",
+    };
+  }
 }
 
 export async function createColorThemeAction(

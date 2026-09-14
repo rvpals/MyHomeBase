@@ -6,6 +6,14 @@
 // concrete repository from "./color-themes/repository" instead — the same split
 // `src/lib/dashboard-texture/index.ts` keeps, for the same reason.
 export type { StoredColorTheme, ColorThemeWrite } from "./types";
+export {
+  createRandom,
+  deriveTokens,
+  generateThemes,
+  hslToHex,
+  type GeneratedTheme,
+  type ThemeMode,
+} from "./generate";
 export type { ColorThemeRepository } from "./ports";
 export {
   colorThemeIdSchema,
@@ -31,6 +39,7 @@ export {
 export {
   createColorTheme,
   deleteColorTheme,
+  generateColorThemes,
   duplicateColorTheme,
   getColorThemeById,
   listColorThemes,

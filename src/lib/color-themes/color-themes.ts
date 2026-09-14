@@ -1,3 +1,4 @@
+import { generateThemes } from "./generate";
 import {
   COLOR_THEMES,
   DEFAULT_COLOR_THEME_ID,
@@ -15,14 +16,18 @@ import type { ColorThemeWrite, StoredColorTheme } from "./types";
 /**
  * Every theme on offer, in picker order.
  *
- * Falls back to the code-defined `COLOR_THEMES` when the table is empty or absent — an
- * unmigrated database still shows the eight built-ins rather than an empty picker. The
- * repository's own `hasTable` guard returns `[]` in that case; this turns that into the
- * eight themes the app shipped with.
+ * Falls back to the code-defined `COLOR_THEMES` only when the table is **absent** — an
+ * unmigrated database still shows the eight built-ins rather than an empty picker.
+ *
+ * Deliberately keyed off `isMigrated()` rather than "the list came back empty", which is
+ * what this used to test. Built-ins are deletable now, so an empty *but present* table is
+ * a legitimate state an admin asked for; reading it as "unmigrated" would resurrect every
+ * deleted theme on the next render. `deleteColorTheme` refuses to remove the last theme,
+ * so in practice this table is never empty — but the two conditions mean different things
+ * and this one must not guess.
  */
 export function listColorThemes(repo: ColorThemeRepository): StoredColorTheme[] {
-  const stored = repo.list();
-  if (stored.length > 0) return stored;
+  if (repo.isMigrated()) return repo.list();
 
   return COLOR_THEMES.map((theme, index) => ({
     ...theme,
@@ -108,12 +113,22 @@ export function saveColorTheme(repo: ColorThemeRepository, input: unknown): Stor
 /**
  * Deletes a user theme.
  *
- * Refuses two cases. A built-in has a code definition and a reset path, so deleting it
- * would only mean "hide something the app ships with". The theme currently selected is
- * refused because the alternative — silently repointing `color_theme` at the default —
- * changes how the whole app looks as a side effect of a delete on a screen listing
- * eight other themes. The caller passes the active id in rather than reading the setting
- * here, so this stays a function of its arguments.
+ * Built-ins are deletable. They were not always: the argument was that a built-in has a
+ * code definition and a reset path, so removing it only means "hide something the app
+ * ships with". That is true, and it is the admin's call to make — an install that will
+ * never use six of the eight shouldn't have to scroll past them forever. A deleted
+ * built-in can be brought back with `resetBuiltinTheme`, which upserts from
+ * `COLOR_THEMES`, so this stays reversible without a hidden flag.
+ *
+ * Two refusals remain, both about leaving the app in a state it cannot render:
+ *
+ * - **The theme in use.** The alternative — silently repointing `color_theme` at the
+ *   default — changes how the whole app looks as a side effect of a delete on a screen
+ *   listing other themes. The caller passes the active id in rather than reading the
+ *   setting here, so this stays a function of its arguments.
+ * - **The last theme standing.** `resolveActiveTheme` must always answer, and a picker
+ *   with nothing in it offers no way back. The count comes from the repository rather
+ *   than a parameter because it is a fact about storage, not about the request.
  */
 export function deleteColorTheme(
   repo: ColorThemeRepository,
@@ -126,12 +141,14 @@ export function deleteColorTheme(
   if (!existing) {
     throw new Error(`No theme with the id "${id}".`);
   }
-  if (existing.isBuiltin) {
-    throw new Error(`"${existing.name}" is a built-in theme — reset it instead of deleting it.`);
-  }
   if (id === activeThemeId) {
     throw new Error(
       `"${existing.name}" is the theme in use — switch to another one before deleting it.`,
+    );
+  }
+  if (repo.list().length <= 1) {
+    throw new Error(
+      `"${existing.name}" is the only theme left — create another one before deleting it.`,
     );
   }
 
@@ -206,4 +223,50 @@ export function duplicateColorTheme(
     // next to the theme it was copied from.
     sortOrder: 100,
   });
+}
+
+/**
+ * Generates `count` themes and stores them, returning what was created.
+ *
+ * A batch rather than `count` separate calls so the ids are unique **against each other**
+ * as well as against storage: the generator needs to see the ids it has already handed
+ * out within this run, which a per-theme call site could not tell it.
+ *
+ * Saved immediately rather than previewed — this is the "surprise me" path, and an admin
+ * who dislikes one deletes it. `insert` is per theme and there is no transaction: a
+ * failure partway leaves the earlier themes in place, which is the right outcome for a
+ * generator (some new themes, no error state to clean up) and why this returns the list
+ * it actually wrote rather than assuming all of them.
+ *
+ * The seed is a parameter so a caller can make this deterministic. The action passes
+ * `Date.now()`; the tests pass a constant.
+ */
+export function generateColorThemes(
+  repo: ColorThemeRepository,
+  count: number,
+  seed: number,
+): StoredColorTheme[] {
+  // Both sources matter: stored ids, and the code-defined built-in ids that
+  // `createColorTheme` refuses even when no row exists for them.
+  const existingIds = [
+    ...repo.list().map((theme) => theme.id),
+    ...COLOR_THEMES.map((theme) => theme.id),
+  ];
+
+  const created: StoredColorTheme[] = [];
+  for (const generated of generateThemes(count, existingIds, seed)) {
+    created.push(
+      createColorTheme(repo, {
+        id: generated.id,
+        name: generated.name,
+        description: generated.description,
+        tokens: generated.tokens,
+        // Same default a hand-made theme gets, so generated themes sort after the
+        // built-ins and among themselves by name.
+        sortOrder: 100,
+      }),
+    );
+  }
+
+  return created;
 }

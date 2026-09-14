@@ -117,9 +117,20 @@ export class SqliteColorThemeRepository implements ColorThemeRepository {
     return this.tableExists;
   }
 
+  /**
+   * Public face of the private `hasTable()` guard — see `ColorThemeRepository`.
+   *
+   * `listColorThemes` needs this to tell "unmigrated" from "an admin deleted them
+   * all", now that built-ins can be deleted.
+   */
+  isMigrated(): boolean {
+    return this.hasTable();
+  }
+
   list(): StoredColorTheme[] {
-    // No table yet means "no themes stored", which `listColorThemes` turns into the eight
+    // No table yet means "nothing migrated", which `listColorThemes` turns into the eight
     // code-defined built-ins — so an unmigrated database renders the app it always did.
+    // An *empty but present* table is a different thing and stays empty.
     if (!this.hasTable()) return [];
 
     const rows = this.db

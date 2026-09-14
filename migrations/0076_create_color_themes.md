@@ -67,6 +67,23 @@ it means "this id has a definition in code to fall back to", not "read-only".
 `getColorTheme(id)` also stays, as the fallback for a selected id with no row at all
 (a hand-edited setting, or a theme deleted out from under the setting).
 
+### Amendment, 2026-09-13: built-ins are deletable
+
+The `is_builtin` comment in the `.sql` says "a built-in cannot be deleted". That was true
+when this migration ran and is **no longer true** — the `.sql` is left as applied rather
+than rewritten, so read this instead. `deleteColorTheme` now removes a built-in like any
+other theme, keeping two refusals: the theme currently **in use**, and the **last theme
+standing** (`resolveActiveTheme` must always answer, and an empty picker offers no way
+back). Nothing about the schema changed; the rule was always enforced in the use-case
+layer, which is where it was relaxed.
+
+The consequence worth knowing: `listColorThemes` used to read **zero rows** as
+"unmigrated" and substitute the eight code-defined built-ins. With deletion allowed that
+would silently resurrect deleted themes, so it now keys off `ColorThemeRepository.isMigrated()`
+(the table's existence) instead. An empty *but present* table stays empty.
+`is_builtin` keeps exactly the meaning described above, which is what makes a deleted
+built-in recoverable: **Reset** upserts it back from `COLOR_THEMES`.
+
 ## Why `id` is a slug and not an autoincrement integer
 
 `sys_app_settings.color_theme` has held strings like `signal-deck` since migration 0004,

@@ -10,6 +10,16 @@ export interface ColorThemeRepository {
    * table that holds tens of rows at most, no BLOBs.
    */
   list(): StoredColorTheme[];
+  /**
+   * Whether the themes table exists at all.
+   *
+   * The distinction `list()` alone cannot make: **zero rows because nothing is
+   * migrated** versus **zero rows because an admin deleted every theme**. Before
+   * built-ins were deletable, `listColorThemes` read an empty list as "unmigrated"
+   * and substituted the eight code-defined themes — which, once deletion is
+   * allowed, would silently resurrect whatever was just deleted on the next render.
+   */
+  isMigrated(): boolean;
   get(id: string): StoredColorTheme | undefined;
   /** Creates a user theme (`is_builtin = 0`). Throws if the id is taken. */
   insert(theme: ColorThemeWrite): void;

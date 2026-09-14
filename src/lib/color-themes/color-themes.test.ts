@@ -4,6 +4,7 @@ import {
   createColorTheme,
   deleteColorTheme,
   duplicateColorTheme,
+  generateColorThemes,
   getColorThemeById,
   listColorThemes,
   resetBuiltinTheme,
@@ -38,12 +39,18 @@ function theme(overrides: Partial<ColorThemeWrite> = {}): ColorThemeWrite {
 }
 
 /** In-memory double. The use-cases depend on the port, so no database is needed. */
-function fakeRepo(seed: StoredColorTheme[] = []) {
+function fakeRepo(seed: StoredColorTheme[] = [], migrated = true) {
   const rows = new Map<string, StoredColorTheme>();
   for (const row of seed) rows.set(row.id, row);
 
   const repo: ColorThemeRepository & { rows: Map<string, StoredColorTheme> } = {
     rows,
+    // The real repository answers this from `sqlite_master`. Defaulting to `true`
+    // means a seeded fake behaves like a migrated database; pass `false` to model
+    // one where the table doesn't exist yet.
+    isMigrated() {
+      return migrated;
+    },
     list() {
       return [...rows.values()].sort(
         (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name),
@@ -85,13 +92,22 @@ describe("listColorThemes", () => {
     expect(listColorThemes(repo).map((entry) => entry.id)).toEqual(["a-theme", "b-theme"]);
   });
 
-  it("falls back to the code-defined built-ins when the table is empty", () => {
+  it("falls back to the code-defined built-ins when the table is absent", () => {
     // An unmigrated database must still show the eight themes the app shipped with,
     // rather than an empty picker.
-    const listed = listColorThemes(fakeRepo());
+    const listed = listColorThemes(fakeRepo([], false));
     expect(listed).toHaveLength(COLOR_THEMES.length);
     expect(listed.every((entry) => entry.isBuiltin)).toBe(true);
     expect(listed[0].id).toBe(COLOR_THEMES[0].id);
+  });
+
+  it("does NOT resurrect built-ins from an empty but migrated table", () => {
+    // The reason this is keyed off `isMigrated()` rather than "the list is empty":
+    // built-ins are deletable, so an empty migrated table is a state an admin asked
+    // for, and substituting the code defaults would undo their deletions on the next
+    // render. (`deleteColorTheme`'s floor makes this hard to reach in practice — this
+    // pins the distinction, not the reachability.)
+    expect(listColorThemes(fakeRepo([], true))).toEqual([]);
   });
 });
 
@@ -192,23 +208,44 @@ describe("saveColorTheme", () => {
 
 describe("deleteColorTheme", () => {
   it("removes a user theme that is not in use", () => {
-    const repo = fakeRepo([{ ...theme(), isBuiltin: false, updatedAt: "" }]);
+    // Two rows: with only one the floor below would fire first, and this test would
+    // pass for the wrong reason.
+    const repo = fakeRepo([
+      { ...theme(), isBuiltin: false, updatedAt: "" },
+      builtinRow("signal-deck"),
+    ]);
     deleteColorTheme(repo, { id: "my-theme" }, "signal-deck");
-    expect(repo.rows.size).toBe(0);
+    expect(repo.rows.has("my-theme")).toBe(false);
   });
 
-  it("refuses to delete a built-in", () => {
+  it("deletes a built-in that is not in use", () => {
+    // Built-ins used to be refused here. They are deletable now: an install that will
+    // never use six of the eight shouldn't scroll past them forever, and `Reset`
+    // upserts a deleted built-in back from `COLOR_THEMES`, so this stays reversible.
+    const repo = fakeRepo([builtinRow("signal-deck"), builtinRow("daybreak")]);
+    deleteColorTheme(repo, { id: "signal-deck" }, "daybreak");
+    expect(repo.rows.has("signal-deck")).toBe(false);
+    expect(repo.rows.size).toBe(1);
+  });
+
+  it("refuses to delete the last theme standing", () => {
+    // `resolveActiveTheme` must always answer, and an empty picker offers no way back.
     const repo = fakeRepo([builtinRow("signal-deck")]);
-    expect(() => deleteColorTheme(repo, { id: "signal-deck" }, "daybreak")).toThrow(/built-in/);
+    expect(() => deleteColorTheme(repo, { id: "signal-deck" }, "daybreak")).toThrow(
+      /only theme left/,
+    );
     expect(repo.rows.size).toBe(1);
   });
 
   it("refuses to delete the theme currently in use", () => {
     // The alternative - silently repointing the setting at the default - would change
     // how the whole app looks as a side effect of a delete.
-    const repo = fakeRepo([{ ...theme(), isBuiltin: false, updatedAt: "" }]);
+    const repo = fakeRepo([
+      { ...theme(), isBuiltin: false, updatedAt: "" },
+      builtinRow("signal-deck"),
+    ]);
     expect(() => deleteColorTheme(repo, { id: "my-theme" }, "my-theme")).toThrow(/theme in use/);
-    expect(repo.rows.size).toBe(1);
+    expect(repo.rows.has("my-theme")).toBe(true);
   });
 
   it("refuses a theme that does not exist", () => {
@@ -273,7 +310,9 @@ describe("duplicateColorTheme", () => {
   });
 
   it("can duplicate a code-only built-in on an unmigrated table", () => {
-    const repo = fakeRepo();
+    // `false` = the table doesn't exist, which is what makes `listColorThemes` offer
+    // the code-defined built-ins for `getColorThemeById` to find.
+    const repo = fakeRepo([], false);
     expect(duplicateColorTheme(repo, "copper-vault", "Mine").tokens.brass).toBe("#C87F4A");
   });
 
@@ -294,5 +333,59 @@ describe("getColorThemeById", () => {
     // Callers that need a definite answer use resolveActiveTheme; this one has to be
     // able to report absence so the picker can grey out a stale selection.
     expect(getColorThemeById(fakeRepo(), "ghost-theme")).toBeUndefined();
+  });
+});
+
+describe("generateColorThemes", () => {
+  it("creates the requested number of themes and stores them", () => {
+    const repo = fakeRepo();
+    const created = generateColorThemes(repo, 5, 2026);
+    expect(created).toHaveLength(5);
+    expect(repo.rows.size).toBe(5);
+  });
+
+  it("stores them as user themes, not built-ins", () => {
+    // `insert` hardcodes is_builtin = 0, so a generated theme is never resettable —
+    // it has no code definition to reset to.
+    const repo = fakeRepo();
+    generateColorThemes(repo, 5, 3).forEach((theme) => expect(theme.isBuiltin).toBe(false));
+  });
+
+  it("does not collide with themes already stored", () => {
+    const repo = fakeRepo();
+    generateColorThemes(repo, 5, 4);
+    const firstBatch = [...repo.rows.keys()];
+    generateColorThemes(repo, 5, 4);
+    // Same seed twice: without the existing-id guard the second batch would collide
+    // with the first and `createColorTheme` would throw.
+    expect(repo.rows.size).toBe(10);
+    expect([...repo.rows.keys()]).toEqual(expect.arrayContaining(firstBatch));
+  });
+
+  it("does not collide with a built-in id even when no row exists for it", () => {
+    // `createColorTheme` refuses a built-in id outright, so the generator has to avoid
+    // them whether or not the table has been seeded.
+    const repo = fakeRepo();
+    const created = generateColorThemes(repo, 5, 8);
+    const builtinIds = COLOR_THEMES.map((theme) => theme.id);
+    created.forEach((theme) => expect(builtinIds).not.toContain(theme.id));
+  });
+
+  it("is deterministic for a seed", () => {
+    const first = generateColorThemes(fakeRepo(), 5, 555).map((theme) => theme.id);
+    const second = generateColorThemes(fakeRepo(), 5, 555).map((theme) => theme.id);
+    expect(first).toEqual(second);
+  });
+
+  it("gives generated themes the default sort order so they follow the built-ins", () => {
+    generateColorThemes(fakeRepo(), 3, 6).forEach((theme) => {
+      expect(theme.sortOrder).toBe(100);
+    });
+  });
+
+  it("creates nothing when asked for none", () => {
+    const repo = fakeRepo();
+    expect(generateColorThemes(repo, 0, 1)).toEqual([]);
+    expect(repo.rows.size).toBe(0);
   });
 });
