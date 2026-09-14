@@ -319,6 +319,15 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    id: "journal_section_new_entry",
+    label: "New Journal Entry",
+    group: "Journal sections",
+    where: "Journal → section panel → New Journal Entry.",
+    defaultConcept: "new-journal",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     id: "journal_section_entries",
     label: "Entries",
     group: "Journal sections",
@@ -690,6 +699,19 @@ export const ICON_SLOTS: IconSlot[] = [
     wired: true,
     namespace: "tree",
   },
+  {
+    id: "games_card_bridge",
+    label: "Bridge",
+    group: "Games cards",
+    where: "Games & Puzzles → Arcade → the Bridge card.",
+    // Shares the playing-card glyph with Blackjack, on the same reasoning the two
+    // mahjong cards share a tile: both games are played with a deck of cards, and a
+    // second hand-drawn card concept would be the same picture under another name. An
+    // upload against either slot still overrides only that card.
+    defaultConcept: "game-blackjack",
+    wired: true,
+    namespace: "tree",
+  },
 
   /* ---------------------------------------------------------------------------------
      Expense — nav sections.
@@ -896,6 +918,20 @@ export const ICON_SLOTS: IconSlot[] = [
     group: "Music Library view tabs",
     where: "My Music Library → Library → the Artists tab in the view strip.",
     defaultConcept: "users",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "music_tab_albums",
+    label: "Albums tab",
+    group: "Music Library view tabs",
+    where: "My Music Library → Library → the Albums tab in the view strip.",
+    // `window` because a cover is a square framed picture, and because browse.test.ts
+    // asserts every view tab draws a DISTINCT glyph -- `grid` is already the Folders tab.
+    // There is no album concept in TREE_ICONS and an invented key renders NOTHING rather
+    // than falling back; a dedicated glyph would mean hand-drawing it across all 12
+    // generated sets, so the slot lets one be uploaded without touching code.
+    defaultConcept: "window",
     wired: true,
     namespace: "tree",
   },

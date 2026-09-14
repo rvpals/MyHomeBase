@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactElement, SVGProps } from "react";
+import type { TreeIconConcept } from "@/lib/icons";
 import { useIconSet } from "./icon-set-context";
 import type { ModuleIconSetId } from "./module-icon-sets.generated";
 import { TREE_ICON_GLYPHS } from "./tree-icon-sets.generated";
@@ -182,6 +183,22 @@ const Quote: IconComponent = (props) => (
     <path d="M11.3 17.8v-11" />
     <path d="M20.5 3.5c-1.2 3.4-3.4 6.2-6.4 8.4l-1.7 1.2 1-1.9c1.8-3.4 4.2-6 7.1-7.7Z" />
     <path d="M14.7 10.3l1.4 1.5" />
+  </svg>
+);
+
+// A new journal entry: a notebook with a spine, and a plus in the open page.
+// Deliberately not `quote` (a book with a quill — that reads as "a quotation",
+// and Journal's Report section already wears it) and not `plus` alone, which
+// says "add" without saying what. Moved here from journal-search-view.tsx when
+// New Journal Entry became a section and needed a slotted nav glyph.
+const NewJournal: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    {/* The cover, and the spine rule a notebook is bound along. */}
+    <path d="M5 4a1 1 0 0 1 1-1h13a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1z" />
+    <line x1="9" y1="3" x2="9" y2="21" />
+    {/* The plus, centred in the page beside the spine. */}
+    <line x1="14.5" y1="9" x2="14.5" y2="15" />
+    <line x1="11.5" y1="12" x2="17.5" y2="12" />
   </svg>
 );
 
@@ -588,6 +605,7 @@ const TREE_ICONS = {
   chart: Chart,
   upload: Upload,
   quote: Quote,
+  "new-journal": NewJournal,
   "stock-quote": StockQuote,
   grid: Grid,
   window: Window,
@@ -615,9 +633,18 @@ const TREE_ICONS = {
   "game-blackjack": GameBlackjack,
   "game-minesweeper": GameMinesweeper,
   "game-mahjong": GameMahjongMatch,
-} as const;
+} as const satisfies Record<TreeIconConcept, IconComponent>;
 
-export type TreeIconName = keyof typeof TREE_ICONS;
+/**
+ * One concept this table can draw.
+ *
+ * Derived from `TREE_ICON_NAMES` in `src/lib/icons` rather than from the table above,
+ * and the table is checked against it with `satisfies`. That is what keeps the two in
+ * step: a glyph added here without a name there fails typecheck, and vice versa. The
+ * slot registry's test iterates the names to prove every `defaultConcept` resolves, and
+ * it cannot import this file (it is under `src/lib/`, this imports React).
+ */
+export type TreeIconName = TreeIconConcept;
 
 /**
  * Whether `TreeIcon` will actually draw something for this key.

@@ -5,6 +5,7 @@ export type {
   IconOverrideImage,
   IconOverrideMap,
 } from "./types";
+export { TREE_ICON_NAMES, type TreeIconConcept } from "./tree-icon-names";
 export {
   ICON_SLOTS,
   getIconSlot,

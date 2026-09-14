@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { GAME_CATALOGUE } from "@/lib/games";
 import { MODULE_ICON_NAMES } from "@/lib/modules";
+import { TREE_ICON_NAMES } from "./tree-icon-names";
 import {
   ICON_SLOTS,
   gameSlotId,
@@ -19,22 +20,12 @@ import {
 // (`src/lib/music/browse-icons.fixture.ts` mirrors the same table for the same reason;
 // kept separate because that one is scoped to the concepts Music's browse views use.)
 //
-// Previously this test only asserted a tree default was non-empty, which made it blind
-// to the exact failure it documents — a default naming a concept no table has renders
-// blank. Enumerating them costs one line per new glyph.
-//
-// If tree-icons.tsx gains or loses a concept, update this list.
-const TREE_CONCEPTS = [
-  "flash", "note", "calendar", "clipboard", "clip", "shield", "refresh", "pencil",
-  "trash", "sliders", "gear",
-  "classroom", "list", "newspaper", "plus", "chart", "upload", "quote", "stock-quote",
-  "grid", "window", "palette", "info", "history", "users", "database", "shapes",
-  "search", "magic", "player", "star", "star-filled", "heart", "heart-filled",
-  "photo-stack", "photo", "photo-folder", "album",
-  // The seven Arcade game cards.
-  "game-2048", "game-arrows", "game-tetris", "game-sudoku", "game-blackjack",
-  "game-minesweeper", "game-mahjong",
-] as const;
+// Previously this test kept its own hand-copied list of tree concepts, with a comment
+// asking whoever touched the glyph table to update it. That drifted exactly once and
+// cost a red gate: `new-journal` shipped with Journal's New Entry section and the copy
+// wasn't updated. The names now come from `TREE_ICON_NAMES`, which `tree-icons.tsx`
+// checks its glyph table against with `satisfies` — so the compiler keeps them in step
+// and this test reads the same source of truth the app does.
 
 describe("ICON_SLOTS", () => {
   it("has no duplicate ids", () => {
@@ -75,7 +66,7 @@ describe("ICON_SLOTS", () => {
       if (slot.namespace === "module") {
         expect(MODULE_ICON_NAMES as readonly string[], slot.id).toContain(slot.defaultConcept);
       } else {
-        expect(TREE_CONCEPTS as readonly string[], slot.id).toContain(slot.defaultConcept);
+        expect(TREE_ICON_NAMES as readonly string[], slot.id).toContain(slot.defaultConcept);
       }
     }
   });
@@ -135,7 +126,7 @@ describe("sectionSlotId", () => {
         "charts", "tax-lots", "ai-export", "import", "settings",
       ],
       journal: [
-        "main", "entries", "calendar", "views", "report", "log", "import",
+        "main", "new-entry", "entries", "calendar", "views", "report", "log", "import",
         "calendar-import", "configuration", "templates", "metadata",
         "configuration-group", "import-group",
       ],
@@ -174,7 +165,7 @@ describe("tabSlotId", () => {
     // Same silent-failure risk as sections: the tab strip renders from
     // LIBRARY_VIEW_ICONS, so a renamed view slug stops matching its override quietly.
     const views = [
-      "all-songs", "artists", "genres", "playlists",
+      "all-songs", "artists", "albums", "genres", "playlists",
       "most-played", "years", "folders", "folder-tree",
     ];
     for (const view of views) {
