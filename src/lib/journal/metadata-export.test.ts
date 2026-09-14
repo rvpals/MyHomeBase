@@ -4,6 +4,7 @@ import {
   buildMetadataBundle,
   JOURNAL_METADATA_FORMAT,
   JOURNAL_METADATA_FORMAT_VERSION,
+  journalMetadataBundleSchema,
   metadataExportFileName,
   metadataPreferenceEntries,
   parseMetadataBundle,
@@ -187,6 +188,9 @@ const PREFERENCES: JournalPreferences = {
   defaultLocation: { latitude: 40.7128, longitude: -74.006, name: "New York" },
   temperatureUnit: "celsius",
   photoRoot: "//NAS_DS223/photos",
+  // Not the default, so the export assertion below proves the value is carried
+  // rather than being supplied by the schema's fallback.
+  handwritingSize: "2xl",
 };
 
 function bundleOf(overrides: Partial<JournalMetadataBundle> = {}): JournalMetadataBundle {
@@ -241,6 +245,7 @@ describe("buildMetadataBundle", () => {
       defaultLocation: { latitude: 40.7128, longitude: -74.006, name: "New York" },
       temperatureUnit: "celsius",
       photoRoot: "//NAS_DS223/photos",
+      handwritingSize: "2xl",
     });
   });
 
@@ -378,6 +383,7 @@ describe("planMetadataImport", () => {
           defaultLocation: null,
           temperatureUnit: "celsius",
           photoRoot: "//NAS_DS223/photos",
+          handwritingSize: "xl",
         },
       }),
     );
@@ -387,7 +393,12 @@ describe("planMetadataImport", () => {
     const withoutRoot = planMetadataImport(
       fakeRepo(),
       bundleOf({
-        preferences: { defaultLocation: null, temperatureUnit: "celsius", photoRoot: "" },
+        preferences: {
+          defaultLocation: null,
+          temperatureUnit: "celsius",
+          photoRoot: "",
+          handwritingSize: "xl",
+        },
       }),
     );
     expect(withoutRoot.skipsPhotoRoot).toBe(false);
@@ -566,12 +577,48 @@ describe("metadataPreferenceEntries", () => {
           defaultLocation: null,
           temperatureUnit: "celsius",
           photoRoot: "//NAS_DS223/photos",
+          handwritingSize: "xl",
         },
       }),
     );
 
     expect(entries.map((entry) => entry.key)).not.toContain("photo_root");
-    expect(entries).toEqual([{ key: "temperature_unit", value: "celsius" }]);
+    // The handwriting size *is* restored, unlike the photo root: a NAS volume path
+    // means nothing on another machine, while a type size travels with the journal.
+    expect(entries).toEqual([
+      { key: "temperature_unit", value: "celsius" },
+      { key: "handwriting_size", value: "xl" },
+    ]);
+  });
+
+  it("restores a non-default handwriting size", () => {
+    const entries = metadataPreferenceEntries(
+      bundleOf({
+        preferences: {
+          defaultLocation: null,
+          temperatureUnit: "celsius",
+          photoRoot: "",
+          handwritingSize: "4xl",
+        },
+      }),
+    );
+    expect(entries).toContainEqual({ key: "handwriting_size", value: "4xl" });
+  });
+
+  it("restores the floor for a bundle written before the size existed", () => {
+    // The compatibility path: an older backup has no `handwritingSize` at all, and
+    // the schema's default is what keeps it a legal file rather than a parse error.
+    const parsed = journalMetadataBundleSchema.parse({
+      format: JOURNAL_METADATA_FORMAT,
+      version: JOURNAL_METADATA_FORMAT_VERSION,
+      exportedAt: new Date().toISOString(),
+      preferences: { defaultLocation: null, temperatureUnit: "celsius", photoRoot: "" },
+    });
+    expect(parsed.preferences?.handwritingSize).toBe("xl");
+    expect(metadataPreferenceEntries(parsed)).toContainEqual({
+      key: "handwriting_size",
+      value: "xl",
+    });
   });
 
   it("emits the default location when the bundle has one", () => {
@@ -579,6 +626,7 @@ describe("metadataPreferenceEntries", () => {
 
     expect(entries).toEqual([
       { key: "temperature_unit", value: "celsius" },
+      { key: "handwriting_size", value: "2xl" },
       { key: "default_latitude", value: "40.7128" },
       { key: "default_longitude", value: "-74.006" },
       { key: "default_location_name", value: "New York" },
@@ -592,6 +640,7 @@ describe("metadataPreferenceEntries", () => {
           defaultLocation: { latitude: 1, longitude: 2, name: "   " },
           temperatureUnit: "fahrenheit",
           photoRoot: "",
+          handwritingSize: "xl",
         },
       }),
     );

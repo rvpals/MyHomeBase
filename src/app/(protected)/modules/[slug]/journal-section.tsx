@@ -38,6 +38,7 @@ import {
   JournalMetadataBackupButton,
   JournalMetadataRestoreCard,
 } from "./journal-metadata-transfer-view";
+import { JournalNewEntryView } from "./journal-new-entry-view";
 import { JournalPreferencesView } from "./journal-preferences-view";
 import { JournalTaxonomyView } from "./journal-taxonomy-view";
 import { JournalTemplatesView } from "./journal-templates-view";
@@ -67,13 +68,10 @@ function SectionBody({
 }) {
   switch (section) {
     case "main": {
-      const journalModule = getModuleBySlug(deps.moduleRepo, JOURNAL_MODULE_SLUG);
-      const preferences = resolveJournalPreferences(
-        journalModule ? listModuleSettingsFor(deps.moduleSettingsRepo, journalModule.id) : [],
-      );
-      // Read once and use twice: the names feed the entry form's dropdowns, and
-      // the same rows carry the icon mime types the Statistics lists need. The
-      // top-N queries return names and counts only, so icons are matched by name.
+      // The category and tag rows carry the icon mime types the Statistics
+      // lists need — the top-N queries return names and counts only, so icons
+      // are matched back by name. The entry form's dropdowns used to be fed
+      // from the same reads; that form is the New Journal Entry section now.
       const categories = listCategories(deps.journalRepo);
       const tags = listTags(deps.journalRepo);
       return (
@@ -81,13 +79,27 @@ function SectionBody({
           entries={listRecentEntries(deps.journalRepo, RECENT_JOURNAL_ENTRY_LIMIT)}
           topTags={listTopTags(deps.journalRepo, TOP_TAXONOMY_LIMIT)}
           topCategories={listTopCategories(deps.journalRepo, TOP_TAXONOMY_LIMIT)}
-          categoryOptions={categories.map((category) => category.name)}
-          tagOptions={tags.map((tag) => tag.name)}
           categoryIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("category", categories))}
           tagIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("tag", tags))}
+          canRunSql={isAdmin}
+        />
+      );
+    }
+
+    case "new-entry": {
+      // The same four reads the home screen does — the form needs the managed
+      // category and tag names for its dropdowns, the preferences for which
+      // fields it shows, and the enabled templates for its prefill picker.
+      const journalModule = getModuleBySlug(deps.moduleRepo, JOURNAL_MODULE_SLUG);
+      const preferences = resolveJournalPreferences(
+        journalModule ? listModuleSettingsFor(deps.moduleSettingsRepo, journalModule.id) : [],
+      );
+      return (
+        <JournalNewEntryView
+          categoryOptions={listCategories(deps.journalRepo).map((category) => category.name)}
+          tagOptions={listTags(deps.journalRepo).map((tag) => tag.name)}
           preferences={preferences}
           prefillTemplates={listEnabledPrefillTemplates(deps.journalRepo)}
-          canRunSql={isAdmin}
         />
       );
     }
@@ -232,31 +244,18 @@ export async function JournalSection({
     // `async` because the shell reads cookies for the session and the pinned
     // layout, which `next/headers` only exposes as a promise.
     <JournalShell>
-      {/* On the home screen the body goes *inside* the header: the title row's
-          New Entry button toggles the New Journal card down in JournalView, so
-          one client component has to sit above both. Other sections keep the
-          plain heading and render the body as a sibling. */}
+      {/* The home screen keeps its own header component for the search button
+          and the results panel it reveals. It no longer takes the body as
+          `children` — that was only so it could own the New Journal card's
+          open/closed state, and the card is its own section now. */}
       {section === "main" ? (
-        <JournalHomeHeader label={info.label} description={info.description}>
-          <div className="mt-6">
-            <SectionBody
-              section={section}
-              isAdmin={isAdmin}
-              filterQuery={filterQuery}
-              calendarScope={calendarScope}
-              calendarAnchor={calendarAnchor}
-              selectedDate={selectedDate}
-            />
-          </div>
-        </JournalHomeHeader>
+        <JournalHomeHeader label={info.label} description={info.description} />
       ) : (
+        // Title on the left, the section's own action on the right. Wraps and
+        // goes full-width under 1024px, so the button drops below the
+        // description rather than squeezing the heading. Sections with no
+        // action render exactly as they did before this row existed.
         <>
-          {/* Title on the left, the section's own action on the right — the same
-              arrangement the home screen's header uses for New Entry, which is
-              why that one is a separate component. Wraps and goes full-width
-              under 1024px, so the button drops below the description rather
-              than squeezing the heading. Sections with no action render
-              exactly as they did before this row existed. */}
           <div className="flex items-start justify-between gap-4 max-lg:flex-wrap">
             <div className="min-w-0">
               <h2 className="font-display text-2xl font-semibold text-ink">{info.label}</h2>
@@ -265,18 +264,18 @@ export async function JournalSection({
             {section === "metadata" && <JournalMetadataBackupButton />}
           </div>
           <div className="mt-3 h-px w-full bg-line" />
-          <div className="mt-6">
-            <SectionBody
-              section={section}
-              isAdmin={isAdmin}
-              filterQuery={filterQuery}
-              calendarScope={calendarScope}
-              calendarAnchor={calendarAnchor}
-              selectedDate={selectedDate}
-            />
-          </div>
         </>
       )}
+      <div className="mt-6">
+        <SectionBody
+          section={section}
+          isAdmin={isAdmin}
+          filterQuery={filterQuery}
+          calendarScope={calendarScope}
+          calendarAnchor={calendarAnchor}
+          selectedDate={selectedDate}
+        />
+      </div>
     </JournalShell>
   );
 }

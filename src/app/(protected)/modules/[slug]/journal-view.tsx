@@ -8,15 +8,8 @@ import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { SlotIcon } from "@/components/slot-icon";
 import { getIconSlot } from "@/lib/icons";
-import type {
-  JournalEntry,
-  JournalPreferences,
-  JournalPrefillTemplate,
-  JournalTaxonomyCount,
-} from "@/lib/journal";
+import type { JournalEntry, JournalTaxonomyCount } from "@/lib/journal";
 import { journalEntriesFilterHref, TaxonomyIconThumbnail } from "./journal-shared";
-import { JournalEntryForm } from "./journal-entry-form";
-import { useJournalNewEntry } from "./journal-new-entry-context";
 
 // Resolved once at module scope — `getIconSlot` reads the static registry, no I/O. The
 // non-null assertions are safe because slots.test.ts asserts each id is registered.
@@ -155,31 +148,20 @@ export function JournalView({
   entries,
   topTags,
   topCategories,
-  categoryOptions,
-  tagOptions,
   categoryIcons = {},
   tagIcons = {},
-  preferences,
-  prefillTemplates = [],
   canRunSql = false,
 }: {
   entries: JournalEntry[];
   topTags: JournalTaxonomyCount[];
   topCategories: JournalTaxonomyCount[];
-  categoryOptions: string[];
-  tagOptions: string[];
   /** Name -> icon URL for the Statistics lists; absent names just show no icon. */
   categoryIcons?: Record<string, string>;
   tagIcons?: Record<string, string>;
-  preferences: JournalPreferences;
-  /** Enabled prefill templates, for the entry form's picker. */
-  prefillTemplates?: JournalPrefillTemplate[];
   /** Only admins may run SQL; the server action re-checks this. */
   canRunSql?: boolean;
 }) {
   const router = useRouter();
-  // Owned by the title row's New Entry button, which lives in JournalHomeHeader.
-  const { isOpen: isNewEntryOpen } = useJournalNewEntry();
   const [sqlResult, setSqlResult] = useState<{ columns: string[]; rows: unknown[][] } | undefined>(undefined);
   const [sqlError, setSqlError] = useState<string | undefined>(undefined);
 
@@ -217,20 +199,6 @@ export function JournalView({
 
   return (
     <div className="flex flex-col gap-8">
-      {/* Hidden until the title row's New Entry button asks for it. Opened
-          that way it starts expanded — the reader just pressed the button that
-          means "write one", so a collapsed card would need a second click. */}
-      {isNewEntryOpen && (
-        <CollapsibleCard title="New Journal" defaultOpen className="paper-texture">
-          <JournalEntryForm
-            categoryOptions={categoryOptions}
-            tagOptions={tagOptions}
-            preferences={preferences}
-            prefillTemplates={prefillTemplates}
-          />
-        </CollapsibleCard>
-      )}
-
       <CollapsibleCard
         title="Statistics"
         titleIcon={<SlotIcon slot={STATS_SLOT} className="h-4 w-4" />}
@@ -303,7 +271,7 @@ export function JournalView({
               columns={COLUMNS}
               rows={entries}
               getRowKey={(entry) => entry.id}
-              emptyMessage="No entries yet. Add one above, or import a CSV below."
+              emptyMessage="No entries yet. Add one from New Journal Entry, or import a CSV."
               enableExport
               exportFileName="journal-entries"
               onRowClick={(entry) => openEntry(entry.id)}

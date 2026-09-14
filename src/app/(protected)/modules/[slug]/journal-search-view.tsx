@@ -15,7 +15,6 @@ import { Button } from "@/components/button";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import type { JournalEntry } from "@/lib/journal";
 import { searchJournalEntriesAction } from "./journal-actions";
-import { JournalNewEntryProvider, useJournalNewEntry } from "./journal-new-entry-context";
 
 // Shared form-input styling from design.md (mirrors journal-import-view).
 const SEARCH_INPUT_CLASS =
@@ -37,31 +36,6 @@ function SearchIcon({ className = "" }: { className?: string }) {
     >
       <circle cx="11" cy="11" r="7" />
       <line x1="21" y1="21" x2="16.65" y2="16.65" />
-    </svg>
-  );
-}
-
-// A new journal entry: a notebook with a spine, and a plus in the open page.
-// `TreeIcon` has `plus` and `quote` but neither reads as "new journal" alone,
-// and this is the only place that needs the combination.
-function NewJournalIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden="true"
-    >
-      {/* The cover, and the spine rule a notebook is bound along. */}
-      <path d="M5 4a1 1 0 0 1 1-1h13a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1z" />
-      <line x1="9" y1="3" x2="9" y2="21" />
-      {/* The plus, centred in the page beside the spine. */}
-      <line x1="14.5" y1="9" x2="14.5" y2="15" />
-      <line x1="11.5" y1="12" x2="17.5" y2="12" />
     </svg>
   );
 }
@@ -145,39 +119,22 @@ function buildColumns(term: string): DataGridColumn<JournalEntry>[] {
   ];
 }
 
-// Both round icon buttons in the title row wear this.
+// The round icon button in the title row wears this.
 const HEADER_ICON_BUTTON_CLASS =
   "flex h-8 w-8 items-center justify-center rounded-full text-muted transition-colors hover:bg-brass-soft hover:text-brass-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
 
 /**
- * The home screen's heading row, and the section body beneath it.
+ * The home screen's heading row: the title, and the search button that reveals
+ * a keyword panel beneath it.
  *
- * It takes the body as `children` so it can own the New Journal card's
- * open/closed state: the button lives up here in the title row and the card
- * lives down in `JournalView`. The state reaches the card through
- * `JournalNewEntryProvider` rather than a prop, because `children` arrives
- * already rendered from a server component.
+ * A client component of its own rather than the plain heading every other
+ * section uses, because the search panel is state the heading owns. It used to
+ * take the section body as `children` so it could also own the New Journal
+ * card's open/closed state across the server boundary — that card is its own
+ * section now, so the body is a plain sibling again.
  */
-export function JournalHomeHeader({
-  label,
-  description,
-  children,
-}: {
-  label: string;
-  description: string;
-  children?: ReactNode;
-}) {
-  return (
-    <JournalNewEntryProvider>
-      <JournalHomeHeaderInner label={label} description={description} />
-      {children}
-    </JournalNewEntryProvider>
-  );
-}
-
-function JournalHomeHeaderInner({ label, description }: { label: string; description: string }) {
+export function JournalHomeHeader({ label, description }: { label: string; description: string }) {
   const router = useRouter();
-  const { isOpen: isNewEntryOpen, setIsOpen: setIsNewEntryOpen } = useJournalNewEntry();
   const [isOpen, setIsOpen] = useState(false);
   const [term, setTerm] = useState("");
   const [results, setResults] = useState<JournalEntry[] | undefined>(undefined);
@@ -229,16 +186,6 @@ function JournalHomeHeaderInner({ label, description }: { label: string; descrip
           className={HEADER_ICON_BUTTON_CLASS}
         >
           <SearchIcon className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={() => setIsNewEntryOpen(!isNewEntryOpen)}
-          aria-label={isNewEntryOpen ? "Hide the new entry form" : "New entry"}
-          title="New entry"
-          aria-expanded={isNewEntryOpen}
-          className={HEADER_ICON_BUTTON_CLASS}
-        >
-          <NewJournalIcon className="h-4 w-4" />
         </button>
       </div>
       <p className="mt-1 text-sm text-muted">{description}</p>

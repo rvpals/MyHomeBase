@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { JOURNAL_SETTING_KEYS, journalPreferencesToEntries, resolveJournalPreferences } from "./preferences";
+import {
+  HANDWRITING_SIZE_OPTIONS,
+  JOURNAL_SETTING_KEYS,
+  handwritingSizeClass,
+  journalPreferencesToEntries,
+  resolveJournalPreferences,
+} from "./preferences";
 import type { ModuleSetting } from "@/lib/module-settings";
+import type { JournalHandwritingSize } from "./types";
 
 function setting(key: string, value: string): ModuleSetting {
   return { id: 1, moduleId: 3, key, value };
@@ -12,6 +19,7 @@ describe("resolveJournalPreferences", () => {
       defaultLocation: null,
       temperatureUnit: "fahrenheit",
       photoRoot: "",
+      handwritingSize: "xl",
     });
   });
 
@@ -26,6 +34,7 @@ describe("resolveJournalPreferences", () => {
       defaultLocation: { latitude: 40.34, longitude: -74.46, name: "Princeton, NJ" },
       temperatureUnit: "celsius",
       photoRoot: "",
+      handwritingSize: "xl",
     });
   });
 
@@ -41,6 +50,7 @@ describe("journalPreferencesToEntries", () => {
       defaultLocation: { latitude: 1, longitude: 2, name: "" },
       temperatureUnit: "fahrenheit",
       photoRoot: "",
+      handwritingSize: "xl",
     });
     expect(entries.some((entry) => entry.key === JOURNAL_SETTING_KEYS.defaultLocationName)).toBe(false);
     expect(entries.every((entry) => entry.value !== "")).toBe(true);
@@ -52,6 +62,9 @@ describe("journalPreferencesToEntries", () => {
       temperatureUnit: "celsius" as const,
       // A path with a space, which is what the real archive uses.
       photoRoot: "/volume1/MEDIA/PHOTO/BY YEAR",
+      // Not the default, so the round-trip proves the value is actually carried
+      // rather than being reconstructed by the fallback.
+      handwritingSize: "3xl" as const,
     };
     const rebuilt = resolveJournalPreferences(
       journalPreferencesToEntries(original).map((entry, index) => ({
@@ -72,6 +85,7 @@ describe("journalPreferencesToEntries", () => {
         defaultLocation: null,
         temperatureUnit: "fahrenheit",
         photoRoot: "   ",
+        handwritingSize: "xl",
       }).some((entry) => entry.key === JOURNAL_SETTING_KEYS.photoRoot),
     ).toBe(false);
 
@@ -81,6 +95,7 @@ describe("journalPreferencesToEntries", () => {
       defaultLocation: null,
       temperatureUnit: "fahrenheit",
       photoRoot: "  /volume1/MEDIA/PHOTO/BY YEAR  ",
+      handwritingSize: "xl",
     });
     expect(entries.find((entry) => entry.key === JOURNAL_SETTING_KEYS.photoRoot)?.value).toBe(
       "/volume1/MEDIA/PHOTO/BY YEAR",
@@ -92,5 +107,60 @@ describe("journalPreferencesToEntries", () => {
       setting(JOURNAL_SETTING_KEYS.photoRoot, "  /volume1/MEDIA/PHOTO/BY YEAR  "),
     ]);
     expect(prefs.photoRoot).toBe("/volume1/MEDIA/PHOTO/BY YEAR");
+  });
+});
+
+describe("handwriting size", () => {
+  it("reads every offered size back as itself", () => {
+    for (const option of HANDWRITING_SIZE_OPTIONS) {
+      const prefs = resolveJournalPreferences([
+        setting(JOURNAL_SETTING_KEYS.handwritingSize, option.value),
+      ]);
+      expect(prefs.handwritingSize, `stored ${option.value}`).toBe(option.value);
+    }
+  });
+
+  it("falls back to the 20px floor for a value it does not offer", () => {
+    // The failure path that matters: the stored value becomes a CSS class, so a
+    // hand-edited row, or one written by a build that offered a size this one
+    // doesn't, must not reach the DOM as `text-xs` or as no size at all.
+    for (const bogus of ["xs", "sm", "base", "9xl", "20px", "", "Small"]) {
+      const prefs = resolveJournalPreferences([
+        setting(JOURNAL_SETTING_KEYS.handwritingSize, bogus),
+      ]);
+      expect(prefs.handwritingSize, `stored ${JSON.stringify(bogus)}`).toBe("xl");
+    }
+  });
+
+  it("never offers a size below the font-script floor design.md sets", () => {
+    // Guards the rule itself rather than one call site: the floor is 20px, and the
+    // smallest offered option is what enforces it.
+    expect(Math.min(...HANDWRITING_SIZE_OPTIONS.map((option) => option.px))).toBe(20);
+  });
+
+  it("maps every offered size to a distinct literal Tailwind class", () => {
+    // Literal, because Tailwind compiles classes ahead of time — an interpolated
+    // `text-[...]` would emit no CSS and the field would silently lose its size.
+    const classes = HANDWRITING_SIZE_OPTIONS.map((option) => option.className);
+    expect(new Set(classes).size).toBe(HANDWRITING_SIZE_OPTIONS.length);
+    for (const option of HANDWRITING_SIZE_OPTIONS) {
+      expect(handwritingSizeClass(option.value)).toBe(option.className);
+    }
+  });
+
+  it("falls back to the default class for an unrecognised size", () => {
+    expect(handwritingSizeClass("xs" as JournalHandwritingSize)).toBe("text-xl");
+  });
+
+  it("always writes a size row, since the value has no 'unset' member", () => {
+    const entries = journalPreferencesToEntries({
+      defaultLocation: null,
+      temperatureUnit: "fahrenheit",
+      photoRoot: "",
+      handwritingSize: "2xl",
+    });
+    expect(entries.find((entry) => entry.key === JOURNAL_SETTING_KEYS.handwritingSize)?.value).toBe(
+      "2xl",
+    );
   });
 });

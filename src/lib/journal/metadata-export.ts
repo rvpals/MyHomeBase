@@ -104,6 +104,13 @@ const metadataPreferencesSchema = z.object({
   temperatureUnit: z.enum(["celsius", "fahrenheit"]),
   /** Exported for the record; ignored on restore. */
   photoRoot: z.string().default(""),
+  /**
+   * Defaulted rather than required, so a bundle written before this preference
+   * existed is still a legal file and restores at the 20px floor. Kept in step
+   * with `JournalHandwritingSize` — the enum is the closed set the read path
+   * clamps to.
+   */
+  handwritingSize: z.enum(["xl", "2xl", "3xl", "4xl"]).default("xl"),
 });
 
 /**
@@ -218,6 +225,7 @@ export function buildMetadataBundle(
       defaultLocation: preferences.defaultLocation,
       temperatureUnit: preferences.temperatureUnit,
       photoRoot: preferences.photoRoot,
+      handwritingSize: preferences.handwritingSize,
     },
   };
 }
@@ -368,6 +376,11 @@ export function metadataPreferenceEntries(
   // `String(...)` pushed below.
   const entries: { key: string; value: string }[] = [
     { key: "temperature_unit", value: preferences.temperatureUnit },
+    // Restored like the unit, not skipped like the photo root: the photo root is
+    // machine-specific (a NAS volume path means nothing on a Windows box), while
+    // a type size is a reading preference that travels with the journal. The
+    // schema defaults it, so a pre-existing bundle restores the floor.
+    { key: "handwriting_size", value: preferences.handwritingSize },
   ];
 
   const location = preferences.defaultLocation;

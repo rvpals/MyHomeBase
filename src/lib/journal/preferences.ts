@@ -1,5 +1,9 @@
 import type { ModuleSetting } from "@/lib/module-settings";
-import type { JournalPreferences, JournalTemperatureUnit } from "./types";
+import type {
+  JournalHandwritingSize,
+  JournalPreferences,
+  JournalTemperatureUnit,
+} from "./types";
 
 // Module-settings keys the journal preferences are stored under.
 export const JOURNAL_SETTING_KEYS = {
@@ -8,9 +12,47 @@ export const JOURNAL_SETTING_KEYS = {
   defaultLocationName: "default_location_name",
   temperatureUnit: "temperature_unit",
   photoRoot: "photo_root",
+  handwritingSize: "handwriting_size",
 } as const;
 
 const DEFAULT_TEMPERATURE_UNIT: JournalTemperatureUnit = "fahrenheit";
+
+/** 20px — the `font-script` floor, and what the field used before it was configurable. */
+const DEFAULT_HANDWRITING_SIZE: JournalHandwritingSize = "xl";
+
+/**
+ * The offered handwriting sizes, in order: what to store, what to call it, and the
+ * Tailwind class that draws it.
+ *
+ * One table so the Preferences dropdown and the Content field read the same list —
+ * a second copy is how a select ends up offering a size nothing renders. `label`
+ * is named rather than numeric because this is a reading-comfort choice, not a
+ * typographic one.
+ *
+ * Every `className` here is a literal that appears in the source, so Tailwind's
+ * scanner emits all four. Don't rewrite these as interpolations.
+ */
+export const HANDWRITING_SIZE_OPTIONS: readonly {
+  value: JournalHandwritingSize;
+  label: string;
+  className: string;
+  px: number;
+}[] = [
+  { value: "xl", label: "Small", className: "text-xl", px: 20 },
+  { value: "2xl", label: "Medium", className: "text-2xl", px: 24 },
+  { value: "3xl", label: "Large", className: "text-3xl", px: 30 },
+  { value: "4xl", label: "X-Large", className: "text-4xl", px: 36 },
+];
+
+/**
+ * The Tailwind class for a stored size, falling back to the default for anything
+ * unrecognised — so a hand-edited settings row can't leave the field with no size
+ * class at all.
+ */
+export function handwritingSizeClass(size: JournalHandwritingSize): string {
+  const match = HANDWRITING_SIZE_OPTIONS.find((option) => option.value === size);
+  return (match ?? HANDWRITING_SIZE_OPTIONS[0]).className;
+}
 
 /**
  * Parses the journal module's key/value settings rows into typed preferences.
@@ -39,7 +81,16 @@ export function resolveJournalPreferences(settings: ModuleSetting[]): JournalPre
   // would make the folder unreachable.
   const photoRoot = (byKey.get(JOURNAL_SETTING_KEYS.photoRoot) ?? "").trim();
 
-  return { defaultLocation, temperatureUnit, photoRoot };
+  // Clamped against the offered list rather than cast, for the same reason the unit
+  // above is: the stored value becomes a CSS class, and an unrecognised one (a hand-
+  // edited row, a value from an older build) would render the field with no size at
+  // all. Falling back keeps the 20px `font-script` floor a property of the read path.
+  const storedSize = byKey.get(JOURNAL_SETTING_KEYS.handwritingSize);
+  const handwritingSize =
+    HANDWRITING_SIZE_OPTIONS.find((option) => option.value === storedSize)?.value ??
+    DEFAULT_HANDWRITING_SIZE;
+
+  return { defaultLocation, temperatureUnit, photoRoot, handwritingSize };
 }
 
 /**
@@ -52,6 +103,9 @@ export function journalPreferencesToEntries(
 ): { key: string; value: string }[] {
   const entries: { key: string; value: string }[] = [
     { key: JOURNAL_SETTING_KEYS.temperatureUnit, value: preferences.temperatureUnit },
+    // Always written, including at the default: the value is a closed set with no
+    // "unset" member, so a row is never ambiguous the way a blank path would be.
+    { key: JOURNAL_SETTING_KEYS.handwritingSize, value: preferences.handwritingSize },
   ];
 
   // Omitted when blank rather than stored as "": moduleSettingEntrySchema requires a

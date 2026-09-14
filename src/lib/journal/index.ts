@@ -19,6 +19,7 @@ export type {
   JournalPreferences,
   JournalDefaultLocation,
   JournalTemperatureUnit,
+  JournalHandwritingSize,
   JournalPrefillField,
   JournalPrefillMode,
   JournalPrefillFieldValue,
@@ -35,6 +36,8 @@ export type {
 export {
   resolveJournalPreferences,
   journalPreferencesToEntries,
+  handwritingSizeClass,
+  HANDWRITING_SIZE_OPTIONS,
   JOURNAL_SETTING_KEYS,
 } from "./preferences";
 export {

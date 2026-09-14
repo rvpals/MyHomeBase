@@ -8,6 +8,7 @@
 
 export const JOURNAL_SECTIONS = [
   "main",
+  "new-entry",
   "entries",
   "calendar",
   "views",
@@ -31,6 +32,12 @@ export const JOURNAL_SECTION_INFO: Record<JournalSection, { label: string; descr
   main: {
     label: "Home screen",
     description: "Today in history, recent entries, and quick actions.",
+  },
+  "new-entry": {
+    // Slug stays "new-entry" — it is the route and the `journal_section_new_entry`
+    // icon-slot id, and renaming either would orphan an uploaded icon override.
+    label: "New Journal Entry",
+    description: "Write a new journal entry.",
   },
   entries: {
     label: "Entries",
@@ -115,6 +122,9 @@ export const JOURNAL_DATA_MANAGEMENT_SECTIONS: readonly JournalSection[] = [
 /** Section → nav icon key, resolved by TreeIcon. */
 export const JOURNAL_SECTION_ICONS: Record<JournalSection, string> = {
   main: "grid",
+  // A notebook with a plus in the page. Deliberately not `plus` (which says
+  // "add" without saying what) and not `quote` — that one is Report's.
+  "new-entry": "new-journal",
   entries: "list",
   calendar: "history",
   views: "window",

@@ -3,7 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
-import type { JournalPreferences, JournalTemperatureUnit } from "@/lib/journal";
+import {
+  HANDWRITING_SIZE_OPTIONS,
+  type JournalHandwritingSize,
+  type JournalPreferences,
+  type JournalTemperatureUnit,
+} from "@/lib/journal";
 import type { PhotoArchiveDiagnosis } from "@/lib/journal-photos";
 import { checkPhotoAccessAction, saveJournalPreferencesAction } from "./journal-actions";
 import { JournalLocationField, type PickedLocation } from "./journal-location-field";
@@ -33,6 +38,9 @@ export function JournalPreferencesView({ preferences }: { preferences: JournalPr
   );
   const [unit, setUnit] = useState<JournalTemperatureUnit>(preferences.temperatureUnit);
   const [photoRoot, setPhotoRoot] = useState(preferences.photoRoot);
+  const [handwritingSize, setHandwritingSize] = useState<JournalHandwritingSize>(
+    preferences.handwritingSize,
+  );
   const [isBusy, setIsBusy] = useState(false);
   const [message, setMessage] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -52,6 +60,7 @@ export function JournalPreferencesView({ preferences }: { preferences: JournalPr
           : null,
         temperatureUnit: unit,
         photoRoot,
+        handwritingSize,
       };
       const result = await saveJournalPreferencesAction(next);
       if (!result.ok) {
@@ -93,8 +102,9 @@ export function JournalPreferencesView({ preferences }: { preferences: JournalPr
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted">
-        Set a default location and temperature unit. New entries use the default location to fetch
-        today&apos;s weather when you haven&apos;t picked a location on the entry itself.
+        Set a default location, a temperature unit, and how the entry form&apos;s handwriting looks.
+        New entries use the default location to fetch today&apos;s weather when you haven&apos;t
+        picked a location on the entry itself.
       </p>
 
       {error && <p className="text-sm text-red-400">{error}</p>}
@@ -111,6 +121,28 @@ export function JournalPreferencesView({ preferences }: { preferences: JournalPr
           <option value="fahrenheit">Fahrenheit (°F)</option>
           <option value="celsius">Celsius (°C)</option>
         </select>
+      </label>
+
+      {/* Options come from the lib table, not a second list here: a hardcoded
+          copy is how a dropdown ends up offering a size the field can't draw. */}
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium text-ink">Handwriting font size</span>
+        <select
+          value={handwritingSize}
+          onChange={(event) => setHandwritingSize(event.target.value as JournalHandwritingSize)}
+          className={SELECT_CLASS}
+        >
+          {HANDWRITING_SIZE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label} ({option.px}px)
+            </option>
+          ))}
+        </select>
+        <span className="mt-1 block text-xs text-muted">
+          How large the cursive text is on a new entry&apos;s Content field with{" "}
+          <strong className="font-medium text-ink">Handwriting</strong> switched on. The field&apos;s
+          normal (non-cursive) size doesn&apos;t change, so it still matches the other fields.
+        </span>
       </label>
 
       <div className="flex flex-col gap-2 border-t border-line pt-4">

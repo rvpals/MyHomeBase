@@ -198,6 +198,20 @@ export interface TodayInHistoryEntry {
 
 export type JournalTemperatureUnit = "celsius" | "fahrenheit";
 
+/**
+ * How large the Content field's cursive (Handwriting mode) text is drawn.
+ *
+ * The value is the **Tailwind size suffix**, not a pixel count. Tailwind compiles
+ * its classes ahead of time, so an arbitrary number can't become a class at the
+ * call site — `text-[${n}px]` produces no CSS at all. Storing the suffix keeps
+ * every representable value a class that provably exists.
+ *
+ * The set starts at `xl` (20px) because that is the floor `design.md` sets for
+ * `font-script`; there is deliberately no smaller member, so the floor is a
+ * property of the type rather than a check someone has to remember.
+ */
+export type JournalHandwritingSize = "xl" | "2xl" | "3xl" | "4xl";
+
 export interface JournalDefaultLocation {
   latitude: number;
   longitude: number;
@@ -219,6 +233,15 @@ export interface JournalPreferences {
    * each environment holds its own and neither needs a redeploy to fix a typo.
    */
   photoRoot: string;
+  /**
+   * Size of the Content field's text in Handwriting (cursive) mode. Does not
+   * affect the field with Handwriting off — that stays the standard form-field
+   * size so it matches Title and Place name.
+   *
+   * Per-module like every other preference here, so on a shared install it is
+   * one setting for everyone rather than per-reader.
+   */
+  handwritingSize: JournalHandwritingSize;
 }
 
 // --- Prefill templates -------------------------------------------------------
