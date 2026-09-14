@@ -1,8 +1,8 @@
 "use client";
 
-// The Library section: eight ways of looking at the same catalog.
+// The Library section: nine ways of looking at the same catalog.
 //
-// One component rather than eight routes, because the views share their whole apparatus --
+// One component rather than nine routes, because the views share their whole apparatus --
 // the track list, the pager, the player queue -- and differ only in how they group. The
 // active view lives in the URL (`?view=`) so a view is linkable and survives a reload,
 // which is the same reasoning the Journal module applies to its filter.
@@ -11,7 +11,7 @@
 // its tracks. The chosen group also travels in the URL.
 //
 // Narrow screens keep the same components and restyle with `max-lg:`; the tab strip
-// scrolls horizontally rather than becoming a select, so all eight stay one tap away.
+// scrolls horizontally rather than becoming a select, so all nine stay one tap away.
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -29,11 +29,13 @@ import {
   type LibraryGroup,
   type LibraryView,
   type Playlist,
+  type Album,
 } from "@/lib/music";
 import {
   createPlaylistAction,
   deletePlaylistAction,
   getPlaylistTracksAction,
+  listAlbumsAction,
   listArtistsAction,
   listFolderTreeAction,
   listFoldersFlatAction,
@@ -86,8 +88,8 @@ export function MusicLibraryView() {
 
   return (
     <div>
-      {/* The eight tabs. Horizontally scrollable when narrow rather than collapsing into a
-          select: eight is few enough to keep them all reachable with one tap. */}
+      {/* The nine tabs. Horizontally scrollable when narrow rather than collapsing into a
+          select: nine is few enough to keep them all reachable with one tap. */}
       <nav
         aria-label="Library views"
         className="mb-4 flex gap-1 overflow-x-auto border-b border-line pb-2"
@@ -118,6 +120,9 @@ export function MusicLibraryView() {
       <p className="mb-3 text-xs text-muted">{LIBRARY_VIEW_INFO[view].description}</p>
 
       {view === "all-songs" && <AllSongs />}
+      {view === "albums" && (
+        <Albums groupKey={groupKey} onPick={(key) => setParams({ group: key })} />
+      )}
       {view === "most-played" && <MostPlayed />}
       {view === "playlists" && <Playlists />}
       {(view === "artists" || view === "genres" || view === "years") && (
@@ -217,6 +222,133 @@ function AllSongs() {
         totalCount={page.totalCount}
         pageSize={PAGE_SIZE}
         isLoading={isLoading}
+        onOffsetChange={setOffset}
+      />
+    </div>
+  );
+}
+
+// --- Albums --------------------------------------------------------------------
+
+/**
+ * The album wall: a cover grid, then one album's tracks.
+ *
+ * The only view that leads with an image rather than a text row, because a cover is how
+ * anyone actually recognises an album. Covers come from `/api/music/albums/[id]/cover`
+ * one request per tile -- `listAlbums` reports `hasCoverImage` WITHOUT reading the BLOB,
+ * so a page of 50 albums costs 50 small cached image requests instead of megabytes of
+ * base64 in the action's payload (coding-guide.md, per-row images).
+ *
+ * Narrow screens restyle the same grid with `max-lg:` column counts -- 2 up on a phone,
+ * 6 on a desktop. No separate component, so the desktop classes provably cannot regress.
+ */
+function Albums({
+  groupKey,
+  onPick,
+}: {
+  groupKey: string | null;
+  onPick: (key: string) => void;
+}) {
+  const [albums, setAlbums] = useState<Album[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [offset, setOffset] = useState(0);
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    void listAlbumsAction({
+      search: search.trim() === "" ? undefined : search.trim(),
+      limit: PAGE_SIZE,
+      offset,
+    }).then((result) => {
+      if (!cancelled) {
+        setAlbums(result.albums);
+        setTotalCount(result.totalCount);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [search, offset]);
+
+  // An album key is its id, so the label for the heading is looked up in the loaded page
+  // and falls back to the id -- the same shape as GroupedView, which cannot be reused
+  // here because its rows are text and these are covers.
+  if (groupKey !== null) {
+    const picked = albums.find((album) => String(album.id) === groupKey);
+    const label = picked === undefined ? "Album" : picked.name;
+    return <GroupTracks view="albums" groupKey={groupKey} label={label} />;
+  }
+
+  return (
+    <div>
+      <input
+        type="search"
+        value={search}
+        onChange={(event) => {
+          setSearch(event.target.value);
+          setOffset(0);
+        }}
+        placeholder="Search albums or album artists"
+        aria-label="Search albums"
+        className="mb-3 w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink"
+      />
+
+      {albums.length === 0 ? (
+        <div className="rounded-xl border border-line p-6">
+          <p className="text-sm text-muted">
+            {search.trim() === ""
+              ? "No albums catalogued yet. Use Scan Music to catalog a folder from the NAS."
+              : `No album matches "${search.trim()}".`}
+          </p>
+        </div>
+      ) : (
+        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          {albums.map((album) => (
+            <li key={album.id}>
+              <button
+                type="button"
+                onClick={() => onPick(String(album.id))}
+                className="group w-full text-left"
+              >
+                <span className="block overflow-hidden rounded-lg border border-line bg-brass-soft">
+                  {album.hasCoverImage ? (
+                    /* A plain <img>, not next/image: the bytes come from our own
+                       authenticated route, so there is nothing for the optimizer to
+                       fetch or cache at build time. */
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={`/api/music/albums/${album.id}/cover`}
+                      alt=""
+                      loading="lazy"
+                      className="aspect-square w-full object-cover transition group-hover:opacity-90"
+                    />
+                  ) : (
+                    <span className="flex aspect-square w-full items-center justify-center">
+                      <TreeIcon name="window" className="h-8 w-8 text-muted" />
+                    </span>
+                  )}
+                </span>
+                <span className="mt-1.5 block truncate text-sm text-ink">{album.name}</span>
+                <span className="block truncate text-xs text-muted">
+                  {album.albumArtist === "" ? "Unknown artist" : album.albumArtist}
+                </span>
+                <span className="block text-xs text-muted">
+                  {album.trackCount} {album.trackCount === 1 ? "track" : "tracks"}
+                  {album.releaseYear !== undefined && ` · ${album.releaseYear}`}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <Pager
+        offset={offset}
+        shown={albums.length}
+        totalCount={totalCount}
+        pageSize={PAGE_SIZE}
+        isLoading={false}
         onOffsetChange={setOffset}
       />
     </div>

@@ -9,10 +9,11 @@ import {
 } from "./browse";
 
 describe("the library view registry", () => {
-  it("lists the eight views the Library section offers", () => {
+  it("lists the nine views the Library section offers", () => {
     expect(LIBRARY_VIEWS).toEqual([
       "all-songs",
       "artists",
+      "albums",
       "genres",
       "playlists",
       "most-played",
@@ -57,7 +58,8 @@ describe("isLibraryView", () => {
   it("rejects anything else, so a URL cannot name a view that does not exist", () => {
     expect(isLibraryView("all songs")).toBe(false);
     expect(isLibraryView("")).toBe(false);
-    expect(isLibraryView("albums")).toBe(false);
+    // "albums" became a real view; the singular still must not resolve.
+    expect(isLibraryView("album")).toBe(false);
     expect(isLibraryView("toString")).toBe(false);
   });
 });

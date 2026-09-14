@@ -1,6 +1,6 @@
-// The Library section's eight views, as a domain concept.
+// The Library section's nine views, as a domain concept.
 //
-// Each view is a different way of grouping the same catalog. Six of them are pure reads
+// Each view is a different way of grouping the same catalog. Seven of them are pure reads
 // over what the scanner already stored; Playlists and Most Played need the tables and
 // columns 0055 added.
 //
@@ -10,6 +10,7 @@
 export const LIBRARY_VIEWS = [
   "all-songs",
   "artists",
+  "albums",
   "genres",
   "playlists",
   "most-played",
@@ -28,6 +29,7 @@ export function isLibraryView(value: string): value is LibraryView {
 export const LIBRARY_VIEW_INFO: Record<LibraryView, { label: string; description: string }> = {
   "all-songs": { label: "All Songs", description: "Everything in the catalog." },
   artists: { label: "Artists", description: "Grouped by performer." },
+  albums: { label: "Albums", description: "Every album in the catalog, by cover." },
   genres: { label: "Genres", description: "Grouped by tagged genre." },
   playlists: { label: "Playlists", description: "Lists you have built by hand." },
   "most-played": { label: "Most Played", description: "Ordered by how often each track has been started." },
@@ -48,6 +50,7 @@ export const LIBRARY_VIEW_INFO: Record<LibraryView, { label: string; description
  *
  *   all-songs   list      -- a flat list of everything
  *   artists     users     -- people
+ *   albums      window    -- a cover is a square framed picture; `grid` was taken by Folders
  *   genres      shapes    -- categories
  *   playlists   note      -- something written down by hand
  *   most-played history   -- play history, ordered by frequency
@@ -58,6 +61,7 @@ export const LIBRARY_VIEW_INFO: Record<LibraryView, { label: string; description
 export const LIBRARY_VIEW_ICONS: Record<LibraryView, string> = {
   "all-songs": "list",
   artists: "users",
+  albums: "window",
   genres: "shapes",
   playlists: "note",
   "most-played": "history",

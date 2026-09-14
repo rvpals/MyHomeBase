@@ -631,6 +631,20 @@ export async function listArtistsAction(input: { search?: string; limit?: number
   return deps.musicRepo.listArtists(page);
 }
 
+/**
+ * A page of albums for the Albums view.
+ *
+ * `listAlbums` already paginates, searches (name or album artist) and reports
+ * `hasCoverImage` without reading the cover BLOB, so this is the same thin wrapper
+ * as `listArtistsAction` rather than a new use-case -- there is no decision to make
+ * between the boundary and the query.
+ */
+export async function listAlbumsAction(input: { search?: string; limit?: number; offset?: number }) {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  const page = browsePageSchema.parse(input);
+  return deps.musicRepo.listAlbums(page);
+}
+
 export async function listGenresAction() {
   await requireModuleAccess(ACCESS_MODULE_SLUG);
   return deps.musicRepo.listGenres();
@@ -679,6 +693,14 @@ export async function listGroupTracksAction(input: {
   if (view === "folders" || view === "folder-tree") {
     const folder = musicFolderSchema.parse(input.key);
     return searchLibraryTracks(deps.musicRepo, { folder, ...page });
+  }
+
+  // Albums key on `mus_albums.id`, not on a tag string, so the key is validated as an
+  // id and filtered with `albumId`. Matching on the album NAME instead would merge two
+  // different albums that happen to share a title across artists.
+  if (view === "albums") {
+    const albumId = trackIdSchema.parse(input.key);
+    return searchLibraryTracks(deps.musicRepo, { albumId, ...page });
   }
 
   const { tracks, totalCount } = deps.musicRepo.searchTracks({
