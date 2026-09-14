@@ -8,6 +8,7 @@ import { arrowDifficultyOf, formatScore, type GameSummary } from "@/lib/games";
 import { gameSlotId, getIconSlot } from "@/lib/icons";
 import { Game2048View } from "./game-2048-view";
 import { GameBlackjackView } from "./game-blackjack-view";
+import { GameBridgeView } from "./game-bridge-view";
 import { GameArrowsView } from "./game-arrows-view";
 import { GameMahjongMatchView } from "./game-mahjong-match-view";
 import { GameMahjongView } from "./game-mahjong-view";
@@ -121,6 +122,9 @@ export function GamesArcadeView({ games }: { games: GameSummary[] }) {
               {open.game.key === "mahjong" && (
                 <GameMahjongView bestScore={open.best?.score ?? 0} />
               )}
+              {/* The second card game, sharing the deck in `playing-cards.ts` with
+                  Blackjack above — the split that module documents made this cheap. */}
+              {open.game.key === "bridge" && <GameBridgeView bestScore={open.best?.score ?? 0} />}
             </div>
           </div>
         </Modal>

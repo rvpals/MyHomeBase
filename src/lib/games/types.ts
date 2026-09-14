@@ -1267,3 +1267,295 @@ export interface MahjongScore {
   /** Scoreboard points the fan total converts to. */
   points: number;
 }
+
+/* -----------------------------------------------------------------------------------
+   Bridge — the four-player trick-taking game, contract rules, one hand at a time.
+
+   Reuses the game-agnostic deck in `playing-cards.ts`, exactly as Blackjack does. The
+   deck has no opinion on what a card is worth, which is what makes it reusable: in
+   Blackjack an ace is 1 or 11, here it is simply the highest card in its suit. See
+   `rankOrder` in `game-bridge.ts` for this game's answer.
+
+   Seats reuse `SEATS`/`Seat`/`HUMAN_SEAT` from the Mahjong section above rather than
+   declaring a second four-seat model. They mean the same thing — four positions in the
+   order play passes — and a `BridgeSeat` that was structurally identical would be two
+   names for one concept. Bridge adds what Mahjong has no need for: partnerships, since
+   seats 0/2 and 1/3 are the two sides. See `PARTNER_OF` below.
+
+   One hand, not a rubber. A rubber is several hands with carried-over part-scores and
+   changing vulnerability, which would need persistence between Arcade sessions — and an
+   Arcade game is not persisted mid-play (see `games-arcade-view.tsx`). One deal scored on
+   its own merits is a complete unit of bridge and a complete Arcade run, the same call
+   Mahjong makes in scoring one hand rather than a full four-wind match.
+----------------------------------------------------------------------------------- */
+
+/** Cards each player holds at the deal. The whole deck, dealt out four ways. */
+export const BRIDGE_HAND_SIZE = 13;
+
+/** Tricks in a hand. One per card held, so the deal divides exactly. */
+export const BRIDGE_TRICKS = 13;
+
+/**
+ * The partner of each seat, indexed by seat.
+ *
+ * Partners sit opposite, so a partner is always `(seat + 2) % 4`. A lookup table rather
+ * than that arithmetic at each call site, because "who is my partner" is asked
+ * constantly during the auction and the play, and the table says what the expression
+ * only implies.
+ */
+export const PARTNER_OF: readonly Seat[] = [2, 3, 0, 1];
+
+/**
+ * The two partnerships.
+ *
+ * Named by seat pair rather than by compass direction, so nothing here has to agree with
+ * Mahjong's `SEAT_WINDS` — the wind a seat holds is a mahjong concept, and importing it
+ * here would tie two games' vocabularies together. `ns` is seats 0 and 2; `ew` is seats 1
+ * and 3. `HUMAN_SEAT` is 1, so the human always plays the `ew` side with seat 3 opposite.
+ */
+export const BRIDGE_SIDES = ["ns", "ew"] as const;
+
+export type BridgeSide = (typeof BRIDGE_SIDES)[number];
+
+/**
+ * The five denominations a contract can be played in, weakest first.
+ *
+ * Suits in ascending bidding order — clubs, diamonds, hearts, spades — then no-trumps
+ * above all of them. This order *is* the bidding rule: a bid outranks another at the same
+ * level if its denomination appears later here, so an index comparison is the whole
+ * ranking test and there is no second rank table to keep in step.
+ *
+ * Deliberately not `Suit` from `playing-cards.ts` plus a flag: that array is in deck
+ * order (spades first), which is the wrong order for bidding, and no-trumps is not a suit
+ * at all. Two different orderings of four suits is exactly the kind of thing that
+ * silently breaks, so the bidding order is stated once, here.
+ */
+export const BRIDGE_DENOMINATIONS = ["clubs", "diamonds", "hearts", "spades", "nt"] as const;
+
+export type Denomination = (typeof BRIDGE_DENOMINATIONS)[number];
+
+/** The denominations that are actual suits — everything except no-trumps. */
+export type TrumpSuit = Exclude<Denomination, "nt">;
+
+/** The highest contract level. Seven means taking all thirteen tricks. */
+export const BRIDGE_MAX_LEVEL = 7;
+
+/**
+ * Tricks a side must take beyond the first six to make a contract.
+ *
+ * Bridge counts contracts from a "book" of six tricks: 1NT is seven tricks, 7NT is all
+ * thirteen. The offset is why a level is 1-7 rather than 7-13, and why every trick sum in
+ * scoring adds it back.
+ */
+export const BRIDGE_BOOK = 6;
+
+/** What a player may do when it is their turn to call. */
+export const BRIDGE_CALLS = ["bid", "pass", "double", "redouble"] as const;
+
+export type CallKind = (typeof BRIDGE_CALLS)[number];
+
+/**
+ * One call in the auction.
+ *
+ * `level` and `denomination` are set only for a `bid` and undefined for the other three,
+ * rather than a discriminated union per call kind. The auction is a flat list the view
+ * renders as a four-column grid, and a union would mean narrowing at every point a call
+ * is displayed, for no gain — the invalid combination (a pass carrying a level) is
+ * unreachable because only `makeBid` constructs a bid.
+ */
+export interface BridgeCall {
+  seat: Seat;
+  kind: CallKind;
+  /** 1-7, for a `bid` only. */
+  level?: number;
+  /** For a `bid` only. */
+  denomination?: Denomination;
+}
+
+/** Whether a contract was doubled, redoubled, or neither. Multiplies everything at stake. */
+export const BRIDGE_DOUBLINGS = ["none", "doubled", "redoubled"] as const;
+
+export type Doubling = (typeof BRIDGE_DOUBLINGS)[number];
+
+/**
+ * The contract the auction settled on.
+ *
+ * `declarer` is the member of the winning side who *first* named the final denomination —
+ * not whoever made the last bid. That distinction decides who plays the hand and who
+ * becomes dummy, and it is the rule most often got wrong: if the human's partner opened
+ * 1♠ and the human later bid 4♠, the partner declares. See `declarerFor` in
+ * `game-bridge.ts`.
+ */
+export interface Contract {
+  level: number;
+  denomination: Denomination;
+  declarer: Seat;
+  doubling: Doubling;
+}
+
+/** One card played into the current trick, and by whom. */
+export interface TrickCard {
+  seat: Seat;
+  card: Card;
+}
+
+/** A completed trick: the four cards in the order played, and the seat that won it. */
+export interface Trick {
+  cards: readonly TrickCard[];
+  winner: Seat;
+}
+
+/**
+ * The phases of a hand.
+ *
+ * `auction` runs until three passes close it, or four opening passes end the hand as a
+ * pass-out. `play` runs thirteen tricks. `ended` covers a made contract, a defeated one
+ * and a pass-out alike — the outcome says which.
+ *
+ * Three phases rather than a separate `awaiting-dummy` or `scoring`: nothing waits for
+ * input between the last trick and the score, and dummy going face-up is a fact about the
+ * state (`play` has begun) rather than a state of its own. The same reasoning that
+ * collapsed Mahjong's `RESOLVING_CALLS`.
+ */
+export const BRIDGE_PHASES = ["auction", "play", "ended"] as const;
+
+export type BridgePhase = (typeof BRIDGE_PHASES)[number];
+
+/**
+ * How the hand finished, **from the human's point of view** — not the declaring side's.
+ *
+ * The same convention as `MahjongOutcome`, and for the same reason: the scoreboard
+ * records what the player achieved, and the human is as often defending as declaring.
+ * Defeating a contract you defended is a `won`.
+ *
+ * `passed-out` is its own outcome rather than a `draw`: nobody bid and no cards were
+ * played, and calling that a draw would imply a contest that never happened.
+ */
+export const BRIDGE_OUTCOMES = ["playing", "won", "lost", "passed-out"] as const;
+
+export type BridgeOutcome = (typeof BRIDGE_OUTCOMES)[number];
+
+/**
+ * A hand of bridge, as one immutable value.
+ *
+ * `hands` is indexed by seat and holds what each seat still has *unplayed*, so a card
+ * moves out of it and into the trick. Cards already won live in `tricks`, which is what
+ * lets `allCards` account for all fifty-two at any moment — the conservation invariant
+ * the tests assert, mirroring Mahjong's `allTiles`.
+ */
+export interface BridgeState {
+  /** Unplayed cards per seat, sorted for display by `sortHand`. */
+  hands: readonly (readonly Card[])[];
+  phase: BridgePhase;
+  /** Whose turn it is to call or to play. */
+  turn: Seat;
+  /** The seat that dealt, and so the seat that called first. */
+  dealer: Seat;
+  /** Every call so far, in order. The view renders it as the auction grid. */
+  auction: readonly BridgeCall[];
+  /** The settled contract, or `undefined` during the auction and on a pass-out. */
+  contract: Contract | undefined;
+  /**
+   * Cards on the table in the trick being played, in the order they were played.
+   *
+   * The first entry's seat is the leader, and its card sets the suit everyone must
+   * follow — so the lead is read off this array rather than stored a second time.
+   */
+  currentTrick: readonly TrickCard[];
+  /** Completed tricks in order, each with its winner. */
+  tricks: readonly Trick[];
+  /**
+   * Whether dummy's hand is face-up yet.
+   *
+   * True from the first card of the first trick. Dummy is face-up in bridge, so this is
+   * not hidden information — it is the one hand the view *must* reveal, and the flag
+   * exists because it becomes visible one card into the play rather than at the deal.
+   */
+  dummyExposed: boolean;
+  outcome: BridgeOutcome;
+}
+
+/**
+ * What a finished hand scored, itemised.
+ *
+ * Parts rather than one number, so the result panel can show the arithmetic the way a
+ * bridge scorer writes it — a player wants to see why 4♠ doubled and made scored what it
+ * did. `points` is what reaches the scoreboard.
+ */
+export interface BridgeScore {
+  /** Tricks the declaring side actually took. */
+  tricksTaken: number;
+  /** Tricks needed: the contract's level plus `BRIDGE_BOOK`. */
+  tricksNeeded: number;
+  /** Whether the declaring side made the contract. */
+  made: boolean;
+  /** Tricks over the contract; 0 unless made with extras. */
+  overtricks: number;
+  /** Tricks short; 0 unless defeated. */
+  undertricks: number;
+  /** What the declaring side earned. Negative when defeated. */
+  declarerScore: number;
+  /** Scoreboard points for the human, floored at 0. See `scoreGame` in `game-bridge.ts`. */
+  points: number;
+  /** One line per scoring component, for the result panel. */
+  lines: readonly { label: string; value: number }[];
+}
+
+/**
+ * Points per trick bid and made, by denomination. The standard contract-bridge table.
+ *
+ * No-trumps scores 40 for the first trick and 30 for each after, which no single
+ * per-trick number expresses; this holds 30 so the multiplication is right for every
+ * trick after the first, and `contractPoints` adds `BRIDGE_NT_FIRST_TRICK_BONUS` once.
+ */
+export const BRIDGE_TRICK_VALUES: Readonly<Record<Denomination, number>> = {
+  clubs: 20,
+  diamonds: 20,
+  hearts: 30,
+  spades: 30,
+  nt: 30,
+};
+
+/** The extra for the first trick of a no-trump contract, on top of `BRIDGE_TRICK_VALUES.nt`. */
+export const BRIDGE_NT_FIRST_TRICK_BONUS = 10;
+
+/** Contract points at or above which a made contract earns the game bonus, not the part-score. */
+export const BRIDGE_GAME_THRESHOLD = 100;
+
+/** The bonus for making a part-score — a contract worth less than a game. */
+export const BRIDGE_PARTSCORE_BONUS = 50;
+
+/**
+ * The bonus for bidding and making a game, not vulnerable.
+ *
+ * This hand is always played not vulnerable: vulnerability is a property of a rubber's
+ * running score, and this game deals one hand with nothing carried in. Fixing it means
+ * one bonus table instead of two, and no invisible state affecting the score.
+ */
+export const BRIDGE_GAME_BONUS = 300;
+
+/** The bonus for bidding and making a small slam — twelve tricks, level six. */
+export const BRIDGE_SMALL_SLAM_BONUS = 500;
+
+/** The bonus for bidding and making a grand slam — all thirteen tricks, level seven. */
+export const BRIDGE_GRAND_SLAM_BONUS = 1000;
+
+/** The bonus for making a doubled or redoubled contract — the "insult" bonus. */
+export const BRIDGE_INSULT_BONUS = 50;
+
+/** Per undertrick, not vulnerable and undoubled. */
+export const BRIDGE_UNDERTRICK_VALUE = 50;
+
+/**
+ * High-card points per honour, the Milton Work count every bridge player uses.
+ *
+ * The bots bid off this and nothing else (see `evaluateHand`), and the view shows the
+ * human their own count — it is the number a player at a real table adds up first, so
+ * hiding it would be withholding something they would always have.
+ */
+export const BRIDGE_HCP: Readonly<Record<string, number>> = {
+  A: 4,
+  K: 3,
+  Q: 2,
+  J: 1,
+};

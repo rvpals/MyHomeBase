@@ -27,8 +27,9 @@ function ArcadeInstructions() {
     <>
       <p className="text-sm text-muted">
         A small arcade. Pick a game, play it in the browser, and your result goes onto a
-        scoreboard shared by everyone in the house. Six games so far: 2048, the Arrow
-        Clearing maze puzzle, Tetris, Sudoku, Blackjack, and Minesweeper.
+        scoreboard shared by everyone in the house. Nine games so far: 2048, the Arrow
+        Clearing maze puzzle, Tetris, Sudoku, Blackjack, Minesweeper, Mahjong Match, the
+        four-player Mahjong, and Bridge.
       </p>
       <Section title="How this module is laid out">
         <ul className="flex list-disc flex-col gap-1 pl-5">
@@ -351,6 +352,73 @@ function ArcadeInstructions() {
           points a second, so a fast clear scores best and an expert board beats a
           beginner one comfortably. A clear never scores less than 100. Hitting a mine
           scores nothing at all.
+        </p>
+      </Section>
+      <Section title="Playing Bridge">
+        <p>
+          One deal of contract bridge. You sit South with a partner opposite and two
+          opponents either side; all three are played by the computer. A hand has two
+          halves — the auction, where the four of you bid for the right to name the
+          contract, and the play, where thirteen tricks decide whether that contract was
+          made.
+        </p>
+        <p>
+          <strong className="text-ink">The auction.</strong> Pick a level (1&ndash;7) and a
+          denomination (♣ ♦ ♥ ♠ or no-trumps) and bid. Each bid must be higher than the
+          last: a higher level, or the same level in a higher denomination, with no-trumps
+          above all four suits. Pass when you have nothing to say. Three passes after a bid
+          end the auction; four passes at the start throw the hand in.
+        </p>
+        <p>
+          A level is <em>six tricks more than it says</em>, which is the one piece of
+          arithmetic bridge asks you to remember: 1♠ means taking seven of the thirteen
+          tricks, and 7NT means taking all of them.
+        </p>
+        <ul className="flex list-disc flex-col gap-1 pl-5">
+          <li>
+            <strong className="text-ink">Double</strong> raises the stakes on an{" "}
+            <em>opponent&apos;s</em> contract &mdash; it pays more if it fails and more if it
+            succeeds. You can never double your own partner.
+          </li>
+          <li>
+            <strong className="text-ink">Redouble</strong> answers a double, and only the
+            side that was doubled may do it. A fresh bid wipes both off.
+          </li>
+          <li>
+            The <strong className="text-ink">declarer</strong> is whoever named the final
+            denomination <em>first</em> for the winning side, not whoever bid last. If your
+            partner opens 1♠ and you raise to 4♠, your partner plays the hand and you put
+            your cards on the table as dummy.
+          </li>
+        </ul>
+        <p>
+          <strong className="text-ink">The play.</strong> The player to declarer&apos;s left
+          leads the first card, then dummy&apos;s hand goes face-up and declarer plays both.
+          One rule governs every card: <strong className="text-ink">follow suit if you
+          can</strong>. Only if you are void in the suit led may you play anything else, and
+          your cards are dimmed when they are not legal so the rule is visible rather than
+          enforced silently.
+        </p>
+        <p>
+          The highest card of the suit led wins the trick &mdash; unless someone played a
+          trump, in which case the highest trump wins. A high card in a suit nobody led is
+          worth nothing, which is the part that catches beginners out. The winner of a trick
+          leads the next.
+        </p>
+        <p>
+          <strong className="text-ink">Scoring.</strong> Making the contract pays for each
+          trick bid (20 a trick in ♣/♦, 30 in ♥/♠, 40 then 30 at no-trumps), plus a bonus:
+          50 for a part-score, 300 for a game (100 contract points or more), 500 for a small
+          slam at the six level and 1,000 for a grand slam at the seven. Overtricks pay
+          extra but never turn a part-score into a game &mdash; which is exactly why bidding
+          game is worth the risk. Going down costs 50 a trick, steeply more if doubled.
+        </p>
+        <p>
+          Every hand is played not vulnerable, and only one hand is dealt rather than a full
+          rubber. Your score is the contract&apos;s value when you or your partner make it,
+          or the penalty you collect when you defeat one as a defender &mdash; defending
+          well counts for just as much as declaring. A contract you bid and fail scores
+          nothing rather than a negative, and a passed-out hand scores nothing at all.
         </p>
       </Section>
 

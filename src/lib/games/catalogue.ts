@@ -117,6 +117,22 @@ export const GAME_CATALOGUE: readonly CatalogueGame[] = [
     status: "available",
     scoreUnit: "points",
   },
+  // The second card game, sharing the deck in `playing-cards.ts` with Blackjack — the
+  // split that module documents exists so exactly this was cheap. One deal, bid and
+  // played out: see the Bridge section of `types.ts` for why a hand rather than a rubber.
+  //
+  // Points, from the contract's own score. `scoreGame` in `game-bridge.ts` credits the
+  // human for making a contract they declared *or* for beating one they defended, and
+  // records 0 otherwise — the same rule Blackjack applies to a broke run and Mahjong to
+  // a hand a bot won. A defeated contract the human declared cannot score a negative,
+  // since the shared board ranks `score DESC`.
+  {
+    key: "bridge",
+    name: "Bridge",
+    description: "Bid a contract and play it out, with a partner and two opponents.",
+    status: "available",
+    scoreUnit: "points",
+  },
 ];
 
 /** The catalogue entry for `key`, or undefined when nothing matches. */
