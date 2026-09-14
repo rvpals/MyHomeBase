@@ -1,4 +1,11 @@
-export type { UserPreference, UserPreferences } from "./types";
+export type { CompactNavStyle, UserPreference, UserPreferences } from "./types";
+export {
+  COMPACT_NAV_STYLES,
+  DEFAULT_COMPACT_NAV_STYLE,
+  getCompactNavStyle,
+  resolveCompactNavStyle,
+  type CompactNavStyleInfo,
+} from "./nav-style";
 export {
   userPreferenceSchema,
   userPreferencesUpdateSchema,

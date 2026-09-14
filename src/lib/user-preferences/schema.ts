@@ -31,6 +31,12 @@ export const userPreferencesUpdateSchema = z.object({
     z.string().min(1).optional(),
   ),
   openFavoriteModuleOnStartup: z.boolean(),
+  // Unlike the favorite, this *is* validated here: the set of styles is closed
+  // and known at compile time, so a schema can enforce it without knowing
+  // anything about the database or the user. `.catch` rather than `.default`
+  // so an unrecognised value from an older client is corrected to the default
+  // instead of rejecting the whole save and losing the other fields with it.
+  compactNavStyle: z.enum(["drill-in", "segmented"]).catch("drill-in"),
 });
 
 export type UserPreferencesUpdate = z.infer<typeof userPreferencesUpdateSchema>;

@@ -1,9 +1,11 @@
 import { listModules } from "@/lib/modules";
 import { getAccessibleModules, listUsers } from "@/lib/user";
 import {
+  COMPACT_NAV_STYLES,
   getUserPreferences,
   resolveStartupDestination,
   saveUserPreferences,
+  type CompactNavStyle,
 } from "@/lib/user-preferences";
 import { deps } from "@/lib/wiring";
 import { parseFlags } from "./parse-flags";
@@ -15,16 +17,24 @@ import { parseFlags } from "./parse-flags";
  *   user-preferences --user min
  *   user-preferences --user min --favorite journal --startup yes
  *   user-preferences --user min --favorite ""            (clears the favorite)
+ *   user-preferences --user min --nav-style segmented
  *
- * Omitting a flag leaves that preference as it is, so either can be changed
- * without restating the other.
+ * Omitting a flag leaves that preference as it is, so any one can be changed
+ * without restating the others. That is load-bearing rather than a nicety:
+ * `saveUserPreferences` writes every key, so a flag this command forgot to carry
+ * forward would be silently reset to its default on every CLI write.
  */
 export async function userPreferencesCommand(args: string[]): Promise<void> {
   const flags = parseFlags(args);
   const username = flags.user;
 
+  const navStyleIds = COMPACT_NAV_STYLES.map((style) => style.id);
+
   if (!username) {
-    console.error("Usage: user-preferences --user <username> [--favorite <slug|\"\">] [--startup yes|no]");
+    console.error(
+      "Usage: user-preferences --user <username> [--favorite <slug|\"\">] [--startup yes|no]" +
+        ` [--nav-style ${navStyleIds.join("|")}]`,
+    );
     process.exitCode = 1;
     return;
   }
@@ -43,7 +53,9 @@ export async function userPreferencesCommand(args: string[]): Promise<void> {
   ).map((appModule) => appModule.slug);
 
   const current = getUserPreferences(deps.userPreferencesRepo, user.id);
-  const isWriting = flags.favorite !== undefined || flags.startup !== undefined;
+  const navStyleFlag = flags["nav-style"];
+  const isWriting =
+    flags.favorite !== undefined || flags.startup !== undefined || navStyleFlag !== undefined;
 
   if (!isWriting) {
     printPreferences(username, current, accessibleSlugs);
@@ -52,6 +64,15 @@ export async function userPreferencesCommand(args: string[]): Promise<void> {
 
   if (flags.startup !== undefined && !["yes", "no"].includes(flags.startup)) {
     console.error(`--startup takes "yes" or "no", not "${flags.startup}".`);
+    process.exitCode = 1;
+    return;
+  }
+
+  // Rejected here rather than left to the schema, which `.catch`es an unknown
+  // style to the default: at a terminal, silently saving something other than
+  // what was typed is worse than an error.
+  if (navStyleFlag !== undefined && !navStyleIds.includes(navStyleFlag as CompactNavStyle)) {
+    console.error(`--nav-style takes ${navStyleIds.join(" or ")}, not "${navStyleFlag}".`);
     process.exitCode = 1;
     return;
   }
@@ -65,6 +86,8 @@ export async function userPreferencesCommand(args: string[]): Promise<void> {
           flags.favorite !== undefined ? flags.favorite : (current.favoriteModuleSlug ?? ""),
         openFavoriteModuleOnStartup:
           flags.startup !== undefined ? flags.startup === "yes" : current.openFavoriteModuleOnStartup,
+        compactNavStyle:
+          navStyleFlag !== undefined ? (navStyleFlag as CompactNavStyle) : current.compactNavStyle,
       },
       accessibleSlugs,
     );
@@ -86,6 +109,7 @@ function printPreferences(
   console.log(`Preferences for ${username}:`);
   console.log(`  favorite module: ${preferences.favoriteModuleSlug ?? "(none)"}`);
   console.log(`  open on startup: ${preferences.openFavoriteModuleOnStartup ? "yes" : "no"}`);
+  console.log(`  phone nav style: ${preferences.compactNavStyle}`);
 
   const destination = resolveStartupDestination(preferences, accessibleSlugs);
   console.log(`  lands on login:  ${destination ? `/modules/${destination}` : "the home screen"}`);

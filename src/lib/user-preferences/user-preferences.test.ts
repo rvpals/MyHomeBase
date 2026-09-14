@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { DEFAULT_COMPACT_NAV_STYLE } from "./nav-style";
 import type { UserPreferencesRepository } from "./ports";
 import {
   USER_PREFERENCE_KEYS,
   resolveUserPreferences,
   userPreferencesToEntries,
 } from "./preferences";
+import type { UserPreferencesUpdate } from "./schema";
 import type { UserPreference } from "./types";
 import {
   UnknownFavoriteModuleError,
@@ -51,6 +53,7 @@ describe("resolveUserPreferences", () => {
     expect(resolveUserPreferences([])).toEqual({
       favoriteModuleSlug: undefined,
       openFavoriteModuleOnStartup: false,
+      compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
     });
   });
 
@@ -76,6 +79,7 @@ describe("resolveUserPreferences", () => {
     expect(resolveUserPreferences(rows)).toEqual({
       favoriteModuleSlug: "journal",
       openFavoriteModuleOnStartup: true,
+      compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
     });
   });
 
@@ -89,15 +93,19 @@ describe("resolveUserPreferences", () => {
 
 describe("userPreferencesToEntries", () => {
   it("writes a blank value for an unset favorite so clearing it takes effect", () => {
-    const entries = userPreferencesToEntries({ openFavoriteModuleOnStartup: false });
+    const entries = userPreferencesToEntries({
+      openFavoriteModuleOnStartup: false,
+      compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+    });
     expect(entries).toEqual([
       { key: USER_PREFERENCE_KEYS.favoriteModuleSlug, value: "" },
       { key: USER_PREFERENCE_KEYS.openFavoriteModuleOnStartup, value: "0" },
+      { key: USER_PREFERENCE_KEYS.compactNavStyle, value: DEFAULT_COMPACT_NAV_STYLE },
     ]);
   });
 
   it("round-trips through resolveUserPreferences", () => {
-    const original = { favoriteModuleSlug: "expense", openFavoriteModuleOnStartup: true };
+    const original = { favoriteModuleSlug: "expense", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE };
     const rows = userPreferencesToEntries(original).map((entry, index) => ({
       id: index + 1,
       userId: 7,
@@ -113,6 +121,7 @@ describe("getUserPreferences", () => {
     expect(getUserPreferences(repo, 7)).toEqual({
       favoriteModuleSlug: undefined,
       openFavoriteModuleOnStartup: false,
+      compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
     });
   });
 
@@ -121,7 +130,7 @@ describe("getUserPreferences", () => {
     saveUserPreferences(
       repo,
       7,
-      { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: true },
+      { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE },
       MODULES,
     );
     expect(getUserPreferences(repo, 8).favoriteModuleSlug).toBeUndefined();
@@ -135,31 +144,35 @@ describe("saveUserPreferences", () => {
     const saved = saveUserPreferences(
       repo,
       7,
-      { favoriteModuleSlug: "stock-etfs", openFavoriteModuleOnStartup: true },
+      { favoriteModuleSlug: "stock-etfs", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE },
       MODULES,
     );
-    expect(saved).toEqual({ favoriteModuleSlug: "stock-etfs", openFavoriteModuleOnStartup: true });
+    expect(saved).toEqual({ favoriteModuleSlug: "stock-etfs", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE });
     expect(getUserPreferences(repo, 7)).toEqual(saved);
   });
 
   it("upserts rather than accumulating rows when saved repeatedly", () => {
     const repo = new FakeUserPreferencesRepository();
-    saveUserPreferences(repo, 7, { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: true }, MODULES);
-    saveUserPreferences(repo, 7, { favoriteModuleSlug: "expense", openFavoriteModuleOnStartup: false }, MODULES);
-    expect(repo.countAll()).toBe(2);
+    saveUserPreferences(repo, 7, { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE }, MODULES);
+    saveUserPreferences(repo, 7, { favoriteModuleSlug: "expense", openFavoriteModuleOnStartup: false, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE }, MODULES);
+    // One row per key, however many keys there are — the point is that a second
+    // save overwrites rather than appends. Derived from the key list so adding a
+    // preference doesn't turn this into a puzzle about the number 2.
+    expect(repo.countAll()).toBe(Object.keys(USER_PREFERENCE_KEYS).length);
     expect(getUserPreferences(repo, 7)).toEqual({
       favoriteModuleSlug: "expense",
       openFavoriteModuleOnStartup: false,
+      compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
     });
   });
 
   it("clears a favorite when given a blank slug", () => {
     const repo = new FakeUserPreferencesRepository();
-    saveUserPreferences(repo, 7, { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: true }, MODULES);
+    saveUserPreferences(repo, 7, { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE }, MODULES);
     const saved = saveUserPreferences(
       repo,
       7,
-      { favoriteModuleSlug: "", openFavoriteModuleOnStartup: true },
+      { favoriteModuleSlug: "", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE },
       MODULES,
     );
     expect(saved.favoriteModuleSlug).toBeUndefined();
@@ -171,7 +184,7 @@ describe("saveUserPreferences", () => {
       saveUserPreferences(
         repo,
         7,
-        { favoriteModuleSlug: "csv-analysis", openFavoriteModuleOnStartup: true },
+        { favoriteModuleSlug: "csv-analysis", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE },
         MODULES,
       ),
     ).toThrow(UnknownFavoriteModuleError);
@@ -180,7 +193,7 @@ describe("saveUserPreferences", () => {
   it("stores nothing when the favorite is rejected", () => {
     const repo = new FakeUserPreferencesRepository();
     try {
-      saveUserPreferences(repo, 7, { favoriteModuleSlug: "nope", openFavoriteModuleOnStartup: true }, MODULES);
+      saveUserPreferences(repo, 7, { favoriteModuleSlug: "nope", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE }, MODULES);
     } catch {
       // expected
     }
@@ -193,9 +206,9 @@ describe("saveUserPreferences", () => {
       saveUserPreferences(
         repo,
         7,
-        { openFavoriteModuleOnStartup: "yes" } as unknown as {
-          openFavoriteModuleOnStartup: boolean;
-        },
+        // Deliberately bad input, cast past the boundary to prove the zod schema —
+        // not TypeScript — is what rejects it at runtime.
+        { openFavoriteModuleOnStartup: "yes" } as unknown as UserPreferencesUpdate,
         MODULES,
       ),
     ).toThrow();
@@ -206,7 +219,7 @@ describe("resolveStartupDestination", () => {
   it("returns the favorite slug when the flag is on and the module is reachable", () => {
     expect(
       resolveStartupDestination(
-        { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: true },
+        { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE },
         MODULES,
       ),
     ).toBe("journal");
@@ -215,14 +228,14 @@ describe("resolveStartupDestination", () => {
   it("returns undefined when the flag is off, even with a favorite set", () => {
     expect(
       resolveStartupDestination(
-        { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: false },
+        { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: false, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE },
         MODULES,
       ),
     ).toBeUndefined();
   });
 
   it("returns undefined when no favorite is set", () => {
-    expect(resolveStartupDestination({ openFavoriteModuleOnStartup: true }, MODULES)).toBeUndefined();
+    expect(resolveStartupDestination({ openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE }, MODULES)).toBeUndefined();
   });
 
   it("falls back to the home screen when the favorite is no longer accessible", () => {
@@ -230,7 +243,7 @@ describe("resolveStartupDestination", () => {
     // they chose it. Redirecting anyway would strand them.
     expect(
       resolveStartupDestination(
-        { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: true },
+        { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE },
         ["expense"],
       ),
     ).toBeUndefined();
@@ -239,7 +252,7 @@ describe("resolveStartupDestination", () => {
   it("falls back to the home screen when the user can reach nothing at all", () => {
     expect(
       resolveStartupDestination(
-        { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: true },
+        { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE },
         [],
       ),
     ).toBeUndefined();

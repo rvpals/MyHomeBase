@@ -5,7 +5,7 @@
 // Two genuinely different components behind one export, picked by layout:
 //
 //   full     a 240px fixed column, open or closed
-//   compact  a bottom trigger row naming the current section, which opens a sheet
+//   compact  one bottom bar carrying BOTH tiers, which opens a sheet
 //
 // A fork rather than a restyle because 240px of side panel is most of a 390px
 // phone — see design.md, "Fork a component only when restyling genuinely can't
@@ -19,6 +19,7 @@
 import Link from "next/link";
 import { createContext, useContext, useEffect, useId, useState } from "react";
 import { getIconSlot, sectionSlotId } from "@/lib/icons";
+import type { CompactNavStyle } from "@/lib/user-preferences";
 import { ModuleIcon } from "./module-icons";
 import { SlotIcon } from "./slot-icon";
 import { TreeIcon } from "./tree-icons";
@@ -99,15 +100,36 @@ export interface SectionPanelProps {
   /** Desktop only. The header's `»` control is the way back, so the shell owns this. */
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * The module list, for compact's bottom bar. On compact this bar owns tier 1
+   * as well as tier 2 — the header has no module switcher — so without these
+   * there is no way to leave the module. Desktop ignores it: the rail is tier 1
+   * there.
+   */
+  moduleLinks?: CompactModuleLink[];
+  /**
+   * Which compact arrangement to draw. Desktop ignores it — both styles render
+   * the identical 240px panel, which is why this is called *compact* nav style.
+   */
+  navStyle?: CompactNavStyle;
   className?: string;
+}
+
+/** A module the compact bar can switch to. Plain data, from the shell. */
+export interface CompactModuleLink {
+  slug: string;
+  name: string;
+  href: string;
+  icon: string;
+  hint?: string;
 }
 
 /**
  * Every leaf, with group headings dropped.
  *
- * The compact sheet uses this: a phone has no room for a second level, and a
- * dropped heading costs nothing when every child is still one tap away. It's
- * what the legacy compact bar already does, for the same reason.
+ * Used to find the *active* section for the compact bar's label, where the group
+ * a section sits in doesn't matter. The compact sheet itself keeps its headings —
+ * see `CompactSectionList`.
  */
 export function flattenSections(sections: SectionNode[]): SectionNode[] {
   return sections.flatMap((section) => [
@@ -158,7 +180,9 @@ function SectionRow({
       className={`flex w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
         compact ? "gap-2.5 px-3 py-2.5" : "py-1.5"
       } ${
-        active ? "bg-brass-soft font-medium text-brass-dark" : "text-ink hover:bg-line/60"
+        active
+          ? `bg-brass-soft font-medium ${compact ? "shell-accent-text" : "text-brass-dark"}`
+          : "text-ink hover:bg-line/60"
       }`}
     >
       {/* Lines a leaf up with the chevron column on a group row. Only on
@@ -167,6 +191,119 @@ function SectionRow({
       <SectionIcon icon={section.icon} id={section.id} className="h-4 w-4 shrink-0" />
       <span className="truncate">{section.label}</span>
     </Link>
+  );
+}
+
+/**
+ * The sheet's section list: every leaf, under its group heading.
+ *
+ * Headings are *kept* here, unlike the flat list this replaced. Flattening was a
+ * deliberate choice once — "a phone has no room for a second level" — and it was
+ * wrong for the modules that need help most: Stocks has ten sections in three
+ * groups, and as one undifferentiated scroll inside a 74%-tall sheet it was the
+ * hardest module to navigate on the smallest screen. A heading is a 20px label,
+ * not a second level of interaction: nothing becomes an extra tap, because these
+ * are not accordions. The desktop panel still uses `SectionGroup` accordions,
+ * where collapsing earns its keep against a 240px column.
+ */
+function CompactSectionList({
+  sections,
+  activeHref,
+  onNavigate,
+}: {
+  sections: SectionNode[];
+  activeHref: string;
+  onNavigate: () => void;
+}) {
+  return (
+    <ul className="p-2">
+      {sections.map((section) => {
+        const children = (section.children ?? []).filter((child) => child.href);
+
+        // A group: its heading, then its leaves. A heading with no children left
+        // renders nothing rather than an empty label.
+        if (children.length > 0) {
+          return (
+            <li key={section.id}>
+              <div className="px-3 pb-1 pt-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-muted">
+                {section.label}
+              </div>
+              <ul>
+                {children.map((child) => (
+                  <li key={child.id}>
+                    <SectionRow
+                      section={child}
+                      active={child.href === activeHref}
+                      compact
+                      onNavigate={onNavigate}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </li>
+          );
+        }
+
+        // A bare heading — a group node whose children are all non-destinations.
+        // Nothing to show, and a label with no rows under it reads as a bug.
+        if (!section.href) return null;
+
+        return (
+          <li key={section.id}>
+            <SectionRow
+              section={section}
+              active={section.href === activeHref}
+              compact
+              onNavigate={onNavigate}
+            />
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/**
+ * The sheet's module list — compact's tier 1.
+ *
+ * Only reachable on compact, where the 48px rail doesn't render. The active
+ * module gets the same tint the rail's active link gets, minus the edge bar:
+ * this is a full-width row with a label, so a tint isn't easy to miss the way it
+ * is in a 48px icon column.
+ */
+function CompactModuleList({
+  links,
+  activeSlug,
+  onNavigate,
+}: {
+  links: CompactModuleLink[];
+  activeSlug?: string;
+  onNavigate: () => void;
+}) {
+  return (
+    <ul className="p-2">
+      {links.map((link) => {
+        const active = link.slug === activeSlug;
+        return (
+          <li key={link.slug}>
+            <Link
+              href={link.href}
+              title={link.hint ?? link.name}
+              aria-current={active ? "page" : undefined}
+              onClick={onNavigate}
+              className={`flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
+                active
+                  ? "bg-brass-soft font-medium shell-accent-text"
+                  : "text-ink hover:bg-line/60"
+              }`}
+            >
+              <ModuleIcon name={link.icon} className="h-4 w-4 shrink-0" />
+              <span className="truncate">{link.name}</span>
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -248,9 +385,17 @@ function SectionPanelBody({
   isCompact,
   isOpen,
   onOpenChange,
+  moduleLinks = [],
+  navStyle = "drill-in",
   className = "",
 }: Omit<SectionPanelProps, "iconNamespace">) {
   const [sheetOpen, setSheetOpen] = useState(false);
+  // Which tier the open sheet is showing. Both styles use one sheet and one
+  // piece of state: "drill-in" moves between the two levels with a back arrow,
+  // "segmented" jumps straight to the level its half of the bar names. Keeping
+  // it as one value rather than two booleans makes "the sheet is showing exactly
+  // one tier" true by construction.
+  const [sheetTier, setSheetTier] = useState<"sections" | "modules">("sections");
 
   // Escape closes the sheet — the same affordance `AppChrome`'s dropdowns give,
   // and the only keyboard way out of a modal surface.
@@ -264,11 +409,15 @@ function SectionPanelBody({
   }, [sheetOpen]);
 
   // Mirrored onto <html> so globals.css can reserve the bottom edge for the
-  // trigger and park the music player above it. Only compact has a trigger;
-  // on desktop the tiers are side columns and the bottom edge is free.
+  // bar and park the music player above it. Only compact has a bar; on desktop
+  // the tiers are side columns and the bottom edge is free.
+  //
+  // Keyed off `moduleLinks` too, not just sections: a sectionless page (home,
+  // account) still draws a module-only bar, and without this its content would
+  // run underneath it.
   useEffect(() => {
     const root = document.documentElement;
-    if (isCompact && sections.length > 0) {
+    if (isCompact && (sections.length > 0 || moduleLinks.length > 0)) {
       root.dataset.sectiontrigger = "bar";
     } else {
       delete root.dataset.sectiontrigger;
@@ -276,47 +425,201 @@ function SectionPanelBody({
     return () => {
       delete root.dataset.sectiontrigger;
     };
-  }, [isCompact, sections.length]);
+  }, [isCompact, sections.length, moduleLinks.length]);
 
-  // No sections means no tier 2 at all. The home screen and the account screen
-  // sit outside every module, so there is nothing to list — and an empty panel
-  // would be a 240px blank column on the desktop and a bottom trigger naming
-  // nothing on a phone. Bailing here rather than at the call site keeps the
-  // "does this page get a panel?" question answered in one place.
-  if (sections.length === 0) return null;
+  // A page with no sections still gets the compact bar, because on compact this
+  // bar is tier *1* as well — the home and account screens belong to no module,
+  // but they still need a module switcher, and putting theirs in the header while
+  // every other screen's sits at the bottom is the split this shell exists to
+  // remove. With no sections it renders module-only: the section half is dropped
+  // and tapping it opens the module list directly.
+  //
+  // On the desktop the original reasoning stands unchanged — an empty tier 2
+  // would be a 240px blank column, and the 48px rail is already tier 1 there.
+  const sectionless = sections.length === 0;
+  if (sectionless && (!isCompact || moduleLinks.length === 0)) return null;
 
-  // Group headings are dropped, not just flattened in beside their own
-  // children: `Configuration` isn't a place you can go, so in a flat list it's a
-  // dead row taking a touch target from a real one. The desktop panel keeps them
-  // as accordion headers, where they do work.
+  // Still flattened for *finding the active section* — which group a section
+  // sits in doesn't matter when all we want is its label for the bar. The
+  // sheet's list keeps the groups; see `CompactSectionList`.
   const flat = flattenSections(sections).filter((section) => section.href);
   const activeSection = flat.find((section) => section.href === activeHref) ?? flat[0];
+  const activeModule = moduleLinks.find((link) => link.href === activeHref)
+    ?? moduleLinks.find((link) => activeHref.startsWith(link.href));
 
   // -------------------------------------------------------------------------
-  // Compact: a trigger row on the bottom edge, and a sheet over a scrim.
+  // Compact: one bar on the bottom edge carrying *both* tiers, and a sheet.
+  //
+  // The bar owns tier 1 as well as tier 2 — `TwoTierShell` drops the header's
+  // module dropdown on compact — so all navigation lives on one edge instead of
+  // the module switcher sitting at the top and the section trigger at the
+  // bottom. Two arrangements of that one bar, chosen per reader in Account >
+  // Preferences (`src/lib/user-preferences/nav-style.ts`):
+  //
+  //   drill-in   one full-width bar naming "Module › Section"; the sheet opens
+  //              on sections and a back arrow steps up to the modules
+  //   segmented  the bar is split, each half opening its own tier directly
+  //
+  // Both are the same height as the single trigger they replaced, so the bottom
+  // edge is no taller than before and `--section-trigger-height` is unchanged.
   // -------------------------------------------------------------------------
   if (isCompact) {
+    const showingModules = sheetTier === "modules";
+    // `moduleLinks` can legitimately be empty — a shell that passes none keeps a
+    // sections-only bar rather than offering a dead module control.
+    const canSwitchModule = moduleLinks.length > 0;
+
+    // Always sets the tier, so reopening the bar lands on the tier the control
+    // names rather than wherever the reader drilled to last time. Without this,
+    // tapping the drill-in bar after having browsed modules would reopen on the
+    // module list — a bar labelled with a section that opens something else.
+    function openSheet(tier: "sections" | "modules") {
+      setSheetTier(tier);
+      setSheetOpen(true);
+    }
+
+    const sectionLabel = activeSection?.label ?? module.name;
+
+    // A sectionless page (home, account) has only tier 1 to offer, so both styles
+    // collapse to the same thing: one full-width bar naming the page, opening the
+    // module list. Rendered here rather than as a third `navStyle` because it is
+    // not a preference — there is no second tier to arrange, so the choice has
+    // nothing to choose between.
+    if (sectionless) {
+      return (
+        <>
+          <button
+            type="button"
+            onClick={() => openSheet("modules")}
+            aria-haspopup="dialog"
+            aria-expanded={sheetOpen}
+            className={`shell-trigger flex items-center gap-2 border-t border-line bg-paper-raised px-4 py-3 text-left transition-colors hover:bg-line/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${className}`}
+          >
+            <ModuleIdentityIcon icon={module.icon} className="h-5 w-5 shrink-0 shell-accent-text" />
+            <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
+              {module.name}
+            </span>
+            <span className="shrink-0 text-xs text-muted">Modules</span>
+            <span className="shrink-0 text-[0.625rem] text-muted" aria-hidden>
+              &#9650;
+            </span>
+          </button>
+          {sheetOpen && (
+            <>
+              <button
+                type="button"
+                aria-label="Close the module list"
+                onClick={() => setSheetOpen(false)}
+                className="fixed inset-0 z-40 bg-black/45"
+              />
+              <div
+                role="dialog"
+                aria-label="Modules"
+                className="fixed inset-x-0 bottom-0 z-40 flex max-h-[74%] flex-col rounded-t-2xl border-t border-line bg-paper-raised pb-[max(1rem,env(safe-area-inset-bottom))]"
+              >
+                <div className="relative flex shrink-0 items-center gap-2 border-b border-line px-4 pb-3 pt-4">
+                  <span
+                    className="absolute left-1/2 top-1.5 h-1 w-9 -translate-x-1/2 rounded-full bg-line"
+                    aria-hidden
+                  />
+                  <span className="truncate font-display text-sm font-semibold text-ink">
+                    Switch module
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSheetOpen(false)}
+                    aria-label="Close the module list"
+                    className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-line/60 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+                  >
+                    <span aria-hidden>&times;</span>
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  <CompactModuleList
+                    links={moduleLinks}
+                    activeSlug={activeModule?.slug}
+                    onNavigate={() => setSheetOpen(false)}
+                  />
+                </div>
+              </div>
+            </>
+          )}
+        </>
+      );
+    }
+
     return (
       <>
-        {/* Names the current section while closed, so the bottom edge still
-            answers "where am I?" — the job the legacy chip row did by keeping
-            the active chip labelled. */}
-        <button
-          type="button"
-          onClick={() => setSheetOpen(true)}
-          aria-haspopup="dialog"
-          aria-expanded={sheetOpen}
-          className={`shell-trigger flex items-center gap-2 border-t border-line bg-paper-raised px-4 pt-3 pb-3 text-left transition-colors hover:bg-line/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${className}`}
-        >
-          <SectionIcon icon={activeSection?.icon} id={activeSection?.id} className="h-5 w-5 shrink-0 text-brass-dark" />
-          <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
-            {activeSection?.label ?? module.name}
-          </span>
-          <span className="shrink-0 text-xs text-muted">Sections</span>
-          <span className="shrink-0 -rotate-90 text-muted" aria-hidden>
-            &rsaquo;
-          </span>
-        </button>
+        {navStyle === "segmented" ? (
+          // Split bar: each tier is one tap, at the cost of a narrower target
+          // for the module half and a glyph rather than a name for the module.
+          <div
+            className={`shell-trigger flex items-stretch border-t border-line bg-paper-raised ${className}`}
+          >
+            {canSwitchModule && (
+              <button
+                type="button"
+                onClick={() => openSheet("modules")}
+                aria-haspopup="dialog"
+                aria-expanded={sheetOpen && showingModules}
+                // The module name is in the header breadcrumb and repeated at the
+                // head of the sheet, so the glyph here is never the only thing
+                // naming the module — the same bargain the desktop rail strikes.
+                title={`${module.name} — switch module`}
+                aria-label={`${module.name} — switch module`}
+                className="flex shrink-0 items-center gap-1.5 border-r border-line px-4 transition-colors hover:bg-line/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brass"
+              >
+                <ModuleIdentityIcon icon={module.icon} className="h-5 w-5 shell-accent-text" />
+                <span className="text-[0.625rem] text-muted" aria-hidden>
+                  &#9650;
+                </span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => openSheet("sections")}
+              aria-haspopup="dialog"
+              aria-expanded={sheetOpen && !showingModules}
+              className="flex min-w-0 flex-1 items-center gap-2 px-4 py-3 text-left transition-colors hover:bg-line/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brass"
+            >
+              <SectionIcon
+                icon={activeSection?.icon}
+                id={activeSection?.id}
+                className="h-5 w-5 shrink-0 shell-accent-text"
+              />
+              <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
+                {sectionLabel}
+              </span>
+              <span className="shrink-0 text-[0.625rem] text-muted" aria-hidden>
+                &#9650;
+              </span>
+            </button>
+          </div>
+        ) : (
+          // Drill-in bar: one target spanning the width, naming both tiers in
+          // words. The module name is truncation-tolerant — it gives up its
+          // width to the section, which is the more specific answer to
+          // "where am I?".
+          <button
+            type="button"
+            onClick={() => openSheet("sections")}
+            aria-haspopup="dialog"
+            aria-expanded={sheetOpen}
+            className={`shell-trigger flex items-center gap-2 border-t border-line bg-paper-raised px-4 py-3 text-left transition-colors hover:bg-line/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${className}`}
+          >
+            <ModuleIdentityIcon icon={module.icon} className="h-5 w-5 shrink-0 shell-accent-text" />
+            <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm">
+              <span className="max-w-[40%] shrink truncate text-muted">{module.name}</span>
+              <span className="shrink-0 text-muted" aria-hidden>
+                &rsaquo;
+              </span>
+              <span className="min-w-0 flex-1 truncate font-medium text-ink">{sectionLabel}</span>
+            </span>
+            <span className="shrink-0 text-[0.625rem] text-muted" aria-hidden>
+              &#9650;
+            </span>
+          </button>
+        )}
 
         {sheetOpen && (
           <>
@@ -324,48 +627,79 @@ function SectionPanelBody({
                 so a dialog opened from a section still covers this. */}
             <button
               type="button"
-              aria-label="Close the section list"
+              aria-label="Close the navigation list"
               onClick={() => setSheetOpen(false)}
               className="fixed inset-0 z-40 bg-black/45"
             />
             <div
               role="dialog"
-              aria-label={`${module.name} sections`}
-              className="fixed inset-x-0 bottom-0 z-40 max-h-[70%] overflow-y-auto rounded-t-2xl border-t border-line bg-paper-raised pb-[max(1rem,env(safe-area-inset-bottom))]"
+              aria-label={showingModules ? "Modules" : `${module.name} sections`}
+              className="fixed inset-x-0 bottom-0 z-40 flex max-h-[74%] flex-col rounded-t-2xl border-t border-line bg-paper-raised pb-[max(1rem,env(safe-area-inset-bottom))]"
             >
-              <div className="sticky top-0 flex items-center gap-2 border-b border-line bg-paper-raised px-4 py-3">
+              <div className="relative flex shrink-0 items-center gap-2 border-b border-line px-4 pb-3 pt-4">
                 {/* The grab handle. Not draggable — it's the affordance that
                     says "this is a sheet", and the scrim and × both dismiss. */}
                 <span
                   className="absolute left-1/2 top-1.5 h-1 w-9 -translate-x-1/2 rounded-full bg-line"
                   aria-hidden
                 />
-                <ModuleIdentityIcon icon={module.icon} className="h-5 w-5 shrink-0 text-brass-dark" />
-                <span className="truncate font-display text-sm font-semibold text-ink">
-                  {module.name}
-                </span>
+
+                {/* The back arrow is drill-in's way up to tier 1, and only
+                    appears there: in the split bar each tier has its own half of
+                    the bar, so a level to go "back" to would be a level the
+                    reader never descended through. */}
+                {navStyle === "drill-in" && canSwitchModule && !showingModules ? (
+                  <button
+                    type="button"
+                    onClick={() => setSheetTier("modules")}
+                    className="-ml-1.5 flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-sm font-medium shell-accent-text transition-colors hover:bg-brass-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+                  >
+                    <span aria-hidden>&lsaquo;</span>
+                    <span>Modules</span>
+                  </button>
+                ) : null}
+
+                {showingModules ? (
+                  <span className="truncate font-display text-sm font-semibold text-ink">
+                    Switch module
+                  </span>
+                ) : (
+                  <>
+                    <ModuleIdentityIcon
+                      icon={module.icon}
+                      className="h-5 w-5 shrink-0 shell-accent-text"
+                    />
+                    <span className="truncate font-display text-sm font-semibold text-ink">
+                      {module.name}
+                    </span>
+                  </>
+                )}
+
                 <button
                   type="button"
                   onClick={() => setSheetOpen(false)}
-                  aria-label="Close the section list"
+                  aria-label="Close the navigation list"
                   className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-line/60 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
                 >
                   <span aria-hidden>&times;</span>
                 </button>
               </div>
-              <ul className="p-2">
-                {/* Flattened: group headings are dropped rather than nested. */}
-                {flat.map((section) => (
-                  <li key={section.id}>
-                    <SectionRow
-                      section={section}
-                      active={section.href === activeHref}
-                      compact
-                      onNavigate={() => setSheetOpen(false)}
-                    />
-                  </li>
-                ))}
-              </ul>
+
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                {showingModules ? (
+                  <CompactModuleList
+                    links={moduleLinks}
+                    activeSlug={activeModule?.slug}
+                    onNavigate={() => setSheetOpen(false)}
+                  />
+                ) : (
+                  <CompactSectionList
+                    sections={sections}
+                    activeHref={activeHref}
+                    onNavigate={() => setSheetOpen(false)}
+                  />
+                )}
+              </div>
             </div>
           </>
         )}

@@ -3,7 +3,9 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { MusicPlayerBar } from "@/components/music-player-bar";
 import { MusicPlayerProvider } from "@/components/music-player-provider";
+import { CompactNavStyleProvider } from "@/components/nav-style-context";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
+import { getUserPreferences } from "@/lib/user-preferences";
 import { deps } from "@/lib/wiring";
 import {
   advanceQueueAction,
@@ -45,6 +47,12 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
   const currentUser = getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo);
   if (!currentUser) redirect("/login");
 
+  // The reader's compact navigation arrangement, read here rather than in the
+  // root layout because it is per-user and this is the first layout that knows
+  // who they are. Resolved on the server so the very first HTML draws the bar
+  // they chose — navigation is the worst place for a visible rearrangement one
+  // frame after hydration.
+  const { compactNavStyle } = getUserPreferences(deps.userPreferencesRepo, currentUser.id);
 
   return (
     <div className="min-h-screen">
@@ -59,10 +67,12 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
           Library module: an <audio> element stops when it unmounts, so keeping the
           one instance above `children` is what lets a track keep playing while you
           navigate between modules. The bar renders nothing until something plays. */}
-      <MusicPlayerProvider actions={musicQueueActions}>
-        <main className="app-main min-h-screen pb-8">{children}</main>
-        <MusicPlayerBar />
-      </MusicPlayerProvider>
+      <CompactNavStyleProvider value={compactNavStyle}>
+        <MusicPlayerProvider actions={musicQueueActions}>
+          <main className="app-main min-h-screen pb-8">{children}</main>
+          <MusicPlayerBar />
+        </MusicPlayerProvider>
+      </CompactNavStyleProvider>
     </div>
   );
 }

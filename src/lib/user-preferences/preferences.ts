@@ -1,3 +1,4 @@
+import { resolveCompactNavStyle } from "./nav-style";
 import type { UserPreference, UserPreferences } from "./types";
 
 // The keys a preference is stored under. Adding a preference means a key here
@@ -5,6 +6,7 @@ import type { UserPreference, UserPreferences } from "./types";
 export const USER_PREFERENCE_KEYS = {
   favoriteModuleSlug: "favorite_module_slug",
   openFavoriteModuleOnStartup: "open_favorite_module_on_startup",
+  compactNavStyle: "compact_nav_style",
 } as const;
 
 // Stored form of the boolean. "1"/"0" rather than "true"/"false" to match how
@@ -33,6 +35,9 @@ export function resolveUserPreferences(preferences: UserPreference[]): UserPrefe
     favoriteModuleSlug: storedSlug === "" ? undefined : storedSlug,
     openFavoriteModuleOnStartup:
       byKey.get(USER_PREFERENCE_KEYS.openFavoriteModuleOnStartup) === TRUE_VALUE,
+    // Total by construction: a missing row and a garbled one both resolve to the
+    // default, because the compact shell has to draw *some* navigation.
+    compactNavStyle: resolveCompactNavStyle(byKey.get(USER_PREFERENCE_KEYS.compactNavStyle)),
   };
 }
 
@@ -54,6 +59,10 @@ export function userPreferencesToEntries(
     {
       key: USER_PREFERENCE_KEYS.openFavoriteModuleOnStartup,
       value: preferences.openFavoriteModuleOnStartup ? TRUE_VALUE : FALSE_VALUE,
+    },
+    {
+      key: USER_PREFERENCE_KEYS.compactNavStyle,
+      value: preferences.compactNavStyle,
     },
   ];
 }

@@ -12,11 +12,14 @@
 // the rail width and the first one to drift.
 //
 // **The compact fork is a different component, not a restyle.** A 48px rail plus
-// a 240px panel is 304px of chrome on a 390px phone, so down there the rail
-// becomes a dropdown in the header and the panel becomes a bottom sheet. That's
-// why this reads `useIsCompact()` rather than `max-lg:` — and because the layout
-// can be *pinned*, so a 1400px window can legitimately be compact and a media
-// query would still lay it out side by side.
+// a 240px panel is 304px of chrome on a 390px phone, so down there both tiers
+// collapse into a single bottom bar — the module list and the section list, one
+// edge, in whichever arrangement the reader chose (see `useCompactNavStyle`).
+// The header keeps a module dropdown only on a page that has no sections at all,
+// where no bottom bar renders. That is why this reads `useIsCompact()` rather
+// than `max-lg:` — and because the layout can be *pinned*, so a 1400px window
+// can legitimately be compact and a media query would still lay it out side by
+// side.
 
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
@@ -24,6 +27,7 @@ import { ModuleMenu, UserMenu, type NavLink } from "./nav-menus";
 import { AppHeader, type Breadcrumb } from "./app-header";
 import { ModuleRail } from "./module-rail";
 import { SectionPanel, type SectionNode } from "./section-panel";
+import { useCompactNavStyle } from "./nav-style-context";
 import { useIsCompact } from "./viewport-context";
 
 const PANEL_KEY = "myhomebase:section-panel";
@@ -65,11 +69,12 @@ export interface TwoTierShellProps {
    * Drops tier 3 on the **full layout only** — the home screen, whose breadcrumb
    * reads just "Home" and whose bar is therefore an empty rule above the content.
    *
-   * Never honoured on compact, and that is load-bearing rather than cautious: on
-   * compact the rail does not render and this header carries `ModuleMenu`, so
-   * obeying it there would leave the screen with no module switcher at all — the
-   * dead end design.md warns about. A screen that sets this must give the profile
-   * menu somewhere else to live on full; `HomeShell` puts it in the rail.
+   * Never honoured on compact, and that is load-bearing rather than cautious:
+   * the screens that set this are the ones with no sections, so on compact there
+   * is no bottom bar either — this header is carrying both `ModuleMenu` and the
+   * profile, and obeying the flag would leave the screen with no way out at all,
+   * the dead end design.md warns about. A screen that sets this must give the
+   * profile menu somewhere else to live on full; `HomeShell` puts it in the rail.
    */
   hideHeader?: boolean;
   children: ReactNode;
@@ -91,6 +96,10 @@ export function TwoTierShell({
 }: TwoTierShellProps) {
   const pathname = usePathname();
   const isCompact = useIsCompact();
+  // The reader's compact bar arrangement, resolved server-side from their stored
+  // preference so the first paint is already the bar they picked. Meaningless on
+  // full, where both styles are the same 240px panel.
+  const navStyle = useCompactNavStyle();
   const [panelOpen, setPanelOpen] = useState(true);
 
   useEffect(() => {
@@ -149,9 +158,10 @@ export function TwoTierShell({
 
   return (
     <>
-      {/* Tier 1. Renders only on the full layout — on compact the same list is
-          the header's dropdown, below. `showAdmin` puts the Administration gear
-          in the rail's bottom zone; on compact it only reaches the user menu. */}
+      {/* Tier 1. Renders only on the full layout — on compact the same list
+          lives in the bottom bar `SectionPanel` draws, on every screen including
+          the sectionless ones. `showAdmin` puts the Administration gear in the
+          rail's bottom zone; on compact it only reaches the user menu. */}
       {!isCompact && (
         <ModuleRail
           links={links}
@@ -162,8 +172,8 @@ export function TwoTierShell({
         />
       )}
 
-      {/* Tier 2. Owns its own fork: a fixed column on full, a bottom trigger
-          and sheet on compact. */}
+      {/* Tier 2. Owns its own fork: a fixed column on full, and on compact a
+          bottom bar that carries tier 1 as well — see `navStyle` below. */}
       <SectionPanel
         sections={sections}
         iconNamespace={iconNamespace}
@@ -172,18 +182,39 @@ export function TwoTierShell({
         isCompact={isCompact}
         isOpen={panelOpen}
         onOpenChange={setPanelOpen}
+        // Tier 1, for compact's bottom bar to switch between. Passed at every
+        // layout; the desktop panel ignores it, because there the rail is tier 1.
+        moduleLinks={links}
+        navStyle={navStyle}
       />
 
       {/* Tier 3, plus the page. Both sit in the content column, which
           `.app-main`'s padding-left has already offset past the tiers — so the
           header starts where the panel ends without re-deriving the width. */}
-      {/* `isCompact ||` first, and deliberately: compact folds the module
-          switcher into this bar, so honouring `hideHeader` there would strand
-          the reader with no way out of the page. */}
+      {/* `isCompact ||` first, and deliberately. The module switcher has moved to
+          the bottom bar, but this bar still carries the **profile menu** — and
+          therefore logout — which on compact has nowhere else to go: the rail
+          that holds it on the home screen's full layout doesn't render here.
+          Honouring `hideHeader` on compact would leave the reader unable to log
+          out. */}
       {(isCompact || !hideHeader) && (
         <AppHeader
           crumbs={crumbs}
-          moduleSwitcher={isCompact ? <ModuleMenu links={links} isActive={isActive} /> : undefined}
+          // Never on compact: the bottom bar owns the module list on *every*
+          // screen, including the sectionless ones (home, account), where it
+          // renders module-only. A switcher up here would be a second way to do
+          // the same thing at the opposite edge — the split this shell exists to
+          // remove.
+          //
+          // The one case that still needs it is a compact page with no sections
+          // AND no modules to offer — a reader granted access to nothing. Keyed
+          // off `links.length` rather than a flag so it can't drift from what
+          // `SectionPanel` actually decided to draw.
+          moduleSwitcher={
+            isCompact && sections.length === 0 && links.length === 0 ? (
+              <ModuleMenu links={links} isActive={isActive} />
+            ) : undefined
+          }
           actions={headerActions}
           profile={<UserMenu {...userMenuProps} />}
           // Only when there's something to bring back: compact has the bottom

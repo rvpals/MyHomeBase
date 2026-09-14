@@ -6,11 +6,17 @@
 // navigation at all: no way to switch modules, reach Administration or log out.
 // This is their shell.
 //
-// Two tiers rather than three. There is no tier 2 here because there is no
-// module to have sections: `TwoTierShell` treats an empty `sections` as "no
-// panel", so the content column starts right after the rail. The rail
-// itself already carries the Home link, so the home screen is reachable from
-// every page including this one.
+// Two tiers rather than three **on the desktop**. There is no tier 2 there
+// because there is no module to have sections: `TwoTierShell` treats an empty
+// `sections` as "no panel", so the content column starts right after the rail.
+// The rail itself already carries the Home link, so the home screen is reachable
+// from every page including this one.
+//
+// On **compact** these screens do get the bottom bar, rendered module-only — the
+// 48px rail doesn't exist down there, so the bar is the only tier 1 available,
+// and leaving these two screens with a dropdown in the header instead would put
+// their navigation on the opposite edge from every other screen's. See
+// design.md, "What compact does differently".
 //
 // The home screen also passes `hideHeader`, dropping tier 1's sibling — the
 // utility header — on the full layout, which leaves it with the rail alone.

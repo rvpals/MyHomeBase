@@ -5,8 +5,13 @@ import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/avatar";
 import { Button } from "@/components/button";
 import { IconSelect, type IconSelectOption } from "@/components/icon-select";
+import { NavStylePreview } from "@/components/nav-style-preview";
 import type { User } from "@/lib/user";
-import type { UserPreferences } from "@/lib/user-preferences";
+import {
+  COMPACT_NAV_STYLES,
+  type CompactNavStyle,
+  type UserPreferences,
+} from "@/lib/user-preferences";
 import type { Viewport } from "@/lib/viewport";
 import {
   changeOwnPasswordAction,
@@ -187,6 +192,7 @@ function PreferencesSection({
     preferences.favoriteModuleSlug ?? "",
   );
   const [openOnStartup, setOpenOnStartup] = useState(preferences.openFavoriteModuleOnStartup);
+  const [navStyle, setNavStyle] = useState<CompactNavStyle>(preferences.compactNavStyle);
   const [error, setError] = useState<string | undefined>(undefined);
   const [success, setSuccess] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -210,6 +216,7 @@ function PreferencesSection({
       const result = await saveOwnPreferencesAction({
         favoriteModuleSlug,
         openFavoriteModuleOnStartup: openOnStartup,
+        compactNavStyle: navStyle,
       });
       if (!result.ok) {
         setError(result.error ?? "Failed to save preferences.");
@@ -227,15 +234,18 @@ function PreferencesSection({
       <h2 className="font-display text-lg font-semibold text-ink">Preferences</h2>
       <p className="mt-1 text-sm text-muted">Yours alone — these don&rsquo;t affect other users.</p>
 
-      {modules.length === 0 ? (
-        <p className="mt-4 text-sm text-muted">
-          You don&rsquo;t have access to any modules yet, so there&rsquo;s nothing to favorite. Ask
-          an administrator to grant you access.
-        </p>
-      ) : (
-        <form onSubmit={handleSubmit} className="mt-4">
-          {/* Stacks below 1024px via max-lg: — the desktop two-column layout is
-              left untouched. */}
+      <form onSubmit={handleSubmit} className="mt-4">
+        {modules.length === 0 ? (
+          // No modules to favorite, but the navigation setting below still
+          // applies — so the form renders either way rather than the whole
+          // section collapsing to this one message.
+          <p className="text-sm text-muted">
+            You don&rsquo;t have access to any modules yet, so there&rsquo;s nothing to favorite.
+            Ask an administrator to grant you access.
+          </p>
+        ) : (
+          /* Stacks below 1024px via max-lg: — the desktop two-column layout is
+             left untouched. */
           <div className="card-grid gap-4">
             <label className="block text-sm" htmlFor="favorite-module">
               <span className="mb-1 block font-medium text-ink">Favorite module</span>
@@ -269,24 +279,104 @@ function PreferencesSection({
               </select>
             </label>
           </div>
+        )}
 
+        {modules.length > 0 && (
           <p className="mt-3 text-xs text-muted">
             {openOnStartup && favoriteModuleSlug
               ? "After logging in you'll go straight to this module. Turn this off to see the home screen again."
               : "With this on, logging in takes you straight to your favorite module instead of the home screen."}
           </p>
+        )}
 
-          {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
-          {success && <p className="mt-3 text-sm text-emerald-400">Preferences saved.</p>}
+        <NavStyleField value={navStyle} onChange={setNavStyle} disabled={isSaving} />
 
-          <div className="mt-4">
-            <Button type="submit" disabled={isSaving}>
-              {isSaving ? "Saving…" : "Save preferences"}
-            </Button>
-          </div>
-        </form>
-      )}
+        {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+        {success && <p className="mt-3 text-sm text-emerald-400">Preferences saved.</p>}
+
+        <div className="mt-4">
+          <Button type="submit" disabled={isSaving}>
+            {isSaving ? "Saving…" : "Save preferences"}
+          </Button>
+        </div>
+      </form>
     </div>
+  );
+}
+
+/**
+ * The compact navigation picker: one card per style, each showing a picture of
+ * the bar, what it does, and what it trades away.
+ *
+ * Radio inputs rather than a `<select>`, because the whole point is comparing
+ * two pictures — a dropdown would hide the option you aren't on, which is the
+ * one you're trying to evaluate. The native inputs stay in the markup (visually
+ * hidden, not removed) so the group is one tab stop with arrow-key movement and
+ * announces as a radio group, which a div-with-onClick would not.
+ */
+function NavStyleField({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: CompactNavStyle;
+  onChange: (style: CompactNavStyle) => void;
+  disabled: boolean;
+}) {
+  return (
+    <fieldset className="mt-6 border-0 p-0" disabled={disabled}>
+      <legend className="mb-1 text-sm font-medium text-ink">Phone navigation</legend>
+      <p className="mb-3 text-xs text-muted">
+        How the module and section menus share the bottom bar on a narrow screen. Both keep every
+        menu on one edge, and both are the same height — only the split differs. This has no
+        effect on a desktop, where the menus are side columns.
+      </p>
+
+      {/* One column below 1024px so each card keeps its full width for the
+          description; two across on the desktop for comparison at a glance. */}
+      <div className="grid grid-cols-2 gap-3 max-lg:grid-cols-1">
+        {COMPACT_NAV_STYLES.map((style) => {
+          const selected = style.id === value;
+          return (
+            <label
+              key={style.id}
+              className={`flex cursor-pointer gap-3 rounded-lg border p-3 transition-colors ${
+                selected
+                  ? "border-brass-dark bg-brass-soft/40"
+                  : "border-line bg-paper hover:border-muted"
+              } ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
+            >
+              <input
+                type="radio"
+                name="compact-nav-style"
+                value={style.id}
+                checked={selected}
+                onChange={() => onChange(style.id)}
+                disabled={disabled}
+                className="peer sr-only"
+              />
+              {/* `peer-focus-visible` puts the focus ring on the card, since the
+                  input itself is visually hidden — without it, keyboard movement
+                  through the group would be invisible. */}
+              <NavStylePreview
+                style={style.id}
+                selected={selected}
+                className="peer-focus-visible:ring-2 peer-focus-visible:ring-brass"
+              />
+              <div className="min-w-0">
+                <div
+                  className={`text-sm font-medium ${selected ? "text-brass-dark" : "text-ink"}`}
+                >
+                  {style.label}
+                </div>
+                <p className="mt-1 text-xs leading-relaxed text-muted">{style.description}</p>
+                <p className="mt-1.5 text-xs leading-relaxed text-muted">{style.tradeoff}</p>
+              </div>
+            </label>
+          );
+        })}
+      </div>
+    </fieldset>
   );
 }
 

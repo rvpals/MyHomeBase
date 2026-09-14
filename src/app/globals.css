@@ -188,6 +188,31 @@ html[data-sectiontrigger] .app-main {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+/* The accent green for text and glyphs sitting on a `--brass-soft` tint: the
+   compact bar's module glyph, and the active row in its sheet.
+ *
+ * Why not just `--brass-dark`, which every other active state uses? Because on
+ * the dark themes it is too dull against the tint it sits on — measured on
+ * `--brass-soft`, Signal Deck gets 3.2:1 from `--brass-dark` but 8.2:1 from
+ * `--brass` (Midnight Slate 3.3 vs 6.5, Ember Ledger 2.7 vs 5.7). And why not
+ * just `--brass`? Because on the *light* themes the ordering reverses and
+ * `--brass` fails: Daybreak 3.0 vs 4.9, Sea Glass 4.3 vs 7.0, Aurora Deck
+ * 3.7 vs 6.8.
+ *
+ * So neither token is right for all eight themes, and hardcoding either would
+ * visibly degrade some of them. `color-mix` against `--ink` resolves it from the
+ * theme's own tokens rather than a light/dark flag the theme system doesn't
+ * have: `--ink` is near-white on a dark theme, so the accent brightens toward
+ * `--brass`; it is near-black on a light theme, so the same rule deepens it
+ * instead. One declaration, correct in both directions, still all tokens.
+ *
+ * Scoped to this one surface deliberately — it is not a general replacement for
+ * `--brass-dark`. Widening it to every active state in the app is a design-token
+ * change (`design.md`), not a find-and-replace. */
+.shell-accent-text {
+  color: color-mix(in srgb, var(--brass) 78%, var(--ink));
+}
+
 /* The page pads for whatever is stacked against the bottom edge: the compact
    section trigger (see `--section-trigger-height` above), plus the music player
    above it when a track is loaded. `--music-player-height` is `0px` until
@@ -591,11 +616,24 @@ html[data-music-player="minimized"] {
   justify-content: start;
 }
 
-/* The dense sibling, for small fixed-ratio tiles (the attendance register's
-   poker-cards). Same rules, smaller module. */
+/* The dense sibling, for small fixed-ratio tiles (the gallery's thumbnails).
+   Same rules, smaller module. */
 .tile-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(5rem, 7rem));
+  justify-content: start;
+}
+
+/* Twice `.tile-grid`'s width — four times the area — for the attendance
+   register's poker-cards. The register was on `.tile-grid` itself until a card
+   at 5–7rem proved too small to tap confidently and too cramped to read a full
+   name in; it keeps the same auto-fit rules so a card is still the same size on
+   a 402px phone as on a 1440px desktop, just a bigger one. Its own utility
+   rather than a wider `.tile-grid`, because the gallery's thumbnails share that
+   one and want to stay dense. */
+.tile-grid-lg {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 14rem));
   justify-content: start;
 }
 
