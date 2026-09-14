@@ -58,8 +58,8 @@ const LABEL_CLASS = "text-xs font-medium uppercase tracking-wide text-muted";
  */
 const NAME_CLASS = "font-display text-lg font-bold italic text-ink";
 
-/** Same, sized for a card in the grid — `.tile-grid` keeps those 5–7rem wide. */
-const CARD_NAME_CLASS = "font-display text-[13px] font-bold italic leading-tight text-ink";
+/** Same, sized for a card in the grid — `.tile-grid-lg` keeps those 10–14rem wide. */
+const CARD_NAME_CLASS = "font-display text-base font-bold italic leading-tight text-ink";
 
 /** Which layout the register uses. Persisted, so it survives a reload. */
 type RegisterView = "list" | "card";
@@ -585,13 +585,11 @@ function ActionButton({
   onClick,
   disabled,
   studentLabel,
-  compact = false,
 }: {
   count: number;
   onClick: () => void;
   disabled: boolean;
   studentLabel: string;
-  compact?: boolean;
 }) {
   const noted = count > 0;
 
@@ -602,9 +600,7 @@ function ActionButton({
       disabled={disabled}
       title={noted ? `${count} action${count === 1 ? "" : "s"} noted` : "Note an action"}
       aria-label={`Note an action for ${studentLabel}`}
-      className={`flex shrink-0 items-center justify-center rounded-md border transition-colors disabled:opacity-60 ${
-        compact ? "h-6 w-6 text-[11px]" : "h-11 w-11 text-base"
-      } ${
+      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-md border text-base transition-colors disabled:opacity-60 ${
         noted
           ? "border-brass bg-brass text-paper"
           : "border-line bg-paper text-muted hover:border-brass hover:text-ink"
@@ -621,12 +617,10 @@ function ActionButton({
 function ActionChips({
   actionIds,
   actionsInCatalogOrder,
-  compact = false,
 }: {
   actionIds: ReadonlySet<number>;
   /** Already in display order — see `actionsInCatalogOrder` in `RegisterPanel`. */
   actionsInCatalogOrder: StudentAction[];
-  compact?: boolean;
 }) {
   if (actionIds.size === 0) return null;
 
@@ -636,19 +630,17 @@ function ActionChips({
   const chosen = actionsInCatalogOrder.filter((action) => actionIds.has(action.id));
 
   return (
-    <span className={`flex flex-wrap items-center ${compact ? "gap-0.5" : "gap-1"}`}>
+    <span className="flex flex-wrap items-center gap-1">
       {chosen.map((action) => (
         <span
           key={action.id}
           title={action.description || action.name}
-          className={`flex items-center gap-0.5 rounded bg-brass-soft font-mono font-semibold text-brass-dark ${
-            compact ? "px-1 text-[9px]" : "px-1.5 py-0.5 text-[11px]"
-          }`}
+          className="flex items-center gap-0.5 rounded bg-brass-soft px-1.5 py-0.5 font-mono text-[11px] font-semibold text-brass-dark"
         >
           <AttendanceActionIcon
             name={action.icon}
             src={studentActionIconUrl(action)}
-            className={compact ? "h-2.5 w-2.5" : "h-3 w-3"}
+            className="h-3 w-3"
           />
           {action.code}
         </span>
@@ -784,17 +776,22 @@ function ListView({
  * `aspect-[3/4]` is the poker-card proportion, which is what makes a grid of
  * these read as a hand of cards rather than a wall of tiles.
  *
- * The column count is `.tile-grid`'s (globals.css), not a breakpoint ladder:
- * each card is 5–7rem wide and the browser fits as many as the width allows.
+ * The column count is `.tile-grid-lg`'s (globals.css), not a breakpoint ladder:
+ * each card is 10–14rem wide and the browser fits as many as the width allows.
  * That keeps a card the same size on a 402px phone as on a 1440px desktop —
  * where the old `grid-cols-4 sm:6 lg:10` gave a phone ~85px cards and a desktop
  * ~120px ones — and it never leaves a part-card cut off at the edge.
  *
- * The ⚡ sits in the top-right corner opposite the P pip, as a 24px button. Below
- * the 44px floor on purpose: the card itself is the primary target and the corner
- * control is a deliberate, aimed tap — the same trade the corner pip already
- * makes. On a phone the list view is the better register anyway, and it has the
- * full-size button.
+ * The card is deliberately twice the width it used to be (four times the area).
+ * At 5–7rem the name truncated on anything longer than "Ava Chen" and the tap
+ * target was smaller than a thumb; the register is a screen a teacher taps
+ * thirty times in a minute, so the card earns the room. A phone fits two per
+ * row, a desktop eight.
+ *
+ * Because the card is now big enough for one, the ⚡ is a full 44px button in
+ * the top-right corner opposite the P pip — the old 24px compact version was a
+ * concession to a card that could not hold a real target, and that constraint
+ * is gone.
  */
 /**
  * One student's card, memoized for the same reason as `StudentRow` — and more
@@ -835,7 +832,7 @@ const StudentCard = memo(function StudentCard({
           onClick={() => onToggle(student.id)}
           aria-pressed={isPresent}
           disabled={isPending}
-          className={`flex aspect-[3/4] w-full flex-col items-center justify-between rounded-lg border p-1.5 text-center transition-colors disabled:opacity-60 ${
+          className={`flex aspect-[3/4] w-full flex-col items-center justify-between rounded-lg border p-3 text-center transition-colors disabled:opacity-60 ${
             isPresent
               ? "border-brass bg-brass-soft"
               : "border-line bg-paper-raised hover:border-brass"
@@ -843,7 +840,7 @@ const StudentCard = memo(function StudentCard({
         >
           {/* Corner pip, like a card's rank. */}
           <span
-            className={`self-start rounded px-1 py-0 font-mono text-[9px] font-semibold ${
+            className={`self-start rounded px-1.5 py-0.5 font-mono text-xs font-semibold ${
               isPresent ? "bg-brass text-paper" : "text-muted"
             }`}
           >
@@ -851,7 +848,7 @@ const StudentCard = memo(function StudentCard({
           </span>
 
           <span
-            className={`flex h-7 w-7 items-center justify-center rounded-full font-display text-xs ${
+            className={`flex h-14 w-14 items-center justify-center rounded-full font-display text-xl ${
               isPresent ? "bg-brass text-paper" : "bg-paper text-muted"
             }`}
           >
@@ -861,14 +858,15 @@ const StudentCard = memo(function StudentCard({
           <span className="w-full">
             <span className={`block truncate ${CARD_NAME_CLASS}`}>{name}</span>
             {actionIds.size > 0 ? (
-              <ActionChips
-                actionIds={actionIds}
-                actionsInCatalogOrder={actionsInCatalogOrder}
-                compact
-              />
+              <span className="flex justify-center">
+                <ActionChips
+                  actionIds={actionIds}
+                  actionsInCatalogOrder={actionsInCatalogOrder}
+                />
+              </span>
             ) : (
               student.studentIdentifier && (
-                <span className="block truncate font-mono text-[9px] text-muted">
+                <span className="block truncate font-mono text-xs text-muted">
                   {student.studentIdentifier}
                 </span>
               )
@@ -877,13 +875,12 @@ const StudentCard = memo(function StudentCard({
         </button>
 
         {hasActions && (
-          <span className="absolute right-1 top-1">
+          <span className="absolute right-1.5 top-1.5">
             <ActionButton
               count={actionIds.size}
               onClick={() => onOpenActions(student.id)}
               disabled={isPending}
               studentLabel={name}
-              compact
             />
           </span>
         )}
@@ -904,7 +901,7 @@ function CardView({
   cardsUseLastNameFirst,
 }: RegisterProps) {
   return (
-    <ul className="tile-grid gap-2">
+    <ul className="tile-grid-lg gap-3">
       {students.map((student) => (
         <StudentCard
           key={student.id}
