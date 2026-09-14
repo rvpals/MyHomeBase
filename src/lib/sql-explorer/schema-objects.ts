@@ -1,3 +1,4 @@
+import { describeBlobCell, type BlobCell, type BlobCellSource } from "./blob-cells";
 import type { SqlExplorerRepository } from "./ports";
 import { tableNameSchema } from "./schema";
 import type { SchemaObject, SchemaObjectGroup, SchemaObjectKind, TablePage } from "./types";
@@ -63,21 +64,42 @@ export function readTablePage(
   const validated = tableNameSchema.parse(tableName);
   const page = repo.readTablePage(validated, limit);
 
-  return { ...page, rows: page.rows.map((row) => row.map(toDisplayValue)) };
+  // Each BLOB becomes a descriptor addressed by table + column + rowid, so the
+  // grid can offer Save and Preview without the bytes ever riding along with the
+  // rows. Where the source has no rowid — a view, a WITHOUT ROWID table — the
+  // descriptor goes out without an address and the actions render disabled.
+  return {
+    ...page,
+    rows: page.rows.map((row, rowIndex) =>
+      row.map((value, columnIndex) => {
+        const rowId = page.rowIds?.[rowIndex];
+        const source =
+          rowId === undefined
+            ? undefined
+            : { tableName: page.tableName, columnName: page.columns[columnIndex], rowId };
+        return toDisplayValue(value, source);
+      }),
+    ),
+  };
 }
+
+/** What a cell can be once it is safe to send to a browser. */
+export type DisplayValue = string | number | null | BlobCell;
 
 /**
  * Narrows a raw SQLite cell to something a grid can render.
  *
- * BLOBs are summarised rather than sent: the avatar, cover-art and card-image
+ * BLOBs are described rather than sent: the avatar, cover-art and card-image
  * columns hold whole files, and serialising those into the page would cost
- * megabytes per row and render as line noise.
+ * megabytes per row and render as line noise. The descriptor carries the type,
+ * the size and — when `source` is given — the address the bytes can be fetched
+ * from, which is what lets the grid offer Save and Preview.
  */
-export function toDisplayValue(value: unknown): string | number | null {
+export function toDisplayValue(value: unknown, source?: BlobCellSource): DisplayValue {
   if (value === null || value === undefined) return null;
   if (typeof value === "number" || typeof value === "string") return value;
   if (typeof value === "bigint") return value.toString();
-  if (value instanceof Uint8Array) return `<BLOB ${formatByteSize(value.byteLength)}>`;
+  if (value instanceof Uint8Array) return describeBlobCell(value, source);
   return String(value);
 }
 

@@ -1,15 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { BlobCell } from "@/components/blob-cell";
 import { Button } from "@/components/button";
 import { DataGrid, type CellValue, type DataGridColumn } from "@/components/data-grid";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { Modal } from "@/components/modal";
 import { Tabs, type TabItem } from "@/components/tabs";
 import { TreeNav, type TreeNavNode } from "@/components/tree-nav";
+import { ModuleIcon } from "@/components/module-icons";
 import {
   buildTableReference,
   describeTable,
+  formatByteSize,
+  isBlobCell,
+  type BlobCellSource,
+  type ModuleTableGroup,
   type SchemaObject,
   type SchemaObjectGroup,
   type SqlExecutionResult,
@@ -24,30 +30,66 @@ import {
 } from "./actions";
 import { PAGE_CONTAINER } from "../../page-container";
 
-function formatCellValue(value: unknown): string {
+/** The URL the blob route serves one cell's bytes from. */
+function blobCellUrl(source: BlobCellSource, { download }: { download: boolean }): string {
+  const params = new URLSearchParams({
+    table: source.tableName,
+    column: source.columnName,
+    rowid: String(source.rowId),
+  });
+  if (download) params.set("download", "1");
+  return `/api/admin/sql-explorer/blob?${params.toString()}`;
+}
+
+function formatCellValue(value: unknown): ReactNode {
   if (value === null || value === undefined) return "—";
+  // A BLOB arrives as a descriptor, never as bytes — see lib/sql-explorer's
+  // toDisplayValue. It renders as its type and size plus Save/Preview.
+  if (isBlobCell(value)) {
+    return (
+      <BlobCell
+        mimeType={value.mimeType}
+        byteLength={value.byteLength}
+        source={value.source}
+        isPreviewable={value.isPreviewable}
+        sizeLabel={formatByteSize(value.byteLength)}
+        buildUrl={blobCellUrl}
+      />
+    );
+  }
   return String(value);
 }
 
-// Narrow a raw SQLite cell (number | string | null | Buffer | bigint) to the
-// grid's sortable/exportable primitive.
+// Narrow a cell to the grid's sortable/exportable primitive. A BLOB sorts and
+// exports by its size: the bytes aren't here, and "how big is it" is the only
+// question a column of files can usefully be ordered by.
 function toCellValue(value: unknown): CellValue {
   if (value === null || value === undefined) return null;
+  if (isBlobCell(value)) return value.byteLength;
   if (typeof value === "number" || typeof value === "string") return value;
   return String(value);
 }
 
-function QueryResultGrid({ result }: { result: Extract<SqlExecutionResult, { kind: "query" }> }) {
-  const columns: DataGridColumn<unknown[]>[] = result.columns.map((columnName, columnIndex) => ({
+/**
+ * One column per name, for a grid whose shape isn't known until the rows arrive.
+ *
+ * Shared by the query result and the browsed table: both render positionally
+ * out of `unknown[]` rows, and the BLOB handling is fiddly enough that two
+ * copies would drift.
+ */
+function buildColumns(columnNames: string[]): DataGridColumn<unknown[]>[] {
+  return columnNames.map((columnName, columnIndex) => ({
     key: columnName,
     header: columnName,
     value: (row) => toCellValue(row[columnIndex]),
     render: (row) => formatCellValue(row[columnIndex]),
   }));
+}
 
+function QueryResultGrid({ result }: { result: Extract<SqlExecutionResult, { kind: "query" }> }) {
   return (
     <DataGrid
-      columns={columns}
+      columns={buildColumns(result.columns)}
       rows={result.rows}
       getRowKey={(row) => JSON.stringify(row)}
       emptyMessage="Query returned no rows."
@@ -181,16 +223,9 @@ function TableReferenceCard({ tables }: { tables: TableInfo[] }) {
 
 /** The rows of one table, as the right-hand grid renders them. */
 function TablePageGrid({ page }: { page: TablePage }) {
-  const columns: DataGridColumn<unknown[]>[] = page.columns.map((columnName, columnIndex) => ({
-    key: columnName,
-    header: columnName,
-    value: (row) => toCellValue(row[columnIndex]),
-    render: (row) => formatCellValue(row[columnIndex]),
-  }));
-
   return (
     <DataGrid
-      columns={columns}
+      columns={buildColumns(page.columns)}
       rows={page.rows}
       getRowKey={(row) => JSON.stringify(row)}
       emptyMessage="This table has no rows."
@@ -221,6 +256,181 @@ function DefinitionPanel({ object }: { object: SchemaObject }) {
           no CREATE statement of its own.
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * The selected table and its rows, for a tree that browses tables.
+ *
+ * Shared by the Tables Explorer and the Modules tab: both answer a leaf click by
+ * reading a capped page and showing it, and the load/error/clear sequence is
+ * fiddly enough that two copies would drift.
+ */
+function useTablePage() {
+  const [page, setPage] = useState<TablePage | undefined>(undefined);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  async function load(tableName: string) {
+    setPage(undefined);
+    setError(undefined);
+    setIsLoading(true);
+    try {
+      const response = await loadTablePageAction(tableName);
+      if (!response.ok) setError(response.error ?? "Failed to read the table.");
+      else setPage(response.page);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  function clear() {
+    setPage(undefined);
+    setError(undefined);
+  }
+
+  return { page, isLoading, error, load, clear };
+}
+
+/** The header above a browsed table — its name, purpose and row actions. */
+function TablePanelHeader({
+  tableName,
+  onOpenInSql,
+  onTruncate,
+}: {
+  tableName: string;
+  onOpenInSql: (tableName: string) => void;
+  onTruncate?: (tableName: string) => void;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3 max-lg:flex-col">
+      <div className="min-w-0">
+        <h3 className="font-mono text-sm font-semibold text-ink">{tableName}</h3>
+        {describeTable(tableName) && (
+          <p className="mt-1 text-xs text-muted">{describeTable(tableName)}</p>
+        )}
+      </div>
+
+      <div className="flex shrink-0 items-center gap-3">
+        <button
+          type="button"
+          onClick={() => onOpenInSql(tableName)}
+          className="text-xs font-medium text-brass-dark hover:underline"
+        >
+          Open in SQL
+        </button>
+        {onTruncate && (
+          <button
+            type="button"
+            onClick={() => onTruncate(tableName)}
+            className="text-xs font-medium text-red-400 hover:underline"
+          >
+            Truncate
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Every table grouped by the module that owns it.
+ *
+ * The groups come from the live `sys_modules` registry, so the headings and
+ * their order match the nav rail, and a module renamed on the Modules admin
+ * screen is renamed here too. A module with no tables keeps its node — "Games
+ * owns nothing yet" is worth saying — and everything no module owns (the
+ * platform `sys_` tables, the icon overrides, a runtime CSV dataset) sits in the
+ * trailing "Non-Modules" group, so no table can be hidden by this view.
+ */
+function ModulesExplorer({
+  moduleGroups,
+  onOpenInSql,
+  onTruncate,
+}: {
+  moduleGroups: ModuleTableGroup[];
+  onOpenInSql: (tableName: string) => void;
+  onTruncate: (tableName: string) => void;
+}) {
+  const [selectedTable, setSelectedTable] = useState<string | undefined>(undefined);
+  const { page, isLoading, error, load } = useTablePage();
+
+  const nodes: TreeNavNode[] = moduleGroups.map((group) => ({
+    id: group.key,
+    // The prefix rides along in the label so the tree says *why* a table is
+    // filed where it is — the grouping rule is otherwise invisible.
+    label: group.prefix ? `${group.label} (${group.prefix})` : group.label,
+    badge: group.tables.length,
+    emptyMessage: group.isModule
+      ? "This module owns no tables yet."
+      : "Every table belongs to a module.",
+    children: group.tables.map((table) => ({
+      id: table.name,
+      label: table.name,
+      detail: table.description,
+    })),
+  }));
+
+  const selectedGroup = moduleGroups.find((group) =>
+    group.tables.some((table) => table.name === selectedTable),
+  );
+
+  async function handleSelect(tableName: string) {
+    setSelectedTable(tableName);
+    await load(tableName);
+  }
+
+  return (
+    // Side by side on desktop; stacked below 1024px, where two columns would
+    // leave neither the tree nor the grid usable.
+    <div className="flex gap-4 max-lg:flex-col">
+      <div className="shrink-0 overflow-y-auto rounded-md border border-line bg-paper-raised p-2 lg:w-72 lg:max-h-[70vh]">
+        <TreeNav nodes={nodes} selectedId={selectedTable} onSelect={handleSelect} />
+      </div>
+
+      <div className="min-w-0 flex-1">
+        {!selectedTable && (
+          <p className="text-sm text-muted">
+            Pick a table to browse it. Groups are the modules from the registry; anything no
+            module owns is under <span className="text-ink">Non-Modules</span>.
+          </p>
+        )}
+
+        {selectedTable && (
+          <div className="flex flex-col gap-3">
+            {selectedGroup && (
+              <p className="flex items-center gap-2 text-xs text-muted">
+                {selectedGroup.icon && (
+                  <ModuleIcon name={selectedGroup.icon} className="h-4 w-4 shrink-0 text-brass-dark" />
+                )}
+                {selectedGroup.label}
+              </p>
+            )}
+
+            <TablePanelHeader
+              tableName={selectedTable}
+              onOpenInSql={onOpenInSql}
+              onTruncate={onTruncate}
+            />
+
+            {isLoading && <p className="text-sm text-muted">Loading…</p>}
+            {error && <p className="text-sm text-red-400">{error}</p>}
+
+            {page && (
+              <>
+                {page.isTruncated && (
+                  <p className="text-xs text-muted">
+                    Showing the first {page.rows.length.toLocaleString()} of{" "}
+                    {page.totalRows.toLocaleString()} rows. Use the SQL Query tab for the full set.
+                  </p>
+                )}
+                <TablePageGrid page={page} />
+              </>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -365,9 +575,11 @@ function findSelected(
 export function SqlExplorerView({
   tables,
   schemaGroups,
+  moduleGroups,
 }: {
   tables: TableInfo[];
   schemaGroups: SchemaObjectGroup[];
+  moduleGroups: ModuleTableGroup[];
 }) {
   const [sql, setSql] = useState("");
   const [result, setResult] = useState<SqlExecutionResult | undefined>(undefined);
@@ -417,30 +629,44 @@ export function SqlExplorerView({
     </div>
   );
 
+  // Shared by both trees: drop a SELECT into the query tab and follow it over,
+  // since that's where the result grid lives.
+  function openInSql(tableName: string) {
+    const statement = `SELECT * FROM ${tableName}`;
+    setSql(statement);
+    setActiveTab("query");
+    handleExecute(statement);
+  }
+
+  function confirmTruncate(tableName: string) {
+    setNotice(undefined);
+    setTruncateTarget(tableName);
+  }
+
   const tablesTab = (
     <div className="flex flex-col gap-6">
       <TableReferenceCard tables={tables} />
 
       <SchemaExplorer
         schemaGroups={schemaGroups}
-        onOpenInSql={(tableName) => {
-          const statement = `SELECT * FROM ${tableName}`;
-          setSql(statement);
-          // The grid lives on the other tab, so follow the result over.
-          setActiveTab("query");
-          handleExecute(statement);
-        }}
-        onTruncate={(tableName) => {
-          setNotice(undefined);
-          setTruncateTarget(tableName);
-        }}
+        onOpenInSql={openInSql}
+        onTruncate={confirmTruncate}
       />
     </div>
+  );
+
+  const modulesTab = (
+    <ModulesExplorer
+      moduleGroups={moduleGroups}
+      onOpenInSql={openInSql}
+      onTruncate={confirmTruncate}
+    />
   );
 
   const tabs: TabItem[] = [
     { key: "query", label: "SQL Query", content: queryTab },
     { key: "tables", label: "Tables Explorer", content: tablesTab },
+    { key: "modules", label: "Modules", content: modulesTab },
   ];
 
   return (

@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import type { BlobCellSource } from "./blob-cells";
 import type { SqlExplorerRepository } from "./ports";
 import type { SchemaObject, SchemaObjectKind, SqlExecutionResult, TableInfo, TablePage } from "./types";
 
@@ -66,7 +67,14 @@ export class SqliteSqlExplorerRepository implements SqlExplorerRepository {
     const total = this.db.prepare(`SELECT COUNT(*) AS count FROM "${name}"`).get() as {
       count: number;
     };
-    const rows = this.db.prepare(`SELECT * FROM "${name}" LIMIT ?`).all(limit) as Record<
+    // The rowid rides along under a reserved alias so a BLOB cell can be found
+    // again when the reader asks to save it. It is requested separately from
+    // `*` — `SELECT *` does not include it — and only where it exists: a view
+    // or a WITHOUT ROWID table has none, and asking would throw.
+    const rowIdAlias = "__mhb_rowid";
+    const hasRowIds = this.hasRowIds(name);
+    const selection = hasRowIds ? `rowid AS "${rowIdAlias}", *` : "*";
+    const rows = this.db.prepare(`SELECT ${selection} FROM "${name}" LIMIT ?`).all(limit) as Record<
       string,
       unknown
     >[];
@@ -82,10 +90,56 @@ export class SqliteSqlExplorerRepository implements SqlExplorerRepository {
       tableName: name,
       columns: effectiveColumns,
       rows: rows.map((row) => effectiveColumns.map((column) => row[column])),
+      ...(hasRowIds ? { rowIds: rows.map((row) => Number(row[rowIdAlias])) } : {}),
       totalRows: total.count,
       limit,
       isTruncated: total.count > rows.length,
     };
+  }
+
+  // Whether a name can be queried for `rowid`. Every ordinary table can; a view
+  // and a WITHOUT ROWID table cannot, and there is no pragma that says so
+  // outright — so this asks SQLite the cheapest possible question and reads the
+  // answer from whether it threw.
+  private hasRowIds(resolvedName: string): boolean {
+    try {
+      this.db.prepare(`SELECT rowid FROM "${resolvedName}" LIMIT 0`).all();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  readBlobCell({ tableName, columnName, rowId }: BlobCellSource): Uint8Array | undefined {
+    // Neither a table nor a column name can be a bound parameter, so both are
+    // resolved against the schema first and the *stored* spellings are what get
+    // interpolated. The rowid is bound. Nothing the caller typed reaches the SQL.
+    const name = this.resolveReadableName(tableName);
+    const column = this.resolveColumnName(name, columnName);
+
+    const row = this.db
+      .prepare(`SELECT "${column}" AS value FROM "${name}" WHERE rowid = ?`)
+      .get(rowId) as { value: unknown } | undefined;
+    if (!row) return undefined;
+
+    const { value } = row;
+    if (value === null || value === undefined) return undefined;
+    // Only an actual BLOB is served. A TEXT or numeric cell is not a file, and
+    // handing one back as a download would invite using this as a generic
+    // exfiltration route for column values.
+    if (!(value instanceof Uint8Array)) return undefined;
+    return value;
+  }
+
+  // As resolveTableName, for a column: the name is checked against the table's
+  // real columns and the stored spelling returned, so it can be interpolated.
+  private resolveColumnName(resolvedTable: string, columnName: string): string {
+    const columns = this.db
+      .prepare(`PRAGMA table_info('${resolvedTable}')`)
+      .all() as TableInfoRow[];
+    const match = columns.find((column) => column.name === columnName);
+    if (!match) throw new Error(`No such column: ${columnName}`);
+    return match.name;
   }
 
   executeStatement(sql: string): SqlExecutionResult {

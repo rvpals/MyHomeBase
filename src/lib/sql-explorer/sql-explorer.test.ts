@@ -12,7 +12,7 @@ import type { SqlExplorerRepository } from "./ports";
 // use-case actually reached the repository (and only for the right table).
 let truncated: string[] = [];
 
-function fakeRepo(): SqlExplorerRepository {
+function fakeRepo(overrides: Partial<SqlExplorerRepository> = {}): SqlExplorerRepository {
   return {
     listTables() {
       return [{ name: "widgets", columns: [{ name: "id", type: "INTEGER", isPrimaryKey: true, isNotNull: true }] }];
@@ -45,11 +45,13 @@ function fakeRepo(): SqlExplorerRepository {
       if (tableName !== "widgets") throw new Error(`No such table: ${tableName}`);
       return 42;
     },
+    readBlobCell: () => undefined,
     truncateTable(tableName) {
       if (tableName !== "widgets") throw new Error(`No such table: ${tableName}`);
       truncated.push(tableName);
       return 42;
     },
+    ...overrides,
   };
 }
 
@@ -72,6 +74,32 @@ describe("executeStatement", () => {
 
   it("rejects an empty statement before it reaches the repository", () => {
     expect(() => executeStatement(fakeRepo(), "")).toThrow();
+  });
+
+  // A `SELECT *` over a table with an image column would otherwise serialise a
+  // whole file per row into the response.
+  it("describes a BLOB in a query result instead of returning its bytes", () => {
+    const png = new Uint8Array(2048);
+    png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const repo = fakeRepo({
+      executeStatement: () => ({ kind: "query", columns: ["avatar"], rows: [[png]] }),
+    });
+
+    const result = executeStatement(repo, "SELECT avatar FROM sys_users");
+
+    expect(result).toMatchObject({ kind: "query" });
+    const cell = (result as { rows: unknown[][] }).rows[0][0];
+    expect(cell).toMatchObject({ kind: "blob", byteLength: 2048, mimeType: "image/png" });
+    // An arbitrary SELECT has no rowid to quote, so the cell gets no address and
+    // the grid renders its actions disabled.
+    expect((cell as { source?: unknown }).source).toBeUndefined();
+  });
+
+  it("leaves a non-query statement result untouched", () => {
+    expect(executeStatement(fakeRepo(), "DELETE FROM widgets")).toEqual({
+      kind: "statement",
+      changes: 1,
+    });
   });
 });
 
@@ -120,6 +148,7 @@ describe("executeReadOnlyQuery", () => {
       }),
       executeStatement: () => ({ kind: "statement", changes: 5 }),
       countRows: () => 0,
+      readBlobCell: () => undefined,
       truncateTable: () => 0,
     };
     expect(() => executeReadOnlyQuery(lyingRepo, "SELECT 1")).toThrow();

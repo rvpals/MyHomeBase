@@ -1,4 +1,5 @@
 import type { SqlExplorerRepository } from "./ports";
+import { toDisplayValue } from "./schema-objects";
 import { readOnlySqlStatementSchema, sqlStatementSchema, tableNameSchema } from "./schema";
 import type { SqlExecutionResult, TableInfo } from "./types";
 
@@ -8,7 +9,21 @@ export function listTables(repo: SqlExplorerRepository): TableInfo[] {
 
 export function executeStatement(repo: SqlExplorerRepository, sql: string): SqlExecutionResult {
   const validated = sqlStatementSchema.parse(sql);
-  return repo.executeStatement(validated);
+  const result = repo.executeStatement(validated);
+  if (result.kind !== "query") return result;
+
+  // A `SELECT *` over a table with an image column would otherwise serialise
+  // whole files into the response, one per row. Describing them keeps the
+  // Query tab's payload the same size as the Tables Explorer's.
+  //
+  // No address is attached: an arbitrary SELECT has no rowid to quote — it may
+  // be a join, an expression, or a view — so a blob found here renders as a
+  // summary with Save and Preview disabled. Browsing the table gives the
+  // buttons; see BlobCell.source.
+  return {
+    ...result,
+    rows: result.rows.map((row) => row.map((value) => toDisplayValue(value))),
+  };
 }
 
 export interface ReadOnlyQueryResult {
@@ -33,7 +48,10 @@ export function executeReadOnlyQuery(
   if (result.kind !== "query") {
     throw new Error("Only SELECT queries are allowed here.");
   }
-  return { columns: result.columns, rows: result.rows };
+  return {
+    columns: result.columns,
+    rows: result.rows.map((row) => row.map((value) => toDisplayValue(value))),
+  };
 }
 
 /** How many rows a table currently holds — the number the truncate warning quotes. */

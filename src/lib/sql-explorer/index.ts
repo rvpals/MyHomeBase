@@ -8,8 +8,11 @@ export type {
   SchemaObjectGroup,
   SchemaObjectKind,
   TablePage,
+  ModuleTableGroup,
+  ModuleTableRow,
 } from "./types";
 export { buildTableReference, describeTable } from "./table-reference";
+export { groupTablesByModule } from "./module-tables";
 export {
   TABLE_PAGE_LIMIT,
   listSchemaObjectGroups,
@@ -17,7 +20,20 @@ export {
   readTablePage,
   toDisplayValue,
   formatByteSize,
+  type DisplayValue,
 } from "./schema-objects";
+export {
+  BLOB_PREVIEW_MAX_BYTES,
+  blobDownloadFileName,
+  describeBlobCell,
+  isBlobCell,
+  isImageMimeType,
+  readBlobCell,
+  sniffMimeType,
+  type BlobCell,
+  type BlobCellSource,
+} from "./blob-cells";
+export { blobCellSourceSchema } from "./schema";
 export { sqlStatementSchema, readOnlySqlStatementSchema, tableNameSchema } from "./schema";
 export type { SqlExplorerRepository } from "./ports";
 export {

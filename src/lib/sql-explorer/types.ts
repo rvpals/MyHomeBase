@@ -56,6 +56,14 @@ export interface TablePage {
   tableName: string;
   columns: string[];
   rows: unknown[][];
+  /**
+   * The SQLite rowid of each row, positionally matching `rows` — the address a
+   * BLOB cell's Save/Preview needs to fetch its bytes back.
+   *
+   * Undefined for a WITHOUT ROWID table or a view, which have no rowid to quote;
+   * a blob in one of those renders as a summary with its actions disabled.
+   */
+  rowIds?: number[];
   /** Rows in the table, which may exceed those returned. */
   totalRows: number;
   /** The LIMIT applied. */
@@ -67,3 +75,29 @@ export interface TablePage {
 export type SqlExecutionResult =
   | { kind: "query"; columns: string[]; rows: unknown[][] }
   | { kind: "statement"; changes: number };
+
+/** One table as the Modules tab lists it. */
+export interface ModuleTableRow {
+  name: string;
+  /** From the static reference; undefined when it isn't documented. */
+  description?: string;
+}
+
+/**
+ * The tables of one module, for the Modules tab's tree.
+ *
+ * `isModule` is false for exactly one group — the trailing "Non-Modules" — so
+ * the view can render it differently without matching on its label.
+ */
+export interface ModuleTableGroup {
+  /** Module slug, or "non-modules" for the leftovers. Keys tree selection. */
+  key: string;
+  /** Heading — the module's short name from `sys_modules`. */
+  label: string;
+  /** The three-letter table prefix, e.g. "stk_". Empty for "Non-Modules". */
+  prefix: string;
+  /** The module's registered icon. Absent for "Non-Modules". */
+  icon?: string;
+  isModule: boolean;
+  tables: ModuleTableRow[];
+}

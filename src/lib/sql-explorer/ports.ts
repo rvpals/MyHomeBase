@@ -1,3 +1,4 @@
+import type { BlobCellSource } from "./blob-cells";
 import type { SchemaObject, SqlExecutionResult, TableInfo, TablePage } from "./types";
 
 export interface SqlExplorerRepository {
@@ -13,6 +14,15 @@ export interface SqlExplorerRepository {
   executeStatement(sql: string): SqlExecutionResult;
   /** How many rows `tableName` holds. Throws if the table doesn't exist. */
   countRows(tableName: string): number;
+  /**
+   * The raw bytes of one BLOB cell, or undefined when the row, column or value
+   * isn't there. Backs the Save/Preview actions on a blob cell: the bytes are
+   * deliberately fetched one at a time rather than travelling with the rows.
+   *
+   * Throws if the table or column doesn't exist — both are resolved against the
+   * schema before any SQL is built, since neither can be a bound parameter.
+   */
+  readBlobCell(source: BlobCellSource): Uint8Array | undefined;
   /**
    * Deletes every row from `tableName` and resets its AUTOINCREMENT counter, so
    * the next insert starts at 1. Returns the number of rows deleted.

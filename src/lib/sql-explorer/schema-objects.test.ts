@@ -18,6 +18,13 @@ const OBJECTS: SchemaObject[] = [
   { name: "widgets_touch", kind: "trigger", tableName: "widgets", sql: "CREATE TRIGGER widgets_touch ..." },
 ];
 
+/** A PNG-signed blob of `totalLength` bytes, so the sniffer can place it. */
+function pngBytes(totalLength: number): Uint8Array {
+  const bytes = new Uint8Array(totalLength);
+  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  return bytes;
+}
+
 /** Records the arguments readTablePage was called with. */
 let lastRead: { tableName: string; limit: number } | undefined;
 
@@ -31,7 +38,8 @@ function fakeRepo(overrides: Partial<SqlExplorerRepository> = {}): SqlExplorerRe
       return {
         tableName,
         columns: ["id", "payload"],
-        rows: [[1, new Uint8Array(2048)]],
+        rows: [[1, pngBytes(2048)]],
+        rowIds: [77],
         totalRows: 900,
         limit,
         isTruncated: true,
@@ -39,6 +47,7 @@ function fakeRepo(overrides: Partial<SqlExplorerRepository> = {}): SqlExplorerRe
     },
     executeStatement: () => ({ kind: "statement", changes: 0 }),
     countRows: () => 0,
+    readBlobCell: () => undefined,
     truncateTable: () => 0,
     ...overrides,
   };
@@ -84,10 +93,37 @@ describe("readTablePage", () => {
     expect(page.isTruncated).toBe(true);
   });
 
-  it("summarises a BLOB instead of returning its bytes", () => {
+  it("describes a BLOB instead of returning its bytes", () => {
     const page = readTablePage(fakeRepo(), "widgets");
 
-    expect(page.rows[0][1]).toBe("<BLOB 2 KB>");
+    expect(page.rows[0][1]).toEqual({
+      kind: "blob",
+      byteLength: 2048,
+      mimeType: "image/png",
+      isPreviewable: true,
+      // Addressed by the row's rowid, so the cell can offer Save and Preview.
+      source: { tableName: "widgets", columnName: "payload", rowId: 77 },
+    });
+  });
+
+  it("describes a BLOB without an address when the source has no rowids", () => {
+    const page = readTablePage(
+      fakeRepo({
+        readTablePage: (tableName, limit) => ({
+          tableName,
+          columns: ["id", "payload"],
+          rows: [[1, pngBytes(2048)]],
+          // A view has no rowid to quote.
+          totalRows: 1,
+          limit,
+          isTruncated: false,
+        }),
+      }),
+      "widgets",
+    );
+
+    expect(page.rows[0][1]).toMatchObject({ kind: "blob", byteLength: 2048 });
+    expect((page.rows[0][1] as { source?: unknown }).source).toBeUndefined();
   });
 
   it("rejects a name that isn't a valid identifier before reaching the repository", () => {
@@ -115,6 +151,12 @@ describe("toDisplayValue", () => {
 
   it("renders a bigint as text, since JSON cannot carry one", () => {
     expect(toDisplayValue(BigInt("9007199254740993"))).toBe("9007199254740993");
+  });
+
+  it("describes a BLOB rather than passing its bytes through", () => {
+    const value = toDisplayValue(pngBytes(2048));
+
+    expect(value).toMatchObject({ kind: "blob", byteLength: 2048, mimeType: "image/png" });
   });
 });
 

@@ -19,3 +19,17 @@ export const tableNameSchema = z
   .string()
   .min(1)
   .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "Not a valid table name.");
+
+// One BLOB cell's address, as it arrives from the blob route's query string.
+// The column name is held to the same identifier rule as the table name: it is
+// interpolated into the SELECT (a column cannot be a bound parameter), and the
+// repository additionally checks it against the table's real columns.
+export const blobCellSourceSchema = z.object({
+  tableName: tableNameSchema,
+  columnName: z
+    .string()
+    .min(1)
+    .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "Not a valid column name."),
+  // A rowid is a signed 64-bit integer; anything else never addressed a row.
+  rowId: z.coerce.number().int(),
+});
