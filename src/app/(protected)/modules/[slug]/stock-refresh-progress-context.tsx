@@ -6,7 +6,7 @@
 // A context rather than a prop because the two live on opposite sides of a server
 // boundary: `StockSection` is a server component that renders the already-loaded
 // `SectionBody` alongside `StockRefreshControl`, so neither can pass state to the
-// other. Same shape as journal-new-entry-context.tsx.
+// other.
 //
 // Only the total and today's move are shared. The rest of the dashboard — the
 // allocation bars, the period tiles, the statistics grid — settles on the

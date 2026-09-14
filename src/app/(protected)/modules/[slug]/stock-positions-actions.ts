@@ -3,17 +3,20 @@
 import { revalidatePath } from "next/cache";
 import { lookupQuote } from "@/lib/market-data";
 import {
-  createTransaction,
+  createTransactionAndApply,
   deletePosition,
   deleteTransaction,
+  listPositionsByTicker,
   getPosition,
   listPositions,
   refreshAllPositions,
   refreshPosition,
   updateTransaction,
   upsertPosition,
+  UNASSIGNED_ACCOUNT_ID,
 } from "@/lib/stock-positions";
 import type { PositionType, PositionValueMove, TransactionAction } from "@/lib/stock-positions";
+import { listAccounts } from "@/lib/investment-accounts";
 import { centsToDollars, dollarsToCents } from "@/lib/shared/money";
 import { deps } from "@/lib/wiring";
 import { requireModuleAccess } from "../../require-access";
@@ -63,6 +66,14 @@ export interface TransactionFormInput {
   /** The broker's reference number, when you have one. Blank is fine. */
   externalId?: string;
   note?: string;
+  /**
+   * "Also update positions data" — move the matching holding's share count too.
+   * Only read when recording; editing an existing transaction never touches a
+   * holding, since the original trade has already been applied.
+   */
+  applyToPosition?: boolean;
+  /** Which holding to move, when the ticker is held in more than one account. */
+  applyAccountId?: number;
 }
 
 function toErrorResult(error: unknown, fallback: string): ActionResult {
@@ -115,7 +126,7 @@ export async function deletePositionAction(accountId: number, ticker: string): P
 export async function createTransactionAction(input: TransactionFormInput): Promise<ActionResult> {
   await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
-    createTransaction(deps.stockPositionRepo, {
+    createTransactionAndApply(deps.stockPositionRepo, {
       transactionAt: input.transactionAt,
       action: input.action,
       ticker: input.ticker,
@@ -124,6 +135,8 @@ export async function createTransactionAction(input: TransactionFormInput): Prom
       brokerageFirm: input.brokerageFirm ?? "",
       externalId: input.externalId ?? "",
       note: input.note ?? "",
+      applyToPosition: input.applyToPosition ?? false,
+      accountId: input.applyAccountId,
     });
   } catch (error) {
     return toErrorResult(error, "Failed to record transaction.");
@@ -284,4 +297,35 @@ export async function deleteTransactionAction(transactionId: number): Promise<Ac
   }
   revalidatePath(STOCK_ETFS_MODULE_PATH);
   return { ok: true };
+}
+
+/** One account that holds a ticker, for the apply-to-position picker. */
+export interface TickerHolding {
+  accountId: number;
+  accountName: string;
+  quantity: number;
+}
+
+/**
+ * Which accounts hold this ticker, so the form can say what a sale would deduct
+ * from — and ask which holding when there's more than one.
+ *
+ * Named for the picker rather than exposed as a general lookup: it returns only the
+ * three fields that populate it.
+ */
+export async function listTickerHoldingsAction(ticker: string): Promise<TickerHolding[]> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  const symbol = ticker.trim().toUpperCase();
+  if (!symbol) return [];
+
+  const accounts = listAccounts(deps.investmentAccountRepo);
+  return listPositionsByTicker(deps.stockPositionRepo, symbol).map((position) => ({
+    accountId: position.accountId,
+    accountName:
+      position.accountId === UNASSIGNED_ACCOUNT_ID
+        ? "Unassigned"
+        : (accounts.find((account) => account.id === position.accountId)?.name ??
+          `Account ${position.accountId}`),
+    quantity: position.quantity,
+  }));
 }

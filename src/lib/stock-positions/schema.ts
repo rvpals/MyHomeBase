@@ -98,10 +98,42 @@ export const createTransactionSchema = z.object({
   brokerageFirm: z.string().trim().default(""),
   externalId: z.string().trim().default(""),
   note: z.string().default(""),
+  /**
+   * Opt in to moving the matching holding's share count as well — the Record
+   * Transaction card's "also update positions data" box. Default false: holdings
+   * come from the broker import unless you say otherwise, which is how every
+   * transaction recorded before this existed behaved.
+   */
+  applyToPosition: z.boolean().default(false),
+  /**
+   * Which account's holding to move, when `applyToPosition` is set and the ticker is
+   * held in more than one. Omitted means "the only one" — and if there isn't exactly
+   * one, the use-case refuses rather than guessing. Not stored on the transaction;
+   * `stk_stock_transactions` has no account column.
+   */
+  accountId: z.number().int().nonnegative().optional(),
 });
 
+/**
+ * The *parsed* shape — every default resolved. What a use-case works with.
+ *
+ * Callers should use `CreateTransactionArgs` instead: `z.infer` reports a field with
+ * a `.default()` as required, so a caller typed against this one would have to pass
+ * `applyToPosition` explicitly to get its default.
+ */
 export type CreateTransactionInput = z.infer<typeof createTransactionSchema>;
 
-export const updateTransactionSchema = createTransactionSchema;
+/** What a caller passes in — fields carrying a default are optional. */
+export type CreateTransactionArgs = z.input<typeof createTransactionSchema>;
+
+/**
+ * Editing a stored trade. The same fields as creating one, minus the
+ * apply-to-position pair — those describe a one-off action taken at record time, not
+ * anything stored on the row, and the original trade has already moved the holding.
+ */
+export const updateTransactionSchema = createTransactionSchema.omit({
+  applyToPosition: true,
+  accountId: true,
+});
 
 export type UpdateTransactionInput = z.infer<typeof updateTransactionSchema>;

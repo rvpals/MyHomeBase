@@ -10,6 +10,7 @@ import {
   computeTickerDayMoves,
   computeTransactionStats,
   createTransaction,
+  createTransactionAndApply,
   deletePosition,
   deleteTransaction,
   getPosition,
@@ -28,7 +29,7 @@ import {
   upsertPosition,
 } from "./stock-positions";
 import type { StockPositionRepository } from "./ports";
-import type { CreateTransactionInput, UpsertPositionInput } from "./schema";
+import type { CreateTransactionArgs, UpsertPositionInput } from "./schema";
 import type { StockPosition, StockTransaction } from "./types";
 
 /**
@@ -429,7 +430,7 @@ describe("refreshAllPositions", () => {
 });
 
 describe("createTransaction", () => {
-  const validInput: CreateTransactionInput = {
+  const validInput: CreateTransactionArgs = {
     transactionAt: "2026-01-15",
     action: "Buy",
     ticker: "AAPL",
@@ -456,6 +457,119 @@ describe("createTransaction", () => {
   it("rejects an empty ticker", () => {
     const repo = fakeRepo();
     expect(() => createTransaction(repo, { ...validInput, ticker: "" })).toThrow();
+  });
+});
+
+describe("createTransactionAndApply", () => {
+  const sellFive: CreateTransactionArgs = {
+    transactionAt: "2026-01-15",
+    action: "Sell",
+    ticker: "BMY",
+    numberOfShares: 5,
+    pricePerShareCents: 5200,
+    brokerageFirm: "",
+    externalId: "",
+    note: "",
+    applyToPosition: true,
+  };
+
+  const bmy = () =>
+    makePosition({
+      ticker: "BMY",
+      quantity: 20,
+      currentPriceCents: 5000,
+      costCents: 80000,
+      unitCostCents: 4000,
+    });
+
+  it("leaves holdings alone when the flag is off — the pre-existing behaviour", () => {
+    const repo = fakeRepo([bmy()]);
+    const result = createTransactionAndApply(repo, { ...sellFive, applyToPosition: false });
+    expect(result.position).toBeUndefined();
+    expect(getPosition(repo, { accountId: 0, ticker: "BMY" })?.quantity).toBe(20);
+  });
+
+  it("treats a missing flag as off, so an old caller can't start writing holdings", () => {
+    const repo = fakeRepo([bmy()]);
+    const { applyToPosition: _omitted, ...withoutFlag } = sellFive;
+    createTransactionAndApply(repo, withoutFlag);
+    expect(getPosition(repo, { accountId: 0, ticker: "BMY" })?.quantity).toBe(20);
+  });
+
+  it("deducts the sold shares from the holding when the flag is on", () => {
+    const repo = fakeRepo([bmy()]);
+    const result = createTransactionAndApply(repo, sellFive);
+    expect(result.position?.quantity).toBe(15);
+    expect(getPosition(repo, { accountId: 0, ticker: "BMY" })?.quantity).toBe(15);
+    expect(listTransactions(repo)).toHaveLength(1);
+  });
+
+  it("records the transaction as well as moving the holding", () => {
+    const repo = fakeRepo([bmy()]);
+    const result = createTransactionAndApply(repo, sellFive);
+    expect(result.transaction.totalAmountCents).toBe(26000);
+    expect(listTransactions(repo, "BMY")).toHaveLength(1);
+  });
+
+  it("writes nothing at all when the ticker has no position", () => {
+    const repo = fakeRepo([makePosition({ ticker: "AAPL" })]);
+    expect(() => createTransactionAndApply(repo, sellFive)).toThrow(/No BMY position/);
+    // The all-or-nothing guarantee: a refused apply leaves no orphan ledger row.
+    expect(listTransactions(repo)).toHaveLength(0);
+  });
+
+  it("writes nothing when the oversell is refused", () => {
+    const repo = fakeRepo([bmy()]);
+    expect(() =>
+      createTransactionAndApply(repo, { ...sellFive, numberOfShares: 50 }),
+    ).toThrow(/holds 20/);
+    expect(listTransactions(repo)).toHaveLength(0);
+    expect(getPosition(repo, { accountId: 0, ticker: "BMY" })?.quantity).toBe(20);
+  });
+
+  it("refuses rather than guessing when two accounts hold the ticker", () => {
+    const repo = fakeRepo([
+      makePosition({ ticker: "BMY", accountId: 1 }),
+      makePosition({ ticker: "BMY", accountId: 2 }),
+    ]);
+    expect(() => createTransactionAndApply(repo, sellFive)).toThrow(/2 accounts/);
+    expect(listTransactions(repo)).toHaveLength(0);
+  });
+
+  it("moves only the named account's holding", () => {
+    const repo = fakeRepo([
+      makePosition({ ticker: "BMY", accountId: 1, quantity: 20 }),
+      makePosition({ ticker: "BMY", accountId: 2, quantity: 30 }),
+    ]);
+    createTransactionAndApply(repo, { ...sellFive, accountId: 2 });
+    expect(getPosition(repo, { accountId: 1, ticker: "BMY" })?.quantity).toBe(20);
+    expect(getPosition(repo, { accountId: 2, ticker: "BMY" })?.quantity).toBe(25);
+  });
+
+  it("scales the day's gain to the shares still held", () => {
+    const repo = fakeRepo([
+      makePosition({ ticker: "BMY", quantity: 20, dayGainLossCents: 1000 }),
+    ]);
+    const result = createTransactionAndApply(repo, sellFive);
+    // $10 across 20 shares, 15 left → $7.50.
+    expect(result.position?.dayGainLossCents).toBe(750);
+  });
+
+  it("preserves fields a trade has no business changing", () => {
+    const repo = fakeRepo([
+      makePosition({ ticker: "BMY", quantity: 20, incomeEarnedCents: 4321, assetClass: "Equity" }),
+    ]);
+    const result = createTransactionAndApply(repo, sellFive);
+    expect(result.position?.incomeEarnedCents).toBe(4321);
+    expect(result.position?.assetClass).toBe("Equity");
+  });
+
+  it("keeps a fully sold position at zero shares instead of deleting it", () => {
+    const repo = fakeRepo([bmy()]);
+    createTransactionAndApply(repo, { ...sellFive, numberOfShares: 20 });
+    const remaining = getPosition(repo, { accountId: 0, ticker: "BMY" });
+    expect(remaining).toBeDefined();
+    expect(remaining?.quantity).toBe(0);
   });
 });
 

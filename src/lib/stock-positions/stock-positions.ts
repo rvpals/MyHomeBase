@@ -11,6 +11,11 @@ import {
 } from "@/lib/csv-import";
 import type { FieldOptionsMap, ImportRowResult, ImportSummary } from "@/lib/csv-import";
 import type { MarketDataClient } from "@/lib/market-data";
+import {
+  applyTransactionToPosition,
+  describeMatchFailure,
+  resolveTargetPosition,
+} from "./apply-transaction";
 import type { StockPositionRepository, TransactionMatchKey } from "./ports";
 import {
   createTransactionSchema,
@@ -19,7 +24,12 @@ import {
   updateTransactionSchema,
   upsertPositionSchema,
 } from "./schema";
-import type { CreateTransactionInput, UpdateTransactionInput, UpsertPositionInput } from "./schema";
+import type {
+  CreateTransactionArgs,
+  CreateTransactionInput,
+  UpdateTransactionInput,
+  UpsertPositionInput,
+} from "./schema";
 import type {
   AllocationSlice,
   DayMove,
@@ -146,11 +156,60 @@ export function listTransactions(
 
 export function createTransaction(
   repo: StockPositionRepository,
-  input: CreateTransactionInput,
+  input: CreateTransactionArgs,
 ): StockTransaction {
   const validated = createTransactionSchema.parse(input);
   const totalAmountCents = Math.round(validated.numberOfShares * validated.pricePerShareCents);
   return repo.createTransaction(validated, totalAmountCents);
+}
+
+/**
+ * Records a trade and, when asked, moves the holding it describes.
+ *
+ * The position write is **conditional and fails loudly**: if the trade can't be
+ * matched to exactly one holding, or would oversell it, nothing is written at all —
+ * not the transaction either. Recording the trade and skipping the holding would
+ * leave the ledger and the position disagreeing in a way nobody would notice, which
+ * is the failure this feature exists to prevent. The caller gets the reason and can
+ * retry with an account, or with the box cleared.
+ *
+ * `applyToPosition: false` is exactly `createTransaction`, so the old path keeps its
+ * behaviour — holdings come from the broker import unless you opt in here.
+ */
+export function createTransactionAndApply(
+  repo: StockPositionRepository,
+  input: CreateTransactionArgs,
+): { transaction: StockTransaction; position?: StockPosition } {
+  const validated = createTransactionSchema.parse(input);
+
+  if (!validated.applyToPosition) {
+    return { transaction: createTransaction(repo, validated) };
+  }
+
+  const match = resolveTargetPosition(
+    repo.listPositionsByTicker(validated.ticker),
+    validated.ticker,
+    validated.accountId,
+  );
+  if (!match.ok) throw new Error(describeMatchFailure(match.failure));
+
+  // Throws OversellError before anything is written, so a bad sell leaves no row.
+  const update = applyTransactionToPosition(match.position, validated);
+
+  const transaction = createTransaction(repo, validated);
+  const position = upsertPosition(repo, {
+    ...match.position,
+    ...update,
+    // The day's move is a price story, not a share-count one, and the stored figure
+    // was computed for the old quantity. Rescale it so the dashboard's day total
+    // doesn't silently keep counting shares you no longer hold.
+    dayGainLossCents:
+      match.position.quantity > 0
+        ? Math.round((match.position.dayGainLossCents / match.position.quantity) * update.quantity)
+        : 0,
+  });
+
+  return { transaction, position };
 }
 
 export function updateTransaction(

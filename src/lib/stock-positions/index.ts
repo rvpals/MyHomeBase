@@ -26,9 +26,20 @@ export {
   type UpsertPositionInput,
   type PositionKeyInput,
   type CreateTransactionInput,
+  type CreateTransactionArgs,
   type UpdateTransactionInput,
 } from "./schema";
 export type { StockPositionRepository } from "./ports";
+export {
+  applyTransactionToPosition,
+  describeMatchFailure,
+  resolveTargetPosition,
+  OversellError,
+  type AppliedTrade,
+  type PositionMatch,
+  type PositionMatchFailure,
+  type PositionQuantityUpdate,
+} from "./apply-transaction";
 export {
   listPositions,
   getPosition,
@@ -37,6 +48,7 @@ export {
   deletePosition,
   listTransactions,
   createTransaction,
+  createTransactionAndApply,
   updateTransaction,
   deleteTransaction,
   annualIncomeCents,

@@ -4,7 +4,7 @@
 // Lifted out of stock-positions-view.tsx (where it was a tab) when the module
 // gained a tree nav and each section became its own route.
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
@@ -15,7 +15,9 @@ import { centsToDollars, formatCents } from "@/lib/shared/money";
 import {
   createTransactionAction,
   deleteTransactionAction,
+  listTickerHoldingsAction,
   updateTransactionAction,
+  type TickerHolding,
   type TransactionFormInput,
 } from "./stock-positions-actions";
 
@@ -33,7 +35,133 @@ const EMPTY_TRANSACTION_FORM: TransactionFormInput = {
   brokerageFirm: "",
   externalId: "",
   note: "",
+  // Off by default: holdings come from the broker import unless you opt in, which
+  // is how every transaction recorded before this option existed behaved.
+  applyToPosition: false,
 };
+
+/**
+ * The "also update positions data" control, shown only when recording a new trade.
+ *
+ * Editing is deliberately excluded: the original trade has already moved the
+ * holding, so re-applying an edit would double-count it. Undoing the old figures and
+ * applying the new ones is a different, larger feature.
+ *
+ * It looks up which accounts hold the ticker so it can say what the trade will
+ * change *before* you submit, and so it can ask which holding when a symbol is held
+ * more than once — a position is keyed by account, but a transaction isn't.
+ */
+function ApplyToPositionField({
+  ticker,
+  action,
+  shares,
+  checked,
+  accountId,
+  onCheckedChange,
+  onAccountChange,
+}: {
+  ticker: string;
+  action: TransactionAction;
+  shares: string;
+  checked: boolean;
+  accountId: number | undefined;
+  onCheckedChange: (checked: boolean) => void;
+  onAccountChange: (accountId: number | undefined) => void;
+}) {
+  // Keyed by symbol so a result can never be shown against a different ticker —
+  // the lookup is async, and the field it describes is still being typed into.
+  const [loaded, setLoaded] = useState<{ symbol: string; holdings: TickerHolding[] }>();
+  const symbol = ticker.trim().toUpperCase();
+
+  // Only looked up once the box is ticked — an untouched form shouldn't fire a
+  // request per keystroke for a feature nobody opted into.
+  useEffect(() => {
+    if (!checked || !symbol) return;
+    let current = true;
+    void listTickerHoldingsAction(symbol).then((result) => {
+      if (current) setLoaded({ symbol, holdings: result });
+    });
+    return () => {
+      current = false;
+    };
+  }, [checked, symbol]);
+
+  // Derived, not stored: a result for a stale symbol simply doesn't count, so
+  // there's no second state to reset when the ticker changes.
+  const holdings = checked && loaded?.symbol === symbol ? loaded.holdings : undefined;
+  const isAmbiguous = (holdings?.length ?? 0) > 1;
+  const target = isAmbiguous
+    ? holdings?.find((holding) => holding.accountId === accountId)
+    : holdings?.[0];
+
+  const parsedShares = Number(shares || "0");
+  const delta = action === "Buy" ? parsedShares : -parsedShares;
+  const projected = target ? target.quantity + delta : undefined;
+
+  return (
+    <div className="sm:col-span-3">
+      <label className="flex items-start gap-3">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(event) => onCheckedChange(event.target.checked)}
+          className="mt-1"
+        />
+        <span>
+          <span className="block text-sm text-ink">Also update positions data</span>
+          <span className="block text-sm text-muted">
+            Adds or deducts these shares from the matching holding. Off by default —
+            holdings normally come from a broker import, and a later import will
+            overwrite this.
+          </span>
+        </span>
+      </label>
+
+      {/* Indented to the checkbox label on desktop; flush left on a phone. */}
+      {checked && symbol && holdings && (
+        <div className="mt-2 ml-7 text-sm max-lg:ml-0">
+          {holdings.length === 0 ? (
+            <p className="text-red-400">
+              No {symbol} position to update. Clear this box to record the transaction on
+              its own, or add the position first.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {isAmbiguous && (
+                <label className="block">
+                  <span className="mb-1 block font-medium text-ink">
+                    {symbol} is held in {holdings.length} accounts — update which?
+                  </span>
+                  <select
+                    value={accountId ?? ""}
+                    onChange={(event) =>
+                      onAccountChange(event.target.value === "" ? undefined : Number(event.target.value))
+                    }
+                    className={INPUT_CLASS}
+                  >
+                    <option value="">Select an account…</option>
+                    {holdings.map((holding) => (
+                      <option key={holding.accountId} value={holding.accountId}>
+                        {holding.accountName} — {holding.quantity} shares
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {target && projected !== undefined && (
+                <p className={projected < 0 ? "text-red-400" : "text-muted"}>
+                  {projected < 0
+                    ? `${target.accountName} holds only ${target.quantity} shares — this sale can't be applied.`
+                    : `${target.accountName}: ${target.quantity} → ${projected} shares.`}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function toTransactionFormInput(transaction: StockTransaction): TransactionFormInput {
   return {
@@ -53,11 +181,14 @@ function TransactionForm({
   initialValue,
   onSave,
   onCancel,
+  canApplyToPosition = false,
 }: {
   title: string;
   initialValue: TransactionFormInput;
   onSave: (input: TransactionFormInput) => Promise<string | undefined>;
   onCancel?: () => void;
+  /** Recording offers the holding update; editing doesn't — see ApplyToPositionField. */
+  canApplyToPosition?: boolean;
 }) {
   const [form, setForm] = useState(initialValue);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -75,7 +206,10 @@ function TransactionForm({
         setError(failure);
         return;
       }
-      setForm(EMPTY_TRANSACTION_FORM);
+      // Clearing the form keeps the "also update positions" choice: entering a run
+      // of trades shouldn't silently revert to leaving holdings untouched. The
+      // account pick is dropped, since it belonged to the ticker just recorded.
+      setForm({ ...EMPTY_TRANSACTION_FORM, applyToPosition: form.applyToPosition });
     } finally {
       setIsSaving(false);
     }
@@ -164,6 +298,24 @@ function TransactionForm({
           className={INPUT_CLASS}
         />
       </label>
+      {canApplyToPosition && (
+        <ApplyToPositionField
+          ticker={form.ticker}
+          action={form.action}
+          shares={form.numberOfShares}
+          checked={form.applyToPosition ?? false}
+          accountId={form.applyAccountId}
+          onCheckedChange={(checked) =>
+            setForm({
+              ...form,
+              applyToPosition: checked,
+              // Drop a stale account pick when the option is switched off.
+              applyAccountId: checked ? form.applyAccountId : undefined,
+            })
+          }
+          onAccountChange={(applyAccountId) => setForm((current) => ({ ...current, applyAccountId }))}
+        />
+      )}
       {error && <p className="text-sm text-red-400 sm:col-span-3">{error}</p>}
       <div className="flex gap-2 sm:col-span-3">
         <Button type="submit" disabled={isSaving}>
@@ -302,6 +454,7 @@ export function StockTransactionsView({ transactions }: { transactions: StockTra
           title="Record transaction"
           initialValue={EMPTY_TRANSACTION_FORM}
           onSave={handleCreate}
+          canApplyToPosition
         />
       </CollapsibleCard>
 
