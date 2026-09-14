@@ -96,12 +96,33 @@ There is a fourth face, **Great Vibes** (copperplate calligraphy), exposed as
 never offers it — nobody can pick script as their body font. It points straight at its
 `next/font/google` loader in `src/app/layout.tsx` and does not change with the theme.
 
-It exists for decorative type — handwriting where handwriting is the point. Today its
-only caller is the Daily Quote card on the home screen. Before using it anywhere else,
-ask whether that surface is genuinely decorative; script is much less legible than the
-theme trio, so it does not belong in anything a user has to read carefully or at length,
-and never below ~20px. Adding a second decorative face is a design decision, not a
-mechanical one — raise it rather than adding another `--font-*` var.
+It exists for decorative type — handwriting where handwriting is the point. Before using
+it anywhere else, ask whether that surface is genuinely decorative; script is much less
+legible than the theme trio, so it does not belong in anything a user has to read
+carefully or at length, and never below ~20px. Adding a second decorative face is a
+design decision, not a mechanical one — raise it rather than adding another `--font-*`
+var.
+
+Two callers today:
+
+- **The Daily Quote card** on the home screen, at `text-3xl` (30px), stepping down to
+  `text-2xl` narrow. The original, and the straightforward case: a grace note you glance
+  at.
+- **The New Journal Entry screen's Content field**, behind an explicit **Handwriting**
+  toggle, at whichever of four sizes the journal's *Handwriting font size* preference
+  names — 20 / 24 / 30 / 36px. This is the *at-length* case the paragraph above warns
+  off, allowed as a deliberate exception on three conditions: it is **opt-in** (the field
+  is the theme body face until the writer asks for cursive, and the toggle resets with the
+  form), the offered sizes **start at the 20px floor** and none goes under it, and it
+  **does not step down below 1024px** the way the quote card does — 18px script on a phone
+  is the least readable combination in the app, and an explicitly chosen size shouldn't be
+  silently overridden on a narrow screen. A third caller wanting script for body copy is a
+  design conversation, not a precedent this one sets.
+
+  The floor is enforced by the **options table** (`HANDWRITING_SIZE_OPTIONS` in
+  `src/lib/journal/preferences.ts`), not by a literal in a component: the type has no
+  member below `text-xl` and the read path clamps anything unrecognised back to it. If you
+  add a size, add it there — and don't add one below 20px without revisiting this section.
 
 ## The signature: buttons are switches, cards are calm
 
@@ -156,7 +177,8 @@ Reach for one of these before writing a new `shadow-[...]`:
 | `.card-raised-hover` | The same card's `:hover` | the cast grows and softens |
 | `.card-embossed` | An **opt-in bevel** for a card that should read as a thick slab — pair with `.card-raised-hover` | lit top edge + shadowed underside + ring + two-stop cast |
 | `.shell-slab-raised` | The **module rail and section panel** — the sanctioned surface exception | `Button`'s hard `4px` offset, rotated to point right, in translucent black (not `--line`, which vanishes on light themes) + a hairline ring |
-| `.paper-texture` | A card that should read as a **physical sheet** — the journal's New Journal card | translucent fibre grid + diagonal sheen, no tint of its own |
+| `.shell-accent-text` | The accent green for text and glyphs on a `--brass-soft` tint in the **compact nav bar and its sheet** — not a general replacement for `--brass-dark` | `color-mix(--brass 78%, --ink)`: brightens toward `--brass` on a dark theme and deepens on a light one, because neither token alone clears AA on all eight (Signal Deck wants `--brass`, Daybreak wants `--brass-dark`) |
+| `.paper-texture` | A card that should read as a **physical sheet** — the journal's New Journal card, the Daily Quote card, and the Content field in Handwriting mode | translucent fibre grid + diagonal sheen, **no tint of its own** — so it needs a surface (`bg-paper-raised`) under it; over a dark stage on its own it renders as hairlines on black |
 | `.playing-card-face` / `.playing-card-rim` / `.playing-card-back` | **Every playing card** — see [`PlayingCard`](components.md#playingcard) | lit top edge + shaded underside + diagonal sheen + inner hairline + two-stop cast |
 | `.playing-card-lifted` | A card in the **hand being acted on** | the same, cast grown; rises 2px by margin (see below) |
 | `.mahjong-tile` / `.mahjong-tile-face` / `.mahjong-tile-back` | **Every mahjong tile** — see [`MahjongTile`](components.md#mahjongtile) | a genuinely **extruded body** (a stack of hard 1px shadows walking down-right) + a face inset with a carved lip; `--tile-depth` sets the thickness per size |
@@ -529,14 +551,58 @@ The compact fork is a genuinely *different component*, not a restyle, which is w
 genuinely can't do it" below. A 48px rail and a 240px panel side by side is 288px of chrome
 on a 390px phone.
 
-- **Modules** move into the app bar as a dropdown — the module switcher *is* the title.
-- **Sections** move to a bottom trigger row naming the current section, which opens a
-  **sheet** over a scrim. The trigger keeps answering "where am I?" while closed.
+**All navigation is on one edge: the bottom.** Both tiers collapse into a single bar that
+`SectionPanel` draws, and the header keeps *no* module switcher. This is the rule to hold
+onto — the tiers answer different questions, but on a phone they are one surface, because
+a module switcher at the top and a section trigger at the bottom meant neither edge read
+as "navigation" and the bottom edge was crowded anyway.
+
+- **One bar, both tiers.** Tapping it opens a sheet over a scrim listing either the
+  module's sections or the module list. Closed, the bar names where you are.
+- **Group headings are kept**, unlike the desktop accordion's collapsing. A heading is a
+  label, not a level: nothing costs an extra tap. Compact *used* to flatten them away, and
+  that was wrong for exactly the modules that needed structure most — Stocks' ten sections
+  in three groups as one undifferentiated scroll.
 - **Touch targets grow.** Sheet rows are `py-2.5` (~44px) against the desktop panel's
   `py-1.5`. A pointer doesn't need the slack; a thumb does.
-- **The bottom edge still stacks.** The trigger publishes its height the same way the
+- **The bottom edge still stacks.** The bar publishes its height the same way the
   music player reads (`--section-trigger-height`), and the player rides *above* it. Nothing
   claims `bottom-0` outright.
+- **A sectionless page gets the bar too, module-only** (home, account). It names the page,
+  and tapping it opens the module list directly — there is no second tier to arrange, so
+  both styles render the same thing and the preference has nothing to choose between.
+  Without this those two screens would keep a dropdown in the *header*, putting their
+  navigation on the opposite edge from every other screen's.
+- **The header keeps no module switcher on compact.** The one exception is a reader with
+  no accessible modules at all, where the bar has nothing to offer; `TwoTierShell` keys
+  that off `links.length`, not a flag, so it can't drift from what `SectionPanel` drew.
+  The header itself still renders on compact — it carries the **profile menu**, and so
+  logout, which has nowhere else to go when the rail isn't there.
+
+#### The bar has two arrangements, and the reader picks
+
+A stored per-user preference — `compactNavStyle`, in `src/lib/user-preferences` — chooses
+between two ways to divide that one bar. Both cost two taps to reach a section, so the
+only real difference is the price of switching *module*:
+
+| Style | The bar | Sections | Modules |
+|---|---|---|---|
+| `drill-in` (default) | one full-width target reading `Module › Section` | 2 taps | 3 taps (a `‹ Modules` back arrow in the sheet) |
+| `segmented` | split: module glyph \| section name | 2 taps | 2 taps |
+
+Neither is better, which is why this is a preference and not a decision: `drill-in` buys a
+bigger touch target and names both tiers in words, `segmented` buys a tap. The trade is
+stated to the reader in Account → Preferences, next to a `NavStylePreview` picture of each.
+
+**The preference affects compact only.** On `full` both styles render the identical 240px
+panel — so if you change it on a monitor, nothing happens, and the setting says so.
+
+Read it with `useCompactNavStyle()`. It is resolved **server-side** in the protected layout
+and handed down a provider, the same way `ViewportProvider` carries the layout: navigation
+is the worst possible surface on which to rearrange itself one frame after hydration.
+Adding a third arrangement means a catalogue entry in
+`src/lib/user-preferences/nav-style.ts`, a branch in `SectionPanel`'s compact fork and a
+case in `NavStylePreview` — not a new bar somewhere else.
 
 ### There is no second navigation system
 
@@ -546,7 +612,8 @@ the previous shell. **They have all been deleted** — every module and Administ
 them in a comment, it is stale; fix it rather than reviving the pattern.
 
 What survived, because both are still needed and neither belongs to one tier:
-[`ModuleMenu`](components.md#navmenus) (compact's module switcher) and
+[`ModuleMenu`](components.md#navmenus) (the module switcher for a compact page that has no
+sections, and so no bottom bar) and
 [`UserMenu`](components.md#navmenus) (the profile menu), both in
 `src/components/nav-menus.tsx`.
 

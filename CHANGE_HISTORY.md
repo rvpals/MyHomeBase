@@ -1,5 +1,118 @@
 # Change History
 
+## 2026-09-13 — Pick your phone navigation, BLOBs in the SQL explorer, and Bridge
+
+### [Account] Two compact navigation styles, and the reader picks
+
+The bottom bar on a phone now comes in two arrangements, chosen on the Account screen and
+stored per user as `compactNavStyle`.
+
+**Both put every tier on the bottom edge and both are the same height**, so the choice
+costs no vertical space either way — they differ only in how one bar divides between the
+module switcher and the section list. *Drill-in* gives the bigger touch target;
+*segmented* gives the fewer taps to reach another module. Which one wins depends entirely
+on whether a reader switches module more often than section, and that is a genuine
+preference rather than a right answer, so it is a setting rather than a decision baked
+into the shell.
+
+The catalogue lives in `src/lib/user-preferences/nav-style.ts` rather than as literals in
+the view: the labels and the tap costs are facts about the styles, not presentation, and
+the CLI prints the same list. It follows the shape `COLOR_THEMES` and `ICON_SETS` already
+use.
+
+`CompactNavStyle` is a **union, not a boolean**. A `useSplitNavBar` flag would have to be
+renamed the moment a third arrangement appears, and an unrecognised stored value resolves
+to the default rather than to `undefined` — navigation has to render whatever is in the
+row, including a value written by a future version.
+
+`CLAUDE.md` gained a rule this work exists to protect: **a new module never builds its own
+phone navigation.** Declaring `sections` is the whole job, because `SectionPanel` renders
+the desktop panel *and* the compact bar from that one list. The bottom edge is already
+claimed by the shared bar and the music player, so a module-local tab row is the fastest
+way to break a phone layout.
+
+### [Admin] The SQL explorer stops choking on BLOBs, and groups tables by module
+
+**Blob bytes never travel with a row.** A single `sys_users` or `mus_albums` row can hold
+an entire file, so a page of rows was megabytes of line noise. A BLOB cell is now replaced
+by a small descriptor — what it is, how big, sniffed mime type — and the bytes are fetched
+one at a time from a new admin blob route (`src/app/api/admin/sql-explorer/blob/route.ts`).
+Images under 10 MB offer Preview; above that the descriptor still offers Save, because a
+40 MB inline `<img>` is a tab-killer and the reader who wants it can save it. Same
+reasoning as the per-row image rule in `coding-guide.md`, applied to a grid that doesn't
+know its columns in advance.
+
+The table list is now **grouped by owning module**, keyed on the three-letter prefix. The
+heading comes from the live `sys_modules` registry rather than being spelled in code, so
+renaming a module on the Modules admin screen moves its heading too — keying on the prefix
+(which a migration fixes forever) is what makes the mapping survive the rename. Tables no
+module owns land under "Non-Modules".
+
+### [Games] Bridge
+
+Bidding, play and scoring, sharing the deck in `playing-cards.ts` with Blackjack. Contract
+scoring is the real thing — trick values by denomination, the no-trump first-trick bonus,
+part-score and game bonuses, small and grand slam, doubling and the insult bonus,
+undertricks.
+
+### [MyJournal] New Entry is a section, and a context disappears
+
+The entry form was a card on the home screen, revealed by a quill button in the title row.
+It is now a section with a route of its own.
+
+That deletes `JournalNewEntryContext` entirely. The context only ever existed because the
+button and the card sat on **opposite sides of a server boundary** — `JournalSection` is a
+server component rendering an already-loaded body into the header as `children`, and a
+parent can't clone a prop into server-rendered children. As a section there is no shared
+open/closed state to carry, so the whole mechanism goes rather than being ported.
+
+### [Stocks & ETFs] A recorded trade can update the holding
+
+The Record Transaction card gained an opt-in "also update positions data" checkbox.
+
+The two ledgers are separate on purpose: `stk_stock_positions` is what you hold,
+`stk_stock_transactions` is what you did, and recording a trade has never touched the
+holding — because *which lots a sale consumed* is a decision (FIFO, specific-lot) the
+ledger doesn't record.
+
+**The basis rule here is average cost, and that is a choice rather than a discovery.** A
+sell reduces `costCents` by `unitCostCents × shares`, leaving the average untouched. It
+will not agree with a FIFO statement from the Tax Lots screen, and it isn't meant to:
+average cost is the only basis derivable without knowing which lots the sale consumed. The
+logic is in `lib` because both real decisions — which position a trade belongs to, and
+what it does to the basis — must come out identically from the terminal and the button.
+
+### [Music Library] An Albums view
+
+`listAlbums` backs it. The function predates the view (only the CLI's scan summary read
+it), so it gets its first tests here — the cover-BLOB exclusion in particular is
+load-bearing now that fifty albums render at once.
+
+### [Admin] Random theme generation
+
+The theme builder can roll a theme. Nine independently random hex values are essentially
+guaranteed to be unreadable, so **the tokens are derived rather than rolled**: one random
+hue plus a mode picks the family, and every other slot is computed from it in HSL — a card
+just above the page, secondary text between the page and the body text, the accent's soft
+fill a desaturated shade of the accent. Every candidate then runs through the same
+`failingContrastPairs` check the builder shows an admin and is rejected if it fails, so
+the generator cannot offer a theme the builder would flag. Seeded, so the same seed gives
+the same themes and the behaviour is testable without snapshotting colours.
+
+### [Internal] The icon-name list is now checked by the compiler
+
+`TREE_ICON_NAMES` moves to `src/lib/icons/tree-icon-names.ts` as a value. The glyph table
+lives in a `.tsx` that imports React, so nothing under `src/lib/` may import it — but the
+slot registry and its test need to *iterate* the names to prove every slot's
+`defaultConcept` exists, and a type can't be iterated.
+
+The test used to keep a hand-copied list behind a comment asking whoever touched the glyph
+table to update it. It drifted exactly once and cost a red gate: `new-journal` was added
+with the Journal section above and the copy wasn't updated. `TREE_ICONS` is now declared
+`satisfies Record<TreeIconName, …>`, so a glyph without a name fails typecheck and a name
+without a glyph fails too — kept honest by the compiler instead of by a comment. This is
+what the module side (`MODULE_ICON_NAMES`) always did, and why it never drifted.
+
 ## 2026-09-11 — Calendar into the journal, a portfolio brief for an LLM, and one attendance register per day
 
 ### [MyJournal] Calendar Import — a Google or Outlook `.ics` becomes journal entries

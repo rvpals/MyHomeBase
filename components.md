@@ -51,6 +51,7 @@ pattern instead of inventing one.
 | [`DataGrid`](#datagrid) | **Result grid** — any table of records | [src/components/data-grid.tsx](src/components/data-grid.tsx) | yes |
 | [`DataGridCompact`](#datagridcompact) | `DataGrid`'s card list below 1024px — **not called directly** | [src/components/data-grid-compact.tsx](src/components/data-grid-compact.tsx) | yes |
 | [`DataGridCompact2`](#datagridcompact2) | `DataGrid`'s other compact form — one record per tab. Via `compactLayout="record"`, **not called directly** | [src/components/data-grid-compact-2.tsx](src/components/data-grid-compact-2.tsx) | yes |
+| [`BlobCell`](#blobcell) | A BLOB cell in a grid — its type/size plus Save, and Preview if it is an image | [src/components/blob-cell.tsx](src/components/blob-cell.tsx) | yes |
 | [`Modal`](#modal) | **Any dialog** — overlay, panel, Esc/focus handling | [src/components/modal.tsx](src/components/modal.tsx) | yes |
 | [`FullscreenStage`](#fullscreenstage) | **A real fullscreen display** — chromeless black stage via the Fullscreen API | [src/components/fullscreen-stage.tsx](src/components/fullscreen-stage.tsx) | yes |
 | [`Comments`](#comments) | A note/instruction parked beside a feature, behind an info chip | [src/components/comments.tsx](src/components/comments.tsx) | yes |
@@ -64,6 +65,7 @@ pattern instead of inventing one.
 | [`SectionPanel`](#sectionpanel) | Tier 2 — the 240px section panel / compact bottom sheet | [src/components/section-panel.tsx](src/components/section-panel.tsx) | yes |
 | [`AppHeader`](#appheader) | Tier 3 — the utility bar: breadcrumb, global actions, profile | [src/components/app-header.tsx](src/components/app-header.tsx) | yes |
 | [`NavMenus`](#navmenus) | The shared module switcher and profile dropdowns | [src/components/nav-menus.tsx](src/components/nav-menus.tsx) | yes |
+| [`NavStylePreview`](#navstylepreview) | A thumbnail of a phone navigation style, for the picker | [src/components/nav-style-preview.tsx](src/components/nav-style-preview.tsx) | no |
 | [`MusicPlayerProvider`](#musicplayerprovider) | Owns the single `<audio>` element and playback state — mount in the layout | [src/components/music-player-provider.tsx](src/components/music-player-provider.tsx) | yes |
 | [`MusicPlayerBar`](#musicplayerbar) | The persistent "what's playing" strip, above the section nav on every page | [src/components/music-player-bar.tsx](src/components/music-player-bar.tsx) | yes |
 | [`SelectionBar`](#selectionbar) | Tick several rows, then send them somewhere (with `useSelection`) | [src/components/selection-bar.tsx](src/components/selection-bar.tsx) | yes |
@@ -873,7 +875,7 @@ the About screen's Application / Change History split
 [admin/about/view.tsx](src/app/(protected)/admin/about/view.tsx); the Expense module's
 Charts and Analysis Main / Monthly comparison split
 [expense-charts-view.tsx](src/app/(protected)/modules/[slug]/expense-charts-view.tsx); SQL
-Explorer's SQL Query / Tables Explorer split
+Explorer's SQL Query / Tables Explorer / Modules split
 [admin/sql-explorer/view.tsx](src/app/(protected)/admin/sql-explorer/view.tsx) *(controlled
 — the table list's "Open" jumps to the query tab to show the result)*; the Music Library
 player's Lyrics / Story split
@@ -916,7 +918,9 @@ navigation shell ([design.md](design.md)); don't reach for this to build a third
 
 **Used by:** SQL Explorer's Tables Explorer tab
 [admin/sql-explorer/view.tsx](src/app/(protected)/admin/sql-explorer/view.tsx) — tables,
-views, indexes and triggers, with the selected object's rows or definition beside it.
+views, indexes and triggers, with the selected object's rows or definition beside it; and
+the same screen's **Modules** tab, where the groups are the modules from `sys_modules` and
+the leaves are the tables each one owns.
 
 ---
 
@@ -1138,7 +1142,8 @@ Administration row for exactly that reason.
 ## SectionPanel
 
 Tier 2: the current module's sections. **Two shapes, picked by layout** — a fixed 240px
-column on `full`, a bottom trigger row plus a sheet on compact.
+column on `full`, and on compact a bottom bar that carries tier 1 as well, in whichever of
+two arrangements the reader has chosen.
 
 - **Source:** [src/components/section-panel.tsx](src/components/section-panel.tsx)
 - **Import:** `import { SectionPanel, type SectionNode } from "@/components/section-panel";`
@@ -1151,16 +1156,57 @@ column on `full`, a bottom trigger row plus a sheet on compact.
 | `activeHref` | `string` | Usually the pathname. |
 | `isCompact` | `boolean` | Passed down by the shell, not read here. |
 | `isOpen` / `onOpenChange` | `boolean` / `(open) => void` | Desktop only; the header's `»` is the way back. |
+| `moduleLinks` | `CompactModuleLink[]` | Tier 1, for compact's bar to switch between. Desktop ignores it — there the rail is tier 1. With no sections these become a **module-only bar**; empty *and* sectionless renders nothing. |
+| `navStyle` | `"drill-in" \| "segmented"` | Which compact arrangement. Desktop ignores it. From `useCompactNavStyle()` via the shell. |
 
 **Open or closed — there is no middle state**, deliberately unlike the old `TreeNav`'s
 full/rail/strip. A 48px icon rail for sections beside the 48px rail for modules is two
 ambiguous glyph columns side by side.
 
-Nested groups are an accordion on desktop and **flattened away on compact** — a phone has
-no room for a second level, and a dropped heading costs nothing when every child is one tap
-away. `flattenSections` is exported for callers that need the same list.
+Nested groups are an accordion on desktop and **kept as plain headings on compact** — a
+heading is a label, not a level, so nothing costs an extra tap and a module with ten
+sections in three groups stays readable on a phone. (Compact used to flatten them away;
+that was wrong for exactly the modules that needed the structure most.) `flattenSections`
+is still exported, and is what finds the active section for the bar's label.
 
-**Responsive:** has a compact mode (bottom sheet, ~44px touch targets, safe-area padding).
+**Compact carries both tiers on one edge.** The bar opens one sheet showing either the
+sections or the module list; `navStyle` decides whether that's a drill-in with a
+`‹ Modules` back arrow or a bar split into two halves. The header has no module switcher
+when a page has sections — see design.md, *What compact does differently*.
+
+**Responsive:** has a compact mode (bottom bar + sheet, ~44px touch targets, safe-area
+padding).
+
+---
+
+## NavStylePreview
+
+A small picture of what one compact navigation style looks like on a phone — the module and
+section bar at the bottom, drawn as a diagram. Used by the Account screen's *Phone
+navigation* picker, where the whole point is comparing the two side by side.
+
+- **Source:** [src/components/nav-style-preview.tsx](src/components/nav-style-preview.tsx)
+- **Import:** `import { NavStylePreview } from "@/components/nav-style-preview";`
+- **Client component:** no — it has no state and no handlers
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `style` | `CompactNavStyle` | Which arrangement to draw. |
+| `selected` | `boolean` | Tints the bar brass and brightens the frame, so the picture itself shows the active choice. |
+| `className` | `string` | Merged last. The picker uses it for a `peer-focus-visible` ring. |
+
+**Divs and theme tokens, not an image.** It follows the reader's colour theme (a captured
+PNG would be wrong on every theme but one), stays crisp at any zoom, and needs no upload —
+which is also why it has **no icon slot**: nothing in it is a glyph standing for a place.
+
+**A diagram, not a live render.** Deliberately not a real `SectionPanel`: embedding the
+shell in a settings card would drag a router and a module list into a preview, and the
+preview needs to show the bar *closed*, which is the state the real one hides.
+
+**Adding a third style** means a case here plus a catalogue entry in
+`src/lib/user-preferences/nav-style.ts` — see design.md, *The bar has two arrangements*.
+
+**Responsive:** fixed 64×96px at every layout; it's an illustration, not a layout element.
 
 ---
 
@@ -1175,7 +1221,7 @@ Tier 3: a slim utility bar carrying the breadcrumb, whole-app actions and the pr
 | Prop | Type | Notes |
 |------|------|-------|
 | `crumbs` | `Breadcrumb[]` | `{ label, href?, icon? }`. The last is the current page and never a link. |
-| `moduleSwitcher` | `ReactNode` | Compact folds the module dropdown in here. |
+| `moduleSwitcher` | `ReactNode` | Compact folds the module dropdown in here — but only on a page with **no sections**, where no bottom bar renders. |
 | `actions` | `ReactNode` | Whole-app actions only — search, notifications. |
 | `profile` | `ReactNode` | The shell passes `UserMenu`, so this file doesn't import auth. |
 | `onExpandPanel` | `() => void` | Renders the `»` that restores a collapsed panel. |
@@ -1333,7 +1379,10 @@ starts *relative to where it lands*, and when. `DEAL_MS` (300) is the default du
 ```
 
 **Used by:** [`CardHand`](#cardhand), and through it the Blackjack table
-([game-blackjack-view.tsx](src/app/(protected)/modules/[slug]/game-blackjack-view.tsx)).
+([game-blackjack-view.tsx](src/app/(protected)/modules/[slug]/game-blackjack-view.tsx));
+directly by the Bridge table
+([game-bridge-view.tsx](src/app/(protected)/modules/[slug]/game-bridge-view.tsx)) for the
+four cards of a trick and for the face-down card that stands in for an opponent's hand.
 
 **Notes:** every size steps down one level below 1024px via `max-lg:`, so a caller picks
 one size and both screens work. Red suits are a **fixed** `text-red-500` across every
@@ -1410,7 +1459,15 @@ dealer's hand, or a shared board.
 
 **Used by:** the Blackjack table
 ([game-blackjack-view.tsx](src/app/(protected)/modules/[slug]/game-blackjack-view.tsx)),
-for both the dealer row and each player hand.
+for both the dealer row and each player hand; and the Bridge table
+([game-bridge-view.tsx](src/app/(protected)/modules/[slug]/game-bridge-view.tsx)), for
+the player's thirteen cards and for dummy, both with `layout="fan"`.
+
+A second card game was added without changing either card component — `layout="fan"` and
+`hideFrom` already covered a thirteen-card bridge hand. That is the payoff the
+deck/rules split in [playing-cards.ts](src/lib/games/playing-cards.ts) was written for,
+and the evidence that these two are genuinely reusable rather than Blackjack's internals
+under a shared name.
 
 **Notes:** `total` is a **formatted string** on purpose — what a total means is the
 game's business, and Blackjack shows `"7/17"` for a soft hand where a poker game shows
@@ -3595,3 +3652,58 @@ One-line purpose, and when *not* to use it.
 
 **Notes:** variants, accessibility, gotchas.
 ~~~
+
+---
+
+## BlobCell
+
+**One BLOB cell in a data grid.** Renders the cell as its sniffed mime type and size
+(`image/png · 24 KB`) with a **Save** link, plus a **Preview** button that opens the
+image in a `Modal` when the bytes are a previewable image.
+
+- **Source:** [src/components/blob-cell.tsx](src/components/blob-cell.tsx)
+- **Import:** `import { BlobCell } from "@/components/blob-cell";`
+- **Client component:** yes — it holds the preview dialog's open state.
+
+### Props
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `mimeType` | `string` | Sniffed from the bytes by the caller, e.g. `image/png`. |
+| `byteLength` | `number` | `0` renders as *empty blob* with no actions — distinct from NULL. |
+| `sizeLabel` | `string` | Human-readable size. Caller formats it (`formatByteSize`). |
+| `buildUrl` | `(source, { download }) => string` | Builds the URL for the bytes. Keeps this component ignorant of any route. |
+| `source` | `BlobCellSource?` | `{ tableName, columnName, rowId }`. **Omit and both actions render disabled** with a tooltip. |
+| `isPreviewable` | `boolean?` | Caller's judgement: an image, under the caller's size cap. Preview only appears when true. |
+| `className` | `string?` | Merged last. |
+
+### The rule it exists to keep
+
+**The bytes are never a prop.** A grid over a table with an image column would otherwise
+carry a whole file per row — `sys_users.avatar`, `mus_albums.cover_image`. The grid is
+handed a small descriptor instead, and this component points an `<img>` or a download
+link at a serving route, so exactly one blob travels and only when asked for. Same
+reasoning as the per-row image rule in [coding-guide.md](coding-guide.md); this is the
+version for a grid that cannot know its columns in advance.
+
+A module screen showing a *known* image column should keep using its own route and an
+`<img>` directly — this is for the case where "there is a BLOB here" is all anyone knows.
+
+### Why `source` is optional
+
+Some blobs have no address. A `SELECT substr(data, 1, 10)`, a join's computed column, or
+a view with no rowid produces bytes that cannot be fetched again, so the component shows
+the type and size and disables both actions rather than offering a download that would
+404. The SQL Explorer's Tables Explorer supplies a `source` (it browses real rows); its
+Query tab does not.
+
+**Used by:** the SQL Explorer's result and table grids
+([view.tsx](src/app/(protected)/admin/sql-explorer/view.tsx)), served by
+[/api/admin/sql-explorer/blob](src/app/api/admin/sql-explorer/blob/route.ts).
+
+**Notes:** the actions are text buttons, not `Button` — they sit inside a table cell where
+a real button's padding would set the row height, matching the existing "Open in SQL" /
+"Truncate" text actions. They carry `max-lg:py-1` for a tappable box in the compact card
+view without touching the desktop row height. The preview uses a plain `<img>` rather
+than `next/image`: the bytes are an arbitrary DB cell behind an admin-only route, so
+there is nothing for the optimiser to do.

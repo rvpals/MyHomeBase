@@ -246,6 +246,80 @@ map), and images; saved filters; CSV and calendar (`.ics`) import; a Log section
 logged activities. A filter query travels in the URL (`?filter=`) so a filtered list is
 linkable. Library: `src/lib/journal`.
 
+**New Journal Entry** (`new-entry`) is the entry form, on a route of its own. It was a
+`New Journal` card on the home screen, revealed by a quill button in the title row; that
+button is gone, and the section panel is the one way in. It **adds no table and no
+migration** — it renders the same `JournalEntryForm` against the same
+`createEntry` use-case, so nothing about how an entry is written changed. Two choices
+worth knowing:
+
+- **The toggle machinery went with it.** Revealing a card from the title row meant sharing
+  open/closed state across a server boundary (the header rendered the already-loaded
+  section body as `children`), which needed a `JournalNewEntryContext`. A route needs
+  none of that, so the context is deleted and the home screen's header is a plain sibling
+  of its body again.
+- **The slug is `new-entry`, and stays that way.** It is both the route and the
+  `journal_section_new_entry` icon-slot id; renaming either would orphan an uploaded icon
+  override. The label above it is free to change, the slug isn't — the same rule that
+  keeps `import` named `import` while showing "CSV Import".
+
+The section's nav glyph is `new-journal`, a notebook with a plus in the page, hand-drawn
+in `tree-icons.tsx`: no Iconify set in `TREE_ICON_GLYPHS` covers the concept, and the two
+nearest keys were both taken — `quote` (a book and quill) is Report's, and `plus` says
+"add" without saying what.
+
+The form itself is **two tabs over one state**, with a card for the content:
+
+- **Main** carries Date, Time, Title, Categories, Tags, and a **Content** card.
+  **Misc** carries Place name, the locations picker, and both weather buttons — the
+  GPS one writes to the locations list *and* the Place name field, so the control and
+  everything it fills sit on one screen.
+- **The state stays in `JournalEntryForm`, above the tabs.** `Tabs` unmounts the panel it
+  isn't showing, so a Misc field owning its own state would lose what was typed the
+  moment the writer flipped to Main and back. Save, Clear and the error line also live
+  outside the strip: a Save button that vanishes on one of two tabs is a trap, and an
+  error raised by a Misc action has to stay readable from Main.
+- **Date *and* time are seeded from the browser's clock**, and re-seeded by `reset()` so
+  the second entry of a sitting is stamped when it is written rather than when the page
+  loaded. Browser-side for the reason recorded under Prefill templates below: the clock
+  that matters is the writer's, not the server's.
+- **Content gets its own card** with two controls in its `headerAction`, so they stay
+  reachable when the card is shut. **Full screen** mounts `FullscreenStage` — the real
+  Fullscreen API, gated on `canGoFullscreen()` because iPhone Safari has no element
+  fullscreen and a dead button is worse than none. **Handwriting** restyles the *same*
+  textarea in `font-script` on a `.paper-texture` sheet rather than swapping in a preview,
+  so the writer keeps typing in cursive instead of leaving the mode to edit. Both compose:
+  fullscreen + handwriting is a full-screen cursive sheet. See `design.md` →
+  *The one exception: `font-script`* for why 20px is a floor here and why this mode does
+  not step down on a phone.
+
+**Handwriting font size** is a preference (Preferences → *Handwriting font size*),
+stored as the `handwriting_size` module setting. Four named steps — Small 20px, Medium
+24px, Large 30px, X-Large 36px — offered from one table, `HANDWRITING_SIZE_OPTIONS` in
+`src/lib/journal/preferences.ts`, which the dropdown and the field both read. It **adds
+no table and no migration**: journal preferences are `sys_module_settings` key/value
+rows, which is why `photo_root` and `temperature_unit` needed none either, and an
+install with no row resolves to Small. Four choices worth knowing:
+
+- **The stored value is the Tailwind suffix (`xl`, `2xl`, …), not a pixel count.**
+  Tailwind compiles classes ahead of time, so an arbitrary number can't become one at the
+  call site — `text-[${n}px]` emits no CSS at all. Storing the suffix keeps every
+  representable value a class that provably exists, and the options table holds all four
+  as literals so the scanner finds them.
+- **The floor lives in the type, not in a check.** `JournalHandwritingSize` has no member
+  below `xl`, and `resolveJournalPreferences` clamps an unrecognised stored value back to
+  it, so a hand-edited settings row can't render the field below the 20px `font-script`
+  minimum or with no size class at all.
+- **It sizes cursive only.** With Handwriting off the field stays the standard form-field
+  size, so it still matches Title and Place name; a 36px plain textarea beside them would
+  look like a mistake. The hint under the dropdown says so where the choice is made.
+- **It is per module, not per user** — one setting for everyone on a shared install,
+  exactly like Temperature unit and Photo folder. It also **travels in the metadata
+  backup** and is applied on restore, unlike `photo_root`, which is skipped: a NAS volume
+  path means nothing on another machine, while a type size is a reading preference that
+  belongs with the journal. A bundle written before the preference existed parses fine and
+  restores the floor, via the schema's default.
+
 The **Calendar** section shows those entries as a grid, in one of three ranges —
 week, month or year — with the range, the period and the clicked day all in the URL
 (`?scope=&anchor=&date=`), so a particular month with a day open is a bookmark. It
@@ -604,8 +678,9 @@ is never retried at all. So a track is asked about at most once, ever.
 **Games** (`games`) — a small arcade with a shared high-score board. Sections:
 **Arcade** (the list of games; Play opens the board full-bleed), **Scores**, and
 **Configuration**. Library: `src/lib/games`. One table, `gam_scores`
-(`migrations/0074`); registered by `0075`. Three games so far: **2048**,
-**Arrow Clearing**, and **Tetris**.
+(`migrations/0074`); registered by `0075`. Nine games so far: **2048**,
+**Arrow Clearing**, **Tetris**, **Sudoku**, **Blackjack**, **Minesweeper**,
+**Mahjong Match**, **Mahjong**, and **Bridge**.
 
 Five choices worth knowing, all recorded in `0074`'s log:
 
@@ -1061,6 +1136,82 @@ Decisions worth keeping:
 - The board keeps its true geometry on a phone and **scales/pans** rather than relaying
   out — the geometry *is* the puzzle, so a per-breakpoint layout would change what the
   game is.
+
+#### Bridge
+
+One deal of contract bridge — a full auction, then thirteen tricks — against three
+bots. The human sits seat 1 with seat 3 as partner. Rules in
+[game-bridge.ts](src/lib/games/game-bridge.ts); the deck primitives are the same
+game-agnostic ones Blackjack uses, in
+[playing-cards.ts](src/lib/games/playing-cards.ts), and the table is drawn with the
+existing [`PlayingCard`](components.md#playingcard) and
+[`CardHand`](components.md#cardhand) components. **Nothing new was added to either** —
+`layout="fan"` and `hideFrom` already covered a thirteen-card hand, which is the payoff
+the deck/rules split in `playing-cards.ts` was written for.
+
+Decisions worth keeping:
+
+- **One hand, not a rubber.** A rubber carries part-scores and vulnerability between
+  deals, which would need persistence — and an Arcade game is deliberately not persisted
+  mid-play, so a reload would lose it anyway. One deal scored on its own is a complete
+  unit of bridge and a complete Arcade run, the call Mahjong makes in scoring one hand.
+- **Always not vulnerable**, for the same reason: vulnerability is a property of a
+  rubber's running score. Fixing it means one bonus table instead of two and no invisible
+  state changing what a contract is worth.
+- **Seats are reused from Mahjong, partnerships are new.** `SEATS`/`Seat`/`HUMAN_SEAT`
+  mean the same thing in both games, so a second four-seat model would be two names for
+  one concept. What bridge adds is `PARTNER_OF` and `sideOf` — Mahjong has no partners.
+  Sides are named by seat pair (`ns`/`ew`), *not* by Mahjong's `SEAT_WINDS`, so the two
+  games' vocabularies stay independent.
+- **`BRIDGE_DENOMINATIONS` is in bidding order, and that order *is* the ranking rule.**
+  Clubs, diamonds, hearts, spades, then no-trumps. Deliberately not `SUITS` from
+  `playing-cards.ts` plus a flag: that array is in *deck* order (spades first), which is
+  the wrong order for bidding, and no-trumps is not a suit at all. Two different
+  orderings of four suits is exactly what breaks silently, so it is stated once.
+- **`rankOrder` puts the ace high.** `RANKS` lists the ace *first* because that is how a
+  deck is built, so a plain index would make the ace the lowest card in every suit. This
+  is precisely the "what is a card worth" opinion `playing-cards.ts` refuses to hold — an
+  ace is 1 or 11 in Blackjack and top of the suit here.
+- **Declarer is the first of the winning side to name the denomination, not the last to
+  bid it.** The rule most often got wrong, and it decides who plays and who is dummy: if
+  your partner opens 1♠ and you raise to 4♠, your partner declares and *you* are dummy.
+  There is a test for it.
+- **Three passes close the auction; four opening passes are a pass-out.** A pass-out is
+  its own outcome rather than a draw — nobody bid and no cards were played, so calling it
+  a draw would imply a contest that never happened. It scores nothing.
+- **The outcome is from the human's point of view, not the declaring side's** — the same
+  convention as `MahjongOutcome`. The human defends half the hands, and a scoreboard that
+  only credited declaring would ignore half the game. Beating a contract you defended is
+  a `won`, and `scoreGame` records the penalty the defenders extracted.
+- **A defeated contract the human declared scores 0, never a negative.** The shared board
+  ranks `score DESC` and cannot represent a debt.
+- **Overtricks never turn a part-score into a game.** The game bonus is decided by the
+  *contract* points alone, which is the rule that makes bidding game worth the risk — 2♠
+  making four scores the part-score bonus even though it took ten tricks.
+- **Doubled undertricks are a rising scale, not a multiple**: 100, then 200 for the
+  second and third, then 300. That is why `undertrickPenalty` is a loop rather than an
+  expression.
+- **`isWaitingForHuman` is a function, not `turn === HUMAN_SEAT`.** Declarer plays
+  dummy's cards, so when the human declares and it is dummy's turn the table is still
+  waiting on the human. Getting this wrong deadlocks the hand — the bot timer no-ops
+  because it is the human's side, and the human has no hand to click.
+- **The bots are rule-based and deliberately not expert**: count points, open at the one
+  level, 1NT on a balanced 15-17, raise partner with a fit, lead fourth-highest of the
+  longest suit, play low under a partner who is winning, otherwise win as cheaply as
+  possible. A bot that always found the winning line would make defending pointless.
+  **A bot is only ever passed its own hand**, never the other seats' — that, not a
+  sanitizer, is the fairness mechanism, exactly as `botDiscard` does in Mahjong.
+- **`allCards` exists for the tests.** All fifty-two cards must be accounted for across
+  the four hands, the trick in progress and the tricks won, at every point in a hand —
+  the same conservation invariant as Mahjong's `allTiles`. It caught nothing while this
+  was built, which is the point: a card duplicated or dropped in the play is invisible
+  until a hand ends with the wrong trick count.
+- **Three tests were wrong before the code was.** Two bot-bidding tests built hands that
+  fell into a different branch than intended (a "one-suited" hand that was really a
+  balanced 15, a "fit" hand one point below the raise threshold), and a trick test
+  expected a bot to overtake *its own partner*. Each now asserts the real rule and the
+  partner case has a test of its own. Worth knowing because all three looked like code
+  bugs first.
 
 #### Adding another game
 
@@ -1540,6 +1691,23 @@ document pointed at a `section-layout.tsx`, which does not exist. Each module's
 hands `sections` to `TwoTierShell`, which renders `SectionPanel`. Nor is a
 `<module>-nav.tsx` needed: no module ships one, because the section panel is
 data-driven from the list above.
+
+**A new module gets the phone layout for free, and must not build its own.**
+Declaring `sections` is the entire job: `SectionPanel` renders the desktop 240px
+panel *and* the compact bottom bar from that one list, in whichever of the two
+arrangements the reader chose (design.md → *The bar has two arrangements*). So:
+
+- **Never** add a `fixed` bar, a bottom tab row, or a compact-only nav component
+  to a module. The bottom edge is already claimed by the shared bar and the music
+  player, both of which publish heights; a hand-rolled bar lands on top of one of
+  them. This is the single most likely way to break a phone layout here.
+- **Nest with `children`** when a module has more than ~6 sections. Groups render
+  as an accordion on the desktop and as kept headings on the phone, so nesting
+  costs a phone reader nothing and earns real structure — a group heading needs
+  no `href` and isn't a destination.
+- **Say how it behaves narrow** when you ship the module, per design.md. For a
+  module that only declares sections, "sections in the shared bottom bar,
+  nothing custom" is the whole answer and is the one you want to be able to give.
 
 **Then register the section icon slots.** Add one `ICON_SLOTS` entry per section in
 [src/lib/icons/slots.ts](src/lib/icons/slots.ts), with the id derived as
