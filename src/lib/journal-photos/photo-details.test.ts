@@ -46,6 +46,9 @@ class FakePhotoFileStore implements PhotoFileStore {
   async readPhoto(): Promise<{ data: Uint8Array; mimeType: string } | undefined> {
     throw new Error("not needed: the details read is partial, never the whole file");
   }
+  async statPhoto(): Promise<{ bytes: number; mtime: string } | undefined> {
+    throw new Error("not needed: readPhotoDetails reads metadata, not file facts");
+  }
 }
 
 const DAY_FOLDER = "2019/2019-06-09 Von Thun Farm";

@@ -67,6 +67,11 @@ class FakePhotoFileStore implements PhotoFileStore {
   async readPhoto(): Promise<{ data: Uint8Array; mimeType: string } | undefined> {
     return undefined;
   }
+
+  // Only the Magic List indexer calls this; nothing under test here does.
+  async statPhoto(): Promise<{ bytes: number; mtime: string } | undefined> {
+    return undefined;
+  }
 }
 
 const DATE = "2019-06-09";

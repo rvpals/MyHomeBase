@@ -10,7 +10,7 @@
 // every other module uses for its first section -- so the Random Photo card lives at
 // /modules/picture-gallery, not at a /home-screen path below it. Favorites is a child
 // route.
-export const GALLERY_SECTIONS = ["main", "favorites", "albums"] as const;
+export const GALLERY_SECTIONS = ["main", "favorites", "albums", "magic-list"] as const;
 
 export type GallerySection = (typeof GALLERY_SECTIONS)[number];
 
@@ -36,6 +36,11 @@ export const GALLERY_SECTION_INFO: Record<
     description:
       "Collections you've put together. Play one as a slideshow, or export every picture in it.",
   },
+  "magic-list": {
+    label: "Magic List",
+    description:
+      "Conjure a set of photographs from the archive by date, size and resolution — then play it, export it, or keep it as an album.",
+  },
 };
 
 /** Section -> nav icon key, resolved by TreeIcon. */
@@ -51,6 +56,10 @@ export const GALLERY_SECTION_ICONS: Record<GallerySection, string> = {
   // `photo-folder`, which is the archive's folder structure; an album is pictures
   // gathered by hand, which is the opposite idea and has to read as one at 16px.
   albums: "album",
+  // A magician's hat with a baton -- the same `magic` concept the Music Library's
+  // Magic Playlists section uses, deliberately: both are "conjure me a set from some
+  // criteria", and one glyph for one idea is what makes the two read as siblings.
+  "magic-list": "magic",
 };
 
 const BASE_PATH = "/modules/picture-gallery";

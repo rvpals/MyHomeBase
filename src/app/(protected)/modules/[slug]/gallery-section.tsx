@@ -2,8 +2,10 @@ import { Suspense } from "react";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { listAlbums } from "@/lib/albums";
 import { listFavPhotos } from "@/lib/fav-photos";
+import { countIndexedPhotos, listPhotoMagicLists } from "@/lib/photo-magic";
 import { deps } from "@/lib/wiring";
 import { AlbumsView } from "./gallery-albums-view";
+import { MagicListView } from "./gallery-magic-view";
 import { FavPhotosList } from "./gallery-fav-photos-list";
 import { GalleryInstructions } from "./gallery-instructions";
 import { RandomPhotoCard } from "./gallery-random-photo-card";
@@ -19,6 +21,15 @@ import {
 //
 // Each section loads only what it needs: Home screen reads nothing here (the photo
 // draw is streamed inside its own card, below), and Favorites reads the kept list.
+
+/** The three repositories the Magic List use-cases take. */
+function magicDeps() {
+  return {
+    listRepo: deps.photoMagicListRepo,
+    photoIndex: deps.photoIndexRepo,
+    scanRuns: deps.photoMagicScanRunRepo,
+  };
+}
 
 export async function GallerySection({ section }: { section: GallerySectionName }) {
   const info = GALLERY_SECTION_INFO[section];
@@ -67,6 +78,15 @@ export async function GallerySection({ section }: { section: GallerySectionName 
             // Albums are not per-user, matching favourites: this is a household's
             // shared archive, and an album one person makes is one everybody sees.
             <AlbumsView initialAlbums={listAlbums(deps.albumRepo)} />
+          )}
+          {section === "magic-list" && (
+            // Both reads are pure SQL against this module's own tables — neither
+            // touches the archive, so the screen paints immediately and the expensive
+            // walk only happens when the reader asks for a scan.
+            <MagicListView
+              initialLists={listPhotoMagicLists(magicDeps())}
+              initialIndexedCount={countIndexedPhotos(magicDeps())}
+            />
           )}
         </div>
       </div>

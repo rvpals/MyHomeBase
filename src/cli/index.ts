@@ -29,6 +29,7 @@ import { listScheduledJobsCommand } from "./list-scheduled-jobs";
 import { listUsersCommand } from "./list-users";
 import { magicPlaylistCommand } from "./magic-playlist";
 import { marketIndexesCommand } from "./market-indexes";
+import { photoMagicCommand } from "./photo-magic";
 import { playQueueCommand } from "./play-queue";
 import { musicLibraryCommand, scanMusicCommand } from "./scan-music";
 import { refreshPositionsCommand } from "./refresh-positions";
@@ -80,6 +81,7 @@ const commands: Record<string, Command> = {
   "scan-music": scanMusicCommand,
   "music-library": musicLibraryCommand,
   "magic-playlist": magicPlaylistCommand,
+  "photo-magic": photoMagicCommand,
   "play-queue": playQueueCommand,
   "tax-lots": taxLotsCommand,
 };

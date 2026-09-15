@@ -56,6 +56,11 @@ import { SearchingVendorLogoClient } from "./vendor-logos/searching-vendor-logo-
 import { DuckDuckGoVendorDomainClient } from "./vendor-logos/duckduckgo-domain-client";
 import { GoogleFaviconIconClient } from "./vendor-logos/google-favicon-icon-client";
 import { SqliteAlbumRepository } from "./albums/repository";
+import {
+  SqliteMagicScanRunRepository,
+  SqlitePhotoIndexRepository,
+  SqlitePhotoMagicListRepository,
+} from "./photo-magic/repository";
 import { SqliteFavPhotoRepository } from "./fav-photos/repository";
 import { SqliteTickerFavoriteRepository } from "./ticker-favorites/repository";
 import { SqliteTickerLogoRepository } from "./ticker-logos/repository";
@@ -235,6 +240,13 @@ export const deps = {
   // first it has ever had; everything else it shows belongs to journal-photos or
   // fav-photos. Membership is stored as archive paths, same as a favourite.
   albumRepo: new SqliteAlbumRepository(db),
+  // Magic Lists (migrations/0093): a saved SEARCH over the archive, as against an
+  // album's hand-assembled collection. Three repositories because they have three
+  // different lifetimes — the saved criteria are the reader's, the photo index is a
+  // rebuildable cache of file facts, and a scan run is the progress of one walk.
+  photoMagicListRepo: new SqlitePhotoMagicListRepository(db),
+  photoIndexRepo: new SqlitePhotoIndexRepository(db),
+  photoMagicScanRunRepo: new SqliteMagicScanRunRepository(db),
   tickerRiskCacheRepo: new SqliteTickerRiskCacheRepository(db),
   tickerProfileRepo: new SqliteTickerProfileRepository(db),
   // Sector data rides on the quoteSummary client the detail tab already uses —

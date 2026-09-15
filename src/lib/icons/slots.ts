@@ -609,6 +609,21 @@ export const ICON_SLOTS: IconSlot[] = [
     wired: true,
     namespace: "tree",
   },
+  {
+    // Derived by `sectionSlotId` from the section slug `magic-list` (hyphen ->
+    // underscore). The slug and this id are locked together: renaming either without
+    // the other silently stops matching and orphans any uploaded override.
+    id: "gallery_section_magic_list",
+    label: "Magic List",
+    group: "Picture Gallery sections",
+    where: "My Picture Gallery → section panel → Magic List.",
+    // `magic`, the same magician's hat as Music Magic. Both sections mean "conjure me
+    // a set from some criteria", and sharing the concept is what makes them read as
+    // the same idea in two modules.
+    defaultConcept: "magic",
+    wired: true,
+    namespace: "tree",
+  },
 
   /* ---------------------------------------------------------------------------------
      Games — the six Arcade cards.

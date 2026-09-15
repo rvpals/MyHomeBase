@@ -156,6 +156,25 @@ export class NodePhotoFileStore implements PhotoFileStore {
     }
   }
 
+  async statPhoto(
+    relativePath: string,
+  ): Promise<{ bytes: number; mtime: string } | undefined> {
+    const absolute = this.absoluteOf(relativePath);
+    if (absolute === undefined) return undefined;
+    if (!isPhotoFileName(relativePath)) return undefined;
+
+    try {
+      const stats = await stat(absolute);
+      if (!stats.isFile()) return undefined;
+      // ISO 8601 rather than the raw Date or an epoch float: the value is stored and
+      // compared as a string on the next scan, and an exact equality is what makes the
+      // skip check trustworthy across filesystems with different mtime precision.
+      return { bytes: stats.size, mtime: stats.mtime.toISOString() };
+    } catch {
+      return undefined;
+    }
+  }
+
   /**
    * The absolute path for a relative one, or `undefined` when it is not safe.
    *

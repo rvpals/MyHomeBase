@@ -150,10 +150,22 @@ Expense ratios are reported as `null` everywhere: nothing in the app tracks one,
 prompt tells the model to supply its own and flag them as unverified rather than letting
 it silently invent figures.
 
+A fourth focus, **Diversification & Alternatives** (2026-09-14), adds the measured
+correlation work: the most- and least-correlated pairs with their combined weight, each
+holding's correlation to SPY, and the GICS sectors held at nothing or almost nothing. It
+**reads the existing `stk_stock_correlation_cache`** rather than computing — the preview
+regenerates on every tick, and a fresh matrix is one provider call per holding — with a
+**Refresh correlations** button for an explicit recompute. That cache is shared with
+Chart & Analysis, so refreshing in either place serves both. Candidate tickers come from
+the model, not from a stored universe: the export supplies the gaps and the reference
+correlations, and the prompt requires every suggested ticker to be marked unverified and
+sized. When no matrix exists the section is omitted and the prompt says so.
+
 Reachable from the CLI as `npm run cli -- export-portfolio`, plus `--format json`,
-`--focus fees,tax` and `--kinds "Roth IRA"`. Piping to a file is the point — the same
-text the modal copies, available to a script. See `export_for_AI_Analysis.md` for the
-full feature write-up.
+`--focus fees,tax`, `--focus diversification`, `--kinds "Roth IRA"` and
+`--refresh-correlations`. Piping to a file is the point — the same text the modal
+copies, available to a script. See `export_for_AI_Analysis.md` for the full feature
+write-up.
 
 The **Simulation** section answers "had I bought this then?" — one ticker, a share count,
 and any of ten windows (1 Week through MAX) ticked at once. It **adds no table and no
@@ -1296,10 +1308,11 @@ the board is not re-simulated on the server — see the fifth bullet above for w
 trade is deliberate and what changing it would cost.
 
 **Picture Gallery** (`picture-gallery`) — the photo archive, gathered into one place.
-Three sections: **Home screen**, the Random Photo card; **Favorite photos**, the list of
-kept pictures; and **Albums**, collections the reader assembles by hand. The first two
-existed before the module and were moved into it rather than rebuilt (migration 0084);
-Albums is the module's own (migration 0087).
+Four sections: **Home screen**, the Random Photo card; **Favorite photos**, the list of
+kept pictures; **Albums**, collections the reader assembles by hand; and **Magic List**,
+a saved *search* that draws a random set from the archive. The first two existed before
+the module and were moved into it rather than rebuilt (migration 0084); Albums is the
+module's own (migration 0087), as is Magic List (migration 0093).
 
 For its first two sections it **owns nothing**: the archive is the folder configured in
 the Journal module and read through `src/lib/journal-photos`, and the kept pictures are
@@ -1318,6 +1331,30 @@ An album stores **paths, never bytes**, exactly as a favourite does. The consequ
 matters: deleting an album cannot delete a photograph, and neither can removing a picture
 from one. Both screens say so on the confirm dialog, because "delete album" is a sentence
 a reader can reasonably read the other way.
+
+**Magic List is the other half of that idea: a query, not a collection.** An album is
+what you gathered by hand; a Magic List is a description — a date range, a file-size
+band, a resolution floor, a ceiling on how many — from which a set is drawn at random.
+The two are deliberately separate tables rather than a nullable `criteria_json` on
+`pho_albums`, for the reason `mus_magic_list` and `mus_playlists` are separate: an album
+has no criteria and a magic list's order is disposable, so one table would leave half
+its columns meaningless for either kind of row.
+
+It brought the module `src/lib/photo-magic` and four tables — `pho_magic_list`, its
+generated set, **`pho_photo_index`** and `pho_magic_scan_run`. The index is the load-
+bearing one and the only genuinely new capability: a directory listing knows a
+photograph's name but not its size or its dimensions, so those are read once per file
+and cached, keyed by path and invalidated by size + mtime. It is a **cache, not
+content** — safe to clear and rebuild, and nothing the reader made points into it, which
+is why a generated set stores a path rather than an index row id.
+
+**Nothing is written to the archive.** `journal-photos/ports.ts` forbids writing any
+index or sidecar into a photo folder and names the precondition for a cache like this —
+outside the archive, with an explicitly named port and a migration-log entry. The cache
+is in the database, and `PhotoFileStore` gained one still-read-only method, `statPhoto`,
+justified in `0093_create_photo_magic_lists.md`. Resolution costs no extra I/O: the JPEG
+frame header sits in the same first bytes as the EXIF block, so the partial read that
+already found the date yields the dimensions too.
 
 Two more choices worth knowing about Albums specifically:
 
@@ -1362,12 +1399,18 @@ frame is the load-bearing part of the drawing: an empty rectangle with a dot rea
 UI chrome at 16px, a rectangle with a skyline reads as a picture. All 12 generated sets
 had a real photo glyph, so none needed a compromise.
 
-There is **no CLI command** yet. For the first two sections there is nothing to drive —
-they call `journal-photos` and `fav-photos`, whose logic is already reachable from the
-terminal where it lives. The album use-cases *are* real use-cases and take plain data, so
-they are CLI-ready by construction (`createAlbum(deps.albumRepo, input)` and friends);
-adding commands for them would need no change to `src/lib/albums`, which is the test
-`ARCHITECTURE.md` sets.
+The CLI command is **`photo-magic`**, covering the Magic List section: it scans the
+archive into the index, generates from criteria given as flags, and saves, loads,
+re-rolls and deletes lists. Adding it needed **no change to `src/lib/photo-magic`**,
+which is the test `ARCHITECTURE.md` sets. Its `--scan` runs in the foreground, unlike
+the web screen's background run, which is what makes it the way to time a real range
+against the NAS.
+
+The other three sections have **no command**. For the first two there is nothing to
+drive — they call `journal-photos` and `fav-photos`, whose logic is already reachable
+from the terminal where it lives. The album use-cases *are* real use-cases and take
+plain data, so they are CLI-ready by construction (`createAlbum(deps.albumRepo, input)`
+and friends); adding commands for them would need no change to `src/lib/albums`.
 
 ### Icons
 

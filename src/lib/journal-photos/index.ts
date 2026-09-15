@@ -49,6 +49,9 @@ export {
 export { listPhotoFoldersForRange } from "./range";
 export { pickRandomPhoto, type RandomPhotoPick } from "./random";
 export { diagnosePhotoArchive } from "./diagnose";
+// The JPEG frame header, read from the same partial buffer as the EXIF block above --
+// so a caller that already fetched a header for its date gets the dimensions free.
+export { readJpegSize, type JpegSize } from "./jpeg-size";
 export {
   EXIF_HEADER_BYTES,
   readExifDate,

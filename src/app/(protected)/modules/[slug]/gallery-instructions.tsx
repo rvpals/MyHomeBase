@@ -36,6 +36,10 @@ function HomeScreenInstructions() {
             <strong className="text-ink">Albums</strong> — collections you put together
             yourself, from any folders, in any order.
           </li>
+          <li>
+            <strong className="text-ink">Magic List</strong> — a set conjured from a
+            description: dates, file size, resolution, and how many you want.
+          </li>
         </ul>
       </Section>
       <Section title="The card's buttons">
@@ -155,8 +159,96 @@ function AlbumsInstructions() {
   );
 }
 
+function MagicListInstructions() {
+  return (
+    <>
+      <p className="text-sm text-muted">
+        A Magic List is a <strong className="text-ink">search</strong>, not a collection you
+        build by hand. Describe the photographs you want — when they were taken, how big the
+        files are, how many pixels — and a set is drawn at random from everything that
+        matches.
+      </p>
+      <Section title="Scan the archive first">
+        <p>
+          A folder listing knows a photograph&apos;s name, but not its size or its
+          dimensions. So the first search over a period needs a{" "}
+          <strong className="text-ink">scan</strong>, which reads each picture once and
+          remembers what it found.
+        </p>
+        <ul className="flex list-disc flex-col gap-1 pl-5">
+          <li>
+            Set the dates first, then press <strong className="text-ink">Scan the
+            archive</strong> — it indexes just that period. With no dates it reads
+            everything, which takes a while over the network.
+          </li>
+          <li>
+            Scanning again is cheap. A file whose size and date haven&apos;t changed is
+            skipped, so a second run over the same period takes seconds.
+          </li>
+          <li>
+            Nothing is ever written into your photo folders. What the scan learns is kept
+            in the app&apos;s own database.
+          </li>
+        </ul>
+      </Section>
+      <Section title="The criteria">
+        <ul className="flex list-disc flex-col gap-1 pl-5">
+          <li>
+            <strong className="text-ink">Any box left blank means no limit.</strong> Clearing
+            the smallest-file box widens the search rather than emptying it.
+          </li>
+          <li>
+            <strong className="text-ink">Dates</strong> match when the picture was taken —
+            from the camera where it recorded one, otherwise from the file or folder name.
+            Not the date the file was copied.
+          </li>
+          <li>
+            <strong className="text-ink">Size in pixels</strong> is width and height, not a
+            megapixel figure — &ldquo;at least 1920 × 1080&rdquo; is the thing worth asking
+            for, and a wide, short panorama shouldn&apos;t satisfy it. A photograph whose
+            dimensions can&apos;t be read is left out whenever you set one of these, and the
+            summary line says how many that was.
+          </li>
+          <li>
+            <strong className="text-ink">How many</strong> is a ceiling on the draw, not a
+            filter. If more pictures match than you asked for, you get a random selection of
+            them — press Create again for a different one.
+          </li>
+        </ul>
+      </Section>
+      <Section title="What you can do with the result">
+        <ul className="flex list-disc flex-col gap-1 pl-5">
+          <li>
+            <strong className="text-ink">Slide show (with options)</strong> plays the set
+            from the start. The viewer&apos;s own panel sets the pace and the transition.
+          </li>
+          <li>
+            <strong className="text-ink">Export to zip file</strong> downloads the pictures
+            as one file. A zip holds up to 200 photographs, so a longer list has to be
+            narrowed before it can be exported.
+          </li>
+          <li>
+            <strong className="text-ink">Add an album</strong> keeps the set — either as a
+            new album, or added into one you already have.
+          </li>
+        </ul>
+      </Section>
+      <Section title="Saving the criteria">
+        <p>
+          Give a search a name and it can be loaded again later. What gets saved is the{" "}
+          <strong className="text-ink">criteria</strong> plus the set they last produced, so
+          loading one shows you the same pictures back — press{" "}
+          <strong className="text-ink">Re-roll</strong> for a fresh draw from the same
+          description.
+        </p>
+      </Section>
+    </>
+  );
+}
+
 export function GalleryInstructions({ section }: { section: GallerySection }) {
   if (section === "favorites") return <FavoritesInstructions />;
   if (section === "albums") return <AlbumsInstructions />;
+  if (section === "magic-list") return <MagicListInstructions />;
   return <HomeScreenInstructions />;
 }

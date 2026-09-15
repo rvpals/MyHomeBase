@@ -69,4 +69,26 @@ export interface PhotoFileStore {
 
   /** One photo's bytes and MIME type, for the route that serves it to the browser. */
   readPhoto(relativePath: string): Promise<{ data: Uint8Array; mimeType: string } | undefined>;
+
+  /**
+   * One photo's size in bytes and modification time, without reading its contents.
+   *
+   * Added for the Magic List indexer (`migrations/0093`), which filters on file size and
+   * needs a cheap way to tell whether a cached row is still valid. An unchanged size and
+   * mtime mean the file has not changed, so neither the header read nor the re-index is
+   * repeated -- the skip that makes a re-scan take seconds instead of minutes.
+   *
+   * STILL READ-ONLY, and deliberately so. This is an OBSERVATION: it adds no write,
+   * create, move, rename, delete or set-times capability, so the property this whole
+   * interface exists to guarantee is intact -- there is no code path from the app to a
+   * modification of a photograph, and the type system still makes one impossible. `stat`
+   * is already what `checkRoot`, `folderExists` and `readPhoto` call; this exposes the
+   * two fields the indexer needs rather than adding a new kind of access.
+   *
+   * `mtime` is ISO 8601, matching `mus_tracks.file_mtime` -- a string so the cached
+   * comparison is an exact equality rather than a float that can drift across
+   * filesystems. Returns `undefined` when the file cannot be read at all, so one
+   * unreadable photo is skipped rather than failing the scan it appears in.
+   */
+  statPhoto(relativePath: string): Promise<{ bytes: number; mtime: string } | undefined>;
 }
