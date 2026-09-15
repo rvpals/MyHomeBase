@@ -3,6 +3,7 @@
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
+import { todayIsoLocal } from "@/lib/shared/date";
 import { reverseGeocode, searchPlaces, type GeoPlace } from "@/lib/geocoding";
 import { executeReadOnlyQuery } from "@/lib/sql-explorer";
 import { isAdmin } from "@/lib/user";
@@ -491,8 +492,9 @@ export async function checkPhotoAccessAction(candidatePath?: string): Promise<Ph
     const diagnosis = await diagnosePhotoArchive(
       deps.photoFileStoreFor(path),
       // Today's date decides which year folder gets inspected in detail — recent years
-      // are the ones most likely to be populated.
-      new Date().toISOString().slice(0, 10),
+      // are the ones most likely to be populated. Local calendar day, not the UTC
+      // slice, which rolls to next year late on New Year's Eve.
+      todayIsoLocal(),
     );
 
     return {
