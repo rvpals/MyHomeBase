@@ -28,6 +28,7 @@ import {
 import {
   importPositionsFromCsv,
   importTransactionsFromCsv,
+  extractCsvTransactionAccountNames,
   POSITION_IMPORT_FIELDS,
   TRANSACTION_IMPORT_FIELDS,
 } from "@/lib/stock-positions";
@@ -164,13 +165,22 @@ export async function previewAccountNamesAction(
   columnMapping: ColumnMapping,
   /** What the loaded named mapping remembered, if one is applied. */
   savedAccountNameMapping: AccountNameMapping = {},
+  /**
+   * Which importer's rules to read account text by. Transactions fall back to the
+   * brokerage-firm column when the file has no separate account column, which is
+   * how most broker exports look; Performance only ever reads `accountName`.
+   */
+  importType: StockImportType = "Performance",
 ): Promise<AccountNamesResult> {
   await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const accounts = listAccounts(deps.investmentAccountRepo);
     return {
       ok: true,
-      csvAccountNames: extractCsvAccountNames(fileText, columnMapping),
+      csvAccountNames:
+        importType === "Transaction"
+          ? extractCsvTransactionAccountNames(fileText, columnMapping)
+          : extractCsvAccountNames(fileText, columnMapping),
       accounts: accounts.map((account) => ({ id: account.id, name: account.name })),
       // Resolved here rather than in the view: a saved match can be stale two
       // ways (renamed account, recreated account), and only this side can see
@@ -219,6 +229,16 @@ export async function executeImportAction(
         columnMapping,
         fieldOptions,
         excludedRowIndexes,
+        // Same account-matching the Performance import uses: the dialog's explicit
+        // choices first, then a case-insensitive match on the account list, so a
+        // file whose Brokerage column already reads "Chase" needs no matching.
+        {
+          nameToId: accountNameMapping,
+          accounts: listAccounts(deps.investmentAccountRepo).map((account) => ({
+            id: account.id,
+            name: account.name,
+          })),
+        },
       );
     } else {
       summary = importPerformanceFromCsv(

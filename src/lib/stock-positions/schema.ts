@@ -80,6 +80,8 @@ export const stockTransactionSchema = z.object({
   numberOfShares: z.number().nonnegative(),
   pricePerShareCents: z.number().int().nonnegative(),
   totalAmountCents: z.number().int().nonnegative(),
+  // 0 is "Unassigned" — matches stk_stock_positions.accountId.
+  accountId: z.number().int().nonnegative(),
   brokerageFirm: z.string(),
   externalId: z.string(),
   note: z.string(),
@@ -106,12 +108,15 @@ export const createTransactionSchema = z.object({
    */
   applyToPosition: z.boolean().default(false),
   /**
-   * Which account's holding to move, when `applyToPosition` is set and the ticker is
-   * held in more than one. Omitted means "the only one" — and if there isn't exactly
-   * one, the use-case refuses rather than guessing. Not stored on the transaction;
-   * `stk_stock_transactions` has no account column.
+   * Which account the trade belongs to. **Stored on the row** since migration 0094,
+   * and also what picks the holding when `applyToPosition` is set.
+   *
+   * `0` (the default) is Unassigned: a trade recorded without saying where it
+   * happened. That's allowed on its own, but it can't be applied to a holding —
+   * `resolveTargetPosition` would fall back to guessing from a single match, which
+   * is the bug 0094 fixed. The UI requires a real account before enabling the box.
    */
-  accountId: z.number().int().nonnegative().optional(),
+  accountId: z.number().int().nonnegative().default(0),
 });
 
 /**
@@ -127,13 +132,17 @@ export type CreateTransactionInput = z.infer<typeof createTransactionSchema>;
 export type CreateTransactionArgs = z.input<typeof createTransactionSchema>;
 
 /**
- * Editing a stored trade. The same fields as creating one, minus the
- * apply-to-position pair — those describe a one-off action taken at record time, not
- * anything stored on the row, and the original trade has already moved the holding.
+ * Editing a stored trade. The same fields as creating one, minus `applyToPosition` —
+ * that describes a one-off action taken at record time, not anything stored on the
+ * row, and the original trade has already moved the holding.
+ *
+ * `accountId` **is** editable, unlike before 0094: it's stored data now, and fixing
+ * a trade attributed to the wrong account is the main reason to edit one. Changing
+ * it doesn't move any shares between holdings — re-applying an edit would
+ * double-count, which is why editing never touches positions.
  */
 export const updateTransactionSchema = createTransactionSchema.omit({
   applyToPosition: true,
-  accountId: true,
 });
 
 export type UpdateTransactionInput = z.infer<typeof updateTransactionSchema>;

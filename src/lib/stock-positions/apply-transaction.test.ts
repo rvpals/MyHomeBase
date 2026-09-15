@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyTransactionToPosition,
   describeMatchFailure,
+  describeProjectedHolding,
   OversellError,
   resolveTargetPosition,
 } from "./apply-transaction";
@@ -76,10 +77,53 @@ describe("resolveTargetPosition", () => {
     if (match.ok) expect(match.position.accountId).toBe(2);
   });
 
-  it("fails when the named account doesn't hold it", () => {
+  it("fails as 'wrong-account' when the named account doesn't hold it", () => {
     const match = resolveTargetPosition([makePosition({ accountId: 1 })], "BMY", 9);
     expect(match.ok).toBe(false);
-    if (!match.ok) expect(match.failure.kind).toBe("none");
+    if (!match.ok && match.failure.kind === "wrong-account") {
+      expect(match.failure.requestedAccountId).toBe(9);
+      expect(match.failure.held.map((position) => position.accountId)).toEqual([1]);
+    } else expect.fail("expected a wrong-account failure");
+  });
+
+  // The regression this column exists for: hold BMY in Chase (1) only, buy BMY at
+  // Fidelity (2). The lone Chase holding used to be assumed to be the target, so the
+  // Fidelity shares landed on the Chase position with no warning.
+  it("does not fall back to the only holding when the trade names another account", () => {
+    const chaseOnly = [makePosition({ accountId: 1, quantity: 100 })];
+    const match = resolveTargetPosition(chaseOnly, "BMY", 2);
+    expect(match.ok).toBe(false);
+    if (!match.ok) expect(match.failure.kind).toBe("wrong-account");
+  });
+
+  it("treats Unassigned (0) as a real account rather than 'no account given'", () => {
+    const match = resolveTargetPosition([makePosition({ accountId: 5 })], "BMY", 0);
+    expect(match.ok).toBe(false);
+    if (!match.ok) expect(match.failure.kind).toBe("wrong-account");
+  });
+
+  it("still matches when the trade's account is the one that holds it", () => {
+    const match = resolveTargetPosition(
+      [makePosition({ accountId: 1 }), makePosition({ accountId: 2 })],
+      "BMY",
+      1,
+    );
+    expect(match.ok).toBe(true);
+    if (match.ok) expect(match.position.accountId).toBe(1);
+  });
+
+  it("names both accounts when explaining a wrong-account failure", () => {
+    const message = describeMatchFailure(
+      {
+        kind: "wrong-account",
+        ticker: "BMY",
+        requestedAccountId: 2,
+        held: [makePosition({ accountId: 1 })],
+      },
+      (id) => (id === 1 ? "Chase" : "Fidelity"),
+    );
+    expect(message).toContain("held in Chase");
+    expect(message).toContain("not in Fidelity");
   });
 
   it("names the ticker and the account count when explaining a failure", () => {
@@ -90,6 +134,48 @@ describe("resolveTargetPosition", () => {
     });
     expect(message).toContain("BMY");
     expect(message).toContain("2 accounts");
+  });
+});
+
+describe("describeProjectedHolding", () => {
+  it("signs a buy with + and totals the result", () => {
+    const message = describeProjectedHolding({
+      ticker: "BMY",
+      accountName: "Schwab Brokerage",
+      currentQuantity: 100,
+      delta: 25,
+    });
+    expect(message).toBe("BMY: 100 shares, now +25 = 125 shares (Schwab Brokerage).");
+  });
+
+  it("signs a sell with - and deducts", () => {
+    const message = describeProjectedHolding({
+      ticker: "BMY",
+      accountName: "IRA",
+      currentQuantity: 100,
+      delta: -30,
+    });
+    expect(message).toBe("BMY: 100 shares, now -30 = 70 shares (IRA).");
+  });
+
+  it("shows a negative total for an oversell rather than clamping", () => {
+    const message = describeProjectedHolding({
+      ticker: "BMY",
+      accountName: "IRA",
+      currentQuantity: 10,
+      delta: -25,
+    });
+    expect(message).toContain("= -15 shares");
+  });
+
+  it("trims trailing zeros off fractional shares", () => {
+    const message = describeProjectedHolding({
+      ticker: "VOO",
+      accountName: "IRA",
+      currentQuantity: 1.5,
+      delta: 0.25,
+    });
+    expect(message).toBe("VOO: 1.5 shares, now +0.25 = 1.75 shares (IRA).");
   });
 });
 

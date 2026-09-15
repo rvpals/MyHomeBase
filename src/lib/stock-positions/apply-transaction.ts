@@ -34,14 +34,21 @@ export interface AppliedTrade {
  * trade for something you don't track as a holding. The caller decides whether to
  * complain.
  *
- * `ambiguous` — more than one account holds it. A position is keyed by
- * `(accountId, ticker)`, but a transaction carries no account, only a free-text
- * `brokerageFirm`. Picking one silently would corrupt a real holding, so this
- * refuses and hands back the candidates for the caller to disambiguate.
+ * `ambiguous` — more than one account holds it and the trade doesn't say which.
+ * A position is keyed by `(accountId, ticker)`, so picking one silently would
+ * corrupt a real holding; this refuses and hands back the candidates for the caller
+ * to disambiguate.
+ *
+ * `wrong-account` — the trade names an account, this ticker is held, but not
+ * *there*. Before migration 0094 a transaction carried no account and a lone
+ * holding was assumed to be the target, which added a Fidelity purchase to a Chase
+ * position without saying so. Now that the trade knows its own account, a holding
+ * in a different one is a mismatch to report, not a candidate to fall back on.
  */
 export type PositionMatchFailure =
   | { kind: "none"; ticker: string }
-  | { kind: "ambiguous"; ticker: string; candidates: StockPosition[] };
+  | { kind: "ambiguous"; ticker: string; candidates: StockPosition[] }
+  | { kind: "wrong-account"; ticker: string; requestedAccountId: number; held: StockPosition[] };
 
 export type PositionMatch =
   | { ok: true; position: StockPosition }
@@ -50,9 +57,16 @@ export type PositionMatch =
 /**
  * Picks the one position a trade should move.
  *
- * When `accountId` is given the choice is already made and this just finds that
- * holding — that is the path the UI takes once it has asked which account. Without
- * one, a single match is used and anything else fails rather than guessing.
+ * `accountId` is the account the trade belongs to — stored on the transaction since
+ * 0094, so it is normally present. Given one, the holding must be in *that* account:
+ * a holding elsewhere fails as `wrong-account` rather than being used, which is the
+ * whole point of the column. `0` (Unassigned) is a real account id here and matches
+ * only positions that are themselves unassigned.
+ *
+ * Without an account id — an older row, or a CSV whose firm matched nothing — this
+ * falls back to the pre-0094 behaviour: a single holding is used, anything else
+ * fails. That fallback is why the UI requires an account before it will apply a
+ * trade to a holding.
  */
 export function resolveTargetPosition(
   positions: StockPosition[],
@@ -62,26 +76,93 @@ export function resolveTargetPosition(
   const symbol = ticker.trim().toUpperCase();
   const holding = positions.filter((position) => position.ticker.toUpperCase() === symbol);
 
+  if (holding.length === 0) return { ok: false, failure: { kind: "none", ticker: symbol } };
+
   if (accountId !== undefined) {
     const exact = holding.find((position) => position.accountId === accountId);
-    return exact
-      ? { ok: true, position: exact }
-      : { ok: false, failure: { kind: "none", ticker: symbol } };
+    if (exact) return { ok: true, position: exact };
+    // Held, but somewhere else. The candidates come back so the caller can name
+    // where it *is* held — that is what lets the reader tell a mis-picked account
+    // apart from a genuinely new position that needs creating. Ids, not names:
+    // account names live in `stk_investment_accounts`, which this module can't read.
+    return {
+      ok: false,
+      failure: {
+        kind: "wrong-account",
+        ticker: symbol,
+        requestedAccountId: accountId,
+        held: holding,
+      },
+    };
   }
 
-  if (holding.length === 0) return { ok: false, failure: { kind: "none", ticker: symbol } };
   if (holding.length > 1)
     return { ok: false, failure: { kind: "ambiguous", ticker: symbol, candidates: holding } };
   return { ok: true, position: holding[0] };
 }
 
-/** A sentence a human can act on, for a failure the UI has to explain. */
-export function describeMatchFailure(failure: PositionMatchFailure): string {
+/**
+ * A sentence a human can act on, for a failure the UI has to explain.
+ *
+ * `accountName` resolves an account id to its display name. Optional because this
+ * module has no access to `stk_investment_accounts` — callers that have the account
+ * list (the server action, the CLI) pass one and get "held in Chase"; callers that
+ * don't fall back to "account 3", which is still actionable.
+ */
+export function describeMatchFailure(
+  failure: PositionMatchFailure,
+  accountName: (accountId: number) => string = (id) =>
+    id === 0 ? "Unassigned" : `account ${id}`,
+): string {
   if (failure.kind === "none")
     return `No ${failure.ticker} position to update. The transaction was not recorded — clear the checkbox to record it without touching holdings, or add the position first.`;
 
+  if (failure.kind === "wrong-account") {
+    const where = failure.held.map((position) => accountName(position.accountId)).join(", ");
+    return `${failure.ticker} is held in ${where}, not in ${accountName(failure.requestedAccountId)}. The transaction was not recorded — add a ${failure.ticker} position to ${accountName(failure.requestedAccountId)} first, pick the account that holds it, or clear the checkbox to record the trade on its own.`;
+  }
+
   const accounts = failure.candidates.length;
   return `${failure.ticker} is held in ${accounts} accounts, so it isn't clear which holding this trade belongs to. Pick an account, or clear the checkbox to record the transaction on its own.`;
+}
+
+/** A share count without trailing zeros — brokers report fractional shares. */
+function formatShares(quantity: number): string {
+  return Number(quantity.toFixed(4)).toString();
+}
+
+/**
+ * What a pending trade will do to a holding, as a sentence:
+ * `"AAPL: 100 shares, now +25 = 125 shares (Schwab Brokerage)."`
+ *
+ * For the preview shown *before* submitting, so the reader can check the arithmetic
+ * against their broker rather than trusting the form. The signed middle term is the
+ * point — a sell reads `now -25`, which is the one case where a wrong sign matters
+ * and a bare `100 → 75` makes you infer the direction.
+ *
+ * An oversell isn't special-cased here; `projectedQuantity` goes negative and the
+ * caller decides how to flag it, since a negative projection is also what
+ * `applyTransactionToPosition` refuses to write.
+ */
+export function describeProjectedHolding({
+  ticker,
+  accountName,
+  currentQuantity,
+  delta,
+}: {
+  ticker: string;
+  accountName: string;
+  currentQuantity: number;
+  /** Signed: positive for a buy, negative for a sell. */
+  delta: number;
+}): string {
+  const sign = delta < 0 ? "-" : "+";
+  const projected = currentQuantity + delta;
+  return (
+    `${ticker}: ${formatShares(currentQuantity)} shares, ` +
+    `now ${sign}${formatShares(Math.abs(delta))} = ${formatShares(projected)} shares ` +
+    `(${accountName}).`
+  );
 }
 
 /** The holding fields a trade moves. Everything else on the position is left alone. */

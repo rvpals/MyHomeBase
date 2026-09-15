@@ -30,6 +30,7 @@ import type {
   UpdateTransactionInput,
   UpsertPositionInput,
 } from "./schema";
+import { UNASSIGNED_ACCOUNT_ID } from "./types";
 import type {
   AllocationSlice,
   DayMove,
@@ -175,10 +176,15 @@ export function createTransaction(
  *
  * `applyToPosition: false` is exactly `createTransaction`, so the old path keeps its
  * behaviour — holdings come from the broker import unless you opt in here.
+ *
+ * `accountName` turns an account id into a name for the error messages only. Passed
+ * in because account names live in `stk_investment_accounts`, which this module's
+ * repository deliberately can't see; omit it and messages name ids instead.
  */
 export function createTransactionAndApply(
   repo: StockPositionRepository,
   input: CreateTransactionArgs,
+  accountName?: (accountId: number) => string,
 ): { transaction: StockTransaction; position?: StockPosition } {
   const validated = createTransactionSchema.parse(input);
 
@@ -186,12 +192,22 @@ export function createTransactionAndApply(
     return { transaction: createTransaction(repo, validated) };
   }
 
+  // Applying to a holding requires knowing which account the trade happened in.
+  // Without it `resolveTargetPosition` falls back to "the only holding", which is
+  // exactly how a Fidelity purchase used to land on a Chase position (see 0094).
+  if (validated.accountId === UNASSIGNED_ACCOUNT_ID)
+    throw new Error(
+      "Pick the account this trade happened in before updating positions data — " +
+        "otherwise there's no way to tell which holding it belongs to. " +
+        "Clear the checkbox to record the transaction on its own.",
+    );
+
   const match = resolveTargetPosition(
     repo.listPositionsByTicker(validated.ticker),
     validated.ticker,
     validated.accountId,
   );
-  if (!match.ok) throw new Error(describeMatchFailure(match.failure));
+  if (!match.ok) throw new Error(describeMatchFailure(match.failure, accountName));
 
   // Throws OversellError before anything is written, so a bad sell leaves no row.
   const update = applyTransactionToPosition(match.position, validated);
@@ -763,9 +779,38 @@ export const TRANSACTION_IMPORT_FIELDS: readonly {
   { value: "pricePerShare", label: "Price / share" },
   { value: "totalAmount", label: "Total amount ($)" },
   { value: "brokerageFirm", label: "Brokerage firm" },
+  { value: "accountName", label: "Account name" },
+  { value: "accountId", label: "Account ID" },
   { value: "externalId", label: "Broker reference / confirmation #" },
   { value: "note", label: "Note" },
 ];
+
+/**
+ * Distinct account-ish names in a transactions CSV, for the account-matching step.
+ *
+ * Reads the mapped `accountName` column and falls back to `brokerageFirm` when the
+ * file has no separate account column — which is the common case, since broker
+ * exports label the column "Brokerage" or "Firm" and that string is the only clue
+ * about which account a trade belongs to. Mirrors `extractCsvAccountNames` in
+ * `lib/investment-accounts`, which does the same job for performance records.
+ */
+export function extractCsvTransactionAccountNames(
+  fileText: string,
+  columnMapping: ColumnMapping,
+): string[] {
+  const columnFor = (field: string) =>
+    Object.entries(columnMapping).find(([, mapped]) => mapped === field)?.[0];
+  const column = columnFor("accountName") ?? columnFor("brokerageFirm");
+  if (column === undefined) return [];
+
+  const { rows } = parseCsv(fileText);
+  const names = new Set<string>();
+  for (const row of rows) {
+    const value = row[Number(column)]?.trim();
+    if (value) names.add(value);
+  }
+  return [...names].sort();
+}
 
 /**
  * The fields that make two transactions the same trade when no broker reference is
@@ -807,16 +852,55 @@ function mappedDateFormat(
  * shares × price so it can never contradict its own parts — which means a fractional
  * holding can land a cent away from the total the file stated.
  */
+/**
+ * How an import turns a CSV's account/firm text into an account id.
+ *
+ * `nameToId` is the explicit answer from the account-matching dialog, keyed by the
+ * exact string in the file. `accounts` is the existing account list, used for a
+ * case-insensitive name match when the dialog said nothing about a value — so a file
+ * whose "Brokerage" column already reads `Chase` needs no manual matching at all.
+ */
+export interface TransactionAccountMatching {
+  nameToId?: Record<string, number>;
+  accounts?: readonly { id: number; name: string }[];
+}
+
+/**
+ * Resolves a CSV's account text to an id, or `0` (Unassigned) when nothing matches.
+ *
+ * Unassigned rather than a skip: a trade with an unrecognised firm is still a real
+ * trade worth importing, and `brokerage_firm` keeps the original string so the row
+ * can be re-attributed later. It just can't take part in the apply-to-position path
+ * until it has an account.
+ */
+function accountIdResolver(
+  matching: TransactionAccountMatching,
+): (accountText: string | undefined, explicitId: number) => number {
+  const byLowerName = new Map(
+    (matching.accounts ?? []).map((account) => [account.name.trim().toLowerCase(), account.id]),
+  );
+  const nameToId = matching.nameToId ?? {};
+
+  return (accountText, explicitId) => {
+    if (explicitId > 0) return explicitId;
+    const text = accountText?.trim();
+    if (!text) return UNASSIGNED_ACCOUNT_ID;
+    return nameToId[text] ?? byLowerName.get(text.toLowerCase()) ?? UNASSIGNED_ACCOUNT_ID;
+  };
+}
+
 export function importTransactionsFromCsv(
   repo: StockPositionRepository,
   fileText: string,
   columnMapping: ColumnMapping,
   fieldOptions: FieldOptionsMap = {},
   excludedRowIndexes: readonly number[] = [],
+  accountMatching: TransactionAccountMatching = {},
 ): ImportSummary {
   const { rows } = parseCsv(fileText);
   const dateFormat = mappedDateFormat(columnMapping, fieldOptions);
   const constants = constantValuesByField(columnMapping, fieldOptions);
+  const resolveAccountId = accountIdResolver(accountMatching);
 
   // How many copies of each trade this file has produced so far, and how many the
   // table held before the import began. `storedByKey` is read once per distinct trade
@@ -858,6 +942,12 @@ export function importTransactionsFromCsv(
           ticker,
           numberOfShares,
           pricePerShareCents,
+          // An explicit Account ID column wins; otherwise the account name, falling
+          // back to the firm string, which is what broker exports actually carry.
+          accountId: resolveAccountId(
+            record.accountName ?? record.brokerageFirm,
+            parseNumeric(record.accountId),
+          ),
           brokerageFirm: record.brokerageFirm ?? "",
           externalId: record.externalId ?? "",
           note: record.note ?? "",

@@ -16,6 +16,7 @@ import {
   getPosition,
   importPositionsFromCsv,
   importTransactionsFromCsv,
+  extractCsvTransactionAccountNames,
   inferPositionType,
   listPositions,
   listPositionsByTicker,
@@ -467,6 +468,9 @@ describe("createTransactionAndApply", () => {
     ticker: "BMY",
     numberOfShares: 5,
     pricePerShareCents: 5200,
+    // The account the trade happened in. Required to apply to a holding since
+    // migration 0094 — without it there's no way to tell which holding is meant.
+    accountId: 1,
     brokerageFirm: "",
     externalId: "",
     note: "",
@@ -476,6 +480,7 @@ describe("createTransactionAndApply", () => {
   const bmy = () =>
     makePosition({
       ticker: "BMY",
+      accountId: 1,
       quantity: 20,
       currentPriceCents: 5000,
       costCents: 80000,
@@ -486,21 +491,21 @@ describe("createTransactionAndApply", () => {
     const repo = fakeRepo([bmy()]);
     const result = createTransactionAndApply(repo, { ...sellFive, applyToPosition: false });
     expect(result.position).toBeUndefined();
-    expect(getPosition(repo, { accountId: 0, ticker: "BMY" })?.quantity).toBe(20);
+    expect(getPosition(repo, { accountId: 1, ticker: "BMY" })?.quantity).toBe(20);
   });
 
   it("treats a missing flag as off, so an old caller can't start writing holdings", () => {
     const repo = fakeRepo([bmy()]);
     const { applyToPosition: _omitted, ...withoutFlag } = sellFive;
     createTransactionAndApply(repo, withoutFlag);
-    expect(getPosition(repo, { accountId: 0, ticker: "BMY" })?.quantity).toBe(20);
+    expect(getPosition(repo, { accountId: 1, ticker: "BMY" })?.quantity).toBe(20);
   });
 
   it("deducts the sold shares from the holding when the flag is on", () => {
     const repo = fakeRepo([bmy()]);
     const result = createTransactionAndApply(repo, sellFive);
     expect(result.position?.quantity).toBe(15);
-    expect(getPosition(repo, { accountId: 0, ticker: "BMY" })?.quantity).toBe(15);
+    expect(getPosition(repo, { accountId: 1, ticker: "BMY" })?.quantity).toBe(15);
     expect(listTransactions(repo)).toHaveLength(1);
   });
 
@@ -524,16 +529,46 @@ describe("createTransactionAndApply", () => {
       createTransactionAndApply(repo, { ...sellFive, numberOfShares: 50 }),
     ).toThrow(/holds 20/);
     expect(listTransactions(repo)).toHaveLength(0);
-    expect(getPosition(repo, { accountId: 0, ticker: "BMY" })?.quantity).toBe(20);
+    expect(getPosition(repo, { accountId: 1, ticker: "BMY" })?.quantity).toBe(20);
   });
 
-  it("refuses rather than guessing when two accounts hold the ticker", () => {
+  // Applying without an account is refused up front now: it's the state that used to
+  // make the app guess, and the guess is what put shares in the wrong holding.
+  it("refuses to apply a trade that names no account", () => {
     const repo = fakeRepo([
       makePosition({ ticker: "BMY", accountId: 1 }),
       makePosition({ ticker: "BMY", accountId: 2 }),
     ]);
-    expect(() => createTransactionAndApply(repo, sellFive)).toThrow(/2 accounts/);
+    const { accountId: _unset, ...noAccount } = sellFive;
+    expect(() => createTransactionAndApply(repo, noAccount)).toThrow(/Pick the account/);
     expect(listTransactions(repo)).toHaveLength(0);
+  });
+
+  it("records a trade with no account when it isn't applied to a holding", () => {
+    const repo = fakeRepo([makePosition({ ticker: "BMY", accountId: 1 })]);
+    const { accountId: _unset, ...noAccount } = sellFive;
+    const result = createTransactionAndApply(repo, {
+      ...noAccount,
+      applyToPosition: false,
+    });
+    expect(result.transaction.accountId).toBe(0);
+    expect(listTransactions(repo)).toHaveLength(1);
+  });
+
+  // The Fidelity-buy-lands-on-Chase regression, end to end through the use-case.
+  it("writes nothing when the ticker is held only in a different account", () => {
+    const repo = fakeRepo([makePosition({ ticker: "BMY", accountId: 1, quantity: 100 })]);
+    expect(() => createTransactionAndApply(repo, { ...sellFive, accountId: 2 })).toThrow(
+      /not in account 2/,
+    );
+    expect(listTransactions(repo)).toHaveLength(0);
+    expect(getPosition(repo, { accountId: 1, ticker: "BMY" })?.quantity).toBe(100);
+  });
+
+  it("stores the account on the recorded transaction", () => {
+    const repo = fakeRepo([bmy()]);
+    const result = createTransactionAndApply(repo, sellFive);
+    expect(result.transaction.accountId).toBe(1);
   });
 
   it("moves only the named account's holding", () => {
@@ -548,7 +583,7 @@ describe("createTransactionAndApply", () => {
 
   it("scales the day's gain to the shares still held", () => {
     const repo = fakeRepo([
-      makePosition({ ticker: "BMY", quantity: 20, dayGainLossCents: 1000 }),
+      makePosition({ ticker: "BMY", accountId: 1, quantity: 20, dayGainLossCents: 1000 }),
     ]);
     const result = createTransactionAndApply(repo, sellFive);
     // $10 across 20 shares, 15 left → $7.50.
@@ -557,7 +592,7 @@ describe("createTransactionAndApply", () => {
 
   it("preserves fields a trade has no business changing", () => {
     const repo = fakeRepo([
-      makePosition({ ticker: "BMY", quantity: 20, incomeEarnedCents: 4321, assetClass: "Equity" }),
+      makePosition({ ticker: "BMY", accountId: 1, quantity: 20, incomeEarnedCents: 4321, assetClass: "Equity" }),
     ]);
     const result = createTransactionAndApply(repo, sellFive);
     expect(result.position?.incomeEarnedCents).toBe(4321);
@@ -567,7 +602,7 @@ describe("createTransactionAndApply", () => {
   it("keeps a fully sold position at zero shares instead of deleting it", () => {
     const repo = fakeRepo([bmy()]);
     createTransactionAndApply(repo, { ...sellFive, numberOfShares: 20 });
-    const remaining = getPosition(repo, { accountId: 0, ticker: "BMY" });
+    const remaining = getPosition(repo, { accountId: 1, ticker: "BMY" });
     expect(remaining).toBeDefined();
     expect(remaining?.quantity).toBe(0);
   });
@@ -582,6 +617,7 @@ describe("updateTransaction and deleteTransaction", () => {
     numberOfShares: 5,
     pricePerShareCents: 15000,
     totalAmountCents: 75000,
+    accountId: 0,
     brokerageFirm: "",
     externalId: "",
     note: "",
@@ -597,12 +633,31 @@ describe("updateTransaction and deleteTransaction", () => {
       ticker: "AAPL",
       numberOfShares: 5,
       pricePerShareCents: 15500,
+      accountId: 0,
       brokerageFirm: "",
       externalId: "",
       note: "sold early",
     });
     expect(updated.action).toBe("Sell");
     expect(updated.totalAmountCents).toBe(77500);
+  });
+
+  // Re-attributing a trade is the main reason to edit one: a row imported before
+  // its account existed, or matched to Unassigned, can be pointed at the real one.
+  it("can move a transaction to a different account", () => {
+    const repo = fakeRepo([], [seedTransaction]);
+    const updated = updateTransaction(repo, 1, {
+      transactionAt: "2026-01-15",
+      action: "Buy",
+      ticker: "AAPL",
+      numberOfShares: 5,
+      pricePerShareCents: 15000,
+      accountId: 7,
+      brokerageFirm: "Fidelity",
+      externalId: "",
+      note: "",
+    });
+    expect(updated.accountId).toBe(7);
   });
 
   it("removes the transaction", () => {
@@ -1072,6 +1127,7 @@ describe("computeTransactionStats", () => {
       numberOfShares: 5,
       pricePerShareCents: 15000,
       totalAmountCents: 75000,
+      accountId: 0,
       brokerageFirm: "",
       externalId: "",
       note: "",
@@ -1086,6 +1142,7 @@ describe("computeTransactionStats", () => {
       numberOfShares: 5,
       pricePerShareCents: 17000,
       totalAmountCents: 85000,
+      accountId: 0,
       brokerageFirm: "",
       externalId: "",
       note: "",
@@ -1123,6 +1180,7 @@ describe("computeAverageCostBasisCents", () => {
       numberOfShares: 1,
       pricePerShareCents: 10000,
       totalAmountCents: 10000,
+      accountId: 0,
       brokerageFirm: "",
       externalId: "",
       note: "",
@@ -1647,6 +1705,75 @@ describe("importTransactionsFromCsv", () => {
       expect(listTransactions(repo)[0].brokerageFirm).toBe("Chase");
     });
 
+    describe("account matching", () => {
+      const accounts = [
+        { id: 1, name: "Chase" },
+        { id: 2, name: "Fidelity" },
+      ];
+
+      it("resolves the firm column to an account id by name", () => {
+        const repo = fakeRepo();
+        importTransactionsFromCsv(repo, `${header}\n${line("Fidelity")}`, columns, {}, [], {
+          accounts,
+        });
+        expect(listTransactions(repo)[0].accountId).toBe(2);
+      });
+
+      it("matches a firm name case-insensitively and ignoring space", () => {
+        const repo = fakeRepo();
+        importTransactionsFromCsv(repo, `${header}\n${line("  chase ")}`, columns, {}, [], {
+          accounts,
+        });
+        expect(listTransactions(repo)[0].accountId).toBe(1);
+      });
+
+      it("prefers the dialog's explicit match over a name match", () => {
+        const repo = fakeRepo();
+        // "JPMC" names no account, so only the explicit mapping can resolve it.
+        importTransactionsFromCsv(repo, `${header}\n${line("JPMC")}`, columns, {}, [], {
+          nameToId: { JPMC: 1 },
+          accounts,
+        });
+        expect(listTransactions(repo)[0].accountId).toBe(1);
+      });
+
+      it("imports an unrecognised firm as Unassigned rather than skipping the row", () => {
+        const repo = fakeRepo();
+        const summary = importTransactionsFromCsv(
+          repo,
+          `${header}\n${line("Some Old Broker")}`,
+          columns,
+          {},
+          [],
+          { accounts },
+        );
+        expect(summary.importedCount).toBe(1);
+        const [stored] = listTransactions(repo);
+        expect(stored.accountId).toBe(0);
+        // The original string survives, so the row can be re-attributed later.
+        expect(stored.brokerageFirm).toBe("Some Old Broker");
+      });
+
+      it("leaves the account unassigned when no matching is supplied at all", () => {
+        const repo = fakeRepo();
+        importTransactionsFromCsv(repo, `${header}\n${line("Chase")}`, columns);
+        expect(listTransactions(repo)[0].accountId).toBe(0);
+      });
+
+      it("reads an explicit Account ID column ahead of any name", () => {
+        const repo = fakeRepo();
+        importTransactionsFromCsv(
+          repo,
+          "Date,Action,Symbol,Shares,Price,Firm,Account ID\n2026-01-15,Buy,AAPL,5,150.00,Chase,2",
+          { ...columns, "6": "accountId" },
+          {},
+          [],
+          { accounts },
+        );
+        expect(listTransactions(repo)[0].accountId).toBe(2);
+      });
+    });
+
     it("keeps the same trade at two firms as two transactions", () => {
       const repo = fakeRepo();
       importTransactionsFromCsv(repo, [header, line("Chase"), line("Fidelity")].join("\n"), columns);
@@ -1863,5 +1990,51 @@ describe("importTransactionsFromCsv", () => {
     const transaction = listTransactions(repo)[0];
     expect(transaction.transactionAt).toBe("2026-04-03");
     expect(transaction.action).toBe("Sell");
+  });
+});
+
+describe("extractCsvTransactionAccountNames", () => {
+  const columns = {
+    "0": "date",
+    "1": "action",
+    "2": "ticker",
+    "3": "numberOfShares",
+    "4": "pricePerShare",
+    "5": "brokerageFirm",
+  };
+
+  it("lists the distinct firms in the file, sorted", () => {
+    const csv = [
+      "Date,Action,Symbol,Shares,Price,Firm",
+      "2026-01-15,Buy,AAPL,5,150.00,Fidelity",
+      "2026-01-16,Buy,AAPL,5,150.00,Chase",
+      "2026-01-17,Buy,AAPL,5,150.00,Fidelity",
+    ].join("\n");
+    expect(extractCsvTransactionAccountNames(csv, columns)).toEqual(["Chase", "Fidelity"]);
+  });
+
+  it("prefers a mapped account-name column over the firm column", () => {
+    const csv = [
+      "Date,Action,Symbol,Shares,Price,Firm,Account",
+      "2026-01-15,Buy,AAPL,5,150.00,Chase Bank,Chase Roth IRA",
+    ].join("\n");
+    expect(
+      extractCsvTransactionAccountNames(csv, { ...columns, "6": "accountName" }),
+    ).toEqual(["Chase Roth IRA"]);
+  });
+
+  it("returns nothing when neither column is mapped", () => {
+    const csv = "Date,Action,Symbol,Shares,Price\n2026-01-15,Buy,AAPL,5,150.00";
+    const { "5": _firm, ...withoutFirm } = columns;
+    expect(extractCsvTransactionAccountNames(csv, withoutFirm)).toEqual([]);
+  });
+
+  it("ignores blank cells rather than offering an empty name to match", () => {
+    const csv = [
+      "Date,Action,Symbol,Shares,Price,Firm",
+      "2026-01-15,Buy,AAPL,5,150.00,",
+      "2026-01-16,Buy,AAPL,5,150.00,Chase",
+    ].join("\n");
+    expect(extractCsvTransactionAccountNames(csv, columns)).toEqual(["Chase"]);
   });
 });

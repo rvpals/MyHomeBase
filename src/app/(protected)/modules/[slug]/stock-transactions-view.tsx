@@ -9,8 +9,14 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
-import type { StockTransaction, TransactionAction } from "@/lib/stock-positions";
+import {
+  describeProjectedHolding,
+  UNASSIGNED_ACCOUNT_ID,
+  type StockTransaction,
+  type TransactionAction,
+} from "@/lib/stock-positions";
 import { TickerCell, TickerViewerHost } from "./ticker-viewer-host";
+import type { PositionAccountOption } from "./stock-positions-view";
 import { centsToDollars, formatCents } from "@/lib/shared/money";
 import {
   createTransactionAction,
@@ -32,6 +38,7 @@ const EMPTY_TRANSACTION_FORM: TransactionFormInput = {
   ticker: "",
   numberOfShares: "",
   pricePerShare: "",
+  accountId: UNASSIGNED_ACCOUNT_ID,
   brokerageFirm: "",
   externalId: "",
   note: "",
@@ -89,14 +96,20 @@ function ApplyToPositionField({
   // Derived, not stored: a result for a stale symbol simply doesn't count, so
   // there's no second state to reset when the ticker changes.
   const holdings = checked && loaded?.symbol === symbol ? loaded.holdings : undefined;
-  const isAmbiguous = (holdings?.length ?? 0) > 1;
-  const target = isAmbiguous
-    ? holdings?.find((holding) => holding.accountId === accountId)
-    : holdings?.[0];
+  // The account comes from the form's own Account field now, so this never falls
+  // back to "the only holding" — that fallback is what used to add a Fidelity buy to
+  // a Chase position. No match means the ticker isn't held *there*, which is a
+  // warning to show rather than a different holding to pick.
+  const target = holdings?.find((holding) => holding.accountId === accountId);
 
+  const hasAccount = accountId !== undefined && accountId !== UNASSIGNED_ACCOUNT_ID;
   const parsedShares = Number(shares || "0");
+  // Only preview a real quantity. An empty Shares box would otherwise read
+  // "now +0 = 100 shares" before you've typed anything, and a half-typed entry
+  // like "1." parses to NaN — neither is worth a sentence.
+  const hasShares = Number.isFinite(parsedShares) && parsedShares > 0;
   const delta = action === "Buy" ? parsedShares : -parsedShares;
-  const projected = target ? target.quantity + delta : undefined;
+  const projected = target && hasShares ? target.quantity + delta : undefined;
 
   return (
     <div className="sm:col-span-3">
@@ -118,41 +131,48 @@ function ApplyToPositionField({
       </label>
 
       {/* Indented to the checkbox label on desktop; flush left on a phone. */}
-      {checked && symbol && holdings && (
+      {checked && !hasAccount && (
+        <p className="mt-2 ml-7 text-sm text-red-400 max-lg:ml-0">
+          Pick the account this trade happened in first — without it there&apos;s no way
+          to tell which holding these shares belong to.
+        </p>
+      )}
+
+      {checked && hasAccount && symbol && holdings && (
         <div className="mt-2 ml-7 text-sm max-lg:ml-0">
           {holdings.length === 0 ? (
             <p className="text-red-400">
               No {symbol} position to update. Clear this box to record the transaction on
               its own, or add the position first.
             </p>
+          ) : target === undefined ? (
+            <div className="flex flex-col gap-2">
+              <p className="text-red-400">
+                {symbol} isn&apos;t held in the selected account — it&apos;s held in{" "}
+                {holdings.map((holding) => holding.accountName).join(", ")}. Add a {symbol}{" "}
+                position to this account first, switch the Account field to the one that
+                holds it, or clear this box to record the trade on its own.
+              </p>
+              <button
+                type="button"
+                onClick={() => onAccountChange(holdings[0].accountId)}
+                className="self-start text-sm text-brass underline"
+              >
+                Use {holdings[0].accountName} instead
+              </button>
+            </div>
           ) : (
             <div className="flex flex-col gap-2">
-              {isAmbiguous && (
-                <label className="block">
-                  <span className="mb-1 block font-medium text-ink">
-                    {symbol} is held in {holdings.length} accounts — update which?
-                  </span>
-                  <select
-                    value={accountId ?? ""}
-                    onChange={(event) =>
-                      onAccountChange(event.target.value === "" ? undefined : Number(event.target.value))
-                    }
-                    className={INPUT_CLASS}
-                  >
-                    <option value="">Select an account…</option>
-                    {holdings.map((holding) => (
-                      <option key={holding.accountId} value={holding.accountId}>
-                        {holding.accountName} — {holding.quantity} shares
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              {target && projected !== undefined && (
+              {projected !== undefined && (
                 <p className={projected < 0 ? "text-red-400" : "text-muted"}>
                   {projected < 0
                     ? `${target.accountName} holds only ${target.quantity} shares — this sale can't be applied.`
-                    : `${target.accountName}: ${target.quantity} → ${projected} shares.`}
+                    : describeProjectedHolding({
+                        ticker: symbol,
+                        accountName: target.accountName,
+                        currentQuantity: target.quantity,
+                        delta,
+                      })}
                 </p>
               )}
             </div>
@@ -170,6 +190,7 @@ function toTransactionFormInput(transaction: StockTransaction): TransactionFormI
     ticker: transaction.ticker,
     numberOfShares: String(transaction.numberOfShares),
     pricePerShare: centsToDollars(transaction.pricePerShareCents).toFixed(2),
+    accountId: transaction.accountId,
     brokerageFirm: transaction.brokerageFirm,
     externalId: transaction.externalId,
     note: transaction.note,
@@ -179,12 +200,15 @@ function toTransactionFormInput(transaction: StockTransaction): TransactionFormI
 function TransactionForm({
   title,
   initialValue,
+  accounts,
   onSave,
   onCancel,
   canApplyToPosition = false,
 }: {
   title: string;
   initialValue: TransactionFormInput;
+  /** Selectable accounts, without Unassigned — the field adds that option itself. */
+  accounts: PositionAccountOption[];
   onSave: (input: TransactionFormInput) => Promise<string | undefined>;
   onCancel?: () => void;
   /** Recording offers the holding update; editing doesn't — see ApplyToPositionField. */
@@ -208,8 +232,15 @@ function TransactionForm({
       }
       // Clearing the form keeps the "also update positions" choice: entering a run
       // of trades shouldn't silently revert to leaving holdings untouched. The
-      // account pick is dropped, since it belonged to the ticker just recorded.
-      setForm({ ...EMPTY_TRANSACTION_FORM, applyToPosition: form.applyToPosition });
+      // account and its firm label are kept for the same reason — a run of trades
+      // is usually in one account, and re-picking it each time invites the mistake
+      // this field exists to prevent.
+      setForm({
+        ...EMPTY_TRANSACTION_FORM,
+        applyToPosition: form.applyToPosition,
+        accountId: form.accountId,
+        brokerageFirm: form.brokerageFirm,
+      });
     } finally {
       setIsSaving(false);
     }
@@ -273,11 +304,40 @@ function TransactionForm({
         />
       </label>
       <label className="block text-sm">
-        <span className="mb-1 block font-medium text-ink">Brokerage firm</span>
+        <span className="mb-1 block font-medium text-ink">Account</span>
+        <select
+          value={form.accountId ?? UNASSIGNED_ACCOUNT_ID}
+          onChange={(event) => {
+            const accountId = Number(event.target.value);
+            setForm((current) => ({
+              ...current,
+              accountId,
+              // The firm label follows the account unless it was typed over, so the
+              // common case needs one choice rather than two matching entries.
+              brokerageFirm:
+                accounts.find((account) => account.id === accountId)?.name ??
+                (accountId === UNASSIGNED_ACCOUNT_ID ? "" : current.brokerageFirm),
+              // An Unassigned trade can't identify a holding — see createTransactionAndApply.
+              applyToPosition:
+                accountId === UNASSIGNED_ACCOUNT_ID ? false : current.applyToPosition,
+            }));
+          }}
+          className={INPUT_CLASS}
+        >
+          <option value={UNASSIGNED_ACCOUNT_ID}>Unassigned</option>
+          {accounts.map((account) => (
+            <option key={account.id} value={account.id}>
+              {account.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium text-ink">Brokerage firm (optional)</span>
         <input
           value={form.brokerageFirm ?? ""}
           onChange={(event) => setForm({ ...form, brokerageFirm: event.target.value })}
-          placeholder="e.g. Chase"
+          placeholder="as the broker labels it"
           className={INPUT_CLASS}
         />
       </label>
@@ -304,16 +364,9 @@ function TransactionForm({
           action={form.action}
           shares={form.numberOfShares}
           checked={form.applyToPosition ?? false}
-          accountId={form.applyAccountId}
-          onCheckedChange={(checked) =>
-            setForm({
-              ...form,
-              applyToPosition: checked,
-              // Drop a stale account pick when the option is switched off.
-              applyAccountId: checked ? form.applyAccountId : undefined,
-            })
-          }
-          onAccountChange={(applyAccountId) => setForm((current) => ({ ...current, applyAccountId }))}
+          accountId={form.accountId}
+          onCheckedChange={(checked) => setForm({ ...form, applyToPosition: checked })}
+          onAccountChange={(accountId) => setForm((current) => ({ ...current, accountId }))}
         />
       )}
       {error && <p className="text-sm text-red-400 sm:col-span-3">{error}</p>}
@@ -331,11 +384,32 @@ function TransactionForm({
   );
 }
 
-export function StockTransactionsView({ transactions }: { transactions: StockTransaction[] }) {
+export function StockTransactionsView({
+  transactions,
+  accounts,
+}: {
+  transactions: StockTransaction[];
+  /** Real accounts; the Unassigned option is added here, not by the caller. */
+  accounts: PositionAccountOption[];
+}) {
   const router = useRouter();
   const [editingId, setEditingId] = useState<number | undefined>(undefined);
   /** The symbol whose full viewer is open, if any. */
   const [openTicker, setOpenTicker] = useState<string | undefined>(undefined);
+
+  /**
+   * How a transaction's account reads in the table. An assigned row shows the
+   * account's current name; an Unassigned one falls back to the recorded firm
+   * string, parenthesised so it's clear nothing is linked, and finally to "—".
+   */
+  function accountLabel(transaction: StockTransaction): string {
+    if (transaction.accountId !== UNASSIGNED_ACCOUNT_ID) {
+      const account = accounts.find((option) => option.id === transaction.accountId);
+      if (account) return account.name;
+      return `Account ${transaction.accountId}`;
+    }
+    return transaction.brokerageFirm ? `(${transaction.brokerageFirm})` : "—";
+  }
 
   async function handleCreate(input: TransactionFormInput) {
     const result = await createTransactionAction(input);
@@ -381,10 +455,12 @@ export function StockTransactionsView({ transactions }: { transactions: StockTra
       ),
     },
     {
-      key: "brokerageFirm",
-      header: "Firm",
-      value: (transaction) => transaction.brokerageFirm,
-      render: (transaction) => transaction.brokerageFirm || "—",
+      key: "account",
+      header: "Account",
+      // Unassigned rows fall back to the firm string so a pre-0094 transaction still
+      // shows what it knows, marked so it reads as unattributed rather than linked.
+      value: (transaction) => accountLabel(transaction),
+      render: (transaction) => accountLabel(transaction),
     },
     {
       key: "shares",
@@ -453,6 +529,7 @@ export function StockTransactionsView({ transactions }: { transactions: StockTra
         <TransactionForm
           title="Record transaction"
           initialValue={EMPTY_TRANSACTION_FORM}
+          accounts={accounts}
           onSave={handleCreate}
           canApplyToPosition
         />
@@ -464,6 +541,7 @@ export function StockTransactionsView({ transactions }: { transactions: StockTra
             <TransactionForm
               title="Save changes"
               initialValue={toTransactionFormInput(editingTransaction)}
+              accounts={accounts}
               onSave={(input) => handleUpdate(editingTransaction.id, input)}
               onCancel={() => setEditingId(undefined)}
             />

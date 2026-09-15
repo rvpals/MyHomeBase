@@ -38,6 +38,7 @@ interface StockTransactionRow {
   number_of_shares: number;
   price_per_share_cents: number;
   total_amount_cents: number;
+  account_id: number;
   brokerage_firm: string;
   external_id: string;
   note: string;
@@ -82,6 +83,7 @@ function transactionToDomain(row: StockTransactionRow): StockTransaction {
     numberOfShares: row.number_of_shares,
     pricePerShareCents: row.price_per_share_cents,
     totalAmountCents: row.total_amount_cents,
+    accountId: row.account_id,
     brokerageFirm: row.brokerage_firm,
     externalId: row.external_id,
     note: row.note,
@@ -193,10 +195,10 @@ export class SqliteStockPositionRepository implements StockPositionRepository {
       .prepare(
         `INSERT INTO stk_stock_transactions
            (transaction_at, action, ticker, number_of_shares, price_per_share_cents,
-            total_amount_cents, brokerage_firm, external_id, note)
+            total_amount_cents, account_id, brokerage_firm, external_id, note)
          VALUES
            (@transactionAt, @action, @ticker, @numberOfShares, @pricePerShareCents,
-            @totalAmountCents, @brokerageFirm, @externalId, @note)`,
+            @totalAmountCents, @accountId, @brokerageFirm, @externalId, @note)`,
       )
       .run({ ...input, totalAmountCents });
 
@@ -215,8 +217,8 @@ export class SqliteStockPositionRepository implements StockPositionRepository {
         `UPDATE stk_stock_transactions
          SET transaction_at = @transactionAt, action = @action, ticker = @ticker,
              number_of_shares = @numberOfShares, price_per_share_cents = @pricePerShareCents,
-             total_amount_cents = @totalAmountCents, brokerage_firm = @brokerageFirm,
-             external_id = @externalId, note = @note
+             total_amount_cents = @totalAmountCents, account_id = @accountId,
+             brokerage_firm = @brokerageFirm, external_id = @externalId, note = @note
          WHERE id = @id`,
       )
       .run({ ...input, totalAmountCents, id });

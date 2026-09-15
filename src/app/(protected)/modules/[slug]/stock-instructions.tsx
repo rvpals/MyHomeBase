@@ -613,6 +613,13 @@ function ImportInstructions() {
           <strong className="text-ink">Brokerage firm</strong> is part of that comparison, so the
           same trade at two firms is two transactions rather than one being mistaken for the other.
         </p>
+        <p>
+          <strong className="text-ink">Account</strong> is the one that matters for holdings. A
+          transaction belongs to one of your accounts, and an import resolves the file&apos;s
+          firm or account column to a real account — matching the name where it can, and asking
+          you where it can&apos;t. Anything unmatched imports as <em>Unassigned</em>, keeping the
+          firm text so you can attribute it later from the Transactions table.
+        </p>
       </Section>
       <Section title="Derived fields">
         <p>

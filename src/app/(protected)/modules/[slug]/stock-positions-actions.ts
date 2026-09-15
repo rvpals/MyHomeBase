@@ -62,6 +62,12 @@ export interface TransactionFormInput {
   ticker: string;
   numberOfShares: string;
   pricePerShare: string;
+  /**
+   * Which of your accounts the trade happened in. Stored on the transaction, and
+   * what picks the holding when `applyToPosition` is set. `0`/undefined is
+   * Unassigned, which records fine but can't update a holding.
+   */
+  accountId?: number;
   brokerageFirm?: string;
   /** The broker's reference number, when you have one. Blank is fine. */
   externalId?: string;
@@ -72,12 +78,25 @@ export interface TransactionFormInput {
    * holding, since the original trade has already been applied.
    */
   applyToPosition?: boolean;
-  /** Which holding to move, when the ticker is held in more than one account. */
-  applyAccountId?: number;
 }
 
 function toErrorResult(error: unknown, fallback: string): ActionResult {
   return { ok: false, error: error instanceof Error ? error.message : fallback };
+}
+
+/**
+ * An account-id -> name function over the current account list.
+ *
+ * `lib/stock-positions` can't read `stk_investment_accounts`, so it asks for this
+ * when it needs to name an account in an error ("AAPL is held in Chase, not
+ * Fidelity"). Read once per call rather than per id — a message may name several.
+ */
+function accountNameLookup(): (accountId: number) => string {
+  const accounts = listAccounts(deps.investmentAccountRepo);
+  return (accountId) =>
+    accountId === UNASSIGNED_ACCOUNT_ID
+      ? "Unassigned"
+      : (accounts.find((account) => account.id === accountId)?.name ?? `account ${accountId}`);
 }
 
 export async function upsertPositionAction(input: PositionFormInput): Promise<ActionResult> {
@@ -132,12 +151,12 @@ export async function createTransactionAction(input: TransactionFormInput): Prom
       ticker: input.ticker,
       numberOfShares: Number(input.numberOfShares || "0"),
       pricePerShareCents: dollarsToCents(input.pricePerShare || "0"),
+      accountId: input.accountId ?? UNASSIGNED_ACCOUNT_ID,
       brokerageFirm: input.brokerageFirm ?? "",
       externalId: input.externalId ?? "",
       note: input.note ?? "",
       applyToPosition: input.applyToPosition ?? false,
-      accountId: input.applyAccountId,
-    });
+    }, accountNameLookup());
   } catch (error) {
     return toErrorResult(error, "Failed to record transaction.");
   }
@@ -157,6 +176,7 @@ export async function updateTransactionAction(
       ticker: input.ticker,
       numberOfShares: Number(input.numberOfShares || "0"),
       pricePerShareCents: dollarsToCents(input.pricePerShare || "0"),
+      accountId: input.accountId ?? UNASSIGNED_ACCOUNT_ID,
       brokerageFirm: input.brokerageFirm ?? "",
       externalId: input.externalId ?? "",
       note: input.note ?? "",
@@ -318,14 +338,10 @@ export async function listTickerHoldingsAction(ticker: string): Promise<TickerHo
   const symbol = ticker.trim().toUpperCase();
   if (!symbol) return [];
 
-  const accounts = listAccounts(deps.investmentAccountRepo);
+  const accountName = accountNameLookup();
   return listPositionsByTicker(deps.stockPositionRepo, symbol).map((position) => ({
     accountId: position.accountId,
-    accountName:
-      position.accountId === UNASSIGNED_ACCOUNT_ID
-        ? "Unassigned"
-        : (accounts.find((account) => account.id === position.accountId)?.name ??
-          `Account ${position.accountId}`),
+    accountName: accountName(position.accountId),
     quantity: position.quantity,
   }));
 }

@@ -33,6 +33,7 @@ export type { StockPositionRepository } from "./ports";
 export {
   applyTransactionToPosition,
   describeMatchFailure,
+  describeProjectedHolding,
   resolveTargetPosition,
   OversellError,
   type AppliedTrade,
@@ -71,6 +72,8 @@ export {
   importPositionsFromCsv,
   type PositionImportOptions,
   importTransactionsFromCsv,
+  extractCsvTransactionAccountNames,
+  type TransactionAccountMatching,
   POSITION_IMPORT_FIELDS,
   TRANSACTION_IMPORT_FIELDS,
 } from "./stock-positions";

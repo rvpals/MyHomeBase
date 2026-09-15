@@ -52,6 +52,15 @@ export interface StockTransaction {
   numberOfShares: number;
   pricePerShareCents: number;
   totalAmountCents: number;
+  /**
+   * Which of your accounts the trade belongs to. `0` is Unassigned — an older row,
+   * or one whose imported firm name matched no account.
+   *
+   * Distinct from `brokerageFirm` on purpose (migration 0094): this is the live link
+   * used to find the holding a trade moves, while the firm string is the historical
+   * record of what the broker called itself and may name a firm you've since left.
+   */
+  accountId: number;
   /** Where the trade was executed, e.g. "Chase". Empty means not recorded. */
   brokerageFirm: string;
   /**

@@ -2,6 +2,7 @@
 // importer. Generic CSV line/text splitting lives in @/lib/shared/csv — re-exported
 // below so this module's existing public surface doesn't change.
 import { parseCsv, parseCsvLine, type ParsedCsv } from "@/lib/shared/csv";
+import { toIsoDateLocal } from "@/lib/shared/date";
 import type { ColumnMapping } from "./types";
 
 export { parseCsv, parseCsvLine, type ParsedCsv };
@@ -102,10 +103,21 @@ export function mapRow(row: string[], mapping: ColumnMapping): Record<string, st
   return record;
 }
 
-/** Parses a free-form date string to an ISO "YYYY-MM-DD" date, falling back to today when unparseable. */
+/**
+ * Parses a free-form date string to an ISO "YYYY-MM-DD" date, falling back to today
+ * when unparseable.
+ *
+ * "Today" is the **local** calendar day, via `toIsoDateLocal`. The obvious
+ * `new Date().toISOString().slice(0, 10)` reads the UTC clock, so every evening in a
+ * negative-offset timezone it files an undated row under *tomorrow* — after 8pm EDT,
+ * a blank date column imported as the next day.
+ */
 export function parseDateToIso(dateStr: string | undefined): string {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toIsoDateLocal(new Date());
   if (!dateStr) return today;
+  // A bare YYYY-MM-DD is already the answer; re-parsing it would route a calendar
+  // day through an instant for no gain.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr.trim())) return dateStr.trim();
   const parsed = new Date(dateStr);
-  return Number.isNaN(parsed.getTime()) ? today : parsed.toISOString().slice(0, 10);
+  return Number.isNaN(parsed.getTime()) ? today : toIsoDateLocal(parsed);
 }

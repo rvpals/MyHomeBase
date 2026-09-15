@@ -403,13 +403,27 @@ export function StockImportView({ accounts }: { accounts: ImportAccountOption[] 
     if (!fileText) return;
     setError(undefined);
 
-    // Performance rows can name their own account. Resolve those names to real
-    // accounts before writing anything, rather than guessing silently.
-    const accountNameIsMapped = Object.values(mapping).includes("accountName");
-    if (importType === "Performance" && accountNameIsMapped && !accountStep) {
+    // Performance rows name their own account; Transaction rows carry the account
+    // as a name or (usually) a brokerage-firm string. Either way, resolve that text
+    // to real accounts before writing anything, rather than guessing silently — a
+    // transaction with the wrong account can move shares in the wrong holding.
+    const mapped = Object.values(mapping);
+    const accountNameIsMapped =
+      mapped.includes("accountName") ||
+      (importType === "Transaction" && mapped.includes("brokerageFirm"));
+    if (
+      (importType === "Performance" || importType === "Transaction") &&
+      accountNameIsMapped &&
+      !accountStep
+    ) {
       setIsBusy(true);
       try {
-        const result = await previewAccountNamesAction(fileText, mapping, savedAccountMatches);
+        const result = await previewAccountNamesAction(
+          fileText,
+          mapping,
+          savedAccountMatches,
+          importType,
+        );
         if (!result.ok) {
           setError(result.error);
           return;
