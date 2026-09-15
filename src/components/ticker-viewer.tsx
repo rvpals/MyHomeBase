@@ -198,10 +198,16 @@ function formatCount(value: number): string {
   return value.toLocaleString("en-US");
 }
 
-/** "2026-08-05" or an ISO instant, shown as a short local date. */
+/**
+ * "2026-08-05" or an ISO instant, shown as a short local date.
+ *
+ * A date-only string is a *calendar day*, not an instant: `new Date("2026-09-14")`
+ * parses as midnight UTC, which renders as the 13th anywhere west of Greenwich.
+ * Appending a local midnight keeps the day the reader typed.
+ */
 function formatDate(value?: string): string {
   if (!value) return "—";
-  const parsed = new Date(value);
+  const parsed = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
   if (Number.isNaN(parsed.getTime())) return value;
   return parsed.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }
@@ -492,11 +498,41 @@ function RangeFigure({ label, cents }: { label: string; cents: number }) {
 }
 
 /**
+ * How a price window is drawn. Shared by the Today box and the Price History
+ * card so the two are switched with the same words and the same buttons.
+ */
+type PriceMark = "line" | "candles";
+
+const MARK_OPTIONS: readonly { value: PriceMark; label: string }[] = [
+  { value: "line", label: "Line" },
+  { value: "candles", label: "Candles" },
+];
+
+/** Which mark the Today box draws the session with. */
+const INTRADAY_MARK_STORAGE_KEY = "myhomebase:chart:ticker-intraday-mark";
+
+/**
+ * Height for the intraday candlestick, in px.
+ *
+ * Much taller than the line it replaces, and that isn't decoration: a session is
+ * ~78 five-minute bars, so at the line's 64px each candle is about 2px wide —
+ * under `MIN_BODY_WIDTH`, where `ChartCandle` drops the body and draws the wick
+ * alone. The extra height is what makes the mark a candlestick rather than a
+ * hairline.
+ */
+const INTRADAY_CANDLE_HEIGHT = 208;
+
+/**
  * The Today box: the day's move, then the session's range, then its shape.
  *
  * The three figures and the chart are a snapshot taken when the viewer opened —
  * so the box says which session it drew and at what time, rather than leaving a
  * reader to assume a number that stopped updating is live.
+ *
+ * The session can be drawn as a line or as candles. The line is the bare inline
+ * `IntradayLine`; candles go through the registered `ChartCandle`, which brings
+ * axes and a tooltip — worth it at 208px, wrong at 64px, which is why the box
+ * grows rather than swapping the mark in place.
  */
 function TodayBox({
   totals,
@@ -507,6 +543,66 @@ function TodayBox({
 }) {
   const series = intraday?.data;
   const hasSession = series != null && series.points.length > 0;
+
+  // Local, and remembered across mounts the same way the Price History card's
+  // mark is. Its own key, though: wanting candles on a 5-year daily window says
+  // nothing about wanting them on a single session, and one shared key would
+  // couple two unrelated choices.
+  const [mark, setMark] = useState<PriceMark>("line");
+
+  useEffect(() => {
+    // Read in an effect, not the initializer: `localStorage` doesn't exist on the
+    // server, and reading it during render would disagree with the served HTML.
+    try {
+      const stored = window.localStorage.getItem(INTRADAY_MARK_STORAGE_KEY);
+      /* eslint-disable-next-line react-hooks/set-state-in-effect --
+         Syncing from an external system (localStorage) on mount, the same pattern
+         as `useChartDisplay` and the Price History card. */
+      if (stored === "line" || stored === "candles") setMark(stored);
+    } catch {
+      // Storage can be unavailable (private browsing); the line default stands.
+    }
+  }, []);
+
+  function onSelectMark(next: PriceMark) {
+    setMark(next);
+    try {
+      window.localStorage.setItem(INTRADAY_MARK_STORAGE_KEY, next);
+    } catch {
+      // Not worth surfacing — the choice still holds for this session.
+    }
+  }
+
+  // Candles are offered only when the provider gave a full bar for every point,
+  // exactly as on the Price History card: a candlestick with holes in it reads as
+  // halted trading, not missing data. A `5m` series is usually complete, but a
+  // thinly traded symbol is not, so this is a real branch rather than a formality.
+  //
+  // `closeCents` is spelled `priceCents` on an intraday point — this series is
+  // keyed by clock time and its close *is* the print — so the points are mapped
+  // onto the structural shape `hasFullBars` screens rather than renaming a field
+  // that reads correctly everywhere else.
+  const canShowCandles =
+    hasSession &&
+    hasFullBars(
+      series.points.map((point) => ({
+        closeCents: point.priceCents,
+        openCents: point.openCents,
+        highCents: point.highCents,
+        lowCents: point.lowCents,
+      })),
+    );
+  const showCandles = mark === "candles" && canShowCandles;
+
+  const candleData = canShowCandles
+    ? series.points.map((point) => ({
+        x: point.time,
+        open: centsToDollars(point.openCents ?? 0),
+        high: centsToDollars(point.highCents ?? 0),
+        low: centsToDollars(point.lowCents ?? 0),
+        close: centsToDollars(point.priceCents),
+      }))
+    : [];
 
   return (
     <div className="mt-3 rounded-xl border border-line p-4">
@@ -522,8 +618,45 @@ function TodayBox({
                 low, and calling a midpoint an average invites the reader to
                 think it's the mean of the day's prices. */}
             <RangeFigure label="Mid" cents={series.averageCents} />
+            {canShowCandles && (
+              // Same button vocabulary as the Price History card's pair, so the
+              // two charts are switched the same way. Pushed to the far end;
+              // `ml-auto` collapses to a plain wrap on a narrow card.
+              <span className="ml-auto flex gap-1 max-lg:ml-0 max-lg:w-full max-lg:pt-1">
+                {MARK_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => onSelectMark(option.value)}
+                    aria-pressed={option.value === mark}
+                    className={`rounded-md px-3 py-1 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
+                      option.value === mark
+                        ? "bg-brass-soft text-brass-dark"
+                        : "text-muted hover:text-ink"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </span>
+            )}
           </div>
-          <IntradayLine series={series} />
+          {showCandles ? (
+            <div className="mt-3">
+              <ChartCandle
+                data={candleData}
+                height={INTRADAY_CANDLE_HEIGHT}
+                label="5-minute range"
+                formatValue={(value) => `$${value.toFixed(2)}`}
+                // Already "HH:MM" — the axis a session is read on.
+                formatX={(value) => String(value)}
+                pointLabels="none"
+                displayStorageKey="myhomebase:chart:ticker-intraday-candles"
+              />
+            </div>
+          ) : (
+            <IntradayLine series={series} />
+          )}
           <p className="mt-1 text-xs text-muted">
             {formatDate(series.sessionDate)} · as of {formatDateTime(series.asOf)}
           </p>
@@ -1324,14 +1457,6 @@ function RangeBar({
     </div>
   );
 }
-
-/** How the price window is drawn. */
-type PriceMark = "line" | "candles";
-
-const MARK_OPTIONS: readonly { value: PriceMark; label: string }[] = [
-  { value: "line", label: "Line" },
-  { value: "candles", label: "Candles" },
-];
 
 const MARK_STORAGE_KEY = "myhomebase:chart:ticker-market-mark";
 

@@ -260,6 +260,17 @@ export interface TickerPriceSeries {
 export interface TickerIntradayPoint {
   time: string;
   priceCents: number;
+  /**
+   * The rest of the bar, when the provider reported it — what a candlestick
+   * needs. Optional for exactly the reason `TickerClosePoint`'s are: every figure
+   * this series is summarized by comes from the close, so a bar without them is
+   * still a usable point. **Present together or not at all.**
+   *
+   * `priceCents` is this bar's close, so no `closeCents` is repeated here.
+   */
+  openCents?: number;
+  highCents?: number;
+  lowCents?: number;
 }
 
 /**

@@ -660,6 +660,13 @@ export function summarizeIntradaySeries(
   const points = ordered.map((bar) => ({
     time: toLocalTime(new Date(bar.timestamp * 1000)),
     priceCents: bar.closeCents,
+    // The rest of the bar rides along in the same response, so carrying it costs
+    // nothing and is what lets the Today box draw candles. All three or none:
+    // half a bar can't be drawn, and the client already enforces that — this
+    // spreads whichever fields it set rather than reasserting the rule.
+    ...(bar.openCents != null && bar.highCents != null && bar.lowCents != null
+      ? { openCents: bar.openCents, highCents: bar.highCents, lowCents: bar.lowCents }
+      : {}),
   }));
   const closes = ordered.map((bar) => bar.closeCents);
   const lastPriceCents = closes[closes.length - 1];

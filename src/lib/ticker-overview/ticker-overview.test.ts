@@ -84,6 +84,7 @@ function transaction(overrides: Partial<StockTransaction> = {}): StockTransactio
     numberOfShares: 10,
     pricePerShareCents: 15_000,
     totalAmountCents: 150_000,
+    accountId: 0,
     brokerageFirm: "Chase",
     externalId: "",
     note: "",
@@ -1513,6 +1514,72 @@ describe("summarizeIntradaySeries", () => {
 
     expect(series.changePct).toBe(0);
     expect(Number.isFinite(series.changePct)).toBe(true);
+  });
+
+  it("carries the rest of the bar through, so the Today box can draw candles", () => {
+    const withBars: PricePoint[] = [
+      {
+        timestamp: 1_700_000_000,
+        closeCents: 10_200,
+        openCents: 10_000,
+        highCents: 10_300,
+        lowCents: 9_950,
+      },
+    ];
+    const series = summarizeIntradaySeries("AAPL", withBars, 10_000, NOW);
+
+    expect(series.points[0]).toMatchObject({
+      priceCents: 10_200,
+      openCents: 10_000,
+      highCents: 10_300,
+      lowCents: 9_950,
+    });
+  });
+
+  it("leaves the bar fields off a close-only point rather than defaulting them to zero", () => {
+    // A zero open would draw a candle from the x-axis to the price — worse than
+    // no candle, because it looks like a real bar. `hasFullBars` must be able to
+    // see the absence, so the keys are omitted entirely.
+    const series = summarizeIntradaySeries("AAPL", bars([10_000, 10_100]), 10_000, NOW);
+
+    expect(series.points[0]).not.toHaveProperty("openCents");
+    expect(series.points[0]).not.toHaveProperty("highCents");
+    expect(series.points[0]).not.toHaveProperty("lowCents");
+  });
+
+  it("keeps a mixed session honest — a full bar beside a close-only one", () => {
+    const mixed: PricePoint[] = [
+      {
+        timestamp: 1_700_000_000,
+        closeCents: 10_200,
+        openCents: 10_000,
+        highCents: 10_300,
+        lowCents: 9_950,
+      },
+      { timestamp: 1_700_000_300, closeCents: 10_400 },
+    ];
+    const series = summarizeIntradaySeries("AAPL", mixed, 10_000, NOW);
+
+    // The complete bar keeps its fields and the partial one stays bare, which is
+    // what lets the view fall back to the line for the whole session rather than
+    // drawing a candlestick with a hole in it.
+    expect(series.points[0].openCents).toBe(10_000);
+    expect(series.points[1]).not.toHaveProperty("openCents");
+    // The summary figures are unaffected: they have always come from the closes.
+    expect(series.highCents).toBe(10_400);
+    expect(series.lowCents).toBe(10_200);
+  });
+
+  it("ignores a half-reported bar rather than carrying a partial one", () => {
+    // The client enforces all-or-nothing, but this asserts the summarizer does
+    // not itself invent the missing two fields if it ever sees one.
+    const halfBar: PricePoint[] = [
+      { timestamp: 1_700_000_000, closeCents: 10_200, openCents: 10_000 },
+    ];
+    const series = summarizeIntradaySeries("AAPL", halfBar, 10_000, NOW);
+
+    expect(series.points[0]).not.toHaveProperty("openCents");
+    expect(series.points[0].priceCents).toBe(10_200);
   });
 });
 
