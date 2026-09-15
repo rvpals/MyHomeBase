@@ -816,9 +816,16 @@ They compose, and neither needs a layout change — the cast is drawn outside th
 [admin/configuration/modules/page.tsx](src/app/(protected)/admin/configuration/modules/page.tsx),
 MyJournal, CSV Analysis, SQL Explorer, Stocks & ETFs, User Management, the About
 screen's "Application & System Info" card
-[admin/about/view.tsx](src/app/(protected)/admin/about/view.tsx), and all three home-screen
-cards — Daily Quote, Today In History and Daily Glance
-[page.tsx](<src/app/(protected)/page.tsx>). For the controlled + `headerAction`
+[admin/about/view.tsx](src/app/(protected)/admin/about/view.tsx), and all four home-screen
+cards — Clock, Daily Quote, Today In History and Daily Glance
+[page.tsx](<src/app/(protected)/page.tsx>). The Clock card
+[clock-widget.tsx](<src/app/(protected)/clock-widget.tsx>) is the one to copy for a card
+whose content ticks: it is `defaultOpen`, and it renders its time only after mount so the
+server and client markup match. It is also the one to copy for **mixing a client island
+with server-rendered content** — its weather half
+([clock-weather.tsx](<src/app/(protected)/clock-weather.tsx>)) stays a server component
+and is passed in as a `ReactNode` child, so the forecast markup never reaches the browser
+bundle even though the clock beside it is interactive. For the controlled + `headerAction`
 combination, see the ticker viewer's Risks card
 [ticker-viewer.tsx](src/components/ticker-viewer.tsx) and the home screen's Daily Quote
 [daily-quote-widget.tsx](<src/app/(protected)/daily-quote-widget.tsx>).
@@ -2419,8 +2426,11 @@ is — a candle chart costs a reader more attention, so it should be a choice, n
 )}
 ```
 
-**Used by:** the ticker dialog's Price History card, behind a Line ↔ Candles toggle in the
-range row — [ticker-viewer.tsx](src/components/ticker-viewer.tsx).
+**Used by:** the ticker dialog, twice, each behind its own Line ↔ Candles toggle — the
+**Price History** card (daily/weekly bars, toggle in the range row) and the Holdings
+card's **Today** box (five-minute bars for one session, toggle beside the high/low/mid
+figures, and the box grows to a 208px `height` because a 2px-wide candle has no drawable
+body) — [ticker-viewer.tsx](src/components/ticker-viewer.tsx).
 
 **Direction is encoded twice, on purpose.** Up is hollow *and* green, down is filled *and*
 red — colour alone loses the distinction in greyscale and for a red-green colour-blind
@@ -2785,7 +2795,11 @@ about the picture, and `IMG_20190609_143501.jpg` is not; it falls back to `name`
 — where the picture click *and* the folder glyph now open the same viewer; its
 Favorite photos section
 ([gallery-fav-photos-list.tsx](src/app/(protected)/modules/[slug]/gallery-fav-photos-list.tsx)), set form with
-`autoPlay` for its Slideshow button; and [PhotoOfTheDay](#photooftheday--photoofthedaybutton),
+`autoPlay` for its Slideshow button; its Magic List section
+([gallery-magic-view.tsx](src/app/(protected)/modules/[slug]/gallery-magic-view.tsx)), set form
+over a drawn result — its "Slide show (with options)" button is `autoPlay` plus this
+component's own options panel, which is why that screen builds no slideshow UI of its
+own; and [PhotoOfTheDay](#photooftheday--photoofthedaybutton),
 set form over folders it has already scanned.
 
 **It owns its index and play state.** That is the difference between a viewer and a
@@ -3093,7 +3107,8 @@ their broker export or from Yahoo. The two meet in two places, both inside "Our 
 chart inside Transactions, which plots your trades against the market's close either side of
 each one, marks dividends, splits and reported quarters on the same line, and lists every
 plotted point with a Note column and a per-row News button; and the **Today** box in Holdings,
-which adds the session's high, low and mid plus a small price line under the day's move. Both
+which adds the session's high, low and mid plus the day's shape under the move — a small price
+line, or a candlestick of the 5-minute bars, whichever the Line/Candles switch is set to. Both
 are captioned with where they came from and when, so a provider figure on this tab can't be
 mistaken for a recorded one.
 
@@ -3111,7 +3126,7 @@ mistaken for a recorded one.
 | `onSelectGroup` | `(group: TickerPanelGroup) => void` | Fired by the tab strip. |
 | `onClose` | `() => void` | Passed through to `Modal`. |
 | `ownData` | `TickerPanelState<TickerOwnData>` | Feeds all three "Our data" cards. |
-| `intraday?` | `TickerPanelState<TickerIntradaySeries>` | Today's session, drawn in the Holdings card's **Today** box: high / low / mid, then a bare price line. A provider call on an otherwise-local tab — that's deliberate, since the figures are only "as of when you opened this" if fetched on open. **Optional** — omit it and the Today box shows just the move. A failure costs the chart, never the move. |
+| `intraday?` | `TickerPanelState<TickerIntradaySeries>` | Today's session, drawn in the Holdings card's **Today** box: high / low / mid, then the session's shape — a bare price line, or **candles** via a Line/Candles switch beside the figures (same button vocabulary as the Price History card, its own `localStorage` key, and the box grows to 208px in candle mode because 5-minute bars are unreadable at the line's 64px). The switch is hidden unless every bar is complete (`hasFullBars`), so a short-barred symbol just gets the line. A provider call on an otherwise-local tab — that's deliberate, since the figures are only "as of when you opened this" if fetched on open. **Optional** — omit it and the Today box shows just the move. A failure costs the chart, never the move. |
 | `tradeTimeline` | `TickerPanelState<TickerTradeTimeline>` | The "My past performance" chart inside Transactions. A provider call, so the table renders first and the chart fills in. |
 | `quote` / `priceSeries` / `events` / `risk` / `news` | `TickerPanelState<…>` | One per Market card. |
 | `detail` | `TickerPanelState<TickerYahooDetail>` | Feeds **all six** Yahoo cards from one fetch. |
@@ -3121,6 +3136,7 @@ mistaken for a recorded one.
 | `onRecalculateRisk` | `() => void` | The Risks card's header action. Risk is cached indefinitely, so this is the only thing that refreshes it. |
 | `onCalculateTaxLots?` | `() => void` | The Transactions card's header action, on the Our data tab: sends this ticker's recorded buys to the Tax Lots analyzer. **Optional** — omit it and no button renders, so a caller with no tax-lots route still gets a working card. A callback rather than an href because the host owns the mapping (`lotsFromTrades` + `encodeAdhocLots` from `lib/tax-lots`); this component must not know which rows count as lots. |
 | `favorite?` | `TickerFavoriteControl` — `{ isFavorite, onToggle, isSaving? }` | The star in the header. **Optional** — omit it and no star renders, so a caller with no favorites store still works. Controlled by the host, which owns the state and the server action; the press feels instant because the host flips its own state before the round trip. `isSaving` disables the star in flight so it can't be double-pressed. |
+| `onConsultAi?` | `() => void` | The **Consult AI** button in the header, immediately right of the star: opens the host's prompt dialog for this ticker. **Optional** — omit it and no button renders. A bare callback because the prompt is built by `lib/ticker-consult` from records this component only ever received as props, and the dialog it opens is route-local. Its `ai-spark` glyph is two filled four-point sparkles, drawn to not read as the five-point outline star beside it — and is in `ALWAYS_CLASSIC` for that reason. |
 | `className?` | `string` | Applied to the `Modal` panel, merged last. |
 
 `TickerPanelState<T>` is `{ data?: T; error?: string; isLoading?: boolean }` — one shape for

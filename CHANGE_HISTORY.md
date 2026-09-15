@@ -1,6 +1,262 @@
 # Change History
 
+## 2026-09-14 — A transaction knows its account, an AI consult per ticker, and candlesticks for today
+
+### [Stocks & ETFs] The Fidelity buy that landed on the Chase position
+
+A transaction carried no account — only a free-text **brokerage firm** string from
+migration 0038. A position, though, is keyed `(account_id, ticker)`. So the Record
+Transaction card's *also update positions data* option had to work out which holding a
+trade moved, and it did that by counting holdings of the ticker: none refused, two or
+more asked you, and **exactly one was assumed to be the right one**.
+
+That last branch was wrong whenever the trade happened somewhere else. Hold BMY in
+Chase only, buy 10 BMY at Fidelity, tick the box — and the 10 shares were added to
+**Chase**, silently, with a successful save. The firm name that would have contradicted
+the assumption was on the same form and was never read: it wasn't a parameter to
+`resolveTargetPosition`, and nothing compared it against `stk_investment_accounts`. A
+sell was worse, decrementing the wrong account or raising an oversell error naming an
+account you'd never traded in.
+
+"One candidate" was being treated as "no ambiguity". Those aren't the same thing: one
+candidate means *one position exists*, not *this trade belongs to it*.
+
+#### The account is a column now, not a guess
+
+**`stk_stock_transactions.account_id`** (migration 0094) stores which account a trade
+belongs to, and the resolver requires it: given an account, the holding must be in
+*that* account, and a holding elsewhere is a new `wrong-account` failure that names
+where the ticker actually is held rather than falling back to it. Applying a trade with
+no account is refused up front — that was the state that made the app guess.
+
+`brokerage_firm` **stays**, for the reason migration 0038 gave for preferring text to a
+foreign key: the firm a trade executed at is a fact about a historical event and must
+survive an account being renamed, closed or deleted. So the two columns say different
+things — the firm is what the broker called itself, the account is which of yours it
+was. The backfill sets `account_id` only where the recorded firm string already matches
+an account name, case- and whitespace-insensitively; anything else stays **Unassigned**
+rather than being guessed at, and is re-attributable from the Transactions table.
+
+#### Imports resolve the firm column to a real account
+
+The CSV importer reads a mapped **Account name** or **Account ID** column, and falls
+back to the **brokerage firm** column — which is what broker exports actually carry.
+That text goes through the same account-matching step the Account Performance import
+already used: explicit choices from the matching dialog first, then a case-insensitive
+match against your account names, so a file whose Brokerage column already reads
+`Chase` needs no manual matching at all. An unrecognised firm imports as Unassigned
+with its string intact rather than being dropped.
+
+The Record Transaction card's brokerage text box is now an **Account** picker over your
+real accounts, with the firm label following the account unless you type over it, and it
+persists across a run of trades — one account, entered once. The Transactions table's
+*Firm* column became **Account**, showing the linked account's current name and falling
+back to the parenthesised firm string for a pre-0094 row.
+
+### [Stocks & ETFs] Consult AI about one ticker
+
+The ticker viewer's header has a new sparkle button beside the favourite star: **Consult
+AI about this ticker**. It opens a prompt built from what the app already knows about
+that symbol — shares held, cost basis, average cost per share, portfolio weight, and
+**every recorded transaction** with its date, direction, share count and price — and asks
+two questions: what else could be bought instead of this *in the same sector*, and what
+else *in a different one*.
+
+The price band is what makes the answer usable. Every suggestion has to trade within
+**±15% of this ticker's current price**, because a reader holding a $180 stock can act on
+a $165–$205 idea and cannot act on a $900 one. The prompt says which figure the band was
+anchored on and what kind of figure it is — a live intraday quote, a settled close, or a
+price last written to our own records — since an intraday anchor makes the band
+provisional in a way a close does not.
+
+The generated text lands in an **editable box**, and Copy and Download both take whatever
+is in that box rather than what was generated. That is the point of the box: a reader who
+adds "I also hold too much semiconductor exposure" should get that sentence in their
+clipboard. A **Reset** button appears once you have typed, to get the original wording
+back.
+
+What the prompt refuses to do is as deliberate as what it says. A position with no
+recorded cost basis reports the gain as **unknown, not zero**, and the prompt forbids
+reasoning about the tax cost of selling it. A symbol with no transactions says the owner
+may well have bought it outside what this app tracks, rather than implying it was never
+traded. And every price the model supplies must be flagged unverified, because prices
+move after a model's training data ends.
+
+The sector comes from the same 90-day profile cache the dashboard charts read, so a
+sector you have set by hand wins here too and the prompt can't contradict the rest of the
+app. Sectors it has never looked up are fetched once and cached. **No AI service is
+called and nothing is metered** — this generates text for you to paste into whichever
+assistant you already use. `npm run cli -- consult-ticker AAPL` prints the identical
+prompt for piping to a file.
+
+### [Stocks & ETFs] Candlesticks in the Today card
+
+The **Today** box in a ticker's Holdings card drew the session as a bare price line. It
+now has the same **Line / Candles** switch the Price History card has, so a single day can
+be read as five-minute candlesticks — open, high, low and close per bar, with up hollow
+and down filled.
+
+The bars were always in the provider's answer; the summarizer was throwing them away and
+keeping only each bar's close. Carrying them through costs **no extra request**. In candle
+mode the box grows from 64px to 208px, which is not decoration: a session is ~79
+five-minute bars, and at the line's height each candle is about two pixels wide — below
+the width where a body can be drawn at all, so they would render as bare hairlines.
+
+The switch is hidden for any symbol whose bars came back incomplete, exactly as on the
+Price History card, because a candlestick with holes in it reads as halted trading rather
+than missing data. Your choice is remembered for next time, under its own key: wanting
+candles on a five-year window says nothing about wanting them on a single day.
+
 ## 2026-09-13 — Pick your phone navigation, BLOBs in the SQL explorer, and Bridge
+
+### [Picture Gallery] Magic List — a set of photographs conjured from a description
+
+A fourth section for the Picture Gallery. An album is what you gathered by hand; a
+**Magic List is a query** — a date range, a file-size band, a resolution floor, and a
+ceiling on how many — from which a set is drawn at random. Name it and it can be loaded
+back later. The result comes up as thumbnails with **Slide show (with options)**,
+**Export to zip file** and **Add an album**.
+
+The two ideas are separate tables rather than a nullable `criteria_json` bolted onto
+`pho_albums`, for the reason `mus_magic_list` and `mus_playlists` are separate: an album
+has no criteria and a magic list's order is disposable, so one table would leave half
+its columns meaningless for either kind of row.
+
+#### The archive had to become searchable first
+
+Size and resolution are **in no directory listing**. Answering "photographs over 4 MB at
+1920×1080 from 2019" meant, on every run, a `stat` plus a header read for every file in
+the range — thousands of round trips over SMB to the DS223, repeated for a set of facts
+that only change when a file does. So the scan writes them down once, into the new
+**`pho_photo_index`**, and a re-scan skips any file whose size and mtime are unchanged.
+That is the same trick `mus_tracks` plays with `duration_seconds`, and it turns the
+second search over a period from minutes into a SQL query.
+
+**Nothing is written into the photo folders.** `journal-photos/ports.ts` forbids putting
+an index or a sidecar next to the photographs and names the precondition for a cache
+like this one — outside the archive, with an explicitly named port and a migration-log
+entry justifying it. The cache is a database table, and `PhotoFileStore` gained exactly
+one new method, `statPhoto`, which is an **observation**: no write, create, move,
+rename, delete or set-times capability, so there is still no code path from the app to a
+modification of a photograph.
+
+Resolution costs **no extra I/O at all**. A JPEG's frame header sits in the same first
+bytes as its EXIF block, so the 128 KB partial read that already found the capture date
+yields the dimensions too — the new `readJpegSize` is a pure parser over that same
+buffer, written by hand for the same reasons `exif.ts` was.
+
+#### Details worth knowing
+
+- **A blank box means no limit, never zero.** Clearing the smallest-file field widens
+  the search rather than emptying it. That rule lives in one function, `matchesCriteria`,
+  and the SQL clause mirrors it.
+- **Resolution is width × height, not megapixels.** A 3000×700 panorama and a 1450×1450
+  square are both 2.1 MP and only one of them fills a screen.
+- **A photograph whose dimensions can't be read is excluded** whenever a resolution bound
+  is set — and the summary line says how many that was, because it is the one exclusion
+  a reader cannot see coming.
+- **Dates match when the picture was taken**, not the file's mtime: an archive that has
+  been copied or restored has mtimes from the day of the copy, which would make every
+  range meaningless.
+- **The progress bar is a table row, not a counter in memory** — so it survives a page
+  refresh, is visible to a CLI-started scan, and can be recognised as abandoned after a
+  crash instead of wedging the button forever.
+- **The list may hold up to 1000; a zip carries 200.** Export refuses past its own
+  ceiling with a message naming it, rather than letting the least-used action cap a
+  feature whose slideshow has no such limit.
+
+The slideshow needed **no new UI**: `PhotoViewer` already owns a collapsible options
+panel for pace and transition, so "Slide show (with options)" is `autoPlay` plus the
+component that every other full-screen photograph in the app already goes through.
+
+**On a phone:** sections come from the shared bottom bar as always — nothing custom. The
+criteria form goes single-column under `max-lg:`, and the results grid is
+`auto-fill`/`minmax`, so it sizes itself rather than counting columns per breakpoint.
+
+New: `src/lib/photo-magic`, `src/cli/photo-magic.ts` (`--scan` runs in the foreground,
+which is how you time a real range against the NAS), migration **0093** with four `pho_`
+tables, and the `gallery_section_magic_list` icon slot.
+
+
+### [Home] A Clock card, with the weather where you are
+
+The home screen has a new card showing the weekday, the full date, a ticking time, the
+**ISO-8601 week number** — the one piece of the date nothing else in the app surfaced —
+and a **7-day forecast** for a place each user picks for themselves.
+
+**Server and client each render the half they own.** The date and the week number come
+from the server: they are the same for every reader, change once a day, and arriving in
+the first paint means the card is never briefly empty. The **time** is client-only, set
+on mount and re-read every second. That split is not a preference — rendering a clock on
+the server guarantees a hydration mismatch, because the value has already moved on by the
+time React reconciles it. The time slot holds its height with a non-breaking space for the
+one frame before it fills, so nothing below it jumps.
+
+The tick re-reads the real clock rather than incrementing a counter. A `setInterval` is
+throttled hard in a background tab, so a counter would quietly fall minutes behind on a
+dashboard left open all day; reading the clock means a throttled tick is late but never
+wrong.
+
+`isoWeekNumber` lives in the new `src/lib/clock` and pivots on the week's **Thursday**,
+which is the whole trick: ISO defines week 1 as the week containing the first Thursday, so
+a week's Thursday is the one day guaranteed to fall in that week's own ISO year. Both
+answers then drop out with no leap-year branch and no 52-vs-53 table. The reading carries
+`weekYear` separately from the date because the two genuinely disagree — **1 January 2027
+is in week 53 of 2026**, and a card claiming "Week 53 · 2027" would be wrong. The test
+pins that case along with 2024-12-30 (already week 1 of 2025) and a Thursday 1 January.
+
+#### The weather half
+
+The forecast is **per user**, not per install: the place is chosen on the Account screen
+(Preferences → Weather location) and stored in `sys_user_preferences`, which is
+key/value rows — so, like the card itself, it needs **no migration**. Four new keys:
+latitude, longitude, place name, and the temperature unit (°F or °C, also per user).
+
+The three location keys resolve **all-or-nothing**. A name with no coordinates can't be
+fetched and coordinates with no name leave the card unlabelled, so anything short of a
+complete triple reads as "no location" rather than as a half-configured one. The blank
+check happens *before* parsing, because `Number("")` is 0 and **0,0 is a real place** —
+without it an unset location would quietly forecast the Gulf of Guinea.
+
+**Nothing new was added to build this.** `src/lib/weather` already spoke to Open-Meteo
+for the Journal's GPS + Weather button, and `src/lib/geocoding` already spoke to
+Nominatim; both are free and need no API key. The `WeatherClient` port gained a
+`getForecast` alongside `getCurrent` — separate methods rather than one with a flag, so
+the Journal still pays for a single reading rather than a week of data. The request
+sends `timezone=auto`, without which Open-Meteo buckets the daily rows by UTC and a
+location far from Greenwich gets its highs and lows filed under the wrong local days.
+
+**The home screen's only outbound call is wrapped in a try/catch.** Open-Meteo being
+down, slow, or firewalled degrades to a "Weather unavailable" line on the card — it must
+never take the home screen with it. Forecasts are cached in process for 30 minutes per
+location, so an ordinary visit does no I/O at all; failures are deliberately *not*
+cached, since one blip shouldn't blank the card for half an hour.
+
+The condition glyphs are **local to the card, not icon slots**. The shape is chosen by
+the WMO code and changes with the weather, which makes it a state glyph — and
+`src/lib/icons/slots.ts` excludes those on purpose, because letting someone re-skin
+"rain" but not "snow" breaks the distinction the set exists to carry. Thirty WMO codes
+collapse to eight drawable shapes; a reader glancing at a week strip is asking "rain or
+not", and an unknown code falls back to a cloud rather than leaving a hole.
+
+The location picker on the Account screen searches on an **explicit button press**, not
+per keystroke — Nominatim's usage policy asks for no heavy automated querying, and this
+is a field someone edits about once a year. It is deliberately not the Journal's
+location picker, which is bound to that module's own access-gated actions and loads
+Leaflet to drop a pin; the Account screen needs a name and two numbers, and pulling in a
+map library to do less would be the expensive way round.
+
+Narrow, the seven columns become a **sideways-scrolling strip** rather than seven
+crushed columns — the desktop grid classes are untouched, so a wide screen can't
+regress.
+
+**No migration.** `resolveHomeWidgets` already inserts a card missing from a saved layout
+at its catalogue position, so shipping a new one needs no schema change and no reseed —
+the card simply appears, visible, at the top of every existing layout. Admin → Display
+Settings → Dashboard Widgets picks it up the same way, since that list renders the
+catalogue rather than a hardcoded set. Its icon is the new `homescreen_card_clock` slot,
+defaulting to `calendar` because no baked icon set has a clock face; an admin can upload
+one over it.
 
 ### [Account] Two compact navigation styles, and the reader picks
 

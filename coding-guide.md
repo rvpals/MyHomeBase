@@ -20,7 +20,7 @@ module is obvious from the name alone. New tables must follow this.
 | `ico_` | Icon customisation — platform-wide, not a feature module | `ico_slot_overrides` |
 | `mus_` | Music Library | `mus_tracks`, `mus_albums`, `mus_scan_runs`, `mus_track_lyrics`, `mus_playlists`, `mus_playlist_tracks`, `mus_play_events`, `mus_magic_list`, `mus_magic_list_tracks`, `mus_play_queue`, `mus_play_queue_state` |
 | `gam_` | Games | `gam_scores` |
-| `pho_` | Picture Gallery | `pho_albums`, `pho_album_photos` |
+| `pho_` | Picture Gallery | `pho_albums`, `pho_album_photos`, `pho_magic_list`, `pho_magic_list_photos`, `pho_photo_index`, `pho_magic_scan_run` |
 
 The `rei_` prefix (Real Estate Investment) was retired when that module was
 removed — see migration `0026_drop_real_estate_module`.
@@ -301,7 +301,12 @@ and asserts each resolves. Extend those lists when adding a module.
 - **A glyph chosen to mean something specific.** `Comments` slots only its default
   `info` chip; a caller that asked for `note` or `clip` meant that, and routing all
   three through one slot would let a single upload overwrite three meanings.
-- **A glyph whose job is to contrast with the one beside it.** `photo-stack` — the
+- **A glyph whose job is to contrast with the one beside it.** Two cases, same reasoning.
+  `ai-spark` — the Consult AI button in the ticker viewer's header — sits immediately right
+  of the `star`/`star-filled` favourite toggle and exists only to not be mistaken for it. A
+  themed set's "AI" artwork is very often a star or a sparkle, which is exactly the
+  confusion the glyph was drawn to avoid, so it is in `ALWAYS_CLASSIC` and has no slot; it
+  is a button, not a place. And `photo-stack` — the
   Random Photo card's button to the My Favorite Photos screen — sits two controls from
   the `heart`/`heart-filled` toggle, and exists only to not be mistaken for it. It is in
   `ALWAYS_CLASSIC` because a themed set's "favourites" artwork is usually a heart. The
