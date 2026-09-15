@@ -7,8 +7,10 @@
  */
 
 import { centsToDollars } from "@/lib/shared/money";
+import type { CorrelationResult } from "@/lib/stock-analytics";
 import type { StockPosition } from "@/lib/stock-positions";
 import { exclusionReason, inferAccountKind, sanitizeAccountLabel } from "./account-kind";
+import { summarizeCorrelations } from "./correlation-insight";
 import type {
   AccountKind,
   AccountKindWeight,
@@ -36,6 +38,16 @@ export interface BuildExportInput {
   focus: AnalysisFocus[];
   /** Which account kinds to include. Defaults to taxable + IRAs. */
   includeKinds?: readonly AccountKind[];
+  /**
+   * The cached correlation matrix, if one has been computed.
+   *
+   * Passed in rather than read here so this stays pure — the web action and the
+   * CLI each read the cache through the repository and hand over the result,
+   * which is what lets a test build the diversification section with no DB.
+   */
+  correlation?: CorrelationResult;
+  /** Overridable for tests that pin the staleness calculation. */
+  now?: Date;
 }
 
 /**
@@ -293,5 +305,26 @@ export function buildPortfolioExport(input: BuildExportInput): PortfolioExportPa
     holdings,
     excludedAccounts: excluded,
     focus: input.focus,
+    // Derived from the holdings just built, so the weights a correlation pair
+    // reports are the same weights the holdings table shows, and a ticker in a
+    // stale matrix that is no longer held is dropped rather than advised on.
+    correlation: input.correlation
+      ? summarizeCorrelations({
+          correlation: input.correlation,
+          weightByTicker: new Map(holdings.map((holding) => [holding.ticker, holding.weightPct])),
+          heldTickers: new Set(holdings.map((holding) => holding.ticker)),
+          sectorWeights: sectorWeightMap(holdings),
+          now: input.now,
+        })
+      : undefined,
   };
+}
+
+/** Sector → total weight %, the input to the gap analysis. */
+function sectorWeightMap(holdings: ExportHolding[]): Map<string, number> {
+  const weights = new Map<string, number>();
+  for (const holding of holdings) {
+    weights.set(holding.sector, (weights.get(holding.sector) ?? 0) + holding.weightPct);
+  }
+  return weights;
 }

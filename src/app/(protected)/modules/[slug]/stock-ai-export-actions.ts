@@ -7,6 +7,7 @@ import {
   renderExport,
 } from "@/lib/portfolio-export";
 import { todayIsoLocal } from "@/lib/shared/date";
+import { computeCorrelationMatrix, getCorrelationCache } from "@/lib/stock-analytics";
 import { listPositions } from "@/lib/stock-positions";
 import { listAccounts } from "@/lib/investment-accounts";
 import { loadSectorMap, resolveSector } from "@/lib/ticker-profiles";
@@ -29,6 +30,16 @@ export interface GenerateExportResult {
     accountCount: number;
     totalMarketValue: number;
     excludedCount: number;
+    /**
+     * What the correlation section is built from, so the modal can say whether
+     * the numbers are there and how old they are without parsing the text.
+     */
+    correlation?: {
+      tickerCount: number;
+      calculatedAt: string;
+      ageDays: number | null;
+      isStale: boolean;
+    };
   };
 }
 
@@ -64,6 +75,11 @@ export async function generatePortfolioExportAction(input: unknown): Promise<Gen
     asOf: todayIsoLocal(),
     focus: options.focus,
     includeKinds: options.includeKinds,
+    // Read from the cache, never computed here: a fresh matrix is ~50 Yahoo
+    // calls, which is not something a preview that regenerates on every
+    // checkbox tick should trigger. `refreshPortfolioCorrelationsAction` is
+    // the explicit way to recompute.
+    correlation: getCorrelationCache(deps.stockAnalyticsRepo),
   });
 
   return {
@@ -75,6 +91,50 @@ export async function generatePortfolioExportAction(input: unknown): Promise<Gen
       accountCount: payload.summary.accountCount,
       totalMarketValue: payload.summary.totalMarketValue,
       excludedCount: payload.excludedAccounts.length,
+      correlation: payload.correlation
+        ? {
+            tickerCount: payload.correlation.tickerCount,
+            calculatedAt: payload.correlation.calculatedAt,
+            ageDays: payload.correlation.ageDays,
+            isStale: payload.correlation.isStale,
+          }
+        : undefined,
     },
   };
+}
+
+export interface RefreshCorrelationsResult {
+  ok: boolean;
+  error?: string;
+  /** How many holdings the new matrix covers, for the confirmation message. */
+  tickerCount?: number;
+}
+
+/**
+ * Recomputes the correlation matrix, then leaves it in the cache for the next
+ * export to read.
+ *
+ * Separate from generating the export because it is the expensive half: one
+ * Yahoo history request per eligible holding. The reader asks for it by
+ * pressing a button, and the same cache backs the Chart & Analysis section, so
+ * refreshing here refreshes there too.
+ */
+export async function refreshPortfolioCorrelationsAction(): Promise<RefreshCorrelationsResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+
+  try {
+    const result = await computeCorrelationMatrix(
+      deps.stockAnalyticsRepo,
+      deps.marketDataClient,
+      listPositions(deps.stockPositionRepo),
+    );
+    return { ok: true, tickerCount: result.tickers.length };
+  } catch (error) {
+    // The use-case throws a readable message for the two cases that matter —
+    // too few eligible positions, and too little price history — so surface it.
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Failed to refresh correlations.",
+    };
+  }
 }

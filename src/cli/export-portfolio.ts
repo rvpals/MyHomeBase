@@ -5,8 +5,10 @@
 //   npm run cli -- export-portfolio
 //   npm run cli -- export-portfolio --format json
 //   npm run cli -- export-portfolio --focus fees,tax
+//   npm run cli -- export-portfolio --focus diversification
 //   npm run cli -- export-portfolio --kinds Taxable
 //   npm run cli -- export-portfolio --format json > portfolio.json
+//   npm run cli -- export-portfolio --refresh-correlations   # recompute first
 //
 // Piping to a file is the point of having it here: the same text the modal puts on
 // the clipboard, available to a script without a browser. Adding this command
@@ -19,6 +21,7 @@ import {
   renderExport,
 } from "@/lib/portfolio-export";
 import { todayIsoLocal } from "@/lib/shared/date";
+import { computeCorrelationMatrix, getCorrelationCache } from "@/lib/stock-analytics";
 import { listPositions } from "@/lib/stock-positions";
 import { loadSectorMap, resolveSector } from "@/lib/ticker-profiles";
 import { deps } from "@/lib/wiring";
@@ -69,6 +72,19 @@ export async function exportPortfolioCommand(args: string[]): Promise<void> {
   }
 
   try {
+    // Before the payload is built, so the export reads the matrix this run just
+    // wrote rather than the previous one. Progress goes to stderr so that
+    // `export-portfolio > file.md` still produces a clean file.
+    if (flags["refresh-correlations"]) {
+      console.error("Refreshing correlations — fetching a year of prices per holding…");
+      const refreshed = await computeCorrelationMatrix(
+        deps.stockAnalyticsRepo,
+        deps.marketDataClient,
+        listPositions(deps.stockPositionRepo),
+      );
+      console.error(`Correlations refreshed across ${refreshed.tickers.length} holdings.`);
+    }
+
     const profiles = loadSectorMap(deps.tickerProfileRepo);
     const sectorsByTicker = new Map<string, string>();
     for (const [ticker, record] of profiles) {
@@ -85,6 +101,7 @@ export async function exportPortfolioCommand(args: string[]): Promise<void> {
       asOf: todayIsoLocal(),
       focus: parsed.data.focus,
       includeKinds: parsed.data.includeKinds,
+      correlation: getCorrelationCache(deps.stockAnalyticsRepo),
     });
 
     console.log(renderExport(payload, parsed.data.format));

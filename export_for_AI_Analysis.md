@@ -4,7 +4,9 @@ Packages the Stocks & ETFs portfolio into a prompt you can paste into any LLM �
 holdings, weights, cost basis and returns, behind an analyst brief that tells the
 model what the numbers mean and what is deliberately missing.
 
-Built 2026-09-11. No migration, no new table, no third-party service, nothing paid.
+Built 2026-09-11. Diversification & Alternatives added 2026-09-14 — measured
+correlations, sector gaps, and alternatives to buy. No migration, no new table, no
+third-party service, nothing paid.
 
 ---
 
@@ -12,7 +14,8 @@ Built 2026-09-11. No migration, no new table, no third-party service, nothing pa
 
 | Path | What it does |
 |---|---|
-| [src/lib/portfolio-export/types.ts](src/lib/portfolio-export/types.ts) | Domain shapes: `ExportHolding`, `ExportSummary`, `AccountKind`, `AnalysisFocus` |
+| [src/lib/portfolio-export/types.ts](src/lib/portfolio-export/types.ts) | Domain shapes: `ExportHolding`, `ExportSummary`, `AccountKind`, `AnalysisFocus`, `CorrelationInsight` |
+| [src/lib/portfolio-export/correlation-insight.ts](src/lib/portfolio-export/correlation-insight.ts) | `summarizeCorrelations`, `findSectorGaps`, `describeCorrelation` — the diversification analysis |
 | [src/lib/portfolio-export/account-kind.ts](src/lib/portfolio-export/account-kind.ts) | Infers tax treatment from the account name; anonymises the label |
 | [src/lib/portfolio-export/portfolio-export.ts](src/lib/portfolio-export/portfolio-export.ts) | `classifyAccounts`, `aggregateHoldings`, `summarize`, `buildPortfolioExport` |
 | [src/lib/portfolio-export/prompt.ts](src/lib/portfolio-export/prompt.ts) | The analyst brief — role, context, per-focus instructions, output shape |
@@ -23,11 +26,20 @@ Built 2026-09-11. No migration, no new table, no third-party service, nothing pa
 | [src/cli/export-portfolio.ts](src/cli/export-portfolio.ts) | The same use-case from a terminal |
 
 Tests: [portfolio-export.test.ts](src/lib/portfolio-export/portfolio-export.test.ts)
-(39) and [render.test.ts](src/lib/portfolio-export/render.test.ts) (21) — 60 in all.
+(39), [render.test.ts](src/lib/portfolio-export/render.test.ts) (21),
+[correlation-insight.test.ts](src/lib/portfolio-export/correlation-insight.test.ts) (40),
+[diversification.test.ts](src/lib/portfolio-export/diversification.test.ts) (27) and
+[correlation-wiring.test.ts](src/lib/portfolio-export/correlation-wiring.test.ts) (7)
+— 134 in all.
 
 Also touched: `stock-sections.ts` (new section), `stock-section.tsx` (the case plus
 the dashboard's "Export for AI" button), `slots.ts` / `slots.test.ts` (the icon
 slot), `modules.md`.
+
+The 2026-09-14 addition also touched `CLI_registry.md` (the `export-portfolio` entry,
+which had never been written) and reused `@/lib/stock-analytics` unchanged —
+`computeCorrelationMatrix`, `getCorrelationCache` and `pearsonCorrelation` were
+already there.
 
 ---
 
@@ -40,10 +52,12 @@ focus areas, read the preview, then **Copy to clipboard** or **Download**.
 **CLI.**
 
 ```bash
-npm run cli -- export-portfolio                      # Markdown, all three focuses
+npm run cli -- export-portfolio                      # Markdown, all four focuses
 npm run cli -- export-portfolio --format json        # structured
-npm run cli -- export-portfolio --focus fees,tax     # two of the three
+npm run cli -- export-portfolio --focus fees,tax     # two of the four
+npm run cli -- export-portfolio --focus diversification
 npm run cli -- export-portfolio --kinds "Roth IRA"   # one account type
+npm run cli -- export-portfolio --refresh-correlations   # recompute the matrix first
 npm run cli -- export-portfolio --format json > portfolio.json
 ```
 
@@ -61,6 +75,11 @@ breakdown.
 **Holdings** — one row per ticker, aggregated across accounts: name, vehicle type,
 which account types hold it, quantity, average cost basis, current price, market
 value, unrealised gain/loss ($ and %), portfolio weight %, sector, expense ratio.
+
+**Correlation** (added 2026-09-14, only when a matrix has been computed) — the ten
+most-correlated pairs with their combined weight, the ten least-correlated, every
+holding's correlation to SPY, and the sectors held at nothing or almost nothing. Read
+from the cache the Chart & Analysis section fills; never computed by the export itself.
 
 **Excluded accounts** — what was left out and why, so the model cannot mistake an
 omission for an absence.
@@ -136,6 +155,69 @@ each becomes one row whose `accounts` field lists both, which is what the tax
 placement analysis reads. Cost basis is summed in cents and divided once at the end,
 so a blended average is correct rather than the mean of two averages.
 
+### The export reads the correlation cache; it never computes it
+
+Added 2026-09-14. A fresh matrix is one Yahoo history request per eligible holding —
+about 50 for this portfolio. The preview regenerates on **every checkbox tick**, so
+computing there would fire 50 network calls per keystroke-equivalent. Instead
+`getCorrelationCache` is read (instant, no network) and a **Refresh correlations**
+button in the modal calls `computeCorrelationMatrix` explicitly. The same singleton
+cache backs Chart & Analysis, so refreshing in one place refreshes both.
+
+A cache older than 7 days is reported as stale in both the prompt and the Markdown,
+and still used: correlations move slowly, and withholding the data would be worse than
+labelling it.
+
+### The model names the alternatives; the export states the gaps
+
+The obvious build was a curated sector→ETF map so the app could measure a candidate's
+real correlation. It was rejected as a maintained universe of securities — the same
+reasoning that rejected hard-coded account ids. Instead the export ships the
+*measured* facts (your pair correlations, your SPY correlations, your sector gaps) and
+the prompt asks the model to name tickers in those gaps, estimate each one's
+correlation **against the supplied reference points**, mark the estimate unverified,
+and size it. The division: measurements from the data, candidate names from the model.
+
+### "Least correlated" is not "hedged"
+
+Across US equities over one year almost nothing is genuinely inversely correlated. A
+prompt that shows a "least correlated" table invites the model to call a 0.35 pair a
+hedge. So `hasInverseCorrelation` is computed, and when it is false the prompt says
+outright that **every** measured pair is positive, that the weakest links are not
+opposing ones, and that these holdings fall together. `describeCorrelation` supplies
+the shared vocabulary ("nearly identical", "largely independent") so the tables and
+the write-up can't disagree.
+
+This portfolio does have genuinely inverse pairs — WM and VDC against the
+semiconductor names, around −0.6 — so the caveat stays dormant here. It fires for a
+pure-tech portfolio, which is exactly when it is needed.
+
+### A ticker held in two accounts must not pair with itself
+
+Found by running the CLI against a copy of the live database. The cached matrix is
+built from **positions**, and MSFT sits in both the taxable and the Roth account — so
+it occupies two columns, correlates with itself at exactly 1.000, and topped the
+redundancy table as `MSFT | MSFT | 1.000`. `allPairs` now skips `tickerA === tickerB`
+and deduplicates on an order-independent pair key. Pair count went from 1,275 to the
+correct 1,176 (49×48/2), and the table now leads with SPY/VOO at 0.998.
+
+### The two pair tables must not overlap
+
+Taking ten from each end of the sorted list puts the same pair in both tables whenever
+there are fewer than twenty — and with three pairs, *every* pair appears in both, so an
+inversely correlated pair would be presented as a redundancy candidate. The list is
+split at its midpoint instead. A lone pair goes to the most-correlated table only,
+where the redundancy question is asked. A test asserts disjointness at 2, 3, 4, 5, 8
+and 21 tickers.
+
+### Sector gaps need a list of sectors that exist
+
+Saying "you hold no Utilities" is a statement about an *absence*, so it cannot come
+from the holdings. `GICS_SECTORS` hard-codes the eleven standard sector names — a
+stable taxonomy, unchanged since Real Estate was split out in 2016, and not a universe
+that needs maintaining. `ETFs & funds` and `Unclassified` are explicitly excluded from
+it so a fund's missing sector is never mistaken for a twelfth sector.
+
 ---
 
 ## The prompt
@@ -154,13 +236,14 @@ Four blocks, assembled by `buildAnalystPrompt`:
    and figures, close with a prioritised action list marking which actions carry a
    tax consequence.
 
-The three focus areas:
+The four focus areas:
 
 | Focus | Asks for |
 |---|---|
 | Asset Allocation & Overlap | Positions >5%, sectors >30%, fund/equity overlap and true combined exposure, what's missing (geography, market cap, bonds) |
 | Fee Drag & Expense Ratios | Per-fund ratios, annual cost in dollars, cheaper equivalents — and honesty when a switch saves trivially little or triggers a gain |
 | Tax Efficiency & Rebalancing | Placement by account type, positions with large gains, rebalancing routes that avoid realising them |
+| Diversification & Alternatives | Which pairs are the same bet, how much real diversification exists, and specific tickers to buy in the absent sectors — sized, and ranked by correlation reduction |
 
 ---
 
@@ -179,6 +262,15 @@ The three focus areas:
 | Empty portfolio | `_No holdings in the exported accounts._`, zeroes not NaN |
 | Three identical exclusions | Grouped to one line with a count |
 | Clipboard permission denied | Silent; the text is on screen and selectable |
+| No correlation matrix ever computed | Section omitted; prompt says so and asks for sector-based reasoning instead |
+| Correlation cache older than 7 days | Used, and labelled stale in the prompt and the Markdown |
+| Ticker in a stale matrix but since sold | Dropped from every pair and from the SPY list |
+| Same ticker in two accounts | One column pair, never self-paired; weight counted once |
+| Fewer than two usable pairs | `correlation` is `undefined` rather than a one-number section |
+| Ragged or NaN matrix row | That cell is skipped — a corrupt cache, not a zero correlation |
+| Only one pair in total | Most-correlated table gets it; least-correlated stays empty |
+| Refresh with under 2 Stock/ETF positions | The use-case's own error surfaces in the modal |
+| Mutual fund, bond, crypto, cash | Absent from the matrix by design; the prompt states this |
 
 ---
 
@@ -215,6 +307,13 @@ allocation focus is built to surface.
   shortens. No desktop class changes, so wide screens can't regress.
 - No new shared component. `Modal`, `Button` and `CollapsibleCard` already covered
   it, so `components.md` needed no entry.
+- The diversification work added **no migration, no table and no icon slot** — it
+  reuses `stk_stock_correlation_cache` (migration 0018) and sits inside the existing
+  modal under the existing slot. `refreshPortfolioCorrelationsAction` authorises on
+  its first line with the same full slug.
+- `summarizeCorrelations` takes the matrix as an argument rather than reading the
+  repository, which is what lets the diversification section be built in a test with
+  no database — and is why the web action and the CLI each read the cache themselves.
 
 ## If you want to change something
 
@@ -227,18 +326,34 @@ allocation focus is built to surface.
 - **Real expense ratios** — populate `ExportHolding.expenseRatio` in
   `aggregateHoldings` and delete the caveat line in `prompt.ts`. The field and the
   column already exist end to end.
-- **A fourth focus area** — add it to `AnalysisFocus`, `ANALYSIS_FOCUS_INFO` and
+- **Another focus area** — add it to `AnalysisFocus`, `ANALYSIS_FOCUS_INFO` and
   `FOCUS_INSTRUCTIONS`; the checklist and the ordering follow automatically.
+  (`buildAnalystPrompt` now orders from `ANALYSIS_FOCUSES`, so there is no second
+  list to keep in step.)
+- **Longer or shorter pair tables** — `MAX_PAIRS` in `correlation-insight.ts`.
+- **A different staleness threshold** — `STALE_AFTER_DAYS`, same file.
+- **Measured correlations for candidates you don't own** — this is the deliberate
+  gap. It needs a candidate universe; the decision above explains why there isn't
+  one. The honest version is a curated sector→ETF map plus a fetch per candidate.
+- **Correlation over a window other than one year** — the range is
+  `HISTORY_RANGE_1Y` in `src/lib/stock-analytics/stock-analytics.ts`, shared with
+  Chart & Analysis. Changing it changes both.
 
 ## Verification
 
-Typecheck clean for every file in this feature; lint clean; library boundary clean;
-60 new unit tests plus the full suite at 3,822 passing across 157 files. The CLI was
-run against a copy of the live NAS database — never the real file — and its figures
-were cross-checked against direct SQL.
+**At build (2026-09-11).** Typecheck clean for every file in this feature; lint clean;
+library boundary clean; 60 new unit tests plus the full suite at 3,822 passing across
+157 files. The CLI was run against a copy of the live NAS database — never the real
+file — and its figures were cross-checked against direct SQL.
 
-Five typecheck errors remain in `src/lib/journal/*`, from separate uncommitted work
-on that module (`externalContent` added to the type without updating its test
-fixtures). They predate this feature and are untouched by it.
+**At the diversification addition (2026-09-14).** `tsc --noEmit` clean across the whole
+repo (the five `src/lib/journal/*` errors noted here previously have since been fixed
+by other work); ESLint clean on all changed files; no `react`/`next` import anywhere
+under `src/lib/portfolio-export/`; **134 tests passing** in the module, 74 of them new.
+
+The CLI was run against a **copy** of the live NAS database — the real file was never
+opened for writing, and the copy was deleted afterwards. That run is what caught the
+`MSFT | MSFT | 1.000` self-pairing and confirmed the fix: 1,176 pairs across 49
+holdings, average pairwise correlation 0.127, three sectors at zero exposure.
 
 Per-project convention, the browser sweep was not run — Min tests the UI himself.

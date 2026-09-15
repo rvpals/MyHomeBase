@@ -16,6 +16,7 @@ import { getIconSlot } from "@/lib/icons";
 import { ANALYSIS_FOCUSES, ANALYSIS_FOCUS_INFO, type AnalysisFocus } from "@/lib/portfolio-export";
 import {
   generatePortfolioExportAction,
+  refreshPortfolioCorrelationsAction,
   type GenerateExportResult,
 } from "./stock-ai-export-actions";
 
@@ -37,6 +38,30 @@ function formatUsd(value: number): string {
   }).format(value);
 }
 
+/**
+ * What the modal says about the correlation data behind the diversification
+ * focus. Formatting only — the freshness decision itself is `isStale`, made in
+ * the library.
+ */
+function correlationStatus(result: GenerateExportResult | undefined): string {
+  const correlation = result?.stats?.correlation;
+  if (!result?.ok) return "Correlation data loads with the preview.";
+  if (!correlation) {
+    return "No correlation data yet — refresh to measure how the holdings move together.";
+  }
+
+  const age =
+    correlation.ageDays === null
+      ? "at an unknown date"
+      : correlation.ageDays === 0
+        ? "today"
+        : `${correlation.ageDays} day${correlation.ageDays === 1 ? "" : "s"} ago`;
+
+  return `${correlation.tickerCount} holdings correlated, computed ${age}${
+    correlation.isStale ? " — worth refreshing" : ""
+  }.`;
+}
+
 export interface StockAiExportViewProps {
   /** Shown before anything is generated, so the screen isn't empty on arrival. */
   holdingCount: number;
@@ -55,6 +80,8 @@ export function StockAiExportView({
   const [result, setResult] = useState<GenerateExportResult | undefined>();
   const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | undefined>();
 
   /**
    * Regenerates for an explicit choice.
@@ -103,6 +130,27 @@ export function StockAiExportView({
     void generate(format, next);
   }
 
+  /**
+   * Recomputes the correlation matrix, then regenerates so the preview shows
+   * the new numbers rather than the ones the reader just replaced.
+   */
+  async function refreshCorrelations() {
+    setIsRefreshing(true);
+    setRefreshError(undefined);
+    try {
+      const outcome = await refreshPortfolioCorrelationsAction();
+      if (!outcome.ok) {
+        setRefreshError(outcome.error ?? "The correlations could not be refreshed.");
+        return;
+      }
+      await generate(format, focus);
+    } catch {
+      setRefreshError("The correlations could not be refreshed.");
+    } finally {
+      setIsRefreshing(false);
+    }
+  }
+
   async function copyToClipboard() {
     if (!result?.content) return;
     try {
@@ -138,9 +186,10 @@ export function StockAiExportView({
         <div className="flex flex-col gap-4">
           <p className="text-sm text-muted">
             Package the portfolio as a prompt you can paste into any AI chat — holdings,
-            weights, cost basis and returns, with an analyst brief in front of them. Account
-            names are replaced by their tax treatment, so no broker, employer or personal
-            name leaves this machine.
+            weights, cost basis and returns, plus measured correlations and the sectors
+            you hold nothing in, with an analyst brief in front of them. Account names are
+            replaced by their tax treatment, so no broker, employer or personal name leaves
+            this machine.
           </p>
 
           <div className="grid grid-cols-3 gap-3 max-lg:grid-cols-1">
@@ -248,6 +297,34 @@ export function StockAiExportView({
                 <p className="text-xs text-muted">
                   Nothing ticked — the prompt will ask for a general review instead.
                 </p>
+              )}
+
+              {/*
+                Only shown when the diversification focus is on: it is the one
+                analysis that reads the correlation matrix, so the state of that
+                matrix is noise to a reader who hasn't asked for it.
+              */}
+              {focus.includes("diversification") && (
+                <div className="mt-1 flex flex-col gap-2 rounded-lg border border-line bg-paper p-3">
+                  <div className="flex items-baseline justify-between gap-3 max-lg:flex-col max-lg:items-start">
+                    <span className="text-xs text-muted">
+                      {correlationStatus(result)}
+                    </span>
+                    <Button
+                      variant="secondary"
+                      onClick={refreshCorrelations}
+                      disabled={isRefreshing || isGenerating}
+                    >
+                      {isRefreshing ? "Refreshing…" : "Refresh correlations"}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted">
+                    Refreshing fetches a year of daily prices for every Stock and ETF
+                    holding, so it takes a few seconds. The same figures feed Chart &amp;
+                    Analysis.
+                  </p>
+                  {refreshError && <p className="text-xs text-red-400">{refreshError}</p>}
+                </div>
               )}
             </fieldset>
 

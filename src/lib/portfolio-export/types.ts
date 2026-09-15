@@ -43,9 +43,14 @@ export const DEFAULT_EXPORTED_KINDS = [
 export type ExportFormat = "markdown" | "json";
 
 /** An analysis the prompt can ask for. The reader ticks any combination. */
-export type AnalysisFocus = "allocation" | "fees" | "tax";
+export type AnalysisFocus = "allocation" | "fees" | "tax" | "diversification";
 
-export const ANALYSIS_FOCUSES = ["allocation", "fees", "tax"] as const satisfies readonly AnalysisFocus[];
+export const ANALYSIS_FOCUSES = [
+  "allocation",
+  "fees",
+  "tax",
+  "diversification",
+] as const satisfies readonly AnalysisFocus[];
 
 /** What each focus is called on screen, and the one-liner beside its checkbox. */
 export const ANALYSIS_FOCUS_INFO: Record<AnalysisFocus, { label: string; description: string }> = {
@@ -60,6 +65,11 @@ export const ANALYSIS_FOCUS_INFO: Record<AnalysisFocus, { label: string; descrip
   tax: {
     label: "Tax Efficiency & Rebalancing",
     description: "Whether each holding sits in the right account, and how to rebalance cheaply.",
+  },
+  diversification: {
+    label: "Diversification & Alternatives",
+    description:
+      "Measured correlations between holdings, which sectors are missing, and what to buy to offset them.",
   },
 };
 
@@ -135,6 +145,66 @@ export interface ExportSummary {
   missingCostBasisCount: number;
 }
 
+/**
+ * One pair of holdings and how closely they move together.
+ *
+ * `combinedWeightPct` is what makes the pair actionable: two nearly identical
+ * funds at 0.3% of the portfolio each is a curiosity, the same pair at 25% is
+ * the finding.
+ */
+export interface CorrelationPair {
+  tickerA: string;
+  tickerB: string;
+  /** Pearson coefficient over one year of daily returns, -1 to 1. */
+  correlation: number;
+  /** The coefficient in words — "nearly identical", "largely independent". */
+  label: string;
+  /** The two holdings' portfolio weights added together. */
+  combinedWeightPct: number;
+}
+
+/** One holding's correlation to the market benchmark (SPY). */
+export interface MarketCorrelationNote {
+  ticker: string;
+  correlation: number;
+  label: string;
+}
+
+/** A sector the portfolio has no, or almost no, exposure to. */
+export interface SectorGap {
+  sector: string;
+  weightPct: number;
+  /** `absent` is exactly zero; `thin` is present but below the threshold. */
+  status: "absent" | "thin";
+}
+
+/**
+ * What the cached correlation matrix says about this portfolio.
+ *
+ * Optional on the payload: the matrix is computed on demand from the Chart &
+ * Analysis section, so a reader who has never run it gets an export that says
+ * the data is unavailable rather than one that invents it.
+ */
+export interface CorrelationInsight {
+  /** When the matrix was computed, as stored in the cache. */
+  calculatedAt: string;
+  /** Whole days old. `null` when the stored timestamp could not be read. */
+  ageDays: number | null;
+  isStale: boolean;
+  /** How many holdings the matrix actually covers. */
+  tickerCount: number;
+  pairCount: number;
+  averagePairwiseCorrelation: number;
+  mostCorrelated: CorrelationPair[];
+  leastCorrelated: CorrelationPair[];
+  marketCorrelations: MarketCorrelationNote[];
+  /** Holdings whose price history could not be fetched when it was computed. */
+  excludedTickers: string[];
+  sectorGaps: SectorGap[];
+  /** False for most equity portfolios — the prompt states this rather than implying a hedge. */
+  hasInverseCorrelation: boolean;
+}
+
 /** An account that was deliberately left out, and why — stated, never silent. */
 export interface ExcludedAccount {
   label: string;
@@ -150,4 +220,10 @@ export interface PortfolioExportPayload {
   holdings: ExportHolding[];
   excludedAccounts: ExcludedAccount[];
   focus: AnalysisFocus[];
+  /**
+   * Absent when no correlation matrix has been computed, or when the cached one
+   * covers too little to say anything. The renderers omit the section and the
+   * prompt says why, so a gap is never mistaken for "nothing correlates here".
+   */
+  correlation?: CorrelationInsight;
 }

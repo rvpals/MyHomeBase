@@ -10,7 +10,7 @@
  * ratio is tracked anywhere in the app.
  */
 
-import type { AnalysisFocus, PortfolioExportPayload } from "./types";
+import { ANALYSIS_FOCUSES, type AnalysisFocus, type PortfolioExportPayload } from "./types";
 
 function formatUsd(value: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -75,6 +75,51 @@ function contextBlock(payload: PortfolioExportPayload): string {
     "  placement from the treatment; do not ask which broker holds what.",
   );
 
+  // Only worth saying when the reader actually asked for the correlation work.
+  if (payload.focus.includes("diversification")) {
+    const insight = payload.correlation;
+
+    if (!insight) {
+      lines.push(
+        "- No correlation matrix is available, so the diversification analysis below has no",
+        "  measured correlations to work from. Reason about diversification from the sector",
+        "  weights and holdings instead, and say clearly that your correlation claims are",
+        "  estimates from your own knowledge rather than measurements of this portfolio.",
+      );
+    } else {
+      lines.push(
+        `- The correlation figures are Pearson coefficients over one year of daily returns,`,
+        `  computed ${insight.ageDays === null ? "at an unknown date" : `${insight.ageDays} day(s) ago`} and covering ${insight.tickerCount} of the holdings.`,
+        "  Only Stock and ETF positions are covered — mutual funds, bonds, crypto and cash",
+        "  are absent from the matrix by design, so their absence there is not a statement",
+        "  about them.",
+      );
+
+      if (insight.isStale) {
+        lines.push(
+          "- That matrix is more than a week old. Correlations move slowly, so it is still",
+          "  usable, but treat a borderline figure as approximate.",
+        );
+      }
+
+      if (!insight.hasInverseCorrelation) {
+        lines.push(
+          "- NOTHING in this portfolio is inversely correlated with anything else in it:",
+          `  every measured pair is positive, averaging ${insight.averagePairwiseCorrelation.toFixed(2)}. Do not describe any`,
+          '  existing pair as a hedge. The least-correlated pairs are the *weakest* links,',
+          "  not opposing ones, and in a market-wide fall these holdings drop together.",
+        );
+      }
+
+      if (insight.excludedTickers.length > 0) {
+        lines.push(
+          `- ${insight.excludedTickers.length} holding(s) had no fetchable price history when the matrix was`,
+          `  computed (${insight.excludedTickers.join(", ")}) and are missing from it.`,
+        );
+      }
+    }
+  }
+
   return lines.join("\n");
 }
 
@@ -96,6 +141,30 @@ const FOCUS_INSTRUCTIONS: Record<AnalysisFocus, string[]> = {
     "- Name a cheaper, substantially equivalent fund wherever one exists, and quantify the",
     "  annual saving. Be honest when a switch would save trivially little, or when the",
     "  taxable gain from switching would outweigh years of saved fees.",
+  ],
+  diversification: [
+    "DIVERSIFICATION & ALTERNATIVES",
+    "- Read the correlation tables as the measured starting point. Name the pairs that are",
+    "  effectively the same bet — high correlation AND a large combined weight — and say",
+    "  which one of each pair you would keep, and why.",
+    "- State plainly how much genuine diversification the portfolio already has. If the",
+    "  least-correlated pairs are still positively correlated, say so: that means these",
+    "  holdings fall together, and no amount of adding more of the same fixes it.",
+    "- Then recommend specific alternatives. For each sector listed as absent or thin,",
+    "  name two or three concrete tickers — an ETF for broad exposure, and an individual",
+    "  company if one is clearly the sector's quality name. For every ticker you name:",
+    "    (a) state why it belongs to that sector,",
+    "    (b) estimate its correlation to THIS portfolio's largest holdings and to SPY,",
+    "        using the market correlations supplied as your reference point,",
+    "    (c) mark the estimate as unverified, because it is your knowledge and not",
+    "        measured from the data above,",
+    "    (d) give a rough sizing — what percent of the portfolio would meaningfully",
+    "        change its behaviour without becoming a new concentration.",
+    "- Rank your suggestions by how much they would reduce the portfolio's overall",
+    "  correlation, not by how attractive the company is on its own.",
+    "- Be honest about the limits of the idea: a genuinely inversely correlated asset is",
+    "  usually a bond, a commodity, gold or cash, not another equity. If that is the real",
+    "  answer here, say it rather than forcing an equity suggestion.",
   ],
   tax: [
     "TAX EFFICIENCY & REBALANCING",
@@ -132,7 +201,7 @@ const OUTPUT_BLOCK = [
  * ticked, so the same selection always produces the same prompt.
  */
 export function buildAnalystPrompt(payload: PortfolioExportPayload): string {
-  const ordered: AnalysisFocus[] = (["allocation", "fees", "tax"] as const).filter((focus) =>
+  const ordered: AnalysisFocus[] = ANALYSIS_FOCUSES.filter((focus) =>
     payload.focus.includes(focus),
   );
 
@@ -152,8 +221,8 @@ export function buildAnalystPrompt(payload: PortfolioExportPayload): string {
         "WHAT TO ANALYSE",
         "",
         "No specific focus was requested. Give a general review covering allocation,",
-        "concentration, cost and tax placement, and lead with whichever of those the",
-        "numbers say matters most here.",
+        "concentration, cost, tax placement and diversification, and lead with whichever",
+        "of those the numbers say matters most here.",
       ].join("\n"),
     );
   }

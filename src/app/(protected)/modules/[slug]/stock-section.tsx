@@ -429,7 +429,12 @@ function SectionBody({
       );
 
     case "transactions":
-      return <StockTransactionsView transactions={listTransactions(deps.stockPositionRepo)} />;
+      return (
+        <StockTransactionsView
+          transactions={listTransactions(deps.stockPositionRepo)}
+          accounts={loadAccountOptions()}
+        />
+      );
 
     case "accounts": {
       const entries: AccountEntry[] = listAccounts(deps.investmentAccountRepo).map((account) => ({

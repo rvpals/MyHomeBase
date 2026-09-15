@@ -2,13 +2,26 @@ export type {
   AccountKind,
   AccountKindWeight,
   AnalysisFocus,
+  CorrelationInsight,
+  CorrelationPair,
   ExcludedAccount,
   ExportFormat,
   ExportHolding,
   ExportSummary,
+  MarketCorrelationNote,
   PortfolioExportPayload,
+  SectorGap,
   SectorWeight,
 } from "./types";
+export {
+  GICS_SECTORS,
+  MAX_PAIRS,
+  STALE_AFTER_DAYS,
+  describeCorrelation,
+  findSectorGaps,
+  summarizeCorrelations,
+  type SummarizeCorrelationsInput,
+} from "./correlation-insight";
 export {
   ACCOUNT_KINDS,
   ANALYSIS_FOCUSES,

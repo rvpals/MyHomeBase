@@ -112,6 +112,95 @@ export function renderMarkdown(payload: PortfolioExportPayload): string {
     lines.push("");
   }
 
+  // Correlation comes after the holdings because every row in it references a
+  // ticker the reader has just seen, and before the exclusions because it is
+  // analysis rather than housekeeping.
+  if (!payload.correlation && payload.focus.includes("diversification")) {
+    lines.push("## Correlation");
+    lines.push("");
+    lines.push(
+      "_No correlation matrix has been computed for this portfolio, so no measured",
+      "correlations are included. The prompt above accounts for this._",
+    );
+    lines.push("");
+  }
+
+  if (payload.correlation) {
+    const insight = payload.correlation;
+    lines.push("## Correlation");
+    lines.push("");
+    lines.push(
+      `- **Computed:** ${insight.calculatedAt}${
+        insight.ageDays === null ? "" : ` (${insight.ageDays} day${insight.ageDays === 1 ? "" : "s"} ago)`
+      }${insight.isStale ? " — stale" : ""}`,
+    );
+    lines.push(
+      `- **Coverage:** ${insight.tickerCount} holdings, ${insight.pairCount} pairs (Stock and ETF positions only)`,
+    );
+    lines.push(
+      `- **Average pairwise correlation:** ${insight.averagePairwiseCorrelation.toFixed(3)}`,
+    );
+    lines.push(
+      `- **Any inversely correlated pair:** ${insight.hasInverseCorrelation ? "yes" : "no — every measured pair is positive"}`,
+    );
+    if (insight.excludedTickers.length > 0) {
+      lines.push(`- **No price history:** ${insight.excludedTickers.join(", ")}`);
+    }
+    lines.push("");
+
+    if (insight.mostCorrelated.length > 0) {
+      lines.push("### Most correlated pairs — candidates for redundancy");
+      lines.push("");
+      lines.push("| Holding A | Holding B | Correlation | Reads as | Combined weight |");
+      lines.push("|---|---|---:|---|---:|");
+      for (const pair of insight.mostCorrelated) {
+        lines.push(
+          `| ${cell(pair.tickerA)} | ${cell(pair.tickerB)} | ${pair.correlation.toFixed(3)} | ${cell(pair.label)} | ${pct(pair.combinedWeightPct)} |`,
+        );
+      }
+      lines.push("");
+    }
+
+    if (insight.leastCorrelated.length > 0) {
+      lines.push("### Least correlated pairs — the diversification that already exists");
+      lines.push("");
+      lines.push("| Holding A | Holding B | Correlation | Reads as | Combined weight |");
+      lines.push("|---|---|---:|---|---:|");
+      for (const pair of insight.leastCorrelated) {
+        lines.push(
+          `| ${cell(pair.tickerA)} | ${cell(pair.tickerB)} | ${pair.correlation.toFixed(3)} | ${cell(pair.label)} | ${pct(pair.combinedWeightPct)} |`,
+        );
+      }
+      lines.push("");
+    }
+
+    if (insight.marketCorrelations.length > 0) {
+      lines.push("### Correlation to the market (SPY)");
+      lines.push("");
+      lines.push("| Ticker | Correlation | Reads as |");
+      lines.push("|---|---:|---|");
+      for (const note of insight.marketCorrelations) {
+        lines.push(
+          `| ${cell(note.ticker)} | ${note.correlation.toFixed(3)} | ${cell(note.label)} |`,
+        );
+      }
+      lines.push("");
+    }
+
+    if (insight.sectorGaps.length > 0) {
+      lines.push("### Sector gaps — where an alternative would add something");
+      lines.push("");
+      lines.push("| Sector | Current weight | Status |");
+      lines.push("|---|---:|---|");
+      for (const gap of insight.sectorGaps) {
+        lines.push(
+          `| ${cell(gap.sector)} | ${pct(gap.weightPct)} | ${gap.status === "absent" ? "no exposure" : "thin"} |`,
+        );
+      }
+      lines.push("");
+    }
+  }
+
   if (payload.excludedAccounts.length > 0) {
     lines.push("## Excluded from this export");
     lines.push("");
@@ -146,9 +235,16 @@ export function renderJson(payload: PortfolioExportPayload): string {
       summary: payload.summary,
       holdings: payload.holdings,
       excludedAccounts: payload.excludedAccounts,
+      // Omitted entirely rather than emitted as null: a consumer checking
+      // `if (data.correlation)` is the common case, and a null would still have
+      // to be explained by the note below.
+      ...(payload.correlation ? { correlation: payload.correlation } : {}),
       notes: {
         expenseRatio: "Not tracked by this application; always null.",
         accountNames: "Replaced with tax treatment. No institution or personal name is included.",
+        correlation: payload.correlation
+          ? "Pearson coefficients over one year of daily returns. Stock and ETF positions only."
+          : "No correlation matrix has been computed; the field is absent rather than empty.",
       },
     },
     null,

@@ -1,4 +1,5 @@
 import type { MarketDataClient } from "@/lib/market-data";
+import { todayIsoLocal } from "@/lib/shared/date";
 import type { StockPosition } from "@/lib/stock-positions";
 import type { StockAnalyticsRepository } from "./ports";
 import { computeSharpeInputSchema } from "./schema";
@@ -254,7 +255,9 @@ export async function computeSharpe(
     dailyReturn: portfolioDailyReturns[index],
   }));
 
-  const calculationDate = new Date().toISOString().slice(0, 10);
+  // The local calendar day, not the UTC one: a cache row written at 9pm EDT would
+  // otherwise be stamped tomorrow, and read back as "calculated in the future".
+  const calculationDate = todayIsoLocal();
   const calculatedAt = new Date().toISOString();
   const dailyRf = dailyRiskFreeRate(validated.riskFreeRate);
 

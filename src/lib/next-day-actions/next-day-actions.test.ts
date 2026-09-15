@@ -43,6 +43,7 @@ function makeTransaction(overrides: Partial<StockTransaction>): StockTransaction
     numberOfShares: 10,
     pricePerShareCents: 14000,
     totalAmountCents: 140000,
+    accountId: 0,
     brokerageFirm: "",
     externalId: "",
     note: "",
