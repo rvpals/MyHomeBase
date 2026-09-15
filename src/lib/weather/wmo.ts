@@ -36,3 +36,39 @@ const WMO_DESCRIPTIONS: Record<number, string> = {
 export function describeWeatherCode(code: number): string {
   return WMO_DESCRIPTIONS[code] ?? `Weather code ${code}`;
 }
+
+/**
+ * The handful of shapes a forecast needs to draw. Far coarser than the code list
+ * above on purpose: a reader glancing at a week strip is asking "rain or not", and
+ * thirty distinct glyphs would be thirty things to tell apart at 20px. The precise
+ * description is still available as text.
+ */
+export type WeatherShape = "clear" | "partly" | "cloud" | "fog" | "drizzle" | "rain" | "snow" | "storm";
+
+/**
+ * A WMO code reduced to the shape that represents it.
+ *
+ * Ranges rather than a second thirty-entry table, because the WMO numbering is
+ * already grouped: 5x is drizzle, 6x rain, 7x snow, 8x showers, 9x thunderstorms.
+ * Freezing drizzle (56/57) and freezing rain (66/67) deliberately fall in with their
+ * wet siblings rather than with snow — they fall as liquid, and "bring a coat" is
+ * carried by the temperature beside the glyph.
+ */
+export function weatherShape(code: number): WeatherShape {
+  if (code === 0) return "clear";
+  if (code === 1 || code === 2) return "partly";
+  if (code === 3) return "cloud";
+  if (code === 45 || code === 48) return "fog";
+  if (code >= 51 && code <= 57) return "drizzle";
+  if (code >= 61 && code <= 67) return "rain";
+  if (code >= 71 && code <= 77) return "snow";
+  if (code >= 80 && code <= 82) return "rain";
+  if (code >= 85 && code <= 86) return "snow";
+  // Bounded, not `>= 95`: an open-ended test would swallow every unknown high code
+  // — 1234 would come back "storm" — and quietly claim a thunderstorm the provider
+  // never reported. The WMO thunderstorm band ends at 99.
+  if (code >= 95 && code <= 99) return "storm";
+  // An unknown code gets the most neutral shape rather than no glyph at all, so a
+  // provider adding a code doesn't leave a hole in the strip.
+  return "cloud";
+}

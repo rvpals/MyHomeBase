@@ -11,8 +11,11 @@ import {
   COMPACT_NAV_STYLES,
   type CompactNavStyle,
   type UserPreferences,
+  type WeatherLocation,
 } from "@/lib/user-preferences";
+import type { TemperatureUnit } from "@/lib/weather";
 import type { Viewport } from "@/lib/viewport";
+import { WeatherLocationField } from "./location-field";
 import {
   changeOwnPasswordAction,
   removeOwnAvatarAction,
@@ -193,6 +196,13 @@ function PreferencesSection({
   );
   const [openOnStartup, setOpenOnStartup] = useState(preferences.openFavoriteModuleOnStartup);
   const [navStyle, setNavStyle] = useState<CompactNavStyle>(preferences.compactNavStyle);
+  // `?? null` because the field's "nothing chosen" is null, while the resolved
+  // preference expresses it as undefined — see `saveUserPreferences`, which collapses
+  // the two again on the way back in.
+  const [weatherLocation, setWeatherLocation] = useState<WeatherLocation | null>(
+    preferences.weatherLocation ?? null,
+  );
+  const [weatherUnit, setWeatherUnit] = useState<TemperatureUnit>(preferences.weatherUnit);
   const [error, setError] = useState<string | undefined>(undefined);
   const [success, setSuccess] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -217,6 +227,8 @@ function PreferencesSection({
         favoriteModuleSlug,
         openFavoriteModuleOnStartup: openOnStartup,
         compactNavStyle: navStyle,
+        weatherLocation,
+        weatherUnit,
       });
       if (!result.ok) {
         setError(result.error ?? "Failed to save preferences.");
@@ -290,6 +302,26 @@ function PreferencesSection({
         )}
 
         <NavStyleField value={navStyle} onChange={setNavStyle} disabled={isSaving} />
+
+        <WeatherLocationField
+          value={weatherLocation}
+          onChange={setWeatherLocation}
+          disabled={isSaving}
+        />
+
+        <label className="mt-4 block text-sm" htmlFor="weather-unit">
+          <span className="mb-1 block font-medium text-ink">Temperature unit</span>
+          <select
+            id="weather-unit"
+            value={weatherUnit}
+            onChange={(event) => setWeatherUnit(event.target.value as TemperatureUnit)}
+            disabled={isSaving}
+            className="w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+          >
+            <option value="fahrenheit">Fahrenheit (°F)</option>
+            <option value="celsius">Celsius (°C)</option>
+          </select>
+        </label>
 
         {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
         {success && <p className="mt-3 text-sm text-emerald-400">Preferences saved.</p>}

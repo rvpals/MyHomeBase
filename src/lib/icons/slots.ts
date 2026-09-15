@@ -55,6 +55,19 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    id: "homescreen_card_clock",
+    label: "Clock card",
+    group: "Home screen",
+    where: "Home screen → the Clock card header, immediately left of the title.",
+    wired: true,
+    // `calendar`, not a clock face: there is no clock glyph in the baked icon sets
+    // (the same wall `admin/nav.ts` hit for its History entry), and a calendar reads
+    // correctly for a card whose subject is the date and the week number. An admin
+    // who wants a clock face can upload one over this slot.
+    defaultConcept: "calendar",
+    namespace: "tree",
+  },
+  {
     id: "homescreen_card_photo_of_the_day",
     label: "Photo of the Day card",
     group: "Home screen",

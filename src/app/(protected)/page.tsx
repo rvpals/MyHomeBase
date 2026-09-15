@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { ModuleCarousel } from "@/components/module-carousel";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { getAuthEventSummary } from "@/lib/auth-events";
+import { describeClock } from "@/lib/clock";
 import { dashboardTextureCssVars, getDashboardTexture } from "@/lib/dashboard-texture";
 import { getRandomQuote } from "@/lib/daily-quote";
 import {
@@ -24,8 +25,11 @@ import {
 } from "@/lib/stock-positions";
 import { getAccessibleModules, isAdmin } from "@/lib/user";
 import { getUserPreferences, resolveStartupDestination } from "@/lib/user-preferences";
+import { getForecast, type WeatherForecast } from "@/lib/weather";
 import { deps } from "@/lib/wiring";
 import { BadLoginAlert } from "./bad-login-alert";
+import { ClockWeather, ClockWeatherNotice } from "./clock-weather";
+import { ClockWidget } from "./clock-widget";
 import { DailyQuoteWidget } from "./daily-quote-widget";
 import { HomeShell } from "./home-shell";
 import { StockDailyGlance } from "./modules/[slug]/stock-daily-glance";
@@ -53,6 +57,13 @@ export default async function Home({
   const allModules = listModules(deps.moduleRepo);
   const modules = currentUser ? getAccessibleModules(currentUser, allModules, deps.userRepo) : [];
 
+  // This reader's stored preferences. Read once here and reused by the weather card
+  // below — the startup redirect and the forecast location come from the same rows,
+  // and reading them twice would be two queries for one answer.
+  const preferences = currentUser
+    ? getUserPreferences(deps.userPreferencesRepo, currentUser.id)
+    : undefined;
+
   // Somebody who has chosen a favorite module and asked to open it on startup
   // goes straight there — but only on a startup entry (bare `/`), not when they
   // asked for the home screen by name. Done before any of the home screen's own
@@ -61,9 +72,9 @@ export default async function Home({
   // this page, so there is nothing to loop. A favorite that has since been hidden
   // or revoked resolves to undefined and lands here as normal — see
   // resolveStartupDestination.
-  if (currentUser && !askedForHome) {
+  if (preferences && !askedForHome) {
     const startupSlug = resolveStartupDestination(
-      getUserPreferences(deps.userPreferencesRepo, currentUser.id),
+      preferences,
       modules.map((appModule) => appModule.slug),
     );
     if (startupSlug) redirect(`/modules/${startupSlug}`);
@@ -77,6 +88,39 @@ export default async function Home({
   // never an override.
   const widgets = resolveHomeWidgets(getSetting(deps.settingsRepo, HOME_WIDGETS_SETTING_KEY)?.value);
   const shows = (id: HomeWidgetId) => isHomeWidgetVisible(widgets, id);
+
+  // Today's date and ISO week, read once on the server. Cheap enough that it isn't
+  // worth gating on `shows("clock")` the way the NAS-hitting cards are — it is
+  // arithmetic over the system clock, no I/O. The ticking time is NOT read here: it
+  // belongs to the reader's browser, see `clock-widget.tsx`.
+  const clockReading = describeClock();
+
+  // The forecast for this reader's chosen place, if they have set one. Skipped
+  // entirely when the Clock card is hidden -- unlike the date above, this one really
+  // does cost a network round trip.
+  //
+  // Wrapped because it is the only outbound call the home screen makes: Open-Meteo
+  // being down, slow, or blocked by a firewall must degrade to a card without a
+  // forecast, never to a home screen that won't render. `getForecast` caches for 30
+  // minutes per location, so a normal visit does no I/O at all.
+  const weatherLocation = shows("clock") ? preferences?.weatherLocation : undefined;
+
+  let forecast: WeatherForecast | undefined;
+  let forecastFailed = false;
+  if (weatherLocation) {
+    try {
+      forecast = await getForecast(deps.weatherClient, {
+        latitude: weatherLocation.latitude,
+        longitude: weatherLocation.longitude,
+        unit: preferences?.weatherUnit ?? "fahrenheit",
+        days: 7,
+      });
+    } catch {
+      // Deliberately swallowed: the card shows a quiet notice instead. The reader
+      // can't act on an Open-Meteo stack trace, and it must not take the page down.
+      forecastFailed = true;
+    }
+  }
 
   // A fresh random quote is picked on every landing on the home screen.
   const quote = shows("dailyQuote") ? getRandomQuote(deps.dailyQuoteRepo) : undefined;
@@ -119,6 +163,8 @@ export default async function Home({
   // positions, so a ticked-but-empty card would otherwise take the "first card" slot
   // and leave the real first card with a stray gap above it.
   const hasContent: Record<HomeWidgetId, boolean> = {
+    // Always something to draw: there is always a date.
+    clock: true,
     carousel: true,
     dailyQuote: Boolean(quote),
     todayInHistory: true,
@@ -166,6 +212,30 @@ export default async function Home({
           // for everyone.
           const spacing = position === 0 ? "mt-4" : "mt-8";
           switch (id) {
+            case "clock":
+              return (
+                <ClockWidget
+                  key={id}
+                  className={spacing}
+                  reading={clockReading}
+                  // A server-rendered child, not data -- see ClockWidget's `weather`
+                  // prop. Three states: a forecast, a failure notice, or nothing at
+                  // all for a reader who hasn't chosen a place.
+                  weather={
+                    forecast && weatherLocation ? (
+                      <ClockWeather forecast={forecast} placeName={weatherLocation.name} />
+                    ) : forecastFailed ? (
+                      <ClockWeatherNotice>
+                        Weather unavailable right now.
+                      </ClockWeatherNotice>
+                    ) : !weatherLocation ? (
+                      <ClockWeatherNotice>
+                        Set a location in Account settings to see the weather here.
+                      </ClockWeatherNotice>
+                    ) : undefined
+                  }
+                />
+              );
             case "carousel":
               return (
                 // Plain data across the boundary -- the carousel is a client island

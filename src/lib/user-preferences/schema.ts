@@ -37,6 +37,32 @@ export const userPreferencesUpdateSchema = z.object({
   // so an unrecognised value from an older client is corrected to the default
   // instead of rejecting the whole save and losing the other fields with it.
   compactNavStyle: z.enum(["drill-in", "segmented"]).catch("drill-in"),
+  // The whole location or nothing — see `WeatherLocation`. `null` is the wire form
+  // of "clear it", distinct from the field being absent from an older client's
+  // payload, which `.optional()` leaves alone.
+  weatherLocation: z
+    .object({
+      latitude: z.number().min(-90).max(90),
+      longitude: z.number().min(-180).max(180),
+      name: z.string().min(1).max(200),
+    })
+    .nullish(),
+  // `.catch` for the same reason as the nav style: a stray value shouldn't reject
+  // the save and take the other fields down with it. `.default` on top of that so an
+  // omitted field is "no opinion, use Fahrenheit" rather than a validation failure —
+  // this schema is the boundary for the CLI too, and a command about favorites
+  // shouldn't have to name a temperature unit to run.
+  weatherUnit: z.enum(["celsius", "fahrenheit"]).catch("fahrenheit").default("fahrenheit"),
 });
 
-export type UserPreferencesUpdate = z.infer<typeof userPreferencesUpdateSchema>;
+/**
+ * `z.input`, not `z.infer` — this is the type of what a *caller* hands in, before
+ * the schema applies its defaults. `z.infer` describes the parsed result, in which
+ * every defaulted field is required, so it would force the CLI and every test to
+ * name a temperature unit just to save a favorite. The parsed (output) shape is what
+ * `saveUserPreferences` works with internally, and it gets that from `.parse()`.
+ *
+ * Matches how the weather and geocoding schemas in this app already type their
+ * boundary inputs.
+ */
+export type UserPreferencesUpdate = z.input<typeof userPreferencesUpdateSchema>;

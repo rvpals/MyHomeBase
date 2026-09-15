@@ -88,6 +88,11 @@ export async function userPreferencesCommand(args: string[]): Promise<void> {
           flags.startup !== undefined ? flags.startup === "yes" : current.openFavoriteModuleOnStartup,
         compactNavStyle:
           navStyleFlag !== undefined ? (navStyleFlag as CompactNavStyle) : current.compactNavStyle,
+        // Carried through unchanged. `saveUserPreferences` writes every key on every
+        // save, so omitting these would blank the weather location this user set on
+        // the Account screen — a CLI command about favorites must not clear it.
+        weatherLocation: current.weatherLocation ?? null,
+        weatherUnit: current.weatherUnit,
       },
       accessibleSlugs,
     );

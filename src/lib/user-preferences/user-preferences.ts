@@ -44,7 +44,14 @@ export function saveUserPreferences(
     throw new UnknownFavoriteModuleError(validated.favoriteModuleSlug);
   }
 
-  userPreferencesToEntries(validated).forEach((entry) => {
+  // `null` (an explicit "clear my location") and `undefined` (the field absent from
+  // an older client's payload) both mean "store nothing" here, and the serializer
+  // writes "" for either. They are only distinct on the wire, so they are collapsed
+  // at this boundary rather than pushed further in.
+  userPreferencesToEntries({
+    ...validated,
+    weatherLocation: validated.weatherLocation ?? undefined,
+  }).forEach((entry) => {
     repo.setValue(userId, entry.key, entry.value);
   });
 

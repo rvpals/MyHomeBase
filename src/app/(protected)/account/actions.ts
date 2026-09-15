@@ -3,11 +3,13 @@
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
+import { searchPlaces, type GeoPlace } from "@/lib/geocoding";
 import { listModules } from "@/lib/modules";
 import { clearUserAvatar, getAccessibleModules, setUserAvatar, setUserPassword } from "@/lib/user";
 import { saveUserPreferences, type UserPreferencesUpdate } from "@/lib/user-preferences";
 import type { User } from "@/lib/user";
 import { deps } from "@/lib/wiring";
+import { requireUser } from "../require-access";
 
 export interface ActionResult {
   ok: boolean;
@@ -95,4 +97,30 @@ export async function saveOwnPreferencesAction(
   // The home page reads these to decide whether to redirect on arrival.
   revalidatePath("/");
   return { ok: true };
+}
+
+export interface PlaceSearchResult extends ActionResult {
+  places?: GeoPlace[];
+}
+
+/**
+ * Looks up a place by name, for the weather-location picker.
+ *
+ * `requireUser()` on the first line, not `requireModuleAccess`: the home screen's
+ * Clock card belongs to no module, so there is no module slug to check — this is the
+ * "a home-screen widget no module owns" case in ARCHITECTURE.md. It still has to be
+ * guarded, because an action is its own POST endpoint and would otherwise be an open
+ * geocoding proxy for anyone who found the URL.
+ *
+ * The Journal has its own `searchPlacesAction` gated on journal access. Duplicated
+ * rather than shared because the two differ precisely in who may call them, which is
+ * the one part of an action that should never be factored away.
+ */
+export async function searchPlacesForWeatherAction(query: string): Promise<PlaceSearchResult> {
+  await requireUser();
+  try {
+    return { ok: true, places: await searchPlaces(deps.geocodingClient, { query }) };
+  } catch (error) {
+    return toErrorResult(error, "Place search failed.");
+  }
 }

@@ -16,6 +16,7 @@
  * adding or retiring a card needs no migration.
  */
 export const HOME_WIDGET_IDS = [
+  "clock",
   "carousel",
   "dailyQuote",
   "todayInHistory",
@@ -32,6 +33,12 @@ export interface HomeWidgetInfo {
 }
 
 export const HOME_WIDGET_INFO: Record<HomeWidgetId, HomeWidgetInfo> = {
+  clock: {
+    id: "clock",
+    label: "Clock",
+    description:
+      "Today's date, the ISO week number, and a ticking time. The date and week come from the server's calendar; the time is the reader's own clock, so it is right on every device.",
+  },
   carousel: {
     id: "carousel",
     label: "Module Carousel",

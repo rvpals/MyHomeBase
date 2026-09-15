@@ -54,6 +54,8 @@ describe("resolveUserPreferences", () => {
       favoriteModuleSlug: undefined,
       openFavoriteModuleOnStartup: false,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      weatherLocation: undefined,
+      weatherUnit: "fahrenheit",
     });
   });
 
@@ -80,6 +82,8 @@ describe("resolveUserPreferences", () => {
       favoriteModuleSlug: "journal",
       openFavoriteModuleOnStartup: true,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      weatherLocation: undefined,
+      weatherUnit: "fahrenheit",
     });
   });
 
@@ -96,22 +100,170 @@ describe("userPreferencesToEntries", () => {
     const entries = userPreferencesToEntries({
       openFavoriteModuleOnStartup: false,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      weatherUnit: "fahrenheit",
     });
     expect(entries).toEqual([
       { key: USER_PREFERENCE_KEYS.favoriteModuleSlug, value: "" },
       { key: USER_PREFERENCE_KEYS.openFavoriteModuleOnStartup, value: "0" },
       { key: USER_PREFERENCE_KEYS.compactNavStyle, value: DEFAULT_COMPACT_NAV_STYLE },
+      { key: USER_PREFERENCE_KEYS.weatherLatitude, value: "" },
+      { key: USER_PREFERENCE_KEYS.weatherLongitude, value: "" },
+      { key: USER_PREFERENCE_KEYS.weatherPlaceName, value: "" },
+      { key: USER_PREFERENCE_KEYS.weatherUnit, value: "fahrenheit" },
     ]);
   });
 
   it("round-trips through resolveUserPreferences", () => {
-    const original = { favoriteModuleSlug: "expense", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE };
+    const original = {
+      favoriteModuleSlug: "expense",
+      openFavoriteModuleOnStartup: true,
+      compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      weatherLocation: { latitude: 40.34, longitude: -74.46, name: "Princeton, NJ" },
+      weatherUnit: "fahrenheit" as const,
+    };
     const rows = userPreferencesToEntries(original).map((entry, index) => ({
       id: index + 1,
       userId: 7,
       ...entry,
     }));
     expect(resolveUserPreferences(rows)).toEqual(original);
+  });
+});
+
+describe("weather location", () => {
+  function rows(values: Record<string, string>) {
+    return Object.entries(values).map(([key, value], index) => ({
+      id: index + 1,
+      userId: 7,
+      key,
+      value,
+    }));
+  }
+
+  it("resolves a complete stored location", () => {
+    const resolved = resolveUserPreferences(
+      rows({
+        [USER_PREFERENCE_KEYS.weatherLatitude]: "40.34",
+        [USER_PREFERENCE_KEYS.weatherLongitude]: "-74.46",
+        [USER_PREFERENCE_KEYS.weatherPlaceName]: "Princeton, NJ",
+      }),
+    );
+    expect(resolved.weatherLocation).toEqual({
+      latitude: 40.34,
+      longitude: -74.46,
+      name: "Princeton, NJ",
+    });
+  });
+
+  it("reads blank rows as no location rather than as 0,0", () => {
+    // The bug this guards: Number("") is 0, and 0,0 is a real place in the Gulf of
+    // Guinea — so an unset location must not resolve to a forecast for the ocean.
+    const resolved = resolveUserPreferences(
+      rows({
+        [USER_PREFERENCE_KEYS.weatherLatitude]: "",
+        [USER_PREFERENCE_KEYS.weatherLongitude]: "",
+        [USER_PREFERENCE_KEYS.weatherPlaceName]: "",
+      }),
+    );
+    expect(resolved.weatherLocation).toBeUndefined();
+  });
+
+  it("keeps a genuine 0,0 that has a name", () => {
+    const resolved = resolveUserPreferences(
+      rows({
+        [USER_PREFERENCE_KEYS.weatherLatitude]: "0",
+        [USER_PREFERENCE_KEYS.weatherLongitude]: "0",
+        [USER_PREFERENCE_KEYS.weatherPlaceName]: "Null Island",
+      }),
+    );
+    expect(resolved.weatherLocation).toEqual({ latitude: 0, longitude: 0, name: "Null Island" });
+  });
+
+  it("reads a half-written location as no location", () => {
+    // Coordinates with no name would leave the card with nothing to label itself.
+    expect(
+      resolveUserPreferences(
+        rows({
+          [USER_PREFERENCE_KEYS.weatherLatitude]: "40.34",
+          [USER_PREFERENCE_KEYS.weatherLongitude]: "-74.46",
+        }),
+      ).weatherLocation,
+    ).toBeUndefined();
+
+    // ...and a name with no coordinates can't be fetched.
+    expect(
+      resolveUserPreferences(
+        rows({ [USER_PREFERENCE_KEYS.weatherPlaceName]: "Princeton, NJ" }),
+      ).weatherLocation,
+    ).toBeUndefined();
+  });
+
+  it("rejects a non-numeric or out-of-range coordinate", () => {
+    const bad = (latitude: string, longitude: string) =>
+      resolveUserPreferences(
+        rows({
+          [USER_PREFERENCE_KEYS.weatherLatitude]: latitude,
+          [USER_PREFERENCE_KEYS.weatherLongitude]: longitude,
+          [USER_PREFERENCE_KEYS.weatherPlaceName]: "Somewhere",
+        }),
+      ).weatherLocation;
+
+    expect(bad("banana", "-74.46")).toBeUndefined();
+    expect(bad("91", "0")).toBeUndefined();
+    expect(bad("0", "181")).toBeUndefined();
+  });
+
+  it("defaults the unit to fahrenheit and accepts celsius", () => {
+    expect(resolveUserPreferences([]).weatherUnit).toBe("fahrenheit");
+    expect(
+      resolveUserPreferences(rows({ [USER_PREFERENCE_KEYS.weatherUnit]: "celsius" })).weatherUnit,
+    ).toBe("celsius");
+    // A garbled value falls back rather than propagating.
+    expect(
+      resolveUserPreferences(rows({ [USER_PREFERENCE_KEYS.weatherUnit]: "kelvin" })).weatherUnit,
+    ).toBe("fahrenheit");
+  });
+
+  it("round-trips a location through save and read", () => {
+    const repo = new FakeUserPreferencesRepository();
+    const saved = saveUserPreferences(
+      repo,
+      7,
+      {
+        favoriteModuleSlug: "journal",
+        openFavoriteModuleOnStartup: false,
+        compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+        weatherLocation: { latitude: 51.5072, longitude: -0.1276, name: "London, England" },
+        weatherUnit: "celsius",
+      },
+      MODULES,
+    );
+    expect(saved.weatherLocation).toEqual({
+      latitude: 51.5072,
+      longitude: -0.1276,
+      name: "London, England",
+    });
+    expect(saved.weatherUnit).toBe("celsius");
+  });
+
+  it("clears a stored location when saved with null", () => {
+    const repo = new FakeUserPreferencesRepository();
+    const base = {
+      favoriteModuleSlug: "journal",
+      openFavoriteModuleOnStartup: false,
+      compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      weatherUnit: "fahrenheit" as const,
+    };
+    saveUserPreferences(
+      repo,
+      7,
+      { ...base, weatherLocation: { latitude: 1, longitude: 2, name: "Somewhere" } },
+      MODULES,
+    );
+    // Blank rows must overwrite the old ones, not be skipped — otherwise "clear my
+    // location" silently leaves the previous place in place.
+    const cleared = saveUserPreferences(repo, 7, { ...base, weatherLocation: null }, MODULES);
+    expect(cleared.weatherLocation).toBeUndefined();
   });
 });
 
@@ -122,6 +274,8 @@ describe("getUserPreferences", () => {
       favoriteModuleSlug: undefined,
       openFavoriteModuleOnStartup: false,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      weatherLocation: undefined,
+      weatherUnit: "fahrenheit",
     });
   });
 
@@ -147,7 +301,13 @@ describe("saveUserPreferences", () => {
       { favoriteModuleSlug: "stock-etfs", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE },
       MODULES,
     );
-    expect(saved).toEqual({ favoriteModuleSlug: "stock-etfs", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE });
+    expect(saved).toEqual({
+      favoriteModuleSlug: "stock-etfs",
+      openFavoriteModuleOnStartup: true,
+      compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      weatherLocation: undefined,
+      weatherUnit: "fahrenheit",
+    });
     expect(getUserPreferences(repo, 7)).toEqual(saved);
   });
 
@@ -163,6 +323,8 @@ describe("saveUserPreferences", () => {
       favoriteModuleSlug: "expense",
       openFavoriteModuleOnStartup: false,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      weatherLocation: undefined,
+      weatherUnit: "fahrenheit",
     });
   });
 
@@ -219,7 +381,7 @@ describe("resolveStartupDestination", () => {
   it("returns the favorite slug when the flag is on and the module is reachable", () => {
     expect(
       resolveStartupDestination(
-        { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE },
+        { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE, weatherUnit: "fahrenheit" },
         MODULES,
       ),
     ).toBe("journal");
@@ -228,14 +390,19 @@ describe("resolveStartupDestination", () => {
   it("returns undefined when the flag is off, even with a favorite set", () => {
     expect(
       resolveStartupDestination(
-        { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: false, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE },
+        { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: false, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE, weatherUnit: "fahrenheit" },
         MODULES,
       ),
     ).toBeUndefined();
   });
 
   it("returns undefined when no favorite is set", () => {
-    expect(resolveStartupDestination({ openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE }, MODULES)).toBeUndefined();
+    expect(
+      resolveStartupDestination(
+        { openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE, weatherUnit: "fahrenheit" },
+        MODULES,
+      ),
+    ).toBeUndefined();
   });
 
   it("falls back to the home screen when the favorite is no longer accessible", () => {
@@ -243,7 +410,7 @@ describe("resolveStartupDestination", () => {
     // they chose it. Redirecting anyway would strand them.
     expect(
       resolveStartupDestination(
-        { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE },
+        { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE, weatherUnit: "fahrenheit" },
         ["expense"],
       ),
     ).toBeUndefined();
@@ -252,7 +419,7 @@ describe("resolveStartupDestination", () => {
   it("falls back to the home screen when the user can reach nothing at all", () => {
     expect(
       resolveStartupDestination(
-        { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE },
+        { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE, weatherUnit: "fahrenheit" },
         [],
       ),
     ).toBeUndefined();
