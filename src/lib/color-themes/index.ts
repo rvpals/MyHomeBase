@@ -33,6 +33,7 @@ export {
   failingContrastPairs,
   parseHex,
   relativeLuminance,
+  colorSchemeFor,
   type ContrastFinding,
   type ContrastPair,
 } from "./contrast";

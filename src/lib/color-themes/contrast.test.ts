@@ -7,6 +7,7 @@ import {
   failingContrastPairs,
   parseHex,
   relativeLuminance,
+  colorSchemeFor,
 } from "./contrast";
 
 describe("parseHex", () => {
@@ -125,6 +126,30 @@ describe("checkThemeContrast", () => {
       for (const id of guarded) {
         expect(failures, `${theme.name} fails ${id}`).not.toContain(id);
       }
+    }
+  });
+});
+
+describe("colorSchemeFor", () => {
+  it("calls a dark page dark — the Signal Deck case this was added for", () => {
+    expect(colorSchemeFor("#12161A")).toBe("dark");
+  });
+
+  it("calls a light page light", () => {
+    expect(colorSchemeFor("#FFFFFF")).toBe("light");
+    expect(colorSchemeFor("#F4EEE3")).toBe("light");
+  });
+
+  it("falls back to dark on an unparseable color", () => {
+    expect(colorSchemeFor("not-a-color")).toBe("dark");
+    expect(colorSchemeFor("")).toBe("dark");
+  });
+
+  it("agrees with every built-in theme's ink — a dark paper implies light ink", () => {
+    for (const theme of COLOR_THEMES) {
+      const paperScheme = colorSchemeFor(theme.tokens.paper);
+      const inkScheme = colorSchemeFor(theme.tokens.ink);
+      expect(inkScheme, `${theme.name} ink should oppose its paper`).not.toBe(paperScheme);
     }
   });
 });

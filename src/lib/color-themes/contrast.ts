@@ -42,6 +42,31 @@ export function relativeLuminance(hex: string): number | undefined {
 }
 
 /**
+ * Whether a page painted on `background` should tell the browser it is `"dark"` or
+ * `"light"` — the value for the CSS `color-scheme` property.
+ *
+ * This exists for the widgets the browser draws itself and CSS cannot reach: the
+ * `<input type="date">` calendar glyph, the time and number spinners, a bare
+ * scrollbar. Without `color-scheme` the browser assumes a light page and draws them
+ * in near-black, so on a dark theme the date picker's icon is all but invisible
+ * against the field. Setting it flips them to their light-on-dark variants.
+ *
+ * Derived from the theme's own `paper` rather than stored as a per-theme flag,
+ * because themes are user-generated here — a new one would otherwise ship with the
+ * flag unset or wrong, and this question always has a correct answer from the color.
+ *
+ * The 0.5 cut is on WCAG *relative luminance*, which is already perceptual (green
+ * reads far brighter than blue at the same channel value), so a mid-tone teal page
+ * lands on the right side of the line where a raw RGB average would not. Anything
+ * unparseable falls back to `"dark"`, matching the default tokens in globals.css.
+ */
+export function colorSchemeFor(background: string): "dark" | "light" {
+  const luminance = relativeLuminance(background);
+  if (luminance === undefined) return "dark";
+  return luminance < 0.5 ? "dark" : "light";
+}
+
+/**
  * Contrast ratio between two colors, 1 (identical) to 21 (black on white).
  *
  * Order-independent by construction — the lighter color always ends up on top — so

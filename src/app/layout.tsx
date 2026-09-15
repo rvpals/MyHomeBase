@@ -16,7 +16,7 @@ import { IconSetProvider } from "@/components/icon-set-context";
 import { ViewportCorrector } from "@/components/viewport-corrector";
 import { ViewportProvider } from "@/components/viewport-context";
 import { getAppVersion } from "@/lib/app-version";
-import { resolveActiveTheme } from "@/lib/color-themes";
+import { colorSchemeFor, resolveActiveTheme } from "@/lib/color-themes";
 import { getOverrideMap } from "@/lib/icons";
 import { listSplashImages } from "@/lib/pwa";
 import {
@@ -183,12 +183,19 @@ export default async function RootLayout({
   // in the protected layout so a phone parked on /login gets it too.
   const { buildId } = getAppVersion(deps.buildIdRepo);
 
+  // Tells the browser which way round to draw its own widgets — the date/time
+  // picker glyphs, number spinners and bare scrollbars, none of which CSS can
+  // reach. Without it the browser assumes a light page and paints the calendar
+  // icon near-black, leaving it near-invisible on a dark theme. Derived from
+  // `paper` so a user-generated theme gets it right too.
+  const colorScheme = colorSchemeFor(theme.tokens.paper);
+
   // Overrides the default token values declared in globals.css :root — rendered
   // server-side so the selected theme applies with no client-side flash. Lives
   // in the root layout (not the protected layout) so /login gets it too. Fonts
   // are overridden the same way: every font this theme could pick is already
   // loaded above, so switching themes just repoints the --font-* variables.
-  const themeCss = `:root{--paper:${theme.tokens.paper};--paper-raised:${theme.tokens.paperRaised};--ink:${theme.tokens.ink};--line:${theme.tokens.line};--muted:${theme.tokens.muted};--muted-inverse:${theme.tokens.mutedInverse};--brass:${theme.tokens.brass};--brass-dark:${theme.tokens.brassDark};--brass-soft:${theme.tokens.brassSoft};--font-display:${FONT_VAR_MAP[theme.tokens.fonts.display]};--font-body:${FONT_VAR_MAP[theme.tokens.fonts.body]};--font-mono-code:${FONT_VAR_MAP[theme.tokens.fonts.mono]};}`;
+  const themeCss = `:root{color-scheme:${colorScheme};--paper:${theme.tokens.paper};--paper-raised:${theme.tokens.paperRaised};--ink:${theme.tokens.ink};--line:${theme.tokens.line};--muted:${theme.tokens.muted};--muted-inverse:${theme.tokens.mutedInverse};--brass:${theme.tokens.brass};--brass-dark:${theme.tokens.brassDark};--brass-soft:${theme.tokens.brassSoft};--font-display:${FONT_VAR_MAP[theme.tokens.fonts.display]};--font-body:${FONT_VAR_MAP[theme.tokens.fonts.body]};--font-mono-code:${FONT_VAR_MAP[theme.tokens.fonts.mono]};}`;
 
   return (
     <html

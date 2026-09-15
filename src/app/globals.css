@@ -1,6 +1,11 @@
 @import "tailwindcss";
 
 :root {
+  /* Default for the widgets the browser draws itself (date-picker glyph, number
+     spinners, scrollbars). These defaults are a dark theme, so "dark" matches;
+     the active theme overrides this per-theme from src/app/layout.tsx. */
+  color-scheme: dark;
+
   --paper: #12161a;
   --paper-raised: #1a1f26;
   --ink: #eef2f3;
