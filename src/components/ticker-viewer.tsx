@@ -133,6 +133,17 @@ export interface TickerViewerProps {
    */
   favorite?: TickerFavoriteControl;
 
+  /**
+   * The Consult AI button in the header, beside the star. **Optional** — omit it
+   * and no button renders.
+   *
+   * A bare callback because everything the consult needs is the host's: the
+   * prompt is built by `lib/ticker-consult` from records this component only
+   * ever received as props, and the dialog it opens is route-local. This
+   * component's whole job here is to put the control in the header.
+   */
+  onConsultAi?: () => void;
+
   /** Caller-supplied classes, merged last so they win. */
   className?: string;
 }
@@ -2194,6 +2205,7 @@ export function TickerViewer({
   onRecalculateRisk,
   onCalculateTaxLots,
   favorite,
+  onConsultAi,
   className = "",
 }: TickerViewerProps) {
   // The header price prefers the live quote and falls back to our own recorded
@@ -2240,6 +2252,20 @@ export function TickerViewer({
                 name={favorite.isFavorite ? "star-filled" : "star"}
                 className="h-5 w-5"
               />
+            </button>
+          )}
+          {onConsultAi && (
+            <button
+              type="button"
+              onClick={onConsultAi}
+              title="Consulting AI about this ticker"
+              aria-label="Consulting AI about this ticker"
+              className="rounded-md p-0.5 text-brass hover:text-brass-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+            >
+              {/* Two filled sparkles rather than a star: it sits immediately
+                  beside the favourite toggle, so the one thing it must not do is
+                  read as another star. */}
+              <TreeIcon name="ai-spark" className="h-5 w-5" />
             </button>
           )}
         </span>

@@ -2,7 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { listPositions } from "@/lib/stock-positions";
-import { refreshTickerProfiles } from "@/lib/ticker-profiles";
+import {
+  getOrFetchTickerProfile,
+  NO_SECTOR_LABEL,
+  refreshTickerProfiles,
+  resolveSector,
+} from "@/lib/ticker-profiles";
 import { deps } from "@/lib/wiring";
 import { requireModuleAccess } from "../../require-access";
 
@@ -49,5 +54,45 @@ export async function refreshTickerProfilesAction(): Promise<RefreshProfilesActi
       ok: false,
       error: error instanceof Error ? error.message : "Failed to look up sectors.",
     };
+  }
+}
+
+export interface TickerSectorResult {
+  /** The resolved sector, or "" when the provider has none (a fund often hasn't). */
+  sector: string;
+  /** The provider's industry, or "" when it reported none. */
+  industry: string;
+}
+
+/**
+ * One ticker's sector and industry, for the Consult AI prompt.
+ *
+ * Reads the 90-day cache and only calls the provider for a symbol that isn't in
+ * it — so the common case is a single indexed row, not a round trip. It resolves
+ * through `resolveSector`, which means a sector the owner has set by hand wins
+ * over the provider's, exactly as it does on the dashboard charts.
+ *
+ * A failure returns blanks rather than throwing: the consult prompt has a branch
+ * that asks the model to establish the sector itself, so a missing answer
+ * degrades the prompt without breaking it.
+ */
+export async function getTickerSectorAction(ticker: string): Promise<TickerSectorResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    const record = await getOrFetchTickerProfile(
+      deps.tickerProfileRepo,
+      deps.tickerProfileClient,
+      ticker,
+    );
+    const resolved = resolveSector(record);
+
+    return {
+      // The fallback label means "we have no sector", which the prompt must read
+      // as absent rather than as a sector literally called "Unclassified".
+      sector: resolved === NO_SECTOR_LABEL ? "" : resolved,
+      industry: record?.industry ?? "",
+    };
+  } catch {
+    return { sector: "", industry: "" };
   }
 }

@@ -54,6 +54,9 @@ export const TREE_ICON_NAMES = [
   "shapes",
   "search",
   "magic",
+  // Two sparkles — "ask a language model about this". Next to the favourite star in
+  // the ticker viewer, so it is deliberately not a star of its own.
+  "ai-spark",
   "player",
   // Favourites, filled and unfilled, for the two things that can be kept.
   "star",

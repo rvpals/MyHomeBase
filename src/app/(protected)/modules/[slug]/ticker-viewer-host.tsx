@@ -21,6 +21,7 @@ import {
 import { TickerLogo } from "@/components/ticker-logo";
 import type { TickerHistoryRange } from "@/lib/ticker-overview";
 import { encodeAdhocLots, lotsFromTrades } from "@/lib/tax-lots";
+import { TickerConsultDialog } from "./ticker-consult-dialog";
 import {
   isFavoriteTickerAction,
   toggleFavoriteTickerAction,
@@ -177,6 +178,10 @@ function TickerViewerHostInner({
 
   const recalculateRisk = useCallback(() => setRiskRecalculations((count) => count + 1), []);
 
+  // The Consult AI dialog. Open state only — the prompt itself is built by
+  // `lib/ticker-consult` from `ownData`, which is already loaded.
+  const [isConsultOpen, setIsConsultOpen] = useState(false);
+
   // The star's own state, loaded once on open. Kept here rather than in
   // `TickerViewer` because the toggle is a server action, and that component is
   // shared presentation that must not know about this module's actions.
@@ -227,32 +232,51 @@ function TickerViewerHostInner({
   }, [ownData.data, router, ticker]);
 
   return (
-    <TickerViewer
-      ticker={ticker}
-      activeGroup={activeGroup}
-      onSelectGroup={setActiveGroup}
-      onClose={onClose}
-      ownData={ownData}
-      intraday={intraday}
-      tradeTimeline={tradeTimeline}
-      quote={quote}
-      priceSeries={priceSeries}
-      events={events}
-      risk={risk}
-      news={news}
-      detail={detail}
-      range={range}
-      onSelectRange={setRange}
-      onRecalculateRisk={recalculateRisk}
-      // Withheld until the trades are loaded and there is at least one buy — a
-      // button that navigates to an empty analysis is worse than no button.
-      onCalculateTaxLots={
-        ownData.data && ownData.data.trades.transactions.length > 0
-          ? calculateTaxLots
-          : undefined
-      }
-      favorite={{ isFavorite, onToggle: toggleFavorite, isSaving: isSavingFavorite }}
-    />
+    <>
+      <TickerViewer
+        ticker={ticker}
+        activeGroup={activeGroup}
+        onSelectGroup={setActiveGroup}
+        onClose={onClose}
+        ownData={ownData}
+        intraday={intraday}
+        tradeTimeline={tradeTimeline}
+        quote={quote}
+        priceSeries={priceSeries}
+        events={events}
+        risk={risk}
+        news={news}
+        detail={detail}
+        range={range}
+        onSelectRange={setRange}
+        onRecalculateRisk={recalculateRisk}
+        // Withheld until the trades are loaded and there is at least one buy — a
+        // button that navigates to an empty analysis is worse than no button.
+        onCalculateTaxLots={
+          ownData.data && ownData.data.trades.transactions.length > 0
+            ? calculateTaxLots
+            : undefined
+        }
+        favorite={{ isFavorite, onToggle: toggleFavorite, isSaving: isSavingFavorite }}
+        // Withheld until the records are loaded: the prompt is built from them, and
+        // a button that opens a dialog with nothing in it is worse than no button.
+        onConsultAi={ownData.data ? () => setIsConsultOpen(true) : undefined}
+      />
+
+      {isConsultOpen && ownData.data && (
+        <TickerConsultDialog
+          ticker={ticker}
+          ownData={ownData.data}
+          quote={quote.data}
+          // The sector is deliberately *not* passed from `detail`, even when the
+          // Yahoo tab has already loaded one. The dialog resolves it through the
+          // profile cache instead, which honours a sector the owner has set by
+          // hand — and the hand-set one is the answer wherever else this app
+          // shows a sector, so the prompt must not disagree with the dashboard.
+          onClose={() => setIsConsultOpen(false)}
+        />
+      )}
+    </>
   );
 }
 

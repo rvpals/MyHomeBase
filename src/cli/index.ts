@@ -14,6 +14,7 @@ import { expenseTopSpendersCommand } from "./expense-top-spenders";
 import { explainRuleCommand } from "./explain-rule";
 import { expenseCreateRuleCommand } from "./expense-create-rule";
 import { exportPortfolioCommand } from "./export-portfolio";
+import { consultTickerCommand } from "./consult-ticker";
 import { normalizeIconOverridesCommand } from "./normalize-icon-overrides";
 import { resizeCarouselImagesCommand } from "./resize-carousel-images";
 import { gameScoresCommand } from "./game-scores";
@@ -59,6 +60,7 @@ const commands: Record<string, Command> = {
   "journal-templates": journalTemplatesCommand,
   "expense-top-spenders": expenseTopSpendersCommand,
   "export-portfolio": exportPortfolioCommand,
+  "consult-ticker": consultTickerCommand,
   "explain-rule": explainRuleCommand,
   "expense-create-rule": expenseCreateRuleCommand,
   "normalize-icon-overrides": normalizeIconOverridesCommand,

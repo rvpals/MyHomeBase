@@ -350,6 +350,29 @@ const Search: IconComponent = (props) => (
   </svg>
 );
 
+// Two four-point sparkles, one large and one small — the established mark for "ask a
+// language model". It opens the Consult AI dialog in the ticker viewer.
+//
+// Drawn to be legibly NOT the favourite star it sits beside, which is the whole
+// constraint on it: that star is a five-point *outline*, so this is four-point and
+// *filled*, and it is two shapes rather than one. Concave four-point spikes keep their
+// points at 16px where a five-point star's would close up, and the second spark is what
+// stops a single sparkle reading as "a star someone drew badly".
+const AiSpark: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <path
+      d="M10 3.2l1.7 4.6 4.6 1.7-4.6 1.7L10 15.8l-1.7-4.6L3.7 9.5l4.6-1.7z"
+      fill="currentColor"
+      stroke="none"
+    />
+    <path
+      d="M17.6 14.2l.95 2.55 2.55.95-2.55.95-.95 2.55-.95-2.55-2.55-.95 2.55-.95z"
+      fill="currentColor"
+      stroke="none"
+    />
+  </svg>
+);
+
 const Star: IconComponent = (props) => (
   <svg {...shared} {...props}>
     <path d="M12 3.6l2.6 5.3 5.9.85-4.25 4.15 1 5.85L12 17l-5.25 2.75 1-5.85L3.5 9.75l5.9-.85z" />
@@ -617,6 +640,7 @@ const TREE_ICONS = {
   shapes: Shapes,
   search: Search,
   magic: MagicHat,
+  "ai-spark": AiSpark,
   player: RecordPlayer,
   star: Star,
   "star-filled": StarFilled,
@@ -689,6 +713,11 @@ const ALWAYS_CLASSIC = new Set<TreeIconName>([
   // legibly not either of them. A themed set's own folder artwork is usually a full-color
   // manila folder, which at 16px beside two monochrome controls reads as a stray icon.
   "photo-folder",
+  // The Consult AI button in the ticker viewer's header, immediately beside the
+  // favourite star. Same reasoning as `photo-stack`: its job is to be legibly not the
+  // star, and a themed set's own "AI" artwork is very often a star or a sparkle, which
+  // is exactly the confusion the glyph was drawn to avoid. It is a button, not a place.
+  "ai-spark",
 ]);
 
 /**

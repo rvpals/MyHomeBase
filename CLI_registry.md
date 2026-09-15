@@ -55,6 +55,7 @@ Twenty-seven commands, registered in [src/cli/index.ts:33-61](src/cli/index.ts#L
 | [`set-startup-message`](#set-startup-message) | write | no |
 | [`user-preferences`](#user-preferences) | read (writes with `--favorite`/`--startup`) | no |
 | [`magic-playlist`](#magic-playlist) | read (writes with `--save`/`--regenerate`/`--delete`) | no |
+| [`photo-magic`](#photo-magic) | read (writes with `--scan`/`--save`/`--regenerate`/`--delete`/`--clear-index`) | no |
 | [`play-queue`](#play-queue) | read (writes with every flag except none) | no |
 | [`color-themes`](#color-themes) | read (writes with `import`/`reset`/`delete`) | no |
 | [`fav-photos`](#fav-photos) | read (writes with `add`/`note`/`remove`) | no |
@@ -524,6 +525,92 @@ stamped with no status means the process died mid-pass, and it says `interrupted
 rather than guessing.
 Source: [src/cli/list-scheduled-jobs.ts](src/cli/list-scheduled-jobs.ts)
 
+## `export-portfolio`
+
+Renders the portfolio as an AI-ready prompt — the same text the *Export for AI Analysis*
+screen puts on the clipboard, on stdout so a script can pipe it.
+
+```
+npm run cli -- export-portfolio
+npm run cli -- export-portfolio --format json
+npm run cli -- export-portfolio --focus fees,tax
+npm run cli -- export-portfolio --focus diversification
+npm run cli -- export-portfolio --kinds "Roth IRA"
+npm run cli -- export-portfolio --refresh-correlations
+npm run cli -- export-portfolio --format json > portfolio.json
+```
+
+**Input** — `portfolioExportOptionsSchema`. Every flag is optional; omitting one applies
+the schema's own default, so the bare command is the common case.
+
+| Flag | Values | Default |
+|---|---|---|
+| `--format` | `markdown`, `json` | `markdown` |
+| `--focus` | comma-separated: `allocation`, `fees`, `tax`, `diversification` | all four |
+| `--kinds` | comma-separated account kinds | `Taxable,Roth IRA,Traditional IRA` |
+| `--refresh-correlations` | bare switch | off |
+
+An empty `--focus` is legitimate — it asks for a general review rather than specific
+lenses. A duplicated focus is rejected.
+
+**Calls** — `buildPortfolioExport` then `renderExport`, against `deps.stockPositionRepo`,
+`deps.investmentAccountRepo` and `deps.tickerProfileRepo`. The correlation matrix is
+**read** from `getCorrelationCache(deps.stockAnalyticsRepo)`, never computed — unless
+`--refresh-correlations` is passed, which runs `computeCorrelationMatrix` first.
+
+⚠️ **`--refresh-correlations` is network-heavy and writes.** One year of daily history
+per eligible Stock/ETF holding plus the SPY benchmark, and it replaces the shared
+correlation cache that Chart & Analysis reads. Its progress goes to **stderr**, so
+`export-portfolio --refresh-correlations > out.md` still produces a clean file.
+
+**Output** — the rendered Markdown or JSON on stdout. Nothing else, so it pipes cleanly.
+
+**Exit** — `0` on success; `1` on invalid options or a read failure, with the message on
+stderr.
+Source: [src/cli/export-portfolio.ts](src/cli/export-portfolio.ts)
+
+---
+
+## `consult-ticker`
+
+Renders the AI consult prompt for **one ticker** — the same text the viewer's *Consult AI*
+dialog puts on the clipboard, on stdout so a script can pipe it. Asks for alternatives in
+the same sector and in a different one, each priced within a band of this ticker's price.
+
+```
+npm run cli -- consult-ticker AAPL
+npm run cli -- consult-ticker aapl --band 10
+npm run cli -- consult-ticker AAPL --no-quote
+npm run cli -- consult-ticker AAPL > aapl-consult.md
+```
+
+**Input** — `tickerConsultOptionsSchema`. The ticker is positional and required; it is
+upper-cased by the schema, so `aapl` and `AAPL` produce the same prompt and file name.
+
+| Flag | Values | Default |
+|---|---|---|
+| `--band` | the percentage either side of the price, `0 < n <= 50` | `15` |
+| `--no-quote` | bare switch — skip the live quote and price off our own records | off |
+
+**Calls** — `getTickerOwnData` (a database-only read across `deps.stockPositionRepo`,
+`deps.investmentAccountRepo` and `deps.stockWatchListRepo`), then `getTickerQuote` unless
+`--no-quote`, then `resolveSector` over `deps.tickerProfileRepo` — the same cached sector
+the dashboard charts use, so a hand-set sector wins here too. Finally
+`buildTickerConsult`.
+
+One provider call, for the quote. A quote failure is **not** fatal: it falls back to the
+price on our own position row, says so on stderr, and the prompt itself is explicit that
+the band is approximate. `--no-quote` makes the command fully offline.
+
+**Output** — the prompt on stdout. The one-line header (ticker, date, suggested file name)
+goes to **stderr**, so `consult-ticker AAPL > out.md` still produces a clean file.
+
+**Exit** — `0` on success; `1` on invalid options or a read failure, with the message on
+stderr.
+Source: [src/cli/consult-ticker.ts](src/cli/consult-ticker.ts)
+
+---
+
 ## `compute-analytics`
 
 ⚠️ **Network-heavy + writes.** Recomputes all three analytics caches — the command an
@@ -764,6 +851,11 @@ npm run cli -- user-preferences --user min --favorite ""                  # clea
 **Input** — `--user <username>` (required). `--favorite <slug|"">` and
 `--startup yes|no` are both optional; **omitting one leaves that preference as it is**,
 so either can be changed without restating the other. Supplying neither is a read.
+
+The **weather location and temperature unit** (set on the Account screen, shown on the
+home screen's Clock card) have no flags, but the command carries the stored values
+through on every write — `saveUserPreferences` writes every key each time, so a save
+that omitted them would silently clear the user's location.
 
 **Calls** — `getUserPreferences` / `saveUserPreferences` / `resolveStartupDestination` on
 `deps.userPreferencesRepo`, plus `getAccessibleModules` to bound the favorite.
@@ -1667,6 +1759,21 @@ defaults to `"fahrenheit"`. **No CLI reach.**
 
 `CurrentWeather { temperature, unit, description, code }`
 
+`getForecast(deps.weatherClient, input, now?) => Promise<WeatherForecast>` ⚠️ Open-Meteo,
+no API key. `getForecastSchema` — coordinates as above, `unit` defaults to
+`"fahrenheit"`, `days` 1..16 (default 7), `refresh` skips the cache. **No CLI reach.**
+
+Cached **in process for 30 minutes** per rounded coordinate + unit + day count, so the
+home screen doesn't re-fetch on every landing; `now` is injectable for tests and
+`clearForecastCache()` empties it. A failed fetch is never cached.
+
+`WeatherForecast { current: CurrentWeather, days: DailyForecast[], unit }`
+`DailyForecast { date, high, low, code, description }`
+
+`weatherShape(code) => WeatherShape` — a WMO code reduced to one of eight drawable
+shapes (`clear` | `partly` | `cloud` | `fog` | `drizzle` | `rain` | `snow` | `storm`),
+for the home screen's forecast glyphs. Unknown codes fall back to `cloud`.
+
 ## geocoding — `@/lib/geocoding`
 
 Client is `deps.geocodingClient`. **Both hit OpenStreetMap Nominatim** — no API key, but
@@ -1849,6 +1956,70 @@ it went (the same wording the web screen shows).
 **Exit** — 0; 1 when `--minutes` is not a number, the target is outside 1 minute–12 hours,
 a named list already exists, or the requested list id does not exist.
 Source: [src/cli/magic-playlist.ts](src/cli/magic-playlist.ts)
+
+---
+
+## `photo-magic`
+
+Builds a Magic List from search criteria, and indexes the photo archive for one — the
+terminal counterpart of the Magic List screen.
+
+```
+npm run cli -- photo-magic [--from YYYY-MM-DD] [--to YYYY-MM-DD]
+                           [--min-mb N] [--max-mb N]
+                           [--min-width N] [--min-height N]
+                           [--max-width N] [--max-height N]
+                           [--count N] [--save "Name"] [--description "..."]
+npm run cli -- photo-magic --scan [--from ...] [--to ...] [--limit N]
+npm run cli -- photo-magic --status
+npm run cli -- photo-magic --list
+npm run cli -- photo-magic --load <id>
+npm run cli -- photo-magic --regenerate <id>
+npm run cli -- photo-magic --delete <id>
+npm run cli -- photo-magic --clear-index
+
+npm run cli -- photo-magic --scan --from 2019-01-01 --to 2019-12-31
+npm run cli -- photo-magic --from 2019-06-01 --to 2019-08-31 --min-width 1920 --count 50
+npm run cli -- photo-magic --min-mb 4 --count 25 --save "Big ones"
+```
+
+**Scan before searching.** A directory listing knows a photograph's name but not its
+size or its dimensions, so the index has to be built once per period before anything
+matches — the command says so rather than reporting an empty result. A re-scan skips any
+file whose size and mtime are unchanged, so the second run over a period takes seconds.
+Nothing is written into the photo folders; the facts go to `pho_photo_index`.
+
+`--scan` runs in the **foreground** here, unlike the web screen's background run with a
+progress bar. That is the point of it: `--limit` plus a real range is how you time the
+archive against the NAS before committing to a full walk. `--status` reports on a scan
+started anywhere, including one running in the browser.
+
+**An omitted flag is an absent bound, never a zero** — leaving `--min-mb` off widens the
+search rather than emptying it. `--count` is a ceiling on a random draw, so running the
+same criteria twice gives different pictures. A photograph whose dimensions could not be
+read is excluded whenever a resolution bound is set, and the summary line says how many
+that was.
+
+`--save` stores the criteria *and* the set just generated, so `--load` replays that set
+while `--regenerate` draws a new one from the same criteria. `--clear-index` forgets the
+cached file facts only; saved lists store paths and are untouched.
+
+**Calls** — `scanPhotoIndex`, `generatePhotoMagicList`, `savePhotoMagicList`,
+`loadPhotoMagicList`, `regeneratePhotoMagicList`, `listPhotoMagicLists`,
+`deletePhotoMagicList`, `getScanStatus`, `countIndexedPhotos`, `clearPhotoIndex` and
+`countPhotoMagicCandidates` on `deps.photoMagicListRepo`, `deps.photoIndexRepo` and
+`deps.photoMagicScanRunRepo`. `Math.random` is injected by the command, not defaulted in
+the library. The archive path comes from `MYHOMEBASE_PHOTO_ROOT`, since the Journal
+module's setting is a web-side override.
+
+**Output** — the criteria in words, the matching count, then one line per photograph
+with its date, size, dimensions and path, and the library's own one-line explanation of
+how the draw went (the same wording the web screen shows). `--scan` prints the indexed,
+unchanged and unreadable counts.
+**Exit** — 0; 1 when a date is malformed or a range inverted, a size or pixel flag is
+not a number, a named list already exists, the requested list id does not exist, or a
+scan is already running.
+Source: [src/cli/photo-magic.ts](src/cli/photo-magic.ts)
 
 ---
 
