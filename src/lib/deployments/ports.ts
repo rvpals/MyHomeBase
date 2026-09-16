@@ -33,4 +33,15 @@ export interface DeploymentRepository {
    * must not surface as an error.
    */
   delete(id: number): boolean;
+  /**
+   * Deletes every named deployment, returning how many rows actually went.
+   *
+   * A count rather than a boolean for the same reason `delete` returns one at all: ids
+   * that matched nothing are not an error, and the caller wants to report what happened
+   * ("6 records deleted") rather than whether the whole set was present.
+   *
+   * One statement rather than a loop over `delete` so a batch is atomic — a bulk delete
+   * that half-applied would leave the reader unable to tell what they still have.
+   */
+  deleteMany(ids: number[]): number;
 }

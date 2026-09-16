@@ -10,6 +10,33 @@ import { z } from "zod";
  */
 export const deploymentIdSchema = z.coerce.number().int().positive();
 
+/**
+ * The ids a batch delete is asked for — the ticked checkboxes on the Deployments tab.
+ *
+ * Non-empty: "delete nothing" is a caller that shouldn't have called, not a no-op worth
+ * reporting as a success. Each id goes through `deploymentIdSchema`, so one malformed
+ * entry fails the whole request rather than being silently skipped — a batch that quietly
+ * deleted a subset of what was ticked is worse than one that refused.
+ */
+export const deploymentIdListSchema = z.array(deploymentIdSchema).min(1);
+
+/**
+ * How many of the newest deployments a prune keeps.
+ *
+ * Zero is allowed and means "clear the history" — a real thing to want, and rejecting it
+ * would only push the caller into passing every id instead. The upper bound is absent on
+ * purpose: a keep count larger than the history simply deletes nothing.
+ */
+export const deploymentKeepCountSchema = z.coerce.number().int().nonnegative();
+
+/**
+ * How many of the newest deployments the About screen's "Clear old records" button keeps.
+ *
+ * Here rather than in the view because the CLI's `deployments prune` has to agree with the
+ * button — two hard-coded fives that could drift apart is exactly the bug this avoids.
+ */
+export const DEPLOYMENTS_KEEP_COUNT = 5;
+
 /** How much captured build output is stored. See `deploymentBuildLogSchema`. */
 export const MAX_BUILD_OUTPUT_LENGTH = 200_000;
 

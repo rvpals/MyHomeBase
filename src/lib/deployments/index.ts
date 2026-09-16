@@ -1,14 +1,19 @@
 export {
   deleteDeployment,
+  deleteDeployments,
   listDeployments,
   parseBuildLog,
+  pruneDeployments,
   recordDeployment,
 } from "./deployments";
 export {
+  DEPLOYMENTS_KEEP_COUNT,
   MAX_BUILD_OUTPUT_LENGTH,
   TRUNCATION_MARKER,
   deploymentBuildLogSchema,
+  deploymentIdListSchema,
   deploymentIdSchema,
+  deploymentKeepCountSchema,
 } from "./schema";
 export type { DeploymentBuildLogInput } from "./schema";
 export type { DeploymentRepository, NewDeploymentRow } from "./ports";

@@ -1,5 +1,10 @@
 import type { DeploymentRepository } from "./ports";
-import { deploymentBuildLogSchema, deploymentIdSchema } from "./schema";
+import {
+  deploymentBuildLogSchema,
+  deploymentIdListSchema,
+  deploymentIdSchema,
+  deploymentKeepCountSchema,
+} from "./schema";
 import type { Deployment, DeploymentBuildLog, RecordDeploymentInput } from "./types";
 
 // The deployment history: what deployed, when, and what its build printed.
@@ -93,4 +98,35 @@ export function recordDeployment(
  */
 export function deleteDeployment(repo: DeploymentRepository, id: unknown): boolean {
   return repo.delete(deploymentIdSchema.parse(id));
+}
+
+/**
+ * Deletes several deployment records at once, returning how many rows went.
+ *
+ * Throws on a malformed or empty id list — both are broken callers. Ids that matched
+ * nothing are not an error for the same reason they aren't in `deleteDeployment`, so the
+ * returned count can be lower than `ids.length` without anything having gone wrong.
+ */
+export function deleteDeployments(repo: DeploymentRepository, ids: unknown): number {
+  return repo.deleteMany(deploymentIdListSchema.parse(ids));
+}
+
+/**
+ * Deletes everything but the newest `keep` deployments, returning how many rows went.
+ *
+ * "Newest" is the repository's own order — `list` hands back newest first (by
+ * `deployedAt`, with `id` breaking ties) — so this and the About grid's default view agree
+ * on which rows survive. Reading the list to pick ids, rather than pushing a
+ * `DELETE … WHERE id NOT IN (SELECT … LIMIT ?)` into the port, keeps that ordering rule in
+ * one place and keeps this function testable against a plain array.
+ *
+ * The currently-running deployment is deliberately not special-cased: it is the newest
+ * row, so any `keep` of 1 or more retains it, and "keep the newest N" stays a rule you can
+ * state in a sentence.
+ */
+export function pruneDeployments(repo: DeploymentRepository, keep: unknown): number {
+  const keepCount = deploymentKeepCountSchema.parse(keep);
+  const doomed = repo.list().slice(keepCount);
+  if (doomed.length === 0) return 0;
+  return repo.deleteMany(doomed.map((deployment) => deployment.id));
 }

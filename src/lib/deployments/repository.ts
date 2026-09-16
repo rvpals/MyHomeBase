@@ -31,6 +31,24 @@ function toDeployment(row: DeploymentRow): Deployment {
   };
 }
 
+// SQLite's default variable limit is 999. A deployment history is short by nature — one
+// row per release — so this never bites in practice, but "delete everything but the
+// newest 5" on a long-lived install is exactly the call that would find the edge, and the
+// failure would be an opaque SQLite error rather than a partial delete.
+const ID_CHUNK_SIZE = 500;
+
+function chunkIds(ids: number[]): number[][] {
+  const chunks: number[][] = [];
+  for (let index = 0; index < ids.length; index += ID_CHUNK_SIZE) {
+    chunks.push(ids.slice(index, index + ID_CHUNK_SIZE));
+  }
+  return chunks;
+}
+
+function placeholders(count: number): string {
+  return new Array(count).fill("?").join(", ");
+}
+
 // See migrations/0078_create_deployments.md. Two callers on two machines: the About screen
 // reads through `list`, and `scripts/record-deployment.ts` writes through `record` on the
 // deployment target as a new build comes up.
@@ -72,5 +90,19 @@ export class SqliteDeploymentRepository implements DeploymentRepository {
   delete(id: number): boolean {
     const result = this.db.prepare("DELETE FROM sys_deployments WHERE id = ?").run(id);
     return result.changes > 0;
+  }
+
+  deleteMany(ids: number[]): number {
+    if (ids.length === 0) return 0;
+    return this.db.transaction(() => {
+      let deleted = 0;
+      for (const chunk of chunkIds(ids)) {
+        const result = this.db
+          .prepare(`DELETE FROM sys_deployments WHERE id IN (${placeholders(chunk.length)})`)
+          .run(chunk);
+        deleted += result.changes;
+      }
+      return deleted;
+    })();
   }
 }

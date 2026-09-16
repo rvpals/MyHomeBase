@@ -22,9 +22,14 @@ import {
   type ChangeHistorySummary,
   type ChangeKind,
 } from "@/lib/change-history";
+import { DEPLOYMENTS_KEEP_COUNT } from "@/lib/deployments";
 import { formatBytes } from "@/lib/system-info";
 import { PAGE_CONTAINER } from "../../page-container";
-import { deleteDeploymentAction } from "./actions";
+import {
+  deleteDeploymentAction,
+  deleteDeploymentsAction,
+  pruneDeploymentsAction,
+} from "./actions";
 
 interface StatItem {
   label: string;
@@ -399,6 +404,18 @@ export function AboutView({
   const [viewingLog, setViewingLog] = useState<DeploymentRow | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  /**
+   * The ticked rows pending a batch delete, with the grid's own `clearSelection` so the
+   * checkboxes empty once the rows are gone. Null when the confirm isn't up — the same
+   * shape as `pendingDelete`, for the same reason: no state where the dialog is open with
+   * nothing to delete.
+   */
+  const [pendingBatch, setPendingBatch] = useState<{
+    rows: DeploymentRow[];
+    clearSelection: () => void;
+  } | null>(null);
+  /** True while the "keep the newest five" confirm is up. */
+  const [isPruning, setIsPruning] = useState(false);
 
   const confirmDelete = async () => {
     if (!pendingDelete) return;
@@ -414,6 +431,38 @@ export function AboutView({
     // The action revalidates this route, so the grid re-renders without the row on its own.
     setPendingDelete(null);
   };
+
+  const confirmBatchDelete = async () => {
+    if (!pendingBatch) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    const result = await deleteDeploymentsAction(pendingBatch.rows.map((row) => row.id));
+    setIsDeleting(false);
+    if (!result.ok) {
+      setDeleteError(result.error ?? "Failed to delete the deployment records.");
+      return;
+    }
+    // Clearing the selection matters here in a way it doesn't for a single delete: the
+    // ticked ids are held by the grid, and leaving them set would carry a selection of
+    // rows that no longer exist into the re-render.
+    pendingBatch.clearSelection();
+    setPendingBatch(null);
+  };
+
+  const confirmPrune = async () => {
+    setIsDeleting(true);
+    setDeleteError(null);
+    const result = await pruneDeploymentsAction();
+    setIsDeleting(false);
+    if (!result.ok) {
+      setDeleteError(result.error ?? "Failed to clear the deployment history.");
+      return;
+    }
+    setIsPruning(false);
+  };
+
+  /** How many rows the prune would remove — what the confirm dialog promises. */
+  const prunableCount = Math.max(deployments.length - DEPLOYMENTS_KEEP_COUNT, 0);
 
   const deploymentColumns: DataGridColumn<DeploymentRow>[] = [
     {
@@ -678,6 +727,29 @@ export function AboutView({
             Recorded on the server as a new build starts, so a restart after a crash
             doesn&apos;t appear here — only an actual publish does.
           </p>
+
+          {/* Housekeeping sits above the grid rather than in the selection bar: it acts on
+              the whole history, not on what is ticked. `flex-wrap` is the whole phone
+              story — the button drops below the caption instead of squeezing it. */}
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm text-muted">
+              {prunableCount === 0
+                ? `Fewer than ${DEPLOYMENTS_KEEP_COUNT + 1} records — nothing to clear.`
+                : `${prunableCount} record${prunableCount === 1 ? "" : "s"} older than the newest ${DEPLOYMENTS_KEEP_COUNT}.`}
+            </p>
+            <Button
+              size="sm"
+              variant="danger"
+              disabled={prunableCount === 0}
+              onClick={() => {
+                setDeleteError(null);
+                setIsPruning(true);
+              }}
+            >
+              Keep newest {DEPLOYMENTS_KEEP_COUNT}
+            </Button>
+          </div>
+
           <div className="mt-4">
             <DataGrid
               columns={deploymentColumns}
@@ -687,6 +759,20 @@ export function AboutView({
               exportFileName="deployments"
               recordViewTitle={(row) => `Deployment ${row.deployedText}`}
               storageKey="about-deployments"
+              enableSelection
+              renderSelectionActions={(selectedRows, clearSelection) => (
+                <Button
+                  size="sm"
+                  variant="danger"
+                  disabled={isDeleting}
+                  onClick={() => {
+                    setDeleteError(null);
+                    setPendingBatch({ rows: selectedRows, clearSelection });
+                  }}
+                >
+                  Delete checked
+                </Button>
+              )}
             />
           </div>
         </div>
@@ -788,6 +874,94 @@ export function AboutView({
           ) : (
             <p className="text-sm text-muted">
               The deployment itself is unaffected — this only forgets that it happened.
+            </p>
+          )}
+        </Modal>
+      ) : null}
+
+      {/* Guarded for the same reason the single delete is, and more so: a mis-ticked box
+          in a batch is not obvious until the rows are gone. The dialog names the count so
+          the number is checkable before it is acted on. */}
+      {pendingBatch ? (
+        <Modal
+          title={`Delete ${pendingBatch.rows.length} deployment record${
+            pendingBatch.rows.length === 1 ? "" : "s"
+          }?`}
+          description="This removes the records and their build logs. It cannot be undone."
+          onClose={() => {
+            setPendingBatch(null);
+            setDeleteError(null);
+          }}
+          isBusy={isDeleting}
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setPendingBatch(null);
+                  setDeleteError(null);
+                }}
+                disabled={isDeleting}
+              >
+                Cancel
+              </Button>
+              <Button variant="danger" onClick={() => void confirmBatchDelete()} disabled={isDeleting}>
+                {isDeleting ? "Deleting…" : "Delete"}
+              </Button>
+            </>
+          }
+        >
+          {deleteError ? (
+            <p className="text-sm text-red-400">{deleteError}</p>
+          ) : (
+            <ul className="max-h-60 space-y-1 overflow-auto text-sm text-muted">
+              {/* The rows themselves, not just a count: "6 records" is not enough to
+                  catch the case where the live build got ticked by accident. */}
+              {pendingBatch.rows.map((row) => (
+                <li key={row.id}>
+                  {row.deployedText}
+                  {row.buildId ? <span className="font-mono text-xs"> — {row.buildId}</span> : null}
+                  {row.isCurrent ? <span className="text-brass-dark"> (live)</span> : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Modal>
+      ) : null}
+
+      {isPruning ? (
+        <Modal
+          title={`Delete ${prunableCount} older deployment record${prunableCount === 1 ? "" : "s"}?`}
+          description={`The newest ${DEPLOYMENTS_KEEP_COUNT} are kept, including the build this server is running. It cannot be undone.`}
+          onClose={() => {
+            setIsPruning(false);
+            setDeleteError(null);
+          }}
+          isBusy={isDeleting}
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setIsPruning(false);
+                  setDeleteError(null);
+                }}
+                disabled={isDeleting}
+              >
+                Cancel
+              </Button>
+              <Button variant="danger" onClick={() => void confirmPrune()} disabled={isDeleting}>
+                {isDeleting ? "Deleting…" : `Keep newest ${DEPLOYMENTS_KEEP_COUNT}`}
+              </Button>
+            </>
+          }
+        >
+          {deleteError ? (
+            <p className="text-sm text-red-400">{deleteError}</p>
+          ) : (
+            <p className="text-sm text-muted">
+              The deployments themselves are unaffected — this only forgets that they
+              happened.
             </p>
           )}
         </Modal>

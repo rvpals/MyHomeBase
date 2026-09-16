@@ -4,12 +4,21 @@
 //   npm run cli -- deployments list
 //   npm run cli -- deployments show 12
 //   npm run cli -- deployments delete 12
+//   npm run cli -- deployments delete 12,13,14
+//   npm run cli -- deployments prune
 //
 // Rows are written on the deployment target by record-deployment.cjs as a new build comes
 // up, so a dev database is normally empty here: the history lives where the app is
 // deployed. Point MYHOMEBASE_DB at a copy of the production database to read it.
 
-import { deleteDeployment, listDeployments, type Deployment } from "@/lib/deployments";
+import {
+  DEPLOYMENTS_KEEP_COUNT,
+  deleteDeployment,
+  deleteDeployments,
+  listDeployments,
+  pruneDeployments,
+  type Deployment,
+} from "@/lib/deployments";
 import { formatBytes } from "@/lib/system-info";
 import { deps } from "@/lib/wiring";
 import { messageOf } from "./error-message";
@@ -17,7 +26,8 @@ import { messageOf } from "./error-message";
 const USAGE = `Usage:
   deployments list
   deployments show <id>
-  deployments delete <id>`;
+  deployments delete <id>[,<id>...]
+  deployments prune                  keep the newest ${DEPLOYMENTS_KEEP_COUNT}, delete the rest`;
 
 function printRow(deployment: Deployment): void {
   const build = deployment.buildId ?? "unknown build";
@@ -95,9 +105,35 @@ export async function deploymentsCommand(args: string[]): Promise<void> {
 
       case "delete": {
         if (!rawId) throw new Error("An id is required.");
-        const deleted = deleteDeployment(deps.deploymentRepo, rawId);
+
+        // A comma-separated list is the batch form, mirroring the ticked checkboxes on the
+        // About screen. One id still goes through `deleteDeployment` so the single case
+        // keeps its "no deployment with id N" message, which a count can't express.
+        const rawIds = rawId
+          .split(",")
+          .map((part) => part.trim())
+          .filter((part) => part !== "");
+        if (rawIds.length === 0) throw new Error("An id is required.");
+
+        if (rawIds.length === 1) {
+          const deleted = deleteDeployment(deps.deploymentRepo, rawIds[0]);
+          console.log(
+            deleted ? `Deleted deployment #${rawIds[0]}.` : `No deployment with id ${rawIds[0]}.`,
+          );
+          return;
+        }
+
+        const deleted = deleteDeployments(deps.deploymentRepo, rawIds);
+        console.log(`Deleted ${deleted} of ${rawIds.length} deployment records.`);
+        return;
+      }
+
+      case "prune": {
+        const deleted = pruneDeployments(deps.deploymentRepo, DEPLOYMENTS_KEEP_COUNT);
         console.log(
-          deleted ? `Deleted deployment #${rawId}.` : `No deployment with id ${rawId}.`,
+          deleted === 0
+            ? `Nothing to delete — ${DEPLOYMENTS_KEEP_COUNT} or fewer deployments recorded.`
+            : `Deleted ${deleted} deployment record${deleted === 1 ? "" : "s"}, keeping the newest ${DEPLOYMENTS_KEEP_COUNT}.`,
         );
         return;
       }

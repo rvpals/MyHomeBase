@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   deleteDeployment,
+  deleteDeployments,
   listDeployments,
   parseBuildLog,
+  pruneDeployments,
   recordDeployment,
 } from "./deployments";
 import { MAX_BUILD_OUTPUT_LENGTH } from "./schema";
@@ -31,7 +33,34 @@ function fakeRepo(seed: Deployment[] = []): DeploymentRepository & {
       rows.splice(index, 1);
       return true;
     },
+    deleteMany: (ids) => {
+      let deleted = 0;
+      for (const id of ids) {
+        const index = rows.findIndex((row) => row.id === id);
+        if (index === -1) continue;
+        rows.splice(index, 1);
+        deleted += 1;
+      }
+      return deleted;
+    },
   };
+}
+
+/** Rows newest first, the order the repository's `list` promises. */
+function deploymentsWithIds(...ids: number[]): Deployment[] {
+  return ids.map((id) => ({
+    id,
+    // Descending, so `list`'s newest-first order and the id order agree.
+    deployedAt: new Date(Date.UTC(2026, 8, 1, 12, 0, 0) - id * 86_400_000).toISOString(),
+    builtAt: null,
+    buildId: null,
+    appVersion: null,
+    builtOnHost: null,
+    nodeAbi: null,
+    packageSizeBytes: null,
+    migrated: false,
+    buildOutput: null,
+  }));
 }
 
 const FULL_LOG = JSON.stringify({
@@ -232,5 +261,96 @@ describe("deleteDeployment", () => {
     expect(() => deleteDeployment(repo, 1.5)).toThrow();
     expect(() => deleteDeployment(repo, "not-a-number")).toThrow();
     expect(repo.rows).toHaveLength(1);
+  });
+});
+
+describe("deleteDeployments", () => {
+  it("removes every ticked row and reports the count", () => {
+    const repo = fakeRepo(deploymentsWithIds(1, 2, 3, 4));
+    expect(deleteDeployments(repo, [2, 4])).toBe(2);
+    expect(repo.rows.map((row) => row.id)).toEqual([1, 3]);
+  });
+
+  it("counts only what it actually deleted, so a row already gone isn't an error", () => {
+    // Two tabs on the About screen: the other one deleted #2 before this batch ran.
+    const repo = fakeRepo(deploymentsWithIds(1, 3));
+    expect(deleteDeployments(repo, [1, 2])).toBe(1);
+    expect(repo.rows.map((row) => row.id)).toEqual([3]);
+  });
+
+  it("accepts numeric strings, since a form sends its checkbox values as text", () => {
+    const repo = fakeRepo(deploymentsWithIds(1, 2));
+    expect(deleteDeployments(repo, ["1", "2"])).toBe(2);
+    expect(repo.rows).toHaveLength(0);
+  });
+
+  it("throws on an empty list — nothing was ticked, so nothing should have been called", () => {
+    const repo = fakeRepo(deploymentsWithIds(1));
+    expect(() => deleteDeployments(repo, [])).toThrow();
+    expect(repo.rows).toHaveLength(1);
+  });
+
+  it("throws on a malformed id rather than deleting the well-formed rest", () => {
+    // A partial delete is worse than a refused one: the reader can't tell what survived.
+    const repo = fakeRepo(deploymentsWithIds(1, 2));
+    expect(() => deleteDeployments(repo, [1, "not-a-number"])).toThrow();
+    expect(() => deleteDeployments(repo, [1, 0])).toThrow();
+    expect(() => deleteDeployments(repo, [1, 2.5])).toThrow();
+    expect(() => deleteDeployments(repo, "1")).toThrow();
+    expect(repo.rows).toHaveLength(2);
+  });
+});
+
+describe("pruneDeployments", () => {
+  it("keeps the newest five and deletes the rest", () => {
+    const repo = fakeRepo(deploymentsWithIds(1, 2, 3, 4, 5, 6, 7));
+    expect(pruneDeployments(repo, 5)).toBe(2);
+    expect(repo.rows.map((row) => row.id)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it("keeps the newest by the list's order, not by id", () => {
+    // A row deployed later but inserted earlier still survives: `list` decides what
+    // "newest" means, and this function must not second-guess it.
+    const [newest, older] = deploymentsWithIds(1, 2);
+    const repo = fakeRepo([{ ...newest, id: 40 }, { ...older, id: 99 }]);
+    expect(pruneDeployments(repo, 1)).toBe(1);
+    expect(repo.rows.map((row) => row.id)).toEqual([40]);
+  });
+
+  it("deletes nothing when the history is already short enough", () => {
+    const repo = fakeRepo(deploymentsWithIds(1, 2, 3));
+    expect(pruneDeployments(repo, 5)).toBe(0);
+    expect(repo.rows).toHaveLength(3);
+  });
+
+  it("deletes nothing when the count exactly matches, rather than trimming one", () => {
+    const repo = fakeRepo(deploymentsWithIds(1, 2, 3, 4, 5));
+    expect(pruneDeployments(repo, 5)).toBe(0);
+    expect(repo.rows).toHaveLength(5);
+  });
+
+  it("is a no-op on an empty history", () => {
+    const repo = fakeRepo();
+    expect(pruneDeployments(repo, 5)).toBe(0);
+  });
+
+  it("clears the whole history when asked to keep none", () => {
+    const repo = fakeRepo(deploymentsWithIds(1, 2, 3));
+    expect(pruneDeployments(repo, 0)).toBe(3);
+    expect(repo.rows).toHaveLength(0);
+  });
+
+  it("accepts a numeric string, since a form field arrives as text", () => {
+    const repo = fakeRepo(deploymentsWithIds(1, 2, 3));
+    expect(pruneDeployments(repo, "2")).toBe(1);
+    expect(repo.rows.map((row) => row.id)).toEqual([1, 2]);
+  });
+
+  it("throws on a malformed keep count instead of guessing what was meant", () => {
+    const repo = fakeRepo(deploymentsWithIds(1, 2, 3));
+    expect(() => pruneDeployments(repo, -1)).toThrow();
+    expect(() => pruneDeployments(repo, 1.5)).toThrow();
+    expect(() => pruneDeployments(repo, "five")).toThrow();
+    expect(repo.rows).toHaveLength(3);
   });
 });
