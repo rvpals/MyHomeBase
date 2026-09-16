@@ -360,6 +360,41 @@ await build({
   logLevel: "warning",
 });
 
+step("Bundling the startup-failure fallback server");
+// Serves app.log as an HTML page on port 3000 when server.js can't start, so a
+// startup crash shows its cause in the browser instead of DSM's generic "cannot
+// connect". start.sh brings it up after a failed start attempt.
+//
+// Note there is NO `external` here, unlike the three above: this one must have no
+// native dependencies at all. A native module built for the wrong Node ABI is
+// among the failures it exists to report, so depending on one would make it fail
+// in exactly the case it is needed. It imports only node:http, node:fs and pure
+// functions from src/lib/startup-failure -- if this ever starts needing
+// better-sqlite3, something has been imported that shouldn't be.
+await build({
+  entryPoints: [path.join(ROOT, "scripts", "startup-failure-server.ts")],
+  outfile: path.join(OUT, "startup-failure-server.cjs"),
+  bundle: true,
+  platform: "node",
+  target: "node20",
+  format: "cjs",
+  logLevel: "warning",
+});
+
+step("Bundling the port probe");
+// start.sh uses this to confirm server.js actually bound port 3000 before treating
+// the start as successful. No `external` here either, for the same reason as the
+// fallback above: it must work when a native module is the thing that's broken.
+await build({
+  entryPoints: [path.join(ROOT, "scripts", "port-probe.ts")],
+  outfile: path.join(OUT, "port-probe.cjs"),
+  bundle: true,
+  platform: "node",
+  target: "node20",
+  format: "cjs",
+  logLevel: "warning",
+});
+
 step("Verifying the folder is actually portable");
 // Any surviving symlink points at a path on this machine and will be broken on
 // the NAS — which is how the hash-named better-sqlite3 module failed the first
@@ -442,6 +477,7 @@ console.log("  node migrate.cjs               # apply any pending migrations");
 console.log("  node server.js                 # start the app");
 console.log("  node set-startup-message.cjs   # announce the deployment (start.sh does this)");
 console.log("  node record-deployment.cjs     # log the deployment (start.sh does this)");
+console.log("  node startup-failure-server.cjs  # serve app.log as a page (start.sh does this on a failed start)");
 
 // Written LAST, so the transcript it carries includes everything above -- including the
 // size and ABI lines, which are the two facts most worth having in a deployment record.

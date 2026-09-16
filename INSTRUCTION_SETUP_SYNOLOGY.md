@@ -567,6 +567,29 @@ different file.
 **App won't start and the terminal shows nothing**
 It's running detached — look in `/volume1/app/myhomebase/app.log`.
 
+**The browser shows "MyHomeBase failed to start" with a log on it**
+That page is the startup fallback, not the app. `start.sh` launched `server.js`,
+watched it fail to bind port 3000 within 20 seconds, and started
+`startup-failure-server.cjs` in its place so the reason is readable without SSH.
+The page names the likely cause where it recognises one, and shows the last 100
+lines of `app.log` underneath either way.
+
+It holds port 3000 only until the next successful start: the keepalive task retries
+every minute, `start.sh` stops the fallback before each attempt, and the page
+refreshes itself every 15 seconds — so a transient failure clears on its own and the
+browser lands on the real app. `app.pid` is deliberately removed on a failed start,
+so the fallback can never make a crash-looping build look healthy.
+
+Note the page has **no authentication** — it can't check a session, since the
+database may be the thing that's broken. It's reachable by anyone who can reach the
+app's origin, which is why port 3000 stays bound to the LAN behind the reverse proxy.
+
+**The browser shows a DSM error page instead of the app or the failure page**
+Neither the app nor the fallback is holding port 3000. Either `start.sh` isn't
+running at all (check the Task Scheduler entries in Part 6) or `startup-failure-server.cjs`
+is missing from the folder — it ships with `npm run publish:nas`, so an old
+hand-copied deployment won't have it.
+
 ---
 
 ## Reference
@@ -578,6 +601,7 @@ It's running detached — look in `/volume1/app/myhomebase/app.log`.
 | Environment file | `/volume1/app/myhomebase/.env` |
 | Log | `/volume1/app/myhomebase/app.log` |
 | PID file | `/volume1/app/myhomebase/app.pid` |
+| Fallback PID file | `/volume1/app/myhomebase/fallback.pid` (startup-failure server) |
 | Start script | `/volume1/app/myhomebase/start.sh` |
 | Port | 3000 (localhost only; DSM's reverse proxy publishes 443) |
 | Node | `/usr/local/bin/node` — Package Center v20, **ABI 115** |
@@ -586,4 +610,5 @@ It's running detached — look in `/volume1/app/myhomebase/app.log`.
 | Build + deploy | `.\REBUILD_PUBLISH_NAS.bat` (SMB, preserves data/env/start.sh) |
 | Deploy only (manual) | `scp -r dist-nas/. ssh_user@NAS_DS223:/volume1/app/myhomebase/` |
 | Copy `start.sh` | `.\COPY_NAS_START_SH.bat` (scp + `chmod +x`; not shipped by the publish) |
+| Startup failure page | `startup-failure-server.cjs` on :3000 when `server.js` can't start |
 | SMB share | `\\NAS_DS223\app\myhomebase` |

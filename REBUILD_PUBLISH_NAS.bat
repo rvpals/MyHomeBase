@@ -6,7 +6,7 @@ REM
 REM Usage: REBUILD_PUBLISH_NAS.bat [destination]
 REM        (destination defaults to NAS_PATH below)
 REM
-REM Never touches data\, .env, start.sh, app.log or app.pid in the destination
+REM Never touches data\, .env, start.sh, app.log, app.pid or fallback.pid in the destination
 REM -- a republish refreshes the app only, not the live database, the production
 REM secrets, or the launcher the NAS boots from.
 REM
@@ -101,7 +101,7 @@ REM launcher safe. Same pattern REBUILD_PUBLISH.bat relies on.
 REM
 REM deploy.trigger stays in /XF: it was just written above, and letting /MIR
 REM consider it would delete it again (it does not exist in staging).
-robocopy "%STAGING%" "%NAS_PATH%" /MIR /XD data /XF .env start.sh app.log app.pid deploy.trigger /R:2 /W:2 >nul
+robocopy "%STAGING%" "%NAS_PATH%" /MIR /XD data /XF .env start.sh app.log app.pid fallback.pid deploy.trigger /R:2 /W:2 >nul
 if errorlevel 8 goto :robocopy_failed
 
 echo.
@@ -123,8 +123,13 @@ echo Restart requested BEFORE the copy, so the NAS switches over as the new file
 echo land rather than up to a minute later -- see the comment above the trigger.
 echo Expect a few seconds of "connection refused" rather than 500s.
 echo.
-echo If the app is still down after ~2 minutes, check app.log: the keepalive task
-echo retries every minute and its last lines say what stopped it.
+echo If the app is still down after ~2 minutes, just open it in the browser: when
+echo server.js cannot start, start.sh serves the last 100 lines of app.log as a
+echo page on port 3000 instead, with the likely cause named. The keepalive task
+echo keeps retrying every minute and the page refreshes itself.
+echo.
+echo   NOTE start.sh is NOT shipped by this publish. If the failure page never
+echo   appears, run COPY_NAS_START_SH.bat once to update the NAS-side launcher.
 echo.
 echo To switch over immediately: DSM -^> Task Scheduler -^> select
 echo "MyHomeBase keepalive" -^> Run.
