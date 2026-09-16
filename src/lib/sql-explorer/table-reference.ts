@@ -24,6 +24,7 @@ const GROUPS: TableReferenceGroup[] = [
       ["sys_app_settings", "Application-wide key/value settings shared by every user (application name, colour theme, icon set, startup message, home widgets)."],
       ["sys_module_settings", "Per-module settings shared by all users, one row per module and key — the Stocks auto-refresh interval, the music scan extensions, and so on."],
       ["sys_user_preferences", "Per-user preferences, one row per user and key — favourite module, whether to open it at startup."],
+      ["sys_calculator_history", "The Floating Calculator's tape: one row per completed calculation, per person, capped at the newest 50 each. The result is stored as the formatted string that was displayed, not as a number."],
       ["sys_users", "User accounts: username, full name, password hash, role, disabled flag, Google email and avatar."],
       ["sys_sessions", "Active login sessions — the opaque cookie id, its user and its expiry. Deleted on logout."],
       ["sys_user_module_access", "Join table granting one user access to one module."],

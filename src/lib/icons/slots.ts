@@ -55,16 +55,50 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    // The id stays `homescreen_card_clock` even though the home screen's Clock card is
+    // gone and this now badges the **Floating Clock's window**. Slot ids are persisted
+    // in `ico_slot_overrides.slot_id`, so renaming one orphans any icon an admin has
+    // already uploaded against it — see "Ids are permanent" in coding-guide.md. The
+    // label and `where` are what the admin list shows, so those *do* move with the
+    // slot; only the id is frozen.
     id: "homescreen_card_clock",
-    label: "Clock card",
-    group: "Home screen",
-    where: "Home screen → the Clock card header, immediately left of the title.",
+    label: "Clock window",
+    group: "Floating components",
+    where: "The Floating Clock's window header, immediately left of the title.",
     wired: true,
     // `calendar`, not a clock face: there is no clock glyph in the baked icon sets
     // (the same wall `admin/nav.ts` hit for its History entry), and a calendar reads
     // correctly for a card whose subject is the date and the week number. An admin
     // who wants a clock face can upload one over this slot.
     defaultConcept: "calendar",
+    namespace: "tree",
+  },
+  {
+    id: "floating_calculator_window",
+    label: "Calculator window",
+    group: "Floating components",
+    where: "The Floating Calculator's window header, immediately left of the title.",
+    wired: true,
+    // `grid`, because a keypad *is* a grid of buttons -- and because there is no
+    // calculator glyph in the baked icon sets. (`calculator` appears in
+    // `journal/icon-search.ts`, but only as a *search keyword* mapping the word "tax"
+    // onto a concept; no set draws one.) The alternative was adding a real `calculator`
+    // concept to TREE_ICON_NAMES and every icon set, which is a wider change than one
+    // window header justifies. An admin who wants a calculator face uploads one here.
+    defaultConcept: "grid",
+    namespace: "tree",
+  },
+  {
+    id: "floating_scratchpad_window",
+    label: "Scratchpad window",
+    group: "Floating components",
+    where: "The Floating Scratchpad's window header, immediately left of the title.",
+    wired: true,
+    // `note` -- and unlike the two slots above, this one needed no compromise. The baked
+    // sets already draw a sticky note with the corner turned up, which is exactly what a
+    // scratchpad is. (The clock had to settle for `calendar` and the calculator for
+    // `grid` because no set draws either subject.)
+    defaultConcept: "note",
     namespace: "tree",
   },
   {
@@ -1099,6 +1133,26 @@ export const ICON_SLOTS: IconSlot[] = [
     group: "Admin navigation",
     where: "Admin → Display Settings → Dashboard Widgets.",
     defaultConcept: "grid",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "admin_section_display_settings_floating",
+    label: "Floating Components",
+    group: "Admin navigation",
+    where: "Admin → Display Settings → Floating Components.",
+    // `window`, matching the nav entry: a floating component is a window, and there is
+    // no "float" concept in the baked sets.
+    defaultConcept: "window",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "admin_section_display_settings_scratchpad",
+    label: "Scratchpad Categories",
+    group: "Admin navigation",
+    where: "Admin → Display Settings → Scratchpad Categories.",
+    defaultConcept: "note",
     wired: true,
     namespace: "tree",
   },

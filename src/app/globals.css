@@ -1765,3 +1765,235 @@ html[data-music-player="minimized"] {
     inset 0 1px 2px rgba(0, 0, 0, 0.22),
     inset 0 -1px 0 rgba(255, 255, 255, 0.05);
 }
+
+/* The floating layer
+   ==================================================================
+   Components that live *over* the page rather than in it: a minimized puck in a
+   screen corner, and the window card it expands into. See design.md, "The
+   floating layer", and components.md's FloatingLayer entry.
+
+   Two things this composes with rather than re-deciding, per design.md's rule
+   that nothing writes a new `fixed bottom-0` of its own:
+
+   - the compact section trigger's height, and the music player's, both already
+     published as variables. A floating puck sits clear of both.
+   - `env(safe-area-inset-bottom)`, so an installed PWA doesn't park a puck under
+     the home indicator where it cannot be tapped.
+
+   The stacking *order* is not decided here -- `resolvePuckSlots` in
+   src/lib/floating owns it and hands each puck its `--floating-puck-index`. This
+   only turns that index into an offset, because a pixel height is exactly the
+   kind of thing lib must not know. */
+:root {
+  /* The puck's own size, and the gap between two stacked pucks. One place, because
+     the offset arithmetic below has to agree with the rendered button. */
+  --floating-puck-size: 3.5rem;
+  --floating-puck-gap: 0.75rem;
+}
+
+/* A minimized puck. `--floating-puck-index` is set inline per instance (the
+   idiom design.md's "Motion" section describes: the class is shared and named,
+   only the number is local).
+
+   Index 0 is nearest the corner. Each step out adds one puck plus a gap -- so a
+   clock queueing behind the minimized music puck lands exactly above it rather
+   than on top of it, which is the collision the lib function exists to prevent.
+
+   z-30, matching the music puck and the section nav: under Modal's z-50 so a
+   dialog still covers it, and under the z-40 ceiling design.md sets for chrome. */
+.floating-puck {
+  position: fixed;
+  z-index: 30;
+  /* How far out from its corner this puck sits: one puck plus a gap per index step.
+     Shared by all four corner rules below, which differ only in which edges they
+     apply it to. */
+  --floating-puck-offset: calc(
+    var(--floating-puck-index, 0) * (var(--floating-puck-size) + var(--floating-puck-gap))
+  );
+}
+
+/* The four corners, chosen per component on the Account screen.
+   ------------------------------------------------------------------
+   The BOTTOM corners share the edge with the compact section trigger and the music
+   player, so they clear both -- which is what `resolvePuckSlots` is also accounting
+   for when it reserves index 0 of bottom-right for the music puck.
+
+   The TOP corners are clear of all of that, but sit under the notch / Dynamic Island
+   on an installed phone, so they pad by `env(safe-area-inset-top)` instead. `env()` is
+   0px anywhere without insets, so both are free on a desktop. */
+.floating-puck[data-corner="bottom-right"] {
+  right: 1rem;
+  bottom: calc(
+    var(--section-trigger-height) + var(--music-player-height, 0px) + 1rem +
+      env(safe-area-inset-bottom) + var(--floating-puck-offset)
+  );
+}
+
+.floating-puck[data-corner="bottom-left"] {
+  /* Left of the shell's columns, not of the viewport: a puck at `left: 1rem` on a
+     desktop would sit under the 48px module rail and the 240px section panel. Both
+     widths are already published, and `--section-panel-width` is 0px when the panel
+     is closed, so this follows the panel in and out. */
+  left: calc(var(--module-rail-width) + var(--section-panel-width, 0px) + 1rem);
+  bottom: calc(
+    var(--section-trigger-height) + var(--music-player-height, 0px) + 1rem +
+      env(safe-area-inset-bottom) + var(--floating-puck-offset)
+  );
+}
+
+.floating-puck[data-corner="top-right"] {
+  right: 1rem;
+  top: calc(1rem + env(safe-area-inset-top) + var(--floating-puck-offset));
+}
+
+.floating-puck[data-corner="top-left"] {
+  left: calc(var(--module-rail-width) + var(--section-panel-width, 0px) + 1rem);
+  top: calc(1rem + env(safe-area-inset-top) + var(--floating-puck-offset));
+}
+
+/* Compact has no side columns -- both tiers are on the bottom edge -- so a left-docked
+   puck goes to the viewport edge rather than clearing a rail that isn't there. */
+@media (max-width: 1023px) {
+  .floating-puck[data-corner="bottom-left"],
+  .floating-puck[data-corner="top-left"] {
+    left: calc(1rem + env(safe-area-inset-left));
+  }
+}
+
+/* The puck's arrival. Decorative -- the puck is already visible and labelled, so
+   under reduced motion it simply appears (design.md: decorative motion stops). */
+@keyframes floating-puck-in {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-floating-puck-in {
+  animation: floating-puck-in 160ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-floating-puck-in {
+    animation: none;
+  }
+}
+
+/* The analog face's hands.
+   Transform only, off the layout and paint path, per design.md. The rotation
+   comes from `--hand-angle`, set inline from `handAngles()` -- the same
+   value-at-the-call-site, keyframe-in-the-stylesheet split as the puck above.
+   No transition: the hands are repainted once a second, and easing between two
+   angles would leave a second hand permanently mid-flight. */
+.clock-hand {
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  transform: rotate(calc(var(--hand-angle, 0) * 1deg));
+}
+
+/* The calculator's keypad
+   ==================================================================
+   A dense grid of pressable keys, following the SUDOKU BOARD's precedent rather than
+   `Button`'s: 36 offset-shadow switches in one panel is visually deafening, and
+   design.md's rule that "any clickable action styled as a standalone button" uses
+   `Button` is about discrete page-level actions, not the cells of a pad. Same call
+   `.sudoku-cell` makes, and for the same reason.
+
+   So a key is a low-bevelled slab in a tray -- depth from a lit top edge and a shaded
+   underside, never the hard 4px offset that marks a `Button`. Tokens throughout, so
+   the pad inverts correctly on a light theme. */
+.calc-key {
+  border-radius: 0.5rem;
+  border: 1px solid var(--line);
+  background: var(--paper-raised);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  /* Lit top edge, shadowed underside: the `.card-embossed` vocabulary at key scale. */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18),
+    0 1px 2px rgba(0, 0, 0, 0.22);
+  transition:
+    transform 80ms ease-out,
+    box-shadow 80ms ease-out,
+    background-color 80ms ease-out;
+  /* 44px minimum, per design.md's touch-target rule. The grid may grow them. */
+  min-height: 2.75rem;
+}
+
+.calc-key:hover {
+  background: color-mix(in srgb, var(--paper-raised) 88%, var(--brass));
+}
+
+/* Pressed: the slab sinks into its tray. `transform` and `box-shadow` only, so this
+   stays off the layout path. */
+.calc-key:active {
+  transform: translateY(1px);
+  box-shadow:
+    inset 0 1px 3px rgba(0, 0, 0, 0.3),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.calc-key:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+/* The operator column and the scientific rows read as a different material from the
+   digits -- the standard calculator grouping, which is what lets a reader find ÷ or
+   sin without reading every key. */
+.calc-key-operator {
+  background: var(--brass-soft);
+  color: var(--brass-dark);
+  font-weight: 600;
+}
+
+.calc-key-operator:hover {
+  background: color-mix(in srgb, var(--brass-soft) 80%, var(--brass));
+}
+
+.calc-key-function {
+  background: color-mix(in srgb, var(--paper-raised) 92%, var(--ink));
+  font-size: 0.8125rem;
+}
+
+.calc-key-function:hover {
+  background: color-mix(in srgb, var(--paper-raised) 84%, var(--brass));
+}
+
+/* `=`. The one key that gets the accent fill, because it is the pad's primary action --
+   `text-paper` on `bg-brass` for the same reason design.md's icon-badge rule gives: it
+   reads correctly on every theme without hardcoding a white or black glyph. */
+.calc-key-action {
+  background: var(--brass);
+  color: var(--paper);
+  font-weight: 600;
+}
+
+.calc-key-action:hover {
+  background: color-mix(in srgb, var(--brass) 88%, var(--ink));
+}
+
+/* AC. Semantic red, literal rather than a token, per design.md's stated exception for
+   destructive and error colours. */
+.calc-key-danger {
+  color: #f87171;
+  font-weight: 600;
+}
+
+.calc-key-danger:hover {
+  background: color-mix(in srgb, var(--paper-raised) 88%, #f87171);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .calc-key {
+    transition: none;
+  }
+  .calc-key:active {
+    transform: none;
+  }
+}

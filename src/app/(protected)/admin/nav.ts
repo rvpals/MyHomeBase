@@ -65,6 +65,28 @@ export const adminNav: SectionNode[] = [
         hint: "Choose which cards the home screen shows, and in what order",
         icon: "grid",
       },
+      {
+        // Also a fresh id, and permanent: `SectionPanel` derives this section's icon
+        // slot from it, so renaming it later orphans any uploaded override.
+        id: "display-settings-floating",
+        label: "Floating Components",
+        href: "/admin/display-settings/floating",
+        hint: "Choose which components may float over the application",
+        // `window`, as Application Configuration uses: a floating component is a
+        // window, and there is no "float" concept in the baked icon sets.
+        icon: "window",
+      },
+      {
+        // Also fresh and permanent -- `SectionPanel` derives this section's icon slot
+        // from it, so renaming it later orphans any uploaded override.
+        id: "display-settings-scratchpad",
+        label: "Scratchpad Categories",
+        href: "/admin/display-settings/scratchpad",
+        hint: "Set the tabs the Scratchpad shows, for everyone",
+        // `note` -- a sticky note with the corner turned up, which is what a scratchpad
+        // is. Unlike its two siblings above, this subject the baked sets actually draw.
+        icon: "note",
+      },
     ],
   },
   {

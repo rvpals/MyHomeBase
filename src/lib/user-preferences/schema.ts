@@ -53,7 +53,70 @@ export const userPreferencesUpdateSchema = z.object({
   // this schema is the boundary for the CLI too, and a command about favorites
   // shouldn't have to name a temperature unit to run.
   weatherUnit: z.enum(["celsius", "fahrenheit"]).catch("fahrenheit").default("fahrenheit"),
+  // The Clock's display options. `.catch` on the face and `.default` on the whole
+  // object for the same reason as the fields above: this schema is the boundary for
+  // the CLI too, so a command about favorites must not have to name a clock face, and
+  // an unrecognised face from an older client is corrected rather than rejecting the
+  // save and taking the other fields with it.
+  clock: z
+    .object({
+      face: z.enum(["digital", "analog"]).catch("digital"),
+      showDate: z.boolean(),
+      showWeather: z.boolean(),
+      showWeekday: z.boolean(),
+    })
+    .default({ face: "digital", showDate: true, showWeather: true, showWeekday: true }),
 });
+
+/**
+ * One floating component's state, the boundary for `saveFloatingState`.
+ *
+ * Separate from the form schema above because it is a separate use-case with a
+ * separate trigger: this fires every time a reader minimizes or closes a window,
+ * where the form fires when they press Save. Folding the two together would mean
+ * either write had to carry the other's whole payload.
+ *
+ * Neither field gets a `.catch`: an unknown id or a nonsense state here is a bug in
+ * the caller, not an older client sending a field we since renamed, and silently
+ * writing a corrected value would hide it.
+ */
+export const floatingStateUpdateSchema = z.object({
+  id: z.enum(["clock", "calculator", "scratchpad"]),
+  state: z.enum(["closed", "minimized", "open"]),
+});
+
+export type FloatingStateUpdate = z.infer<typeof floatingStateUpdateSchema>;
+
+/**
+ * One component's docked corner, the boundary for `saveFloatingCorner`.
+ *
+ * Its own schema for the same reason the state has one: a corner is set once on the
+ * Account screen, a state changes on every minimize, and one combined write would let
+ * either clobber the other's field.
+ */
+export const floatingCornerUpdateSchema = z.object({
+  id: z.enum(["clock", "calculator", "scratchpad"]),
+  corner: z.enum(["bottom-right", "bottom-left", "top-right", "top-left"]),
+});
+
+export type FloatingCornerUpdate = z.infer<typeof floatingCornerUpdateSchema>;
+
+/**
+ * The calculator's remembered state, the boundary for `saveCalculatorState`.
+ *
+ * Its own schema and its own use-case for the same reason the floating state has one:
+ * this fires when a calculation completes or the angle mode flips, not when the
+ * Preferences form is submitted. Both fields are optional so either can be written
+ * alone — toggling degrees must not clear the last result.
+ */
+export const calculatorStateUpdateSchema = z.object({
+  angleMode: z.enum(["deg", "rad"]).optional(),
+  // `.max` because this is display text reaching a stored row; the formatter never
+  // produces anything near it, so the cap only ever catches a bad caller.
+  lastResult: z.string().trim().max(100).optional(),
+});
+
+export type CalculatorStateUpdate = z.infer<typeof calculatorStateUpdateSchema>;
 
 /**
  * `z.input`, not `z.infer` — this is the type of what a *caller* hands in, before

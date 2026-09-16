@@ -14,9 +14,14 @@
  * A saved layout naming an id that is no longer here is dropped by `resolveHomeWidgets`,
  * and a widget missing from a saved layout is inserted at its catalogue position — so
  * adding or retiring a card needs no migration.
+ *
+ * **`clock` was retired** from this catalogue when the Clock card was removed from the
+ * home screen; the clock now lives in the floating layer instead (see
+ * `FLOATING_COMPONENTS`). A stored `home_widgets` value still naming it is harmless for
+ * exactly the reason above — `resolveHomeWidgets` drops the unknown id — which is why
+ * that removal shipped without a migration.
  */
 export const HOME_WIDGET_IDS = [
-  "clock",
   "carousel",
   "dailyQuote",
   "todayInHistory",
@@ -33,12 +38,6 @@ export interface HomeWidgetInfo {
 }
 
 export const HOME_WIDGET_INFO: Record<HomeWidgetId, HomeWidgetInfo> = {
-  clock: {
-    id: "clock",
-    label: "Clock",
-    description:
-      "Today's date, the ISO week number, and a ticking time. The date and week come from the server's calendar; the time is the reader's own clock, so it is right on every device.",
-  },
   carousel: {
     id: "carousel",
     label: "Module Carousel",

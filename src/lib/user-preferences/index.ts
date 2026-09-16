@@ -14,8 +14,14 @@ export {
 export {
   userPreferenceSchema,
   userPreferencesUpdateSchema,
+  floatingStateUpdateSchema,
+  calculatorStateUpdateSchema,
+  floatingCornerUpdateSchema,
   type UserPreferenceInput,
   type UserPreferencesUpdate,
+  type FloatingStateUpdate,
+  type CalculatorStateUpdate,
+  type FloatingCornerUpdate,
 } from "./schema";
 export type { UserPreferencesRepository } from "./ports";
 export {
@@ -26,6 +32,9 @@ export {
 export {
   getUserPreferences,
   saveUserPreferences,
+  saveFloatingState,
+  saveFloatingCorner,
+  saveCalculatorState,
   resolveStartupDestination,
   UnknownFavoriteModuleError,
 } from "./user-preferences";

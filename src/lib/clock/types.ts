@@ -24,3 +24,27 @@ export interface ClockReading {
    */
   weekYear: number;
 }
+
+/**
+ * Which face the clock draws.
+ *
+ * A union rather than an `isAnalog` boolean — see `CLOCK_FACE_OPTIONS` for why.
+ */
+export type ClockFace = "digital" | "analog";
+
+/**
+ * What a reader has chosen to see on their clock, wherever it is drawn.
+ *
+ * Shared by the home screen's card and the floating window: the toggles are a property
+ * of the *clock*, not of either host, so a reader who turns the weather off sees it off
+ * in both places. Every field is defined — see `resolveClockFaceOptions`.
+ */
+export interface ClockFaceOptions {
+  face: ClockFace;
+  /** The long date, "13 September 2026". */
+  showDate: boolean;
+  /** The weather strip, when the reader has a location set at all. */
+  showWeather: boolean;
+  /** The weekday in full, "Sunday". */
+  showWeekday: boolean;
+}

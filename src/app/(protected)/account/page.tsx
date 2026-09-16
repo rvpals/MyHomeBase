@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { listModules } from "@/lib/modules";
 import { getAccessibleModules } from "@/lib/user";
+import { getEnabledFloating } from "@/lib/floating";
 import { getUserPreferences } from "@/lib/user-preferences";
 import {
   VIEWPORT_COOKIE,
@@ -36,6 +37,9 @@ export default async function AccountPage() {
         viewport={resolveViewport({ cookieValue: cookieStore.get(VIEWPORT_COOKIE)?.value })}
         viewportPinned={cookieStore.get(VIEWPORT_PINNED_COOKIE)?.value === "1"}
         preferences={getUserPreferences(deps.userPreferencesRepo, currentUser.id)}
+        // Read here rather than in the view: which components are available is an
+        // app-wide setting, and the view is a client island.
+        enabledFloating={getEnabledFloating(deps.settingsRepo)}
         // Plain data across the boundary — the view is a client island and can't
         // be handed the module records themselves.
         modules={accessibleModules.map((appModule) => ({

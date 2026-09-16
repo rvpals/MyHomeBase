@@ -19,6 +19,11 @@ import { SqliteModuleTextureRepository } from "./module-texture/repository";
 import { SqliteDailyQuoteRepository } from "./daily-quote/repository";
 import { NodeCsvFolder } from "./expense/csv-folder";
 import { SqliteExpenseRepository } from "./expense/repository";
+import { SqliteCalculatorHistoryRepository } from "@/lib/calculator";
+import {
+  SqliteNoteCategoryRepository,
+  SqliteScratchpadRepository,
+} from "@/lib/scratchpad";
 import { SqliteGamesRepository } from "./games/repository";
 import { NominatimGeocodingClient } from "./geocoding/nominatim-client";
 import { OpenMeteoWeatherClient } from "./weather/open-meteo-client";
@@ -169,6 +174,16 @@ export const deps = {
   // repository for the games themselves — the catalogue is code, in
   // src/lib/games/catalogue.ts.
   gamesRepo: new SqliteGamesRepository(db),
+  // The Floating Calculator's history tape (migrations/0095). Per-user, unlike the
+  // games board above — a calculator tape is private working-out.
+  calculatorHistoryRepo: new SqliteCalculatorHistoryRepository(db),
+  // The Floating Scratchpad (migrations/0096). Two repositories, because the two halves
+  // have different owners: the categories are the household's tab strip, configured in
+  // Administration, while the notes are private working-out like the tape above. Wiring
+  // them separately is what keeps the admin screen's repository free of any method that
+  // could return somebody's note.
+  noteCategoryRepo: new SqliteNoteCategoryRepository(db),
+  scratchpadRepo: new SqliteScratchpadRepository(db),
   musicRepo: new SqliteMusicRepository(db),
   // Read-only by construction — MusicFileStore has no write method, so nothing here
   // can modify the music collection.

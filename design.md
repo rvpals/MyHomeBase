@@ -290,6 +290,7 @@ arbitrary value at the call site. The ones that exist:
 | `animate-arrow-bump` | The shake an Arrow Clearing piece plays when its way out is blocked. |
 | `animate-tetris-line` / `-cell` / `-sweep` / `-quad` | The four layers of a Tetris line clear. |
 | `animate-card-deal` | A playing card flying from the deck to its seat. |
+| `animate-floating-puck-in` | A floating component's puck arriving in its corner. |
 
 Where an animation needs per-instance values — a stagger, a distance, a duration the
 view also has to know — they arrive as **CSS custom properties set inline** at the call
@@ -329,6 +330,9 @@ covers the responsive and safe-area idioms. Full reasoning under "Phone and desk
 | `--section-trigger-height` | What the compact section trigger occupies on the bottom edge |
 | `.shell-rail` / `.shell-panel` | Tier 1 and tier 2 as fixed columns, insets included |
 | `.shell-trigger` | The compact section trigger pinned to the bottom edge |
+| `.floating-puck` + `[data-corner]` | A floating component's minimized puck, in one of four corners; stacks outward by `--floating-puck-index`, clearing the section trigger, the music player and (docked left) the shell's two columns |
+| `.clock-hand` | One hand of an analog clock face, rotated by `--hand-angle` |
+| `.calc-key` (+ `-operator` / `-function` / `-action` / `-danger`) | One key of the calculator's keypad — a low-bevelled slab, **not** `Button`'s offset |
 
 - **Icon badge** — the standard "identity" mark for a card or feature tile is a solid
   rounded-square accent tile with the glyph knocked out of it: `rounded-xl bg-brass
@@ -616,6 +620,139 @@ What survived, because both are still needed and neither belongs to one tier:
 sections, and so no bottom bar) and
 [`UserMenu`](components.md#navmenus) (the profile menu), both in
 `src/components/nav-menus.tsx`.
+
+## The floating layer
+
+A **floating component** sits *over* the page rather than in it: a small image parked in
+a screen corner (the *puck*) that expands into a window card. The Floating Clock is the
+first one. Full mechanics in `coding-guide.md` → *The floating layer*; this section is
+the visual and layout contract.
+
+**This is not the old `Puck`.** That was navigation minimised to a blob, and "There is no
+second navigation system" above still holds — nothing about *where you are* may live
+here. A floating component is an **accessory**: it shows you something (a clock, a
+now-playing) while you work on something else. If a proposed floating component would
+navigate, it belongs in a tier instead.
+
+**It is the fourth surface, and the list is closed.** `ModuleRail`, `SectionPanel`,
+`AppHeader` — and this. *Adding a UI element to the shell* says that when none of the
+three fits, the answer is to ask, not to add a fourth; this was that conversation, and
+the answer is a **layer**, so the next floating thing registers in `FLOATING_COMPONENTS`
+rather than inventing a fifth surface.
+
+### Where it sits
+
+- **`z-30`**, level with the music puck and the section nav. `Modal` owns `z-50` so a
+  dialog covers a floating window, and chrome stays under `z-40`.
+- **The reader picks the corner, per component.** Four of them, stored per component
+  (`PUCK_CORNERS`, chosen on Account → Floating Components), because the right one
+  depends on the screen and the hand: bottom-right is the default and where the music
+  puck lives, so a reader who wants a thumb clear of it moves theirs. The component
+  applies it as `data-corner`; the offsets are `.floating-puck`'s.
+- **Stacking is per corner.** `resolvePuckSlots` queues each corner independently, so
+  two pucks in different corners both sit flush at index 0 and only the corner the
+  music puck occupies makes room for it. The index comes from `lib`, so the stacking is
+  unit-tested rather than eyeballed. **Don't write a new `fixed bottom-0`.**
+- **The bottom corners share the edge; the top corners share the notch.** Bottom
+  composes with `--section-trigger-height` and `--music-player-height`; top pads by
+  `env(safe-area-inset-top)`. A **left**-docked puck also clears
+  `--module-rail-width` + `--section-panel-width` on the full layout, since those two
+  columns are where a naive `left: 1rem` would hide it — and drops that on compact,
+  where both tiers are on the bottom edge instead.
+- **A puck reserves no page padding**, exactly as `html[data-music-player="minimized"]`
+  publishes `0px`: floating over the last line of a page is the point of minimising.
+  The layer mirrors `html[data-floating]` for anything that needs to know it's there.
+
+### A floating window sizes to its content
+
+`Modal size="window"` is `h-auto w-auto`, capped at `56rem` / `85vh` with a `20rem`
+floor — **not** a fixed `80vw × 80vh`, which is what it was first built as. That fixed
+box was wrong in a way worth recording: a clock with four lines in it sat in an acre of
+empty panel, because nothing about the content could shrink the box. The cap is what a
+*reading* surface wants, the floor stops a one-word window collapsing into its title
+bar, and between them the content decides.
+
+The corollary is that **the content must not stretch either**, or it silently becomes
+the thing defining the width. Two habits to avoid inside a floating window:
+
+- `justify-between` on a header row — it shoves the two ends apart to fill whatever
+  width is offered. Use an explicit `gap-*`.
+- `w-full` columns in a fixed-column grid (`grid-cols-7`) — each column takes a seventh
+  of the container, so the grid can never be narrower than its parent. Give the columns
+  a real width and let a flex row lay them out.
+
+Both of those were live bugs in the clock's weather strip: a seven-column `w-full`
+forecast rendered ~2000px wide with the content huddled at the edges.
+
+### What compact does differently
+
+A draggable 80vw window is a *worse* full-screen sheet on a 390px phone: there is
+nowhere to drag it to, and the drag fights the page's own scroll. So `FloatingWindow`
+forks on `useIsCompact()` and hands compact `Modal size="full"` — the edge-to-edge
+treatment that already exists — while `full` gets the content-sized window. That is a
+genuine component fork, per *Fork a component only when restyling genuinely can't do
+it*: no `max-lg:` variant can switch off a drag.
+
+The window is **non-modal on desktop only** (`Modal`'s `isNonModal`): no scrim, no scroll
+lock, no focus trap, because you are meant to keep using the page underneath. Compact
+keeps the scrim — the sheet covers the screen anyway, and the scrim is what separates it
+from the page behind. With no scrim, the panel takes `.card-raised`: a hairline border
+alone doesn't separate a floating card from the content it floats over.
+
+### The window chrome is `_ ▢ ✕`, in that order
+
+Minimise, maximise, close — the order every desktop window the reader has ever used has,
+and the order `MusicPlayerBar`'s two buttons already follow. Minimise first because it is
+the least destructive of the three.
+
+`_` and `✕` mean genuinely different things and must not be collapsed into one control:
+`_` is "get out of my way for a moment" and the component keeps running, `✕` is "I don't
+want this" and it is gone until the reader turns it back on in Account. The puck carries
+its own `✕` for the same reason — on its shoulder rather than inside it, since a 14px
+target inside a 56px one is a mis-tap waiting to happen (and a button inside a button is
+invalid markup).
+
+### A dense grid of keys is not a row of buttons
+
+The calculator's keypad is 36 plain `<button>`s carrying `.calc-key`, **not 36
+`Button`s**. The rule above — *any clickable action styled as a standalone button uses
+`Button`* — is about discrete, page-level actions; a pad's keys are cells, and 36 hard
+offset shadows in one panel is visually deafening. `.sudoku-cell` made this call first
+and this follows it.
+
+So a key is a **low-bevelled slab in a tray**: a lit top edge, a shaded underside, and a
+`translateY(1px)` sink on `:active`. Depth without joining the button vocabulary, the
+same distinction `.card-embossed` draws. Four tones group the pad — digits plain,
+operators on `brass-soft`, functions a step darker, `=` on the accent fill, `AC` in
+semantic red — which is what lets a reader find `÷` without reading every key.
+
+### The puck is an image, not a label
+
+It has to say what it is at 56px with no room for words, so the *component decides what
+reads best small* rather than reproducing its window in miniature. The Floating Clock's
+puck is **always an analog dial** whatever face the reader picked for the window:
+`HH:MM:SS` at that size is illegible or clipped, while a dial is recognisable as a clock
+and tells the time without being read. It also drops to quarter-hour ticks and no second
+hand — twelve ticks is a grey smudge — and ticks once a minute rather than once a second,
+since there is no second hand to repaint.
+
+The Floating Calculator's puck is **its last result**, which is the other shape this
+takes: not a miniature of the window but the one piece of state worth glancing at.
+`formatForPuck` shortens it to fit (`1.2e8`, never `123456789`) and `puckTextSize` steps
+the font down by length, both in `lib` — "how many digits fit in 56px" is a rule about
+numbers, not markup. The full value stays in the `title` and the accessible name, and one
+tap restores the window, so the abbreviation loses nothing. Before the first calculation
+it draws an `=` glyph rather than an empty circle.
+
+The Floating Scratchpad's puck is **the open tab's name over a count of its notes**, and
+it is the case where "what reads best small" also had to answer *what must not be shown*.
+The obvious choice — a line of the current note — was rejected twice over: note text is
+illegible at 56px, and it would leave someone's private writing parked over every page
+for anyone walking past the screen. The tab name plus a count is the glanceable fact
+instead: *which notebook is open, and is there anything in it.* The name is clipped rather
+than shrunk, since a font small enough to fit "Shopping list" whole is unreadable anyway,
+and the full name is in the `title`. With no categories at all it falls back to the
+notepad glyph, the same way the calculator falls back to `=`.
 
 ## Phone and desktop
 

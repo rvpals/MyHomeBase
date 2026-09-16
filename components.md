@@ -54,6 +54,9 @@ pattern instead of inventing one.
 | [`BlobCell`](#blobcell) | A BLOB cell in a grid — its type/size plus Save, and Preview if it is an image | [src/components/blob-cell.tsx](src/components/blob-cell.tsx) | yes |
 | [`Modal`](#modal) | **Any dialog** — overlay, panel, Esc/focus handling | [src/components/modal.tsx](src/components/modal.tsx) | yes |
 | [`FullscreenStage`](#fullscreenstage) | **A real fullscreen display** — chromeless black stage via the Fullscreen API | [src/components/fullscreen-stage.tsx](src/components/fullscreen-stage.tsx) | yes |
+| [`FloatingLayer`](#floatinglayer) | **A component that floats over the page** — puck in a corner, window card when opened | [src/components/floating-layer.tsx](src/components/floating-layer.tsx) | yes |
+| [`ClockFace`](#clockface) | The clock itself — digital or analog, with date/weekday/weather toggles | [src/components/clock-face.tsx](src/components/clock-face.tsx) | yes |
+| [`CalculatorKeypad`](#calculatorkeypad) | A calculator's display and keypad — scientific keys, optional keyboard capture | [src/components/calculator-keypad.tsx](src/components/calculator-keypad.tsx) | yes |
 | [`Comments`](#comments) | A note/instruction parked beside a feature, behind an info chip | [src/components/comments.tsx](src/components/comments.tsx) | yes |
 | [`CollapsibleCard`](#collapsiblecard) | A titled section that expands/collapses | [src/components/collapsible-card.tsx](src/components/collapsible-card.tsx) | yes |
 | [`Tabs`](#tabs) | One-of-N panels in the same space | [src/components/tabs.tsx](src/components/tabs.tsx) | yes |
@@ -584,8 +587,10 @@ that's what this was extracted from.
 | `children` | `ReactNode` | The body. The only part that scrolls. |
 | `footer?` | `ReactNode` | Bottom-right action bar; pass `Button`s in reading order. |
 | `onClose` | `() => void` | Fired by Escape, an overlay click, and the ✕. |
-| `size?` | `"sm" \| "md" \| "lg" \| "full" \| "window"` | Default `"md"` (`max-w-2xl`). `"full"` fills the viewport edge to edge; `"window"` is the draggable 80% floating variant (below). |
+| `size?` | `"sm" \| "md" \| "lg" \| "full" \| "window"` | Default `"md"` (`max-w-2xl`). `"full"` fills the viewport edge to edge; `"window"` is the draggable floating variant, **sized to its content** and capped at 56rem / 85vh (below). |
 | `isBusy?` | `boolean` | Suppresses Escape / overlay-click / ✕ while a write is in flight. |
+| `onMinimize?` | `() => void` | When given, the header grows a `_` button left of maximize — the window-chrome trio `_ ▢ ✕`. For a dialog that shrinks rather than closes; see [`FloatingWindow`](#floatinglayer). Omitted for most dialogs on purpose: a confirmation you can park is one you can lose. |
+| `isNonModal?` | `boolean` | Drops the scrim, the scroll lock and the focus trap, so the page behind stays visible **and usable**, and the panel takes `.card-raised` to separate itself. For the floating layer only — a floating accessory is not a dialog you answer and dismiss. Escape and the ✕ still close it. |
 | `className?` | `string` | Applied to the panel, merged last. |
 
 ```tsx
@@ -649,6 +654,234 @@ the click both starts and ends on the overlay, so dragging a text selection out 
 panel doesn't close it.
 
 ---
+
+## FloatingLayer
+
+**A component that floats over the page**, rather than sitting in it: a small image
+parked in a screen corner (the *puck*) that expands into a window card. Three files —
+state, the two shapes, and the mount — plus the state rules in `src/lib/floating`.
+
+Use it for an **accessory** — something you want visible while you work on something
+else. Not for navigation: `design.md` → *The floating layer* explains why this is not a
+revival of the retired `Puck`, and why the surface list is closed at four.
+
+- **Source:** [src/components/floating-layer.tsx](src/components/floating-layer.tsx)
+  (state), [floating-window.tsx](src/components/floating-window.tsx) (the two shapes),
+  [floating-host.tsx](src/components/floating-host.tsx) (the mount)
+- **Import:** `import { FloatingLayerProvider, useFloatingLayer } from "@/components/floating-layer";`
+- **Client components:** yes
+
+### `FloatingLayerProvider`
+
+Owns which components are open, minimized or closed. **Mount once, in the protected
+layout** — not inside a page, or a floating window would close on every navigation (the
+same reason `MusicPlayerProvider` lives there).
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `children` | `ReactNode` | The floating components themselves. |
+| `enabled` | `readonly FloatingId[]` | Which components an admin has made available, resolved on the server. |
+| `initialStates` | `Partial<Record<FloatingId, FloatingState>>` | Each component's stored state for this reader, resolved on the server so the first paint is right. |
+| `initialCorners` | `Partial<Record<FloatingId, PuckCorner>>` | Each component's docked corner, likewise. |
+| `actions` | `FloatingActions` | The persistence action. **Injected, not imported** — see the note below. |
+| `musicPuckUp?` | `boolean` | Whether the music player is itself a puck, so a floating puck queues behind it. Read by the mount site, not here. |
+
+**What `useFloatingLayer()` returns:** `states`, `isEnabled(id)`, `puckSlots`, `corners`,
+`setCorner(id, corner)`, and the four transitions `open` / `minimize` / `close` /
+`restore`. It returns `undefined`
+outside the provider rather than throwing, matching `useMusicPlayer()`, so a component
+can render in isolation.
+
+`restore` is deliberately distinct from `open`: it only moves `minimized`, so a stale tap
+on a puck that has just been closed is a no-op rather than resurrecting the component.
+
+### `FloatingWindow`
+
+The window card. A **thin wrapper over `Modal size="window"`** — that variant already
+solves dragging, viewport clamping, maximize/restore and focus return, so this adds only
+the `_` button, the non-modal treatment and the compact fork. Don't build a second
+draggable panel.
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `title` | `string` | Heading and accessible name. |
+| `titleIcon?` | `ReactNode` | A floating component *is* a place, so it may badge itself. |
+| `children` | `ReactNode` | The body. |
+| `onClose` | `() => void` | The close button — gone until re-opened from Account. |
+| `onMinimize` | `() => void` | The minimize button — shrink to the puck, still running. |
+| `className?` | `string` | Merged last. |
+
+**Compact gets `Modal size="full"`**, not a small floating window, and dragging is off:
+a draggable 80vw window on a 390px phone is a worse full-screen sheet. That is a real
+component fork on `useIsCompact()` — no `max-lg:` variant can switch off a drag.
+
+### `FloatingPuck`
+
+The minimized shape: a 56px round button showing a live image of the component, with its
+own close button on the shoulder.
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `label` | `string` | Tooltip and accessible name, e.g. "Floating Clock". |
+| `index` | `number` | Which slot outward from the corner, from `resolvePuckSlots`. 0 is nearest. |
+| `corner` | `PuckCorner` | Which of the four corners to dock in — the reader's per-component choice, also from `resolvePuckSlots`. Applied as `data-corner`; the offsets are `.floating-puck`'s. The shoulder ✕ flips to the outward side so it is never clipped. |
+| `children` | `ReactNode` | The small image. Make it read at 56px — see `FloatingClock`'s dial. |
+| `onRestore` | `() => void` | Tapping the puck. |
+| `onClose` | `() => void` | The shoulder close button. |
+| `className?` | `string` | Merged last. |
+
+Positioning is entirely `.floating-puck`'s, reading the `--floating-puck-index` this sets
+inline. **Nothing here writes a `fixed` offset** — the bottom-right corner is already the
+music player's, and `resolvePuckSlots` in `lib` owns the queue order so two pucks can't
+land on each other.
+
+```tsx
+// In the protected layout — once, above `children`.
+<FloatingHost
+  enabled={enabledFloating}
+  initialStates={preferences.floating}
+  actions={floatingActions}
+  clockReading={clockReading}
+  clockOptions={preferences.clock}
+  clockWeather={forecast ? <ClockWeather forecast={forecast} placeName={name} /> : undefined}
+/>
+```
+
+**Used by:** [the protected layout](src/app/(protected)/layout.tsx), via `FloatingHost`.
+
+**Why `actions` is a prop.** The state persists to `usr_preferences`, so the provider has
+to call a server action — but a component under `src/components/` importing from
+`src/app/` inverts the dependency the layering rests on. The action arrives as a prop,
+exactly as the queue actions do for [`MusicPlayerProvider`](#musicplayerprovider) and
+`logoutAction` for [`NavMenus`](#navmenus). It also means the provider renders in a test
+with a fake and no database.
+
+**`FloatingActions.saveState` takes one object because the server action does**, and the
+mount site must assign that action **directly — never wrapped in an arrow.** A
+`"use server"` function crosses the boundary because React recognises that specific
+function; a closure around it fails at request time with *"Functions cannot be passed
+directly to Client Components"*, and nothing in typecheck, lint, build or the unit tests
+catches it. Adapt shapes inside the component, never at the mount site. Full reasoning in
+`coding-guide.md` → *Actions are assigned, never wrapped*.
+
+**Transitions are optimistic.** The state moves at once and the write follows; a window
+that waited for a round-trip before minimizing would feel broken over wifi, and the
+stakes are a window position. The rules themselves (`minimizeState`, `restoreState`,
+`effectiveState`) live in `src/lib/floating` and are unit-tested without a browser.
+
+**Enabled is app-wide, the state is per reader**, and disabled wins — an admin turning a
+component off takes it off every screen, without erasing what each reader had. Adding a
+new floating component is a four-step recipe in `coding-guide.md` → *The floating layer*.
+
+**The three registered components**, worth reading in order because each adds a kind of
+state the one before it didn't have:
+
+| Id | Component | Puck shows | Own storage |
+|---|---|---|---|
+| `clock` | [`FloatingClock`](src/components/floating-clock.tsx) | A live analog dial | none |
+| `calculator` | [`FloatingCalculator`](src/components/floating-calculator.tsx) | **The last result** | `sys_calculator_history` (migration 0095) |
+| `scratchpad` | [`FloatingScratchpad`](src/components/floating-scratchpad.tsx) | **The open tab and its note count** | `sys_scratchpad_categories` + `sys_scratchpad_notes` (migration 0096) |
+
+The layer itself only ever stores `open`/`minimized`/`closed`. Anything else a component
+must remember is its own business — the calculator keeps its angle mode and last result
+in user preferences and its tape in a table, and the layer knows about none of it.
+
+The scratchpad is the case where a component's storage has **two different owners**: its
+categories are household-wide (an admin arranges the tab strip in Administration ›
+Display Settings › Scratchpad Categories) while its notes are per-reader, so two people
+share the tabs and neither sees the other's notes. It is also the first floating
+component whose content is *typed*, which is why it is the only one that autosaves —
+800ms after the last keystroke, plus a flush on blur, on a tab switch and on
+minimize/close, so parking the window mid-sentence loses nothing. And unlike the
+calculator's fire-and-forget tape, **a failed note save is surfaced**: a dropped tape row
+loses a record of something still on screen, but a dropped note save loses the reader's
+own writing.
+
+## CalculatorKeypad
+
+**A calculator's display and keypad** — two display lines, 16 scientific keys, a 20-key
+numeric pad, and optional physical-keyboard capture. Pure presentation: it takes a
+`CalculatorState` and raises a key press; what a key *does* is `applyKey` in
+`src/lib/calculator`.
+
+- **Source:** [src/components/calculator-keypad.tsx](src/components/calculator-keypad.tsx)
+- **Import:** `import { CalculatorKeypad } from "@/components/calculator-keypad";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `state` | `CalculatorState` | Entry, last result, error, angle mode. From `applyKey`. |
+| `onKey` | `(key: CalculatorKey) => void` | Raised for every press, from a button or the keyboard. |
+| `captureKeyboard?` | `boolean` | Bind physical keys. Default `false`; the floating window sets it. **Scoped to this component's subtree, never `document`** — see below. |
+| `children?` | `ReactNode` | Rendered under the pad — the history tape, in the floating window's case. |
+| `className?` | `string` | Merged last. |
+
+```tsx
+<CalculatorKeypad state={state} onKey={handleKey} captureKeyboard>
+  <HistoryTape … />
+</CalculatorKeypad>
+```
+
+**Used by:** [`FloatingCalculator`](src/components/floating-calculator.tsx).
+
+**Registered rather than route-local** because a calculator plausibly belongs inside the
+Expense module later, at which point this is already the component and the floating
+window is just one of its callers.
+
+**Notes.** Every key comes from the catalogue in `src/lib/calculator/keypad.ts` — label,
+tone, what it inserts, and which physical keys trigger it — so the view is a `.map` over
+a table and `keyForKeyboardEvent` reads the same list. That is what stops the on-screen
+pad and the keyboard drifting apart.
+
+**Keyboard capture is bound to the keypad's own subtree.** The floating window is
+non-modal, so a `document`-level handler would swallow digits meant for the page behind
+it: a reader typing in a form with the calculator open would lose every number. Anything
+unmapped — Tab, the arrows, any press with Ctrl/Cmd/Alt — is left entirely alone.
+
+**Keys are plain `<button>`s with the `.calc-key` classes, not [`Button`](#button).**
+`design.md` reserves `Button`'s hard offset shadow for discrete page-level actions; 36 of
+them in one panel is visually deafening. This follows `.sudoku-cell`'s precedent for a
+dense grid of pressable cells — see `design.md` → *A dense grid of keys is not a row of
+buttons*.
+
+`aria-live="polite"` sits on the **result line only**. Announcing every keystroke of the
+expression would make the pad unusable with a screen reader, while the answer is exactly
+what a reader wants read out.
+
+## ClockFace
+
+The clock itself — the face, the date lines and the ISO-week chip, **with no card around
+it**. Promoted out of the home screen's Clock card when the floating clock needed
+the same face and the same toggles; implementing it twice would have guaranteed the two
+drifted apart.
+
+- **Source:** [src/components/clock-face.tsx](src/components/clock-face.tsx)
+- **Import:** `import { ClockFace } from "@/components/clock-face";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `reading` | `ClockReading` | The server's reading of today — date, weekday, ISO week. |
+| `options` | `ClockFaceOptions` | Which face (`digital` / `analog`) and what to show: date, weekday, weather. |
+| `weather?` | `ReactNode` | The weather strip, **already rendered by the server**. Gated by `options.showWeather`. |
+| `size?` | `"sm" \| "md"` | `"sm"` for the floating window; `"md"` is the roomier original, kept for a wider host. |
+| `className?` | `string` | Merged last. |
+
+**Used by:** [`FloatingClock`](src/components/floating-clock.tsx). It was extracted when
+the home screen's Clock card and the floating clock needed the same face; that card has
+since been retired, so the floating clock is the only caller today.
+
+**Notes.** The time is client-only and starts `undefined` — a clock is the textbook
+hydration mismatch, so the server sends no time and the first effect fills it in, making
+the two renders identical by construction. The tick re-reads the real clock rather than
+incrementing a counter, because a counter drifts and is throttled hard in a background
+tab. Hand angles come from `handAngles` in `src/lib/clock`; nothing here computes one.
+`aria-live="off"` on the digital face — a clock announcing itself once a second would
+make the page unusable with a screen reader.
+
+The `weather` prop is a **node, not forecast data**: this is a client component and the
+weather strip is not, so taking the `WeatherForecast` would drag the whole strip into the
+browser bundle to render markup that never changes.
 
 ## Comments
 
@@ -816,16 +1049,18 @@ They compose, and neither needs a layout change — the cast is drawn outside th
 [admin/configuration/modules/page.tsx](src/app/(protected)/admin/configuration/modules/page.tsx),
 MyJournal, CSV Analysis, SQL Explorer, Stocks & ETFs, User Management, the About
 screen's "Application & System Info" card
-[admin/about/view.tsx](src/app/(protected)/admin/about/view.tsx), and all four home-screen
-cards — Clock, Daily Quote, Today In History and Daily Glance
-[page.tsx](<src/app/(protected)/page.tsx>). The Clock card
-[clock-widget.tsx](<src/app/(protected)/clock-widget.tsx>) is the one to copy for a card
-whose content ticks: it is `defaultOpen`, and it renders its time only after mount so the
-server and client markup match. It is also the one to copy for **mixing a client island
-with server-rendered content** — its weather half
-([clock-weather.tsx](<src/app/(protected)/clock-weather.tsx>)) stays a server component
-and is passed in as a `ReactNode` child, so the forecast markup never reaches the browser
-bundle even though the clock beside it is interactive. For the controlled + `headerAction`
+[admin/about/view.tsx](src/app/(protected)/admin/about/view.tsx), and the home-screen
+cards — Daily Quote, Today In History and Daily Glance
+[page.tsx](<src/app/(protected)/page.tsx>).
+
+For **mixing a client island with server-rendered content**, copy the floating clock:
+the weather strip ([clock-weather.tsx](<src/app/(protected)/clock-weather.tsx>)) stays a
+server component and is passed in as a `ReactNode` child, so the forecast markup never
+reaches the browser bundle even though the clock beside it ticks. For a card whose
+content ticks, [`ClockFace`](#clockface) is the pattern — it renders its time only after
+mount, so the server and client markup match by construction. (Both used to be
+demonstrated by the home screen's Clock card, which has since been retired in favour of
+the Floating Clock.) For the controlled + `headerAction`
 combination, see the ticker viewer's Risks card
 [ticker-viewer.tsx](src/components/ticker-viewer.tsx) and the home screen's Daily Quote
 [daily-quote-widget.tsx](<src/app/(protected)/daily-quote-widget.tsx>).

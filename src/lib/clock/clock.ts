@@ -1,5 +1,4 @@
-// Pure — no I/O. The ISO-8601 week number, and the date parts the home screen's Clock
-// card draws.
+// Pure — no I/O. The ISO-8601 week number, and the date parts the clock draws.
 //
 // Local-calendar throughout, via `parseIsoDateLocal` — the same clock the rest of this
 // app files a day under. A UTC week number would flip a Sunday evening into next week
@@ -66,7 +65,7 @@ export function isoWeekYear(isoDate: string): number {
 }
 
 /**
- * Everything the Clock card needs about a day, in one pass.
+ * Everything the clock needs about a day, in one pass.
  *
  * `Intl.DateTimeFormat` rather than a hand-rolled month table: it is built into Node and
  * every browser, so the alternative would be shipping a names array to save nothing. The
@@ -77,7 +76,7 @@ export function isoWeekYear(isoDate: string): number {
  *
  * **No time field.** The time belongs to the reader's own clock and ticks every second;
  * baking a server timestamp in here would render a time that is wrong by the network
- * round-trip and then frozen. The card renders time client-side — see `clock-widget.tsx`.
+ * round-trip and then frozen. The time is rendered client-side — see `ClockFace`.
  *
  * `now` is a parameter so callers and tests are not at the mercy of the clock.
  */

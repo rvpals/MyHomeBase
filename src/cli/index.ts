@@ -39,6 +39,8 @@ import { takeAttendanceCommand } from "./take-attendance";
 import { taxLotsCommand } from "./tax-lots";
 import { simulateTickerCommand } from "./simulate-ticker";
 import { tickerOverviewCommand } from "./ticker-overview";
+import { calculatorCommand } from "./calculator";
+import { scratchpadCommand } from "./scratchpad";
 import { userPreferencesCommand } from "./user-preferences";
 
 type Command = (args: string[]) => Promise<void> | void;
@@ -76,6 +78,8 @@ const commands: Record<string, Command> = {
   "set-startup-message": setStartupMessageCommand,
   deployments: deploymentsCommand,
   "user-preferences": userPreferencesCommand,
+  calculator: calculatorCommand,
+  scratchpad: scratchpadCommand,
   "take-attendance": takeAttendanceCommand,
   "attendance-report": attendanceReportCommand,
   "scan-music": scanMusicCommand,

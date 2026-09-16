@@ -1562,6 +1562,59 @@ code sees only `hasImage`, never the bytes; the BLOB is read by
 section content and not the nav, why opacity defaults low) are in `design.md` →
 *The one sanctioned exception*.
 
+### Floating components
+
+Which components may **float over the page** — a small image in a corner that opens into
+a window card — is configured from **Administration → Display Settings → Floating
+Components** and stored as the single `floating_enabled` app setting.
+`src/lib/floating` owns the registry, the encoding and the state rules; the screens only
+present. The Floating Clock is the first one.
+
+Unlike the home screen layout above, this setting is **half global and half per-user**,
+and the split is the design rather than an inconsistency:
+
+- **Which components exist** is one app-wide value an admin sets, exactly like
+  `home_widgets` beside it. Unticking one takes it off every screen at once, including
+  for someone who has it open — `effectiveState` makes disabled win.
+- **Whether *my* clock is open, parked in the corner, or closed** is per-user, one
+  `usr_preferences` row per component (migration 0044), chosen on **Account → Floating
+  Components**.
+
+The per-user half has to live on a page every reader can reach. Closing a floating
+component is deliberately final — it closes the window *and* dismisses the component —
+so Account is the only route by which a non-admin gets a closed one back; an admin-only
+control would mean a non-admin who closed their clock had lost it for good. Re-enabling
+a component restores what each reader last had rather than resetting everyone, because
+disabling never rewrites their row.
+
+**Three components are registered today**, and each adds a kind of state the one before
+it didn't have:
+
+| Id | What it is | Minimizes to | Its own storage |
+|---|---|---|---|
+| `clock` | The clock, digital or analog, with the date/weekday/weather toggles it shares with the home screen card | A live analog dial | none — preferences only |
+| `calculator` | A scientific calculator with a 50-row history tape | **The last result** | `sys_calculator_history` (migration 0095) |
+| `scratchpad` | A notepad with a tab per note category; notes autosave as you type | **The open tab and its note count** | `sys_scratchpad_categories` + `sys_scratchpad_notes` (migration 0096) |
+
+**No migration, no new table** for either half of the enable/open setting: one
+`sys_app_settings` row and key/value user preferences. A component's *own* data is a
+separate question — the clock needs none, while the calculator's tape is a growing,
+ordered, capped list, which is a table's job. One trap if you add another app-wide setting this way —
+`updateSettings` is a plain `UPDATE` and cannot create a missing row, so
+`setEnabledFloating` writes through the repository's upserting `setValue`. Full recipe
+for adding a component, and the layout rules that keep a puck off the music player's, in
+`coding-guide.md` → *The floating layer* and `design.md` → *The floating layer*.
+
+The Scratchpad is the case where a component brings **its own configuration screen**, and
+it is worth separating the two questions it answers. Whether the Scratchpad exists at all
+is still the one `floating_enabled` row above; **which tabs it has** is household
+structure with its own table and its own screen, at **Administration → Display Settings
+→ Scratchpad Categories**. Its notes, by contrast, are per-reader. So a new floating
+component with configuration of its own should put that configuration where its *data*
+belongs rather than trying to encode it into the enable setting — and should split its
+ports along the ownership line, which is what keeps the admin screen structurally unable
+to read anybody's notes.
+
 ### Home screen cards
 
 Which cards the home screen draws, and in what order, is configured from

@@ -6,6 +6,14 @@ import { Avatar } from "@/components/avatar";
 import { Button } from "@/components/button";
 import { IconSelect, type IconSelectOption } from "@/components/icon-select";
 import { NavStylePreview } from "@/components/nav-style-preview";
+import { CLOCK_FACE_OPTIONS, type ClockFace, type ClockFaceOptions } from "@/lib/clock";
+import {
+  FLOATING_COMPONENTS,
+  PUCK_CORNERS,
+  type FloatingId,
+  type FloatingState,
+  type PuckCorner,
+} from "@/lib/floating";
 import type { User } from "@/lib/user";
 import {
   COMPACT_NAV_STYLES,
@@ -19,6 +27,8 @@ import { WeatherLocationField } from "./location-field";
 import {
   changeOwnPasswordAction,
   removeOwnAvatarAction,
+  saveFloatingCornerAction,
+  saveFloatingStateAction,
   saveOwnPreferencesAction,
   uploadOwnAvatarAction,
 } from "./actions";
@@ -203,6 +213,9 @@ function PreferencesSection({
     preferences.weatherLocation ?? null,
   );
   const [weatherUnit, setWeatherUnit] = useState<TemperatureUnit>(preferences.weatherUnit);
+  // The clock's four settings travel as one object, matching `ClockFaceOptions` — the
+  // shape both the home card and the floating clock read.
+  const [clock, setClock] = useState<ClockFaceOptions>(preferences.clock);
   const [error, setError] = useState<string | undefined>(undefined);
   const [success, setSuccess] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -229,6 +242,7 @@ function PreferencesSection({
         compactNavStyle: navStyle,
         weatherLocation,
         weatherUnit,
+        clock,
       });
       if (!result.ok) {
         setError(result.error ?? "Failed to save preferences.");
@@ -322,6 +336,8 @@ function PreferencesSection({
             <option value="celsius">Celsius (°C)</option>
           </select>
         </label>
+
+        <ClockField value={clock} onChange={setClock} disabled={isSaving} />
 
         {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
         {success && <p className="mt-3 text-sm text-emerald-400">Preferences saved.</p>}
@@ -418,12 +434,15 @@ export function AccountView({
   viewportPinned,
   preferences,
   modules,
+  enabledFloating,
 }: {
   user: User;
   viewport: Viewport;
   viewportPinned: boolean;
   preferences: UserPreferences;
   modules: AccountModuleOption[];
+  /** Which floating components an admin has made available to the household. */
+  enabledFloating: readonly FloatingId[];
 }) {
   return (
     <div className={PAGE_CONTAINER}>
@@ -437,6 +456,11 @@ export function AccountView({
         <AvatarSection user={user} />
         {!user.googleEmail && <PasswordSection />}
         <PreferencesSection preferences={preferences} modules={modules} />
+        <FloatingComponentsSection
+          enabled={enabledFloating}
+          states={preferences.floating}
+          corners={preferences.floatingCorners}
+        />
 
         {/* Read-only here. The switch itself lives in the top bar, because it
             is the one control that drives the whole UI's layout and belongs
@@ -455,6 +479,241 @@ export function AccountView({
           </p>
         </section>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The Clock card's display settings: which face, and what to show around it.
+ *
+ * One fieldset rather than four loose controls, because they describe one object —
+ * and the copy says where they apply, since the same settings drive the home screen's
+ * card *and* the floating clock. A reader who only knows one of the two would
+ * otherwise be surprised by the other changing.
+ *
+ * Radio inputs for the face and checkboxes for the toggles, all native: three
+ * booleans and a two-way choice is exactly what the platform controls are for, and
+ * they come keyboard- and screen-reader-correct for free.
+ */
+function ClockField({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: ClockFaceOptions;
+  onChange: (next: ClockFaceOptions) => void;
+  disabled: boolean;
+}) {
+  const toggles = [
+    { key: "showWeekday", label: "Show weekday", hint: "Monday, Tuesday…" },
+    { key: "showDate", label: "Show date", hint: "13 September 2026" },
+    {
+      key: "showWeather",
+      label: "Show weather",
+      hint: "Needs a location set above.",
+    },
+  ] as const;
+
+  return (
+    <fieldset className="mt-4 rounded-md border border-line p-3">
+      <legend className="px-1 text-sm font-medium text-ink">Clock</legend>
+      <p className="text-xs text-muted">
+        Applies to the Clock card on the home screen and to the Floating Clock.
+      </p>
+
+      <div className="mt-3 flex flex-wrap gap-4">
+        {CLOCK_FACE_OPTIONS.map((option) => (
+          <label key={option.value} className="flex cursor-pointer items-start gap-2 text-sm">
+            <input
+              type="radio"
+              name="clock-face"
+              value={option.value}
+              checked={value.face === option.value}
+              onChange={() => onChange({ ...value, face: option.value as ClockFace })}
+              disabled={disabled}
+              className="mt-1"
+            />
+            <span>
+              <span className="block font-medium text-ink">{option.label}</span>
+              <span className="block text-xs text-muted">{option.description}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+
+      <div className="mt-3 flex flex-col gap-2">
+        {toggles.map((toggle) => (
+          <label key={toggle.key} className="flex cursor-pointer items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={value[toggle.key]}
+              onChange={(event) => onChange({ ...value, [toggle.key]: event.target.checked })}
+              disabled={disabled}
+              className="mt-1"
+            />
+            <span>
+              <span className="block text-ink">{toggle.label}</span>
+              <span className="block text-xs text-muted">{toggle.hint}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+/**
+ * Floating Components: open, park or close each one available to this reader.
+ *
+ * Its own section rather than a field in the Preferences form, and that is the point of
+ * the whole design. The floating state is written the moment a reader picks a shape, by
+ * the same `saveFloatingStateAction` the window's own `_` and `✕` buttons call — so this
+ * panel and the buttons on the window can't disagree, and there is no Save to forget.
+ * Folding it into the form would have meant either the form wrote window positions or
+ * the buttons wrote preferences.
+ *
+ * **This is where a closed component comes back.** `✕` is deliberately final elsewhere;
+ * without this panel a reader who dismissed their clock would have no way to retrieve
+ * it, which is why it must live on a page every reader can reach rather than in
+ * Administration.
+ */
+function FloatingComponentsSection({
+  enabled,
+  states,
+  corners,
+}: {
+  enabled: readonly FloatingId[];
+  states: Record<FloatingId, FloatingState>;
+  corners: Record<FloatingId, PuckCorner>;
+}) {
+  const router = useRouter();
+  const [draft, setDraft] = useState(states);
+  const [cornerDraft, setCornerDraft] = useState(corners);
+  const [pending, setPending] = useState<FloatingId | undefined>(undefined);
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  const available = FLOATING_COMPONENTS.filter((component) => enabled.includes(component.id));
+
+  async function choose(id: FloatingId, state: FloatingState) {
+    // Optimistic, like the layer's own transitions: the radio moves at once and the
+    // write follows. The stakes are a window position, and the alternative is a
+    // control that lags a round-trip behind every click.
+    setDraft((current) => ({ ...current, [id]: state }));
+    setPending(id);
+    setError(undefined);
+    try {
+      const result = await saveFloatingStateAction({ id, state });
+      if (!result.ok) {
+        setDraft((current) => ({ ...current, [id]: states[id] }));
+        setError(result.error ?? "Failed to save.");
+        return;
+      }
+      // The layer is mounted by the protected layout, so a refresh is what makes the
+      // window actually appear or vanish on this very page.
+      router.refresh();
+    } finally {
+      setPending(undefined);
+    }
+  }
+
+  /**
+   * Moves one component's puck to another corner.
+   *
+   * Optimistic and saved immediately, like the shape above — there is no Save button
+   * in this panel, so a control that waited for a round trip would just look stuck.
+   */
+  async function chooseCorner(id: FloatingId, corner: PuckCorner) {
+    setCornerDraft((current) => ({ ...current, [id]: corner }));
+    setPending(id);
+    setError(undefined);
+    try {
+      const result = await saveFloatingCornerAction({ id, corner });
+      if (!result.ok) {
+        setCornerDraft((current) => ({ ...current, [id]: corners[id] }));
+        setError(result.error ?? "Failed to save the corner.");
+        return;
+      }
+      router.refresh();
+    } finally {
+      setPending(undefined);
+    }
+  }
+
+  const choices = [
+    { state: "open" as const, label: "Open", hint: "Showing as a window." },
+    { state: "minimized" as const, label: "Corner", hint: "A small image in the corner." },
+    { state: "closed" as const, label: "Closed", hint: "Not shown at all." },
+  ];
+
+  return (
+    <div className="mt-6 rounded-xl border border-line bg-paper-raised p-5">
+      <h2 className="font-display text-lg font-semibold text-ink">Floating Components</h2>
+      <p className="mt-1 text-sm text-muted">
+        Components that float over every page. Yours alone — and saved as soon as you
+        choose, so there&rsquo;s nothing to submit.
+      </p>
+
+      {available.length === 0 ? (
+        <p className="mt-4 text-sm text-muted">
+          No floating components are available. An administrator turns these on in
+          Administration &rsaquo; Display Settings &rsaquo; Floating Components.
+        </p>
+      ) : (
+        <ul className="mt-4 flex flex-col gap-3">
+          {available.map((component) => (
+            <li key={component.id} className="rounded-md border border-line p-3">
+              <p className="text-sm font-medium text-ink">{component.label}</p>
+              <p className="mt-0.5 text-xs text-muted">{component.description}</p>
+
+              <div className="mt-2 flex flex-wrap gap-4">
+                {choices.map((choice) => (
+                  <label
+                    key={choice.state}
+                    className="flex cursor-pointer items-start gap-2 text-sm"
+                  >
+                    <input
+                      type="radio"
+                      name={`floating-${component.id}`}
+                      checked={draft[component.id] === choice.state}
+                      onChange={() => choose(component.id, choice.state)}
+                      disabled={pending === component.id}
+                      className="mt-1"
+                    />
+                    <span>
+                      <span className="block text-ink">{choice.label}</span>
+                      <span className="block text-xs text-muted">{choice.hint}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+
+              {/* Where the small image parks when minimized. A `<select>` rather than
+                  four radios: unlike the shape above there is nothing to compare, it
+                  is just a position, and four more radios per component would crowd
+                  the panel. */}
+              <label className="mt-3 block text-xs">
+                <span className="mb-1 block font-medium text-ink">Dock the corner image in</span>
+                <select
+                  value={cornerDraft[component.id]}
+                  onChange={(event) =>
+                    void chooseCorner(component.id, event.target.value as PuckCorner)
+                  }
+                  disabled={pending === component.id}
+                  className="w-full max-w-xs rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+                >
+                  {PUCK_CORNERS.map((corner) => (
+                    <option key={corner.id} value={corner.id}>
+                      {corner.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
     </div>
   );
 }

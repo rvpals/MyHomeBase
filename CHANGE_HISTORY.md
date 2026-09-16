@@ -1,5 +1,156 @@
 # Change History
 
+## 2026-09-15 — A floating layer over every page, and a NAS that tells you why it didn't start
+
+### [Platform] Windows that float over the page, not in it
+
+The home screen's **Clock card** is gone, and in its place is a **floating layer**: a
+set of small windows that live *over* every page rather than inside one of them. Three
+ship with it — the **Clock**, a **Calculator**, and a **Scratchpad**.
+
+The Clock card was the thing that prompted it. A clock is useful on every page and it
+was reachable from exactly one, competing for a dashboard slot against cards that
+actually summarise something. Widening the dashboard wasn't the answer; the clock didn't
+want to be a card at all.
+
+Each window has **three** states, and they are deliberately three rather than an
+`isOpen` pair:
+
+- **open** — the window card is up, over the page
+- **minimized** — shrunk to a small puck in a screen corner, still running
+- **closed** — gone, and only your own Account screen brings it back
+
+Minimizing is "get out of my way for a moment", the gesture the music player bar already
+models. Closing is "I don't want this." Folding them into one flag would mean dismissing
+the clock for a minute loses it for good, or that closing it keeps handing it back.
+
+Nothing appears unbidden: **all three ship disabled**. A floating window that shows up
+over every page after an upgrade is a worse first impression than one nobody has found
+yet. An admin turns a component on for the household under **Admin → Display settings →
+Floating components**; each reader then decides individually whether they want it, and
+where. Window positions, sizes and minimized pucks are remembered per person, and pucks
+stack into corner slots so two minimized windows can't land on top of each other — or on
+top of the music player, which already owns the bottom edge.
+
+Retiring `clock` from the dashboard catalogue needed **no migration**: a stored
+`home_widgets` value still naming it is dropped as an unknown id, which is what that
+resolver was already built to do.
+
+#### The Clock, now with a face
+
+The floating Clock does what the card did — date, weekday, ISO week, a ticking time
+from *your* browser rather than the server's, and the weather where you are — plus an
+**analog face**, switchable per person. The hour and minute hands **sweep**: at 6:30 the
+hour hand sits halfway between 6 and 7, not squarely on the 6, which is the detail a
+naive `hours × 30` gets wrong and which reads as a broken clock the moment you look at
+it. The second hand doesn't sweep — the face repaints once a second, so a fractional
+angle would only ever render as the same jump, and sub-second repaints would cost an
+order of magnitude more timer for something nobody watches that closely.
+
+#### The Calculator, with a tape
+
+A scientific calculator: trigonometry, logs, powers, parentheses. Minimized, its puck
+shows the last result, so it doubles as a readout. Completed calculations go to a
+**history tape** — `sys_calculator_history` (migration 0095), the newest 50 per person.
+
+The tape stores the **formatted result string**, not a number. What you want back when
+you revisit a calculation is what the display said, and re-deriving that from a float
+re-runs the formatting decisions — precision, exponent threshold, trailing zeros — and
+can disagree with the row you're looking at.
+
+#### The Scratchpad, shared tabs and private notes
+
+A notepad over every page. Notes save as you type. The split is the interesting part:
+the **tabs are household-wide** and an admin configures them (**Admin → Display settings
+→ Scratchpad categories**, seeded with *Ideas*, *Shopping*, *Work*), while the **notes
+inside them are yours alone** — `sys_scratchpad_categories` and `sys_scratchpad_notes`
+(migration 0096). A shared vocabulary for where things go, without a shared inbox.
+
+Both new tables are `sys_`, not new three-letter prefixes. A floating component is
+platform furniture — available on every page, owned by no module — and history is the
+calculator's *entire* domain, so a `clc_` namespace would be a namespace with nothing
+else to put in it. A prefix has to still fit the second table, and there isn't one.
+
+#### Icon slots
+
+Three new slots under a **Floating components** group: the clock, calculator and
+scratchpad window headers, plus one for the new admin section. The clock's slot keeps
+its old id `homescreen_card_clock` even though it no longer badges a home-screen card —
+ids are persisted in `ico_slot_overrides`, so renaming one orphans an icon an admin
+already uploaded. The label and description moved with it; only the id is frozen. The
+calculator defaults to `grid`, since no baked icon set draws a calculator and a keypad
+*is* a grid of buttons; the scratchpad got `note`, which the sets already draw as a
+sticky note with the corner turned up.
+
+### [NAS] A startup crash that says what broke
+
+A build that crashed on startup used to show DSM's generic **"cannot connect"** — which
+says nothing about the cause — and finding out meant SSH or SMB to read `app.log`.
+
+Worse, `start.sh` couldn't tell a crash from a healthy start: `nohup … &` reports the
+forked PID whether or not the process survives, so a build that died a second later
+looked identical to one that came up. The every-minute task saw a PID file, concluded
+the app was up, and never tried again.
+
+Two pieces fix it. **`port-probe`** actually connects to port 3000 after a launch, so
+"did it come up?" is answered by a client connecting rather than by a PID existing — a
+real connect, not `netstat` scraping, because matching `:3000` also matches port 30001
+and matches a *remote* `:3000` in an ESTABLISHED row, and either would report a dead app
+as healthy. And a **startup-failure fallback server** holds port 3000 when the app can't,
+serving the tail of `app.log` as a readable page with a plain statement that it is not
+the app, plus a diagnosis where the failure is recognisable.
+
+The fallback keeps its PID in a **separate file** from `app.pid`, which is the load-
+bearing detail: the "already up?" check reads `app.pid`, so keeping them apart is what
+lets the fallback hold the port while the script still concludes the app is down and
+keeps retrying. One shared PID file would make a crash-looping build look healthy
+forever. It's stopped before every start attempt, since a fallback still holding the
+port would cause `EADDRINUSE` and become the very failure it exists to report.
+
+It has **no dependencies** beyond `node:net` and the standard library, and borrows
+nothing from the app — no theme tokens, no Tailwind, no webfont, no imports. A native
+module built for the wrong Node ABI is one of the failures it's meant to report, and
+anything it pulled from the app bundle would be another thing that could fail on the one
+screen that has to work when everything else has. Every log line it prints is escaped:
+the page is served without authentication — it can't check a session, the database may
+be the broken thing — so escaping is all that stands between a crafted log line and
+script execution on the app's own origin.
+
+A **failed migration** now serves its reason here too. That branch deliberately leaves
+the app down, so without the fallback the only symptom was a proxy error while the
+migration error sat unread in `app.log` — the exact case where the cause is already
+known and just needs showing.
+
+### [Journal] Jump to the next day that has an entry
+
+The calendar's **«** and **»** buttons now jump to the nearest day that actually has an
+entry, instead of stepping through empty ones.
+
+This can't be answered from the grid the calendar is already holding: that grid is one
+period's worth of entries, and the point of the jump is to cross an empty stretch that
+may be longer than the period. Pressing **»** in a month with nothing after the 3rd
+should land on the next entry even if it's four months out. So it asks the database for
+a single indexed row rather than loading ranges and scanning them.
+
+The search is **strict** — the starting day is never its own answer — so pressing **»**
+twice from a day that has an entry walks forward two entry-days rather than sticking on
+the first.
+
+### [Admin] Delete deployment records in bulk
+
+The deployment log can be cleared in batches instead of one row at a time. It's one
+statement, not a loop, so a batch is atomic: a bulk delete that half-applied would leave
+you unable to tell what you still have. It reports how many rows actually went ("6
+records deleted") rather than whether every id was present — ids that match nothing
+aren't an error.
+
+### Also
+
+- **CLI**: `calculator` and `scratchpad` commands, so both new features are drivable
+  from the terminal on the same footing as the web app.
+- The **Account screen** gained the per-person floating controls: which components you
+  want, digital or analog for the clock, and a way to bring back one you closed.
+
 ## 2026-09-14 — A transaction knows its account, an AI consult per ticker, and candlesticks for today
 
 ### [Stocks & ETFs] The Fidelity buy that landed on the Chase position

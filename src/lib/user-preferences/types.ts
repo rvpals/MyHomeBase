@@ -1,3 +1,6 @@
+import type { AngleMode } from "@/lib/calculator";
+import type { ClockFaceOptions } from "@/lib/clock";
+import type { FloatingId, FloatingState, PuckCorner } from "@/lib/floating";
 import type { TemperatureUnit } from "@/lib/weather";
 
 /** One stored preference row. The owner is part of the identity, not the key alone. */
@@ -50,10 +53,46 @@ export interface UserPreferences {
    */
   compactNavStyle: CompactNavStyle;
   /**
-   * The place the home screen's Clock card forecasts for, or `undefined` when the
-   * user hasn't set one — in which case the card shows the clock alone.
+   * The place the Floating Clock forecasts for, or `undefined` when the user hasn't
+   * set one — in which case the clock shows the time alone.
    */
   weatherLocation?: WeatherLocation;
   /** The unit the forecast is shown in. Always defined; defaults to Fahrenheit. */
   weatherUnit: TemperatureUnit;
+  /**
+   * How the Clock draws itself, wherever it is drawn — the home screen's card and the
+   * floating clock read the same object, so a reader who switches to an analog face
+   * gets it in both places. Always defined; see `resolveClockFaceOptions`.
+   */
+  clock: ClockFaceOptions;
+  /**
+   * Each floating component's shape for this reader: open, minimized, or closed.
+   *
+   * A full record, so a caller never checks whether a row existed. Note this is the
+   * reader's *stored* wish — a component an admin has disabled is still recorded here
+   * and simply not shown, which is what lets re-enabling restore what they had rather
+   * than resetting everyone to closed. See `effectiveState`.
+   */
+  floating: Record<FloatingId, FloatingState>;
+  /**
+   * Which screen corner each floating component's puck docks in.
+   *
+   * A full record, defaulting to bottom-right. Separate from `floating` above because
+   * the two change for different reasons: a corner is a standing choice made once on
+   * the Account screen, while a state changes every time a window is minimized.
+   */
+  floatingCorners: Record<FloatingId, PuckCorner>;
+  /**
+   * The Floating Calculator's remembered state.
+   *
+   * Deliberately **not** the in-progress expression. A half-typed `3 * sin(` coming
+   * back after a reload is clutter, but the last *result* is what the minimized puck
+   * draws, so it has to survive — see migration 0095's note on what is not in the
+   * history table.
+   */
+  calculator: {
+    angleMode: AngleMode;
+    /** Formatted, as the display showed it. `undefined` before the first calculation. */
+    lastResult?: string;
+  };
 }

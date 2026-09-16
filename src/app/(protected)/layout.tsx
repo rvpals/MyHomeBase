@@ -4,9 +4,30 @@ import { redirect } from "next/navigation";
 import { MusicPlayerBar } from "@/components/music-player-bar";
 import { MusicPlayerProvider } from "@/components/music-player-provider";
 import { CompactNavStyleProvider } from "@/components/nav-style-context";
+import { FloatingHost } from "@/components/floating-host";
+import type { CalculatorActions } from "@/components/floating-calculator";
+import type { FloatingActions } from "@/components/floating-layer";
+import type { ScratchpadActions } from "@/components/floating-scratchpad";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
+import { listCalculations } from "@/lib/calculator";
+import { describeClock } from "@/lib/clock";
+import { getEnabledFloating } from "@/lib/floating";
+import { getScratchpad } from "@/lib/scratchpad";
 import { getUserPreferences } from "@/lib/user-preferences";
+import { getForecast, type WeatherForecast } from "@/lib/weather";
 import { deps } from "@/lib/wiring";
+import { ClockWeather } from "./clock-weather";
+import {
+  clearCalculationHistoryAction,
+  createScratchpadNoteAction,
+  deleteScratchpadNoteAction,
+  listScratchpadNotesAction,
+  recordCalculationAction,
+  saveCalculatorStateAction,
+  saveFloatingCornerAction,
+  saveFloatingStateAction,
+  saveScratchpadNoteAction,
+} from "./account/actions";
 import {
   advanceQueueAction,
   clearQueueAction,
@@ -20,6 +41,37 @@ import {
   setRepeatModeAction,
   shuffleQueueAction,
 } from "./modules/[slug]/music-queue-actions";
+
+// The floating layer's and the calculator's server actions, handed to the host as props
+// for exactly the reason the queue actions below are: a shared component takes props and
+// emits events, so a file under src/components must not reach into src/app.
+//
+// Each action is assigned **directly — never wrapped in an arrow.** A `"use server"`
+// function is passable to a client component because React recognises that specific
+// function; `saveState: (id, state) => action({ id, state })` produces an ordinary
+// closure, and serializing it fails at request time with "Functions cannot be passed
+// directly to Client Components". That is why both ports mirror their action's exact
+// signature rather than offering a tidier one, and why these objects are only ever
+// assignments. Adapt shapes inside the client component, not here.
+const floatingActions: FloatingActions = {
+  saveState: saveFloatingStateAction,
+  saveCorner: saveFloatingCornerAction,
+};
+
+const calculatorActions: CalculatorActions = {
+  record: recordCalculationAction,
+  clearHistory: clearCalculationHistoryAction,
+  saveState: saveCalculatorStateAction,
+};
+
+// Same rule, and worth repeating because it is the one that bites at runtime: every
+// value here is the action itself, never an arrow around it.
+const scratchpadActions: ScratchpadActions = {
+  listNotes: listScratchpadNotesAction,
+  createNote: createScratchpadNoteAction,
+  saveNote: saveScratchpadNoteAction,
+  deleteNote: deleteScratchpadNoteAction,
+};
 
 // The queue's server actions, handed to the player provider as props.
 //
@@ -52,7 +104,64 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
   // who they are. Resolved on the server so the very first HTML draws the bar
   // they chose — navigation is the worst place for a visible rearrangement one
   // frame after hydration.
-  const { compactNavStyle } = getUserPreferences(deps.userPreferencesRepo, currentUser.id);
+  const preferences = getUserPreferences(deps.userPreferencesRepo, currentUser.id);
+  const { compactNavStyle } = preferences;
+
+  // The floating layer. Resolved here, in the one layout every authenticated page
+  // shares, because a floating window has to outlive navigation — mounting it inside a
+  // page would close it on every link, the same reason the music player lives here.
+  const enabledFloating = getEnabledFloating(deps.settingsRepo);
+  const clockFloating = enabledFloating.includes("clock") && preferences.floating.clock !== "closed";
+
+  // The Clock's inputs, fetched only when the floating clock is actually up. The date
+  // is free; the forecast is a network call, so it is gated on all three of: the
+  // component enabled, this reader having it open, and the weather toggle on.
+  //
+  // Wrapped exactly as the home screen's is: Open-Meteo being down must degrade to a
+  // clock without a forecast, never to an app that won't render. `getForecast` caches
+  // 30 minutes per location, so this shares the home screen's cache entry rather than
+  // doubling the traffic.
+  const clockReading = describeClock();
+  const weatherLocation =
+    clockFloating && preferences.clock.showWeather ? preferences.weatherLocation : undefined;
+
+  // The tape, read only when the calculator is actually up. A closed or disabled
+  // component costs no query — the same gating the forecast below gets, and the reason
+  // both are resolved here rather than inside the client component.
+  const calculatorFloating =
+    enabledFloating.includes("calculator") && preferences.floating.calculator !== "closed";
+  const calculatorHistory = calculatorFloating
+    ? listCalculations(deps.calculatorHistoryRepo, currentUser.id)
+    : [];
+
+  // The scratchpad, read only when it is actually up — the same gating the tape and the
+  // forecast get. A closed or disabled component costs no query.
+  //
+  // `getScratchpad` resolves the tab strip, the active tab and that tab's notes in one
+  // call, so the window's first paint has the right tab selected rather than flipping to
+  // it after hydration. Only the active tab's notes are read: a household that has used
+  // this for a year has a lot of notes, and the window shows one tab at a time.
+  const scratchpadFloating =
+    enabledFloating.includes("scratchpad") && preferences.floating.scratchpad !== "closed";
+  const scratchpad = scratchpadFloating
+    ? getScratchpad(deps.noteCategoryRepo, deps.scratchpadRepo, currentUser.id)
+    : { categories: [], notes: [], activeCategoryId: undefined };
+
+  let forecast: WeatherForecast | undefined;
+  if (weatherLocation) {
+    try {
+      forecast = await getForecast(deps.weatherClient, {
+        latitude: weatherLocation.latitude,
+        longitude: weatherLocation.longitude,
+        unit: preferences.weatherUnit,
+        days: 7,
+      });
+    } catch {
+      // Swallowed: the floating clock simply shows no weather. Unlike the home card
+      // there is no notice — a 320px window is not where a reader wants an apology.
+      forecast = undefined;
+    }
+  }
 
   return (
     <div className="min-h-screen">
@@ -71,6 +180,29 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
         <MusicPlayerProvider actions={musicQueueActions}>
           <main className="app-main min-h-screen pb-8">{children}</main>
           <MusicPlayerBar />
+          {/* Below the player so the layer's pucks stack above the player's own,
+              and inside both providers so a floating component can read either. */}
+          <FloatingHost
+            enabled={enabledFloating}
+            initialStates={preferences.floating}
+            initialCorners={preferences.floatingCorners}
+            actions={floatingActions}
+            clockReading={clockReading}
+            clockOptions={preferences.clock}
+            clockWeather={
+              forecast && weatherLocation ? (
+                <ClockWeather forecast={forecast} placeName={weatherLocation.name} />
+              ) : undefined
+            }
+            calculatorActions={calculatorActions}
+            calculatorAngleMode={preferences.calculator.angleMode}
+            calculatorLastResult={preferences.calculator.lastResult}
+            calculatorHistory={calculatorHistory}
+            scratchpadActions={scratchpadActions}
+            scratchpadCategories={scratchpad.categories}
+            scratchpadNotes={scratchpad.notes}
+            scratchpadCategoryId={scratchpad.activeCategoryId}
+          />
         </MusicPlayerProvider>
       </CompactNavStyleProvider>
     </div>

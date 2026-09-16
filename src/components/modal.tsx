@@ -54,10 +54,11 @@ export interface ModalProps {
   /**
    * Panel size. Defaults to "md".
    *
-   * `"window"` is the floating variant: 80% of the viewport, draggable by its
-   * header, with a maximize button that swaps it to the full-bleed treatment
-   * and back. Still a dialog — the overlay, Escape, the focus trap and the
-   * scroll lock all behave exactly as they do at every other size.
+   * `"window"` is the floating variant: **sized to its content** (capped at 56rem
+   * wide and 85vh tall), draggable by its header, with a maximize button that swaps
+   * it to the full-bleed treatment and back. Still a dialog — the overlay, Escape,
+   * the focus trap and the scroll lock all behave exactly as they do at every other
+   * size, unless `isNonModal` lifts them.
    */
   size?: Size;
   /**
@@ -66,6 +67,26 @@ export interface ModalProps {
    * The footer's own buttons stay the caller's responsibility.
    */
   isBusy?: boolean;
+  /**
+   * When supplied, the header grows a `_` button left of maximize, giving the
+   * window-chrome trio `_ ▢ ✕`. For a dialog that shrinks to a puck rather than
+   * closing — see [`FloatingWindow`](components.md#floatinglayer).
+   *
+   * Optional because minimizing is meaningless for most dialogs: a confirmation
+   * you can park is one you can lose. A modal without it keeps exactly the header
+   * it has today.
+   */
+  onMinimize?: () => void;
+  /**
+   * Drops the dimmed overlay, so the page behind stays visible *and* usable.
+   *
+   * For the floating layer only. A floating clock is not a dialog you answer and
+   * dismiss — it sits over your work while you keep working, so scrimming the page
+   * and trapping focus would make it a modal interruption instead of an accessory.
+   * With this set the scroll lock and the focus trap are lifted too, and the panel
+   * is announced as a non-modal dialog. Escape and the ✕ still close it.
+   */
+  isNonModal?: boolean;
   /** Caller-supplied classes for the panel, merged last so they win. */
   className?: string;
 }
@@ -83,9 +104,16 @@ const sizeClasses: Record<Size, string> = {
   // ✕ and the focus trap all behave the same, so it returns you to the screen
   // underneath rather than being a route you have to navigate back from.
   full: "h-full max-h-full w-full max-w-none rounded-none",
-  // Roughly the full-bleed reading area, minus enough on every side to show
-  // that the page is still there behind it.
-  window: "h-[80vh] max-h-full w-[80vw] max-w-none",
+  // A floating window **sizes to its content**, capped so it can never outgrow the
+  // viewport. Deliberately not `h-[80vh] w-[80vw]`, which is what it used to be: a
+  // fixed 80% box left a clock with four lines of content sitting in an acre of empty
+  // panel, because nothing about the content could shrink it. The cap is what a
+  // *reading* surface wants and the floor stops a one-word window collapsing to its
+  // title bar; between the two, the content decides.
+  //
+  // A caller that genuinely wants a different shape still passes `className` — it is
+  // merged last, so `lg:w-[22rem]` wins over this.
+  window: "h-auto max-h-[85vh] w-auto min-w-[20rem] max-w-[min(56rem,92vw)]",
 };
 
 /** Elements that can hold focus inside the panel, for the focus trap. */
@@ -101,6 +129,8 @@ export function Modal({
   onClose,
   size = "md",
   isBusy = false,
+  onMinimize,
+  isNonModal = false,
   className = "",
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -226,7 +256,10 @@ export function Modal({
         onClose();
         return;
       }
-      if (event.key !== "Tab") return;
+      // A non-modal panel does not trap Tab: the page behind is still usable, so
+      // holding focus inside would strand a keyboard reader in a clock they can't
+      // tab out of.
+      if (event.key !== "Tab" || isNonModal) return;
 
       const focusable = [...(panelRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ?? [])];
       if (focusable.length === 0) return;
@@ -244,34 +277,42 @@ export function Modal({
 
     document.addEventListener("keydown", handleKeyDown, true);
     return () => document.removeEventListener("keydown", handleKeyDown, true);
-  }, [onClose, isBusy]);
+  }, [onClose, isBusy, isNonModal]);
 
   // The page behind must not scroll while a modal is up, or the overlay slides
-  // off the viewport on a short screen.
+  // off the viewport on a short screen. A non-modal panel has no overlay and the
+  // page behind is meant to stay usable, so it leaves the scroll alone.
   useEffect(() => {
+    if (isNonModal) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, []);
+  }, [isNonModal]);
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 ${
-        effectiveSize === "full" ? "p-0" : "p-4"
-      }`}
+      className={`fixed inset-0 z-50 flex items-center justify-center ${
+        // No scrim and no pointer capture when non-modal: the container still spans
+        // the viewport so the panel can be centred, but clicks fall through to the
+        // page, which stays usable. The panel itself takes pointer events back.
+        isNonModal ? "pointer-events-none" : "bg-black/60"
+      } ${effectiveSize === "full" ? "p-0" : "p-4"}`}
       // A click that starts inside the panel and ends on the overlay (a drag off
       // a text selection) shouldn't dismiss, so this only fires for the overlay
       // itself, not for anything bubbling out of the panel.
       onClick={(event) => {
+        // A non-modal panel has no overlay to click, so there is nothing to dismiss
+        // on: the reader is expected to keep using the page behind it.
+        if (isNonModal) return;
         if (event.target === event.currentTarget && !isBusy) onClose();
       }}
     >
       <div
         ref={panelRef}
         role="dialog"
-        aria-modal="true"
+        aria-modal={isNonModal ? undefined : "true"}
         aria-labelledby={titleId}
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
@@ -283,7 +324,12 @@ export function Modal({
             ? { transform: `translate(${offset.x}px, ${offset.y}px)` }
             : undefined
         }
-        className={`flex ${sizeClasses[effectiveSize]} flex-col overflow-hidden rounded-xl border border-line bg-paper-raised focus-visible:outline-none ${className}`}
+        className={`flex ${sizeClasses[effectiveSize]} flex-col overflow-hidden rounded-xl border border-line bg-paper-raised focus-visible:outline-none ${
+          // The panel takes pointer events back from the see-through container, and
+          // a non-modal panel gets a real lift: with no scrim behind it, a hairline
+          // border alone doesn't separate it from the page it's floating over.
+          isNonModal ? "pointer-events-auto card-raised" : ""
+        } ${className}`}
       >
         <div
           onPointerDown={handleDragStart}
@@ -310,6 +356,31 @@ export function Modal({
             )}
           </div>
           <div className="flex shrink-0 items-center gap-1">
+            {/* Window-chrome order, `_ ▢ ✕`, matching MusicPlayerBar's two buttons
+                and every desktop window the reader has ever used. Minimize first
+                because it is the least destructive of the three. */}
+            {onMinimize && (
+              <button
+                type="button"
+                onClick={onMinimize}
+                aria-label="Minimize"
+                title="Minimize"
+                className="rounded-md p-1 text-muted transition-colors hover:bg-brass-soft hover:text-brass-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  className="h-4 w-4"
+                  aria-hidden="true"
+                >
+                  {/* A low underscore, the universal minimize mark. */}
+                  <path d="M6 18h12" />
+                </svg>
+              </button>
+            )}
             {isFloating && (
               <button
                 type="button"

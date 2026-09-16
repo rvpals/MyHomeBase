@@ -145,7 +145,7 @@ describe("sectionSlotId", () => {
         // existing icon overrides kept matching.
         "display-settings",
         "configuration-themes", "configuration-icons", "configuration-texture",
-        "display-settings-widgets",
+        "display-settings-widgets", "display-settings-floating", "display-settings-scratchpad",
         "user-management", "daily-quote", "daily-quote-add", "daily-quote-import",
         "security", "background-tasks", "sql-explorer", "about",
       ],

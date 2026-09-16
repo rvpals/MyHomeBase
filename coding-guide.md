@@ -397,7 +397,14 @@ silently producing the muddy icon the pipeline exists to prevent.
 
 Slot ids are written to `ico_slot_overrides.slot_id`. Renaming one — or renaming a
 module section slug that an id is derived from — orphans a user's uploaded icon
-silently. Once uploads exist, an id change needs an `UPDATE ico_slot_overrides`
+silently.
+
+**A slot that outlives the screen it was named for keeps its id.** When the home
+screen's Clock card was retired, its slot moved to the Floating Clock's window header
+and is still `homescreen_card_clock` — a now-inaccurate name that is nonetheless
+cheaper than orphaning an upload. The `label`, `group` and `where` *do* move with the
+slot, since those are what the admin list renders; only the id is frozen. Prefer a
+stale id with a comment explaining it over a tidy one that loses a file. Once uploads exist, an id change needs an `UPDATE ico_slot_overrides`
 alongside it. Two mismatches were caught during the initial build and were free to fix
 only because nothing had shipped.
 
@@ -411,3 +418,253 @@ apply — it protects a file served as a document, not markup running in the pag
 `sanitizeSvg` reduces the upload to an **allowlist** of drawing elements and
 presentation attributes at write time. If you ever store SVG for a new purpose, reuse
 that function; don't hand-roll a blocklist.
+
+## The floating layer: a component that lives over the page
+
+A **floating component** has two shapes — a small image parked in a screen corner (the
+*puck*), and a window card it expands into — and three states: `open`, `minimized`,
+`closed`. The Floating Clock is the first and the pattern for the rest.
+
+The pieces, and which layer each belongs to:
+
+| Piece | Where | What it owns |
+|---|---|---|
+| `FLOATING_COMPONENTS` | [src/lib/floating/registry.ts](src/lib/floating/registry.ts) | THE registry: id, label, description, whether it ships enabled |
+| `resolvePuckSlots` | [src/lib/floating/layout.ts](src/lib/floating/layout.ts) | Which puck parks where, as an **index** — never a pixel offset |
+| `minimizeState` / `restoreState` / `closeState` / `effectiveState` | the same file | The state rules, unit-tested with no browser |
+| `resolveFloatingStates` | [src/lib/floating/state.ts](src/lib/floating/state.ts) | One reader's stored states, keys derived from the registry |
+| `FloatingLayerProvider` | [src/components/floating-layer.tsx](src/components/floating-layer.tsx) | The current value; mounted **once**, in the protected layout |
+| `FloatingWindow` / `FloatingPuck` | [src/components/floating-window.tsx](src/components/floating-window.tsx) | The two shapes |
+| `.floating-puck` | `globals.css` | The offset arithmetic |
+
+### Adding one
+
+1. Add the id to `FloatingId` ([types.ts](src/lib/floating/types.ts)) and an entry to
+   `FLOATING_COMPONENTS`.
+2. Add the id to `enabledFloatingSchema` ([schema.ts](src/lib/floating/schema.ts)) and to
+   `floatingStateUpdateSchema` in `user-preferences`. These are the one place the
+   registry isn't the single source — the type error if you forget is deliberate.
+3. Build the component itself: read `useFloatingLayer()`, return `null` when `closed`,
+   render `FloatingPuck` when `minimized` and `FloatingWindow` when `open`. Keep it thin
+   — [floating-clock.tsx](src/components/floating-clock.tsx) is wiring and a small SVG.
+4. Render it inside `FloatingHost` ([floating-host.tsx](src/components/floating-host.tsx)).
+
+Steps 1–2 alone are inert: a registered component nothing renders shows up on the admin
+screen as a switch that does nothing, so do all four together.
+
+### The rules that keep it from breaking the layout
+
+- **Never write a new `fixed bottom-0`.** The bottom-right corner is *already* the music
+  player's minimized puck, and the bottom edge carries the compact section trigger and
+  the player bar. `.floating-puck` composes with `--section-trigger-height`,
+  `--music-player-height` and `env(safe-area-inset-bottom)`; `resolvePuckSlots` decides
+  the queue order. Two pucks overlapping is invisible to `/verify` — WebKit doesn't
+  emulate safe-area insets — which is exactly why that ordering is a tested `lib`
+  function rather than a CSS guess.
+- **`lib` owns the order, CSS owns the pixels.** `resolvePuckSlots` returns an index and
+  a corner. Nothing under `src/lib/` may know a puck's height or an edge inset.
+- **Stacking is per corner.** The reader docks each component in one of four corners
+  (`PUCK_CORNERS`), so each corner queues independently and only bottom-right reserves
+  a slot for the music puck. Adding a corner means a `PUCK_CORNERS` entry *and* a
+  `.floating-puck[data-corner=…]` rule — the type error if you forget one is the point.
+- **Stay at `z-30`.** `Modal` owns `z-50` so a dialog still covers a puck, and
+  `design.md` caps chrome at `z-40`.
+- **A window is `Modal size="window"`, not a second draggable panel.** That variant
+  already solves dragging, viewport clamping, maximize/restore and focus return. Extend
+  `Modal`; don't build a parallel implementation.
+- **Say what compact does.** A draggable 80vw window is a worse full-screen sheet on a
+  phone, so `FloatingWindow` forks on `useIsCompact()` and gives compact
+  `Modal size="full"`. This is a genuine component fork, not a restyle — a `max-lg:`
+  variant can't switch off a drag.
+
+### The components that exist
+
+| Id | What it is | Puck shows | Extra storage |
+|---|---|---|---|
+| `clock` | Digital/analog clock with date, weekday, weather | A live analog dial | none — preferences only |
+| `calculator` | Scientific calculator with a history tape | **The last result** | `sys_calculator_history` (migration 0095) |
+| `scratchpad` | Notepad with a tab per note category | **The open tab and its note count** | `sys_scratchpad_categories` + `sys_scratchpad_notes` (migration 0096) |
+
+The clock is the stateless case and the calculator is the stateful one, which is what
+makes the pair worth reading together: the layer itself only ever stores
+`open`/`minimized`/`closed`, and anything else a component needs to remember is that
+component's own business (user preferences for the calculator's angle mode and last
+result, a table for its tape).
+
+The scratchpad adds the third shape, and two things about it are worth copying:
+
+- **Its storage has two owners.** The categories are household-wide, configured by an
+  admin; the notes are per-reader. So `src/lib/scratchpad` has **two ports** —
+  `NoteCategoryRepository` (unscoped) and `ScratchpadRepository` (every method scoped by
+  `userId`) — rather than one repository with a mixed surface. The admin screen is wired
+  only to the first, which is what makes it structurally unable to read anyone's notes.
+  The one household-wide count it does need (`countNotes`, for the delete guard) returns
+  **numbers only**.
+- **It is the first floating component whose content is typed**, so it is the only one
+  that autosaves: 800ms after the last keystroke, plus a flush on blur, on a tab switch
+  and on minimize/close — the debounce is an optimisation, not the only thing standing
+  between a note and the database. Unlike the calculator's fire-and-forget tape, a failed
+  save is **surfaced**, because a dropped note save loses the reader's own writing rather
+  than a record of something still on screen.
+
+**Deleting a note category is refused while notes are filed under it** (`deleteCategory`
+returns a reason; `describeDeleteRefusal` turns it into the sentence both the admin screen
+and the CLI print). Cascading would let an admin destroy other people's notes from a
+settings screen with no way for a non-admin to recover them — see migration 0096 for the
+two alternatives that were rejected.
+
+**A puck shows whatever reads best at 56px, not a miniature of the window.** The clock's
+window may be digital while its puck is always an analog dial; the calculator's puck is
+the last result, abbreviated by `formatForPuck` (`1.2e8`, not `123456789`) with the full
+value in the `title`. Deciding that is the component's job — the layer just gives it a
+circle.
+
+### Actions are assigned, never wrapped — this one bites at runtime
+
+A floating component's server actions arrive as a prop (a file under `src/components/`
+must not import from `src/app/`). The mount site therefore builds an object of them —
+and **every value in it must be the action itself**:
+
+```ts
+// RIGHT — the action, assigned.
+const floatingActions: FloatingActions = { saveState: saveFloatingStateAction };
+
+// WRONG — compiles, typechecks, passes lint, fails on every request.
+const floatingActions: FloatingActions = {
+  saveState: (id, state) => saveFloatingStateAction({ id, state }),
+};
+```
+
+A `"use server"` function can cross into a client component because React recognises
+*that specific function*. An arrow around it is an ordinary closure, so serializing the
+prop throws **`Functions cannot be passed directly to Client Components`** — at request
+time, in the server log, with nothing failing in `typecheck`, `lint`, `build` or the unit
+tests. It shipped to the NAS once exactly this way.
+
+The consequence for design: **a port mirrors its action's signature**, even when a
+tidier one is available. `CalculatorActions.record` returns the action's
+`{ ok, history? }` rather than a clean `CalculationEntry[]`, and
+`FloatingActions.saveState` takes one object rather than two arguments, because the
+alternative is an adapter — and an adapter is a closure. Any shape-changing belongs
+*inside the client component*, which is free to unwrap what it receives.
+
+`MusicQueueActions` has followed this rule since it was written; the floating layer
+learned it the hard way.
+
+### Enabled is app-wide; the state is per reader
+
+Two settings, deliberately in two places, because they answer different questions:
+
+| | Where | Stored as |
+|---|---|---|
+| Which components **exist** | Administration › Display Settings › Floating Components (admin only) | one `sys_app_settings` row, `floating_enabled` |
+| Whether **mine** is open | Account › Floating Components (every reader) | `floating_state_<id>`, one `usr_preferences` row each |
+| Which **corner** mine docks in | the same panel | `floating_corner_<id>`, one row each |
+
+A component's **own** configuration is a third thing again, and it goes wherever that
+component's data belongs rather than into either row above. The Scratchpad's categories
+are the worked example: they are household structure an admin arranges, so they live in
+`sys_scratchpad_categories` with their own screen (Administration › Display Settings ›
+Scratchpad Categories) — *not* in `floating_enabled`, which answers only "does this
+component exist at all".
+
+The corner is a **separate key from the state**, deliberately: a corner is a standing
+choice made once, while a state changes on every minimize, so one combined write would
+let either clobber the other's field. Same reasoning as the calculator's angle mode
+versus its last result.
+
+**Disabled wins** (`effectiveState`): turning a component off takes it off every screen
+at once, whatever a reader had stored. Their row is *not* rewritten, so re-enabling
+restores what they had rather than resetting everyone to closed.
+
+The per-reader half has to be on a page every reader can reach. `✕` is deliberately
+final — it closes the window *and* the component — so Account is the only way a
+non-admin gets a closed component back. Putting that control in Administration alone
+would mean a non-admin who pressed `✕` had lost it for good.
+
+### The calculator's evaluator: no `eval`, and no dependency
+
+`src/lib/calculator` parses and evaluates expressions with a hand-written tokeniser plus
+a shunting-yard evaluator — about 200 lines across `tokenize.ts`, `evaluate.ts` and
+`functions.ts`.
+
+**Never reach for `eval()` or `new Function()` here.** Those are arbitrary code execution
+on a string, and this codebase already treats uploaded SVG as hostile and sanitises it to
+an allowlist (`coding-guide.md` → *Uploaded SVG is sanitized on write*); accepting an
+expression and *running* it would hold a weaker standard for the same class of input. The
+evaluator can only ever produce a number.
+
+A dependency (`mathjs`) was also considered and rejected: ~180KB for a feature this
+contained, and it would be the app's first runtime math dependency.
+
+Three rules the implementation holds, each of which has a test:
+
+- **Two passes, not one.** `toPostfix` decides precedence and associativity; a separate
+  `evaluatePostfix` walks the result. That is what lets `2+3*4 → "2 3 4 * +"` be asserted
+  directly rather than inferred from the number 14.
+- **Every function declares its own domain.** `sqrt(-1)`, `ln(0)`, `asin(2)` and
+  `tan(90°)` return a *typed error*, never `NaN` or `1.633e16` displayed as an answer.
+  A new function adds a `domainError` to its spec, not a branch in the evaluator.
+- **`evaluate` never throws.** It is called on every `=`, so a mistyped expression is a
+  routine return value (`EvaluationResult`), not an exception the caller must remember to
+  catch.
+
+**Rounding belongs to the formatter, not the evaluator.** `evaluate("0.1+0.2")` returns
+the true IEEE value; `formatResult` is what turns it into `"0.3"` (12 significant digits,
+exponent form outside 1e-7…1e12). Rounding earlier would compound through a longer
+expression.
+
+### The keypad is a catalogue, and the keyboard reads from it
+
+`keypad.ts` declares all 36 keys as data — label, tone, what it inserts, and which
+physical keys trigger it. The view is a `.map` over that table, and
+`keyForKeyboardEvent` is built from the same list, so **the on-screen pad and the
+keyboard cannot disagree**.
+
+Keyboard capture is bound to the **keypad's own subtree, never `document`**. The floating
+window is non-modal, so a global handler would swallow digits meant for the page behind
+it — a reader typing in a form with the calculator open would lose every number. An
+unmapped key (Tab, the arrows, anything with Ctrl/Cmd/Alt) is left alone entirely.
+
+Keys are plain `<button>`s with the `.calc-key` classes, **not `Button`**. `design.md`
+reserves `Button`'s hard offset shadow for discrete page-level actions, and 36 of them in
+one panel is visually deafening; this follows `.sudoku-cell`'s precedent for a dense grid
+of pressable cells.
+
+### `AC` never clears the history
+
+Clearing the display and clearing the tape are separate actions with separate controls. A
+calculator that forgot your working-out because you pressed clear would be a bug, so
+`applyKey`'s `clear` case resets the display only, and wiping the tape is an explicit
+"Clear history" control wired to its own action.
+
+For the same reason a **failed** expression is not recorded: the tape is a record of
+results, and filling it with mistypes would push real answers off the end of a 50-row cap.
+
+### Neither *enable/open* setting needs a migration
+
+Both are key/value rows — `sys_app_settings` and `usr_preferences` (migration 0044) — so
+registering a floating component ships with no `.sql` at all.
+
+A component's *own* data is a separate question. The clock needs none; the calculator's
+history tape is a growing, ordered, capped, clearable list, which is a table's job, so it
+brought migration 0095. The test is the one in that migration's log: a single scalar read
+whole is a preference row, a list is a table.
+
+One trap, and it is a real one: **`updateSettings` cannot create a row.** It is a plain
+`UPDATE ... WHERE key = ?`, so against a database with no `floating_enabled` row it
+reports success and writes nothing. `setEnabledFloating` uses the repository's
+`setValue`, which upserts. Any new app-wide setting that isn't seeded by a migration has
+to do the same.
+
+### The floating state is written on its own
+
+`saveFloatingState` writes **one key**, and `userPreferencesToEntries` deliberately
+excludes the floating states (note its `Omit<…, "floating">` parameter). The Preferences
+form writes every key it carries, so folding window positions in would mean pressing
+Save on an unrelated form reset whatever shape your clock was in — and every minimize
+would have to resend the whole preference set, letting a stale tab clobber a favorite.
+
+`saveFloatingStateAction` also takes **no `revalidatePath`**: it fires on every minimize
+and restore, and revalidating the layout each time would re-render every page in the app
+to persist a position the client already applied optimistically.

@@ -1,11 +1,18 @@
-// The weather half of the Clock card: where, what it's doing now, and the week ahead.
+// The weather strip: where, what it's doing now, and the week ahead.
 //
-// Route-local and presentation-only — it receives a fully-formed `WeatherForecast`
-// and renders it. The fetch, the caching and the WMO mapping all happen in
-// `@/lib/weather`; nothing here decides anything.
+// Originally the lower half of the home screen's Clock card. That card was retired,
+// and this outlived it because the **Floating Clock** shows the same strip — the
+// protected layout renders it and passes it down as a node. Kept here, beside the
+// layout that mounts it, rather than promoted to `src/components/`: it has exactly one
+// caller, and `components.md` keeps single-caller UI out of the registry.
+//
+// Presentation-only — it receives a fully-formed `WeatherForecast` and renders it. The
+// fetch, the caching and the WMO mapping all happen in `@/lib/weather`; nothing here
+// decides anything.
 //
 // A server component: none of this ticks or responds to input, so shipping it to the
-// browser would buy nothing. The clock beside it is the only client part of the card.
+// browser would buy nothing. That is also why it travels to the client-side floating
+// clock as a rendered node rather than as forecast data — see `ClockFace`'s `weather`.
 
 import { weatherShape, type WeatherShape } from "@/lib/weather";
 import type { DailyForecast, WeatherForecast } from "@/lib/weather";
@@ -16,7 +23,8 @@ import type { DailyForecast, WeatherForecast } from "@/lib/weather";
  * These are **state glyphs** — the shape is chosen by the WMO code and changes with
  * the weather — which `src/lib/icons/slots.ts` explicitly excludes from the slot
  * registry: letting someone re-skin "rain" but not "snow" breaks the distinction the
- * set exists to carry. The card's *title* icon is a registered slot; these are not.
+ * set exists to carry. The floating window's *title* icon is a registered slot; these
+ * are not.
  *
  * `currentColor` throughout, so they inherit the theme token of whatever they sit in.
  */
@@ -121,7 +129,12 @@ function ForecastDay({ day, index, unit }: { day: DailyForecast; index: number; 
     <li
       // `shrink-0` with a floor width: on a phone the row scrolls sideways rather than
       // squeezing seven columns into 320px, which is what would turn "Wed" into "W…".
-      className="flex w-full shrink-0 flex-col items-center gap-1 rounded-lg px-2 py-2 max-lg:w-16"
+      // A fixed column width rather than `w-full`. `w-full` made each of the seven
+      // columns stretch to a seventh of whatever the container offered, so in a
+      // content-sized window the strip was the thing *defining* the width — 2000px of
+      // mostly-empty forecast. At a fixed 4rem the strip asks for the ~28rem it
+      // actually needs and the window sizes to that.
+      className="flex w-16 shrink-0 flex-col items-center gap-1 rounded-lg px-2 py-2"
       title={day.description}
     >
       <span className="text-xs font-medium text-muted">{weekdayLabel(day.date, index)}</span>
@@ -173,22 +186,17 @@ export function ClockWeather({
       </div>
 
       {days.length > 0 && (
-        // Seven equal columns on a desktop; a sideways-scrolling strip narrow. The
-        // desktop grid classes are untouched by the max-lg: override, so a wide screen
-        // can't regress.
-        <ul className="mt-3 grid grid-cols-7 gap-1 max-lg:flex max-lg:overflow-x-auto max-lg:pb-1">
+        // A flex row of fixed-width columns, not a 7-column grid. The grid made each
+        // column a seventh of whatever the container offered, so the strip *defined*
+        // the width and a content-sized floating window came out 2000px wide with a
+        // mostly-empty forecast. Fixed columns ask for the ~28rem they need, and
+        // scroll sideways on a narrow screen rather than squeezing into 320px.
+        <ul className="mt-3 flex gap-1 overflow-x-auto pb-1">
           {days.map((day, index) => (
             <ForecastDay key={day.date} day={day} index={index} unit={unit} />
           ))}
         </ul>
       )}
     </section>
-  );
-}
-
-/** Shown in place of the forecast when the fetch failed or no location is set. */
-export function ClockWeatherNotice({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="mt-4 border-t border-line pt-4 text-sm text-muted">{children}</p>
   );
 }

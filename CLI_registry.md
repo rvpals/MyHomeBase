@@ -54,12 +54,15 @@ Twenty-seven commands, registered in [src/cli/index.ts:33-61](src/cli/index.ts#L
 | [`market-indexes`](#market-indexes) | read (writes nothing) | **yes** |
 | [`set-startup-message`](#set-startup-message) | write | no |
 | [`user-preferences`](#user-preferences) | read (writes with `--favorite`/`--startup`) | no |
+| [`calculator`](#calculator) | read (writes with `--expression`/`--clear-history`) | no |
+| [`scratchpad`](#scratchpad) | read (writes with `--new`/`--save`/`--delete`/`--add-category`/`--rename-category`/`--delete-category`) | no |
 | [`magic-playlist`](#magic-playlist) | read (writes with `--save`/`--regenerate`/`--delete`) | no |
 | [`photo-magic`](#photo-magic) | read (writes with `--scan`/`--save`/`--regenerate`/`--delete`/`--clear-index`) | no |
 | [`play-queue`](#play-queue) | read (writes with every flag except none) | no |
 | [`color-themes`](#color-themes) | read (writes with `import`/`reset`/`delete`) | no |
 | [`fav-photos`](#fav-photos) | read (writes with `add`/`note`/`remove`) | no |
 | [`game-scores`](#game-scores) | read | no |
+| [`deployments`](#deployments) | read (writes with `delete`/`prune`) | no |
 
 Flag parsing is `--key value` pairs via [parse-flags.ts](src/cli/parse-flags.ts),
 except `ticker-overview` and `set-startup-message`, which read positionals and bare
@@ -274,6 +277,7 @@ npm run cli -- journal-calendar --scope week
 npm run cli -- journal-calendar --scope year --date 2025-01-01
 npm run cli -- journal-calendar --date 08/21/2026 --format MM/DD/YYYY
 npm run cli -- journal-calendar --date 2026-07-28 --day
+npm run cli -- journal-calendar --date 2026-01-01 --jump next
 ```
 
 **Input**
@@ -284,8 +288,10 @@ npm run cli -- journal-calendar --date 2026-07-28 --day
 | `--date` | date | no | any day in the period to show; defaults to today |
 | `--format` | `MM/DD/YYYY` \| `DD/MM/YYYY` \| `YYYY-MM-DD` | no | how `--date` is read; defaults to `YYYY-MM-DD` |
 | `--day` | boolean | no | also list `--date`'s entries in full. **Put it last** — `parseFlags` treats every flag as taking a value, so `--day --scope week` would swallow `--scope` |
+| `--jump` | `prev` \| `next` | no | move to the nearest day **before/after** `--date` that has an entry, and list it — the web calendar's « » buttons. Applied after `--date`, so `--date 2026-01-01 --jump next` is "the first entry of the year" |
 
-**Calls** — `journalCalendarRange`, then `listEntriesInDateRange(deps.journalRepo, …)`,
+**Calls** — `findAdjacentEntryDate` when `--jump` is given, then `journalCalendarRange`,
+then `listEntriesInDateRange(deps.journalRepo, …)`,
 then `buildMonthGrid` / `buildWeekGrid` / `buildYearGrid`. `--date` is parsed by the same
 `parseJumpDate` the web Jump box uses, so a date that works in one works in the other.
 
@@ -304,7 +310,8 @@ Sun           Mon           Tue           Wed           Thu           Fri       
 This command is the calendar's layering check: the grid shape, the 30-character title
 elision and the date parsing all come from `src/lib/journal`, so if it couldn't be printed
 here the logic would have leaked into the view.
-**Exit** — 0; 1 on an unknown `--scope`, an unknown `--format`, or an unparseable `--date`.
+**Exit** — 0; 1 on an unknown `--scope`, an unknown `--format`, an unparseable `--date`, an
+unknown `--jump`, or a `--jump` with no entry in that direction.
 Source: [src/cli/journal-calendar.ts](src/cli/journal-calendar.ts)
 
 ---
@@ -846,21 +853,41 @@ opens it. Drives the same use-cases as the My Account screen, so the two can't d
 npm run cli -- user-preferences --user min                                # show
 npm run cli -- user-preferences --user min --favorite journal --startup yes
 npm run cli -- user-preferences --user min --favorite ""                  # clear favorite
+npm run cli -- user-preferences --user min --nav-style segmented
+npm run cli -- user-preferences --user min --clock-face analog --clock-weather no
+npm run cli -- user-preferences --user min --floating clock --floating-state open
 ```
 
-**Input** — `--user <username>` (required). `--favorite <slug|"">` and
-`--startup yes|no` are both optional; **omitting one leaves that preference as it is**,
-so either can be changed without restating the other. Supplying neither is a read.
+**Input** — `--user <username>` (required). Every other flag is optional, and
+**omitting one leaves that preference as it is**, so any can be changed without
+restating the others. Supplying none is a read.
 
-The **weather location and temperature unit** (set on the Account screen, shown on the
-home screen's Clock card) have no flags, but the command carries the stored values
+| Flag | Values | Sets |
+|---|---|---|
+| `--favorite` | slug or `""` | the favorite module; `""` clears it |
+| `--startup` | `yes` \| `no` | whether logging in opens the favorite |
+| `--nav-style` | `drill-in` \| `segmented` | the compact navigation arrangement |
+| `--clock-face` | `digital` \| `analog` | the Clock's face, on the home card *and* the floating clock |
+| `--clock-date` / `--clock-weather` / `--clock-weekday` | `yes` \| `no` | what the Clock shows around the time |
+| `--floating` + `--floating-state` | id + `closed`\|`minimized`\|`open` | one floating component's shape. **Both together**, and written by their own use-case rather than with the form |
+
+The **weather location and temperature unit** (set on the Account screen, shown by the
+Floating Clock) have no flags, but the command carries the stored values
 through on every write — `saveUserPreferences` writes every key each time, so a save
-that omitted them would silently clear the user's location.
+that omitted them would silently clear the user's location. Each `--clock-*` field is
+carried the same way.
+
+`--floating` is the exception to that pattern: it goes through `saveFloatingState`, a
+**single-key write**, so it can be combined with the form flags in one invocation
+without either clobbering the other. The calculator's angle mode and last result are
+likewise written by `saveCalculatorState` and have no flags here — see
+[`calculator`](#calculator).
 
 **Calls** — `getUserPreferences` / `saveUserPreferences` / `resolveStartupDestination` on
 `deps.userPreferencesRepo`, plus `getAccessibleModules` to bound the favorite.
 
-**Output** — the favorite, the startup flag, and the resolved landing place
+**Output** — the favorite, the startup flag, the compact nav style, the Clock's face and
+what it shows, each floating component's state, and the resolved landing place
 (`lands on login: /modules/<slug>` or `the home screen`). A favorite the user can't
 reach is rejected, and the reachable module slugs are printed to stderr.
 **Exit** — 0; 1 when `--user` is missing or unknown, `--startup` isn't `yes`/`no`, or the
@@ -1918,6 +1945,143 @@ Source: [src/cli/scan-music.ts](src/cli/scan-music.ts)
 
 ---
 
+## `calculator`
+
+Evaluates an expression, or reads and clears one person's calculation tape — the same
+use-cases the Floating Calculator's window drives, so the two can't diverge.
+
+```
+npm run cli -- calculator --functions
+npm run cli -- calculator --user min --expression "2+2"
+npm run cli -- calculator --user min --expression "sin(90)" --angle deg
+npm run cli -- calculator --user min --expression "3!^2"
+npm run cli -- calculator --user min --history
+npm run cli -- calculator --user min --clear-history
+```
+
+**Input**
+
+| Flag | Type | Required | Notes |
+|---|---|---|---|
+| `--user` | username | yes, except with `--functions` | whose tape the calculation lands on |
+| `--expression` | string | one of these three | the sum, e.g. `"3 + sin(45)"`. Capped at 500 chars |
+| `--history` | boolean | one of these three | print the tape, newest first. **Put it last** — `parseFlags` treats every flag as taking a value |
+| `--clear-history` | boolean | one of these three | wipe this person's tape. **Put it last**, same reason |
+| `--angle` | `deg` \| `rad` | no | defaults to `deg`, matching the keypad. Rejected if it's anything else, rather than silently corrected |
+| `--functions` | boolean | no | print the function/operator catalogue and exit. Needs no `--user` and touches no database |
+
+**Calls** — `calculateAndRecord(deps.calculatorHistoryRepo, …)` for an expression,
+`listCalculations` / `clearCalculations` for the tape. The expression is parsed by
+`expressionSchema` and evaluated by the same `evaluate` the window uses, so a sum that
+works in one works in the other, character for character — the formatted result is
+produced by `formatResult` in both.
+
+**Output** — just the result on stdout, so the command composes (`… | xargs`). A failed
+expression prints its message to stderr and **exits non-zero**, so a script can tell a
+syntax error from an answer without parsing stdout.
+
+```
+$ npm run cli -- calculator --user min --expression "2+2"
+4
+
+$ npm run cli -- calculator --user min --expression "1/0"
+Cannot divide by zero.          # exit code 1
+
+$ npm run cli -- calculator --user min --history
+Calculations for min (newest first, up to 50):
+  2026-09-15 14:22:07  3!^2 = 36
+  2026-09-15 14:21:55  2+2 = 4
+```
+
+**Notes.** A **failed expression is not recorded** — the tape is a record of results, and
+filling it with mistypes would push real answers off the end of the 50-row cap. The tape
+is **per-user** (migration 0095): a calculator tape is private working-out, not a shared
+board like `gam_scores`, so there is no flag that reads across users.
+
+`--functions` is the quickest way to see what the evaluator knows; it also lists the
+operators, including the two that surprise people (`%` is modulo, `!` is factorial).
+
+## `scratchpad`
+
+Reads and writes the Scratchpad — the tab strip everyone shares, and one person's notes
+inside it. The same use-cases the Floating Scratchpad's window drives, so the two can't
+diverge, and the only way to get a note into the app without a browser.
+
+```
+npm run cli -- scratchpad --categories
+npm run cli -- scratchpad --add-category "Recipes"
+npm run cli -- scratchpad --rename-category 3 --name "Cooking"
+npm run cli -- scratchpad --delete-category 3
+npm run cli -- scratchpad --user min --list
+npm run cli -- scratchpad --user min --category "Shopping" --list
+npm run cli -- scratchpad --user min --category "Shopping" --new "milk, eggs" --title "Groceries"
+npm run cli -- scratchpad --user min --save 7 --body "revised text"
+npm run cli -- scratchpad --user min --show 7
+npm run cli -- scratchpad --user min --delete 7
+npm run cli -- scratchpad --user min --category "Shopping" --export ./shopping.txt
+```
+
+**Input**
+
+| Flag | Type | Required | Notes |
+|---|---|---|---|
+| `--categories` | boolean | one verb | print the tab strip with ids. **Put it last** — `parseFlags` treats every flag as taking a value |
+| `--add-category` | string | one verb | append a category. Rejected if the name is taken (case-insensitively) or the strip is full (40) |
+| `--rename-category` | category id | one verb | pair with `--name`. Recapitalising to its own name is allowed |
+| `--delete-category` | category id | one verb | **refused while notes are filed under it** — see Notes |
+| `--user` | username | for every note verb | whose notes. Never optional on a note command |
+| `--list` | boolean | one verb | that tab's notes, most recently edited first. **Put it last** |
+| `--new` | string | one verb | create a note with this body; prints the new id |
+| `--save` | note id | one verb | write `--title`, `--body`, or both. An omitted field is left alone |
+| `--delete` | note id | one verb | delete one note |
+| `--show` | note id | one verb | print the note as its text file, header included |
+| `--export` | file path | one verb | write the whole tab to that path |
+| `--category` | name or id | no | defaults to the first tab, exactly as the window's first open does |
+| `--title` | string | no | with `--new` or `--save`. Single line, 120 chars |
+| `--body` | string | no | with `--save`. Whitespace is preserved exactly |
+| `--name` | string | with `--rename-category` | the new category name |
+
+**Calls** — `listCategories` / `createCategory` / `renameCategory` / `deleteCategory` for
+the strip; `listNotes` / `createNote` / `saveNote` / `deleteNote` for notes;
+`noteToTextFile` / `categoryToTextFile` for `--show` and `--export`, so a file written
+here is byte-identical to one the window's Save button produces.
+
+**Output**
+
+```
+$ npm run cli -- scratchpad --categories
+Scratchpad categories (in tab order):
+     1  Ideas
+     2  Shopping
+     3  Work
+
+$ npm run cli -- scratchpad --user min --category "Shopping" --new "milk, eggs"
+12                                  # just the id, so the next call can --save it
+
+$ npm run cli -- scratchpad --user min --category "Shopping" --list
+Notes for min in "Shopping" (most recently edited first):
+    12  2026-09-15 14:31:02  milk, eggs
+
+$ npm run cli -- scratchpad --delete-category 2
+2 notes are still filed under this category, written by 2 people. Empty it first.
+                                    # exit code 1
+```
+
+**Notes.** The **category commands take no `--user` and the note commands all require
+one**, which is not an oversight — it is the ownership split the feature rests on
+(migration 0096). The tab strip belongs to the household; the notes belong to a person, so
+every note statement is scoped by `user_id` and there is no flag that reads across users.
+
+**Deleting a category is refused while any note is filed under it**, and the refusal names
+counts only — how many notes, by how many people, never any note text or username. The
+sentence comes from `describeDeleteRefusal` in `lib`, so the terminal and the admin screen
+explain it identically. Cascading was rejected: it would let an admin destroy other
+people's notes with no way for a non-admin to recover them.
+
+`--new` prints **just the id** so the command composes. `--export` writes to the path you
+give rather than to the generated filename, because at a terminal `--export ./shopping.txt`
+means write it there.
+
 ## `magic-playlist`
 
 Builds a Magic Playlist from selection criteria — the terminal counterpart of the Magic
@@ -2168,6 +2332,43 @@ normaliser runs on upload — or run this from Windows with `MYHOMEBASE_DB` poin
 NAS path over SMB, which is safest right after a backup.
 
 Source: [src/cli/normalize-icon-overrides.ts](src/cli/normalize-icon-overrides.ts)
+
+---
+
+## `deployments`
+
+The deployment history — the same rows the Admin → About → *Deployments* tab shows, with
+the same delete and housekeeping use-cases.
+
+```
+npm run cli -- deployments list
+npm run cli -- deployments show 12
+npm run cli -- deployments delete 12
+npm run cli -- deployments delete 12,13,14
+npm run cli -- deployments prune
+```
+
+**Input** — a positional action. `show` and `delete` take an id; `delete` also accepts a
+comma-separated list, which is the batch form matching the tab's checkboxes. `prune` takes
+nothing: the keep count is `DEPLOYMENTS_KEEP_COUNT` (5), shared with the button so the two
+can't drift apart.
+
+**Calls** — `listDeployments`, `deleteDeployment`, `deleteDeployments` and
+`pruneDeployments` on `deps.deploymentRepo`.
+
+**Output** — `list` prints one line per deployment, newest first. `show` prints the whole
+record including the build log. `delete` names the row for a single id and reports a count
+for a batch. `prune` reports how many went and how many were kept.
+
+**Exit** — 0 normally, including when nothing matched (a row deleted in another tab is not
+an error). 1 for a malformed id or keep count, an unknown action, or `show` against an id
+that isn't there. A batch with one bad id deletes nothing rather than deleting the rest —
+a partial delete would leave you unable to tell what survived.
+
+**Note** — rows are written on the deployment target by `record-deployment.cjs`, so a dev
+database is normally empty here. Point `MYHOMEBASE_DB` at a copy of the production
+database to read it.
+Source: [src/cli/deployments.ts](src/cli/deployments.ts)
 
 ---
 

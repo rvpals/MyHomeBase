@@ -17,6 +17,13 @@ Strict layering: **all logic lives in `src/lib/`; the presentation layers
   `./design.md` → *What compact does differently* and `./modules.md` → step 7. Adding a
   bottom tab row or a compact-only nav to a module is the fastest way to break a phone
   layout here: the bottom edge is already claimed by the shared bar and the music player.
+- **Before adding anything that floats over the page** (a clock, a calculator, a
+  now-playing accessory): read `./design.md` → *The floating layer* and `./coding-guide.md`
+  → *The floating layer*. The shell's four surfaces are a **closed list** — a new floating
+  thing registers in `FLOATING_COMPONENTS` and renders in `FloatingLayer`, it never invents
+  a fifth surface or a fresh `fixed bottom-0`. Nothing about *where you are* may float;
+  that belongs in a navigation tier. **Floating ids are permanent once shipped** (they're
+  persisted in the enabled list and in each reader's state rows) — same rule as icon slots.
 - **Creating a new reusable component:** start from `./src/components/_component-template.tsx`.
 - **Before adding a table, column, or schema change:** read `./coding-guide.md` (table naming, migration conventions).
 - **Before adding any icon to a new screen, card, or nav:** read `./coding-guide.md` →
