@@ -25,6 +25,9 @@ function fakeRepo(): JournalRepository {
     listEntriesByMonthDay: (monthDay) => entries.filter((entry) => entry.date.slice(5) === monthDay),
     listEntriesInDateRange: (startDate, endDate) =>
       entries.filter((entry) => entry.date >= startDate && entry.date <= endDate),
+    findAdjacentEntryDate: () => {
+      throw new Error("not used");
+    },
     searchEntries: () => {
       throw new Error("not used");
     },

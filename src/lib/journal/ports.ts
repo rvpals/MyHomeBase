@@ -56,6 +56,16 @@ export interface JournalRepository {
    */
   listEntriesInDateRange(startDate: string, endDate: string): JournalEntry[];
   /**
+   * The nearest date strictly before (`prev`) or after (`next`) `fromDate` that
+   * has at least one entry, or undefined when there is none that way. Both the
+   * argument and the result are "YYYY-MM-DD".
+   *
+   * One indexed row rather than a range read: the calendar's jump buttons may
+   * have to cross months of empty days, and loading those days to find out they
+   * are empty would be the expensive way to learn it.
+   */
+  findAdjacentEntryDate(fromDate: string, direction: "prev" | "next"): string | undefined;
+  /**
    * Entries whose date, time, title, content, place, categories, or tags match
    * `term` as a case-insensitive substring, newest journal date first, up to
    * `limit`. Empty/blank terms return [].

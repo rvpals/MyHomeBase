@@ -41,9 +41,11 @@ import {
   type CalendarDay,
   type CalendarWeek,
   type JournalCalendarScope,
+  type AdjacentEntryDirection,
   type JournalDateFormat,
   type JournalEntry,
 } from "@/lib/journal";
+import { adjacentEntryDateAction } from "./journal-actions";
 import { JournalPhotosHost } from "./journal-photos-host";
 import { journalEntriesFilterHref, TaxonomyIconThumbnail } from "./journal-shared";
 
@@ -92,6 +94,14 @@ export function JournalCalendarView({
   const [openEntryId, setOpenEntryId] = useState<number | undefined>(undefined);
   /** Which photos the Photo of the Day dialog is showing, if it is open. */
   const [photoRequest, setPhotoRequest] = useState<PhotoRequest | undefined>(undefined);
+  /**
+   * Which direction has already been found to have nothing left, so its button
+   * can go dead rather than re-asking on every press. Cleared by any navigation,
+   * because from a new day the answer may well be different.
+   */
+  const [exhausted, setExhausted] = useState<Partial<Record<AdjacentEntryDirection, boolean>>>({});
+  /** The jump in flight, if any — both buttons wait while one is running. */
+  const [jumping, setJumping] = useState<AdjacentEntryDirection | undefined>(undefined);
 
   // The three grids come straight from the library; this component never walks a
   // calendar itself. Memoized because the year scope builds 12 × 42 cells and the
@@ -145,6 +155,9 @@ export function JournalCalendarView({
     if (next.anchor !== undefined) params.set("anchor", next.anchor);
     if (next.date === null) params.delete("date");
     else if (next.date !== undefined) params.set("date", next.date);
+    // Any move resets the « » buttons: "no earlier entry" was an answer about the
+    // day we were on, and from a different day it may not hold.
+    setExhausted({});
     router.push(`${pathname}?${params.toString()}`);
   }
 
@@ -159,6 +172,33 @@ export function JournalCalendarView({
       return;
     }
     navigate({ date: day.date, ...(day.isCurrentPeriod ? {} : { anchor: day.date }) });
+  }
+
+  /**
+   * Walks to the previous/next day that actually has an entry.
+   *
+   * Starts from the open day when there is one, otherwise the anchor: with
+   * nothing clicked, "next" sensibly means "the next entry after the period I'm
+   * looking at the start of". The search itself is a server round-trip because
+   * the grid only holds this period's entries and the answer may be months away.
+   */
+  async function jumpToAdjacentEntry(direction: AdjacentEntryDirection) {
+    if (jumping !== undefined) return;
+    setJumping(direction);
+    try {
+      const result = await adjacentEntryDateAction(selectedDate ?? anchor, direction);
+      if (result.ok && result.date !== undefined) {
+        // Same move the Jump box makes: land on the day AND open it, because
+        // "go to the next entry" is a request to read it, not just to see its month.
+        navigate({ anchor: result.date, date: result.date });
+        return;
+      }
+      // No entry that way (or the read failed): mark the direction spent so the
+      // button greys out and says why, rather than silently doing nothing.
+      setExhausted((current) => ({ ...current, [direction]: true }));
+    } finally {
+      setJumping(undefined);
+    }
   }
 
   const cellTitleLimit = isCompact ? CALENDAR_CELL_TITLE_LIMIT_COMPACT : CALENDAR_CELL_TITLE_LIMIT;
@@ -190,6 +230,9 @@ export function JournalCalendarView({
           // asking "what did I write then?", not just "show me that month".
           navigate({ anchor: date, date });
         }}
+        onJumpToEntry={(direction) => void jumpToAdjacentEntry(direction)}
+        jumping={jumping}
+        exhausted={exhausted}
       />
 
       {monthOrWeekGrid ? (
@@ -289,6 +332,9 @@ function CalendarToolbar({
   onToday,
   onPhotosOfPeriod,
   onJump,
+  onJumpToEntry,
+  jumping,
+  exhausted,
 }: {
   scope: JournalCalendarScope;
   anchor: string;
@@ -300,6 +346,9 @@ function CalendarToolbar({
   onToday: () => void;
   onPhotosOfPeriod: () => void;
   onJump: (date: string) => void;
+  onJumpToEntry: (direction: AdjacentEntryDirection) => void;
+  jumping?: AdjacentEntryDirection;
+  exhausted: Partial<Record<AdjacentEntryDirection, boolean>>;
 }) {
   const stepLabel = scope === "week" ? "week" : scope === "year" ? "year" : "month";
 
@@ -339,6 +388,36 @@ function CalendarToolbar({
           onOpen={onPhotosOfPeriod}
           className="h-8 w-8 border border-line bg-paper max-lg:h-9 max-lg:w-9"
         />
+        {/* Double chevrons, deliberately next to the single ones: ‹ › step by a
+            fixed period whether or not anything is there, « » skip to where the
+            writing actually is. Disabled once a direction has come back empty —
+            you are at that end of the journal, and a second press can't help. */}
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => onJumpToEntry("prev")}
+          disabled={jumping !== undefined || exhausted.prev === true}
+          ariaLabel="Jump to previous entry on calendar"
+          title={
+            exhausted.prev === true
+              ? "No earlier entry"
+              : "Jump to previous entry on calendar"
+          }
+          className="max-lg:px-4 max-lg:py-2"
+        >
+          «
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => onJumpToEntry("next")}
+          disabled={jumping !== undefined || exhausted.next === true}
+          ariaLabel="Jump to next entry on calendar"
+          title={exhausted.next === true ? "No later entry" : "Jump to next entry on calendar"}
+          className="max-lg:px-4 max-lg:py-2"
+        >
+          »
+        </Button>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -360,6 +439,11 @@ function CalendarToolbar({
               <li>
                 Week, Month and Year are the three ranges; ‹ and › step by whichever one is
                 showing.
+              </li>
+              <li>
+                « and » skip to the previous or next day that has an entry, however far
+                away it is — they start from the day you have open, or from the period
+                showing if none is.
               </li>
               <li>
                 The jump button takes a typed date — pick the format it should be read in, or

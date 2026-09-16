@@ -117,6 +117,12 @@ export {
   type ParseJumpDateResult,
 } from "./calendar";
 export {
+  findAdjacentEntryDate,
+  isAdjacentEntryDirection,
+  type AdjacentEntryDirection,
+  type FindAdjacentEntryDateOptions,
+} from "./neighbors";
+export {
   parseFilterQuery,
   tryParseFilterQuery,
   FilterQueryError,

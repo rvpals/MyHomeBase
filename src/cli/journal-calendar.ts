@@ -2,7 +2,9 @@ import {
   buildMonthGrid,
   buildWeekGrid,
   buildYearGrid,
+  findAdjacentEntryDate,
   groupEntriesByDate,
+  isAdjacentEntryDirection,
   isJournalCalendarScope,
   isJournalDateFormat,
   journalCalendarRange,
@@ -25,6 +27,7 @@ import { parseFlags } from "./parse-flags";
  *   journal-calendar --scope year --date 2025-01-01
  *   journal-calendar --date 08/21/2026 --format MM/DD/YYYY
  *   journal-calendar --date 2026-08-21 --day
+ *   journal-calendar --date 2026-08-21 --jump next
  *
  * This is the proof that the calendar's logic really is in `src/lib/`: the shape
  * of the grid, the padding, the 30-character title elision and the date parsing
@@ -34,6 +37,9 @@ import { parseFlags } from "./parse-flags";
  * `--date` accepts an ISO date, or any of the Jump formats with `--format` —
  * the same `parseJumpDate` the web Jump box uses, so a date that works in one
  * works in the other.
+ *
+ * `--jump prev|next` moves to the nearest day that actually has an entry and
+ * lists it, which is the web calendar's « » buttons from the terminal.
  */
 export async function journalCalendarCommand(args: string[]): Promise<void> {
   const flags = parseFlags(args);
@@ -66,13 +72,33 @@ export async function journalCalendarCommand(args: string[]): Promise<void> {
     anchor = parsed.date;
   }
 
+  // `--jump prev|next` walks to the nearest day that has an entry, the same
+  // library call the web « » buttons make. It runs after --date so the two
+  // compose: `--date 2026-01-01 --jump next` is "the first entry of the year".
+  let jumped: string | undefined;
+  if (flags.jump !== undefined) {
+    if (!isAdjacentEntryDirection(flags.jump)) {
+      console.error(`Unknown --jump "${flags.jump}". Use prev or next.`);
+      process.exitCode = 1;
+      return;
+    }
+    const found = findAdjacentEntryDate(deps.journalRepo, { from: anchor, direction: flags.jump });
+    if (found === undefined) {
+      console.error(`No ${flags.jump === "prev" ? "earlier" : "later"} entry than ${anchor}.`);
+      process.exitCode = 1;
+      return;
+    }
+    anchor = found;
+    jumped = found;
+  }
+
   const range = journalCalendarRange(scope, anchor);
   const entries = listEntriesInDateRange(deps.journalRepo, range.start, range.end);
   // `--day` lists one date's entries in full — the terminal equivalent of
   // clicking a cell. Read from argv rather than the parsed flags because
   // parseFlags treats every flag as taking a value, so `--day --scope week`
   // would have `--day` eat `--scope`. Put `--day` last, or use it bare.
-  const selectedDate = args.includes("--day") ? anchor : undefined;
+  const selectedDate = jumped ?? (args.includes("--day") ? anchor : undefined);
 
   if (scope === "year") {
     const grid = buildYearGrid({ anchor, entries, today, selectedDate });

@@ -15,6 +15,7 @@ import {
   deleteEntry,
   deleteFilter,
   deleteTag,
+  findAdjacentEntryDate,
   findEntries,
   generateCategoryIcon,
   generateMissingTaxonomyIcons,
@@ -31,6 +32,7 @@ import {
   updateEntry,
   upsertCategory,
   upsertTag,
+  type AdjacentEntryDirection,
   type JournalEntry,
   type JournalFilter,
   type JournalPreferences,
@@ -534,5 +536,31 @@ export async function reverseGeocodeAction(
     return { ok: true, place: await reverseGeocode(deps.geocodingClient, { latitude, longitude }) };
   } catch (error) {
     return toErrorResult(error, "Reverse geocode failed.");
+  }
+}
+
+export interface AdjacentEntryDateResult extends ActionResult {
+  /** The neighbouring entry's date, or undefined when there is none that way. */
+  date?: string;
+}
+
+/**
+ * Backs the calendar's « » buttons: the nearest day with an entry before or
+ * after the one the reader is looking at.
+ *
+ * A read the calendar screen can't do for itself — it holds one period's
+ * entries, and the answer may be several periods away. "No entry that way" comes
+ * back as `ok` with no date, not as an error: reaching the end of the journal is
+ * a normal thing to do.
+ */
+export async function adjacentEntryDateAction(
+  fromDate: string,
+  direction: AdjacentEntryDirection,
+): Promise<AdjacentEntryDateResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
+  try {
+    return { ok: true, date: findAdjacentEntryDate(deps.journalRepo, { from: fromDate, direction }) };
+  } catch (error) {
+    return toErrorResult(error, "Could not find a neighbouring entry.");
   }
 }

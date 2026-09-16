@@ -277,6 +277,28 @@ export class SqliteJournalRepository implements JournalRepository {
     return this.hydrateEntries(rows);
   }
 
+  findAdjacentEntryDate(fromDate: string, direction: "prev" | "next"): string | undefined {
+    // One column, one row, off idx_jrn_entries_entry_date — the index makes this
+    // a seek to the neighbouring key rather than a scan, however far away the
+    // next entry happens to be. DISTINCT is unnecessary: LIMIT 1 on an ordered
+    // read already collapses a day that holds several entries to one date.
+    const row = this.db
+      .prepare(
+        direction === "prev"
+          ? `SELECT entry_date FROM jrn_entries
+             WHERE entry_date < ?
+             ORDER BY entry_date DESC
+             LIMIT 1`
+          : `SELECT entry_date FROM jrn_entries
+             WHERE entry_date > ?
+             ORDER BY entry_date ASC
+             LIMIT 1`,
+      )
+      .get(fromDate) as { entry_date: string } | undefined;
+
+    return row?.entry_date;
+  }
+
   searchEntries(term: string, limit: number): JournalEntry[] {
     // LIKE is ASCII case-insensitive by default. The term is escaped so a user
     // typing "%", "_", or "\" searches for the literal character rather than a

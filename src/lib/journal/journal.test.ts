@@ -115,6 +115,12 @@ function fakeRepo(): JournalRepository {
         .filter((entry) => entry.date >= startDate && entry.date <= endDate)
         .sort((a, b) => (a.date === b.date ? a.id - b.id : a.date < b.date ? -1 : 1));
     },
+    findAdjacentEntryDate(fromDate, direction) {
+      const dates = entries.map((entry) => entry.date).sort();
+      return direction === "prev"
+        ? dates.reverse().find((date) => date < fromDate)
+        : dates.find((date) => date > fromDate);
+    },
     searchEntries(term, limit) {
       const needle = term.toLowerCase();
       return entries
