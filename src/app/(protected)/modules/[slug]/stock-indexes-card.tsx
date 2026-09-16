@@ -6,9 +6,9 @@
 //
 // A client component because the numbers are fetched on demand rather than on
 // page load — eleven calls to an unauthenticated provider is not something to do
-// on every dashboard render. Press the refresh button and it fetches the lot. Every
-// figure arrives already computed by `@/lib/market-indexes`; this file formats
-// and lays out, nothing else.
+// on every dashboard render. Expanding the card fetches the lot, and the refresh
+// button refetches it. Every figure arrives already computed by
+// `@/lib/market-indexes`; this file formats and lays out, nothing else.
 
 import { useState } from "react";
 import { Button } from "@/components/button";
@@ -121,7 +121,17 @@ function GroupSection({ label, quotes }: { label: string; quotes: IndexQuote[] }
   );
 }
 
+/**
+ * How old a board may be and still count as current when the card is reopened.
+ *
+ * Expanding fetches, but a collapse-and-expand a few seconds later shouldn't
+ * cost another eleven provider calls — the levels won't have moved. The Refresh
+ * button ignores this and always refetches.
+ */
+const FRESH_FOR_MS = 60_000;
+
 export function StockIndexesCard() {
+  const [open, setOpen] = useState(false);
   const [board, setBoard] = useState<IndexBoard | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -137,6 +147,20 @@ export function StockIndexesCard() {
       return;
     }
     setBoard(result.board);
+  }
+
+  /**
+   * Opening the card is a request for today's numbers, so fetch them — nobody
+   * expands Indexes to read a stale board. Collapsing fetches nothing, and a
+   * fetch already in flight is left alone.
+   */
+  function handleOpenChange(next: boolean) {
+    setOpen(next);
+    if (!next || loading) return;
+
+    const fetchedAt = board ? Date.parse(board.fetchedAt) : Number.NaN;
+    const isFresh = !Number.isNaN(fetchedAt) && Date.now() - fetchedAt < FRESH_FOR_MS;
+    if (!isFresh) void refreshAll();
   }
 
   // Icon-only, matching the dashboard's other refresh control, so `title` and
@@ -160,7 +184,12 @@ export function StockIndexesCard() {
   );
 
   return (
-    <CollapsibleCard title="Indexes" headerAction={refreshButton}>
+    <CollapsibleCard
+      title="Indexes"
+      open={open}
+      onOpenChange={handleOpenChange}
+      headerAction={refreshButton}
+    >
       {error && (
         <p className="mb-4 rounded-md border border-red-400/40 bg-red-400/5 p-3 text-sm text-red-400">
           {error}
@@ -190,8 +219,9 @@ export function StockIndexesCard() {
       ) : (
         !error && (
           <p className="rounded-md border border-dashed border-line p-4 text-center text-sm text-muted">
-            Press <span className="text-ink">Refresh</span> to fetch the major indexes. They
-            aren&apos;t loaded automatically, so opening the dashboard stays fast.
+            {loading
+              ? "Fetching the major indexes…"
+              : "No index levels yet — press Refresh to fetch them."}
           </p>
         )
       )}
