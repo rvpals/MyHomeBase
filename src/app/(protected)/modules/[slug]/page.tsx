@@ -13,6 +13,7 @@ import { GamesSection } from "./games-section";
 import { JournalSection } from "./journal-section";
 import { MusicSection } from "./music-section";
 import { StockSection } from "./stock-section";
+import { ToolsSection } from "./tools-section";
 
 const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
 const CSV_ANALYSIS_MODULE_SLUG = "csv-analysis";
@@ -22,6 +23,7 @@ const ATTENDANCE_MODULE_SLUG = "attendance";
 const MUSIC_LIBRARY_MODULE_SLUG = "music-library";
 const GAMES_MODULE_SLUG = "games";
 const PICTURE_GALLERY_MODULE_SLUG = "picture-gallery";
+const TOOLS_MODULE_SLUG = "tools";
 
 function ModuleBody({
   slug,
@@ -65,6 +67,10 @@ function ModuleBody({
 
   if (slug === PICTURE_GALLERY_MODULE_SLUG) {
     return <GallerySection section="main" />;
+  }
+
+  if (slug === TOOLS_MODULE_SLUG) {
+    return <ToolsSection section="main" />;
   }
 
   return (

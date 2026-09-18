@@ -1,5 +1,107 @@
 # Change History
 
+## 2026-09-17 — A Tools module, opening with a SQLite file browser
+
+### [Tools] A new module for standalone utilities
+
+A tenth module, **Tools** — a home for small self-contained utilities that belong to no
+other module. It opens with one, and the Dashboard lists what is available.
+
+### [Tools] SQLite File Browser
+
+Upload a `.db` file and look inside it. Its tables and views are listed with row counts;
+picking one opens it in the standard result grid, so the search box, per-column filters,
+sortable headers, column show/hide and CSV export all come for free.
+
+Rows can be deleted **one at a time** with a button on the row, or **several at once** by
+ticking checkboxes and using *Delete selected* in the toolbar. Both confirm first, and
+ticking the header checkbox covers everything the current filter matches rather than just
+the visible page.
+
+Five decisions worth knowing:
+
+- **The uploaded file is opened over its own connection, never the app's.** The reader
+  holds no database at all — every method takes a path and opens it for the length of one
+  call. That is deliberately unlike every other repository here, and it is what makes it
+  structurally impossible for a table name from this screen to resolve against
+  `myhomebase.db`. Connections close in a `finally`, because a file left open would be
+  locked and you could then not delete your own upload.
+- **The bytes live on disk, not in a BLOB.** An upload is up to 50 MB *and gets written
+  to*, so a BLOB would mean reading 50 MB out of the app database, writing it to a temp
+  file for the driver to open, and writing it all back — on every single-row delete. The
+  workspace folder is `MYHOMEBASE_TOOLS_UPLOAD_ROOT`, defaulting to `tool-uploads/`
+  beside the database.
+- **Deletes are real and permanent, and rows are addressed by `rowid`.** The uploaded copy
+  is scratch space, so a delete button that only pretended would be the wrong design. Row
+  *position* is unusable as an address — the grid sorts and filters, so the third row is
+  not the third row for long.
+- **A view has no rowid, and neither does a `WITHOUT ROWID` table.** Those are marked
+  read-only and the delete controls are not rendered at all, rather than offered and then
+  refused.
+- **A mis-picked file is rejected at upload.** The 16-byte SQLite header is checked before
+  anything is recorded, and the stored file removed again if it fails — otherwise a
+  spreadsheet would become a list entry that only broke when you clicked it.
+
+Uploads are **shared** with everyone granted the module, recording who brought each one.
+Deleting a user account cannot delete files other people are working with.
+
+Wiping the upload folder is supported rather than a corruption: every read checks the file
+is still there and reports *"upload it again"* instead of surfacing a driver error.
+
+Reachable from the CLI as `browse-sqlite`, plus `--upload <path>`, `--db <id>`,
+`--table <name>`, `--delete "4,9"` and `--remove`. The row listing prints the rowid first,
+so ids copy straight back into `--delete`.
+
+Narrow: sections in the shared bottom bar, nothing custom. The file and table lists stack
+above the grid below 1024px, and the grid swaps itself for its card layout, carrying the
+checkboxes and the bulk action with it.
+
+**Two migrations** — `0097_create_tool_uploads` adds `tol_uploaded_databases` (metadata
+only, one new `tol_` prefix), and `0098_seed_tools_module` registers the module. **A newly
+seeded module is granted to nobody**: admins see it by role, everyone else needs a grant in
+*User Management*.
+
+## 2026-09-17 — Calendar import can stop and show you the day first
+
+### [My Journal] Review existing entries before importing from a calendar
+
+**Preferences** gains a checkbox: **Review existing journal entry before import from
+Calendar**. With it on, the Calendar Import section no longer writes as soon as you hit
+Import. It first looks up what the journal already holds on each date the ticked events
+would land on, and shows you those entries — date, time, title and an excerpt of the
+content — with a choice per date: **Import**, or **Don't import &lt;date&gt;**.
+
+Declining a date drops **every** ticked event on it, which is the decision the dialog
+actually offers. "Don't import 2026-03-14" means that whole day is left alone, not that
+one clashing event is dropped.
+
+**Only dates that already have an entry are shown.** A date the journal has never seen
+needs no decision, so it imports straight through and is reported as a count instead of
+a row you have to dismiss. On a fresh calendar the dialog therefore never opens at all —
+the preference costs nothing until it has something to tell you.
+
+Why this exists alongside the importer's own duplicate check: the two answer different
+questions. The importer matches each event on its calendar **UID**, so it already knows
+whether *that event* was imported before, and refreshes it in place. What a UID cannot
+tell it is whether you wrote something of your own that day. That is the question this
+asks.
+
+The decision is enforced by **narrowing the selection** before the importer runs, not by
+a branch inside it — so a date you declined is unimportable by any route, including a
+future caller that doesn't know the review exists.
+
+Defaults to **off**: the import ran straight through before this existed, and a
+preference that changes what a button does should be asked for rather than arrive
+switched on. It travels with a metadata backup, like the handwriting size and unlike the
+photo folder.
+
+The CLI gets the same use-case: `import-journal-ics --review` prints the report and
+writes nothing, and `--skip-dates 2026-03-14,2026-03-15` is the terminal peer of
+declining a date.
+
+**No migration** — the preference is a new key in the existing `sys_module_settings`
+table, exactly like the handwriting size.
+
 ## 2026-09-15 — A floating layer over every page, and a NAS that tells you why it didn't start
 
 ### [Platform] Windows that float over the page, not in it

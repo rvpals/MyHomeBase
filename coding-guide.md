@@ -21,6 +21,7 @@ module is obvious from the name alone. New tables must follow this.
 | `mus_` | Music Library | `mus_tracks`, `mus_albums`, `mus_scan_runs`, `mus_track_lyrics`, `mus_playlists`, `mus_playlist_tracks`, `mus_play_events`, `mus_magic_list`, `mus_magic_list_tracks`, `mus_play_queue`, `mus_play_queue_state` |
 | `gam_` | Games | `gam_scores` |
 | `pho_` | Picture Gallery | `pho_albums`, `pho_album_photos`, `pho_magic_list`, `pho_magic_list_photos`, `pho_photo_index`, `pho_magic_scan_run` |
+| `tol_` | Tools | `tol_uploaded_databases` |
 
 The `rei_` prefix (Real Estate Investment) was retired when that module was
 removed — see migration `0026_drop_real_estate_module`.
@@ -35,6 +36,11 @@ with them. See `modules.md` → *Per-module detail* → **Picture Gallery**.
 Note the prefix is `pho_` (photo, the module's domain) and not `alb_` (album, the first
 table needing one) — a prefix is a **module namespace**, so it has to still fit the second
 table this module gains.
+
+**Tools is `tol_` and not `sql_`** (migration 0097), for the same reason. The SQLite File
+Browser is the module's first utility, not its domain — Tools is explicitly a container
+for more of them, so naming the namespace after the first one would have aged badly the
+moment a second tool arrived.
 
 **A new table also wants a line in
 [`src/lib/sql-explorer/table-reference.ts`](src/lib/sql-explorer/table-reference.ts)**,

@@ -1523,6 +1523,29 @@ Repo is `deps.stockDailySnapshotRepo`. **No network anywhere in this module. No 
 `captureDailySnapshot` is the obvious nightly-scheduler candidate and is currently
 web-only.
 
+## sqlite-browser — `@/lib/sqlite-browser`
+
+Repos are `deps.uploadedDatabaseRepo` (metadata, in the app DB), `deps.sqliteFileStore`
+(the uploaded bytes, in the workspace folder) and `deps.foreignDatabaseReader` (opens the
+uploaded file itself). No network. **CLI: `browse-sqlite`.**
+
+Backs the Tools module's *SQLite File Browser*. The distinction that matters: the
+**reader holds no connection** — it opens each uploaded path for the length of one
+call, so a table name can never be resolved against `myhomebase.db`. Deletes are
+written back into the uploaded file, which is scratch space by design.
+
+| Export | Shape |
+|---|---|
+| `listUploadedDatabases` | `(repo) => UploadedDatabase[]` — newest first |
+| `uploadDatabase` | `(input, deps) => Promise<UploadedDatabase>` — bytes first, row second; the file is header-checked and removed again if it is not really SQLite |
+| `listTablesIn` | `(databaseId, deps) => Promise<BrowsedTable[]>` — tables and views, with row counts and whether rows can be addressed |
+| `readTableRows` | `(input, deps) => Promise<BrowsedPage>` — capped at `TABLE_PAGE_LIMIT` (500) |
+| `deleteRows` | `(input, deps) => Promise<DeleteRowsResult>` — by rowid, one transaction, duplicates collapsed |
+| `deleteUploadedDatabase` | `(databaseId, deps) => Promise<boolean>` — row first, then the file |
+
+A missing file on disk is reported as "upload it again", not thrown: the upload root is
+a workspace and clearing it is supported.
+
 ## tax-lots — `@/lib/tax-lots`
 
 Repo is `deps.taxLotRepo`. No network. **CLI: `tax-lots`.**
@@ -2450,6 +2473,40 @@ long-term *and* in profit, the tax-efficient ones to trim. XIRR prints
 ticker can be resolved, when the ticker has no usable price and no `--price` was given,
 or when either schema rejects a flag.
 Source: [src/cli/tax-lots.ts](src/cli/tax-lots.ts)
+
+---
+
+## `browse-sqlite`
+
+The Tools module's *SQLite File Browser* from a terminal — the same use-cases the web
+view drives, through the same `deps`.
+
+```
+npm run cli -- browse-sqlite
+npm run cli -- browse-sqlite --upload ./chinook.db --user 1
+npm run cli -- browse-sqlite --db 3
+npm run cli -- browse-sqlite --db 3 --table customers
+npm run cli -- browse-sqlite --db 3 --table customers --delete "4,9"
+npm run cli -- browse-sqlite --db 3 --remove
+```
+
+**Input** — all optional; the flags select the mode. No flags lists the uploaded files
+with their ids. `--upload <path>` adds one, `--user <id>` attributing it (an
+unparseable id is treated as unattributed rather than failing the upload). `--db <id>`
+alone lists that file's tables; with `--table <name>` it prints the rows, rowid first;
+with `--delete "<rowids>"` it deletes those rows; with `--remove` it forgets the file
+and deletes it from disk.
+
+**Output** — the row listing is tab-separated with a `rowid` column first, so ids can
+be copied straight back into `--delete`. A capped read says how many of how many rows
+it showed. NULL prints as `NULL`, and a BLOB as its type and size rather than its
+bytes.
+
+**Exit** — 0 including when nothing has been uploaded (a fact, not an error); 1 when
+`--db` is not a positive integer, when `--delete` parses to no rowids, when the id is
+not listed, when the file has gone from disk, or when a schema rejects the input (a
+non-SQLite file, one over 50 MB, a table name that is not an identifier).
+Source: [src/cli/browse-sqlite.ts](src/cli/browse-sqlite.ts)
 
 ---
 

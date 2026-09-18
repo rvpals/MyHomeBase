@@ -308,6 +308,15 @@ nothing in the app writes to that folder. Leaving it blank switches the Music Li
 scanning off; **it is read once at startup, so adding it to an existing install needs an
 app restart** (§ *Restart*), not just a page reload.
 
+**The Tools module's upload folder needs no entry either**, unless you want it
+somewhere other than the default. The SQLite File Browser stores uploaded `.db` files in
+`MYHOMEBASE_TOOLS_UPLOAD_ROOT`, which defaults to `tool-uploads/` beside the database —
+so `/volume1/app/myhomebase/data/tool-uploads` on the NAS, created on first upload. It is
+scratch space: the module writes row deletes back into those files, and clearing the
+folder is supported (each upload then reports "upload it again" rather than erroring).
+Worth knowing for **backups** — these are uploaded copies, not household data, so the
+folder can be excluded.
+
 **The journal's photo archive is NOT set here.** It lives in the app, at **My Journal →
 Configuration → Photo folder**, with a **Check Access** button that reports exactly what
 the app can see at that path — the year folders it found, and whether it could read files

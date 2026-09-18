@@ -673,6 +673,34 @@ export const ICON_SLOTS: IconSlot[] = [
   },
 
   /* ---------------------------------------------------------------------------------
+     Tools — nav sections.
+  --------------------------------------------------------------------------------- */
+  {
+    id: "tools_section_main",
+    label: "Dashboard",
+    group: "Tools sections",
+    where: "Tools → section panel → Dashboard.",
+    defaultConcept: "grid",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    // Derived by `sectionSlotId` from the section slug `sqlite-browser` (hyphen ->
+    // underscore). The slug and this id are locked together: renaming either without
+    // the other silently stops matching and orphans any uploaded override.
+    id: "tools_section_sqlite_browser",
+    label: "SQLite File Browser",
+    group: "Tools sections",
+    where: "Tools → section panel → SQLite File Browser.",
+    // `database`, already a TREE_ICONS concept — the same glyph the admin SQL
+    // Explorer's nav entry uses, which is the point: both screens mean "look
+    // inside a database file", and sharing the concept makes them read alike.
+    defaultConcept: "database",
+    wired: true,
+    namespace: "tree",
+  },
+
+  /* ---------------------------------------------------------------------------------
      Games — the six Arcade cards.
 
      Ids are derived from the catalogue key by `gameSlotId`, not named per call site:

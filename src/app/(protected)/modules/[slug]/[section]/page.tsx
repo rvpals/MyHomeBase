@@ -21,6 +21,8 @@ import { isMusicSection } from "../music-sections";
 import { JournalSection } from "../journal-section";
 import { StockSection } from "../stock-section";
 import { isStockSection } from "../stock-sections";
+import { ToolsSection } from "../tools-section";
+import { isToolsSection } from "../tools-sections";
 
 const ATTENDANCE_MODULE_SLUG = "attendance";
 const CSV_ANALYSIS_MODULE_SLUG = "csv-analysis";
@@ -30,6 +32,7 @@ const JOURNAL_MODULE_SLUG = "journal";
 const MUSIC_LIBRARY_MODULE_SLUG = "music-library";
 const PICTURE_GALLERY_MODULE_SLUG = "picture-gallery";
 const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
+const TOOLS_MODULE_SLUG = "tools";
 
 /**
  * A module's sub-section, e.g. /modules/expense/transactions or
@@ -112,6 +115,9 @@ function renderSection(
   }
   if (slug === PICTURE_GALLERY_MODULE_SLUG && isGallerySection(section)) {
     return <GallerySection section={section} />;
+  }
+  if (slug === TOOLS_MODULE_SLUG && isToolsSection(section)) {
+    return <ToolsSection section={section} />;
   }
   if (slug === STOCK_ETFS_MODULE_SLUG && isStockSection(section)) {
     return (

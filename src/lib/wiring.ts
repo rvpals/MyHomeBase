@@ -49,6 +49,9 @@ import {
 import { SqliteScheduledRunRepository } from "./scheduled-jobs/repository";
 import { SqliteSettingsRepository } from "./settings/repository";
 import { SqliteSqlExplorerRepository } from "./sql-explorer/repository";
+import { BetterSqliteForeignDatabaseReader } from "./sqlite-browser/foreign-db";
+import { NodeSqliteFileStore } from "./sqlite-browser/file-store";
+import { SqliteUploadedDatabaseRepository } from "./sqlite-browser/repository";
 import { SqliteStockAnalyticsRepository } from "./stock-analytics/repository";
 import { SqliteDailySnapshotRepository } from "./stock-daily-snapshot/repository";
 import { SqliteStockPositionRepository } from "./stock-positions/repository";
@@ -110,6 +113,16 @@ const musicRoot = process.env.MYHOMEBASE_MUSIC_ROOT ?? "";
 // rather than `deps` holding one built at boot. The env var is still honoured as a
 // fallback so an install that set it keeps working.
 const photoRootFromEnv = process.env.MYHOMEBASE_PHOTO_ROOT ?? "";
+
+// Workspace for the SQLite files uploaded to the Tools module's file browser.
+//
+// Defaults to `tool-uploads/` beside the database rather than to a system temp
+// folder, so the uploads survive a reboot and sit somewhere findable on the NAS.
+// This is scratch space by design: the module writes deletes back into these
+// files, and wiping the folder is supported -- every read checks the file is
+// still there and asks for a re-upload if it isn't (migrations/0097).
+const toolsUploadRoot =
+  process.env.MYHOMEBASE_TOOLS_UPLOAD_ROOT ?? path.join(path.dirname(dbPath), "tool-uploads");
 
 // Google sign-in is only enabled when all three env vars are set — every
 // adapter treats `deps.googleOAuthClient === undefined` as "feature off"
@@ -225,6 +238,14 @@ export const deps = {
   taxLotRepo: new SqliteTaxLotRepository(db),
   stockAnalyticsRepo: new SqliteStockAnalyticsRepository(db),
   sqlExplorerRepo: new SqliteSqlExplorerRepository(db),
+  // The Tools module's SQLite File Browser (migrations/0097). Three pieces: the
+  // metadata rows in the app DB, the uploaded files in the workspace folder, and
+  // the reader that opens those files. The reader deliberately takes NO database
+  // connection -- it opens each uploaded path for the length of one call, so it
+  // can never resolve a table name against myhomebase.db.
+  uploadedDatabaseRepo: new SqliteUploadedDatabaseRepository(db),
+  sqliteFileStore: new NodeSqliteFileStore(toolsUploadRoot),
+  foreignDatabaseReader: new BetterSqliteForeignDatabaseReader(),
   systemInfoRepo: new RealSystemInfoRepository(),
   changeHistoryRepo: new FileChangeHistoryRepository(),
   // The deployment history the About screen lists (migrations/0078). Written on the

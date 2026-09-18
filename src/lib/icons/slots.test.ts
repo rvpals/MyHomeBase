@@ -139,6 +139,7 @@ describe("sectionSlotId", () => {
       games: ["main", "scores", "configuration"],
       music: ["main", "magic", "player", "queue", "scan", "configuration"],
       gallery: ["main", "favorites", "albums", "magic-list"],
+      tools: ["main", "sqlite-browser"],
       admin: [
         "configuration", "configuration-modules", "configuration-application",
         // Under the Display Settings group, but the ids stayed `configuration-*` so

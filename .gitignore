@@ -69,3 +69,10 @@ next-env.d.ts
 
 # Session logs written by /end_chat. A human record only — never committed.
 /chat_md/
+
+# SQLite files uploaded to Tools -> SQLite File Browser. The upload root normally
+# sits beside the database (outside the repo), but an install whose MYHOMEBASE_DB
+# points at ./data/ would land them here. Someone else's database is never ours to
+# commit.
+/data/tool-uploads/
+/tool-uploads/

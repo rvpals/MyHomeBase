@@ -158,6 +158,15 @@ const GROUPS: TableReferenceGroup[] = [
     ],
   },
   {
+    prefix: "tol_",
+    module: "Tools",
+    summary:
+      "The SQLite files uploaded to the file browser. Metadata only — the files themselves live in the upload root on disk, not in this database.",
+    tables: [
+      ["tol_uploaded_databases", "One uploaded SQLite file: its original name, the generated name it was stored under, its size and who brought it. The file is opened over its own connection, never this one."],
+    ],
+  },
+  {
     prefix: "ico_",
     module: "Icon customisation",
     summary: "Platform-wide, not a feature module.",

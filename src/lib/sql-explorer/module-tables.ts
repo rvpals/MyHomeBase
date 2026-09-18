@@ -26,6 +26,7 @@ const MODULE_SLUG_BY_PREFIX: Record<string, string> = {
   mus_: "music-library",
   gam_: "games",
   pho_: "picture-gallery",
+  tol_: "tools",
 };
 
 /** The heading for everything no module owns. */

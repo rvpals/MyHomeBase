@@ -38,6 +38,7 @@ are the `snake_case` equivalents.
 | `music-library` | Music Library | My Music Library | Browse and stream your music collection. | 7 | `music` | `mus_` |
 | `games` | Games | Games & Puzzles | Play a quick game and keep a high-score board. | 8 | `game` | `gam_` |
 | `picture-gallery` | Picture Gallery | My Picture Gallery | Browse the photo archive and the pictures you have kept. | 9 | `photo` | `pho_` |
+| `tools` | Tools | Tools & Utilities | This module list all the utilities and tools | 10 | `tool` | `tol_` |
 
 Sequence 1 is deliberately vacant: it belonged to the Real Estate module, retired
 in `migrations/0026_drop_real_estate_module`. Its `rei_` prefix is retired with
@@ -1411,6 +1412,57 @@ drive — they call `journal-photos` and `fav-photos`, whose logic is already re
 from the terminal where it lives. The album use-cases *are* real use-cases and take
 plain data, so they are CLI-ready by construction (`createAlbum(deps.albumRepo, input)`
 and friends); adding commands for them would need no change to `src/lib/albums`.
+
+**Tools** (`tools`) — a home for small standalone utilities, the things that belong to
+no other module. Two sections: a Dashboard listing what is available, and the first
+utility.
+
+The **SQLite File Browser** opens a `.db` file the reader uploads: its tables and views
+are listed with row counts, and one opens in a `DataGrid` with search, per-column
+filters, sortable headers and CSV export. Rows can be deleted one at a time or by
+ticking checkboxes and using the bulk action. Backed by `src/lib/sqlite-browser` and one
+table, `tol_uploaded_databases` (migration 0097).
+
+Five choices worth knowing:
+
+- **The uploaded file is opened over its own connection, never the app's.**
+  `BetterSqliteForeignDatabaseReader` holds no database at all — every method takes a
+  path and opens it for the length of one call. That is deliberately unlike every other
+  repository here, and it is what makes it structurally impossible for a table name from
+  the browser to resolve against `myhomebase.db`. Connections close in a `finally`: a
+  file left open would be locked, and on Windows the reader could then not delete their
+  own upload.
+- **The bytes live on disk, not in a BLOB.** An upload is up to 50 MB *and is written
+  to*, so a BLOB would mean reading 50 MB out of the app database, writing it to a temp
+  file for the driver to open, and writing it all back — on every single-row delete. The
+  workspace folder is `MYHOMEBASE_TOOLS_UPLOAD_ROOT`, defaulting to `tool-uploads/`
+  beside the database. The tradeoff is accepted: **the folder can be wiped without the
+  rows going with it**, so every read checks the file is still there and reports "upload
+  it again" rather than surfacing the driver's error.
+- **Deletes are real, and rows are addressed by `rowid`.** The uploaded copy is a
+  workspace, so a delete button that only pretended would be the wrong design. Row
+  *position* is not usable as the address — the grid sorts and filters, so the third row
+  is not the third row for long — and the rowid rides back under a reserved alias for
+  exactly that reason.
+- **A view has no rowid, and neither does a `WITHOUT ROWID` table.** Those report
+  `canDelete: false` and the delete controls are not rendered at all, rather than shown
+  and then refused. The reader also probes rather than trusting a PRAGMA, since none
+  answers this directly.
+- **A mis-picked file is rejected at upload.** The 16-byte SQLite header is checked
+  before the metadata row is written, and the stored file is removed again if it fails —
+  otherwise a CSV would become a picker entry that only broke when someone clicked it.
+
+Uploads are **shared** with everyone granted the module, recording who brought each one;
+`ON DELETE SET NULL` on the uploader means deleting an account cannot delete files other
+people are working with.
+
+Reachable from the CLI as `npm run cli -- browse-sqlite`, plus `--upload <path>`,
+`--db <id>`, `--table <name>`, `--delete "4,9"` and `--remove`. The row listing prints
+the rowid first so ids copy straight back into `--delete`.
+
+Narrow: sections in the shared bottom bar, nothing custom. The file and table lists
+stack above the grid with `max-lg:grid-cols-1`, and `DataGrid` swaps itself for
+`DataGridCompact` below 1024px, carrying the checkboxes and the bulk action with it.
 
 ### Icons
 
