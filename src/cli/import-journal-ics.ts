@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 import {
+  applyIcsReviewDecision,
+  buildIcsImportReview,
   emptyIcsFilter,
   importIcsEvents,
   planIcsImport,
@@ -22,7 +24,7 @@ export async function importJournalIcsCommand(args: string[]): Promise<void> {
       "Usage: import-journal-ics --file <path.ics> [--from YYYY-MM-DD] [--to YYYY-MM-DD] "
         + "[--contains <text>] [--excludes <text>] [--no-all-day] [--require-title] "
         + "[--categories <a,b>] [--tags <a,b>] [--place <name>] [--note <text>] "
-        + "[--replace] [--dry-run]",
+        + "[--replace] [--review] [--skip-dates <YYYY-MM-DD,...>] [--dry-run]",
     );
     process.exitCode = 1;
     return;
@@ -83,8 +85,60 @@ export async function importJournalIcsCommand(args: string[]): Promise<void> {
 
     if (events.length === 0) return;
 
+    // --review answers the same question the web screen's
+    // `reviewBeforeCalendarImport` preference asks: what does the journal already
+    // hold on the dates this import would write into? Prints and writes nothing,
+    // so it composes with --dry-run.
+    if ("review" in flags) {
+      const review = buildIcsImportReview(deps.journalRepo, events);
+      console.log(
+        `${review.groups.length} of ${review.totalDateCount} date` +
+          `${review.totalDateCount === 1 ? "" : "s"} already ` +
+          `${review.groups.length === 1 ? "has an entry" : "have entries"}` +
+          (review.unaffectedEventCount > 0
+            ? `, ${review.unaffectedEventCount} event` +
+              `${review.unaffectedEventCount === 1 ? "" : "s"} on untouched dates`
+            : "") +
+          ".",
+      );
+      for (const group of review.groups) {
+        console.log(
+          `  ${group.date} — ${group.existingEntries.length} existing, ` +
+            `${group.selectedEventCount} to import`,
+        );
+        for (const existing of group.existingEntries) {
+          const when = existing.time !== "" ? existing.time : "     ";
+          console.log(
+            `    ${when}  ${existing.title || "(untitled)"}` +
+              (existing.isFromCalendar ? "  [from calendar]" : ""),
+          );
+          if (existing.content !== "") {
+            console.log(
+              `            ${existing.content}${existing.isContentTruncated ? "…" : ""}`,
+            );
+          }
+        }
+      }
+      if (!("dry-run" in flags)) return;
+    }
+
+    // The CLI peer of the review dialog's "don't import <date>": every event on a
+    // listed date is dropped. Enforced by narrowing the selection, exactly as the
+    // web action does, so the two cannot diverge.
+    const skipDates = splitNames(flags["skip-dates"]);
+    const allIndexes = events.map((_event, index) => index);
+    const selection =
+      skipDates.length > 0 ? applyIcsReviewDecision(events, allIndexes, skipDates) : undefined;
+
+    if (selection && selection.length < allIndexes.length) {
+      const dropped = allIndexes.length - selection.length;
+      console.log(
+        `Leaving out ${dropped} event${dropped === 1 ? "" : "s"} on ${skipDates.join(", ")}.`,
+      );
+    }
+
     if ("dry-run" in flags) {
-      const plan = planIcsImport(deps.journalRepo, events, presets);
+      const plan = planIcsImport(deps.journalRepo, events, presets, selection);
       console.log(
         `Would create ${plan.createCount}, refresh ${plan.updateCount}, skip ${plan.skipCount}.`,
       );
@@ -98,7 +152,7 @@ export async function importJournalIcsCommand(args: string[]): Promise<void> {
       return;
     }
 
-    const summary = importIcsEvents(deps.journalRepo, events, presets);
+    const summary = importIcsEvents(deps.journalRepo, events, presets, selection);
     console.log(
       `Imported ${summary.importedCount}, refreshed ${summary.updatedCount}, ` +
         `skipped ${summary.skippedCount}.`,

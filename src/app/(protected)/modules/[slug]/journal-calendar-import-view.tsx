@@ -6,8 +6,19 @@ import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { Comments } from "@/components/comments";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
-import type { IcsImportFilter, IcsImportPresets, JournalCategory, JournalTag } from "@/lib/journal";
-import { readIcsFileAction, runIcsImportAction } from "./journal-calendar-import-actions";
+import { Modal } from "@/components/modal";
+import type {
+  IcsImportFilter,
+  IcsImportPresets,
+  IcsImportReview,
+  JournalCategory,
+  JournalTag,
+} from "@/lib/journal";
+import {
+  readIcsFileAction,
+  reviewIcsImportAction,
+  runIcsImportAction,
+} from "./journal-calendar-import-actions";
 import type { IcsPreviewRow } from "./journal-calendar-import-actions";
 
 const INPUT_CLASS =
@@ -22,6 +33,12 @@ export interface JournalCalendarImportViewProps {
   categories: JournalCategory[];
   /** The managed tag list, same purpose. */
   tags: JournalTag[];
+  /**
+   * The module's `reviewBeforeCalendarImport` preference. When true, importing
+   * stops first and shows what the journal already holds on each date it would
+   * write into, so a date can be dropped from the run.
+   */
+  reviewBeforeImport: boolean;
 }
 
 /**
@@ -80,7 +97,11 @@ function describeUploadFailure(caught: unknown, file: File): string {
   return message !== "" ? message : `Failed to read “${file.name}”.`;
 }
 
-export function JournalCalendarImportView({ categories, tags }: JournalCalendarImportViewProps) {
+export function JournalCalendarImportView({
+  categories,
+  tags,
+  reviewBeforeImport,
+}: JournalCalendarImportViewProps) {
   const router = useRouter();
 
   const [fileName, setFileName] = useState("");
@@ -123,6 +144,22 @@ export function JournalCalendarImportView({ categories, tags }: JournalCalendarI
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
+  /**
+   * The open review, when the preference stopped an import to ask about dates
+   * that already hold entries. `undefined` means no review is up.
+   *
+   * It carries the indexes the reader ticked, because the grid's selection is
+   * cleared when the import finishes and the dialog's Import button needs the
+   * original set.
+   */
+  const [pendingReview, setPendingReview] = useState<
+    { review: IcsImportReview; indexes: number[] } | undefined
+  >(undefined);
+  /** Dates the reader has said "don't import" to in the open dialog. */
+  const [excludedDates, setExcludedDates] = useState<string[]>([]);
+  /** Which reviewed dates have their existing entries expanded. */
+  const [expandedDates, setExpandedDates] = useState<string[]>([]);
+
   function splitNames(value: string): string[] {
     return value
       .split(",")
@@ -154,12 +191,16 @@ export function JournalCalendarImportView({ categories, tags }: JournalCalendarI
     chosenFile: File,
     nextFilter: IcsImportFilter,
     indexes?: number[],
+    skipDates?: string[],
   ): FormData {
     const payload = new FormData();
     payload.set("file", chosenFile, chosenFile.name);
     payload.set("filter", JSON.stringify(nextFilter));
     payload.set("presets", JSON.stringify(currentPresets()));
     if (indexes) payload.set("selectedIndexes", JSON.stringify(indexes));
+    if (skipDates && skipDates.length > 0) {
+      payload.set("excludedDates", JSON.stringify(skipDates));
+    }
     return payload;
   }
 
@@ -217,23 +258,40 @@ export function JournalCalendarImportView({ categories, tags }: JournalCalendarI
     await readFile(file, filter);
   }
 
-  async function runImport(indexes: number[]) {
+  /**
+   * Writes the ticked events, dropping any date the reader declined.
+   *
+   * The only place the import action is called. Both the direct path (preference
+   * off) and the review dialog's confirm land here, so the two cannot disagree
+   * about what gets written.
+   */
+  async function runImport(indexes: number[], skipDates: string[] = []) {
     if (indexes.length === 0 || !file) return;
     setIsBusy(true);
     setError("");
     setNotice("");
     try {
-      const result = await runIcsImportAction(buildPayload(file, appliedFilter, indexes));
+      const result = await runIcsImportAction(
+        buildPayload(file, appliedFilter, indexes, skipDates),
+      );
       if (!result.ok || !result.summary) {
         setError(result.error ?? "Failed to import the calendar events.");
         return;
       }
 
       const { importedCount, updatedCount, skippedCount } = result.summary;
+      const excludedCount = result.excludedByReviewCount ?? 0;
       setNotice(
         `Imported ${importedCount} ${importedCount === 1 ? "entry" : "entries"}` +
           (updatedCount > 0 ? `, refreshed ${updatedCount}` : "") +
           (skippedCount > 0 ? `, skipped ${skippedCount}` : "") +
+          // Counted separately from `skippedCount`: the reader chose these, so
+          // they are not the importer declining to act on something.
+          (excludedCount > 0
+            ? `, left out ${excludedCount} on ${
+                skipDates.length === 1 ? "the date you kept" : "the dates you kept"
+              }`
+            : "") +
           ".",
       );
       // The action hands back refreshed rows, so the grid stops offering the
@@ -245,6 +303,70 @@ export function JournalCalendarImportView({ categories, tags }: JournalCalendarI
     } finally {
       setIsBusy(false);
     }
+  }
+
+  /**
+   * What the grid's Import button does.
+   *
+   * With the preference off this imports straight away, exactly as before. With
+   * it on it first asks what the journal already holds on those dates, and opens
+   * the review only if the answer is "something" — a calendar whose dates are all
+   * new imports without a dialog, which is what keeps the preference from
+   * becoming a click to dismiss.
+   */
+  async function startImport(indexes: number[]) {
+    if (indexes.length === 0 || !file) return;
+
+    if (!reviewBeforeImport) {
+      await runImport(indexes);
+      return;
+    }
+
+    setIsBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await reviewIcsImportAction(buildPayload(file, appliedFilter, indexes));
+      if (!result.ok || !result.review) {
+        setError(result.error ?? "Failed to check the journal for existing entries.");
+        return;
+      }
+
+      if (result.review.groups.length === 0) {
+        // Nothing to decide — don't make the reader confirm an empty dialog.
+        await runImport(indexes);
+        return;
+      }
+
+      setExcludedDates([]);
+      setExpandedDates([]);
+      setPendingReview({ review: result.review, indexes });
+    } catch (caught) {
+      setError(describeUploadFailure(caught, file));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  function toggleExcludedDate(date: string) {
+    setExcludedDates((current) =>
+      current.includes(date) ? current.filter((value) => value !== date) : [...current, date],
+    );
+  }
+
+  function toggleExpandedDate(date: string) {
+    setExpandedDates((current) =>
+      current.includes(date) ? current.filter((value) => value !== date) : [...current, date],
+    );
+  }
+
+  /** Confirms the open review and imports whatever survived it. */
+  async function confirmReview() {
+    if (!pendingReview) return;
+    const { indexes } = pendingReview;
+    const skipDates = excludedDates;
+    setPendingReview(undefined);
+    await runImport(indexes, skipDates);
   }
 
   const columns: DataGridColumn<IcsPreviewRow>[] = [
@@ -542,6 +664,17 @@ export function JournalCalendarImportView({ categories, tags }: JournalCalendarI
                 Tick what you want, then import. An event already imported is refreshed rather
                 than duplicated, so running this again after changing something in your calendar
                 is safe.
+                {reviewBeforeImport && (
+                  <>
+                    {" "}
+                    Because{" "}
+                    <span className="text-ink">
+                      Review existing journal entry before import from Calendar
+                    </span>{" "}
+                    is on in Preferences, any date that already has an entry is shown for your
+                    decision before anything is written.
+                  </>
+                )}
               </p>
 
               <DataGrid
@@ -565,7 +698,7 @@ export function JournalCalendarImportView({ categories, tags }: JournalCalendarI
                       const indexes = selectedRows
                         .filter((row) => row.action !== "skip")
                         .map((row) => row.index);
-                      void runImport(indexes).then(clearSelection);
+                      void startImport(indexes).then(clearSelection);
                     }}
                   >
                     Import checked
@@ -576,6 +709,153 @@ export function JournalCalendarImportView({ categories, tags }: JournalCalendarI
           )}
         </div>
       </CollapsibleCard>
+
+      {pendingReview && (
+        <Modal
+          title="Existing entries on these dates"
+          description={reviewDescription(pendingReview.review, excludedDates.length)}
+          size="lg"
+          isBusy={isBusy}
+          onClose={() => setPendingReview(undefined)}
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => setPendingReview(undefined)}
+                disabled={isBusy}
+              >
+                Cancel
+              </Button>
+              <Button onClick={() => void confirmReview()} disabled={isBusy}>
+                {isBusy ? "Importing…" : "Import"}
+              </Button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-3">
+            {pendingReview.review.groups.map((group) => {
+              const isExcluded = excludedDates.includes(group.date);
+              const isExpanded = expandedDates.includes(group.date);
+              return (
+                <div
+                  key={group.date}
+                  className={`rounded-md border p-3 ${
+                    isExcluded ? "border-line bg-paper/40 opacity-60" : "border-line bg-paper"
+                  }`}
+                >
+                  {/* Stacks below 1024px: the date and the two buttons don't fit
+                      on one line on a phone. */}
+                  <div className="flex items-start justify-between gap-3 max-lg:flex-col">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-ink">{group.date}</p>
+                      <p className="text-xs text-muted">
+                        {group.existingEntries.length} existing{" "}
+                        {group.existingEntries.length === 1 ? "entry" : "entries"} ·{" "}
+                        {group.selectedEventCount}{" "}
+                        {group.selectedEventCount === 1 ? "event" : "events"} to import
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 gap-2 max-lg:w-full">
+                      <Button
+                        size="sm"
+                        variant={isExcluded ? "secondary" : "primary"}
+                        disabled={isBusy || !isExcluded}
+                        onClick={() => toggleExcludedDate(group.date)}
+                      >
+                        Import
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={isExcluded ? "primary" : "secondary"}
+                        disabled={isBusy || isExcluded}
+                        onClick={() => toggleExcludedDate(group.date)}
+                      >
+                        Don&apos;t import {group.date}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <ul className="mt-2 flex flex-col gap-2 border-t border-line pt-2">
+                    {group.existingEntries.map((existing) => (
+                      <li key={existing.id} className="text-xs">
+                        <p className="text-ink">
+                          {existing.time !== "" && (
+                            <span className="text-muted">{existing.time} </span>
+                          )}
+                          {existing.title === "" ? (
+                            <span className="text-muted">(untitled)</span>
+                          ) : (
+                            existing.title
+                          )}
+                          {existing.isFromCalendar && (
+                            <span
+                              className="text-muted"
+                              title="This entry was itself imported from a calendar"
+                            >
+                              {" "}
+                              · from calendar
+                            </span>
+                          )}
+                        </p>
+                        {existing.content !== "" && (
+                          <p className="mt-0.5 whitespace-pre-wrap text-muted">
+                            {isExpanded || !existing.isContentTruncated
+                              ? existing.content
+                              : `${existing.content}…`}
+                          </p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+
+                  {group.existingEntries.some((existing) => existing.isContentTruncated) && (
+                    <button
+                      type="button"
+                      onClick={() => toggleExpandedDate(group.date)}
+                      className="mt-1 text-xs text-brass-dark underline-offset-2 hover:underline"
+                    >
+                      {isExpanded ? "Show less" : "Show more"}
+                    </button>
+                  )}
+
+                  <p className="mt-2 text-xs text-muted">
+                    Importing:{" "}
+                    {group.selectedEventTitles
+                      .map((title) => (title === "" ? "(untitled)" : title))
+                      .join(", ")}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </Modal>
+      )}
     </div>
   );
+}
+
+/** The dialog's sub-heading: what is being asked, and what has been answered. */
+function reviewDescription(review: IcsImportReview, excludedCount: number): string {
+  const dateCount = review.groups.length;
+  const parts = [
+    `${dateCount} of the ${review.totalDateCount} ${
+      review.totalDateCount === 1 ? "date" : "dates"
+    } you're importing into already ${dateCount === 1 ? "has an entry" : "have entries"}.`,
+  ];
+
+  if (review.unaffectedEventCount > 0) {
+    parts.push(
+      `${review.unaffectedEventCount} ${
+        review.unaffectedEventCount === 1 ? "event lands" : "events land"
+      } on dates with nothing on them yet and will import either way.`,
+    );
+  }
+
+  if (excludedCount > 0) {
+    parts.push(
+      `${excludedCount} ${excludedCount === 1 ? "date is" : "dates are"} set to be left out.`,
+    );
+  }
+
+  return parts.join(" ");
 }

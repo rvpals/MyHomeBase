@@ -13,6 +13,7 @@ export const JOURNAL_SETTING_KEYS = {
   temperatureUnit: "temperature_unit",
   photoRoot: "photo_root",
   handwritingSize: "handwriting_size",
+  reviewBeforeCalendarImport: "review_before_calendar_import",
 } as const;
 
 const DEFAULT_TEMPERATURE_UNIT: JournalTemperatureUnit = "fahrenheit";
@@ -90,7 +91,19 @@ export function resolveJournalPreferences(settings: ModuleSetting[]): JournalPre
     HANDWRITING_SIZE_OPTIONS.find((option) => option.value === storedSize)?.value ??
     DEFAULT_HANDWRITING_SIZE;
 
-  return { defaultLocation, temperatureUnit, photoRoot, handwritingSize };
+  // Only the exact string "true" reads as on. A boolean stored as text has no
+  // shortage of ways to arrive wrong ("1", "yes", ""), and treating anything
+  // non-empty as true would turn a hand-edited "false" row into a yes.
+  const reviewBeforeCalendarImport =
+    byKey.get(JOURNAL_SETTING_KEYS.reviewBeforeCalendarImport) === "true";
+
+  return {
+    defaultLocation,
+    temperatureUnit,
+    photoRoot,
+    handwritingSize,
+    reviewBeforeCalendarImport,
+  };
 }
 
 /**
@@ -106,6 +119,13 @@ export function journalPreferencesToEntries(
     // Always written, including at the default: the value is a closed set with no
     // "unset" member, so a row is never ambiguous the way a blank path would be.
     { key: JOURNAL_SETTING_KEYS.handwritingSize, value: preferences.handwritingSize },
+    // Written at both values, including the `false` default: a missing row and a
+    // stored "false" must mean the same thing, and only writing the true case
+    // would make unticking the box a no-op.
+    {
+      key: JOURNAL_SETTING_KEYS.reviewBeforeCalendarImport,
+      value: preferences.reviewBeforeCalendarImport ? "true" : "false",
+    },
   ];
 
   // Omitted when blank rather than stored as "": moduleSettingEntrySchema requires a

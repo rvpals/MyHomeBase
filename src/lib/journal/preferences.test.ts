@@ -20,6 +20,7 @@ describe("resolveJournalPreferences", () => {
       temperatureUnit: "fahrenheit",
       photoRoot: "",
       handwritingSize: "xl",
+      reviewBeforeCalendarImport: false,
     });
   });
 
@@ -35,6 +36,7 @@ describe("resolveJournalPreferences", () => {
       temperatureUnit: "celsius",
       photoRoot: "",
       handwritingSize: "xl",
+      reviewBeforeCalendarImport: false,
     });
   });
 
@@ -51,6 +53,7 @@ describe("journalPreferencesToEntries", () => {
       temperatureUnit: "fahrenheit",
       photoRoot: "",
       handwritingSize: "xl",
+      reviewBeforeCalendarImport: false,
     });
     expect(entries.some((entry) => entry.key === JOURNAL_SETTING_KEYS.defaultLocationName)).toBe(false);
     expect(entries.every((entry) => entry.value !== "")).toBe(true);
@@ -65,6 +68,8 @@ describe("journalPreferencesToEntries", () => {
       // Not the default, so the round-trip proves the value is actually carried
       // rather than being reconstructed by the fallback.
       handwritingSize: "3xl" as const,
+      // Not the default either, for the same reason.
+      reviewBeforeCalendarImport: true,
     };
     const rebuilt = resolveJournalPreferences(
       journalPreferencesToEntries(original).map((entry, index) => ({
@@ -86,6 +91,7 @@ describe("journalPreferencesToEntries", () => {
         temperatureUnit: "fahrenheit",
         photoRoot: "   ",
         handwritingSize: "xl",
+        reviewBeforeCalendarImport: false,
       }).some((entry) => entry.key === JOURNAL_SETTING_KEYS.photoRoot),
     ).toBe(false);
 
@@ -96,6 +102,7 @@ describe("journalPreferencesToEntries", () => {
       temperatureUnit: "fahrenheit",
       photoRoot: "  /volume1/MEDIA/PHOTO/BY YEAR  ",
       handwritingSize: "xl",
+      reviewBeforeCalendarImport: false,
     });
     expect(entries.find((entry) => entry.key === JOURNAL_SETTING_KEYS.photoRoot)?.value).toBe(
       "/volume1/MEDIA/PHOTO/BY YEAR",
@@ -158,9 +165,55 @@ describe("handwriting size", () => {
       temperatureUnit: "fahrenheit",
       photoRoot: "",
       handwritingSize: "2xl",
+      reviewBeforeCalendarImport: false,
     });
     expect(entries.find((entry) => entry.key === JOURNAL_SETTING_KEYS.handwritingSize)?.value).toBe(
       "2xl",
     );
+  });
+});
+
+describe("review before calendar import", () => {
+  it("defaults to off when no row is stored", () => {
+    // The import ran straight through before this preference existed, so an
+    // install that has never saved it must keep behaving that way.
+    expect(resolveJournalPreferences([]).reviewBeforeCalendarImport).toBe(false);
+  });
+
+  it("reads a stored 'true' as on", () => {
+    const prefs = resolveJournalPreferences([
+      setting(JOURNAL_SETTING_KEYS.reviewBeforeCalendarImport, "true"),
+    ]);
+    expect(prefs.reviewBeforeCalendarImport).toBe(true);
+  });
+
+  it("treats anything that isn't 'true' as off", () => {
+    // A boolean kept as text has plenty of ways to arrive wrong. Reading
+    // "anything non-empty" as true would turn a hand-edited "false" into a yes.
+    for (const stored of ["false", "1", "0", "yes", "no", "", "TRUE", " true "]) {
+      const prefs = resolveJournalPreferences([
+        setting(JOURNAL_SETTING_KEYS.reviewBeforeCalendarImport, stored),
+      ]);
+      expect(prefs.reviewBeforeCalendarImport, `stored ${JSON.stringify(stored)}`).toBe(false);
+    }
+  });
+
+  it("writes a row at both values, so unticking the box sticks", () => {
+    // Only writing the `true` case would leave the old row in place on save, and
+    // unticking would appear to do nothing until the settings were hand-edited.
+    for (const enabled of [true, false]) {
+      const entries = journalPreferencesToEntries({
+        defaultLocation: null,
+        temperatureUnit: "fahrenheit",
+        photoRoot: "",
+        handwritingSize: "xl",
+        reviewBeforeCalendarImport: enabled,
+      });
+      expect(
+        entries.find((entry) => entry.key === JOURNAL_SETTING_KEYS.reviewBeforeCalendarImport)
+          ?.value,
+        `enabled ${enabled}`,
+      ).toBe(enabled ? "true" : "false");
+    }
   });
 });

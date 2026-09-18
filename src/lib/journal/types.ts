@@ -242,6 +242,16 @@ export interface JournalPreferences {
    * one setting for everyone rather than per-reader.
    */
   handwritingSize: JournalHandwritingSize;
+  /**
+   * When true, the Calendar Import section pauses before writing anything and
+   * shows what the journal already holds on each date it is about to import
+   * into, so a date that already has an entry can be dropped from the run.
+   *
+   * Defaults to **false**: the import ran straight through before this existed,
+   * and a preference that changes what a button does should be asked for rather
+   * than arrive switched on.
+   */
+  reviewBeforeCalendarImport: boolean;
 }
 
 // --- Prefill templates -------------------------------------------------------
@@ -422,4 +432,54 @@ export interface IcsImportPlan {
   createCount: number;
   updateCount: number;
   skipCount: number;
+}
+
+// --- Reviewing what a calendar import would land on top of -------------------
+//
+// Driven by the `reviewBeforeCalendarImport` preference. The importer matches a
+// calendar event on its UID, so it already knows whether *that event* was
+// imported before — what it cannot know is whether the reader wrote something
+// of their own on the same day. This is that second question, asked per date.
+
+/** One existing entry, reduced to what the review dialog reads out. */
+export interface IcsImportReviewEntry {
+  id: number;
+  /** HH:MM, or `""` for an untimed entry. */
+  time: string;
+  title: string;
+  /**
+   * The entry's content, **possibly shortened** — see `REVIEW_CONTENT_LIMIT`.
+   * `isContentTruncated` says which, so the dialog can offer the rest.
+   */
+  content: string;
+  isContentTruncated: boolean;
+  /** True when this entry came from a calendar import rather than being written. */
+  isFromCalendar: boolean;
+}
+
+/** One date the import would write into, and what the journal already holds there. */
+export interface IcsImportReviewGroup {
+  /** YYYY-MM-DD. */
+  date: string;
+  /** The existing entries on that date, oldest first. Never empty. */
+  existingEntries: IcsImportReviewEntry[];
+  /** How many of the selected events fall on this date — what "don't import" drops. */
+  selectedEventCount: number;
+  /** Those events' titles, oldest first, so the dialog can say what is at stake. */
+  selectedEventTitles: string[];
+}
+
+/**
+ * The answer to "is there anything to review?", for one ticked selection.
+ *
+ * `groups` holds only the dates that already have entries — a date the journal
+ * has never seen needs no decision and imports straight through, which is what
+ * keeps this dialog short on a fresh calendar.
+ */
+export interface IcsImportReview {
+  groups: IcsImportReviewGroup[];
+  /** Distinct dates the selected events cover, reviewed or not. */
+  totalDateCount: number;
+  /** Selected events on dates with no existing entry — these just import. */
+  unaffectedEventCount: number;
 }

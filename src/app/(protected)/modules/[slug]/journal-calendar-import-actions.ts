@@ -3,12 +3,16 @@
 import { revalidatePath } from "next/cache";
 import type { ImportSummary } from "@/lib/csv-import";
 import {
+  applyIcsReviewDecision,
+  buildIcsImportReview,
+  icsExcludedDatesSchema,
   icsImportFilterSchema,
   icsImportPresetsSchema,
   icsSelectionSchema,
   importIcsEvents,
   planIcsImport,
   readIcsFile,
+  type IcsImportReview,
 } from "@/lib/journal";
 import { deps } from "@/lib/wiring";
 import { requireModuleAccess } from "../../require-access";
@@ -170,10 +174,57 @@ export async function readIcsFileAction(formData: FormData): Promise<ReadIcsResu
   }
 }
 
+export interface IcsReviewResult extends ActionResult {
+  review?: IcsImportReview;
+}
+
+/**
+ * Reports what the journal already holds on the dates the ticked events would
+ * import into — the `reviewBeforeCalendarImport` preference's read half.
+ *
+ * Writes nothing. The view calls this first when the preference is on, shows the
+ * result, and then calls `runIcsImportAction` with whatever dates the reader
+ * declined. The preference itself is **not** consulted here: an action is its own
+ * endpoint, and a caller asking for a review always gets one — the decision to
+ * ask lives with the screen that has the preference.
+ *
+ * `FormData` for the same reason the other two actions take it: the file cannot
+ * travel as a plain string argument alongside anything else. See
+ * `readIcsFileAction`'s comment.
+ */
+export async function reviewIcsImportAction(formData: FormData): Promise<IcsReviewResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    const file = formData.get("file");
+    if (!(file instanceof Blob)) {
+      return { ok: false, error: "No calendar file was received. Choose the file again." };
+    }
+
+    const parsedFilter = icsImportFilterSchema.parse(readJsonField(formData, "filter"));
+
+    const rawSelection = formData.get("selectedIndexes");
+    const selection =
+      typeof rawSelection === "string" && rawSelection !== ""
+        ? icsSelectionSchema.parse(JSON.parse(rawSelection))
+        : undefined;
+
+    // Re-parsed with the same filter the preview used, so the ticked indexes
+    // point at the same events the reader saw — the constraint the import
+    // action explains at length.
+    const { events } = readIcsFile(await file.text(), parsedFilter);
+
+    return { ok: true, review: buildIcsImportReview(deps.journalRepo, events, selection) };
+  } catch (error) {
+    return toErrorResult(error, "Failed to check the journal for existing entries.");
+  }
+}
+
 export interface IcsImportResult extends ActionResult {
   summary?: ImportSummary;
   /** The refreshed rows, so the grid can show what is now already imported. */
   rows?: IcsPreviewRow[];
+  /** How many ticked events the reader's review decision dropped. */
+  excludedByReviewCount?: number;
 }
 
 /**
@@ -205,15 +256,39 @@ export async function runIcsImportAction(formData: FormData): Promise<IcsImportR
         ? icsSelectionSchema.parse(JSON.parse(rawSelection))
         : undefined;
 
+    // The dates the reader declined in the review dialog, if it ran at all.
+    const rawExcludedDates = formData.get("excludedDates");
+    const excludedDates =
+      typeof rawExcludedDates === "string" && rawExcludedDates !== ""
+        ? icsExcludedDatesSchema.parse(JSON.parse(rawExcludedDates))
+        : [];
+
     const { events } = readIcsFile(await file.text(), parsedFilter);
-    const summary = importIcsEvents(deps.journalRepo, events, parsedPresets, selection);
+
+    // The decision is enforced by narrowing the selection rather than by a
+    // branch inside the importer: a declined date is then unimportable by any
+    // route, including a future caller that forgets this exists.
+    //
+    // An excluded date with no selection to narrow would be meaningless, so this
+    // only applies when the reader actually ticked rows — the undefined case
+    // means "import everything matching the filter", which the review screen
+    // never produces.
+    const effectiveSelection =
+      selection && excludedDates.length > 0
+        ? applyIcsReviewDecision(events, selection, excludedDates)
+        : selection;
+
+    const excludedByReviewCount =
+      selection && effectiveSelection ? selection.length - effectiveSelection.length : 0;
+
+    const summary = importIcsEvents(deps.journalRepo, events, parsedPresets, effectiveSelection);
     revalidatePath(JOURNAL_MODULE_PATH);
 
     // Re-plan against the just-written entries so the grid stops offering the
     // imported rows as new.
     const plan = planIcsImport(deps.journalRepo, events, parsedPresets);
 
-    return { ok: true, summary, rows: toPreviewRows(plan) };
+    return { ok: true, summary, rows: toPreviewRows(plan), excludedByReviewCount };
   } catch (error) {
     return toErrorResult(error, "Failed to import the calendar events.");
   }

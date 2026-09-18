@@ -32,6 +32,9 @@ export type {
   IcsImportAction,
   IcsImportPlan,
   IcsImportPlanRow,
+  IcsImportReview,
+  IcsImportReviewGroup,
+  IcsImportReviewEntry,
 } from "./types";
 export {
   resolveJournalPreferences,
@@ -78,6 +81,7 @@ export {
   icsImportFilterSchema,
   icsImportPresetsSchema,
   icsSelectionSchema,
+  icsExcludedDatesSchema,
   type IcsImportFilterInput,
   type IcsImportPresetsInput,
 } from "./schema";
@@ -243,6 +247,17 @@ export {
   planIcsImport,
   readIcsFile,
 } from "./ics-import";
+
+// Reviewing the dates an import would land on, before it writes — the
+// `reviewBeforeCalendarImport` preference. See ./import-review.ts for why this
+// is a separate question from the importer's own UID matching.
+export {
+  REVIEW_CONTENT_LIMIT,
+  buildIcsImportReview,
+  reviewIcsFile,
+  applyIcsReviewDecision,
+  applyIcsReviewDecisionToFile,
+} from "./import-review";
 export { normalizeEntryTime } from "./time";
 
 // Metadata backup and restore — the categories, tags, icons, templates, filters

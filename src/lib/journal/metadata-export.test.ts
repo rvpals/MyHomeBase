@@ -191,6 +191,8 @@ const PREFERENCES: JournalPreferences = {
   // Not the default, so the export assertion below proves the value is carried
   // rather than being supplied by the schema's fallback.
   handwritingSize: "2xl",
+  // Likewise not the default.
+  reviewBeforeCalendarImport: true,
 };
 
 function bundleOf(overrides: Partial<JournalMetadataBundle> = {}): JournalMetadataBundle {
@@ -246,6 +248,7 @@ describe("buildMetadataBundle", () => {
       temperatureUnit: "celsius",
       photoRoot: "//NAS_DS223/photos",
       handwritingSize: "2xl",
+      reviewBeforeCalendarImport: true,
     });
   });
 
@@ -384,6 +387,7 @@ describe("planMetadataImport", () => {
           temperatureUnit: "celsius",
           photoRoot: "//NAS_DS223/photos",
           handwritingSize: "xl",
+          reviewBeforeCalendarImport: false,
         },
       }),
     );
@@ -398,6 +402,7 @@ describe("planMetadataImport", () => {
           temperatureUnit: "celsius",
           photoRoot: "",
           handwritingSize: "xl",
+          reviewBeforeCalendarImport: false,
         },
       }),
     );
@@ -578,6 +583,7 @@ describe("metadataPreferenceEntries", () => {
           temperatureUnit: "celsius",
           photoRoot: "//NAS_DS223/photos",
           handwritingSize: "xl",
+          reviewBeforeCalendarImport: false,
         },
       }),
     );
@@ -588,6 +594,7 @@ describe("metadataPreferenceEntries", () => {
     expect(entries).toEqual([
       { key: "temperature_unit", value: "celsius" },
       { key: "handwriting_size", value: "xl" },
+      { key: "review_before_calendar_import", value: "false" },
     ]);
   });
 
@@ -599,6 +606,7 @@ describe("metadataPreferenceEntries", () => {
           temperatureUnit: "celsius",
           photoRoot: "",
           handwritingSize: "4xl",
+          reviewBeforeCalendarImport: false,
         },
       }),
     );
@@ -627,6 +635,7 @@ describe("metadataPreferenceEntries", () => {
     expect(entries).toEqual([
       { key: "temperature_unit", value: "celsius" },
       { key: "handwriting_size", value: "2xl" },
+      { key: "review_before_calendar_import", value: "true" },
       { key: "default_latitude", value: "40.7128" },
       { key: "default_longitude", value: "-74.006" },
       { key: "default_location_name", value: "New York" },
@@ -641,6 +650,7 @@ describe("metadataPreferenceEntries", () => {
           temperatureUnit: "fahrenheit",
           photoRoot: "",
           handwritingSize: "xl",
+          reviewBeforeCalendarImport: false,
         },
       }),
     );

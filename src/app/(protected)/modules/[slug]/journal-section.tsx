@@ -136,10 +136,21 @@ function SectionBody({
     case "calendar-import": {
       // The managed lists feed the preset fields' autocomplete. Read here on the
       // server, like every other section's data.
+      //
+      // The preferences come along for one flag: whether importing pauses to show
+      // what the journal already holds on each date. Same three lines the
+      // `configuration` case below uses.
+      const calendarImportModule = getModuleBySlug(deps.moduleRepo, JOURNAL_MODULE_SLUG);
+      const calendarImportPreferences = resolveJournalPreferences(
+        calendarImportModule
+          ? listModuleSettingsFor(deps.moduleSettingsRepo, calendarImportModule.id)
+          : [],
+      );
       return (
         <JournalCalendarImportView
           categories={listCategories(deps.journalRepo)}
           tags={listTags(deps.journalRepo)}
+          reviewBeforeImport={calendarImportPreferences.reviewBeforeCalendarImport}
         />
       );
     }

@@ -416,3 +416,13 @@ export type IcsImportPresetsInput = z.input<typeof icsImportPresetsSchema>;
 
 /** The row indexes the reader ticked. Non-negative ints, de-duped by the use-case. */
 export const icsSelectionSchema = z.array(z.number().int().nonnegative());
+
+/**
+ * The dates the reader said "don't import" to in the review dialog.
+ *
+ * Validated as real ISO dates rather than taken as free strings: they are
+ * compared against each event's `date` to decide what gets dropped, and a
+ * malformed one would silently match nothing — an import that quietly ignored
+ * the reader's "no" is the one failure this whole feature exists to prevent.
+ */
+export const icsExcludedDatesSchema = z.array(entryDateSchema);

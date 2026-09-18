@@ -111,6 +111,12 @@ const metadataPreferencesSchema = z.object({
    * clamps to.
    */
   handwritingSize: z.enum(["xl", "2xl", "3xl", "4xl"]).default("xl"),
+  /**
+   * Defaulted for the same reason as the size above: a bundle written before
+   * this preference existed is still a legal file, and restores with the review
+   * off — which is what the module does when the setting has never been saved.
+   */
+  reviewBeforeCalendarImport: z.boolean().default(false),
 });
 
 /**
@@ -226,6 +232,7 @@ export function buildMetadataBundle(
       temperatureUnit: preferences.temperatureUnit,
       photoRoot: preferences.photoRoot,
       handwritingSize: preferences.handwritingSize,
+      reviewBeforeCalendarImport: preferences.reviewBeforeCalendarImport,
     },
   };
 }
@@ -381,6 +388,13 @@ export function metadataPreferenceEntries(
     // a type size is a reading preference that travels with the journal. The
     // schema defaults it, so a pre-existing bundle restores the floor.
     { key: "handwriting_size", value: preferences.handwritingSize },
+    // Travels with the journal for the same reason the size does — it is a
+    // working preference, not a machine fact. Written at both values so a
+    // restore can turn it back off; see `journalPreferencesToEntries`.
+    {
+      key: "review_before_calendar_import",
+      value: preferences.reviewBeforeCalendarImport ? "true" : "false",
+    },
   ];
 
   const location = preferences.defaultLocation;

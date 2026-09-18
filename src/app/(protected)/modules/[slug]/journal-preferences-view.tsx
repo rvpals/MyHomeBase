@@ -41,6 +41,9 @@ export function JournalPreferencesView({ preferences }: { preferences: JournalPr
   const [handwritingSize, setHandwritingSize] = useState<JournalHandwritingSize>(
     preferences.handwritingSize,
   );
+  const [reviewBeforeCalendarImport, setReviewBeforeCalendarImport] = useState(
+    preferences.reviewBeforeCalendarImport,
+  );
   const [isBusy, setIsBusy] = useState(false);
   const [message, setMessage] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -61,6 +64,7 @@ export function JournalPreferencesView({ preferences }: { preferences: JournalPr
         temperatureUnit: unit,
         photoRoot,
         handwritingSize,
+        reviewBeforeCalendarImport,
       };
       const result = await saveJournalPreferencesAction(next);
       if (!result.ok) {
@@ -144,6 +148,29 @@ export function JournalPreferencesView({ preferences }: { preferences: JournalPr
           normal (non-cursive) size doesn&apos;t change, so it still matches the other fields.
         </span>
       </label>
+
+      {/* Its own group: this one governs the Calendar Import section rather than
+          how an entry is written or read, which is what everything above does. */}
+      <div className="flex flex-col gap-2 border-t border-line pt-4">
+        <span className="block text-sm font-medium text-ink">Calendar import</span>
+        <label className="flex items-start gap-2 text-sm text-ink">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={reviewBeforeCalendarImport}
+            onChange={(event) => setReviewBeforeCalendarImport(event.target.checked)}
+          />
+          <span>
+            Review existing journal entry before import from Calendar
+            <span className="mt-0.5 block text-xs text-muted">
+              With this on, starting an import from the Calendar Import section stops first and
+              shows what the journal already holds on each date it is about to write into. You can
+              then drop any of those dates from the run. Dates with no entry yet import straight
+              through without asking.
+            </span>
+          </span>
+        </label>
+      </div>
 
       <div className="flex flex-col gap-2 border-t border-line pt-4">
         <label className="block text-sm">
