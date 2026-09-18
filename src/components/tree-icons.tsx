@@ -609,6 +609,28 @@ const GameMahjongMatch: IconComponent = (props) => (
   </svg>
 );
 
+/* A rocket launching: the nose-cone body on a diagonal, one porthole, two fins and a
+   short exhaust plume off the tail. The "launch module" button on the home screen's
+   cards.
+
+   Drawn on the diagonal rather than upright, and with the plume, because at 16px an
+   upright rocket is a rounded rectangle that reads as a pill or a thermometer — the tilt
+   plus the trailing strokes are what say "taking off" at that size. Deliberately not
+   `flash` (which already means "do this automatically") and not an arrow (which would
+   read as a row-expand chevron beside the card's real one). */
+const RocketLaunch: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    {/* The body: nose at top-right, tapering down to the tail at bottom-left. */}
+    <path d="M14.5 3.5c2.5 1 5 3.5 6 6l-7.5 7.5-4.5-4.5L14.5 3.5Z" />
+    {/* The porthole, up near the nose. */}
+    <circle cx="15.5" cy="8.5" r="1.5" />
+    {/* Two fins either side of the tail. */}
+    <path d="M8.5 12.5 5 13l-1.5 3.5 3 1M11.5 15.5 11 19l3.5 1.5 1-3" />
+    {/* The plume: two short strokes trailing off the tail. */}
+    <path d="M7 17 4.5 19.5M9.5 19.5 8 21" />
+  </svg>
+);
+
 const TREE_ICONS = {
   flash: Flash,
   note: Note,
@@ -657,6 +679,7 @@ const TREE_ICONS = {
   "game-blackjack": GameBlackjack,
   "game-minesweeper": GameMinesweeper,
   "game-mahjong": GameMahjongMatch,
+  rocket: RocketLaunch,
 } as const satisfies Record<TreeIconConcept, IconComponent>;
 
 /**
@@ -718,6 +741,11 @@ const ALWAYS_CLASSIC = new Set<TreeIconName>([
   // star, and a themed set's own "AI" artwork is very often a star or a sparkle, which
   // is exactly the confusion the glyph was drawn to avoid. It is a button, not a place.
   "ai-spark",
+  // The "launch module" button on each home-screen card. An action, not a place: the
+  // card's own title icon is what marks the place, and this sits right beside it — so a
+  // themed set redrawing the rocket as full-color artwork would put two competing
+  // illustrations on one title line at 16px.
+  "rocket",
 ]);
 
 /**

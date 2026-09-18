@@ -76,6 +76,10 @@ export const TREE_ICON_NAMES = [
   "game-blackjack",
   "game-minesweeper",
   "game-mahjong",
+  // The "launch module" button on the home screen's cards — opens the module the card's
+  // numbers belong to, at its landing page. A button, so it is in `ALWAYS_CLASSIC` and
+  // no icon slot points at it.
+  "rocket",
 ] as const;
 
 /** One concept `TreeIcon` can draw. */

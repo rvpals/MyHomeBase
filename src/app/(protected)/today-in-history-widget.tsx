@@ -5,10 +5,12 @@
 // visible on the landing page without opening the module.
 
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { Comments } from "@/components/comments";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { ModuleIcon } from "@/components/module-icons";
+import { TreeIcon } from "@/components/tree-icons";
 import type { TodayInHistoryEntry } from "@/lib/journal";
 
 function yearsAgoLabel(yearsAgo: number): string {
@@ -54,6 +56,22 @@ export function TodayInHistoryWidget({
       // Badged with the module the entries come from, matching Daily Glance.
       titleIcon={icon && <ModuleIcon name={icon} className="h-4 w-4" />}
       className={className}
+      // Beside the title rather than out in `headerAction` with the About note: it acts
+      // on the card's name — "open the module these entries came from" — and reads as
+      // another card control if it drifts to the right edge. `href` makes it a real
+      // link, so it middle-clicks and ⌘-clicks like the rows do. No icon slot: `rocket`
+      // is a button and lives in `ALWAYS_CLASSIC`.
+      titleAction={
+        <Button
+          size="sm"
+          variant="secondary"
+          href="/modules/journal"
+          title="Launch My Journal"
+          ariaLabel="Launch My Journal"
+        >
+          <TreeIcon name="rocket" className="h-4 w-4" />
+        </Button>
+      }
       defaultOpen={todayInHistory.length > 0}
       // In the header slot rather than the body: the card starts collapsed when
       // there's nothing from earlier years, which is exactly when a reader is

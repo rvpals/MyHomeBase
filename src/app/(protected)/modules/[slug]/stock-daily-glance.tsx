@@ -9,10 +9,12 @@
 // this file only decides what's on screen.
 
 import { useState } from "react";
+import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { Comments } from "@/components/comments";
 import { ModuleIcon } from "@/components/module-icons";
 import { SlotIcon } from "@/components/slot-icon";
+import { TreeIcon } from "@/components/tree-icons";
 import { getIconSlot } from "@/lib/icons";
 import { formatCents } from "@/lib/shared/money";
 import {
@@ -323,6 +325,23 @@ export function StockDailyGlance({
         ) : (
           icon && <ModuleIcon name={icon} className="h-4 w-4" />
         )
+      }
+      // Beside the title, not in `headerAction` with the Explanation note and the
+      // measure selector: those act on the card's contents, this opens the module the
+      // numbers belong to. The home screen is this card's only call site (see
+      // `page.tsx`), so there is no in-module copy that would offer to launch the module
+      // a reader is already in. No icon slot — `rocket` is a button, so it is in
+      // `ALWAYS_CLASSIC`.
+      titleAction={
+        <Button
+          size="sm"
+          variant="secondary"
+          href="/modules/stock-etfs"
+          title="Launch Stocks & ETFs"
+          ariaLabel="Launch Stocks & ETFs"
+        >
+          <TreeIcon name="rocket" className="h-4 w-4" />
+        </Button>
       }
       defaultOpen
       className={className}

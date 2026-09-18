@@ -963,6 +963,7 @@ A titled card whose body expands/collapses. The standard wrapper for a secondary
 | `open?` | `boolean` | Supply with `onOpenChange` for controlled use; omit both to let the card own its state. |
 | `onOpenChange?` | `(open: boolean) => void` | Called with the state being moved to. |
 | `headerAction?` | `ReactNode` | Rendered on the title line, left of the chevron, **always visible**. Clicking it does not toggle the card. |
+| `titleAction?` | `ReactNode` | Rendered **immediately after the title**, with the flexible space after it — so it sits beside the name rather than out at the right edge. For an action on the *title* (launch this card's module), not on the card's contents; use `headerAction` for those. Clicking it does not toggle the card. |
 | `children` | `ReactNode` | Body. |
 | `className?` | `string` | Merged last, so it wins. The hook for the opt-in surface treatments below. |
 
@@ -991,6 +992,32 @@ cards both do this):
 ```tsx
 <CollapsibleCard title="Daily Glance" titleIcon={icon && <ModuleIcon name={icon} className="h-4 w-4" />}>
 ```
+
+**And give that card a way into the module** — `titleAction` puts a launch button right
+after the title, with the header's flexible space after it, so it reads as an action on
+the card's name rather than as another card control. `href` keeps it a real link, so it
+middle-clicks and ⌘-clicks. `/modules/<slug>` is each module's landing page. The home
+screen's Today In History and Daily Glance cards both do this:
+
+```tsx
+<CollapsibleCard
+  title="Today In History"
+  titleIcon={icon && <ModuleIcon name={icon} className="h-4 w-4" />}
+  titleAction={
+    <Button size="sm" variant="secondary" href="/modules/journal"
+            title="Launch My Journal" ariaLabel="Launch My Journal">
+      <TreeIcon name="rocket" className="h-4 w-4" />
+    </Button>
+  }
+>
+```
+
+Name the destination in `title`/`ariaLabel` ("Launch My Journal", not "Launch module") —
+a screen reader otherwise announces several identically-named buttons down the page. The
+`rocket` glyph is in `ALWAYS_CLASSIC`, so **it takes no icon slot**: it's a button, and a
+themed set redrawing it in full colour would put two competing illustrations on one title
+line. Cards that belong to no single module (Daily Quote) or that *are* the module picker
+(the carousel) get no launch button — there'd be nowhere for it to go.
 
 **Nesting is allowed, one level.** A card can hold a child card when the child is a
 *subset of the same subject* the parent names — the Stocks & ETFs dashboard's
