@@ -5,7 +5,8 @@ import type {
   UploadedDatabaseRepository,
   UploadedDatabaseWriteData,
 } from "./ports";
-import { MAX_UPLOAD_BYTES, TABLE_PAGE_LIMIT, readTableSchema } from "./schema";
+import { UploadTooLargeError, formatCap } from "./errors";
+import { DEFAULT_MAX_UPLOAD_BYTES, TABLE_PAGE_LIMIT, readTableSchema } from "./schema";
 import {
   deleteRows,
   deleteUploadedDatabase,
@@ -13,6 +14,7 @@ import {
   listUploadedDatabases,
   readTableRows,
   uploadDatabase,
+  uploadDatabaseStream,
   type SqliteBrowserDeps,
 } from "./sqlite-browser";
 import type { BrowsedPage, BrowsedTable, UploadedDatabase } from "./types";
@@ -66,6 +68,33 @@ function fakeFileStore(seed: string[] = []): SqliteFileStore & {
       saved.set(storedFileName, bytes);
       return storedFileName;
     },
+    async saveStream(stream, _originalFileName, maxBytes) {
+      counter += 1;
+      const storedFileName = `stored-${counter}.db`;
+
+      // Mirrors the real store: accumulate, and fail the moment the cap is
+      // passed rather than after the whole stream has been read.
+      // Nothing is recorded in `saved` until the whole stream is accepted,
+      // which is the fake's stand-in for the real store removing its partial
+      // file on the way out.
+      const chunks: Uint8Array[] = [];
+      let byteSize = 0;
+      for await (const chunk of streamChunks(stream)) {
+        byteSize += chunk.byteLength;
+        if (byteSize > maxBytes) throw new UploadTooLargeError(maxBytes);
+        chunks.push(chunk);
+      }
+      if (byteSize === 0) throw new Error("That file is empty.");
+
+      const joined = new Uint8Array(byteSize);
+      let offset = 0;
+      for (const chunk of chunks) {
+        joined.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      saved.set(storedFileName, joined);
+      return { storedFileName, byteSize };
+    },
     pathFor: (storedFileName) => `/uploads/${storedFileName}`,
     async exists(storedFileName) {
       return saved.has(storedFileName);
@@ -118,6 +147,30 @@ function fakeReader(
   };
 
   return { ...base, ...overrides, openedPaths, deleted };
+}
+
+/** Reads a web ReadableStream as an async iterable, which Node's does not do. */
+async function* streamChunks(stream: ReadableStream<Uint8Array>): AsyncGenerator<Uint8Array> {
+  const reader = stream.getReader();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      if (value) yield value;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+/** A stream of the given chunks, standing in for an uploaded file. */
+function streamOf(...chunks: Uint8Array[]): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(chunk);
+      controller.close();
+    },
+  });
 }
 
 function upload(overrides: Partial<UploadedDatabase> = {}): UploadedDatabase {
@@ -188,17 +241,47 @@ describe("uploadDatabase", () => {
     ).rejects.toThrow(/empty/);
   });
 
+  // A real Uint8Array (the schema checks the type) reporting an over-cap
+  // length, rather than a genuinely gigabyte-sized buffer: the cap is 1 GB,
+  // and allocating that to prove a comparison works would make the suite slow
+  // and memory-hungry for nothing.
   it("rejects a file over the size cap", async () => {
+    const overCap = new Uint8Array(1);
+    Object.defineProperty(overCap, "byteLength", { value: DEFAULT_MAX_UPLOAD_BYTES + 1 });
+
     await expect(
       uploadDatabase(
-        {
-          originalFileName: "huge.db",
-          bytes: new Uint8Array(MAX_UPLOAD_BYTES + 1),
-          uploadedByUserId: 7,
-        },
+        { originalFileName: "huge.db", bytes: overCap, uploadedByUserId: 7 },
         makeDeps(),
       ),
     ).rejects.toThrow(/larger than/);
+  });
+
+  // The whole point of making the cap a setting: the configured number is
+  // what applies, not the shipped default.
+  it("enforces a configured cap smaller than the default", async () => {
+    const repo = fakeRepo();
+    const tenBytes = 10;
+
+    await expect(
+      uploadDatabase(
+        { originalFileName: "small.db", bytes: new Uint8Array(11), uploadedByUserId: 7 },
+        makeDeps({ repo }),
+        tenBytes,
+      ),
+    ).rejects.toThrow(/larger than/);
+
+    expect(repo.rows).toHaveLength(0);
+  });
+
+  it("accepts a file within a configured cap", async () => {
+    const created = await uploadDatabase(
+      { originalFileName: "small.db", bytes: new Uint8Array(8), uploadedByUserId: 7 },
+      makeDeps(),
+      10,
+    );
+
+    expect(created.byteSize).toBe(8);
   });
 
   // The header check is what stops a mis-picked file becoming a picker entry
@@ -218,6 +301,113 @@ describe("uploadDatabase", () => {
     expect(repo.rows).toHaveLength(0);
     expect(fileStore.removed).toHaveLength(1);
     expect(fileStore.saved.size).toBe(0);
+  });
+});
+
+describe("formatCap", () => {
+  // The cap is built into user-facing copy in three places, so it has to read
+  // the way a person would say it. Printing a gigabyte cap as "1024 MB" is the
+  // drift this exists to prevent.
+  it("reads a gigabyte-scale cap in GB", () => {
+    expect(formatCap(1024 * 1024 * 1024)).toBe("1 GB");
+    expect(formatCap(2 * 1024 * 1024 * 1024)).toBe("2 GB");
+  });
+
+  it("keeps a fraction where a whole number would be wrong", () => {
+    expect(formatCap(1536 * 1024 * 1024)).toBe("1.5 GB");
+  });
+
+  it("reads a smaller cap in MB", () => {
+    expect(formatCap(50 * 1024 * 1024)).toBe("50 MB");
+    expect(formatCap(4 * 1024 * 1024)).toBe("4 MB");
+  });
+
+  it("matches the shipped default cap", () => {
+    expect(formatCap(DEFAULT_MAX_UPLOAD_BYTES)).toBe("1 GB");
+  });
+});
+
+describe("uploadDatabaseStream", () => {
+  it("streams the file to the store and records it", async () => {
+    const repo = fakeRepo();
+    const fileStore = fakeFileStore();
+
+    const created = await uploadDatabaseStream(
+      {
+        originalFileName: "chinook.db",
+        stream: streamOf(new Uint8Array([1, 2]), new Uint8Array([3])),
+        uploadedByUserId: 7,
+      },
+      makeDeps({ repo, fileStore }),
+    );
+
+    // The size is what actually arrived, not anything the caller claimed.
+    expect(created.byteSize).toBe(3);
+    expect(repo.rows).toHaveLength(1);
+  });
+
+  // The name is checked before a byte is written, so a bad extension never
+  // reaches the disk at all.
+  it("rejects a non-SQLite extension without writing anything", async () => {
+    const fileStore = fakeFileStore();
+
+    await expect(
+      uploadDatabaseStream(
+        { originalFileName: "notes.csv", stream: streamOf(new Uint8Array([1])), uploadedByUserId: 7 },
+        makeDeps({ fileStore }),
+      ),
+    ).rejects.toThrow(/Only \.db/);
+
+    expect(fileStore.saved.size).toBe(0);
+  });
+
+  // The store is handed a small cap rather than the real 1 GB one, so the
+  // abort path is exercised without allocating a gigabyte. What matters is
+  // that the limit is applied mid-stream and nothing is recorded.
+  it("rejects a stream that exceeds the cap", async () => {
+    const repo = fakeRepo();
+    const fileStore = fakeFileStore();
+    const tinyCap = 4;
+
+    await expect(
+      fileStore.saveStream(
+        streamOf(new Uint8Array(3), new Uint8Array(3)),
+        "huge.db",
+        tinyCap,
+      ),
+    ).rejects.toThrow(UploadTooLargeError);
+
+    expect(repo.rows).toHaveLength(0);
+    expect(fileStore.saved.size).toBe(0);
+  });
+
+  it("rejects an empty stream", async () => {
+    await expect(
+      uploadDatabaseStream(
+        { originalFileName: "empty.db", stream: streamOf(), uploadedByUserId: 7 },
+        makeDeps(),
+      ),
+    ).rejects.toThrow(/empty/);
+  });
+
+  it("removes the stored file and records nothing when it is not really SQLite", async () => {
+    const repo = fakeRepo();
+    const fileStore = fakeFileStore();
+    const reader = fakeReader({ isSqliteFile: async () => false });
+
+    await expect(
+      uploadDatabaseStream(
+        {
+          originalFileName: "not-really.db",
+          stream: streamOf(new Uint8Array([1])),
+          uploadedByUserId: 7,
+        },
+        makeDeps({ repo, fileStore, reader }),
+      ),
+    ).rejects.toThrow(/not a SQLite database/);
+
+    expect(repo.rows).toHaveLength(0);
+    expect(fileStore.removed).toHaveLength(1);
   });
 });
 

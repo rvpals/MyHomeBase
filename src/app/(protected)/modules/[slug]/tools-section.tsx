@@ -1,5 +1,5 @@
 import { CollapsibleCard } from "@/components/collapsible-card";
-import { listUploadedDatabases } from "@/lib/sqlite-browser";
+import { getMaxUploadBytes, listUploadedDatabases } from "@/lib/sqlite-browser";
 import { deps } from "@/lib/wiring";
 import { ToolsDashboardView } from "./tools-dashboard-view";
 import { ToolsInstructions } from "./tools-instructions";
@@ -13,6 +13,7 @@ import { TOOLS_SECTION_INFO, type ToolsSection as ToolsSectionName } from "./too
 
 export async function ToolsSection({ section }: { section: ToolsSectionName }) {
   const info = TOOLS_SECTION_INFO[section];
+  const maxUploadBytes = getMaxUploadBytes(deps.moduleRepo, deps.moduleSettingsRepo);
 
   return (
     // The two-tier shell: a module rail, a section panel and a utility header,
@@ -28,17 +29,22 @@ export async function ToolsSection({ section }: { section: ToolsSectionName }) {
         </header>
 
         <CollapsibleCard title="Instruction">
-          <ToolsInstructions section={section} />
+          <ToolsInstructions section={section} maxUploadBytes={maxUploadBytes} />
         </CollapsibleCard>
 
         <div className="mt-4">
           {section === "main" && <ToolsDashboardView />}
           {section === "sqlite-browser" && (
+            // The cap is read here rather than imported by the view, so the
+            // screen shows the limit an admin actually configured.
             // Only the upload list is loaded here. The tables inside a file are
             // read on demand, once the reader picks one: opening every uploaded
             // database on every page load would make the screen pay for files
             // nobody is looking at.
-            <ToolsSqliteBrowserView databases={listUploadedDatabases(deps.uploadedDatabaseRepo)} />
+            <ToolsSqliteBrowserView
+              databases={listUploadedDatabases(deps.uploadedDatabaseRepo)}
+              maxUploadBytes={maxUploadBytes}
+            />
           )}
         </div>
       </div>

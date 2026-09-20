@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   deleteRows,
   deleteUploadedDatabase,
+  getMaxUploadBytes,
   listTablesIn,
   listUploadedDatabases,
   readTableRows,
@@ -102,9 +103,14 @@ async function runUpload(filePath: string, user: string | undefined): Promise<vo
   // would be the wrong trade.
   const uploadedByUserId = Number.isInteger(Number(user)) && Number(user) > 0 ? Number(user) : null;
 
+  // The same configured cap the web upload enforces, so the two adapters can
+  // never disagree about what is too large.
+  const maxBytes = getMaxUploadBytes(deps.moduleRepo, deps.moduleSettingsRepo);
+
   const created = await uploadDatabase(
     { originalFileName: path.basename(filePath), bytes, uploadedByUserId },
     browserDeps,
+    maxBytes,
   );
 
   console.log(`Uploaded ${created.originalFileName} as [${created.id}].`);

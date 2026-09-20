@@ -3,6 +3,10 @@
 // state, rendered inside a collapsed CollapsibleCard so it's there when wanted and
 // out of the way when not. Mirrors games-instructions.tsx.
 
+// From the leaf module, not the barrel: the barrel re-exports the repository
+// and file store, which pull in `better-sqlite3`/`node:fs` and cannot be
+// bundled for a browser. `errors.ts` is pure.
+import { formatCap } from "@/lib/sqlite-browser/errors";
 import type { ToolsSection } from "./tools-sections";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -34,7 +38,7 @@ function DashboardInstructions() {
   );
 }
 
-function SqliteBrowserInstructions() {
+function SqliteBrowserInstructions({ maxUploadBytes }: { maxUploadBytes: number }) {
   return (
     <>
       <p className="text-sm text-muted">
@@ -46,8 +50,9 @@ function SqliteBrowserInstructions() {
           Drop a <code className="font-mono text-xs">.db</code>,{" "}
           <code className="font-mono text-xs">.sqlite</code>,{" "}
           <code className="font-mono text-xs">.sqlite3</code> or{" "}
-          <code className="font-mono text-xs">.db3</code> file onto the dropzone, up to
-          50&nbsp;MB. The file is checked to really be a SQLite database before it is
+          <code className="font-mono text-xs">.db3</code> file onto the dropzone, up to{" "}
+          {formatCap(maxUploadBytes)} (an administrator sets this, under Configuration →
+          Application). The file is checked to really be a SQLite database before it is
           accepted, so a mis-picked spreadsheet is rejected straight away rather than
           failing later.
         </p>
@@ -107,11 +112,19 @@ function SqliteBrowserInstructions() {
   );
 }
 
-export function ToolsInstructions({ section }: { section: ToolsSection }) {
+export function ToolsInstructions({
+  section,
+  maxUploadBytes,
+}: {
+  section: ToolsSection;
+  maxUploadBytes: number;
+}) {
   return (
     <div className="flex flex-col gap-4">
       {section === "main" && <DashboardInstructions />}
-      {section === "sqlite-browser" && <SqliteBrowserInstructions />}
+      {section === "sqlite-browser" && (
+        <SqliteBrowserInstructions maxUploadBytes={maxUploadBytes} />
+      )}
     </div>
   );
 }

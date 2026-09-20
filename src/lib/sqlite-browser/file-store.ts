@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
+import { createWriteStream } from "node:fs";
 import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { UploadTooLargeError } from "./errors";
 import type { SqliteFileStore } from "./ports";
 
 /**
@@ -31,6 +35,54 @@ export class NodeSqliteFileStore implements SqliteFileStore {
     await writeFile(path.join(this.uploadRoot, storedFileName), bytes);
 
     return storedFileName;
+  }
+
+  /**
+   * Streams an upload to disk, enforcing the cap as it goes.
+   *
+   * The counter is checked per chunk rather than trusting Content-Length,
+   * which is a claim the sender makes and can lie about. Passing the cap
+   * aborts the write and removes the partial file, so an oversized upload
+   * costs the disk `maxBytes` and a moment, not the sender's whole file.
+   */
+  async saveStream(
+    stream: ReadableStream<Uint8Array>,
+    originalFileName: string,
+    maxBytes: number,
+  ): Promise<{ storedFileName: string; byteSize: number }> {
+    await mkdir(this.uploadRoot, { recursive: true });
+
+    const storedFileName = `${randomUUID()}${safeExtension(originalFileName)}`;
+    const destination = path.join(this.uploadRoot, storedFileName);
+
+    let byteSize = 0;
+    try {
+      // `Readable.fromWeb` + `pipeline` gives backpressure for free: the
+      // source is only pulled as fast as the disk accepts it.
+      await pipeline(
+        Readable.fromWeb(stream as Parameters<typeof Readable.fromWeb>[0]),
+        async function* (source: AsyncIterable<Buffer>) {
+          for await (const chunk of source) {
+            byteSize += chunk.byteLength;
+            if (byteSize > maxBytes) throw new UploadTooLargeError(maxBytes);
+            yield chunk;
+          }
+        },
+        createWriteStream(destination),
+      );
+    } catch (error) {
+      // Includes a client that hung up mid-upload, which would otherwise leave
+      // a truncated file that is not a valid database.
+      await rm(destination, { force: true });
+      throw error;
+    }
+
+    if (byteSize === 0) {
+      await rm(destination, { force: true });
+      throw new Error("That file is empty.");
+    }
+
+    return { storedFileName, byteSize };
   }
 
   pathFor(storedFileName: string): string {

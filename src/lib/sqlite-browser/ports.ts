@@ -28,6 +28,24 @@ export interface SqliteFileStore {
    * chooses the name so a caller's filename never reaches the filesystem.
    */
   save(bytes: Uint8Array, originalFileName: string): Promise<string>;
+  /**
+   * The same, from a stream, without ever holding the whole file in memory.
+   *
+   * This is what the upload route uses. An upload is up to `MAX_UPLOAD_BYTES`, and
+   * buffering that to call `save` would cost the server the file's full size
+   * per concurrent upload — on a NAS that is the difference between working
+   * and swapping.
+   *
+   * `maxBytes` is enforced *as the stream arrives*: the write is aborted and
+   * the partial file removed the moment the limit is passed, so an oversized
+   * upload costs the cap rather than the sender's whole file. Returns the
+   * stored name and the byte count actually written.
+   */
+  saveStream(
+    stream: ReadableStream<Uint8Array>,
+    originalFileName: string,
+    maxBytes: number,
+  ): Promise<{ storedFileName: string; byteSize: number }>;
   /** The absolute path of a stored file, for the reader to open. */
   pathFor(storedFileName: string): string;
   /** Whether the file is still there — an upload root can be wiped between runs. */

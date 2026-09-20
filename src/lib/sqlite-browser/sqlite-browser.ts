@@ -1,8 +1,16 @@
-import type { ForeignDatabaseReader, SqliteFileStore, UploadedDatabaseRepository } from "./ports";
 import {
+  listModuleSettingsFor,
+  type ModuleSettingsRepository,
+} from "@/lib/module-settings";
+import { getModuleBySlug, type ModuleRepository } from "@/lib/modules";
+import type { ForeignDatabaseReader, SqliteFileStore, UploadedDatabaseRepository } from "./ports";
+import { TOOLS_MODULE_SLUG, resolveToolsSettings } from "./settings";
+import {
+  DEFAULT_MAX_UPLOAD_BYTES,
   deleteRowsSchema,
   readTableSchema,
-  uploadDatabaseSchema,
+  uploadDatabaseSchemaFor,
+  uploadFileNameSchema,
   type DeleteRowsInput,
   type ReadTableInput,
   type UploadDatabaseInput,
@@ -14,6 +22,29 @@ export interface SqliteBrowserDeps {
   repo: UploadedDatabaseRepository;
   fileStore: SqliteFileStore;
   reader: ForeignDatabaseReader;
+}
+
+/**
+ * The configured upload cap, read from storage.
+ *
+ * The one call every upload path makes, so the web route and the CLI can
+ * never disagree about the limit. A module row that is somehow missing
+ * resolves to the default rather than throwing: the cap is a guard rail, and
+ * failing every upload because a registry row is absent would be worse than
+ * applying the shipped figure.
+ *
+ * Lives here rather than in `settings.ts` so that file stays free of
+ * repository imports — the admin's client-side control imports it directly,
+ * and a transitive `better-sqlite3` would break the browser bundle.
+ */
+export function getMaxUploadBytes(
+  moduleRepo: ModuleRepository,
+  settingsRepo: ModuleSettingsRepository,
+): number {
+  const appModule = getModuleBySlug(moduleRepo, TOOLS_MODULE_SLUG);
+  if (!appModule) return DEFAULT_MAX_UPLOAD_BYTES;
+
+  return resolveToolsSettings(listModuleSettingsFor(settingsRepo, appModule.id)).maxUploadBytes;
 }
 
 /** Every uploaded file, newest first. */
@@ -36,8 +67,9 @@ export function listUploadedDatabases(repo: UploadedDatabaseRepository): Uploade
 export async function uploadDatabase(
   input: UploadDatabaseInput,
   deps: SqliteBrowserDeps,
+  maxBytes: number = DEFAULT_MAX_UPLOAD_BYTES,
 ): Promise<UploadedDatabase> {
-  const parsed = uploadDatabaseSchema.parse(input);
+  const parsed = uploadDatabaseSchemaFor(maxBytes).parse(input);
 
   const storedFileName = await deps.fileStore.save(parsed.bytes, parsed.originalFileName);
 
@@ -52,6 +84,54 @@ export async function uploadDatabase(
       storedFileName,
       byteSize: parsed.bytes.byteLength,
       uploadedByUserId: parsed.uploadedByUserId,
+    });
+  } catch (error) {
+    await deps.fileStore.remove(storedFileName);
+    throw error;
+  }
+}
+
+/**
+ * The same, from a stream — what the upload route calls.
+ *
+ * Identical rules to `uploadDatabase` (bytes first, header-checked before the
+ * row, file removed if anything fails); it differs only in never holding the
+ * whole file in memory. A Server Action cannot be used for this at all: Next
+ * caps an action's body at `serverActions.bodySizeLimit`, and raising that to
+ * 50 MB would apply to every action in the app *and* buffer each upload
+ * whole. The cap here is enforced by the store as the stream arrives.
+ *
+ * The name is validated on its own before a byte is written, so a `.csv`
+ * is refused without being spooled to disk first.
+ */
+export async function uploadDatabaseStream(
+  input: {
+    originalFileName: string;
+    stream: ReadableStream<Uint8Array>;
+    uploadedByUserId: number | null;
+  },
+  deps: SqliteBrowserDeps,
+  maxBytes: number = DEFAULT_MAX_UPLOAD_BYTES,
+): Promise<UploadedDatabase> {
+  const originalFileName = uploadFileNameSchema.parse(input.originalFileName);
+
+  const { storedFileName, byteSize } = await deps.fileStore.saveStream(
+    input.stream,
+    originalFileName,
+    maxBytes,
+  );
+
+  try {
+    const filePath = deps.fileStore.pathFor(storedFileName);
+    if (!(await deps.reader.isSqliteFile(filePath))) {
+      throw new Error("That file is not a SQLite database.");
+    }
+
+    return deps.repo.create({
+      originalFileName,
+      storedFileName,
+      byteSize,
+      uploadedByUserId: input.uploadedByUserId,
     });
   } catch (error) {
     await deps.fileStore.remove(storedFileName);

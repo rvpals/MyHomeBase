@@ -6,7 +6,6 @@ import {
   deleteUploadedDatabase,
   listTablesIn,
   readTableRows,
-  uploadDatabase,
   type BrowsedPage,
   type BrowsedTable,
   type SqliteBrowserDeps,
@@ -35,41 +34,11 @@ function toErrorResult(error: unknown, fallback: string): ActionResult {
   return { ok: false, error: error instanceof Error ? error.message : fallback };
 }
 
-export interface UploadResult extends ActionResult {
-  databaseId?: number;
-}
-
-/**
- * Stores an uploaded SQLite file.
- *
- * Takes `FormData` rather than a byte array because that is what reaches a
- * server action from a file input without the browser base64-ing a 50 MB file
- * into a JSON payload first.
- */
-export async function uploadDatabaseAction(formData: FormData): Promise<UploadResult> {
-  try {
-    // The guard is inside the try so a denial renders as an inline error rather
-    // than an unhandled rejection — it throws.
-    const currentUser = await requireModuleAccess(ACCESS_MODULE_SLUG);
-
-    const file = formData.get("file");
-    if (!(file instanceof File)) return { ok: false, error: "No file was uploaded." };
-
-    const created = await uploadDatabase(
-      {
-        originalFileName: file.name,
-        bytes: new Uint8Array(await file.arrayBuffer()),
-        uploadedByUserId: currentUser.id,
-      },
-      browserDeps,
-    );
-
-    revalidatePath(SQLITE_BROWSER_PATH);
-    return { ok: true, databaseId: created.id };
-  } catch (error) {
-    return toErrorResult(error, "Could not upload that file.");
-  }
-}
+// Uploading is NOT a server action. It goes to
+// `src/app/api/tools/sqlite-browser/upload/route.ts`, because Next caps an
+// action's body at `serverActions.bodySizeLimit` (4 MB) — which made the
+// module's own 50 MB cap unreachable — and because a route handler can stream
+// the file to disk instead of buffering it whole.
 
 export interface ListTablesResult extends ActionResult {
   tables?: BrowsedTable[];

@@ -1537,11 +1537,14 @@ written back into the uploaded file, which is scratch space by design.
 | Export | Shape |
 |---|---|
 | `listUploadedDatabases` | `(repo) => UploadedDatabase[]` — newest first |
-| `uploadDatabase` | `(input, deps) => Promise<UploadedDatabase>` — bytes first, row second; the file is header-checked and removed again if it is not really SQLite |
+| `uploadDatabase` | `(input, deps) => Promise<UploadedDatabase>` — bytes first, row second; the file is header-checked and removed again if it is not really SQLite. What the CLI uses |
+| `uploadDatabaseStream` | `(input, deps) => Promise<UploadedDatabase>` — the same rules from a `ReadableStream`, never holding the file in memory. What the upload **route handler** uses, because a server action's body is capped at 4 MB |
 | `listTablesIn` | `(databaseId, deps) => Promise<BrowsedTable[]>` — tables and views, with row counts and whether rows can be addressed |
 | `readTableRows` | `(input, deps) => Promise<BrowsedPage>` — capped at `TABLE_PAGE_LIMIT` (500) |
 | `deleteRows` | `(input, deps) => Promise<DeleteRowsResult>` — by rowid, one transaction, duplicates collapsed |
 | `deleteUploadedDatabase` | `(databaseId, deps) => Promise<boolean>` — row first, then the file |
+| `getMaxUploadBytes` | `(moduleRepo, settingsRepo) => number` — the configured upload cap. **Both upload paths call this**, so the web route and the CLI can never enforce different limits |
+| `resolveToolsSettings` / `toolsSettingsToEntries` | The `sys_module_settings` parser and writer for `tools_max_upload_bytes`. Forgiving on read (garbage → default, over-ceiling → clamped), since the row is reachable from the admin's generic key/value editor |
 
 A missing file on disk is reported as "upload it again", not thrown: the upload root is
 a workspace and clearing it is supported.
@@ -2505,7 +2508,9 @@ bytes.
 **Exit** — 0 including when nothing has been uploaded (a fact, not an error); 1 when
 `--db` is not a positive integer, when `--delete` parses to no rowids, when the id is
 not listed, when the file has gone from disk, or when a schema rejects the input (a
-non-SQLite file, one over 50 MB, a table name that is not an identifier).
+non-SQLite file, one over the configured upload cap, a table name that is not an
+identifier). The cap is the one an admin set under Configuration → Application, read
+through `getMaxUploadBytes` — the same value the web upload enforces.
 Source: [src/cli/browse-sqlite.ts](src/cli/browse-sqlite.ts)
 
 ---

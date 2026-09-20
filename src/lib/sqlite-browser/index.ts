@@ -14,13 +14,17 @@ export type {
   UploadedDatabaseWriteData,
 } from "./ports";
 export {
-  MAX_UPLOAD_BYTES,
+  DEFAULT_MAX_UPLOAD_BYTES,
+  MAX_UPLOAD_CEILING_BYTES,
+  MIN_UPLOAD_CAP_BYTES,
   TABLE_PAGE_LIMIT,
+  maxUploadCapSchema,
+  uploadDatabaseSchemaFor,
   databaseIdSchema,
   deleteRowsSchema,
   readTableSchema,
   tableNameSchema,
-  uploadDatabaseSchema,
+  uploadFileNameSchema,
   type DeleteRowsInput,
   type ReadTableInput,
   type ReadTableOptions,
@@ -31,10 +35,20 @@ export {
   deleteUploadedDatabase,
   listTablesIn,
   listUploadedDatabases,
+  getMaxUploadBytes,
   readTableRows,
   uploadDatabase,
+  uploadDatabaseStream,
   type SqliteBrowserDeps,
 } from "./sqlite-browser";
+export { UploadTooLargeError, formatCap, isUploadTooLargeError } from "./errors";
+export {
+  TOOLS_MODULE_SLUG,
+  TOOLS_SETTING_KEYS,
+  resolveToolsSettings,
+  toolsSettingsToEntries,
+  type ToolsSettings,
+} from "./settings";
 export { SqliteUploadedDatabaseRepository } from "./repository";
 export { NodeSqliteFileStore } from "./file-store";
 export { BetterSqliteForeignDatabaseReader } from "./foreign-db";

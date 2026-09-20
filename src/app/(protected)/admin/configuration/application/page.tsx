@@ -2,6 +2,7 @@
 
 import { useAdminSettings } from "../../admin-shell";
 import { PAGE_CONTAINER } from "../../../page-container";
+import { UploadCapControl } from "./upload-cap-control";
 
 export default function ApplicationConfigurationPage() {
   const { applicationName, setApplicationName } = useAdminSettings();
@@ -25,6 +26,8 @@ export default function ApplicationConfigurationPage() {
             className="w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
           />
         </label>
+
+        <UploadCapControl />
       </div>
     </div>
   );

@@ -1,18 +1,31 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState, useTransition } from "react";
 import { Button } from "@/components/button";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Modal } from "@/components/modal";
-import type { BrowsedPage, BrowsedRow, BrowsedTable, UploadedDatabase } from "@/lib/sqlite-browser";
+// `formatCap` comes from the leaf module, not the barrel: the barrel
+// re-exports the repository and file store, which pull in
+// `better-sqlite3`/`node:fs` and cannot be bundled for a browser. The types
+// are erased at compile time, so importing those from the barrel is free.
+import { formatCap } from "@/lib/sqlite-browser/errors";
+import type {
+  BrowsedPage,
+  BrowsedRow,
+  BrowsedTable,
+  UploadedDatabase,
+} from "@/lib/sqlite-browser";
 import {
   deleteDatabaseAction,
   deleteRowsAction,
   listTablesAction,
   readTableAction,
-  uploadDatabaseAction,
 } from "./tools-actions";
+
+/** The streaming upload endpoint — see the comment in `handleUpload`. */
+const UPLOAD_ENDPOINT = "/api/tools/sqlite-browser/upload";
 
 /**
  * The SQLite File Browser.
@@ -25,7 +38,14 @@ import {
  * instead of sitting beside it, and `DataGrid` swaps itself for `DataGridCompact`
  * below 1024px, carrying the checkboxes and the bulk action with it.
  */
-export function ToolsSqliteBrowserView({ databases }: { databases: UploadedDatabase[] }) {
+export function ToolsSqliteBrowserView({
+  databases,
+  maxUploadBytes,
+}: {
+  databases: UploadedDatabase[];
+  /** The configured cap, resolved on the server — see Admin → Configuration. */
+  maxUploadBytes: number;
+}) {
   const [openDatabase, setOpenDatabase] = useState<UploadedDatabase | undefined>();
   const [tables, setTables] = useState<BrowsedTable[]>([]);
   const [page, setPage] = useState<BrowsedPage | undefined>();
@@ -37,6 +57,7 @@ export function ToolsSqliteBrowserView({ databases }: { databases: UploadedDatab
     { rowIds: number[]; clearSelection?: () => void } | undefined
   >();
   const [confirmRemoveFile, setConfirmRemoveFile] = useState<UploadedDatabase | undefined>();
+  const router = useRouter();
 
   const isBusy = isPending || isUploading;
 
@@ -74,16 +95,48 @@ export function ToolsSqliteBrowserView({ databases }: { databases: UploadedDatab
   async function handleUpload(file: File) {
     setError(undefined);
     setNotice(undefined);
+
+    // Checked here as well as on the server, purely to save the reader's time:
+    // the browser already knows the size, so there is no reason to push a
+    // gigabyte up the wire before being told it is too big. The server check
+    // is the one that counts — this one is a courtesy and is trivially
+    // bypassed.
+    if (file.size > maxUploadBytes) {
+      // `formatBytes` for the file (exact, e.g. "1.4 MB") and `formatCap` for
+      // the limit (round, e.g. "1 GB") — each reads the way its number is meant.
+      setError(
+        `${file.name} is ${formatBytes(file.size)}, over the ${formatCap(maxUploadBytes)} limit.`,
+      );
+      return;
+    }
+
     setIsUploading(true);
     try {
-      const formData = new FormData();
-      formData.set("file", file);
-      const result = await uploadDatabaseAction(formData);
-      if (!result.ok) {
-        setError(result.error ?? "Could not upload that file.");
+      // Posted to a route handler, not a server action: an action's body is
+      // capped at 4 MB (next.config.ts), which made the module's own 50 MB
+      // limit unreachable. The file is sent as the raw request body so the
+      // server can stream it to disk without buffering it.
+      const response = await fetch(UPLOAD_ENDPOINT, {
+        method: "POST",
+        headers: { "x-upload-filename": encodeURIComponent(file.name) },
+        body: file,
+      });
+
+      const result = (await response.json().catch(() => undefined)) as
+        | { ok?: boolean; error?: string }
+        | undefined;
+
+      if (!response.ok || !result?.ok) {
+        setError(result?.error ?? "Could not upload that file.");
         return;
       }
+
       setNotice(`Uploaded ${file.name}. Pick it below to browse it.`);
+      // The list is server-rendered, so the new file only appears after the
+      // route's data is refetched.
+      router.refresh();
+    } catch {
+      setError("Could not reach the server to upload that file.");
     } finally {
       setIsUploading(false);
     }
@@ -127,6 +180,9 @@ export function ToolsSqliteBrowserView({ databases }: { databases: UploadedDatab
         setPage(undefined);
       }
       setNotice(`Removed ${database.originalFileName}.`);
+      // Same reason as after an upload: the list is server-rendered, so the
+      // removed file lingers on screen until the route's data is refetched.
+      router.refresh();
     });
   }
 
@@ -137,7 +193,7 @@ export function ToolsSqliteBrowserView({ databases }: { databases: UploadedDatab
         label={
           isUploading
             ? "Uploading…"
-            : "Drop a SQLite file here, or click to browse (.db, .sqlite, .sqlite3, .db3 — up to 50 MB)"
+            : `Drop a SQLite file here, or click to browse (.db, .sqlite, .sqlite3, .db3 — up to ${formatCap(maxUploadBytes)})`
         }
         disabled={isBusy}
         onFile={(file) => void handleUpload(file)}
