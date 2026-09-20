@@ -16,7 +16,7 @@ import {
   type AlbumWithPhotos,
 } from "@/lib/albums";
 import { deps } from "@/lib/wiring";
-import { requireModuleAccess } from "../../require-access";
+import { requireModuleAccess, requireUser } from "../../require-access";
 
 // Thin adapters over the album use-cases. Each one authorises, validates through the
 // module's own zod schema (inside the use-case), and returns the result — no logic
@@ -25,6 +25,20 @@ import { requireModuleAccess } from "../../require-access";
 /** The module these actions belong to, matched exactly by `requireModuleAccess`. */
 const ACCESS_MODULE_SLUG = "picture-gallery";
 
+// THE SPLIT IN THIS FILE, since these actions no longer share one guard.
+//
+// FILING a photo into an album is reachable from anywhere a photograph is shown — the
+// gallery's own screens and the Journal entry's picture viewer, which both open the same
+// `PhotoViewer` and so want the same `+` menu. Those four actions (list, which albums
+// hold this path, add, create) authorise on a SESSION: a reader who can already see the
+// picture through `/api/journal/photos` — session-checked, no module grant — gains only
+// the ability to record a path they were already handed.
+//
+// MANAGING albums stays the Picture Gallery module's own work: renaming, reordering,
+// deleting, pulling photos out, and reading one album's full contents. Those keep
+// `requireModuleAccess`, because widening them would open POST endpoints no viewer asks
+// for. Adding an action here means deciding which half it belongs to.
+
 /**
  * Every album, with a photo count and a cover.
  *
@@ -32,7 +46,7 @@ const ACCESS_MODULE_SLUG = "picture-gallery";
  * opens onto.
  */
 export async function listAlbumsAction(): Promise<AlbumSummary[]> {
-  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  await requireUser();
   return listAlbums(deps.albumRepo);
 }
 
@@ -54,7 +68,7 @@ export async function createAlbumAction(
   name: string,
   description: string,
 ): Promise<AlbumResult<Album>> {
-  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  await requireUser();
   return createAlbum(deps.albumRepo, { name, description });
 }
 
@@ -90,7 +104,7 @@ export async function addPhotosToAlbumAction(
   albumId: number,
   relativePaths: string[],
 ): Promise<AlbumResult<{ added: number; alreadyPresent: number }>> {
-  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  await requireUser();
   return addPhotosToAlbum(deps.albumRepo, { albumId, relativePaths });
 }
 
@@ -119,6 +133,6 @@ export async function reorderAlbumPhotosAction(
  * so returning records would be a second copy that can disagree with the first.
  */
 export async function albumIdsContainingAction(relativePath: string): Promise<number[]> {
-  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  await requireUser();
   return albumIdsContaining(deps.albumRepo, relativePath);
 }

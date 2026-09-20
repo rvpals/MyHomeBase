@@ -1,5 +1,198 @@
 # Change History
 
+## 2026-09-19 — Fall asleep to the music
+
+### [Music Library] A sleep timer on the player
+
+The player had no way to say "stop after a while". Falling asleep to an album meant
+either leaving it playing all night or getting up to close the bar.
+
+The player bar's desktop arm now carries a **moon button** beside the queue control. It
+opens a small panel of presets — 15, 20, 30, 45 minutes, 1, 2 and 4 hours — plus an
+hours-and-minutes pair for anything else, capped at twelve hours. Once armed, the button
+itself becomes the countdown. At zero the player calls the same `stop()` the Close button
+does: audio pauses, the bar disappears, **and the queue survives** — closing the player
+and throwing away a sixty-track queue have always been different intentions here.
+
+**Held as a deadline, not a countdown.** The obvious implementation decrements a number
+once a second, and it is wrong: an interval in a backgrounded tab is throttled to as
+little as once a minute, so a phone with the screen off would have played well past the
+time that was set. Comparing a stored deadline against the clock each tick means a
+throttled tab is merely *late to notice*, and still stops at the right moment.
+
+It is a **wall clock** — it keeps counting while the music is paused. Pausing to answer
+the door should not extend your night.
+
+**Where it lives.** The deadline and its interval are in `MusicPlayerProvider`, next to
+the `<audio>` element and for the same reason: a component that unmounts when you
+navigate cannot be trusted to hold a timer. The new `MusicSleepTimer` component is the
+panel and the button, and owns nothing but its own open state. The arithmetic — what a
+duration means, when a timer has expired, how a countdown reads — is in
+`src/lib/music/sleep-timer.ts` with a colocated test, because every one of those has an
+edge worth pinning: an emptied number field arrives as `NaN`, a mistyped `99` in the
+hours box, and the boundary where the timer fires.
+
+**In memory only.** Navigating between modules keeps it; a reload clears it. No
+migration, no new table — the same call the restored queue makes when it comes back
+paused rather than playing.
+
+**On a phone** the compact bar shows the countdown in place of the artist line and no
+button: there is no room for a fifth control at 375px, and the bottom edge is already
+shared between the bar, the section nav and the player. The control itself is on the
+player screen, which is the primary place to set one narrow.
+
+## 2026-09-19 — The indexes board gets its icons, and history plays itself back
+
+### [Stocks & ETFs] Each market index now carries its own icon
+
+The indexes board identified every index by its provider symbol — `^GSPC`, `GC=F`,
+`DX-Y.NYB` — which is precise and unreadable. Each row now carries the icon of the body
+that publishes the index, fetched once and cached.
+
+**A new table rather than a column on `stk_ticker_logos`** (migration 0099,
+`stk_index_logos`). The two are keyed by different things and filled from different
+services: a ticker is a company and has a stock-logo endpoint, an index is not, and its
+icon comes from the website of whoever publishes it. Sharing one table would also have
+forced every index symbol through the ticker validator, which none of them pass.
+
+Same BLOB-plus-mime-type shape as the ticker logos and user avatars, served by its own
+route (`/api/stocks/indexes/[symbol]`) so the bytes never bloat a page payload. A row
+with a `NULL` image is a **negative cache** — "we looked and there wasn't one" — with
+`fetched_at` so it can be retried after thirty days rather than never.
+
+### [Stocks & ETFs] Play the portfolio history back as an animation
+
+The Portfolio History chart drew every captured day at once. It can now replay that same
+history — one frame per day, week, month or year — so the curve draws itself forward.
+
+**Every frame is a real recorded close, never an interpolation.** A period is represented
+by the last day actually captured inside it: if the week ending Friday was only captured
+through Wednesday, Wednesday's close is that week's frame. That keeps the animation honest
+about a history with gaps, which this one has — a snapshot exists only for the days
+someone pressed refresh.
+
+The bucketing arithmetic is in `src/lib/stock-dashboard/playback.ts` with a colocated
+test; weekly buckets are ISO weeks keyed by their Monday and parsed as UTC, so the
+runner's timezone can't shift a date across a day boundary. The number itself is the new
+`BigValueReadout` component — for a value that changes on its own and is the thing being
+watched, rather than a static figure in a grid of tiles.
+
+## 2026-09-18 — Keep or file a photo from a journal entry
+
+### [Journal] The photo viewer had no heart and no `+` menu
+
+Opening a photograph from a journal entry — *show photos*, then a picture from the list —
+gave the full viewer: the stage, the film strip, the slide show. But no favourite heart
+and no "add to album" button, while the very same photograph opened from Picture Gallery
+had both.
+
+Nothing was broken. `PhotoViewer` renders those two controls **only when the callbacks
+that drive them are supplied**, deliberately, so a caller with no notion of favourites
+gets a viewer with no heart rather than a dead one. The journal's path into the viewer
+(entry → `JournalPhotosHost` → `PhotoOfTheDay` → `PhotoViewer`) passed four props and
+stopped, so both controls were correctly suppressed. There has only ever been one viewer
+component; what differed was the wiring into it.
+
+`JournalPhotosHost` — already the one place allowed to bind journal photo actions, since
+`src/components/` may not import a server action — now also binds the favourite pair and
+the album trio, reusing the `useAlbumFiling` hook the gallery's own screens use.
+`PhotoOfTheDay` forwards them verbatim and adds nothing.
+
+**The part worth knowing about: six actions now authorise on a session rather than on the
+Picture Gallery grant.** Favouriting and album-filing were gated on
+`requireModuleAccess("picture-gallery")`, which would have given a Journal-only reader a
+heart that throws on click. Rather than hide the controls for those readers, the guard
+moved to `requireUser()` on exactly the six the viewer needs — two favourite actions,
+four album ones.
+
+That is a real access-control relaxation, and these are the reasons it is the right one:
+
+- `sys_fav_photo` carries the **platform** prefix, not `pho_`. It predates the module,
+  and `modules.md` already said Picture Gallery *owns nothing* for that screen.
+- The grant was not protecting anything. `/api/journal/photos` serves the bytes of any
+  archive photograph to any signed-in reader — a session check and a path schema, no
+  module grant. A reader who can already see the picture gains only the ability to record
+  a path they were handed.
+- No new filesystem reach: every one of the six still validates through
+  `favPhotoPathSchema` / `isSafeRelativePath`, the same refinement guarding the image
+  route.
+
+Album **management** — rename, reorder, delete, remove photos, read one album whole —
+keeps the module grant. Widening those would open POST endpoints no viewer asks for, so
+`gallery-album-actions.ts` now carries a comment saying which half a new action belongs
+in.
+
+## 2026-09-18 — SQLite uploads over 4 MB actually work
+
+### [Tools] The file browser's 50 MB limit was unreachable
+
+Uploading anything over about 4 MB failed with a framework error — `Body exceeded 4mb
+limit`, HTTP 413 — before a line of the module's own code ran. The 50 MB cap the screen
+advertises was never reachable.
+
+The cause: uploads went through a **server action**, and Next caps an action's body at
+`serverActions.bodySizeLimit`, which this app sets to 4 MB. The module validated the
+size *after* the framework had already parsed the body, so its own limit and its own
+error message never got a turn.
+
+Uploads now go to a **route handler** (`POST /api/tools/sqlite-browser/upload`), which
+has no such cap, and the body is **streamed straight to disk** rather than buffered.
+Three things fall out of that:
+
+- The cap is enforced **as the bytes arrive**, so an oversized upload costs the disk the
+  cap rather than the sender's whole file, and returns a 413 that says so in the app's
+  own words.
+- The server never holds a 50 MB file in memory — which on the NAS is the difference
+  between working and swapping.
+- A client that hangs up mid-upload leaves no truncated file behind; the partial write
+  is removed.
+
+Raising `bodySizeLimit` to 50 MB was the one-line alternative and was rejected: it would
+apply to **every** server action in the app, and would still buffer each upload whole.
+
+Also fixed alongside it: **the file list didn't refresh** after an upload or a removal.
+The server revalidated but the client never refetched, so a newly uploaded file only
+appeared after a manual reload.
+
+Verified end to end with a 6.4 MB database — streamed, opened, 60,000 rows counted, rows
+deleted by rowid and written back — plus an over-cap upload confirmed to abort and clean
+up after itself.
+
+### [Tools] The upload limit is now a setting
+
+An administrator sets it at **Configuration → Application**, in megabytes. It lives with
+the Tools module's settings and is read on every upload, so a change applies to the next
+one rather than the next restart — and the CLI reads the same value, so the two can never
+disagree about what is too large.
+
+Admin-only rather than a control in the module, because it governs how much of the NAS
+volume a single upload can take: a system resource limit rather than a per-reader
+preference. Allowed range is 1 MB to 5 GB. The ceiling is there so a typo — 5000 where
+500 was meant — can't fill the volume.
+
+The two validation paths deliberately behave differently. Typing an out-of-range number
+into the admin box is **rejected**, with a message, because being told beats being
+silently corrected. A value read back from storage is **clamped or defaulted** instead —
+the same row is reachable from the generic key/value editor on the Modules page, and a
+hand-typed `lots` should fall back to the default rather than break uploading for
+everyone.
+
+### [Tools] The default upload limit is now 1 GB, not 50 MB
+
+The 50 MB cap was a planning-stage guess, and the first real file it met was
+MyHomeBase's own database at 89 MB — so the tool failed the most obvious thing anyone
+would try it on, and did it with a correct-but-unhelpful "larger than the 50 MB limit".
+That episode is what prompted making it configurable at all.
+
+Because the upload streams, this bounds **disk in the upload root, not memory**: the
+89 MB file measured 0.2 seconds with the process heap going *down*.
+
+Nothing hardcodes the figure in copy any more. The dropzone label, the instructions and
+every error message render the *configured* value through a shared `formatCap`, which
+also means a gigabyte-scale cap reads as "1 GB" rather than "1024 MB".
+
+**No migration.**
+
 ## 2026-09-17 — A Tools module, opening with a SQLite file browser
 
 ### [Tools] A new module for standalone utilities

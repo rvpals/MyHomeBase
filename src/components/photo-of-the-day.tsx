@@ -19,7 +19,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/button";
 import { Modal } from "@/components/modal";
-import { PhotoViewer, type ViewerPhoto } from "@/components/photo-viewer";
+import { PhotoViewer, type PhotoViewerProps, type ViewerPhoto } from "@/components/photo-viewer";
 import { SlotIcon } from "@/components/slot-icon";
 import { getIconSlot } from "@/lib/icons";
 import type { PhotoFile, PhotoFolder } from "@/lib/journal-photos";
@@ -111,6 +111,28 @@ export interface PhotoOfTheDayProps {
    * there, the button press already was the "go and look" instruction.
    */
   autoLookup?: boolean;
+  /**
+   * The favourite and album plumbing, forwarded verbatim to `PhotoViewer`.
+   *
+   * FORWARDED RATHER THAN IMPLEMENTED, and picked up from the viewer's own props so the
+   * two cannot drift: every one of these is a callback the caller supplies, because
+   * `src/components/` may not import a server action (ARCHITECTURE.md). This dialog
+   * adds nothing to them and keeps no state of its own about them.
+   *
+   * All-or-none, exactly as the viewer documents: it renders the heart only when
+   * `isFavorite` and `onToggleFavorite` are both present, and the `+` menu only when
+   * `albums`, `albumIdsFor` and `onAddToAlbum` are all present. Omitting them gives a
+   * viewer without those controls rather than dead ones — which is what every caller
+   * got before the Journal wired them up.
+   */
+  isFavorite?: PhotoViewerProps["isFavorite"];
+  onToggleFavorite?: PhotoViewerProps["onToggleFavorite"];
+  albums?: PhotoViewerProps["albums"];
+  albumIdsFor?: PhotoViewerProps["albumIdsFor"];
+  onAddToAlbum?: PhotoViewerProps["onAddToAlbum"];
+  onCreateAlbum?: PhotoViewerProps["onCreateAlbum"];
+  /** Reads one photo's capture details for the viewer's details line. */
+  onPhotoDetails?: PhotoViewerProps["onPhotoDetails"];
   /** Caller-supplied classes, merged last so they win. */
   className?: string;
 }
@@ -151,6 +173,13 @@ export function PhotoOfTheDay({
   photoUrl,
   onClose,
   autoLookup = false,
+  isFavorite,
+  onToggleFavorite,
+  albums,
+  albumIdsFor,
+  onAddToAlbum,
+  onCreateAlbum,
+  onPhotoDetails,
   className = "",
 }: PhotoOfTheDayProps) {
   // Memoized on its contents rather than rebuilt each render: it is a dependency of
@@ -401,6 +430,13 @@ export function PhotoOfTheDay({
           photos={viewer.photos}
           initialIndex={viewer.index}
           photoUrl={photoUrl}
+          isFavorite={isFavorite}
+          onToggleFavorite={onToggleFavorite}
+          albums={albums}
+          albumIdsFor={albumIdsFor}
+          onAddToAlbum={onAddToAlbum}
+          onCreateAlbum={onCreateAlbum}
+          onPhotoDetails={onPhotoDetails}
           onClose={() => setViewer(undefined)}
         />
       )}

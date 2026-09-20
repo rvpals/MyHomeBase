@@ -71,6 +71,7 @@ pattern instead of inventing one.
 | [`NavStylePreview`](#navstylepreview) | A thumbnail of a phone navigation style, for the picker | [src/components/nav-style-preview.tsx](src/components/nav-style-preview.tsx) | no |
 | [`MusicPlayerProvider`](#musicplayerprovider) | Owns the single `<audio>` element and playback state — mount in the layout | [src/components/music-player-provider.tsx](src/components/music-player-provider.tsx) | yes |
 | [`MusicPlayerBar`](#musicplayerbar) | The persistent "what's playing" strip, above the section nav on every page | [src/components/music-player-bar.tsx](src/components/music-player-bar.tsx) | yes |
+| [`MusicSleepTimer`](#musicsleeptimer) | **Stop the music after a while** — preset/custom duration picker plus a live countdown | [src/components/music-sleep-timer.tsx](src/components/music-sleep-timer.tsx) | yes |
 | [`SelectionBar`](#selectionbar) | Tick several rows, then send them somewhere (with `useSelection`) | [src/components/selection-bar.tsx](src/components/selection-bar.tsx) | yes |
 | [`ViewportSwitch`](#viewportswitch) | The global compact/full switch | [src/components/viewport-switch.tsx](src/components/viewport-switch.tsx) | yes |
 | [`PlayingCard`](#playingcard) | **One playing card** — face, back, or empty slot | [src/components/playing-card.tsx](src/components/playing-card.tsx) | no |
@@ -91,6 +92,7 @@ pattern instead of inventing one.
 | [`ChartXY`](#chartxy) | User-configurable line/bar/scatter/area + zoom | [src/components/chart-xy.tsx](src/components/chart-xy.tsx) | yes |
 | [`ChartCandle`](#chartcandle) | Candlestick / OHLC — four prices per period | [src/components/chart-candle.tsx](src/components/chart-candle.tsx) | yes |
 | [`ChartToolbar`](#chartoolbar) | A chart's gear control — **not called directly** | [src/components/chart-toolbar.tsx](src/components/chart-toolbar.tsx) | yes |
+| [`BigValueReadout`](#bigvaluereadout) | **One number, large, while it changes** — a playback or a running total | [src/components/big-value-readout.tsx](src/components/big-value-readout.tsx) | yes |
 | [`UsageMeter`](#usagemeter) | A stat tile whose value is part of a known total | [src/components/usage-meter.tsx](src/components/usage-meter.tsx) | no |
 | [`Progress3D`](#progress3d) | **Any progress bar** — work underway, 0..max | [src/components/progress-3d.tsx](src/components/progress-3d.tsx) | no |
 | [`JournalViewer`](#journalviewer) | Full detail sheet for one journal entry | [src/components/journal-viewer.tsx](src/components/journal-viewer.tsx) | yes |
@@ -1173,6 +1175,17 @@ expansion is the component's own state.
 A leaf is `{ id, label, detail? }`; `detail` renders as a truncated second line. An empty
 group renders `emptyMessage` rather than collapsing away — "no views defined" is more
 useful than a node that silently isn't there.
+
+**Each group is one slab, and the leaves are drawn as belonging to it.** A group plus its
+children sit in a single `.card-embossed` container (`rounded-lg border border-line
+bg-paper-raised`), so the eye reads one bevelled box per group rather than a flat run of
+rows at two indents. Inside, the group row is the slab's title bar — it takes a
+`border-b border-line` only while expanded — and the leaves are linked to it by a
+hairline **spine + elbow** in `bg-line`: a vertical line down the group's inner edge with a
+12px elbow out to each leaf. The spine stops at the last leaf's elbow rather than running
+past it, so the tree never dangles a line into empty space. All of it is `aria-hidden`
+decoration; the `role="tree"` / `role="group"` / `role="treeitem"` structure is unchanged,
+and nesting is still communicated to assistive tech by roles, not by the drawing.
 
 **Not a nav tier.** This is page content. The module rail and section panel are the
 navigation shell ([design.md](design.md)); don't reach for this to build a third one.
@@ -2404,7 +2417,9 @@ Time-series line chart, one or more series.
 | `height?` | `number` | Default `280`. |
 | `connectNulls?` | `boolean` | Draw a series through rows where its key is missing instead of breaking. Default `false`. |
 | `curve?` | `"monotone" \| "linear"` | Default `"monotone"` (smoothed). `"linear"` joins points with straight segments. |
-| `chartTypes?` | `("line" \| "area")[]` | Offers a line ↔ area switch in the toolbar. Omitted by default, and by every current call site. |
+| `chartTypes?` | `("line" \| "area")[]` | Offers a line ↔ area switch in the toolbar. Omitted by default. |
+| `defaultChartType?` | `"line" \| "area"` | Which encoding the chart **opens on** when `chartTypes` is set. Default `"line"`. A stored preference still wins — this is only the starting value. |
+| `gradientFill?` | `boolean` | Fades each area's fill from its line down to transparent instead of the flat 20% wash, so the curve reads as casting a shadow. Area encoding only. Default `false`. |
 | `showLegend?` | `boolean` | Overrides the "legend only when >1 series" default. Set `false` when the caller renders its own. |
 | `className?` | `string` | |
 
@@ -2829,6 +2844,56 @@ caption) wrapped around one of these.
 **Not for:** a *scrubber* you can drag to seek — the music player bar owns its own, because
 it's an input, not a readout. And if you want the used/total figures printed above the bar
 in a bordered tile, reach for [`UsageMeter`](#usagemeter) rather than assembling it again.
+
+---
+
+## BigValueReadout
+
+**One number, shown large, while it changes on its own.** For a value the reader is
+*watching move* — a playback stepping through history, a running total climbing during a
+refresh — where the figure is the event rather than a fact on a card.
+
+**Not a stat tile.** A tile labels a static number sitting in a grid of sibling numbers;
+this one dominates its space and animates. If the value only changes when the page
+re-renders, it belongs in a tile, not here.
+
+- **Source:** [src/components/big-value-readout.tsx](src/components/big-value-readout.tsx)
+- **Import:** `import { BigValueReadout } from "@/components/big-value-readout";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `value` | `string` | The figure, **already formatted** — `formatCents(...)`. This component never formats. |
+| `label?` | `string` | Small line above, naming what's shown. Also the accessible label. |
+| `caption?` | `string` | Small line below — a date, a period, a frame counter. |
+| `valueClassName?` | `string` | Tints the figure. Pass a gain/loss class; defaults to `text-ink`. |
+| `live?` | `boolean` | True while the value is still moving. Softens it, so a settled number reads as distinct from one mid-flight. |
+| `className?` | `string` | Merged last. |
+
+```tsx
+<BigValueReadout
+  label="Playing back"
+  value={formatCents(frame.totalValueCents)}
+  caption={`${frame.snapshotDate} · frame ${shown} of ${total}`}
+  valueClassName={gainClass(frame.totalGainLossCents)}
+  live={isPlaying}
+/>
+```
+
+**Used by:** Stocks & ETFs → Dashboard → Portfolio Summary → Portfolio History, as the
+readout for the snapshot playback
+[stock-playback-control.tsx](src/app/(protected)/modules/[slug]/stock-playback-control.tsx).
+
+**Notes:** `aria-live="polite"`, not `assertive` — a playback changes the value once or
+twice a second, and an assertive region would interrupt a screen reader on every frame.
+Polite waits for a pause, which in practice announces the value it settles on. The figure
+is `tabular-nums` so digits hold their columns instead of shuffling sideways as it grows,
+and drops from `text-5xl` to `text-3xl` under `max-lg:` — a `max-lg:` variant, so the
+desktop size provably can't regress.
+
+**The caller owns the clock.** This component has no timer and no notion of frames; it
+renders whichever value it's handed. Playback logic belongs in the lib
+(`buildPlaybackFrames`), the timer in the calling view.
 
 ---
 
@@ -3756,8 +3821,20 @@ effect; it models "the thing the user is listening to".
 
 **What `useMusicPlayer()` returns:** the transport (`play`, `toggle`, `next`, `previous`,
 `seek`, `setVolume`, `stop`), the queue (`queue`, `currentEntryId`, `repeatMode`,
-`isShuffled`, `remainingSeconds`, `isQueueLoading`) and the queue's operations (`enqueue`,
-`playEntry`, `shuffleQueue`, `removeFromQueue`, `clearQueue`, `setRepeatMode`).
+`isShuffled`, `remainingSeconds`, `isQueueLoading`), the queue's operations (`enqueue`,
+`playEntry`, `shuffleQueue`, `removeFromQueue`, `clearQueue`, `setRepeatMode`) and the
+sleep timer (`sleepRemainingSeconds`, `startSleepTimer`, `cancelSleepTimer`).
+
+**The sleep timer.** Armed with a number of seconds, it stops the player — the same
+`stop()` the Close button calls — when it expires. Held here rather than in
+[`MusicSleepTimer`](#musicsleeptimer) for the same reason the `<audio>` element is: a
+component that unmounts on navigation cannot hold a timer. It is stored as a **deadline**
+and compared to the clock each tick, not decremented, because an interval in a
+backgrounded tab is throttled to as little as once a minute and a decremented count would
+then run long. It is a **wall clock** — it counts down whether or not audio is playing.
+**In memory only**, unlike the queue: navigating between modules keeps it, a reload clears
+it. Both `stop()` and `clearQueue()` disarm it, so a closed player never leaves an
+invisible timer running.
 
 **Notes:** `useMusicPlayer()` returns `undefined` outside the provider rather than
 throwing, so a component can render in isolation. The `<audio>` element is created
@@ -3841,6 +3918,56 @@ publishing a height the same way, not adding another `bottom-0`.
 content rather than pushing it up, which is the point of minimizing. Its own offset comes
 from `.music-player-puck`, which clears the compact section trigger the same way the
 pinned bar does.
+
+## MusicSleepTimer
+
+A clock button that opens a small panel of preset durations (15/20/30/45 minutes,
+1/2/4 hours) plus an hours-and-minutes pair for anything else, and reads out a live
+countdown once armed. When it reaches zero the player stops and the bar closes.
+
+- **Source:** [src/components/music-sleep-timer.tsx](src/components/music-sleep-timer.tsx)
+- **Import:** `import { MusicSleepTimer } from "@/components/music-sleep-timer";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `remainingSeconds` | `number \| undefined` | Seconds left; `undefined` when no timer is armed. |
+| `onStart` | `(seconds: number) => void` | Arm the timer. The component clamps before calling. |
+| `onCancel` | `() => void` | Disarm it, leaving the music playing. |
+| `variant` | `"bar" \| "inline"` | `"bar"` (default) is the 44px icon button for the player bar; `"inline"` is a labelled secondary `Button` for a text transport row. |
+| `className` | `string` | — |
+
+```tsx
+<MusicSleepTimer
+  remainingSeconds={player.sleepRemainingSeconds}
+  onStart={player.startSleepTimer}
+  onCancel={player.cancelSleepTimer}
+/>
+```
+
+**Used by:** [`MusicPlayerBar`](#musicplayerbar) (desktop arm) and
+[music-player-view.tsx](src/app/(protected)/modules/[slug]/music-player-view.tsx)
+(`variant="inline"`).
+
+**Props in, events out.** It owns the panel's open state and the two half-typed number
+fields, and nothing else. The deadline, the one-second interval and the stopping live in
+[`MusicPlayerProvider`](#musicplayerprovider) — a component that unmounts on navigation
+cannot be trusted to hold a timer. The arithmetic (what a duration means, how a countdown
+reads) is in `src/lib/music/sleep-timer.ts`, where it is tested.
+
+**The panel opens upward** (`bottom-full`). Every place this is mounted sits at or near
+the bottom edge, so a panel hanging below the button would open off-screen. Narrow
+screens restyle it to `min(18rem, 100vw-2rem)` pinned to the right edge — a `max-lg:`
+restyle, not a fork.
+
+**The compact player bar does not render this.** There is no room for a fifth button at
+375px, so the compact arm shows the countdown in place of the artist line and the control
+itself lives on the player screen. That is the `design.md` rule about the bottom edge
+already being claimed.
+
+**The moon glyph is hand-drawn, not a `SlotIcon`** — it is a transport control sitting in
+a row with play, pause and queue, which `coding-guide.md` keeps hand-drawn so they read as
+buttons rather than as places.
 
 ## SelectionBar
 

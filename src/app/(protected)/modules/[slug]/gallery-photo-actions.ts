@@ -10,7 +10,7 @@ import {
 } from "@/lib/fav-photos";
 import { pickRandomPhoto, type RandomPhotoPick } from "@/lib/journal-photos";
 import { deps } from "@/lib/wiring";
-import { requireModuleAccess } from "../../require-access";
+import { requireModuleAccess, requireUser } from "../../require-access";
 import { photoStore } from "./journal-photo-root";
 
 /** The module these actions belong to, matched exactly by `requireModuleAccess`. */
@@ -57,14 +57,30 @@ export async function drawRandomPhotoAction(): Promise<RandomPhotoPick> {
  * the schema's `isSafeRelativePath` refinement is the same one guarding the image
  * route.
  */
+/**
+ * Why the two favourite actions below authorise on a SESSION rather than on this module.
+ *
+ * `sys_fav_photo` carries the PLATFORM prefix, not `pho_`: it predates this module
+ * (migration 0073) and Picture Gallery "owns nothing" for that screen, as `modules.md`
+ * says of its first two sections. The kept-photo list is archive-wide data that the
+ * gallery presents rather than owns.
+ *
+ * And the grant would buy nothing if it were here. `/api/journal/photos` serves the
+ * BYTES of any archive photo to any signed-in reader — a session check and a path
+ * schema, no `requireModuleAccess`. A reader who can already see the picture gains
+ * only the ability to record a path they were handed; the write now matches the read.
+ *
+ * The rest of this file keeps the module slug: a random DRAW is the gallery's own card,
+ * and removing or annotating a favourite is its "My favorites" screen.
+ */
 export async function toggleFavPhotoAction(relativePath: string): Promise<boolean> {
-  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  await requireUser();
   return toggleFavPhoto(deps.favPhotoRepo, relativePath);
 }
 
 /** Every favourite, newest first — what the "My favorites" dialog opens onto. */
 export async function listFavPhotosAction(): Promise<FavPhoto[]> {
-  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  await requireUser();
   return listFavPhotos(deps.favPhotoRepo);
 }
 

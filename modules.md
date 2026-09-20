@@ -1321,6 +1321,21 @@ the Journal module and read through `src/lib/journal-photos`, and the kept pictu
 problem invented for its own sake, so those screens are all `gallery-*` presentation over
 two other modules' libraries.
 
+**Owning nothing has an authorisation consequence, settled in September 2026.** Keeping
+and filing a photograph are reachable from anywhere a picture is shown — including a
+Journal entry, which opens the same `PhotoViewer` — so six actions authorise with
+`requireUser()` rather than on this module's grant: `toggleFavPhotoAction` and
+`listFavPhotosAction` in `gallery-photo-actions.ts`, and `listAlbumsAction`,
+`albumIdsContainingAction`, `addPhotosToAlbumAction` and `createAlbumAction` in
+`gallery-album-actions.ts`. The grant would buy nothing there: `/api/journal/photos`
+already serves any archive photo's bytes to any signed-in reader, on a session check and
+a path schema, so a reader who can see the picture gains only the ability to record a
+path they were handed.
+
+Everything that **manages** albums — rename, reorder, delete, remove photos, read one
+album whole — keeps `requireModuleAccess("picture-gallery")`. That is this module's own
+work and no viewer asks for it. A new action in either file has to pick a side.
+
 **Albums changed that, and only that.** An album — a named, ordered set of paths — is the
 one concept here that is genuinely this module's own, so it brought the module its first
 library module (`src/lib/albums`), its first tables (`pho_albums`, `pho_album_photos`)
@@ -1432,13 +1447,54 @@ Five choices worth knowing:
   the browser to resolve against `myhomebase.db`. Connections close in a `finally`: a
   file left open would be locked, and on Windows the reader could then not delete their
   own upload.
-- **The bytes live on disk, not in a BLOB.** An upload is up to 50 MB *and is written
-  to*, so a BLOB would mean reading 50 MB out of the app database, writing it to a temp
+- **The bytes live on disk, not in a BLOB.** An upload is up to 1 GB *and is written
+  to*, so a BLOB would mean reading it all out of the app database, writing it to a temp
   file for the driver to open, and writing it all back — on every single-row delete. The
   workspace folder is `MYHOMEBASE_TOOLS_UPLOAD_ROOT`, defaulting to `tool-uploads/`
   beside the database. The tradeoff is accepted: **the folder can be wiped without the
   rows going with it**, so every read checks the file is still there and reports "upload
   it again" rather than surfacing the driver's error.
+- **Uploading is a route handler, not a server action.** Next caps a server action's
+  body at `serverActions.bodySizeLimit` — 4 MB here — so the module's own cap was
+  unreachable and anything larger died with a framework 413 before any app code ran.
+  Raising that limit would have applied to *every* action in the app and still buffered
+  each upload whole. `POST /api/tools/sqlite-browser/upload` streams the request body
+  straight to disk instead, enforcing the cap **as the bytes arrive** — so an oversized
+  upload costs the disk the cap rather than the sender's whole file, and a client that
+  hangs up mid-upload leaves no truncated file behind. The filename travels in an
+  `x-upload-filename` header because parsing a multipart body is exactly what the route
+  avoids. This is the third time this limit has bitten in this repo; see the comments in
+  `next.config.ts`.
+- **The cap is a setting, defaulting to 1 GB.** It began as a hardcoded 50 MB and
+  failed the first real database it met — MyHomeBase's own, 89 MB on a desktop copy —
+  which is exactly why it is no longer a number only a developer can change. It lives
+  in `sys_module_settings` under `tools` (`tools_max_upload_bytes`, stored in **bytes**)
+  and is edited at **Admin → Configuration → Application**, because it governs how much
+  of the NAS volume one upload can take: a system resource limit, not a per-reader
+  preference. `getMaxUploadBytes` is the single read, so the route and the CLI can
+  never enforce different numbers, and it is read **per request** so a change applies
+  to the next upload rather than the next restart.
+
+  Two guards worth knowing, and they differ on purpose. `maxUploadCapSchema`
+  **rejects** an out-of-range value, because that is someone typing into a form and
+  being told beats being silently corrected. `resolveToolsSettings` **clamps** instead,
+  because it reads rows the admin's generic key/value editor can also reach — a
+  hand-typed `lots` resolves to the default and a hand-typed 99 GB to the 5 GB ceiling,
+  rather than breaking uploads entirely. The ceiling exists so a typo (5000 for 500)
+  cannot fill the volume.
+
+  Because the upload streams, the cap bounds **disk in the upload root, not memory**:
+  an 89 MB upload measured 0.2s with the heap going *down*. Nothing hardcodes the
+  figure in copy — the dropzone label, the instructions and every error render it
+  through `formatCap`, which also means a gigabyte-scale cap reads "1 GB", not
+  "1024 MB".
+- **The admin control must not import the module's barrel.** `@/lib/sqlite-browser`
+  re-exports the repository and the file store, which pull in `better-sqlite3` and
+  `node:fs`; importing it from a client component fails the build with
+  `Can't resolve 'fs'`. The control imports `errors.ts`, `schema.ts` and `settings.ts`
+  directly, and those three are kept free of repository imports for that reason —
+  which is why `getMaxUploadBytes` lives in `sqlite-browser.ts` rather than beside the
+  resolver it calls.
 - **Deletes are real, and rows are addressed by `rowid`.** The uploaded copy is a
   workspace, so a delete button that only pretended would be the wrong design. Row
   *position* is not usable as the address — the grid sorts and filters, so the third row
