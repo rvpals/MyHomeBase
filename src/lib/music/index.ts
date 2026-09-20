@@ -94,6 +94,19 @@ export {
 } from "./spectrum";
 
 export {
+  clampTimerSeconds,
+  describeCountdown,
+  formatCountdown,
+  hasExpired,
+  hoursMinutesToSeconds,
+  MAX_SLEEP_TIMER_SECONDS,
+  MIN_SLEEP_TIMER_SECONDS,
+  remainingSeconds,
+  SLEEP_TIMER_PRESETS,
+  type SleepTimerPreset,
+} from "./sleep-timer";
+
+export {
   isSafeRelativePath,
   normaliseRelativePath,
   parentFolderOf,

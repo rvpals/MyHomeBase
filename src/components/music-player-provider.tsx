@@ -28,6 +28,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import {
+  clampTimerSeconds,
+  hasExpired,
+  remainingSeconds as secondsUntil,
+} from "@/lib/music/sleep-timer";
 
 /** How the queue behaves when a track ends. Mirrors `RepeatMode` in src/lib/music. */
 export type RepeatMode = "off" | "all" | "one";
@@ -148,6 +153,24 @@ interface MusicPlayerState {
   readSpectrum: (into: Uint8Array<ArrayBuffer>, kind: SpectrumKind) => boolean;
   /** How many bytes `readSpectrum` will fill, or 0 when there is no analyser. */
   spectrumSize: number;
+  /**
+   * Seconds until the sleep timer stops the music, or `undefined` when none is armed.
+   *
+   * Recomputed from a deadline on a one-second interval rather than decremented, so a
+   * tab that was throttled in the background catches up to the right number instead of
+   * finishing however many ticks late the browser made it. It is a WALL CLOCK: it runs
+   * whether or not audio is playing, because pausing to answer the door should not
+   * extend the night.
+   *
+   * In memory only. Navigating between modules keeps it -- this provider is mounted by
+   * the protected layout and never unmounts -- but a reload clears it, the same way the
+   * restored queue comes back paused rather than playing.
+   */
+  sleepRemainingSeconds?: number;
+  /** Arms the timer for a whole number of seconds, replacing any timer already set. */
+  startSleepTimer: (seconds: number) => void;
+  /** Disarms the timer, leaving the music playing. */
+  cancelSleepTimer: () => void;
   /** Plays a track, replacing the queue with the list it came from. */
   play: (track: PlayableTrack, queue?: PlayableTrack[]) => void;
   /** Adds to the end of the queue without disturbing what is playing. */
@@ -218,6 +241,16 @@ export function MusicPlayerProvider({
   const [duration, setDuration] = useState(0);
   const [volume, setVolumeState] = useState(1);
   const [error, setError] = useState<string | undefined>(undefined);
+
+  // The sleep timer, held as a DEADLINE rather than a remaining count. A count would
+  // have to be decremented by the interval, and an interval in a backgrounded tab is
+  // throttled to as little as once a minute -- the music would then play on well past
+  // the time the listener set. A deadline is simply compared to the clock, so a
+  // throttled tab is late to notice but still stops at the right moment.
+  const [sleepDeadlineMs, setSleepDeadlineMs] = useState<number | undefined>(undefined);
+  const [sleepRemainingSeconds, setSleepRemainingSeconds] = useState<number | undefined>(
+    undefined,
+  );
 
   // The Web Audio graph behind the visualizer. Three refs, all null until the first
   // track plays -- see `ensureAnalyser`, which is the only thing that fills them.
@@ -540,6 +573,10 @@ export function MusicPlayerProvider({
     setIsPlaying(false);
     setPosition(0);
     setDuration(0);
+    // Same reasoning as `stop`: nothing is playing and there is nothing left to play,
+    // so an armed timer has nothing to act on.
+    setSleepDeadlineMs(undefined);
+    setSleepRemainingSeconds(undefined);
     void actionsRef.current.clearQueue().then(setQueue).catch(() => undefined);
   }, []);
 
@@ -579,11 +616,61 @@ export function MusicPlayerProvider({
     setIsPlaying(false);
     setPosition(0);
     setDuration(0);
+    // A closed player must not stay armed: the bar is gone, so a timer still counting
+    // would be invisible, and it would then "stop" music the listener had since
+    // started again from somewhere else.
+    setSleepDeadlineMs(undefined);
+    setSleepRemainingSeconds(undefined);
     // Persisted, not just dropped from state: the mount effect above restores whatever
     // `currentEntryId` points at, so without this the bar came back on the next page
     // load and the dismissal looked like it had been ignored.
     void actionsRef.current.closeQueue().then(setQueue).catch(() => undefined);
   }, []);
+
+  const startSleepTimer = useCallback((seconds: number) => {
+    // Validated in `src/lib/music/sleep-timer.ts`, not here: an empty number field
+    // arrives as NaN and a mistyped hour as something absurd, and deciding what those
+    // mean is arithmetic with rules worth testing.
+    const clamped = clampTimerSeconds(seconds);
+    if (clamped === undefined) return;
+
+    setSleepDeadlineMs(Date.now() + clamped * 1000);
+    // Set immediately rather than waiting for the interval's first tick, so the
+    // countdown appears the moment the button is pressed instead of a second later.
+    setSleepRemainingSeconds(clamped);
+  }, []);
+
+  const cancelSleepTimer = useCallback(() => {
+    setSleepDeadlineMs(undefined);
+    setSleepRemainingSeconds(undefined);
+  }, []);
+
+  /**
+   * Drives the countdown, and fires it.
+   *
+   * One interval, alive only while a deadline is set. Both the display value and the
+   * expiry check come from comparing the deadline to `Date.now()` -- see the note on
+   * `sleepDeadlineMs` about throttled tabs.
+   *
+   * Depends on `stop`, whose identity is stable (an empty dependency array), so this
+   * effect does not tear the interval down and rebuild it on every render.
+   */
+  useEffect(() => {
+    if (sleepDeadlineMs === undefined) return;
+
+    const tick = () => {
+      const now = Date.now();
+      if (hasExpired(sleepDeadlineMs, now)) {
+        // `stop` clears the deadline itself, which also ends this interval.
+        stop();
+        return;
+      }
+      setSleepRemainingSeconds(secondsUntil(sleepDeadlineMs, now));
+    };
+
+    const handle = window.setInterval(tick, 1000);
+    return () => window.clearInterval(handle);
+  }, [sleepDeadlineMs, stop]);
 
   const value = useMemo<MusicPlayerState>(
     () => ({
@@ -601,6 +688,9 @@ export function MusicPlayerProvider({
       error,
       readSpectrum,
       spectrumSize,
+      sleepRemainingSeconds,
+      startSleepTimer,
+      cancelSleepTimer,
       play,
       enqueue,
       playEntry,
@@ -625,6 +715,9 @@ export function MusicPlayerProvider({
       error,
       readSpectrum,
       spectrumSize,
+      sleepRemainingSeconds,
+      startSleepTimer,
+      cancelSleepTimer,
       play,
       enqueue,
       playEntry,

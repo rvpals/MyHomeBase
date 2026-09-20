@@ -20,6 +20,8 @@ import {
   formatPlayerTime,
   useMusicPlayer,
 } from "@/components/music-player-provider";
+import { MusicSleepTimer } from "@/components/music-sleep-timer";
+import { formatCountdown } from "@/lib/music/sleep-timer";
 
 export function MusicPlayerBar() {
   const player = useMusicPlayer();
@@ -66,7 +68,10 @@ export function MusicPlayerBar() {
 
   if (player === undefined || player.current === undefined) return null;
 
-  const { current, isPlaying, position, duration, queue, toggle, next, previous, seek, stop } = player;
+  const {
+    current, isPlaying, position, duration, queue, toggle, next, previous, seek, stop,
+    sleepRemainingSeconds, startSleepTimer, cancelSleepTimer,
+  } = player;
   const coverUrl = albumCoverUrl(current.albumId);
   const total = duration > 0 ? duration : (current.durationSeconds ?? 0);
   const fraction = total > 0 ? Math.min(position / total, 1) : 0;
@@ -144,7 +149,18 @@ export function MusicPlayerBar() {
             aria-label="Open the player"
           >
             <p className="truncate text-sm text-ink">{current.title}</p>
-            <p className="truncate text-xs text-muted">{current.artist || "Unknown artist"}</p>
+            {/* The countdown takes over the artist line rather than adding a fifth
+                button to this row -- there is no room for one at 375px, and the
+                timer is set from the player screen on a phone (design.md's rule
+                that the bottom edge is already claimed). */}
+            {sleepRemainingSeconds === undefined ? (
+              <p className="truncate text-xs text-muted">{current.artist || "Unknown artist"}</p>
+            ) : (
+              <p className="truncate text-xs text-brass">
+                <span className="font-mono">{formatCountdown(sleepRemainingSeconds)}</span>
+                <span className="text-muted"> · sleep</span>
+              </p>
+            )}
           </Link>
           <TransportButton onClick={toggle} label={isPlaying ? "Pause" : "Play"}>
             {isPlaying ? <PauseGlyph /> : <PlayGlyph />}
@@ -199,6 +215,12 @@ export function MusicPlayerBar() {
         <span className="font-mono text-xs text-muted">{formatPlayerTime(total)}</span>
 
         <QueueButton count={queue.length} />
+
+        <MusicSleepTimer
+          remainingSeconds={sleepRemainingSeconds}
+          onStart={startSleepTimer}
+          onCancel={cancelSleepTimer}
+        />
 
         {/* Minimize then close, in that order -- the window-chrome convention, and it
             puts the destructive one at the far edge. Both are icon buttons now: a text

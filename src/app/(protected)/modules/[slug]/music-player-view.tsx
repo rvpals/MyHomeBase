@@ -14,6 +14,7 @@ import { useCallback, useEffect, useState, useTransition } from "react";
 import { AudioSpectrum } from "@/components/audio-spectrum";
 import { Button } from "@/components/button";
 import { Tabs, type TabItem } from "@/components/tabs";
+import { MusicSleepTimer } from "@/components/music-sleep-timer";
 import {
   albumCoverUrl,
   formatPlayerTime,
@@ -287,6 +288,14 @@ export function MusicPlayerView() {
           <Button variant="secondary" onClick={player.next}>
             Next
           </Button>
+          {/* The primary place to set a sleep timer on a phone: the compact player
+              bar has no room for the control, so it shows the countdown only. */}
+          <MusicSleepTimer
+            variant="inline"
+            remainingSeconds={player.sleepRemainingSeconds}
+            onStart={player.startSleepTimer}
+            onCancel={player.cancelSleepTimer}
+          />
           {/* Stops the audio and hides the bar but keeps the queue -- see `stop` in
               music-player-provider.tsx. "Clear the queue" is the Queue screen's job. */}
           <Button variant="secondary" onClick={player.stop}>
