@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactElement } from "react";
+import { useId, type ReactElement } from "react";
 import {
   Area,
   AreaChart,
@@ -99,6 +99,24 @@ export interface ChartLineProps extends ChartDisplayDefaults {
    * exists for reader-chosen encodings.
    */
   chartTypes?: readonly Extract<ChartEncoding, "line" | "area">[];
+  /**
+   * Fade each area's fill from its line down to transparent, instead of the flat
+   * wash. Only affects the area encoding — a plain line has nothing to fill.
+   *
+   * Use it when the *shape under the curve* is the thing being watched, as the
+   * dashboard's value playback is. A flat fill reads as a filled region with a
+   * hard bottom edge; a gradient reads as the line casting a shadow, which keeps
+   * the eye on the stroke. Off by default, so existing areas are untouched.
+   */
+  gradientFill?: boolean;
+  /**
+   * Which encoding the chart opens on, when `chartTypes` offers a choice.
+   * Defaults to `"line"`, which is what every existing picker started on.
+   *
+   * Only the *starting* value — a stored preference under `displayStorageKey`
+   * still wins, because the reader's own choice outranks the call site's.
+   */
+  defaultChartType?: Extract<ChartEncoding, "line" | "area">;
   className?: string;
 }
 
@@ -118,6 +136,8 @@ export function ChartLine({
   showToolbar = true,
   displayStorageKey,
   chartTypes,
+  gradientFill = false,
+  defaultChartType = "line",
   className = "",
 }: ChartLineProps) {
   const { display, setDisplay, maxPointLabels } = useChartDisplay(
@@ -130,7 +150,7 @@ export function ChartLine({
       showGrid,
       // Undefined unless the call site opted in, so a chart with no picker keeps
       // writing the same stored shape it always has.
-      chartType: chartTypes === undefined ? undefined : "line",
+      chartType: chartTypes === undefined ? undefined : defaultChartType,
     },
     displayStorageKey,
   );
@@ -139,6 +159,11 @@ export function ChartLine({
   const hasCustomMarks = series.some((item) => item.renderDot !== undefined);
 
   const isArea = display.chartType === "area";
+  // SVG gradient ids are document-global, so two charts on one page would
+  // otherwise share (and fight over) the same `<linearGradient>`. `useId` is
+  // stable across the server and client render, unlike a random suffix.
+  const gradientPrefix = useId().replace(/:/g, "");
+  const useGradient = isArea && gradientFill;
   // One `data`/`margin` pair for both, so the two encodings can't drift apart.
   const Chart = isArea ? AreaChart : LineChart;
   const Mark = isArea ? Area : Line;
@@ -160,6 +185,40 @@ export function ChartLine({
       <div style={{ height }}>
         <ResponsiveContainer width="100%" height="100%">
           <Chart data={data} margin={{ top: 14, right: 24, bottom: 0, left: 0 }}>
+            {useGradient && (
+              <defs>
+                {series.map((item, index) => (
+                  <linearGradient
+                    key={item.key}
+                    id={`${gradientPrefix}-${item.key}`}
+                    x1="0"
+                    y1="0"
+                    x2="0"
+                    y2="1"
+                  >
+                    {/* Strongest just under the stroke, gone by the axis — the
+                        curve casts the shadow, rather than sitting on a slab.
+                        Kept light on purpose: three overlaid series stack their
+                        fills, and a heavier top stop muddies the strokes the
+                        reader is actually following. */}
+                    <stop
+                      offset="0%"
+                      stopColor={
+                        item.color ?? CHART_CATEGORICAL_COLORS[index % CHART_CATEGORICAL_COLORS.length]
+                      }
+                      stopOpacity={0.25}
+                    />
+                    <stop
+                      offset="100%"
+                      stopColor={
+                        item.color ?? CHART_CATEGORICAL_COLORS[index % CHART_CATEGORICAL_COLORS.length]
+                      }
+                      stopOpacity={0}
+                    />
+                  </linearGradient>
+                ))}
+              </defs>
+            )}
             {display.showGrid && <CartesianGrid stroke={CHART_CHROME.grid} vertical={false} />}
             <XAxis
               dataKey={xKey}
@@ -202,7 +261,11 @@ export function ChartLine({
                   strokeWidth={2}
                   // Ignored by `Line`; an area needs a wash under its stroke, and
                   // 0.2 is the opacity ChartXY's area already uses.
-                  {...(isArea ? { fill: color, fillOpacity: 0.2 } : {})}
+                  {...(isArea
+                    ? useGradient
+                      ? { fill: `url(#${gradientPrefix}-${item.key})`, fillOpacity: 1 }
+                      : { fill: color, fillOpacity: 0.2 }
+                    : {})}
                   connectNulls={connectNulls}
                   // Recharts renders a mark's labels only once its entry animation
                   // has finished, so with animation on the value labels pop in a

@@ -14,7 +14,7 @@ import { listAccounts, listPerformanceRecords } from "@/lib/investment-accounts"
 import { listModuleSettingsFor } from "@/lib/module-settings";
 import { getModuleBySlug } from "@/lib/modules";
 import { resolveThresholds } from "@/lib/next-day-actions";
-import { startOfYearIso, todayIsoLocal } from "@/lib/shared/date";
+import { todayIsoLocal } from "@/lib/shared/date";
 import { centsToDollars } from "@/lib/shared/money";
 import { getCorrelationCache, getSharpeCache, listVolatilityCache } from "@/lib/stock-analytics";
 import { buildPortfolioExport } from "@/lib/portfolio-export";
@@ -110,20 +110,25 @@ function loadDashboardWidgets() {
 }
 
 /**
- * This year's snapshots, oldest first. One read covers the chart and all three
- * rollups — week and month are slices of the year, so re-querying per period
- * would be three round trips for the same rows.
+ * Every captured snapshot, oldest first. One read covers the chart, the history
+ * table, all three rollups and the playback — week, month and year are slices of
+ * the same rows, so re-querying per period would be several round trips for one
+ * dataset.
+ *
+ * Deliberately not limited to this year, though the rollups only ever look at
+ * this one: playback steps *yearly* as well as weekly and monthly, and a
+ * year-to-date read can by construction never give it more than a single frame.
+ * `summarizeToDate` filters to its own bounds — year included — so handing it
+ * the full history changes none of its numbers.
  *
  * Called by both the heading (for the refresh control's "last captured" date) and
- * the dashboard body. Two reads per request, which is a cheap indexed range scan
- * on a local SQLite file; threading one result through would mean the shell
- * loading dashboard data for every section, including the seven that don't want it.
+ * the dashboard body. Two reads per request, which is a cheap indexed scan of one
+ * row per day on a local SQLite file; threading one result through would mean the
+ * shell loading dashboard data for every section, including the seven that don't
+ * want it.
  */
-function loadSnapshots(today: string) {
-  return listSnapshots(deps.stockDailySnapshotRepo, {
-    fromDate: startOfYearIso(today),
-    toDate: today,
-  });
+function loadSnapshots() {
+  return listSnapshots(deps.stockDailySnapshotRepo);
 }
 
 /**
@@ -393,7 +398,7 @@ function SectionBody({
     case "main": {
       const positions = listPositions(deps.stockPositionRepo);
       const today = todayIsoLocal();
-      const snapshots = loadSnapshots(today);
+      const snapshots = loadSnapshots();
 
       // One read of the profile cache for the whole roll-up, rather than a query
       // per position. Nothing is fetched here — a page render never calls out.
@@ -603,7 +608,7 @@ export async function StockSection({
   // Dashboard only: Refresh All acts on the portfolio as a whole, and on
   // Configuration or CSV Import the same icon beside the heading would read as
   // "reload this screen". Positions keeps its own Refresh All in its toolbar.
-  const snapshots = section === "main" ? loadSnapshots(todayIsoLocal()) : [];
+  const snapshots = section === "main" ? loadSnapshots() : [];
   // The seed for the refresh's running total. Computed here as well as in
   // `SectionBody` because the refresh icon and the summary card sit on opposite
   // sides of that call — it's a reduce over already-loaded rows, not a second

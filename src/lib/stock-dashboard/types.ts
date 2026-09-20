@@ -62,3 +62,32 @@ export interface DashboardWidgetPreference {
   id: DashboardWidgetId;
   visible: boolean;
 }
+
+/**
+ * How coarsely a playback steps through history: one frame per captured day, per
+ * week, per month or per year.
+ *
+ * This is a *step size*, not a window — "yearly" plays the whole history one
+ * year at a time, it does not mean "the last year". With a short history the
+ * coarser steps therefore yield very few frames, which is why the view checks
+ * `canPlayBack` before offering the button, and why "daily" is the step that
+ * actually looks like an animation until several years have accumulated.
+ */
+export const PLAYBACK_STEPS = ["daily", "weekly", "monthly", "yearly"] as const;
+
+export type PlaybackStep = (typeof PLAYBACK_STEPS)[number];
+
+/** What one period contributes to a playback: a real captured close, never an average. */
+export interface PlaybackFrame {
+  /** Sortable bucket identity — "2026-08-04" (w/c), "2026-08" or "2026". */
+  periodKey: string;
+  /** Short x-axis label for the frame. */
+  periodLabel: string;
+  /** The day inside the period this frame's values were actually recorded on. */
+  snapshotDate: string;
+  totalValueCents: number;
+  stockValueCents: number;
+  etfValueCents: number;
+  /** That day's move, signed. */
+  totalGainLossCents: number;
+}

@@ -24,6 +24,14 @@ export interface MarketIndex {
   label: string;
   group: IndexGroup;
   unit: IndexUnit;
+  /**
+   * The website of the organisation behind the index, used to fetch its icon.
+   *
+   * An index has no stock logo to look up — it isn't a company — but the body
+   * that publishes it does have a site, so the icon is found by domain rather
+   * than by symbol. Empty string means "no icon"; the row draws its monogram.
+   */
+  logoDomain: string;
 }
 
 /**
@@ -38,6 +46,8 @@ export interface IndexQuote {
   label: string;
   group: IndexGroup;
   unit: IndexUnit;
+  /** Carried through from the catalogue so the card can draw the icon. */
+  logoDomain: string;
   /** Latest level/price, in cents (see above). */
   valueCents: number;
   /** The prior session's close, in cents. 0 when the provider didn't give one. */

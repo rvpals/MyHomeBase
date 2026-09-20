@@ -10,6 +10,7 @@ const SP500: MarketIndex = {
   label: "S&P 500",
   group: "equity",
   unit: "points",
+  logoDomain: "spglobal.com",
 };
 
 function quote(overrides: Partial<Quote> = {}): Quote {
@@ -59,6 +60,17 @@ describe("the catalogue", () => {
       expect(index.label).toBeTruthy();
       expect(index.group).toBeTruthy();
       expect(index.unit).toBeTruthy();
+    }
+  });
+
+  /**
+   * Every row on the card draws an icon, and the icon is found by domain. A new
+   * index added without one would render a monogram forever with nothing to say
+   * why — so the catalogue is required to carry a plausible domain for each.
+   */
+  it("gives every index a logo domain", () => {
+    for (const index of MARKET_INDEXES) {
+      expect(index.logoDomain).toMatch(/^[a-z0-9.-]+\.[a-z]{2,}$/);
     }
   });
 
@@ -115,6 +127,7 @@ describe("groupQuotes", () => {
     label: symbol,
     group,
     unit: "points",
+    logoDomain: "example.test",
     valueCents: 100,
     previousCloseCents: 100,
     changeCents: 0,

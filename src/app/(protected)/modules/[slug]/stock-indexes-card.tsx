@@ -13,6 +13,7 @@
 import { useState } from "react";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
+import { IndexLogo } from "@/components/ticker-logo";
 import { TreeIcon } from "@/components/tree-icons";
 import type { IndexBoard, IndexQuote, IndexUnit } from "@/lib/market-indexes";
 import { centsToDollars, formatCents } from "@/lib/shared/money";
@@ -78,8 +79,12 @@ function IndexRow({ quote }: { quote: IndexQuote }) {
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_7rem_6rem_5.5rem] items-baseline gap-2 border-b border-line/60 py-2 last:border-b-0 max-lg:grid-cols-[minmax(0,1fr)_auto] max-lg:gap-x-3 max-lg:gap-y-0.5">
-      <span className="truncate text-sm text-ink max-lg:col-span-2 max-lg:font-medium">
-        {quote.label}
+      {/* Icon and label travel together in one flex cell, so the narrow layout
+          (where the label spans both columns) needs no second arrangement —
+          the pair just spans instead of the text alone. */}
+      <span className="flex min-w-0 items-center gap-2 self-center text-sm text-ink max-lg:col-span-2 max-lg:font-medium">
+        <IndexLogo symbol={quote.symbol} label={quote.label} />
+        <span className="truncate">{quote.label}</span>
       </span>
       <span className="text-right font-mono text-sm text-ink max-lg:text-left max-lg:text-base">
         {formatLevel(quote.valueCents, quote.unit)}

@@ -41,6 +41,7 @@ export function computeIndexQuote(index: MarketIndex, quote: Quote): IndexQuote 
     label: index.label,
     group: index.group,
     unit: index.unit,
+    logoDomain: index.logoDomain,
     valueCents,
     previousCloseCents,
     changeCents,

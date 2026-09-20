@@ -72,6 +72,7 @@ import {
 import { SqliteFavPhotoRepository } from "./fav-photos/repository";
 import { SqliteTickerFavoriteRepository } from "./ticker-favorites/repository";
 import { SqliteTickerLogoRepository } from "./ticker-logos/repository";
+import { SqliteIndexLogoRepository } from "./index-logos/repository";
 import { SqliteTickerRiskCacheRepository } from "./ticker-overview/repository";
 import { SqliteTickerProfileRepository } from "./ticker-profiles/repository";
 import { YahooTickerProfileClient } from "./ticker-profiles/yahoo-profile-client";
@@ -259,6 +260,12 @@ export const deps = {
   tickerNewsClient: new YahooTickerNewsClient(),
   tickerLogoRepo: new SqliteTickerLogoRepository(db),
   tickerLogoClient: new FmpTickerLogoClient(),
+  // Icons for the index board (migrations/0099). An index is not a company, so
+  // there is no stock-logo endpoint to ask -- the icon is fetched from the
+  // website of the body behind it, which is what the favicon client already
+  // does for vendors. Same client class, its own cache table.
+  indexLogoRepo: new SqliteIndexLogoRepository(db),
+  indexLogoClient: new GoogleFaviconIconClient(),
   // Look the vendor's real website up, then fall back to guessing the domain
   // from its name. Both services are free and keyless. Guessing alone could not
   // find usps.com from "United States Post Office"; searching alone is quiet

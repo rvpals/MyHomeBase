@@ -15,6 +15,7 @@ import type { DailySnapshot, PeriodSummary, ToDateSummaries } from "@/lib/stock-
 import type { AllocationSlice, PortfolioSummary } from "@/lib/stock-positions";
 import { centsToDollars, formatCents } from "@/lib/shared/money";
 import { StockIndexesCard } from "./stock-indexes-card";
+import { StockPlaybackControl } from "./stock-playback-control";
 import { useStockRefreshProgress } from "./stock-refresh-progress-context";
 
 function gainClass(cents: number): string {
@@ -259,6 +260,19 @@ function PortfolioSummaryCard({
                 recordViewTitle={(row) => `Portfolio on ${row.snapshotDate}`}
                 defaultPageSize={30}
               />
+            </div>
+          </div>
+
+          {/* The same snapshots again, re-cut coarser and revealed in sequence.
+              It sits under the table rather than beside the chart above because
+              it answers "how did it get here" — a question you ask after
+              reading the curve, not instead of it. */}
+          <div className="mt-6 border-t border-line pt-6">
+            <h4 className="text-xs font-medium uppercase tracking-wide text-muted">
+              Playback
+            </h4>
+            <div className="mt-2">
+              <StockPlaybackControl snapshots={snapshots} />
             </div>
           </div>
         </CollapsibleCard>
