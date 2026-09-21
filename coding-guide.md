@@ -21,7 +21,7 @@ module is obvious from the name alone. New tables must follow this.
 | `mus_` | Music Library | `mus_tracks`, `mus_albums`, `mus_scan_runs`, `mus_track_lyrics`, `mus_playlists`, `mus_playlist_tracks`, `mus_play_events`, `mus_magic_list`, `mus_magic_list_tracks`, `mus_play_queue`, `mus_play_queue_state` |
 | `gam_` | Games | `gam_scores` |
 | `pho_` | Picture Gallery | `pho_albums`, `pho_album_photos`, `pho_magic_list`, `pho_magic_list_photos`, `pho_photo_index`, `pho_magic_scan_run` |
-| `tol_` | Tools | `tol_uploaded_databases` |
+| `tol_` | Tools | `tol_uploaded_databases`, `tol_uploaded_csv_files` |
 
 The `rei_` prefix (Real Estate Investment) was retired when that module was
 removed — see migration `0026_drop_real_estate_module`.
@@ -41,6 +41,12 @@ table this module gains.
 Browser is the module's first utility, not its domain — Tools is explicitly a container
 for more of them, so naming the namespace after the first one would have aged badly the
 moment a second tool arrived.
+
+That prediction came due at migration 0100: the **CSV File Browser** is the second
+utility, and `tol_uploaded_csv_files` sits under the same prefix without a rename. Had
+the namespace been `sql_`, a CSV tool's table would have had to either live under a
+wrong name or force a table rename — which is the expensive thing this rule exists to
+avoid.
 
 **A new table also wants a line in
 [`src/lib/sql-explorer/table-reference.ts`](src/lib/sql-explorer/table-reference.ts)**,

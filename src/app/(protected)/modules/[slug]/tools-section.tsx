@@ -1,9 +1,11 @@
 import { CollapsibleCard } from "@/components/collapsible-card";
+import { listUploadedCsvFiles } from "@/lib/csv-file-browser";
 import { getMaxUploadBytes, listUploadedDatabases } from "@/lib/sqlite-browser";
 import { deps } from "@/lib/wiring";
 import { ToolsDashboardView } from "./tools-dashboard-view";
 import { ToolsInstructions } from "./tools-instructions";
 import { ToolsShell } from "./tools-shell";
+import { ToolsCsvBrowserView } from "./tools-csv-browser-view";
 import { ToolsSqliteBrowserView } from "./tools-sqlite-browser-view";
 import { TOOLS_SECTION_INFO, type ToolsSection as ToolsSectionName } from "./tools-sections";
 
@@ -43,6 +45,16 @@ export async function ToolsSection({ section }: { section: ToolsSectionName }) {
             // nobody is looking at.
             <ToolsSqliteBrowserView
               databases={listUploadedDatabases(deps.uploadedDatabaseRepo)}
+              maxUploadBytes={maxUploadBytes}
+            />
+          )}
+          {section === "csv-browser" && (
+            // Same shape as above, and the same cap: both browsers read the
+            // one `tools_max_upload_bytes` setting. Only the file list is
+            // loaded here — a file's rows are read on demand once the reader
+            // picks it, so the screen doesn't pay for files nobody opens.
+            <ToolsCsvBrowserView
+              files={listUploadedCsvFiles(deps.uploadedCsvFileRepo)}
               maxUploadBytes={maxUploadBytes}
             />
           )}

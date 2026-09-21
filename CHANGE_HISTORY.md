@@ -1,5 +1,33 @@
 # Change History
 
+## 2026-09-20 — A file you can open
+
+### [Tools] A CSV file browser, beside the SQLite one
+
+The Tools module's second utility. Upload a delimited text file — `.csv`, `.txt`, `.tsv`,
+`.tab`, `.psv` — and work with its rows in the same `DataGrid` the rest of the app uses:
+read, bulk-edit, delete, export it back out.
+
+**Two steps down the screen, not three.** The SQLite browser makes you pick a file and
+then a table; a delimited file *is* one table, so that step doesn't exist here.
+
+**The rows go into a SQLite sidecar at import, not back into the text.** Editing a cell in
+a 400 MB CSV would otherwise mean rewriting the file, and paging it would mean re-scanning
+from byte zero every time. The original upload is kept untouched and unrewritten, so the
+bytes as they arrived are always recoverable, and `--export` reassembles the file from the
+sidecar — edits and all — using the delimiter it came in with.
+
+**The delimiter is sniffed, and correctable.** A misread file is one dropdown away from
+right rather than a re-upload, and `--no-header` covers the file whose first row is data.
+
+Uploads stream through their own route rather than a server action, so the 4 MB action
+body limit doesn't apply — the cap is the admin-set one under Configuration → Application,
+the same value the SQLite browser enforces.
+
+Migration `0100_create_tool_csv_uploads` adds one metadata table; both artefacts live in
+the workspace folder, never in the database. The logic is `src/lib/csv-file-browser/` with
+colocated tests over an in-memory fake, and it drives from a terminal as `browse-csv`.
+
 ## 2026-09-19 — Fall asleep to the music
 
 ### [Music Library] A sleep timer on the player

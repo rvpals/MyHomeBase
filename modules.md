@@ -1429,8 +1429,8 @@ plain data, so they are CLI-ready by construction (`createAlbum(deps.albumRepo, 
 and friends); adding commands for them would need no change to `src/lib/albums`.
 
 **Tools** (`tools`) — a home for small standalone utilities, the things that belong to
-no other module. Two sections: a Dashboard listing what is available, and the first
-utility.
+no other module. Three sections: a Dashboard listing what is available, and two
+utilities.
 
 The **SQLite File Browser** opens a `.db` file the reader uploads: its tables and views
 are listed with row counts, and one opens in a `DataGrid` with search, per-column
@@ -1519,6 +1519,62 @@ the rowid first so ids copy straight back into `--delete`.
 Narrow: sections in the shared bottom bar, nothing custom. The file and table lists
 stack above the grid with `max-lg:grid-cols-1`, and `DataGrid` swaps itself for
 `DataGridCompact` below 1024px, carrying the checkboxes and the bulk action with it.
+
+The **CSV File Browser** (migration 0100) opens a delimited text file — `.csv`, `.txt`,
+`.tsv`, `.tab`, `.psv` — and makes it a table you can work on: browse, filter and sort
+it in a `DataGrid`, edit a row or a selection of rows, delete rows, then export the
+result. Backed by `src/lib/csv-file-browser` and one table, `tol_uploaded_csv_files`.
+It shares the SQLite browser's upload cap and nothing else — no import between the two
+modules except `formatCap`, so the two form a DAG.
+
+Five choices worth knowing, and the first is the one everything else follows from:
+
+- **The rows are loaded into a SQLite sidecar at import; the uploaded text is never
+  rewritten.** A delimited file has no row identity and no random access, so editing a
+  line in place means rewriting the whole file — the file's full size per click, and
+  whoever writes last wins. Loading once into a per-upload SQLite file buys a `rowid`,
+  an indexed window read, a real transaction, and *the same read/write shape the SQLite
+  browser already proved out* rather than a second bespoke one. The cost is stated
+  plainly in the instructions card and in the migration log: **edits leave through
+  Export**, which regenerates the file from the sidecar in its original delimiter. Both
+  artefacts live in `MYHOMEBASE_TOOLS_CSV_UPLOAD_ROOT` (default `csv-uploads/`), a
+  *separate* workspace from the SQLite browser's `tool-uploads/` so clearing one tool's
+  scratch space does not take the other's with it.
+- **The delimiter is sniffed, and consistency beats frequency.** Comma, tab, semicolon
+  and pipe are scored over the first twenty non-blank lines, counting only outside
+  quoted fields, and the winner is the one that splits *every* line into the same number
+  of fields. That is what reads a tab-separated file whose values contain commas
+  correctly — the case the sniffer exists for. The reader can override it (and the
+  header-row assumption) before uploading; an explicit choice always beats the guess.
+- **Every cell is text, in and out.** No type inference. A CSV holds text, and inferring
+  a column as a number would let the tool silently change a value someone typed — which
+  is the opposite of what a file *browser* is for. The grid still sorts numerically
+  because `DataGrid` sorts on the raw value it is handed.
+- **The sidecar's columns are positional (`c0..cN`), not named.** The real names live in
+  the app row as JSON. That is what lets a header like `select`, `1st Qtr` or a
+  duplicated `Total` be addressed by an edit without quoting trouble or colliding with
+  `rowid` — and it is also the guard that keeps a caller's string out of the SQL text,
+  since an unmapped name maps to no position and what gets interpolated is always a
+  generated `cN`.
+- **Two levels of paging, deliberately.** A read returns 1,000 rows and the grid pages
+  within those; a pager under the grid moves between server windows. Both alternatives
+  are worse: sending a million rows to the browser, or making every in-grid page turn a
+  round trip and losing client-side sort and filter across the set.
+
+Uploading is a route handler for the same reasons as the SQLite browser's, and
+**exporting is one too** — an action returns a value, not a file, so there is no way to
+make a browser download one; the export also streams, a batch at a time, matching how
+the upload arrives.
+
+Reachable from the CLI as `npm run cli -- browse-csv`, plus `--upload <path>`
+(with `--delimiter comma|tab|semicolon|pipe` and `--no-header`), `--file <id>`,
+`--offset <n>`, `--set "city=Bath" --rows "4,9"`, `--delete "4,9"`, `--export` and
+`--remove`. The row listing prints the id first so ids copy straight back in, and
+`--export` writes to stdout so it can be redirected or piped.
+
+Narrow: sections in the shared bottom bar, nothing custom. The import options wrap to
+one control per line with `max-lg:flex-col`, and the grid goes compact at 1024px as
+above, carrying selection and both bulk actions with it.
 
 ### Icons
 

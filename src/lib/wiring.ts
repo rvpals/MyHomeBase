@@ -52,6 +52,9 @@ import { SqliteSqlExplorerRepository } from "./sql-explorer/repository";
 import { BetterSqliteForeignDatabaseReader } from "./sqlite-browser/foreign-db";
 import { NodeSqliteFileStore } from "./sqlite-browser/file-store";
 import { SqliteUploadedDatabaseRepository } from "./sqlite-browser/repository";
+import { BetterSqliteCsvTableStore } from "./csv-file-browser/csv-table-store";
+import { NodeCsvFileStore } from "./csv-file-browser/file-store";
+import { SqliteUploadedCsvFileRepository } from "./csv-file-browser/repository";
 import { SqliteStockAnalyticsRepository } from "./stock-analytics/repository";
 import { SqliteDailySnapshotRepository } from "./stock-daily-snapshot/repository";
 import { SqliteStockPositionRepository } from "./stock-positions/repository";
@@ -124,6 +127,16 @@ const photoRootFromEnv = process.env.MYHOMEBASE_PHOTO_ROOT ?? "";
 // still there and asks for a re-upload if it isn't (migrations/0097).
 const toolsUploadRoot =
   process.env.MYHOMEBASE_TOOLS_UPLOAD_ROOT ?? path.join(path.dirname(dbPath), "tool-uploads");
+
+// Workspace for the delimited text files uploaded to the Tools module's CSV File
+// Browser, and for the SQLite sidecars their rows are loaded into (migrations/0100).
+//
+// A separate folder from `tool-uploads/`, deliberately: both are scratch space that
+// is safe to wipe, and clearing one tool's workspace should not take the other
+// tool's uploads with it.
+const toolsCsvUploadRoot =
+  process.env.MYHOMEBASE_TOOLS_CSV_UPLOAD_ROOT ??
+  path.join(path.dirname(dbPath), "csv-uploads");
 
 // Google sign-in is only enabled when all three env vars are set — every
 // adapter treats `deps.googleOAuthClient === undefined` as "feature off"
@@ -247,6 +260,13 @@ export const deps = {
   uploadedDatabaseRepo: new SqliteUploadedDatabaseRepository(db),
   sqliteFileStore: new NodeSqliteFileStore(toolsUploadRoot),
   foreignDatabaseReader: new BetterSqliteForeignDatabaseReader(),
+  // The Tools module's CSV File Browser (migrations/0100). The same three-piece
+  // shape as above and for the same reasons: metadata rows in the app DB, the
+  // uploaded text and its SQLite sidecar in a workspace folder, and a store that
+  // holds NO connection -- it opens each sidecar path for the length of one call.
+  uploadedCsvFileRepo: new SqliteUploadedCsvFileRepository(db),
+  csvFileStore: new NodeCsvFileStore(toolsCsvUploadRoot),
+  csvTableStore: new BetterSqliteCsvTableStore(),
   systemInfoRepo: new RealSystemInfoRepository(),
   changeHistoryRepo: new FileChangeHistoryRepository(),
   // The deployment history the About screen lists (migrations/0078). Written on the

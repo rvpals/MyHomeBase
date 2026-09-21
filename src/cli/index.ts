@@ -35,6 +35,7 @@ import { musicLibraryCommand, scanMusicCommand } from "./scan-music";
 import { refreshPositionsCommand } from "./refresh-positions";
 import { runScheduledRefreshCommand } from "./run-scheduled-refresh";
 import { setStartupMessageCommand } from "./set-startup-message";
+import { browseCsvCommand } from "./browse-csv";
 import { browseSqliteCommand } from "./browse-sqlite";
 import { takeAttendanceCommand } from "./take-attendance";
 import { taxLotsCommand } from "./tax-lots";
@@ -90,6 +91,7 @@ const commands: Record<string, Command> = {
   "play-queue": playQueueCommand,
   "tax-lots": taxLotsCommand,
   "browse-sqlite": browseSqliteCommand,
+  "browse-csv": browseCsvCommand,
 };
 
 async function main(argv: string[]) {

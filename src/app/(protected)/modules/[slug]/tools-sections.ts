@@ -6,7 +6,7 @@
 // objects, so a lookup like TOOLS_SECTION_INFO[section] would come back undefined.
 // Same reasoning as csv-sections.ts and music-sections.ts.
 
-export const TOOLS_SECTIONS = ["main", "sqlite-browser"] as const;
+export const TOOLS_SECTIONS = ["main", "sqlite-browser", "csv-browser"] as const;
 
 export type ToolsSection = (typeof TOOLS_SECTIONS)[number];
 
@@ -24,17 +24,22 @@ export const TOOLS_SECTION_INFO: Record<ToolsSection, { label: string; descripti
     label: "SQLite File Browser",
     description: "Upload a SQLite file and browse, filter and delete the rows inside it.",
   },
+  "csv-browser": {
+    label: "CSV File Browser",
+    description: "Upload a CSV or text file and browse, filter, edit and delete the rows in it.",
+  },
 };
 
 /**
  * Section -> nav icon key, resolved by TreeIcon.
  *
- * Both are real TREE_ICONS concepts — an invented key renders NOTHING rather than
- * falling back to a default.
+ * All three are real TREE_ICONS concepts — an invented key renders NOTHING rather
+ * than falling back to a default.
  */
 export const TOOLS_SECTION_ICONS: Record<ToolsSection, string> = {
   main: "grid",
   "sqlite-browser": "database",
+  "csv-browser": "csv-file",
 };
 
 const BASE_PATH = "/modules/tools";

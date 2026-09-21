@@ -28,7 +28,7 @@ command list and exits 1. There is no `--help`.
 
 # Part 1 — Available commands
 
-Twenty-seven commands, registered in [src/cli/index.ts:33-61](src/cli/index.ts#L33-L61).
+Forty-two commands, registered in [src/cli/index.ts](src/cli/index.ts).
 
 | Command | Reads / writes | Network |
 |---|---|---|
@@ -40,6 +40,8 @@ Twenty-seven commands, registered in [src/cli/index.ts:33-61](src/cli/index.ts#L
 | [`csv-bulk-edit`](#csv-bulk-edit) | read (`columns`/`rows`), write (`apply`) | no |
 | [`import-journal-csv`](#import-journal-csv) | write | no |
 | [`journal-calendar`](#journal-calendar) | read | no |
+| [`browse-sqlite`](#browse-sqlite) | read + write | no |
+| [`browse-csv`](#browse-csv) | read + write | no |
 | [`journal-templates`](#journal-templates) | read (writes with `set`/`enable`/`disable`/`delete`) | no |
 | [`expense-top-spenders`](#expense-top-spenders) | read | no |
 | [`explain-rule`](#explain-rule) | read | no |
@@ -2512,6 +2514,55 @@ non-SQLite file, one over the configured upload cap, a table name that is not an
 identifier). The cap is the one an admin set under Configuration → Application, read
 through `getMaxUploadBytes` — the same value the web upload enforces.
 Source: [src/cli/browse-sqlite.ts](src/cli/browse-sqlite.ts)
+
+---
+
+## `browse-csv`
+
+The Tools module's *CSV File Browser* from a terminal — the same use-cases the web view
+drives, through the same `deps`. A delimited file is one table by definition, so there is
+no table-picking step: one fewer than `browse-sqlite`.
+
+```
+npm run cli -- browse-csv
+npm run cli -- browse-csv --upload ./people.csv --user 1
+npm run cli -- browse-csv --upload ./log.txt --delimiter tab --no-header
+npm run cli -- browse-csv --file 3
+npm run cli -- browse-csv --file 3 --offset 1000
+npm run cli -- browse-csv --file 3 --set "city=Bath" --rows "4,9"
+npm run cli -- browse-csv --file 3 --delete "4,9"
+npm run cli -- browse-csv --file 3 --export
+npm run cli -- browse-csv --file 3 --remove
+```
+
+**Input** — all optional; the flags select the mode, checked in the order below. No flags
+lists the uploaded files with their ids.
+
+| Flag | Type | Notes |
+|---|---|---|
+| `--upload` | path | Adds one file. `--user <id>` attributes it |
+| `--delimiter` | text | `comma`/`tab`/`semicolon`/`pipe`, overriding what the import sniffed |
+| `--no-header` | boolean | Row 1 holds data, not column names |
+| `--file` | id | Reads that file's rows |
+| `--offset` | integer | The next slice of a capped read |
+| `--set` | `key=value` | Several pairs separated by `;`. An empty value clears the column |
+| `--rows` | ids | Which rows `--set` applies to |
+| `--delete` | ids | Deletes those rows |
+| `--export` | boolean | Writes the file back out, edits and all |
+| `--remove` | boolean | Forgets the file and deletes it from disk |
+
+`--rows` and `--delete` take the ids printed in the first column by a plain `--file` read,
+so they can be copied straight back in — the same ids the grid's checkboxes address.
+
+**Output** — tab-separated with the row id first. A capped read says how many of how many
+rows it showed, so `--offset` can be stepped by exactly one window.
+
+**Exit** — 0 including when nothing has been uploaded (a fact, not an error); 1 when
+`--file` is not a positive integer, when the id is not listed, when the file has gone from
+disk, or when a schema rejects the input — an undelimited file, an unreadable delimiter, or
+one over the configured upload cap. The cap is the admin-set value under Configuration →
+Application, the same one the web upload enforces.
+Source: [src/cli/browse-csv.ts](src/cli/browse-csv.ts)
 
 ---
 
