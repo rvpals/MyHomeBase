@@ -1,9 +1,10 @@
 "use client";
 
-// Categories & Tags editor for My Journal's Meta Data section. Lists both managed
-// lists with an inline "New" form, and edit/generate/delete icon buttons leading
-// each row. Edit opens a popup (Modal) for changing the description and
-// uploading/removing a small icon — the icon control is the one thing that
+// Categories & Tags editor for My Journal's Meta Data section. The two managed
+// lists sit behind a Category/Tags tab strip — one at a time, since either can
+// run to a couple of hundred rows — each with an inline "New" form and
+// edit/generate/delete icon buttons leading each row. Edit opens a popup
+// (Modal) for changing the description and uploading/removing a small icon — the icon control is the one thing that
 // doesn't fit inline, since dropping a file needs room the row doesn't have.
 //
 // The ⚡ row action draws an icon from the item's *name*: the name is mapped to a
@@ -15,6 +16,11 @@
 // for <kind>" beside each list's Add button covers just that list. Both are
 // missing-only — the row action is how you redo a single one you don't like.
 //
+// Each list has its own filter box above it, matching name and description, for
+// finding the one row you came to edit without scrolling a couple of hundred.
+// Purely client-side: both lists arrive whole as props, so there's nothing to
+// fetch and the filter isn't persisted.
+//
 // Route-local rather than registered: nothing outside My Journal renders this.
 
 import { useState } from "react";
@@ -23,6 +29,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Modal } from "@/components/modal";
+import { Tabs } from "@/components/tabs";
 import { TreeIcon } from "@/components/tree-icons";
 import {
   JOURNAL_IMAGE_MIME_TYPES,
@@ -30,6 +37,7 @@ import {
   type JournalCategory,
   type JournalTag,
 } from "@/lib/journal";
+import { matchesSearch } from "@/lib/shared/table";
 import {
   clearJournalCategoryIconAction,
   clearJournalTagIconAction,
@@ -280,6 +288,9 @@ function TaxonomyPanel({
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | undefined>(undefined);
   const [editing, setEditing] = useState<JournalCategory | JournalTag | undefined>(undefined);
+  // Narrows the rendered list only — nothing here is persisted or sent to the
+  // server, since both lists arrive whole as props.
+  const [query, setQuery] = useState("");
   // Which row is mid-generate, by name — one row's spinner must not disable the
   // whole list, so this is a name rather than a boolean.
   const [generating, setGenerating] = useState<string | undefined>(undefined);
@@ -292,6 +303,11 @@ function TaxonomyPanel({
   const saveAction = kind === "category" ? saveJournalCategoryAction : saveJournalTagAction;
   const deleteAction = kind === "category" ? deleteJournalCategoryAction : deleteJournalTagAction;
   const missingIcons = items.filter((item) => !item.iconMimeType).length;
+  // Name *and* description, because a tag you're hunting for is as often
+  // remembered by what it's for as by what it's called. `matchesSearch` ANDs the
+  // whitespace-separated terms, so a second word narrows rather than widens.
+  const visibleItems = items.filter((item) => matchesSearch([item.name, item.description], query));
+  const isFiltering = query.trim() !== "";
 
   async function handleCreate() {
     setError(undefined);
@@ -399,11 +415,38 @@ function TaxonomyPanel({
         {autopopulateResult && <span className="text-sm text-muted">{autopopulateResult}</span>}
       </div>
 
+      {/* Sits directly above the list it narrows, so it reads as belonging to the
+          rows rather than to the Add form above it. Only worth showing once
+          there's enough to hunt through. */}
+      {items.length > 1 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={`Filter ${kind === "category" ? "categories" : "tags"} by name or description`}
+            aria-label={`Filter ${kind === "category" ? "categories" : "tags"}`}
+            className={`${INPUT_CLASS} max-w-sm flex-1`}
+          />
+          {isFiltering && (
+            <span className="text-sm text-muted">
+              {visibleItems.length} of {items.length}
+            </span>
+          )}
+        </div>
+      )}
+
       {items.length === 0 ? (
         <p className="text-sm text-muted">None yet.</p>
+      ) : visibleItems.length === 0 ? (
+        // Distinct from "None yet." — the list has rows, the filter just hid
+        // them all, and saying so stops it reading as an empty taxonomy.
+        <p className="text-sm text-muted">
+          No {kind === "category" ? "categories" : "tags"} match &ldquo;{query.trim()}&rdquo;.
+        </p>
       ) : (
         <ul className="flex flex-col gap-1">
-          {items.map((item) => (
+          {visibleItems.map((item) => (
             <li
               key={item.name}
               className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-paper px-3 py-1.5 text-sm"
@@ -541,20 +584,39 @@ export function JournalTaxonomyView({
 }) {
   const missing = [...categories, ...tags].filter((item) => !item.iconMimeType).length;
 
+  // One list at a time. Both panels are long — a couple of hundred tags is
+  // normal — so stacking them buried Categories under a scroll. The "draw the
+  // missing icons" banner stays above the strip because it covers both lists.
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
       <GenerateAllIconsButton missing={missing} />
-      <TaxonomyPanel
-        kind="category"
-        title="Categories"
-        helpText="Categories are created automatically when you use a new name on an entry — add one here to give it a description up front, or an icon that shows up wherever the category appears. The ⚡ button draws an icon from the name."
-        items={categories}
-      />
-      <TaxonomyPanel
-        kind="tag"
-        title="Tags"
-        helpText="Tags are created automatically when you use a new name on an entry — add one here to give it a description up front, or an icon that shows up wherever the tag appears. The ⚡ button draws an icon from the name."
-        items={tags}
+      <Tabs
+        items={[
+          {
+            key: "category",
+            label: "Category",
+            content: (
+              <TaxonomyPanel
+                kind="category"
+                title="Categories"
+                helpText="Categories are created automatically when you use a new name on an entry — add one here to give it a description up front, or an icon that shows up wherever the category appears. The ⚡ button draws an icon from the name."
+                items={categories}
+              />
+            ),
+          },
+          {
+            key: "tag",
+            label: "Tags",
+            content: (
+              <TaxonomyPanel
+                kind="tag"
+                title="Tags"
+                helpText="Tags are created automatically when you use a new name on an entry — add one here to give it a description up front, or an icon that shows up wherever the tag appears. The ⚡ button draws an icon from the name."
+                items={tags}
+              />
+            ),
+          },
+        ]}
       />
     </div>
   );

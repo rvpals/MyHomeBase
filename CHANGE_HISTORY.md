@@ -142,6 +142,21 @@ Migration `0100_create_tool_csv_uploads` adds one metadata table; both artefacts
 the workspace folder, never in the database. The logic is `src/lib/csv-file-browser/` with
 colocated tests over an in-memory fake, and it drives from a terminal as `browse-csv`.
 
+### [Journal] Find the category or tag you came to edit
+
+Configuration → Meta Data now has a filter box above each list. A journal that has been
+running a while carries a couple of hundred tags, and editing one meant scrolling for it.
+
+It matches **name and description** — a tag is as often remembered by what it's for as by
+what it's called — and narrows on each whitespace-separated term, so `work trip` keeps only
+the rows matching both. A `3 of 214` count sits beside the box while filtering, and a list
+the filter has emptied says so in its own words rather than borrowing the "None yet." that
+means the taxonomy is genuinely empty.
+
+Client-side only: both lists already arrive whole, so there is nothing to fetch and nothing
+to persist. The matching is the existing `matchesSearch` from `src/lib/shared/table.ts`,
+which is what the DataGrid's search box has always used.
+
 ## 2026-09-19 — Fall asleep to the music
 
 ### [Music Library] A sleep timer on the player
