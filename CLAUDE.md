@@ -90,6 +90,19 @@ memory:
   naming a file that no longer exists. `verify` and `build` both clear `.next` first now.
 - **No gate may touch the real database.** Copies live in `.verify/`; the copy step
   aborts if `MYHOMEBASE_DB` is unset or points inside the repo's `data/` folder.
+- **Before restyling a component, prove where it renders.** `grep -rn "<ComponentName"
+  src/` and name the screens it appears on. A mention in a comment, in `components.md`,
+  or in an import is **not** evidence — only a JSX call site is. Shared components get
+  migrated away from and the stale references stay behind: `TreeNav` reads like the app's
+  tree navigation, but every module moved to `SectionPanel` and its only remaining call
+  sites are the two in Admin → SQL Explorer. A restyle was shipped to it that no screen
+  the reporter was looking at could ever show. **If you can't name the screen, you have
+  no grounds to say the change works.**
+- **Uncommitted work in the tree is unverified work — including your own.** A previous
+  session's changes carry no proof they were ever seen on screen, and across sessions
+  there is no memory of what was checked. Before `/release` stages a change nobody has
+  looked at this session, locate its call sites as above. Documented ≠ finished ≠ wired
+  up, and *"I wrote it earlier"* is not verification.
 
 ## Stack
 Next.js App Router + TypeScript. Path alias `@/* -> src/*` (set in `tsconfig.json`).

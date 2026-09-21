@@ -127,6 +127,25 @@ const Database: IconComponent = (props) => (
   </svg>
 );
 
+// A document with a small table ruled into its lower half — Tools' CSV File Browser.
+// The folded corner is `Note`'s, deliberately: both mean "a file", and sharing the
+// silhouette makes them read as the same family rather than two unrelated pages.
+//
+// The grid is 2x2, not the 3x3 a spreadsheet icon usually draws. At 16px in the
+// section panel a three-row grid closes up into a grey block, while four cells keep
+// visible gaps and still say "rows and columns". The header rule is a touch heavier
+// than the body lines for the same reason `Calendar` fills its binding bar: it gives
+// the glyph one strong horizontal to hold its shape at nav size.
+const CsvFile: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <path d="M5 4.5h9.5L19.5 9.5V19a.5.5 0 0 1-.5.5H5a.5.5 0 0 1-.5-.5V5a.5.5 0 0 1 .5-.5Z" />
+    <path d="M14.5 4.5v5h5" />
+    <rect x="7" y="11.5" width="10" height="6" rx="0.5" />
+    <path d="M7 13.75h10" fill="currentColor" stroke="currentColor" />
+    <line x1="12" y1="11.5" x2="12" y2="17.5" />
+  </svg>
+);
+
 const Shapes: IconComponent = (props) => (
   <svg {...shared} {...props}>
     <path d="M8.5 3.5l4.5 7H4Z" />
@@ -186,19 +205,27 @@ const Quote: IconComponent = (props) => (
   </svg>
 );
 
-// A new journal entry: a notebook with a spine, and a plus in the open page.
-// Deliberately not `quote` (a book with a quill — that reads as "a quotation",
-// and Journal's Report section already wears it) and not `plus` alone, which
-// says "add" without saying what. Moved here from journal-search-view.tsx when
-// New Journal Entry became a section and needed a slotted nav glyph.
+// A new journal entry: a quill pen, nib down, drawn on the diagonal.
+//
+// Was a notebook-with-a-plus until it was swapped for the pen — writing is the
+// act this section is for, and the plus said "add" without saying what. Still
+// deliberately not `quote` (a book *with* a quill, which reads as "a quotation"
+// and is what Journal's Report section wears): this one is the pen alone, so
+// the two don't collide at nav size.
+//
+// The shaft is one stroke and the feather one closed outline with two barbs cut
+// into it. A fully feathered plume turns to mush at 16px — the diagonal, the
+// split nib and a couple of barbs are what still read as "quill" that small.
 const NewJournal: IconComponent = (props) => (
   <svg {...shared} {...props}>
-    {/* The cover, and the spine rule a notebook is bound along. */}
-    <path d="M5 4a1 1 0 0 1 1-1h13a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1z" />
-    <line x1="9" y1="3" x2="9" y2="21" />
-    {/* The plus, centred in the page beside the spine. */}
-    <line x1="14.5" y1="9" x2="14.5" y2="15" />
-    <line x1="11.5" y1="12" x2="17.5" y2="12" />
+    {/* The plume: a leaf-shaped vane sweeping down from the top right. */}
+    <path d="M20 4c0 5.5-2.2 9.4-5.4 11.6-1.7 1.2-3.6 1.8-5.3 2L8 18c.4-1.8 1.1-3.8 2.4-5.5C12.7 9.2 16 6.1 20 4Z" />
+    {/* Two barbs, suggesting the feather's edge without drawing every one. */}
+    <path d="M15.6 6.8c-1 1.9-2.3 3.6-3.8 5" />
+    <path d="M17.8 9.4c-1.2 1.6-2.7 3-4.4 4.1" />
+    {/* The shaft running on to the nib, and the split tip that writes. */}
+    <path d="M8 18 4 22" />
+    <path d="M6.6 19.4 5 18.6" />
   </svg>
 );
 
@@ -631,6 +658,34 @@ const RocketLaunch: IconComponent = (props) => (
   </svg>
 );
 
+// A map pin: the teardrop and its hole. The mark for one saved place, in
+// Journal's Location Manager.
+//
+// The hole is a real circle rather than a filled dot -- at 16px a solid centre
+// closes the teardrop into a balloon, and the ring is what keeps it reading as
+// a pin. Deliberately distinct from `map` (several places), which sits beside it
+// in the same section panel.
+const MapPin: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <path d="M12 21.5s7-6.4 7-11.5a7 7 0 1 0-14 0c0 5.1 7 11.5 7 11.5Z" />
+    <circle cx="12" cy="10" r="2.6" />
+  </svg>
+);
+
+// A folded paper map: three panels, the fold lines between them, and the
+// zig-zag top and bottom edges the folds make. Journal's Location Map -- many
+// places at once, which is the whole distinction from `pin`.
+//
+// The panels alternate up and down rather than sitting flat, because a flat
+// three-column rectangle at nav-row size is a table, not a map.
+const FoldedMap: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <path d="M3.5 6.5 9 4.5l6 2 5.5-2v13l-5.5 2-6-2-5.5 2v-13Z" />
+    <line x1="9" y1="4.5" x2="9" y2="17.5" />
+    <line x1="15" y1="6.5" x2="15" y2="19.5" />
+  </svg>
+);
+
 const TREE_ICONS = {
   flash: Flash,
   note: Note,
@@ -659,6 +714,7 @@ const TREE_ICONS = {
   history: History,
   users: Users,
   database: Database,
+  "csv-file": CsvFile,
   shapes: Shapes,
   search: Search,
   magic: MagicHat,
@@ -679,6 +735,8 @@ const TREE_ICONS = {
   "game-blackjack": GameBlackjack,
   "game-minesweeper": GameMinesweeper,
   "game-mahjong": GameMahjongMatch,
+  pin: MapPin,
+  map: FoldedMap,
   rocket: RocketLaunch,
 } as const satisfies Record<TreeIconConcept, IconComponent>;
 

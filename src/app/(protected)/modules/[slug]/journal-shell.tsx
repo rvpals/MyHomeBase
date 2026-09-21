@@ -18,6 +18,7 @@ import { logoutAction } from "../../../login/actions";
 import {
   JOURNAL_CONFIGURATION_SECTIONS,
   JOURNAL_DATA_MANAGEMENT_SECTIONS,
+  JOURNAL_LOCATION_SECTIONS,
   JOURNAL_SECTIONS,
   JOURNAL_SECTION_ICONS,
   JOURNAL_SECTION_INFO,
@@ -63,20 +64,33 @@ export async function JournalShell({ children }: { children: ReactNode }) {
     icon: JOURNAL_SECTION_ICONS[section],
   });
 
-  // One level of nesting, and two accordion groups: Data Management (CSV Import
-  // + Calendar Import) and Configuration (Preferences, Templates, Meta Data).
+  // One level of nesting, and three accordion groups: Locations (Manager, Map,
+  // Meta Data), Data Management (CSV Import + Calendar Import) and Configuration
+  // (Preferences, Templates, Meta Data).
   //
-  // Neither heading carries an `href` — `SectionPanel` renders a node with
-  // children as an accordion label rather than a link, and drops it from the
-  // compact sheet entirely, so giving one a route would be a destination nothing
-  // reaches. Both groups are appended after the flat sections, so the panel
-  // reads: the places you go, then the two groups you configure and feed.
+  // No heading carries an `href` — `SectionPanel` renders a node with children
+  // as an accordion label rather than a link, and drops it from the compact
+  // sheet entirely, so giving one a route would be a destination nothing
+  // reaches. All three groups are appended after the flat sections, so the panel
+  // reads: the places you go, then the groups you look things up in, feed, and
+  // configure.
   const grouped = new Set<string>([
     ...JOURNAL_CONFIGURATION_SECTIONS,
     ...JOURNAL_DATA_MANAGEMENT_SECTIONS,
+    ...JOURNAL_LOCATION_SECTIONS,
   ]);
   const sections: SectionNode[] = [
     ...JOURNAL_SECTIONS.filter((section) => !grouped.has(section)).map(toNode),
+    {
+      // `locations-group`, not `locations` — the child section already owns that
+      // slug, and `SectionPanel` derives each node's icon slot from its id
+      // (`journal_section_locations_group` vs `journal_section_locations`).
+      id: "locations-group",
+      label: "Locations",
+      hint: "Places you save once and pick from later.",
+      icon: "map",
+      children: JOURNAL_LOCATION_SECTIONS.map(toNode),
+    },
     {
       id: "import-group",
       label: "Data Management",

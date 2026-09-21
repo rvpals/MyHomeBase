@@ -125,9 +125,13 @@ describe("sectionSlotId", () => {
         "main", "positions", "transactions", "accounts", "watch-test",
         "charts", "tax-lots", "ai-export", "import", "settings",
       ],
+      // No "log" — Log is the second tab of Entries now, not a panel row. Its
+      // slot (`journal_section_log`) is still registered and still rendered, on
+      // the tab label rather than in the panel.
       journal: [
-        "main", "new-entry", "entries", "calendar", "views", "report", "log", "import",
+        "main", "new-entry", "entries", "calendar", "views", "report", "import",
         "calendar-import", "configuration", "templates", "metadata",
+        "locations", "location-map", "location-metadata",
         "configuration-group", "import-group",
       ],
       expense: [
@@ -139,7 +143,7 @@ describe("sectionSlotId", () => {
       games: ["main", "scores", "configuration"],
       music: ["main", "magic", "player", "queue", "scan", "configuration"],
       gallery: ["main", "favorites", "albums", "magic-list"],
-      tools: ["main", "sqlite-browser"],
+      tools: ["main", "sqlite-browser", "csv-browser"],
       admin: [
         "configuration", "configuration-modules", "configuration-application",
         // Under the Display Settings group, but the ids stayed `configuration-*` so

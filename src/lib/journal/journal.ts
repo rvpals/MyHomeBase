@@ -137,40 +137,86 @@ export function findEntries(
  */
 export const LOG_CATEGORY_NAME = "Log";
 
-/** True when an entry carries the Log category, compared case-insensitively. */
+/**
+ * True when an entry carries the Log category, compared case-insensitively.
+ *
+ * Deliberately looser than the SQL path (`listLogEntries` / `listNonLogEntries`),
+ * which matches the seeded name exactly. This one guards the Today in History
+ * widget, where being wrong is asymmetric: letting a hand-typed "log" entry
+ * through crowds out a written memory, while excluding one is invisible. The SQL
+ * path backs a *browser*, where silently hiding a row whose category the reader
+ * can read on screen would be the worse error.
+ */
 export function isLogEntry(entry: JournalEntry): boolean {
-  // NOCASE is how jrn_categories compares names elsewhere, so "log" typed into
-  // the entry form is the same category as the seeded "Log".
   return entry.categories.some(
     (category) => category.trim().toLowerCase() === LOG_CATEGORY_NAME.toLowerCase(),
   );
 }
 
 /**
- * Every entry carrying the Log category, newest journal date first — the Log
- * section's list.
+ * `filter` with "the entry does (or does not) carry the Log category" ANDed on
+ * — the condition behind the Entries browser's Main/Log tabs.
+ *
+ * Added as its **own group** rather than as one more condition inside the
+ * reader's groups. A saved filter may join its conditions with OR, and pushing
+ * the Log test in beside them would make it one more alternative rather than a
+ * requirement: `category hasAny Trip OR title ~ beach` would come back as
+ * `... OR category hasNone Log`, which matches nearly everything. A separate
+ * group combined with the top-level AND is the only arrangement that holds for
+ * both joins.
+ *
+ * Note this forces the top-level join to AND. That is intentional and it is why
+ * the tabs can't leak: a filter whose groups were OR-joined still cannot pull a
+ * Log entry into Main.
+ */
+export function withLogCondition(filter: JournalFilter, include: boolean): JournalFilter {
+  return {
+    join: "AND",
+    groups: [
+      ...filter.groups,
+      {
+        join: "AND",
+        conditions: [
+          {
+            field: "category",
+            operator: include ? "hasAny" : "hasNone",
+            values: [LOG_CATEGORY_NAME],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+/**
+ * Every entry carrying the Log category, newest journal date first — the Entries
+ * browser's Log tab.
  *
  * Built on `findEntries` with a one-condition filter rather than a new query, so
  * the Log list is sorted, limited and SQL-built by exactly the same path the
- * Entries browser uses. `hasAny` is the taxonomy operator, and the comparison
- * is the NOCASE one the stored filter SQL already applies to category names.
+ * Entries browser uses.
+ *
+ * Matches the seeded `Log` name **exactly**: `jrn_entry_categories.category_name`
+ * is not declared COLLATE NOCASE, so the `IN (...)` this compiles to is a binary
+ * comparison. That is intended rather than a limitation to route around — the
+ * category is seeded once by migration 0088 and reused from the managed list, so
+ * a stored "log" is a *different* category the reader made on purpose. See the
+ * note on `isLogEntry`, which is looser, and why.
  */
 export function listLogEntries(repo: JournalRepository, limit = 500): JournalEntry[] {
-  return findEntries(
-    repo,
-    {
-      join: "AND",
-      groups: [
-        {
-          join: "AND",
-          conditions: [
-            { field: "category", operator: "hasAny", values: [LOG_CATEGORY_NAME] },
-          ],
-        },
-      ],
-    },
-    limit,
-  );
+  return findEntries(repo, withLogCondition({ join: "AND", groups: [] }, true), limit);
+}
+
+/**
+ * Every entry **not** carrying the Log category — the Entries browser's Main
+ * tab, and the complement of `listLogEntries`.
+ *
+ * `hasNone` is the taxonomy operator's negative form — a correlated NOT EXISTS,
+ * not a negated `hasAny` — so an entry carrying Log *and* three other categories
+ * is still excluded.
+ */
+export function listNonLogEntries(repo: JournalRepository, limit = 500): JournalEntry[] {
+  return findEntries(repo, withLogCondition({ join: "AND", groups: [] }, false), limit);
 }
 
 export function listFilters(repo: JournalRepository): SavedJournalFilter[] {

@@ -1,7 +1,19 @@
 "use client";
 
-// The My Journal "Entries" browser: a saved-filter dropdown, the selected
-// filter's criteria shown back as readable text, and the matching entries below.
+// The My Journal "Entries" browser, in two tabs:
+//
+//   **Main** — a saved-filter dropdown, the selected filter's criteria shown
+//   back as readable text, and the matching entries below. Everything *except*
+//   logged activities.
+//   **Log**  — the logged activities on their own. This was its own section at
+//   /modules/journal/log until the two became tabs of one screen; `JournalLogView`
+//   moved here unchanged, which is why the Log tab still has its own grid,
+//   bulk delete and viewer modal rather than sharing Main's.
+//
+// Which entries belong to which tab is decided on the server (see
+// journal-entries-panel.tsx) and re-decided on every filter change by
+// `findJournalEntriesAction`, not here — a client-side split could be bypassed
+// by a saved filter and would disagree with the row counts.
 //
 // Route-local. The filter tree, its SQL compilation and its English description
 // all live in src/lib/journal/filters.ts — this file only presents them.
@@ -12,6 +24,7 @@ import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { SlotIcon } from "@/components/slot-icon";
+import { Tabs } from "@/components/tabs";
 import { getIconSlot } from "@/lib/icons";
 import {
   describeFilter,
@@ -26,9 +39,14 @@ import {
   saveJournalFilterAction,
 } from "./journal-actions";
 import { JournalFilterBuilder } from "./journal-filter-builder";
+import { JournalLogView } from "./journal-log-view";
 
 // Resolved once at module scope; the registry is static, so this is not I/O.
 const FILTERS_SLOT = getIconSlot("journal_card_entry_filters")!;
+// Inherited from when Log was its own section. The id is persisted against any
+// uploaded override, so the slot moved to the tab rather than being retired —
+// see "Ids are permanent" in coding-guide.md.
+const LOG_SLOT = getIconSlot("journal_section_log")!;
 
 const COLUMNS: DataGridColumn<JournalEntry>[] = [
   { key: "date", header: "Date", value: (entry) => entry.date, render: (entry) => entry.date },
@@ -62,7 +80,61 @@ export function JournalEntriesView({
   queryError,
   title,
   description,
-}: {
+  logEntries,
+  categoryIcons,
+  tagIcons,
+}: JournalEntriesViewProps) {
+  return (
+    <div className="flex flex-col gap-6">
+      {/* Only rendered when embedded somewhere that isn't the section (the
+          section supplies its own heading). */}
+      {(title || description) && (
+        <div>
+          {title && <h2 className="font-display text-xl font-semibold text-ink">{title}</h2>}
+          {description && <p className="mt-1 text-sm text-muted">{description}</p>}
+        </div>
+      )}
+
+      <Tabs
+        items={[
+          {
+            key: "main",
+            label: "Main",
+            content: (
+              <MainTab
+                initialEntries={initialEntries}
+                initialFilters={initialFilters}
+                categoryOptions={categoryOptions}
+                tagOptions={tagOptions}
+                initialFilterId={initialFilterId}
+                appliedQuery={appliedQuery}
+                queryError={queryError}
+              />
+            ),
+          },
+          {
+            key: "log",
+            label: (
+              <span className="flex items-center gap-1.5">
+                <SlotIcon slot={LOG_SLOT} className="h-4 w-4" />
+                Log
+              </span>
+            ),
+            content: (
+              <JournalLogView
+                entries={logEntries}
+                categoryIcons={categoryIcons}
+                tagIcons={tagIcons}
+              />
+            ),
+          },
+        ]}
+      />
+    </div>
+  );
+}
+
+export interface JournalEntriesViewProps {
   /** The first page of rows, already filtered if the caller supplied a filter. */
   initialEntries: JournalEntry[];
   initialFilters: SavedJournalFilter[];
@@ -85,7 +157,34 @@ export function JournalEntriesView({
   /** Overrides for the heading above the grid, when embedded outside the section. */
   title?: string;
   description?: string;
-}) {
+  /**
+   * The Log tab's rows — every entry carrying the Log category, read whole by
+   * the caller. Not filtered by the Main tab's dropdown: the Log tab is the old
+   * Log section, which never had one.
+   */
+  logEntries: JournalEntry[];
+  /** Category/tag name → icon URL, for the Log tab's viewer modal. */
+  categoryIcons: Record<string, string>;
+  tagIcons: Record<string, string>;
+}
+
+/**
+ * The Main tab: the filter controls and the non-Log entries they narrow.
+ *
+ * Split out of `JournalEntriesView` when the Log tab arrived so that all the
+ * filter state — selection, the builder, the applied-query banner — stays owned
+ * by the tab that uses it, rather than sitting a level up where the Log tab
+ * would re-render on every change it has no interest in.
+ */
+function MainTab({
+  initialEntries,
+  initialFilters,
+  categoryOptions,
+  tagOptions,
+  initialFilterId,
+  appliedQuery,
+  queryError,
+}: Omit<JournalEntriesViewProps, "title" | "description" | "logEntries" | "categoryIcons" | "tagIcons">) {
   const router = useRouter();
   const [filters, setFilters] = useState(initialFilters);
   const [selectedId, setSelectedId] = useState<string>(
@@ -106,7 +205,9 @@ export function JournalEntriesView({
     setIsLoading(true);
     setError(undefined);
     try {
-      const result = await findJournalEntriesAction(filter);
+      // `false` — this tab never shows logged activities, whatever the filter
+      // says. The server ANDs the condition on; see findJournalEntriesAction.
+      const result = await findJournalEntriesAction(filter, false);
       if (!result.ok) {
         setError(result.error);
         return;
@@ -157,15 +258,6 @@ export function JournalEntriesView({
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Only rendered when embedded somewhere that isn't the section (the
-          section supplies its own heading). */}
-      {(title || description) && (
-        <div>
-          {title && <h2 className="font-display text-xl font-semibold text-ink">{title}</h2>}
-          {description && <p className="mt-1 text-sm text-muted">{description}</p>}
-        </div>
-      )}
-
       <div className="flex flex-wrap items-end gap-3">
         <label className="min-w-0 text-sm">
           <span className="mb-1 block font-medium text-ink">Filter</span>

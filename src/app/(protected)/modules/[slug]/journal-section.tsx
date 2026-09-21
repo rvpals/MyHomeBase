@@ -10,7 +10,6 @@ import { listNamedMappings } from "@/lib/csv-import";
 import {
   JOURNAL_PREFILL_FIELDS,
   listCategories,
-  listLogEntries,
   listEnabledPrefillTemplates,
   listPrefillSuggestions,
   listPrefillTemplates,
@@ -21,6 +20,13 @@ import {
   resolveJournalPreferences,
   type JournalPrefillField,
 } from "@/lib/journal";
+import {
+  countLocationsByCategory,
+  countLocationsByTag,
+  listLocationCategories,
+  listLocationTags,
+  listSavedLocations,
+} from "@/lib/journal-locations";
 import { listModuleSettingsFor } from "@/lib/module-settings";
 import { getModuleBySlug } from "@/lib/modules";
 import { deps } from "@/lib/wiring";
@@ -33,7 +39,9 @@ import { JournalHomeHeader } from "./journal-search-view";
 import { JournalCorrectPanel } from "./journal-correct-panel";
 import { JournalCalendarImportView } from "./journal-calendar-import-view";
 import { JournalImportView } from "./journal-import-view";
-import { JournalLogView } from "./journal-log-view";
+import { JournalLocationMapView } from "./journal-location-map-view";
+import { JournalLocationTaxonomyView } from "./journal-location-taxonomy-view";
+import { JournalLocationsView } from "./journal-locations-view";
 import {
   JournalMetadataBackupButton,
   JournalMetadataRestoreCard,
@@ -87,9 +95,10 @@ function SectionBody({
     }
 
     case "new-entry": {
-      // The same four reads the home screen does — the form needs the managed
-      // category and tag names for its dropdowns, the preferences for which
-      // fields it shows, and the enabled templates for its prefill picker.
+      // The form needs the managed category and tag names for its dropdowns, the
+      // preferences for which fields it shows, the enabled templates for its
+      // prefill picker, and the location library's own taxonomy for the filter
+      // chips on the location picker's "From location database" tab.
       const journalModule = getModuleBySlug(deps.moduleRepo, JOURNAL_MODULE_SLUG);
       const preferences = resolveJournalPreferences(
         journalModule ? listModuleSettingsFor(deps.moduleSettingsRepo, journalModule.id) : [],
@@ -100,6 +109,10 @@ function SectionBody({
           tagOptions={listTags(deps.journalRepo).map((tag) => tag.name)}
           preferences={preferences}
           prefillTemplates={listEnabledPrefillTemplates(deps.journalRepo)}
+          locationCategoryOptions={listLocationCategories(deps.savedLocationRepo).map(
+            (row) => row.name,
+          )}
+          locationTagOptions={listLocationTags(deps.savedLocationRepo).map((row) => row.name)}
         />
       );
     }
@@ -155,20 +168,6 @@ function SectionBody({
       );
     }
 
-    case "log": {
-      // The icon maps are the same pair the home screen builds — the viewer
-      // modal renders an entry's categories and tags with their icons.
-      const logCategories = listCategories(deps.journalRepo);
-      const logTags = listTags(deps.journalRepo);
-      return (
-        <JournalLogView
-          entries={listLogEntries(deps.journalRepo)}
-          categoryIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("category", logCategories))}
-          tagIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("tag", logTags))}
-        />
-      );
-    }
-
     case "configuration": {
       const journalModule = getModuleBySlug(deps.moduleRepo, JOURNAL_MODULE_SLUG);
       const preferences = resolveJournalPreferences(
@@ -215,6 +214,63 @@ function SectionBody({
           templates={listPrefillTemplates(deps.journalRepo)}
           suggestions={suggestions}
         />
+      );
+    }
+
+    case "locations": {
+      // The counts feed the filter chips; the manager needs only the names, but
+      // reading them from the same two calls keeps this screen and the Meta Data
+      // one from disagreeing about which lists exist.
+      return (
+        <JournalLocationsView
+          locations={listSavedLocations(deps.savedLocationRepo)}
+          categoryOptions={countLocationsByCategory(deps.savedLocationRepo).map((row) => row.name)}
+          tagOptions={countLocationsByTag(deps.savedLocationRepo).map((row) => row.name)}
+        />
+      );
+    }
+
+    case "location-map":
+      // The same list the manager reads. The map filters it down client-side
+      // through the search action, so the server hands over the unfiltered set
+      // once rather than on every chip.
+      return (
+        <JournalLocationMapView
+          locations={listSavedLocations(deps.savedLocationRepo)}
+          categoryOptions={countLocationsByCategory(deps.savedLocationRepo).map((row) => row.name)}
+          tagOptions={countLocationsByTag(deps.savedLocationRepo).map((row) => row.name)}
+        />
+      );
+
+    case "location-metadata": {
+      // The editor wants both halves: the descriptions (from the taxonomy rows)
+      // and the usage counts (from the count queries). Joined here by name
+      // rather than in a third repository method, since this is the only screen
+      // that needs them together.
+      const withCounts = (
+        rows: { name: string; description: string }[],
+        counts: { name: string; count: number }[],
+      ) =>
+        rows.map((row) => ({
+          name: row.name,
+          description: row.description,
+          count: counts.find((entry) => entry.name === row.name)?.count ?? 0,
+        }));
+      // In a card, open by default — the same presentation the entry-side
+      // Categories & Tags editor gets, since it is the same kind of screen.
+      return (
+        <CollapsibleCard title="Location categories & tags" defaultOpen>
+          <JournalLocationTaxonomyView
+            categories={withCounts(
+              listLocationCategories(deps.savedLocationRepo),
+              countLocationsByCategory(deps.savedLocationRepo),
+            )}
+            tags={withCounts(
+              listLocationTags(deps.savedLocationRepo),
+              countLocationsByTag(deps.savedLocationRepo),
+            )}
+          />
+        </CollapsibleCard>
       );
     }
 

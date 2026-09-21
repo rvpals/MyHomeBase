@@ -188,6 +188,8 @@ export {
   LOG_CATEGORY_NAME,
   isLogEntry,
   listLogEntries,
+  listNonLogEntries,
+  withLogCondition,
 } from "./journal";
 export {
   GENERATED_ICON_MIME_TYPE,

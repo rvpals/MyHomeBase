@@ -77,6 +77,8 @@ export function JournalEntryScreen({
   tagIcons,
   categoryOptions,
   tagOptions,
+  locationCategoryOptions = [],
+  locationTagOptions = [],
 }: {
   entry: JournalEntry;
   neighbors: JournalEntryNeighbors;
@@ -86,6 +88,9 @@ export function JournalEntryScreen({
   categoryOptions: string[];
   /** Every known tag name — the edit form's picker offers these. */
   tagOptions: string[];
+  /** The saved-location library's taxonomy, for the edit form's location picker. */
+  locationCategoryOptions?: string[];
+  locationTagOptions?: string[];
 }) {
   const router = useRouter();
   const [isBusy, setIsBusy] = useState(false);
@@ -153,6 +158,8 @@ export function JournalEntryScreen({
           entry={entry}
           categoryOptions={categoryOptions}
           tagOptions={tagOptions}
+          locationCategoryOptions={locationCategoryOptions}
+          locationTagOptions={locationTagOptions}
           onCancel={() => setIsEditing(false)}
           onSaved={() => {
             setIsEditing(false);

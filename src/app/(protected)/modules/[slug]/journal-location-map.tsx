@@ -129,7 +129,12 @@ export function JournalLocationMap({
         : DEFAULT_CENTER;
 
   return (
-    <div className={`${heightClassName} overflow-hidden rounded-md border border-line`}>
+    // `isolate` gives the map its own stacking context, so Leaflet's internal
+    // z-indexes are resolved against this box rather than against the page. Belt
+    // and braces with the cap in globals.css: that one lowers the numbers, this
+    // one stops them competing with the app's layers at all — without it a map
+    // still paints over any modal opened above the screen it sits on.
+    <div className={`${heightClassName} isolate overflow-hidden rounded-md border border-line`}>
       <MapContainer
         center={initialCenter}
         zoom={hasMany || marker || center ? PICK_ZOOM : DEFAULT_ZOOM}

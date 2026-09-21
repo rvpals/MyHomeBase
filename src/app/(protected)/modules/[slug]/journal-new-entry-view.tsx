@@ -24,12 +24,17 @@ export function JournalNewEntryView({
   tagOptions,
   preferences,
   prefillTemplates = [],
+  locationCategoryOptions = [],
+  locationTagOptions = [],
 }: {
   categoryOptions: string[];
   tagOptions: string[];
   preferences: JournalPreferences;
   /** Enabled prefill templates, for the form's picker. */
   prefillTemplates?: JournalPrefillTemplate[];
+  /** The location library's taxonomy, for the picker's library tab. */
+  locationCategoryOptions?: string[];
+  locationTagOptions?: string[];
 }) {
   return (
     // `defaultOpen` because the form is the only thing on the page — arriving
@@ -41,6 +46,8 @@ export function JournalNewEntryView({
         tagOptions={tagOptions}
         preferences={preferences}
         prefillTemplates={prefillTemplates}
+        locationCategoryOptions={locationCategoryOptions}
+        locationTagOptions={locationTagOptions}
       />
     </CollapsibleCard>
   );

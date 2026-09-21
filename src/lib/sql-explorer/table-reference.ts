@@ -161,9 +161,10 @@ const GROUPS: TableReferenceGroup[] = [
     prefix: "tol_",
     module: "Tools",
     summary:
-      "The SQLite files uploaded to the file browser. Metadata only — the files themselves live in the upload root on disk, not in this database.",
+      "The files uploaded to the module's two browsers. Metadata only — the files themselves live in upload roots on disk, not in this database.",
     tables: [
       ["tol_uploaded_databases", "One uploaded SQLite file: its original name, the generated name it was stored under, its size and who brought it. The file is opened over its own connection, never this one."],
+      ["tol_uploaded_csv_files", "One uploaded CSV or text file: its original name, the two generated names it is stored under (the text as uploaded, and the SQLite sidecar its rows were loaded into), how it is read (delimiter, header row, column names as JSON), its row count and size, and who brought it. The sidecar is opened over its own connection, never this one."],
     ],
   },
   {

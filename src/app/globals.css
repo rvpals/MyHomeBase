@@ -1997,3 +1997,51 @@ html[data-music-player="minimized"] {
     transform: none;
   }
 }
+
+/* ---------------------------------------------------------------------------------
+   Leaflet: keep a map underneath the app's own layers.
+
+   `leaflet/dist/leaflet.css` (imported by journal-location-map.tsx) ships z-indexes
+   on an absolute scale of its own: panes at 200-700, and the zoom/attribution
+   controls at 1000. This app's layers are Tailwind's small scale — the modal overlay
+   is `z-50`, dropdowns and the shell's chrome sit at `z-30`/`z-40`. A map therefore
+   painted straight *through* any modal opened over a screen that has one: the
+   Location Manager's import dialog came back with the overview map's tiles, pins and
+   `+`/`-` control drawn on top of it.
+
+   Capping here rather than at each call site: the collision is between two
+   stylesheets' numbering, so it belongs where they meet, and a new map elsewhere in
+   the app inherits the fix instead of re-reporting the bug. The values keep
+   Leaflet's *internal* ordering intact (panes still stack in the same order, and
+   controls still sit above them) while moving the whole set below `z-30`.
+
+   These are the panes Leaflet defines; listed rather than wildcarded so a pane it
+   adds later is visible as a gap here instead of silently inheriting the cap. */
+.leaflet-pane {
+  z-index: 2;
+}
+.leaflet-tile-pane {
+  z-index: 1;
+}
+.leaflet-overlay-pane {
+  z-index: 3;
+}
+.leaflet-shadow-pane {
+  z-index: 4;
+}
+.leaflet-marker-pane {
+  z-index: 5;
+}
+.leaflet-tooltip-pane {
+  z-index: 6;
+}
+.leaflet-popup-pane {
+  z-index: 7;
+}
+
+/* The zoom buttons and the attribution strip. Above the panes, still far below the
+   modal overlay — Leaflet's own value here is 1000. */
+.leaflet-top,
+.leaflet-bottom {
+  z-index: 8;
+}

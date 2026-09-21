@@ -4,7 +4,13 @@ import { useState, type ReactNode } from "react";
 
 export interface TabItem {
   key: string;
-  label: string;
+  /**
+   * Usually a string. Widened to `ReactNode` so a tab that inherited an icon
+   * slot from a screen it replaced can render `<SlotIcon>` beside its text —
+   * Journal's Entries → Log tab is the case that needed it. Compose the icon and
+   * the words yourself; the strip only lays out whatever it is given.
+   */
+  label: ReactNode;
   content: ReactNode;
 }
 

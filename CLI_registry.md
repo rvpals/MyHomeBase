@@ -40,6 +40,7 @@ Forty-two commands, registered in [src/cli/index.ts](src/cli/index.ts).
 | [`csv-bulk-edit`](#csv-bulk-edit) | read (`columns`/`rows`), write (`apply`) | no |
 | [`import-journal-csv`](#import-journal-csv) | write | no |
 | [`journal-calendar`](#journal-calendar) | read | no |
+| [`journal-locations`](#journal-locations) | read + write | no |
 | [`browse-sqlite`](#browse-sqlite) | read + write | no |
 | [`browse-csv`](#browse-csv) | read + write | no |
 | [`journal-templates`](#journal-templates) | read (writes with `set`/`enable`/`disable`/`delete`) | no |
@@ -265,6 +266,69 @@ match is declined, not overwritten. `--allow-duplicates` turns the check off for
 a file that deliberately holds another copy of something.
 **Exit** — 0; 1 on missing `--file`, an unknown mapping name, or a read failure.
 Source: [src/cli/import-journal-csv.ts](src/cli/import-journal-csv.ts)
+
+---
+
+## `journal-locations`
+
+Reads and writes the Journal's saved-location library — the same use-cases the Location
+Manager section drives, so the two cannot diverge. Also the practical way to seed a
+library in bulk: a shell loop over `--add` beats typing a hundred places into a form.
+
+```
+npm run cli -- journal-locations --list
+npm run cli -- journal-locations --search "coffee"
+npm run cli -- journal-locations --search "" --category "Restaurant" --tag "Weekend"
+npm run cli -- journal-locations --add "Small World Coffee" --lat 40.3499 --lon -74.6593 --address "14 Witherspoon St" --category "Restaurant"
+npm run cli -- journal-locations --update 4 --name "Small World" --lat 40.35 --lon -74.66
+npm run cli -- journal-locations --delete 4
+npm run cli -- journal-locations --promote --lat 40.1 --lon -74.2 --name "Grandma's" --entry-location 42
+npm run cli -- journal-locations --find-duplicates
+npm run cli -- journal-locations --find-duplicates 0.9
+npm run cli -- journal-locations --merge 12 --into-from 34,56
+npm run cli -- journal-locations --import-from-entries
+npm run cli -- journal-locations --import-from-entries --no-addresses
+npm run cli -- journal-locations --categories
+npm run cli -- journal-locations --add-category "Trailhead" --description "Where a walk starts"
+npm run cli -- journal-locations --delete-tag "Weekend"
+```
+
+**Input** — one mode flag per run, checked in the order below.
+
+| Flag | Type | Notes |
+|---|---|---|
+| `--list` | boolean | Every saved place, with its usage count |
+| `--search` | text | Matched against name, description **and** address. Pass `""` to filter by taxonomy alone |
+| `--categories` / `--tags` | boolean | The managed lists, with how many places carry each |
+| `--add` | name | Requires `--lat` and `--lon` |
+| `--update` | id | **Replaces the whole row**, as the web form does — resubmit every field |
+| `--delete` | id | Entries that used it keep their coordinates and detach |
+| `--find-duplicates` | boolean or 0.6-1 | Reports near-duplicate groups. Optional name-similarity threshold, default 0.82. Read-only |
+| `--merge` | id to keep | Needs `--into-from`. Repoints those entries onto the kept place, unions its categories/tags, deletes the rest — one transaction |
+| `--into-from` | comma-separated ids | The places `--merge` folds away |
+| `--promote` | boolean | Create a library row from a hand-dropped point; `--entry-location <id>` also points that entry row at it |
+| `--import-from-entries` | boolean | Build the library from every coordinate already on an entry. Addresses are looked up by default; `--no-addresses` skips the geocoder and makes it near-instant. Idempotent — re-running only adds what is missing |
+| `--add-category` / `--add-tag` | name | Upsert; `--description` optional |
+| `--delete-category` / `--delete-tag` | name | Removes the row and its pairings; the places survive |
+| `--lat` / `--lon` | number | Required by `--add`, `--update`, `--promote` |
+| `--name`, `--description`, `--address` | text | Optional fields on a write |
+| `--category` / `--tag` | comma-separated | `parseFlags` keeps only the last of a repeated key, so multiples go in one value: `--category "Restaurant,Cafe"` |
+
+**Calls** — `listSavedLocations`, `searchSavedLocations`, `createSavedLocation`,
+`updateSavedLocation`, `deleteSavedLocation`, `promoteToSavedLocation`,
+`countImportCandidates` / `runImportBatch`, `saveLocationTaxonomy`,
+`deleteLocationTaxonomy`, `countLocationsByCategory` / `countLocationsByTag` — all from
+`src/lib/journal-locations`.
+
+`--import-from-entries` loops `runImportBatch` and prints an `n of m places...` line per
+batch — the terminal's version of the web modal's progress bar. The same use-case backs
+both, so the grouping and the throttle cannot diverge between them.
+
+**Output** — one place per line, id first (the id is what `--update`, `--delete` and an
+entry's provenance reference, and a terminal has no other way to find it), then the name,
+coordinates and usage count, with address, description and labels indented beneath.
+
+Source: [src/cli/journal-locations.ts](src/cli/journal-locations.ts)
 
 ---
 

@@ -17,6 +17,7 @@ import {
   deleteTag,
   findAdjacentEntryDate,
   findEntries,
+  withLogCondition,
   generateCategoryIcon,
   generateMissingTaxonomyIcons,
   type GenerateIconsSummary,
@@ -80,6 +81,12 @@ export interface JournalLocationInput {
   latitude: number;
   longitude: number;
   locationName: string;
+  /**
+   * Set when the point was picked from the saved-location library rather than
+   * dropped on the map. Recorded as provenance only — the coordinates and name
+   * above are the entry's own copy. See migration 0101.
+   */
+  savedLocationId?: number;
 }
 
 export interface EntryWeatherInput {
@@ -348,13 +355,28 @@ export interface JournalEntriesResult extends ActionResult {
   entries?: JournalEntry[];
 }
 
-/** Runs a filter and returns the matching entries for the Entries browser. */
+/**
+ * Runs a filter and returns the matching entries for the Entries browser.
+ *
+ * `includeLogs` is which tab is asking — the Log condition is ANDed on here, on
+ * the server, rather than trusted from the filter the client sent. A re-query
+ * from the Main tab therefore stays Log-free however the reader's saved filter
+ * is shaped.
+ */
 export async function findJournalEntriesAction(
   filter: JournalFilter,
+  includeLogs: boolean,
 ): Promise<JournalEntriesResult> {
   await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
-    return { ok: true, entries: findEntries(deps.journalRepo, filter, ENTRIES_RESULT_LIMIT) };
+    return {
+      ok: true,
+      entries: findEntries(
+        deps.journalRepo,
+        withLogCondition(filter, includeLogs),
+        ENTRIES_RESULT_LIMIT,
+      ),
+    };
   } catch (error) {
     return toErrorResult(error, "Failed to apply the filter.");
   }

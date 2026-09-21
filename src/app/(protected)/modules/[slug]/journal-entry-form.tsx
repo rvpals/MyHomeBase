@@ -94,12 +94,22 @@ export function JournalEntryForm({
   tagOptions,
   preferences,
   prefillTemplates = [],
+  locationCategoryOptions = [],
+  locationTagOptions = [],
 }: {
   categoryOptions: string[];
   tagOptions: string[];
   preferences: JournalPreferences;
   /** Enabled templates only — the server filters, so anything here is offerable. */
   prefillTemplates?: JournalPrefillTemplate[];
+  /**
+   * The saved-location library's own category and tag lists, for the filter
+   * chips on the location picker's "From location database" tab. Separate from
+   * `categoryOptions`/`tagOptions` above, which are the entry's — see the 0101
+   * migration log for why the two taxonomies are deliberately distinct.
+   */
+  locationCategoryOptions?: string[];
+  locationTagOptions?: string[];
 }) {
   const router = useRouter();
   // Date and time both start at the writer's current clock. Lazy initialiser, so
@@ -369,7 +379,12 @@ export function JournalEntryForm({
         <input type="text" value={form.placeName} onChange={(event) => update("placeName", event.target.value)} placeholder="e.g. Princeton University" className={INPUT_CLASS} />
       </label>
 
-      <JournalLocationPicker value={locations} onChange={setLocations} />
+      <JournalLocationPicker
+        value={locations}
+        onChange={setLocations}
+        libraryCategoryOptions={locationCategoryOptions}
+        libraryTagOptions={locationTagOptions}
+      />
 
       {/* Both weather controls sit on this tab with the locations they read: GPS
           + Weather appends to the list above and fills the Place name field, so

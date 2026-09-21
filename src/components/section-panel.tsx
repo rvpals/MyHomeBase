@@ -323,16 +323,22 @@ function SectionGroup({
   const listId = useId();
 
   return (
-    <li>
+    // The group reads as its own card. Without the box, a heading and its children
+    // were distinguished only by indentation, which is the weakest signal available
+    // on a panel this narrow -- Administration's Configuration group is six rows
+    // that looked like six unrelated links.
+    <li className="card-embossed overflow-hidden rounded-lg border border-line bg-paper-raised">
       <button
         type="button"
         onClick={() => setIsOpen((open) => !open)}
         aria-expanded={isOpen}
         aria-controls={isOpen ? listId : undefined}
         title={section.hint ?? section.label}
-        className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
-          containsActive ? "font-medium text-brass-dark" : "text-ink hover:bg-line/60"
-        }`}
+        // `ring-inset`, unlike the flat rows: a focus ring on a child of a clipped
+        // card is cut off by `overflow-hidden` if it sits outside the edge.
+        className={`flex w-full items-center gap-2 px-2.5 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brass ${
+          isOpen ? "border-b border-line" : ""
+        } ${containsActive ? "font-medium text-brass-dark" : "text-ink hover:bg-line/40"}`}
       >
         <span
           className={`inline-block w-3 shrink-0 text-muted transition-transform motion-reduce:transition-none ${
@@ -346,17 +352,30 @@ function SectionGroup({
         <span className="truncate">{section.label}</span>
       </button>
       {isOpen && (
-        <ul id={listId} className="pl-4">
-          {children.map((child) => (
-            <li key={child.id}>
-              <SectionRow
-                section={child}
-                active={child.href === activeHref}
-                compact={false}
-                nested
-              />
-            </li>
-          ))}
+        <ul id={listId} className="flex flex-col py-1.5 pl-4 pr-1.5">
+          {children.map((child, index) => {
+            const isLast = index === children.length - 1;
+
+            return (
+              <li key={child.id} className="relative pl-4">
+                {/* The spine linking every child back up to the group row. Stops
+                    halfway down the last one, where its elbow leaves the trunk,
+                    so the line never dangles past the final item. */}
+                <span
+                  aria-hidden
+                  className={`absolute left-0 w-px bg-line ${isLast ? "top-0 h-[1.125rem]" : "inset-y-0"}`}
+                />
+                {/* The elbow out to this child. */}
+                <span aria-hidden className="absolute left-0 top-[1.125rem] h-px w-2.5 bg-line" />
+                <SectionRow
+                  section={child}
+                  active={child.href === activeHref}
+                  compact={false}
+                  nested
+                />
+              </li>
+            );
+          })}
         </ul>
       )}
     </li>
@@ -736,7 +755,9 @@ function SectionPanelBody({
         </button>
       </div>
 
-      <ul className="min-h-0 flex-1 overflow-y-auto p-2">
+      {/* `gap-2.5` so the group cards read as separate objects; a bare list would
+          butt their borders together into one undivided block. */}
+      <ul className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto p-2">
         {sections.map((section) =>
           section.children?.length ? (
             <SectionGroup key={section.id} section={section} activeHref={activeHref} />

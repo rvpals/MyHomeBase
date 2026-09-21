@@ -20,6 +20,8 @@ export function JournalEntryEditForm({
   entry,
   categoryOptions,
   tagOptions,
+  locationCategoryOptions = [],
+  locationTagOptions = [],
   onCancel,
   onSaved,
 }: {
@@ -28,6 +30,9 @@ export function JournalEntryEditForm({
   categoryOptions: string[];
   /** Every known tag name, for the picker's dropdown. */
   tagOptions: string[];
+  /** The saved-location library's taxonomy, for the location picker's chips. */
+  locationCategoryOptions?: string[];
+  locationTagOptions?: string[];
   onCancel: () => void;
   onSaved: () => void;
 }) {
@@ -45,6 +50,10 @@ export function JournalEntryEditForm({
       latitude: location.latitude,
       longitude: location.longitude,
       locationName: location.locationName,
+      // Carried through, because `updateEntry` rewrites the whole aggregate:
+      // a location not resubmitted with its provenance would come back as a
+      // hand-dropped pin after any edit to the text.
+      savedLocationId: location.savedLocationId,
     })),
   );
   const [removeWeather, setRemoveWeather] = useState(false);
@@ -144,7 +153,12 @@ export function JournalEntryEditForm({
         </label>
       )}
 
-      <JournalLocationPicker value={locations} onChange={setLocations} />
+      <JournalLocationPicker
+        value={locations}
+        onChange={setLocations}
+        libraryCategoryOptions={locationCategoryOptions}
+        libraryTagOptions={locationTagOptions}
+      />
 
       <div className="flex gap-2">
         <Button onClick={handleSave} disabled={isBusy || date === ""}>

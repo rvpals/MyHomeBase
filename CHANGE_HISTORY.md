@@ -1,6 +1,120 @@
 # Change History
 
-## 2026-09-20 — A file you can open
+## 2026-09-20 — A place you save once, and a file you can open
+
+### [Journal] Build the location library out of the journal you already wrote
+
+A brand-new location library is an empty one, and a journal with years of entries already
+holds every coordinate worth putting in it. **Create locations from existing journal
+entries** in the Location Manager turns the second into the first.
+
+It scans every coordinate on every entry, groups the duplicates, and creates one place
+per distinct point — with a `Progress3D` bar reading *"37 of 312 places"*.
+
+**Duplicates collapse on an exact coordinate match**, and the coordinate is stored exactly
+as the entry held it — no rounding. A place picked once and re-used across forty entries
+was *copied*, so those rows hold identical numbers and become one. Two readings a few
+metres apart stay separate: merging them is a guess the reader can't undo, while a visible
+near-duplicate row is one click to delete. Wrong in the safe direction.
+
+**The entry's place name becomes the description** — that field is where you already wrote
+what the place was, and it would otherwise stay stranded on the entry. Every distinct value
+is kept, most common first (`"Home; Mum's"`), because both are things you typed. The name
+comes from the most common location name, not the first: a place renamed once and then used
+thirty times should arrive under the name it carries thirty times.
+
+**Addresses are looked up, on by default.** Nominatim allows one request a second and bans
+bulk geocoding, so the modal states the cost before you start ("about 5 minutes for 312")
+and a checkbox turns it off for a near-instant run. A lookup that fails — offline,
+rate-limited, a point in open ocean — leaves the address blank rather than losing the place.
+
+**Idempotent, and interruptible.** No job table: the run is a client-chunked loop over a
+batch action, the same shape the expense cleanup runner uses. Each batch recomputes what is
+outstanding, which means the run cannot double-create, **Stop** keeps everything already
+written, and running it again picks up exactly where it left off. Every contributing entry
+location is linked back, so those entries now read as having picked the place.
+
+The grouping is pure and lives in `src/lib/journal-locations/import-from-entries.ts` with
+36 colocated tests across it and the run loop — including the junk coordinates the CSV
+importer is documented to accept (`12234.44, -2334.333`), which are skipped rather than
+allowed to fail the whole import.
+
+No migration; 0101 already had everything. Also `journal-locations --import-from-entries
+[--no-addresses]`, driving the same use-case from a terminal.
+
+### [Journal] A location library, and a map of all of it
+
+Adding a location to an entry meant searching Nominatim or hunting the map for the same
+coffee shop a fourth time. Coordinates piled up in entries with no way to organise them
+and no way to see them together.
+
+There is now a **Locations** group in the section panel with three screens:
+
+- **Location Manager** — saved places, each with a name, description, address,
+  categories and tags. Search matches name, description *and* address; the filter chips
+  AND together. An overview map above the list carries a numbered pin per row.
+- **Location Map** — every saved place on one map, narrowed by category and tag, with a
+  numbered legend beside it so a pin reads back to a name.
+- **Location Meta Data** — the place categories and tags.
+
+The entry form's location picker grew a second tab, **From location database**: search
+the library, click a place, done.
+
+**The library is the source; the entry keeps a copy.** This is the decision the whole
+feature rests on. Picking a place copies its coordinates and name onto the entry exactly
+as before, and records `saved_location_id` as *provenance* rather than as a join the read
+path follows. Three consequences, all of them the point:
+
+- Correcting a library row's coordinates (the pin was 40 m off) does **not** silently
+  relocate every entry that ever used it. An entry records where you *were*.
+- Deleting a place never removes a location from an entry's history — `ON DELETE SET
+  NULL`, so the entry keeps its coordinates and simply stops pointing anywhere.
+- The CSV and ICS importers needed **no change at all**. The new column defaults to
+  `NULL`, which is also what every location written before today reads as.
+
+The cost is that an entry's copy of a name can drift from the library's after a rename.
+That is the intended reading — the entry says what the place was called when it was
+written — and the manager shows a usage count so a rename's blast radius is visible.
+
+**Location categories and tags are their own lists**, not the entry ones. An entry's
+categories say what the *writing* is about ("Travel", "Work"); a location's say what the
+*place* is ("Restaurant", "Trailhead"). One shared list would have put every entry tag
+into the location filter and every place category into the entry form's.
+
+**Its own library module**, `src/lib/journal-locations`, rather than more files under
+`src/lib/journal`: it owns its own five tables and its own repository, and depends on
+nothing in `journal` — the coupling runs the other way. Thirty colocated tests against an
+in-memory fake.
+
+**No new dependency and nothing metered.** Nominatim and OpenStreetMap tiles were already
+in use for the entry map, Leaflet was already installed, and the reverse-geocode only
+fires when a person clicks.
+
+Migration `0101_create_journal_location_library` adds five tables and one column. Two new
+hand-drawn glyphs came with it — `pin` (one place) and `map` (many at once) — and four
+icon slots. Driveable from a terminal as `journal-locations`, like every other use-case.
+
+### [Journal] Entries is one screen with two tabs, and the section panel reads as cards
+
+**Log is now a tab of Entries rather than a section of its own.** Main is the filter
+dropdown and the entries it narrows; Log is the same activity list it always was. They
+were always two views of one table, and the section panel was carrying the distinction.
+
+**The split is decided on the server, not in the browser.** `withLogCondition` ANDs
+"carries / does not carry Log" onto the reader's filter as a *separate group*, re-applied
+on every re-query. A saved filter joining its own conditions with OR would otherwise
+swallow the test and leak logged activities onto Main.
+
+`journal_section_log` kept its id — the slot moved from the section panel to the tab label
+rather than being retired, because the id is persisted in `ico_slot_overrides`. `Tabs` now
+takes a `ReactNode` label so the tab can carry its `SlotIcon`.
+
+**Each group in the section panel is its own embossed card.** A heading and its children
+were separated only by indentation, the weakest signal available in a 240px column —
+Administration's *Configuration* group read as six unrelated links. The group row and its
+children now sit in one `.card-embossed` container, tied together by a hairline spine and
+elbow, all of it `aria-hidden` decoration over unchanged accordion wiring. Compact doesn't
+get the cards: the bottom sheet is already a card, and boxes inside a box read as clutter.
 
 ### [Tools] A CSV file browser, beside the SQLite one
 

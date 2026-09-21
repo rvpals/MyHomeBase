@@ -456,10 +456,20 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    // The id stays `journal_section_log` even though Log is no longer a section —
+    // it is the second tab of Entries now. Slot ids are persisted in
+    // `ico_slot_overrides.slot_id`, so renaming one orphans any icon already
+    // uploaded against it; the label and `where` move with the slot, only the id
+    // is frozen. Same treatment as `homescreen_card_clock` above.
+    //
+    // It stays `wired: true` because the tab strip really does render it (see
+    // journal-entries-view.tsx): a slot marked unwired advertises "uploads won't
+    // show yet" in the admin list, which would be untrue here, and
+    // slots.test.ts asserts there are none.
     id: "journal_section_log",
-    label: "Log",
+    label: "Log tab",
     group: "Journal sections",
-    where: "Journal → section panel → Log.",
+    where: "Journal → Entries → the Log tab label, left of the word.",
     defaultConcept: "clipboard",
     wired: true,
     namespace: "tree",
@@ -485,6 +495,44 @@ export const ICON_SLOTS: IconSlot[] = [
     group: "Journal sections",
     where: "Journal → section panel → the Configuration group header (wraps Preferences and Templates).",
     defaultConcept: "gear",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    // Not in JOURNAL_SECTION_ICONS -- the shell synthesises this accordion heading to
+    // wrap the three Locations children, so it needs a slot of its own.
+    id: "journal_section_locations_group",
+    label: "Locations (group)",
+    group: "Journal sections",
+    where: "Journal → section panel → the Locations group header (wraps Location Manager, Location Map and Location Meta Data).",
+    defaultConcept: "map",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "journal_section_locations",
+    label: "Location Manager",
+    group: "Journal sections",
+    where: "Journal → section panel → Locations → Location Manager.",
+    defaultConcept: "pin",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "journal_section_location_map",
+    label: "Location Map",
+    group: "Journal sections",
+    where: "Journal → section panel → Locations → Location Map.",
+    defaultConcept: "map",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "journal_section_location_metadata",
+    label: "Location Meta Data",
+    group: "Journal sections",
+    where: "Journal → section panel → Locations → Location Meta Data.",
+    defaultConcept: "shapes",
     wired: true,
     namespace: "tree",
   },
@@ -696,6 +744,23 @@ export const ICON_SLOTS: IconSlot[] = [
     // Explorer's nav entry uses, which is the point: both screens mean "look
     // inside a database file", and sharing the concept makes them read alike.
     defaultConcept: "database",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    // Derived by `sectionSlotId` from the section slug `csv-browser` (hyphen ->
+    // underscore). The slug and this id are locked together: renaming either without
+    // the other silently stops matching and orphans any uploaded override.
+    id: "tools_section_csv_browser",
+    label: "CSV File Browser",
+    group: "Tools sections",
+    where: "Tools → section panel → CSV File Browser.",
+    // `csv-file`, a concept added with this section: a page with a small table ruled
+    // into it. Deliberately not `database` — that is the SQLite browser's, and the two
+    // sit adjacent in the same panel, where one glyph for both would make them
+    // indistinguishable. Not `list` either, which says "rows of something" and loses
+    // the part that matters here, that it is a *file* you brought in.
+    defaultConcept: "csv-file",
     wired: true,
     namespace: "tree",
   },

@@ -333,7 +333,7 @@ Row-click navigation:
 - Stocks & ETFs simulation — [stock-simulation-view.tsx](src/app/(protected)/modules/[slug]/stock-simulation-view.tsx) *(a fixed ten-row table: `showToolbar={false}` with `defaultPageSize="ALL"`, keeping sort and the status bar's CSV export)*
 - CSV Analysis — [csv-analytics-view.tsx](src/app/(protected)/modules/[slug]/csv-analytics-view.tsx) *(row selection + bulk edit over an **arbitrary** schema: the dialog's fields are the dataset's own columns, so the grid is keyed by the table's real SQLite `rowid` rather than by row position)*
 - MyJournal Calendar Import — [journal-calendar-import-view.tsx](src/app/(protected)/modules/[slug]/journal-calendar-import-view.tsx) *(selection as a **pick-what-to-import** list: the ticked rows are the import's input, and rows the plan marked unimportable are filtered out of the action rather than disabled)*
-- MyJournal Log — [journal-log-view.tsx](src/app/(protected)/modules/[slug]/journal-log-view.tsx) *(row click opens `JournalViewer` in a `Modal`; bulk delete to the recycle bin)*
+- MyJournal Log — [journal-log-view.tsx](src/app/(protected)/modules/[slug]/journal-log-view.tsx) *(the **Log** tab of Entries, not a section of its own; row click opens `JournalViewer` in a `Modal`; bulk delete to the recycle bin)*
 - SQL Explorer, Stocks & ETFs (accounts / positions / watchlist / analytics / next-day actions)
 
 **Filter operators.** A column filter box is a substring match by default, and also
@@ -1121,7 +1121,7 @@ One active panel at a time. Owns its own active-tab state.
 
 | Prop | Type | Notes |
 |------|------|-------|
-| `items` | `TabItem[]` — `{ key, label, content: ReactNode }` | Rendered in order. |
+| `items` | `TabItem[]` — `{ key, label: ReactNode, content: ReactNode }` | Rendered in order. `label` is normally a string; it takes a node so a tab can carry a `SlotIcon` beside its text (Journal's Entries → Log). |
 | `defaultActiveKey?` | `string` | Uncontrolled. Defaults to the first item. |
 | `activeKey?` | `string` | Controlled active tab. Pair with `onActiveKeyChange`. |
 | `onActiveKeyChange?` | `(key: string) => void` | Fired on a tab click. |
@@ -1150,7 +1150,10 @@ Explorer's SQL Query / Tables Explorer / Modules split
 [admin/sql-explorer/view.tsx](src/app/(protected)/admin/sql-explorer/view.tsx) *(controlled
 — the table list's "Open" jumps to the query tab to show the result)*; the Music Library
 player's Lyrics / Story split
-[music-player-view.tsx](src/app/(protected)/modules/[slug]/music-player-view.tsx).
+[music-player-view.tsx](src/app/(protected)/modules/[slug]/music-player-view.tsx); the
+Journal module's Entries Main / Log split
+[journal-entries-view.tsx](src/app/(protected)/modules/[slug]/journal-entries-view.tsx)
+*(the Log tab's label carries a `SlotIcon` — the only node label so far)*.
 
 ---
 
@@ -1450,6 +1453,21 @@ heading is a label, not a level, so nothing costs an extra tap and a module with
 sections in three groups stays readable on a phone. (Compact used to flatten them away;
 that was wrong for exactly the modules that needed the structure most.) `flattenSections`
 is still exported, and is what finds the active section for the bar's label.
+
+**On desktop each group is one slab**, the same treatment [`TreeNav`](#treenav) gives its
+groups. A group row plus its children sit in a single `.card-embossed` container
+(`rounded-lg border border-line bg-paper-raised`), the group row takes a `border-b
+border-line` only while expanded, and the children are tied to it by a hairline **spine +
+elbow** in `bg-line` — a vertical rule down the card's inner edge with a short elbow out
+to each child, the spine stopping at the last child's elbow so it never dangles. Before
+this, a heading and its children were separated only by indentation, which is the weakest
+signal available in a 240px column: Administration's *Configuration* group read as six
+unrelated links. All of it is `aria-hidden` decoration — the accordion's
+`aria-expanded`/`aria-controls` wiring is unchanged.
+
+**Compact does not get the cards.** The bottom sheet is already a card, and boxes inside a
+box read as clutter rather than structure; the sheet keeps its uppercase group headings.
+That is why this lives in `SectionGroup` (desktop) and not in `SectionSheetList`.
 
 **Compact carries both tiers on one edge.** The bar opens one sheet showing either the
 sections or the module list; `navStyle` decides whether that's a drill-in with a

@@ -17,6 +17,15 @@ export interface EntryLocation {
   longitude: number;
   locationName: string;
   sortOrder: number;
+  /**
+   * The `jrn_locations` row this point was copied from, or undefined when the
+   * pin was dropped by hand (every location written before migration 0101).
+   *
+   * Provenance, not a join: the coordinates and name above are this entry's own
+   * copy and stay put even if the library row is edited or deleted. See the
+   * 0101 migration log for why history must not move.
+   */
+  savedLocationId?: number;
 }
 
 // An entry is an aggregate: it carries its own categories, tags, and locations

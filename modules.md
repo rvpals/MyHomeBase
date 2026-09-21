@@ -255,9 +255,11 @@ reminder. `0058` records why that isn't unified, and why nothing prunes a favori
 position was sold.
 
 **Journal** (`journal`) — dated entries with categories, tags, locations (with a
-map), and images; saved filters; CSV and calendar (`.ics`) import; a Log section for
-logged activities. A filter query travels in the URL (`?filter=`) so a filtered list is
-linkable. Library: `src/lib/journal`.
+map), and images; saved filters; CSV and calendar (`.ics`) import; a Log tab under
+**Entries** for logged activities; and a saved-location library under the **Locations**
+group. A filter
+query travels in the URL (`?filter=`) so a filtered list is linkable. Libraries:
+`src/lib/journal` and `src/lib/journal-locations`.
 
 **New Journal Entry** (`new-entry`) is the entry form, on a route of its own. It was a
 `New Journal` card on the home screen, revealed by a quill button in the title row; that
@@ -463,11 +465,24 @@ Five choices worth knowing:
   only the calendar's other fields update. Untick it (CLI: `--replace`) for the old
   replace-the-whole-entry behaviour.
 
-The **Log** section lists every entry carrying the `Log` category — logged activities
-rather than written entries, which is where calendar imports land. One `DataGrid` with
-search, filters, CSV export and a bulk delete that moves rows to the **recycle bin**
-(0079) rather than destroying them; clicking a row opens the same `JournalViewer` the
-calendar and Correct tab use. Two choices worth knowing:
+**Entries** is two tabs. **Main** is the filter dropdown and the entries it narrows;
+**Log** lists every entry carrying the `Log` category — logged activities rather than
+written entries, which is where calendar imports land. The Log tab is one `DataGrid`
+with search, filters, CSV export and a bulk delete that moves rows to the **recycle
+bin** (0079) rather than destroying them; clicking a row opens the same `JournalViewer`
+the calendar and Correct tab use.
+
+Log was its own section until the two became tabs of one screen. Three choices worth
+knowing:
+
+- **The split is decided on the server, not in the browser.** `withLogCondition` ANDs
+  "carries / does not carry Log" onto the reader's filter as a **separate group**, and
+  `findJournalEntriesAction` re-applies it on every re-query. A saved filter joining its
+  own conditions with OR would otherwise swallow the test and leak logged activities
+  onto Main.
+- **`journal_section_log` kept its id.** The slot moved from the section panel to the
+  tab label rather than being retired, because the id is persisted in
+  `ico_slot_overrides` — see *Ids are permanent* in `coding-guide.md`.
 
 - **`Log` is a seeded category, not a column or a new kind of record.** An activity log
   *is* a journal entry with most fields blank — a date, a title, a time, a place, and an
@@ -490,6 +505,102 @@ Calendar Import arrived: the existing `/import` route **kept its slug and its
 `journal_section_import` icon slot** (renaming either would orphan an uploaded icon) and
 became the group's first child, relabelled *CSV Import*, with the group heading carrying
 the wider name.
+
+### The Locations group — a saved-location library
+
+Three sections under a synthesised **Locations** heading (migration 0101), backed by a
+library module of their own, `src/lib/journal-locations`:
+
+| Section | Slug | What it does |
+|---|---|---|
+| Location Manager | `locations` | Create, search and correct saved places |
+| Location Map | `location-map` | Every saved place on one map, filtered by category and tag |
+| Location Meta Data | `location-metadata` | The place categories and tags |
+
+**The library is the source; an entry keeps a copy.** Picking a place in the entry form
+copies its coordinates and name onto `jrn_entry_locations` as before, and records
+`saved_location_id` as *provenance* — not as a join the read path follows. So editing a
+library row never relocates an entry that already used it, deleting one never removes a
+location from an entry's history (`ON DELETE SET NULL`), and the CSV and ICS importers
+needed no change at all: the new column simply defaults to `NULL`. The full argument is
+in `migrations/0101_create_journal_location_library.md`.
+
+**Location categories and tags are their own lists**, not the entry ones. An entry's
+categories say what the *writing* is about ("Travel", "Work"); a location's say what the
+*place* is ("Restaurant", "Trailhead"). Sharing one list would put every entry tag into
+the location filter and back again.
+
+**Why a separate library module** rather than more files under `src/lib/journal`: it owns
+its own five tables and its own repository, and it depends on nothing in `journal` — the
+coupling runs the other way, when an entry copies a place out of it. It passes the
+package test in `ARCHITECTURE.md`.
+
+**Building the library from what is already there.** The manager's *Create locations from
+existing journal entries* button scans every coordinate on every entry and creates one
+place per distinct point. Three rules, all of them decisions worth knowing:
+
+- **Duplicates collapse on an exact coordinate match**, and the coordinate is stored
+  exactly as the entry held it — no rounding anywhere. A place picked once and re-used
+  across forty entries was *copied*, so those rows are byte-identical and become one row.
+  Two readings a few metres apart stay separate: merging them is a guess the reader
+  cannot undo, whereas a near-duplicate row is visible and deletable.
+- **The entry's `place_name` becomes the description** — that field is where the reader
+  already wrote what the place was, and it would otherwise stay stranded on the entry.
+  Every distinct value is kept, most common first (`"Home; Mum's"`), because both are
+  things they typed. The name comes from the most common `location_name`.
+- **Addresses are reverse-geocoded, on by default.** Nominatim allows one request a
+  second and bans bulk geocoding, so the modal states the wall time up front (300 places
+  ≈ 5 minutes) and the checkbox turns it off for a near-instant run. A failed lookup
+  leaves the address blank rather than losing the place.
+
+Progress is a [`Progress3D`](components.md#progress3d) bar driven by a client-chunked
+loop — the same shape the expense cleanup runner uses, and **no job table**. Each batch
+recomputes what is outstanding, so the run is idempotent: it cannot double-create, Stop
+keeps everything already written, and running it again resumes where it left off. Every
+contributing entry location is linked back via `saved_location_id`, so those entries now
+read as having picked the place.
+
+**Merging & Dedup** is the counterpart to that importer's strictness. The import
+deliberately collapses nothing but an *exact* coordinate match, which is right for an
+unattended bulk job but leaves the near-duplicates behind: the same shop typed once by
+hand and once from an entry, an apostrophe's difference, a pin nudged ten metres. This
+dialog (`src/lib/journal-locations/dedup.ts`) finds those and lets the reader resolve
+them one group at a time. Four decisions worth knowing:
+
+- **Both signals must agree.** Two places are candidates only when they round to the
+  same coordinate cell (3 decimal places, ~110m) **and** their names score at or above
+  the similarity threshold. Name alone would merge every branch of a chain; coordinates
+  alone would merge a restaurant with the car park sharing its pin. Rounding also makes
+  the coordinate a bucket key, so names are compared only within a cell rather than
+  across every pair in the library.
+- **Names are compared by Sørensen–Dice over character bigrams**, on a normalized form
+  (case, accents, punctuation and filler words removed). Bigrams rather than edit
+  distance because they are insensitive to word order and don't punish a long name for
+  one extra word — both things a geocoder is inconsistent about. No dependency was added
+  for this; it is ~25 lines with a colocated test.
+- **Grouping is transitive** (union-find): if A matches B and B matches C, that is one
+  group of three, never two overlapping pairs — otherwise merging one would invalidate
+  the other while both were still on screen.
+- **Merging is not a loop of deletes**, and this is the load-bearing part. Deleting a
+  place detaches every entry that used it (`ON DELETE SET NULL`); for a merge those
+  entries should land on the survivor instead. So `mergeLocations` repoints
+  `jrn_entry_locations`, unions the losers' category and tag links onto the survivor,
+  and deletes — **all in one transaction**. A delete that landed without its repoint
+  would be silent data loss that nothing on screen would report.
+
+The reader picks the survivor per group (defaulting to the most-used copy) and can mark
+a group *Not duplicates* to dismiss it. The scan is a suggestion: the merge path takes
+the ids it is given and never re-derives that they were duplicates.
+
+The three slugs are load-bearing: the section icon slots derive from them
+(`journal_section_locations`, `journal_section_location_map`,
+`journal_section_location_metadata`, plus `journal_section_locations_group` for the
+synthesised heading), so renaming one silently orphans an uploaded icon override. Two new
+hand-drawn glyphs came with them — `pin` (one place) and `map` (many at once).
+
+Driveable from a terminal, like every other use-case: `journal-locations --list`,
+`--search`, `--add`, `--update`, `--delete`, `--promote`,
+`--import-from-entries [--no-addresses]`, and the taxonomy flags.
 
 Week start is **hardcoded to Sunday**, in one place: `startOfWeek` in
 `calendar.ts`, which every grid builder goes through. Making it a journal preference

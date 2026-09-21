@@ -20,6 +20,9 @@ import {
   getTagIcon,
   listCategories,
   listEntries,
+  listLogEntries,
+  listNonLogEntries,
+  withLogCondition,
   listRecentEntries,
   searchEntries,
   listTags,
@@ -899,6 +902,114 @@ describe("findEntries", () => {
     const repo = fakeRepo();
     expect(() => findEntries(repo, emptyFilter(), 0)).toThrow(/positive integer/);
     expect(() => findEntries(repo, emptyFilter(), 1.5)).toThrow(/positive integer/);
+  });
+});
+
+// The Entries browser's two tabs. The pair must partition the journal: every
+// entry belongs to exactly one of them, or a row goes missing from both.
+describe("listNonLogEntries and listLogEntries", () => {
+  it("splits the journal into the Main and Log tabs", () => {
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2026-01-01", title: "swim practice", categories: ["Log"] });
+    createEntry(repo, { date: "2026-01-02", title: "a written entry" });
+
+    expect(listNonLogEntries(repo).map((entry) => entry.title)).toEqual(["a written entry"]);
+    expect(listLogEntries(repo).map((entry) => entry.title)).toEqual(["swim practice"]);
+  });
+
+  it("excludes an entry from Main when Log is one of several categories", () => {
+    // `hasNone` is a NOT EXISTS, not a negated `hasAny` — an entry carrying Log
+    // alongside other categories still belongs only to the Log tab.
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2026-01-01", title: "lesson", categories: ["Log", "Kids", "Sport"] });
+
+    expect(listNonLogEntries(repo)).toEqual([]);
+    expect(listLogEntries(repo).map((entry) => entry.title)).toEqual(["lesson"]);
+  });
+
+  it("keeps a category that merely contains the word log on the Main tab", () => {
+    // "Logbook" is not "Log". A substring test here would strand the entry.
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2026-01-01", title: "kept", categories: ["Logbook"] });
+
+    expect(listNonLogEntries(repo).map((entry) => entry.title)).toEqual(["kept"]);
+    expect(listLogEntries(repo)).toEqual([]);
+  });
+
+  it("leaves every entry on Main when nothing is logged", () => {
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2026-01-01", title: "one" });
+    createEntry(repo, { date: "2026-01-02", title: "two" });
+
+    expect(listNonLogEntries(repo)).toHaveLength(2);
+    expect(listLogEntries(repo)).toEqual([]);
+  });
+
+  it("rejects a non-positive limit", () => {
+    const repo = fakeRepo();
+    expect(() => listNonLogEntries(repo, 0)).toThrow(/positive integer/);
+    expect(() => listLogEntries(repo, -1)).toThrow(/positive integer/);
+  });
+});
+
+describe("withLogCondition", () => {
+  it("narrows a reader's filter rather than replacing it", () => {
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2026-01-01", title: "Rome trip", categories: ["Log"] });
+    createEntry(repo, { date: "2026-01-02", title: "Rome trip" });
+    createEntry(repo, { date: "2026-01-03", title: "groceries" });
+
+    const titleFilter = {
+      join: "AND" as const,
+      groups: [
+        { join: "AND" as const, conditions: [{ field: "title" as const, operator: "contains" as const, value: "trip" }] },
+      ],
+    };
+
+    // Main: the reader's filter AND not-a-log.
+    expect(findEntries(repo, withLogCondition(titleFilter, false))).toHaveLength(1);
+    // Log: the same filter, ANDed the other way.
+    expect(findEntries(repo, withLogCondition(titleFilter, true))).toHaveLength(1);
+  });
+
+  it("cannot leak a Log entry into Main through an OR-joined filter", () => {
+    // The regression this guards: folding the Log test in beside OR-joined
+    // conditions would make it one more alternative, and `title ~ beach OR
+    // category hasNone Log` matches nearly the whole journal.
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2026-01-01", title: "beach day", categories: ["Log"] });
+    createEntry(repo, { date: "2026-01-02", title: "Oslo", categories: ["Log"] });
+
+    const orFilter = {
+      join: "AND" as const,
+      groups: [
+        {
+          join: "OR" as const,
+          conditions: [
+            { field: "title" as const, operator: "contains" as const, value: "beach" },
+            { field: "title" as const, operator: "contains" as const, value: "Oslo" },
+          ],
+        },
+      ],
+    };
+
+    expect(findEntries(repo, withLogCondition(orFilter, false))).toEqual([]);
+    expect(findEntries(repo, withLogCondition(orFilter, true))).toHaveLength(2);
+  });
+
+  it("adds a group rather than mutating the filter it was given", () => {
+    const original = {
+      join: "OR" as const,
+      groups: [
+        { join: "AND" as const, conditions: [{ field: "title" as const, operator: "contains" as const, value: "x" }] },
+      ],
+    };
+    const result = withLogCondition(original, false);
+
+    expect(original.groups).toHaveLength(1);
+    expect(result.groups).toHaveLength(2);
+    // The top-level join is forced to AND — that is what makes the tab airtight.
+    expect(result.join).toBe("AND");
   });
 });
 

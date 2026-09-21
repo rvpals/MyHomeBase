@@ -40,8 +40,10 @@ export const TREE_ICON_NAMES = [
   "chart",
   "upload",
   "quote",
-  // A notebook with a plus in the page — Journal's New Entry section. Deliberately not
-  // `plus` (which says "add" without saying what) and not `quote` (Report's).
+  // A quill pen — Journal's New Entry section. Deliberately not `plus` (which says
+  // "add" without saying what) and not `quote`, a book *with* a quill (Report's).
+  // The key stays `new-journal` though the drawing is now a pen: it is a
+  // `defaultConcept` in slots.ts and renaming it would strand that reference.
   "new-journal",
   "stock-quote",
   "grid",
@@ -51,6 +53,10 @@ export const TREE_ICON_NAMES = [
   "history",
   "users",
   "database",
+  // A document with a table ruled into it — Tools' CSV File Browser. Deliberately
+  // not `database` (the SQLite browser's, and the two sections sit adjacent in the
+  // same panel) and not `list` (rows of anything, which loses "this is a file").
+  "csv-file",
   "shapes",
   "search",
   "magic",
@@ -76,6 +82,13 @@ export const TREE_ICON_NAMES = [
   "game-blackjack",
   "game-minesweeper",
   "game-mahjong",
+  // Journal's Location Manager. A map pin — the mark for a single saved place.
+  // Deliberately not `flash`/`plus`: this says *where*, not *do something*.
+  "pin",
+  // Journal's Location Map — a folded paper map, i.e. several places at once.
+  // Distinct from `pin` on purpose: the two sit adjacent in the same panel, and
+  // one place vs many is exactly the difference the reader is picking between.
+  "map",
   // The "launch module" button on the home screen's cards — opens the module the card's
   // numbers belong to, at its landing page. A button, so it is in `ALWAYS_CLASSIC` and
   // no icon slot points at it.

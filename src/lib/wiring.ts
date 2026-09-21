@@ -31,6 +31,7 @@ import { SqliteInvestmentAccountRepository } from "./investment-accounts/reposit
 import { SharpIconImageProcessor } from "./icons/image-processor";
 import { SqliteIconOverridesRepository } from "./icons/repository";
 import { SqliteJournalRepository } from "./journal/repository";
+import { SqliteSavedLocationRepository } from "./journal-locations/repository";
 import { NodePhotoFileStore } from "./journal-photos/file-store";
 import { YahooFinanceClient } from "./market-data/yahoo-finance-client";
 import { SqliteModuleSettingsRepository } from "./module-settings/repository";
@@ -184,6 +185,10 @@ export const deps = {
   // lazily imported — see the class comment for why that matters on the NAS.
   carouselImageProcessor: new SharpCarouselImageProcessor(),
   journalRepo: new SqliteJournalRepository(db),
+  // The Journal's saved-location library (migration 0101). A repository of its
+  // own rather than more methods on journalRepo: the library owns its own five
+  // tables and nothing in the journal's reads consults them.
+  savedLocationRepo: new SqliteSavedLocationRepository(db),
   /**
    * A read-only view of the photo archive at `root`.
    *
