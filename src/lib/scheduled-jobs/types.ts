@@ -75,7 +75,7 @@ export interface JobDescriptor {
 export const JOB_DESCRIPTORS: readonly JobDescriptor[] = [
   {
     key: JOB_KEYS.stockAutoRefresh,
-    label: "Stocks & ETFs auto refresh",
+    label: "Investments auto refresh",
     description:
       "Prices every position, looks up the sector of any new ticker, then files the day's totals — exactly what the Refresh All button does, so the value history has no gaps on days nobody pressed it.",
     runnable: true,

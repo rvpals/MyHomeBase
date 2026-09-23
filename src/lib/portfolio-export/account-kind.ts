@@ -2,7 +2,7 @@
  * Working out an account's tax treatment from its name, and stripping the name
  * itself out of the export.
  *
- * Inferred rather than stored because `stk_investment_accounts` has no type
+ * Inferred rather than stored because `inv_investment_accounts` has no type
  * column, and adding one would mean a migration plus an admin field to maintain
  * by hand. The names already say it — "Fidelity ROTH IRA Account", "Fidelity
  * 401K", "VOYA TCNJ" — so the rules below read what is there. Verified against

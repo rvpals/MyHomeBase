@@ -1,7 +1,7 @@
 // Letting a recorded trade move the holding it describes.
 //
-// The two ledgers are deliberately separate: `stk_stock_positions` carries what you
-// hold (normally imported from a broker), `stk_stock_transactions` carries what you
+// The two ledgers are deliberately separate: `inv_stock_positions` carries what you
+// hold (normally imported from a broker), `inv_stock_transactions` carries what you
 // did. Recording a trade has never touched the holding, because which specific lots
 // a sale consumed is a decision — FIFO, specific-lot — that the ledger doesn't
 // record. See `lib/tax-lots/from-transactions.ts`, which drops sells for that reason.
@@ -84,7 +84,7 @@ export function resolveTargetPosition(
     // Held, but somewhere else. The candidates come back so the caller can name
     // where it *is* held — that is what lets the reader tell a mis-picked account
     // apart from a genuinely new position that needs creating. Ids, not names:
-    // account names live in `stk_investment_accounts`, which this module can't read.
+    // account names live in `inv_investment_accounts`, which this module can't read.
     return {
       ok: false,
       failure: {
@@ -105,7 +105,7 @@ export function resolveTargetPosition(
  * A sentence a human can act on, for a failure the UI has to explain.
  *
  * `accountName` resolves an account id to its display name. Optional because this
- * module has no access to `stk_investment_accounts` — callers that have the account
+ * module has no access to `inv_investment_accounts` — callers that have the account
  * list (the server action, the CLI) pass one and get "held in Chase"; callers that
  * don't fall back to "account 3", which is still actionable.
  */

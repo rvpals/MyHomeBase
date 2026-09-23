@@ -32,6 +32,7 @@ export {
   retentionDaysSchema,
   siteVisitFilterSchema,
   siteVisitSchema,
+  suspicionSignalSchema,
   type NewIpAllowlistEntryInput,
   type NewSiteVisitInput,
   type SiteVisitFilterInput,
@@ -47,8 +48,10 @@ export {
 } from "./prune-runner";
 export {
   SUSPICION_THRESHOLDS,
+  decodeSignals,
   describeSignal,
   describeSuspicion,
+  encodeSignals,
   levelFromSignals,
   scoreSuspicion,
 } from "./suspicion";

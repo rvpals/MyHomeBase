@@ -13,7 +13,7 @@
 // The star is *marked* in the ticker viewer's header, not here — one control in
 // the one place every ticker in the app already opens.
 //
-// Each row also shows its **last-refreshed** price, read from `stk_positions`
+// Each row also shows its **last-refreshed** price, read from `inv_positions`
 // rather than quoted live: opening the menu stays a DB read, and the figures
 // agree with the positions table instead of differing by whatever moved between
 // two fetches. A favorite that isn't a holding has no stored price and shows a

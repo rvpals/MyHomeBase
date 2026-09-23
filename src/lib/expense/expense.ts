@@ -9,6 +9,7 @@ import {
   bulkTransactionEditSchema,
   saveAccountSchema,
   saveCategorySchema,
+  saveRuleTypeSchema,
   saveVendorSchema,
   savePostImportRuleSchema,
   saveTransactionSchema,
@@ -20,6 +21,7 @@ import type {
   PostImportRuleWriteData,
   SaveAccountInput,
   SaveCategoryInput,
+  SaveRuleTypeInput,
   SaveVendorInput,
   SavePostImportRuleInput,
   SaveTransactionInput,
@@ -30,6 +32,7 @@ import type {
   CategoryTotal,
   CreditCardAccount,
   ExpenseCategory,
+  ExpenseRuleType,
   ExpenseTransaction,
   ExpenseVendor,
   PostImportRule,
@@ -357,18 +360,49 @@ function dedupe(ids: number[]): number[] {
   return [...new Set(ids)];
 }
 
+// --- Rule types ---------------------------------------------------------------
+
+export function listRuleTypes(repo: ExpenseRepository): ExpenseRuleType[] {
+  return repo.listRuleTypes();
+}
+
+export function upsertRuleType(
+  repo: ExpenseRepository,
+  input: SaveRuleTypeInput,
+): ExpenseRuleType {
+  return repo.upsertRuleType(saveRuleTypeSchema.parse(input));
+}
+
+/**
+ * Deletes the type. Rules filed under it keep their `typeName` and read as
+ * Untyped -- see migration 0107. No guard against deleting a type in use: that
+ * is the documented behaviour, matching `deleteCategory`.
+ */
+export function deleteRuleType(repo: ExpenseRepository, name: string): void {
+  repo.deleteRuleType(name);
+}
+
 // --- Rules ------------------------------------------------------------------
 
 export function listRules(repo: ExpenseRepository): PostImportRule[] {
   return repo.listRules();
 }
 
-/** Any category a rule assigns is registered, so the managed list stays complete. */
-function registerRuleCategories(repo: ExpenseRepository, input: PostImportRuleWriteData): void {
+/**
+ * Any category a rule assigns, and the type it is filed under, are registered
+ * so the managed lists stay complete.
+ *
+ * The type is registered for the same reason the category is: the New Rule form
+ * lets you type a name that isn't in the curated list yet, and a name you used
+ * but that never appears under Meta Data reads as the save having half-worked.
+ * Blank is skipped -- Untyped is the absence of a type, not a type called "".
+ */
+function registerRuleLookups(repo: ExpenseRepository, input: PostImportRuleWriteData): void {
   const categories = input.actions
     .filter((action) => action.fieldName === "categoryName")
     .map((action) => action.fieldValue);
   if (categories.length > 0) repo.registerCategoriesIfMissing(categories);
+  if (input.typeName.trim() !== "") repo.registerRuleTypesIfMissing([input.typeName]);
 }
 
 export function createRule(
@@ -376,7 +410,7 @@ export function createRule(
   input: SavePostImportRuleInput,
 ): PostImportRule {
   const validated = savePostImportRuleSchema.parse(input);
-  registerRuleCategories(repo, validated);
+  registerRuleLookups(repo, validated);
   return repo.createRule(validated);
 }
 
@@ -387,7 +421,7 @@ export function updateRule(
 ): PostImportRule {
   if (!repo.getRuleById(id)) throw new Error(`No rule with id ${id}.`);
   const validated = savePostImportRuleSchema.parse(input);
-  registerRuleCategories(repo, validated);
+  registerRuleLookups(repo, validated);
   return repo.updateRule(id, validated);
 }
 

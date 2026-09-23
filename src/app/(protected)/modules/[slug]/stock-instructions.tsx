@@ -1,4 +1,4 @@
-// Per-section reference for the Stocks & ETFs module — how the pieces fit
+// Per-section reference for the Investments module — how the pieces fit
 // together and the behaviours that aren't obvious from the UI (what "Unassigned"
 // means, why a cost basis can read "—", how re-importing behaves).
 //

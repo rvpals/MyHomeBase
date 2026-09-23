@@ -1,6 +1,8 @@
 import type { ModuleSeed } from "./types";
 
 // Mirrors the seed INSERTs in migrations/0005_seed_stock_etfs_module.sql,
+// as amended by migrations/0108_rename_stock_etfs_to_investments.sql (which renamed
+// the slug to `investments` and retitled the module),
 // migrations/0012_seed_journal_module.sql, migrations/0020_seed_csv_analysis_module.sql,
 // migrations/0030_seed_expense_module.sql, and
 // migrations/0048_seed_attendance_module.sql,
@@ -17,10 +19,10 @@ import type { ModuleSeed } from "./types";
 // "Reset to Default" restores the table to exactly this list — keep both in sync.
 export const DEFAULT_MODULES: ModuleSeed[] = [
   {
-    slug: "stock-etfs",
-    shortName: "Stocks & ETFs",
-    longName: "Stock & ETFs etc",
-    description: "Manage stock and ETF investments.",
+    slug: "investments",
+    shortName: "Investments",
+    longName: "Investments",
+    description: "Manage stock, ETF and fund investments.",
     sequence: 2,
     isVisible: true,
     icon: "chart",

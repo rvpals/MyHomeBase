@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   SUSPICION_THRESHOLDS,
+  decodeSignals,
   describeSignal,
   describeSuspicion,
+  encodeSignals,
   levelFromSignals,
   scoreSuspicion,
 } from "./suspicion";
-import type { IpHistory, SiteVisitContext } from "./types";
+import type { IpHistory, SiteVisitContext, SuspicionSignal } from "./types";
 
 /** A history with nothing interesting in it. Override one field per test. */
 function history(overrides: Partial<IpHistory> = {}): IpHistory {
@@ -169,6 +171,68 @@ describe("levelFromSignals", () => {
       expect(levelFromSignals([signal])).toBe("suspicious");
     },
   );
+
+  it("returns watch for a lone allowlist_removed marker", () => {
+    // "I stopped trusting this address" is a reason to look, not an accusation.
+    expect(levelFromSignals(["allowlist_removed"])).toBe("watch");
+  });
+
+  it("does not let the allowlist_removed marker corroborate a weak signal", () => {
+    // The regression this guards: counting the marker as a second signal would
+    // manufacture a "suspicious" out of one weak observation plus an admin action.
+    expect(levelFromSignals(["tool_user_agent", "allowlist_removed"])).toBe("watch");
+  });
+
+  it("still reports suspicious when a damning signal accompanies the marker", () => {
+    expect(levelFromSignals(["scanner_user_agent", "allowlist_removed"])).toBe("suspicious");
+  });
+});
+
+describe("encodeSignals / decodeSignals", () => {
+  it("round-trips a list of signals", () => {
+    const signals: SuspicionSignal[] = ["scanner_user_agent", "auth_failures"];
+    expect(decodeSignals(encodeSignals(signals))).toEqual(signals);
+  });
+
+  it("round-trips an empty list through the table's blank sentinel", () => {
+    expect(encodeSignals([])).toBe("");
+    expect(decodeSignals("")).toEqual([]);
+  });
+
+  it("reads a pre-0106 row as no reasons rather than throwing", () => {
+    // Existing rows were not backfilled; their reasons cannot be re-derived.
+    expect(decodeSignals(null)).toEqual([]);
+    expect(decodeSignals(undefined)).toEqual([]);
+  });
+
+  it("drops a signal it does not recognise instead of failing the row", () => {
+    // A row written by a newer build must still render on an older one: show the
+    // reasons we understand rather than losing the whole page.
+    expect(decodeSignals("burst,from_the_future,auth_failures")).toEqual([
+      "burst",
+      "auth_failures",
+    ]);
+  });
+
+  it("tolerates whitespace and duplicates", () => {
+    expect(decodeSignals(" burst , burst ,auth_failures")).toEqual(["burst", "auth_failures"]);
+  });
+
+  it("encodes without separators that would need escaping", () => {
+    // The no-escaping claim in migrations/0106 rests on this: no signal key contains
+    // a comma, so splitting on one can never tear a key in half.
+    const every: SuspicionSignal[] = [
+      "no_user_agent",
+      "tool_user_agent",
+      "scanner_user_agent",
+      "burst",
+      "never_signs_in",
+      "auth_failures",
+      "allowlist_removed",
+    ];
+    for (const signal of every) expect(signal).not.toContain(",");
+    expect(decodeSignals(encodeSignals(every))).toEqual(every);
+  });
 });
 
 describe("describeSignal / describeSuspicion", () => {
@@ -180,6 +244,7 @@ describe("describeSignal / describeSuspicion", () => {
       "burst",
       "never_signs_in",
       "auth_failures",
+      "allowlist_removed",
     ] as const;
 
     for (const signal of signals) {

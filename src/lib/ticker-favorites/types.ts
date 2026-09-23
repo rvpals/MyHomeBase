@@ -14,7 +14,7 @@ export interface TickerFavorite {
 /**
  * A favorite with its last-refreshed price attached.
  *
- * The price is whatever `refresh-positions` last wrote to `stk_positions` — this
+ * The price is whatever `refresh-positions` last wrote to `inv_positions` — this
  * is a *stored* figure, never a live fetch, so opening the jump list costs no
  * network round-trip and shows the same numbers the positions table shows.
  *
@@ -32,7 +32,7 @@ export interface FavoriteQuote {
   priceCents?: number;
   /**
    * The day's move on the whole holding — not per share — summed across accounts,
-   * matching `dayGainLossCents` in `stk_positions`.
+   * matching `dayGainLossCents` in `inv_positions`.
    */
   dayGainLossCents?: number;
   /** The day's move as a percent, against the value before the move. */

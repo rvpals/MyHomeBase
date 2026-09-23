@@ -344,7 +344,7 @@ describe("self-lockout guards", () => {
 });
 
 describe("getAccessibleModules / userHasModuleAccess", () => {
-  const modules = [makeModule(1, "real-estate"), makeModule(2, "stock-etfs")];
+  const modules = [makeModule(1, "real-estate"), makeModule(2, "investments")];
 
   it("gives an admin every module, granted or not", () => {
     const repo = new FakeUserRepository();

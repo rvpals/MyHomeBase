@@ -731,7 +731,7 @@ describe("getTickerPriceSeries", () => {
 });
 
 describe("getTickerRisk", () => {
-  /** An in-memory stand-in for `stk_ticker_risk_cache`, counting its writes. */
+  /** An in-memory stand-in for `inv_ticker_risk_cache`, counting its writes. */
   function fakeRiskCache(seed?: TickerRisk) {
     const rows = new Map<string, TickerRisk>();
     if (seed) rows.set(seed.ticker, seed);

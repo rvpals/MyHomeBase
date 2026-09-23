@@ -1,5 +1,6 @@
 ---
 description: Release MyHomeBase to NAS — back up the production DB, sync the docs, ship the changelog, then commit and push.
+model: haiku
 ---
 
 # Release
@@ -77,7 +78,7 @@ Go through the `.md` files at the repo root and bring any that are stale into li
 with the current state of the app:
 
 - `CHANGE_HISTORY.md` — **write the new dated entry first**, newest at the top, since
-  step 4 ships this file and step 5 commits it. Get the date with
+  step 5 ships this file and step 6 commits it. Get the date with
   `Get-Date -Format "yyyy-MM-dd HH:mm"`, and base the entry on `git status` /
   `git diff` against `HEAD` plus the conversation for the *why*.
 - `components.md` — any new reusable component registered, props still accurate.
@@ -90,7 +91,41 @@ with the current state of the app:
 Update what's actually out of date; don't rewrite a file that's still accurate just to
 touch it. Say which files were checked and what changed.
 
-## 4. Ship the changelog to NAS
+## 4. Add this release's changes to `TEST_LIST.md`
+
+Step 3 has just produced the list of what actually changed. Turn that same list into
+test items before it is lost — `CHANGE_HISTORY.md` records what was *written*,
+`TEST_LIST.md` records what has been *tried*, and only the second one survives the
+gap between sessions.
+
+Add the items to the top of the file, under a heading for this release's date:
+
+```markdown
+## 2026-09-23 — Release
+
+- [ ] **1.** Investments: the module formerly called Stocks & ETFs
+- [ ] **2.** Investments: every section loads under the new /modules/investments URL
+```
+
+- **One line per testable behaviour, not per commit.** A release that landed five
+  features is five lines. Omit pure-infrastructure work — a doc catch-up, a lint
+  fix, a changelog entry — because there is nothing to click.
+- **Leave every new item unticked (`[ ]`).** They are tested after the release is
+  on the NAS, not before. Ticking one here would be recording a test that never
+  happened, which is the exact thing this file exists to prevent.
+- **Renumber.** Items are numbered newest-first, `**1.**` at the top, so inserting
+  at the top shifts everything below it. Renumber the whole file rather than
+  starting a second sequence.
+- **Name the risky ones.** If an item needs a migration applied, or can only be
+  checked on a phone, say so in one line under the release heading — the way the
+  existing "uncommitted, in the working tree" section does.
+
+Write the items from the same evidence as the changelog entry: `git status` /
+`git diff` against `HEAD`, plus the conversation for what each change was *for*.
+Phrase each one as the behaviour a person would go and look at, not as the code
+that was changed.
+
+## 5. Ship the changelog to NAS
 
 The About page reads `CHANGE_HISTORY.md` from the running app's working directory, so
 the deployed copy has to be refreshed after step 3. `REBUILD_PUBLISH_NAS.bat` already
@@ -101,12 +136,12 @@ publish, re-run the batch file or copy the single file over SMB:
 Copy-Item "CHANGE_HISTORY.md" "\\NAS_DS223\app\myhomebase\CHANGE_HISTORY.md" -Force
 ```
 
-## 5. Commit and push
+## 6. Commit and push
 
 - Review `git status` / `git diff` once more so nothing unexpected (secrets, stray
   debug files, scratch scripts) is about to be staged.
-- Stage everything including `CHANGE_HISTORY.md` and the doc updates from step 3, so
-  code and docs land together.
+- Stage everything including `CHANGE_HISTORY.md`, the `TEST_LIST.md` items from
+  step 4, and the doc updates from step 3, so code and docs land together.
 - Commit with a message summarising the release — the new `CHANGE_HISTORY.md` entry
   is the source for it. If the tree holds several unrelated bodies of work, ask
   whether to split them into separate commits before committing.

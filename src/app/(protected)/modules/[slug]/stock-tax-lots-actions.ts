@@ -22,9 +22,9 @@ import { deps } from "@/lib/wiring";
 import { requireModuleAccess } from "../../require-access";
 
 /** The module these actions belong to, matched exactly by `requireModuleAccess`. */
-const ACCESS_MODULE_SLUG = "stock-etfs";
+const ACCESS_MODULE_SLUG = "investments";
 
-const TAX_LOTS_PATH = "/modules/stock-etfs/tax-lots";
+const TAX_LOTS_PATH = "/modules/investments/tax-lots";
 
 export interface ActionResult {
   ok: boolean;

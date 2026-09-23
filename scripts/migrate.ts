@@ -14,7 +14,7 @@ function backupIfExists(): void {
 }
 
 // One-time rename of every pre-prefix table to its module-prefixed name
-// (sys_ = platform, rei_ = real estate, stk_ = stocks & ETFs). CSV Analysis
+// (sys_ = platform, rei_ = real estate, inv_ = investments). CSV Analysis
 // tables already carry the csv_ prefix, so they are absent here. This is a
 // reconciliation step rather than a numbered migration because the migration
 // files themselves now create the prefixed names, and the schema_migrations
@@ -28,15 +28,35 @@ const LEGACY_TABLE_RENAMES: ReadonlyArray<readonly [oldName: string, newName: st
   ["users", "sys_users"],
   ["user_module_access", "sys_user_module_access"],
   ["sessions", "sys_sessions"],
-  ["investment_accounts", "stk_investment_accounts"],
-  ["account_performance_records", "stk_account_performance_records"],
-  ["stock_positions", "stk_stock_positions"],
-  ["stock_transactions", "stk_stock_transactions"],
-  ["stock_watch_lists", "stk_stock_watch_lists"],
-  ["stock_watch_list_items", "stk_stock_watch_list_items"],
-  ["stock_volatility_cache", "stk_stock_volatility_cache"],
-  ["stock_correlation_cache", "stk_stock_correlation_cache"],
-  ["stock_sharpe_cache", "stk_stock_sharpe_cache"],
+  ["investment_accounts", "inv_investment_accounts"],
+  ["account_performance_records", "inv_account_performance_records"],
+  ["stock_positions", "inv_stock_positions"],
+  ["stock_transactions", "inv_stock_transactions"],
+  ["stock_watch_lists", "inv_stock_watch_lists"],
+  ["stock_watch_list_items", "inv_stock_watch_list_items"],
+  ["stock_volatility_cache", "inv_stock_volatility_cache"],
+  ["stock_correlation_cache", "inv_stock_correlation_cache"],
+  ["stock_sharpe_cache", "inv_stock_sharpe_cache"],
+
+  // Stocks & ETFs became Investments (see migrations/0108). The prefix moved
+  // stk_ -> inv_. Listed after the pre-prefix entries above, which now target
+  // inv_ directly so a legacy database renames once rather than twice.
+  ["stk_investment_accounts", "inv_investment_accounts"],
+  ["stk_account_performance_records", "inv_account_performance_records"],
+  ["stk_stock_positions", "inv_stock_positions"],
+  ["stk_stock_transactions", "inv_stock_transactions"],
+  ["stk_stock_watch_lists", "inv_stock_watch_lists"],
+  ["stk_stock_watch_list_items", "inv_stock_watch_list_items"],
+  ["stk_stock_volatility_cache", "inv_stock_volatility_cache"],
+  ["stk_stock_correlation_cache", "inv_stock_correlation_cache"],
+  ["stk_stock_sharpe_cache", "inv_stock_sharpe_cache"],
+  ["stk_ticker_risk_cache", "inv_ticker_risk_cache"],
+  ["stk_ticker_logos", "inv_ticker_logos"],
+  ["stk_ticker_profiles", "inv_ticker_profiles"],
+  ["stk_ticker_favorites", "inv_ticker_favorites"],
+  ["stk_index_logos", "inv_index_logos"],
+  ["stk_daily_snapshots", "inv_daily_snapshots"],
+  ["stk_tax_lots", "inv_tax_lots"],
 ];
 
 function tableExists(db: Database.Database, name: string): boolean {

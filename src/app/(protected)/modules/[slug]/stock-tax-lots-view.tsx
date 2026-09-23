@@ -498,7 +498,7 @@ function AdhocLotEditor({
     // position instead of an empty form.
     const query = new URLSearchParams({ ticker });
     if (lots.length > 0) query.set("lots", encodeAdhocLots(lots));
-    router.replace(`/modules/stock-etfs/tax-lots?${query.toString()}`);
+    router.replace(`/modules/investments/tax-lots?${query.toString()}`);
   }
 
   function updateRow(index: number, patch: Partial<AdhocLotInput>) {
@@ -639,7 +639,7 @@ function AdhocLotEditor({
         <Button
           variant="secondary"
           onClick={() =>
-            router.replace(`/modules/stock-etfs/tax-lots?ticker=${encodeURIComponent(ticker)}`)
+            router.replace(`/modules/investments/tax-lots?ticker=${encodeURIComponent(ticker)}`)
           }
         >
           Back to saved lots
@@ -700,7 +700,7 @@ export function StockTaxLotsSummary({
               value={selectedTicker ?? ""}
               onChange={(event) => {
                 const next = event.target.value;
-                router.push(`/modules/stock-etfs/tax-lots?ticker=${encodeURIComponent(next)}`);
+                router.push(`/modules/investments/tax-lots?ticker=${encodeURIComponent(next)}`);
               }}
               className="rounded-md border border-line bg-transparent px-3 py-2 text-ink"
             >

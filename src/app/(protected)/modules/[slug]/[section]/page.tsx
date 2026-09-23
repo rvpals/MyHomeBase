@@ -31,12 +31,12 @@ const GAMES_MODULE_SLUG = "games";
 const JOURNAL_MODULE_SLUG = "journal";
 const MUSIC_LIBRARY_MODULE_SLUG = "music-library";
 const PICTURE_GALLERY_MODULE_SLUG = "picture-gallery";
-const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
+const INVESTMENTS_MODULE_SLUG = "investments";
 const TOOLS_MODULE_SLUG = "tools";
 
 /**
  * A module's sub-section, e.g. /modules/expense/transactions or
- * /modules/stock-etfs/positions.
+ * /modules/investments/positions.
  *
  * Nested under the dynamic [slug] segment on purpose: a static `expense` folder
  * would shadow /modules/[slug] and break the module page itself. Only the modules
@@ -119,7 +119,7 @@ function renderSection(
   if (slug === TOOLS_MODULE_SLUG && isToolsSection(section)) {
     return <ToolsSection section={section} />;
   }
-  if (slug === STOCK_ETFS_MODULE_SLUG && isStockSection(section)) {
+  if (slug === INVESTMENTS_MODULE_SLUG && isStockSection(section)) {
     return (
       <StockSection
         section={section}

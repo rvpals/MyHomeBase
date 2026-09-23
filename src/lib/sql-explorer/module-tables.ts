@@ -18,7 +18,7 @@ import { describeTable } from "./table-reference";
  * in "Non-Modules" below.
  */
 const MODULE_SLUG_BY_PREFIX: Record<string, string> = {
-  stk_: "stock-etfs",
+  inv_: "investments",
   jrn_: "journal",
   csv_: "csv-analysis",
   exp_: "expense",
@@ -33,8 +33,8 @@ const MODULE_SLUG_BY_PREFIX: Record<string, string> = {
 const NON_MODULES_LABEL = "Non-Modules";
 
 /**
- * The prefix of a table name, including the underscore — "stk_" from
- * "stk_tax_lots". Empty when the name has no prefix in the convention's shape,
+ * The prefix of a table name, including the underscore — "inv_" from
+ * "inv_tax_lots". Empty when the name has no prefix in the convention's shape,
  * which is how `sqlite_master`'s own oddities and any hand-made table fall
  * through to "Non-Modules" rather than inventing a group.
  */

@@ -7,6 +7,7 @@ import type {
   SiteVisitFilter,
   SiteVisitSummary,
   SuspicionLevel,
+  SuspicionSignal,
 } from "./types";
 
 // The use-cases depend on THESE interfaces, not on a concrete database.
@@ -39,8 +40,18 @@ export interface SiteVisitRepository {
    * Re-scores every visit from one address. Used when that address is added to or
    * removed from the allowlist, so a stored verdict never silently disagrees with
    * the rules. `reviewedAt` is stamped alongside when the new level is `normal`.
+   *
+   * `signals` replaces the stored reasons wholesale rather than merging: the rows are
+   * being given a new verdict, and reasons for the old one would contradict it.
+   * Passing `[]` clears them, which is what vouching for an address does
+   * (migrations/0106).
    */
-  setSuspicionForIp(ipAddress: string, level: SuspicionLevel, reviewedAt?: string): number;
+  setSuspicionForIp(
+    ipAddress: string,
+    level: SuspicionLevel,
+    signals: readonly SuspicionSignal[],
+    reviewedAt?: string,
+  ): number;
   /** Deletes the given rows. Returns how many went. Admin-initiated, not the prune. */
   deleteVisits(ids: number[]): number;
   /** Deletes visits created before `cutoff` (ISO). Returns how many went. */

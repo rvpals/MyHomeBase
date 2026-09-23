@@ -3,15 +3,21 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
+import { CollapsibleCard } from "@/components/collapsible-card";
 import { IconSelect } from "@/components/icon-select";
 import { Progress3D } from "@/components/progress-3d";
 import {
+  ALL_RULE_TYPES_FILTER,
   DEFAULT_CLEANUP_BATCH_SIZE,
   RULE_ACTION_FIELDS,
   RULE_ACTION_FIELD_LABELS,
   TRANSACTION_STATUSES,
+  UNTYPED_RULE_LABEL,
+  filterRulesByType,
+  ruleTypeFilterOptions,
   type CleanupLogEntry,
   type ExpenseCategory,
+  type ExpenseRuleType,
   type ExpenseVendor,
   type PostImportRule,
   type RuleActionField,
@@ -25,6 +31,7 @@ import {
   resetProcessedAction,
   runCleanupBatchAction,
   saveRuleAction,
+  saveRuleTypeAction,
 } from "./expense-actions";
 import {
   CategoryIconThumbnail,
@@ -90,6 +97,7 @@ interface ActionDraft {
 const emptyRule = {
   name: "",
   description: "",
+  typeName: "",
   pattern: "",
   priority: 0,
   isEnabled: true,
@@ -99,6 +107,7 @@ const emptyRule = {
 function RuleForm({
   categories,
   vendors,
+  ruleTypes,
   editing,
   prefillName,
   prefillDescription,
@@ -107,6 +116,7 @@ function RuleForm({
 }: {
   categories: ExpenseCategory[];
   vendors: ExpenseVendor[];
+  ruleTypes: ExpenseRuleType[];
   editing?: PostImportRule;
   /**
    * Seeds a *new* rule from ?name= / ?description= / ?vendorDescription=.
@@ -123,6 +133,7 @@ function RuleForm({
       ? {
           name: editing.name,
           description: editing.description,
+          typeName: editing.typeName,
           pattern: editing.pattern,
           priority: editing.priority,
           isEnabled: editing.isEnabled,
@@ -164,6 +175,27 @@ function RuleForm({
       ...current,
       actions: current.actions.filter((_, i) => i !== index),
     }));
+  }
+
+  /**
+   * The `+` beside the Type select: names a new type, saves it, and selects it
+   * without leaving the form.
+   *
+   * A prompt rather than a modal, matching the confirm dialogs this view
+   * already uses. Saving it here (instead of letting the rule's own save
+   * register it) means the select shows it immediately and it is available to
+   * the *next* rule even if this one is abandoned.
+   */
+  async function handleAddType() {
+    const name = window.prompt("Name the new transaction rule type")?.trim();
+    if (!name) return;
+    const result = await saveRuleTypeAction({ name });
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    setForm((current) => ({ ...current, typeName: name }));
+    router.refresh();
   }
 
   async function handlePreview() {
@@ -221,6 +253,47 @@ function RuleForm({
           className={INPUT_CLASS}
         />
       </label>
+
+      <div className="block text-sm">
+        <span className="mb-1 block font-medium text-ink">
+          Type <span className="font-normal text-muted">(optional)</span>
+        </span>
+        {/* Select plus a + rather than free text: the curated list is the point
+            of grouping, and a typo would silently create a near-duplicate group.
+            The + is the escape hatch, so adding a type never means leaving for
+            Meta Data and losing the half-filled form. */}
+        <div className="flex items-center gap-2">
+          <select
+            value={form.typeName}
+            onChange={(event) => setForm({ ...form, typeName: event.target.value })}
+            aria-label="Transaction rule type"
+            className={`${INPUT_CLASS} w-56`}
+          >
+            <option value="">{UNTYPED_RULE_LABEL}</option>
+            {ruleTypes.map((type) => (
+              <option key={type.name} value={type.name}>
+                {type.name}
+              </option>
+            ))}
+            {/* A rule may name a type that was since deleted from the curated
+                list. Without this the select would silently fall back to
+                Untyped and re-save the rule as untyped. */}
+            {form.typeName !== "" &&
+              !ruleTypes.some((type) => type.name === form.typeName) && (
+                <option value={form.typeName}>{form.typeName}</option>
+              )}
+          </select>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={handleAddType}
+            title="Add a new transaction rule type"
+            ariaLabel="Add a new transaction rule type"
+          >
+            +
+          </Button>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <label className="block text-sm sm:col-span-2">
@@ -522,10 +595,80 @@ function CleanupRunner({ unprocessedCount }: { unprocessedCount: number }) {
   );
 }
 
+/**
+ * Every saved rule, with a strip of pills filtering by Type.
+ *
+ * The filter is client state rather than a URL param: this section's query
+ * string is already spoken for by the new-rule prefill (?name= / ?pattern=),
+ * and a filter that survived a link from "add a rule for this" would hide the
+ * rule you had just been sent here to write.
+ */
+function RulesList({
+  rules,
+  ruleTypes,
+  categoryIconUrls,
+  onEdit,
+}: {
+  rules: PostImportRule[];
+  ruleTypes: ExpenseRuleType[];
+  categoryIconUrls: Map<string, string>;
+  onEdit: (rule: PostImportRule) => void;
+}) {
+  const [filter, setFilter] = useState<string>(ALL_RULE_TYPES_FILTER);
+
+  const options = ruleTypeFilterOptions(rules, ruleTypes);
+  // A filter can go stale under you — deleting the last rule of a type, or the
+  // type itself, removes its pill. Falling back to All beats rendering an empty
+  // list with no pill selected.
+  const activeFilter = options.some((option) => option.value === filter)
+    ? filter
+    : ALL_RULE_TYPES_FILTER;
+  const visible = filterRulesByType(rules, activeFilter);
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* flex-wrap, not a scroller: on a phone the pills stack onto a second
+          line instead of hiding choices off the right edge. */}
+      {options.length > 1 && (
+        <div className="flex flex-wrap items-center gap-2">
+          {options.map((option) => (
+            <Button
+              key={option.value || "untyped"}
+              size="sm"
+              variant={option.value === activeFilter ? "primary" : "secondary"}
+              onClick={() => setFilter(option.value)}
+            >
+              {option.label} ({option.count})
+            </Button>
+          ))}
+        </div>
+      )}
+
+      {rules.length === 0 ? (
+        <p className="text-sm text-muted">No rules yet.</p>
+      ) : visible.length === 0 ? (
+        <p className="text-sm text-muted">No rules of this type.</p>
+      ) : (
+        <ul className="flex flex-col gap-1">
+          {visible.map((rule) => (
+            <RuleRow
+              key={rule.id}
+              rule={rule}
+              categoryIconUrls={categoryIconUrls}
+              onEdit={() => onEdit(rule)}
+            />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function ExpenseRulesView({
   rules,
   categories,
   vendors,
+  ruleTypes,
   unprocessedCount,
   prefillName,
   prefillDescription,
@@ -534,6 +677,7 @@ export function ExpenseRulesView({
   rules: PostImportRule[];
   categories: ExpenseCategory[];
   vendors: ExpenseVendor[];
+  ruleTypes: ExpenseRuleType[];
   unprocessedCount: number;
   /**
    * From ?name= / ?description= on the transaction-rules route, so "add a rule
@@ -569,6 +713,7 @@ export function ExpenseRulesView({
         }
         categories={categories}
         vendors={vendors}
+        ruleTypes={ruleTypes}
         editing={editing}
         prefillName={prefillName}
         prefillDescription={prefillDescription}
@@ -576,20 +721,14 @@ export function ExpenseRulesView({
         onDone={() => setEditing(undefined)}
       />
 
-      {rules.length === 0 ? (
-        <p className="text-sm text-muted">No rules yet.</p>
-      ) : (
-        <ul className="flex flex-col gap-1">
-          {rules.map((rule) => (
-            <RuleRow
-              key={rule.id}
-              rule={rule}
-              categoryIconUrls={categoryIconUrls}
-              onEdit={() => setEditing(rule)}
-            />
-          ))}
-        </ul>
-      )}
+      <CollapsibleCard title="Transaction Rules List" defaultOpen>
+        <RulesList
+          rules={rules}
+          ruleTypes={ruleTypes}
+          categoryIconUrls={categoryIconUrls}
+          onEdit={setEditing}
+        />
+      </CollapsibleCard>
     </div>
   );
 }
@@ -690,6 +829,13 @@ function RuleRow({
           </span>
         ))}
       </span>
+      {/* Shown on the row, not only in the filter: under the All pill the type
+          is the one thing that explains why two adjacent rules belong apart. */}
+      {rule.typeName !== "" && (
+        <span className="rounded-full border border-line px-2 py-0.5 text-xs text-muted">
+          {rule.typeName}
+        </span>
+      )}
       <span className="text-xs text-muted">priority {rule.priority}</span>
       {!rule.isEnabled && <span className="text-xs text-red-400">disabled</span>}
       <span className="ml-auto flex gap-3">

@@ -44,8 +44,8 @@ export async function requireAdmin(): Promise<User> {
  *
  * `slug` is matched **exactly**: it is passed to `getModuleBySlug`, which is a
  * `WHERE slug = ?` equality lookup. Nothing here does prefix or `startsWith`
- * matching, deliberately — a prefix test would let `stock-etfs` authorise a
- * future `stock-etfs-pro`, and would make `journal` authorise anything merely
+ * matching, deliberately — a prefix test would let `investments` authorise a
+ * future `investments-pro`, and would make `journal` authorise anything merely
  * beginning with it. Pass the module's own full slug, never a route path: the
  * paths are not slugs and some are deeper than one segment (for instance
  * `/modules/journal/metadata`).

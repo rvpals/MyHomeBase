@@ -157,7 +157,7 @@ describe("resetModulesToDefaults", () => {
     const repo = fakeRepo([]);
     const result = resetModulesToDefaults(repo);
     expect(result.map((module) => module.slug)).toEqual([
-      "stock-etfs",
+      "investments",
       "journal",
       "csv-analysis",
       "expense",
@@ -172,9 +172,9 @@ describe("resetModulesToDefaults", () => {
     const repo = fakeRepo([
       {
         id: 42,
-        slug: "stock-etfs",
-        shortName: "Stocks & ETFs",
-        longName: "Stock & ETFs etc",
+        slug: "investments",
+        shortName: "Investments",
+        longName: "Investments",
         sequence: 1,
         isVisible: true,
         icon: "chart",
@@ -182,7 +182,7 @@ describe("resetModulesToDefaults", () => {
       },
     ]);
     const result = resetModulesToDefaults(repo);
-    expect(result.find((module) => module.slug === "stock-etfs")?.id).toBe(42);
+    expect(result.find((module) => module.slug === "investments")?.id).toBe(42);
   });
 });
 

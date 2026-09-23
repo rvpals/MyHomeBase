@@ -99,9 +99,9 @@ export class SqliteStockPositionRepository implements StockPositionRepository {
   listPositions(accountId?: number): StockPosition[] {
     const rows = (
       accountId === undefined
-        ? this.db.prepare("SELECT * FROM stk_stock_positions ORDER BY ticker ASC").all()
+        ? this.db.prepare("SELECT * FROM inv_stock_positions ORDER BY ticker ASC").all()
         : this.db
-            .prepare("SELECT * FROM stk_stock_positions WHERE account_id = ? ORDER BY ticker ASC")
+            .prepare("SELECT * FROM inv_stock_positions WHERE account_id = ? ORDER BY ticker ASC")
             .all(accountId)
     ) as StockPositionRow[];
     return rows.map(positionToDomain);
@@ -109,7 +109,7 @@ export class SqliteStockPositionRepository implements StockPositionRepository {
 
   getPosition(key: PositionKey): StockPosition | undefined {
     const row = this.db
-      .prepare("SELECT * FROM stk_stock_positions WHERE account_id = ? AND ticker = ?")
+      .prepare("SELECT * FROM inv_stock_positions WHERE account_id = ? AND ticker = ?")
       .get(key.accountId, key.ticker) as StockPositionRow | undefined;
     return row ? positionToDomain(row) : undefined;
   }
@@ -118,7 +118,7 @@ export class SqliteStockPositionRepository implements StockPositionRepository {
   // ticker-only lookup has no usable key prefix without that index.
   listPositionsByTicker(ticker: string): StockPosition[] {
     const rows = this.db
-      .prepare("SELECT * FROM stk_stock_positions WHERE ticker = ? ORDER BY account_id ASC")
+      .prepare("SELECT * FROM inv_stock_positions WHERE ticker = ? ORDER BY account_id ASC")
       .all(ticker) as StockPositionRow[];
     return rows.map(positionToDomain);
   }
@@ -128,7 +128,7 @@ export class SqliteStockPositionRepository implements StockPositionRepository {
   upsertPosition(input: UpsertPositionInput, valueCents: number): StockPosition {
     const row = this.db
       .prepare(
-        `INSERT INTO stk_stock_positions
+        `INSERT INTO inv_stock_positions
            (account_id, ticker, name, type, current_price_cents, quantity, day_gain_loss_cents,
             value_cents, day_high_cents, day_low_cents, dividend_rate_cents,
             cost_cents, unit_cost_cents, unrealized_gain_loss_cents, unrealized_gain_loss_pct,
@@ -168,23 +168,23 @@ export class SqliteStockPositionRepository implements StockPositionRepository {
 
   deletePosition(key: PositionKey): void {
     this.db
-      .prepare("DELETE FROM stk_stock_positions WHERE account_id = ? AND ticker = ?")
+      .prepare("DELETE FROM inv_stock_positions WHERE account_id = ? AND ticker = ?")
       .run(key.accountId, key.ticker);
   }
 
   listTransactions(ticker?: string): StockTransaction[] {
     const rows = (
       ticker === undefined
-        ? this.db.prepare("SELECT * FROM stk_stock_transactions ORDER BY transaction_at ASC").all()
+        ? this.db.prepare("SELECT * FROM inv_stock_transactions ORDER BY transaction_at ASC").all()
         : this.db
-            .prepare("SELECT * FROM stk_stock_transactions WHERE ticker = ? ORDER BY transaction_at ASC")
+            .prepare("SELECT * FROM inv_stock_transactions WHERE ticker = ? ORDER BY transaction_at ASC")
             .all(ticker)
     ) as StockTransactionRow[];
     return rows.map(transactionToDomain);
   }
 
   getTransactionById(id: number): StockTransaction | undefined {
-    const row = this.db.prepare("SELECT * FROM stk_stock_transactions WHERE id = ?").get(id) as
+    const row = this.db.prepare("SELECT * FROM inv_stock_transactions WHERE id = ?").get(id) as
       | StockTransactionRow
       | undefined;
     return row ? transactionToDomain(row) : undefined;
@@ -193,7 +193,7 @@ export class SqliteStockPositionRepository implements StockPositionRepository {
   createTransaction(input: CreateTransactionInput, totalAmountCents: number): StockTransaction {
     const result = this.db
       .prepare(
-        `INSERT INTO stk_stock_transactions
+        `INSERT INTO inv_stock_transactions
            (transaction_at, action, ticker, number_of_shares, price_per_share_cents,
             total_amount_cents, account_id, brokerage_firm, external_id, note)
          VALUES
@@ -214,7 +214,7 @@ export class SqliteStockPositionRepository implements StockPositionRepository {
   ): StockTransaction {
     this.db
       .prepare(
-        `UPDATE stk_stock_transactions
+        `UPDATE inv_stock_transactions
          SET transaction_at = @transactionAt, action = @action, ticker = @ticker,
              number_of_shares = @numberOfShares, price_per_share_cents = @pricePerShareCents,
              total_amount_cents = @totalAmountCents, account_id = @accountId,
@@ -229,7 +229,7 @@ export class SqliteStockPositionRepository implements StockPositionRepository {
   }
 
   deleteTransaction(id: number): void {
-    this.db.prepare("DELETE FROM stk_stock_transactions WHERE id = ?").run(id);
+    this.db.prepare("DELETE FROM inv_stock_transactions WHERE id = ?").run(id);
   }
 
   hasTransactionWithExternalId(externalId: string): boolean {
@@ -240,7 +240,7 @@ export class SqliteStockPositionRepository implements StockPositionRepository {
 
     return (
       this.db
-        .prepare("SELECT 1 FROM stk_stock_transactions WHERE external_id = ?")
+        .prepare("SELECT 1 FROM inv_stock_transactions WHERE external_id = ?")
         .get(trimmed) !== undefined
     );
   }
@@ -249,7 +249,7 @@ export class SqliteStockPositionRepository implements StockPositionRepository {
     // Rides idx_stock_transactions_natural_key on its leading columns.
     const row = this.db
       .prepare(
-        `SELECT COUNT(*) AS matches FROM stk_stock_transactions
+        `SELECT COUNT(*) AS matches FROM inv_stock_transactions
          WHERE transaction_at = @transactionAt
            AND ticker = @ticker
            AND action = @action

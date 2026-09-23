@@ -1,5 +1,5 @@
 /**
- * Every widget the Stocks & ETFs dashboard can show, in its default order.
+ * Every widget the Investments dashboard can show, in its default order.
  *
  * Several ids are deliberately absent. Daily Glance (`glance`) lives at the top of
  * the home landing screen now, not on this dashboard. Refresh & snapshot

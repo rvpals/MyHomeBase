@@ -36,9 +36,9 @@ import { deps } from "@/lib/wiring";
 import { requireModuleAccess } from "../../require-access";
 
 /** The module these actions belong to, matched exactly by `requireModuleAccess`. */
-const ACCESS_MODULE_SLUG = "stock-etfs";
+const ACCESS_MODULE_SLUG = "investments";
 
-const STOCK_ETFS_MODULE_PATH = "/modules/stock-etfs";
+const INVESTMENTS_MODULE_PATH = "/modules/investments";
 
 /**
  * The three import types this module offers — a narrowing of the shared
@@ -138,7 +138,7 @@ export async function saveNamedMappingAction(
   } catch (error) {
     return toErrorResult(error, "Failed to save the mapping.");
   }
-  revalidatePath(STOCK_ETFS_MODULE_PATH);
+  revalidatePath(INVESTMENTS_MODULE_PATH);
   return { ok: true };
 }
 
@@ -149,7 +149,7 @@ export async function deleteNamedMappingAction(id: number): Promise<ActionResult
   } catch (error) {
     return toErrorResult(error, "Failed to delete named mapping.");
   }
-  revalidatePath(STOCK_ETFS_MODULE_PATH);
+  revalidatePath(INVESTMENTS_MODULE_PATH);
   return { ok: true };
 }
 
@@ -254,7 +254,7 @@ export async function executeImportAction(
     // Remembered as this type's default mapping, so the next file of the same kind
     // opens pre-mapped even if it was never saved under a name.
     saveCurrentMapping(deps.csvImportMappingRepo, { importType, columnMapping });
-    revalidatePath(STOCK_ETFS_MODULE_PATH);
+    revalidatePath(INVESTMENTS_MODULE_PATH);
     return { ok: true, summary };
   } catch (error) {
     return toErrorResult(error, "Failed to import CSV.");

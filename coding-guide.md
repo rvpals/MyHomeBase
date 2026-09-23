@@ -12,10 +12,10 @@ module is obvious from the name alone. New tables must follow this.
 | Prefix | Module | Example tables |
 |---|---|---|
 | `sys_` | Platform — not a feature module | `sys_modules`, `sys_app_settings`, `sys_module_settings`, `sys_user_preferences`, `sys_users`, `sys_user_module_access`, `sys_sessions`, `sys_schema_migrations`, `sys_daily_quotes`, `sys_scheduled_runs`, `sys_dashboard_texture`, `sys_module_texture`, `sys_fav_photo`, `sys_deployments`, `sys_auth_events`, `sys_site_visits`, `sys_ip_allowlist` |
-| `stk_` | Stocks & ETFs (brokerage accounts **and** per-stock tables — one prefix) | `stk_investment_accounts`, `stk_stock_positions`, `stk_stock_transactions`, `stk_stock_watch_lists`, `stk_stock_volatility_cache`, `stk_ticker_risk_cache`, `stk_ticker_logos`, `stk_index_logos`, `stk_daily_snapshots`, `stk_tax_lots` |
+| `inv_` | Investments (brokerage accounts **and** per-stock tables — one prefix) | `inv_investment_accounts`, `inv_stock_positions`, `inv_stock_transactions`, `inv_stock_watch_lists`, `inv_stock_volatility_cache`, `inv_ticker_risk_cache`, `inv_ticker_logos`, `inv_index_logos`, `inv_daily_snapshots`, `inv_tax_lots` |
 | `csv_` | CSV Analysis (incl. user-generated per-entry tables from `buildTableName`) | `csv_analytics_entries`, `csv_chart_presets`, `csv_govee` |
 | `jrn_` | MyJournal | `jrn_entries`, `jrn_categories`, `jrn_tags`, `jrn_entry_categories`, `jrn_entry_tags`, `jrn_entry_locations`, `jrn_entry_images`, `jrn_saved_filters`, `jrn_locations`, `jrn_location_categories`, `jrn_location_tags` |
-| `exp_` | Expense tracker | `exp_transactions`, `exp_creditcard_accounts`, `exp_categories`, `exp_vendors`, `exp_post_import_rules`, `exp_post_import_rule_actions` |
+| `exp_` | Expense tracker | `exp_transactions`, `exp_creditcard_accounts`, `exp_categories`, `exp_vendors`, `exp_post_import_rules`, `exp_post_import_rule_actions`, `exp_rule_types` |
 | `att_` | Attendance | `att_students`, `att_classes`, `att_class_enrollments`, `att_attendance_records`, `att_attendance_entries`, `att_student_actions`, `att_attendance_entry_actions` |
 | `ico_` | Icon customisation — platform-wide, not a feature module | `ico_slot_overrides` |
 | `mus_` | Music Library | `mus_tracks`, `mus_albums`, `mus_scan_runs`, `mus_track_lyrics`, `mus_playlists`, `mus_playlist_tracks`, `mus_play_events`, `mus_magic_list`, `mus_magic_list_tracks`, `mus_play_queue`, `mus_play_queue_state` |
@@ -25,6 +25,17 @@ module is obvious from the name alone. New tables must follow this.
 
 The `rei_` prefix (Real Estate Investment) was retired when that module was
 removed — see migration `0026_drop_real_estate_module`.
+
+**Investments was `stk_` until migration 0108**, when the module was renamed from
+Stocks & ETFs. The old prefix named the first two things the module tracked, but it
+had grown to hold brokerage accounts, tax lots, dividend income and account
+performance — none of which is a stock or an ETF. `inv_` is the module namespace, so
+it still fits the next table; this is the same lesson `pho_` and `tol_` record.
+
+Note the tables keep their own names under the new prefix: `inv_investment_accounts`
+stutters, and `inv_stock_positions` still says "stock". Renaming table bodies as well
+as the prefix would have doubled the blast radius of an already wide change for a
+cosmetic gain. The prefix is what carries the namespace.
 
 **Picture Gallery had no prefix until migration 0087**, and the reason it now has one is
 worth knowing. The module was built presenting *other modules'* data — the archive is the
@@ -101,7 +112,7 @@ against a **copy** of the production DB before running it for real.
 
 ### Never put a DATE column in a unique index
 
-`stk_stock_transactions` carried
+`inv_stock_transactions` carried
 `UNIQUE (transaction_at, action, ticker, total_amount_cents)` so that re-importing a
 broker CSV was a safe no-op. **`transaction_at` is a date, not a timestamp**, so two
 buys of the same ticker for the same amount on the same day were identical on all four
@@ -116,7 +127,7 @@ partial index so rows lacking one aren't all colliding on a shared empty string:
 
 ```sql
 CREATE UNIQUE INDEX idx_stock_transactions_external_id
-  ON stk_stock_transactions (external_id)
+  ON inv_stock_transactions (external_id)
   WHERE external_id <> '';
 ```
 
@@ -169,7 +180,7 @@ legitimately blankable gets its own schema and its own repository write
 A per-row image is a `BLOB` column plus a `<name>_mime_type` column, served by a
 dedicated route — never inlined as a base64 data URL. Nine tables do this:
 `sys_users.avatar` (0011), `exp_creditcard_accounts.card_image` (0031),
-`exp_categories.icon_image` (0034), `stk_investment_accounts.icon_image` (0037),
+`exp_categories.icon_image` (0034), `inv_investment_accounts.icon_image` (0037),
 `sys_modules.carousel_image` (0040), `jrn_categories`/`jrn_tags.icon_image` (0042),
 `sys_dashboard_texture.image` (0063), `sys_module_texture.image` (0064) and
 `exp_vendors.icon_image` (0068).

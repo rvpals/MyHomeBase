@@ -62,7 +62,7 @@ export function StockTaxLotsTickerPicker({
   function analyze() {
     if (selected.length === 0) return;
     const query = new URLSearchParams({ seedTickers: selected.join(",") });
-    router.push(`/modules/stock-etfs/tax-lots?${query.toString()}`);
+    router.push(`/modules/investments/tax-lots?${query.toString()}`);
     onClose();
   }
 

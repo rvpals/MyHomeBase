@@ -11,6 +11,7 @@ import {
   countUnprocessed,
   listAccounts,
   listCategories,
+  listRuleTypes,
   listRules,
   listTransactions,
   listVendors,
@@ -108,6 +109,7 @@ function SectionBody({
             listVendors(deps.expenseRepo),
             vendorTotals(listTransactions(deps.expenseRepo)),
           )}
+          ruleTypes={listRuleTypes(deps.expenseRepo)}
         />
       );
 
@@ -147,6 +149,7 @@ function SectionBody({
           rules={listRules(deps.expenseRepo)}
           categories={listCategories(deps.expenseRepo)}
           vendors={listVendors(deps.expenseRepo)}
+          ruleTypes={listRuleTypes(deps.expenseRepo)}
           unprocessedCount={countUnprocessed(deps.expenseRepo)}
           prefillName={prefillRuleName}
           prefillDescription={prefillRuleDescription}

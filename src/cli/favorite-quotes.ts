@@ -3,7 +3,7 @@
 //
 //   npm run cli -- favorite-quotes
 //
-// Prices come from `stk_positions`, so they're as fresh as the last
+// Prices come from `inv_positions`, so they're as fresh as the last
 // `refresh-positions` run and a favorite you don't hold shows a dash.
 
 import { formatCents } from "@/lib/shared/money";

@@ -8,9 +8,9 @@ import { deps } from "@/lib/wiring";
 import { requireModuleAccess } from "../../require-access";
 
 /** The module these actions belong to, matched exactly by `requireModuleAccess`. */
-const ACCESS_MODULE_SLUG = "stock-etfs";
+const ACCESS_MODULE_SLUG = "investments";
 
-const STOCK_ETFS_MODULE_PATH = "/modules/stock-etfs";
+const INVESTMENTS_MODULE_PATH = "/modules/investments";
 
 export interface CaptureSnapshotResult {
   ok: boolean;
@@ -35,7 +35,7 @@ export async function captureDailySnapshotAction(): Promise<CaptureSnapshotResul
       listPositions(deps.stockPositionRepo),
       todayIsoLocal(),
     );
-    revalidatePath(STOCK_ETFS_MODULE_PATH);
+    revalidatePath(INVESTMENTS_MODULE_PATH);
     return { ok: true, snapshot };
   } catch (error) {
     return {

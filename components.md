@@ -334,11 +334,11 @@ Row-click navigation:
 - MyJournal — [journal-view.tsx:220](src/app/(protected)/modules/[slug]/journal-view.tsx#L220) *(row click + "Show SQL" re-run)*
 - User Management — [user-management/view.tsx](src/app/(protected)/admin/user-management/view.tsx) *(cells rendering `Avatar`)*
 - Expense transactions — [expense-transactions-view.tsx](src/app/(protected)/modules/[slug]/expense-transactions-view.tsx) *(row selection + bulk edit/delete)*
-- Stocks & ETFs simulation — [stock-simulation-view.tsx](src/app/(protected)/modules/[slug]/stock-simulation-view.tsx) *(a fixed ten-row table: `showToolbar={false}` with `defaultPageSize="ALL"`, keeping sort and the status bar's CSV export)*
+- Investments simulation — [stock-simulation-view.tsx](src/app/(protected)/modules/[slug]/stock-simulation-view.tsx) *(a fixed ten-row table: `showToolbar={false}` with `defaultPageSize="ALL"`, keeping sort and the status bar's CSV export)*
 - CSV Analysis — [csv-analytics-view.tsx](src/app/(protected)/modules/[slug]/csv-analytics-view.tsx) *(row selection + bulk edit over an **arbitrary** schema: the dialog's fields are the dataset's own columns, so the grid is keyed by the table's real SQLite `rowid` rather than by row position)*
 - MyJournal Calendar Import — [journal-calendar-import-view.tsx](src/app/(protected)/modules/[slug]/journal-calendar-import-view.tsx) *(selection as a **pick-what-to-import** list: the ticked rows are the import's input, and rows the plan marked unimportable are filtered out of the action rather than disabled)*
 - MyJournal Log — [journal-log-view.tsx](src/app/(protected)/modules/[slug]/journal-log-view.tsx) *(the **Log** tab of Entries, not a section of its own; row click opens `JournalViewer` in a `Modal`; bulk delete to the recycle bin)*
-- SQL Explorer, Stocks & ETFs (accounts / positions / watchlist / analytics / next-day actions)
+- SQL Explorer, Investments (accounts / positions / watchlist / analytics / next-day actions)
 
 **Filter operators.** A column filter box is a substring match by default, and also
 understands `>100`, `>=100`, `<50`, `<=50`, `!=new`, `=new` (exact) and `100..200` /
@@ -930,7 +930,7 @@ Icon-only, beside a heading — `title` is the accessible name, so nothing is lo
 [today-in-history-widget.tsx](<src/app/(protected)/today-in-history-widget.tsx>), in
 `CollapsibleCard`'s `headerAction` slot — that combination is the one to copy for a
 dashboard card, since the chip stays reachable while the card is collapsed and pressing it
-doesn't toggle the card. Also the Stocks dashboard's refresh control
+doesn't toggle the card. Also the Investments dashboard's refresh control
 [stock-refresh-control.tsx](src/app/(protected)/modules/[slug]/stock-refresh-control.tsx),
 where a `title="Note"` chip sits beside the section heading and explains what the refresh
 icon next to it does.
@@ -1026,7 +1026,7 @@ line. Cards that belong to no single module (Daily Quote) or that *are* the modu
 (the carousel) get no launch button — there'd be nowhere for it to go.
 
 **Nesting is allowed, one level.** A card can hold a child card when the child is a
-*subset of the same subject* the parent names — the Stocks & ETFs dashboard's
+*subset of the same subject* the parent names — the Investments dashboard's
 Portfolio Summary holds a collapsed "Portfolio History" this way, so the headline
 numbers stay visible while the chart and the snapshot table are one click away.
 Give the child `className="mt-6"` to separate it from the body above it, and keep
@@ -1080,7 +1080,13 @@ They compose, and neither needs a layout change — the cast is drawn outside th
 
 **Used by:** Module Configuration
 [admin/configuration/modules/page.tsx](src/app/(protected)/admin/configuration/modules/page.tsx),
-MyJournal, CSV Analysis, SQL Explorer, Stocks & ETFs, User Management, the About
+MyJournal, CSV Analysis, SQL Explorer, Investments, User Management, the Expense
+module's Meta Data cards — Credit Card Accounts, Categories, Vendors and Transaction
+Rule Types
+[expense-accounts-view.tsx](src/app/(protected)/modules/[slug]/expense-accounts-view.tsx)
+— and its Transaction Rules &rarr; Transaction Rules List card
+[expense-rules-view.tsx](src/app/(protected)/modules/[slug]/expense-rules-view.tsx),
+the About
 screen's "Application & System Info" card
 [admin/about/view.tsx](src/app/(protected)/admin/about/view.tsx), and the home-screen
 cards — Daily Quote, Today In History and Daily Glance
@@ -1143,7 +1149,7 @@ const tabs: TabItem[] = [
 <Tabs items={tabs} defaultActiveKey="positions" />
 ```
 
-**Used by:** Stocks & ETFs —
+**Used by:** Investments —
 [stock-positions-view.tsx](src/app/(protected)/modules/[slug]/stock-positions-view.tsx),
 [stock-analytics-view.tsx](src/app/(protected)/modules/[slug]/stock-analytics-view.tsx),
 [stock-dashboard-view.tsx](src/app/(protected)/modules/[slug]/stock-dashboard-view.tsx)
@@ -1595,12 +1601,12 @@ A stock or ETF's logo beside its symbol, falling back to the symbol's initials.
 }
 ```
 
-**Used by:** the Stocks & ETFs grids — positions and transactions
+**Used by:** the Investments grids — positions and transactions
 [stock-positions-view.tsx](src/app/(protected)/modules/[slug]/stock-positions-view.tsx),
 plus the watch list, analytics and next-day-actions views.
 
 **Notes:** points at `/api/stocks/tickers/<ticker>/logo`, which downloads the logo on
-first request and caches it in `stk_ticker_logos` (bytes in the DB, never in a page
+first request and caches it in `inv_ticker_logos` (bytes in the DB, never in a page
 payload). **A missing logo is the normal case** — most ETFs have none — so the route
 answers 404 and the component draws the monogram; a "nothing found" result is cached so
 the same ticker isn't re-requested on every render. Images are `loading="lazy"`, so a
@@ -2128,7 +2134,7 @@ this — don't hand-roll a second header/select/sample table.
 
 **Used by:** the Expense statement importer
 [expense-import-view.tsx](src/app/(protected)/modules/[slug]/expense-import-view.tsx) and the
-Stocks & ETFs importer
+Investments importer
 [stock-import-view.tsx](src/app/(protected)/modules/[slug]/stock-import-view.tsx). The field
 lists come from the lib (`EXPENSE_IMPORT_FIELDS`, `POSITION_IMPORT_FIELDS`,
 `TRANSACTION_IMPORT_FIELDS`, `PERFORMANCE_IMPORT_FIELDS`), not from the view.
@@ -2140,14 +2146,14 @@ do repeat a header and ship blank ones, which would collide on a text key. Use
 `CSV_MAPPING_OPTION_INPUT_CLASS` for anything in the options row so it matches the
 dropdowns above it.
 
-**`extraColumn`.** Not a CSV column — a decision column the importer owns. The Stocks
+**`extraColumn`.** Not a CSV column — a decision column the importer owns. The Investments
 positions import uses it for a per-row **Type** dropdown (a broker export that mixes ETFs and
 stocks rarely says which is which), with a "Set all…" picker in `renderHeaderControl`. Keep the
 control's styling matched to the field dropdowns above it.
 
 **Row exclusion.** `sampleRows` is whatever you choose to show. The Expense importer passes
 `preview.sampleRows` (10 random rows, a visual check only) and leaves exclusion off; the
-Stocks importer passes `preview.rows` — every row — plus the two exclusion props, because you
+Investments importer passes `preview.rows` — every row — plus the two exclusion props, because you
 can't remove a row you can't see. Excluded rows render dimmed and struck through rather than
 disappearing, so the row numbers keep matching the file. The index a row is keyed by is its
 index in `sampleRows`, which is why the caller must pass rows in file order when exclusion is
@@ -2504,7 +2510,7 @@ the wrapping `<g>`, so the marks stay theme-driven. The built-in legend names se
 shapes, so a shape vocabulary needs its own key next to the chart (see `MarkLegend` in
 `TickerViewer`).
 
-**Used by:** Stocks & ETFs — account performance history
+**Used by:** Investments — account performance history
 [stock-accounts-view.tsx](src/app/(protected)/modules/[slug]/stock-accounts-view.tsx), position
 price history [stock-analytics-view.tsx](src/app/(protected)/modules/[slug]/stock-analytics-view.tsx),
 the Expense module's spend-over-time trend
@@ -2545,7 +2551,7 @@ fraction of the whole", and only up to 5 slices.
 />
 ```
 
-**Used by:** Stocks & ETFs allocation and dividend-income breakdown —
+**Used by:** Investments allocation and dividend-income breakdown —
 [stock-positions-view.tsx](src/app/(protected)/modules/[slug]/stock-positions-view.tsx).
 
 ---
@@ -2914,7 +2920,7 @@ re-renders, it belongs in a tile, not here.
 />
 ```
 
-**Used by:** Stocks & ETFs → Dashboard → Portfolio Summary → Portfolio History, as the
+**Used by:** Investments → Dashboard → Portfolio Summary → Portfolio History, as the
 readout for the snapshot playback
 [stock-playback-control.tsx](src/app/(protected)/modules/[slug]/stock-playback-control.tsx).
 
@@ -3605,7 +3611,7 @@ all four states, so every panel's loading and error treatment is identical.
 )}
 ```
 
-**Used by:** Stocks & ETFs — positions, transactions, watchlist, Daily Glance and all three
+**Used by:** Investments — positions, transactions, watchlist, Daily Glance and all three
 Chart & Analysis grids, all through the route-local host
 [ticker-viewer-host.tsx](src/app/(protected)/modules/[slug]/ticker-viewer-host.tsx). That host
 owns the fetching and the lazy-load policy; `TickerViewer` itself fetches nothing. Call sites

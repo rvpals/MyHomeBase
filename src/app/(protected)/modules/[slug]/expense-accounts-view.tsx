@@ -20,6 +20,7 @@ import {
   vendorGroupKeyForName,
   type CreditCardAccount,
   type ExpenseCategory,
+  type ExpenseRuleType,
   type VendorListEntry,
   type VendorIconFetchResult,
 } from "@/lib/expense";
@@ -29,11 +30,13 @@ import {
   clearVendorIconAction,
   deleteAccountAction,
   deleteCategoryAction,
+  deleteRuleTypeAction,
   deleteVendorAction,
   saveAccountAction,
   saveAccountImageAction,
   saveCategoryAction,
   saveCategoryIconAction,
+  saveRuleTypeAction,
   saveVendorAction,
   autoPopulateVendorIconsAction,
   saveVendorIconAction,
@@ -969,14 +972,118 @@ function VendorsPanel({ vendors }: { vendors: VendorListEntry[] }) {
   );
 }
 
+/**
+ * The curated Transaction Rule Type list. Same shape as CategoriesPanel, and
+ * deliberately so — it is the same kind of thing: a name the rules refer to by
+ * text, which the user maintains here.
+ *
+ * No icon controls, unlike categories and vendors: a type is a heading in a
+ * filter strip, never rendered beside a transaction, so there is nowhere for an
+ * icon to show up.
+ */
+function RuleTypesPanel({ ruleTypes }: { ruleTypes: ExpenseRuleType[] }) {
+  const router = useRouter();
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  async function handleSave() {
+    setError(undefined);
+    const result = await saveRuleTypeAction({ name, description });
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    setName("");
+    setDescription("");
+    router.refresh();
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-muted">
+        Types group the rules in Transaction Rules, so a long list can be filtered down to the
+        handful you came to edit. A type is created automatically when you name a new one on a
+        rule — add one here to give it a description up front.
+      </p>
+      {error && <p className="text-sm text-red-400">{error}</p>}
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-ink">Name</span>
+          <input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Subscriptions"
+            className={INPUT_CLASS}
+          />
+        </label>
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-ink">Description</span>
+          <input
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            className={INPUT_CLASS}
+          />
+        </label>
+      </div>
+
+      <div>
+        <Button size="sm" onClick={handleSave} disabled={name.trim() === ""}>
+          Save rule type
+        </Button>
+      </div>
+
+      {ruleTypes.length === 0 ? (
+        <p className="text-sm text-muted">No rule types yet.</p>
+      ) : (
+        <ul className="flex flex-col gap-1">
+          {ruleTypes.map((ruleType) => (
+            <li
+              key={ruleType.name}
+              className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-paper px-3 py-1.5 text-sm"
+            >
+              <span className="text-ink">{ruleType.name}</span>
+              {ruleType.description !== "" && (
+                <span className="text-xs text-muted">{ruleType.description}</span>
+              )}
+              <span className="ml-auto">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (
+                      !window.confirm(
+                        `Delete the rule type "${ruleType.name}"? The rules using it are kept and become untyped.`,
+                      )
+                    )
+                      return;
+                    const result = await deleteRuleTypeAction(ruleType.name);
+                    if (result.ok) router.refresh();
+                    else window.alert(result.error);
+                  }}
+                  className="text-xs font-medium text-red-400 hover:underline"
+                >
+                  Delete
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function ExpenseAccountsView({
   accounts,
   categories,
   vendors,
+  ruleTypes,
 }: {
   accounts: CreditCardAccount[];
   categories: ExpenseCategory[];
   vendors: VendorListEntry[];
+  ruleTypes: ExpenseRuleType[];
 }) {
   return (
     <div className="flex flex-col gap-4">
@@ -990,6 +1097,11 @@ export function ExpenseAccountsView({
           vendor history, so opening it is a choice rather than the default view. */}
       <CollapsibleCard title="Vendors">
         <VendorsPanel vendors={vendors} />
+      </CollapsibleCard>
+      {/* Collapsed too: this list belongs to the Transaction Rules screen, and
+          most visits to Meta Data are about cards and categories. */}
+      <CollapsibleCard title="Transaction Rule Types">
+        <RuleTypesPanel ruleTypes={ruleTypes} />
       </CollapsibleCard>
     </div>
   );

@@ -16,6 +16,7 @@ function visit(createdAt: string, overrides: Partial<SiteVisit> = {}): SiteVisit
     ipAddress: "203.0.113.7",
     path: "/",
     suspicion: "normal" as SuspicionLevel,
+    signals: [],
     createdAt,
     ...overrides,
   };

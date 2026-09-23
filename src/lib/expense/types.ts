@@ -117,6 +117,29 @@ export const RULE_ACTION_FIELD_LABELS: Record<RuleActionField, string> = {
   note: "Note",
 };
 
+/**
+ * A user-curated grouping for transaction rules, e.g. "Subscriptions" or
+ * "Restaurants". Purely organisational — nothing in matching, priority or the
+ * clean-up run reads it; it drives the Meta Data card and the rules list's
+ * filter strip.
+ *
+ * Keyed by name, like `ExpenseCategory`, because a rule stores its type as
+ * text. A rule may name a type that isn't in this list yet — saving the rule
+ * registers it, the same way a rule's category is registered.
+ */
+export interface ExpenseRuleType {
+  name: string;
+  description: string;
+  /**
+   * Reserved for ordering the filter strip deliberately rather than
+   * alphabetically. Nothing writes it yet, so every row holds 0 and `name` is
+   * the tiebreak. See migration 0107.
+   */
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** One assignment a rule performs when it matches. */
 export interface RuleAction {
   id: number;
@@ -146,6 +169,12 @@ export interface PostImportRule {
   name: string;
   /** Optional longer note on why this rule exists. Empty means none. */
   description: string;
+  /**
+   * Which `ExpenseRuleType` this rule is filed under. Empty means Untyped,
+   * which is every rule written before migration 0107 — a real group in the
+   * filter strip, not a hidden state.
+   */
+  typeName: string;
   pattern: string;
   /** Lowest number wins when several rules match. */
   priority: number;

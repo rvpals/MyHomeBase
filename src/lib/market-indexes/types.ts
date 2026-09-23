@@ -1,4 +1,4 @@
-// The major market benchmarks the Stocks & ETFs dashboard shows beside your own
+// The major market benchmarks the Investments dashboard shows beside your own
 // portfolio: the three US equity indexes, small caps, volatility, the metals,
 // oil, rates, the dollar, and bitcoin.
 //

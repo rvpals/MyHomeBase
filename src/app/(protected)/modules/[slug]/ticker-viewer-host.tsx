@@ -8,7 +8,7 @@
 // Loading is per *tab*, not per card: entering a tab loads everything on it, so
 // a reader scrolling its cards never meets one that hasn't started. Each result
 // is then kept for as long as the dialog is up. Risk is the cheap one despite
-// being the heaviest to compute — it comes from `stk_ticker_risk_cache` and only
+// being the heaviest to compute — it comes from `inv_ticker_risk_cache` and only
 // hits the provider on a first-ever calculation or an explicit Recalculate.
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -228,7 +228,7 @@ function TickerViewerHostInner({
     // With no buys there is nothing to analyze, so the link goes to the ticker's
     // stored lots instead of an ad-hoc set the schema would reject.
     if (lots.length > 0) query.set("lots", encodeAdhocLots(lots));
-    router.push(`/modules/stock-etfs/tax-lots?${query.toString()}`);
+    router.push(`/modules/investments/tax-lots?${query.toString()}`);
   }, [ownData.data, router, ticker]);
 
   return (

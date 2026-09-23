@@ -11,7 +11,7 @@ import { refreshIntervalSchema } from "./schema";
 import type { RefreshInterval, ScheduledRefreshSettings } from "./types";
 
 /** The module whose settings drive this job, and the job's row in `sys_scheduled_runs`. */
-export const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
+export const INVESTMENTS_MODULE_SLUG = "investments";
 // Aliased from the job catalogue rather than spelled again -- one literal for the
 // string that is also a primary key in `sys_scheduled_runs`.
 export const STOCK_AUTO_REFRESH_JOB_KEY = JOB_KEYS.stockAutoRefresh;

@@ -15,7 +15,7 @@ export type TableReferenceRow = [tableName: string, description: string];
 
 /** The tables of one module, as the reference card renders them. */
 export interface TableReferenceGroup {
-  /** The three-letter table prefix, e.g. "stk_". Empty for "Unclassified". */
+  /** The three-letter table prefix, e.g. "inv_". Empty for "Unclassified". */
   prefix: string;
   /** Heading — the module's short name, or "Platform" for the sys_ tables. */
   module: string;
@@ -94,7 +94,7 @@ export interface ModuleTableGroup {
   key: string;
   /** Heading — the module's short name from `sys_modules`. */
   label: string;
-  /** The three-letter table prefix, e.g. "stk_". Empty for "Non-Modules". */
+  /** The three-letter table prefix, e.g. "inv_". Empty for "Non-Modules". */
   prefix: string;
   /** The module's registered icon. Absent for "Non-Modules". */
   icon?: string;

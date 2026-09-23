@@ -22,9 +22,9 @@ import { deps } from "@/lib/wiring";
 import { requireModuleAccess } from "../../require-access";
 
 /** The module these actions belong to, matched exactly by `requireModuleAccess`. */
-const ACCESS_MODULE_SLUG = "stock-etfs";
+const ACCESS_MODULE_SLUG = "investments";
 
-const STOCK_ETFS_MODULE_PATH = "/modules/stock-etfs";
+const INVESTMENTS_MODULE_PATH = "/modules/investments";
 
 export interface ActionResult {
   ok: boolean;
@@ -87,7 +87,7 @@ function toErrorResult(error: unknown, fallback: string): ActionResult {
 /**
  * An account-id -> name function over the current account list.
  *
- * `lib/stock-positions` can't read `stk_investment_accounts`, so it asks for this
+ * `lib/stock-positions` can't read `inv_investment_accounts`, so it asks for this
  * when it needs to name an account in an error ("AAPL is held in Chase, not
  * Fidelity"). Read once per call rather than per id — a message may name several.
  */
@@ -127,7 +127,7 @@ export async function upsertPositionAction(input: PositionFormInput): Promise<Ac
   } catch (error) {
     return toErrorResult(error, "Failed to save position.");
   }
-  revalidatePath(STOCK_ETFS_MODULE_PATH);
+  revalidatePath(INVESTMENTS_MODULE_PATH);
   return { ok: true };
 }
 
@@ -138,7 +138,7 @@ export async function deletePositionAction(accountId: number, ticker: string): P
   } catch (error) {
     return toErrorResult(error, "Failed to delete position.");
   }
-  revalidatePath(STOCK_ETFS_MODULE_PATH);
+  revalidatePath(INVESTMENTS_MODULE_PATH);
   return { ok: true };
 }
 
@@ -160,7 +160,7 @@ export async function createTransactionAction(input: TransactionFormInput): Prom
   } catch (error) {
     return toErrorResult(error, "Failed to record transaction.");
   }
-  revalidatePath(STOCK_ETFS_MODULE_PATH);
+  revalidatePath(INVESTMENTS_MODULE_PATH);
   return { ok: true };
 }
 
@@ -184,7 +184,7 @@ export async function updateTransactionAction(
   } catch (error) {
     return toErrorResult(error, "Failed to update transaction.");
   }
-  revalidatePath(STOCK_ETFS_MODULE_PATH);
+  revalidatePath(INVESTMENTS_MODULE_PATH);
   return { ok: true };
 }
 
@@ -301,7 +301,7 @@ export async function refreshAllPositionsAction(): Promise<RefreshAllResult> {
   await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const { refreshed, failed } = await refreshAllPositions(deps.stockPositionRepo, deps.marketDataClient);
-    revalidatePath(STOCK_ETFS_MODULE_PATH);
+    revalidatePath(INVESTMENTS_MODULE_PATH);
     return { ok: true, refreshedCount: refreshed.length, failed };
   } catch (error) {
     return toErrorResult(error, "Failed to refresh positions.");
@@ -315,7 +315,7 @@ export async function deleteTransactionAction(transactionId: number): Promise<Ac
   } catch (error) {
     return toErrorResult(error, "Failed to delete transaction.");
   }
-  revalidatePath(STOCK_ETFS_MODULE_PATH);
+  revalidatePath(INVESTMENTS_MODULE_PATH);
   return { ok: true };
 }
 

@@ -60,7 +60,7 @@ export const HOME_WIDGET_INFO: Record<HomeWidgetId, HomeWidgetInfo> = {
     id: "stockGlance",
     label: "Stock Daily Glance",
     description:
-      "Today's move across the portfolio, by type and by ticker. Shown only to someone who can open the Stocks & ETFs module, and only when there are positions to report.",
+      "Today's move across the portfolio, by type and by ticker. Shown only to someone who can open the Investments module, and only when there are positions to report.",
   },
 };
 

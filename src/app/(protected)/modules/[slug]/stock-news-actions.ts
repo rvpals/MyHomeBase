@@ -6,7 +6,7 @@ import { deps } from "@/lib/wiring";
 import { requireModuleAccess } from "../../require-access";
 
 /** The module these actions belong to, matched exactly by `requireModuleAccess`. */
-const ACCESS_MODULE_SLUG = "stock-etfs";
+const ACCESS_MODULE_SLUG = "investments";
 
 export interface TopStoryResult {
   ok: boolean;

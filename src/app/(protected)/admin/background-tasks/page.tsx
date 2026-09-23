@@ -21,7 +21,7 @@ export default async function BackgroundTasksPage() {
   // has no row, and listing the table would silently omit it.
   const jobs = listScheduledJobs(deps.scheduledRunRepo.list());
 
-  const stockModule = getModuleBySlug(deps.moduleRepo, "stock-etfs");
+  const stockModule = getModuleBySlug(deps.moduleRepo, "investments");
   const autoRefresh = resolveScheduledRefreshSettings(
     stockModule ? listModuleSettingsFor(deps.moduleSettingsRepo, stockModule.id) : [],
   );

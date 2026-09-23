@@ -166,6 +166,23 @@ export const transactionIdsSchema = z
 
 export const ruleActionFieldSchema = z.enum(RULE_ACTION_FIELDS);
 
+export const expenseRuleTypeSchema = z.object({
+  name: z.string().min(1),
+  description: z.string(),
+  sortOrder: z.number().int(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const saveRuleTypeSchema = z.object({
+  name: z.string().trim().min(1, "Rule type name is required."),
+  description: z.string().trim().default(""),
+  sortOrder: z.number().int().default(0),
+});
+
+export type SaveRuleTypeInput = z.input<typeof saveRuleTypeSchema>;
+export type RuleTypeWriteData = z.output<typeof saveRuleTypeSchema>;
+
 export const ruleActionSchema = z.object({
   id: z.number().int().positive(),
   ruleId: z.number().int().positive(),
@@ -195,6 +212,9 @@ export const saveRuleActionSchema = z
 export const savePostImportRuleSchema = z.object({
   name: z.string().trim().min(1, "A rule name is required."),
   description: z.string().trim().default(""),
+  // Optional, unlike the rule's own name: a rule with no type is Untyped,
+  // which is a real group in the filter strip rather than an error.
+  typeName: z.string().trim().default(""),
   pattern: z.string().trim().min(1, "A pattern is required."),
   priority: z.number().int().default(0),
   isEnabled: z.boolean().default(true),
@@ -212,6 +232,8 @@ export const postImportRuleSchema = z.object({
   // pattern was whitespace-only kept a blank name, and reading it must not throw.
   name: z.string(),
   description: z.string(),
+  /** '' = Untyped, which is every rule predating migration 0107. */
+  typeName: z.string(),
   pattern: z.string().min(1),
   priority: z.number().int(),
   isEnabled: z.boolean(),

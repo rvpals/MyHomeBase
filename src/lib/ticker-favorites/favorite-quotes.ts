@@ -1,7 +1,7 @@
 // Last-refreshed prices for the favorites jump list.
 //
 // No provider call: the price shown is the one `refresh-positions` last wrote to
-// `stk_positions`. That keeps opening the menu free, and — more importantly —
+// `inv_positions`. That keeps opening the menu free, and — more importantly —
 // keeps it *consistent*, since the star list and the positions table then quote
 // the same number from the same read rather than differing by whatever moved
 // between two fetches.

@@ -565,7 +565,7 @@ as "navigation" and the bottom edge was crowded anyway.
   module's sections or the module list. Closed, the bar names where you are.
 - **Group headings are kept**, unlike the desktop accordion's collapsing. A heading is a
   label, not a level: nothing costs an extra tap. Compact *used* to flatten them away, and
-  that was wrong for exactly the modules that needed structure most — Stocks' ten sections
+  that was wrong for exactly the modules that needed structure most — Investments' ten sections
   in three groups as one undifferentiated scroll.
 - **Touch targets grow.** Sheet rows are `py-2.5` (~44px) against the desktop panel's
   `py-1.5`. A pointer doesn't need the slack; a thumb does.
@@ -929,7 +929,7 @@ tier that matches what they do.
 | acts on the **current page only** (save, add, filter, refresh) | the page body | any tier — chrome is for navigation |
 
 That last row is the one most often got wrong. A "Refresh prices" button belongs on the
-Stocks page, not in the header, however global it feels — the header is for things that
+Investments page, not in the header, however global it feels — the header is for things that
 mean the same thing on every screen in the app.
 
 **Then, the rules that keep it from breaking the layout:**

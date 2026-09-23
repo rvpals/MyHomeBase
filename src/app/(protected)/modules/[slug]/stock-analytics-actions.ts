@@ -16,9 +16,9 @@ import { deps } from "@/lib/wiring";
 import { requireModuleAccess } from "../../require-access";
 
 /** The module these actions belong to, matched exactly by `requireModuleAccess`. */
-const ACCESS_MODULE_SLUG = "stock-etfs";
+const ACCESS_MODULE_SLUG = "investments";
 
-const STOCK_ETFS_MODULE_PATH = "/modules/stock-etfs";
+const INVESTMENTS_MODULE_PATH = "/modules/investments";
 
 export interface ActionResult {
   ok: boolean;
@@ -54,7 +54,7 @@ export async function recomputeAllVolatilityAction(): Promise<RecomputeVolatilit
     return toErrorResult(error, "Failed to save volatility results.");
   }
 
-  revalidatePath(STOCK_ETFS_MODULE_PATH);
+  revalidatePath(INVESTMENTS_MODULE_PATH);
   return { ok: true, computedCount: results.length, failed };
 }
 
@@ -65,7 +65,7 @@ export async function clearVolatilityCacheAction(): Promise<ActionResult> {
   } catch (error) {
     return toErrorResult(error, "Failed to clear volatility cache.");
   }
-  revalidatePath(STOCK_ETFS_MODULE_PATH);
+  revalidatePath(INVESTMENTS_MODULE_PATH);
   return { ok: true };
 }
 
@@ -78,7 +78,7 @@ export async function computeCorrelationAction(): Promise<ComputeCorrelationResu
   try {
     const positions = deps.stockPositionRepo.listPositions();
     const result = await computeCorrelationMatrix(deps.stockAnalyticsRepo, deps.marketDataClient, positions);
-    revalidatePath(STOCK_ETFS_MODULE_PATH);
+    revalidatePath(INVESTMENTS_MODULE_PATH);
     return { ok: true, result };
   } catch (error) {
     return toErrorResult(error, "Failed to compute correlation matrix.");
@@ -92,7 +92,7 @@ export async function clearCorrelationCacheAction(): Promise<ActionResult> {
   } catch (error) {
     return toErrorResult(error, "Failed to clear correlation cache.");
   }
-  revalidatePath(STOCK_ETFS_MODULE_PATH);
+  revalidatePath(INVESTMENTS_MODULE_PATH);
   return { ok: true };
 }
 
@@ -111,7 +111,7 @@ export async function computeSharpeAction(
       riskFreeRate: Number(riskFreeRatePct || "5") / 100,
       lookbackDays: Number(lookbackDays || "365"),
     });
-    revalidatePath(STOCK_ETFS_MODULE_PATH);
+    revalidatePath(INVESTMENTS_MODULE_PATH);
     return { ok: true, result };
   } catch (error) {
     return toErrorResult(error, "Failed to compute Sharpe ratio.");

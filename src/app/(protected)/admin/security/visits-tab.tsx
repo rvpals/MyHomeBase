@@ -11,12 +11,13 @@ import { getIconSlot } from "@/lib/icons";
 // re-exports the `deps`-backed prune runner, which would drag better-sqlite3 and
 // `node:fs` into this client bundle and fail the build. Same rule, and the same
 // reason, as the note at the top of `view.tsx`.
-import { describeSuspicion } from "@/lib/site-visits/suspicion";
+import { describeSignal, describeSuspicion } from "@/lib/site-visits/suspicion";
 import type {
   IpAllowlistEntry,
   SiteVisit,
   SiteVisitSummary,
   SuspicionLevel,
+  SuspicionSignal,
   VisitWeekGroup,
 } from "@/lib/site-visits/types";
 import {
@@ -53,6 +54,28 @@ function SuspicionBadge({ level }: { level: SuspicionLevel }) {
     <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${tone}`}>
       {describeSuspicion(level)}
     </span>
+  );
+}
+
+/**
+ * The reasons behind a verdict, one sentence per line (migrations/0106).
+ *
+ * Full sentences rather than short chips: the reader is deciding whether to act, and
+ * "Also has failed sign-in attempts" answers that where a chip reading "Auth" makes
+ * them hover to find out. The list is at most six items and usually one.
+ *
+ * A blank is the honest answer for a row written before 0106 — its reasons were never
+ * recorded and cannot be re-derived, so it says nothing rather than guessing.
+ */
+function SuspicionReasons({ signals }: { signals: SuspicionSignal[] }) {
+  if (signals.length === 0) return <span className="text-muted">—</span>;
+
+  return (
+    <ul className="space-y-0.5 text-xs text-muted">
+      {signals.map((signal) => (
+        <li key={signal}>{describeSignal(signal)}</li>
+      ))}
+    </ul>
   );
 }
 
@@ -183,6 +206,14 @@ export function VisitsTab({
       header: "Verdict",
       value: (row) => describeSuspicion(row.suspicion),
       render: (row) => <SuspicionBadge level={row.suspicion} />,
+    },
+    {
+      key: "signals",
+      header: "Why",
+      // Joined with "; " for sort and for the CSV export, which is one cell per row
+      // and cannot carry a list. The rendered cell stacks them instead.
+      value: (row) => row.signals.map(describeSignal).join("; "),
+      render: (row) => <SuspicionReasons signals={row.signals} />,
     },
     {
       key: "ipAddress",

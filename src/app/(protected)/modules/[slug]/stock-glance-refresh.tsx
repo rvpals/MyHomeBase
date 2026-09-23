@@ -17,7 +17,7 @@
 // and there is exactly one of those per ticker either way.
 //
 // Authorisation is unchanged: every action below authorises on
-// `requireModuleAccess("stock-etfs")`, and this card only renders for a reader
+// `requireModuleAccess("investments")`, and this card only renders for a reader
 // who already has that module (see the home page's `stockModule` gate), so
 // nothing here widens anyone's reach.
 

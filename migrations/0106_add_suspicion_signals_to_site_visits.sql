@@ -1,0 +1,27 @@
+-- Records WHY a visit was scored the way it was, alongside the verdict 0102 already
+-- stores.
+--
+-- The scorer has always produced these reasons -- `scoreSuspicion` returns
+-- `{ level, signals }` and `describeSignal` turns each signal into a sentence -- but
+-- until now only `level` was written and the signals were discarded at the call site.
+-- The result was a red "Suspicious" badge with no way to tell whether it meant a
+-- scanner user agent or a correlated failed password. Those are very different
+-- events, and the reader was being asked to guess which one they were looking at.
+--
+-- Stored as a comma-separated list of signal KEYS, not sentences and not JSON:
+--
+--   'scanner_user_agent,auth_failures'
+--
+-- Keys, because the wording in `describeSignal` is presentation. Rewording a reason
+-- must not require a data migration, and a row written a month ago must pick up the
+-- new phrasing on its next render.
+--
+-- Comma-separated rather than JSON, because the value set is a closed seven-member
+-- enum with no punctuation in any member, nothing queries into the list, and a flat
+-- string keeps the CSV export of the Visit tab readable. A JSON array here would buy
+-- parsing ceremony and nothing else.
+--
+-- NOT NULL DEFAULT '' matches every other free-text column on this table, so "no
+-- signals" and "scored normal" are the same blank and the repository's existing
+-- blank-to-undefined convention carries over unchanged.
+ALTER TABLE sys_site_visits ADD COLUMN signals TEXT NOT NULL DEFAULT '';

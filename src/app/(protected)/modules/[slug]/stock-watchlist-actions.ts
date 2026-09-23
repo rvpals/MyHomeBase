@@ -6,9 +6,9 @@ import { deps } from "@/lib/wiring";
 import { requireModuleAccess } from "../../require-access";
 
 /** The module these actions belong to, matched exactly by `requireModuleAccess`. */
-const ACCESS_MODULE_SLUG = "stock-etfs";
+const ACCESS_MODULE_SLUG = "investments";
 
-const STOCK_ETFS_MODULE_PATH = "/modules/stock-etfs";
+const INVESTMENTS_MODULE_PATH = "/modules/investments";
 
 export interface ActionResult {
   ok: boolean;
@@ -26,7 +26,7 @@ export async function createWatchListAction(name: string): Promise<ActionResult>
   } catch (error) {
     return toErrorResult(error, "Failed to create watch list.");
   }
-  revalidatePath(STOCK_ETFS_MODULE_PATH);
+  revalidatePath(INVESTMENTS_MODULE_PATH);
   return { ok: true };
 }
 
@@ -37,7 +37,7 @@ export async function renameWatchListAction(watchListId: number, name: string): 
   } catch (error) {
     return toErrorResult(error, "Failed to rename watch list.");
   }
-  revalidatePath(STOCK_ETFS_MODULE_PATH);
+  revalidatePath(INVESTMENTS_MODULE_PATH);
   return { ok: true };
 }
 
@@ -48,7 +48,7 @@ export async function deleteWatchListAction(watchListId: number): Promise<Action
   } catch (error) {
     return toErrorResult(error, "Failed to delete watch list.");
   }
-  revalidatePath(STOCK_ETFS_MODULE_PATH);
+  revalidatePath(INVESTMENTS_MODULE_PATH);
   return { ok: true };
 }
 
@@ -73,7 +73,7 @@ export async function addWatchListItemAction(
   } catch (error) {
     return toErrorResult(error, "Failed to add ticker to watch list.");
   }
-  revalidatePath(STOCK_ETFS_MODULE_PATH);
+  revalidatePath(INVESTMENTS_MODULE_PATH);
   return { ok: true };
 }
 
@@ -84,6 +84,6 @@ export async function deleteWatchListItemAction(itemId: number): Promise<ActionR
   } catch (error) {
     return toErrorResult(error, "Failed to remove ticker from watch list.");
   }
-  revalidatePath(STOCK_ETFS_MODULE_PATH);
+  revalidatePath(INVESTMENTS_MODULE_PATH);
   return { ok: true };
 }

@@ -21,7 +21,7 @@ export interface TickerOwnDataDeps {
 /**
  * The one table this module owns: computed risk figures, keyed by ticker.
  *
- * Deliberately not `stk_stock_volatility_cache` — that one is owned by the
+ * Deliberately not `inv_stock_volatility_cache` — that one is owned by the
  * analytics dashboard and cleared wholesale on every refresh, so a per-ticker
  * write there would not survive. See `migrations/0039_create_ticker_risk_cache.md`.
  */

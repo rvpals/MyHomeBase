@@ -8,8 +8,8 @@ import { deps } from "@/lib/wiring";
 import { requireModuleAccess } from "../../require-access";
 
 
-const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
-const STOCK_ETFS_MODULE_PATH = "/modules/stock-etfs";
+const INVESTMENTS_MODULE_SLUG = "investments";
+const INVESTMENTS_MODULE_PATH = "/modules/investments";
 
 export interface SaveDashboardWidgetsResult {
   ok: boolean;
@@ -24,10 +24,10 @@ export interface SaveDashboardWidgetsResult {
 export async function saveDashboardWidgetsAction(
   widgets: DashboardWidgetsInput,
 ): Promise<SaveDashboardWidgetsResult> {
-  await requireModuleAccess(STOCK_ETFS_MODULE_SLUG);
+  await requireModuleAccess(INVESTMENTS_MODULE_SLUG);
   try {
-    const appModule = getModuleBySlug(deps.moduleRepo, STOCK_ETFS_MODULE_SLUG);
-    if (!appModule) throw new Error("Stocks & ETFs module not found.");
+    const appModule = getModuleBySlug(deps.moduleRepo, INVESTMENTS_MODULE_SLUG);
+    if (!appModule) throw new Error("Investments module not found.");
 
     saveModuleSettings(deps.moduleSettingsRepo, {
       moduleId: appModule.id,
@@ -39,6 +39,6 @@ export async function saveDashboardWidgetsAction(
       error: error instanceof Error ? error.message : "Failed to save the dashboard layout.",
     };
   }
-  revalidatePath(STOCK_ETFS_MODULE_PATH);
+  revalidatePath(INVESTMENTS_MODULE_PATH);
   return { ok: true };
 }

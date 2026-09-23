@@ -2,7 +2,7 @@
  * Turning the correlation matrix into the handful of facts an analysis can use.
  *
  * The matrix itself is already computed and cached elsewhere
- * (`src/lib/stock-analytics`, table `stk_stock_correlation_cache`); nothing here
+ * (`src/lib/stock-analytics`, table `inv_stock_correlation_cache`); nothing here
  * fetches or recomputes it. This module answers three questions from it:
  *
  * - which holdings move together enough to be redundant,

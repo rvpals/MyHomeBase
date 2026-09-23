@@ -15,9 +15,9 @@ import { deps } from "@/lib/wiring";
 import { requireModuleAccess } from "../../require-access";
 
 /** The module these actions belong to, matched exactly by `requireModuleAccess`. */
-const ACCESS_MODULE_SLUG = "stock-etfs";
+const ACCESS_MODULE_SLUG = "investments";
 
-const STOCK_ETFS_MODULE_PATH = "/modules/stock-etfs";
+const INVESTMENTS_MODULE_PATH = "/modules/investments";
 
 export interface ActionResult {
   ok: boolean;
@@ -51,7 +51,7 @@ export async function createAccountAction(input: AccountFormInput): Promise<Acti
   } catch (error) {
     return toErrorResult(error, "Failed to add account.");
   }
-  revalidatePath(STOCK_ETFS_MODULE_PATH);
+  revalidatePath(INVESTMENTS_MODULE_PATH);
   return { ok: true };
 }
 
@@ -69,7 +69,7 @@ export async function updateAccountAction(
   } catch (error) {
     return toErrorResult(error, "Failed to update account.");
   }
-  revalidatePath(STOCK_ETFS_MODULE_PATH);
+  revalidatePath(INVESTMENTS_MODULE_PATH);
   return { ok: true };
 }
 
@@ -80,7 +80,7 @@ export async function deleteAccountAction(accountId: number): Promise<ActionResu
   } catch (error) {
     return toErrorResult(error, "Failed to delete account.");
   }
-  revalidatePath(STOCK_ETFS_MODULE_PATH);
+  revalidatePath(INVESTMENTS_MODULE_PATH);
   return { ok: true };
 }
 
@@ -99,7 +99,7 @@ export async function addPerformanceRecordAction(
   } catch (error) {
     return toErrorResult(error, "Failed to add performance record.");
   }
-  revalidatePath(STOCK_ETFS_MODULE_PATH);
+  revalidatePath(INVESTMENTS_MODULE_PATH);
   return { ok: true };
 }
 
@@ -110,7 +110,7 @@ export async function deletePerformanceRecordAction(recordId: number): Promise<A
   } catch (error) {
     return toErrorResult(error, "Failed to delete performance record.");
   }
-  revalidatePath(STOCK_ETFS_MODULE_PATH);
+  revalidatePath(INVESTMENTS_MODULE_PATH);
   return { ok: true };
 }
 
@@ -134,7 +134,7 @@ export async function saveAccountIconAction(
   } catch (error) {
     return toErrorResult(error, "Failed to save the icon.");
   }
-  revalidatePath(STOCK_ETFS_MODULE_PATH);
+  revalidatePath(INVESTMENTS_MODULE_PATH);
   return { ok: true };
 }
 
@@ -145,6 +145,6 @@ export async function clearAccountIconAction(accountId: number): Promise<ActionR
   } catch (error) {
     return toErrorResult(error, "Failed to remove the icon.");
   }
-  revalidatePath(STOCK_ETFS_MODULE_PATH);
+  revalidatePath(INVESTMENTS_MODULE_PATH);
   return { ok: true };
 }

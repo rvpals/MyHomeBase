@@ -29,6 +29,7 @@ import {
   deleteCategory,
   deleteVendor,
   deleteRule,
+  deleteRuleType,
   deleteTransaction,
   deleteTransactions,
   importExpenseCsv,
@@ -43,6 +44,7 @@ import {
   updateRule,
   updateTransaction,
   upsertCategory,
+  upsertRuleType,
   upsertVendor,
   type AutoImportRunSummary,
   type BulkTransactionEditInput,
@@ -52,6 +54,7 @@ import {
   type SaveAccountInput,
   type SaveCategoryInput,
   type SaveVendorInput,
+  type SaveRuleTypeInput,
   type SavePostImportRuleInput,
   type VendorIconFetchResult,
   type RuleActionField,
@@ -381,6 +384,34 @@ export async function deleteRuleAction(id: number): Promise<ActionResult> {
     deleteRule(deps.expenseRepo, id);
   } catch (error) {
     return toErrorResult(error, "Failed to delete the rule.");
+  }
+  revalidatePath(EXPENSE_MODULE_PATH);
+  return { ok: true };
+}
+
+/**
+ * Saves a rule type. Also the endpoint behind the New Rule form's `+` button,
+ * which is why it is an upsert rather than a create: adding a type that already
+ * exists is a no-op the caller shouldn't have to check for first.
+ */
+export async function saveRuleTypeAction(input: SaveRuleTypeInput): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    upsertRuleType(deps.expenseRepo, input);
+  } catch (error) {
+    return toErrorResult(error, "Failed to save the rule type.");
+  }
+  revalidatePath(EXPENSE_MODULE_PATH);
+  return { ok: true };
+}
+
+/** Deletes a rule type. Rules filed under it survive and read as Untyped. */
+export async function deleteRuleTypeAction(name: string): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    deleteRuleType(deps.expenseRepo, name);
+  } catch (error) {
+    return toErrorResult(error, "Failed to delete the rule type.");
   }
   revalidatePath(EXPENSE_MODULE_PATH);
   return { ok: true };

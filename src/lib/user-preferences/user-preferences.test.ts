@@ -47,7 +47,7 @@ class FakeUserPreferencesRepository implements UserPreferencesRepository {
   }
 }
 
-const MODULES = ["journal", "stock-etfs", "expense"];
+const MODULES = ["journal", "investments", "expense"];
 
 describe("resolveUserPreferences", () => {
   it("returns the defaults for a user with no stored rows", () => {
@@ -345,11 +345,11 @@ describe("saveUserPreferences", () => {
     const saved = saveUserPreferences(
       repo,
       7,
-      { favoriteModuleSlug: "stock-etfs", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE },
+      { favoriteModuleSlug: "investments", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE },
       MODULES,
     );
     expect(saved).toEqual({
-      favoriteModuleSlug: "stock-etfs",
+      favoriteModuleSlug: "investments",
       openFavoriteModuleOnStartup: true,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
       weatherLocation: undefined,

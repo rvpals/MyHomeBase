@@ -18,6 +18,22 @@ export const MAX_BULK_IDS = 1000;
 export const suspicionLevelSchema = z.enum(["normal", "watch", "suspicious"]);
 
 /**
+ * The reasons behind a verdict (migrations/0106). Mirrors `SuspicionSignal` exactly.
+ *
+ * Only validates values the domain produces; the *stored* string is decoded by
+ * `decodeSignals`, which drops unknown keys rather than rejecting the row.
+ */
+export const suspicionSignalSchema = z.enum([
+  "no_user_agent",
+  "tool_user_agent",
+  "scanner_user_agent",
+  "burst",
+  "never_signs_in",
+  "auth_failures",
+  "allowlist_removed",
+]);
+
+/**
  * Trims, drops blanks to `undefined`, and truncates. Applied to every free-text field
  * on the way in so the recorder can never be the thing that breaks a page render: a
  * hostile 8 KB user-agent header becomes a short string rather than a write error.
@@ -47,6 +63,7 @@ export const newSiteVisitSchema = z.object({
     return trimmed === "" ? "/" : trimmed.slice(0, 200);
   }, z.string().min(1).default("/")),
   suspicion: suspicionLevelSchema.optional(),
+  signals: z.array(suspicionSignalSchema).optional(),
 });
 
 export type NewSiteVisitInput = z.infer<typeof newSiteVisitSchema>;
@@ -59,6 +76,9 @@ export const siteVisitSchema = z.object({
   referer: z.string().min(1).optional(),
   path: z.string().min(1),
   suspicion: suspicionLevelSchema,
+  // Defaulted, not optional: a row written before 0106 decodes to `[]`, and the
+  // screen should never have to tell "no reasons" from "field absent".
+  signals: z.array(suspicionSignalSchema).default([]),
   reviewedAt: z.string().min(1).optional(),
   createdAt: z.string().min(1),
 });

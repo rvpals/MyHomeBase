@@ -1,4 +1,4 @@
-// The Stocks & ETFs module's section list and metadata.
+// The Investments module's section list and metadata.
 //
 // Deliberately NOT a "use client" module: server components (the section pages
 // and the shell) read these values directly. Exporting them from the client nav
@@ -85,7 +85,7 @@ export const STOCK_SECTION_ICONS: Record<StockSection, string> = {
   settings: "sliders",
 };
 
-const BASE_PATH = "/modules/stock-etfs";
+const BASE_PATH = "/modules/investments";
 
 /** The dashboard is the module root; every other section is a child route. */
 export function stockSectionHref(section: StockSection): string {

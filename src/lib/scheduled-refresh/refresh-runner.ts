@@ -15,13 +15,13 @@ import {
   resolveScheduledRefreshSettings,
   shouldRunNow,
   STOCK_AUTO_REFRESH_JOB_KEY,
-  STOCK_ETFS_MODULE_SLUG,
+  INVESTMENTS_MODULE_SLUG,
 } from "./settings";
 import type { ScheduledRefreshSettings, ScheduledRefreshSummary, ScheduledRun } from "./types";
 
 /** The module's saved settings, or the disabled defaults if the module is absent. */
 export function loadScheduledRefreshSettings(): ScheduledRefreshSettings {
-  const stockModule = getModuleBySlug(deps.moduleRepo, STOCK_ETFS_MODULE_SLUG);
+  const stockModule = getModuleBySlug(deps.moduleRepo, INVESTMENTS_MODULE_SLUG);
   return resolveScheduledRefreshSettings(
     stockModule ? listModuleSettingsFor(deps.moduleSettingsRepo, stockModule.id) : [],
   );

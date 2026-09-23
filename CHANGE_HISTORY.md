@@ -1,5 +1,65 @@
 # Change History
 
+## 2026-09-23 — Stocks & ETFs becomes Investments, rules you can group, visits that explain themselves
+
+### [Investments] The module formerly called Stocks & ETFs
+
+**Stocks & ETFs is now Investments**, at `/modules/investments`.
+
+The old name described the first two things the module tracked. It has since grown to
+hold brokerage accounts, tax lots, dividend income and account performance — none of
+which is a stock or an ETF — so the name had stopped covering its own contents.
+"Investments" is the name that still fits whatever it gains next.
+
+The rename went all the way down rather than stopping at the label. The URL, the
+module's registry row, and the database prefix all moved: the seventeen `stk_` tables
+are now `inv_`. That last part is the reason this is worth a release note rather than
+a footnote — a prefix is a namespace, and leaving it reading `stk_` under a module
+called Investments would have left the next person guessing which module owns a table.
+
+**Old `/modules/stock-etfs` links now 404.** This was a deliberate choice over keeping
+a redirect: a redirect is a second name for the same thing, and two names is what the
+rename existed to end. Anyone with a bookmark or a home-screen shortcut needs a fresh
+one.
+
+Two things deliberately did *not* change. **Uploaded icons survive** — the module's
+twenty-seven icon positions keep their internal ids, because those ids are what an
+uploaded image is filed under and renaming them would have quietly orphaned every one.
+And **nobody's access changed**: module grants are keyed to the module's row, not its
+name, so the rename passed through them without touching a single permission.
+
+The tables keep their own names under the new prefix — `inv_investment_accounts`
+stutters, `inv_stock_positions` still says "stock". Renaming table bodies as well as
+the prefix would have doubled the size of an already wide change to fix a cosmetic
+complaint.
+
+### [Expense] Group transaction rules by type
+
+The Transaction Rules screen rendered every rule as one flat list. That works at five
+rules; past about twenty it stops being a list and becomes a haystack, where
+restaurant patterns, subscription patterns and one-off vendor corrections all sit at
+the same level with nothing separating them.
+
+Rules now carry a **Type**, curated under Expense → Meta Data, and the rules list
+filters on it. The reader was already doing this grouping in their head — this stores
+it so the screen can act on it.
+
+Rules with no type are **Untyped** rather than hidden, so nothing disappears from view
+by not having been filed yet.
+
+### [Security] Why a visit was flagged
+
+Administration → Security → Visits showed a red **Suspicious** pill and nothing else.
+
+It now shows the reasons: "Identified itself as a scanner", "Also has failed sign-in
+attempts". These are different enough events that what you'd do next differs, and the
+screen previously gave no way to tell them apart without re-deriving the answer by eye
+from the user-agent column.
+
+This is not new detection. The reasons were already being computed on every visit and
+then discarded before the row was written — the code that renders them as English had
+been sitting there with nothing calling it. They are now stored and shown.
+
 ## 2026-09-22 — Several devices one dataset, and settings you can set for someone else
 
 ### [CSV Analysis] Drop many files at once, and compare them

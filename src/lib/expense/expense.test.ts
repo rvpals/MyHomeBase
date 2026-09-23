@@ -9,8 +9,11 @@ import {
   createTransaction,
   deleteAccount,
   deleteCategory,
+  deleteRuleType,
   deleteTransactions,
   listCategories,
+  listRuleTypes,
+  listRules,
   listTransactions,
   getAccountImage,
   getCategoryIcon,
@@ -30,6 +33,7 @@ import {
   updateRule,
   updateTransaction,
   upsertCategory,
+  upsertRuleType,
   upsertVendor,
 } from "./expense";
 import { MAX_CARD_IMAGE_BYTES, MAX_CATEGORY_ICON_BYTES, MAX_VENDOR_ICON_BYTES } from "./schema";
@@ -38,6 +42,7 @@ import type {
   AccountWriteData,
   CategoryWriteData,
   PostImportRuleWriteData,
+  RuleTypeWriteData,
   TransactionWriteData,
   VendorWriteData,
 } from "./schema";
@@ -47,6 +52,7 @@ import type {
   CategoryTotal,
   CreditCardAccount,
   ExpenseCategory,
+  ExpenseRuleType,
   ExpenseTransaction,
   ExpenseVendor,
   PostImportRule,
@@ -60,6 +66,7 @@ function fakeRepo(): ExpenseRepository {
   let vendors: ExpenseVendor[] = [];
   let transactions: ExpenseTransaction[] = [];
   let rules: PostImportRule[] = [];
+  let ruleTypes: ExpenseRuleType[] = [];
   const images = new Map<number, CardImage>();
   const categoryIcons = new Map<string, CategoryIcon>();
   const vendorIcons = new Map<string, VendorIcon>();
@@ -261,6 +268,36 @@ function fakeRepo(): ExpenseRepository {
       return changed;
     },
 
+    listRuleTypes: () =>
+      [...ruleTypes].sort((a, b) =>
+        a.sortOrder === b.sortOrder ? a.name.localeCompare(b.name) : a.sortOrder - b.sortOrder,
+      ),
+    getRuleTypeByName: (name) => ruleTypes.find((type) => type.name === name),
+    upsertRuleType(input: RuleTypeWriteData) {
+      const existing = ruleTypes.find((type) => type.name === input.name);
+      if (existing) {
+        const updated = { ...existing, ...input, updatedAt: now };
+        ruleTypes = ruleTypes.map((type) => (type.name === input.name ? updated : type));
+        return updated;
+      }
+      const created: ExpenseRuleType = { ...input, createdAt: now, updatedAt: now };
+      ruleTypes.push(created);
+      return created;
+    },
+    deleteRuleType(name) {
+      // Deliberately leaves rules alone -- they fall back to Untyped, which is
+      // what the real repository does. See migration 0107.
+      ruleTypes = ruleTypes.filter((type) => type.name !== name);
+    },
+    registerRuleTypesIfMissing(names) {
+      for (const name of names) {
+        if (name.trim() === "") continue;
+        if (!ruleTypes.some((type) => type.name === name)) {
+          ruleTypes.push({ name, description: "", sortOrder: 0, createdAt: now, updatedAt: now });
+        }
+      }
+    },
+
     listRules: () => [...rules].sort((a, b) => (a.priority === b.priority ? a.id - b.id : a.priority - b.priority)),
     getRuleById: (id) => rules.find((rule) => rule.id === id),
     createRule(input: PostImportRuleWriteData) {
@@ -269,6 +306,7 @@ function fakeRepo(): ExpenseRepository {
         id,
         name: input.name,
         description: input.description,
+        typeName: input.typeName,
         pattern: input.pattern,
         priority: input.priority,
         isEnabled: input.isEnabled,
@@ -292,6 +330,7 @@ function fakeRepo(): ExpenseRepository {
               ...rule,
               name: input.name,
               description: input.description,
+              typeName: input.typeName,
               pattern: input.pattern,
               priority: input.priority,
               isEnabled: input.isEnabled,
@@ -1387,5 +1426,92 @@ describe("autoPopulateVendorIcon", () => {
 
     expect(result.outcome).toBe("failed");
     expect(asked).toEqual([]);
+  });
+});
+
+describe("rule types", () => {
+  const subscriptionRule = {
+    name: "Netflix",
+    typeName: "Subscriptions",
+    pattern: "%NETFLIX%",
+    actions: [{ fieldName: "vendor" as const, fieldValue: "Netflix" }],
+  };
+
+  it("saves a type and reads it back", () => {
+    const repo = fakeRepo();
+
+    upsertRuleType(repo, { name: "Subscriptions", description: "Recurring charges" });
+
+    expect(listRuleTypes(repo)).toMatchObject([
+      { name: "Subscriptions", description: "Recurring charges", sortOrder: 0 },
+    ]);
+  });
+
+  it("updates the description rather than duplicating on a second save", () => {
+    const repo = fakeRepo();
+    upsertRuleType(repo, { name: "Subscriptions", description: "first" });
+
+    upsertRuleType(repo, { name: "Subscriptions", description: "second" });
+
+    expect(listRuleTypes(repo)).toHaveLength(1);
+    expect(listRuleTypes(repo)[0].description).toBe("second");
+  });
+
+  it("rejects a blank name", () => {
+    const repo = fakeRepo();
+
+    expect(() => upsertRuleType(repo, { name: "   " })).toThrow(/Rule type name is required/);
+  });
+
+  it("registers a type named on a new rule, so the curated list stays complete", () => {
+    const repo = fakeRepo();
+
+    createRule(repo, subscriptionRule);
+
+    expect(listRuleTypes(repo).map((type) => type.name)).toEqual(["Subscriptions"]);
+  });
+
+  it("registers a type named when a rule is edited onto it", () => {
+    const repo = fakeRepo();
+    const rule = createRule(repo, { ...subscriptionRule, typeName: "" });
+
+    updateRule(repo, rule.id, { ...subscriptionRule, typeName: "Streaming" });
+
+    expect(listRuleTypes(repo).map((type) => type.name)).toEqual(["Streaming"]);
+    expect(listRules(repo)[0].typeName).toBe("Streaming");
+  });
+
+  it("does not register a type for an untyped rule", () => {
+    const repo = fakeRepo();
+
+    createRule(repo, { ...subscriptionRule, typeName: "   " });
+
+    expect(listRuleTypes(repo)).toEqual([]);
+    expect(listRules(repo)[0].typeName).toBe("");
+  });
+
+  it("defaults typeName to blank when a caller omits it entirely", () => {
+    const repo = fakeRepo();
+
+    createRule(repo, {
+      name: "Netflix",
+      pattern: "%NETFLIX%",
+      actions: [{ fieldName: "vendor", fieldValue: "Netflix" }],
+    });
+
+    expect(listRules(repo)[0].typeName).toBe("");
+  });
+
+  it("deleting a type leaves its rules alone, so they read as untyped", () => {
+    const repo = fakeRepo();
+    createRule(repo, subscriptionRule);
+
+    deleteRuleType(repo, "Subscriptions");
+
+    expect(listRuleTypes(repo)).toEqual([]);
+    // The rule survives, still naming the type it was filed under — nothing in
+    // matching reads typeName, so it keeps working. See migration 0107.
+    expect(listRules(repo)).toHaveLength(1);
+    expect(listRules(repo)[0].typeName).toBe("Subscriptions");
   });
 });

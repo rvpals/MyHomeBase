@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import type { IpAllowlistRepository, SiteVisitRepository } from "./ports";
 import { ipAllowlistEntrySchema, siteVisitSchema } from "./schema";
+import { decodeSignals, encodeSignals } from "./suspicion";
 import type {
   IpAllowlistEntry,
   IpHistory,
@@ -10,6 +11,7 @@ import type {
   SiteVisitFilter,
   SiteVisitSummary,
   SuspicionLevel,
+  SuspicionSignal,
 } from "./types";
 
 interface SiteVisitRow {
@@ -19,6 +21,7 @@ interface SiteVisitRow {
   referer: string;
   path: string;
   suspicion: string;
+  signals: string;
   reviewed_at: string | null;
   created_at: string;
 }
@@ -44,6 +47,9 @@ function toDomain(row: SiteVisitRow): SiteVisit {
     referer: blankToUndefined(row.referer),
     path: row.path,
     suspicion: row.suspicion,
+    // Decoded, not parsed by zod: an unknown key from a newer build is dropped here
+    // rather than failing the whole row's validation (migrations/0106).
+    signals: decodeSignals(row.signals),
     reviewedAt: row.reviewed_at ?? undefined,
     createdAt: row.created_at,
   });
@@ -67,8 +73,8 @@ export class SqliteSiteVisitRepository implements SiteVisitRepository {
     this.db
       .prepare(
         `INSERT INTO sys_site_visits
-           (ip_address, user_agent, referer, path, suspicion)
-         VALUES (?, ?, ?, ?, ?)`,
+           (ip_address, user_agent, referer, path, suspicion, signals)
+         VALUES (?, ?, ?, ?, ?, ?)`,
       )
       .run(
         visit.ipAddress ?? "",
@@ -76,6 +82,7 @@ export class SqliteSiteVisitRepository implements SiteVisitRepository {
         visit.referer ?? "",
         visit.path ?? "/",
         visit.suspicion ?? "normal",
+        encodeSignals(visit.signals ?? []),
       );
   }
 
@@ -103,7 +110,7 @@ export class SqliteSiteVisitRepository implements SiteVisitRepository {
 
     const rows = this.db
       .prepare(
-        `SELECT id, ip_address, user_agent, referer, path, suspicion, reviewed_at, created_at
+        `SELECT id, ip_address, user_agent, referer, path, suspicion, signals, reviewed_at, created_at
          FROM sys_site_visits
          ${where}
          ORDER BY created_at DESC, id DESC
@@ -200,21 +207,33 @@ export class SqliteSiteVisitRepository implements SiteVisitRepository {
       .run(reviewedAt, asOf);
   }
 
-  setSuspicionForIp(ipAddress: string, level: SuspicionLevel, reviewedAt?: string): number {
+  setSuspicionForIp(
+    ipAddress: string,
+    level: SuspicionLevel,
+    signals: readonly SuspicionSignal[],
+    reviewedAt?: string,
+  ): number {
+    // `signals` is replaced, never merged — the row is getting a new verdict, and the
+    // old verdict's reasons would contradict it. Allowlisting passes `[]`, which is
+    // what clears a vouched-for address's stored reasons (migrations/0106).
+    const encoded = encodeSignals(signals);
+
     // COALESCE keeps an existing acknowledgement rather than overwriting it: a row
     // reviewed last week stays reviewed, and only unreviewed rows take the new stamp.
     const result =
       reviewedAt === undefined
         ? this.db
-            .prepare("UPDATE sys_site_visits SET suspicion = ? WHERE ip_address = ?")
-            .run(level, ipAddress)
+            .prepare(
+              "UPDATE sys_site_visits SET suspicion = ?, signals = ? WHERE ip_address = ?",
+            )
+            .run(level, encoded, ipAddress)
         : this.db
             .prepare(
               `UPDATE sys_site_visits
-               SET suspicion = ?, reviewed_at = COALESCE(reviewed_at, ?)
+               SET suspicion = ?, signals = ?, reviewed_at = COALESCE(reviewed_at, ?)
                WHERE ip_address = ?`,
             )
-            .run(level, reviewedAt, ipAddress);
+            .run(level, encoded, reviewedAt, ipAddress);
 
     return result.changes;
   }

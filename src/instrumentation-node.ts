@@ -129,7 +129,7 @@ async function armSiteVisitPrune() {
 }
 
 /**
- * The Stocks & ETFs auto-refresh: prices every position, looks up any new sector,
+ * The Investments auto-refresh: prices every position, looks up any new sector,
  * and files today's snapshot -- the same three steps the dashboard's Refresh All
  * button walks, so a day nobody pressed it is no longer a hole in the history.
  *

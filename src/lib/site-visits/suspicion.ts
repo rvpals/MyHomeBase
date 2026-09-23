@@ -95,7 +95,14 @@ export function levelFromSignals(signals: readonly SuspicionSignal[]): Suspicion
   );
   if (damning) return "suspicious";
 
-  return signals.length >= 2 ? "suspicious" : "watch";
+  // `allowlist_removed` records an admin action, not an observation about the
+  // request, so it does not count as corroboration. Without this it would pair with
+  // any single weak signal to manufacture a "suspicious" — turning "I stopped
+  // trusting this address" into "this address attacked me", which it is not.
+  const observed = signals.filter((signal) => signal !== "allowlist_removed");
+  if (observed.length === 0) return "watch";
+
+  return observed.length >= 2 ? "suspicious" : "watch";
 }
 
 /**
@@ -165,7 +172,57 @@ export function describeSignal(signal: SuspicionSignal): string {
       return "Has arrived repeatedly and never tried to sign in";
     case "auth_failures":
       return "Also has failed sign-in attempts";
+    case "allowlist_removed":
+      return "Was trusted until an admin removed the address from the allowlist";
   }
+}
+
+/**
+ * Every signal the scorer knows about. The single source of truth for "is this a
+ * real signal key", used by `decodeSignals` to drop anything it doesn't recognise.
+ *
+ * Declared as a Set of the union type rather than derived from `describeSignal`,
+ * because a `switch` cannot be enumerated at runtime. Adding a member to
+ * `SuspicionSignal` without adding it here makes the decoder silently drop it, so the
+ * two are kept adjacent on purpose.
+ */
+const KNOWN_SIGNALS: ReadonlySet<string> = new Set<SuspicionSignal>([
+  "no_user_agent",
+  "tool_user_agent",
+  "scanner_user_agent",
+  "burst",
+  "never_signs_in",
+  "auth_failures",
+  "allowlist_removed",
+]);
+
+/**
+ * Packs signals into the flat string the table stores (migrations/0106).
+ *
+ * Comma-separated keys. No member of the union contains a comma or a space, so this
+ * needs no escaping and `decodeSignals` needs no parser.
+ */
+export function encodeSignals(signals: readonly SuspicionSignal[]): string {
+  return signals.join(",");
+}
+
+/**
+ * Unpacks the stored string, dropping anything unrecognised.
+ *
+ * Forgiving on purpose. A row written by a newer build can carry a signal this build
+ * has never heard of, and the right answer is to show the reasons we *do* understand
+ * rather than fail the whole page's read validation over one unknown word. Blank,
+ * whitespace and duplicates all collapse to a clean list.
+ */
+export function decodeSignals(encoded: string | null | undefined): SuspicionSignal[] {
+  if (!encoded) return [];
+
+  const seen = new Set<SuspicionSignal>();
+  for (const part of encoded.split(",")) {
+    const key = part.trim();
+    if (KNOWN_SIGNALS.has(key)) seen.add(key as SuspicionSignal);
+  }
+  return [...seen];
 }
 
 /** Human wording for a verdict. */

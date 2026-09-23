@@ -70,21 +70,21 @@ export class SqliteInvestmentAccountRepository implements InvestmentAccountRepos
 
   listAccounts(): InvestmentAccount[] {
     const rows = this.db
-      .prepare(`SELECT ${ACCOUNT_COLUMNS} FROM stk_investment_accounts ORDER BY created_at ASC`)
+      .prepare(`SELECT ${ACCOUNT_COLUMNS} FROM inv_investment_accounts ORDER BY created_at ASC`)
       .all() as InvestmentAccountRow[];
     return rows.map(accountToDomain);
   }
 
   getAccountById(id: number): InvestmentAccount | undefined {
     const row = this.db
-      .prepare(`SELECT ${ACCOUNT_COLUMNS} FROM stk_investment_accounts WHERE id = ?`)
+      .prepare(`SELECT ${ACCOUNT_COLUMNS} FROM inv_investment_accounts WHERE id = ?`)
       .get(id) as InvestmentAccountRow | undefined;
     return row ? accountToDomain(row) : undefined;
   }
 
   getAccountIcon(id: number): AccountIcon | undefined {
     const row = this.db
-      .prepare("SELECT icon_image, icon_image_mime_type FROM stk_investment_accounts WHERE id = ?")
+      .prepare("SELECT icon_image, icon_image_mime_type FROM inv_investment_accounts WHERE id = ?")
       .get(id) as { icon_image: Buffer | null; icon_image_mime_type: string | null } | undefined;
 
     if (!row?.icon_image || !row.icon_image_mime_type) return undefined;
@@ -96,7 +96,7 @@ export class SqliteInvestmentAccountRepository implements InvestmentAccountRepos
     // and a type with no blob would render a broken image.
     this.db
       .prepare(
-        `UPDATE stk_investment_accounts
+        `UPDATE inv_investment_accounts
          SET icon_image = @data, icon_image_mime_type = @mimeType
          WHERE id = @id`,
       )
@@ -106,7 +106,7 @@ export class SqliteInvestmentAccountRepository implements InvestmentAccountRepos
   createAccount(input: CreateInvestmentAccountInput): InvestmentAccount {
     const result = this.db
       .prepare(
-        `INSERT INTO stk_investment_accounts (name, description, initial_value_cents)
+        `INSERT INTO inv_investment_accounts (name, description, initial_value_cents)
          VALUES (@name, @description, @initialValueCents)`,
       )
       .run(input);
@@ -119,7 +119,7 @@ export class SqliteInvestmentAccountRepository implements InvestmentAccountRepos
   updateAccount(id: number, input: UpdateInvestmentAccountInput): InvestmentAccount {
     this.db
       .prepare(
-        `UPDATE stk_investment_accounts
+        `UPDATE inv_investment_accounts
          SET name = @name, description = @description, initial_value_cents = @initialValueCents
          WHERE id = @id`,
       )
@@ -132,9 +132,9 @@ export class SqliteInvestmentAccountRepository implements InvestmentAccountRepos
 
   deleteAccount(id: number): void {
     const deletePerformance = this.db.prepare(
-      "DELETE FROM stk_account_performance_records WHERE account_id = ?",
+      "DELETE FROM inv_account_performance_records WHERE account_id = ?",
     );
-    const deleteAccount = this.db.prepare("DELETE FROM stk_investment_accounts WHERE id = ?");
+    const deleteAccount = this.db.prepare("DELETE FROM inv_investment_accounts WHERE id = ?");
     this.db.transaction(() => {
       deletePerformance.run(id);
       deleteAccount.run(id);
@@ -145,11 +145,11 @@ export class SqliteInvestmentAccountRepository implements InvestmentAccountRepos
     const rows = (
       accountId === undefined
         ? this.db
-            .prepare("SELECT * FROM stk_account_performance_records ORDER BY record_date ASC")
+            .prepare("SELECT * FROM inv_account_performance_records ORDER BY record_date ASC")
             .all()
         : this.db
             .prepare(
-              "SELECT * FROM stk_account_performance_records WHERE account_id = ? ORDER BY record_date ASC",
+              "SELECT * FROM inv_account_performance_records WHERE account_id = ? ORDER BY record_date ASC",
             )
             .all(accountId)
     ) as PerformanceRecordRow[];
@@ -158,7 +158,7 @@ export class SqliteInvestmentAccountRepository implements InvestmentAccountRepos
 
   getPerformanceRecordById(id: number): PerformanceRecord | undefined {
     const row = this.db
-      .prepare("SELECT * FROM stk_account_performance_records WHERE id = ?")
+      .prepare("SELECT * FROM inv_account_performance_records WHERE id = ?")
       .get(id) as PerformanceRecordRow | undefined;
     return row ? performanceRecordToDomain(row) : undefined;
   }
@@ -166,7 +166,7 @@ export class SqliteInvestmentAccountRepository implements InvestmentAccountRepos
   addPerformanceRecord(input: CreatePerformanceRecordInput): PerformanceRecord {
     const row = this.db
       .prepare(
-        `INSERT INTO stk_account_performance_records (account_id, total_value_cents, record_date, note)
+        `INSERT INTO inv_account_performance_records (account_id, total_value_cents, record_date, note)
          VALUES (@accountId, @totalValueCents, @recordDate, @note)
          ON CONFLICT (account_id, record_date) DO UPDATE SET
            total_value_cents = excluded.total_value_cents,
@@ -185,7 +185,7 @@ export class SqliteInvestmentAccountRepository implements InvestmentAccountRepos
 
     this.db
       .prepare(
-        `UPDATE stk_account_performance_records
+        `UPDATE inv_account_performance_records
          SET total_value_cents = @totalValueCents, record_date = @recordDate, note = @note
          WHERE id = @id`,
       )
@@ -201,7 +201,7 @@ export class SqliteInvestmentAccountRepository implements InvestmentAccountRepos
     const existing = this.getPerformanceRecordById(id);
     if (!existing) return;
 
-    this.db.prepare("DELETE FROM stk_account_performance_records WHERE id = ?").run(id);
+    this.db.prepare("DELETE FROM inv_account_performance_records WHERE id = ?").run(id);
     this.syncAccountLastValue(existing.accountId);
   }
 
@@ -210,7 +210,7 @@ export class SqliteInvestmentAccountRepository implements InvestmentAccountRepos
   ): { inserted: boolean; record?: PerformanceRecord } {
     const row = this.db
       .prepare(
-        `INSERT OR IGNORE INTO stk_account_performance_records (account_id, total_value_cents, record_date, note)
+        `INSERT OR IGNORE INTO inv_account_performance_records (account_id, total_value_cents, record_date, note)
          VALUES (@accountId, @totalValueCents, @recordDate, @note)
          RETURNING *`,
       )
@@ -221,19 +221,19 @@ export class SqliteInvestmentAccountRepository implements InvestmentAccountRepos
     return { inserted: true, record: performanceRecordToDomain(row) };
   }
 
-  // Keeps stk_investment_accounts.last_value_cents/last_updated_at in sync with the
+  // Keeps inv_investment_accounts.last_value_cents/last_updated_at in sync with the
   // most recent performance record for that account — see migration 0015.
   private syncAccountLastValue(accountId: number): void {
     const latest = this.db
       .prepare(
-        `SELECT total_value_cents, record_date FROM stk_account_performance_records
+        `SELECT total_value_cents, record_date FROM inv_account_performance_records
          WHERE account_id = ? ORDER BY record_date DESC LIMIT 1`,
       )
       .get(accountId) as { total_value_cents: number; record_date: string } | undefined;
 
     this.db
       .prepare(
-        "UPDATE stk_investment_accounts SET last_value_cents = ?, last_updated_at = ? WHERE id = ?",
+        "UPDATE inv_investment_accounts SET last_value_cents = ?, last_updated_at = ? WHERE id = ?",
       )
       .run(latest?.total_value_cents ?? null, latest?.record_date ?? null, accountId);
   }

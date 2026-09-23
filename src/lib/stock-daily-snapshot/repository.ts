@@ -44,10 +44,10 @@ export class SqliteDailySnapshotRepository implements DailySnapshotRepository {
     // and rides the primary key.
     const rows = (
       range === undefined
-        ? this.db.prepare("SELECT * FROM stk_daily_snapshots ORDER BY snapshot_date ASC").all()
+        ? this.db.prepare("SELECT * FROM inv_daily_snapshots ORDER BY snapshot_date ASC").all()
         : this.db
             .prepare(
-              `SELECT * FROM stk_daily_snapshots
+              `SELECT * FROM inv_daily_snapshots
                WHERE snapshot_date BETWEEN ? AND ?
                ORDER BY snapshot_date ASC`,
             )
@@ -58,7 +58,7 @@ export class SqliteDailySnapshotRepository implements DailySnapshotRepository {
 
   getSnapshot(snapshotDate: string): DailySnapshot | undefined {
     const row = this.db
-      .prepare("SELECT * FROM stk_daily_snapshots WHERE snapshot_date = ?")
+      .prepare("SELECT * FROM inv_daily_snapshots WHERE snapshot_date = ?")
       .get(snapshotDate) as DailySnapshotRow | undefined;
     return row ? toDomain(row) : undefined;
   }
@@ -69,7 +69,7 @@ export class SqliteDailySnapshotRepository implements DailySnapshotRepository {
   ): DailySnapshot {
     const row = this.db
       .prepare(
-        `INSERT INTO stk_daily_snapshots
+        `INSERT INTO inv_daily_snapshots
            (snapshot_date, stock_value_cents, etf_value_cents, other_value_cents, total_value_cents,
             stock_gain_loss_cents, etf_gain_loss_cents, other_gain_loss_cents, total_gain_loss_cents,
             position_count)
@@ -94,6 +94,6 @@ export class SqliteDailySnapshotRepository implements DailySnapshotRepository {
   }
 
   deleteSnapshot(snapshotDate: string): void {
-    this.db.prepare("DELETE FROM stk_daily_snapshots WHERE snapshot_date = ?").run(snapshotDate);
+    this.db.prepare("DELETE FROM inv_daily_snapshots WHERE snapshot_date = ?").run(snapshotDate);
   }
 }

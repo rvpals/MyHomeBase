@@ -17,7 +17,7 @@ function moduleRow(slug: string, shortName: string, sequence: number): Module {
 }
 
 const MODULES: Module[] = [
-  moduleRow("stock-etfs", "Stocks & ETFs", 2),
+  moduleRow("investments", "Investments", 2),
   moduleRow("journal", "Journal", 3),
   moduleRow("games", "Games", 8),
 ];
@@ -33,18 +33,18 @@ function tablesOf(groups: { key: string; tables: { name: string }[] }[], key: st
 describe("groupTablesByModule", () => {
   it("groups a table under the module its prefix maps to", () => {
     const groups = groupTablesByModule(
-      ["stk_tax_lots", "stk_stock_positions", "jrn_entries"],
+      ["inv_tax_lots", "inv_stock_positions", "jrn_entries"],
       MODULES,
     );
 
-    expect(tablesOf(groups, "stock-etfs")).toEqual(["stk_stock_positions", "stk_tax_lots"]);
+    expect(tablesOf(groups, "investments")).toEqual(["inv_stock_positions", "inv_tax_lots"]);
     expect(tablesOf(groups, "journal")).toEqual(["jrn_entries"]);
   });
 
   it("orders groups by the module sequence, with Non-Modules last", () => {
     const groups = groupTablesByModule(["jrn_entries", "sys_users"], MODULES);
 
-    expect(groupNames(groups)).toEqual(["Stocks & ETFs", "Journal", "Games", "Non-Modules"]);
+    expect(groupNames(groups)).toEqual(["Investments", "Journal", "Games", "Non-Modules"]);
   });
 
   it("keeps a module that owns no tables, rather than dropping it", () => {
@@ -113,7 +113,7 @@ describe("groupTablesByModule", () => {
   it("reports the prefix a module's tables carry", () => {
     const groups = groupTablesByModule([], MODULES);
 
-    expect(groups.find((group) => group.key === "stock-etfs")?.prefix).toBe("stk_");
+    expect(groups.find((group) => group.key === "investments")?.prefix).toBe("inv_");
     expect(groups.find((group) => group.key === "non-modules")?.prefix).toBe("");
   });
 });

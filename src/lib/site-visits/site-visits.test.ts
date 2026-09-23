@@ -21,6 +21,7 @@ import type {
   SiteVisitFilter,
   SiteVisitSummary,
   SuspicionLevel,
+  SuspicionSignal,
 } from "./types";
 
 /**
@@ -39,7 +40,12 @@ class FakeVisitRepo implements SiteVisitRepository {
   };
   historyQueriedWith?: { ipAddress: string; burstWindowMinutes: number };
   reviewedWith?: { asOf: string; reviewedAt: string };
-  scoredWith: { ipAddress: string; level: SuspicionLevel; reviewedAt?: string }[] = [];
+  scoredWith: {
+    ipAddress: string;
+    level: SuspicionLevel;
+    signals: SuspicionSignal[];
+    reviewedAt?: string;
+  }[] = [];
   deletedIds: number[] = [];
   deletedBefore?: string;
   throwOnRecord = false;
@@ -73,8 +79,13 @@ class FakeVisitRepo implements SiteVisitRepository {
     this.reviewedWith = { asOf, reviewedAt };
   }
 
-  setSuspicionForIp(ipAddress: string, level: SuspicionLevel, reviewedAt?: string): number {
-    this.scoredWith.push({ ipAddress, level, reviewedAt });
+  setSuspicionForIp(
+    ipAddress: string,
+    level: SuspicionLevel,
+    signals: readonly SuspicionSignal[],
+    reviewedAt?: string,
+  ): number {
+    this.scoredWith.push({ ipAddress, level, signals: [...signals], reviewedAt });
     return 3;
   }
 
@@ -127,6 +138,58 @@ describe("recordSiteVisit", () => {
     expect(visits.recorded).toHaveLength(1);
     expect(visits.recorded[0].suspicion).toBe("normal");
     expect(visits.recorded[0].ipAddress).toBe("203.0.113.7");
+  });
+
+  it("stores the reasons behind the verdict, not just the verdict", () => {
+    // The regression this guards: `recordSiteVisit` used to destructure only
+    // `{ level }`, so the screen showed a red badge with no way to tell a scanner
+    // from a failed password (migrations/0106).
+    const visits = new FakeVisitRepo();
+
+    recordSiteVisit(
+      { ipAddress: "203.0.113.7", userAgent: "sqlmap/1.7#stable" },
+      visits,
+      new FakeAllowlistRepo(),
+    );
+
+    expect(visits.recorded[0].suspicion).toBe("suspicious");
+    expect(visits.recorded[0].signals).toEqual(["scanner_user_agent"]);
+  });
+
+  it("stores every reason when several apply at once", () => {
+    const visits = new FakeVisitRepo();
+    visits.ipHistory = {
+      recentVisits: 9,
+      totalVisits: 20,
+      authAttempts: 2,
+      authFailures: 2,
+    };
+
+    recordSiteVisit({ ipAddress: "203.0.113.7", userAgent: "curl/8.4.0" }, visits, new FakeAllowlistRepo());
+
+    expect(visits.recorded[0].signals).toEqual(
+      expect.arrayContaining(["tool_user_agent", "burst", "auth_failures"]),
+    );
+  });
+
+  it("records no reasons for an ordinary arrival", () => {
+    const visits = new FakeVisitRepo();
+    recordSiteVisit({ ipAddress: "203.0.113.7", userAgent: BROWSER }, visits, new FakeAllowlistRepo());
+
+    expect(visits.recorded[0].signals).toEqual([]);
+  });
+
+  it("records no reasons for an allowlisted address, however it looks", () => {
+    // Vouching hides the alarm AND its explanation; the row itself still exists.
+    const visits = new FakeVisitRepo();
+    const allowlist = new FakeAllowlistRepo();
+    allowlist.allowed.add("192.168.1.50");
+
+    recordSiteVisit({ ipAddress: "192.168.1.50", userAgent: "sqlmap/1.7" }, visits, allowlist);
+
+    expect(visits.recorded).toHaveLength(1);
+    expect(visits.recorded[0].suspicion).toBe("normal");
+    expect(visits.recorded[0].signals).toEqual([]);
   });
 
   it("defaults the path to the site root", () => {
@@ -241,6 +304,7 @@ describe("listVisitsByWeek", () => {
         ipAddress: "1.1.1.1",
         path: "/",
         suspicion: "normal",
+        signals: [],
         createdAt: "2026-09-19 12:00:00",
       },
     ];
@@ -322,6 +386,9 @@ describe("allowIpAddress", () => {
     expect(visits.scoredWith[0]).toEqual({
       ipAddress: "192.168.1.50",
       level: "normal",
+      // Cleared: a "Normal" row listing why it was once suspicious invites exactly
+      // the second-guessing that vouching exists to end (migrations/0106).
+      signals: [],
       reviewedAt: "2026-09-21 10:00:00",
     });
   });
@@ -360,6 +427,9 @@ describe("disallowIpAddress", () => {
     expect(visits.scoredWith[0]).toEqual({
       ipAddress: "192.168.1.50",
       level: "watch",
+      // The amber badge gets a reason rather than an empty Why column, and the
+      // reason is the honest one: an admin decision, not a heuristic finding.
+      signals: ["allowlist_removed"],
       reviewedAt: undefined,
     });
   });

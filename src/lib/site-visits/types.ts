@@ -31,7 +31,16 @@ export type SuspicionSignal =
   /** This address has arrived repeatedly and never once reached the sign-in form. */
   | "never_signs_in"
   /** This address also appears in the failed-sign-in log. The serious one. */
-  | "auth_failures";
+  | "auth_failures"
+  /**
+   * This address was on the allowlist and an admin took it off (migrations/0103).
+   *
+   * A marker, not a heuristic: `scoreSuspicion` never produces it. It is written by
+   * `disallowIpAddress` onto the rows it re-scores, which otherwise carry an amber
+   * badge with no reason beside it. Records an admin action rather than an
+   * observation, which is why it alone survives being applied after the fact.
+   */
+  | "allowlist_removed";
 
 /**
  * Request metadata the presentation layer gathers and passes in as plain data.
@@ -57,6 +66,12 @@ export interface SiteVisit {
   referer?: string;
   path: string;
   suspicion: SuspicionLevel;
+  /**
+   * Why it was scored that way, in the scorer's own terms. Empty for a normal visit,
+   * and empty for rows written before migrations/0106 — the reasons cannot be
+   * re-derived after the fact, so an old row says nothing rather than guessing.
+   */
+  signals: SuspicionSignal[];
   /** When an admin acknowledged this visit. `undefined` while unreviewed. */
   reviewedAt?: string;
   createdAt: string;
@@ -69,6 +84,7 @@ export interface NewSiteVisit {
   referer?: string;
   path?: string;
   suspicion?: SuspicionLevel;
+  signals?: SuspicionSignal[];
 }
 
 /** Filters for the Visit tab. Every field is optional — omitted means "no filter". */

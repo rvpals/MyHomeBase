@@ -145,13 +145,13 @@ export const ICON_SLOTS: IconSlot[] = [
   },
 
   /* ---------------------------------------------------------------------------------
-     Stocks & ETFs — nav sections. Section panel, left of each section name.
+     Investments — nav sections. Section panel, left of each section name.
   --------------------------------------------------------------------------------- */
   {
     id: "stock_section_main",
     label: "Dashboard",
-    group: "Stocks & ETFs sections",
-    where: "Stocks & ETFs → section panel → Dashboard.",
+    group: "Investments sections",
+    where: "Investments → section panel → Dashboard.",
     defaultConcept: "grid",
     wired: true,
     namespace: "tree",
@@ -159,8 +159,8 @@ export const ICON_SLOTS: IconSlot[] = [
   {
     id: "stock_section_positions",
     label: "Positions",
-    group: "Stocks & ETFs sections",
-    where: "Stocks & ETFs → section panel → Positions.",
+    group: "Investments sections",
+    where: "Investments → section panel → Positions.",
     defaultConcept: "list",
     wired: true,
     namespace: "tree",
@@ -168,8 +168,8 @@ export const ICON_SLOTS: IconSlot[] = [
   {
     id: "stock_section_transactions",
     label: "Transactions",
-    group: "Stocks & ETFs sections",
-    where: "Stocks & ETFs → section panel → Transactions.",
+    group: "Investments sections",
+    where: "Investments → section panel → Transactions.",
     defaultConcept: "history",
     wired: true,
     namespace: "tree",
@@ -177,8 +177,8 @@ export const ICON_SLOTS: IconSlot[] = [
   {
     id: "stock_section_accounts",
     label: "Account Performance",
-    group: "Stocks & ETFs sections",
-    where: "Stocks & ETFs → section panel → Account Performance.",
+    group: "Investments sections",
+    where: "Investments → section panel → Account Performance.",
     defaultConcept: "database",
     wired: true,
     namespace: "tree",
@@ -186,8 +186,8 @@ export const ICON_SLOTS: IconSlot[] = [
   {
     id: "stock_section_watch_test",
     label: "Watch & Test",
-    group: "Stocks & ETFs sections",
-    where: "Stocks & ETFs → section panel → Watch & Test.",
+    group: "Investments sections",
+    where: "Investments → section panel → Watch & Test.",
     defaultConcept: "stock-quote",
     wired: true,
     namespace: "tree",
@@ -195,8 +195,8 @@ export const ICON_SLOTS: IconSlot[] = [
   {
     id: "stock_section_charts",
     label: "Chart & Analysis",
-    group: "Stocks & ETFs sections",
-    where: "Stocks & ETFs → section panel → Chart & Analysis.",
+    group: "Investments sections",
+    where: "Investments → section panel → Chart & Analysis.",
     defaultConcept: "chart",
     wired: true,
     namespace: "tree",
@@ -204,8 +204,8 @@ export const ICON_SLOTS: IconSlot[] = [
   {
     id: "stock_section_import",
     label: "CSV Import",
-    group: "Stocks & ETFs sections",
-    where: "Stocks & ETFs → section panel → CSV Import.",
+    group: "Investments sections",
+    where: "Investments → section panel → CSV Import.",
     defaultConcept: "upload",
     wired: true,
     namespace: "tree",
@@ -213,8 +213,8 @@ export const ICON_SLOTS: IconSlot[] = [
   {
     id: "stock_section_tax_lots",
     label: "Tax Lots",
-    group: "Stocks & ETFs sections",
-    where: "Stocks & ETFs → section panel → Tax Lots.",
+    group: "Investments sections",
+    where: "Investments → section panel → Tax Lots.",
     defaultConcept: "history",
     wired: true,
     namespace: "tree",
@@ -222,8 +222,8 @@ export const ICON_SLOTS: IconSlot[] = [
   {
     id: "stock_section_ai_export",
     label: "Export for AI Analysis",
-    group: "Stocks & ETFs sections",
-    where: "Stocks & ETFs → section panel → Export for AI Analysis.",
+    group: "Investments sections",
+    where: "Investments → section panel → Export for AI Analysis.",
     defaultConcept: "quote",
     wired: true,
     namespace: "tree",
@@ -231,8 +231,8 @@ export const ICON_SLOTS: IconSlot[] = [
   {
     id: "stock_section_settings",
     label: "Configuration",
-    group: "Stocks & ETFs sections",
-    where: "Stocks & ETFs → section panel → Configuration.",
+    group: "Investments sections",
+    where: "Investments → section panel → Configuration.",
     defaultConcept: "sliders",
     wired: true,
     namespace: "tree",
@@ -243,8 +243,8 @@ export const ICON_SLOTS: IconSlot[] = [
     // given a mark of its own; until it is wired the module icon still wins.
     id: "stock_card_daily_glance",
     label: "Daily Glance card",
-    group: "Stocks & ETFs cards",
-    where: "Stocks & ETFs → Dashboard → the Daily Glance card header.",
+    group: "Investments cards",
+    where: "Investments → Dashboard → the Daily Glance card header.",
     defaultConcept: "stock-quote",
     wired: true,
     namespace: "tree",
@@ -255,8 +255,8 @@ export const ICON_SLOTS: IconSlot[] = [
   {
     id: "stock_card_indexes",
     label: "Indexes card",
-    group: "Stocks & ETFs cards",
-    where: "Stocks & ETFs → Dashboard → the Indexes card header.",
+    group: "Investments cards",
+    where: "Investments → Dashboard → the Indexes card header.",
     // `chart` rather than `stock-quote`: these are benchmarks read as movement over
     // time, which is also why the sibling Price History card defaults to the same mark.
     defaultConcept: "chart",
@@ -266,8 +266,8 @@ export const ICON_SLOTS: IconSlot[] = [
   {
     id: "stock_card_portfolio_summary",
     label: "Portfolio Summary card",
-    group: "Stocks & ETFs cards",
-    where: "Stocks & ETFs → Dashboard → the Portfolio Summary card header.",
+    group: "Investments cards",
+    where: "Investments → Dashboard → the Portfolio Summary card header.",
     // Matches Daily Glance: both lead with what the portfolio is worth, so they read
     // as the same kind of figure rather than two unrelated cards.
     defaultConcept: "stock-quote",
@@ -282,8 +282,8 @@ export const ICON_SLOTS: IconSlot[] = [
   {
     id: "stock_card_market_quote",
     label: "Quote card",
-    group: "Stocks & ETFs cards",
-    where: "Stocks & ETFs → ticker viewer → Market → the Quote card header.",
+    group: "Investments cards",
+    where: "Investments → ticker viewer → Market → the Quote card header.",
     defaultConcept: "stock-quote",
     wired: true,
     namespace: "tree",
@@ -291,8 +291,8 @@ export const ICON_SLOTS: IconSlot[] = [
   {
     id: "stock_card_market_price_history",
     label: "Price History card",
-    group: "Stocks & ETFs cards",
-    where: "Stocks & ETFs → ticker viewer → Market → the Price History card header.",
+    group: "Investments cards",
+    where: "Investments → ticker viewer → Market → the Price History card header.",
     defaultConcept: "chart",
     wired: true,
     namespace: "tree",
@@ -300,8 +300,8 @@ export const ICON_SLOTS: IconSlot[] = [
   {
     id: "stock_card_market_events",
     label: "Events card",
-    group: "Stocks & ETFs cards",
-    where: "Stocks & ETFs → ticker viewer → Market → the Events card header.",
+    group: "Investments cards",
+    where: "Investments → ticker viewer → Market → the Events card header.",
     defaultConcept: "history",
     wired: true,
     namespace: "tree",
@@ -309,8 +309,8 @@ export const ICON_SLOTS: IconSlot[] = [
   {
     id: "stock_card_market_risks",
     label: "Risks card",
-    group: "Stocks & ETFs cards",
-    where: "Stocks & ETFs → ticker viewer → Market → the Risks card header.",
+    group: "Investments cards",
+    where: "Investments → ticker viewer → Market → the Risks card header.",
     defaultConcept: "shield",
     wired: true,
     namespace: "tree",
@@ -318,8 +318,8 @@ export const ICON_SLOTS: IconSlot[] = [
   {
     id: "stock_card_market_news",
     label: "News card",
-    group: "Stocks & ETFs cards",
-    where: "Stocks & ETFs → ticker viewer → Market → the News card header.",
+    group: "Investments cards",
+    where: "Investments → ticker viewer → Market → the News card header.",
     defaultConcept: "newspaper",
     wired: true,
     namespace: "tree",
@@ -330,8 +330,8 @@ export const ICON_SLOTS: IconSlot[] = [
   {
     id: "stock_card_watch_lists",
     label: "Watch Lists card",
-    group: "Stocks & ETFs cards",
-    where: "Stocks & ETFs → Watch & Test → the Watch Lists card header.",
+    group: "Investments cards",
+    where: "Investments → Watch & Test → the Watch Lists card header.",
     defaultConcept: "list",
     wired: true,
     namespace: "tree",
@@ -339,8 +339,8 @@ export const ICON_SLOTS: IconSlot[] = [
   {
     id: "stock_card_next_day_signals",
     label: "Next-Day Signals card",
-    group: "Stocks & ETFs cards",
-    where: "Stocks & ETFs → Watch & Test → the Next-Day Signals card header.",
+    group: "Investments cards",
+    where: "Investments → Watch & Test → the Next-Day Signals card header.",
     defaultConcept: "flash",
     wired: true,
     namespace: "tree",
@@ -348,8 +348,8 @@ export const ICON_SLOTS: IconSlot[] = [
   {
     id: "stock_card_simulation",
     label: "Simulation card",
-    group: "Stocks & ETFs cards",
-    where: "Stocks & ETFs → Watch & Test → the Simulation card header.",
+    group: "Investments cards",
+    where: "Investments → Watch & Test → the Simulation card header.",
     defaultConcept: "magic",
     wired: true,
     namespace: "tree",
@@ -362,8 +362,8 @@ export const ICON_SLOTS: IconSlot[] = [
   {
     id: "stock_card_tax_lot_summary",
     label: "Tax Lot Summary card",
-    group: "Stocks & ETFs cards",
-    where: "Stocks & ETFs → Tax Lots → the Position Summary card header.",
+    group: "Investments cards",
+    where: "Investments → Tax Lots → the Position Summary card header.",
     defaultConcept: "chart",
     wired: true,
     namespace: "tree",
@@ -371,8 +371,8 @@ export const ICON_SLOTS: IconSlot[] = [
   {
     id: "stock_card_tax_lot_table",
     label: "Tax Lot Breakdown card",
-    group: "Stocks & ETFs cards",
-    where: "Stocks & ETFs → Tax Lots → the Lot Breakdown card header.",
+    group: "Investments cards",
+    where: "Investments → Tax Lots → the Lot Breakdown card header.",
     defaultConcept: "list",
     wired: true,
     namespace: "tree",

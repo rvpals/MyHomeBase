@@ -46,7 +46,7 @@ export class SqliteTickerRiskCacheRepository implements TickerRiskCacheRepositor
 
   get(ticker: string): TickerRisk | undefined {
     const row = this.db
-      .prepare("SELECT * FROM stk_ticker_risk_cache WHERE ticker = ?")
+      .prepare("SELECT * FROM inv_ticker_risk_cache WHERE ticker = ?")
       .get(ticker) as RiskRow | undefined;
     return row ? toDomain(row) : undefined;
   }
@@ -54,7 +54,7 @@ export class SqliteTickerRiskCacheRepository implements TickerRiskCacheRepositor
   save(risk: TickerRisk): void {
     this.db
       .prepare(
-        `INSERT INTO stk_ticker_risk_cache
+        `INSERT INTO inv_ticker_risk_cache
            (ticker, annualized_vol_pct, daily_std_dev_pct, volatility_label,
             low_52w_cents, high_52w_cents, current_price_cents, range_position_pct,
             market_correlation, market_benchmark_ticker, annualized_return_pct,

@@ -15,7 +15,7 @@ import {
   runScheduledRefreshNow,
   scheduledRefreshSettingsSchema,
   scheduledRefreshSettingsToEntries,
-  STOCK_ETFS_MODULE_SLUG,
+  INVESTMENTS_MODULE_SLUG,
   type ScheduledRefreshSettingsInput,
   type ScheduledRefreshSummary,
 } from "@/lib/scheduled-refresh";
@@ -65,8 +65,8 @@ export async function saveAutoRefreshSettingsAction(
 ): Promise<ActionResult> {
   try {
     await requireAdmin();
-    const stockModule = getModuleBySlug(deps.moduleRepo, STOCK_ETFS_MODULE_SLUG);
-    if (!stockModule) throw new Error("Stocks & ETFs module not found.");
+    const stockModule = getModuleBySlug(deps.moduleRepo, INVESTMENTS_MODULE_SLUG);
+    if (!stockModule) throw new Error("Investments module not found.");
 
     const validated = scheduledRefreshSettingsSchema.parse(input);
     saveModuleSettingsPartial(
@@ -80,7 +80,7 @@ export async function saveAutoRefreshSettingsAction(
   revalidatePath(BACKGROUND_TASKS_PATH);
   // The Stocks configuration screen no longer shows these, but its cached render
   // still describes the module — cheap to keep honest.
-  revalidatePath("/modules/stock-etfs");
+  revalidatePath("/modules/investments");
   return { ok: true };
 }
 

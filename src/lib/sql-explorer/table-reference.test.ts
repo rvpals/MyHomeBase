@@ -3,7 +3,7 @@ import { buildTableReference, describeTable } from "./table-reference";
 
 describe("describeTable", () => {
   it("returns the description of a documented table", () => {
-    expect(describeTable("stk_stock_positions")).toContain("Current holdings");
+    expect(describeTable("inv_stock_positions")).toContain("Current holdings");
   });
 
   it("returns undefined for a table the reference doesn't cover", () => {
@@ -13,11 +13,11 @@ describe("describeTable", () => {
 
 describe("buildTableReference", () => {
   it("groups documented tables under their module", () => {
-    const groups = buildTableReference(["stk_stock_positions", "jrn_entries"]);
+    const groups = buildTableReference(["inv_stock_positions", "jrn_entries"]);
 
-    expect(groups.map((group) => group.module)).toEqual(["Stocks & ETFs", "Journal"]);
+    expect(groups.map((group) => group.module)).toEqual(["Investments", "Journal"]);
     expect(groups[0].tables).toHaveLength(1);
-    expect(groups[0].tables[0][0]).toBe("stk_stock_positions");
+    expect(groups[0].tables[0][0]).toBe("inv_stock_positions");
   });
 
   it("omits a group whose tables are all absent from the database", () => {

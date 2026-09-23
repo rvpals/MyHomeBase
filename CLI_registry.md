@@ -1619,7 +1619,7 @@ a workspace and clearing it is supported.
 
 Repo is `deps.taxLotRepo`. No network. **CLI: `tax-lots`.**
 
-The split-normalization and return maths for the Stocks & ETFs *Tax Lots* section.
+The split-normalization and return maths for the Investments *Tax Lots* section.
 Two vocabularies run through the whole module and must not be mixed: **raw** is what
 the broker's confirmation printed on the buy date, **adjusted** is the same position
 restated in today's shares. Anything compared against a live market price must be
@@ -1667,7 +1667,7 @@ Four things that look like bugs and are not:
   one you update deliberately.
 
 `TaxLotRepository` is deliberately CRUD-only — no aggregate query — so the maths lives
-in one place instead of half in SQL and half in TypeScript. Table is `stk_tax_lots`
+in one place instead of half in SQL and half in TypeScript. Table is `inv_tax_lots`
 (migration 0083).
 
 ## stock-dashboard — `@/lib/stock-dashboard`
@@ -2498,8 +2498,8 @@ Source: [src/cli/game-scores.ts](src/cli/game-scores.ts)
 
 ## `tax-lots`
 
-The Tax Lot Analyzer from a terminal — the same `analyzeTicker` use-case the Stocks &
-ETFs *Tax Lots* section drives, printed as a table.
+The Tax Lot Analyzer from a terminal — the same `analyzeTicker` use-case the
+Investments *Tax Lots* section drives, printed as a table.
 
 ```
 npm run cli -- tax-lots --ticker NVDA

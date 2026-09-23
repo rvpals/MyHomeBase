@@ -23,7 +23,7 @@ export async function tickerOverviewCommand(args: string[]): Promise<void> {
   // `--market` is a boolean switch, so `parseFlags` (which reads `--key value`
   // pairs) isn't the right tool here — the ticker is a bare positional.
   const withMarket = args.includes("--market");
-  // Risk is served from `stk_ticker_risk_cache` at any age; this is the CLI's
+  // Risk is served from `inv_ticker_risk_cache` at any age; this is the CLI's
   // equivalent of the Recalculate button.
   const refreshRisk = args.includes("--refresh");
   const ticker = args.find((arg) => !arg.startsWith("--"));

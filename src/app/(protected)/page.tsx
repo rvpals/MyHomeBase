@@ -37,7 +37,7 @@ import { StartupMessage } from "./startup-message";
 import { SuspiciousVisitAlert } from "./suspicious-visit-alert";
 import { TodayInHistoryWidget } from "./today-in-history-widget";
 
-const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
+const INVESTMENTS_MODULE_SLUG = "investments";
 const JOURNAL_MODULE_SLUG = "journal";
 
 export default async function Home({
@@ -124,7 +124,7 @@ export default async function Home({
   // — `modules` is already access-filtered, so testing it costs nothing extra.
   // Positions are read only once that's true, and an empty portfolio renders
   // nothing rather than a card of zeroes.
-  const stockModule = modules.find((appModule) => appModule.slug === STOCK_ETFS_MODULE_SLUG);
+  const stockModule = modules.find((appModule) => appModule.slug === INVESTMENTS_MODULE_SLUG);
   const positions = stockModule && shows("stockGlance") ? listPositions(deps.stockPositionRepo) : [];
   // Each dashboard card is badged with its own module's icon, so it's obvious at
   // a glance which module the numbers belong to. Undefined when the module is

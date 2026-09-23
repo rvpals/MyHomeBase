@@ -178,7 +178,7 @@ export function createTransaction(
  * behaviour — holdings come from the broker import unless you opt in here.
  *
  * `accountName` turns an account id into a name for the error messages only. Passed
- * in because account names live in `stk_investment_accounts`, which this module's
+ * in because account names live in `inv_investment_accounts`, which this module's
  * repository deliberately can't see; omit it and messages name ids instead.
  */
 export function createTransactionAndApply(

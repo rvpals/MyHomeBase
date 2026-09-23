@@ -70,9 +70,12 @@ export function recordSiteVisit(
           authFailures: 0,
         };
 
-    const { level } = scoreSuspicion(parsed.data, history);
+    // Both halves of the score are kept. Until migrations/0106 only `level` was
+    // written and the reasons were dropped here, which left the Visit tab showing a
+    // red badge with no way to tell a scanner from a failed password.
+    const { level, signals } = scoreSuspicion(parsed.data, history);
 
-    visitRepo.recordVisit({ ...parsed.data, suspicion: level });
+    visitRepo.recordVisit({ ...parsed.data, suspicion: level, signals });
   } catch {
     // Swallowed on purpose — see the doc comment. There is nowhere useful to report
     // this to: the visitor must not see it, and throwing would break their redirect.
@@ -161,7 +164,10 @@ export function allowIpAddress(
 ): number {
   const parsed = newIpAllowlistEntrySchema.parse(entry);
   allowlistRepo.add(parsed);
-  return visitRepo.setSuspicionForIp(parsed.ipAddress, "normal", toSqliteTimestamp(now));
+  // Reasons are cleared along with the verdict: a grey "Normal" row listing why it
+  // was once suspicious invites exactly the second-guessing vouching exists to end.
+  // This matches `scoreSuspicion`, which returns no signals for an allowlisted visit.
+  return visitRepo.setSuspicionForIp(parsed.ipAddress, "normal", [], toSqliteTimestamp(now));
 }
 
 /** Every vouched-for address, newest first. */
@@ -192,5 +198,10 @@ export function disallowIpAddress(
   // Re-scored from the address's own record rather than left as-is. `watch` rather
   // than `normal` or `suspicious`: the reader deliberately un-trusted this address,
   // so it should resurface, but the stored rows cannot re-run the full scorer.
-  return visitRepo.setSuspicionForIp(ipAddress, "watch");
+  //
+  // `allowlist_removed` is the reason, and it is the honest one: it records what
+  // actually caused the re-flag — an admin decision — rather than inventing a
+  // heuristic finding the scorer never made. Without it the amber badge would sit
+  // there with an empty Why column, which reads like a bug (migrations/0106).
+  return visitRepo.setSuspicionForIp(ipAddress, "watch", ["allowlist_removed"]);
 }

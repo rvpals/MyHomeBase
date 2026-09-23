@@ -20,14 +20,14 @@ export class SqliteTickerFavoriteRepository implements TickerFavoriteRepository 
     // `ticker` breaks ties: two symbols starred in the same second would
     // otherwise come back in an arbitrary order that could change between reads.
     const rows = this.db
-      .prepare("SELECT * FROM stk_ticker_favorites ORDER BY created_at DESC, ticker")
+      .prepare("SELECT * FROM inv_ticker_favorites ORDER BY created_at DESC, ticker")
       .all() as FavoriteRow[];
     return rows.map(toFavorite);
   }
 
   isFavorite(ticker: string): boolean {
     const row = this.db
-      .prepare("SELECT 1 FROM stk_ticker_favorites WHERE ticker = ?")
+      .prepare("SELECT 1 FROM inv_ticker_favorites WHERE ticker = ?")
       .get(ticker) as { 1: number } | undefined;
     return row !== undefined;
   }
@@ -37,11 +37,11 @@ export class SqliteTickerFavoriteRepository implements TickerFavoriteRepository 
     // the top of the list, because the click that does it is the click that
     // *unstars* — an accidental double-press should leave the list untouched.
     this.db
-      .prepare("INSERT INTO stk_ticker_favorites (ticker) VALUES (?) ON CONFLICT(ticker) DO NOTHING")
+      .prepare("INSERT INTO inv_ticker_favorites (ticker) VALUES (?) ON CONFLICT(ticker) DO NOTHING")
       .run(ticker);
   }
 
   remove(ticker: string): void {
-    this.db.prepare("DELETE FROM stk_ticker_favorites WHERE ticker = ?").run(ticker);
+    this.db.prepare("DELETE FROM inv_ticker_favorites WHERE ticker = ?").run(ticker);
   }
 }

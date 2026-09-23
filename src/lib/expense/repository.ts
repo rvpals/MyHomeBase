@@ -3,6 +3,7 @@ import type { ExpenseRepository, TransactionFilter } from "./ports";
 import {
   creditCardAccountSchema,
   expenseCategorySchema,
+  expenseRuleTypeSchema,
   expenseVendorSchema,
   expenseTransactionSchema,
   postImportRuleSchema,
@@ -12,6 +13,7 @@ import type {
   BulkTransactionEditData,
   CategoryWriteData,
   PostImportRuleWriteData,
+  RuleTypeWriteData,
   TransactionWriteData,
   VendorWriteData,
 } from "./schema";
@@ -21,6 +23,7 @@ import type {
   CategoryTotal,
   CreditCardAccount,
   ExpenseCategory,
+  ExpenseRuleType,
   ExpenseTransaction,
   ExpenseVendor,
   PostImportRule,
@@ -58,6 +61,8 @@ interface CategoryRow {
 // render. Only getCategoryIcon/setCategoryIcon touch that column.
 const CATEGORY_COLUMNS = "name, description, icon_image_mime_type, created_at, updated_at";
 
+const RULE_TYPE_COLUMNS = "name, description, sort_order, created_at, updated_at";
+
 interface VendorRow {
   name: string;
   description: string;
@@ -87,10 +92,19 @@ interface TransactionRow {
   updated_at: string;
 }
 
+interface RuleTypeRow {
+  name: string;
+  description: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
 interface RuleRow {
   id: number;
   name: string;
   description: string;
+  type_name: string;
   pattern: string;
   priority: number;
   is_enabled: number;
@@ -158,11 +172,22 @@ function transactionToDomain(row: TransactionRow): ExpenseTransaction {
   });
 }
 
+function ruleTypeToDomain(row: RuleTypeRow): ExpenseRuleType {
+  return expenseRuleTypeSchema.parse({
+    name: row.name,
+    description: row.description,
+    sortOrder: row.sort_order,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  });
+}
+
 function ruleToDomain(row: RuleRow, actionRows: RuleActionRow[]): PostImportRule {
   return postImportRuleSchema.parse({
     id: row.id,
     name: row.name,
     description: row.description,
+    typeName: row.type_name,
     pattern: row.pattern,
     priority: row.priority,
     isEnabled: row.is_enabled === 1,
@@ -669,6 +694,57 @@ export class SqliteExpenseRepository implements ExpenseRepository {
     return result.changes;
   }
 
+  // --- rule types -----------------------------------------------------------
+  //
+  // Ordered by sort_order then name: nothing writes sort_order yet, so every row
+  // holds 0 and this reads alphabetically. See migration 0107.
+
+  listRuleTypes(): ExpenseRuleType[] {
+    const rows = this.db
+      .prepare(`SELECT ${RULE_TYPE_COLUMNS} FROM exp_rule_types ORDER BY sort_order ASC, name ASC`)
+      .all() as RuleTypeRow[];
+    return rows.map(ruleTypeToDomain);
+  }
+
+  getRuleTypeByName(name: string): ExpenseRuleType | undefined {
+    const row = this.db
+      .prepare(`SELECT ${RULE_TYPE_COLUMNS} FROM exp_rule_types WHERE name = ?`)
+      .get(name) as RuleTypeRow | undefined;
+    return row ? ruleTypeToDomain(row) : undefined;
+  }
+
+  upsertRuleType(input: RuleTypeWriteData): ExpenseRuleType {
+    this.db
+      .prepare(
+        `INSERT INTO exp_rule_types (name, description, sort_order)
+         VALUES (@name, @description, @sortOrder)
+         ON CONFLICT(name) DO UPDATE SET
+           description = excluded.description,
+           sort_order = excluded.sort_order`,
+      )
+      .run(input);
+    const saved = this.getRuleTypeByName(input.name);
+    if (!saved) throw new Error(`Failed to read back rule type "${input.name}".`);
+    return saved;
+  }
+
+  deleteRuleType(name: string): void {
+    // Only the row goes. Rules naming this type keep their type_name and read as
+    // Untyped in the filter strip -- see migration 0107 on why there is no FK
+    // here: cascading would delete the user's rules, and restricting would block
+    // a one-second cleanup behind editing every rule first.
+    this.db.prepare("DELETE FROM exp_rule_types WHERE name = ?").run(name);
+  }
+
+  registerRuleTypesIfMissing(names: string[]): void {
+    const insert = this.db.prepare("INSERT OR IGNORE INTO exp_rule_types (name) VALUES (?)");
+    this.db.transaction(() => {
+      for (const name of names) {
+        if (name.trim() !== "") insert.run(name);
+      }
+    })();
+  }
+
   // --- rules ----------------------------------------------------------------
 
   listRules(): PostImportRule[] {
@@ -719,14 +795,15 @@ export class SqliteExpenseRepository implements ExpenseRepository {
 
   createRule(input: PostImportRuleWriteData): PostImportRule {
     const insertRule = this.db.prepare(
-      `INSERT INTO exp_post_import_rules (name, description, pattern, priority, is_enabled)
-       VALUES (@name, @description, @pattern, @priority, @isEnabled)`,
+      `INSERT INTO exp_post_import_rules (name, description, type_name, pattern, priority, is_enabled)
+       VALUES (@name, @description, @typeName, @pattern, @priority, @isEnabled)`,
     );
 
     const ruleId = this.db.transaction(() => {
       const result = insertRule.run({
         name: input.name,
         description: input.description,
+        typeName: input.typeName,
         pattern: input.pattern,
         priority: input.priority,
         isEnabled: input.isEnabled ? 1 : 0,
@@ -744,8 +821,8 @@ export class SqliteExpenseRepository implements ExpenseRepository {
   updateRule(id: number, input: PostImportRuleWriteData): PostImportRule {
     const updateRule = this.db.prepare(
       `UPDATE exp_post_import_rules
-       SET name = @name, description = @description, pattern = @pattern,
-           priority = @priority, is_enabled = @isEnabled
+       SET name = @name, description = @description, type_name = @typeName,
+           pattern = @pattern, priority = @priority, is_enabled = @isEnabled
        WHERE id = @id`,
     );
 
@@ -754,6 +831,7 @@ export class SqliteExpenseRepository implements ExpenseRepository {
         id,
         name: input.name,
         description: input.description,
+        typeName: input.typeName,
         pattern: input.pattern,
         priority: input.priority,
         isEnabled: input.isEnabled ? 1 : 0,

@@ -28,7 +28,7 @@ export class SqliteTickerProfileRepository implements TickerProfileRepository {
   constructor(private db: Database.Database) {}
 
   get(ticker: string): TickerProfileRecord | undefined {
-    const row = this.db.prepare("SELECT * FROM stk_ticker_profiles WHERE ticker = ?").get(ticker) as
+    const row = this.db.prepare("SELECT * FROM inv_ticker_profiles WHERE ticker = ?").get(ticker) as
       | ProfileRow
       | undefined;
     return row ? toRecord(row) : undefined;
@@ -36,7 +36,7 @@ export class SqliteTickerProfileRepository implements TickerProfileRepository {
 
   list(): TickerProfileRecord[] {
     const rows = this.db
-      .prepare("SELECT * FROM stk_ticker_profiles ORDER BY ticker")
+      .prepare("SELECT * FROM inv_ticker_profiles ORDER BY ticker")
       .all() as ProfileRow[];
     return rows.map(toRecord);
   }
@@ -46,7 +46,7 @@ export class SqliteTickerProfileRepository implements TickerProfileRepository {
     // provider data, and must not throw away a sector the user set by hand.
     this.db
       .prepare(
-        `INSERT INTO stk_ticker_profiles (ticker, sector, industry, source, fetched_at)
+        `INSERT INTO inv_ticker_profiles (ticker, sector, industry, source, fetched_at)
          VALUES (@ticker, @sector, @industry, @source, datetime('now'))
          ON CONFLICT(ticker) DO UPDATE SET
            sector = excluded.sector,

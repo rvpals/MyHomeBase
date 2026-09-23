@@ -1,4 +1,4 @@
-// Stocks & ETFs on the two-tier shell — the first module migrated off `TreeNav`.
+// Investments on the two-tier shell — the first module migrated off `TreeNav`.
 //
 // A server component, so it can read `deps` for the things the shell needs and
 // that only the server knows: the module list the reader can actually reach, the
@@ -28,7 +28,7 @@ import {
   stockSectionHref,
 } from "./stock-sections";
 
-const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
+const INVESTMENTS_MODULE_SLUG = "investments";
 
 export async function StockShell({ children }: { children: ReactNode }) {
   const cookieStore = await cookies();
@@ -56,7 +56,7 @@ export async function StockShell({ children }: { children: ReactNode }) {
   }));
 
   // Both fields are admin-editable, so they're read rather than hardcoded.
-  const appModule = getModuleBySlug(deps.moduleRepo, STOCK_ETFS_MODULE_SLUG);
+  const appModule = getModuleBySlug(deps.moduleRepo, INVESTMENTS_MODULE_SLUG);
 
   // Flat, as the module's sections already are. The panel supports one level of
   // nesting (`children`) if a future section needs grouping; nothing here does,
@@ -75,9 +75,9 @@ export async function StockShell({ children }: { children: ReactNode }) {
       sections={sections}
       iconNamespace="stock"
       module={{
-        name: appModule?.shortName ?? "Stocks & ETFs",
+        name: appModule?.shortName ?? "Investments",
         icon: appModule?.icon ?? "chart",
-        href: `/modules/${STOCK_ETFS_MODULE_SLUG}`,
+        href: `/modules/${INVESTMENTS_MODULE_SLUG}`,
       }}
       currentUser={{
         id: currentUser.id,

@@ -80,7 +80,7 @@ export const stockTransactionSchema = z.object({
   numberOfShares: z.number().nonnegative(),
   pricePerShareCents: z.number().int().nonnegative(),
   totalAmountCents: z.number().int().nonnegative(),
-  // 0 is "Unassigned" — matches stk_stock_positions.accountId.
+  // 0 is "Unassigned" — matches inv_stock_positions.accountId.
   accountId: z.number().int().nonnegative(),
   brokerageFirm: z.string(),
   externalId: z.string(),

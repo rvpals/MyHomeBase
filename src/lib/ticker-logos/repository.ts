@@ -16,7 +16,7 @@ export class SqliteTickerLogoRepository implements TickerLogoRepository {
   constructor(private db: Database.Database) {}
 
   get(ticker: string): TickerLogoRecord | undefined {
-    const row = this.db.prepare("SELECT * FROM stk_ticker_logos WHERE ticker = ?").get(ticker) as
+    const row = this.db.prepare("SELECT * FROM inv_ticker_logos WHERE ticker = ?").get(ticker) as
       | LogoRow
       | undefined;
     if (!row) return undefined;
@@ -32,7 +32,7 @@ export class SqliteTickerLogoRepository implements TickerLogoRepository {
   save(ticker: string, image: TickerLogoImage, source: string): void {
     this.db
       .prepare(
-        `INSERT INTO stk_ticker_logos (ticker, image, image_mime_type, source, fetched_at)
+        `INSERT INTO inv_ticker_logos (ticker, image, image_mime_type, source, fetched_at)
          VALUES (@ticker, @image, @mimeType, @source, datetime('now'))
          ON CONFLICT(ticker) DO UPDATE SET
            image = excluded.image,
@@ -46,7 +46,7 @@ export class SqliteTickerLogoRepository implements TickerLogoRepository {
   saveMissing(ticker: string, source: string): void {
     this.db
       .prepare(
-        `INSERT INTO stk_ticker_logos (ticker, image, image_mime_type, source, fetched_at)
+        `INSERT INTO inv_ticker_logos (ticker, image, image_mime_type, source, fetched_at)
          VALUES (@ticker, NULL, NULL, @source, datetime('now'))
          ON CONFLICT(ticker) DO UPDATE SET
            image = NULL,

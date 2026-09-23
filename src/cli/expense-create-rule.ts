@@ -32,6 +32,8 @@ Required:
 
 Optional:
   --description <text>   Why this rule exists.
+  --type <text>          Groups the rule in the Transaction Rules list, e.g.
+                         "Subscriptions". Created if it does not exist yet.
   --priority <number>    Lowest number wins when several rules match. Default 0.
   --disabled             Create it switched off.`;
 
@@ -42,6 +44,7 @@ Optional:
 function parseArgs(args: string[]): {
   name?: string;
   description?: string;
+  typeName?: string;
   pattern?: string;
   priority?: string;
   disabled: boolean;
@@ -67,6 +70,9 @@ function parseArgs(args: string[]): {
         break;
       case "description":
         parsed.description = value;
+        break;
+      case "type":
+        parsed.typeName = value;
         break;
       case "pattern":
         parsed.pattern = value;
@@ -137,6 +143,7 @@ export function expenseCreateRuleCommand(args: string[]): void {
   const input: SavePostImportRuleInput = {
     name: parsed.name,
     description: parsed.description ?? "",
+    typeName: parsed.typeName ?? "",
     pattern: parsed.pattern,
     priority,
     isEnabled: !parsed.disabled,
@@ -148,6 +155,7 @@ export function expenseCreateRuleCommand(args: string[]): void {
     const rule = createRule(deps.expenseRepo, input);
     console.log(`Created rule #${rule.id} ${JSON.stringify(rule.name)} (${rule.pattern})`);
     if (rule.description !== "") console.log(`  description : ${rule.description}`);
+    if (rule.typeName !== "") console.log(`  type        : ${rule.typeName}`);
     console.log(`  priority    : ${rule.priority}${rule.isEnabled ? "" : "  [disabled]"}`);
     for (const action of rule.actions) {
       console.log(`  sets        : ${action.fieldName} = ${JSON.stringify(action.fieldValue)}`);

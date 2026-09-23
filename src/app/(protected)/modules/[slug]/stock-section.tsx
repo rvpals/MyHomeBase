@@ -1,4 +1,4 @@
-// Composes one Stocks & ETFs section: the section nav, a heading with
+// Composes one Investments section: the section nav, a heading with
 // the section's description, and the section's own view. Data is loaded per section
 // rather than all at once, so opening the dashboard doesn't read every watch list
 // and analytics cache.
@@ -70,7 +70,7 @@ import { StockTickerSearch } from "./stock-ticker-search";
 import { StockTransactionsView } from "./stock-transactions-view";
 import { StockWatchlistView, type WatchListEntry } from "./stock-watchlist-view";
 
-const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
+const INVESTMENTS_MODULE_SLUG = "investments";
 
 // The three Watch & Test card badges. Resolved once at module scope; the registry is
 // static, so this is not I/O. Non-null because the ids are registered right here in the
@@ -97,7 +97,7 @@ function loadAccountOptions() {
 
 /** This module's settings rows, or none when the module row is somehow missing. */
 function loadModuleSettings() {
-  const stockModule = getModuleBySlug(deps.moduleRepo, STOCK_ETFS_MODULE_SLUG);
+  const stockModule = getModuleBySlug(deps.moduleRepo, INVESTMENTS_MODULE_SLUG);
   return stockModule ? listModuleSettingsFor(deps.moduleSettingsRepo, stockModule.id) : [];
 }
 

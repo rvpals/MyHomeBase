@@ -24,6 +24,7 @@ function rule(overrides: Partial<PostImportRule> = {}): PostImportRule {
     id: 1,
     name: "Amazon",
     description: "",
+    typeName: "",
     pattern: "AMAZON%",
     priority: 0,
     isEnabled: true,

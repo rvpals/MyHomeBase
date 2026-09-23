@@ -1,4 +1,4 @@
-// Broker-specific header aliasing/date-numeric parsing for the Stocks & ETFs CSV
+// Broker-specific header aliasing/date-numeric parsing for the Investments CSV
 // importer. Generic CSV line/text splitting lives in @/lib/shared/csv — re-exported
 // below so this module's existing public surface doesn't change.
 import { parseCsv, parseCsvLine, type ParsedCsv } from "@/lib/shared/csv";

@@ -12,9 +12,9 @@ import { deps } from "@/lib/wiring";
 import { requireModuleAccess } from "../../require-access";
 
 /** The module these actions belong to, matched exactly by `requireModuleAccess`. */
-const ACCESS_MODULE_SLUG = "stock-etfs";
+const ACCESS_MODULE_SLUG = "investments";
 
-const STOCK_ETFS_MODULE_PATH = "/modules/stock-etfs";
+const INVESTMENTS_MODULE_PATH = "/modules/investments";
 
 export interface RefreshProfilesActionResult {
   ok: boolean;
@@ -46,7 +46,7 @@ export async function refreshTickerProfilesAction(): Promise<RefreshProfilesActi
     );
 
     // Only worth re-rendering when something new landed.
-    if (result.fetched.length > 0) revalidatePath(STOCK_ETFS_MODULE_PATH);
+    if (result.fetched.length > 0) revalidatePath(INVESTMENTS_MODULE_PATH);
 
     return { ok: true, fetchedCount: result.fetched.length, failedCount: result.failed.length };
   } catch (error) {

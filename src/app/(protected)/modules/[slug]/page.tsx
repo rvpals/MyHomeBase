@@ -15,7 +15,7 @@ import { MusicSection } from "./music-section";
 import { StockSection } from "./stock-section";
 import { ToolsSection } from "./tools-section";
 
-const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
+const INVESTMENTS_MODULE_SLUG = "investments";
 const CSV_ANALYSIS_MODULE_SLUG = "csv-analysis";
 const JOURNAL_MODULE_SLUG = "journal";
 const EXPENSE_MODULE_SLUG = "expense";
@@ -34,10 +34,10 @@ function ModuleBody({
   isCurrentUserAdmin: boolean;
   requestedClassId?: number;
 }) {
-  // Stocks & ETFs, My Journal, and Expense all use a tree nav: the module root
+  // Investments, My Journal, and Expense all use a tree nav: the module root
   // is their home/dashboard, and every other section is its own route under
   // [slug]/[section].
-  if (slug === STOCK_ETFS_MODULE_SLUG) {
+  if (slug === INVESTMENTS_MODULE_SLUG) {
     return <StockSection section="main" />;
   }
 

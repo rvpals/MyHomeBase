@@ -295,7 +295,7 @@ export function StockDailyGlance({
    */
   lastRefreshed?: string;
   /**
-   * The Stock & ETFs module's own icon name, so the card is badged with the
+   * The Investments module's own icon name, so the card is badged with the
    * module it belongs to. Passed in rather than hard-coded because the icon is
    * a DB column an admin can change.
    */
@@ -350,9 +350,9 @@ export function StockDailyGlance({
         <Button
           size="sm"
           variant="secondary"
-          href="/modules/stock-etfs"
-          title="Launch Stocks & ETFs"
-          ariaLabel="Launch Stocks & ETFs"
+          href="/modules/investments"
+          title="Launch Investments"
+          ariaLabel="Launch Investments"
         >
           <TreeIcon name="rocket" className="h-4 w-4" />
         </Button>
@@ -367,7 +367,7 @@ export function StockDailyGlance({
         <div className="flex items-center gap-2">
           {/* Ahead of the note so the order reads action-then-explanation, and
               because the same refresh icon sits in the same relative spot on the
-              Stock & ETFs dashboard heading. */}
+              Investments dashboard heading. */}
           <GlanceRefreshButton state={refresh} />
           <Comments
             title="Explanation"

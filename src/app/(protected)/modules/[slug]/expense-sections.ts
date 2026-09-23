@@ -34,7 +34,8 @@ export const EXPENSE_SECTION_INFO: Record<ExpenseSection, { label: string; descr
   },
   "meta-data": {
     label: "Meta Data",
-    description: "The credit cards and categories everything else refers to.",
+    description:
+      "The credit cards, categories and rule types everything else refers to.",
   },
   charts: {
     label: "Charts and Analysis",

@@ -1,6 +1,6 @@
 "use client";
 
-// The Stocks & ETFs dashboard: what the portfolio is worth, how it moved today,
+// The Investments dashboard: what the portfolio is worth, how it moved today,
 // what it has returned since you bought in, and how the value is spread. Every
 // number arrives already computed by the lib — this file only formats and lays out.
 

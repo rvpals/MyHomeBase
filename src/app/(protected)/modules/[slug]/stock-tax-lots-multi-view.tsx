@@ -323,7 +323,7 @@ export function StockTaxLotsMultiView({ sections, totals }: MultiTickerViewProps
         </span>
         <Button
           variant="secondary"
-          onClick={() => router.push("/modules/stock-etfs/tax-lots")}
+          onClick={() => router.push("/modules/investments/tax-lots")}
         >
           Back to saved lots
         </Button>

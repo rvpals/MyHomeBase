@@ -34,7 +34,7 @@ function toTaxLot(row: TaxLotRow): TaxLot {
 
 const SELECT_LOTS = `SELECT id, ticker, buy_date, shares, price_per_share_cents,
                             is_split_adjusted, brokerage_firm, note, created_at, updated_at
-                     FROM stk_tax_lots`;
+                     FROM inv_tax_lots`;
 
 /**
  * The only file in the Tax Lots module that knows SQL.
@@ -64,7 +64,7 @@ export class SqliteTaxLotRepository implements TaxLotRepository {
 
   listTickers(): string[] {
     const rows = this.db
-      .prepare(`SELECT DISTINCT ticker FROM stk_tax_lots ORDER BY ticker ASC`)
+      .prepare(`SELECT DISTINCT ticker FROM inv_tax_lots ORDER BY ticker ASC`)
       .all();
     return (rows as { ticker: string }[]).map((row) => row.ticker);
   }
@@ -72,7 +72,7 @@ export class SqliteTaxLotRepository implements TaxLotRepository {
   createLot(input: CreateTaxLotInput): TaxLot {
     const result = this.db
       .prepare(
-        `INSERT INTO stk_tax_lots
+        `INSERT INTO inv_tax_lots
            (ticker, buy_date, shares, price_per_share_cents, is_split_adjusted,
             brokerage_firm, note, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
@@ -98,7 +98,7 @@ export class SqliteTaxLotRepository implements TaxLotRepository {
   updateLot(id: number, input: UpdateTaxLotInput): TaxLot {
     this.db
       .prepare(
-        `UPDATE stk_tax_lots
+        `UPDATE inv_tax_lots
          SET ticker = ?, buy_date = ?, shares = ?, price_per_share_cents = ?,
              is_split_adjusted = ?, brokerage_firm = ?, note = ?, updated_at = datetime('now')
          WHERE id = ?`,
@@ -120,6 +120,6 @@ export class SqliteTaxLotRepository implements TaxLotRepository {
   }
 
   deleteLot(id: number): void {
-    this.db.prepare(`DELETE FROM stk_tax_lots WHERE id = ?`).run(id);
+    this.db.prepare(`DELETE FROM inv_tax_lots WHERE id = ?`).run(id);
   }
 }

@@ -82,7 +82,7 @@ describe("saveModuleSettings", () => {
 describe("saveModuleSettingsPartial", () => {
   // The wholesale save deletes every row for the module first, so a screen that
   // owns two of a module's five keys and passes only those wipes the other three.
-  // Stocks & ETFs has three such screens (thresholds, dashboard layout,
+  // Investments has three such screens (thresholds, dashboard layout,
   // auto-refresh), which is what this exists to stop.
   const manyKeys: ModuleSetting[] = [
     { id: 1, moduleId: 1, key: "profit_target_pct", value: "20" },

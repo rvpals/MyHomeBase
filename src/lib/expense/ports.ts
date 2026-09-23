@@ -3,6 +3,7 @@ import type {
   BulkTransactionEditData,
   CategoryWriteData,
   PostImportRuleWriteData,
+  RuleTypeWriteData,
   TransactionWriteData,
   VendorWriteData,
 } from "./schema";
@@ -12,6 +13,7 @@ import type {
   CategoryTotal,
   CreditCardAccount,
   ExpenseCategory,
+  ExpenseRuleType,
   ExpenseTransaction,
   ExpenseVendor,
   PostImportRule,
@@ -123,6 +125,21 @@ export interface ExpenseRepository {
   forceApplyRuleAssignments(
     updates: { id: number; assignments: Partial<Record<RuleActionField, string>> }[],
   ): number;
+
+  // Rule types
+  //
+  // A grouping for the rules list, curated under Meta Data. Keyed by name, like
+  // categories, because a rule stores its type as text.
+  listRuleTypes(): ExpenseRuleType[];
+  getRuleTypeByName(name: string): ExpenseRuleType | undefined;
+  upsertRuleType(input: RuleTypeWriteData): ExpenseRuleType;
+  /**
+   * Deletes the type only. Rules naming it are left alone and read as Untyped
+   * -- the same bargain deleting a category strikes with its transactions.
+   */
+  deleteRuleType(name: string): void;
+  /** Insert-if-absent, so a type named on a rule always exists in the list. */
+  registerRuleTypesIfMissing(names: string[]): void;
 
   // Rules
   listRules(): PostImportRule[];

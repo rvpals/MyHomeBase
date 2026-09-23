@@ -16,7 +16,7 @@ export class SqliteIndexLogoRepository implements IndexLogoRepository {
   constructor(private db: Database.Database) {}
 
   get(symbol: string): IndexLogoRecord | undefined {
-    const row = this.db.prepare("SELECT * FROM stk_index_logos WHERE symbol = ?").get(symbol) as
+    const row = this.db.prepare("SELECT * FROM inv_index_logos WHERE symbol = ?").get(symbol) as
       | IndexLogoRow
       | undefined;
     if (!row) return undefined;
@@ -32,7 +32,7 @@ export class SqliteIndexLogoRepository implements IndexLogoRepository {
   save(symbol: string, image: IndexLogoImage, source: string): void {
     this.db
       .prepare(
-        `INSERT INTO stk_index_logos (symbol, image, image_mime_type, source, fetched_at)
+        `INSERT INTO inv_index_logos (symbol, image, image_mime_type, source, fetched_at)
          VALUES (@symbol, @image, @mimeType, @source, datetime('now'))
          ON CONFLICT(symbol) DO UPDATE SET
            image = excluded.image,
@@ -46,7 +46,7 @@ export class SqliteIndexLogoRepository implements IndexLogoRepository {
   saveMissing(symbol: string, source: string): void {
     this.db
       .prepare(
-        `INSERT INTO stk_index_logos (symbol, image, image_mime_type, source, fetched_at)
+        `INSERT INTO inv_index_logos (symbol, image, image_mime_type, source, fetched_at)
          VALUES (@symbol, NULL, NULL, @source, datetime('now'))
          ON CONFLICT(symbol) DO UPDATE SET
            image = NULL,

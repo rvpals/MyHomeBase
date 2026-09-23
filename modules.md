@@ -30,7 +30,7 @@ are the `snake_case` equivalents.
 
 | Slug | Short name | Long name | Description | Seq | Icon | Prefix |
 |---|---|---|---|---|---|---|
-| `stock-etfs` | Stocks & ETFs | Stock & ETFs etc | Manage stock and ETF investments. | 2 | `chart` | `stk_` |
+| `investments` | Investments | Investments | Manage stock, ETF and fund investments. | 2 | `chart` | `inv_` |
 | `journal` | Journal | My Journal | A place to keep a journal with daily recordings. | 3 | `journal` | `jrn_` |
 | `csv-analysis` | CSV Analysis | CSV Data Analysis | Import a CSV file for analytics. | 4 | `folder` | `csv_` |
 | `expense` | Expense | Expense Tracker | Track credit-card spending by category. | 5 | `wallet` | `exp_` |
@@ -59,17 +59,17 @@ does before badging the nav.
 
 ### Per-module detail
 
-**Stocks & ETFs** (`stock-etfs`) — the largest module. Brokerage accounts,
+**Investments** (`investments`) — the largest module. Brokerage accounts,
 positions, transactions, watch lists, a daily-glance dashboard, ticker detail
 with news and risk, and CSV import from broker statements. Backed by several
 library modules (`stock-positions`, `stock-analytics`, `stock-watchlist`,
 `stock-daily-snapshot`, `tax-lots`, `investment-accounts`, `market-data`,
-`market-indexes`, `ticker-*`) that all share the one `stk_` table prefix — though
+`market-indexes`, `ticker-*`) that all share the one `inv_` table prefix — though
 several of the newest (`stock-simulation`, `market-indexes`) own no table at all.
 
 The **Tax Lots** section scores each *purchase* rather than the blended position,
 because tax is assessed per lot: two buys of one stock can sit on opposite sides of
-the one-year long-term line. It owns `stk_tax_lots` (migration 0083) and the
+the one-year long-term line. It owns `inv_tax_lots` (migration 0083) and the
 `src/lib/tax-lots` library module. Four choices worth knowing:
 
 - **Split normalization is the feature.** A lot is entered as the confirmation
@@ -154,7 +154,7 @@ it silently invent figures.
 A fourth focus, **Diversification & Alternatives** (2026-09-14), adds the measured
 correlation work: the most- and least-correlated pairs with their combined weight, each
 holding's correlation to SPY, and the GICS sectors held at nothing or almost nothing. It
-**reads the existing `stk_stock_correlation_cache`** rather than computing — the preview
+**reads the existing `inv_stock_correlation_cache`** rather than computing — the preview
 regenerates on every tick, and a fresh matrix is one provider call per holding — with a
 **Refresh correlations** button for an explicit recompute. That cache is shared with
 Chart & Analysis, so refreshing in either place serves both. Candidate tickers come from
@@ -240,11 +240,11 @@ substring ones. It adds **no table** — every source already exists. Free text 
 allowed, and which tab the viewer opens on depends on the answer: a symbol we hold or
 watch opens on *Our data*, one we've never seen opens on the *Yahoo* tab, because its
 own-data cards would all be empty. Matching is on the **symbol only** — no company
-name is stored anywhere (`stk_ticker_profiles` holds sector and industry, not a name),
+name is stored anywhere (`inv_ticker_profiles` holds sector and industry, not a name),
 so matching one would have meant a migration for a search box.
 
 Beside it sits a **favorites** star — a short hand-picked jump list for the symbols you
-open every morning, which is the want a search box does *not* serve. `stk_ticker_favorites`
+open every morning, which is the want a search box does *not* serve. `inv_ticker_favorites`
 (`migrations/0058`) holds one row per symbol, keyed by the ticker itself since a favorite
 has no identity beyond it. Starring happens in **one place** — the ticker viewer's header —
 because every ticker in the app already opens that dialog, so one control covers the
@@ -936,7 +936,7 @@ Five choices worth knowing, all recorded in `0074`'s log:
   ("No FK to cascade (project convention)"). Every read LEFT JOINs instead, so an
   orphaned score renders as "Unknown player" rather than emptying the board.
 - **The board is shared, not per-user.** It answers "who is best at this", so no read
-  filters by the viewer. Same call as `stk_ticker_favorites` (0058).
+  filters by the viewer. Same call as `inv_ticker_favorites` (0058).
 - **A score is only saved when a game ends**, and the board is never sent to the
   server or re-simulated there. A determined player can post any number they like,
   which is accepted deliberately for a single-household arcade; `games-actions.ts`
@@ -2033,7 +2033,7 @@ add a `case` to the switch in `page.tsx`. **No migration** — `resolveHomeWidge
 inserts an id missing from a saved layout at its catalogue position (not appended, which
 is the bug `stock-dashboard` shipped once) and drops an id that is no longer a card.
 
-Not to be confused with the **Stocks & ETFs** module's own dashboard widgets
+Not to be confused with the **Investments** module's own dashboard widgets
 (`src/lib/stock-dashboard`), which are a different catalogue stored as a *module*
 setting and configured from that module's Configuration section.
 
@@ -2051,7 +2051,12 @@ below it.
 
 - **Slug** — lowercase kebab-case, the URL segment. Permanent in practice:
   it's in bookmarks, in `DEFAULT_MODULES`, and hardcoded as a constant in the
-  route files. Rename only with a migration.
+  route files. Rename only with a migration — `stock-etfs` -> `investments` in
+  migration 0108 is the worked example, and worth reading before attempting
+  another. Three tables persist a slug (`sys_modules`, `sys_module_texture`,
+  and `favorite_module_slug` in `sys_user_preferences`), and the constant is
+  duplicated across ~16 server-action files where a miss does not break a
+  layout — it makes that one action throw, and only when someone uses it.
 - **Short and long name, description** — admin-editable later, so getting them
   perfect now doesn't matter much.
 - **Sequence** — next unused integer. Ordering on the home grid; admin-editable.
@@ -2288,8 +2293,8 @@ Three rules that have already caused bugs:
 
 - **Pass the module's full slug, never a route path and never a prefix.** The guard
   resolves it with `getModuleBySlug`, a `WHERE slug = ?` equality lookup. Do not
-  match with `startsWith`/`includes`: a prefix test would let `stock-etfs` authorise
-  a future `stock-etfs-pro`, and `journal` authorise anything beginning with it.
+  match with `startsWith`/`includes`: a prefix test would let `investments` authorise
+  a future `investments-pro`, and `journal` authorise anything beginning with it.
   Paths are not slugs and some are deeper than one segment
   (`/modules/journal/metadata`).
 - **The guard throws.** In an action that returns `{ ok, error }`, either put it
