@@ -21,6 +21,25 @@ export function journalTaxonomyIconUrl(
 }
 
 /**
+ * Where a *location* category's or tag's icon is served from, or undefined when
+ * it has none.
+ *
+ * Deliberately separate from `journalTaxonomyIconUrl` rather than a `kind`
+ * added to it: these are different tables behind different routes, and the two
+ * name-spaces are independent — a location category "Cafe" and an entry
+ * category "Cafe" are unrelated rows with unrelated icons. Merging them would
+ * invite passing the wrong one.
+ */
+export function locationTaxonomyIconUrl(
+  kind: TaxonomyKind,
+  item: { name: string; iconMimeType?: string; updatedAt: string },
+): string | undefined {
+  if (!item.iconMimeType) return undefined;
+  const path = kind === "category" ? "categories" : "tags";
+  return `/api/journal/locations/${path}/${encodeURIComponent(item.name)}/icon?v=${encodeURIComponent(item.updatedAt)}`;
+}
+
+/**
  * Name -> icon URL, for screens that only have category/tag *names* to render
  * (a journal entry lists its categories/tags as strings) and still want icons.
  * Only names with an uploaded icon get an entry.

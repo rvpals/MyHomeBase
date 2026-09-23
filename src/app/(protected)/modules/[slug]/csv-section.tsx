@@ -4,8 +4,10 @@ import {
 } from "@/lib/csv-analytics";
 import { deps } from "@/lib/wiring";
 import { CsvAnalyticsView } from "./csv-analytics-view";
+import { CsvCompareView } from "./csv-compare-view";
 import { CsvConfigurationView } from "./csv-configuration-view";
 import { CsvCustomViewsView } from "./csv-custom-views-view";
+import { CsvMultiImportView } from "./csv-multi-import-view";
 import { CsvShell } from "./csv-shell";
 import { CSV_SECTION_INFO, type CsvSection as CsvSectionName } from "./csv-sections";
 
@@ -37,6 +39,12 @@ export async function CsvSection({ section }: { section: CsvSectionName }) {
             // Custom Views screen below reads the full list instead.
             customViews={listAllCustomViews(deps.csvAnalyticsRepo).filter((view) => view.isEnabled)}
           />
+        )}
+        {section === "import" && (
+          <CsvMultiImportView entries={listCsvAnalyticsEntries(deps.csvAnalyticsRepo)} />
+        )}
+        {section === "compare" && (
+          <CsvCompareView entries={listCsvAnalyticsEntries(deps.csvAnalyticsRepo)} />
         )}
         {section === "views" && (
           <CsvCustomViewsView

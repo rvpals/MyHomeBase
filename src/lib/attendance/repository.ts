@@ -774,6 +774,37 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
     return saved;
   }
 
+  deleteAttendanceRecords(recordIds: number[]): number {
+    // One transaction for the whole selection, so a failure part-way through
+    // can't strip a register's entries and leave the register itself behind.
+    // Chunked for the same reason `deleteStudents` is: SQLite caps how many
+    // parameters a single statement may bind.
+    const removeRecords = this.db.transaction((ids: number[]) => {
+      let deleted = 0;
+      for (const chunk of chunkIds(ids)) {
+        const marks = placeholders(chunk.length);
+        // Children first, and explicitly -- none of these three tables declares
+        // a FOREIGN KEY, so nothing cascades. Deleting the parent alone would
+        // strand entry rows that `listAttendanceRecordsForClass` still joins on.
+        this.db
+          .prepare(
+            `DELETE FROM att_attendance_entry_actions WHERE attendance_record_id IN (${marks})`,
+          )
+          .run(chunk);
+        this.db
+          .prepare(`DELETE FROM att_attendance_entries WHERE attendance_record_id IN (${marks})`)
+          .run(chunk);
+        // `changes` counts registers actually removed, so an id that no longer
+        // exists doesn't inflate the total the caller reports back to a teacher.
+        deleted += this.db
+          .prepare(`DELETE FROM att_attendance_records WHERE id IN (${marks})`)
+          .run(chunk).changes;
+      }
+      return deleted;
+    });
+    return removeRecords(recordIds);
+  }
+
   listSessionsForClass(classId: number): AttendanceSessionSummary[] {
     // Counts come from a grouped join rather than N per-record reads — the
     // picker needs a label per session, not their entries.

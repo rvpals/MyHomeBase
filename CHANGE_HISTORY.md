@@ -1,5 +1,191 @@
 # Change History
 
+## 2026-09-22 — Several devices one dataset, and settings you can set for someone else
+
+### [CSV Analysis] Drop many files at once, and compare them
+
+Several CSVs from the same kind of device — every humidity meter, every power monitor —
+now become **one dataset** in a single drop, instead of an import per file.
+
+**Import Files** takes the whole batch at once. Every row records the file it came
+from, and you can add up to three of your own columns describing each file: "Room" →
+"Bathroom", "Basement". The value is suggested from the filename, so
+`Master Bathroom_export_202609221408.csv` fills in as "Master Bathroom" with nothing to
+type. Files whose columns don't match the rest are refused by name, with the column
+that differs — these are meant to be the same kind of data, so a mismatch means a wrong
+file rather than a schema to merge.
+
+**Compare** answers what the pooling was for: combined and per-source average, median,
+range, spread and missing count, ranked highest-first, with every source drawn on one
+chart. Pick which label to group by, which measurement to summarise, and what to plot
+it against.
+
+Both are driveable from the terminal — `import-csv-files plan | create | append` and
+`csv-source-stats` — which is how the figures get checked without a browser.
+
+### [Admin] Edit anyone's preferences from User Management
+
+**User Management** rows gain a **User Preferences** action. It opens the same screen
+the person sees at My Account — avatar, password, favourite module, phone navigation,
+weather location, clock and floating components — pointed at their account instead of
+yours.
+
+It is literally the same screen, not a copy of it: a preference added to My Account
+appears here with no further work, so the two can't drift into disagreeing about what a
+setting means. The heading names whose account you're editing, and a line under it says
+so again, because every control below is identical to the one on your own page.
+
+This is also how a reader gets a **dismissed floating component back**. Closing the
+clock with `✕` is deliberately final on the window itself, so someone who dismissed
+theirs and can't find My Account previously had no way to retrieve it.
+
+Two things behave differently from the self-serve screen, on purpose. Setting someone's
+password **signs them out everywhere**, since an admin doing that is either resetting a
+forgotten password or locking out whoever currently holds it. And the **Layout** note is
+omitted — it reports a cookie on the browser you're sitting at, so under another
+person's name it would simply be wrong.
+
+The favourite-module list is built from *their* module access, not yours. An admin
+reaches every module, so offering your own list would let you set a favourite they can't
+open — and a startup redirect into a module they can't reach is a dead end with no way
+back to the screen that would fix it.
+
+### [Journal] Location categories and tags can carry an icon
+
+A saved place's categories are now recognisable at a glance rather than only readable.
+Upload a small image per location category or tag in the Location Manager, and it shows
+on the chips and becomes the face of the place's pin on the map.
+
+This reverses an earlier call. Location categories deliberately had no icon, on the
+grounds that a place's mark on the map is its pin and a second glyph would compete with
+it. Reversed by request — the icon now *is* the pin's face, so the two are the same mark
+rather than two marks arguing.
+
+Existing categories and tags keep no icon and render exactly as before.
+
+### [Charts] Fixed: the chart type picker ignored your first choice
+
+Picking a different chart type from the gear did nothing the first time — you had to
+pick it again for the chart to change.
+
+The stored-preferences loader was keyed on the chart's own defaults, and the chart type
+is one of them. So switching type re-ran the "restore what was saved" step, which
+immediately overwrote the choice just made with the persisted one. The second pick
+worked only because the defaults then already matched, so nothing re-ran. Restoring a
+saved preference now happens once, on mount, which is what it always meant to do.
+
+### [Charts] Aggregate lines are drawn boldly
+
+The reference lines from a chart function borrowed the axis grey, which is tuned to
+recede — so a figure you had explicitly asked for was nearly invisible. They are now
+3px, long-dashed and near-black, with the label in the same ink. Several on one chart
+each take a distinct dark hue, kept in a reserved ramp so an annotation can never
+consume a colour the data series needs.
+
+### [CSV Analysis] Build aggregate functions on the chart
+
+Click **+ Add** on the Dashboard chart to define a function — average, minimum,
+maximum, sum, count or distinct — over any column. **Calculate** shows each figure
+beside its row, and anything toggled **Chart it** is drawn as a dashed benchmark line
+across the plot. Define as many as you like; remove them individually.
+
+The column list is filtered by what the function can actually take, so average never
+offers a text column — but count and distinct do, because "how many different rooms
+reported" is a fair question. Figures are computed over the rows the chart is showing,
+so they always match what you are looking at. With **Split by** on, each function also
+reports per source, and draws one line per room rather than one pooled average that
+describes neither.
+
+They are saved with the chart, as `chart_functions`.
+
+### [Charts] Full screen, and phone-sized zoom controls
+
+Every configurable chart gets a **full screen** control — it opens on the real
+fullscreen stage, with an ✕ to come back. On a phone the zoom controls are now icons
+(`−`, `+`, `⭮`, `⛶`) instead of full-width buttons: four of them plus the gear could
+not share a row, and wrapping pushed the chart itself off the first screen.
+
+### [CSV Analysis] The Dashboard chart can split by source
+
+A pooled dataset now gets a **Split by** picker on the Dashboard chart: each room, or
+each device, becomes its own line instead of all of them sharing one. It defaults to
+splitting, because the unsplit view of pooled data is actively misleading — every
+device's readings alternate along a single line, which looks like wild swings rather
+than several steady rooms.
+
+Two devices reporting the same timestamp line up on the axis; a device that missed a
+reading leaves a gap rather than dropping to zero. Scatter is withdrawn while
+splitting, since the split axis isn't the numeric one scatter needs. The choice is
+saved with the chart.
+
+### [CSV Analysis] Three ways imported data was being lost, fixed
+
+All three predate this work and were found while building on top of it.
+
+**Editing an entry defaulted to Overwrite**, which drops and recreates the table. Adding
+a second file to an existing dataset — without noticing the radio — destroyed every row
+already imported *and* any extra column added to hold a per-file value. Editing now
+defaults to Append; Overwrite is still there, as an explicit choice.
+
+**A column type was inferred from five rows.** A humidity column whose first five
+readings happened to be whole numbers was typed as an integer, after which every
+fractional reading silently became empty. Both import paths now sample up to a thousand
+rows while still showing five.
+
+**A timestamp was shifted into UTC.** `2025-03-13 14:08:00` was read as local time and
+stored as `18:08Z`, so a twice-daily sensor log lost the time-of-day pattern it existed
+to record — and the shift wasn't even constant across a daylight-saving boundary. A
+device export carries no timezone, so the time is now kept exactly as written.
+**Already-imported rows were not changed**; only new imports are correct.
+
+Also fixed: renaming a column you had just added blanked the value typed for it, and
+then refused to save because the value was missing.
+
+## 2026-09-21 — Who came knocking
+
+### [Admin] Security becomes two tabs: Login and Visit
+
+The sign-in log could only ever answer half the question. It records people who reached
+the sign-in form and *typed something* — so a scanner that requests the site root and
+leaves, or a stranger who opens the URL and never tries a password, produced no row
+anywhere in the database.
+
+**The Visit tab records logged-out arrivals at the site root**, with the IP address, the
+browser string, and where they came from. A signed-in arrival writes nothing at all, so
+every row is, by construction, somebody who was not you at the moment they arrived. It is
+deliberately not a general access log: on a public hostname that means logging every
+static asset and every chunk, which is thousands of rows a day answering a question nobody
+asked.
+
+**Grouped by week, then by day**, newest first, with visit counts, distinct-address counts
+and a suspicious count on each header. The current week and today start expanded; older
+weeks are history you open on purpose.
+
+**Arrivals are scored as normal, worth a look, or suspicious.** The signals are a missing
+or command-line user agent, a named scanner, a burst of arrivals from one address, an
+address that has knocked repeatedly and never once tried to sign in, and — the serious one
+— an address that also appears in the failed-sign-in log. A scanner or a correlated
+sign-in failure is damning on its own; anything else needs corroboration, so a lone `curl`
+is *worth a look* rather than an alarm. That asymmetry is the point: a flag that fires on
+everything trains you to ignore it.
+
+**An allowlist silences your own traffic.** Tick any visits and choose *Always trust these
+IPs* — the addresses are vouched for, and their past arrivals are re-scored on the spot, so
+yesterday's red rows go quiet too. Removing an entry re-flags them. Crucially, allowlisted
+visits are **still recorded in full**: vouching hides the alarm, never the evidence, because
+the one thing a compromised "known good" address must not do is become invisible.
+
+**Both tabs now have checkboxes and a bulk Delete**, for an admin who has read specific rows
+and wants them gone. The 90-day prune still handles routine ageing.
+
+**The home screen warns about unreviewed suspicious visits**, admins only, beside the
+existing failed-sign-in banner — and only for *suspicious*, never *worth a look*, since a
+public hostname is scanned constantly and a daily banner is a banner you stop reading.
+
+**One caveat stated everywhere it matters:** behind the NAS reverse proxy the IP comes from
+`x-forwarded-for`, which a direct caller can forge. It is a hint about where to look, never
+proof of who someone is, and it is never used to decide access.
+
 ## 2026-09-20 — A place you save once, and a file you can open
 
 ### [Journal] Build the location library out of the journal you already wrote

@@ -38,6 +38,7 @@ export const JOB_KEYS = {
   stockAutoRefresh: "stock_auto_refresh",
   expenseAutoImport: "expense_auto_import",
   authEventPrune: "auth_event_prune",
+  siteVisitPrune: "site_visit_prune",
 } as const;
 
 export type JobKey = (typeof JOB_KEYS)[keyof typeof JOB_KEYS];
@@ -93,6 +94,14 @@ export const JOB_DESCRIPTORS: readonly JobDescriptor[] = [
     label: "Sign-in history prune",
     description:
       "Deletes sign-in and failed-login events past their 90-day retention window. Runs once a day; the window is fixed in code, so there is nothing to configure.",
+    runnable: false,
+    configurable: false,
+  },
+  {
+    key: JOB_KEYS.siteVisitPrune,
+    label: "Site visit history prune",
+    description:
+      "Deletes logged-out arrivals at the site root past their 90-day retention window. Runs once a day; the window is fixed in code, so there is nothing to configure.",
     runnable: false,
     configurable: false,
   },

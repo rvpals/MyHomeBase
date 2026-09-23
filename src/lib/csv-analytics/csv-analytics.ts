@@ -1,6 +1,12 @@
 import { parseCsv } from "@/lib/shared/csv";
+import { buildPooledRows, planMultiFileImport } from "./multi-import";
 import type { CsvAnalyticsRepository } from "./ports";
+import { computeSourceStats, type SourceStatsResult } from "./source-stats";
 import {
+  appendFilesSchema,
+  multiFileImportSchema,
+  type AppendFilesInput,
+  type MultiFileImportInput,
   createCsvAnalyticEntrySchema,
   csvBulkEditSchema,
   saveChartPresetSchema,
@@ -17,9 +23,20 @@ import type {
   CsvColumnDefinition,
   CsvEntryData,
   IngestResult,
+  MultiFileImportPlan,
 } from "./types";
 
 const PREVIEW_ROW_COUNT = 5;
+
+/**
+ * How many rows `previewCsvFile` samples when suggesting a column's type.
+ *
+ * Deliberately far more than the 5 rows it *displays*. Inferring from five rows is how
+ * a column of mostly-fractional readings gets suggested as `integer` off five whole
+ * numbers, after which every fractional value silently coerces to NULL on import.
+ * Showing 5 and sampling many is the fix; the preview table is unchanged.
+ */
+const TYPE_SAMPLE_ROW_COUNT = 1000;
 
 export interface CsvAnalyticsPreview {
   headers: string[];
@@ -35,10 +52,12 @@ export function previewCsvFile(fileText: string): CsvAnalyticsPreview {
   const sanitizedNames = dedupeColumnNames(headers);
   const previewRows = rows.slice(0, PREVIEW_ROW_COUNT);
 
+  const typeSample = rows.slice(0, TYPE_SAMPLE_ROW_COUNT);
   const suggestedColumns: CsvColumnDefinition[] = headers.map((sourceHeader, index) => ({
     name: sanitizedNames[index],
     sourceHeader,
-    type: inferColumnType(previewRows.map((row) => row[index] ?? "")),
+    // Sampled over `typeSample`, not `previewRows` — see TYPE_SAMPLE_ROW_COUNT.
+    type: inferColumnType(typeSample.map((row) => row[index] ?? "")),
   }));
 
   return { headers, totalRows: rows.length, previewRows, suggestedColumns };
@@ -308,4 +327,127 @@ export function bulkEditRows(
 
   const updated = repo.bulkUpdateRows(validated.entryId, chunks, fields, values);
   return { updated, fields };
+}
+
+// --- Pooled multi-file import (migration 0104) --------------------------------
+
+/**
+ * Works out what importing these files together would do, without writing anything.
+ *
+ * A thin pass-through to the pure planner, present so the screen and the CLI reach it
+ * the same way every other use-case is reached — through the module's public surface
+ * rather than by importing an internal file.
+ */
+export function planPooledImport(
+  files: { fileName: string; fileText: string }[],
+  labels: string[],
+): MultiFileImportPlan {
+  return planMultiFileImport(files, labels);
+}
+
+/**
+ * Creates one dataset from several same-shaped CSVs, each row tagged with the file it
+ * came from plus the reader's labels for that file.
+ *
+ * Refuses on any header mismatch. The reader has declared these files to be the same
+ * kind of data from different devices, so a differing header means a wrong file was
+ * dropped — importing it as a column of NULLs would quietly corrupt every per-source
+ * statistic computed afterwards.
+ */
+export function importPooledFiles(
+  repo: CsvAnalyticsRepository,
+  input: MultiFileImportInput,
+): CsvAnalyticEntry {
+  const validated = multiFileImportSchema.parse(input);
+
+  const plan = planMultiFileImport(validated.files, validated.labels);
+  if (plan.headerMismatches.length > 0) {
+    const detail = plan.headerMismatches
+      .map((mismatch) => `"${mismatch.fileName}" ${mismatch.reason}`)
+      .join(" ");
+    throw new Error(
+      `Every file in one import must have the same columns. ${detail} ` +
+        `Import it separately, or remove it from this batch.`,
+    );
+  }
+
+  const rows = buildPooledRows(validated.files, plan.dataColumns, plan.sourceColumns);
+  return repo.createPooledEntry(
+    {
+      name: validated.name,
+      description: validated.description,
+      tableBaseName: validated.tableBaseName,
+    },
+    plan.dataColumns,
+    plan.sourceColumns,
+    rows,
+  );
+}
+
+/**
+ * Adds more files to an existing pooled dataset — a device that reported late, or a
+ * fresh export from one already in the pool.
+ *
+ * The entry's own columns define the shape, so this validates against them rather than
+ * against the first file of the batch: appending to a pool must match what is already
+ * there. Refuses an entry that was not created as a pooled import, since there would be
+ * no source column to tag the new rows with.
+ */
+export function appendPooledFiles(
+  repo: CsvAnalyticsRepository,
+  input: AppendFilesInput,
+): { entry: CsvAnalyticEntry; ingestResult: IngestResult } {
+  const validated = appendFilesSchema.parse(input);
+
+  const entry = repo.getEntryById(validated.entryId);
+  if (!entry) throw new Error(`CSV analytic entry ${validated.entryId} not found.`);
+  if (entry.sourceColumns.length === 0) {
+    throw new Error(
+      `"${entry.name}" was not created as a pooled import, so there is nowhere to record ` +
+        `which file a row came from. Create a new pooled dataset instead.`,
+    );
+  }
+
+  // The entry's columns are [...data, ...source]; only the data ones come from the file.
+  const sourceNames = new Set(entry.sourceColumns.map((column) => column.name));
+  const dataColumns = entry.columns.filter((column) => !sourceNames.has(column.name));
+
+  const rows = buildPooledRows(validated.files, dataColumns, entry.sourceColumns);
+  const ingestResult = repo.appendPooledRows(entry.id, rows);
+  return { entry: repo.getEntryById(entry.id) ?? entry, ingestResult };
+}
+
+/**
+ * Per-source and combined statistics for one measure over a pooled dataset.
+ *
+ * Reads the rows through the repository, then hands them to the pure statistics
+ * function — so the arithmetic stays testable without a database, and the CLI and the
+ * web app compute identical figures from identical rows.
+ *
+ * `limit` caps the read the same way the chart's "Rows to include" does; leaving it
+ * undefined reads the whole table.
+ */
+export function readSourceStats(
+  repo: CsvAnalyticsRepository,
+  input: { entryId: number; groupColumn: string; measureColumn: string; limit?: number },
+): SourceStatsResult {
+  const entry = repo.getEntryById(input.entryId);
+  if (!entry) throw new Error(`CSV analytic entry ${input.entryId} not found.`);
+
+  const data = repo.readTableData(input.entryId, input.limit);
+  return computeSourceStats({
+    columns: data.columns,
+    rows: data.rows,
+    groupColumn: input.groupColumn,
+    measureColumn: input.measureColumn,
+  });
+}
+
+/** The distinct values of a source column — the Compare screen's group picker. */
+export function listSourceValues(
+  repo: CsvAnalyticsRepository,
+  entryId: number,
+  columnName: string,
+): string[] {
+  return repo.listSourceValues(entryId, columnName);
 }

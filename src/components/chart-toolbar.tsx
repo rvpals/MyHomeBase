@@ -283,7 +283,21 @@ export function useChartDisplay(
   // first client render disagree with the server's HTML. The chart therefore draws
   // once with the call site's defaults before a stored preference lands — fine for
   // a display option, and the alternative is a hydration mismatch.
+  //
+  // `resolvedDefaults` is read through a ref rather than being a dependency, and
+  // that is the whole point of this shape. It contains `chartType`, so listing it
+  // would make THIS effect re-run every time the reader switches encoding — and it
+  // would immediately overwrite that fresh pick with the *persisted* one. The
+  // symptom was precise and maddening: picking a new chart type from the gear did
+  // nothing the first time, then worked on the second pick (by which point the
+  // defaults matched, so the effect no longer re-ran).
+  //
+  // A mount-only load is also what "restore the stored preference" actually means.
+  // Re-reading storage because a default changed was never intended.
   const hasLoaded = useRef(false);
+  const defaultsRef = useRef(resolvedDefaults);
+  defaultsRef.current = resolvedDefaults;
+
   useEffect(() => {
     if (!storageKey) {
       hasLoaded.current = true;
@@ -294,12 +308,12 @@ export function useChartDisplay(
       /* eslint-disable-next-line react-hooks/set-state-in-effect --
          Syncing from an external system (localStorage) on mount, not reacting to
          React state. Same pattern as DataGrid's stored view. */
-      setDisplay(parseChartDisplay(stored, resolvedDefaults));
+      setDisplay(parseChartDisplay(stored, defaultsRef.current));
     } catch {
       // Storage can be unavailable (private browsing). The defaults still apply.
     }
     hasLoaded.current = true;
-  }, [storageKey, resolvedDefaults]);
+  }, [storageKey]);
 
   // Guarded by `hasLoaded` so this doesn't overwrite the stored value with the
   // defaults on the first pass, before the read above has run.

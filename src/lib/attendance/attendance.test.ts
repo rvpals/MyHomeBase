@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   addStudent,
+  buildAttendanceDetailReport,
   createClass,
   clearStudentActionIcon,
   createStudentAction,
+  deleteAttendanceRecords,
   deleteStudentAction,
   deleteStudents,
   enrollStudents,
@@ -273,6 +275,19 @@ function fakeRepo(): AttendanceRepository {
       else records.push(record);
 
       return record;
+    },
+    deleteAttendanceRecords(recordIds) {
+      // Splices rather than rebuilding the array, so the surrounding closure's
+      // `records` reference stays the one every other method reads. Counts only
+      // ids actually present, exactly as the real `changes` does.
+      let deleted = 0;
+      for (const id of recordIds) {
+        const index = records.findIndex((record) => record.id === id);
+        if (index < 0) continue;
+        records.splice(index, 1);
+        deleted += 1;
+      }
+      return deleted;
     },
     listSessionsForClass(classId) {
       return records
@@ -1352,5 +1367,127 @@ describe("getAttendanceReportById action tallies", () => {
     });
 
     expect(getAttendanceReportById(repo, record.id)!.actionTallies).toEqual([]);
+  });
+});
+
+describe("deleteAttendanceRecords", () => {
+  /** Three registers on consecutive days, for the batch cases below. */
+  function withThreeRegisters() {
+    const seeded = seededRepo();
+    const { repo, mathClass, ava, ben } = seeded;
+
+    const records = ["2026-08-17", "2026-08-18", "2026-08-19"].map((attendanceDate) =>
+      saveAttendance(repo, {
+        classId: mathClass.id,
+        attendanceDate,
+        recordedByUserId: 1,
+        entries: [
+          { studentId: ava.id, status: "present" as const },
+          { studentId: ben.id, status: "absent" as const },
+        ],
+      }),
+    );
+
+    return { ...seeded, records };
+  }
+
+  it("deletes one register and leaves the rest of the class alone", () => {
+    const { repo, mathClass, records } = withThreeRegisters();
+
+    expect(deleteAttendanceRecords(repo, [records[1].id])).toBe(1);
+
+    expect(listRecordDatesForClass(repo, mathClass.id)).toEqual(["2026-08-19", "2026-08-17"]);
+    expect(getAttendanceReportById(repo, records[1].id)).toBeUndefined();
+    // The neighbours are untouched -- a delete must not disturb the days around it.
+    expect(getAttendanceReportById(repo, records[0].id)).toBeDefined();
+    expect(getAttendanceReportById(repo, records[2].id)).toBeDefined();
+  });
+
+  it("deletes a whole selection at once", () => {
+    const { repo, mathClass, records } = withThreeRegisters();
+
+    expect(deleteAttendanceRecords(repo, [records[0].id, records[2].id])).toBe(2);
+    expect(listRecordDatesForClass(repo, mathClass.id)).toEqual(["2026-08-18"]);
+  });
+
+  it("counts rows removed rather than ids submitted, so a stale selection still works", () => {
+    const { repo, mathClass, records } = withThreeRegisters();
+
+    // 9999 was deleted in another tab. The rest of the batch must still go
+    // through -- the same tolerance `deleteStudents` has.
+    expect(deleteAttendanceRecords(repo, [records[0].id, 9999])).toBe(1);
+    expect(listRecordDatesForClass(repo, mathClass.id)).toEqual(["2026-08-19", "2026-08-18"]);
+  });
+
+  it("de-duplicates ids so a repeated one is not counted twice", () => {
+    const { repo, records } = withThreeRegisters();
+
+    expect(deleteAttendanceRecords(repo, [records[0].id, records[0].id])).toBe(1);
+  });
+
+  it("frees the class and date, so the day can be taken again", () => {
+    const { repo, mathClass, ava, ben, records } = withThreeRegisters();
+
+    deleteAttendanceRecords(repo, [records[0].id]);
+
+    // The unique index on (class, date) is what makes this worth asserting: a
+    // delete that left the record behind would turn this save into an update.
+    const retaken = saveAttendance(repo, {
+      classId: mathClass.id,
+      attendanceDate: "2026-08-17",
+      recordedByUserId: 1,
+      entries: [
+        { studentId: ava.id, status: "present" },
+        { studentId: ben.id, status: "present" },
+      ],
+    });
+
+    expect(retaken.id).not.toBe(records[0].id);
+    expect(getAttendanceSheet(repo, mathClass.id, "2026-08-17").session?.id).toBe(retaken.id);
+  });
+
+  it("drops the deleted day out of the detail grid entirely", () => {
+    const { repo, mathClass, records } = withThreeRegisters();
+
+    deleteAttendanceRecords(repo, [records[1].id]);
+
+    // Not "present with no marks" -- the column goes. A register that was
+    // deleted never happened, which is the distinction this use-case exists for.
+    const grid = buildAttendanceDetailReport(repo, mathClass.id);
+    expect(grid.dates).toEqual(["2026-08-17", "2026-08-19"]);
+    expect(grid.rows[0].cells).toHaveLength(2);
+  });
+
+  it("takes the recorded actions with the register", () => {
+    const { repo, mathClass, ava } = seededRepo();
+    const { late } = seedActions(repo);
+
+    const record = saveAttendance(repo, {
+      classId: mathClass.id,
+      attendanceDate: "2026-08-20",
+      recordedByUserId: 1,
+      entries: [{ studentId: ava.id, status: "present", actionIds: [late.id] }],
+    });
+    expect(getAttendanceReportById(repo, record.id)!.actionTallies).toHaveLength(1);
+
+    deleteAttendanceRecords(repo, [record.id]);
+
+    expect(getAttendanceReportById(repo, record.id)).toBeUndefined();
+    // The catalog row itself survives -- deleting a day must not retire an action.
+    expect(getStudentActionById(repo, late.id)).toBeDefined();
+  });
+
+  it("rejects an empty selection", () => {
+    const { repo } = withThreeRegisters();
+
+    expect(() => deleteAttendanceRecords(repo, [])).toThrow(/at least one register/);
+  });
+
+  it("rejects an id that is not a positive integer", () => {
+    const { repo } = withThreeRegisters();
+
+    expect(() => deleteAttendanceRecords(repo, [0])).toThrow();
+    expect(() => deleteAttendanceRecords(repo, [-3])).toThrow();
+    expect(() => deleteAttendanceRecords(repo, [1.5])).toThrow();
   });
 });

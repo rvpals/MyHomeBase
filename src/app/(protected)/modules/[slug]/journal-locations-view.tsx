@@ -15,7 +15,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { Modal } from "@/components/modal";
 import { TreeIcon } from "@/components/tree-icons";
-import type { SavedLocationWithUsage } from "@/lib/journal-locations";
+import type { LocationTaxonomyKind, SavedLocationWithUsage } from "@/lib/journal-locations";
 import { JournalLocationField, type PickedLocation } from "./journal-location-field";
 import { JournalLocationDedupModal } from "./journal-location-dedup-view";
 import { JournalLocationImportModal } from "./journal-location-import-panel";
@@ -23,14 +23,15 @@ import { reverseGeocodeAction } from "./journal-actions";
 import {
   createSavedLocationAction,
   deleteSavedLocationAction,
+  saveLocationTaxonomyAction,
   searchSavedLocationsAction,
   updateSavedLocationAction,
 } from "./journal-locations-actions";
 
 // Leaflet touches `window`, so the map inside the editor is loaded client-only —
 // same reason and same treatment as the entry form's picker.
-const JournalLocationMap = dynamic(
-  () => import("./journal-location-map").then((module) => module.JournalLocationMap),
+const LocationMap = dynamic(
+  () => import("@/components/location-map").then((module) => module.LocationMap),
   {
     ssr: false,
     loading: () => (
@@ -60,26 +61,165 @@ export function FilterChip({
   count,
   isActive,
   onToggle,
+  iconUrl,
 }: {
   label: string;
   count?: number;
   isActive: boolean;
   onToggle: () => void;
+  /** The category's or tag's icon, when it has one. */
+  iconUrl?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onToggle}
       aria-pressed={isActive}
-      className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors ${
         isActive
           ? "border-brass bg-brass-soft text-ink"
           : "border-line bg-paper text-muted hover:text-ink"
       }`}
     >
+      {iconUrl && (
+        // eslint-disable-next-line @next/next/no-img-element -- icon bytes are served from our own DB-backed route, not a static asset next/image can optimize.
+        <img src={iconUrl} alt="" loading="lazy" className="h-3.5 w-3.5 shrink-0 rounded-sm" />
+      )}
       {label}
       {count !== undefined && <span className="ml-1.5 font-mono opacity-70">{count}</span>}
     </button>
+  );
+}
+
+/**
+ * One labelled row of toggleable chips, plus a "+" that defines a new name
+ * without leaving the popup.
+ *
+ * The quick-add exists because the alternative is abandoning a half-filled
+ * location to go to Location Meta Data and come back. Name only — a description
+ * is the kind of thing you write when you're curating the list, not when you're
+ * mid-way through filing a place, and Location Meta Data stays the screen for
+ * that. The name is the key the pairings carry, so this is the same call the
+ * meta-data screen makes: `saveLocationTaxonomyAction` upserts, which means
+ * re-typing a name that already exists quietly selects it rather than erroring.
+ */
+function TaxonomyChoices({
+  kind,
+  title,
+  options,
+  selected,
+  onToggle,
+  onCreated,
+  icons,
+}: {
+  kind: LocationTaxonomyKind;
+  title: string;
+  options: string[];
+  selected: string[];
+  onToggle: (option: string) => void;
+  onCreated: (name: string) => void;
+  /** Name -> icon URL. A missing entry just means that name has no icon. */
+  icons: Record<string, string>;
+}) {
+  const [isAdding, setIsAdding] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [isBusy, setIsBusy] = useState(false);
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  async function handleAdd() {
+    const name = draft.trim();
+    if (name === "") return;
+    setError(undefined);
+    // Already on the list: just tick it, and don't spend a round trip saying so.
+    if (options.includes(name)) {
+      if (!selected.includes(name)) onToggle(name);
+      setDraft("");
+      setIsAdding(false);
+      return;
+    }
+    setIsBusy(true);
+    try {
+      const result = await saveLocationTaxonomyAction(kind, { name, description: "" });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      onCreated(name);
+      setDraft("");
+      setIsAdding(false);
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-medium text-ink">{title}</span>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => {
+            setError(undefined);
+            setIsAdding((previous) => !previous);
+          }}
+          ariaLabel={`Add a ${kind}`}
+          ariaExpanded={isAdding}
+          title={`Add a ${kind}`}
+          className="px-2 py-0.5"
+        >
+          +
+        </Button>
+      </div>
+
+      {isAdding && (
+        <div className="flex gap-2">
+          <input
+            value={draft}
+            autoFocus
+            onChange={(event) => setDraft(event.target.value)}
+            // Enter saves: the popup has no form around it, so nothing else
+            // would submit, and reaching for the mouse here is the slow path.
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void handleAdd();
+              } else if (event.key === "Escape") {
+                event.preventDefault();
+                setIsAdding(false);
+                setDraft("");
+              }
+            }}
+            placeholder={`New ${kind} name`}
+            className={INPUT_CLASS}
+          />
+          <Button size="sm" onClick={handleAdd} disabled={isBusy || draft.trim() === ""}>
+            {isBusy ? "Adding…" : "Add"}
+          </Button>
+        </div>
+      )}
+
+      {error && <p className="text-xs text-red-400">{error}</p>}
+
+      {options.length === 0 ? (
+        <p className="text-xs text-muted">
+          None defined yet — add one with +, or manage the list under Locations → Location
+          Meta Data.
+        </p>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {options.map((option) => (
+            <FilterChip
+              key={option}
+              label={option}
+              iconUrl={icons[option]}
+              isActive={selected.includes(option)}
+              onToggle={() => onToggle(option)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -88,11 +228,15 @@ function EditSavedLocationModal({
   location,
   categoryOptions,
   tagOptions,
+  categoryIcons,
+  tagIcons,
   onClose,
 }: {
   location?: SavedLocationWithUsage;
   categoryOptions: string[];
   tagOptions: string[];
+  categoryIcons: Record<string, string>;
+  tagIcons: Record<string, string>;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -108,6 +252,21 @@ function EditSavedLocationModal({
   );
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
+  // Names defined by the "+" inside this popup. They are saved server-side
+  // immediately, but the props come from the page's server render, which only
+  // catches up on the next refresh — and refreshing now would throw away the
+  // half-filled form. So they're held here and merged into the chip lists.
+  const [extraCategories, setExtraCategories] = useState<string[]>([]);
+  const [extraTags, setExtraTags] = useState<string[]>([]);
+
+  const categoryChoices = useMemo(
+    () => [...categoryOptions, ...extraCategories.filter((name) => !categoryOptions.includes(name))],
+    [categoryOptions, extraCategories],
+  );
+  const tagChoices = useMemo(
+    () => [...tagOptions, ...extraTags.filter((name) => !tagOptions.includes(name))],
+    [tagOptions, extraTags],
+  );
 
   /**
    * The picker's own "name" field is ignored here — this form has its own, and
@@ -219,45 +378,31 @@ function EditSavedLocationModal({
           </div>
         </label>
 
-        <div className="flex flex-col gap-2">
-          <span className="text-sm font-medium text-ink">Categories</span>
-          {categoryOptions.length === 0 ? (
-            <p className="text-xs text-muted">
-              None defined yet — add some under Locations → Location Meta Data.
-            </p>
-          ) : (
-            <div className="flex flex-wrap gap-1.5">
-              {categoryOptions.map((option) => (
-                <FilterChip
-                  key={option}
-                  label={option}
-                  isActive={categories.includes(option)}
-                  onToggle={() => toggle(categories, option, setCategories)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+        <TaxonomyChoices
+          kind="category"
+          title="Categories"
+          options={categoryChoices}
+          icons={categoryIcons}
+          selected={categories}
+          onToggle={(option) => toggle(categories, option, setCategories)}
+          onCreated={(created) => {
+            setExtraCategories((previous) => [...previous, created]);
+            setCategories((previous) => [...previous, created]);
+          }}
+        />
 
-        <div className="flex flex-col gap-2">
-          <span className="text-sm font-medium text-ink">Tags</span>
-          {tagOptions.length === 0 ? (
-            <p className="text-xs text-muted">
-              None defined yet — add some under Locations → Location Meta Data.
-            </p>
-          ) : (
-            <div className="flex flex-wrap gap-1.5">
-              {tagOptions.map((option) => (
-                <FilterChip
-                  key={option}
-                  label={option}
-                  isActive={tags.includes(option)}
-                  onToggle={() => toggle(tags, option, setTags)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+        <TaxonomyChoices
+          kind="tag"
+          title="Tags"
+          options={tagChoices}
+          icons={tagIcons}
+          selected={tags}
+          onToggle={(option) => toggle(tags, option, setTags)}
+          onCreated={(created) => {
+            setExtraTags((previous) => [...previous, created]);
+            setTags((previous) => [...previous, created]);
+          }}
+        />
 
         <JournalLocationField value={point} onChange={handlePointChange} />
 
@@ -278,10 +423,15 @@ export function JournalLocationsView({
   locations,
   categoryOptions,
   tagOptions,
+  categoryIcons,
+  tagIcons,
 }: {
   locations: SavedLocationWithUsage[];
   categoryOptions: string[];
   tagOptions: string[];
+  /** Name -> icon URL for each list. Names without an icon are simply absent. */
+  categoryIcons: Record<string, string>;
+  tagIcons: Record<string, string>;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -343,8 +493,13 @@ export function JournalLocationsView({
         latitude: place.latitude,
         longitude: place.longitude,
         number: index + 1,
+        // The first category that actually has an icon gives the pin its face;
+        // a place with none keeps the numbered pin. First rather than "best"
+        // because the categories are an unordered set and any tie-break here
+        // would be arbitrary — the reader controls it by ordering the category.
+        iconUrl: place.categories.map((name) => categoryIcons[name]).find(Boolean),
       })),
-    [shown],
+    [shown, categoryIcons],
   );
 
   function toggleFilter(list: string[], value: string, set: (next: string[]) => void) {
@@ -399,6 +554,7 @@ export function JournalLocationsView({
                 <FilterChip
                   key={option}
                   label={option}
+                  iconUrl={categoryIcons[option]}
                   isActive={activeCategories.includes(option)}
                   onToggle={() => toggleFilter(activeCategories, option, setActiveCategories)}
                 />
@@ -412,6 +568,7 @@ export function JournalLocationsView({
                 <FilterChip
                   key={option}
                   label={option}
+                  iconUrl={tagIcons[option]}
                   isActive={activeTags.includes(option)}
                   onToggle={() => toggleFilter(activeTags, option, setActiveTags)}
                 />
@@ -429,7 +586,7 @@ export function JournalLocationsView({
         <>
           {/* Shorter on a phone: a `max-lg:` variant, so the desktop height is
               provably untouched (design.md → Reach for CSS first). */}
-          <JournalLocationMap
+          <LocationMap
             marker={null}
             markers={markers}
             center={null}
@@ -508,6 +665,8 @@ export function JournalLocationsView({
         <EditSavedLocationModal
           categoryOptions={categoryOptions}
           tagOptions={tagOptions}
+          categoryIcons={categoryIcons}
+          tagIcons={tagIcons}
           onClose={() => setIsAdding(false)}
         />
       )}
@@ -516,6 +675,8 @@ export function JournalLocationsView({
           location={editing}
           categoryOptions={categoryOptions}
           tagOptions={tagOptions}
+          categoryIcons={categoryIcons}
+          tagIcons={tagIcons}
           onClose={() => setEditing(undefined)}
         />
       )}

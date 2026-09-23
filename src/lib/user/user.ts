@@ -44,6 +44,22 @@ export function listUsers(repo: UserRepository): User[] {
   return repo.listUsers();
 }
 
+/**
+ * One user by id, or `undefined` if no such account exists.
+ *
+ * `undefined` rather than a throw, because every caller has to distinguish "no such
+ * user" from a failure anyway: the admin preferences screen turns it into a 404, and
+ * the actions behind that screen turn it into a refusal. A throw would make both of
+ * those catch-and-rethrow.
+ *
+ * The port has had `getUserById` all along — `getCurrentUser` uses it to resolve a
+ * session. This exposes it as a use-case so an admin screen can look up the account
+ * it is editing without reaching past `index.ts` into the repository.
+ */
+export function getUserById(userId: number, repo: UserRepository): User | undefined {
+  return repo.getUserById(userId);
+}
+
 export function createUser(input: CreateUserInput, repo: UserRepository): User {
   const parsed = createUserSchema.parse(input);
   if (repo.existsByUsername(parsed.username)) {

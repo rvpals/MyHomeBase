@@ -26,6 +26,11 @@ import {
   type TickerDayMove,
 } from "@/lib/stock-positions";
 import type { TopNewsStory } from "@/lib/ticker-news";
+import {
+  GlanceRefreshButton,
+  GlanceRefreshProgress,
+  useGlanceRefresh,
+} from "./stock-glance-refresh";
 import { fetchTopStoryAction } from "./stock-news-actions";
 import { TickerCell, TickerViewerHost } from "./ticker-viewer-host";
 
@@ -275,12 +280,20 @@ function MoverList({
 export function StockDailyGlance({
   moves,
   tickerMoves,
+  lastRefreshed,
   icon,
   className,
 }: {
   moves: DayMovesByType;
   /** Today's move per ticker, already summed across accounts by the lib. */
   tickerMoves: TickerDayMove[];
+  /**
+   * When these figures last changed, already formatted for display by the lib
+   * (`formatLastRefreshed`). Undefined when nothing has been priced yet, in which
+   * case the line is omitted rather than reading "never" — an empty portfolio has
+   * no refresh to report.
+   */
+  lastRefreshed?: string;
   /**
    * The Stock & ETFs module's own icon name, so the card is badged with the
    * module it belongs to. Passed in rather than hard-coded because the icon is
@@ -290,6 +303,7 @@ export function StockDailyGlance({
   /** Spacing is the caller's call, as with the other home-screen cards. */
   className?: string;
 }) {
+  const refresh = useGlanceRefresh();
   const [measure, setMeasure] = useState<MoverMeasure>("total");
   const [news, setNews] = useState<Record<string, NewsState>>({});
   /** The symbol whose full viewer is open, if any. */
@@ -351,6 +365,10 @@ export function StockDailyGlance({
       // the reader had to scroll through first.
       headerAction={
         <div className="flex items-center gap-2">
+          {/* Ahead of the note so the order reads action-then-explanation, and
+              because the same refresh icon sits in the same relative spot on the
+              Stock & ETFs dashboard heading. */}
+          <GlanceRefreshButton state={refresh} />
           <Comments
             title="Explanation"
             label="Explanation"
@@ -369,6 +387,15 @@ export function StockDailyGlance({
         </div>
       }
     >
+      {/* Above everything else in the card, so the reader knows how old the
+          figures below are before reading them. Omitted entirely when there is
+          no timestamp — see the prop's note. */}
+      {lastRefreshed && (
+        <p className="mb-3 text-xs text-muted">Last refreshed on: {lastRefreshed}</p>
+      )}
+
+      <GlanceRefreshProgress state={refresh} />
+
       {/* The selector governs the mover lists only — per-share is meaningless
           for the buckets below, which mix securities at different prices. It
           sits at the top of the card rather than in the title bar so the title

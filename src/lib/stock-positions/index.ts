@@ -31,6 +31,11 @@ export {
 } from "./schema";
 export type { StockPositionRepository } from "./ports";
 export {
+  lastRefreshedAt,
+  formatLastRefreshed,
+  parseSqliteTimestampUtc,
+} from "./last-refreshed";
+export {
   applyTransactionToPosition,
   describeMatchFailure,
   describeProjectedHolding,

@@ -6,7 +6,7 @@
 // objects, so a lookup like CSV_SECTION_INFO[section] would come back undefined.
 // Same reasoning as music-sections.ts and expense-sections.ts.
 
-export const CSV_SECTIONS = ["main", "views", "configuration"] as const;
+export const CSV_SECTIONS = ["main", "import", "compare", "views", "configuration"] as const;
 
 export type CsvSection = (typeof CSV_SECTIONS)[number];
 
@@ -19,6 +19,14 @@ export const CSV_SECTION_INFO: Record<CsvSection, { label: string; description: 
   main: {
     label: "Dashboard",
     description: "Import a CSV, then chart and browse what is in it.",
+  },
+  import: {
+    label: "Import Files",
+    description: "Drop several CSVs from the same kind of device into one dataset.",
+  },
+  compare: {
+    label: "Compare",
+    description: "Combined and per-source statistics, ranked, with every source on one chart.",
   },
   views: {
     label: "Custom Views",
@@ -33,6 +41,10 @@ export const CSV_SECTION_INFO: Record<CsvSection, { label: string; description: 
 /** Section -> nav icon key, resolved by TreeIcon. */
 export const CSV_SECTION_ICONS: Record<CsvSection, string> = {
   main: "grid",
+  // `upload` and `chart` both exist in TREE_ICONS -- an invented key renders NOTHING
+  // rather than falling back, which is why these were checked before being named.
+  import: "upload",
+  compare: "chart",
   // `sliders` reads as "adjust how the data comes back", which is what a view is.
   // There is no `filter` glyph in TREE_ICONS -- naming one would render blank.
   views: "sliders",

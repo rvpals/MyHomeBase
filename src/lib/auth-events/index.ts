@@ -21,6 +21,7 @@ export type {
 export {
   authEventFilterSchema,
   authEventSchema,
+  bulkIdsSchema,
   newAuthEventSchema,
   retentionDaysSchema,
   type AuthEventFilterInput,
@@ -38,6 +39,7 @@ export {
 export { AUTH_EVENT_TYPES } from "./repository";
 export {
   DEFAULT_RETENTION_DAYS,
+  deleteAuthEvents,
   describeFailureReason,
   getAuthEventSummary,
   hasUnreviewedFailures,

@@ -28,6 +28,10 @@ class FakeAuthEventRepository implements AuthEventRepository {
 
   markFailuresReviewed(): void {}
 
+  deleteEvents(): number {
+    return 0;
+  }
+
   deleteEventsBefore(): number {
     return 0;
   }

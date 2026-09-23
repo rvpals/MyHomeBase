@@ -17,9 +17,12 @@ import { listTodayInHistory } from "@/lib/journal";
 import { listModules } from "@/lib/modules";
 import { getSetting, getStartupMessage } from "@/lib/settings";
 import { todayIsoLocal } from "@/lib/shared/date";
+import { getSiteVisitSummary } from "@/lib/site-visits";
 import {
   computeDayMovesByType,
   computeTickerDayMoves,
+  formatLastRefreshed,
+  lastRefreshedAt,
   listPositions,
 } from "@/lib/stock-positions";
 import { getAccessibleModules, isAdmin } from "@/lib/user";
@@ -31,6 +34,7 @@ import { HomeShell } from "./home-shell";
 import { StockDailyGlance } from "./modules/[slug]/stock-daily-glance";
 import { PAGE_CONTAINER } from "./page-container";
 import { StartupMessage } from "./startup-message";
+import { SuspiciousVisitAlert } from "./suspicious-visit-alert";
 import { TodayInHistoryWidget } from "./today-in-history-widget";
 
 const STOCK_ETFS_MODULE_SLUG = "stock-etfs";
@@ -108,6 +112,14 @@ export default async function Home({
       ? getAuthEventSummary(deps.authEventRepo).unreviewedFailures
       : 0;
 
+  // Same rule for the arrival log (migrations/0102): admins only, counted rather than
+  // stored as a dismissible message, and `suspicious` only — a `watch` arrival is too
+  // common on a public hostname to be worth a banner.
+  const unreviewedSuspiciousVisits =
+    currentUser && isAdmin(currentUser)
+      ? getSiteVisitSummary(deps.siteVisitRepo).unreviewedSuspicious
+      : 0;
+
   // Daily Glance is shown only to someone who can open the module it belongs to
   // — `modules` is already access-filtered, so testing it costs nothing extra.
   // Positions are read only once that's true, and an empty portfolio renders
@@ -156,6 +168,9 @@ export default async function Home({
             security signal an admin shouldn't be able to tick away for good. */}
         {startupMessage && <StartupMessage message={startupMessage} />}
         {unreviewedFailures > 0 && <BadLoginAlert count={unreviewedFailures} />}
+        {unreviewedSuspiciousVisits > 0 && (
+          <SuspiciousVisitAlert count={unreviewedSuspiciousVisits} />
+        )}
 
         {/* Drawn in the admin's chosen order rather than a fixed one, so the list
             below is a lookup and `widgets` is what decides the sequence. Each entry
@@ -226,6 +241,9 @@ export default async function Home({
                   // two accounts is still one security, and that rollup is domain
                   // logic.
                   tickerMoves={computeTickerDayMoves(positions)}
+                  // Derived from the positions already in hand, so the card can
+                  // say how old its figures are without a second read.
+                  lastRefreshed={formatLastRefreshed(lastRefreshedAt(positions))}
                   icon={stockModule?.icon}
                 />
               ) : null;

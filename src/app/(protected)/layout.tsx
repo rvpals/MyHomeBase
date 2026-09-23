@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { MusicPlayerBar } from "@/components/music-player-bar";
 import { MusicPlayerProvider } from "@/components/music-player-provider";
@@ -13,9 +13,11 @@ import { listCalculations } from "@/lib/calculator";
 import { describeClock } from "@/lib/clock";
 import { getEnabledFloating } from "@/lib/floating";
 import { getScratchpad } from "@/lib/scratchpad";
+import { recordSiteVisit } from "@/lib/site-visits";
 import { getUserPreferences } from "@/lib/user-preferences";
 import { getForecast, type WeatherForecast } from "@/lib/weather";
 import { deps } from "@/lib/wiring";
+import { readSiteVisitContext } from "../login/request-context";
 import { ClockWeather } from "./clock-weather";
 import {
   clearCalculationHistoryAction,
@@ -97,7 +99,25 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
   const cookieStore = await cookies();
   const sessionId = cookieStore.get(SESSION_COOKIE_NAME)?.value;
   const currentUser = getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo);
-  if (!currentUser) redirect("/login");
+  if (!currentUser) {
+    // Somebody arrived at the site root without a session. Logged before the
+    // redirect, because after it this render is over — and only for the root, which
+    // is the scope migrations/0102 deliberately drew: a full access log on a public
+    // hostname is thousands of rows a day answering a question nobody asked.
+    //
+    // The path comes from `src/proxy.ts`, since a server layout cannot read the
+    // current URL. Never throws (see `recordSiteVisit`), so a failed audit write
+    // cannot turn a visitor's arrival into an error page.
+    const path = (await headers()).get("x-mhb-path");
+    if (path === "/") {
+      recordSiteVisit(
+        await readSiteVisitContext(path),
+        deps.siteVisitRepo,
+        deps.ipAllowlistRepo,
+      );
+    }
+    redirect("/login");
+  }
 
   // The reader's compact navigation arrangement, read here rather than in the
   // root layout because it is per-user and this is the first layout that knows

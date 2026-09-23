@@ -191,3 +191,33 @@ export function formatCalendarAge(age: CalendarAge): string {
   if (parts.length === 0) return "today";
   return `${parts.join(", ")} ago`;
 }
+
+/**
+ * How `isoDate` relates to `today`, in the plainest words: `"today"`,
+ * `"yesterday"`, `"3 days ago"`, `"tomorrow"`, `"in 4 days"`.
+ *
+ * Deliberately not `formatCalendarAge(calendarAgeSince(...))`, though that pair
+ * already describes a span. Two reasons they answer a different question:
+ *
+ * - That pair clamps a future date to `"today"`, which is right for a photo (a
+ *   camera with a wrong clock) and wrong for a register, where a date ahead of
+ *   today is a mistake worth naming out loud rather than hiding.
+ * - It scales to years and months, so a correction made the next morning reads
+ *   `"1 day ago"` here but would need the same words assembled from a
+ *   `CalendarAge` whose `days` field is only the *leftover* after whole months.
+ *
+ * Both sides are local-calendar days rather than instants, so the difference is
+ * a whole number of days by construction and there is no "23 hours ago" case.
+ * The subtraction rounds because a span crossing a DST boundary contains a 23-
+ * or 25-hour day — the same reason `calendarAgeSince` rounds.
+ */
+export function describeDayOffset(isoDate: string, today: string): string {
+  const days = Math.round(
+    (parseIsoDateLocal(isoDate).getTime() - parseIsoDateLocal(today).getTime()) / 86_400_000,
+  );
+
+  if (days === 0) return "today";
+  if (days === -1) return "yesterday";
+  if (days === 1) return "tomorrow";
+  return days < 0 ? `${unit(-days, "day")} ago` : `in ${unit(days, "day")}`;
+}

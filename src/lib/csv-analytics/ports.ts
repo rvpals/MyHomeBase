@@ -10,6 +10,7 @@ import type {
   CsvColumnDefinition,
   CsvCustomView,
   CsvEntryData,
+  CsvSourceColumn,
   CsvViewPage,
   IngestResult,
 } from "./types";
@@ -52,6 +53,37 @@ export interface CsvAnalyticsRepository {
     fields: string[],
     values: Record<string, string | number | null>,
   ): number;
+  /**
+   * Creates a pooled entry from several files in ONE transaction: metadata row,
+   * physical table (data columns + source columns), and every file's tagged rows.
+   *
+   * All-or-nothing on purpose — a half-imported pool is worse than none, because the
+   * per-source statistics it feeds would silently be computed over a subset.
+   *
+   * `rows` is already parsed, widened and tagged by the use-case (`buildPooledRows`);
+   * the repository never parses CSV text, same rule as `createEntry`.
+   */
+  createPooledEntry(
+    input: { name: string; description?: string; tableBaseName: string },
+    columns: CsvColumnDefinition[],
+    sourceColumns: CsvSourceColumn[],
+    rows: string[][],
+  ): CsvAnalyticEntry;
+
+  /**
+   * Appends more tagged rows to an existing pooled entry. Schema unchanged — the
+   * caller has already validated the files against the entry's columns.
+   *
+   * Unlike `appendRows` this does NOT use INSERT OR IGNORE: two devices legitimately
+   * report the same timestamp, and silently dropping the second one loses a whole
+   * source. A real constraint violation therefore throws and rolls back, which is the
+   * honest outcome.
+   */
+  appendPooledRows(id: number, rows: string[][]): IngestResult;
+
+  /** The distinct values of one source column, for the Compare screen's pickers. */
+  listSourceValues(id: number, columnName: string): string[];
+
   updateMetadata(id: number, input: { name: string; description?: string }): CsvAnalyticEntry;
   /** Deletes the metadata row, drops the physical table, and removes the entry's chart presets. */
   deleteEntry(id: number): void;

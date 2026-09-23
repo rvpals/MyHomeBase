@@ -1,16 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
+  MAX_LOCATION_ICON_BYTES,
+  clearLocationTaxonomyIcon,
   countLocationsByCategory,
   createSavedLocation,
   deleteLocationTaxonomy,
   deleteSavedLocation,
   findLocationDuplicates,
+  getLocationTaxonomyIcon,
   getSavedLocation,
   listSavedLocations,
   mergeSavedLocations,
   promoteToSavedLocation,
   saveLocationTaxonomy,
   searchSavedLocations,
+  setLocationTaxonomyIcon,
   updateSavedLocation,
 } from "./journal-locations";
 import { FakeSavedLocationRepository } from "./fake-repository";
@@ -502,5 +506,98 @@ describe("mergeSavedLocations", () => {
     const result = mergeSavedLocations(repo, { keepId: keep.id, removeIds: [drop.id, drop.id] });
 
     expect(result.removedCount).toBe(1);
+  });
+});
+
+
+describe("location taxonomy icons", () => {
+  /** A one-pixel PNG, base64 — the smallest thing decodeImageUpload will accept. */
+  const PNG_PIXEL =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  const upload = { mimeType: "image/png" as const, base64Data: PNG_PIXEL };
+
+  it("stores an uploaded icon on a category and serves the bytes back", () => {
+    const repo = repoWithTaxonomy();
+
+    setLocationTaxonomyIcon(repo, "category", "Restaurant", upload);
+
+    const icon = getLocationTaxonomyIcon(repo, "category", "Restaurant");
+    expect(icon?.mimeType).toBe("image/png");
+    expect(icon?.data.length).toBeGreaterThan(0);
+    // The mime type rides along on the list read; the bytes deliberately do not.
+    expect(repo.getCategoryByName("Restaurant")?.iconMimeType).toBe("image/png");
+  });
+
+  it("stores an uploaded icon on a tag", () => {
+    const repo = repoWithTaxonomy();
+
+    setLocationTaxonomyIcon(repo, "tag", "Family", upload);
+
+    expect(getLocationTaxonomyIcon(repo, "tag", "Family")?.mimeType).toBe("image/png");
+  });
+
+  it("matches the name case-insensitively, as the NOCASE columns do", () => {
+    const repo = repoWithTaxonomy();
+
+    setLocationTaxonomyIcon(repo, "category", "restaurant", upload);
+
+    expect(getLocationTaxonomyIcon(repo, "category", "Restaurant")).toBeDefined();
+  });
+
+  it("refuses an icon for a category that doesn't exist", () => {
+    // Otherwise a typo in the name would quietly invent a category.
+    const repo = repoWithTaxonomy();
+
+    expect(() => setLocationTaxonomyIcon(repo, "category", "Nope", upload)).toThrow(
+      /No location category named "Nope"/,
+    );
+  });
+
+  it("refuses a non-image upload", () => {
+    const repo = repoWithTaxonomy();
+
+    expect(() =>
+      setLocationTaxonomyIcon(repo, "category", "Restaurant", {
+        mimeType: "image/svg+xml" as never,
+        base64Data: PNG_PIXEL,
+      }),
+    ).toThrow(/PNG, JPEG, WebP or GIF/);
+  });
+
+  it("refuses an icon over the size cap", () => {
+    const repo = repoWithTaxonomy();
+    const tooBig = Buffer.alloc(MAX_LOCATION_ICON_BYTES + 1, 1).toString("base64");
+
+    expect(() =>
+      setLocationTaxonomyIcon(repo, "category", "Restaurant", {
+        mimeType: "image/png",
+        base64Data: tooBig,
+      }),
+    ).toThrow(/too large/);
+  });
+
+  it("clears an icon without removing the category", () => {
+    const repo = repoWithTaxonomy();
+    setLocationTaxonomyIcon(repo, "category", "Restaurant", upload);
+
+    clearLocationTaxonomyIcon(repo, "category", "Restaurant");
+
+    expect(getLocationTaxonomyIcon(repo, "category", "Restaurant")).toBeUndefined();
+    expect(repo.getCategoryByName("Restaurant")).toBeDefined();
+    expect(repo.getCategoryByName("Restaurant")?.iconMimeType).toBeUndefined();
+  });
+
+  it("refuses to clear an icon on a row that doesn't exist", () => {
+    const repo = repoWithTaxonomy();
+
+    expect(() => clearLocationTaxonomyIcon(repo, "tag", "Nope")).toThrow(
+      /No location tag named "Nope"/,
+    );
+  });
+
+  it("reports no icon for a row that never had one", () => {
+    const repo = repoWithTaxonomy();
+
+    expect(getLocationTaxonomyIcon(repo, "category", "Trailhead")).toBeUndefined();
   });
 });

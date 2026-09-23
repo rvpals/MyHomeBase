@@ -31,6 +31,7 @@ import { deps } from "@/lib/wiring";
 import { AttendanceActionsView } from "./attendance-actions-view";
 import { AttendanceClassesView } from "./attendance-classes-view";
 import { AttendanceConfigurationView } from "./attendance-configuration-view";
+import { AttendanceEditView } from "./attendance-edit-view";
 import { AttendanceHomeView } from "./attendance-home-view";
 import { AttendanceShell } from "./attendance-shell";
 import { AttendanceInstructions } from "./attendance-instructions";
@@ -172,6 +173,71 @@ function SectionBody({
           actions={listStudentActions(deps.attendanceRepo, { includeRetired: true })}
         />
       );
+
+    case "edit": {
+      // Correcting days already taken. The register editor is the very same
+      // component the home screen uses -- `saveAttendance` has updated a day's
+      // record in place since migration 0092 -- so editing adds no new write
+      // path, only a way to reach a date other than today. Deleting a register
+      // is new, and is the one thing in this module that destroys one.
+      const classes = listClasses(deps.attendanceRepo);
+      const settings = loadSettings();
+      const today = todayIsoLocal();
+      // No `today` argument, deliberately: this screen is for reaching a *past*
+      // day, so opening it on whichever class happens to meet today would be the
+      // wrong default the moment a teacher arrives here to fix last Tuesday. The
+      // URL still wins, then the configured default -- the same precedence the
+      // Report screen uses, and for the same reason.
+      const selectedClassId = resolveSelectedClassId(
+        requestedClassId,
+        classes,
+        settings.defaultClassId,
+      );
+
+      // Every register the class has, newest first, with its counts. Doubles as
+      // the list to browse and as the check below -- a day is only editable here
+      // if it appears in this list.
+      const sessions = selectedClassId
+        ? listSessionsForClass(deps.attendanceRepo, selectedClassId)
+        : [];
+
+      // Nothing is opened for editing until a day is asked for. The list is the
+      // screen's resting state: landing straight in an editor would put a
+      // register one stray keystroke from being rewritten, on the one screen
+      // whose whole subject is changing days that are already saved.
+      //
+      // A ?date= naming a day with no register resolves to undefined rather than
+      // seeding a blank one -- taking a new day is the home screen's job, and a
+      // stale or hand-edited URL must not create a register as a side effect.
+      const selectedDate =
+        requestedDate && sessions.some((session) => session.attendanceDate === requestedDate)
+          ? requestedDate
+          : undefined;
+
+      return (
+        <AttendanceEditView
+          classes={classes.map((item) => ({
+            id: item.id,
+            name: item.name,
+            classWeekday: item.classWeekday,
+            enrolledCount: item.enrolledCount,
+          }))}
+          sessions={sessions}
+          sheet={
+            selectedClassId && selectedDate
+              ? getAttendanceSheet(deps.attendanceRepo, selectedClassId, selectedDate)
+              : undefined
+          }
+          // Only pickable actions, exactly as the home screen does: a correction
+          // must not be able to note an action the teacher has since retired.
+          actions={listStudentActions(deps.attendanceRepo)}
+          selectedClassId={selectedClassId}
+          selectedDate={selectedDate}
+          today={today}
+          cardsUseLastNameFirst={settings.cardsUseLastNameFirst}
+        />
+      );
+    }
 
     case "report": {
       const classes = listClasses(deps.attendanceRepo);

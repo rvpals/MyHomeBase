@@ -5,6 +5,13 @@ import {
   findLocationDuplicateGroups,
   type LocationDuplicateGroup,
 } from "./dedup";
+import {
+  decodeImageUpload,
+  type ImageUploadInput,
+} from "@/lib/shared/image-upload";
+// Through the barrel, not the files inside it. The name->glyph chain is generic:
+// nothing in it knows a name came from a location rather than an entry.
+import { fetchIconSvg, isSafeGeneratedIconSvg } from "@/lib/journal";
 import type { SavedLocationRepository } from "./ports";
 import {
   locationIdSchema,
@@ -28,6 +35,7 @@ import type {
   LocationCategory,
   LocationTag,
   LocationTaxonomyCount,
+  LocationTaxonomyIcon,
   LocationTaxonomyKind,
   SavedLocation,
   SavedLocationWithUsage,
@@ -276,6 +284,131 @@ export function saveLocationTaxonomy(
 ): LocationCategory | LocationTag {
   const data = upsertLocationTaxonomyInputSchema.parse(input);
   return kind === "category" ? repo.upsertCategory(data) : repo.upsertTag(data);
+}
+
+/** The icon size cap, matching the entry-side taxonomy (MAX_JOURNAL_ICON_BYTES). */
+export const MAX_LOCATION_ICON_BYTES = 128 * 1024;
+
+/** Throws unless the named row exists, so an upload can't conjure a category. */
+function requireTaxonomy(
+  repo: SavedLocationRepository,
+  kind: LocationTaxonomyKind,
+  name: string,
+): string {
+  const parsed = locationTaxonomyNameSchema.parse(name);
+  const exists =
+    kind === "category" ? repo.getCategoryByName(parsed) : repo.getTagByName(parsed);
+  if (!exists) throw new Error(`No location ${kind} named "${parsed}".`);
+  return parsed;
+}
+
+/**
+ * Stores the icon shown beside a location category or tag wherever it's listed.
+ *
+ * The row must already exist — creating one as a side effect of an upload would
+ * let a typo add a category nobody asked for. Same rule as `setCategoryIcon` on
+ * the entry side.
+ */
+export function setLocationTaxonomyIcon(
+  repo: SavedLocationRepository,
+  kind: LocationTaxonomyKind,
+  name: string,
+  input: ImageUploadInput,
+): void {
+  const parsed = requireTaxonomy(repo, kind, name);
+  const icon = decodeImageUpload(input, MAX_LOCATION_ICON_BYTES);
+  if (kind === "category") repo.setCategoryIcon(parsed, icon);
+  else repo.setTagIcon(parsed, icon);
+}
+
+/** Removes the icon, leaving the category or tag itself untouched. */
+export function clearLocationTaxonomyIcon(
+  repo: SavedLocationRepository,
+  kind: LocationTaxonomyKind,
+  name: string,
+): void {
+  const parsed = requireTaxonomy(repo, kind, name);
+  if (kind === "category") repo.setCategoryIcon(parsed, undefined);
+  else repo.setTagIcon(parsed, undefined);
+}
+
+/** Used only by the icon-serving routes — never by anything rendering a list. */
+export function getLocationTaxonomyIcon(
+  repo: SavedLocationRepository,
+  kind: LocationTaxonomyKind,
+  name: string,
+): LocationTaxonomyIcon | undefined {
+  return kind === "category" ? repo.getCategoryIcon(name) : repo.getTagIcon(name);
+}
+
+/**
+ * Draws an icon from the row's *name* — the ⚡ button in the Location Meta Data
+ * editor.
+ *
+ * Reuses the entry side's icon-search/fetch/fallback chain wholesale: those
+ * modules map a name to a Material Design Icons glyph and fall back to a locally
+ * drawn one offline, and none of it knows or cares that the name came from a
+ * location rather than an entry.
+ *
+ * Deliberately not routed through `decodeImageUpload`: that validator refuses
+ * SVG because *uploaded* SVG served from our own origin is a stored-XSS vector.
+ * These bytes are ours, and `isSafeGeneratedIconSvg` re-checks the exact string
+ * on its way to the DB — the same split the entry side documents at
+ * `buildFetchedIcon`.
+ *
+ * Replaces any existing icon, which is the point: the button is how you swap a
+ * hand-uploaded icon for a generated one. The UI confirms first when there's
+ * already an icon to lose.
+ */
+export async function generateLocationTaxonomyIcon(
+  repo: SavedLocationRepository,
+  kind: LocationTaxonomyKind,
+  name: string,
+): Promise<void> {
+  const parsed = requireTaxonomy(repo, kind, name);
+  const { svg, mimeType } = await fetchIconSvg(parsed);
+  if (!isSafeGeneratedIconSvg(svg)) {
+    throw new Error("The generated icon failed its safety check and was not saved.");
+  }
+  const icon = { data: Buffer.from(svg, "utf8"), mimeType };
+  if (kind === "category") repo.setCategoryIcon(parsed, icon);
+  else repo.setTagIcon(parsed, icon);
+}
+
+/** What a batch icon fill did. */
+export interface LocationIconFillSummary {
+  generated: number;
+  failed: number;
+}
+
+/**
+ * Draws an icon for every category and tag that hasn't got one.
+ *
+ * Skips rows that already have an icon rather than replacing them: this is the
+ * "fill in the gaps" button, and silently overwriting a hand-picked icon is the
+ * one thing it must not do. A single failure is counted, not thrown — one name
+ * that maps to nothing shouldn't abandon the rest of the run.
+ */
+export async function generateMissingLocationTaxonomyIcons(
+  repo: SavedLocationRepository,
+): Promise<LocationIconFillSummary> {
+  const summary: LocationIconFillSummary = { generated: 0, failed: 0 };
+  const lists: { kind: LocationTaxonomyKind; rows: (LocationCategory | LocationTag)[] }[] = [
+    { kind: "category", rows: repo.listCategories() },
+    { kind: "tag", rows: repo.listTags() },
+  ];
+  for (const { kind, rows } of lists) {
+    for (const row of rows) {
+      if (row.iconMimeType) continue;
+      try {
+        await generateLocationTaxonomyIcon(repo, kind, row.name);
+        summary.generated += 1;
+      } catch {
+        summary.failed += 1;
+      }
+    }
+  }
+  return summary;
 }
 
 /**

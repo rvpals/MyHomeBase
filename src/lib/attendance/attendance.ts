@@ -2,6 +2,7 @@ import { decodeImageUpload, type ImageUploadInput } from "@/lib/shared/image-upl
 import type { AttendanceRepository } from "./ports";
 import {
   MAX_ATTENDANCE_ACTION_ICON_BYTES,
+  attendanceRecordIdsSchema,
   attendanceReportQuerySchema,
   createClassSchema,
   createStudentActionSchema,
@@ -466,6 +467,32 @@ export function saveAttendance(repo: AttendanceRepository, input: SaveAttendance
   );
 
   return repo.saveAttendance(validated, attendanceClass.name, studentNames, actionsById);
+}
+
+/**
+ * Deletes whole registers — the days themselves, not the marks on them.
+ *
+ * The destructive counterpart to `saveAttendance`, and deliberately a separate
+ * use-case rather than a flag on it: editing a day to all-absent and removing
+ * the day are different facts. "Nobody came" is a register; "this class never
+ * met" is the absence of one, and the detail grid draws them differently — see
+ * `AttendanceDetailCell.status`, where `undefined` and `absent` are kept apart
+ * on purpose. Without a delete, a register taken by mistake could only be
+ * blanked, which writes the wrong one of those two.
+ *
+ * **Irreversible, and it discards the entries and noted actions with the
+ * record.** There is no soft-delete column and no undo; the caller is expected
+ * to have confirmed with the reader first.
+ *
+ * A missing id is not an error — a stale selection must not fail the rest of
+ * the batch — so the return value is how many registers actually went, which
+ * can be fewer than the ids passed. Ids are de-duplicated for the same reason
+ * `deleteStudents` de-duplicates: the count should mean rows removed, not ids
+ * submitted.
+ */
+export function deleteAttendanceRecords(repo: AttendanceRepository, recordIds: number[]): number {
+  const validated = attendanceRecordIdsSchema.parse(recordIds);
+  return repo.deleteAttendanceRecords([...new Set(validated)]);
 }
 
 // ---------------------------------------------------------------------------

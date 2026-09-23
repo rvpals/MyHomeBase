@@ -233,3 +233,38 @@ export const csvBulkEditSchema = z.object({
 
 export type CsvBulkEditInput = z.infer<typeof csvBulkEditSchema>;
 export type CsvBulkEditChanges = z.infer<typeof csvBulkEditChangesSchema>;
+
+/**
+ * A multi-file pooled import: N same-shaped CSVs landing in one dataset, each row
+ * tagged with the file it came from plus whatever labels the reader typed.
+ *
+ * Validated here at the boundary, as every use-case's input is. The header-match rule
+ * is NOT expressed as a zod refinement — it needs the files parsed, so it lives in
+ * `planMultiFileImport`/`buildPooledRows`, which refuse independently of this schema.
+ */
+export const csvImportFileSchema = z.object({
+  fileName: z.string().min(1),
+  fileText: z.string().min(1),
+  labelValues: z.record(z.string(), z.string()).default({}),
+});
+
+export const multiFileImportSchema = z.object({
+  name: z.string().min(1),
+  description: descriptionPreprocess,
+  tableBaseName: z.string().min(1),
+  /** One per file, in the order they should be imported. */
+  files: z.array(csvImportFileSchema).min(1),
+  /** Reader-typed label column names, e.g. ["Room"]. Capped in multi-import.ts. */
+  labels: z.array(z.string()).max(3).default([]),
+});
+
+export type CsvImportFileInput = z.infer<typeof csvImportFileSchema>;
+export type MultiFileImportInput = z.infer<typeof multiFileImportSchema>;
+
+/** Appending more files to a dataset that already has source columns. */
+export const appendFilesSchema = z.object({
+  entryId: z.number().int().positive(),
+  files: z.array(csvImportFileSchema).min(1),
+});
+
+export type AppendFilesInput = z.infer<typeof appendFilesSchema>;

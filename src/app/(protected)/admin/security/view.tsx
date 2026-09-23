@@ -4,6 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
+import { SlotIcon } from "@/components/slot-icon";
+import { Tabs, type TabItem } from "@/components/tabs";
+import { getIconSlot } from "@/lib/icons";
 // Imported from the leaf modules, not the `@/lib/auth-events` barrel: that barrel
 // re-exports the `deps`-backed prune runner, which would drag better-sqlite3 and
 // `node:fs` into this client bundle and fail the build. Same rule, and the same
@@ -15,14 +18,35 @@ import type {
   AuthEventSummary,
   AuthEventType,
 } from "@/lib/auth-events/types";
-import { markFailuresReviewedAction } from "./actions";
+import type {
+  IpAllowlistEntry,
+  SiteVisitSummary,
+  VisitWeekGroup,
+} from "@/lib/site-visits/types";
+import { deleteAuthEventsAction, markFailuresReviewedAction } from "./actions";
+import { VisitsTab } from "./visits-tab";
 import { PAGE_CONTAINER } from "../../page-container";
 
 export interface SecurityViewProps {
   events: AuthEvent[];
   summary: AuthEventSummary;
   fullNameByUserId: Record<number, string>;
+  /** Arrivals grouped week → day, newest first. Grouped in the lib, not here. */
+  visitWeeks: VisitWeekGroup[];
+  visitSummary: SiteVisitSummary;
+  allowlist: IpAllowlistEntry[];
+  /** `YYYY-MM-DD` today, so the current day opens expanded. Resolved on the server. */
+  todayIso: string;
+  /** `YYYY-MM-DD` Monday of the current week, so this week opens expanded. */
+  thisWeekStart: string;
 }
+
+// Resolved once at module scope. `getIconSlot` reads the static registry — no I/O — and
+// the guard is for the registry, not the user: if an id is ever removed the tab loses
+// its glyph rather than crashing. `Tabs` takes a ReactNode label, which is what lets a
+// tab carry an icon beside its text (Journal's Entries → Log did this first).
+const LOGIN_TAB_SLOT = getIconSlot("admin_security_tab_login");
+const VISIT_TAB_SLOT = getIconSlot("admin_security_tab_visit");
 
 const EVENT_LABELS: Record<AuthEventType, string> = {
   login_success: "Signed in",
@@ -63,9 +87,81 @@ function StatTile({ label, value, tone }: { label: string; value: number; tone?:
   );
 }
 
-export function SecurityView({ events, summary, fullNameByUserId }: SecurityViewProps) {
+/**
+ * The Security screen: sign-in activity and site arrivals, as two tabs.
+ *
+ * The screen title and its intro sit above the strip, because they describe the
+ * screen rather than either tab. Each tab then carries its own explanation, its own
+ * stat tiles and its own grid.
+ */
+export function SecurityView({
+  events,
+  summary,
+  fullNameByUserId,
+  visitWeeks,
+  visitSummary,
+  allowlist,
+  todayIso,
+  thisWeekStart,
+}: SecurityViewProps) {
+  const tabs: TabItem[] = [
+    {
+      key: "login",
+      label: (
+        <span className="flex items-center gap-2">
+          {LOGIN_TAB_SLOT && <SlotIcon slot={LOGIN_TAB_SLOT} className="h-4 w-4" />}
+          Login
+        </span>
+      ),
+      content: (
+        <LoginTab events={events} summary={summary} fullNameByUserId={fullNameByUserId} />
+      ),
+    },
+    {
+      key: "visit",
+      label: (
+        <span className="flex items-center gap-2">
+          {VISIT_TAB_SLOT && <SlotIcon slot={VISIT_TAB_SLOT} className="h-4 w-4" />}
+          Visit
+        </span>
+      ),
+      content: (
+        <VisitsTab
+          weeks={visitWeeks}
+          summary={visitSummary}
+          allowlist={allowlist}
+          todayIso={todayIso}
+          thisWeekStart={thisWeekStart}
+        />
+      ),
+    },
+  ];
+
+  return (
+    <div className={PAGE_CONTAINER}>
+      <h1 className="mt-2 font-display text-3xl font-semibold text-ink">Security</h1>
+      <p className="mt-2 text-sm text-muted">
+        Who has signed in, and who has come knocking. <strong className="text-ink">Login</strong>{" "}
+        records every sign-in attempt; <strong className="text-ink">Visit</strong> records arrivals
+        at the site by anyone who wasn&apos;t signed in.
+      </p>
+
+      <div className="mt-6">
+        <Tabs items={tabs} defaultActiveKey="login" />
+      </div>
+    </div>
+  );
+}
+
+/** The sign-in log. The screen this file has always been, now inside a tab. */
+function LoginTab({
+  events,
+  summary,
+  fullNameByUserId,
+}: Pick<SecurityViewProps, "events" | "summary" | "fullNameByUserId">) {
   const router = useRouter();
   const [isReviewing, setIsReviewing] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   async function handleMarkReviewed() {
     setIsReviewing(true);
@@ -75,6 +171,28 @@ export function SecurityView({ events, summary, fullNameByUserId }: SecurityView
       else router.refresh();
     } finally {
       setIsReviewing(false);
+    }
+  }
+
+  async function handleDelete(rows: AuthEvent[], clearSelection: () => void) {
+    if (
+      !window.confirm(
+        `Delete ${rows.length} event${rows.length === 1 ? "" : "s"}? This cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      const result = await deleteAuthEventsAction(rows.map((row) => row.id));
+      if (!result.ok) window.alert(result.error);
+      else {
+        clearSelection();
+        router.refresh();
+      }
+    } finally {
+      setIsDeleting(false);
     }
   }
 
@@ -165,9 +283,8 @@ export function SecurityView({ events, summary, fullNameByUserId }: SecurityView
   ];
 
   return (
-    <div className={PAGE_CONTAINER}>
-      <h1 className="mt-2 font-display text-3xl font-semibold text-ink">Security</h1>
-      <p className="mt-2 text-sm text-muted">
+    <div>
+      <p className="text-sm text-muted">
         Every sign-in, sign-out and failed attempt, newest first. A failed attempt records why it
         failed even though the sign-in screen only ever says &ldquo;Invalid username or
         password&rdquo; — the visitor learns nothing, you learn everything. Attempts are kept for
@@ -200,7 +317,20 @@ export function SecurityView({ events, summary, fullNameByUserId }: SecurityView
         <DataGrid
           columns={columns}
           rows={events}
+          // The row's real database id, never its position: a bulk action keyed on
+          // array index writes to the wrong row after a re-sort.
           getRowKey={(row) => row.id}
+          enableSelection
+          renderSelectionActions={(selectedRows, clearSelection) => (
+            <Button
+              size="sm"
+              variant="danger"
+              onClick={() => handleDelete(selectedRows, clearSelection)}
+              disabled={isDeleting}
+            >
+              Delete
+            </Button>
+          )}
           emptyMessage="No sign-in activity recorded yet."
           exportFileName="sign-in-activity"
           storageKey="admin-security"

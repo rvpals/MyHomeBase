@@ -11,6 +11,7 @@ export const ATTENDANCE_SECTIONS = [
   "rosters",
   "classes",
   "actions",
+  "edit",
   "report",
   "configuration",
 ] as const;
@@ -42,6 +43,10 @@ export const ATTENDANCE_SECTION_INFO: Record<
     label: "Student actions",
     description: "The list of things you can note about a student on the day.",
   },
+  edit: {
+    label: "Edit records",
+    description: "Open a past day's register and correct it.",
+  },
   report: {
     label: "Report",
     description: "Print a class's attendance for a day.",
@@ -62,6 +67,11 @@ export const ATTENDANCE_SECTION_ICONS: Record<AttendanceSection, string> = {
   // `sliders` rather than `gear`: this is a set of adjustable values, where
   // Configuration *is* configuration. The distinction components.md draws.
   actions: "sliders",
+  // `pencil` rather than another `classroom`/`list`: this section is the one
+  // place a saved day is changed, and no other slot in the registry claims the
+  // concept — so the glyph reads as "edit" without doubling up on a nav that
+  // already has a grid, a roster, a classroom, a set of sliders and a chart.
+  edit: "pencil",
   report: "chart",
   configuration: "gear",
 };

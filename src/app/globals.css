@@ -2001,7 +2001,7 @@ html[data-music-player="minimized"] {
 /* ---------------------------------------------------------------------------------
    Leaflet: keep a map underneath the app's own layers.
 
-   `leaflet/dist/leaflet.css` (imported by journal-location-map.tsx) ships z-indexes
+   `leaflet/dist/leaflet.css` (imported by src/components/location-map.tsx) ships z-indexes
    on an absolute scale of its own: panes at 200-700, and the zoom/attribution
    controls at 1000. This app's layers are Tailwind's small scale — the modal overlay
    is `z-50`, dropdowns and the shell's chrome sit at `z-30`/`z-40`. A map therefore

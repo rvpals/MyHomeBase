@@ -7,6 +7,7 @@ import { computeAnalyticsCommand } from "./compute-analytics";
 import { createCsvAnalyticsEntryCommand } from "./create-csv-analytics-entry";
 import { createUserCommand } from "./create-user";
 import { csvBulkEditCommand } from "./csv-bulk-edit";
+import { csvSourceStatsCommand } from "./csv-source-stats";
 import { csvViewsCommand } from "./csv-views";
 import { deleteCsvAnalyticsEntryCommand } from "./delete-csv-analytics-entry";
 import { deploymentsCommand } from "./deployments";
@@ -20,6 +21,7 @@ import { resizeCarouselImagesCommand } from "./resize-carousel-images";
 import { gameScoresCommand } from "./game-scores";
 import { favPhotosCommand } from "./fav-photos";
 import { favoriteQuotesCommand } from "./favorite-quotes";
+import { importCsvFilesCommand } from "./import-csv-files";
 import { importJournalCsvCommand } from "./import-journal-csv";
 import { importJournalIcsCommand } from "./import-journal-ics";
 import { journalCalendarCommand } from "./journal-calendar";
@@ -60,6 +62,8 @@ const commands: Record<string, Command> = {
   "delete-csv-analytics-entry": deleteCsvAnalyticsEntryCommand,
   "csv-views": csvViewsCommand,
   "csv-bulk-edit": csvBulkEditCommand,
+  "import-csv-files": importCsvFilesCommand,
+  "csv-source-stats": csvSourceStatsCommand,
   "import-journal-csv": importJournalCsvCommand,
   "import-journal-ics": importJournalIcsCommand,
   "journal-calendar": journalCalendarCommand,

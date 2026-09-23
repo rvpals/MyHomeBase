@@ -13,11 +13,18 @@
 import { useState } from "react";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
+import { SlotIcon } from "@/components/slot-icon";
 import { IndexLogo } from "@/components/ticker-logo";
 import { TreeIcon } from "@/components/tree-icons";
+import { getIconSlot } from "@/lib/icons";
 import type { IndexBoard, IndexQuote, IndexUnit } from "@/lib/market-indexes";
 import { centsToDollars, formatCents } from "@/lib/shared/money";
 import { loadIndexBoardAction } from "./stock-indexes-actions";
+
+// Module scope: the registry is a static table, so this is a lookup, not I/O. The
+// non-null assertion is safe for an id that ships in the repo — an unregistered one
+// is a build-time mistake, not a runtime condition.
+const INDEXES_SLOT = getIconSlot("stock_card_indexes")!;
 
 /** Red down, green up, neutral flat — the dashboard's convention. */
 function moveClass(cents: number): string {
@@ -191,6 +198,7 @@ export function StockIndexesCard() {
   return (
     <CollapsibleCard
       title="Indexes"
+      titleIcon={<SlotIcon slot={INDEXES_SLOT} className="h-4 w-4" />}
       open={open}
       onOpenChange={handleOpenChange}
       headerAction={refreshButton}

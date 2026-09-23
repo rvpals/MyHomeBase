@@ -60,6 +60,16 @@ export {
   parseExifDateTime,
   type ExifDateTime,
 } from "./exif";
+// Every tag rather than just the date, for the viewer's EXIF panel. Same walk, same
+// partial buffer -- see the note at the top of `exif-all.ts`.
+export { readAllExifTags, type ExifGpsFix, type ExifReadout } from "./exif-all";
+export {
+  describeExifTag,
+  formatExifValue,
+  type ExifTag,
+  type ExifTagGroup,
+  type ExifTagSource,
+} from "./exif-tags";
 export {
   dateFromFileName,
   dayFolderDateOf,

@@ -11,6 +11,7 @@ import {
   clearStudentActionIcon,
   createClass,
   createStudentAction,
+  deleteAttendanceRecords,
   deleteClass,
   deleteStudent,
   deleteStudents,
@@ -55,6 +56,7 @@ function revalidateAttendance(): void {
   revalidatePath(`${ATTENDANCE_MODULE_PATH}/rosters`);
   revalidatePath(`${ATTENDANCE_MODULE_PATH}/classes`);
   revalidatePath(`${ATTENDANCE_MODULE_PATH}/actions`);
+  revalidatePath(`${ATTENDANCE_MODULE_PATH}/edit`);
   revalidatePath(`${ATTENDANCE_MODULE_PATH}/report`);
 }
 
@@ -222,6 +224,36 @@ export async function saveAttendanceAction(
     return { ok: true, sessionLabel: record.sessionLabel };
   } catch (error) {
     return { ok: false, error: toMessage(error, "Failed to save attendance.") };
+  }
+}
+
+export interface DeleteAttendanceRecordsResult extends ActionResult {
+  /** How many registers actually went, so the view can say "3 deleted". */
+  deleted?: number;
+}
+
+/**
+ * Deletes whole registers — the Edit records screen's batch delete.
+ *
+ * Irreversible: the entries and the noted actions go with each record, and
+ * nothing here soft-deletes. The confirmation is the caller's job, which is why
+ * this takes the ids outright rather than a "confirm" flag it could not trust
+ * anyway — a server action is its own POST endpoint.
+ *
+ * Authorised on the first line like every other action in this file. That check
+ * is doing real work here rather than being ceremony: this is the only endpoint
+ * in the module that can destroy a saved register.
+ */
+export async function deleteAttendanceRecordsAction(
+  recordIds: number[],
+): Promise<DeleteAttendanceRecordsResult> {
+  await requireModuleAccess(ATTENDANCE_MODULE_SLUG);
+  try {
+    const deleted = deleteAttendanceRecords(deps.attendanceRepo, recordIds);
+    revalidateAttendance();
+    return { ok: true, deleted };
+  } catch (error) {
+    return { ok: false, error: toMessage(error, "Failed to delete the registers.") };
   }
 }
 

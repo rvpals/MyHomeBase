@@ -45,6 +45,7 @@ const PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const globalForAutoImport = globalThis as unknown as {
   __expenseAutoImportStarted?: boolean;
   __authEventPruneStarted?: boolean;
+  __siteVisitPruneStarted?: boolean;
   __stockAutoRefreshStarted?: boolean;
 };
 
@@ -83,6 +84,48 @@ async function armAuthEventPrune() {
   timer.unref?.();
 
   console.log(`[auth-events prune] armed (daily, ${DEFAULT_RETENTION_DAYS}-day retention).`);
+}
+
+/**
+ * Deletes site visits past their retention window. Armed on its own daily timer.
+ *
+ * A separate timer from the auth-event prune rather than a shared one, because the
+ * two tables are independent and a failure in either must not stop the other — the
+ * same reason each job has its own row in `sys_scheduled_runs`.
+ */
+async function armSiteVisitPrune() {
+  if (globalForAutoImport.__siteVisitPruneStarted) return;
+  globalForAutoImport.__siteVisitPruneStarted = true;
+
+  // Imported lazily so the Edge/build passes never pull in better-sqlite3.
+  const { runSiteVisitPruneNow, DEFAULT_RETENTION_DAYS } = await import("@/lib/site-visits");
+
+  const tick = () => {
+    try {
+      const summary = runSiteVisitPruneNow();
+      // Silent when there was nothing to do, so the log doesn't gain a daily line
+      // saying "deleted 0". The Background Tasks screen shows the quiet runs.
+      if (summary.ran && summary.deletedCount > 0) {
+        console.log(
+          `[site-visits prune] deleted ${summary.deletedCount} visit(s) older than ${DEFAULT_RETENTION_DAYS} days.`,
+        );
+      }
+    } catch (error) {
+      // A throw here would become an unhandled rejection and could kill the server.
+      console.error("[site-visits prune] tick failed:", error);
+    }
+  };
+
+  // Offset from the auth prune's 30s so the two don't write at the same instant on a
+  // cold start. The runner's own interval check makes this a no-op unless a day has
+  // genuinely elapsed.
+  const initial = setTimeout(tick, 45_000);
+  initial.unref?.();
+
+  const timer = setInterval(tick, PRUNE_INTERVAL_MS);
+  timer.unref?.();
+
+  console.log(`[site-visits prune] armed (daily, ${DEFAULT_RETENTION_DAYS}-day retention).`);
 }
 
 /**
@@ -138,6 +181,7 @@ export async function register() {
   // No NEXT_RUNTIME check needed: the `-node` filename already scopes this file
   // to the Node runtime. See the note at the top of the file.
   await armAuthEventPrune();
+  await armSiteVisitPrune();
   await armStockAutoRefresh();
 
   if (globalForAutoImport.__expenseAutoImportStarted) return;

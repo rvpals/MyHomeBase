@@ -125,6 +125,18 @@ export const studentIdsSchema = z
   .min(1, "Select at least one student.");
 
 /**
+ * The register ids a bulk delete applies to.
+ *
+ * Its own schema rather than a reuse of `studentIdsSchema`: the two validate the
+ * same shape today, but the message a teacher reads is the whole point of
+ * validating at the boundary, and "Select at least one student" is the wrong
+ * sentence on a screen where the rows are days.
+ */
+export const attendanceRecordIdsSchema = z
+  .array(z.number().int().positive())
+  .min(1, "Select at least one register.");
+
+/**
  * Importing a roster from a CSV.
  *
  * The class name is required rather than optional: an import always lands in a

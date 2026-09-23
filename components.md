@@ -80,7 +80,8 @@ pattern instead of inventing one.
 | [`MahjongWall`](#mahjongwall) | A rack, wall or discard pool of tiles, with a title and count | [src/components/mahjong-wall.tsx](src/components/mahjong-wall.tsx) | no |
 | [`Avatar`](#avatar) | A user's picture, or initials fallback | [src/components/avatar.tsx](src/components/avatar.tsx) | no |
 | [`TickerLogo`](#tickerlogo) | A stock/ETF logo, or a monogram fallback | [src/components/ticker-logo.tsx](src/components/ticker-logo.tsx) | yes |
-| [`FileDropzone`](#filedropzone) | Drag-and-drop file picker | [src/components/file-dropzone.tsx](src/components/file-dropzone.tsx) | yes |
+| [`FileDropzone`](#filedropzone) | Drag-and-drop file picker — **one** file | [src/components/file-dropzone.tsx](src/components/file-dropzone.tsx) | yes |
+| [`MultiFileDropzone`](#multifiledropzone) | **Several files at once** — drop zone plus the chosen list, each removable | [src/components/multi-file-dropzone.tsx](src/components/multi-file-dropzone.tsx) | yes |
 | [`CsvMappingTable`](#csvmappingtable) | Map a CSV's columns to target fields | [src/components/csv-mapping-table.tsx](src/components/csv-mapping-table.tsx) | yes |
 | [`FilterCriteriaRow`](#filtercriteriarow) | **One line of a filter builder** — column, operator, value(s), remove | [src/components/filter-criteria-row.tsx](src/components/filter-criteria-row.tsx) | yes |
 | [`IconSelect`](#iconselect) | A dropdown whose options carry an image | [src/components/icon-select.tsx](src/components/icon-select.tsx) | yes |
@@ -96,7 +97,10 @@ pattern instead of inventing one.
 | [`UsageMeter`](#usagemeter) | A stat tile whose value is part of a known total | [src/components/usage-meter.tsx](src/components/usage-meter.tsx) | no |
 | [`Progress3D`](#progress3d) | **Any progress bar** — work underway, 0..max | [src/components/progress-3d.tsx](src/components/progress-3d.tsx) | no |
 | [`JournalViewer`](#journalviewer) | Full detail sheet for one journal entry | [src/components/journal-viewer.tsx](src/components/journal-viewer.tsx) | yes |
-| [`PhotoViewer`](#photoviewer) | **THE photo viewer** — stage, thumbnail strip, slide show, capture details, Journal link, favourite heart | [src/components/photo-viewer.tsx](src/components/photo-viewer.tsx) | yes |
+| [`PhotoViewer`](#photoviewer) | **THE photo viewer** — stage, thumbnail strip, slide show, capture details, Journal link, favourite heart, EXIF panel | [src/components/photo-viewer.tsx](src/components/photo-viewer.tsx) | yes |
+| [`PhotoExifDialog`](#photoexifdialog) | **One photograph's EXIF data** — Common / GPS / Misc tabs, with a map button | [src/components/photo-exif-dialog.tsx](src/components/photo-exif-dialog.tsx) | yes |
+| [`PhotoMapDialog`](#photomapdialog) | Where a photograph was taken, as a modal map | [src/components/photo-map-dialog.tsx](src/components/photo-map-dialog.tsx) | yes |
+| [`LocationMap`](#locationmap) | **THE map** — one pin or many, read-only or pickable, on OpenStreetMap tiles | [src/components/location-map.tsx](src/components/location-map.tsx) | yes |
 | [`PhotoOfTheDay`](#photooftheday--photoofthedaybutton) / `PhotoOfTheDayButton` | **Photos for a date or a date range**, as a closable dialog | [src/components/photo-of-the-day.tsx](src/components/photo-of-the-day.tsx) | yes |
 | [`TickerViewer`](#tickerviewer) | Full record dialog for one ticker — 3 tabs of cards | [src/components/ticker-viewer.tsx](src/components/ticker-viewer.tsx) | yes |
 | [`IconSetProvider`](#iconsetprovider--useiconset) / `useIconSet` | Active module icon set (context) | [src/components/icon-set-context.tsx](src/components/icon-set-context.tsx) | yes |
@@ -1141,7 +1145,10 @@ const tabs: TabItem[] = [
 
 **Used by:** Stocks & ETFs —
 [stock-positions-view.tsx](src/app/(protected)/modules/[slug]/stock-positions-view.tsx),
-[stock-analytics-view.tsx](src/app/(protected)/modules/[slug]/stock-analytics-view.tsx);
+[stock-analytics-view.tsx](src/app/(protected)/modules/[slug]/stock-analytics-view.tsx),
+[stock-dashboard-view.tsx](src/app/(protected)/modules/[slug]/stock-dashboard-view.tsx)
+*(the Portfolio Summary card's Summary / History / Playback split — the headline total
+sits above the strip, so it stays readable on all three tabs)*;
 the About screen's Application / Change History split
 [admin/about/view.tsx](src/app/(protected)/admin/about/view.tsx); the Expense module's
 Charts and Analysis Main / Monthly comparison split
@@ -1153,7 +1160,9 @@ player's Lyrics / Story split
 [music-player-view.tsx](src/app/(protected)/modules/[slug]/music-player-view.tsx); the
 Journal module's Entries Main / Log split
 [journal-entries-view.tsx](src/app/(protected)/modules/[slug]/journal-entries-view.tsx)
-*(the Log tab's label carries a `SlotIcon` — the only node label so far)*.
+*(the Log tab's label carries a `SlotIcon`)*; the Security screen's Login / Visit split
+[admin/security/view.tsx](src/app/(protected)/admin/security/view.tsx) *(both labels
+carry a `SlotIcon`)*.
 
 ---
 
@@ -2641,7 +2650,14 @@ do.
 | `formatX?` | `(value: string \| number) => string` | |
 | `height?` | `number` | |
 | `curve?` | `"monotone" \| "linear"` | Default `"monotone"`. |
+| `referenceLines?` | `ChartReferenceLine[]` | Horizontal benchmarks: `{ key, value, label, color? }`. Drawn **bold** — 3px, long dashes, near-black `CHART_CHROME.reference` — because a benchmark has to out-read the data it sits over; the recessive grid/axis greys are wrong for it. **Absent from the legend** and outside `CHART_CATEGORICAL_COLORS`, so one can never be mistaken for a measured series or steal a series hue. Pass `color` per line when several share a chart (`CHART_REFERENCE_COLORS` is the reserved ramp). **Memoize the array**: `ChartXY` is `memo`-wrapped with a shallow comparator. |
 | `className?` | `string` | |
+
+Zoom in / out / reset sit in the shared toolbar, alongside a **full screen** control that
+opens the chart in [`FullscreenStage`](#fullscreenstage) with an ✕ to return. Below
+1024px all four collapse to icons (`−`, `+`, `⭮`, `⛶`) — four full-width buttons plus the
+gear cannot share a row on a phone, and wrapping them pushed the chart off the first
+screen. Same controls, same order, same handlers; only the glyph changes.
 
 ```tsx
 <ChartXY
@@ -3054,8 +3070,8 @@ instead of squeezing the date.
 
 **THE photograph viewer.** One full-screen overlay: a big stage, a scrolling thumbnail
 strip, a collapsible "Slide show" panel, the capture details, a **My Journal** link, a
-**favourite heart** and an **add-to-album (+) menu**. Every full-screen photograph in the
-app goes through this.
+**favourite heart**, an **add-to-album (+) menu** and an **EXIF** panel. Every
+full-screen photograph in the app goes through this.
 
 - **Source:** [src/components/photo-viewer.tsx](src/components/photo-viewer.tsx)
 - **Import:** `import { PhotoViewer, type ViewerPhoto, type ViewerFolderOutcome, type ViewerPhotoDetails, type ViewerAlbum } from "@/components/photo-viewer";`
@@ -3359,6 +3375,102 @@ a printed page is the page, not a screen overlay.
 archive or server-action type. `ViewerFolderOutcome` and `ViewerPhotoDetails` are declared
 in the component rather than imported from the actions, so `src/components/` keeps no
 dependency on `src/app/`; the actions' result types are structurally identical.
+
+**The EXIF panel rides on `onPhotoDetails`, not on a prop of its own.** `exifTags` and
+`gps` arrive as fields on `ViewerPhotoDetails.details`, filled from the *same* partial
+header read that produced the timestamp — so the panel costs no second trip to the NAS.
+A dedicated `exifData` prop was the other option and was rejected: the viewer walks whole
+folders, so it would have forced every caller to read EXIF for every photo *before*
+opening the viewer, which for a 1,187-photo folder is exactly the stall the lazy channel
+exists to avoid. The **EXIF** pill is hidden when the photograph carries no tags (a scan,
+a screenshot, an editor's re-save) rather than opening three empty tabs.
+
+---
+
+## PhotoExifDialog
+
+**One photograph's EXIF data**, as three tabs: **Common** (the camera and the shot),
+**GPS** (the position block, with a **Map** button) and **Misc** (everything else,
+scrolling). Opened by [`PhotoViewer`](#photoviewer)'s **EXIF** pill.
+
+- **Source:** [src/components/photo-exif-dialog.tsx](src/components/photo-exif-dialog.tsx)
+- **Import:** `import { PhotoExifDialog } from "@/components/photo-exif-dialog";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+| --- | --- | --- |
+| `tags` | `ExifTag[]` | Every tag, in any order — the dialog groups them by `tag.group`. Already **named and formatted** by `src/lib/journal-photos/exif-tags.ts`; deciding that a rational is a shutter fraction is EXIF knowledge, so it does not happen here. |
+| `photoLabel` | `string` | The caption or file name, as the sub-heading. |
+| `gps?` | `ExifGpsFix` | Decimal degrees. Drives the **Map** button *only* — the GPS table shows the stored values verbatim. |
+| `onClose` | `() => void` | The caller stops rendering it. |
+
+**All three tabs always render, even empty.** A strip whose tabs appeared and vanished as
+the reader arrowed between photographs would move the one they were aiming at, and "this
+photo has no GPS" is itself an answer. Each label carries a count, because *Misc* on a
+phone photograph (120 rows) and *Misc* on a scan (2) are very different offers.
+
+**The GPS tab shows what the file holds, not what the map uses.** Degrees, minutes,
+seconds and a hemisphere letter, exactly as written — so a reader comparing this against
+another tool sees the same numbers. The decimal pair is derived beside it for the pin, and
+deliberately not substituted into the table. A GPS block with tags but *no usable fix* is
+common (a phone with location off still writes a version tag) and says so in words rather
+than leaving the reader to wonder where the Map button went.
+
+---
+
+## PhotoMapDialog
+
+**Where a photograph was taken**, as a modal map with one pin, plus the coordinates as
+text for copying elsewhere. Opened from [`PhotoExifDialog`](#photoexifdialog)'s GPS tab,
+and stacked *over* it so closing the map returns to the tab.
+
+- **Source:** [src/components/photo-map-dialog.tsx](src/components/photo-map-dialog.tsx)
+- **Import:** `import { PhotoMapDialog } from "@/components/photo-map-dialog";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+| --- | --- | --- |
+| `latitude` / `longitude` | `number` | Decimal degrees. |
+| `photoLabel` | `string` | The caption or file name, as the sub-heading. |
+| `altitude?` | `number` | Metres; shown rounded when present. |
+| `onClose` | `() => void` | The caller stops rendering it. |
+
+**It takes a position, not a photo** — the GPS tab is the only thing that knows whether a
+photograph has coordinates, so this never renders an "unknown location" state. No `onPick`
+is passed to the map, which is what makes it read-only: a click here must not look like it
+moved anything, because the position came out of the photograph's own header.
+
+---
+
+## LocationMap
+
+**THE map.** One pin or a numbered set, read-only or pickable, on OpenStreetMap tiles with
+the app's brass pin. Used by the Journal's location field, entry screen and Locations
+overview, and by [`PhotoMapDialog`](#photomapdialog).
+
+- **Source:** [src/components/location-map.tsx](src/components/location-map.tsx)
+- **Import:** `const LocationMap = dynamic(() => import("@/components/location-map").then((m) => m.LocationMap), { ssr: false });`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+| --- | --- | --- |
+| `marker` | `LatLng \| null` | The single pin. |
+| `markers?` | `readonly NumberedLatLng[]` | Several pins, each labelled with its number; the map fits its view to all of them. **Takes precedence** over `marker`/`center` when non-empty. Each entry may carry an optional `iconUrl` — a same-origin image drawn in the pin's face instead of the number, used by the Journal for a place's location-category icon. Omit it and the pin is the plain numbered one. |
+| `center` | `LatLng \| null` | Recenters when a search result or external change comes in. |
+| `onPick?` | `(latitude, longitude) => void` | **Omit for a read-only map.** Its presence is what makes the map pickable. |
+| `heightClassName?` | `string` | Tailwind height for the box. Default `h-64`; taller reads better with many pins. |
+
+**Import it lazily, always.** Every call site uses `next/dynamic` with `ssr: false`,
+because Leaflet touches `window` at module scope and is heavy enough not to want in a
+first load. That is a rule about this component, not a preference of its callers.
+
+**Two hard-won details live in here, which is why there is only one of it.** The pin is a
+`divIcon` holding inline SVG, working around Leaflet's default PNG markers whose image
+paths break under bundlers; and the wrapper is `isolate`, which stops Leaflet's own
+z-index scale (panes at 200–700, controls at 1000) painting *through* the app's modals —
+belt and braces with the cap in [src/app/globals.css](src/app/globals.css). It was
+`JournalLocationMap` in the Journal until the photo viewer needed the same thing; nothing
+about it was Journal-specific, so it moved and lost the prefix rather than being copied.
 
 ---
 
@@ -4130,3 +4242,31 @@ a real button's padding would set the row height, matching the existing "Open in
 view without touching the desktop row height. The preview uses a plain `<img>` rather
 than `next/image`: the bytes are an arbitrary DB cell behind an admin-only route, so
 there is nothing for the optimiser to do.
+
+---
+
+## MultiFileDropzone
+
+Drag-and-drop picker for **several** files at once, showing the chosen list with an ×
+on each row.
+
+A sibling of [`FileDropzone`](#filedropzone) rather than a flag on it. That one is
+`onFile(file)` and holds no state, which is exactly right for its callers; widening it
+to N files would have changed its callback shape for every one of them. This component
+owns the *list*, because choosing several files is an editing exercise — drop some,
+spot a wrong one, remove it, drop more — rather than a single event.
+
+Like `FileDropzone` it never reads a file's contents; the caller decides how.
+
+**Used by:** CSV Analysis → Import Files
+([csv-multi-import-view.tsx](src/app/(protected)/modules/[slug]/csv-multi-import-view.tsx)).
+
+| Prop | Type | Notes |
+|---|---|---|
+| `files` | `File[]` | The current list. **Controlled** — the component stores no files of its own. |
+| `onFilesChange` | `(files: File[]) => void` | The next list, after a drop/browse adds or an × removes. |
+| `accept?` | `string` | Forwarded to the input, e.g. `".csv"`. |
+| `label?` | `string` | Prompt inside the zone. |
+| `disabled?` | `boolean` | |
+| `dedupeByName?` | `boolean` | Default `true`. Refuses a file whose name is already listed — dropping one twice would import its rows twice under one source name. |
+| `className?` | `string` | Merged last. |

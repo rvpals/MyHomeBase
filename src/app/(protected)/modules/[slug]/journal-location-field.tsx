@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import { Button } from "@/components/button";
 import type { GeoPlace } from "@/lib/geocoding";
 import { reverseGeocodeAction, searchPlacesAction } from "./journal-actions";
-import type { LatLng } from "./journal-location-map";
+import type { LatLng } from "@/components/location-map";
 
 // One picked point: coordinates plus an (optional) human-readable name.
 export interface PickedLocation {
@@ -15,8 +15,8 @@ export interface PickedLocation {
 }
 
 // Leaflet touches `window`, so the map is loaded client-only.
-const JournalLocationMap = dynamic(
-  () => import("./journal-location-map").then((module) => module.JournalLocationMap),
+const LocationMap = dynamic(
+  () => import("@/components/location-map").then((module) => module.LocationMap),
   {
     ssr: false,
     loading: () => (
@@ -123,7 +123,7 @@ export function JournalLocationField({
         </ul>
       )}
 
-      <JournalLocationMap marker={value} center={center} onPick={handleMapPick} />
+      <LocationMap marker={value} center={center} onPick={handleMapPick} />
 
       {value && (
         <label className="block text-sm">

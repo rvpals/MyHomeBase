@@ -1,3 +1,4 @@
+import type { DecodedImage } from "@/lib/shared/image-upload";
 import type { SavedLocationRepository } from "./ports";
 import type {
   LocationSearchCriteria,
@@ -9,6 +10,7 @@ import type {
   LocationCategory,
   LocationTag,
   LocationTaxonomyCount,
+  LocationTaxonomyIcon,
   SavedLocation,
   SavedLocationWithUsage,
 } from "./types";
@@ -28,6 +30,9 @@ export class FakeSavedLocationRepository implements SavedLocationRepository {
   private locations: SavedLocation[] = [];
   private categories: LocationCategory[] = [];
   private tags: LocationTag[] = [];
+  // Icon bytes, keyed "<kind>:<lowercased name>" — the real tables hold these in
+  // columns the list reads never select, so they're kept apart here too.
+  private icons = new Map<string, LocationTaxonomyIcon>();
   private nextId = 1;
 
   /** entry-location id → saved-location id, so tests can assert provenance. */
@@ -201,6 +206,14 @@ export class FakeSavedLocationRepository implements SavedLocationRepository {
     }));
   }
 
+  getCategoryIcon(name: string): LocationTaxonomyIcon | undefined {
+    return this.icons.get(`category:${name.toLowerCase()}`);
+  }
+
+  setCategoryIcon(name: string, icon: DecodedImage | undefined): void {
+    this.setIcon(this.categories, "category", name, icon);
+  }
+
   listTags(): LocationTag[] {
     return [...this.tags].sort(byName);
   }
@@ -231,7 +244,33 @@ export class FakeSavedLocationRepository implements SavedLocationRepository {
     }));
   }
 
+  getTagIcon(name: string): LocationTaxonomyIcon | undefined {
+    return this.icons.get(`tag:${name.toLowerCase()}`);
+  }
+
+  setTagIcon(name: string, icon: DecodedImage | undefined): void {
+    this.setIcon(this.tags, "tag", name, icon);
+  }
+
   // --- Internals ------------------------------------------------------------
+
+  /**
+   * Stores or clears an icon, keeping the row's `iconMimeType` in step — the
+   * real schema holds both in the same row, so a fake that updated only the map
+   * would let a "has it got an icon?" read disagree with the bytes.
+   */
+  private setIcon(
+    list: (LocationCategory | LocationTag)[],
+    kind: "category" | "tag",
+    name: string,
+    icon: DecodedImage | undefined,
+  ): void {
+    const key = `${kind}:${name.toLowerCase()}`;
+    if (icon) this.icons.set(key, { data: icon.data, mimeType: icon.mimeType });
+    else this.icons.delete(key);
+    const row = list.find((candidate) => candidate.name.toLowerCase() === name.toLowerCase());
+    if (row) row.iconMimeType = icon?.mimeType;
+  }
 
   private upsertInto(
     list: LocationCategory[],

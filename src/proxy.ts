@@ -1,39 +1,36 @@
-import { NextResponse, userAgent, type NextRequest } from "next/server";
-import { VIEWPORT_COOKIE, viewportFromUserAgent } from "@/lib/viewport";
+import { NextResponse, type NextRequest } from "next/server";
 
-// Gives the very first request a layout to render.
-//
-// Named `proxy.ts`, not `middleware.ts`: Next 16 deprecated the older
-// convention and warns about it on every build.
-//
-// Nothing else in the app can know the viewport before the HTML is sent: the
-// pages are server components, so there is no `window` at render time. Reading
-// the User-Agent here means a phone gets the compact layout on first paint
-// rather than a desktop layout that flips after hydration.
-//
-// It is only a guess, and deliberately a weak one — it writes the cookie **only
-// when there isn't one**, so it can never overrule the width the client
-// measured or the layout the reader picked by hand. See src/lib/viewport.
+/**
+ * Stamps the request path onto a header so the server layout can see it.
+ *
+ * **This file exists for one reason and should stay that small.** Reading the current
+ * URL from a Server Component is not supported — `usePathname` is a client hook, and
+ * a layout only ever receives its children. The arrival log needs to fire for the
+ * site root and nowhere else, so something upstream has to say which path this is.
+ *
+ * It deliberately does **not** write the visit itself. This runs on the Edge runtime,
+ * which cannot open better-sqlite3, so a database write here is not merely slow — it
+ * does not link. The division is: this file identifies the path, and
+ * `(protected)/layout.tsx` does the recording where `deps` is reachable.
+ *
+ * Named `proxy.ts` because that is what Next 16 calls this file; it was `middleware.ts`
+ * in earlier versions.
+ */
 export function proxy(request: NextRequest) {
-  const response = NextResponse.next();
+  const headers = new Headers(request.headers);
 
-  if (!request.cookies.has(VIEWPORT_COOKIE)) {
-    const { device } = userAgent(request);
-    response.cookies.set(VIEWPORT_COOKIE, viewportFromUserAgent(device.type), {
-      path: "/",
-      sameSite: "lax",
-      // Not httpOnly: the width corrector and the Account toggle both rewrite
-      // this from the browser. It carries no secret — just which layout to draw.
-      httpOnly: false,
-      maxAge: 60 * 60 * 24 * 365,
-    });
-  }
+  // Overwritten, never appended to: a caller who sends their own x-mhb-path must not
+  // be able to make an arbitrary request look like a root arrival in the log.
+  headers.set("x-mhb-path", request.nextUrl.pathname);
 
-  return response;
+  return NextResponse.next({ request: { headers } });
 }
 
 export const config = {
-  // Pages only. Image routes and static assets don't render a layout, and
-  // running middleware on them would add a cookie write to every logo request.
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|icon.svg).*)"],
+  /**
+   * Every path except Next's own internals, the API routes, and anything with a file
+   * extension. The header is only read on a logged-out root render, so a broader
+   * matcher would cost work on every static asset for nothing.
+   */
+  matcher: ["/((?!_next/static|_next/image|api|favicon.ico|.*\\.).*)"],
 };

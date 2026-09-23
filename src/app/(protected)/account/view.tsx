@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/avatar";
 import { Button } from "@/components/button";
@@ -18,21 +18,47 @@ import type { User } from "@/lib/user";
 import {
   COMPACT_NAV_STYLES,
   type CompactNavStyle,
+  type FloatingCornerUpdate,
+  type FloatingStateUpdate,
   type UserPreferences,
+  type UserPreferencesUpdate,
   type WeatherLocation,
 } from "@/lib/user-preferences";
 import type { TemperatureUnit } from "@/lib/weather";
 import type { Viewport } from "@/lib/viewport";
 import { WeatherLocationField } from "./location-field";
-import {
-  changeOwnPasswordAction,
-  removeOwnAvatarAction,
-  saveFloatingCornerAction,
-  saveFloatingStateAction,
-  saveOwnPreferencesAction,
-  uploadOwnAvatarAction,
-} from "./actions";
+import type { ActionResult } from "./actions";
 import { PAGE_CONTAINER } from "../page-container";
+
+/**
+ * The writes this screen makes, injected rather than imported.
+ *
+ * The screen is used twice: by `/account`, where the subject is whoever is signed in,
+ * and by Administration > User Management > User Preferences, where the subject is
+ * whichever account the admin picked. Those two differ in exactly one respect — *who*
+ * the write lands on — and that is the one thing a server action must never take on
+ * trust from the client.
+ *
+ * So the difference lives in the actions, not here. `/account` passes the session-scoped
+ * `*Own*` actions, which read the subject from the cookie and ignore any id. The admin
+ * page passes admin-guarded twins that close over a validated target id on the server.
+ * Neither set takes a user id from this component, so nothing rendered here can be
+ * retargeted by editing a form value — the same reason `saveOwnPreferencesAction`
+ * re-derives the allowed favorites instead of trusting the picker's option list.
+ */
+export interface AccountViewActions {
+  uploadAvatar: (formData: FormData) => Promise<ActionResult>;
+  removeAvatar: () => Promise<ActionResult>;
+  changePassword: (password: string) => Promise<ActionResult>;
+  /**
+   * The module's own boundary type, not a hand-written literal: it is `z.input` of
+   * `userPreferencesUpdateSchema`, so a field the schema defaults stays optional
+   * here. Restating the shape would drift the moment a preference is added.
+   */
+  savePreferences: (input: UserPreferencesUpdate) => Promise<ActionResult>;
+  saveFloatingState: (input: FloatingStateUpdate) => Promise<ActionResult>;
+  saveFloatingCorner: (input: FloatingCornerUpdate) => Promise<ActionResult>;
+}
 
 /** A module the user may pick as their favorite. Plain data from the page. */
 export interface AccountModuleOption {
@@ -42,7 +68,7 @@ export interface AccountModuleOption {
   imageVersion?: string;
 }
 
-function AvatarSection({ user }: { user: User }) {
+function AvatarSection({ user, actions }: { user: User; actions: AccountViewActions }) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -57,7 +83,7 @@ function AvatarSection({ user }: { user: User }) {
     setError(undefined);
     try {
       const formData = new FormData(event.currentTarget);
-      const result = await uploadOwnAvatarAction(formData);
+      const result = await actions.uploadAvatar(formData);
       if (!result.ok) {
         setError(result.error ?? "Failed to upload image.");
         return;
@@ -74,7 +100,7 @@ function AvatarSection({ user }: { user: User }) {
     setIsSaving(true);
     setError(undefined);
     try {
-      const result = await removeOwnAvatarAction();
+      const result = await actions.removeAvatar();
       if (!result.ok) setError(result.error ?? "Failed to remove image.");
       else router.refresh();
     } finally {
@@ -129,7 +155,7 @@ function AvatarSection({ user }: { user: User }) {
   );
 }
 
-function PasswordSection() {
+function PasswordSection({ actions }: { actions: AccountViewActions }) {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | undefined>(undefined);
@@ -146,7 +172,7 @@ function PasswordSection() {
     }
     setIsSaving(true);
     try {
-      const result = await changeOwnPasswordAction(password);
+      const result = await actions.changePassword(password);
       if (!result.ok) {
         setError(result.error ?? "Failed to change password.");
         return;
@@ -196,9 +222,11 @@ function PasswordSection() {
 function PreferencesSection({
   preferences,
   modules,
+  actions,
 }: {
   preferences: UserPreferences;
   modules: AccountModuleOption[];
+  actions: AccountViewActions;
 }) {
   const router = useRouter();
   const [favoriteModuleSlug, setFavoriteModuleSlug] = useState(
@@ -236,7 +264,7 @@ function PreferencesSection({
     setSuccess(false);
     setIsSaving(true);
     try {
-      const result = await saveOwnPreferencesAction({
+      const result = await actions.savePreferences({
         favoriteModuleSlug,
         openFavoriteModuleOnStartup: openOnStartup,
         compactNavStyle: navStyle,
@@ -428,6 +456,15 @@ function NavStyleField({
   );
 }
 
+/**
+ * The account screen, for whichever user the caller names.
+ *
+ * Two callers: `/account` (the signed-in reader, with the Layout note) and
+ * Administration > User Management > User Preferences (another account, without it).
+ * They differ only in the `actions` bundle, the heading, and whether `viewport` is
+ * passed — the sections themselves are identical, which is the point of reusing this
+ * rather than growing a second copy that drifts.
+ */
 export function AccountView({
   user,
   viewport,
@@ -435,49 +472,78 @@ export function AccountView({
   preferences,
   modules,
   enabledFloating,
+  actions,
+  heading = "My Account",
+  banner,
+  intro,
 }: {
   user: User;
-  viewport: Viewport;
-  viewportPinned: boolean;
+  /**
+   * The signed-in reader's layout, for the read-only Layout note.
+   *
+   * Omitted by the admin screen, which drops the note entirely: the viewport is a
+   * cookie on *this* browser, so it would describe the admin's own layout while
+   * sitting under someone else's name — the one section of this screen that cannot
+   * honestly be shown for another account.
+   */
+  viewport?: Viewport;
+  viewportPinned?: boolean;
   preferences: UserPreferences;
   modules: AccountModuleOption[];
   /** Which floating components an admin has made available to the household. */
   enabledFloating: readonly FloatingId[];
+  /** The writes, injected — see `AccountViewActions`. */
+  actions: AccountViewActions;
+  /** The `h1`. The admin screen names the account it is editing instead. */
+  heading?: string;
+  /** Rendered above the heading — the admin screen's "back to User Management" link. */
+  banner?: ReactNode;
+  /** Rendered under the rule, before the first section. The admin screen's warning. */
+  intro?: ReactNode;
 }) {
   return (
     <div className={PAGE_CONTAINER}>
+      {banner}
       <p className="font-mono text-xs font-medium uppercase tracking-widest text-brass-dark">
         {user.username}
       </p>
-      <h1 className="mt-2 font-display text-3xl font-semibold text-ink">My Account</h1>
+      <h1 className="mt-2 font-display text-3xl font-semibold text-ink">{heading}</h1>
       <div className="mt-3 h-px w-full bg-line" />
+      {intro}
 
       <div className="mt-8">
-        <AvatarSection user={user} />
-        {!user.googleEmail && <PasswordSection />}
-        <PreferencesSection preferences={preferences} modules={modules} />
+        <AvatarSection user={user} actions={actions} />
+        {!user.googleEmail && <PasswordSection actions={actions} />}
+        <PreferencesSection preferences={preferences} modules={modules} actions={actions} />
         <FloatingComponentsSection
           enabled={enabledFloating}
           states={preferences.floating}
           corners={preferences.floatingCorners}
+          actions={actions}
         />
 
         {/* Read-only here. The switch itself lives in the top bar, because it
             is the one control that drives the whole UI's layout and belongs
             where it is always reachable — two controls for one setting would
             only invite them to disagree. This says what the current state is
-            and how to change it. */}
-        <section className="mt-8">
-          <h2 className="font-display text-lg text-ink">Layout</h2>
-          <p className="mt-1 text-sm text-muted">
-            Currently the <span className="font-medium text-ink">{viewport}</span> layout
-            {viewportPinned
-              ? ", pinned by you — it stays this way on every device until you change it."
-              : ", chosen automatically from your screen width."}{" "}
-            Switch it with the layout button in the toolbar
-            {viewportPinned ? "; right-click it to go back to matching your screen." : "."}
-          </p>
-        </section>
+            and how to change it.
+
+            Only when a viewport was passed: it is a cookie on the current browser,
+            so the admin screen omits it rather than reporting the admin's own
+            layout under somebody else's name. */}
+        {viewport && (
+          <section className="mt-8">
+            <h2 className="font-display text-lg text-ink">Layout</h2>
+            <p className="mt-1 text-sm text-muted">
+              Currently the <span className="font-medium text-ink">{viewport}</span> layout
+              {viewportPinned
+                ? ", pinned by you — it stays this way on every device until you change it."
+                : ", chosen automatically from your screen width."}{" "}
+              Switch it with the layout button in the toolbar
+              {viewportPinned ? "; right-click it to go back to matching your screen." : "."}
+            </p>
+          </section>
+        )}
       </div>
     </div>
   );
@@ -581,10 +647,12 @@ function FloatingComponentsSection({
   enabled,
   states,
   corners,
+  actions,
 }: {
   enabled: readonly FloatingId[];
   states: Record<FloatingId, FloatingState>;
   corners: Record<FloatingId, PuckCorner>;
+  actions: AccountViewActions;
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState(states);
@@ -602,7 +670,7 @@ function FloatingComponentsSection({
     setPending(id);
     setError(undefined);
     try {
-      const result = await saveFloatingStateAction({ id, state });
+      const result = await actions.saveFloatingState({ id, state });
       if (!result.ok) {
         setDraft((current) => ({ ...current, [id]: states[id] }));
         setError(result.error ?? "Failed to save.");
@@ -627,7 +695,7 @@ function FloatingComponentsSection({
     setPending(id);
     setError(undefined);
     try {
-      const result = await saveFloatingCornerAction({ id, corner });
+      const result = await actions.saveFloatingCorner({ id, corner });
       if (!result.ok) {
         setCornerDraft((current) => ({ ...current, [id]: corners[id] }));
         setError(result.error ?? "Failed to save the corner.");

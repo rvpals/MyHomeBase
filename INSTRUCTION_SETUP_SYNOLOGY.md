@@ -474,7 +474,10 @@ The batch file drops a `deploy.trigger` file into the app folder after the copy 
 deletes the trigger and starts the new build. **A release needs no SSH.**
 
 - **Automatic:** within one keepalive interval (see Part 6).
-- **Immediately:** DSM → **Task Scheduler** → select **MyHomeBase keepalive** → **Run**.
+- **Immediately, from Windows:** `.\REBUILD_PUBLISH_NAS_START.bat` — publishes and then runs
+  `start.sh` over SSH, waiting for its port probe so the window reports whether the app
+  actually came back up. Prints `DONE` when it is safe to close.
+- **Immediately, by hand:** DSM → **Task Scheduler** → select **MyHomeBase keepalive** → **Run**.
 
 The trigger is written *last*, after the copy has fully landed, so the app can never come
 back up on a half-copied build. It's also excluded from the mirror, so a second publish
@@ -617,6 +620,7 @@ hand-copied deployment won't have it.
 | Env vars | `MYHOMEBASE_DB`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `ADMIN_SIGNUP_SECRET` |
 | Build command | `npm run publish:nas` in `E:\Code\Claude_Project\MyHomeBase` → `dist-nas/` |
 | Build + deploy | `.\REBUILD_PUBLISH_NAS.bat` (SMB, preserves data/env/start.sh) |
+| Build + deploy + restart now | `.\REBUILD_PUBLISH_NAS_START.bat` (the above, then runs `start.sh` over SSH instead of waiting for the keepalive) |
 | Deploy only (manual) | `scp -r dist-nas/. ssh_user@NAS_DS223:/volume1/app/myhomebase/` |
 | Copy `start.sh` | `.\COPY_NAS_START_SH.bat` (scp + `chmod +x`; not shipped by the publish) |
 | Startup failure page | `startup-failure-server.cjs` on :3000 when `server.js` can't start |

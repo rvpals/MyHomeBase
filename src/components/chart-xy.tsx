@@ -20,6 +20,7 @@ import {
   Legend,
   Line,
   LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Scatter,
   ScatterChart,
@@ -28,6 +29,8 @@ import {
   YAxis,
 } from "recharts";
 import { Button } from "@/components/button";
+import { FullscreenStage } from "@/components/fullscreen-stage";
+import { useIsCompact } from "@/components/viewport-context";
 import { CHART_CATEGORICAL_COLORS, CHART_CHROME } from "./chart-colors";
 import { pointLabelContent } from "./chart-point-labels";
 import { ChartToolbar, useChartDisplay } from "./chart-toolbar";
@@ -49,6 +52,18 @@ export interface ChartXYSeries {
   /** Legend/tooltip label. */
   label: string;
   /** Overrides the default categorical slot for this series' position. */
+  color?: string;
+}
+
+/** One horizontal benchmark drawn across the plot. */
+export interface ChartReferenceLine {
+  /** Unique within the chart — React key only, never shown. */
+  key: string;
+  /** Where on the y axis to draw it. */
+  value: number;
+  /** Printed at the line's right end. Keep it short; it sits inside the plot. */
+  label: string;
+  /** Overrides the default annotation colour. */
   color?: string;
 }
 
@@ -83,6 +98,15 @@ export interface ChartXYProps extends ChartDisplayDefaults {
   height?: number;
   /** How a line/area is drawn between points. Default `monotone` (smoothed). */
   curve?: "monotone" | "linear";
+  /**
+   * Horizontal benchmark lines drawn across the plot at a fixed y — an average, a
+   * target, a threshold.
+   *
+   * A reference line is chrome, not a series: it takes no categorical colour slot (so
+   * adding one never recolours the data), is dashed to read as annotation rather than
+   * measurement, and is absent from the legend. Draw order puts them behind the marks.
+   */
+  referenceLines?: ChartReferenceLine[];
   className?: string;
 }
 
@@ -102,6 +126,7 @@ function ChartXYComponent({
   formatX = (value) => String(value),
   height = 320,
   curve = "monotone",
+  referenceLines = [],
   pointLabels,
   showDots = false,
   showLegend,
@@ -172,6 +197,10 @@ function ChartXYComponent({
     setZoomWindow({ start, end: start + clampedWidth });
   }
 
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  // Drives the icon-only zoom controls below — see the toolbar.
+  const isCompact = useIsCompact();
+
   const axisProps = {
     stroke: CHART_CHROME.axis,
     tick: { fill: CHART_CHROME.mutedText, fontSize: 12 },
@@ -212,6 +241,29 @@ function ChartXYComponent({
           cursor={{ stroke: CHART_CHROME.axis, strokeWidth: 1 }}
         />
         {display.showLegend && <Legend />}
+        {/* Annotation, not data — absent from the legend and outside the categorical
+            palette, so a benchmark can never be mistaken for a measured series.
+            Drawn BOLD (3px, near-black, long dashes) rather than in the recessive
+            chrome colour: the first cut borrowed the axis grey and was so faint on
+            screen that a value the reader had explicitly asked for was easy to miss
+            entirely. Chrome recedes; a benchmark is the point. */}
+        {referenceLines.map((line) => (
+          <ReferenceLine
+            key={line.key}
+            y={line.value}
+            stroke={line.color ?? CHART_CHROME.reference}
+            strokeDasharray="10 5"
+            strokeWidth={3}
+            ifOverflow="extendDomain"
+            label={{
+              value: line.label,
+              position: "insideTopRight",
+              fill: line.color ?? CHART_CHROME.reference,
+              fontSize: 12,
+              fontWeight: 600,
+            }}
+          />
+        ))}
       </>
     );
   }
@@ -350,16 +402,53 @@ function ChartXYComponent({
         maxPointLabels={maxPointLabels}
       >
         <span className="mr-auto text-xs text-muted">
-          Showing {visibleData.length.toLocaleString()} of {total.toLocaleString()} points
+          {isCompact
+            ? `${visibleData.length.toLocaleString()} / ${total.toLocaleString()}`
+            : `Showing ${visibleData.length.toLocaleString()} of ${total.toLocaleString()} points`}
         </span>
-        <Button size="sm" variant="secondary" disabled={!canZoomOut} onClick={() => rewindow(Math.ceil(width / ZOOM_FACTOR))}>
-          − Zoom out
+        {/* Below 1024px the three zoom controls plus the gear cannot sit on one row at
+            their full width, and wrapping them pushes the chart off the first screen.
+            Same controls, same order, same handlers — just the glyph. An icon-only
+            Button requires ariaLabel, which is why each one carries both it and a
+            title. */}
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={!canZoomOut}
+          onClick={() => rewindow(Math.ceil(width / ZOOM_FACTOR))}
+          ariaLabel="Zoom out"
+          title="Zoom out"
+        >
+          {isCompact ? "−" : "− Zoom out"}
         </Button>
-        <Button size="sm" variant="secondary" disabled={!canZoomIn} onClick={() => rewindow(Math.floor(width * ZOOM_FACTOR))}>
-          + Zoom in
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={!canZoomIn}
+          onClick={() => rewindow(Math.floor(width * ZOOM_FACTOR))}
+          ariaLabel="Zoom in"
+          title="Zoom in"
+        >
+          {isCompact ? "+" : "+ Zoom in"}
         </Button>
-        <Button size="sm" variant="secondary" disabled={width === total} onClick={() => setZoomWindow({ start: 0, end: total })}>
-          Reset
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={width === total}
+          onClick={() => setZoomWindow({ start: 0, end: total })}
+          ariaLabel="Reset zoom"
+          title="Reset zoom"
+        >
+          {isCompact ? "⭮" : "Reset"}
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => setIsFullscreen(true)}
+          ariaLabel="Show chart fullscreen"
+          title="Show chart fullscreen"
+        >
+          {isCompact ? "⛶" : "⛶ Full screen"}
         </Button>
       </ChartToolbar>
       <div style={{ height }}>
@@ -367,6 +456,33 @@ function ChartXYComponent({
           {renderChart()}
         </ResponsiveContainer>
       </div>
+
+      {/* The real Fullscreen API via the shared stage, not a fixed overlay — so the
+          browser's own Escape handling works and nothing of the app shows through.
+          The chart is re-rendered inside it rather than moved, because Recharts
+          measures its container and a reparented tree keeps the old dimensions. */}
+      {isFullscreen && (
+        <FullscreenStage label="Chart" onExit={() => setIsFullscreen(false)} className="p-4">
+          <div className="flex h-full w-full flex-col">
+            <div className="mb-2 flex items-center justify-end">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setIsFullscreen(false)}
+                ariaLabel="Close fullscreen"
+                title="Close fullscreen"
+              >
+                ✕
+              </Button>
+            </div>
+            <div className="min-h-0 flex-1">
+              <ResponsiveContainer width="100%" height="100%">
+                {renderChart()}
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </FullscreenStage>
+      )}
     </div>
   );
 }

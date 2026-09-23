@@ -1,5 +1,8 @@
 // Domain models for the photo archive a journal entry can be matched against.
 
+import type { ExifGpsFix } from "./exif-all";
+import type { ExifTag } from "./exif-tags";
+
 /**
  * Why the configured photo root is or is not usable.
  *
@@ -170,6 +173,22 @@ export interface PhotoDetails {
   takenAtTime?: string;
   /** Which of the three kinds of evidence produced the date, or `none`. */
   takenAtSource: PhotoDateSource;
+  /**
+   * Every EXIF tag the file's header held, for the viewer's EXIF panel.
+   *
+   * Absent rather than empty when a photo carries no metadata -- a stripped or
+   * re-saved file, a scan, a screenshot. Read from the SAME header bytes as the
+   * timestamp above, so the panel costs no extra SMB traffic.
+   */
+  exifTags?: ExifTag[];
+  /**
+   * The coordinates as decimal degrees, when the GPS block held a usable fix.
+   *
+   * DERIVED from the GPS rows in `exifTags` rather than replacing them: the panel shows
+   * the stored degrees/minutes/seconds verbatim, and this pair exists so a map can drop
+   * a pin. Both come from the same read, so they cannot disagree.
+   */
+  gps?: ExifGpsFix;
 }
 
 /** The result of looking up which folders hold photos for a date. */

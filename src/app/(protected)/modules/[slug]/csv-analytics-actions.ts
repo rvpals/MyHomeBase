@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import {
+  appendPooledFiles,
   bulkEditRows,
   createCustomView,
   createEntry,
@@ -12,8 +13,11 @@ import {
   listChartPresets,
   listCustomViews,
   listEnabledCustomViews,
+  importPooledFiles,
+  planPooledImport,
   previewCsvFile,
   readCustomViewPage,
+  readSourceStats,
   readEntryData,
   saveChartPreset,
   setCustomViewEnabled,
@@ -27,8 +31,11 @@ import {
   type CsvCustomView,
   type CsvEntryData,
   type CsvViewPage,
+  type CsvImportFileInput,
   type IngestMode,
   type IngestResult,
+  type MultiFileImportPlan,
+  type SourceStatsResult,
   type UpdateCsvCustomViewInput,
 } from "@/lib/csv-analytics";
 import { deps } from "@/lib/wiring";
@@ -318,4 +325,80 @@ export async function bulkEditCsvRowsAction(
   }
   revalidatePath(CSV_ANALYSIS_MODULE_PATH);
   return { ok: true, updated };
+}
+
+// --- Pooled multi-file import -------------------------------------------------
+
+export interface ImportPlanResult extends ActionResult {
+  plan?: MultiFileImportPlan;
+}
+
+export interface SourceStatsActionResult extends ActionResult {
+  stats?: SourceStatsResult;
+}
+
+export interface PooledImportInput {
+  name: string;
+  description?: string;
+  tableBaseName: string;
+  files: CsvImportFileInput[];
+  labels: string[];
+}
+
+/**
+ * Previews a pooled import: what columns it would create, how many rows each file
+ * contributes, and any header mismatch that would block it.
+ *
+ * Read-only — nothing is written, so the screen can call it on every change to the
+ * file list without committing the reader to anything.
+ */
+export async function planPooledImportAction(
+  files: { fileName: string; fileText: string }[],
+  labels: string[],
+): Promise<ImportPlanResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    return { ok: true, plan: planPooledImport(files, labels) };
+  } catch (error) {
+    return toErrorResult(error, "Failed to read those files.");
+  }
+}
+
+export async function importPooledFilesAction(input: PooledImportInput): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    importPooledFiles(deps.csvAnalyticsRepo, input);
+  } catch (error) {
+    return toErrorResult(error, "Failed to import those files.");
+  }
+  revalidatePath(CSV_ANALYSIS_MODULE_PATH);
+  return { ok: true };
+}
+
+export async function appendPooledFilesAction(
+  entryId: number,
+  files: CsvImportFileInput[],
+): Promise<UpdateEntryActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    const result = appendPooledFiles(deps.csvAnalyticsRepo, { entryId, files });
+    revalidatePath(CSV_ANALYSIS_MODULE_PATH);
+    return { ok: true, ingestResult: result.ingestResult };
+  } catch (error) {
+    return toErrorResult(error, "Failed to add those files.");
+  }
+}
+
+export async function readSourceStatsAction(input: {
+  entryId: number;
+  groupColumn: string;
+  measureColumn: string;
+  limit?: number;
+}): Promise<SourceStatsActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    return { ok: true, stats: readSourceStats(deps.csvAnalyticsRepo, input) };
+  } catch (error) {
+    return toErrorResult(error, "Failed to compute statistics.");
+  }
 }

@@ -9,6 +9,9 @@ import { ChartBar } from "@/components/chart-bar";
 import { ChartLine } from "@/components/chart-line";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
+import { SlotIcon } from "@/components/slot-icon";
+import { Tabs } from "@/components/tabs";
+import { getIconSlot } from "@/lib/icons";
 import type { DashboardWidgetId } from "@/lib/stock-dashboard";
 import { snapshotChangePct } from "@/lib/stock-daily-snapshot";
 import type { DailySnapshot, PeriodSummary, ToDateSummaries } from "@/lib/stock-daily-snapshot";
@@ -18,8 +21,23 @@ import { StockIndexesCard } from "./stock-indexes-card";
 import { StockPlaybackControl } from "./stock-playback-control";
 import { useStockRefreshProgress } from "./stock-refresh-progress-context";
 
+// Module scope: the registry is a static table, so this is a lookup, not I/O. The
+// non-null assertion is safe for an id that ships in the repo — an unregistered one
+// is a build-time mistake, not a runtime condition.
+const SUMMARY_SLOT = getIconSlot("stock_card_portfolio_summary")!;
+
 function gainClass(cents: number): string {
   return cents < 0 ? "text-red-400" : "text-emerald-400";
+}
+
+/** Shown on History and Playback before the first snapshot exists. */
+function NoHistoryYet({ what }: { what: string }) {
+  return (
+    <p className="rounded-md border border-dashed border-line p-4 text-center text-sm text-muted">
+      {what} appears once you&apos;ve captured a day. Press the{" "}
+      <span className="text-ink">refresh icon</span> beside the heading to record today.
+    </p>
+  );
 }
 
 function StatTile({
@@ -72,13 +90,22 @@ function AllocationChart({
 }
 
 /**
- * The headline card: what the portfolio is worth right now and how it moved
- * today, over a collapsed Portfolio History child holding the value curve and
- * the day-by-day table.
+ * The whole dashboard, less the Indexes board: what the portfolio is worth right
+ * now and how it moved today, over three tabs that each answer a different
+ * question about that number.
+ *
+ * - **Summary** — how it breaks down *today*: the period rollups, the stat tiles
+ *   and the three allocation splits.
+ * - **History** — how it got here: the value curve and the snapshot table.
+ * - **Playback** — the same history revealed in sequence, at a chosen step.
+ *
+ * The headline figures sit **above** the strip rather than inside Summary, because
+ * they're the card's identity — the thing you glance at — and because they're what
+ * the live refresh counts up. Switching to History shouldn't hide the total.
  *
  * The two big numbers come from the live positions rather than the newest
  * snapshot, so they're right even before today's refresh — the snapshots feed
- * the chart and the table inside the child card.
+ * the chart and the table in the History tab.
  *
  * While the heading's refresh icon is walking the portfolio, those same two
  * numbers come from the running total in `useStockRefreshProgress` instead, so
@@ -89,9 +116,27 @@ function AllocationChart({
 function PortfolioSummaryCard({
   summary,
   snapshots,
+  toDate,
+  hasCostBasis,
+  transactionCount,
+  accountCount,
+  unassignedCount,
+  byType,
+  byStrategy,
+  bySector,
+  sectorsPending,
 }: {
   summary: PortfolioSummary;
   snapshots: DailySnapshot[];
+  toDate: ToDateSummaries;
+  hasCostBasis: boolean;
+  transactionCount: number;
+  accountCount: number;
+  unassignedCount: number;
+  byType: AllocationSlice[];
+  byStrategy: AllocationSlice[];
+  bySector: AllocationSlice[];
+  sectorsPending: boolean;
 }) {
   const { liveSummary, isRefreshing, setLiveSummary } = useStockRefreshProgress();
 
@@ -187,8 +232,104 @@ function PortfolioSummaryCard({
     },
   ];
 
+  const summaryTab = (
+    <div className="flex flex-col gap-6">
+      <CollapsibleCard title="Statistics" defaultOpen>
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <PeriodTile label="Week to date" summary={toDate.week} />
+            <PeriodTile label="Month to date" summary={toDate.month} />
+            <PeriodTile label="Year to date" summary={toDate.year} />
+          </div>
+
+          {/* Total Value and Day Change deliberately absent — the headline above
+              the tab strip leads with both, and the same figure twice on one
+              screen reads as two different measurements. */}
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+            <StatTiles
+              summary={summary}
+              hasCostBasis={hasCostBasis}
+              transactionCount={transactionCount}
+              accountCount={accountCount}
+              unassignedCount={unassignedCount}
+            />
+          </div>
+        </div>
+      </CollapsibleCard>
+
+      <PortfolioAllocationCard
+        byType={byType}
+        byStrategy={byStrategy}
+        bySector={bySector}
+        sectorsPending={sectorsPending}
+      />
+    </div>
+  );
+
+  const historyTab =
+    history.length > 0 ? (
+      <div className="flex flex-col gap-6">
+        <div>
+          <h4 className="text-xs font-medium uppercase tracking-wide text-muted">
+            Value over time
+          </h4>
+          <ChartLine
+            className="mt-2"
+            data={history}
+            series={[
+              { key: "total", label: "Total" },
+              { key: "stock", label: "Stock" },
+              { key: "etf", label: "ETF" },
+            ]}
+            xKey="date"
+            formatValue={(value) => formatCents(Math.round(value * 100))}
+            // Three overlaid series: the latest value of each, at its own line's
+            // end, and nothing in between.
+            pointLabels="last"
+            displayStorageKey="myhomebase:chart:stock-dashboard-history"
+          />
+          <p className="mt-1 text-xs text-muted">
+            One point per day you refreshed. A day with no capture is absent rather than
+            flat-lined, so a gap in the line is a day that wasn&apos;t recorded.
+          </p>
+        </div>
+
+        <div>
+          <h4 className="text-xs font-medium uppercase tracking-wide text-muted">History</h4>
+          <div className="mt-2">
+            <DataGrid
+              columns={columns}
+              rows={tableRows}
+              getRowKey={(row) => row.snapshotDate}
+              emptyMessage="No snapshots captured yet."
+              exportFileName="portfolio-history"
+              storageKey="myhomebase:stock-snapshot-history-grid"
+              recordViewTitle={(row) => `Portfolio on ${row.snapshotDate}`}
+              defaultPageSize={30}
+            />
+          </div>
+        </div>
+      </div>
+    ) : (
+      <NoHistoryYet what="The value chart and history table" />
+    );
+
+  // The same snapshots as History, re-cut coarser and revealed in sequence. Its
+  // own tab rather than a strip under the table because it answers "how did it
+  // get here" — a question you ask after reading the curve, not while.
+  const playbackTab =
+    history.length > 0 ? (
+      <StockPlaybackControl snapshots={snapshots} />
+    ) : (
+      <NoHistoryYet what="Playback" />
+    );
+
   return (
-    <CollapsibleCard title="Portfolio Summary" defaultOpen>
+    <CollapsibleCard
+      title="Portfolio Summary"
+      titleIcon={<SlotIcon slot={SUMMARY_SLOT} className="h-4 w-4" />}
+      defaultOpen
+    >
       {/* `aria-live="polite"` so a screen reader hears the total settle rather
           than every intermediate value: polite waits for a pause, and the figure
           changes once per ticker. `tabular-nums` keeps the digits from shuffling
@@ -215,73 +356,17 @@ function PortfolioSummaryCard({
             : "no history captured yet — press the refresh icon by the heading"}
       </p>
 
-      {/* Both views of the snapshot data live in one child card, collapsed by
-          default: the headline numbers above are the daily read, and the chart
-          and table are what you open when you want the trend behind them. With
-          no snapshots there's nothing to open, so the empty state replaces the
-          card rather than sitting inside it. */}
-      {history.length > 0 ? (
-        <CollapsibleCard title="Portfolio History" className="mt-6">
-          <div>
-            <h4 className="text-xs font-medium uppercase tracking-wide text-muted">
-              Value over time
-            </h4>
-            <ChartLine
-              className="mt-2"
-              data={history}
-              series={[
-                { key: "total", label: "Total" },
-                { key: "stock", label: "Stock" },
-                { key: "etf", label: "ETF" },
-              ]}
-              xKey="date"
-              formatValue={(value) => formatCents(Math.round(value * 100))}
-              // Three overlaid series: the latest value of each, at its own line's
-              // end, and nothing in between.
-              pointLabels="last"
-              displayStorageKey="myhomebase:chart:stock-dashboard-history"
-            />
-            <p className="mt-1 text-xs text-muted">
-              One point per day you refreshed. A day with no capture is absent rather than
-              flat-lined, so a gap in the line is a day that wasn&apos;t recorded.
-            </p>
-          </div>
-
-          <div className="mt-6">
-            <h4 className="text-xs font-medium uppercase tracking-wide text-muted">History</h4>
-            <div className="mt-2">
-              <DataGrid
-                columns={columns}
-                rows={tableRows}
-                getRowKey={(row) => row.snapshotDate}
-                emptyMessage="No snapshots captured yet."
-                exportFileName="portfolio-history"
-                storageKey="myhomebase:stock-snapshot-history-grid"
-                recordViewTitle={(row) => `Portfolio on ${row.snapshotDate}`}
-                defaultPageSize={30}
-              />
-            </div>
-          </div>
-
-          {/* The same snapshots again, re-cut coarser and revealed in sequence.
-              It sits under the table rather than beside the chart above because
-              it answers "how did it get here" — a question you ask after
-              reading the curve, not instead of it. */}
-          <div className="mt-6 border-t border-line pt-6">
-            <h4 className="text-xs font-medium uppercase tracking-wide text-muted">
-              Playback
-            </h4>
-            <div className="mt-2">
-              <StockPlaybackControl snapshots={snapshots} />
-            </div>
-          </div>
-        </CollapsibleCard>
-      ) : (
-        <p className="mt-4 rounded-md border border-dashed border-line p-4 text-center text-sm text-muted">
-          The value chart and history appear once you&apos;ve captured a day. Press the{" "}
-          <span className="text-ink">refresh icon</span> beside the heading to record today.
-        </p>
-      )}
+      {/* All three tabs always render, even with no snapshots: a tab set that
+          changes shape under you is harder to read than one whose panels say
+          they're waiting on data. */}
+      <Tabs
+        className="mt-6"
+        items={[
+          { key: "summary", label: "Summary", content: summaryTab },
+          { key: "history", label: "History", content: historyTab },
+          { key: "playback", label: "Playback", content: playbackTab },
+        ]}
+      />
     </CollapsibleCard>
   );
 }
@@ -415,38 +500,23 @@ export function StockDashboardView({
    * Every widget, keyed by id, so the render is a lookup over the user's order
    * rather than a fixed sequence of JSX. Building the map costs nothing — these are
    * elements, not renders — and it keeps "what a widget is" in one place.
+   *
+   * Two widgets, since Statistics and Portfolio Allocation became tabs inside
+   * Portfolio Summary rather than cards of their own.
    */
   const widgetContent: Record<DashboardWidgetId, ReactNode> = {
     // Self-contained: it takes no props because it fetches its own board from its
     // own Refresh all button, so the server loads nothing for it on page render.
     indexes: <StockIndexesCard />,
-    summary: <PortfolioSummaryCard summary={summary} snapshots={snapshots} />,
-    statistics: (
-      <CollapsibleCard title="Statistics">
-        <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <PeriodTile label="Week to date" summary={toDate.week} />
-            <PeriodTile label="Month to date" summary={toDate.month} />
-            <PeriodTile label="Year to date" summary={toDate.year} />
-          </div>
-
-          {/* Total Value and Day Change deliberately absent — the Portfolio Summary
-              card leads with both, and the same figure twice on one screen reads as
-              two different measurements. */}
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
-            <StatTiles
-              summary={summary}
-              hasCostBasis={hasCostBasis}
-              transactionCount={transactionCount}
-              accountCount={accountCount}
-              unassignedCount={unassignedCount}
-            />
-          </div>
-        </div>
-      </CollapsibleCard>
-    ),
-    allocation: (
-      <PortfolioAllocationCard
+    summary: (
+      <PortfolioSummaryCard
+        summary={summary}
+        snapshots={snapshots}
+        toDate={toDate}
+        hasCostBasis={hasCostBasis}
+        transactionCount={transactionCount}
+        accountCount={accountCount}
+        unassignedCount={unassignedCount}
         byType={byType}
         byStrategy={byStrategy}
         bySector={bySector}

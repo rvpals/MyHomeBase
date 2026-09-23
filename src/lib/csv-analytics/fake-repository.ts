@@ -7,6 +7,7 @@
 //
 // Not exported from index.ts — it is test support, not part of the module's public
 // surface. Tests import it by path, which is the one place that is fine inside a module.
+import { sourceColumnDefinitions } from "./multi-import";
 import type { CsvAnalyticsRepository } from "./ports";
 import { buildTableName, coerceCellValue } from "./sql-builder";
 import {
@@ -242,6 +243,7 @@ export function fakeCsvAnalyticsRepo(): CsvAnalyticsRepository {
         tableName,
         columns: input.columns,
         primaryKeyFields: input.primaryKeyFields,
+        sourceColumns: [],
         rowCount: rows.length,
         createdAt: STAMP,
         updatedAt: STAMP,
@@ -249,6 +251,52 @@ export function fakeCsvAnalyticsRepo(): CsvAnalyticsRepository {
       entries.set(id, entry);
       setRows(id, rows.map((row) => coerceRow(input.columns, row)));
       return entry;
+    },
+    createPooledEntry: (input, columns, sourceColumns, rows) => {
+      const tableName = buildTableName(input.tableBaseName);
+      if (isTaken(tableName)) {
+        throw new Error(`A CSV analytic entry already uses table name "${tableName}".`);
+      }
+      const id = nextId++;
+      const allColumns = [...columns, ...sourceColumnDefinitions(sourceColumns)];
+      const entry: CsvAnalyticEntry = {
+        id,
+        name: input.name,
+        description: input.description,
+        tableName,
+        columns: allColumns,
+        // A pooled table always uses the surrogate key — see the real repository.
+        primaryKeyFields: [],
+        sourceColumns,
+        rowCount: rows.length,
+        createdAt: STAMP,
+        updatedAt: STAMP,
+      };
+      entries.set(id, entry);
+      setRows(id, rows.map((row) => coerceRow(allColumns, row)));
+      return entry;
+    },
+    appendPooledRows: (id, rows) => {
+      const entry = entries.get(id);
+      if (!entry) throw new Error(`CSV analytic entry ${id} not found.`);
+      entries.set(id, { ...entry, rowCount: entry.rowCount + rows.length });
+      const appended = rows.map((row) => coerceRow(entry.columns, row));
+      tableRows.set(id, [...(tableRows.get(id) ?? []), ...appended]);
+      tableRowIds.set(id, [...(tableRowIds.get(id) ?? []), ...mintRowIds(id, appended.length)]);
+      return { inserted: rows.length, skipped: 0 };
+    },
+    listSourceValues: (id, columnName) => {
+      const entry = entries.get(id);
+      if (!entry) throw new Error(`CSV analytic entry ${id} not found.`);
+      const index = entry.columns.findIndex((column) => column.name === columnName);
+      if (index < 0) throw new Error(`Unknown column "${columnName}" on entry ${id}.`);
+
+      const seen = new Set<string>();
+      (tableRows.get(id) ?? []).forEach((row) => {
+        const value = row[index];
+        if (value !== null && value !== undefined) seen.add(String(value));
+      });
+      return [...seen].sort();
     },
     appendRows: (id, rows) => {
       const entry = entries.get(id);
@@ -276,6 +324,7 @@ export function fakeCsvAnalyticsRepo(): CsvAnalyticsRepository {
         tableName: buildTableName(input.tableBaseName),
         columns: input.columns,
         primaryKeyFields: input.primaryKeyFields,
+        sourceColumns: [],
         rowCount: rows.length,
       };
       entries.set(id, updated);

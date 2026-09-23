@@ -47,6 +47,12 @@ export interface SavedLocationWithUsage extends SavedLocation {
 export interface LocationCategory {
   name: string;
   description: string;
+  /**
+   * Mime type of the category's icon, or undefined when none is set. The bytes
+   * themselves are fetched separately (see LocationTaxonomyIcon) so they never
+   * travel with a category list.
+   */
+  iconMimeType?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -55,8 +61,16 @@ export interface LocationCategory {
 export interface LocationTag {
   name: string;
   description: string;
+  /** Same deal as LocationCategory.iconMimeType, for a tag's icon. */
+  iconMimeType?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Raw icon bytes for one location category or tag, read only by the icon routes. */
+export interface LocationTaxonomyIcon {
+  data: Buffer;
+  mimeType: string;
 }
 
 /** One taxonomy name and how many saved locations carry it. */

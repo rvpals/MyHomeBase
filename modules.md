@@ -610,9 +610,87 @@ free one, since `WEEKDAY_LABELS` would need rotating too.
 
 **CSV Analysis** (`csv-analysis`) — import an arbitrary CSV, which creates a
 per-entry table (`csv_<name>`, from `buildTableName`), then chart and analyse it.
-Sections: Dashboard (the whole import/chart UI), Custom Views (the view builder) and
-Configuration (a placeholder until there is a setting worth persisting). Library:
+Sections: Dashboard (the whole import/chart UI), **Import Files** (pooling several CSVs
+into one dataset), **Compare** (per-source statistics), Custom Views (the view builder)
+and Configuration (a placeholder until there is a setting worth persisting). Library:
 `src/lib/csv-analytics`, `src/lib/csv-import`.
+
+**Pooled imports** (migration 0104) are how several devices of *one kind* — every
+humidity meter, say — become a single dataset. Drop N same-shaped CSVs at once; each
+row is tagged with the file it came from (`_source_file`) plus up to three labels the
+reader typed for that file ("Room" → "Bathroom"). **Compare** then groups by one of
+those columns for combined and per-source statistics, ranked highest-first, with every
+source overlaid on one chart. Driveable as `import-csv-files`
+([src/cli/import-csv-files.ts](src/cli/import-csv-files.ts)) — `plan | create | append`
+— and `csv-source-stats` ([src/cli/csv-source-stats.ts](src/cli/csv-source-stats.ts)).
+
+**The Dashboard chart can split by source too.** A "Split by" picker appears on a
+pooled dataset (and only there — a single-file entry has nothing to split by), turning
+each distinct value of a source column into its own series: Bathroom and Basement as
+two lines rather than one. It defaults to the first source column, because a pooled
+dataset drawn *unsplit* is the actively misleading view — every device's readings
+alternate along a single line, which reads as violent oscillation rather than several
+steady rooms. The pivot is pure (`buildSplitChartData`,
+[source-stats.ts](src/lib/csv-analytics/source-stats.ts)); rows sharing an x value
+share a record, so two devices reporting the same timestamp align on the axis, and a
+device missing that x leaves a gap rather than a zero. Two constraints fall out of it:
+**scatter is withdrawn while splitting** (the pivot's x is the shared category the
+sources align on, not the numeric axis scatter promises), and past twelve series the
+screen says the legend has stopped being readable rather than refusing to draw it.
+The choice is saved with a chart preset; an older preset has no `splitColumn` and
+loads unsplit, which is what it drew.
+
+**Chart functions** are reader-composed aggregates on the Dashboard chart: click **+
+Add**, pick a function (average, minimum, maximum, sum, count, distinct), pick a column,
+and optionally toggle **Chart it**. **Calculate** evaluates them and prints each figure
+beside its row; the toggled ones are drawn as dashed reference lines across the plot.
+Several can be defined at once and removed individually. They persist with a saved chart
+as `chart_functions`. Four rules, in `src/lib/csv-analytics/aggregates.ts`:
+
+- **The column picker is filtered by the function.** Average/min/max/sum need a numeric
+  column; count and distinct do not — "how many different rooms reported" has to stay
+  answerable. Switching to a numeric-only function while a text column is selected
+  re-points the row at a column the new function can take, rather than leaving a pair
+  that silently computes nothing.
+- **Figures describe what is on screen.** They are computed over the rows the chart
+  actually fetched, so "Rows to include" moves the number. The alternative — always the
+  whole table — is stabler but can disagree with the chart the reader is looking at.
+- **Splitting splits the aggregate too.** With "Split by" on, each function also yields
+  one figure (and one reference line) per source, so Bathroom's average sits against
+  Bathroom's line rather than a pooled benchmark that describes neither room.
+- **A saved function whose column was dropped is skipped, not thrown** — the same
+  read-time forgiveness a custom view gives, and for the same reason: these are saved
+  with a preset and the dataset can change underneath them.
+
+Five decisions worth knowing, because each was a trap:
+
+- **Source columns are REAL columns on the entry's table**, and
+  `source_columns_json` only records which ones they are. Custom views, charts, bulk
+  edit and grid export all read the entry's columns, so the source works in all of them
+  for free; a join table would have meant reworking `view-query.ts` and the read path.
+  The cost is that a source column can be dropped — so `groupableSourceColumns` filters
+  the recorded list against the real columns at read time, degrading to grouping by
+  filename rather than throwing.
+- **Headers must match exactly across the batch, and a mismatch is refused.** The
+  reader has declared these files the same kind of data, so a differing header is a
+  *wrong file*, not a schema to merge. Importing it as a column of NULLs would quietly
+  corrupt every per-source statistic computed afterwards. The screen shows which file
+  and which column.
+- **A pooled table always uses the surrogate `_row_id` key**, and `appendPooledRows`
+  uses a plain `INSERT` — deliberately unlike `appendRows`, which uses
+  `INSERT OR IGNORE`. Several devices legitimately report the same timestamp, so OR
+  IGNORE would silently skip one device's readings while reporting success.
+- **Type inference samples 1000 rows, not 5.** `previewCsvFile` used to infer from the
+  same five rows it *displays*, which is how a mostly-fractional humidity column gets
+  suggested as `integer` off five whole numbers — after which every fractional value
+  coerces to NULL on import. Pooling made this worse (one file decided the type for all
+  of them), so both paths now sample far more than they show.
+- **A naive timestamp is stored as written, not as an instant.** `coerceCellValue` used
+  to do `new Date(x).toISOString()`, reading "2025-03-13 14:08:00" as *local* time and
+  storing `18:08Z` — so a twice-daily sensor log lost the very time-of-day pattern it
+  existed to record, by a shift that wasn't even constant across a DST boundary. A
+  device export carries no timezone and none is knowable, so the wall-clock time is
+  kept verbatim. Existing rows were **not** migrated; only new imports are correct.
 
 A **custom view** (`csv_custom_views`, migration 0081) is a named saved query over
 **one** dataset: the columns to show, criteria ANDed together, an ordered order-by
@@ -717,6 +795,34 @@ on the report — the actions carry their own small glyph set
 (`ATTENDANCE_ACTION_ICONS`), deliberately outside the user-selectable icon sets;
 `migrations/0051_create_attendance_student_actions.md` records why. The newest
 module and the cleanest template to copy. Library: `src/lib/attendance`.
+
+**Edit records** is where a day already taken gets corrected. Editing was almost
+entirely already there: `saveAttendance` has updated a day's record in place
+since migration 0092, and the register panel has always seeded itself from the
+saved marks -- what was missing was a way to reach a date other than today,
+since the home screen hardcodes `todayIsoLocal()`. So the section is a class
+picker, a grid of that class's registers, and `RegisterPanel` exported from
+[attendance-home-view.tsx](src/app/(protected)/modules/[slug]/attendance-home-view.tsx)
+rather than a second copy of the tap list.
+
+It only ever offers days that **already have a register** -- taking a new day
+stays the home screen's job, and a `?date=` naming a day with none resolves to
+no editor rather than seeding a blank one, so a stale URL can't create a
+register as a side effect. Nothing opens for editing until a day is picked: the
+list is the resting state, because landing straight in an editor would put a
+saved register one keystroke from being rewritten. When the date on screen isn't
+today the panel says so in brass -- a branch that existed but was unreachable
+until this section, the home screen having only ever passed today.
+
+**Deleting a register is the one thing in the module that destroys one**, and it
+is deliberately not the same act as marking everybody absent: an absent register
+says the class met and nobody came, a deleted one says it never met, and
+`AttendanceDetailCell.status` keeps `undefined` and `absent` apart precisely so
+the grid can draw that difference. `deleteAttendanceRecords` takes the entries
+and the recorded actions with the record -- none of the three tables declares a
+foreign key, so nothing cascades -- and tolerates an id that has already gone,
+returning how many rows actually went. Batch selection is `DataGrid`'s
+`enableSelection`, the same machinery the Rosters screen's bulk delete uses.
 
 A class carries the **weekday it meets on** (`class_weekday`, 1 = Monday to
 5 = Friday, `migrations/0080`), and the home screen opens on today's register

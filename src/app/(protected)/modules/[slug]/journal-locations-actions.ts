@@ -10,19 +10,24 @@
 
 import { revalidatePath } from "next/cache";
 import {
+  clearLocationTaxonomyIcon,
   countImportCandidates,
   countLocationsByCategory,
   countLocationsByTag,
   createSavedLocation,
   deleteLocationTaxonomy,
   deleteSavedLocation,
+  generateLocationTaxonomyIcon,
+  generateMissingLocationTaxonomyIcons,
   listLocationCategories,
   listLocationTags,
   promoteToSavedLocation,
   runImportBatch,
   saveLocationTaxonomy,
   searchSavedLocations,
+  setLocationTaxonomyIcon,
   updateSavedLocation,
+  type LocationIconFillSummary,
   type ImportBatchResult,
   type LocationSearchInput,
   type LocationTaxonomyKind,
@@ -168,6 +173,79 @@ export async function deleteLocationTaxonomyAction(
   }
   revalidateLocationScreens();
   return { ok: true };
+}
+
+/**
+ * Stores an icon a reader picked for a location category or tag.
+ *
+ * Takes the file as base64 rather than a `File`/FormData: the editor reads it in
+ * the browser, and this keeps the action a plain data-in/data-out call that the
+ * CLI could make identically.
+ */
+export async function saveLocationTaxonomyIconAction(
+  kind: LocationTaxonomyKind,
+  name: string,
+  mimeType: string,
+  base64Data: string,
+): Promise<ActionResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
+  try {
+    setLocationTaxonomyIcon(deps.savedLocationRepo, kind, name, {
+      mimeType: mimeType as never,
+      base64Data,
+    });
+  } catch (error) {
+    return toErrorResult(error, "Failed to save the icon.");
+  }
+  revalidateLocationScreens();
+  return { ok: true };
+}
+
+/** Removes the icon, leaving the category or tag in place. */
+export async function clearLocationTaxonomyIconAction(
+  kind: LocationTaxonomyKind,
+  name: string,
+): Promise<ActionResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
+  try {
+    clearLocationTaxonomyIcon(deps.savedLocationRepo, kind, name);
+  } catch (error) {
+    return toErrorResult(error, "Failed to remove the icon.");
+  }
+  revalidateLocationScreens();
+  return { ok: true };
+}
+
+/** Draws an icon from the row's name — the editor's ⚡ button. */
+export async function generateLocationTaxonomyIconAction(
+  kind: LocationTaxonomyKind,
+  name: string,
+): Promise<ActionResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
+  try {
+    await generateLocationTaxonomyIcon(deps.savedLocationRepo, kind, name);
+  } catch (error) {
+    return toErrorResult(error, "Failed to generate an icon.");
+  }
+  revalidateLocationScreens();
+  return { ok: true };
+}
+
+export interface LocationIconFillResult extends ActionResult {
+  summary?: LocationIconFillSummary;
+}
+
+/** Draws an icon for every category and tag that hasn't got one. */
+export async function generateMissingLocationIconsAction(): Promise<LocationIconFillResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
+  let summary: LocationIconFillSummary;
+  try {
+    summary = await generateMissingLocationTaxonomyIcons(deps.savedLocationRepo);
+  } catch (error) {
+    return toErrorResult(error, "Failed to fill in the missing icons.");
+  }
+  revalidateLocationScreens();
+  return { ok: true, summary };
 }
 
 export interface LocationTaxonomyResult extends ActionResult {

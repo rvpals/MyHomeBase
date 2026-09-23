@@ -250,6 +250,31 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
 
+  /* The two cards the Dashboard section itself draws. Daily Glance above is the third
+     of the set, though it renders on the home screen rather than here. */
+  {
+    id: "stock_card_indexes",
+    label: "Indexes card",
+    group: "Stocks & ETFs cards",
+    where: "Stocks & ETFs → Dashboard → the Indexes card header.",
+    // `chart` rather than `stock-quote`: these are benchmarks read as movement over
+    // time, which is also why the sibling Price History card defaults to the same mark.
+    defaultConcept: "chart",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "stock_card_portfolio_summary",
+    label: "Portfolio Summary card",
+    group: "Stocks & ETFs cards",
+    where: "Stocks & ETFs → Dashboard → the Portfolio Summary card header.",
+    // Matches Daily Glance: both lead with what the portfolio is worth, so they read
+    // as the same kind of figure rather than two unrelated cards.
+    defaultConcept: "stock-quote",
+    wired: true,
+    namespace: "tree",
+  },
+
   /* The five cards of the ticker viewer's Market tab — everything the provider said,
      as opposed to the Own tab's records. Grouped with the Stocks cards because that is
      where the dialog is opened from; the `where` paths name the tab so an admin can
@@ -631,6 +656,24 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    id: "csv_section_import",
+    label: "Import Files",
+    group: "CSV Analysis sections",
+    where: "CSV Data Analysis → section panel → Import Files.",
+    defaultConcept: "upload",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "csv_section_compare",
+    label: "Compare Sources",
+    group: "CSV Analysis sections",
+    where: "CSV Data Analysis → section panel → Compare.",
+    defaultConcept: "chart",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     id: "csv_section_configuration",
     label: "Configuration",
     group: "CSV Analysis sections",
@@ -975,6 +1018,15 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    id: "attendance_section_edit",
+    label: "Edit records",
+    group: "Attendance sections",
+    where: "Attendance → section panel → Edit records.",
+    defaultConcept: "pencil",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     id: "attendance_section_report",
     label: "Report",
     group: "Attendance sections",
@@ -1290,6 +1342,36 @@ export const ICON_SLOTS: IconSlot[] = [
     label: "Security",
     group: "Admin navigation",
     where: "Admin → section panel → Security.",
+    defaultConcept: "shield",
+    wired: true,
+    namespace: "tree",
+  },
+  // The two tabs inside Security, and the allowlist card on the Visit tab. Tabs are
+  // places -- they name a view you navigate to -- so they take slots; the suspicion
+  // badge on a row does not, being a state glyph rather than a destination.
+  {
+    id: "admin_security_tab_login",
+    label: "Login tab",
+    group: "Admin navigation",
+    where: "Admin → Security → the Login tab.",
+    defaultConcept: "users",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "admin_security_tab_visit",
+    label: "Visit tab",
+    group: "Admin navigation",
+    where: "Admin → Security → the Visit tab.",
+    defaultConcept: "map",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "admin_security_allowlist",
+    label: "Allowed addresses",
+    group: "Admin navigation",
+    where: "Admin → Security → Visit → the Allowed addresses card.",
     defaultConcept: "shield",
     wired: true,
     namespace: "tree",

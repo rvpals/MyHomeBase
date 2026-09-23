@@ -9,18 +9,20 @@
  * `allocationSector`) became the single `allocation` card, which draws all three
  * splits together — they were never useful apart, and one card is one collapse.
  *
+ * `statistics` and `allocation` are the latest to go. Portfolio Summary now holds
+ * three tabs — Summary, History and Playback — and those two cards are what the
+ * Summary tab is made of. A tab inside a card can't also be an independently
+ * hidden, independently ordered top-level widget, so the ids retire rather than
+ * becoming settings that only half work.
+ *
  * A saved layout still naming any of them is dropped by
- * `resolveDashboardWidgets`, which ignores unknown ids and appends genuinely new
+ * `resolveDashboardWidgets`, which ignores unknown ids and inserts genuinely new
  * ones as visible — that's why none of these retirements needed a migration. The
- * one visible consequence: a layout that hid only *some* allocation charts gets
- * all three back, because the widget list can no longer express that.
+ * one visible consequence: a reader who had hidden Statistics or Allocation sees
+ * them again, inside the Summary tab, because the widget list can no longer
+ * express that preference.
  */
-export const DASHBOARD_WIDGET_IDS = [
-  "indexes",
-  "summary",
-  "statistics",
-  "allocation",
-] as const;
+export const DASHBOARD_WIDGET_IDS = ["indexes", "summary"] as const;
 
 export type DashboardWidgetId = (typeof DASHBOARD_WIDGET_IDS)[number];
 
@@ -42,18 +44,7 @@ export const DASHBOARD_WIDGET_INFO: Record<DashboardWidgetId, DashboardWidgetInf
     id: "summary",
     label: "Portfolio Summary",
     description:
-      "Total value and today's move, over a Portfolio History child card holding the value-over-time chart and the snapshot table.",
-  },
-  statistics: {
-    id: "statistics",
-    label: "Statistics",
-    description: "Week/month/year to date, position and transaction counts, cost basis, income.",
-  },
-  allocation: {
-    id: "allocation",
-    label: "Portfolio Allocation",
-    description:
-      "One card holding all three splits of the same total: by type (Stock / ETF / Bond / other), by the broker's strategy buckets, and by market sector. Sectors are looked up per ticker on Refresh All; a fund has none and is grouped as 'ETFs & funds'.",
+      "Total value and today's move, over three tabs. Summary holds the week/month/year rollups, the stat tiles and the three allocation splits; History holds the value-over-time chart and the snapshot table; Playback replays that history one period at a time.",
   },
 };
 

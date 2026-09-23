@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_RETENTION_DAYS,
+  deleteAuthEvents,
   describeFailureReason,
   getAuthEventSummary,
   hasUnreviewedFailures,
@@ -72,6 +73,12 @@ class FakeAuthEventRepository implements AuthEventRepository {
         row.reviewedAt = reviewedAt;
       }
     }
+  }
+
+  deleteEvents(ids: number[]): number {
+    const before = this.rows.length;
+    this.rows = this.rows.filter((row) => !ids.includes(row.id));
+    return before - this.rows.length;
   }
 
   deleteEventsBefore(cutoff: string): number {
@@ -280,6 +287,36 @@ describe("getAuthEventSummary", () => {
     expect(summary.totalSuccesses).toBe(1);
     expect(summary.totalFailures).toBe(2);
     expect(summary.unreviewedFailures).toBe(2);
+  });
+});
+
+describe("deleteAuthEvents", () => {
+  it("deletes the selected events and leaves the rest", () => {
+    const repo = new FakeAuthEventRepository();
+    recordLoginFailure("keep", "unknown_user", {}, repo);
+    recordLoginFailure("remove", "unknown_user", {}, repo);
+
+    const target = repo.rows.find((row) => row.attemptedUsername === "remove")!;
+
+    expect(deleteAuthEvents([target.id], repo)).toBe(1);
+    expect(repo.rows.map((row) => row.attemptedUsername)).toEqual(["keep"]);
+  });
+
+  it("dedupes ids", () => {
+    const repo = new FakeAuthEventRepository();
+    recordLoginFailure("remove", "unknown_user", {}, repo);
+    const target = repo.rows[0];
+
+    expect(deleteAuthEvents([target.id, target.id], repo)).toBe(1);
+  });
+
+  it("throws on an empty selection rather than silently succeeding", () => {
+    // A delete is a deliberate act by an admin; "you selected nothing" must reach them.
+    expect(() => deleteAuthEvents([], new FakeAuthEventRepository())).toThrow(/at least one/);
+  });
+
+  it("rejects a non-positive id", () => {
+    expect(() => deleteAuthEvents([0], new FakeAuthEventRepository())).toThrow();
   });
 });
 

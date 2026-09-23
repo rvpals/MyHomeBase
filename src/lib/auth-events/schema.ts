@@ -77,5 +77,15 @@ export const authEventFilterSchema = z.object({
 
 export type AuthEventFilterInput = z.infer<typeof authEventFilterSchema>;
 
+/**
+ * Ids for a bulk delete. Bounded, deduped, and required to be non-empty so an
+ * accidental "delete nothing" is an explicit error rather than a silent success.
+ */
+export const bulkIdsSchema = z
+  .array(z.number().int().positive())
+  .min(1, "Select at least one row.")
+  .max(1000)
+  .transform((ids) => [...new Set(ids)]);
+
 /** Guards the prune job. A floor of 1 day stops a bad config wiping the table outright. */
 export const retentionDaysSchema = z.number().int().min(1).max(3650);

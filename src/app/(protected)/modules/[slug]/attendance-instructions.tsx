@@ -11,9 +11,10 @@ export function AttendanceInstructions({ section }: { section: AttendanceSection
         <div className="flex flex-col gap-2 text-sm text-muted">
           <p>
             Pick a class, then tap each student who is here — everyone starts absent. Press{" "}
-            <strong className="text-ink">Save attendance</strong> to record the session. Saving
-            again for the same class on the same day adds a <em>second</em> session rather than
-            replacing the first, so a class that meets twice keeps both registers.
+            <strong className="text-ink">Save attendance</strong> to record the register. There
+            is one register per class per day, so saving again for the same class on the same
+            day <em>updates</em> what you already saved rather than adding a second one. To
+            correct an earlier day, use <strong className="text-ink">Edit records</strong>.
           </p>
           <p>
             The <strong className="text-ink">⚡</strong> button on a student notes what happened
@@ -68,6 +69,31 @@ export function AttendanceInstructions({ section }: { section: AttendanceSection
             drops out of the picker but stays readable on the registers that already recorded
             it. Deleting is only possible for an action that has never been recorded — otherwise
             past sessions would lose what their codes meant.
+          </p>
+        </div>
+      );
+
+    case "edit":
+      return (
+        <div className="flex flex-col gap-2 text-sm text-muted">
+          <p>
+            Pick a class to list every day it has a register for, then press{" "}
+            <strong className="text-ink">Edit</strong> on a day to open it. The marks and noted
+            actions come back as they were saved; change them and press{" "}
+            <strong className="text-ink">Update attendance</strong>. There is one register per
+            class per day, so this corrects that day rather than adding another.
+          </p>
+          <p>
+            To remove a day altogether — a class registered by mistake, say — tick it in the
+            grid and use <strong className="text-ink">Delete registers</strong>. You can tick
+            several at once. This is not the same as marking everybody absent: an absent
+            register says the class met and nobody came, while a deleted one says the class
+            never met, and the detail report tells those apart. Deleting takes every mark and
+            noted action with it and <strong className="text-ink">cannot be undone</strong>.
+          </p>
+          <p>
+            Only days that already have a register appear here. To take attendance for a new
+            day, use the <strong className="text-ink">Home screen</strong>.
           </p>
         </div>
       );

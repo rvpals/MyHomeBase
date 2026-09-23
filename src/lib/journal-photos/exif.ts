@@ -23,10 +23,20 @@
 //         tag 0x9004 DateTimeDigitized
 //       tag 0x0132 DateTime (modification -- last resort)
 
+// WHY THE STRUCTURAL HELPERS BELOW ARE EXPORTED
+//
+// `findExifSegment`, `readTiffHeader`, `readIfd`, `readAsciiValue` and the two integer
+// readers are used by `exif-all.ts`, which answers a different question from this file
+// ("every tag", for the viewer's EXIF panel) off the SAME walk. They are exported so
+// there is ONE segment/TIFF/IFD traversal in the codebase rather than two that drift --
+// the byte-order and bounds handling here is the awkward part, and a second copy of it
+// is how a Motorola-endian photo starts reading correctly in one panel and wrongly in
+// another. This file stays the owner of the traversal; `exif-all.ts` only reads values.
+
 /** JPEG markers that carry no payload length and so are skipped by 2 bytes. */
 const STANDALONE_MARKERS = new Set([0xd8, 0xd9, 0x01]);
 
-const TAG_EXIF_SUB_IFD = 0x8769;
+export const TAG_EXIF_SUB_IFD = 0x8769;
 const TAG_DATE_TIME_ORIGINAL = 0x9003;
 const TAG_DATE_TIME_DIGITIZED = 0x9004;
 const TAG_DATE_TIME = 0x0132;
@@ -224,7 +234,7 @@ function parseTimeHalf(text: string): { time?: string } {
  * then parse pixel data as a TIFF header. Stops at SOS (`FFDA`), after which
  * everything is entropy-coded image data and no metadata segment can follow.
  */
-function findExifSegment(bytes: Uint8Array): number | undefined {
+export function findExifSegment(bytes: Uint8Array): number | undefined {
   if (bytes.length < 4) return undefined;
   // Start of Image. Anything else is not a JPEG.
   if (bytes[0] !== 0xff || bytes[1] !== 0xd8) return undefined;
@@ -279,7 +289,7 @@ function isExifIdentifier(bytes: Uint8Array, offset: number): boolean {
   );
 }
 
-interface TiffHeader {
+export interface TiffHeader {
   isLittleEndian: boolean;
   /** Every offset inside EXIF is relative to here, not to the file. */
   tiffStart: number;
@@ -295,7 +305,7 @@ interface TiffHeader {
  * scanners write. Getting this wrong does not fail loudly; it silently reads every
  * subsequent number byte-swapped.
  */
-function readTiffHeader(bytes: Uint8Array, tiffStart: number): TiffHeader | undefined {
+export function readTiffHeader(bytes: Uint8Array, tiffStart: number): TiffHeader | undefined {
   if (tiffStart + 8 > bytes.length) return undefined;
 
   const byteOrder = (bytes[tiffStart] << 8) | bytes[tiffStart + 1];
@@ -313,7 +323,7 @@ function readTiffHeader(bytes: Uint8Array, tiffStart: number): TiffHeader | unde
   return { isLittleEndian, tiffStart, ifdOffset };
 }
 
-interface IfdEntry {
+export interface IfdEntry {
   type: number;
   count: number;
   /** Where the entry's 4 value bytes sit, for reading an inline or offset value. */
@@ -331,7 +341,7 @@ interface IfdEntry {
  * a partial header is the normal case here -- the caller only streamed the first
  * 128KB.
  */
-function readIfd(
+export function readIfd(
   bytes: Uint8Array,
   tiffStart: number,
   ifdOffset: number,
@@ -371,7 +381,7 @@ function readIfd(
  * (a 20-byte timestamp always is) is stored elsewhere and the entry holds an offset.
  * Both cases are handled, since a hand-edited or unusual file can present either.
  */
-function readAsciiValue(
+export function readAsciiValue(
   bytes: Uint8Array,
   tiffStart: number,
   entry: IfdEntry,
@@ -404,7 +414,7 @@ function readAsciiValue(
   return text;
 }
 
-function readUint16(bytes: Uint8Array, offset: number, isLittleEndian: boolean): number | undefined {
+export function readUint16(bytes: Uint8Array, offset: number, isLittleEndian: boolean): number | undefined {
   if (offset + 2 > bytes.length) return undefined;
   return isLittleEndian
     ? bytes[offset] | (bytes[offset + 1] << 8)
@@ -412,7 +422,7 @@ function readUint16(bytes: Uint8Array, offset: number, isLittleEndian: boolean):
 }
 
 /** Unsigned, via `>>> 0` -- a high bit set would otherwise read as a negative offset. */
-function readUint32(bytes: Uint8Array, offset: number, isLittleEndian: boolean): number | undefined {
+export function readUint32(bytes: Uint8Array, offset: number, isLittleEndian: boolean): number | undefined {
   if (offset + 4 > bytes.length) return undefined;
   const value = isLittleEndian
     ? bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24)

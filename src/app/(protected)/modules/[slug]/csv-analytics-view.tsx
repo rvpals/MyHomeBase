@@ -3,15 +3,27 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
+import { CHART_CHROME, CHART_REFERENCE_COLORS } from "@/components/chart-colors";
 import { ChartXY, type ChartType } from "@/components/chart-xy";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type CellValue, type DataGridColumn } from "@/components/data-grid";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Modal } from "@/components/modal";
 import {
+  CSV_AGGREGATE_FUNCTIONS,
+  CSV_AGGREGATE_LABELS,
+  aggregateReferenceLines,
+  buildSplitChartData,
+  columnsForFunction,
+  computeAggregates,
+  describeAggregate,
   describeCriteria,
   describeOrderBy,
+  groupableSourceColumns,
   nonEditableColumns,
+  type CsvAggregateDefinition,
+  type CsvAggregateFunction,
+  type CsvAggregateResult,
   type CsvAnalyticEntry,
   type CsvChartPreset,
   type CsvBulkEditChanges,
@@ -37,6 +49,12 @@ import {
 
 const NUMERIC_COLUMN_TYPES: CsvColumnType[] = ["integer", "real", "boolean"];
 const CHART_TYPES: ChartType[] = ["line", "bar", "scatter", "area"];
+// Scatter needs a numeric x, which a split pivot's shared category axis is not.
+const SPLIT_CHART_TYPES: ChartType[] = ["line", "bar", "area"];
+// Past this many series the legend stops being readable. Advisory, not enforced: the
+// reader may genuinely have twelve devices, and refusing to draw them would be worse
+// than drawing a crowded chart they asked for.
+const MAX_SPLIT_SERIES = 12;
 const MAX_Y_SERIES = 8;
 
 function formatCell(value: string | number | null): string {
@@ -474,6 +492,18 @@ interface ChartOptions {
   showTable: boolean;
   decimals: number;
   rowLimit: RowLimit;
+  /**
+   * Which column's values become separate series, or "" for none.
+   *
+   * Only meaningful on a pooled dataset. An older preset saved before splitting
+   * existed simply has no `splitColumn` and loads as "none", which is what it drew.
+   */
+  splitColumn?: string;
+  /**
+   * Reader-defined aggregates — "average of relative_humidity" — and whether each is
+   * drawn as a reference line. Absent on a preset saved before they existed.
+   */
+  chart_functions?: CsvAggregateDefinition[];
 }
 
 /**
@@ -491,6 +521,18 @@ function ChartBuilder({ entry }: { entry: CsvAnalyticEntry }) {
   const [showTable, setShowTable] = useState(false);
   const [decimals, setDecimals] = useState(2);
   const [rowLimit, setRowLimit] = useState<RowLimit>(5000);
+  // "" is "don't split". Defaults to the dataset's first source column when it has
+  // one, because a pooled dataset drawn UNsplit is the misleading view: every device's
+  // readings alternate along one line, which reads as violent oscillation rather than
+  // several steady rooms.
+  const splitOptions = groupableSourceColumns(entry.sourceColumns, entry.columns);
+  const [splitColumn, setSplitColumn] = useState<string>(splitOptions[0]?.name ?? "");
+
+  // Aggregates are DEFINED here but only evaluated when Calculate is pressed, so a
+  // half-built function (a fresh row with no column yet) never computes, and a big
+  // table isn't re-scanned on every keystroke.
+  const [chartFunctions, setChartFunctions] = useState<CsvAggregateDefinition[]>([]);
+  const [aggregateResults, setAggregateResults] = useState<CsvAggregateResult[]>([]);
 
   const [data, setData] = useState<CsvEntryData | undefined>(undefined);
   // Starts true: a fetch is always in flight from first mount, so false would render
@@ -565,6 +607,30 @@ function ChartBuilder({ entry }: { entry: CsvAnalyticEntry }) {
     if (typeof options.showTable === "boolean") setShowTable(options.showTable);
     if (typeof options.decimals === "number") setDecimals(options.decimals);
     if (options.rowLimit === "ALL" || typeof options.rowLimit === "number") setRowLimit(options.rowLimit);
+    // "" (don't split) is a valid saved value, so an empty string must still apply.
+    // A saved column that has since been dropped falls back to not splitting.
+    if (Array.isArray(options.chart_functions)) {
+      // Keep only definitions whose column still exists — the same read-time
+      // forgiveness `computeAggregates` applies, done here too so the BUILDER doesn't
+      // show a row pointing at a dropped column.
+      const restored = options.chart_functions.filter(
+        (definition): definition is CsvAggregateDefinition =>
+          !!definition &&
+          typeof definition.column === "string" &&
+          entry.columns.some((column) => column.name === definition.column),
+      );
+      setChartFunctions(restored);
+      // Results belong to the previous chart, not this one.
+      setAggregateResults([]);
+    }
+    if (typeof options.splitColumn === "string") {
+      setSplitColumn(
+        options.splitColumn === "" ||
+          entry.columns.some((column) => column.name === options.splitColumn)
+          ? options.splitColumn
+          : "",
+      );
+    }
   }
 
   function handleLoadPreset(id: number) {
@@ -583,7 +649,16 @@ function ChartBuilder({ entry }: { entry: CsvAnalyticEntry }) {
     const name = presetName.trim();
     if (name === "") return;
     setPresetError(undefined);
-    const optionsJson = JSON.stringify({ chartType, xKey, yKeys, showTable, decimals, rowLimit });
+    const optionsJson = JSON.stringify({
+      chartType,
+      xKey,
+      yKeys,
+      showTable,
+      decimals,
+      rowLimit,
+      splitColumn,
+      chart_functions: chartFunctions,
+    });
     const result = await saveChartPresetAction(entry.id, name, optionsJson);
     if (!result.ok) {
       setPresetError(result.error ?? "Failed to save chart.");
@@ -601,33 +676,145 @@ function ChartBuilder({ entry }: { entry: CsvAnalyticEntry }) {
   }
 
   const rows = data?.rows ?? [];
-  const records = useMemo(() => {
+
+  // Splitting is only possible once the column exists AND the data has been read.
+  const isSplit = splitColumn !== "" && entry.columns.some((column) => column.name === splitColumn);
+
+  /**
+   * Chart rows and their series, either plain (one series per Y column) or split
+   * (one series per Y column × source value).
+   *
+   * Computed together rather than as two memos because in split mode the series list
+   * is *derived from the data* — you don't know the sources until the rows are read —
+   * so deriving them apart would let the chart render a series key no record carries.
+   */
+  const { records, series } = useMemo(() => {
+    if (isSplit && yKeys.length > 0 && xKey !== "") {
+      const split = buildSplitChartData({
+        columns: entry.columns,
+        rows,
+        xColumn: xKey,
+        splitColumn,
+        measureColumns: yKeys,
+      });
+      return {
+        records: split.rows,
+        series: split.series.map((one) => ({ key: one.key, label: one.label })),
+      };
+    }
+
     const xIndex = entry.columns.findIndex((column) => column.name === xKey);
     const yIndexes = yKeys.map((key) => entry.columns.findIndex((column) => column.name === key));
-    return rows.map((row) => {
-      const record: Record<string, number | string | null> = {};
-      const xRaw = xIndex >= 0 ? row[xIndex] : null;
-      record[xKey] = chartType === "scatter" ? toChartNumber(xRaw) : xRaw;
-      yKeys.forEach((key, i) => {
-        record[key] = toChartNumber(yIndexes[i] >= 0 ? row[yIndexes[i]] : null);
-      });
-      return record;
-    });
-  }, [rows, entry.columns, xKey, yKeys, chartType]);
-
-  const series = useMemo(
-    () =>
-      yKeys.map((key) => ({
+    return {
+      records: rows.map((row) => {
+        const record: Record<string, number | string | null> = {};
+        const xRaw = xIndex >= 0 ? row[xIndex] : null;
+        record[xKey] = chartType === "scatter" ? toChartNumber(xRaw) : xRaw;
+        yKeys.forEach((key, i) => {
+          record[key] = toChartNumber(yIndexes[i] >= 0 ? row[yIndexes[i]] : null);
+        });
+        return record;
+      }),
+      series: yKeys.map((key) => ({
         key,
         label: entry.columns.find((column) => column.name === key)?.sourceHeader ?? key,
       })),
-    [yKeys, entry.columns],
-  );
+    };
+  }, [rows, entry.columns, xKey, yKeys, chartType, isSplit, splitColumn]);
+
+  // Turning splitting ON while scatter is selected would leave an encoding the split
+  // data can't honour, so fall back to a line. Done as an effect rather than inside
+  // the split handler because a preset can also load scatter + a split column.
+  useEffect(() => {
+    if (isSplit && chartType === "scatter") setChartType("line");
+  }, [isSplit, chartType]);
 
   const formatValue = useCallback(
     (value: number) =>
       Number.isFinite(value) ? value.toLocaleString(undefined, { maximumFractionDigits: decimals }) : "",
     [decimals],
+  );
+
+  // --- Aggregate functions ---------------------------------------------------
+
+  function addFunction() {
+    // Seeded with "average" over the first numeric column, so a fresh row is already
+    // valid and Calculate works without touching the pickers.
+    const first = columnsForFunction("average", entry.columns)[0];
+    setChartFunctions((current) => [
+      ...current,
+      {
+        // Unique within this list only — it keys the row and identifies what to
+        // remove when two aggregates are otherwise identical.
+        id: `fn-${Date.now()}-${current.length}`,
+        fn: "average",
+        column: first?.name ?? entry.columns[0]?.name ?? "",
+        chartIt: false,
+      },
+    ]);
+  }
+
+  function updateFunction(id: string, patch: Partial<CsvAggregateDefinition>) {
+    setChartFunctions((current) =>
+      current.map((definition) => {
+        if (definition.id !== id) return definition;
+        const next = { ...definition, ...patch };
+        // Switching to a numeric-only function while a text column is selected would
+        // leave a pair that silently computes nothing, so re-point it at a column the
+        // new function can actually take.
+        if (patch.fn !== undefined) {
+          const allowed = columnsForFunction(next.fn, entry.columns);
+          if (!allowed.some((column) => column.name === next.column)) {
+            next.column = allowed[0]?.name ?? "";
+          }
+        }
+        return next;
+      }),
+    );
+  }
+
+  function removeFunction(id: string) {
+    setChartFunctions((current) => current.filter((definition) => definition.id !== id));
+    setAggregateResults((current) => current.filter((result) => result.id !== id));
+  }
+
+  /**
+   * Evaluates every defined aggregate over the rows the chart is currently showing.
+   *
+   * Deliberately over `rows` — the same capped, same read the chart draws — so a
+   * figure always describes what is on screen. Changing "Rows to include" changes the
+   * number, which is the honest behaviour even though it means the figure moves.
+   */
+  function handleCalculate() {
+    setAggregateResults(
+      computeAggregates({
+        columns: entry.columns,
+        rows,
+        definitions: chartFunctions,
+        splitColumn: isSplit ? splitColumn : undefined,
+      }),
+    );
+  }
+
+  /**
+   * The reference lines the chart draws. Memoized because `ChartXY` is `memo`-wrapped
+   * with a shallow comparator — a fresh array each render would defeat it.
+   */
+  const referenceLines = useMemo(
+    () =>
+      aggregateReferenceLines(aggregateResults).map((line) => ({
+        key: line.key,
+        value: line.value,
+        label: line.label,
+        // Several benchmarks all drawn in one near-black would be indistinguishable,
+        // so each takes its own hue from the reserved annotation ramp. The first one
+        // is the plain ink, which is the common case (a single average).
+        color:
+          line.index === 0
+            ? CHART_CHROME.reference
+            : CHART_REFERENCE_COLORS[(line.index - 1) % CHART_REFERENCE_COLORS.length],
+      })),
+    [aggregateResults],
   );
 
   function toggleY(name: string) {
@@ -700,6 +887,25 @@ function ChartBuilder({ entry }: { entry: CsvAnalyticEntry }) {
             ))}
           </select>
         </label>
+        {/* Only a pooled dataset has anything to split by, so the control is absent
+            rather than disabled on a single-file entry — see modules.md. */}
+        {splitOptions.length > 0 && (
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-ink">Split by</span>
+            <select
+              value={splitColumn}
+              onChange={(event) => setSplitColumn(event.target.value)}
+              className={`w-full ${controlClass}`}
+            >
+              <option value="">Don&rsquo;t split</option>
+              {splitOptions.map((column) => (
+                <option key={column.name} value={column.name}>
+                  {column.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="block text-sm">
           <span className="mb-1 block font-medium text-ink">Rows to include</span>
           <select
@@ -754,6 +960,123 @@ function ChartBuilder({ entry }: { entry: CsvAnalyticEntry }) {
         </div>
       </div>
 
+      {/* Aggregate functions. Defined here, evaluated only on Calculate. */}
+      <div className="rounded-md border border-line bg-paper-raised p-3">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium text-ink">Functions</span>
+          <Button size="sm" variant="secondary" onClick={addFunction} ariaLabel="Add a function">
+            + Add
+          </Button>
+          {chartFunctions.length > 0 && (
+            <Button size="sm" onClick={handleCalculate} disabled={loading}>
+              Calculate
+            </Button>
+          )}
+        </div>
+
+        {chartFunctions.length === 0 ? (
+          <p className="text-sm text-muted">
+            Add a function to compute an average, minimum, maximum, sum, count or distinct
+            count over a column — and optionally draw it on the chart.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {chartFunctions.map((definition) => {
+              const allowed = columnsForFunction(definition.fn, entry.columns);
+              const result = aggregateResults.find((one) => one.id === definition.id);
+              return (
+                <div
+                  key={definition.id}
+                  className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-paper p-2"
+                >
+                  <select
+                    value={definition.fn}
+                    onChange={(event) =>
+                      updateFunction(definition.id, {
+                        fn: event.target.value as CsvAggregateFunction,
+                      })
+                    }
+                    className={controlClass}
+                    aria-label="Function"
+                  >
+                    {CSV_AGGREGATE_FUNCTIONS.map((fn) => (
+                      <option key={fn} value={fn}>
+                        {CSV_AGGREGATE_LABELS[fn]}
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Only columns the chosen function can take — average never offers
+                      a text column, so an impossible pair can't be built. */}
+                  <select
+                    value={definition.column}
+                    onChange={(event) =>
+                      updateFunction(definition.id, { column: event.target.value })
+                    }
+                    className={controlClass}
+                    aria-label="Column"
+                  >
+                    {allowed.map((column) => (
+                      <option key={column.name} value={column.name}>
+                        {column.sourceHeader}
+                      </option>
+                    ))}
+                  </select>
+
+                  <label className="flex items-center gap-2 text-sm text-ink">
+                    <input
+                      type="checkbox"
+                      checked={definition.chartIt}
+                      onChange={(event) =>
+                        updateFunction(definition.id, { chartIt: event.target.checked })
+                      }
+                      className="h-4 w-4 rounded border-line text-brass focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+                    />
+                    <span>Chart it</span>
+                  </label>
+
+                  {result && (
+                    <span className="text-sm text-ink">
+                      ={" "}
+                      <span className="font-medium">
+                        {result.value === null ? "—" : formatValue(result.value)}
+                      </span>
+                      {result.bySource.length > 0 && (
+                        <span className="ml-2 text-muted">
+                          (
+                          {result.bySource
+                            .map(
+                              (entryBySource) =>
+                                `${entryBySource.source || "(none)"}: ${
+                                  entryBySource.value === null
+                                    ? "—"
+                                    : formatValue(entryBySource.value)
+                                }`,
+                            )
+                            .join(", ")}
+                          )
+                        </span>
+                      )}
+                    </span>
+                  )}
+
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => removeFunction(definition.id)}
+                    ariaLabel={`Remove ${describeAggregate(definition, entry.columns)}`}
+                    title="Remove this function"
+                    className="ml-auto"
+                  >
+                    ×
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* "Show data points" used to live here; it's now the chart's own gear
           control, alongside value labels, the legend and the gridlines, so every
           chart in the app offers it the same way. */}
@@ -764,6 +1087,13 @@ function ChartBuilder({ entry }: { entry: CsvAnalyticEntry }) {
         </label>
       </div>
 
+      {isSplit && series.length > MAX_SPLIT_SERIES && (
+        <p className="text-sm text-muted">
+          {series.length} series — that is a lot for one legend. Pick a single Y series, or
+          filter the dataset with a custom view, to make this readable.
+        </p>
+      )}
+
       {loading ? (
         <p className="text-sm text-muted">Loading data…</p>
       ) : error ? (
@@ -773,14 +1103,17 @@ function ChartBuilder({ entry }: { entry: CsvAnalyticEntry }) {
       ) : (
         <ChartXY
           type={chartType}
-          // All four: this is the one view whose x is genuinely numeric on demand
-          // (see `records`), so scatter is honest here.
-          chartTypes={CHART_TYPES}
+          // Scatter is offered only when NOT splitting. Unsplit, this view casts its x
+          // to a number on demand (see `records`), which is what scatter requires; a
+          // split pivot keeps the x as the shared category the sources are aligned on,
+          // so offering scatter there would promise a numeric axis the data isn't.
+          chartTypes={isSplit ? SPLIT_CHART_TYPES : CHART_TYPES}
           onTypeChange={setChartType}
           data={records}
           xKey={xKey}
           series={series}
           formatValue={formatValue}
+          referenceLines={referenceLines}
           displayStorageKey="myhomebase:chart:csv-analytics"
         />
       )}
@@ -812,14 +1145,31 @@ function EntryForm({ entry, onDone }: { entry?: CsvAnalyticEntry; onDone: () => 
   const [previewRows, setPreviewRows] = useState<string[][]>([]);
   const [columns, setColumns] = useState<CsvColumnDefinition[]>(entry?.columns ?? []);
   const [primaryKeyFields, setPrimaryKeyFields] = useState<string[]>(entry?.primaryKeyFields ?? []);
-  const [ingestMode, setIngestMode] = useState<IngestMode>("overwrite");
+  // "append" when EDITING an existing entry, "overwrite" only when creating.
+  //
+  // This used to default to "overwrite" in both cases, which quietly destroyed data:
+  // editing an entry to add a second file, without noticing the radio, dropped and
+  // recreated the table — losing every row already imported AND any extra column that
+  // had been added to hold a per-file value. Adding to a dataset is the overwhelmingly
+  // common reason to edit one, so it is the safe default; overwrite is still one click
+  // away and is now an explicit choice.
+  const [ingestMode, setIngestMode] = useState<IngestMode>(entry ? "append" : "overwrite");
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [status, setStatus] = useState<string | undefined>(undefined);
-  // Track which columns were in the original CSV headers (for append/truncate mode)
-  const [originalColumnSourceHeaders, setOriginalColumnSourceHeaders] = useState<Set<string>>(
-    new Set(entry?.columns.map((c) => c.sourceHeader) ?? [])
+  // How many of `columns` came from the file / already exist on the entry. Anything at
+  // or past this index is a column the reader added here.
+  //
+  // This used to be a Set of `sourceHeader` strings, which broke: `updateColumn`
+  // rewrites a new column's sourceHeader as its name is typed, so renaming one either
+  // made it stop counting as new (if the typed name collided with a real header) or
+  // orphaned the value already entered for it — the input blanked and submit then
+  // failed asking for a value the reader had already given. A count is stable because
+  // new columns are only ever APPENDED (see addColumn), never inserted.
+  const [existingColumnCount, setExistingColumnCount] = useState<number>(
+    entry?.columns.length ?? 0,
   );
+  const isNewColumnAt = (index: number) => index >= existingColumnCount;
   // Values for new columns when appending/truncating (applied to all CSV rows)
   const [newColumnValues, setNewColumnValues] = useState<Record<string, string>>({});
 
@@ -850,12 +1200,15 @@ function EntryForm({ entry, onDone }: { entry?: CsvAnalyticEntry; onDone: () => 
       setHeaders(result.preview.headers);
       setPreviewRows(result.preview.previewRows);
       if (!entry || ingestMode === "overwrite") {
+        // Creating, or redefining the schema: the dropped file IS the column list, so
+        // every one of its columns is "existing" and none is reader-added yet.
         setColumns(result.preview.suggestedColumns);
         setPrimaryKeyFields([]);
-        setOriginalColumnSourceHeaders(new Set(result.preview.headers));
+        setExistingColumnCount(result.preview.headers.length);
       } else {
-        // For append/truncate, track which columns came from the CSV
-        setOriginalColumnSourceHeaders(new Set(result.preview.headers));
+        // Append/truncate keeps the entry's schema; the file supplies values for the
+        // columns already there, and anything past them is reader-added.
+        setExistingColumnCount(entry.columns.length);
       }
     } finally {
       setIsBusy(false);
@@ -868,7 +1221,7 @@ function EntryForm({ entry, onDone }: { entry?: CsvAnalyticEntry; onDone: () => 
         if (i !== index) return column;
         // A brand-new column has no real file header — sourceHeader is just its display
         // label, so keep it in sync with the name the user types.
-        const isNewColumn = !originalColumnSourceHeaders.has(column.sourceHeader);
+        const isNewColumn = isNewColumnAt(i);
         const sourceHeader = field === "name" && isNewColumn ? value : column.sourceHeader;
         return { ...column, [field]: value, sourceHeader };
       }),
@@ -908,7 +1261,7 @@ function EntryForm({ entry, onDone }: { entry?: CsvAnalyticEntry; onDone: () => 
       const newColumns =
         entry && ingestMode === "overwrite"
           ? []
-          : columns.filter((col) => !originalColumnSourceHeaders.has(col.sourceHeader));
+          : columns.filter((_col, index) => isNewColumnAt(index));
       if (newColumns.length > 0) {
         const missingValues = newColumns.filter((col) => !newColumnValues[col.name]?.trim());
         if (missingValues.length > 0) {
@@ -1042,7 +1395,7 @@ function EntryForm({ entry, onDone }: { entry?: CsvAnalyticEntry; onDone: () => 
               </thead>
               <tbody>
                 {displayedColumns.map((column, index) => {
-                  const isNewColumn = !originalColumnSourceHeaders.has(column.sourceHeader);
+                  const isNewColumn = isNewColumnAt(index);
                   const canEditRow = canEditSchema || isNewColumn;
                   return (
                     <tr
@@ -1140,7 +1493,7 @@ function EntryForm({ entry, onDone }: { entry?: CsvAnalyticEntry; onDone: () => 
       {/* When creating, or appending/truncating, with new columns, prompt for a value for each */}
       {hasNewFile && (!entry || ingestMode !== "overwrite") && displayedColumns.length > 0 && (
         (() => {
-          const newColumns = displayedColumns.filter((col) => !originalColumnSourceHeaders.has(col.sourceHeader));
+          const newColumns = displayedColumns.filter((_col, index) => isNewColumnAt(index));
           return newColumns.length > 0 ? (
             <div className="rounded-md border border-brass bg-paper-raised p-4">
               <p className="mb-3 text-sm font-medium text-ink">

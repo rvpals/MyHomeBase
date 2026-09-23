@@ -20,6 +20,7 @@ export {
 export type { UserRepository, NewUserRecord } from "./ports";
 export {
   listUsers,
+  getUserById,
   createUser,
   registerUser,
   verifyCredentials,

@@ -3,11 +3,13 @@ import type {
   LocationTaxonomyWriteData,
   LocationWriteData,
 } from "./schema";
+import type { DecodedImage } from "@/lib/shared/image-upload";
 import type {
   EntryLocationSource,
   LocationCategory,
   LocationTag,
   LocationTaxonomyCount,
+  LocationTaxonomyIcon,
   SavedLocation,
   SavedLocationWithUsage,
 } from "./types";
@@ -103,10 +105,16 @@ export interface SavedLocationRepository {
   deleteCategory(name: string): void;
   /** Category names with how many places carry each, for the filter UI. */
   countLocationsByCategory(): LocationTaxonomyCount[];
+  /** The icon bytes. Only the icon-serving route calls this — never a list read. */
+  getCategoryIcon(name: string): LocationTaxonomyIcon | undefined;
+  /** Stores or, with `undefined`, removes the category's icon. */
+  setCategoryIcon(name: string, icon: DecodedImage | undefined): void;
 
   listTags(): LocationTag[];
   getTagByName(name: string): LocationTag | undefined;
   upsertTag(input: LocationTaxonomyWriteData): LocationTag;
   deleteTag(name: string): void;
   countLocationsByTag(): LocationTaxonomyCount[];
+  getTagIcon(name: string): LocationTaxonomyIcon | undefined;
+  setTagIcon(name: string, icon: DecodedImage | undefined): void;
 }

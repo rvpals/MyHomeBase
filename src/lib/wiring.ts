@@ -5,6 +5,10 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { SqliteAttendanceRepository } from "./attendance/repository";
 import { SqliteAuthEventRepository } from "./auth-events/repository";
+import {
+  SqliteIpAllowlistRepository,
+  SqliteSiteVisitRepository,
+} from "./site-visits/repository";
 import { SqliteSessionRepository } from "./auth/repository";
 import { GoogleAuthClient } from "./auth/google-client";
 import type { GoogleOAuthClient } from "./auth/ports";
@@ -173,6 +177,12 @@ export const deps = {
   userPreferencesRepo: new SqliteUserPreferencesRepository(db),
   sessionRepo: new SqliteSessionRepository(db),
   authEventRepo: new SqliteAuthEventRepository(db),
+  // Logged-out arrivals at the site root (migrations/0102), and the addresses the
+  // reader has vouched for (migrations/0103). The visit repo is written on every
+  // logged-out root render and read only by Admin → Security → Visit; the allowlist
+  // is read on each of those writes to decide the verdict.
+  siteVisitRepo: new SqliteSiteVisitRepository(db),
+  ipAllowlistRepo: new SqliteIpAllowlistRepository(db),
   investmentAccountRepo: new SqliteInvestmentAccountRepository(db),
   // Per-slot icon overrides (migrations/0066). Read for the active icon set on every
   // page render; the raster BLOB is read only by src/app/api/icons/slots/[slot]/route.ts.

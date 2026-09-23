@@ -35,12 +35,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { TreeIcon } from "@/components/tree-icons";
+import { PhotoExifDialog } from "@/components/photo-exif-dialog";
 import {
   DEFAULT_SLIDESHOW_OPTIONS,
   SLIDESHOW_EFFECT_CHOICES,
   SLIDESHOW_INTERVAL_CHOICES,
   photoJournalDate,
   slideshowIntervalMs,
+  type ExifGpsFix,
+  type ExifTag,
   type SlideshowEffect,
   type SlideshowOptions,
 } from "@/lib/journal-photos";
@@ -90,6 +93,27 @@ export interface ViewerPhotoDetails {
     takenAtTime?: string;
     /** `exif` is the camera's own record; the rest are inferred from names. */
     takenAtSource: "exif" | "file-name" | "folder" | "none";
+    /**
+     * Every EXIF tag the header held, for the EXIF panel.
+     *
+     * Rides along on this result rather than arriving through a prop of its own, and
+     * that is the performance design: the tags come out of the SAME partial header read
+     * that produced the timestamp above, so the panel costs no second trip to the NAS.
+     * A prop would instead have forced every caller to read EXIF for every photo in the
+     * set before opening the viewer -- which for a 1,187-photo folder is the stall this
+     * whole lazy channel exists to avoid.
+     *
+     * Absent for a photo that carries none: a scan, a screenshot, an editor's re-save.
+     * The `EXIF` button is hidden in that case rather than opening an empty panel.
+     */
+    exifTags?: ExifTag[];
+    /**
+     * The decimal position, when the GPS block held a usable fix.
+     *
+     * Drives the panel's map, and only that -- the GPS tab's table shows the stored
+     * values as written. Derived from the same rows, so the two cannot disagree.
+     */
+    gps?: ExifGpsFix;
   };
   error?: string;
 }
@@ -374,6 +398,10 @@ export function PhotoViewer({
   // `react-hooks/set-state-in-effect`, correctly: it was a cascading render for
   // something that was never independent state.
   const [albumMenuPath, setAlbumMenuPath] = useState<string | undefined>(undefined);
+  // Whether the EXIF panel is open. A BOOLEAN, not a path, unlike the album menu above:
+  // the panel always describes the photo on the stage, so arrowing to the next picture
+  // should refresh it rather than close it.
+  const [isExifOpen, setIsExifOpen] = useState(false);
   const [albumOverrides, setAlbumOverrides] = useState<Record<string, boolean>>({});
   const [albumBusyId, setAlbumBusyId] = useState<number | undefined>(undefined);
   const [albumError, setAlbumError] = useState<string | undefined>(undefined);
@@ -821,6 +849,33 @@ export function PhotoViewer({
     active?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
   }, [index]);
 
+  // The EXIF rows for the photo on the stage, off the `details` derived above -- the
+  // same cache entry the details line and the journal link already read, so the panel
+  // cannot show one photo's tags beside another's date.
+  //
+  // Derived rather than held in state, so the panel FOLLOWS the reader: arrow to the
+  // next picture with it open and it redraws with that photo's tags as soon as they
+  // land. `null` in the cache means "asked, and there is nothing there".
+  const exifTags = details?.exifTags;
+  // Offered only when there is something to show. An `EXIF` button that opened three
+  // empty tabs would be a control that cannot act -- the same reasoning the heart and
+  // the album `+` follow above.
+  const canShowExif = exifTags !== undefined && exifTags.length > 0;
+  // `details === undefined` is "not read yet", which is NOT the same as "no metadata" --
+  // so the panel must not close itself while a read is in flight. It closes only once
+  // this photograph's details have landed and carry no tags.
+  const hasNoExif = details !== undefined && !canShowExif;
+
+  // Closes the EXIF panel when the reader arrows onto a photograph that has none.
+  //
+  // Without this the flag stays set, the dialog silently vanishes for the picture with
+  // no metadata, and then REAPPEARS on the next one that has some -- a dialog opening
+  // itself, from the reader's point of view. Closing it is the honest behaviour: they
+  // asked to see this photograph's EXIF, and this photograph has none.
+  useEffect(() => {
+    if (isExifOpen && hasNoExif) setIsExifOpen(false);
+  }, [isExifOpen, hasNoExif]);
+
   // Mounted into document.body via a portal, NOT inline where it is used: `fixed
   // inset-0 z-50` is only as good as its stacking context, and rendered inside a card
   // this would come out behind the app's own `z-40` header. The `document` guard covers
@@ -832,454 +887,502 @@ export function PhotoViewer({
   const subcaption = photo?.subcaption ?? (label === "" ? undefined : label);
 
   return createPortal(
-    <div
-      // `no-print`: a printed page is the page, not a screen overlay. Fully opaque
-      // rather than a translucent scrim — this is a photo viewer, and the page showing
-      // through behind a picture is a distraction rather than useful context.
-      className={`no-print fixed inset-0 z-50 flex flex-col bg-black ${className}`}
-      role="dialog"
-      aria-modal="true"
-      aria-label={label === "" ? "Photograph" : `Photos in ${label}`}
-    >
-      {/* The header carries its own opaque background: the app's `z-40` bar sits exactly
-          here, and at anything less than opaque its nav links read straight through.
+    <>
+      <div
+        // `no-print`: a printed page is the page, not a screen overlay. Fully opaque
+        // rather than a translucent scrim — this is a photo viewer, and the page showing
+        // through behind a picture is a distraction rather than useful context.
+        className={`no-print fixed inset-0 z-50 flex flex-col bg-black ${className}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={label === "" ? "Photograph" : `Photos in ${label}`}
+      >
+        {/* The header carries its own opaque background: the app's `z-40` bar sits exactly
+            here, and at anything less than opaque its nav links read straight through.
 
-          `relative z-10` puts it ABOVE the stage below. Both are children of the same
-          flex column with no ordering between them, and the stage is `relative` -- so
-          it makes a stacking context that, coming later in DOM order, painted over this
-          one. The album dropdown overflows the header's box, so it was being clipped
-          behind the picture frame. Local ordering inside this portal only; the portal
-          itself is the thing at `z-50`. */}
-      <div className="relative z-10 flex items-start justify-between gap-3 bg-black px-4 py-3 text-white">
-        <div className="min-w-0">
-          {subcaption !== undefined && (
-            <p className="truncate text-sm text-white/60">{subcaption}</p>
-          )}
-          <p className="truncate font-mono text-sm">{caption}</p>
-        </div>
-        <div className="flex shrink-0 items-center gap-3">
-          {/* Keeps the photo on the stage. First of the header controls because it is
-              the only one that CHANGES something — the others navigate, count or close.
+            `relative z-10` puts it ABOVE the stage below. Both are children of the same
+            flex column with no ordering between them, and the stage is `relative` -- so
+            it makes a stacking context that, coming later in DOM order, painted over this
+            one. The album dropdown overflows the header's box, so it was being clipped
+            behind the picture frame. Local ordering inside this portal only; the portal
+            itself is the thing at `z-50`. */}
+        <div className="relative z-10 flex items-start justify-between gap-3 bg-black px-4 py-3 text-white">
+          <div className="min-w-0">
+            {subcaption !== undefined && (
+              <p className="truncate text-sm text-white/60">{subcaption}</p>
+            )}
+            <p className="truncate font-mono text-sm">{caption}</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-3">
+            {/* Keeps the photo on the stage. First of the header controls because it is
+                the only one that CHANGES something — the others navigate, count or close.
 
-              Not the app's `Button`: this header is opaque black, where `Button`'s
-              `secondary` variant is paper-on-paper with a `--line` shadow and reads as a
-              pale slab rather than a control. The `bg-white/10` pill is what keeps the
-              header's controls one family.
+                Not the app's `Button`: this header is opaque black, where `Button`'s
+                `secondary` variant is paper-on-paper with a `--line` shadow and reads as a
+                pale slab rather than a control. The `bg-white/10` pill is what keeps the
+                header's controls one family.
 
-              Stays visible at every width, unlike the `n / total` counter: a control the
-              reader acts with outranks a figure the thumbnail strip already tells them. */}
-          {canFavorite && (
-            <button
-              type="button"
-              onClick={() => void toggleFavorite()}
-              disabled={isTogglingFavorite}
-              // `aria-pressed` rather than a changing label alone: this is one toggle in
-              // two states, not two different buttons, and a screen reader should hear
-              // the state on the same control.
-              aria-pressed={isPhotoFavorite}
-              aria-label={isPhotoFavorite ? "Remove from favorites" : "Mark as favorite"}
-              title={isPhotoFavorite ? "Remove from favorites (F)" : "Mark as favorite (F)"}
-              className={`${PILL_CLASS} disabled:opacity-60`}
-            >
-              {/* Outline vs solid is what carries the state, which is why both glyphs
-                  stay hand-drawn — see ALWAYS_CLASSIC in tree-icons.tsx. No `SlotIcon`:
-                  this is a state glyph on a toggle, not a mark for a PLACE.
-
-                  `text-brass` and not the home card's `text-brass-dark`, which against
-                  black is too near the background to read. */}
-              <TreeIcon
-                name={isPhotoFavorite ? "heart-filled" : "heart"}
-                className={`h-5 w-5 ${isPhotoFavorite ? "text-brass" : ""}`}
-              />
-            </button>
-          )}
-
-          {/* Files this photograph into an album.
-
-              Second in the row, after the heart: both are controls that CHANGE
-              something, and they belong together ahead of the ones that navigate.
-
-              `plus` rather than an album glyph, and deliberately no icon slot -- this
-              is a row action on a toolbar, not a mark for a PLACE, so it stays
-              hand-drawn like the heart beside it (see ALWAYS_CLASSIC in
-              tree-icons.tsx).
-
-              The menu is positioned INSIDE the viewer's own portal, which already owns
-              `z-50`. It therefore needs no z-index of its own and cannot fight the
-              app's shell surfaces or a Modal -- see design.md, "Adding a UI element to
-              the shell". */}
-          {canFileIntoAlbum && (
-            <div data-album-menu className="relative">
+                Stays visible at every width, unlike the `n / total` counter: a control the
+                reader acts with outranks a figure the thumbnail strip already tells them. */}
+            {canFavorite && (
               <button
                 type="button"
-                onClick={toggleAlbumMenu}
-                aria-haspopup="menu"
-                aria-expanded={isAlbumMenuOpen}
-                aria-label="Add to album"
-                title="Add to album"
-                className={PILL_CLASS}
+                onClick={() => void toggleFavorite()}
+                disabled={isTogglingFavorite}
+                // `aria-pressed` rather than a changing label alone: this is one toggle in
+                // two states, not two different buttons, and a screen reader should hear
+                // the state on the same control.
+                aria-pressed={isPhotoFavorite}
+                aria-label={isPhotoFavorite ? "Remove from favorites" : "Mark as favorite"}
+                title={isPhotoFavorite ? "Remove from favorites (F)" : "Mark as favorite (F)"}
+                className={`${PILL_CLASS} disabled:opacity-60`}
               >
-                <TreeIcon name="plus" className="h-5 w-5" />
+                {/* Outline vs solid is what carries the state, which is why both glyphs
+                    stay hand-drawn — see ALWAYS_CLASSIC in tree-icons.tsx. No `SlotIcon`:
+                    this is a state glyph on a toggle, not a mark for a PLACE.
+
+                    `text-brass` and not the home card's `text-brass-dark`, which against
+                    black is too near the background to read. */}
+                <TreeIcon
+                  name={isPhotoFavorite ? "heart-filled" : "heart"}
+                  className={`h-5 w-5 ${isPhotoFavorite ? "text-brass" : ""}`}
+                />
               </button>
+            )}
 
-              {isAlbumMenuOpen && (
-                /* `right-0` so it hangs from the button's right edge and cannot run off
-                   the screen on a phone, where this sits near the viewport edge.
-                   `max-h` plus scrolling because the album list is unbounded, and
-                   `w-64` caps it well inside a 390px screen. */
-                <div
-                  role="menu"
-                  className="absolute right-0 top-12 z-20 w-64 overflow-hidden rounded-lg border border-white/15 bg-neutral-900 text-white shadow-2xl ring-1 ring-black/50"
+            {/* Files this photograph into an album.
+
+                Second in the row, after the heart: both are controls that CHANGE
+                something, and they belong together ahead of the ones that navigate.
+
+                `plus` rather than an album glyph, and deliberately no icon slot -- this
+                is a row action on a toolbar, not a mark for a PLACE, so it stays
+                hand-drawn like the heart beside it (see ALWAYS_CLASSIC in
+                tree-icons.tsx).
+
+                The menu is positioned INSIDE the viewer's own portal, which already owns
+                `z-50`. It therefore needs no z-index of its own and cannot fight the
+                app's shell surfaces or a Modal -- see design.md, "Adding a UI element to
+                the shell". */}
+            {canFileIntoAlbum && (
+              <div data-album-menu className="relative">
+                <button
+                  type="button"
+                  onClick={toggleAlbumMenu}
+                  aria-haspopup="menu"
+                  aria-expanded={isAlbumMenuOpen}
+                  aria-label="Add to album"
+                  title="Add to album"
+                  className={PILL_CLASS}
                 >
-                  <p className="border-b border-white/10 px-3 py-2 text-xs uppercase tracking-wide text-white/50">
-                    Add to album
-                  </p>
+                  <TreeIcon name="plus" className="h-5 w-5" />
+                </button>
 
-                  {/* Capped against the VIEWPORT, not a fixed 16rem: the menu hangs
-                      from a header about 56px down, so on a landscape phone (~390px
-                      tall) a fixed cap plus the create row and an error line would run
-                      off the bottom of the screen with no way to reach the last album.
-                      `50dvh` leaves room for both and shrinks with the window. */}
-                  <div className="max-h-[50dvh] overflow-y-auto">
-                    {albums.length === 0 ? (
-                      <p className="px-3 py-3 text-sm text-white/60">
-                        No albums yet &mdash; make the first one below.
-                      </p>
-                    ) : (
-                      albums.map((album) => {
-                        const isIn = albumIdsForPhoto.has(album.id);
-                        return (
-                          <button
-                            key={album.id}
-                            type="button"
-                            role="menuitem"
-                            // Already filed: the row stays visible and reads as done
-                            // rather than disappearing, so the menu answers "which
-                            // albums is this in" as well as offering the ones it is not.
-                            disabled={isIn || albumBusyId !== undefined}
-                            onClick={() => void addToAlbum(album.id)}
-                            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors hover:bg-white/10 disabled:cursor-default disabled:hover:bg-transparent"
-                          >
-                            <span
-                              aria-hidden="true"
-                              className={`w-4 shrink-0 text-center ${isIn ? "text-brass" : "text-transparent"}`}
-                            >
-                              &#10003;
-                            </span>
-                            <span className={`truncate ${isIn ? "text-white/50" : ""}`}>
-                              {album.name}
-                            </span>
-                            {albumBusyId === album.id && (
-                              <span className="ml-auto shrink-0 text-xs text-white/50">
-                                &hellip;
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
+                {isAlbumMenuOpen && (
+                  /* `right-0` so it hangs from the button's right edge and cannot run off
+                     the screen on a phone, where this sits near the viewport edge.
+                     `max-h` plus scrolling because the album list is unbounded, and
+                     `w-64` caps it well inside a 390px screen. */
+                  <div
+                    role="menu"
+                    className="absolute right-0 top-12 z-20 w-64 overflow-hidden rounded-lg border border-white/15 bg-neutral-900 text-white shadow-2xl ring-1 ring-black/50"
+                  >
+                    <p className="border-b border-white/10 px-3 py-2 text-xs uppercase tracking-wide text-white/50">
+                      Add to album
+                    </p>
 
-                  {/* The way to a NEW album, without leaving the picture. Only offered
-                      when the caller supplied `onCreateAlbum`; a caller that wants a
-                      read-only picker simply omits it. */}
-                  {onCreateAlbum !== undefined && (
-                    <div className="border-t border-white/10">
-                      {newAlbumName === undefined ? (
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={() => setNewAlbumName("")}
-                          className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-brass transition-colors hover:bg-white/10"
-                        >
-                          <TreeIcon name="plus" className="h-4 w-4 shrink-0" />
-                          Create a new album&hellip;
-                        </button>
+                    {/* Capped against the VIEWPORT, not a fixed 16rem: the menu hangs
+                        from a header about 56px down, so on a landscape phone (~390px
+                        tall) a fixed cap plus the create row and an error line would run
+                        off the bottom of the screen with no way to reach the last album.
+                        `50dvh` leaves room for both and shrinks with the window. */}
+                    <div className="max-h-[50dvh] overflow-y-auto">
+                      {albums.length === 0 ? (
+                        <p className="px-3 py-3 text-sm text-white/60">
+                          No albums yet &mdash; make the first one below.
+                        </p>
                       ) : (
-                        <form
-                          onSubmit={(event) => {
-                            event.preventDefault();
-                            void createAlbumInline();
-                          }}
-                          className="flex flex-col gap-2 p-3"
-                        >
-                          <input
-                            type="text"
-                            value={newAlbumName}
-                            onChange={(event) => setNewAlbumName(event.target.value)}
-                            // Escape backs out of the field rather than closing the
-                            // whole viewer -- the document handler would otherwise read
-                            // it as "close the photo", which is two steps too many.
-                            onKeyDown={(event) => {
-                              if (event.key === "Escape") {
-                                event.stopPropagation();
-                                setNewAlbumName(undefined);
-                                setAlbumError(undefined);
-                              }
-                            }}
-                            autoFocus
-                            maxLength={120}
-                            placeholder="Album name"
-                            aria-label="New album name"
-                            className="w-full rounded border border-white/20 bg-black/40 px-2 py-1.5 text-sm text-white placeholder:text-white/40 focus:border-brass focus:outline-none"
-                          />
-                          <div className="flex justify-end gap-2">
+                        albums.map((album) => {
+                          const isIn = albumIdsForPhoto.has(album.id);
+                          return (
                             <button
+                              key={album.id}
                               type="button"
-                              onClick={() => {
-                                setNewAlbumName(undefined);
-                                setAlbumError(undefined);
-                              }}
-                              className="rounded px-2 py-1 text-xs text-white/60 hover:text-white"
+                              role="menuitem"
+                              // Already filed: the row stays visible and reads as done
+                              // rather than disappearing, so the menu answers "which
+                              // albums is this in" as well as offering the ones it is not.
+                              disabled={isIn || albumBusyId !== undefined}
+                              onClick={() => void addToAlbum(album.id)}
+                              className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors hover:bg-white/10 disabled:cursor-default disabled:hover:bg-transparent"
                             >
-                              Cancel
+                              <span
+                                aria-hidden="true"
+                                className={`w-4 shrink-0 text-center ${isIn ? "text-brass" : "text-transparent"}`}
+                              >
+                                &#10003;
+                              </span>
+                              <span className={`truncate ${isIn ? "text-white/50" : ""}`}>
+                                {album.name}
+                              </span>
+                              {albumBusyId === album.id && (
+                                <span className="ml-auto shrink-0 text-xs text-white/50">
+                                  &hellip;
+                                </span>
+                              )}
                             </button>
-                            <button
-                              type="submit"
-                              disabled={isCreatingAlbum || newAlbumName.trim() === ""}
-                              className="rounded bg-brass px-2 py-1 text-xs font-medium text-black disabled:opacity-50"
-                            >
-                              {isCreatingAlbum ? "Creating…" : "Create & add"}
-                            </button>
-                          </div>
-                        </form>
+                          );
+                        })
                       )}
                     </div>
-                  )}
 
-                  {albumError !== undefined && (
-                    <p className="border-t border-white/10 px-3 py-2 text-xs text-red-300">
-                      {albumError}
-                    </p>
-                  )}
-                </div>
-              )}
+                    {/* The way to a NEW album, without leaving the picture. Only offered
+                        when the caller supplied `onCreateAlbum`; a caller that wants a
+                        read-only picker simply omits it. */}
+                    {onCreateAlbum !== undefined && (
+                      <div className="border-t border-white/10">
+                        {newAlbumName === undefined ? (
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => setNewAlbumName("")}
+                            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-brass transition-colors hover:bg-white/10"
+                          >
+                            <TreeIcon name="plus" className="h-4 w-4 shrink-0" />
+                            Create a new album&hellip;
+                          </button>
+                        ) : (
+                          <form
+                            onSubmit={(event) => {
+                              event.preventDefault();
+                              void createAlbumInline();
+                            }}
+                            className="flex flex-col gap-2 p-3"
+                          >
+                            <input
+                              type="text"
+                              value={newAlbumName}
+                              onChange={(event) => setNewAlbumName(event.target.value)}
+                              // Escape backs out of the field rather than closing the
+                              // whole viewer -- the document handler would otherwise read
+                              // it as "close the photo", which is two steps too many.
+                              onKeyDown={(event) => {
+                                if (event.key === "Escape") {
+                                  event.stopPropagation();
+                                  setNewAlbumName(undefined);
+                                  setAlbumError(undefined);
+                                }
+                              }}
+                              autoFocus
+                              maxLength={120}
+                              placeholder="Album name"
+                              aria-label="New album name"
+                              className="w-full rounded border border-white/20 bg-black/40 px-2 py-1.5 text-sm text-white placeholder:text-white/40 focus:border-brass focus:outline-none"
+                            />
+                            <div className="flex justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setNewAlbumName(undefined);
+                                  setAlbumError(undefined);
+                                }}
+                                className="rounded px-2 py-1 text-xs text-white/60 hover:text-white"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="submit"
+                                disabled={isCreatingAlbum || newAlbumName.trim() === ""}
+                                className="rounded bg-brass px-2 py-1 text-xs font-medium text-black disabled:opacity-50"
+                              >
+                                {isCreatingAlbum ? "Creating…" : "Create & add"}
+                              </button>
+                            </div>
+                          </form>
+                        )}
+                      </div>
+                    )}
+
+                    {albumError !== undefined && (
+                      <p className="border-t border-white/10 px-3 py-2 text-xs text-red-300">
+                        {albumError}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Everything the photograph's header says about itself.
+
+                A TEXT pill rather than a glyph, and deliberately no icon slot: this opens
+                a dialog ABOUT the current photo, so it marks no PLACE in the app -- see
+                coding-guide.md, "Icons: use a slot, not a bare glyph name". It borrows the
+                "My Journal" link's shape below for exactly that reason; the two are the
+                header's text controls and should read as a pair.
+
+                Third in the row, after the controls that CHANGE something (the heart, the
+                album `+`) and before the ones that navigate away.
+
+                Hidden entirely when the photograph carries no EXIF -- a scan, a
+                screenshot, an editor's re-save. The alternative is a button that opens
+                three empty tabs, which is a control that cannot act. */}
+            {canShowExif && (
+              <button
+                type="button"
+                onClick={() => setIsExifOpen(true)}
+                title="Show this photograph's EXIF data"
+                className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              >
+                EXIF
+              </button>
+            )}
+
+            {/* Opens the journal's calendar on the day this photograph was taken, with
+                that day selected — so a picture found by browsing leads to what was
+                written about it.
+
+                A plain `<Link>` rather than the app's `Button`, for the reason the heart
+                above documents. Same tab on purpose: the destination is somewhere to READ,
+                not a glance, and Ctrl/middle-click still gives a second tab. The cost is
+                real and known — the viewer holds no URL state, so Back returns to the page
+                behind it rather than to this photo.
+
+                Only offered when a date could be established. A link that opened the
+                journal on a guessed day would be worse than none. */}
+            {journalHref !== undefined && (
+              <Link
+                href={journalHref}
+                // `onMouseEnter` for a cursor, `onFocus` for a keyboard — tabbing to the
+                // link is the same declaration of intent as hovering it. `onTouchStart`
+                // covers the phone, where there is no hover at all: it fires on
+                // finger-down, which buys the tens of milliseconds before the tap
+                // completes.
+                onMouseEnter={prefetchJournal}
+                onFocus={prefetchJournal}
+                onTouchStart={prefetchJournal}
+                title={`Open the journal for ${journalDate}`}
+                className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              >
+                My Journal
+              </Link>
+            )}
+
+            {photos.length > 0 && (
+              // Hidden on a phone: with the journal link beside it, the counter is the
+              // thing that can go — which photo of how many is a nicety, and the
+              // thumbnail strip below says the same thing.
+              <span className="text-xs text-white/60 max-lg:hidden">
+                {index + 1} / {photos.length}
+              </span>
+            )}
+            {/* Large tap target: this is the primary way out on a phone, where there is no
+                Escape key and the stage covers the screen. */}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className={`${PILL_CLASS} text-xl leading-none`}
+            >
+              &times;
+            </button>
+          </div>
+        </div>
+
+        {/* The stage. `min-h-0` is what lets it shrink instead of pushing the strip off the
+            bottom — a flex child's default `min-height: auto` would let a tall photo win
+            the argument with the thumbnails. */}
+        <div className="relative flex min-h-0 flex-1 items-center justify-center px-2">
+          {isLoading ? (
+            <p className="text-sm text-white/60">Reading the folder…</p>
+          ) : error !== undefined ? (
+            <p className="max-w-md text-center text-sm text-red-300">{error}</p>
+          ) : photo === undefined ? (
+            <p className="text-sm text-white/60">There are no photographs to show.</p>
+          ) : (
+            <>
+              {/* Keyed on the path so React remounts the image when the photo changes,
+                  which is what lets a CSS entry animation run again. Without the key the
+                  same element would swap its `src` and no transition would play. */}
+              {/* eslint-disable-next-line @next/next/no-img-element -- the bytes come from
+                  our own session-gated route over a NAS share, not a static asset
+                  next/image can optimize. */}
+              <img
+                key={photo.relativePath}
+                src={photoUrl(photo.relativePath)}
+                alt={caption}
+                className={`max-h-full max-w-full object-contain ${effectClass(options.effect)}`}
+              />
+
+              {hasPrevious && <NavButton side="left" label="Previous photo" onClick={goPrevious} />}
+              {hasNext && <NavButton side="right" label="Next photo" onClick={goNext} />}
+            </>
+          )}
+        </div>
+
+        {/* The lower half: details, thumbnails, then the slideshow panel. All `shrink-0` so
+            the stage above is the part that gives way on a short screen. */}
+        <div className="shrink-0 bg-black px-4 pb-4 pt-3">
+          {photo !== undefined && onPhotoDetails !== undefined && (
+            <PhotoDetailsLine
+              relativePath={photo.relativePath}
+              details={detailsByPath[photo.relativePath]}
+              // Compared by PATH, so the spinner belongs to this photo. A bare boolean
+              // would show "Reading…" over a cached photo whenever a neighbour's read
+              // happened to be in flight.
+              isReading={readingPath === photo.relativePath}
+            />
+          )}
+
+          {photos.length > 1 && (
+            <div
+              ref={stripRef}
+              // A single scrolling row, not a wrapping grid: the strip's job is "where am I
+              // in this set", which a line preserves and a block of rows loses.
+              className="mb-3 flex gap-2 overflow-x-auto pb-2"
+            >
+              {photos.map((candidate, candidateIndex) => {
+                const isActive = candidateIndex === index;
+                // Every photo gets a slot so the scrollbar reflects the real set size, but
+                // only those near the reader hold an image. See THUMBNAIL_WINDOW.
+                const isInWindow = Math.abs(candidateIndex - index) <= THUMBNAIL_WINDOW / 2;
+                const thumbLabel = candidate.caption ?? candidate.name;
+
+                return (
+                  <button
+                    key={candidate.relativePath}
+                    type="button"
+                    data-active={isActive}
+                    onClick={() => goTo(candidateIndex)}
+                    title={thumbLabel}
+                    aria-label={thumbLabel}
+                    aria-current={isActive}
+                    className={`h-16 w-16 shrink-0 overflow-hidden rounded-md border-2 transition-colors max-lg:h-12 max-lg:w-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white ${
+                      isActive ? "border-white" : "border-white/20 hover:border-white/50"
+                    }`}
+                  >
+                    {isInWindow ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- as above.
+                      <img
+                        src={photoUrl(candidate.relativePath)}
+                        alt=""
+                        loading="lazy"
+                        // Decoded OFF the main thread. These are full-size NAS JPEGs, not
+                        // thumbnails (there is no thumbnail pipeline -- see
+                        // THUMBNAIL_WINDOW), so a burst of synchronous multi-megapixel
+                        // decodes blocks input long enough to swallow a click on the
+                        // header's own controls while the strip fills.
+                        decoding="async"
+                        // Intrinsic size, so a slot reserves its box before the bytes
+                        // land. Without it each arriving image relayouts the row, which
+                        // is both jank and a moving target for a finger already on its
+                        // way down.
+                        width={64}
+                        height={64}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      // A placeholder, not an image: this slot exists to hold the strip's
+                      // width open, and loading it would defeat the window entirely.
+                      <span className="block h-full w-full bg-white/10" />
+                    )}
+                  </button>
+                );
+              })}
             </div>
           )}
 
-          {/* Opens the journal's calendar on the day this photograph was taken, with
-              that day selected — so a picture found by browsing leads to what was
-              written about it.
+          {photos.length > 1 && (
+            // Collapsed by default: the pictures are the point, and a settings panel
+            // sitting open under every photo would be the loudest thing on a phone.
+            //
+            // Only for a real set. A single photo has nothing to play, and offering a
+            // slide show with a permanently disabled button would be a control that
+            // exists to say no.
+            <CollapsibleCard title="Slide show">
+              <div className="flex flex-wrap items-end gap-4">
+                <label className="text-sm">
+                  <span className="mb-1 block text-muted">Seconds per photo</span>
+                  <select
+                    value={options.intervalSeconds}
+                    onChange={(event) =>
+                      setOptions((current) => ({
+                        ...current,
+                        intervalSeconds: Number(event.target.value),
+                      }))
+                    }
+                    className={SELECT_CLASS}
+                  >
+                    {SLIDESHOW_INTERVAL_CHOICES.map((seconds) => (
+                      <option key={seconds} value={seconds}>
+                        {seconds}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-              A plain `<Link>` rather than the app's `Button`, for the reason the heart
-              above documents. Same tab on purpose: the destination is somewhere to READ,
-              not a glance, and Ctrl/middle-click still gives a second tab. The cost is
-              real and known — the viewer holds no URL state, so Back returns to the page
-              behind it rather than to this photo.
+                <label className="text-sm">
+                  <span className="mb-1 block text-muted">Transition</span>
+                  <select
+                    value={options.effect}
+                    onChange={(event) =>
+                      setOptions((current) => ({
+                        ...current,
+                        effect: event.target.value as SlideshowEffect,
+                      }))
+                    }
+                    className={SELECT_CLASS}
+                  >
+                    {SLIDESHOW_EFFECT_CHOICES.map((choice) => (
+                      <option key={choice.value} value={choice.value}>
+                        {choice.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-              Only offered when a date could be established. A link that opened the
-              journal on a guessed day would be worse than none. */}
-          {journalHref !== undefined && (
-            <Link
-              href={journalHref}
-              // `onMouseEnter` for a cursor, `onFocus` for a keyboard — tabbing to the
-              // link is the same declaration of intent as hovering it. `onTouchStart`
-              // covers the phone, where there is no hover at all: it fires on
-              // finger-down, which buys the tens of milliseconds before the tap
-              // completes.
-              onMouseEnter={prefetchJournal}
-              onFocus={prefetchJournal}
-              onTouchStart={prefetchJournal}
-              title={`Open the journal for ${journalDate}`}
-              className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
-            >
-              My Journal
-            </Link>
+                {/* One button that starts and stops, rather than two: what it does next is
+                    the only thing a reader needs from it, and a disabled Stop beside an
+                    active Start is two controls saying one thing. */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Starting on the last photo would stop immediately, so it restarts
+                    // from the top instead — the reader plainly meant "play the set".
+                    if (!isPlaying && index >= photos.length - 1) setIndex(0);
+                    setIsPlaying(!isPlaying);
+                  }}
+                  className="rounded-md bg-brass px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-brass-dark disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+                >
+                  {isPlaying ? "Stop slide show" : "Start slide show"}
+                </button>
+              </div>
+            </CollapsibleCard>
           )}
-
-          {photos.length > 0 && (
-            // Hidden on a phone: with the journal link beside it, the counter is the
-            // thing that can go — which photo of how many is a nicety, and the
-            // thumbnail strip below says the same thing.
-            <span className="text-xs text-white/60 max-lg:hidden">
-              {index + 1} / {photos.length}
-            </span>
-          )}
-          {/* Large tap target: this is the primary way out on a phone, where there is no
-              Escape key and the stage covers the screen. */}
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className={`${PILL_CLASS} text-xl leading-none`}
-          >
-            &times;
-          </button>
         </div>
       </div>
 
-      {/* The stage. `min-h-0` is what lets it shrink instead of pushing the strip off the
-          bottom — a flex child's default `min-height: auto` would let a tall photo win
-          the argument with the thumbnails. */}
-      <div className="relative flex min-h-0 flex-1 items-center justify-center px-2">
-        {isLoading ? (
-          <p className="text-sm text-white/60">Reading the folder…</p>
-        ) : error !== undefined ? (
-          <p className="max-w-md text-center text-sm text-red-300">{error}</p>
-        ) : photo === undefined ? (
-          <p className="text-sm text-white/60">There are no photographs to show.</p>
-        ) : (
-          <>
-            {/* Keyed on the path so React remounts the image when the photo changes,
-                which is what lets a CSS entry animation run again. Without the key the
-                same element would swap its `src` and no transition would play. */}
-            {/* eslint-disable-next-line @next/next/no-img-element -- the bytes come from
-                our own session-gated route over a NAS share, not a static asset
-                next/image can optimize. */}
-            <img
-              key={photo.relativePath}
-              src={photoUrl(photo.relativePath)}
-              alt={caption}
-              className={`max-h-full max-w-full object-contain ${effectClass(options.effect)}`}
-            />
+      {/* The EXIF panel, a SIBLING of the stage rather than a child of it.
 
-            {hasPrevious && <NavButton side="left" label="Previous photo" onClick={goPrevious} />}
-            {hasNext && <NavButton side="right" label="Next photo" onClick={goNext} />}
-          </>
-        )}
-      </div>
+          Inside this portal on purpose: the viewer's root is `fixed inset-0 z-50`, so a
+          `Modal` rendered as its descendant would be trapped in a stacking context whose
+          own children (the header, the thumbnail strip) could paint over it. As a sibling
+          here it sits above the stage and still inside the one portal, which is what keeps
+          it clear of the app's shell surfaces -- see design.md, "Adding a UI element to
+          the shell".
 
-      {/* The lower half: details, thumbnails, then the slideshow panel. All `shrink-0` so
-          the stage above is the part that gives way on a short screen. */}
-      <div className="shrink-0 bg-black px-4 pb-4 pt-3">
-        {photo !== undefined && onPhotoDetails !== undefined && (
-          <PhotoDetailsLine
-            relativePath={photo.relativePath}
-            details={detailsByPath[photo.relativePath]}
-            // Compared by PATH, so the spinner belongs to this photo. A bare boolean
-            // would show "Reading…" over a cached photo whenever a neighbour's read
-            // happened to be in flight.
-            isReading={readingPath === photo.relativePath}
-          />
-        )}
-
-        {photos.length > 1 && (
-          <div
-            ref={stripRef}
-            // A single scrolling row, not a wrapping grid: the strip's job is "where am I
-            // in this set", which a line preserves and a block of rows loses.
-            className="mb-3 flex gap-2 overflow-x-auto pb-2"
-          >
-            {photos.map((candidate, candidateIndex) => {
-              const isActive = candidateIndex === index;
-              // Every photo gets a slot so the scrollbar reflects the real set size, but
-              // only those near the reader hold an image. See THUMBNAIL_WINDOW.
-              const isInWindow = Math.abs(candidateIndex - index) <= THUMBNAIL_WINDOW / 2;
-              const thumbLabel = candidate.caption ?? candidate.name;
-
-              return (
-                <button
-                  key={candidate.relativePath}
-                  type="button"
-                  data-active={isActive}
-                  onClick={() => goTo(candidateIndex)}
-                  title={thumbLabel}
-                  aria-label={thumbLabel}
-                  aria-current={isActive}
-                  className={`h-16 w-16 shrink-0 overflow-hidden rounded-md border-2 transition-colors max-lg:h-12 max-lg:w-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white ${
-                    isActive ? "border-white" : "border-white/20 hover:border-white/50"
-                  }`}
-                >
-                  {isInWindow ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- as above.
-                    <img
-                      src={photoUrl(candidate.relativePath)}
-                      alt=""
-                      loading="lazy"
-                      // Decoded OFF the main thread. These are full-size NAS JPEGs, not
-                      // thumbnails (there is no thumbnail pipeline -- see
-                      // THUMBNAIL_WINDOW), so a burst of synchronous multi-megapixel
-                      // decodes blocks input long enough to swallow a click on the
-                      // header's own controls while the strip fills.
-                      decoding="async"
-                      // Intrinsic size, so a slot reserves its box before the bytes
-                      // land. Without it each arriving image relayouts the row, which
-                      // is both jank and a moving target for a finger already on its
-                      // way down.
-                      width={64}
-                      height={64}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    // A placeholder, not an image: this slot exists to hold the strip's
-                    // width open, and loading it would defeat the window entirely.
-                    <span className="block h-full w-full bg-white/10" />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {photos.length > 1 && (
-          // Collapsed by default: the pictures are the point, and a settings panel
-          // sitting open under every photo would be the loudest thing on a phone.
-          //
-          // Only for a real set. A single photo has nothing to play, and offering a
-          // slide show with a permanently disabled button would be a control that
-          // exists to say no.
-          <CollapsibleCard title="Slide show">
-            <div className="flex flex-wrap items-end gap-4">
-              <label className="text-sm">
-                <span className="mb-1 block text-muted">Seconds per photo</span>
-                <select
-                  value={options.intervalSeconds}
-                  onChange={(event) =>
-                    setOptions((current) => ({
-                      ...current,
-                      intervalSeconds: Number(event.target.value),
-                    }))
-                  }
-                  className={SELECT_CLASS}
-                >
-                  {SLIDESHOW_INTERVAL_CHOICES.map((seconds) => (
-                    <option key={seconds} value={seconds}>
-                      {seconds}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="text-sm">
-                <span className="mb-1 block text-muted">Transition</span>
-                <select
-                  value={options.effect}
-                  onChange={(event) =>
-                    setOptions((current) => ({
-                      ...current,
-                      effect: event.target.value as SlideshowEffect,
-                    }))
-                  }
-                  className={SELECT_CLASS}
-                >
-                  {SLIDESHOW_EFFECT_CHOICES.map((choice) => (
-                    <option key={choice.value} value={choice.value}>
-                      {choice.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              {/* One button that starts and stops, rather than two: what it does next is
-                  the only thing a reader needs from it, and a disabled Stop beside an
-                  active Start is two controls saying one thing. */}
-              <button
-                type="button"
-                onClick={() => {
-                  // Starting on the last photo would stop immediately, so it restarts
-                  // from the top instead — the reader plainly meant "play the set".
-                  if (!isPlaying && index >= photos.length - 1) setIndex(0);
-                  setIsPlaying(!isPlaying);
-                }}
-                className="rounded-md bg-brass px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-brass-dark disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
-              >
-                {isPlaying ? "Stop slide show" : "Start slide show"}
-              </button>
-            </div>
-          </CollapsibleCard>
-        )}
-      </div>
-    </div>,
+          Guarded on `exifTags` as well as the flag: the reader can arrow to a photograph
+          with no metadata while the panel is open, and an open dialog with nothing in it
+          would be worse than one that closes itself. */}
+      {isExifOpen && exifTags !== undefined && exifTags.length > 0 && (
+        <PhotoExifDialog
+          tags={exifTags}
+          gps={details?.gps}
+          photoLabel={caption}
+          onClose={() => setIsExifOpen(false)}
+        />
+      )}
+    </>,
     document.body,
   );
 }

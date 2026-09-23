@@ -134,6 +134,18 @@ export class SqliteAuthEventRepository implements AuthEventRepository {
       .run(reviewedAt, asOf);
   }
 
+  deleteEvents(ids: number[]): number {
+    if (ids.length === 0) return 0;
+
+    // Placeholders generated from the array length, values still bound — the ids are
+    // numbers validated by `bulkIdsSchema`, and none of them reach the SQL as text.
+    const placeholders = ids.map(() => "?").join(", ");
+    const result = this.db
+      .prepare(`DELETE FROM sys_auth_events WHERE id IN (${placeholders})`)
+      .run(...ids);
+    return result.changes;
+  }
+
   deleteEventsBefore(cutoff: string): number {
     const result = this.db
       .prepare("DELETE FROM sys_auth_events WHERE created_at < ?")

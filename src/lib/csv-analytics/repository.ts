@@ -17,12 +17,14 @@ import {
   coerceCellValue,
   quoteIdentifier,
 } from "./sql-builder";
+import { sourceColumnDefinitions } from "./multi-import";
 import type {
   CsvAnalyticEntry,
   CsvChartPreset,
   CsvColumnDefinition,
   CsvCustomView,
   CsvEntryData,
+  CsvSourceColumn,
   CsvViewCriterion,
   CsvViewOrderBy,
   CsvViewPage,
@@ -60,6 +62,8 @@ interface CsvAnalyticsEntryRow {
   table_name: string;
   columns_json: string;
   primary_key_fields_json: string;
+  /** Migration 0104. NULL for every entry that predates pooled imports. */
+  source_columns_json: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -85,6 +89,10 @@ export class SqliteCsvAnalyticsRepository implements CsvAnalyticsRepository {
       tableName: row.table_name,
       columns: JSON.parse(row.columns_json) as CsvColumnDefinition[],
       primaryKeyFields: JSON.parse(row.primary_key_fields_json) as string[],
+      // NULL (pre-0104, or any single-file import) reads as "not a pooled dataset".
+      sourceColumns: row.source_columns_json
+        ? (JSON.parse(row.source_columns_json) as CsvSourceColumn[])
+        : [],
       rowCount: this.countRows(row.table_name),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -220,6 +228,85 @@ export class SqliteCsvAnalyticsRepository implements CsvAnalyticsRepository {
     return created;
   }
 
+  createPooledEntry(
+    input: { name: string; description?: string; tableBaseName: string },
+    columns: CsvColumnDefinition[],
+    sourceColumns: CsvSourceColumn[],
+    rows: string[][],
+  ): CsvAnalyticEntry {
+    const tableName = buildTableName(input.tableBaseName);
+    if (this.isTableNameTaken(tableName)) {
+      throw new Error(`A CSV analytic entry already uses table name "${tableName}".`);
+    }
+
+    // A pooled table takes the surrogate `_row_id` key (no primaryKeyFields): several
+    // devices legitimately report the same timestamp, so any PK over the data columns
+    // would make one device's readings collide with another's.
+    const allColumns = [...columns, ...sourceColumnDefinitions(sourceColumns)];
+    const createTableSql = buildCreateTableSql(tableName, allColumns, []);
+
+    const run = this.db.transaction(() => {
+      this.db.exec(createTableSql);
+      this.insertRows(tableName, allColumns, rows, false);
+      const result = this.db
+        .prepare(
+          `INSERT INTO csv_analytics_entries
+             (name, description, table_name, columns_json, primary_key_fields_json, source_columns_json)
+           VALUES (@name, @description, @tableName, @columnsJson, @primaryKeyFieldsJson, @sourceColumnsJson)`,
+        )
+        .run({
+          name: input.name,
+          description: input.description ?? null,
+          tableName,
+          columnsJson: JSON.stringify(allColumns),
+          primaryKeyFieldsJson: JSON.stringify([]),
+          sourceColumnsJson: JSON.stringify(sourceColumns),
+        });
+      return Number(result.lastInsertRowid);
+    });
+
+    const created = this.getEntryById(run());
+    if (!created) throw new Error("Failed to read back newly created pooled CSV entry.");
+    return created;
+  }
+
+  appendPooledRows(id: number, rows: string[][]): IngestResult {
+    const row = this.getRowById(id);
+    if (!row) throw new Error(`CSV analytic entry ${id} not found.`);
+    const columns = JSON.parse(row.columns_json) as CsvColumnDefinition[];
+
+    // `false` — a plain INSERT, deliberately unlike `appendRows`. OR IGNORE would turn
+    // a second device reporting the same timestamp into a silently skipped row, which
+    // is exactly the data loss pooling exists to avoid.
+    const before = this.countRows(row.table_name);
+    this.db.transaction(() => this.insertRows(row.table_name, columns, rows, false))();
+    const inserted = this.countRows(row.table_name) - before;
+    return { inserted, skipped: rows.length - inserted };
+  }
+
+  listSourceValues(id: number, columnName: string): string[] {
+    const row = this.getRowById(id);
+    if (!row) throw new Error(`CSV analytic entry ${id} not found.`);
+
+    // The identifier is validated against the entry's real column list before being
+    // interpolated, and still quoted — the same two rules as sql-builder.ts.
+    const columns = JSON.parse(row.columns_json) as CsvColumnDefinition[];
+    if (!columns.some((column) => column.name === columnName)) {
+      throw new Error(`Unknown column "${columnName}" on entry ${id}.`);
+    }
+
+    const results = this.db
+      .prepare(
+        `SELECT DISTINCT ${quoteIdentifier(columnName)} AS value
+           FROM ${quoteIdentifier(row.table_name)}
+          WHERE ${quoteIdentifier(columnName)} IS NOT NULL
+          ORDER BY value`,
+      )
+      .all() as { value: string | number | null }[];
+
+    return results.map((result) => String(result.value));
+  }
+
   appendRows(id: number, rows: string[][]): IngestResult {
     const row = this.getRowById(id);
     if (!row) throw new Error(`CSV analytic entry ${id} not found.`);
@@ -281,7 +368,10 @@ export class SqliteCsvAnalyticsRepository implements CsvAnalyticsRepository {
         .prepare(
           `UPDATE csv_analytics_entries
            SET name = @name, description = @description, table_name = @tableName,
-               columns_json = @columnsJson, primary_key_fields_json = @primaryKeyFieldsJson
+               columns_json = @columnsJson, primary_key_fields_json = @primaryKeyFieldsJson,
+               -- Overwrite redefines the whole schema from one dropped file, so any
+               -- pooled source columns would now name columns that no longer exist.
+               source_columns_json = NULL
            WHERE id = @id`,
         )
         .run({

@@ -138,7 +138,7 @@ describe("sectionSlotId", () => {
         "main", "transactions", "meta-data", "charts",
         "import", "transaction-rules", "settings",
       ],
-      attendance: ["main", "rosters", "classes", "actions", "report", "configuration"],
+      attendance: ["main", "rosters", "classes", "actions", "edit", "report", "configuration"],
       csv: ["main", "configuration"],
       games: ["main", "scores", "configuration"],
       music: ["main", "magic", "player", "queue", "scan", "configuration"],

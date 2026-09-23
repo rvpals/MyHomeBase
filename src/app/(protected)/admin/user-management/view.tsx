@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/avatar";
 import { Button } from "@/components/button";
@@ -596,6 +597,15 @@ export function UserManagementView({
       excludeFromRecordView: true,
       render: (user) => (
         <div className="flex flex-col gap-2">
+          {/* The same screen the user sees at My Account, pointed at this row's
+              account — a real route rather than a dialog, because it is a full
+              page of sections and needs to be linkable and back-navigable. */}
+          <Link
+            href={`/admin/user-management/preferences/${user.id}`}
+            className="text-xs font-medium text-brass-dark hover:underline"
+          >
+            User Preferences
+          </Link>
           <PasswordEditor
             onSave={async (password) => {
               const result = await setUserPasswordAction(user.id, password);

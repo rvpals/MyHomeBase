@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   calendarAgeSince,
+  describeDayOffset,
   formatCalendarAge,
   parseIsoDateLocal,
   startOfMonthIso,
@@ -247,5 +248,40 @@ describe("formatCalendarAge", () => {
 
   it("says today rather than 0 days ago", () => {
     expect(formatCalendarAge({ years: 0, months: 0, days: 0 })).toBe("today");
+  });
+});
+
+describe("describeDayOffset", () => {
+  it("names the nearby days in words rather than counts", () => {
+    expect(describeDayOffset("2026-09-21", "2026-09-21")).toBe("today");
+    expect(describeDayOffset("2026-09-20", "2026-09-21")).toBe("yesterday");
+    expect(describeDayOffset("2026-09-22", "2026-09-21")).toBe("tomorrow");
+  });
+
+  it("counts whole days further out, in both directions", () => {
+    expect(describeDayOffset("2026-09-18", "2026-09-21")).toBe("3 days ago");
+    expect(describeDayOffset("2026-09-25", "2026-09-21")).toBe("in 4 days");
+  });
+
+  it("counts across a month and a year boundary", () => {
+    expect(describeDayOffset("2026-08-31", "2026-09-02")).toBe("2 days ago");
+    expect(describeDayOffset("2025-12-30", "2026-01-02")).toBe("3 days ago");
+  });
+
+  it("counts across a leap day", () => {
+    expect(describeDayOffset("2028-02-28", "2028-03-01")).toBe("2 days ago");
+  });
+
+  it("does not clamp a future date the way calendarAgeSince does", () => {
+    // The distinction this helper exists for: a register dated ahead of today is
+    // a mistake worth naming, where a future photo timestamp is just a bad clock.
+    expect(formatCalendarAge(calendarAgeSince("2026-09-25", new Date(2026, 8, 21)))).toBe("today");
+    expect(describeDayOffset("2026-09-25", "2026-09-21")).toBe("in 4 days");
+  });
+
+  it("rejects a date that is not a real YYYY-MM-DD", () => {
+    expect(() => describeDayOffset("2026-02-31", "2026-09-21")).toThrow(/not a real date/);
+    expect(() => describeDayOffset("21/09/2026", "2026-09-21")).toThrow(/YYYY-MM-DD/);
+    expect(() => describeDayOffset("2026-09-21", "")).toThrow(/YYYY-MM-DD/);
   });
 });

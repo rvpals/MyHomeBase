@@ -8,6 +8,7 @@ export type {
   LocationCategory,
   LocationTag,
   LocationTaxonomyCount,
+  LocationTaxonomyIcon,
   LocationTaxonomyKind,
   SavedLocation,
   SavedLocationWithUsage,
@@ -32,12 +33,17 @@ export {
 } from "./schema";
 
 export {
+  MAX_LOCATION_ICON_BYTES,
+  clearLocationTaxonomyIcon,
   countLocationsByCategory,
   countLocationsByTag,
   createSavedLocation,
   deleteLocationTaxonomy,
   deleteSavedLocation,
   findLocationDuplicates,
+  generateLocationTaxonomyIcon,
+  generateMissingLocationTaxonomyIcons,
+  getLocationTaxonomyIcon,
   getSavedLocation,
   listLocationCategories,
   listLocationTags,
@@ -46,7 +52,9 @@ export {
   promoteToSavedLocation,
   saveLocationTaxonomy,
   searchSavedLocations,
+  setLocationTaxonomyIcon,
   updateSavedLocation,
+  type LocationIconFillSummary,
 } from "./journal-locations";
 
 export {

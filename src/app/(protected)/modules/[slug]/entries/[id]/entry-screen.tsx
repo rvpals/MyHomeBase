@@ -33,8 +33,8 @@ function taxonomyFilterHref(kind: "category" | "tag", name: string): string | un
 }
 
 // Leaflet touches `window`, so the map is client-only. Read-only here: no onPick.
-const JournalLocationMap = dynamic(
-  () => import("../../journal-location-map").then((module) => module.JournalLocationMap),
+const LocationMap = dynamic(
+  () => import("@/components/location-map").then((module) => module.LocationMap),
   {
     ssr: false,
     loading: () => (
@@ -223,7 +223,7 @@ export function JournalEntryScreen({
               </Button>
             </div>
           </div>
-          <JournalLocationMap
+          <LocationMap
             // `key` remounts the map when a different pin is chosen, so it
             // recenters even though the component holds its own Leaflet state.
             key={mapView.location.id}
@@ -250,7 +250,7 @@ export function JournalEntryScreen({
               Close map
             </Button>
           </div>
-          <JournalLocationMap
+          <LocationMap
             // Numbered pins, fitted to the whole set. Taller than the
             // single-pin map because it has to hold several pins at once.
             markers={entry.locations.map((location, index) => ({

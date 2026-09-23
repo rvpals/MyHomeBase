@@ -17,6 +17,15 @@ export interface CsvAnalyticEntry {
   columns: CsvColumnDefinition[];
   /** Subset of columns[].name. Empty means the table uses a surrogate key. */
   primaryKeyFields: string[];
+  /**
+   * Which of `columns` record where a pooled row came from, rather than carrying a
+   * measurement (migration 0104).
+   *
+   * Empty for every entry imported as a single file — including every entry that
+   * existed before pooling — so "is this a pooled dataset" is exactly
+   * `sourceColumns.length > 0`, with no migration of existing data needed.
+   */
+  sourceColumns: CsvSourceColumn[];
   /** Computed from the physical table on read — never stored. */
   rowCount: number;
   createdAt: string;
@@ -129,4 +138,71 @@ export interface CsvViewPage {
   page: number;
   pageCount: number;
   recordsPerPage: number;
+}
+
+/**
+ * A column that records where a pooled row came from, rather than carrying a
+ * measurement the CSV supplied.
+ *
+ * Two flavours, distinguished by `kind`:
+ * - `file` — the source filename, filled in automatically per file. Exactly one
+ *   per entry, always named `_source_file`.
+ * - `label` — something the reader typed about that file ("Bathroom"). Up to
+ *   `MAX_SOURCE_LABEL_COLUMNS` of them, named by the reader.
+ *
+ * These are ordinary columns in the entry's physical table, deliberately: every
+ * existing feature (custom views, charts, bulk edit, grid export) then works on
+ * them with no change. `source_columns_json` on the entry records which ones they
+ * are, so Compare knows what it may group by and the importer knows what to
+ * re-prompt for on the next file.
+ */
+export interface CsvSourceColumn {
+  /** Matches one of the entry's columns[].name. */
+  name: string;
+  kind: "file" | "label";
+  /** What the import screen prompts with, e.g. "Room". */
+  label: string;
+}
+
+/** One file in a multi-file import, as the reader configured it before committing. */
+export interface CsvImportFile {
+  fileName: string;
+  fileText: string;
+  /** Value per source label column, keyed by that column's `name`. */
+  labelValues: Record<string, string>;
+}
+
+/**
+ * What a pooled import would do, computed before anything is written.
+ *
+ * `headerMismatches` being non-empty is a hard stop: the reader said these files
+ * are the same kind of data, so a differing header is a wrong file rather than a
+ * schema to merge. The plan is still returned so the screen can *show* the diff.
+ */
+export interface MultiFileImportPlan {
+  /** Columns from the CSV itself, shared by every file. */
+  dataColumns: CsvColumnDefinition[];
+  /** The source/label columns appended after them. */
+  sourceColumns: CsvSourceColumn[];
+  /** Per file: what was parsed, and the row count it would contribute. */
+  files: { fileName: string; rowCount: number; suggestedSourceName: string }[];
+  totalRows: number;
+  /** One entry per file whose headers differ from the first file's. Empty means importable. */
+  headerMismatches: { fileName: string; reason: string }[];
+}
+
+/** Descriptive statistics for one numeric column over one group of rows. */
+export interface SourceStats {
+  /** The source value these rows share, e.g. "Bathroom". `null` is the combined row. */
+  source: string | null;
+  /** Rows in this group (including ones whose measure is null). */
+  rowCount: number;
+  /** Rows whose measure was null/unparseable — excluded from every figure below. */
+  nullCount: number;
+  min: number | null;
+  max: number | null;
+  mean: number | null;
+  median: number | null;
+  /** Population standard deviation. `null` when fewer than 2 values. */
+  stdDev: number | null;
 }

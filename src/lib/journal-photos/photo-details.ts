@@ -1,4 +1,5 @@
 import { EXIF_HEADER_BYTES, readExifDateTime } from "./exif";
+import { readAllExifTags } from "./exif-all";
 import {
   dateFromFileName,
   dayFolderDateOf,
@@ -45,13 +46,31 @@ export async function readPhotoDetails(
     return { relativePath, takenAtSource: "none" };
   }
 
-  const exif = await readExifHeader(store, relativePath);
+  // ONE read, both answers. The header bytes are pulled once and asked two questions:
+  // the timestamp (which decides `takenAtSource`) and the full tag list (which fills the
+  // viewer's EXIF panel). Reading them separately would double the SMB traffic for the
+  // photo on the stage, and the panel is opened from that same photo.
+  const header = await readHeaderBytes(store, relativePath);
+  const readout = header === undefined ? undefined : readExifReadout(header);
+  const exifTags = readout !== undefined && readout.tags.length > 0 ? readout.tags : undefined;
+  const gps = readout?.gps;
+
+  // Spread rather than assigned, so a photo with no tags carries no empty array and no
+  // `undefined` field -- this crosses a server-action boundary and an absent key is
+  // cheaper than a present empty one.
+  const metadata = {
+    ...(exifTags === undefined ? {} : { exifTags }),
+    ...(gps === undefined ? {} : { gps }),
+  };
+
+  const exif = header === undefined ? undefined : readExifDateTime(header);
   if (exif !== undefined) {
     return {
       relativePath,
       takenAtDate: exif.date,
       ...(exif.time === undefined ? {} : { takenAtTime: exif.time }),
       takenAtSource: "exif",
+      ...metadata,
     };
   }
 
@@ -64,24 +83,51 @@ export async function readPhotoDetails(
   // honest absence.
   const inferred = inferDateFromNames(relativePath);
   if (inferred !== undefined) {
-    return { relativePath, takenAtDate: inferred.date, takenAtSource: inferred.source };
+    return {
+      relativePath,
+      takenAtDate: inferred.date,
+      takenAtSource: inferred.source,
+      ...metadata,
+    };
   }
 
-  return { relativePath, takenAtSource: "none" };
+  // No date from any source, but the file may still hold tags worth showing -- a
+  // scanner writes a make and a resolution with no timestamp at all.
+  return { relativePath, takenAtSource: "none", ...metadata };
 }
 
 /**
- * The EXIF timestamp, or `undefined` for every way that can fail.
+ * The file's leading bytes, or `undefined` for every way that can fail.
  *
  * The try/catch is the point: `readHeader` reaches a NAS over SMB, and a share that
  * drops mid-read must leave the viewer showing a photo with an unknown date rather than
  * throwing across a server-action boundary.
+ *
+ * Returns the BYTES rather than a parsed answer, because two parsers now read them --
+ * see the single-read note in `readPhotoDetails`.
  */
-async function readExifHeader(store: PhotoFileStore, relativePath: string) {
+async function readHeaderBytes(
+  store: PhotoFileStore,
+  relativePath: string,
+): Promise<Uint8Array | undefined> {
   try {
-    const header = await store.readHeader(relativePath, EXIF_HEADER_BYTES);
-    if (header === undefined) return undefined;
-    return readExifDateTime(header);
+    return await store.readHeader(relativePath, EXIF_HEADER_BYTES);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The full tag readout, guarded.
+ *
+ * `readAllExifTags` is documented as never throwing, and its tests assert that at every
+ * truncation point -- but it walks offsets that come out of a file, and this sits behind
+ * a server action serving a whole archive. A belt-and-braces catch here means one
+ * malformed photograph cannot take the details line down with the panel.
+ */
+function readExifReadout(header: Uint8Array) {
+  try {
+    return readAllExifTags(header);
   } catch {
     return undefined;
   }

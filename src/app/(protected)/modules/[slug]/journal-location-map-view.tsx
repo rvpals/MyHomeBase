@@ -15,8 +15,8 @@ import type { SavedLocationWithUsage } from "@/lib/journal-locations";
 import { searchSavedLocationsAction } from "./journal-locations-actions";
 import { FilterChip, formatCoords } from "./journal-locations-view";
 
-const JournalLocationMap = dynamic(
-  () => import("./journal-location-map").then((module) => module.JournalLocationMap),
+const LocationMap = dynamic(
+  () => import("@/components/location-map").then((module) => module.LocationMap),
   {
     ssr: false,
     loading: () => (
@@ -31,10 +31,15 @@ export function JournalLocationMapView({
   locations,
   categoryOptions,
   tagOptions,
+  categoryIcons,
+  tagIcons,
 }: {
   locations: SavedLocationWithUsage[];
   categoryOptions: string[];
   tagOptions: string[];
+  /** Name -> icon URL for each list. Names without an icon are simply absent. */
+  categoryIcons: Record<string, string>;
+  tagIcons: Record<string, string>;
 }) {
   const [activeCategories, setActiveCategories] = useState<string[]>([]);
   const [activeTags, setActiveTags] = useState<string[]>([]);
@@ -82,8 +87,11 @@ export function JournalLocationMapView({
         latitude: place.latitude,
         longitude: place.longitude,
         number: index + 1,
+        // Same rule as the manager's overview map: the first category with an
+        // icon gives the pin its face, otherwise it stays a numbered pin.
+        iconUrl: place.categories.map((name) => categoryIcons[name]).find(Boolean),
       })),
-    [shown],
+    [shown, categoryIcons],
   );
 
   function toggleFilter(list: string[], value: string, set: (next: string[]) => void) {
@@ -103,6 +111,7 @@ export function JournalLocationMapView({
                 <FilterChip
                   key={option}
                   label={option}
+                  iconUrl={categoryIcons[option]}
                   isActive={activeCategories.includes(option)}
                   onToggle={() => toggleFilter(activeCategories, option, setActiveCategories)}
                 />
@@ -116,6 +125,7 @@ export function JournalLocationMapView({
                 <FilterChip
                   key={option}
                   label={option}
+                  iconUrl={tagIcons[option]}
                   isActive={activeTags.includes(option)}
                   onToggle={() => toggleFilter(activeTags, option, setActiveTags)}
                 />
@@ -136,7 +146,7 @@ export function JournalLocationMapView({
         // leads in both, and shortens on the small screen via `max-lg:` so the
         // desktop height is provably untouched.
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[2fr_1fr]">
-          <JournalLocationMap
+          <LocationMap
             marker={null}
             markers={markers}
             center={null}

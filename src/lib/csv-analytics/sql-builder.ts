@@ -169,17 +169,68 @@ export function coerceCellValue(raw: string | undefined, type: CsvColumnType): s
       return null;
     }
     case "date": {
+      // An already-ISO date is kept verbatim. `new Date("2026-09-11")` parses as UTC
+      // midnight, which in a negative-offset timezone formats back as the 10th — so
+      // round-tripping a date through Date can move it a day.
+      if (DATE_ONLY_PATTERN.test(trimmed)) return trimmed;
       const parsed = new Date(trimmed);
-      return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
+      if (Number.isNaN(parsed.getTime())) return null;
+      return formatLocalDateTime(parsed).slice(0, 10);
     }
     case "datetime": {
+      // Stored as the wall-clock time the file stated, NOT as UTC.
+      //
+      // This used to be `new Date(trimmed).toISOString()`, which reads a naive
+      // "2025-03-13 14:08:00" as *local* time and writes it back as an instant —
+      // 18:08Z on a UTC-4 machine. A sensor's 14:08 reading then displayed as 18:08,
+      // and the offset wasn't even constant across a DST boundary, so a reading's
+      // time-of-day (the whole point of a twice-daily log) was unrecoverable.
+      //
+      // A device's export has no timezone in it and none is knowable, so the only
+      // honest thing to store is what it said. Sorting still works: the format is
+      // fixed-width and lexicographic order matches chronological order.
+      const naive = parseNaiveDateTime(trimmed);
+      if (naive !== null) return naive;
       const parsed = new Date(trimmed);
-      return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+      return Number.isNaN(parsed.getTime()) ? null : formatLocalDateTime(parsed);
     }
   }
 }
 
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * A timezone-less timestamp as a device writes one: "2025-03-13 14:08:00", or with a
+ * "T" separator, with optional seconds. A trailing "Z" or "+05:00" deliberately does
+ * NOT match — that value carries a real offset, so it goes through `Date` instead.
+ */
+const NAIVE_DATETIME_PATTERN = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/;
+
+/**
+ * Normalizes a timezone-less timestamp to "YYYY-MM-DDTHH:MM:SS", preserving the
+ * wall-clock time exactly as written. Returns null if it isn't one.
+ */
+function parseNaiveDateTime(raw: string): string | null {
+  const match = NAIVE_DATETIME_PATTERN.exec(raw);
+  if (match === null) return null;
+
+  const [, date, hours, minutes, seconds] = match;
+  // Reject an impossible clock time; the calendar date itself is left to the caller,
+  // since an out-of-range day is still a usable sortable string.
+  if (Number(hours) > 23 || Number(minutes) > 59) return null;
+  if (seconds !== undefined && Number(seconds) > 59) return null;
+
+  return `${date}T${hours}:${minutes}:${seconds ?? "00"}`;
+}
+
+/** Formats a Date in *local* time as "YYYY-MM-DDTHH:MM:SS" — no UTC conversion. */
+function formatLocalDateTime(value: Date): string {
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return (
+    `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}` +
+    `T${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(value.getSeconds())}`
+  );
+}
 
 /**
  * Suggests a column type from a handful of sample values (typically the CSV preview

@@ -16,6 +16,7 @@ import {
   getAccessibleModules,
   getUserAvatar,
   getUserByGoogleEmail,
+  getUserById,
   isAdmin,
   setUserAvatar,
   setUserDisabled,
@@ -162,6 +163,38 @@ function makeModule(id: number, slug: string): Module {
     hasCarouselImage: false,
   };
 }
+
+describe("getUserById", () => {
+  it("returns the user with that id", () => {
+    const repo = new FakeUserRepository();
+    const created = createUser(
+      { username: "alice", fullName: "Alice Admin", password: "supersecret", role: "admin" },
+      repo,
+    );
+
+    const found = getUserById(created.id, repo);
+    expect(found?.username).toBe("alice");
+  });
+
+  it("returns undefined for an id that does not exist", () => {
+    const repo = new FakeUserRepository();
+    createUser({ username: "alice", fullName: "Alice", password: "supersecret", role: "user" }, repo);
+
+    // The failure path the admin preferences screen depends on: a stale or hand-typed
+    // id must read as "no such user" rather than throwing or resolving to somebody else.
+    expect(getUserById(999, repo)).toBeUndefined();
+  });
+
+  it("does not leak the password hash", () => {
+    const repo = new FakeUserRepository();
+    const created = createUser(
+      { username: "alice", fullName: "Alice", password: "supersecret", role: "user" },
+      repo,
+    );
+
+    expect(getUserById(created.id, repo)).not.toHaveProperty("passwordHash");
+  });
+});
 
 describe("createUser", () => {
   it("creates a user with a hashed password", () => {

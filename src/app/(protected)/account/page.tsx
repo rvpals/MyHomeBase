@@ -13,6 +13,14 @@ import {
 import { deps } from "@/lib/wiring";
 import { HomeShell } from "../home-shell";
 import { AccountView } from "./view";
+import {
+  changeOwnPasswordAction,
+  removeOwnAvatarAction,
+  saveFloatingCornerAction,
+  saveFloatingStateAction,
+  saveOwnPreferencesAction,
+  uploadOwnAvatarAction,
+} from "./actions";
 
 export default async function AccountPage() {
   const cookieStore = await cookies();
@@ -34,6 +42,17 @@ export default async function AccountPage() {
     <HomeShell label="My account" icon="home" href="/account">
       <AccountView
         user={currentUser}
+        // The session-scoped set: every one of these reads the subject from the
+        // cookie and takes no user id, so this screen can only ever edit the reader
+        // looking at it. Administration passes admin-guarded twins instead.
+        actions={{
+          uploadAvatar: uploadOwnAvatarAction,
+          removeAvatar: removeOwnAvatarAction,
+          changePassword: changeOwnPasswordAction,
+          savePreferences: saveOwnPreferencesAction,
+          saveFloatingState: saveFloatingStateAction,
+          saveFloatingCorner: saveFloatingCornerAction,
+        }}
         viewport={resolveViewport({ cookieValue: cookieStore.get(VIEWPORT_COOKIE)?.value })}
         viewportPinned={cookieStore.get(VIEWPORT_PINNED_COOKIE)?.value === "1"}
         preferences={getUserPreferences(deps.userPreferencesRepo, currentUser.id)}

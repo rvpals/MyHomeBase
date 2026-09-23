@@ -19,6 +19,8 @@ export interface AuthEventRepository {
    * while an admin is reading the screen is not silently marked reviewed.
    */
   markFailuresReviewed(asOf: string, reviewedAt: string): void;
+  /** Deletes the given rows. Returns how many went. Admin-initiated, not the prune. */
+  deleteEvents(ids: number[]): number;
   /** Deletes events created before `cutoff` (ISO). Returns how many went. */
   deleteEventsBefore(cutoff: string): number;
 }

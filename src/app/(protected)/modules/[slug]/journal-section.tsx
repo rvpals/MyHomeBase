@@ -26,6 +26,7 @@ import {
   listLocationCategories,
   listLocationTags,
   listSavedLocations,
+  type LocationTaxonomyKind,
 } from "@/lib/journal-locations";
 import { listModuleSettingsFor } from "@/lib/module-settings";
 import { getModuleBySlug } from "@/lib/modules";
@@ -33,7 +34,7 @@ import { deps } from "@/lib/wiring";
 import { JOURNAL_SECTION_INFO, type JournalSection } from "./journal-sections";
 import { JournalCalendarPanel } from "./journal-calendar-panel";
 import { JournalEntriesPanel } from "./journal-entries-panel";
-import { journalTaxonomyIconUrlsByName } from "./journal-shared";
+import { journalTaxonomyIconUrlsByName, locationTaxonomyIconUrl } from "./journal-shared";
 import { JournalShell } from "./journal-shell";
 import { JournalHomeHeader } from "./journal-search-view";
 import { JournalCorrectPanel } from "./journal-correct-panel";
@@ -55,6 +56,28 @@ import { JournalView } from "./journal-view";
 const JOURNAL_MODULE_SLUG = "journal";
 const RECENT_JOURNAL_ENTRY_LIMIT = 25;
 const TOP_TAXONOMY_LIMIT = 10;
+
+/**
+ * Location category/tag name -> icon URL, for the screens that render a place's
+ * taxonomy as bare strings (the Location Manager's chips, the map's pins).
+ *
+ * A plain record rather than a Map because it crosses the server/client boundary
+ * into a client component, and a Map doesn't survive that serialization. Only
+ * names that actually have an icon get an entry, so a lookup miss means "no
+ * icon" without needing a second flag.
+ */
+function locationIconMap(kind: LocationTaxonomyKind): Record<string, string> {
+  const rows =
+    kind === "category"
+      ? listLocationCategories(deps.savedLocationRepo)
+      : listLocationTags(deps.savedLocationRepo);
+  const urls: Record<string, string> = {};
+  for (const row of rows) {
+    const url = locationTaxonomyIconUrl(kind, row);
+    if (url) urls[row.name] = url;
+  }
+  return urls;
+}
 
 function SectionBody({
   section,
@@ -226,6 +249,8 @@ function SectionBody({
           locations={listSavedLocations(deps.savedLocationRepo)}
           categoryOptions={countLocationsByCategory(deps.savedLocationRepo).map((row) => row.name)}
           tagOptions={countLocationsByTag(deps.savedLocationRepo).map((row) => row.name)}
+          categoryIcons={locationIconMap("category")}
+          tagIcons={locationIconMap("tag")}
         />
       );
     }
@@ -239,6 +264,8 @@ function SectionBody({
           locations={listSavedLocations(deps.savedLocationRepo)}
           categoryOptions={countLocationsByCategory(deps.savedLocationRepo).map((row) => row.name)}
           tagOptions={countLocationsByTag(deps.savedLocationRepo).map((row) => row.name)}
+          categoryIcons={locationIconMap("category")}
+          tagIcons={locationIconMap("tag")}
         />
       );
 
@@ -247,13 +274,23 @@ function SectionBody({
       // and the usage counts (from the count queries). Joined here by name
       // rather than in a third repository method, since this is the only screen
       // that needs them together.
+      // iconMimeType and updatedAt ride along so the list can build each row's
+      // icon URL — the mime type says whether there *is* one, updatedAt busts
+      // the cache when it's replaced. The bytes stay behind the route.
       const withCounts = (
-        rows: { name: string; description: string }[],
+        rows: {
+          name: string;
+          description: string;
+          iconMimeType?: string;
+          updatedAt: string;
+        }[],
         counts: { name: string; count: number }[],
       ) =>
         rows.map((row) => ({
           name: row.name,
           description: row.description,
+          iconMimeType: row.iconMimeType,
+          updatedAt: row.updatedAt,
           count: counts.find((entry) => entry.name === row.name)?.count ?? 0,
         }));
       // In a card, open by default — the same presentation the entry-side

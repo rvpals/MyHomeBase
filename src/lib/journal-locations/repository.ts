@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import type { DecodedImage } from "@/lib/shared/image-upload";
 import type { SavedLocationRepository } from "./ports";
 import {
   locationTaxonomySchema,
@@ -12,6 +13,7 @@ import type {
   LocationCategory,
   LocationTag,
   LocationTaxonomyCount,
+  LocationTaxonomyIcon,
   SavedLocation,
   SavedLocationWithUsage,
 } from "./types";
@@ -31,6 +33,7 @@ interface LocationRow {
 interface TaxonomyRow {
   name: string;
   description: string;
+  icon_image_mime_type: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -63,15 +66,45 @@ const LOCATION_COLUMNS = `
 /** Name first, then id — so the list reads alphabetically and ties are stable. */
 const LOCATION_ORDER = "ORDER BY l.name COLLATE NOCASE ASC, l.id ASC";
 
-const TAXONOMY_COLUMNS = "name, description, created_at, updated_at";
+// Named explicitly, never `SELECT *`: icon_image is a BLOB and must not ride
+// along on a list read. Migration 0105 spells out why.
+const TAXONOMY_COLUMNS = "name, description, icon_image_mime_type, created_at, updated_at";
 
 function taxonomyToDomain(row: TaxonomyRow): LocationCategory {
   return locationTaxonomySchema.parse({
     name: row.name,
     description: row.description,
+    iconMimeType: row.icon_image_mime_type ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
+}
+
+/** Reads one taxonomy table's icon bytes. Shared by the category and tag paths. */
+function readTaxonomyIcon(
+  db: Database.Database,
+  table: "jrn_location_categories" | "jrn_location_tags",
+  name: string,
+): LocationTaxonomyIcon | undefined {
+  const row = db
+    .prepare(
+      `SELECT icon_image, icon_image_mime_type FROM ${table} WHERE name = ? COLLATE NOCASE`,
+    )
+    .get(name) as { icon_image: Buffer | null; icon_image_mime_type: string | null } | undefined;
+  if (!row?.icon_image || !row.icon_image_mime_type) return undefined;
+  return { data: row.icon_image, mimeType: row.icon_image_mime_type };
+}
+
+/** Writes or, with `undefined`, clears one taxonomy table's icon. */
+function writeTaxonomyIcon(
+  db: Database.Database,
+  table: "jrn_location_categories" | "jrn_location_tags",
+  name: string,
+  icon: DecodedImage | undefined,
+): void {
+  db.prepare(
+    `UPDATE ${table} SET icon_image = ?, icon_image_mime_type = ? WHERE name = ? COLLATE NOCASE`,
+  ).run(icon?.data ?? null, icon?.mimeType ?? null, name);
 }
 
 export class SqliteSavedLocationRepository implements SavedLocationRepository {
@@ -328,6 +361,14 @@ export class SqliteSavedLocationRepository implements SavedLocationRepository {
     })();
   }
 
+  getCategoryIcon(name: string): LocationTaxonomyIcon | undefined {
+    return readTaxonomyIcon(this.db, "jrn_location_categories", name);
+  }
+
+  setCategoryIcon(name: string, icon: DecodedImage | undefined): void {
+    writeTaxonomyIcon(this.db, "jrn_location_categories", name, icon);
+  }
+
   countLocationsByCategory(): LocationTaxonomyCount[] {
     const rows = this.db
       .prepare(
@@ -387,6 +428,14 @@ export class SqliteSavedLocationRepository implements SavedLocationRepository {
       )
       .all() as CountRow[];
     return rows.map((row) => ({ name: row.name, count: row.count }));
+  }
+
+  getTagIcon(name: string): LocationTaxonomyIcon | undefined {
+    return readTaxonomyIcon(this.db, "jrn_location_tags", name);
+  }
+
+  setTagIcon(name: string, icon: DecodedImage | undefined): void {
+    writeTaxonomyIcon(this.db, "jrn_location_tags", name, icon);
   }
 
   // --- Internals ------------------------------------------------------------

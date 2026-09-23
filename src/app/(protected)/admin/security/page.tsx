@@ -1,4 +1,6 @@
 import { getAuthEventSummary, listAuthEvents } from "@/lib/auth-events";
+import { startOfWeekIso, todayIsoLocal } from "@/lib/shared/date";
+import { getSiteVisitSummary, listAllowedIps, listVisitsByWeek } from "@/lib/site-visits";
 import { listUsers } from "@/lib/user";
 import { deps } from "@/lib/wiring";
 import { SecurityView } from "./view";
@@ -15,5 +17,27 @@ export default async function SecurityPage() {
     fullNameByUserId[user.id] = user.fullName;
   }
 
-  return <SecurityView events={events} summary={summary} fullNameByUserId={fullNameByUserId} />;
+  // Grouped in the lib (`listVisitsByWeek`), so the view renders a tree it is handed
+  // rather than doing date arithmetic in a component.
+  const visitWeeks = listVisitsByWeek({}, deps.siteVisitRepo);
+  const visitSummary = getSiteVisitSummary(deps.siteVisitRepo);
+  const allowlist = listAllowedIps(deps.ipAllowlistRepo);
+
+  // Which groups start expanded. Computed on the server so the first HTML already has
+  // the right sections open — a tree that rearranges one frame after hydration reads
+  // as a glitch, and this one can be many rows tall.
+  const todayIso = todayIsoLocal();
+
+  return (
+    <SecurityView
+      events={events}
+      summary={summary}
+      fullNameByUserId={fullNameByUserId}
+      visitWeeks={visitWeeks}
+      visitSummary={visitSummary}
+      allowlist={allowlist}
+      todayIso={todayIso}
+      thisWeekStart={startOfWeekIso(todayIso)}
+    />
+  );
 }

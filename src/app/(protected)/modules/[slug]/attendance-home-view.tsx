@@ -39,6 +39,7 @@ import {
   type Student,
   type StudentAction,
 } from "@/lib/attendance";
+import { describeDayOffset } from "@/lib/shared/date";
 import { saveAttendanceAction } from "./attendance-actions";
 import { hasStudentActionMark, studentActionIconUrl } from "./attendance-shared";
 
@@ -222,8 +223,19 @@ function actionIdsByStudentIdOf(
 
 /**
  * The register: a titled container holding the view switch and the student list.
+ *
+ * Exported because the **Edit records** section renders the very same panel for a
+ * past day. Taking today's register and correcting last Tuesday's are the same
+ * interaction over the same data -- `saveAttendance` has updated a day's record
+ * in place since migration 0092 -- so the two screens differ only in which date
+ * they hand over, and forking 400 lines of tap-list to say that would be the
+ * gold-plating this file's header warns about.
+ *
+ * It stays in this file rather than moving to `src/components/`: it is bound to
+ * the Attendance domain types and has exactly two call sites in one module,
+ * which is not the reuse bar components.md sets.
  */
-function RegisterPanel({
+export function RegisterPanel({
   sheet,
   actions,
   today,
@@ -435,9 +447,17 @@ function RegisterPanel({
       </header>
 
       <div className="flex flex-col gap-4 p-4">
+        {/* Editing a day that isn't today is the one genuinely risky thing this
+            panel can do -- a save rewrites a register someone already relied on
+            -- so it is called out in brass rather than in the muted grey the
+            other notices use. Until the Edit records section existed this branch
+            was unreachable: the home screen only ever passes today. */}
         {sheet.attendanceDate !== today && (
-          <p className="rounded-md border border-line bg-paper-raised px-3 py-2 text-sm text-muted">
-            This is {sheet.attendanceDate}, not today.
+          <p className="rounded-md border border-brass bg-paper-raised px-3 py-2 text-sm text-ink">
+            You are editing{" "}
+            <span className="font-mono text-brass-dark">{sheet.attendanceDate}</span>{" "}
+            <span className="text-muted">({describeDayOffset(sheet.attendanceDate, today)})</span>
+            , not today. Saving updates that day's register.
           </p>
         )}
 

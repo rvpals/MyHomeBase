@@ -2,6 +2,7 @@ import { toSqliteTimestampUtc } from "@/lib/shared/date";
 import type { AuthEventRepository } from "./ports";
 import {
   authEventFilterSchema,
+  bulkIdsSchema,
   newAuthEventSchema,
   retentionDaysSchema,
 } from "./schema";
@@ -130,6 +131,20 @@ export function pruneAuthEvents(
   const days = retentionDaysSchema.parse(retentionDays);
   const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
   return repo.deleteEventsBefore(toSqliteTimestamp(cutoff));
+}
+
+/**
+ * Deletes the given events. Admin-initiated, and distinct from the prune.
+ *
+ * Unlike `recordAuthEvent` this *does* throw on invalid input: a delete is a
+ * deliberate act by an admin looking at a screen, so "you selected nothing" has to
+ * reach them rather than being swallowed as a silent success.
+ *
+ * This removes security evidence, which is the point — an admin who has read a row
+ * and wants it gone. Routine ageing is the prune's job, not this one's.
+ */
+export function deleteAuthEvents(ids: number[], repo: AuthEventRepository): number {
+  return repo.deleteEvents(bulkIdsSchema.parse(ids));
 }
 
 /** Human wording for the admin screen. Kept here so the web and CLI agree. */

@@ -72,24 +72,43 @@ those in a sentence and get on with it.
   ship a new screen without saying how it behaves narrow.
 - Don't gold-plate a one-off: write the simple version and say so in one line.
 
-## Verify before reporting done
-After any multi-file change, run **`/verify`** (or `npm run verify`) and fix what it
-reports, looping until every stage is green. **Do not report a change as complete while
-a gate is red** — say what's failing instead.
+## Report done honestly — don't run the gates
+**Never run a quality gate unless Min explicitly asks.** That means no `tsc`/typecheck,
+no `eslint`/lint, no `vitest`/unit tests, no migration dry-run, no `/verify`, no
+`npm run verify`, and no Playwright or any other browser/e2e run — **ever**, including
+"just to check before reporting". Don't offer one either; if a gate would help, finish
+the work and say so in one line.
 
-The stages: clear `.next` → then cheapest first — typecheck → lint + library boundary →
-unit tests → migration dry-run against a *copy* of the dev DB → Playwright sweep of every
-route on a fresh dev server. Details in `./.claude/commands/verify.md`.
+Min runs the gates and tests the UI himself. The gates still exist (`/verify`,
+`npm run verify`, `./.claude/commands/verify.md`) — they are **his** to invoke, not
+something to reach for unprompted.
 
-Two things that have wasted real time and are now handled by the gate rather than by
-memory:
+This rule overrides any instinct to "verify before reporting done", and it overrides
+the rest of this file. It exists because running them unasked has repeatedly burned
+minutes on a machine where the suite is slow and the real database lives on a NAS.
+
+**Instead, report honestly.** Close a change by naming:
+1. **Every file** created or modified, by path.
+2. **What you did not verify** — say it plainly rather than implying it works.
+3. **Anything you're unsure landed**, especially a wiring step with no visible output.
+
+Never describe a change as working, passing, or verified on the strength of having
+written it. *"I wrote it earlier"* is not verification, and neither is *"it should
+compile."* If you have grounds to believe something works, name them; if you don't,
+say that.
+
+Two things that have wasted real time and are still worth reading before you touch
+the relevant code:
 - **A UI change that "isn't taking effect" is a stale `.next` cache until proven
   otherwise.** Clear it (`npm run clean:next`) and hard-reload before hunting for a bug.
   The same cache also breaks *builds*: `tsconfig.json` typechecks `.next/dev/types/**`,
   and those dev-generated route types outlive a deleted page — so a build can fail
   naming a file that no longer exists. `verify` and `build` both clear `.next` first now.
-- **No gate may touch the real database.** Copies live in `.verify/`; the copy step
-  aborts if `MYHOMEBASE_DB` is unset or points inside the repo's `data/` folder.
+- **Nothing may touch the real database.** The live DB is on the NAS
+  (`//NAS_DS223/app/myhomebase/data/`); `C:\webapp` and the repo's `data/` are stale
+  copies and are never the live state. When Min runs a gate, its copies live in
+  `.verify/` and the copy step aborts if `MYHOMEBASE_DB` is unset or points inside
+  the repo's `data/`. Never point a script, a query or a migration at the real file.
 - **Before restyling a component, prove where it renders.** `grep -rn "<ComponentName"
   src/` and name the screens it appears on. A mention in a comment, in `components.md`,
   or in an import is **not** evidence — only a JSX call site is. Shared components get

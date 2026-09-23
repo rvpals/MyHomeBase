@@ -120,6 +120,19 @@ export interface AttendanceRepository {
     actionsById: Map<number, StudentAction>,
   ): AttendanceRecord;
   /**
+   * Deletes whole registers by id, returning how many rows actually went.
+   *
+   * Takes the entries and the recorded actions with them: the three tables carry
+   * no foreign keys, so nothing cascades and orphaned children would otherwise
+   * keep showing up in a detail report whose parent register is gone.
+   *
+   * A missing id is **not** an error, matching `deleteStudents` — a stale
+   * selection (the row went in another tab first) must not fail the rest of the
+   * batch. One transaction for the whole selection, so a failure part-way
+   * through can't strip a register's entries while leaving the register.
+   */
+  deleteAttendanceRecords(recordIds: number[]): number;
+  /**
    * Every register a class has, newest first — one per date it was taken.
    * Carries the counts so a date list can label each one without a second read.
    */

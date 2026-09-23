@@ -46,6 +46,9 @@ export const savedLocationSchema = z.object({
 export const locationTaxonomySchema = z.object({
   name: z.string(),
   description: z.string(),
+  // Present only when an icon is set. The bytes never travel with a list read —
+  // see migration 0105 — so this mime type is all a list knows about the icon.
+  iconMimeType: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
