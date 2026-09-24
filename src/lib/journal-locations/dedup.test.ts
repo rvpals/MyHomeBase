@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   COORDINATE_PRECISION,
+  DEFAULT_DISTANCE_METRES,
   DEFAULT_NAME_THRESHOLD,
+  arePlacesNear,
   coordinateKey,
   countDuplicateLocations,
   distanceInMetres,
   findLocationDuplicateGroups,
   nameSimilarity,
+  neighbourKeys,
   normalizeLocationName,
   roundCoordinate,
 } from "./dedup";
@@ -180,10 +183,33 @@ describe("findLocationDuplicateGroups", () => {
     expect(groups[0].locations).toHaveLength(3);
   });
 
-  it("skips blank-named rows instead of grouping them on emptiness", () => {
+  it("groups blank-named rows at one spot on proximity alone", () => {
+    // These used to be skipped, which made the commonest duplicate in an
+    // imported library invisible: a pin dropped by hand, then saved again.
     const rows = [place("", 40.4, -74.4), place("   ", 40.4, -74.4), place("", 40.4, -74.4)];
 
+    const groups = findLocationDuplicateGroups(rows);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].locations).toHaveLength(3);
+    // No name to show, so the label is blank and the view supplies words.
+    expect(groups[0].label).toBe("");
+  });
+
+  it("does not group blank-named rows that are far apart", () => {
+    const rows = [place("", 40.4, -74.4), place("", 41.9, -73.1)];
+
     expect(findLocationDuplicateGroups(rows)).toEqual([]);
+  });
+
+  it("groups a blank-named row with a named one beside it", () => {
+    const rows = [place("", 40.4, -74.4), place("Wegmans", 40.40005, -74.4)];
+
+    const groups = findLocationDuplicateGroups(rows);
+
+    expect(groups).toHaveLength(1);
+    // The real name leads, so a merge does not default to "(unnamed)".
+    expect(groups[0].label).toBe("Wegmans");
   });
 
   it("returns nothing for a library with no duplicates", () => {
@@ -254,5 +280,100 @@ describe("findLocationDuplicateGroups", () => {
     expect(groups).toHaveLength(2);
     expect(groups[0].confidence).toBeGreaterThanOrEqual(groups[1].confidence);
     expect(groups[0].label).toBe("Blue Bottle Coffee");
+  });
+});
+
+describe("neighbourKeys and arePlacesNear", () => {
+  it("includes the point's own cell", () => {
+    const keys = neighbourKeys(40.4, -74.4, DEFAULT_DISTANCE_METRES);
+
+    expect(keys).toContain(coordinateKey(40.4, -74.4));
+  });
+
+  it("widens with the radius, so a large one still reaches its edge", () => {
+    const narrow = neighbourKeys(40.4, -74.4, 10).length;
+    const wide = neighbourKeys(40.4, -74.4, 500).length;
+
+    expect(wide).toBeGreaterThan(narrow);
+  });
+
+  it("reaches the cell a point at the far edge of the radius falls in", () => {
+    // ~400m north, inside a 500m radius: its cell must be in the neighbourhood
+    // or the scan would never even measure the pair.
+    const keys = neighbourKeys(40.4, -74.4, 500);
+
+    expect(keys).toContain(coordinateKey(40.4 + 400 / 111_320, -74.4));
+  });
+
+  it("measures a real distance rather than comparing cells", () => {
+    const near = { latitude: 40.4, longitude: -74.4 };
+    const far = { latitude: 40.41, longitude: -74.4 };
+
+    expect(arePlacesNear(near, { latitude: 40.40005, longitude: -74.4 }, 75)).toBe(true);
+    expect(arePlacesNear(near, far, 75)).toBe(false);
+  });
+});
+
+describe("findLocationDuplicateGroups: distance rather than a rounding grid", () => {
+  it("groups two pins that straddle a cell boundary", () => {
+    // The original defect. 40.35049 and 40.35051 round to different cells but
+    // are ~2m apart, so exact-cell matching never compared their names at all
+    // and the dialog reported nothing however far the slider moved.
+    const rows = [place("Wegmans", 40.35049, -74.5), place("Wegman's", 40.35051, -74.5)];
+
+    expect(findLocationDuplicateGroups(rows)).toHaveLength(1);
+  });
+
+  it("honours the radius in both directions", () => {
+    // ~134m apart: outside the 75m default, inside a 300m scan.
+    const rows = [place("Wegmans", 40.35, -74.5), place("Wegman's", 40.3512, -74.5)];
+
+    expect(findLocationDuplicateGroups(rows, { maxMetres: 75 })).toEqual([]);
+    expect(findLocationDuplicateGroups(rows, { maxMetres: 300 })).toHaveLength(1);
+  });
+
+  it("still keeps the name test for two named places", () => {
+    // Same pin, unrelated names: proximity alone must not merge these.
+    const rows = [
+      place("Blue Bottle Coffee", 40.4, -74.4),
+      place("Municipal Car Park", 40.4, -74.4),
+    ];
+
+    expect(findLocationDuplicateGroups(rows, { maxMetres: 500 })).toEqual([]);
+  });
+
+  it("accepts a bare number as the name threshold, as the CLI passes it", () => {
+    const rows = [
+      place("Brunswick Acres Elementary School", 40.434, -74.528),
+      place("Brunswick Acres Elem", 40.434, -74.528),
+    ];
+
+    expect(findLocationDuplicateGroups(rows, 0.6)).toHaveLength(1);
+    expect(findLocationDuplicateGroups(rows, 1)).toEqual([]);
+  });
+
+  it("ranks a name match above a proximity-only group", () => {
+    const rows = [
+      place("", 40.4, -74.4),
+      place("", 40.40002, -74.4),
+      place("Blue Bottle Coffee", 41.2, -75.2),
+      place("Blue Bottle Coffee", 41.2, -75.2),
+    ];
+
+    const groups = findLocationDuplicateGroups(rows);
+
+    expect(groups).toHaveLength(2);
+    expect(groups[0].label).toBe("Blue Bottle Coffee");
+  });
+
+  it("prefers a named survivor over a blank one when usage ties", () => {
+    const rows = [
+      place("", 40.4, -74.4, { usageCount: 2 }),
+      place("Wegmans", 40.40005, -74.4, { usageCount: 2 }),
+    ];
+
+    const groups = findLocationDuplicateGroups(rows);
+
+    expect(groups[0].locations[0].name).toBe("Wegmans");
   });
 });

@@ -20,8 +20,11 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { Modal } from "@/components/modal";
 import {
+  DEFAULT_DISTANCE_METRES,
   DEFAULT_NAME_THRESHOLD,
+  MAX_DISTANCE_METRES,
   MAX_NAME_THRESHOLD,
+  MIN_DISTANCE_METRES,
   MIN_NAME_THRESHOLD,
   type LocationDuplicateGroup,
 } from "@/lib/journal-locations";
@@ -29,6 +32,14 @@ import {
   findLocationDuplicatesAction,
   mergeSavedLocationsAction,
 } from "./journal-location-dedup-actions";
+
+/**
+ * A group's heading. Blank when every member is unnamed, which is now a real
+ * group rather than something the scan skips — so it needs words of its own.
+ */
+function groupHeading(group: LocationDuplicateGroup): string {
+  return group.label !== "" ? group.label : "Unnamed places at one spot";
+}
 
 /** "38 m apart" / "1.2 km apart" — how far a copy sits from the group's first. */
 function formatDistance(metres: number): string {
@@ -40,6 +51,7 @@ function formatDistance(metres: number): string {
 export function JournalLocationDedupModal({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const [threshold, setThreshold] = useState(DEFAULT_NAME_THRESHOLD);
+  const [maxMetres, setMaxMetres] = useState(DEFAULT_DISTANCE_METRES);
   // `undefined` while the first scan runs, so the empty state doesn't flash.
   const [groups, setGroups] = useState<LocationDuplicateGroup[] | undefined>(undefined);
   /** group key → the id the reader wants to keep. Defaults to the first member. */
@@ -70,11 +82,11 @@ export function JournalLocationDedupModal({ onClose }: { onClose: () => void }) 
   }, []);
 
   const scan = useCallback(
-    async (value: number) => {
+    async (value: number, metres: number) => {
       setIsScanning(true);
       setError(undefined);
       try {
-        const result = await findLocationDuplicatesAction(value);
+        const result = await findLocationDuplicatesAction(value, metres);
         if (!result.ok) {
           setError(result.error);
           return;
@@ -93,7 +105,7 @@ export function JournalLocationDedupModal({ onClose }: { onClose: () => void }) 
   // handler instead of an effect keyed on `threshold`, so dragging the slider
   // doesn't fire a scan per pixel.
   useEffect(() => {
-    void scan(DEFAULT_NAME_THRESHOLD);
+    void scan(DEFAULT_NAME_THRESHOLD, DEFAULT_DISTANCE_METRES);
   }, [scan]);
 
   async function runMerge(group: LocationDuplicateGroup) {
@@ -105,7 +117,7 @@ export function JournalLocationDedupModal({ onClose }: { onClose: () => void }) 
     setError(undefined);
     setNotice(undefined);
     try {
-      const result = await mergeSavedLocationsAction(keepId, removeIds, threshold);
+      const result = await mergeSavedLocationsAction(keepId, removeIds, threshold, maxMetres);
       if (!result.ok) {
         setError(result.error ?? "Failed to merge those locations.");
         return;
@@ -113,7 +125,7 @@ export function JournalLocationDedupModal({ onClose }: { onClose: () => void }) 
       const moved = result.movedCount ?? 0;
       const removed = result.removedCount ?? 0;
       setNotice(
-        `Merged ${removed} ${removed === 1 ? "place" : "places"} into "${group.label}".` +
+        `Merged ${removed} ${removed === 1 ? "place" : "places"} into "${groupHeading(group)}".` +
           (moved > 0
             ? ` ${moved} journal ${moved === 1 ? "entry now points" : "entries now point"} at it.`
             : ""),
@@ -135,7 +147,8 @@ export function JournalLocationDedupModal({ onClose }: { onClose: () => void }) 
     <Modal onClose={onClose} isBusy={busyGroup !== undefined} size="lg" title="Merging & Dedup">
       <div className="flex flex-col gap-4">
         <p className="text-sm text-muted">
-          Places at the same spot whose names look like the same place. Pick the one to{" "}
+          Places close enough together to be the same spot, whose names agree — or that
+          have no name to disagree. Pick the one to{" "}
           <span className="text-ink">keep</span> in each group — the others are deleted, and
           every journal entry pointing at them is moved onto the one you keep.
         </p>
@@ -143,8 +156,8 @@ export function JournalLocationDedupModal({ onClose }: { onClose: () => void }) 
         {error && <p className="text-sm text-red-400">{error}</p>}
         {notice && <p className="text-sm text-ink">{notice}</p>}
 
-        {/* The threshold slider. `onMouseUp`/`onKeyUp` commit rather than
-            `onChange`, so dragging doesn't fire a scan per pixel. */}
+        {/* The two knobs. `onMouseUp`/`onKeyUp` commit rather than `onChange`,
+            so dragging doesn't fire a scan per pixel. */}
         <label className="flex flex-wrap items-center gap-3 text-sm">
           <span className="font-medium text-ink">How similar</span>
           <input
@@ -155,14 +168,39 @@ export function JournalLocationDedupModal({ onClose }: { onClose: () => void }) 
             value={threshold}
             disabled={isBusy}
             onChange={(event) => setThreshold(Number(event.target.value))}
-            onMouseUp={() => void scan(threshold)}
-            onTouchEnd={() => void scan(threshold)}
-            onKeyUp={() => void scan(threshold)}
+            onMouseUp={() => void scan(threshold, maxMetres)}
+            onTouchEnd={() => void scan(threshold, maxMetres)}
+            onKeyUp={() => void scan(threshold, maxMetres)}
             className="max-lg:w-full"
           />
           <span className="tabular-nums text-muted">{Math.round(threshold * 100)}%</span>
           <span className="text-xs text-muted">
             Lower finds more, and more false matches.
+          </span>
+        </label>
+
+        {/* How far apart two pins may be. Separate from the name slider
+            because they fail differently: a scan that finds nothing at every
+            similarity is usually looking in too small a radius, and before
+            this existed there was no way to say so. */}
+        <label className="flex flex-wrap items-center gap-3 text-sm">
+          <span className="font-medium text-ink">Within</span>
+          <input
+            type="range"
+            min={MIN_DISTANCE_METRES}
+            max={MAX_DISTANCE_METRES}
+            step={5}
+            value={maxMetres}
+            disabled={isBusy}
+            onChange={(event) => setMaxMetres(Number(event.target.value))}
+            onMouseUp={() => void scan(threshold, maxMetres)}
+            onTouchEnd={() => void scan(threshold, maxMetres)}
+            onKeyUp={() => void scan(threshold, maxMetres)}
+            className="max-lg:w-full"
+          />
+          <span className="tabular-nums text-muted">{maxMetres} m</span>
+          <span className="text-xs text-muted">
+            Wider catches a pin dropped twice; too wide merges neighbours.
           </span>
         </label>
 
@@ -193,10 +231,11 @@ export function JournalLocationDedupModal({ onClose }: { onClose: () => void }) 
                     className="rounded-lg border border-line bg-paper-raised p-3"
                   >
                     <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-                      <span className="font-medium text-ink">{group.label}</span>
+                      <span className="font-medium text-ink">{groupHeading(group)}</span>
                       <span className="text-xs text-muted">
-                        {group.locations.length} copies · {Math.round(group.confidence * 100)}%
-                        name match
+                        {group.locations.length} copies ·{" "}
+                        {Math.round(group.confidence * 100)}%{" "}
+                        {group.label === "" ? "proximity" : "name match"}
                       </span>
                     </div>
 

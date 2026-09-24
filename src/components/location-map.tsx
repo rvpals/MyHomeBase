@@ -15,7 +15,7 @@
 
 import { useEffect } from "react";
 import L from "leaflet";
-import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
+import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 
 export interface LatLng {
@@ -36,6 +36,20 @@ export interface NumberedLatLng extends LatLng {
    * `/api/journal/locations/...`), since it's inlined into the marker's HTML.
    */
   iconUrl?: string;
+  /**
+   * What a click on this pin opens in a popup. Every field is optional and a
+   * pin with none of them stays exactly as unclickable as it always was, so a
+   * caller that hasn't been migrated can't regress.
+   *
+   * Plain data rather than a ReactNode: a popup is Leaflet-owned DOM and the
+   * component renders it, which keeps the styling in one place instead of each
+   * caller reinventing it. `label` is the place's name; an empty string reads
+   * as "(unnamed)", matching every list that shows these rows.
+   */
+  label?: string;
+  address?: string;
+  /** Category and tag names, drawn as chips. Order is the caller's. */
+  chips?: readonly string[];
 }
 
 // A divIcon (inline SVG) avoids Leaflet's default PNG marker, whose image paths
@@ -102,6 +116,61 @@ function numberedPinIcon(number: number, iconUrl?: string): L.DivIcon {
     iconSize: [0, 0],
     iconAnchor: [0, 0],
   });
+}
+
+/** Formats a coordinate pair the way every list in the app prints it. */
+function formatPopupCoords(latitude: number, longitude: number): string {
+  return `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+}
+
+/** True when a pin carries anything worth opening a popup for. */
+function hasPopup(point: NumberedLatLng): boolean {
+  return (
+    point.label !== undefined ||
+    point.address !== undefined ||
+    (point.chips !== undefined && point.chips.length > 0)
+  );
+}
+
+/**
+ * The body of a pin's popup: who this place is, in the same order the lists
+ * beside these maps print it — number, name, address, coordinates, chips.
+ *
+ * Styled with the app's theme tokens rather than Leaflet's defaults; the
+ * popup's own white chrome is overridden in globals.css, because the element
+ * that carries it is Leaflet's, not ours.
+ */
+function MarkerPopup({ point }: { point: NumberedLatLng }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div>
+        <span className="font-mono text-xs text-muted">#{point.number}</span>{" "}
+        <span className="font-medium text-ink">
+          {point.label === "" || point.label === undefined ? (
+            <span className="text-muted">(unnamed)</span>
+          ) : (
+            point.label
+          )}
+        </span>
+      </div>
+      {point.address && <div className="text-xs text-muted">{point.address}</div>}
+      <div className="font-mono text-xs text-muted">
+        {formatPopupCoords(point.latitude, point.longitude)}
+      </div>
+      {point.chips !== undefined && point.chips.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {point.chips.map((chip) => (
+            <span
+              key={chip}
+              className="rounded-full border border-line px-2 py-0.5 text-xs text-muted"
+            >
+              {chip}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 const DEFAULT_CENTER: [number, number] = [40.3399, -74.4619]; // Princeton, NJ
@@ -205,8 +274,19 @@ export function LocationMap({
                 key={`${point.number}-${point.latitude}-${point.longitude}`}
                 position={[point.latitude, point.longitude]}
                 icon={numberedPinIcon(point.number, point.iconUrl)}
-                title={`#${point.number}`}
-              />
+                // The hover tooltip names the place when it can. `#3` alone was
+                // all a reader got before, which doesn't answer "which one is
+                // this" without counting down the list.
+                title={point.label ? `#${point.number} ${point.label}` : `#${point.number}`}
+              >
+                {/* Only pins carrying detail become clickable, so a caller that
+                    passes bare coordinates keeps the old inert pin. */}
+                {hasPopup(point) && (
+                  <Popup>
+                    <MarkerPopup point={point} />
+                  </Popup>
+                )}
+              </Marker>
             ))}
           </>
         ) : (

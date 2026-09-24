@@ -9,7 +9,7 @@
 //
 // Route-local rather than registered: nothing outside My Journal renders this.
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
@@ -231,6 +231,7 @@ function EditSavedLocationModal({
   categoryIcons,
   tagIcons,
   onClose,
+  onSaved,
 }: {
   location?: SavedLocationWithUsage;
   categoryOptions: string[];
@@ -238,6 +239,15 @@ function EditSavedLocationModal({
   categoryIcons: Record<string, string>;
   tagIcons: Record<string, string>;
   onClose: () => void;
+  /**
+   * Called after a successful write, before the modal closes.
+   *
+   * `router.refresh()` alone is not enough: it refetches the server's
+   * `locations` prop, but a filtered list renders `results` — client state
+   * from the search action, which a server refresh cannot reach. Without this
+   * the reader edits a place and the old row stays on screen.
+   */
+  onSaved?: () => void;
 }) {
   const router = useRouter();
   const [name, setName] = useState(location?.name ?? "");
@@ -322,6 +332,7 @@ function EditSavedLocationModal({
         return;
       }
       router.refresh();
+      onSaved?.();
       onClose();
     } finally {
       setIsBusy(false);
@@ -445,8 +456,25 @@ export function JournalLocationsView({
   const [isImporting, setIsImporting] = useState(false);
   const [isDeduping, setIsDeduping] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
+  /**
+   * Bumped after any write, to force the filtered list to refetch.
+   *
+   * `router.refresh()` handles the unfiltered list, which renders the server's
+   * `locations` prop. It cannot help a filtered one: that renders `results`,
+   * client state owned by the search effect below, whose other dependencies
+   * (the query and the filters) do not change when a place is saved.
+   */
+  const [reloadToken, setReloadToken] = useState(0);
+  /** The token the search effect last acted on, to tell a write from a keystroke. */
+  const lastReloadToken = useRef(0);
 
   const isFiltered = query.trim() !== "" || activeCategories.length > 0 || activeTags.length > 0;
+
+  /** Repaints both lists after a write, whichever one is on screen. */
+  const reload = useCallback(() => {
+    router.refresh();
+    setReloadToken((token) => token + 1);
+  }, [router]);
 
   // Re-runs the search whenever the query or a filter changes, debounced so a
   // typed word is one round trip rather than one per letter. The filtering is
@@ -458,7 +486,7 @@ export function JournalLocationsView({
   useEffect(() => {
     if (!isFiltered) return;
     let cancelled = false;
-    const timer = setTimeout(async () => {
+    const run = async () => {
       const result = await searchSavedLocationsAction({
         query,
         categories: activeCategories,
@@ -471,12 +499,28 @@ export function JournalLocationsView({
       } else {
         setError(result.error);
       }
-    }, 250);
+    };
+    // The debounce is there to collapse keystrokes. A write is one deliberate
+    // act and the reader is watching for the row to change, so a reload
+    // repaints at once rather than a quarter-second later. Comparing the token
+    // against the last one seen distinguishes the two: a keystroke leaves it
+    // unchanged, a write bumps it.
+    const isReload = reloadToken !== lastReloadToken.current;
+    lastReloadToken.current = reloadToken;
+    if (isReload) {
+      void run();
+      return () => {
+        cancelled = true;
+      };
+    }
+    const timer = setTimeout(run, 250);
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [query, activeCategories, activeTags, isFiltered]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `reloadToken` is a
+    // signal to refetch, not a value the query is built from.
+  }, [query, activeCategories, activeTags, isFiltered, reloadToken]);
 
   // Memoised so the pin list below keeps a stable identity across renders that
   // changed neither the filters nor the rows.
@@ -498,6 +542,11 @@ export function JournalLocationsView({
         // because the categories are an unordered set and any tie-break here
         // would be arbitrary — the reader controls it by ordering the category.
         iconUrl: place.categories.map((name) => categoryIcons[name]).find(Boolean),
+        // Clicking a pin opens the same detail the row below shows, so the
+        // overview map identifies a place on its own.
+        label: place.name,
+        address: place.address || undefined,
+        chips: [...place.categories, ...place.tags],
       })),
     [shown, categoryIcons],
   );
@@ -513,7 +562,7 @@ export function JournalLocationsView({
         : ` ${place.usageCount} journal ${place.usageCount === 1 ? "entry keeps" : "entries keep"} the coordinates but stop pointing here.`;
     if (!window.confirm(`Delete "${place.name || "this place"}"?${used}`)) return;
     const result = await deleteSavedLocationAction(place.id);
-    if (result.ok) router.refresh();
+    if (result.ok) reload();
     else window.alert(result.error);
   }
 
@@ -659,8 +708,22 @@ export function JournalLocationsView({
         </>
       )}
 
-      {isImporting && <JournalLocationImportModal onClose={() => setIsImporting(false)} />}
-      {isDeduping && <JournalLocationDedupModal onClose={() => setIsDeduping(false)} />}
+      {isImporting && (
+        <JournalLocationImportModal
+          onClose={() => {
+            setIsImporting(false);
+            reload();
+          }}
+        />
+      )}
+      {isDeduping && (
+        <JournalLocationDedupModal
+          onClose={() => {
+            setIsDeduping(false);
+            reload();
+          }}
+        />
+      )}
       {isAdding && (
         <EditSavedLocationModal
           categoryOptions={categoryOptions}
@@ -668,6 +731,7 @@ export function JournalLocationsView({
           categoryIcons={categoryIcons}
           tagIcons={tagIcons}
           onClose={() => setIsAdding(false)}
+          onSaved={reload}
         />
       )}
       {editing && (
@@ -678,6 +742,7 @@ export function JournalLocationsView({
           categoryIcons={categoryIcons}
           tagIcons={tagIcons}
           onClose={() => setEditing(undefined)}
+          onSaved={reload}
         />
       )}
     </div>

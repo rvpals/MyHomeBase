@@ -1,6 +1,9 @@
 import {
+  DEFAULT_DISTANCE_METRES,
   DEFAULT_NAME_THRESHOLD,
+  MAX_DISTANCE_METRES,
   MAX_NAME_THRESHOLD,
+  MIN_DISTANCE_METRES,
   MIN_NAME_THRESHOLD,
   findLocationDuplicateGroups,
   type LocationDuplicateGroup,
@@ -151,17 +154,48 @@ export function deleteSavedLocation(repo: SavedLocationRepository, id: number): 
 }
 
 /**
+ * `value` held inside [min, max], falling back to `fallback` when it is not a
+ * usable number. NaN survives Math.min/Math.max, so it needs its own check —
+ * `Number(flags["--within"])` on a typo would otherwise silently scan at NaN
+ * metres and find nothing, which is the failure this whole change exists to
+ * stop happening quietly.
+ */
+function clampNumber(value: number, min: number, max: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
+}
+
+/**
  * The near-duplicate groups in the library, for the Merging & Dedup dialog.
  *
  * A read, not a write: it proposes and nothing more. See `dedup.ts` for how two
- * places qualify (same rounded coordinate cell *and* similar names).
+ * places qualify (within `maxMetres` *and* similar names, or within
+ * `maxMetres` alone when either name is blank).
+ *
+ * Both knobs are clamped here rather than trusted: they arrive from a slider
+ * over the wire, and a scan is the cheapest place to be defensive.
  */
 export function findLocationDuplicates(
   repo: SavedLocationRepository,
   threshold: number = DEFAULT_NAME_THRESHOLD,
+  maxMetres: number = DEFAULT_DISTANCE_METRES,
 ): LocationDuplicateGroup[] {
-  const clamped = Math.min(MAX_NAME_THRESHOLD, Math.max(MIN_NAME_THRESHOLD, threshold));
-  return findLocationDuplicateGroups(repo.listLocations(), clamped);
+  const nameThreshold = clampNumber(
+    threshold,
+    MIN_NAME_THRESHOLD,
+    MAX_NAME_THRESHOLD,
+    DEFAULT_NAME_THRESHOLD,
+  );
+  const metres = clampNumber(
+    maxMetres,
+    MIN_DISTANCE_METRES,
+    MAX_DISTANCE_METRES,
+    DEFAULT_DISTANCE_METRES,
+  );
+  return findLocationDuplicateGroups(repo.listLocations(), {
+    nameThreshold,
+    maxMetres: metres,
+  });
 }
 
 /**

@@ -3463,10 +3463,19 @@ overview, and by [`PhotoMapDialog`](#photomapdialog).
 | Prop | Type | Notes |
 | --- | --- | --- |
 | `marker` | `LatLng \| null` | The single pin. |
-| `markers?` | `readonly NumberedLatLng[]` | Several pins, each labelled with its number; the map fits its view to all of them. **Takes precedence** over `marker`/`center` when non-empty. Each entry may carry an optional `iconUrl` — a same-origin image drawn in the pin's face instead of the number, used by the Journal for a place's location-category icon. Omit it and the pin is the plain numbered one. |
+| `markers?` | `readonly NumberedLatLng[]` | Several pins, each labelled with its number; the map fits its view to all of them. **Takes precedence** over `marker`/`center` when non-empty. Each entry may carry an optional `iconUrl` — a same-origin image drawn in the pin's face instead of the number, used by the Journal for a place's location-category icon. Omit it and the pin is the plain numbered one. Each entry may also carry `label`, `address` and `chips`, which make the pin **clickable** — see *Pin popups* below. |
 | `center` | `LatLng \| null` | Recenters when a search result or external change comes in. |
 | `onPick?` | `(latitude, longitude) => void` | **Omit for a read-only map.** Its presence is what makes the map pickable. |
 | `heightClassName?` | `string` | Tailwind height for the box. Default `h-64`; taller reads better with many pins. |
+
+**Pin popups.** A numbered pin opens a popup on click when it carries any of `label`
+(the place's name — `""` renders as *(unnamed)*), `address`, or a non-empty `chips`
+list. The popup prints number, name, address, coordinates and the chips, in the order
+the lists beside these maps use. A pin carrying none of the three stays inert, so the
+single-pin callers and any unmigrated numbered caller behave exactly as before. The
+popup body is the component's own — callers pass data, not a `ReactNode`, which keeps
+the styling in one place. Leaflet's popup chrome ships hardcoded white and is restated
+in theme tokens in [src/app/globals.css](src/app/globals.css), next to the z-index cap.
 
 **Import it lazily, always.** Every call site uses `next/dynamic` with `ssr: false`,
 because Leaflet touches `window` at module scope and is heavy enough not to want in a

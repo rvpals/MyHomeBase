@@ -7,6 +7,7 @@ import { getModuleBySlug } from "@/lib/modules";
 import { userHasModuleAccess } from "@/lib/user";
 import { deps } from "@/lib/wiring";
 import { JournalEntryScreen } from "./entry-screen";
+import { JournalShell } from "../../journal-shell";
 import { journalTaxonomyIconUrlsByName } from "../../journal-shared";
 import { PAGE_CONTAINER } from "../../../../page-container";
 
@@ -48,19 +49,26 @@ export default async function JournalEntryPage({
   const tagIcons = Object.fromEntries(journalTaxonomyIconUrlsByName("tag", tags));
 
   return (
-    <div className={PAGE_CONTAINER}>
-      <JournalEntryScreen
-        entry={entry}
-        neighbors={getEntryNeighbors(deps.journalRepo, entryId)}
-        categoryIcons={categoryIcons}
-        tagIcons={tagIcons}
-        categoryOptions={categories.map((category) => category.name)}
-        tagOptions={tags.map((tag) => tag.name)}
-        locationCategoryOptions={listLocationCategories(deps.savedLocationRepo).map(
-          (row) => row.name,
-        )}
-        locationTagOptions={listLocationTags(deps.savedLocationRepo).map((row) => row.name)}
-      />
-    </div>
+    // The same two-tier shell every other journal screen renders (see
+    // design.md, "Navigation: the two-tier shell"). Wrapped here rather than in
+    // a layout because navigation in this app is placed by each module's own
+    // shell, not by `(protected)/layout.tsx` — without this the entry screen
+    // rendered straight into `.app-main` with no rail, no panel and no header.
+    <JournalShell>
+      <div className={PAGE_CONTAINER}>
+        <JournalEntryScreen
+          entry={entry}
+          neighbors={getEntryNeighbors(deps.journalRepo, entryId)}
+          categoryIcons={categoryIcons}
+          tagIcons={tagIcons}
+          categoryOptions={categories.map((category) => category.name)}
+          tagOptions={tags.map((tag) => tag.name)}
+          locationCategoryOptions={listLocationCategories(deps.savedLocationRepo).map(
+            (row) => row.name,
+          )}
+          locationTagOptions={listLocationTags(deps.savedLocationRepo).map((row) => row.name)}
+        />
+      </div>
+    </JournalShell>
   );
 }

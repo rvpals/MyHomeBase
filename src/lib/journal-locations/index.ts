@@ -58,16 +58,28 @@ export {
 } from "./journal-locations";
 
 export {
+  DEFAULT_DISTANCE_METRES,
   DEFAULT_NAME_THRESHOLD,
+  MAX_DISTANCE_METRES,
   MAX_NAME_THRESHOLD,
+  MIN_DISTANCE_METRES,
   MIN_NAME_THRESHOLD,
+  arePlacesNear,
   countDuplicateLocations,
   findLocationDuplicateGroups,
   nameSimilarity,
+  neighbourKeys,
   normalizeLocationName,
   type DuplicateLocation,
+  type DuplicateScanOptions,
   type LocationDuplicateGroup,
 } from "./dedup";
+
+export {
+  findDuplicateLocationIndex,
+  isDuplicateLocation,
+  type LocationPoint,
+} from "./duplicate-in-list";
 
 export { buildImportCandidates, existingLocationKey } from "./import-from-entries";
 

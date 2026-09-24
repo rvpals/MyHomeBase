@@ -61,10 +61,14 @@ function revalidateLocationScreens(): void {
  */
 export async function findLocationDuplicatesAction(
   threshold: number,
+  maxMetres?: number,
 ): Promise<DuplicateGroupsResult> {
   await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
-    return { ok: true, groups: findLocationDuplicates(deps.savedLocationRepo, threshold) };
+    return {
+      ok: true,
+      groups: findLocationDuplicates(deps.savedLocationRepo, threshold, maxMetres),
+    };
   } catch (error) {
     return toErrorResult(error, "Failed to scan for duplicate locations.");
   }
@@ -82,6 +86,7 @@ export async function mergeSavedLocationsAction(
   keepId: number,
   removeIds: number[],
   threshold: number,
+  maxMetres?: number,
 ): Promise<MergeLocationsActionResult> {
   await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
@@ -94,7 +99,7 @@ export async function mergeSavedLocationsAction(
       ok: true,
       movedCount,
       removedCount,
-      groups: findLocationDuplicates(deps.savedLocationRepo, threshold),
+      groups: findLocationDuplicates(deps.savedLocationRepo, threshold, maxMetres),
     };
   } catch (error) {
     return toErrorResult(error, "Failed to merge those locations.");

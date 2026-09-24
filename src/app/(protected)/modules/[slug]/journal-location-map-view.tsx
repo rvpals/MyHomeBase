@@ -90,6 +90,11 @@ export function JournalLocationMapView({
         // Same rule as the manager's overview map: the first category with an
         // icon gives the pin its face, otherwise it stays a numbered pin.
         iconUrl: place.categories.map((name) => categoryIcons[name]).find(Boolean),
+        // What a click on the pin opens. The same fields the numbered list
+        // beside the map prints, so a pin can be read without finding its row.
+        label: place.name,
+        address: place.address || undefined,
+        chips: [...place.categories, ...place.tags],
       })),
     [shown, categoryIcons],
   );

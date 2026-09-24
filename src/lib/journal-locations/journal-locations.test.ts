@@ -385,6 +385,40 @@ describe("findLocationDuplicates", () => {
     expect(findLocationDuplicates(repo, 99)).toHaveLength(1);
   });
 
+  it("clamps a distance outside the slider's range instead of throwing", () => {
+    const repo = repoWithTaxonomy();
+    createSavedLocation(repo, { ...PRINCETON, name: "Blue Bottle" });
+    createSavedLocation(repo, { ...PRINCETON, name: "Blue Bottle" });
+
+    expect(findLocationDuplicates(repo, undefined, -40)).toHaveLength(1);
+    expect(findLocationDuplicates(repo, undefined, 10_000)).toHaveLength(1);
+  });
+
+  it("falls back to the default when the distance is not a number", () => {
+    // `Number("2OO")` is NaN, and NaN survives Math.min/Math.max — so without
+    // an explicit guard a mistyped CLI flag would scan at NaN metres and
+    // silently find nothing, which is the failure this change exists to fix.
+    const repo = repoWithTaxonomy();
+    createSavedLocation(repo, { ...PRINCETON, name: "Blue Bottle" });
+    createSavedLocation(repo, { ...PRINCETON, name: "Blue Bottle" });
+
+    expect(findLocationDuplicates(repo, undefined, Number.NaN)).toHaveLength(1);
+  });
+
+  it("widens the search when given a larger radius", () => {
+    // ~134m apart: missed by the default, found at 300m.
+    const repo = repoWithTaxonomy();
+    createSavedLocation(repo, { ...PRINCETON, name: "Blue Bottle" });
+    createSavedLocation(repo, {
+      ...PRINCETON,
+      latitude: PRINCETON.latitude + 0.0012,
+      name: "Blue Bottle",
+    });
+
+    expect(findLocationDuplicates(repo)).toEqual([]);
+    expect(findLocationDuplicates(repo, undefined, 300)).toHaveLength(1);
+  });
+
   it("finds nothing in an empty library", () => {
     expect(findLocationDuplicates(repoWithTaxonomy())).toEqual([]);
   });

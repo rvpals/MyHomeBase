@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/button";
+import { isDuplicateLocation } from "@/lib/journal-locations";
 import type { JournalLocationInput } from "./journal-actions";
 import { JournalLocationField, type PickedLocation } from "./journal-location-field";
 import { JournalLocationLibraryPicker } from "./journal-location-library-picker";
@@ -40,21 +41,44 @@ export function JournalLocationPicker({
 }) {
   const [draft, setDraft] = useState<PickedLocation | null>(null);
   const [source, setSource] = useState<Source>("map");
+  // Set when an add was refused as a duplicate, cleared by the next successful
+  // add or removal. A message rather than a disabled button: on the library tab
+  // a row click *is* the add, so there is nothing to disable there, and one
+  // mechanism for both tabs beats two.
+  const [duplicateNotice, setDuplicateNotice] = useState<string | null>(null);
 
   function addDraft() {
     if (!draft) return;
-    onChange([
-      ...value,
-      { latitude: draft.latitude, longitude: draft.longitude, locationName: draft.name },
-    ]);
+    const candidate = {
+      latitude: draft.latitude,
+      longitude: draft.longitude,
+      locationName: draft.name,
+    };
+    // Coordinates decide it, not the name — see `isDuplicateLocation`. The draft
+    // is deliberately left in place so it is obvious nothing was lost.
+    if (isDuplicateLocation(value, candidate)) {
+      setDuplicateNotice("That location is already on this entry.");
+      return;
+    }
+    onChange([...value, candidate]);
+    setDuplicateNotice(null);
     setDraft(null);
   }
 
   function addFromLibrary(location: JournalLocationInput) {
+    if (isDuplicateLocation(value, location)) {
+      setDuplicateNotice(
+        `${location.locationName || "That location"} is already on this entry.`,
+      );
+      return;
+    }
     onChange([...value, location]);
+    setDuplicateNotice(null);
   }
 
   function removeLocation(index: number) {
+    // Clears the notice too: the row it complained about may be the one going.
+    setDuplicateNotice(null);
     onChange(value.filter((_, i) => i !== index));
   }
 
@@ -94,6 +118,15 @@ export function JournalLocationPicker({
             </li>
           ))}
         </ul>
+      )}
+
+      {/* Above the tabs, so it is in the same place whichever tab refused the
+          add. `role="status"` announces it without stealing focus from the
+          form. */}
+      {duplicateNotice && (
+        <p role="status" className="text-sm text-red-400">
+          {duplicateNotice}
+        </p>
       )}
 
       <div className="flex gap-1 rounded-md border border-line bg-paper p-1">

@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import dynamic from "next/dynamic";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { JournalViewer } from "@/components/journal-viewer";
@@ -145,12 +144,8 @@ export function JournalEntryScreen({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="no-print">
-        <Link href={JOURNAL_MODULE_PATH} className="text-sm text-brass-dark hover:underline">
-          &larr; Back to My Journal
-        </Link>
-      </div>
-
+      {/* No "Back to My Journal" link: the page renders inside `JournalShell`
+          now, so the module rail and the section panel are the way back. */}
       {error && <p className="no-print text-sm text-red-400">{error}</p>}
 
       {isEditing ? (
@@ -257,6 +252,10 @@ export function JournalEntryScreen({
               latitude: location.latitude,
               longitude: location.longitude,
               number: index + 1,
+              // Clicking a pin names it. An entry's locations carry no
+              // categories or address, so the popup is the name and the
+              // coordinates — which is all the table below holds too.
+              label: location.locationName,
             }))}
             marker={null}
             center={null}

@@ -32,6 +32,7 @@ import { parseFlags } from "./parse-flags";
  *   journal-locations --promote --lat 40.1 --lon -74.2 --name "Grandma's" --entry-location 42
  *   journal-locations --find-duplicates
  *   journal-locations --find-duplicates 0.9
+ *   journal-locations --find-duplicates --within 200
  *   journal-locations --merge 12 --into-from 34,56
  *   journal-locations --import-from-entries
  *   journal-locations --import-from-entries --no-addresses
@@ -171,16 +172,20 @@ export async function journalLocationsCommand(args: string[]): Promise<void> {
     // there is no way to delete a row by mistyping a scan.
     const raw = flags["find-duplicates"];
     const threshold = raw === "" ? undefined : Number(raw);
-    const groups = findLocationDuplicates(deps.savedLocationRepo, threshold);
+    // How far apart two pins may still be one place. The use-case clamps it
+    // and falls back on a non-number, so a typo widens nothing silently.
+    const withinRaw = flags.within;
+    const within = withinRaw === undefined || withinRaw === "" ? undefined : Number(withinRaw);
+    const groups = findLocationDuplicates(deps.savedLocationRepo, threshold, within);
     if (groups.length === 0) {
       console.log("No duplicate locations found.");
       return;
     }
     for (const group of groups) {
       console.log(
-        `\n${group.label} — ${group.locations.length} copies, ${Math.round(
-          group.confidence * 100,
-        )}% name match`,
+        `\n${group.label || "Unnamed places at one spot"} — ` +
+          `${group.locations.length} copies, ${Math.round(group.confidence * 100)}% ` +
+          `${group.label === "" ? "proximity" : "name match"}`,
       );
       for (const place of group.locations) {
         console.log(
@@ -311,6 +316,7 @@ export async function journalLocationsCommand(args: string[]): Promise<void> {
   console.error(
     "Usage: journal-locations --list | --search <text> | --add <name> --lat <n> --lon <n> |\n" +
       "       --update <id> ... | --delete <id> | --promote --lat <n> --lon <n> |\n" +
+      "       --find-duplicates [score] [--within <metres>] | --merge <id> --into-from <ids> |\n" +
       "       --categories | --tags | --add-category <name> | --add-tag <name> |\n" +
       "       --delete-category <name> | --delete-tag <name>",
   );
