@@ -3,13 +3,17 @@ import { FakeMessageRepository } from "./fakes";
 import {
   countMessages,
   createMessage,
+  deleteMessages,
   getMessage,
   getMessageQueue,
+  listAllMessages,
   listMessages,
   markAllMessagesRead,
   markMessagesRead,
+  pruneMessages,
 } from "./messages";
 import { createMessageSchema, markMessagesReadSchema, MESSAGE_TITLE_MAX } from "./schema";
+import type { SystemMessage } from "./types";
 
 describe("createMessage", () => {
   it("files a message and returns it", () => {
@@ -183,5 +187,142 @@ describe("createMessageSchema", () => {
     // sets the second, so neither may arrive from the boundary.
     expect(parsed).not.toHaveProperty("readAt");
     expect(parsed).not.toHaveProperty("createdAt");
+  });
+});
+
+/**
+ * A message with an explicit `createdAt`, for the purge tests. The fake's own
+ * `createMessage` stamps a fixed date, which is right for ordering tests and
+ * useless for one about age.
+ */
+function aged(id: number, createdAt: string): SystemMessage {
+  return { id, createdAt, title: `Message ${id}`, body: "", source: "test" };
+}
+
+describe("listAllMessages", () => {
+  it("returns both halves together, newest first", () => {
+    const repo = new FakeMessageRepository();
+    createMessage(repo, { title: "First" });
+    createMessage(repo, { title: "Second" });
+    createMessage(repo, { title: "Third" });
+    markMessagesRead(repo, [2]);
+
+    const all = listAllMessages(repo);
+
+    // Three rows, not the two the unread tab would show — the admin grid is the
+    // one place that sees a read message next to an unread one.
+    expect(all.map((message) => message.title)).toEqual(["Third", "Second", "First"]);
+    expect(all.filter((message) => message.readAt)).toHaveLength(1);
+  });
+
+  it("is empty on a fresh queue rather than throwing", () => {
+    expect(listAllMessages(new FakeMessageRepository())).toEqual([]);
+  });
+});
+
+describe("deleteMessages", () => {
+  it("removes the selected messages and returns how many went", () => {
+    const repo = new FakeMessageRepository();
+    createMessage(repo, { title: "Keep" });
+    createMessage(repo, { title: "Drop" });
+
+    expect(deleteMessages(repo, [2])).toBe(1);
+    expect(listAllMessages(repo).map((message) => message.title)).toEqual(["Keep"]);
+  });
+
+  it("deletes read and unread alike", () => {
+    const repo = new FakeMessageRepository();
+    createMessage(repo, { title: "Read one" });
+    createMessage(repo, { title: "Unread one" });
+    markMessagesRead(repo, [1]);
+
+    // Delete is not mark-read: having been read does not protect a row, and not
+    // having been read does not either.
+    expect(deleteMessages(repo, [1, 2])).toBe(2);
+    expect(countMessages(repo)).toEqual({ unread: 0, read: 0 });
+  });
+
+  it("counts an id that is already gone as zero rather than throwing", () => {
+    const repo = new FakeMessageRepository();
+    createMessage(repo, { title: "Only" });
+    deleteMessages(repo, [1]);
+
+    // Two admins on the same grid is an ordinary thing; the second click must not
+    // produce an error for doing what the first already did.
+    expect(deleteMessages(repo, [1])).toBe(0);
+  });
+
+  it("rejects an empty selection", () => {
+    // Throws where mark-read would tolerate it: a delete is deliberate, so
+    // "you selected nothing" has to reach the admin.
+    expect(() => deleteMessages(new FakeMessageRepository(), [])).toThrow();
+  });
+
+  it("rejects an id that is not a positive integer", () => {
+    expect(() => deleteMessages(new FakeMessageRepository(), [0])).toThrow();
+    expect(() => deleteMessages(new FakeMessageRepository(), [-4])).toThrow();
+    expect(() => deleteMessages(new FakeMessageRepository(), [1.5])).toThrow();
+  });
+
+  it("deduplicates a repeated id so the count is honest", () => {
+    const repo = new FakeMessageRepository();
+    createMessage(repo, { title: "Only" });
+
+    // One row went, so the answer is 1 — not 2, which is what a naive loop over
+    // the raw list would report back to the screen.
+    expect(deleteMessages(repo, [1, 1])).toBe(1);
+  });
+});
+
+describe("pruneMessages", () => {
+  const now = new Date("2026-03-31T12:00:00Z");
+
+  it("deletes messages older than the window and keeps the rest", () => {
+    const repo = new FakeMessageRepository([
+      aged(1, "2026-01-01 09:00:00"),
+      aged(2, "2026-03-25 09:00:00"),
+      aged(3, "2026-03-30 09:00:00"),
+    ]);
+
+    // 30 days back from 2026-03-31 is 2026-03-01: only the January row is older.
+    expect(pruneMessages(repo, 30, now)).toBe(1);
+    expect(listAllMessages(repo).map((message) => message.id)).toEqual([3, 2]);
+  });
+
+  it("deletes a read message and an unread one alike", () => {
+    const repo = new FakeMessageRepository([
+      { ...aged(1, "2026-01-01 09:00:00"), readAt: "2026-01-02 09:00:00" },
+      aged(2, "2026-01-01 09:00:00"),
+    ]);
+
+    // Age is the only criterion. An unread message old enough to fall in the
+    // window goes with the rest — the purge is housekeeping, not an inbox rule.
+    expect(pruneMessages(repo, 30, now)).toBe(2);
+    expect(listAllMessages(repo)).toEqual([]);
+  });
+
+  it("keeps a message filed exactly at the cutoff", () => {
+    const repo = new FakeMessageRepository([aged(1, "2026-03-01 12:00:00")]);
+
+    // Strictly-before: a message filed exactly 30 days ago is 30 days old, not
+    // older than 30, so the honest reading of "older than" keeps it.
+    expect(pruneMessages(repo, 30, now)).toBe(0);
+    expect(listAllMessages(repo)).toHaveLength(1);
+  });
+
+  it("returns zero when nothing is old enough", () => {
+    const repo = new FakeMessageRepository([aged(1, "2026-03-30 09:00:00")]);
+
+    expect(pruneMessages(repo, 30, now)).toBe(0);
+  });
+
+  it("rejects a window of zero days, which would empty the queue", () => {
+    // The floor is what stops a mistyped window being read as "delete everything".
+    expect(() => pruneMessages(new FakeMessageRepository(), 0, now)).toThrow();
+  });
+
+  it("rejects a negative or fractional window", () => {
+    expect(() => pruneMessages(new FakeMessageRepository(), -1, now)).toThrow();
+    expect(() => pruneMessages(new FakeMessageRepository(), 2.5, now)).toThrow();
   });
 });

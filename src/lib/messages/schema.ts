@@ -57,3 +57,28 @@ export const markMessagesReadSchema = z.object({
 });
 
 export type MarkMessagesReadInput = z.infer<typeof markMessagesReadSchema>;
+
+/** How many rows a bulk delete may touch in one call. */
+export const MAX_BULK_IDS = 1000;
+
+/**
+ * Ids for a bulk delete. Bounded, deduped, and required to be non-empty so an
+ * accidental "delete nothing" is an explicit error rather than a silent success.
+ *
+ * Same shape as `site-visits` and `auth-events` use for their admin grids — this
+ * screen is the third of the same kind, and they should fail identically.
+ */
+export const deleteMessagesSchema = z
+  .array(z.number().int().positive())
+  .min(1, "Select at least one message.")
+  .max(MAX_BULK_IDS)
+  .transform((ids) => [...new Set(ids)]);
+
+/**
+ * Guards the purge. A floor of 1 day stops a mistyped window wiping the queue
+ * outright, and the ceiling matches the two sibling logs' retention schemas.
+ *
+ * Note this is *not* a scheduled retention window: nothing prunes the queue on a
+ * timer. It is the age an admin picks on the screen, one purge at a time.
+ */
+export const messageRetentionDaysSchema = z.number().int().min(1).max(3650);

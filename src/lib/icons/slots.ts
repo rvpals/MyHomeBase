@@ -1386,6 +1386,17 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    id: "admin_section_messages",
+    label: "Message Queue",
+    group: "Admin navigation",
+    where: "Admin → section panel → Message Queue.",
+    // `bell`, as `chrome_header_messages` uses -- the queue's nav entry and the
+    // header bell that opens it are the same subject.
+    defaultConcept: "bell",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     id: "admin_section_sql_explorer",
     label: "SQL Explorer",
     group: "Admin navigation",

@@ -109,4 +109,38 @@ export class SqliteMessageRepository implements MessageRepository {
       .run();
     return result.changes;
   }
+
+  listAllMessages(): SystemMessage[] {
+    // Rides `idx_messages_created_at`, and uses the same `(created_at DESC, id DESC)`
+    // tie-break as `listMessages` — several messages from one monitor run share a
+    // second, and the admin grid must not reorder them between reloads.
+    const rows = this.db
+      .prepare(`SELECT * FROM sys_messages ORDER BY created_at DESC, id DESC`)
+      .all() as MessageRow[];
+    return rows.map(toMessage);
+  }
+
+  deleteMessages(messageIds: number[]): number {
+    if (messageIds.length === 0) return 0;
+
+    const placeholders = messageIds.map(() => "?").join(", ");
+    const result = this.db
+      .prepare(`DELETE FROM sys_messages WHERE id IN (${placeholders})`)
+      .run(...messageIds);
+    return result.changes;
+  }
+
+  deleteMessagesBefore(cutoff: string): number {
+    // `<`, not `<=`: the cutoff is "now minus N days", so a message filed at exactly
+    // that instant is N days old, not older than N. Strictly-before is the honest
+    // reading of "older than", and it matches the two sibling logs' prunes.
+    //
+    // A string comparison, which is why the cutoff must be SQLite's own
+    // `YYYY-MM-DD HH:MM:SS` shape — see `toSqliteTimestampUtc`, whose doc comment
+    // records what an ISO string with its "T" would silently do here.
+    const result = this.db
+      .prepare(`DELETE FROM sys_messages WHERE created_at < ?`)
+      .run(cutoff);
+    return result.changes;
+  }
 }

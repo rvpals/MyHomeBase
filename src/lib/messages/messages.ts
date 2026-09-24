@@ -1,8 +1,11 @@
+import { toSqliteTimestampUtc } from "@/lib/shared/date";
 import type { MessageRepository } from "./ports";
 import {
   createMessageSchema,
+  deleteMessagesSchema,
   markMessagesReadSchema,
   messageReadStateSchema,
+  messageRetentionDaysSchema,
   type CreateMessageInput,
 } from "./schema";
 import type { MessageCounts, MessageReadState, SystemMessage } from "./types";
@@ -81,4 +84,54 @@ export function getMessageQueue(repo: MessageRepository): {
     read: repo.listMessages("read"),
     counts: repo.countMessages(),
   };
+}
+
+/**
+ * The whole queue, newest first, read and unread together.
+ *
+ * What the admin screen lists. Distinct from `getMessageQueue`, which splits the
+ * two halves for the header window's tabs — the admin grid shows one table with a
+ * state column and filters it in the view, so splitting and re-merging here would
+ * be work done twice.
+ */
+export function listAllMessages(repo: MessageRepository): SystemMessage[] {
+  return repo.listAllMessages();
+}
+
+/**
+ * Deletes the given messages permanently. Returns how many rows actually went.
+ *
+ * **This is not mark-read.** Reading a message keeps it, in the read half, for
+ * good; this removes it. The queue is the app's only record that a monitor ever
+ * fired, so deleting is an admin act on an admin screen, not something the header
+ * bell can do.
+ *
+ * Unlike `markMessagesRead` this throws on an empty selection: a delete is a
+ * deliberate act by an admin looking at a screen, so "you selected nothing" has to
+ * reach them rather than being swallowed as a silent success. Same reasoning as
+ * `deleteAuthEvents` and `deleteSiteVisits`.
+ */
+export function deleteMessages(repo: MessageRepository, messageIds: number[]): number {
+  return repo.deleteMessages(deleteMessagesSchema.parse(messageIds));
+}
+
+/**
+ * Deletes messages older than `retentionDays`. Returns how many went.
+ *
+ * "Older than 30 days" means filed strictly before now-minus-30-days — the purge
+ * keeps the recent ones and clears the backlog behind them.
+ *
+ * `now` is injectable so a test doesn't depend on the clock, following
+ * `pruneAuthEvents` and `pruneSiteVisits`. Unlike those two, **nothing calls this
+ * on a timer**: there is no scheduled job for the queue, by choice. It runs when
+ * an admin picks a window and presses the button.
+ */
+export function pruneMessages(
+  repo: MessageRepository,
+  retentionDays: number,
+  now: Date = new Date(),
+): number {
+  const days = messageRetentionDaysSchema.parse(retentionDays);
+  const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+  return repo.deleteMessagesBefore(toSqliteTimestampUtc(cutoff));
 }

@@ -25,4 +25,20 @@ export interface MessageRepository {
   markRead(messageIds: number[]): number;
   /** Stamps every unread message. What the "Mark all read" control calls. */
   markAllRead(): number;
+  /**
+   * Both halves in one list, newest first. What the admin screen reads: it shows
+   * read and unread together with a state column, so two calls would be two
+   * queries for one table the screen then has to re-merge and re-sort.
+   */
+  listAllMessages(): SystemMessage[];
+  /**
+   * Deletes the given messages permanently. Returns how many rows actually went,
+   * so an id already deleted in another tab counts 0 rather than throwing.
+   */
+  deleteMessages(messageIds: number[]): number;
+  /**
+   * Deletes every message filed strictly before `cutoff` (a SQLite timestamp).
+   * Returns how many went. The age-based purge the admin screen drives.
+   */
+  deleteMessagesBefore(cutoff: string): number;
 }

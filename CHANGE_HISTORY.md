@@ -1,5 +1,88 @@
 # Change History
 
+## 2026-09-24 — Clearing out the message queue, and a dedup rule that measures distance
+
+### [Journal] Duplicate places: a real distance, not a grid square
+
+The Merging & Dedup dialog decided two pins were the same place by rounding both to
+three decimals and comparing the results for **exact equality**. That reads like a
+110m tolerance and isn't one: it's a grid, and two pins either side of a rounding
+boundary never matched however close they were. Measured over random pairs, it missed
+**30% of pins 25m apart and 57% of pins 50m apart**.
+
+That gap mattered more than the numbers suggest, because the entry importer groups on
+*exact* coordinates — so near-but-not-equal pins are precisely the duplicates the
+library actually accumulates, and precisely the ones the dialog couldn't see.
+
+Distance is now measured between the two points. Coordinate cells are still used, but
+only to decide which pairs are worth measuring, so a large library stays near-linear
+rather than comparing every place against every other.
+
+- **A "Within" slider**, 10m to 500m, defaulting to **75m** — under the old nominal
+  110m, so the default scan is no looser than the old one claimed to be, only correct.
+- **Blank-named places now pair on distance alone**, with each other or with a named
+  place. These used to be skipped entirely, which hid the commonest duplicate in an
+  imported library: a pin dropped by hand, then saved properly under a name. The cost
+  is that several genuinely distinct address-only rows in one building can present as
+  a group — visible in the dialog, where the reader declines it.
+- Groups formed this way are labelled **"proximity"** rather than "name match", and
+  head their group as *Unnamed places at one spot*.
+
+### [Journal] The location picker refuses a place already on the entry
+
+Adding a location to an entry now checks it against the ones already there, using the
+same rule the dedup dialog uses — so two points the dialog would offer to merge are
+two points the picker won't let you add. Coordinates decide it, not the name: the case
+this stops is the same place arriving twice under two names, a pin dropped on the map
+and then the library row for the same spot.
+
+The refusal is a message above the tabs rather than a disabled button, because on the
+library tab a row click *is* the add, so there is nothing to disable there. The draft
+pin is left in place, so it's clear nothing was lost.
+
+### [Journal] Map pins open a popup
+
+A numbered pin on any journal map is now clickable, showing its number, name, address,
+coordinates, and its category and tag chips — the same fields the list beside the map
+shows. Pins that carry none of those stay inert, so single-pin maps behave as before.
+
+### [Journal] An entry page has its navigation back
+
+Opening a single entry rendered the screen with no module rail, no section panel and
+no header — it had a "← Back to My Journal" text link instead. The page now renders
+inside the same two-tier shell as every other journal screen, and the ad-hoc back link
+is gone.
+
+### [Admin] Message Queue: read the whole queue, and delete from it
+
+**Administration → Message Queue** is a new screen listing every message the app has
+filed — read and unread together, newest first, in a sortable grid with the source that
+filed each one.
+
+The bell in the header could only ever *mark* a message read, which keeps it forever. The
+queue had no way to shrink, and nothing prunes it on a timer, so it grew for as long as
+the monitors kept firing. This is the screen that clears it.
+
+Two ways to remove messages, and both are permanent:
+
+- **Tick rows and press Delete** — for the handful you've read and don't want kept.
+- **Purge by age** — pick a window (older than 7 days, 30 days, 90 days, or a year) and
+  clear everything behind it, keeping the recent ones.
+
+Purging deletes read and unread alike: age is the only criterion. An unread message old
+enough to fall inside the window goes with the rest — the purge is housekeeping, not an
+inbox rule. The narrowest window is a day, so there's no setting that empties the table
+outright.
+
+**Deliberately no scheduled purge.** The sign-in log and the visit log each prune
+themselves nightly on a fixed 90-day window; the queue doesn't. A notice you were meant
+to read shouldn't delete itself on a timer, so clearing the queue stays something you do
+on purpose — which is also why the window is a choice here rather than a number fixed in
+code.
+
+Also available from the terminal, as `messages list-all`, `messages delete <id…>` and
+`messages prune <days>`.
+
 ## 2026-09-23 — A message queue for the whole app, and monitors that watch a ticker for you
 
 ### [Platform] Messages: the app can now tell you something after the fact

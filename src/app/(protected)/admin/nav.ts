@@ -136,6 +136,21 @@ export const adminNav: SectionNode[] = [
     icon: "history",
   },
   {
+    // Fresh and permanent -- `SectionPanel` derives this section's icon slot from
+    // the id, so renaming it later orphans any uploaded override.
+    //
+    // Sits after Background Tasks and before SQL Explorer: it belongs with the
+    // other "what has the server been doing" screens rather than with the
+    // configuration ones, and like Security it is a log an admin reads and prunes.
+    id: "messages",
+    label: "Message Queue",
+    href: "/admin/messages",
+    hint: "Read the application-wide message queue, and delete messages from it",
+    // `bell`, matching the header's own message slot -- the same subject in both
+    // places should read as the same thing.
+    icon: "bell",
+  },
+  {
     id: "sql-explorer",
     label: "SQL Explorer",
     href: "/admin/sql-explorer",

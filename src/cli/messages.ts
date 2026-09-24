@@ -7,6 +7,9 @@
 //   npm run cli -- messages read 12 13
 //   npm run cli -- messages read-all
 //   npm run cli -- messages file "Title" "Body text"
+//   npm run cli -- messages list-all
+//   npm run cli -- messages delete 12 13
+//   npm run cli -- messages prune 30
 //
 // `file` exists so a shell script or a cron job can put a notice in front of the
 // household without going through the web app — which is the point of the queue
@@ -15,9 +18,12 @@
 import {
   countMessages,
   createMessage,
+  deleteMessages,
+  listAllMessages,
   listMessages,
   markAllMessagesRead,
   markMessagesRead,
+  pruneMessages,
   type SystemMessage,
 } from "@/lib/messages";
 import { deps } from "@/lib/wiring";
@@ -25,10 +31,13 @@ import { messageOf } from "./error-message";
 
 const USAGE = `Usage:
   messages list [unread|read]
+  messages list-all
   messages count
   messages read <id> [id...]
   messages read-all
-  messages file <title> [body]`;
+  messages file <title> [body]
+  messages delete <id> [id...]
+  messages prune <days>`;
 
 function printMessage(message: SystemMessage): void {
   const mark = message.readAt ? " " : "*";
@@ -93,6 +102,45 @@ export async function messagesCommand(args: string[]): Promise<void> {
           source: "CLI",
         });
         console.log(`Filed message ${message.id}: ${message.title}`);
+        return;
+      }
+
+      case "list-all": {
+        // Read and unread together, the way the admin screen lists them.
+        const messages = listAllMessages(deps.messageRepo);
+        if (messages.length === 0) {
+          console.log("The queue is empty.");
+          return;
+        }
+        for (const message of messages) printMessage(message);
+        return;
+      }
+
+      case "delete": {
+        const ids = rest.map(Number);
+        if (ids.length === 0 || ids.some((id) => !Number.isInteger(id))) {
+          console.error(USAGE);
+          process.exitCode = 1;
+          return;
+        }
+        // Permanent, and unlike `read` it is not idempotent in a useful way --
+        // the count is how many rows actually went.
+        const removed = deleteMessages(deps.messageRepo, ids);
+        console.log(`Deleted ${removed} message(s).`);
+        return;
+      }
+
+      case "prune": {
+        const days = Number(rest[0]);
+        if (!Number.isInteger(days)) {
+          console.error(USAGE);
+          process.exitCode = 1;
+          return;
+        }
+        // Deletes read and unread alike -- age is the only criterion. The schema
+        // rejects 0, so this cannot be talked into emptying the table.
+        const removed = pruneMessages(deps.messageRepo, days);
+        console.log(`Deleted ${removed} message(s) older than ${days} day(s).`);
         return;
       }
 

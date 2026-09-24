@@ -75,4 +75,34 @@ export class FakeMessageRepository implements MessageRepository {
     }
     return changed;
   }
+
+  listAllMessages(): SystemMessage[] {
+    // Newest first. Sorted by id rather than by `createdAt` because the fake stamps
+    // every row with the same fixed date -- id is insertion order, which is what the
+    // SQL's `(created_at DESC, id DESC)` falls back to for exactly that tie.
+    return [...this.messages].sort((a, b) => b.id - a.id);
+  }
+
+  deleteMessages(messageIds: number[]): number {
+    let removed = 0;
+    for (const id of new Set(messageIds)) {
+      const index = this.messages.findIndex((message) => message.id === id);
+      if (index !== -1) {
+        this.messages.splice(index, 1);
+        removed += 1;
+      }
+    }
+    return removed;
+  }
+
+  deleteMessagesBefore(cutoff: string): number {
+    // String comparison, matching the SQL exactly -- both halves of this port have to
+    // agree on strictly-before, or a test would pass against a fake the real table
+    // disagrees with.
+    const doomed = this.messages.filter((message) => message.createdAt < cutoff);
+    for (const message of doomed) {
+      this.messages.splice(this.messages.indexOf(message), 1);
+    }
+    return doomed.length;
+  }
 }

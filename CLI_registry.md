@@ -67,7 +67,7 @@ Forty-nine commands, registered in [src/cli/index.ts](src/cli/index.ts).
 | [`game-scores`](#game-scores) | read | no |
 | [`deployments`](#deployments) | read (writes with `delete`/`prune`) | no |
 | [`ticker-monitors`](#ticker-monitors) | read (writes with `add`/`enable`/`disable`/`delete`/`run`) | no |
-| [`messages`](#messages) | read (writes with `read`/`read-all`/`file`) | no |
+| [`messages`](#messages) | read (writes with `read`/`read-all`/`file`/`delete`/`prune`) | no |
 | [`watch-lists`](#watch-lists) | read (writes with `add`/`watch`/`run`) | no |
 
 Flag parsing is `--key value` pairs via [parse-flags.ts](src/cli/parse-flags.ts),
@@ -2562,25 +2562,38 @@ npm run cli -- messages count
 npm run cli -- messages read 12 13
 npm run cli -- messages read-all
 npm run cli -- messages file "Boiler serviced" "Next service due March."
+npm run cli -- messages list-all
+npm run cli -- messages delete 12 13
+npm run cli -- messages prune 30
 ```
 
-**Input** — a positional action. `list` takes `unread` (the default) or `read`. `read` takes
-one or more ids. `file` takes a title and an optional body, and records `CLI` as the source.
+**Input** — a positional action. `list` takes `unread` (the default) or `read`. `read` and
+`delete` take one or more ids. `file` takes a title and an optional body, and records `CLI`
+as the source. `prune` takes a whole number of days.
 
-**Calls** — `listMessages`, `countMessages`, `markMessagesRead`, `markAllMessagesRead` and
-`createMessage` from `lib/messages`, on `deps.messageRepo`.
+**Calls** — `listMessages`, `listAllMessages`, `countMessages`, `markMessagesRead`,
+`markAllMessagesRead`, `createMessage`, `deleteMessages` and `pruneMessages` from
+`lib/messages`, on `deps.messageRepo`.
 
 **Output** — `list` prints one line per message, newest first, with `*` marking unread, then
-the body and source indented beneath. `read` and `read-all` report how many rows actually
+the body and source indented beneath. `list-all` prints both halves together, the way
+Administration → Message Queue lists them. `read` and `read-all` report how many rows actually
 changed — an id already read counts 0 rather than erroring, since two readers on one queue is
 ordinary.
+
+**`delete` and `prune` are permanent, and are not mark-read.** `delete` removes the given ids;
+`prune <days>` removes every message filed strictly *before* now minus that many days, keeping
+the recent ones and clearing the backlog behind them. Both take read and unread alike — age is
+the only criterion for `prune`. Nothing calls either on a timer: unlike the sign-in log and the
+visit log, the queue has no scheduled prune, so it grows until somebody clears it. The day
+count is floored at 1, so `prune 0` is an error rather than a way to empty the table.
 
 **`file` is the point of this command.** A shell script or cron job can put a notice in front
 of the household without going through the web app, which is why the queue is a library
 use-case rather than a screen.
 
-**Exit** — 0 normally. 1 for an unknown action, a non-integer id, an empty id list, or a
-blank title.
+**Exit** — 0 normally. 1 for an unknown action, a non-integer id, an empty id list, a blank
+title, or a prune window outside 1–3650 days.
 Source: [src/cli/messages.ts](src/cli/messages.ts)
 
 ---
