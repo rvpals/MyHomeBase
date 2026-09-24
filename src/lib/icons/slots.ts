@@ -1437,6 +1437,19 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    // The message queue's button. A *place* — it opens the app-wide queue and
+    // means the same thing on every screen — so unlike the `warning` marker
+    // beside a ticker (a state glyph, deliberately unslotted) this one is
+    // addressable and replaceable.
+    id: "chrome_header_messages",
+    label: "Messages",
+    group: "Shared chrome",
+    where: "Top header → the message queue bell, left of the profile menu.",
+    defaultConcept: "bell",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     id: "chrome_menu_account",
     label: "My Account row",
     group: "Shared chrome",

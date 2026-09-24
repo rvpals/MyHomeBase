@@ -78,8 +78,10 @@ import {
   SqlitePhotoMagicListRepository,
 } from "./photo-magic/repository";
 import { SqliteFavPhotoRepository } from "./fav-photos/repository";
+import { SqliteMessageRepository } from "./messages/repository";
 import { SqliteTickerFavoriteRepository } from "./ticker-favorites/repository";
 import { SqliteTickerLogoRepository } from "./ticker-logos/repository";
+import { SqliteTickerMonitorRepository } from "./ticker-monitors/repository";
 import { SqliteIndexLogoRepository } from "./index-logos/repository";
 import { SqliteTickerRiskCacheRepository } from "./ticker-overview/repository";
 import { SqliteTickerProfileRepository } from "./ticker-profiles/repository";
@@ -292,6 +294,12 @@ export const deps = {
   // older than the one this server serves. Caches after the first read.
   buildIdRepo: new FileBuildIdRepository(),
   marketDataClient,
+  // The same instance again, under its second port. `YahooFinanceClient`
+  // implements both, and dividends/splits are fetched independently of prices
+  // -- see `MarketEventsClient` in src/lib/market-data/ports.ts. Named
+  // separately so a caller that only wants corporate actions does not have to
+  // reach for the whole market-data client.
+  marketEventsClient: marketDataClient,
   tickerNewsClient: new YahooTickerNewsClient(),
   tickerLogoRepo: new SqliteTickerLogoRepository(db),
   tickerLogoClient: new FmpTickerLogoClient(),
@@ -310,6 +318,14 @@ export const deps = {
     new GoogleFaviconIconClient(),
   ),
   tickerFavoriteRepo: new SqliteTickerFavoriteRepository(db),
+  // Per-ticker monitors (migrations/0110): "tell me when this holding approaches
+  // a number I care about". Storage only — the evaluation is a pure function in
+  // src/lib/ticker-monitors, run after a price refresh writes new figures.
+  tickerMonitorRepo: new SqliteTickerMonitorRepository(db),
+  // The application-wide message queue (migrations/0109). Household-wide: one
+  // queue, one read state. A monitor firing during a refresh files here, which
+  // is the whole reason the queue exists — a notice nobody was watching for.
+  messageRepo: new SqliteMessageRepository(db),
   // Favourited photographs (migrations/0073). Keyed by the path from the configured
   // photo root, not an absolute one, so a favourite survives the share being remounted
   // or `photo_root` being corrected.

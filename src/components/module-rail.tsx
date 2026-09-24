@@ -59,6 +59,19 @@ export interface ModuleRailProps {
    * stays presentation and never imports auth.
    */
   profile?: ReactNode;
+  /**
+   * Whole-app actions that would normally sit in the utility header — today the
+   * message queue's bell.
+   *
+   * Passed for the same single reason `profile` is: the home screen hides tier 3
+   * on the full layout, and design.md's rule 6 says a screen that hides a
+   * surface has to rehome what lived there rather than lose it. Every other
+   * screen keeps these in the header, and compact always does.
+   *
+   * Rendered above the profile and above the divider, so the bottom zone still
+   * reads as Administration-then-you.
+   */
+  utility?: ReactNode;
   className?: string;
 }
 
@@ -67,6 +80,7 @@ export function ModuleRail({
   isActive,
   showAdmin = false,
   profile,
+  utility,
   className = "",
 }: ModuleRailProps) {
   return (
@@ -172,6 +186,10 @@ export function ModuleRail({
       {/* Last in the column, under its own divider. Outside the `flex-1
           overflow-y-auto` module list above, so a reader with a dozen modules
           can still reach it. */}
+      {utility && (
+        <div className="mt-1 flex shrink-0 items-center justify-center">{utility}</div>
+      )}
+
       {profile && (
         <>
           <div className="mt-1 h-px w-6 shrink-0 bg-line" aria-hidden />

@@ -27,6 +27,7 @@ import {
   refreshOnePositionAction,
 } from "./stock-positions-actions";
 import { refreshTickerProfilesAction } from "./stock-profiles-actions";
+import { runMonitorsAgainstMyTickerAction } from "./ticker-monitors-actions";
 import { useStockRefreshProgress } from "./stock-refresh-progress-context";
 import { captureDailySnapshotAction } from "./stock-snapshot-actions";
 
@@ -108,17 +109,32 @@ export function StockRefreshControl({
         return;
       }
 
+      // Monitors run last, against the figures the walk above just wrote —
+      // running them first would judge yesterday's prices. Each one that newly
+      // enters its band files a message in the app-wide queue; one already
+      // inside it stays quiet (migrations/0110, the fire-once latch).
+      setStatus("checking monitors…");
+      const monitors = await runMonitorsAgainstMyTickerAction();
+
       const snapshot = captured.snapshot;
       // A sector lookup is a footnote, not an outcome: it's mentioned only when
       // it actually did something, and never when it found nothing new.
       const sectorNote = profiles.fetchedCount
         ? ` · ${profiles.fetchedCount} sector(s) looked up`
         : "";
+      // Same rule for monitors: named only when one actually fired. The message
+      // queue is the durable record — this line is just so the reader knows to
+      // look at the bell without hunting for why it lit up.
+      const monitorNote =
+        monitors.triggered > 0
+          ? ` · ${monitors.triggered} monitor(s) triggered: ${monitors.triggeredTickers.join(", ")}`
+          : "";
       setDone(
         `Stock ${formatCents(snapshot.stockValueCents)} · ETF ${formatCents(snapshot.etfValueCents)}` +
           (snapshot.otherValueCents > 0 ? ` · Other ${formatCents(snapshot.otherValueCents)}` : "") +
           ` · Total ${formatCents(snapshot.totalValueCents)}` +
           sectorNote +
+          monitorNote +
           (failedCount > 0 ? ` — ${failedCount} ticker(s) could not be priced` : ""),
       );
       router.refresh();

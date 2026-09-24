@@ -103,6 +103,7 @@ pattern instead of inventing one.
 | [`LocationMap`](#locationmap) | **THE map** — one pin or many, read-only or pickable, on OpenStreetMap tiles | [src/components/location-map.tsx](src/components/location-map.tsx) | yes |
 | [`PhotoOfTheDay`](#photooftheday--photoofthedaybutton) / `PhotoOfTheDayButton` | **Photos for a date or a date range**, as a closable dialog | [src/components/photo-of-the-day.tsx](src/components/photo-of-the-day.tsx) | yes |
 | [`TickerViewer`](#tickerviewer) | Full record dialog for one ticker — 3 tabs of cards | [src/components/ticker-viewer.tsx](src/components/ticker-viewer.tsx) | yes |
+| [`MessageQueue`](#messagequeue--monitorwarningdialog) / `MonitorWarningDialog` | **The app-wide message queue** — header bell with an unread badge, and the Unread / Read message window | [src/components/message-queue.tsx](src/components/message-queue.tsx) | yes |
 | [`IconSetProvider`](#iconsetprovider--useiconset) / `useIconSet` | Active module icon set (context) | [src/components/icon-set-context.tsx](src/components/icon-set-context.tsx) | yes |
 | [`ViewportProvider`](#viewportprovider--useviewport) / `useViewport` | Compact vs full layout (context) | [src/components/viewport-context.tsx](src/components/viewport-context.tsx) | yes |
 | [`ModuleIcon`](#moduleicon--moduleiconpreview) / `ModuleIconPreview` | Render a module glyph | [src/components/module-icons.tsx](src/components/module-icons.tsx) | yes |
@@ -1379,7 +1380,7 @@ data and gets the chrome placed for it. Full design rationale:
 | `logoutAction` | `() => Promise<void>` | Server action, passed through to the profile menu. |
 | `viewportPinned` | `boolean` | Whether the reader pinned the layout by hand. |
 | `extraCrumbs` | `Breadcrumb[]` | Appended after `[Module] › [Section]` — a record's name, say. Rarely needed. |
-| `headerActions` | `ReactNode` | **Whole-app** actions only. Page actions belong on the page. |
+| `headerActions` | `ReactNode` | **Whole-app** actions only. Page actions belong on the page. Every shell passes [`MessageQueueHost`](#messagequeue--monitorwarningdialog) here. When `hideHeader` drops tier 3 on the full layout, this is routed into `ModuleRail`'s `utility` slot instead rather than being lost. |
 | `hideHeader` | `boolean` | Default `false`. Drops tier 3 on the **full layout only** and moves the profile menu into the rail. Ignored on compact, which needs the header to switch module. Only the home screen sets it. |
 
 **Usage** — from a server component that can read `deps`, as in
@@ -1416,6 +1417,7 @@ layout only — `TwoTierShell` swaps in a dropdown on compact.
 | `isActive` | `(href: string) => boolean` | Supplied by the shell, which owns the pathname. |
 | `showAdmin` | `boolean` | Default `false`. Shows the Administration gear in the bottom zone. |
 | `profile` | `ReactNode` | Optional. The profile menu, below Administration. Passed only by the home screen, whose full layout has no header for it. A slot, so the rail never imports auth. |
+| `utility` | `ReactNode` | Optional. Whole-app header actions — today the message queue's bell — rendered above `profile` and its divider. Passed for the same single reason `profile` is: the home screen hides tier 3 on the full layout, and design.md rule 6 requires a screen that hides a surface to rehome what lived there. Every other screen keeps these in the header. |
 
 Active state is a tint **and** an accent edge bar — at 48px with no label, a tint alone is
 easy to miss. The width comes from `--module-rail-width` (48px: the 40px buttons plus 4px
@@ -3600,6 +3602,7 @@ mistaken for a recorded one.
 | `onCalculateTaxLots?` | `() => void` | The Transactions card's header action, on the Our data tab: sends this ticker's recorded buys to the Tax Lots analyzer. **Optional** — omit it and no button renders, so a caller with no tax-lots route still gets a working card. A callback rather than an href because the host owns the mapping (`lotsFromTrades` + `encodeAdhocLots` from `lib/tax-lots`); this component must not know which rows count as lots. |
 | `favorite?` | `TickerFavoriteControl` — `{ isFavorite, onToggle, isSaving? }` | The star in the header. **Optional** — omit it and no star renders, so a caller with no favorites store still works. Controlled by the host, which owns the state and the server action; the press feels instant because the host flips its own state before the round trip. `isSaving` disables the star in flight so it can't be double-pressed. |
 | `onConsultAi?` | `() => void` | The **Consult AI** button in the header, immediately right of the star: opens the host's prompt dialog for this ticker. **Optional** — omit it and no button renders. A bare callback because the prompt is built by `lib/ticker-consult` from records this component only ever received as props, and the dialog it opens is route-local. Its `ai-spark` glyph is two filled four-point sparkles, drawn to not read as the five-point outline star beside it — and is in `ALWAYS_CLASSIC` for that reason. |
+| `monitor?` | `TickerMonitorControl` — `{ onOpen, warningCount, onShowWarning }` | The **Monitor** control in the header, right of Consult AI. **Optional** — omit it and nothing renders. One prop rather than two because the feature has two header pieces: the text button that opens the Ticker Monitor setup screen, and — only while `warningCount > 0` — a `warning` marker that opens the message dialog. They are separate controls on purpose: one sets the conditions, the other reports that one is true, and collapsing them would land a reader who wanted to read the warning in a settings form. `warning` is in `ALWAYS_CLASSIC` and has no icon slot — it is a state glyph, like `star`. |
 | `className?` | `string` | Applied to the `Modal` panel, merged last. |
 
 `TickerPanelState<T>` is `{ data?: T; error?: string; isLoading?: boolean }` — one shape for
@@ -3640,6 +3643,73 @@ It opens at `Modal` `size="window"` — the draggable 80% floating variant, with
 button for the full-bleed treatment. Gain/loss is `text-emerald-400` / `text-red-400` per
 design.md's semantic-color exception, and zero stays `text-muted` so a flat day doesn't read
 as a win.
+
+---
+
+## MessageQueue / MonitorWarningDialog
+
+**The application-wide message queue.** A bell in the utility header carrying an unread
+count, and the window it opens — Unread and *Read message* as two tabs.
+
+```tsx
+import { MessageQueue, type MessageQueueActions } from "@/components/message-queue";
+```
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `initialUnreadCount` | `number` | The badge's value at page load, resolved on the server so the first paint is already right. A count that appears a frame after hydration reads as a glitch on every navigation. Re-synced whenever the prop changes, so a navigation updates it. |
+| `actions` | `MessageQueueActions` — `{ load, markRead, markAllRead }` | The server actions. **Every value must be the action itself, never an arrow around it** — a wrapper compiles, typechecks and lints, then fails at request time. |
+| `className?` | `string` | Merged onto the bell button. |
+
+**Mount it through [`MessageQueueHost`](src/app/(protected)/message-queue-host.tsx), not
+directly.** That server component reads the unread count from `deps` and builds the actions
+object, so a shell adds one line — `headerActions={<MessageQueueHost />}`. A file under
+`src/components/` must not import from `src/app/`, which is why the actions arrive as a prop
+at all.
+
+**Where it lives, and why tier 3.** design.md's *Adding a UI element to the shell* puts
+anything acting on the **whole app** (search, notifications, profile) in the utility header,
+and `AppHeader` already documented an `actions` slot for exactly this. It is deliberately
+**not** a floating component: the floating layer is for accessories you keep open *while*
+working, and a queue you open, read and dismiss is not one.
+
+**Used by:** every shell — all nine module shells, `HomeShell` and the admin layout. That
+uniformity is the point: the bell means the same thing on every screen, which is the test
+design.md sets for anything allowed in the header.
+
+**The home screen is the one special case.** It passes `hideHeader`, which drops tier 3 on
+the full layout, so `TwoTierShell` routes `headerActions` into `ModuleRail`'s new `utility`
+slot instead — the same rehoming the profile menu already gets, and required by design.md
+rule 6 ("a screen that hides a tier has to rehome what lived there"). Losing the unread badge
+on the home screen would hide it exactly where a reader starts.
+
+**Counts, not dots.** The badge shows the number and caps at `99+` so a runaway queue cannot
+widen the header. *How many* is the fact worth having at a glance; a dot would mean opening
+the window to learn anything at all.
+
+**Marking read is optimistic** — the row leaves the Unread tab immediately and the reload
+that follows is the authoritative correction. A late response from a previous open is
+discarded by a request counter, so switching pages quickly cannot leave stale lists on screen.
+
+Reuses `Modal` (`size="lg"`), `Tabs` and `Button` rather than restyling any of them. The bell
+renders through `SlotIcon` on the `chrome_header_messages` slot, so an admin can replace it.
+
+---
+
+### `MonitorWarningDialog`
+
+The modal a ticker's `warning` marker opens: one line per monitor whose condition currently
+holds, and an ✕ to close.
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `ticker` | `string` | Named in the title. |
+| `messages` | `string[]` | One sentence per triggered monitor, built by `describeMonitor` in `lib/ticker-monitors`. |
+| `onClose` | `() => void` | The caller stops rendering it; this never closes itself. |
+
+It lives beside `MessageQueue` rather than in the Investments module because it shows the
+**same sentence** the queue row does — one live, one filed — and keeping them in one file is
+what stops the two drifting apart.
 
 ---
 

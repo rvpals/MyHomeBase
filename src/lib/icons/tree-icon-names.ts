@@ -50,6 +50,13 @@ export const TREE_ICON_NAMES = [
   "window",
   "palette",
   "info",
+  // The message queue's button in the utility header. A place — the one icon in
+  // this pair that gets a slot (`chrome_header_messages`).
+  "bell",
+  // The marker beside a ticker whose monitor has fired. A *state* glyph, so it
+  // has no slot and sits in `ALWAYS_CLASSIC`: its job is to read as a warning,
+  // which a themed set's decorative "alert" artwork would undo.
+  "warning",
   "history",
   "users",
   "database",

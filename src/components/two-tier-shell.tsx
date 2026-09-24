@@ -169,6 +169,11 @@ export function TwoTierShell({
           showAdmin={showAdmin}
           // Only when tier 3 is gone: otherwise the avatar would appear twice.
           profile={hideHeader ? <UserMenu {...userMenuProps} placement="rail" /> : undefined}
+          // Same condition, same reason. `hideHeader` drops the bar these
+          // normally live on, and design.md rule 6 says a screen that hides a
+          // surface rehomes what was on it — losing the unread badge on the home
+          // screen would hide it exactly where a reader starts.
+          utility={hideHeader ? headerActions : undefined}
         />
       )}
 

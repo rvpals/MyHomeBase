@@ -103,6 +103,36 @@ const Info: IconComponent = (props) => (
   </svg>
 );
 
+// A notification bell: the dome, the lip it sits on, and the clapper beneath.
+// The message queue's button in the utility header.
+//
+// The lip is a separate straight line rather than part of the dome's path so
+// the silhouette reads as a bell rather than a mushroom at 16px, and the
+// clapper is a shallow arc — a filled dot there closes the gap and the whole
+// glyph turns into a light bulb.
+const Bell: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <path d="M12 3a6 6 0 0 0-6 6c0 4-1.5 5.5-1.5 5.5h15S18 13 18 9a6 6 0 0 0-6-6Z" />
+    <path d="M10.3 18a1.9 1.9 0 0 0 3.4 0" />
+  </svg>
+);
+
+// A warning triangle with a bang. The marker beside a ticker whose monitor has
+// fired, and a state glyph rather than a place — so it is deliberately NOT in
+// the icon-slot registry, and it sits in ALWAYS_CLASSIC below: a themed set's
+// "alert" artwork is very often a coloured shape that reads as decoration, and
+// this one has to read as a warning or it is doing nothing.
+//
+// The bar and the dot are separate so the gap survives at 16px; drawn as one
+// exclamation path they merge into a single stroke.
+const Warning: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <path d="M12 4.2 2.8 19.2h18.4L12 4.2Z" />
+    <line x1="12" y1="10" x2="12" y2="14" />
+    <circle cx="12" cy="16.6" r="0.75" fill="currentColor" stroke="none" />
+  </svg>
+);
+
 const History: IconComponent = (props) => (
   <svg {...shared} {...props}>
     <circle cx="12" cy="12" r="9" />
@@ -711,6 +741,8 @@ const TREE_ICONS = {
   window: Window,
   palette: Palette,
   info: Info,
+  bell: Bell,
+  warning: Warning,
   history: History,
   users: Users,
   database: Database,
@@ -804,6 +836,12 @@ const ALWAYS_CLASSIC = new Set<TreeIconName>([
   // themed set redrawing the rocket as full-color artwork would put two competing
   // illustrations on one title line at 16px.
   "rocket",
+  // The monitor marker beside a ticker. A *state* glyph in the sense `star` and
+  // `heart` are: its entire job is to read as "something is wrong here", at 16px,
+  // next to a symbol. A themed set's "alert" artwork is usually a coloured shape
+  // that reads as decoration, which would quietly turn a warning into a badge.
+  // It is also a button, not a place, so no icon slot points at it.
+  "warning",
 ]);
 
 /**

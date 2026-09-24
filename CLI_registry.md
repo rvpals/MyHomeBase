@@ -28,7 +28,7 @@ command list and exits 1. There is no `--help`.
 
 # Part 1 — Available commands
 
-Forty-two commands, registered in [src/cli/index.ts](src/cli/index.ts).
+Forty-nine commands, registered in [src/cli/index.ts](src/cli/index.ts).
 
 | Command | Reads / writes | Network |
 |---|---|---|
@@ -66,6 +66,9 @@ Forty-two commands, registered in [src/cli/index.ts](src/cli/index.ts).
 | [`fav-photos`](#fav-photos) | read (writes with `add`/`note`/`remove`) | no |
 | [`game-scores`](#game-scores) | read | no |
 | [`deployments`](#deployments) | read (writes with `delete`/`prune`) | no |
+| [`ticker-monitors`](#ticker-monitors) | read (writes with `add`/`enable`/`disable`/`delete`/`run`) | no |
+| [`messages`](#messages) | read (writes with `read`/`read-all`/`file`) | no |
+| [`watch-lists`](#watch-lists) | read (writes with `add`/`watch`/`run`) | no |
 
 Flag parsing is `--key value` pairs via [parse-flags.ts](src/cli/parse-flags.ts),
 except `ticker-overview` and `set-startup-message`, which read positionals and bare
@@ -2461,6 +2464,124 @@ a partial delete would leave you unable to tell what survived.
 database is normally empty here. Point `MYHOMEBASE_DB` at a copy of the production
 database to read it.
 Source: [src/cli/deployments.ts](src/cli/deployments.ts)
+
+---
+
+## `ticker-monitors`
+
+Per-ticker alert conditions on unrealized gain or loss — the same use-cases the ticker
+viewer's **Monitor** button drives.
+
+```
+npm run cli -- ticker-monitors list NVDA
+npm run cli -- ticker-monitors add NVDA gain-amount 10000
+npm run cli -- ticker-monitors add INTC loss-amount 0
+npm run cli -- ticker-monitors add NVDA gain-pct 20 --band 3
+npm run cli -- ticker-monitors enable 4
+npm run cli -- ticker-monitors disable 4
+npm run cli -- ticker-monitors delete 4
+npm run cli -- ticker-monitors run
+```
+
+**Input** — a positional action. `add` takes a ticker, a type and a target: `gain-amount`
+and `loss-amount` are **dollars** (converted to cents on the way in, as the web form does),
+`gain-pct` is a percentage of cost basis. `--band <pct>` sets how close counts as "near";
+omitted, the schema's default of 5% applies. `loss-amount 0` is break-even — the useful case,
+and the one where the band is taken against cost basis instead of the target.
+
+**Calls** — `listMonitorsForTicker`, `createMonitor`, `setMonitorEnabled`, `deleteMonitor`,
+`valuationForTicker` and `runMonitors` from `lib/ticker-monitors`, on
+`deps.tickerMonitorRepo` plus `deps.stockPositionRepo` and `deps.messageRepo`.
+
+**Output** — `list` prints the ticker's current unrealized gain and cost basis, then one line
+per monitor: enabled marker, id, summary, band, and `[triggered]` if the latch is set. `run`
+reports how many were evaluated, fired and re-armed.
+
+**`run` does not fetch prices.** It evaluates against the figures already stored, so pair it
+with `refresh-positions` for a full pass — that ordering is what the dashboard button and the
+scheduled job both do.
+
+**Exit** — 0 normally. 1 for an unknown action or type, a non-numeric target, or a schema
+rejection (a `gain-amount` with no target, a band of 0%).
+Source: [src/cli/ticker-monitors.ts](src/cli/ticker-monitors.ts)
+
+---
+
+## `watch-lists`
+
+Watch lists and the watch condition on each row — the same use-cases the Investments
+module's **Watch Lists** screen drives.
+
+```
+npm run cli -- watch-lists lists
+npm run cli -- watch-lists items 1
+npm run cli -- watch-lists add 1 NVDA 2026-09-23
+npm run cli -- watch-lists watch 4 price 100
+npm run cli -- watch-lists watch 4 price-range 10 15
+npm run cli -- watch-lists watch 4 dividend
+npm run cli -- watch-lists watch 4 gain-loss-pct 20
+npm run cli -- watch-lists watch 4 gain-loss-price 10
+npm run cli -- watch-lists watch 4 none
+npm run cli -- watch-lists run --with-events
+```
+
+**Input** — a positional action. `watch` takes an item id, a kind, and whatever value that
+kind reads: `price`, `price-range` and `gain-loss-price` are **dollars** (converted to cents
+on the way in, as the web form does), `gain-loss-pct` is a plain percentage, and `dividend`
+and `split` take no value at all. `none` stops watching. The swing kinds are measured against
+the price when the row was added, and fire in **both** directions.
+
+**Calls** — `listWatchLists`, `listItems`, `addItem`, `updateItemWatch`, `listWatchedItems`
+and `runWatchListWatches` from `lib/stock-watchlist`, on `deps.stockWatchListRepo` plus
+`deps.marketDataClient`, `deps.marketEventsClient` and `deps.messageRepo`.
+
+**Output** — `items` prints one line per row: a `*` when the latch is set, the id, ticker,
+added date and price, and what it watches for, with the last alert underneath. `run` reports
+how many were evaluated, fired and re-armed.
+
+**`run` fetches its own quotes**, unlike `ticker-monitors run` — a watched ticker is one you
+do not hold, so no position refresh has priced it. **Dividends and splits are skipped unless
+`--with-events` is passed**, because corporate actions cost one call per ticker on top of the
+quote; the scheduled pass always includes them. See
+`migrations/0111_add_watch_condition_to_watch_list_items.md`.
+
+**Exit** — 0 normally. 1 for an unknown action or kind, a non-numeric value, or a schema
+rejection (a `price` with no value, a range whose high end is not above its low end).
+Source: [src/cli/watch-lists.ts](src/cli/watch-lists.ts)
+
+---
+
+## `messages`
+
+The application-wide message queue — the same use-cases the header's bell drives.
+
+```
+npm run cli -- messages list
+npm run cli -- messages list read
+npm run cli -- messages count
+npm run cli -- messages read 12 13
+npm run cli -- messages read-all
+npm run cli -- messages file "Boiler serviced" "Next service due March."
+```
+
+**Input** — a positional action. `list` takes `unread` (the default) or `read`. `read` takes
+one or more ids. `file` takes a title and an optional body, and records `CLI` as the source.
+
+**Calls** — `listMessages`, `countMessages`, `markMessagesRead`, `markAllMessagesRead` and
+`createMessage` from `lib/messages`, on `deps.messageRepo`.
+
+**Output** — `list` prints one line per message, newest first, with `*` marking unread, then
+the body and source indented beneath. `read` and `read-all` report how many rows actually
+changed — an id already read counts 0 rather than erroring, since two readers on one queue is
+ordinary.
+
+**`file` is the point of this command.** A shell script or cron job can put a notice in front
+of the household without going through the web app, which is why the queue is a library
+use-case rather than a screen.
+
+**Exit** — 0 normally. 1 for an unknown action, a non-integer id, an empty id list, or a
+blank title.
+Source: [src/cli/messages.ts](src/cli/messages.ts)
 
 ---
 

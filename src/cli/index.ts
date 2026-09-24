@@ -36,6 +36,9 @@ import { photoMagicCommand } from "./photo-magic";
 import { playQueueCommand } from "./play-queue";
 import { musicLibraryCommand, scanMusicCommand } from "./scan-music";
 import { refreshPositionsCommand } from "./refresh-positions";
+import { messagesCommand } from "./messages";
+import { tickerMonitorsCommand } from "./ticker-monitors";
+import { watchListsCommand } from "./watch-lists";
 import { runScheduledRefreshCommand } from "./run-scheduled-refresh";
 import { setStartupMessageCommand } from "./set-startup-message";
 import { browseCsvCommand } from "./browse-csv";
@@ -54,6 +57,9 @@ const commands: Record<string, Command> = {
   "create-user": createUserCommand,
   "list-users": listUsersCommand,
   "refresh-positions": refreshPositionsCommand,
+  "ticker-monitors": tickerMonitorsCommand,
+  "watch-lists": watchListsCommand,
+  messages: messagesCommand,
   "run-scheduled-refresh": runScheduledRefreshCommand,
   "list-scheduled-jobs": listScheduledJobsCommand,
   "compute-analytics": computeAnalyticsCommand,

@@ -3,6 +3,8 @@ import type { MarketDataClient, Quote } from "@/lib/market-data";
 import type { DailySnapshotRepository } from "@/lib/stock-daily-snapshot";
 import type { StockPosition, StockPositionRepository } from "@/lib/stock-positions";
 import type { TickerProfileClient, TickerProfileRepository } from "@/lib/ticker-profiles";
+import { FakeMessageRepository } from "@/lib/messages";
+import { FakeTickerMonitorRepository, makeMonitor } from "@/lib/ticker-monitors";
 import { runScheduledRefresh, type ScheduledRefreshDeps } from "./scheduled-refresh";
 
 const TODAY = "2026-08-20";
@@ -293,5 +295,53 @@ describe("runScheduledRefresh: the empty-portfolio guard", () => {
     expect(quotesRequested).toBe(0);
     expect(profileRepo.saved).toEqual([]);
     expect(snapshotRepo.savedDates).toEqual([]);
+  });
+});
+
+describe("runScheduledRefresh — the monitor step", () => {
+  // The default position costs $1,000 and the default quote prices it at
+  // $160 × 10 = $1,600, so a pass leaves a $600 unrealized gain. A monitor
+  // targeting $600 is therefore in band immediately after the refresh — and
+  // would NOT be against the $0 gain the position carries before it, which is
+  // what makes this a real check that monitors run last.
+  const GAIN_AFTER_REFRESH_CENTS = 60_000;
+
+  it("files a message for a monitor the fresh prices put in band", async () => {
+    const monitorRepo = new FakeTickerMonitorRepository([
+      makeMonitor({ id: 1, ticker: "AAPL", targetCents: GAIN_AFTER_REFRESH_CENTS }),
+    ]);
+    const messageRepo = new FakeMessageRepository();
+
+    const summary = await runScheduledRefresh(buildDeps({ monitorRepo, messageRepo }));
+
+    expect(summary.ran).toBe(true);
+    expect(messageRepo.messages).toHaveLength(1);
+    expect(messageRepo.messages[0].title).toBe("AAPL: monitor triggered");
+    expect(monitorRepo.getById(1)?.isTriggered).toBe(true);
+  });
+
+  it("does nothing when the monitor deps are not wired", async () => {
+    // The pair is optional, so a caller that predates the monitor step keeps
+    // exactly its old behaviour rather than quietly gaining a new one.
+    const summary = await runScheduledRefresh(buildDeps());
+
+    expect(summary.ran).toBe(true);
+    expect(summary.status).toBe("ok");
+  });
+
+  it("still reports the pass as ok when the monitor step throws", async () => {
+    // A monitor is a courtesy on top of the refresh: a failure here must not
+    // downgrade a pass that priced everything it was asked to.
+    const exploding = new FakeTickerMonitorRepository();
+    exploding.listEnabled = () => {
+      throw new Error("monitor storage is unavailable");
+    };
+
+    const summary = await runScheduledRefresh(
+      buildDeps({ monitorRepo: exploding, messageRepo: new FakeMessageRepository() }),
+    );
+
+    expect(summary.ran).toBe(true);
+    expect(summary.status).toBe("ok");
   });
 });

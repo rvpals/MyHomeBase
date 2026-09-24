@@ -1,4 +1,15 @@
-export type { StockWatchList, StockWatchListItem } from "./types";
+export {
+  EVENT_WATCH_KINDS,
+  NO_WATCH,
+  WATCH_KINDS,
+  isEventWatchKind,
+  type StockWatchList,
+  type StockWatchListItem,
+  type WatchEvaluation,
+  type WatchKind,
+  type WatchKindOrNone,
+  type WatchRunResult,
+} from "./types";
 export {
   stockWatchListSchema,
   createWatchListSchema,
@@ -6,12 +17,27 @@ export {
   stockWatchListItemSchema,
   addWatchListItemSchema,
   updateWatchListItemReminderSchema,
+  updateWatchListItemWatchSchema,
+  watchKindOrNoneSchema,
+  watchKindSchema,
+  watchValueSchema,
   type CreateWatchListInput,
   type RenameWatchListInput,
   type AddWatchListItemInput,
   type UpdateWatchListItemReminderInput,
+  type UpdateWatchListItemWatch,
+  type UpdateWatchListItemWatchInput,
 } from "./schema";
-export type { StockWatchListRepository } from "./ports";
+export type { AddWatchListItemFields, StockWatchListRepository } from "./ports";
+export { SqliteStockWatchListRepository } from "./repository";
+export {
+  PRICE_TARGET_BAND_PCT,
+  eventDateIso,
+  evaluateEventWatch,
+  evaluatePriceWatch,
+  priceSwing,
+  summarizeWatch,
+} from "./watch-condition";
 export {
   listWatchLists,
   createWatchList,
@@ -20,5 +46,10 @@ export {
   listItems,
   addItem,
   updateItemReminder,
+  updateItemWatch,
   deleteItem,
+  listWatchedItems,
+  activeWatchesForItems,
+  runWatchListWatches,
+  type RunWatchesDeps,
 } from "./stock-watchlist";

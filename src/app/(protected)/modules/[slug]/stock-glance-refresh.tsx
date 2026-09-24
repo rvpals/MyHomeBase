@@ -32,6 +32,7 @@ import {
 } from "./stock-positions-actions";
 import { refreshTickerProfilesAction } from "./stock-profiles-actions";
 import { captureDailySnapshotAction } from "./stock-snapshot-actions";
+import { runMonitorsAgainstMyTickerAction } from "./ticker-monitors-actions";
 
 export interface GlanceRefreshState {
   isRunning: boolean;
@@ -93,6 +94,17 @@ export function useGlanceRefresh(): GlanceRefreshState {
         setError(captured.error ?? "Prices refreshed, but today's snapshot could not be saved.");
         return;
       }
+
+      // Monitors, against the prices this run just wrote. Same step the
+      // dashboard's control makes — this card is the home screen's copy of that
+      // loop, so a monitor must fire the same way whichever button was pressed.
+      //
+      // Nothing is reported here: the card has no room for a line per outcome,
+      // which is why `failedCount` below is a count rather than a list. The
+      // triggered monitors land in the message queue, and the bell in the header
+      // is what says so.
+      setStatus("checking monitors…");
+      await runMonitorsAgainstMyTickerAction();
 
       // A partial failure is worth saying even though the run finished: the
       // numbers below are now a mix of fresh and stale, and only this line says so.

@@ -15,6 +15,7 @@ import { getAccessibleModules, isAdmin } from "@/lib/user";
 import { VIEWPORT_PINNED_COOKIE } from "@/lib/viewport";
 import { deps } from "@/lib/wiring";
 import { logoutAction } from "../../../login/actions";
+import { MessageQueueHost } from "../../message-queue-host";
 import {
   TOOLS_SECTIONS,
   TOOLS_SECTION_ICONS,
@@ -77,6 +78,7 @@ export async function ToolsShell({ children }: { children: ReactNode }) {
         updatedAt: currentUser.updatedAt,
       }}
       showAdmin={isAdmin(currentUser)}
+      headerActions={<MessageQueueHost />}
       logoutAction={logoutAction}
       viewportPinned={viewportPinned}
     >

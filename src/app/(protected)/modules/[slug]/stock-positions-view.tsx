@@ -370,6 +370,16 @@ export function StockPositionsView({
             .join(", ")}`,
         );
       }
+      // Said out loud because this grid, unlike the dashboard, has no status
+      // line to put it on — and a monitor firing is the whole reason someone set
+      // it. The message queue keeps the durable copy.
+      if (result.triggeredMonitors && result.triggeredMonitors > 0) {
+        window.alert(
+          `${result.triggeredMonitors} monitor(s) triggered: ${(result.triggeredTickers ?? []).join(
+            ", ",
+          )}. See Messages for details.`,
+        );
+      }
       router.refresh();
     } finally {
       setIsRefreshing(false);

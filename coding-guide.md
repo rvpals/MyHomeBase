@@ -11,8 +11,8 @@ module is obvious from the name alone. New tables must follow this.
 
 | Prefix | Module | Example tables |
 |---|---|---|
-| `sys_` | Platform — not a feature module | `sys_modules`, `sys_app_settings`, `sys_module_settings`, `sys_user_preferences`, `sys_users`, `sys_user_module_access`, `sys_sessions`, `sys_schema_migrations`, `sys_daily_quotes`, `sys_scheduled_runs`, `sys_dashboard_texture`, `sys_module_texture`, `sys_fav_photo`, `sys_deployments`, `sys_auth_events`, `sys_site_visits`, `sys_ip_allowlist` |
-| `inv_` | Investments (brokerage accounts **and** per-stock tables — one prefix) | `inv_investment_accounts`, `inv_stock_positions`, `inv_stock_transactions`, `inv_stock_watch_lists`, `inv_stock_volatility_cache`, `inv_ticker_risk_cache`, `inv_ticker_logos`, `inv_index_logos`, `inv_daily_snapshots`, `inv_tax_lots` |
+| `sys_` | Platform — not a feature module | `sys_modules`, `sys_app_settings`, `sys_module_settings`, `sys_user_preferences`, `sys_users`, `sys_user_module_access`, `sys_sessions`, `sys_schema_migrations`, `sys_daily_quotes`, `sys_scheduled_runs`, `sys_dashboard_texture`, `sys_module_texture`, `sys_fav_photo`, `sys_deployments`, `sys_auth_events`, `sys_site_visits`, `sys_ip_allowlist`, `sys_messages` |
+| `inv_` | Investments (brokerage accounts **and** per-stock tables — one prefix) | `inv_investment_accounts`, `inv_stock_positions`, `inv_stock_transactions`, `inv_stock_watch_lists`, `inv_stock_volatility_cache`, `inv_ticker_risk_cache`, `inv_ticker_logos`, `inv_index_logos`, `inv_daily_snapshots`, `inv_tax_lots`, `inv_ticker_monitors` |
 | `csv_` | CSV Analysis (incl. user-generated per-entry tables from `buildTableName`) | `csv_analytics_entries`, `csv_chart_presets`, `csv_govee` |
 | `jrn_` | MyJournal | `jrn_entries`, `jrn_categories`, `jrn_tags`, `jrn_entry_categories`, `jrn_entry_tags`, `jrn_entry_locations`, `jrn_entry_images`, `jrn_saved_filters`, `jrn_locations`, `jrn_location_categories`, `jrn_location_tags` |
 | `exp_` | Expense tracker | `exp_transactions`, `exp_creditcard_accounts`, `exp_categories`, `exp_vendors`, `exp_post_import_rules`, `exp_post_import_rule_actions`, `exp_rule_types` |
@@ -227,6 +227,129 @@ multipart with neither problem, and needs no `FileReader` in the browser. Conver
 base64 server-side if the use-case wants it. `saveModuleCarouselImageAction` is the
 worked example. Also check the size **client-side** before uploading, so an oversized
 file is refused instantly with the app's own wording instead of a 500.
+
+## The message queue: telling the reader something after the fact
+
+`sys_messages` (migration 0109) is the app-wide place for a notice nobody was
+watching for. Anything in the app can file one:
+
+```ts
+createMessage(deps.messageRepo, {
+  title: "NVDA: monitor triggered",
+  body: "NVDA unrealized gain is $9,900.00, approaching your $10,000.00 target.",
+  source: "Investments monitor",
+});
+```
+
+Three things about it are worth knowing before adding a second writer.
+
+**It is household-wide.** One queue, one read state — marking a message read
+marks it read for everyone. That matches what the app is, and it keeps the table
+one row per message instead of a message table plus a per-reader join. The
+premise to check it against, and the shape to move to if it stops holding, are in
+`migrations/0109_create_system_messages.md`.
+
+**Use it for what survives the screen closing.** A status line is right for
+something the reader is watching happen — the refresh control's per-ticker
+progress stays a status line. The queue is for the thing they will want to know
+about an hour later. Filing both is how a queue becomes noise nobody reads.
+
+**`source` is free text and not a foreign key.** A message outlives the thing
+that wrote it: deleting a monitor next week must not delete the messages it
+filed, because the record that something was reported at a point in time is the
+whole value of the queue.
+
+The bell is `MessageQueue`, mounted by every shell through `MessageQueueHost`
+(see `components.md`). It is tier 3 — header, not floating — because it acts on
+the whole app; see design.md, *Adding a UI element to the shell*.
+
+### A repeating condition needs a latch, not a message per check
+
+`inv_ticker_monitors` (migration 0110) is the first writer, and it is the case
+that shows the trap. A monitor sitting inside its band is true on **every**
+refresh, so filing on truth alone puts forty copies of one sentence in the queue
+for a reader who refreshes hourly.
+
+So the row carries `is_triggered`, and the message is filed on the **transition**
+into the band. The evaluator returns both facts separately, and the distinction
+is load-bearing:
+
+| Field | Means | Drives |
+|---|---|---|
+| `isNear` | The condition is true **right now** | The warning marker beside the ticker |
+| `shouldNotify` | True **and not already reported** | Filing a message, setting the latch |
+
+Keeping them apart is what lets the marker show for as long as the condition
+holds while the queue gets exactly one entry per crossing. Leaving the band
+clears the latch and re-arms it; **editing a monitor clears it too**, so the
+first crossing of a new target is not swallowed by the old one's.
+
+Anything else that reports a recurring condition should copy this shape rather
+than inventing a de-duplication rule at the call site.
+
+### The evaluation is a pure function, and that is where the tests are
+
+`evaluateMonitor(monitor, valuation)` takes two plain objects and returns a
+verdict — no repository, no clock, no I/O ([evaluate.ts](src/lib/ticker-monitors/evaluate.ts)).
+`runMonitors` is the thin part that loops, files and latches.
+
+Two rules the evaluator encodes that are easy to get wrong if you re-derive them:
+
+- **A zero target takes its band from cost basis, not from the target.** "Loss
+  near $0" is the most useful monitor of the three — the bad one has nearly
+  recovered — and 5% of $0 is $0, so a band off the target would make the one
+  monitor you most want the one that can never fire.
+- **`costCents` of 0 means *unknown*, not free.** No monitor fires against it.
+  Firing would report a gain equal to the whole market value. This is the same
+  guard `computePortfolioSummary` applies, and a ticker held across several
+  accounts sums only the holdings that report a basis.
+
+### Where "run the monitors" is called from
+
+Four callers, and all four exist on purpose:
+
+| Caller | Why it is separate |
+|---|---|
+| `stock-refresh-control.tsx` | The dashboard's walk is client-driven so it can report progress; it calls the action as one more step |
+| `stock-glance-refresh.tsx` | The home card's copy of that same loop |
+| `refreshAllPositionsAction` | The Positions grid refreshes everything in **one** round trip, so the call belongs inside the action |
+| `runScheduledRefresh` | The timer, so a monitor fires overnight and not only when somebody presses a button |
+
+The monitor step always runs **last**, against the prices the pass just wrote —
+running it earlier judges the previous refresh's figures. Every caller swallows
+its failures: a monitor is a courtesy on top of the refresh, and it must never
+turn a successful price update into an error.
+
+### Watch-list watches are the second writer, and deliberately separate
+
+`inv_stock_watch_list_items` carries its own watch condition (migration 0111),
+and `runWatchListWatches` files into the same queue from the same place in the
+refresh pass. It is not a duplicate of the monitors, and the difference is the
+thing to keep hold of:
+
+| | `inv_ticker_monitors` (0110) | Watch on a list row (0111) |
+|---|---|---|
+| Watches | Unrealized gain/loss on a position you **hold** | A ticker you are **considering** |
+| Baseline | Cost basis | `price_when_added_cents` |
+| Kinds | Three, all gain/loss | Six, incl. price, range, dividend, split |
+| Lives on | Its own table, keyed by ticker | The list row, and dies with it |
+
+A monitor has a cost basis to measure against; a watch-list row does not,
+because you own none of it — which is why the price kinds that 0110's log
+argues against are the right thing here. The full defence is in
+`migrations/0111_add_watch_condition_to_watch_list_items.md`.
+
+Two rules from it that are easy to get wrong:
+
+- **The event kinds latch on a date, not on a band.** A dividend is a dated fact
+  that stays true forever, so a boolean latch would fire once and swallow next
+  quarter's. `watch_last_triggered_at` doubles as an event cursor, and
+  `added_date` is the floor — otherwise adding a row announces last quarter's
+  dividend as news.
+- **"We did not look" is not "there was nothing."** Dividends and splits need one
+  events call per ticker, so the manual button skips them and only the scheduled
+  pass supplies the client. A skipped kind is left alone rather than evaluated
+  against an empty list, which would clear a latch nobody re-checked.
 
 ## Icons: use a slot, not a bare glyph name
 

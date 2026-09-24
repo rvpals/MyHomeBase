@@ -15,6 +15,7 @@ import { getAccessibleModules, isAdmin } from "@/lib/user";
 import { VIEWPORT_PINNED_COOKIE } from "@/lib/viewport";
 import { deps } from "@/lib/wiring";
 import { logoutAction } from "../../../login/actions";
+import { MessageQueueHost } from "../../message-queue-host";
 import {
   JOURNAL_CONFIGURATION_SECTIONS,
   JOURNAL_DATA_MANAGEMENT_SECTIONS,
@@ -124,6 +125,7 @@ export async function JournalShell({ children }: { children: ReactNode }) {
         updatedAt: currentUser.updatedAt,
       }}
       showAdmin={isAdmin(currentUser)}
+      headerActions={<MessageQueueHost />}
       logoutAction={logoutAction}
       viewportPinned={viewportPinned}
     >

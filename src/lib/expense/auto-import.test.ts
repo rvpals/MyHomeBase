@@ -278,6 +278,7 @@ const EXPENSE_MIGRATIONS = [
   "0034_add_icon_image_to_expense_categories.sql",
   "0065_add_name_and_description_to_post_import_rules.sql",
   "0070_add_statement_close_day_to_expense_accounts.sql",
+  "0107_add_rule_types_to_expense.sql",
 ];
 
 function memoryExpenseRepo(): { repo: ExpenseRepository; db: Database.Database } {
@@ -440,6 +441,9 @@ describe("runAutoImport", () => {
     repo.createRule({
       name: "Amazon",
       description: "",
+      // Blank, as the schema defaults it (migration 0107): this rule sets a
+      // category and a status, and says nothing about the transaction's type.
+      typeName: "",
       pattern: "AMAZON%",
       priority: 0,
       isEnabled: true,

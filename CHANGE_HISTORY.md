@@ -1,5 +1,93 @@
 # Change History
 
+## 2026-09-23 — A message queue for the whole app, and monitors that watch a ticker for you
+
+### [Platform] Messages: the app can now tell you something after the fact
+
+There is a **bell in the header on every screen**, with a count of what you haven't read.
+Opening it gives you two tabs — **Unread**, and **Read message** for everything you've
+already seen. Read one and it moves across; *Mark all read* empties the first tab.
+
+Until now every notice the app produced was tied to a screen that happened to be open: a
+progress line, a banner, a status message. Anything that happened while nobody was
+looking was simply lost. That was fine until something started happening *on your behalf*
+— which is what the monitors below do — and then it wasn't.
+
+**It's one queue for the household**, not one each. Marking a message read marks it read
+for everybody, the same way the holdings and the journal are shared rather than personal.
+
+The bell is in the header on every screen because that's where this app puts anything
+meaning the same thing everywhere. On the home screen, which hides its header, it moves
+into the left rail rather than disappearing.
+
+### [Investments] Monitors: tell me when this holding gets close to a number
+
+Open any ticker and there's a **Monitor** button next to Consult AI. It opens a screen
+where you set conditions on that holding, of three kinds:
+
+- **Unrealized gain near an amount** — *tell me when I'm approaching $10,000 up on this.*
+- **Unrealized loss near an amount** — and `0` is the one worth knowing about: *the bad
+  one has nearly climbed back to break even.*
+- **Unrealized gain near a percent of cost basis** — *tell me when I'm approaching 20% up
+  on what I paid,* whatever that is in dollars.
+
+"Near" means within 5% of the target by default, and you can tighten or widen that per
+monitor. The percentage scales, which is why it's a percentage: 5% is sensible against a
+$500 target and against a $100,000 one.
+
+**Monitors run whenever prices refresh** — the dashboard's refresh button, the home
+card's, the Positions grid's, and the overnight scheduled run. So one fires while you're
+asleep and the message is waiting in the morning.
+
+When a monitor comes true, two things happen: a **warning icon appears beside the ticker**
+(click it to read what triggered, ✕ to close), and a message goes into the queue above.
+
+**It won't nag.** A monitor that's true stays true on every refresh, so filing a message
+each time would leave forty copies of one sentence in your queue. Instead a message is
+filed once, when the value *crosses into* the band. The warning icon keeps showing for as
+long as the condition holds, and the monitor re-arms itself when the value moves back out
+— so the next crossing tells you again.
+
+Two deliberate silences worth knowing. A ticker with **no recorded cost basis** never
+fires anything: without knowing what you paid, an "unrealized gain" would be the entire
+market value. And a holding deep in the red is **never treated as approaching a gain
+target** it happens to be passing on the way back up from the wrong side.
+
+Monitors are household-wide, like the holdings they watch, and both are also drivable
+from the terminal (`npm run cli -- ticker-monitors`, `npm run cli -- messages`).
+
+### [Investments] Watch lists: tell me when a ticker you *don't* own does something
+
+Adding a ticker to a watch list now takes one more optional field — **"Watch ticker
+for"** — beside Ticker, Shares and Added. Leave it on *Nothing* and a watch list behaves
+exactly as it did. Pick one of six things and the app starts watching:
+
+- **Price** — *tell me when it hits $100.*
+- **Price range** — *tell me when it's between $10 and $15.*
+- **Dividend** — *tell me when it pays one.* No value to fill in.
+- **Split** — *tell me when it splits.* No value either.
+- **Gain/loss %** — *tell me if it swings 20% either way* from what it cost when you
+  added it.
+- **Gain/loss price** — *tell me if it moves $10 a share* either way, same baseline.
+
+The two swing kinds fire **in both directions**, because "gain or loss" is one question:
+20% up and 20% down both get a message, and the message says which it was.
+
+**Why this is separate from the monitors above.** A monitor watches something you own,
+and measures against what you paid. A watch-list row is a ticker you're *considering* —
+there's no cost basis, because you own none of it, so a price target is the only thing
+there is to watch. Same bell, same no-nagging rule, different question.
+
+A **Watching** column shows what each row is set to, and you can click it to change it in
+place. Beside it, **Last Alert** keeps the sentence from the last time it fired. Changing
+a watch resets it, so a new target's first crossing still reaches you.
+
+**Dividends and splits only arrive on the scheduled refresh**, not when you press the
+Refresh button — looking them up costs an extra lookup per ticker, and a press should
+stay quick. If auto-refresh is off, those two kinds have nothing to run them.
+
+Also drivable from the terminal (`npm run cli -- watch-lists`).
+
 ## 2026-09-23 — Stocks & ETFs becomes Investments, rules you can group, visits that explain themselves
 
 ### [Investments] The module formerly called Stocks & ETFs

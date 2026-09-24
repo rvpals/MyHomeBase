@@ -118,6 +118,7 @@ export function AdminShell({
   initialModuleSettings,
   railLinks,
   currentUser,
+  headerActions,
   logoutAction,
   viewportPinned,
 }: {
@@ -127,6 +128,12 @@ export function AdminShell({
   initialModuleSettings: ModuleSetting[];
   /** Tier 1's module list, loaded by the layout — this is a client component. */
   railLinks: NavLink[];
+  /**
+   * Whole-app header actions — the message queue. Taken as a slot rather than
+   * imported here for the same reason `railLinks` is a prop: this is a client
+   * component, and the queue's host is a server one that reads the unread count.
+   */
+  headerActions?: ReactNode;
   currentUser: { id: number; fullName: string; avatarMimeType?: string; updatedAt?: string };
   logoutAction: () => Promise<void>;
   viewportPinned: boolean;
@@ -311,6 +318,7 @@ export function AdminShell({
         currentUser={currentUser}
         // Always true: the layout redirects a non-admin before this renders.
         showAdmin
+        headerActions={headerActions}
         logoutAction={logoutAction}
         viewportPinned={viewportPinned}
       >

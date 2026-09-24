@@ -144,8 +144,31 @@ export interface TickerViewerProps {
    */
   onConsultAi?: () => void;
 
+  /**
+   * The Monitor control in the header. **Optional** — omit it and no button
+   * renders, the same way the star and Consult AI do.
+   *
+   * An object rather than a bare callback because the header shows two things:
+   * the button that opens the setup screen, and — when a monitor's condition
+   * currently holds — a warning marker beside it. Both belong to the same
+   * feature, so one prop carries them and a caller cannot wire half of it.
+   */
+  monitor?: TickerMonitorControl;
+
   /** Caller-supplied classes, merged last so they win. */
   className?: string;
+}
+
+export interface TickerMonitorControl {
+  /** Opens the Ticker Monitor setup screen. */
+  onOpen: () => void;
+  /**
+   * How many of this ticker's monitors are true right now. `0` renders no
+   * marker at all.
+   */
+  warningCount: number;
+  /** Opens the warning dialog. Only reachable while `warningCount > 0`. */
+  onShowWarning: () => void;
 }
 
 export interface TickerFavoriteControl {
@@ -2331,6 +2354,7 @@ export function TickerViewer({
   onCalculateTaxLots,
   favorite,
   onConsultAi,
+  monitor,
   className = "",
 }: TickerViewerProps) {
   // The header price prefers the live quote and falls back to our own recorded
@@ -2391,6 +2415,40 @@ export function TickerViewer({
                   beside the favourite toggle, so the one thing it must not do is
                   read as another star. */}
               <TreeIcon name="ai-spark" className="h-5 w-5" />
+            </button>
+          )}
+          {monitor && (
+            <button
+              type="button"
+              onClick={monitor.onOpen}
+              title="Set up monitoring for this ticker"
+              aria-label="Set up monitoring for this ticker"
+              className="rounded-md px-2 py-0.5 text-sm font-medium text-brass transition-colors hover:bg-line/60 hover:text-brass-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+            >
+              Monitor
+            </button>
+          )}
+          {monitor && monitor.warningCount > 0 && (
+            // A separate control from the Monitor button on purpose: one sets
+            // the conditions, the other reports that one of them is true now.
+            // Collapsing them would mean a reader who wants to read the warning
+            // lands in a settings form instead.
+            <button
+              type="button"
+              onClick={monitor.onShowWarning}
+              title={
+                monitor.warningCount === 1
+                  ? "A monitor for this ticker has triggered"
+                  : `${monitor.warningCount} monitors for this ticker have triggered`
+              }
+              aria-label={
+                monitor.warningCount === 1
+                  ? "A monitor for this ticker has triggered"
+                  : `${monitor.warningCount} monitors for this ticker have triggered`
+              }
+              className="rounded-md p-0.5 text-brass-dark hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+            >
+              <TreeIcon name="warning" className="h-5 w-5" />
             </button>
           )}
         </span>

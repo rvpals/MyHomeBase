@@ -1,7 +1,15 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { addItem, createWatchList, deleteItem, deleteWatchList, renameWatchList } from "@/lib/stock-watchlist";
+import {
+  addItem,
+  createWatchList,
+  deleteItem,
+  deleteWatchList,
+  renameWatchList,
+  updateItemWatch,
+  type UpdateWatchListItemWatchInput,
+} from "@/lib/stock-watchlist";
 import { deps } from "@/lib/wiring";
 import { requireModuleAccess } from "../../require-access";
 
@@ -56,6 +64,8 @@ export interface AddWatchListItemFormInput {
   ticker: string;
   shares: string;
   addedDate: string;
+  /** The watch condition, already in domain units. Absent means "not watching". */
+  watch?: UpdateWatchListItemWatchInput;
 }
 
 export async function addWatchListItemAction(
@@ -69,9 +79,26 @@ export async function addWatchListItemAction(
       ticker: input.ticker,
       shares: Number(input.shares || "0"),
       addedDate: input.addedDate,
+      // Spread rather than passed field-by-field so the schema's defaults apply
+      // when the reader left the optional watch alone.
+      ...(input.watch ?? {}),
     });
   } catch (error) {
     return toErrorResult(error, "Failed to add ticker to watch list.");
+  }
+  revalidatePath(INVESTMENTS_MODULE_PATH);
+  return { ok: true };
+}
+
+export async function updateWatchListItemWatchAction(
+  itemId: number,
+  watch: UpdateWatchListItemWatchInput,
+): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    updateItemWatch(deps.stockWatchListRepo, itemId, watch);
+  } catch (error) {
+    return toErrorResult(error, "Failed to update the watch.");
   }
   revalidatePath(INVESTMENTS_MODULE_PATH);
   return { ok: true };

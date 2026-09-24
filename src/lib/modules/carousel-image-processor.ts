@@ -21,17 +21,21 @@ import type { CarouselImageProcessor } from "./ports";
  * verifies both for the icon processor, so this adds no new deploy step.
  */
 export class SharpCarouselImageProcessor implements CarouselImageProcessor {
-  private sharpModule?: typeof import("sharp");
+  // The **default export's** type, not `typeof import("sharp")`. The latter is
+  // the module namespace, which has no call signature — sharp 0.35 exports a
+  // `SharpConstructor` as its default, so typing the cache as the namespace
+  // makes every `sharp(...)` call below a type error.
+  private sharpModule?: (typeof import("sharp"))["default"];
 
   /**
    * Loads `sharp` on demand, translating a native-module failure into something
    * an admin can act on — the driver's own message is a wall of install advice
    * aimed at a developer.
    */
-  private async lib(): Promise<typeof import("sharp")> {
+  private async lib(): Promise<(typeof import("sharp"))["default"]> {
     if (!this.sharpModule) {
       try {
-        this.sharpModule = (await import("sharp")).default as unknown as typeof import("sharp");
+        this.sharpModule = (await import("sharp")).default;
       } catch (error) {
         throw new Error(
           "Image processing is unavailable on this server — the sharp module failed to load. " +

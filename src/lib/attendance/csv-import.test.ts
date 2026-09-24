@@ -112,6 +112,7 @@ function fakeRepo(): AttendanceRepository {
     getAttendanceRecordById: notImplemented("getAttendanceRecordById"),
     listAttendanceRecords: notImplemented("listAttendanceRecords"),
     saveAttendance: notImplemented("saveAttendance"),
+    deleteAttendanceRecords: notImplemented("deleteAttendanceRecords"),
     listSessionsForClass: notImplemented("listSessionsForClass"),
     listAttendanceRecordsForClass: notImplemented("listAttendanceRecordsForClass"),
     findAttendanceRecordForDate: notImplemented("findAttendanceRecordForDate"),

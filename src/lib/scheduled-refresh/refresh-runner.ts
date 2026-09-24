@@ -103,6 +103,15 @@ export async function runScheduledRefreshNow(
       profileRepo: deps.tickerProfileRepo,
       profileClient: deps.tickerProfileClient,
       snapshotRepo: deps.stockDailySnapshotRepo,
+      // The pair that makes monitors fire on the timer as well as on the
+      // button. Both or neither — see `ScheduledRefreshDeps`.
+      monitorRepo: deps.tickerMonitorRepo,
+      messageRepo: deps.messageRepo,
+      // The watch-list pair. The events client is supplied only here, on the
+      // timed path -- the manual button skips dividends and splits to keep a
+      // press cheap (migrations/0111).
+      watchListRepo: deps.stockWatchListRepo,
+      marketEventsClient: deps.marketEventsClient,
       today: todayIsoLocal(),
     });
 

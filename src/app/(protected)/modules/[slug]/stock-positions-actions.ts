@@ -20,6 +20,7 @@ import { listAccounts } from "@/lib/investment-accounts";
 import { centsToDollars, dollarsToCents } from "@/lib/shared/money";
 import { deps } from "@/lib/wiring";
 import { requireModuleAccess } from "../../require-access";
+import { runMonitorsAgainstMyTickerAction } from "./ticker-monitors-actions";
 
 /** The module these actions belong to, matched exactly by `requireModuleAccess`. */
 const ACCESS_MODULE_SLUG = "investments";
@@ -218,6 +219,10 @@ export async function fetchQuoteAction(ticker: string): Promise<QuoteResult> {
 export interface RefreshAllResult extends ActionResult {
   refreshedCount?: number;
   failed?: { ticker: string; error: string }[];
+  /** How many monitors newly fired on the back of this refresh. */
+  triggeredMonitors?: number;
+  /** Which tickers they were on, for the caller's notice. */
+  triggeredTickers?: string[];
 }
 
 export interface RefreshTarget {
@@ -301,8 +306,24 @@ export async function refreshAllPositionsAction(): Promise<RefreshAllResult> {
   await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const { refreshed, failed } = await refreshAllPositions(deps.stockPositionRepo, deps.marketDataClient);
+
+    // Monitors, against the prices just written. Inside the action rather than
+    // at the caller because this one refreshes everything in a single round
+    // trip — unlike the dashboard and home-card controls, which drive their own
+    // per-ticker loop from the client and so call the monitor action themselves.
+    //
+    // Never throws (the action swallows its own failures), so a monitor problem
+    // cannot turn a successful refresh into a failed one.
+    const monitors = await runMonitorsAgainstMyTickerAction();
+
     revalidatePath(INVESTMENTS_MODULE_PATH);
-    return { ok: true, refreshedCount: refreshed.length, failed };
+    return {
+      ok: true,
+      refreshedCount: refreshed.length,
+      failed,
+      triggeredMonitors: monitors.triggered,
+      triggeredTickers: monitors.triggeredTickers,
+    };
   } catch (error) {
     return toErrorResult(error, "Failed to refresh positions.");
   }

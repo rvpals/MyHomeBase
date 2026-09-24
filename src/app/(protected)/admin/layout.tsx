@@ -9,6 +9,7 @@ import { getAccessibleModules, isAdmin } from "@/lib/user";
 import { VIEWPORT_PINNED_COOKIE } from "@/lib/viewport";
 import { deps } from "@/lib/wiring";
 import { logoutAction } from "../../login/actions";
+import { MessageQueueHost } from "../message-queue-host";
 import { AdminShell } from "./admin-shell";
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
@@ -51,6 +52,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
         avatarMimeType: currentUser.avatarMimeType,
         updatedAt: currentUser.updatedAt,
       }}
+      headerActions={<MessageQueueHost />}
       logoutAction={logoutAction}
       viewportPinned={cookieStore.get(VIEWPORT_PINNED_COOKIE)?.value === "1"}
     >

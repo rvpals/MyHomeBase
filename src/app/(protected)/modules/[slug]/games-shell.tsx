@@ -15,6 +15,7 @@ import { getAccessibleModules, isAdmin } from "@/lib/user";
 import { VIEWPORT_PINNED_COOKIE } from "@/lib/viewport";
 import { deps } from "@/lib/wiring";
 import { logoutAction } from "../../../login/actions";
+import { MessageQueueHost } from "../../message-queue-host";
 import {
   GAMES_SECTIONS,
   GAMES_SECTION_ICONS,
@@ -78,6 +79,7 @@ export async function GamesShell({ children }: { children: ReactNode }) {
         updatedAt: currentUser.updatedAt,
       }}
       showAdmin={isAdmin(currentUser)}
+      headerActions={<MessageQueueHost />}
       logoutAction={logoutAction}
       viewportPinned={viewportPinned}
     >

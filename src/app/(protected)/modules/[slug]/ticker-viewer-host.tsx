@@ -21,7 +21,10 @@ import {
 import { TickerLogo } from "@/components/ticker-logo";
 import type { TickerHistoryRange } from "@/lib/ticker-overview";
 import { encodeAdhocLots, lotsFromTrades } from "@/lib/tax-lots";
+import { MonitorWarningDialog } from "@/components/message-queue";
 import { TickerConsultDialog } from "./ticker-consult-dialog";
+import { TickerMonitorDialog } from "./ticker-monitor-dialog";
+import { tickerMonitorWarningsAction } from "./ticker-monitors-actions";
 import {
   isFavoriteTickerAction,
   toggleFavoriteTickerAction,
@@ -182,6 +185,34 @@ function TickerViewerHostInner({
   // `lib/ticker-consult` from `ownData`, which is already loaded.
   const [isConsultOpen, setIsConsultOpen] = useState(false);
 
+  // The Ticker Monitor screen, and the warning dialog the marker opens.
+  //
+  // `monitorWarnings` is the live evaluation — which of this ticker's monitors
+  // are true *right now* — not the fire-once latch. The marker therefore shows
+  // for as long as a condition holds, while the queue gets one message per
+  // crossing; see migrations/0110.
+  const [isMonitorOpen, setIsMonitorOpen] = useState(false);
+  const [isWarningOpen, setIsWarningOpen] = useState(false);
+  const [monitorWarnings, setMonitorWarnings] = useState<string[]>([]);
+
+  // Re-read after a change to the monitors. Fire-and-forget: the marker is a
+  // hint, and a failed read leaves the previous answer rather than an error.
+  const loadMonitorWarnings = useCallback(() => {
+    void tickerMonitorWarningsAction(ticker).then(setMonitorWarnings);
+  }, [ticker]);
+
+  // On open, with its own staleness guard — switching symbols quickly must not
+  // let a slow first response land on top of a newer one.
+  useEffect(() => {
+    let stale = false;
+    void tickerMonitorWarningsAction(ticker).then((messages) => {
+      if (!stale) setMonitorWarnings(messages);
+    });
+    return () => {
+      stale = true;
+    };
+  }, [ticker]);
+
   // The star's own state, loaded once on open. Kept here rather than in
   // `TickerViewer` because the toggle is a server action, and that component is
   // shared presentation that must not know about this module's actions.
@@ -261,7 +292,33 @@ function TickerViewerHostInner({
         // Withheld until the records are loaded: the prompt is built from them, and
         // a button that opens a dialog with nothing in it is worse than no button.
         onConsultAi={ownData.data ? () => setIsConsultOpen(true) : undefined}
+        // Always offered, unlike Consult AI: setting a monitor is exactly what a
+        // reader wants to do on a ticker whose panels are still loading, and the
+        // setup screen reads its own figures.
+        monitor={{
+          onOpen: () => setIsMonitorOpen(true),
+          warningCount: monitorWarnings.length,
+          onShowWarning: () => setIsWarningOpen(true),
+        }}
       />
+
+      {isMonitorOpen && (
+        <TickerMonitorDialog
+          ticker={ticker}
+          onClose={() => setIsMonitorOpen(false)}
+          // A changed monitor can make the marker appear or disappear, so the
+          // live evaluation is re-read rather than left until the next refresh.
+          onChanged={loadMonitorWarnings}
+        />
+      )}
+
+      {isWarningOpen && monitorWarnings.length > 0 && (
+        <MonitorWarningDialog
+          ticker={ticker}
+          messages={monitorWarnings}
+          onClose={() => setIsWarningOpen(false)}
+        />
+      )}
 
       {isConsultOpen && ownData.data && (
         <TickerConsultDialog

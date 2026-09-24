@@ -20,6 +20,10 @@ import {
   type TickerProfileClient,
   type TickerProfileRepository,
 } from "@/lib/ticker-profiles";
+import { runMonitors, type TickerMonitorRepository } from "@/lib/ticker-monitors";
+import { runWatchListWatches, type StockWatchListRepository } from "@/lib/stock-watchlist";
+import type { MarketEventsClient } from "@/lib/market-data";
+import type { MessageRepository } from "@/lib/messages";
 import type { ScheduledRefreshSummary, ScheduledRunStatus } from "./types";
 
 export interface ScheduledRefreshDeps {
@@ -28,6 +32,36 @@ export interface ScheduledRefreshDeps {
   profileRepo: TickerProfileRepository;
   profileClient: TickerProfileClient;
   snapshotRepo: DailySnapshotRepository;
+  /**
+   * Ticker monitors, run after the prices land. **Optional**, and the pair is
+   * all-or-nothing: a monitor pass needs somewhere to file what it finds, so
+   * supplying one without the other would silently evaluate and discard.
+   *
+   * Optional because the monitor step is an addition to a pass that already had
+   * a settled contract — a caller that doesn't wire them gets exactly the
+   * behaviour it had before, which is what keeps the existing tests honest
+   * rather than merely passing.
+   */
+  monitorRepo?: TickerMonitorRepository;
+  messageRepo?: MessageRepository;
+  /**
+   * Watch-list watches, run after the prices land. **Optional** for the same
+   * reason the monitor pair is, and paired with `messageRepo` the same way: a
+   * watch needs somewhere to file what it finds.
+   *
+   * Distinct from `monitorRepo` because they watch different things — a monitor
+   * is about a position you hold, a watch is about a ticker you are considering
+   * (migrations/0111).
+   */
+  watchListRepo?: StockWatchListRepository;
+  /**
+   * Corporate actions, for the `dividend` and `split` watch kinds. **Optional
+   * even when `watchListRepo` is supplied**: it costs one network call per
+   * watched ticker on top of the quote, so the manual Refresh All button leaves
+   * it out and the timed pass supplies it. Without it those two kinds are
+   * skipped rather than reported as quiet.
+   */
+  marketEventsClient?: MarketEventsClient;
   /** Today, local-calendar "YYYY-MM-DD". Injected so a test doesn't depend on the clock. */
   today: string;
 }
@@ -113,6 +147,35 @@ export async function runScheduledRefresh(
     snapshotSaved = true;
   } catch (error) {
     snapshotError = error instanceof Error ? error.message : "Snapshot failed.";
+  }
+
+  // Monitors, against the prices this pass just wrote. Swallowed on purpose,
+  // exactly as the sector step above is: a monitor is a courtesy on top of the
+  // refresh, and a failure here must not downgrade a pass that priced
+  // everything it was asked to. This is what makes a monitor fire overnight
+  // rather than only when somebody presses the button.
+  if (deps.monitorRepo && deps.messageRepo) {
+    try {
+      runMonitors(deps.monitorRepo, deps.positionRepo, deps.messageRepo);
+    } catch {
+      // Deliberately ignored.
+    }
+  }
+
+  // Watch-list watches, swallowed for exactly the same reason. Unlike monitors
+  // these fetch their own quotes: a watched ticker is one you do not hold, so
+  // the price step above never priced it.
+  if (deps.watchListRepo && deps.messageRepo) {
+    try {
+      await runWatchListWatches({
+        repo: deps.watchListRepo,
+        marketDataClient: deps.marketDataClient,
+        messages: deps.messageRepo,
+        eventsClient: deps.marketEventsClient,
+      });
+    } catch {
+      // Deliberately ignored.
+    }
   }
 
   // `partial` covers both "some tickers couldn't be priced" and "prices landed but

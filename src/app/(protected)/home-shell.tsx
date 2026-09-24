@@ -35,6 +35,7 @@ import { getAccessibleModules, isAdmin } from "@/lib/user";
 import { VIEWPORT_PINNED_COOKIE } from "@/lib/viewport";
 import { deps } from "@/lib/wiring";
 import { logoutAction } from "../login/actions";
+import { MessageQueueHost } from "./message-queue-host";
 
 export async function HomeShell({
   label,
@@ -91,6 +92,9 @@ export async function HomeShell({
         updatedAt: currentUser.updatedAt,
       }}
       showAdmin={isAdmin(currentUser)}
+      // On the home screen `hideHeader` moves this into the rail's bottom zone
+      // rather than dropping it; /account, which keeps its header, shows it there.
+      headerActions={<MessageQueueHost />}
       logoutAction={logoutAction}
       viewportPinned={cookieStore.get(VIEWPORT_PINNED_COOKIE)?.value === "1"}
       hideHeader={hideHeader}
