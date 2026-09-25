@@ -11,7 +11,18 @@ export interface TrackLyrics {
   status: LyricsStatus;
   /** Plain text. `''` unless status is `found`. */
   lyrics: string;
-  /** `'lrclib'` today; `'manual'` if hand-entered lyrics are ever added. */
+  /**
+   * Where the words came from.
+   *
+   * `'embedded'` -- read out of the file's own tags (ID3 `USLT`/`SYLT`, FLAC
+   *                 `LYRICS`, M4A `©lyr`). Tried first, and the reason a
+   *                 fully-tagged library needs no network at all.
+   * `'lrclib'`   -- fetched from lrclib.net because the file carried none.
+   * `'manual'`   -- hand-entered, and never overwritten by a refetch.
+   *
+   * The player reads this to attribute the lyric it is showing, so a listener can
+   * tell words that came with their file from words a stranger matched to it.
+   */
   source: string;
   searchArtist: string;
   searchTitle: string;
@@ -94,6 +105,28 @@ export function deriveLyricsQuery(track: Track): LyricsQuery | undefined {
   if (title === "") return undefined;
 
   return { artist: taggedArtist, title, durationSeconds: track.durationSeconds };
+}
+
+/**
+ * A Google search for this song's lyrics, for when nothing automatic found them.
+ *
+ * The last resort of the three sources. The file's tags and LRCLIB can both come up
+ * empty on a song that is perfectly well documented somewhere -- LRCLIB's database
+ * is community-contributed and thin outside popular Western music, which is exactly
+ * where a library like this one has its gaps.
+ *
+ * A link the listener clicks, not a scrape. Google has no free lyrics API, its
+ * results are copyrighted text served under agreements we are not party to, and
+ * automating queries against it violates its terms -- so the honest version of
+ * "search Google for it" is handing over the search, which costs nothing and asks
+ * no permission.
+ *
+ * `lyrics` is appended to the terms because a bare "artist title" search returns
+ * streaming links and videos; the word is what puts the lyric panel first.
+ */
+export function googleLyricsSearchUrl(query: LyricsQuery): string {
+  const term = [query.artist, query.title, "lyrics"].filter((part) => part !== "").join(" ");
+  return `https://www.google.com/search?q=${encodeURIComponent(term)}`;
 }
 
 /**

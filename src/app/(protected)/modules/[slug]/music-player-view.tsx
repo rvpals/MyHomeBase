@@ -72,6 +72,19 @@ export function MusicPlayerView() {
   const isLoadedForCurrent = loaded !== undefined && loaded.trackId === currentId;
   const lyrics = isLoadedForCurrent ? loaded.lyrics : undefined;
 
+  // Which album's cover art failed to load, rather than a bare boolean.
+  //
+  // `albumCoverUrl` hands back a URL for any track that HAS an album, but the cover
+  // route answers 404 when that album's `cover_image` is NULL -- and a queue row
+  // carries `albumId` without the `hasCoverImage` flag the library grid gates on, so
+  // there is nothing to check before rendering. Left alone, the browser draws its own
+  // broken-image icon with the alt text beside it.
+  //
+  // Keyed by album id for the same reason `loaded` above is keyed by track id: a
+  // track change invalidates it derivationally, so one album without art cannot
+  // leave the next one blank. Must sit above this component's early returns.
+  const [coverFailedFor, setCoverFailedFor] = useState<number>();
+
   // The "auto-retrieve lyrics" setting, read once per mount. Not per track change: it
   // only changes when someone edits the configuration screen, and this screen is not
   // where that happens.
@@ -247,7 +260,7 @@ export function MusicPlayerView() {
     <div className="grid gap-6 lg:grid-cols-[20rem_1fr]">
       {/* Cover + transport */}
       <div>
-        {coverUrl === undefined ? (
+        {coverUrl === undefined || coverFailedFor === current.albumId ? (
           <div
             className="aspect-square w-full rounded-xl border border-line bg-paper-raised"
             aria-hidden="true"
@@ -256,6 +269,7 @@ export function MusicPlayerView() {
           <img
             src={coverUrl}
             alt={`Cover art for ${current.title}`}
+            onError={() => setCoverFailedFor(current.albumId)}
             className="aspect-square w-full rounded-xl border border-line object-cover"
           />
         )}
@@ -559,10 +573,21 @@ function LyricsPanel({
         <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-ink">
           {lyrics.lyrics}
         </p>
-        {lyrics.searchedFor !== undefined && (
+        {/*
+          Attribution follows the source. Words read from the file are not "matched"
+          on anything -- they came with the music -- so claiming a match on them
+          would be untrue, and saying lrclib.net doubly so.
+        */}
+        {lyrics.source === "embedded" ? (
           <p className="mt-4 border-t border-line pt-2 text-xs text-muted">
-            Matched on {lyrics.searchedFor} - from lrclib.net
+            From this file&rsquo;s own tags
           </p>
+        ) : (
+          lyrics.searchedFor !== undefined && (
+            <p className="mt-4 border-t border-line pt-2 text-xs text-muted">
+              Matched on {lyrics.searchedFor} - from lrclib.net
+            </p>
+          )
         )}
       </>
     );
@@ -573,6 +598,23 @@ function LyricsPanel({
       <p className="text-sm text-muted">{lyrics.message}</p>
       {lyrics.searchedFor !== undefined && (
         <p className="mt-2 text-xs text-muted">Searched for: {lyrics.searchedFor}</p>
+      )}
+      {/*
+        The last resort, after the file's tags and lrclib both came up empty. A link
+        rather than a fetch -- see `googleLyricsSearchUrl` on why these words are not
+        ours to scrape.
+      */}
+      {lyrics.searchUrl !== undefined && (
+        <p className="mt-2 text-xs text-muted">
+          <a
+            href={lyrics.searchUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="underline hover:text-ink"
+          >
+            Search Google for these lyrics
+          </a>
+        </p>
       )}
       {lyrics.status === "unsearchable" && (
         <p className="mt-2 text-xs text-muted">

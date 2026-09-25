@@ -1,4 +1,5 @@
 import { parseFile } from "music-metadata";
+import { pickEmbeddedLyrics } from "./embedded-lyrics";
 import { resolveTrackPath } from "./paths";
 import type { AudioMetadataReader, TrackTags } from "./ports";
 
@@ -64,6 +65,31 @@ export class MusicMetadataReader implements AudioMetadataReader {
               },
       };
     } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Lyrics embedded in one file's tags.
+   *
+   * A second `parseFile` rather than a field on `read` above -- see the port's doc
+   * for why the scan path must not carry lyric bodies. This costs one file open for
+   * a track the listener has actually opened the panel on, which is nothing next to
+   * the network round-trip it saves.
+   *
+   * `skipCovers` because the artwork is already in the catalog from the scan, and
+   * decoding a 2 MB embedded JPEG to read a text frame is pure waste over SMB.
+   */
+  async readLyrics(relativePath: string): Promise<string | undefined> {
+    const absolute = resolveTrackPath(this.musicRoot, relativePath);
+    if (absolute === undefined) return undefined;
+
+    try {
+      const metadata = await parseFile(absolute, { skipCovers: true });
+      return pickEmbeddedLyrics(metadata.common.lyrics);
+    } catch {
+      // Same contract as `read`: an unreadable file is a file with no lyrics, and
+      // the caller goes on to ask LRCLIB rather than showing an error.
       return undefined;
     }
   }

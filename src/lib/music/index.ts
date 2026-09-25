@@ -45,6 +45,7 @@ export {
 export {
   cleanSearchTerm,
   deriveLyricsQuery,
+  googleLyricsSearchUrl,
   isDurationMatch,
   shouldRefetchLyrics,
   shouldSendDuration,
@@ -170,6 +171,12 @@ export type {
   StoryClient,
   TrackTags,
 } from "./ports";
+
+export {
+  normaliseEmbeddedLyrics,
+  pickEmbeddedLyrics,
+  type EmbeddedLyricsTag,
+} from "./embedded-lyrics";
 
 export { isRetryable, type TrackVideo } from "./video";
 

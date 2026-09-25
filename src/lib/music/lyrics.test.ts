@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   cleanSearchTerm,
   deriveLyricsQuery,
+  googleLyricsSearchUrl,
   isDurationMatch,
   shouldRefetchLyrics,
   shouldSendDuration,
@@ -202,5 +203,24 @@ describe("isDurationMatch", () => {
   it("cannot judge when either side is unknown, so it accepts", () => {
     expect(isDurationMatch(undefined, 289)).toBe(true);
     expect(isDurationMatch(290, undefined)).toBe(true);
+  });
+});
+
+describe("googleLyricsSearchUrl", () => {
+  it("searches for the artist, the title and the word lyrics", () => {
+    expect(googleLyricsSearchUrl({ artist: "Lana Del Rey", title: "Beautiful" })).toBe(
+      "https://www.google.com/search?q=Lana%20Del%20Rey%20Beautiful%20lyrics",
+    );
+  });
+
+  it("omits an unknown artist rather than leaving a gap in the terms", () => {
+    expect(googleLyricsSearchUrl({ artist: "", title: "Beautiful" })).toBe(
+      "https://www.google.com/search?q=Beautiful%20lyrics",
+    );
+  });
+
+  it("escapes characters that would otherwise break the query string", () => {
+    const url = googleLyricsSearchUrl({ artist: "AC/DC", title: "T.N.T. & More" });
+    expect(url).toBe("https://www.google.com/search?q=AC%2FDC%20T.N.T.%20%26%20More%20lyrics");
   });
 });

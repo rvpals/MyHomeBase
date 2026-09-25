@@ -99,6 +99,21 @@ export interface AudioMetadataReader {
    * scanner counts it in `files_failed` and moves on.
    */
   read(relativePath: string): Promise<TrackTags | undefined>;
+
+  /**
+   * The words embedded in one file's tags, or `undefined` when it carries none.
+   *
+   * Its own method rather than a field on `TrackTags` on purpose. The scanner calls
+   * `read` for all 20,000 files and does not store lyrics, so putting a few
+   * kilobytes of text on that return value would cost a whole library's worth of
+   * string allocation for something immediately discarded. This is called once, for
+   * one track, when the listener opens the lyrics panel.
+   *
+   * Resolves to `undefined` for an unreadable file, matching `read` -- a file that
+   * will not parse is simply a file with no embedded lyrics, and the caller falls
+   * through to the online lookup.
+   */
+  readLyrics(relativePath: string): Promise<string | undefined>;
 }
 
 export interface TrackTags {

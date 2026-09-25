@@ -59,6 +59,9 @@ function fakeReader(files: FakeFile[]): AudioMetadataReader {
       if (file === undefined || file.unreadable === true) return undefined;
       return file.tags ?? {};
     },
+    // The scanner never reads lyrics -- they are fetched when the listener opens the
+    // panel, not for 20,000 files. Present only to satisfy the port.
+    readLyrics: async () => undefined,
   };
 }
 

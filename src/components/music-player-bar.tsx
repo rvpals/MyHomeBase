@@ -37,6 +37,14 @@ export function MusicPlayerBar() {
   const minimize = useCallback(() => setIsMinimized(true), []);
   const restore = useCallback(() => setIsMinimized(false), []);
 
+  // Whether the puck's cover art 404'd -- see `Cover` below for why it can. Held up
+  // here rather than beside the <img> because hooks cannot sit after this component's
+  // early return, and reset on a track change so one album without art does not leave
+  // the next one showing a note glyph over perfectly good artwork.
+  const puckCoverAlbumId = player?.current?.albumId;
+  const [puckCoverFailed, setPuckCoverFailed] = useState(false);
+  useEffect(() => setPuckCoverFailed(false), [puckCoverAlbumId]);
+
   // Which shape is on screen, or null for nothing playing. Computed before the
   // early return below because the effect that publishes it is a hook, and hooks
   // can't sit after a conditional return.
@@ -104,10 +112,17 @@ export function MusicPlayerBar() {
           // art, which needs the room to read as artwork.
           className="nav-raised-top relative grid h-14 w-14 place-items-center overflow-hidden rounded-full border border-line bg-paper-raised text-ink hover:bg-brass-soft"
         >
-          {coverUrl === undefined ? (
+          {/* Same 404 as `Cover` above -- an album row with no stored art -- so the
+              puck falls back to its note glyph rather than a broken image. */}
+          {coverUrl === undefined || puckCoverFailed ? (
             <MusicNoteGlyph />
           ) : (
-            <img src={coverUrl} alt="" className="h-full w-full object-cover" />
+            <img
+              src={coverUrl}
+              alt=""
+              onError={() => setPuckCoverFailed(true)}
+              className="h-full w-full object-cover"
+            />
           )}
           {/* A ring of progress around the puck, so the minimized player still says
               how far through the track it is. `conic-gradient` rather than an SVG
@@ -142,7 +157,7 @@ export function MusicPlayerBar() {
           <div className="h-full bg-brass" style={{ width: `${fraction * 100}%` }} />
         </div>
         <div className="flex items-center gap-3 px-3 py-2">
-          <Cover url={coverUrl} title={current.title} size="h-10 w-10" />
+          <Cover key={coverUrl} url={coverUrl} title={current.title} size="h-10 w-10" />
           <Link
             href={`/modules/music-library/player`}
             className="min-w-0 flex-1"
@@ -180,7 +195,7 @@ export function MusicPlayerBar() {
   return (
     <div className="music-player-pinned border-t border-line bg-paper-raised px-4 py-2">
       <div className="mx-auto flex max-w-6xl items-center gap-4">
-        <Cover url={coverUrl} title={current.title} size="h-12 w-12" />
+        <Cover key={coverUrl} url={coverUrl} title={current.title} size="h-12 w-12" />
 
         <div className="min-w-0 w-56">
           <Link href={`/modules/music-library/player`} className="block min-w-0">
@@ -274,8 +289,26 @@ function QueueGlyph() {
   );
 }
 
+/**
+ * Album art, or a blank tile when there is none.
+ *
+ * Two ways to have none, and both end at the same placeholder:
+ *
+ *   - No album at all, so `albumCoverUrl` gave no URL.
+ *   - An album whose `cover_image` is NULL. A queue row carries `albumId` but not
+ *     `hasCoverImage` (unlike the library grid, which gates on that flag), so there
+ *     is nothing to check before rendering -- the cover route answers 404 and the
+ *     browser draws its own broken-image icon with the alt text beside it. `onError`
+ *     is what turns that into the blank tile.
+ *
+ * Keyed by `url` so the failure does not stick: without it, React reuses this
+ * element across a track change and a song WITH art would inherit the previous
+ * song's failed state and never render.
+ */
 function Cover({ url, title, size }: { url?: string; title: string; size: string }) {
-  if (url === undefined) {
+  const [failed, setFailed] = useState(false);
+
+  if (url === undefined || failed) {
     return (
       <div
         className={`${size} shrink-0 rounded border border-line bg-paper`}
@@ -289,6 +322,7 @@ function Cover({ url, title, size }: { url?: string; title: string; size: string
     <img
       src={url}
       alt={`Cover art for ${title}`}
+      onError={() => setFailed(true)}
       className={`${size} shrink-0 rounded border border-line object-cover`}
     />
   );

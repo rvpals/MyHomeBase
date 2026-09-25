@@ -29,6 +29,7 @@ import {
   reorderPlaylistSchema,
   trackIdSchema,
   getCachedLyrics,
+  googleLyricsSearchUrl,
   isScanRunStale,
   isVisualizerMode,
   listMusicFolders,
@@ -98,6 +99,21 @@ export interface LyricsActionResult {
   lyrics: string;
   /** What was actually searched for, so a miss can be understood rather than guessed at. */
   searchedFor?: string;
+  /**
+   * Where the words came from -- `'embedded'`, `'lrclib'` or `'manual'`.
+   *
+   * The player attributes the lyric with this. It matters to a listener: words read
+   * out of their own file are the ones that came with the music, whereas an LRCLIB
+   * result is a stranger's match on a title and can be the wrong recording.
+   */
+  source?: string;
+  /**
+   * A Google search for the words, offered whenever nothing automatic found them.
+   *
+   * A link for the listener to click, not something fetched -- see
+   * `googleLyricsSearchUrl`.
+   */
+  searchUrl?: string;
   message?: string;
 }
 
@@ -130,7 +146,12 @@ export async function fetchLyricsAction(input: {
   const parsed = fetchLyricsSchema.parse(input);
 
   const outcome = await fetchTrackLyrics(
-    { musicRepo: deps.musicRepo, lyricsClient: deps.lyricsClient },
+    {
+      musicRepo: deps.musicRepo,
+      lyricsClient: deps.lyricsClient,
+      // The file's own tags are tried before the network -- see fetchTrackLyrics.
+      metadataReader: deps.musicMetadataReader,
+    },
     parsed.trackId,
     { force: parsed.force },
   );
@@ -369,13 +390,23 @@ function toResult(lyrics: TrackLyrics): LyricsActionResult {
       : [lyrics.searchArtist, lyrics.searchTitle].filter((part) => part !== "").join(" - ");
 
   if (lyrics.status === "found") {
-    return { status: "found", lyrics: lyrics.lyrics, searchedFor };
+    return { status: "found", lyrics: lyrics.lyrics, searchedFor, source: lyrics.source };
   }
+
+  // Built from the stored search terms rather than taken from the use-case outcome,
+  // so the hand-off to Google is offered on the player's on-open cache read too --
+  // not only on the outcome of a fresh lookup.
+  const searchUrl =
+    lyrics.searchTitle === ""
+      ? undefined
+      : googleLyricsSearchUrl({ artist: lyrics.searchArtist, title: lyrics.searchTitle });
+
   if (lyrics.status === "instrumental") {
     return {
       status: "instrumental",
       lyrics: "",
       searchedFor,
+      searchUrl,
       message: "This track is instrumental - there are no lyrics.",
     };
   }
@@ -384,6 +415,7 @@ function toResult(lyrics: TrackLyrics): LyricsActionResult {
       status: "not_found",
       lyrics: "",
       searchedFor,
+      searchUrl,
       message: "No lyrics found for this track.",
     };
   }
@@ -391,6 +423,7 @@ function toResult(lyrics: TrackLyrics): LyricsActionResult {
     status: "failed",
     lyrics: "",
     searchedFor,
+    searchUrl,
     message: "Could not reach the lyrics service. Try again.",
   };
 }
