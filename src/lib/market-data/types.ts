@@ -73,6 +73,17 @@ export interface RawQuoteSummary {
     dividendYield?: MaybeNumber;
     payoutRatio?: MaybeNumber;
     priceToSalesTrailing12Months?: MaybeNumber;
+    /**
+     * Trend and record levels. Read by the Indexes board rather than the ticker
+     * detail tab, and they live in `summaryDetail` — which matters because it's
+     * the module that survives for symbols with no company behind them: the
+     * commodity futures return these while their `defaultKeyStatistics` is
+     * empty. `allTimeLow` exists too and is deliberately not typed; see
+     * `IndexQuoteDetail` for why.
+     */
+    fiftyDayAverage?: MaybeNumber;
+    twoHundredDayAverage?: MaybeNumber;
+    allTimeHigh?: MaybeNumber;
   };
   assetProfile?: {
     sector?: string;

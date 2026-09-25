@@ -25,6 +25,7 @@ export interface LoadIndexBoardActionResult {
  */
 export async function loadIndexBoardAction(input: {
   symbols?: string[];
+  includeDetail?: boolean;
 } = {}): Promise<LoadIndexBoardActionResult> {
   await requireModuleAccess(ACCESS_MODULE_SLUG);
   const parsed = indexBoardSchema.safeParse(input);
@@ -33,7 +34,10 @@ export async function loadIndexBoardAction(input: {
   }
 
   try {
-    return { ok: true, board: await loadIndexBoard(deps.marketDataClient, parsed.data) };
+    return {
+      ok: true,
+      board: await loadIndexBoard(deps.marketDataClient, parsed.data, deps.quoteSummaryClient),
+    };
   } catch (error) {
     return {
       ok: false,

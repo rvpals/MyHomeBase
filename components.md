@@ -93,6 +93,7 @@ pattern instead of inventing one.
 | [`ChartXY`](#chartxy) | User-configurable line/bar/scatter/area + zoom | [src/components/chart-xy.tsx](src/components/chart-xy.tsx) | yes |
 | [`ChartCandle`](#chartcandle) | Candlestick / OHLC — four prices per period | [src/components/chart-candle.tsx](src/components/chart-candle.tsx) | yes |
 | [`ChartToolbar`](#chartoolbar) | A chart's gear control — **not called directly** | [src/components/chart-toolbar.tsx](src/components/chart-toolbar.tsx) | yes |
+| [`Sparkline`](#sparkline) | **One series' shape at row height** — no axes, no labels | [src/components/sparkline.tsx](src/components/sparkline.tsx) | yes |
 | [`BigValueReadout`](#bigvaluereadout) | **One number, large, while it changes** — a playback or a running total | [src/components/big-value-readout.tsx](src/components/big-value-readout.tsx) | yes |
 | [`UsageMeter`](#usagemeter) | A stat tile whose value is part of a known total | [src/components/usage-meter.tsx](src/components/usage-meter.tsx) | no |
 | [`Progress3D`](#progress3d) | **Any progress bar** — work underway, 0..max | [src/components/progress-3d.tsx](src/components/progress-3d.tsx) | no |
@@ -2829,6 +2830,50 @@ is a hydration mismatch.
 exempt from the markers toggle, because those shapes carry meaning the line doesn't — hiding
 them would lose data rather than reduce clutter. The tooltip is deliberately **not**
 toggleable for the same reason: it carries the values the labels don't.
+
+---
+
+## Sparkline
+
+**One series' shape, at row height** — no axes, no ticks, no tooltip, no legend.
+
+- **Source:** [src/components/sparkline.tsx](src/components/sparkline.tsx)
+- **Import:** `import { Sparkline } from "@/components/sparkline";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `values` | `number[]` | The series in order. Fewer than two points draws a blank box of the same size, so a table doesn't reflow when one row's history is missing. |
+| `baseline?` | `{ value: number; label?: string }` | A reference level — typically the previous close. Draws a dashed rule and colours the line by where it *ends up* relative to it. |
+| `width?` / `height?` | `number` | Default `112` × `24`. |
+| `ariaLabel` | `string` | **Required.** These are data, not decoration, so they get a name. |
+| `className?` | `string` | |
+
+**Not a Recharts chart, deliberately.** [`ChartLine`](#chartline) carries axes, a tooltip, a
+legend and a [`ChartToolbar`](#chartoolbar), and defaults to 280px tall — everything a
+sparkline is defined by *not* having. At 112×24 inside a table row the whole job is one
+`<path>`, so this is plain inline SVG with no dependency. **Reach for `ChartLine` when the
+reader needs to read values off the chart; reach for this when the shape is the message and
+the numbers are already printed beside it.**
+
+**It self-scales to its own min/max, so two sparklines are not comparable.** That's a real
+constraint, not an oversight: on the Indexes card each row's intraday window differs (a 24/7
+crypto series spans midnight to now, a US index spans the opening bell to now), and a shared
+scale would flatten most of them into a flat line. **A call site showing several must say so
+in words** — the Indexes card carries the caveat in its footnote.
+
+**Colour follows the baseline, not the slope.** A series that fell all afternoon but is
+still above the previous close had an up day, and the percentage printed beside it will say
+so — coluring by first-to-last would contradict it. With no `baseline`, it falls back to
+first-versus-last. Green/red/muted are the dashboard's `text-emerald-400` / `text-red-400`
+convention, the same exception to theme tokens that [design.md](design.md) grants move
+figures.
+
+**How it behaves narrow:** unchanged in kind — it's already row-sized. Give it a smaller
+`width` or a `className` with a `max-lg:` width where the row gets tight.
+
+**Used by:** Investments — the Indexes card's expanded row
+[stock-indexes-card.tsx](src/app/(protected)/modules/[slug]/stock-indexes-card.tsx).
 
 ---
 

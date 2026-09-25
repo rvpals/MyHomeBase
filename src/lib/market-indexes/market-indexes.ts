@@ -4,7 +4,13 @@
 // The arithmetic (`computeIndexQuote`, `groupQuotes`) is pure and tested without
 // a network. `loadIndexBoard` is the only part that fetches.
 
-import { lookupQuote, type MarketDataClient, type Quote } from "@/lib/market-data";
+import {
+  lookupQuote,
+  type MarketDataClient,
+  type Quote,
+  type QuoteSummaryClient,
+} from "@/lib/market-data";
+import { loadIndexDetail } from "./index-detail";
 import {
   findMarketIndex,
   INDEX_GROUPS,
@@ -46,6 +52,10 @@ export function computeIndexQuote(index: MarketIndex, quote: Quote): IndexQuote 
     previousCloseCents,
     changeCents,
     changePct,
+    // Already in the quote that was just fetched — the day's extremes cost no
+    // second call, they were simply being dropped here before.
+    dayHighCents: quote.dayHighCents,
+    dayLowCents: quote.dayLowCents,
   };
 }
 
@@ -78,8 +88,15 @@ export function groupQuotes(quotes: IndexQuote[]): IndexGroupBoard[] {
 export async function loadIndexBoard(
   client: MarketDataClient,
   input: IndexBoardInput = {},
+  /**
+   * Only needed to satisfy `includeDetail`. Optional so every existing caller
+   * — and every fake in the suite — keeps working unchanged: asking for detail
+   * without supplying this simply returns the plain board, which is the same
+   * answer the card falls back to when the provider refuses the second call.
+   */
+  quoteSummaryClient?: QuoteSummaryClient,
 ): Promise<IndexBoard> {
-  const { symbols } = indexBoardSchema.parse(input);
+  const { symbols, includeDetail } = indexBoardSchema.parse(input);
 
   const requested: MarketIndex[] = symbols
     ? // Non-null: the schema's enum already rejected anything not in the
@@ -124,5 +141,18 @@ export async function loadIndexBoard(
     }
   }
 
-  return { fetchedAt: new Date().toISOString(), groups: groupQuotes(quotes), failures };
+  // The second pass, when asked for and possible. Enriching in parallel across
+  // symbols matches the first pass, and `loadIndexDetail` swallows its own
+  // failures — so a provider that refuses every quoteSummary costs time but
+  // never turns a good board into a bad one.
+  const finalQuotes =
+    includeDetail && quoteSummaryClient
+      ? await Promise.all(
+          quotes.map((quote) =>
+            loadIndexDetail({ marketData: client, quoteSummary: quoteSummaryClient }, quote),
+          ),
+        )
+      : quotes;
+
+  return { fetchedAt: new Date().toISOString(), groups: groupQuotes(finalQuotes), failures };
 }

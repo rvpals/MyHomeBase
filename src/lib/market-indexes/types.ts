@@ -56,6 +56,62 @@ export interface IndexQuote {
   changeCents: number;
   /** The same as a percent of the previous close. 0 when that close is unknown. */
   changePct: number;
+  /**
+   * Today's extremes, in cents. 0 means the provider didn't report one — the
+   * same convention `previousCloseCents` uses, and for the same reason: these
+   * ride along in the quote that was already fetched, so an absent value is
+   * "not said" rather than "not asked for".
+   */
+  dayHighCents: number;
+  dayLowCents: number;
+  /**
+   * The richer reference figures, which cost a second provider call and so are
+   * only present when the board was loaded with `includeDetail`.
+   *
+   * Undefined therefore means one of two different things — not requested, or
+   * requested and unavailable — and the card draws an em-dash either way. The
+   * distinction matters to nobody reading the screen, and collapsing it keeps
+   * the row from carrying a per-field status.
+   */
+  detail?: IndexQuoteDetail;
+}
+
+/**
+ * The second-pass figures for one index.
+ *
+ * Every field is optional because coverage genuinely varies by symbol, and this
+ * was measured rather than assumed (2026-09-24, all eleven catalogue symbols):
+ * the 52-week range, both moving averages and the all-time high came back for
+ * all of them, while `oneYearChangePct` is absent for the three commodity
+ * futures — Yahoo returns an empty `defaultKeyStatistics` for `GC=F`, `SI=F`
+ * and `CL=F`.
+ *
+ * Two fields Yahoo *appears* to offer are deliberately not here. `ytdReturn` is
+ * present as a key on every symbol but null on all eleven — it's a fund field.
+ * `allTimeLow` is real but historically literal (the S&P's is 4.40, from the
+ * 1930s; crude oil's is -40.32, from April 2020), which reads as a broken row
+ * rather than as context. Neither is worth a column.
+ */
+export interface IndexQuoteDetail {
+  /** The 52-week range, in cents. */
+  fiftyTwoWeekLowCents?: number;
+  fiftyTwoWeekHighCents?: number;
+  /** Trailing one-year change, as a percentage. Absent for the futures. */
+  oneYearChangePct?: number;
+  /** Trend context: the 50- and 200-session averages, in cents. */
+  fiftyDayAverageCents?: number;
+  twoHundredDayAverageCents?: number;
+  /** The record high, in cents. Its low counterpart is omitted — see above. */
+  allTimeHighCents?: number;
+  /**
+   * Today's intraday closes in cents, oldest first, for the sparkline.
+   *
+   * Empty when the history call failed or the session hasn't opened. The window
+   * differs per symbol — a 24/7 crypto series starts at midnight, a US index at
+   * the opening bell — so these are **not comparable across rows**, and the
+   * card says so rather than implying a shared axis.
+   */
+  intradayCents: number[];
 }
 
 /** A symbol that couldn't be quoted, and why. Reported, never thrown. */

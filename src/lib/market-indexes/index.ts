@@ -6,6 +6,7 @@ export type {
   IndexGroup,
   IndexGroupBoard,
   IndexQuote,
+  IndexQuoteDetail,
   IndexUnit,
   MarketIndex,
 } from "./types";
@@ -17,5 +18,17 @@ export {
   MARKET_INDEX_SYMBOLS,
   type MarketIndexSymbol,
 } from "./catalogue";
-export { indexBoardSchema, parseIndexSymbols, type IndexBoardInput } from "./schema";
+export {
+  indexBoardSchema,
+  parseIndexSymbols,
+  type IndexBoardInput,
+  type IndexBoardRequest,
+} from "./schema";
 export { computeIndexQuote, groupQuotes, loadIndexBoard } from "./market-indexes";
+export {
+  enrichIndexQuote,
+  loadIndexDetail,
+  rangePosition,
+  INTRADAY_INTERVAL,
+  INTRADAY_RANGE,
+} from "./index-detail";

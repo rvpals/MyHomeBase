@@ -301,6 +301,10 @@ export const deps = {
   // separately so a caller that only wants corporate actions does not have to
   // reach for the whole market-data client.
   marketEventsClient: marketDataClient,
+  // And its third port, on the same instance and for the same reason. The crumb
+  // cache lives on the client, so sharing one instance is what keeps the Indexes
+  // board's detail pass from re-running the cookie dance per symbol.
+  quoteSummaryClient: marketDataClient,
   tickerNewsClient: new YahooTickerNewsClient(),
   tickerLogoRepo: new SqliteTickerLogoRepository(db),
   tickerLogoClient: new FmpTickerLogoClient(),

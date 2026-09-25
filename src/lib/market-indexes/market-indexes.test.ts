@@ -119,6 +119,24 @@ describe("computeIndexQuote", () => {
     expect(result.valueCents).toBe(543_210);
     expect(Number.isFinite(result.changePct)).toBe(true);
   });
+
+  /** These ride along in the quote already fetched; the bug was dropping them. */
+  it("carries the day's high and low through from the quote", () => {
+    const result = computeIndexQuote(SP500, quote());
+    expect(result.dayHighCents).toBe(544_000);
+    expect(result.dayLowCents).toBe(539_000);
+  });
+
+  it("passes a missing day range through as zero rather than inventing one", () => {
+    const result = computeIndexQuote(SP500, quote({ dayHighCents: 0, dayLowCents: 0 }));
+    expect(result.dayHighCents).toBe(0);
+    expect(result.dayLowCents).toBe(0);
+  });
+
+  /** The second pass is opt-in, so a plain compute attaches nothing. */
+  it("attaches no detail block", () => {
+    expect(computeIndexQuote(SP500, quote()).detail).toBeUndefined();
+  });
 });
 
 describe("groupQuotes", () => {
@@ -132,6 +150,8 @@ describe("groupQuotes", () => {
     previousCloseCents: 100,
     changeCents: 0,
     changePct: 0,
+    dayHighCents: 100,
+    dayLowCents: 100,
   });
 
   it("buckets rows into groups in catalogue order", () => {
@@ -156,13 +176,19 @@ describe("groupQuotes", () => {
 
 describe("indexBoardSchema", () => {
   it("accepts an omitted symbol list, meaning the whole board", () => {
-    expect(indexBoardSchema.parse({})).toEqual({});
+    expect(indexBoardSchema.parse({})).toEqual({ includeDetail: false });
   });
 
   it("de-duplicates a repeated symbol", () => {
     expect(indexBoardSchema.parse({ symbols: ["^GSPC", "^GSPC"] })).toEqual({
       symbols: ["^GSPC"],
+      includeDetail: false,
     });
+  });
+
+  it("leaves the second pass off unless it's asked for", () => {
+    expect(indexBoardSchema.parse({}).includeDetail).toBe(false);
+    expect(indexBoardSchema.parse({ includeDetail: true }).includeDetail).toBe(true);
   });
 
   it("rejects a symbol that isn't in the catalogue", () => {
