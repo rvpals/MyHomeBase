@@ -55,6 +55,7 @@ describe("resolveUserPreferences", () => {
       favoriteModuleSlug: undefined,
       openFavoriteModuleOnStartup: false,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      expandedModules: [],
       weatherLocation: undefined,
       weatherUnit: "fahrenheit",
       // The clock's own defaults live in `resolveClockFaceOptions`; asserted here as
@@ -95,6 +96,7 @@ describe("resolveUserPreferences", () => {
       favoriteModuleSlug: "journal",
       openFavoriteModuleOnStartup: true,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      expandedModules: [],
       weatherLocation: undefined,
       weatherUnit: "fahrenheit",
       clock: { face: "digital", showDate: true, showWeather: true, showWeekday: true },
@@ -121,6 +123,7 @@ describe("userPreferencesToEntries", () => {
     const entries = userPreferencesToEntries({
       openFavoriteModuleOnStartup: false,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      expandedModules: [],
       weatherUnit: "fahrenheit",
       clock: { face: "digital" as const, showDate: true, showWeather: true, showWeekday: true },
     });
@@ -128,6 +131,10 @@ describe("userPreferencesToEntries", () => {
       { key: USER_PREFERENCE_KEYS.favoriteModuleSlug, value: "" },
       { key: USER_PREFERENCE_KEYS.openFavoriteModuleOnStartup, value: "0" },
       { key: USER_PREFERENCE_KEYS.compactNavStyle, value: DEFAULT_COMPACT_NAV_STYLE },
+      // Nothing expanded serialises to "" for the same reason the favorite does:
+      // every key is written on every save, so an omitted row would leave a stale
+      // value in place rather than clearing it.
+      { key: USER_PREFERENCE_KEYS.expandedModules, value: "" },
       { key: USER_PREFERENCE_KEYS.weatherLatitude, value: "" },
       { key: USER_PREFERENCE_KEYS.weatherLongitude, value: "" },
       { key: USER_PREFERENCE_KEYS.weatherPlaceName, value: "" },
@@ -144,6 +151,9 @@ describe("userPreferencesToEntries", () => {
       favoriteModuleSlug: "expense",
       openFavoriteModuleOnStartup: true,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      // Two slugs, sorted: the serialiser sorts, so a round trip has to come back
+      // in this order for the comparison below to mean anything.
+      expandedModules: ["expense", "journal"],
       weatherLocation: { latitude: 40.34, longitude: -74.46, name: "Princeton, NJ" },
       weatherUnit: "fahrenheit" as const,
       clock: { face: "digital" as const, showDate: true, showWeather: true, showWeekday: true },
@@ -313,6 +323,7 @@ describe("getUserPreferences", () => {
       favoriteModuleSlug: undefined,
       openFavoriteModuleOnStartup: false,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      expandedModules: [],
       weatherLocation: undefined,
       weatherUnit: "fahrenheit",
       clock: { face: "digital", showDate: true, showWeather: true, showWeekday: true },
@@ -352,6 +363,7 @@ describe("saveUserPreferences", () => {
       favoriteModuleSlug: "investments",
       openFavoriteModuleOnStartup: true,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      expandedModules: [],
       weatherLocation: undefined,
       weatherUnit: "fahrenheit",
       clock: { face: "digital", showDate: true, showWeather: true, showWeekday: true },
@@ -379,6 +391,7 @@ describe("saveUserPreferences", () => {
       userPreferencesToEntries({
         openFavoriteModuleOnStartup: false,
         compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+        expandedModules: [],
         weatherUnit: "fahrenheit",
         clock: { face: "digital", showDate: true, showWeather: true, showWeekday: true },
       }).length,
@@ -387,6 +400,7 @@ describe("saveUserPreferences", () => {
       favoriteModuleSlug: "expense",
       openFavoriteModuleOnStartup: false,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      expandedModules: [],
       weatherLocation: undefined,
       weatherUnit: "fahrenheit",
       clock: { face: "digital", showDate: true, showWeather: true, showWeekday: true },
@@ -462,6 +476,7 @@ describe("resolveStartupDestination", () => {
     return {
       openFavoriteModuleOnStartup: false,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      expandedModules: [],
       weatherUnit: "fahrenheit",
       clock: { face: "digital", showDate: true, showWeather: true, showWeekday: true },
       floating: { clock: "closed", calculator: "closed", scratchpad: "closed" },

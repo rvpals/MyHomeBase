@@ -63,9 +63,10 @@ pattern instead of inventing one.
 | [`TreeNav`](#treenav) | **Two-level tree** — expandable groups, selectable leaves | [src/components/tree-nav.tsx](src/components/tree-nav.tsx) | yes |
 | [`ViewModeSwitch`](#viewmodeswitch) | **Same data, re-cut** — segmented control, `<select>` when narrow | [src/components/view-mode-switch.tsx](src/components/view-mode-switch.tsx) | yes |
 | [`ModuleCarousel`](#modulecarousel) | The home screen's module picker (grid on desktop, coverflow on phones) | [src/components/module-carousel.tsx](src/components/module-carousel.tsx) | yes |
-| [`TwoTierShell`](#twotiershell) | **The navigation shell** — module rail + section panel + header | [src/components/two-tier-shell.tsx](src/components/two-tier-shell.tsx) | yes |
-| [`ModuleRail`](#modulerail) | Tier 1 — the 48px module icon rail | [src/components/module-rail.tsx](src/components/module-rail.tsx) | yes |
-| [`SectionPanel`](#sectionpanel) | Tier 2 — the 240px section panel / compact bottom sheet | [src/components/section-panel.tsx](src/components/section-panel.tsx) | yes |
+| [`TwoTierShell`](#twotiershell) | **The navigation shell** — tree on desktop, two-tier bar on compact, plus header | [src/components/two-tier-shell.tsx](src/components/two-tier-shell.tsx) | yes |
+| [`NavTree`](#navtree) | **Desktop navigation** — the 260px tree: Home, every module, every section, filtered | [src/components/nav-tree.tsx](src/components/nav-tree.tsx) | yes |
+| [`ModuleRail`](#modulerail) | ~~Tier 1 — the 48px module icon rail~~ **no call site; pending deletion** | [src/components/module-rail.tsx](src/components/module-rail.tsx) | yes |
+| [`SectionPanel`](#sectionpanel) | Compact navigation — the bottom bar and its sheet (desktop column replaced by `NavTree`) | [src/components/section-panel.tsx](src/components/section-panel.tsx) | yes |
 | [`AppHeader`](#appheader) | Tier 3 — the utility bar: breadcrumb, global actions, profile | [src/components/app-header.tsx](src/components/app-header.tsx) | yes |
 | [`NavMenus`](#navmenus) | The shared module switcher and profile dropdowns | [src/components/nav-menus.tsx](src/components/nav-menus.tsx) | yes |
 | [`NavStylePreview`](#navstylepreview) | A thumbnail of a phone navigation style, for the picker | [src/components/nav-style-preview.tsx](src/components/nav-style-preview.tsx) | no |
@@ -1382,7 +1383,15 @@ data and gets the chrome placed for it. Full design rationale:
 | `viewportPinned` | `boolean` | Whether the reader pinned the layout by hand. |
 | `extraCrumbs` | `Breadcrumb[]` | Appended after `[Module] › [Section]` — a record's name, say. Rarely needed. |
 | `headerActions` | `ReactNode` | **Whole-app** actions only. Page actions belong on the page. Every shell passes [`MessageQueueHost`](#messagequeue--monitorwarningdialog) here. When `hideHeader` drops tier 3 on the full layout, this is routed into `ModuleRail`'s `utility` slot instead rather than being lost. |
-| `hideHeader` | `boolean` | Default `false`. Drops tier 3 on the **full layout only** and moves the profile menu into the rail. Ignored on compact, which needs the header to switch module. Only the home screen sets it. |
+| `hideHeader` | `boolean` | Default `false`. Drops tier 3 on the **full layout only** and moves the profile menu into the rail. Ignored on compact, which needs the header to switch module — **and ignored whenever `tree` is set**, because the tree has no utility zone to rehome the profile menu into, so honouring it would leave the screen with no way to log out. Only the home screen sets it. |
+| `tree` | `NavigationTree?` | The whole app's navigation. Supplied → the **full layout** renders one [`NavTree`](#navtree) instead of the rail and the panel. Omitted → the original two tiers. **Compact ignores it entirely.** |
+| `expandedModules` | `string[]?` | The reader's stored expanded set. Tree only. |
+| `onExpandedChange` | `(slugs: string[]) => void` | Persists it — a server action in practice. Tree only. |
+| `adminTreeModule` | `TreeModule?` | Administration as a tree heading. Passed to `NavTree` only when `showAdmin`. |
+
+**`sections` is still required when `tree` is set.** They feed different layouts —
+`sections` the compact bar and the breadcrumb, `tree` the desktop column. A shell that
+passes only one leaves a layout with no navigation.
 
 **Usage** — from a server component that can read `deps`, as in
 [`stock-shell.tsx`](src/app/(protected)/modules/[slug]/stock-shell.tsx):
@@ -1403,7 +1412,46 @@ reads `useIsCompact()` rather than `max-lg:`.
 
 ---
 
+## NavTree
+
+**Desktop navigation.** One 260px column carrying the whole app: a filter box, a Home
+leaf, then every accessible module as a collapsible heading with its sections underneath.
+Replaces `ModuleRail` *and* `SectionPanel`'s desktop column — it answers both "which
+module" and "which section" at once.
+
+Renders on the `full` layout only. `TwoTierShell` guards that; compact keeps the
+two-tier bottom bar, which is a genuinely different shape rather than a restyle of this
+one — see design.md, *Navigation: the tree (desktop) and the two-tier bar (compact)*.
+
+- **Source:** [src/components/nav-tree.tsx](src/components/nav-tree.tsx)
+- **Import:** `import { NavTree } from "@/components/nav-tree";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `tree` | `NavigationTree` | From `buildNavigationTree`. Built server-side by `getNavTreeData`. |
+| `activeHref` | `string` | The current path — the active row, and which module opens by default. |
+| `expandedModules` | `string[]` | The reader's stored expanded set, resolved server-side so the first paint is already the shape they left it in. |
+| `onExpandedChange` | `(slugs: string[]) => void` | Persists the set. Fire-and-forget: the tree has already moved, and a failed write costs a chevron, not a navigation. |
+| `adminModule` | `TreeModule?` | Administration as a final heading. `TwoTierShell` passes it only when `showAdmin`. |
+| `isOpen` | `boolean?` | Default `true`. `false` renders a 28px strip carrying one reopen control — **not** a navigable rail. |
+| `onOpenChange` | `(open: boolean) => void` | The `«` in the tree closes it; the `»` in [`AppHeader`](#appheader) brings it back. State and storage key are shared with the section panel's old collapse. |
+| `className` | `string?` | Merged last. |
+
+**Filtering is `src/lib/navigation/filter.ts`, not this component.** Matching and ranking
+over ~70 sections is logic; this renders the result and paints the highlight.
+
+**Icon slots.** Section icons resolve through `sectionSlotId`, so they stay individually
+replaceable. Four modules' slot namespaces differ from their slug (`investments`→`stock`,
+`csv-analysis`→`csv`, `music-library`→`music`, `picture-gallery`→`gallery`) — the
+`SLOT_NAMESPACES` table in this file is the other half of the `iconNamespace` prop each
+`*-shell.tsx` passes, and the two must agree or uploaded icons vanish in one of them.
+
 ## ModuleRail
+
+> **No call site — pending deletion.** `NavTree` replaced this on the desktop and the
+> compact bar always owned phones, so nothing renders it. Kept for one release as a cheap
+> revert. **Restyling it will not change any screen.**
 
 Tier 1: a 48px icon-only column of modules, fixed to the left edge. Renders on the `full`
 layout only — `TwoTierShell` swaps in a dropdown on compact.

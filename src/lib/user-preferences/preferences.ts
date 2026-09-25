@@ -1,5 +1,6 @@
 import { resolveClockFaceOptions } from "@/lib/clock";
 import { resolvePuckCorners, resolveFloatingStates } from "@/lib/floating";
+import { parseExpandedModules, serializeExpandedModules } from "@/lib/navigation";
 import { resolveCompactNavStyle } from "./nav-style";
 import type { UserPreference, UserPreferences, WeatherLocation } from "./types";
 
@@ -9,6 +10,11 @@ export const USER_PREFERENCE_KEYS = {
   favoriteModuleSlug: "favorite_module_slug",
   openFavoriteModuleOnStartup: "open_favorite_module_on_startup",
   compactNavStyle: "compact_nav_style",
+  // Which modules are expanded in the full layout's navigation tree, as a
+  // comma-separated slug list. One key rather than a row per module: the set is
+  // small, always read and written whole, and a row per module would need
+  // cleaning up every time a module is deleted.
+  expandedModules: "nav_expanded_modules",
   weatherLatitude: "weather_latitude",
   weatherLongitude: "weather_longitude",
   weatherPlaceName: "weather_place_name",
@@ -84,6 +90,10 @@ export function resolveUserPreferences(preferences: UserPreference[]): UserPrefe
     // Total by construction: a missing row and a garbled one both resolve to the
     // default, because the compact shell has to draw *some* navigation.
     compactNavStyle: resolveCompactNavStyle(byKey.get(USER_PREFERENCE_KEYS.compactNavStyle)),
+    // Sorted so the resolved object is stable for a given stored value — the
+    // serialiser writes sorted, and resolving to a different order would make
+    // a round trip look like a change.
+    expandedModules: [...parseExpandedModules(byKey.get(USER_PREFERENCE_KEYS.expandedModules))].sort(),
     weatherLocation: resolveWeatherLocation(byKey),
     // Anything unrecognised reads as Fahrenheit, matching the weather schema's own
     // default rather than inventing a second answer.
@@ -151,6 +161,10 @@ export function userPreferencesToEntries(
     {
       key: USER_PREFERENCE_KEYS.compactNavStyle,
       value: preferences.compactNavStyle,
+    },
+    {
+      key: USER_PREFERENCE_KEYS.expandedModules,
+      value: serializeExpandedModules(preferences.expandedModules),
     },
     // Written as "" when unset, for the same reason the favorite is: these are
     // per-key upserts, so omitting the key would leave the old location in place and

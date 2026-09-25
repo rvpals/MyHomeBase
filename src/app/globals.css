@@ -100,6 +100,27 @@ body {
      all on compact. */
   --module-rail-width: 3rem; /* 48px */
   --section-panel-width: 0px;
+
+  /* 260px: the navigation tree, which replaces the rail *and* the panel on the
+     full layout. Wider than the 240px panel it supersedes because its rows carry
+     one more level — a module heading, with its sections indented under it — and
+     at 240px the longest section labels ("Export for AI Analysis" under a
+     heading) truncated. Still narrower than rail + panel together (288px), so
+     the tree gives the content back 28px. */
+  --nav-tree-width: 16.25rem; /* 260px */
+
+  /* What the tree leaves behind when the reader collapses it: a strip just wide
+     enough to be an obvious handle and to carry the control that reopens it.
+     Not a navigable rail — see design.md. Nothing is read from it, so it can be
+     far narrower than the 48px an icon column would need. */
+  --nav-tree-strip-width: 1.75rem; /* 28px */
+}
+
+/* Collapsed. One variable, because `.app-main`'s padding and `.shell-tree`'s own
+   width both derive from it — so the content column and the strip can't disagree
+   about where the seam is. */
+html[data-navtree="closed"] {
+  --nav-tree-width: var(--nav-tree-strip-width);
 }
 
 html[data-sectionpanel="open"] {
@@ -127,6 +148,42 @@ html[data-shell="two-tier"] .app-main {
 
 html[data-shell="two-tier"][data-viewport="compact"] .app-main {
   padding-left: var(--app-gutter, 0px);
+}
+
+/* The navigation tree's own shell, set by `TwoTierShell` when it renders `NavTree`
+   instead of the rail and panel. A separate `data-shell` value rather than a variant
+   of "two-tier" so the two reservations can never both apply: the tree replaces both
+   columns, it does not sit beside them. */
+html[data-shell="tree"] .app-main {
+  padding-left: calc(var(--nav-tree-width) + var(--app-gutter, 0px));
+}
+
+/* The tree is a full-layout surface only — compact keeps the two-tier bottom bar,
+   which reserves the bottom edge instead. Both the media query and the pinned
+   attribute, for the same reason the two-tier rules above carry both: a reader can
+   pin the compact layout on a wide window, where a media query alone still matches. */
+@media (max-width: 1023.98px) {
+  html[data-shell="tree"] .app-main {
+    padding-left: var(--app-gutter, 0px);
+  }
+}
+
+html[data-shell="tree"][data-viewport="compact"] .app-main {
+  padding-left: var(--app-gutter, 0px);
+}
+
+/* The tree column itself. Same fixed-column treatment and z-band as `.shell-rail`
+   and `.shell-panel`, because it occupies the space both of them used to. */
+.shell-tree {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 31;
+  width: var(--nav-tree-width);
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
 }
 
 /* What the compact section trigger occupies on the bottom edge, so the music

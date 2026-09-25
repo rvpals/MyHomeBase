@@ -15,6 +15,8 @@ import { getAccessibleModules, isAdmin } from "@/lib/user";
 import { VIEWPORT_PINNED_COOKIE } from "@/lib/viewport";
 import { deps } from "@/lib/wiring";
 import { logoutAction } from "../../../login/actions";
+import { getNavTreeData } from "../../nav-tree-data";
+import { setExpandedModulesAction } from "../../nav-tree-actions";
 import { MessageQueueHost } from "../../message-queue-host";
 import {
   JOURNAL_CONFIGURATION_SECTIONS,
@@ -53,6 +55,11 @@ export async function JournalShell({ children }: { children: ReactNode }) {
     icon: appModule.icon,
     hint: appModule.description,
   }));
+
+  // The whole app's navigation, for the full layout's tree. Built here rather than
+  // in the shell component because it reads the module list and this reader's
+  // stored expanded set — both server-only.
+  const navTree = getNavTreeData(currentUser);
 
   // Both fields are admin-editable, so they're read rather than hardcoded.
   const appModule = getModuleBySlug(deps.moduleRepo, JOURNAL_MODULE_SLUG);
@@ -128,6 +135,12 @@ export async function JournalShell({ children }: { children: ReactNode }) {
       headerActions={<MessageQueueHost />}
       logoutAction={logoutAction}
       viewportPinned={viewportPinned}
+      // The full layout's one navigation column. `sections` above still feeds the
+      // compact bottom bar, which is unchanged — see `TwoTierShell`'s `tree` prop.
+      tree={navTree.tree}
+      expandedModules={navTree.expandedModules}
+      onExpandedChange={setExpandedModulesAction}
+      adminTreeModule={navTree.adminTreeModule}
     >
       {children}
     </TwoTierShell>

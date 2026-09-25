@@ -798,6 +798,16 @@ history tape is a growing, ordered, capped, clearable list, which is a table's j
 brought migration 0095. The test is the one in that migration's log: a single scalar read
 whole is a preference row, a list is a table.
 
+**"A list is a table" is about growth, not about arity.** `floating_enabled` is a list of
+ids in one `sys_app_settings` row, and the navigation tree's `nav_expanded_modules` is a
+list of module slugs in one `sys_user_preferences` row — both correctly *not* tables. The
+distinction that matters is whether rows accumulate and are queried individually. The
+calculator's tape grows without bound, is ordered, and is read by the slice; those two
+lists are bounded by something that already exists (the registered components, the module
+table), are always read and written whole, and are never queried by element. A row per
+module would also need cleaning up every time a module was deleted, which is a migration's
+worth of work to store a set of ten short strings.
+
 One trap, and it is a real one: **`updateSettings` cannot create a row.** It is a plain
 `UPDATE ... WHERE key = ?`, so against a database with no `floating_enabled` row it
 reports success and writes nothing. `setEnabledFloating` uses the repository's

@@ -53,6 +53,19 @@ export interface UserPreferences {
    */
   compactNavStyle: CompactNavStyle;
   /**
+   * Module slugs expanded in the full layout's navigation tree. Always an array —
+   * nothing expanded is `[]`, never `undefined` — so the tree never branches on
+   * whether a row existed.
+   *
+   * May contain a slug for a module the reader can no longer see: keeping it means
+   * toggling a module off and back on doesn't silently forget the choice. Nothing
+   * looks these up, so an unknown slug is inert.
+   *
+   * Full layout only, like `compactNavStyle` is compact only — the compact bar has
+   * no tree to expand.
+   */
+  expandedModules: string[];
+  /**
    * The place the Floating Clock forecasts for, or `undefined` when the user hasn't
    * set one — in which case the clock shows the time alone.
    */

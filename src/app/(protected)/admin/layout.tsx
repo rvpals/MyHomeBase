@@ -10,6 +10,8 @@ import { VIEWPORT_PINNED_COOKIE } from "@/lib/viewport";
 import { deps } from "@/lib/wiring";
 import { logoutAction } from "../../login/actions";
 import { MessageQueueHost } from "../message-queue-host";
+import { getNavTreeData } from "../nav-tree-data";
+import { setExpandedModulesAction } from "../nav-tree-actions";
 import { AdminShell } from "./admin-shell";
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
@@ -40,12 +42,20 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     hint: appModule.description,
   }));
 
+  // The full layout's navigation tree, loaded here for the same reason
+  // `railLinks` is: `AdminShell` is a client component and can't read `deps`.
+  const navTree = getNavTreeData(currentUser);
+
   return (
     <AdminShell
       initialModules={modules}
       initialSettings={settings}
       initialModuleSettings={moduleSettings}
       railLinks={railLinks}
+      tree={navTree.tree}
+      expandedModules={navTree.expandedModules}
+      adminTreeModule={navTree.adminTreeModule}
+      setExpandedModules={setExpandedModulesAction}
       currentUser={{
         id: currentUser.id,
         fullName: currentUser.fullName,

@@ -1511,6 +1511,34 @@ export const ICON_SLOTS: IconSlot[] = [
     wired: true,
     namespace: "tree",
   },
+  {
+    // The tree's Home leaf. Distinct from `chrome_rail_home`, which is the *app
+    // mark* at the top of the module rail — that one is the application's identity
+    // and falls back to multi-colour artwork, this one is an ordinary row in a list
+    // of destinations and falls back to a glyph like every other row around it.
+    // Two slots because a reader replacing the app mark and a reader replacing a
+    // nav row are doing different things.
+    id: "chrome_tree_home",
+    label: "Home (navigation tree)",
+    group: "Shared chrome",
+    where: "The navigation tree → the Home row at the very top, above the modules.",
+    defaultConcept: "home",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    // A *place* by the same test the message-queue bell passes: it always means
+    // "search the whole tree" and it is on every screen that renders the tree.
+    // The clear (×) beside it is deliberately unslotted — that one is a control
+    // acting on the input's state, not a destination.
+    id: "chrome_tree_filter",
+    label: "Navigation filter",
+    group: "Shared chrome",
+    where: "The navigation tree → the magnifier in the filter box above the modules.",
+    defaultConcept: "search",
+    wired: true,
+    namespace: "tree",
+  },
 ];
 
 /**

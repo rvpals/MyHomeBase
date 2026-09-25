@@ -450,25 +450,76 @@ spanning a 3440px ultrawide.
 so a bar inside it can cancel exactly that much and run edge to edge.
 Don't put the padding utilities back on it.
 
-## Navigation: the two-tier shell
+## Navigation: the tree (desktop) and the two-tier bar (compact)
 
 **This is the target design for every module.** Read this section before adding any
 navigation element, and before building a new module's shell.
 
-Navigation is **two tiers plus a utility header**. Tier 1 answers *which module*, tier 2
-answers *which section of it*, and the header says where you currently are. The tiers are
-separate surfaces because they answer separate questions and change at different rates —
-the module list is the same on every screen in the app, the section list changes every time
-you switch module.
+**The two layouts answer the same questions with genuinely different shapes, and that
+is deliberate.** A desktop has vertical space and a pointer, so it gets one tree
+carrying every module and every section at once. A phone has neither, so it keeps the
+two-tier bottom bar: the ~70 rows that make a tree worth having on a monitor are
+exactly what make it unusable in a 74%-tall sheet.
 
-| Tier | Desktop (`full`) | Compact | Component |
-|---|---|---|---|
-| 1 — modules | 48px icon rail, fixed left | dropdown in the app bar | `ModuleRail` |
-| 2 — sections | 240px panel, collapsible | bottom trigger + sheet | `SectionPanel` |
-| 3 — utility | slim top bar: breadcrumb, actions, profile | same bar, breadcrumb truncates | `AppHeader` |
+Do not "fix" the inconsistency by making one look like the other. It was measured.
 
-`TwoTierShell` composes all three and owns the state. A module shell hands it `links`,
-`sections` and `module` — it does **not** place the tiers itself.
+| Layout | Navigation | Component |
+|---|---|---|
+| Desktop (`full`) | one 260px tree: Home, then every module as a collapsible heading with its sections under it, above a filter box. Collapses to a 28px strip | `NavTree` |
+| Compact | one bottom bar carrying both tiers, opening a sheet | `SectionPanel` |
+| Both | slim top bar: breadcrumb, actions, profile | `AppHeader` |
+
+`TwoTierShell` composes them and owns the state. A module shell hands it `links`,
+`sections`, `module` and `tree` — it does **not** place anything itself.
+
+**Both data sources are still required.** `sections` feeds the compact bar and the
+breadcrumb; `tree` feeds the desktop column. A shell that passes only one leaves a
+layout with no navigation.
+
+### Tier 1 and tier 2 still exist — the tree merges them
+
+The questions haven't changed: *which module* and *which section of it*. On compact
+they are still two tiers in one bar. On the desktop the tree answers both in one
+column, which is why the 48px rail does not render beside it — two module switchers
+on one screen is the thing `TreeNav` was deleted for.
+
+### The tree
+
+- **Home is a leaf at the top**, outside the filter. It is the one fixed landmark in
+  the column, and dropping it on a non-matching query would move it.
+- **Each module is a heading with a chevron.** Clicking toggles. The row carries the
+  icon and the name and nothing else — a section count was tried here and removed as
+  clutter, so don't add one back.
+- **A module's own groups become labels, not a second accordion.** The tree spends its
+  one level of nesting on the module. Two chevrons deep for six rows is worse than a
+  20px uppercase label, the same trade the compact sheet already makes.
+- **The active module is always expanded**, on top of whatever is stored. A tree whose
+  current section is hidden has nothing highlighted and reads as lost.
+- **Collapse state persists per reader**, in `sys_user_preferences` under
+  `nav_expanded_modules` — no migration, it is a key/value table. Collapsing a module
+  you are not in survives a reload.
+- **Administration is a heading like any other**, appended for admins. It has no
+  `sys_modules` row, so `ADMIN_TREE_MODULE` declares it — derived from `adminNav`, never
+  re-typed.
+
+### The filter earns its place here
+
+Over one module's 7–14 sections a filter is barely worth an input. Over ~70 it is the
+primary way to reach a section you don't visit often, which is why it sits above the
+tree rather than inside a module.
+
+- **Matches labels across every module**, not the current one. Three "CSV Import" rows
+  are told apart by the module name beside each hit, not by making the query match the
+  module too.
+- **Not the `hint` descriptions.** "Import" appears in half of them; searching those
+  returns a list that looks unfiltered.
+- **Prefix matches rank above mid-label matches.** Typing is prefix-shaped: "cal" means
+  Calendar far more often than it means Technical Analysis.
+- **Filtering force-expands every matching module** and restores the reader's own
+  collapse state when cleared. A match hidden behind a collapsed heading is a filter
+  that looks broken.
+- The logic is in `src/lib/navigation/filter.ts`, not the component. It is real
+  matching and ranking, which is logic.
 
 ### Every page behind the login gets a shell
 
@@ -495,7 +546,14 @@ so the client mirrors its presence onto `<html data-sectionpanel>` and CSS does 
 attribute onto `<html>`.** Don't write a new `fixed inset-x-0` of your own — that is how
 one bar quietly ends up on top of another. Compose with what's published.
 
-### Tier 1 — the module rail
+### Tier 1 — the module rail (compact's sheet only; `ModuleRail` is no longer rendered)
+
+> **`ModuleRail` has no call site.** The tree replaced it on the desktop and the bottom
+> bar always owned compact, so nothing renders this component today. It is kept for one
+> release so the tree can be reverted cheaply, and should be deleted once the tree has
+> been lived with. **Do not restyle it expecting to see a change** — that is exactly the
+> mistake the `TreeNav` note in CLAUDE.md warns about. The rules below describe the
+> compact sheet's module list, which is still live.
 
 48px, icon-only, named by `title` tooltip — the 40px buttons plus 4px each side. Active
 state is **a tint *and* an accent edge
@@ -529,18 +587,25 @@ on that one screen it doesn't. Every other screen keeps its profile in the heade
 dropping it would leave no way out of the page. If you find yourself wanting a second
 exception, move the avatar to the rail everywhere instead of growing the list.
 
-### Tier 2 — the section panel
+### Tier 2 — the section panel (compact only)
 
-240px, and **open or closed — there is no middle state.** `«` in the panel header closes
-it; `»` in the header brings it back. Deliberately *not* the three-state
-full/rail/strip model the old `TreeNav` used: a 48px icon rail for sections next to a 48px
-icon rail for modules is two ambiguous glyph columns side by side, which is worse than
-either extreme.
+`SectionPanel` renders **only on compact** now: the desktop's 240px column was replaced
+by the tree, and `TwoTierShell` skips this component entirely on the full layout. Its
+compact fork — the bottom bar and its sheet — is untouched and is still the whole of
+navigation on a phone. What follows describes that bar; see *What compact does
+differently* below for the detail.
 
-Nested groups render as an accordion **on desktop only**. On compact the sheet flattens
-every leaf into one list and drops group headings —
-a phone has no room for a second level, and a dropped heading costs nothing when every
-child is still one tap away.
+The panel's 240px width went with it, but its **`«` / `»` collapse did not** — the tree
+inherits it, along with the same `panelOpen` state and the same
+`myhomebase:section-panel` key. One preference: a reader who collapsed navigation has
+collapsed navigation, not one of two shapes of it.
+
+**Collapsed is a strip, not a rail.** 28px (`--nav-tree-strip-width`), carrying one
+control whose only job is to reopen. It is deliberately too narrow to navigate from:
+a 48px icon column for a list that mixes modules *and* sections is two ambiguous glyph
+columns in one, which is what `TreeNav` did and what the two-tier shell was built to
+stop. Don't grow the strip and don't put destinations in it — if navigation is worth
+showing, open the tree.
 
 ### Tier 3 — the utility header
 
@@ -614,6 +679,15 @@ case in `NavStylePreview` — not a new bar somewhere else.
 the previous shell. **They have all been deleted** — every module and Administration render
 `TwoTierShell`, and nothing minimises to a puck any more. If you find a reference to any of
 them in a comment, it is stale; fix it rather than reviving the pattern.
+
+**`ModuleRail` is on the same path.** The tree replaced it and nothing renders it today.
+It is kept for one release as a cheap revert, not as an option — a screen showing a rail
+beside a tree would be two module switchers, which is the whole reason `TreeNav` went.
+Delete it, don't restyle it, and don't reach for it when building a new shell.
+
+The tree is **not** a second system either: it is the same `TwoTierShell` rendering one
+column instead of two on the layout that has room for it. A module declares `sections`
+once and gets both.
 
 What survived, because both are still needed and neither belongs to one tier:
 [`ModuleMenu`](components.md#navmenus) (the module switcher for a compact page that has no

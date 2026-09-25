@@ -35,6 +35,8 @@ import { getAccessibleModules, isAdmin } from "@/lib/user";
 import { VIEWPORT_PINNED_COOKIE } from "@/lib/viewport";
 import { deps } from "@/lib/wiring";
 import { logoutAction } from "../login/actions";
+import { getNavTreeData } from "./nav-tree-data";
+import { setExpandedModulesAction } from "./nav-tree-actions";
 import { MessageQueueHost } from "./message-queue-host";
 
 export async function HomeShell({
@@ -74,6 +76,12 @@ export async function HomeShell({
     deps.userRepo,
   );
 
+  // Home and /account belong to no module, so they have no sections — but they
+  // still get the tree, which is the whole app's navigation and not any one
+  // module's. This is what `sections={[]}` could never give them on the full
+  // layout: before the tree these screens showed the rail alone.
+  const navTree = getNavTreeData(currentUser);
+
   return (
     <TwoTierShell
       links={accessibleModules.map((appModule) => ({
@@ -97,7 +105,14 @@ export async function HomeShell({
       headerActions={<MessageQueueHost />}
       logoutAction={logoutAction}
       viewportPinned={cookieStore.get(VIEWPORT_PINNED_COOKIE)?.value === "1"}
+      // Ignored on the full layout while a tree is supplied — the tree has no
+      // utility zone to rehome the profile menu into, so `TwoTierShell` keeps the
+      // header rather than leaving this screen with no way to log out.
       hideHeader={hideHeader}
+      tree={navTree.tree}
+      expandedModules={navTree.expandedModules}
+      onExpandedChange={setExpandedModulesAction}
+      adminTreeModule={navTree.adminTreeModule}
     >
       {children}
     </TwoTierShell>

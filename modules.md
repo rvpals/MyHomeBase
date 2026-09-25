@@ -2174,19 +2174,36 @@ hands `sections` to `TwoTierShell`, which renders `SectionPanel`. Nor is a
 `<module>-nav.tsx` needed: no module ships one, because the section panel is
 data-driven from the list above.
 
-**A new module gets the phone layout for free, and must not build its own.**
-Declaring `sections` is the entire job: `SectionPanel` renders the desktop 240px
-panel *and* the compact bottom bar from that one list, in whichever of the two
-arrangements the reader chose (design.md → *The bar has two arrangements*). So:
+**A new module gets both layouts for free, and must not build its own.**
+Declaring `sections` is *almost* the entire job — there is now one more step, and it
+is mechanical:
+
+1. **`sections` still feeds the compact bottom bar** and the breadcrumb, in whichever
+   of the two arrangements the reader chose (design.md → *The bar has two
+   arrangements*).
+2. **Register the module in
+   [`module-sections.ts`](src/app/(protected)/module-sections.ts)** — one entry in
+   `SECTION_BUILDERS`, keyed by the module's `sys_modules` slug. That is what puts it
+   in the desktop navigation tree. A module with no entry still renders, as a heading
+   that expands to nothing: obviously unfinished rather than invisible, which is the
+   intended failure.
+3. **Pass `tree`, `expandedModules`, `onExpandedChange` and `adminTreeModule`** from
+   `getNavTreeData(currentUser)` to `TwoTierShell`, exactly as every existing shell
+   does. Copy the four lines from
+   [journal-shell.tsx](src/app/(protected)/modules/[slug]/journal-shell.tsx).
+
+So:
 
 - **Never** add a `fixed` bar, a bottom tab row, or a compact-only nav component
   to a module. The bottom edge is already claimed by the shared bar and the music
   player, both of which publish heights; a hand-rolled bar lands on top of one of
   them. This is the single most likely way to break a phone layout here.
 - **Nest with `children`** when a module has more than ~6 sections. Groups render
-  as an accordion on the desktop and as kept headings on the phone, so nesting
-  costs a phone reader nothing and earns real structure — a group heading needs
-  no `href` and isn't a destination.
+  as kept headings on the phone and as labels between rows in the desktop tree, so
+  nesting costs a reader nothing on either layout and earns real structure — a group
+  heading needs no `href` and isn't a destination. (The desktop accordion they used
+  to render as is gone with the section panel's column: the tree spends its one level
+  of nesting on the module itself.)
 - **Say how it behaves narrow** when you ship the module, per design.md. For a
   module that only declares sections, "sections in the shared bottom bar,
   nothing custom" is the whole answer and is the one you want to be able to give.

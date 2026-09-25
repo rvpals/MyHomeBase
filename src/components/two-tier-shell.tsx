@@ -26,7 +26,9 @@ import { useEffect, useState, type ReactNode } from "react";
 import { ModuleMenu, UserMenu, type NavLink } from "./nav-menus";
 import { AppHeader, type Breadcrumb } from "./app-header";
 import { ModuleRail } from "./module-rail";
+import { NavTree } from "./nav-tree";
 import { SectionPanel, type SectionNode } from "./section-panel";
+import type { NavigationTree, TreeModule } from "@/lib/navigation";
 import { useCompactNavStyle } from "./nav-style-context";
 import { useIsCompact } from "./viewport-context";
 
@@ -66,6 +68,24 @@ export interface TwoTierShellProps {
   /** Whole-app actions for the header. Page actions belong on the page. */
   headerActions?: ReactNode;
   /**
+   * The whole app's navigation as data. Supplied → the **full layout** renders one
+   * `NavTree` column instead of the rail and the panel; omitted → the original two
+   * tiers, unchanged.
+   *
+   * **Compact ignores this entirely.** The bottom bar keeps both tiers exactly as it
+   * always has: a tree is a pointer-and-vertical-space shape, and the ~70 rows that
+   * make it worth having on a monitor are what make it unusable in a 74%-tall sheet.
+   * So `sections` is still required and still the compact bar's source — the tree
+   * does not replace it, it replaces how the *desktop* draws it.
+   */
+  tree?: NavigationTree;
+  /** The reader's stored expanded set, resolved server-side. Tree only. */
+  expandedModules?: string[];
+  /** Persists the expanded set. Tree only. */
+  onExpandedChange?: (slugs: string[]) => void;
+  /** Administration as a tree heading, for an admin. Tree only. */
+  adminTreeModule?: TreeModule;
+  /**
    * Drops tier 3 on the **full layout only** — the home screen, whose breadcrumb
    * reads just "Home" and whose bar is therefore an empty rule above the content.
    *
@@ -92,6 +112,10 @@ export function TwoTierShell({
   extraCrumbs,
   headerActions,
   hideHeader = false,
+  tree,
+  expandedModules = [],
+  onExpandedChange,
+  adminTreeModule,
   children,
 }: TwoTierShellProps) {
   const pathname = usePathname();
@@ -121,14 +145,24 @@ export function TwoTierShell({
   // the home grid and the account screen render outside any shell.
   useEffect(() => {
     const root = document.documentElement;
-    root.dataset.shell = "two-tier";
+    // `tree` on the full layout when a tree was supplied, `two-tier` otherwise.
+    // Two values rather than one, because the reservations are mutually exclusive:
+    // the tree *replaces* both columns, so a shell that reserved rail + panel +
+    // tree would indent the content by all three.
+    root.dataset.shell = tree && !isCompact ? "tree" : "two-tier";
     root.dataset.sectionpanel =
-      panelOpen && !isCompact && sections.length > 0 ? "open" : "closed";
+      panelOpen && !isCompact && !tree && sections.length > 0 ? "open" : "closed";
+    // The tree's own collapse, on the same `panelOpen` state the section panel
+    // used — one preference, because a reader who collapsed navigation on a
+    // module page means it collapsed, not "collapsed until the shape changes".
+    if (tree && !isCompact) root.dataset.navtree = panelOpen ? "open" : "closed";
+    else delete root.dataset.navtree;
     return () => {
       delete root.dataset.shell;
       delete root.dataset.sectionpanel;
+      delete root.dataset.navtree;
     };
-  }, [panelOpen, isCompact, sections.length]);
+  }, [panelOpen, isCompact, sections.length, tree]);
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
@@ -162,7 +196,23 @@ export function TwoTierShell({
           lives in the bottom bar `SectionPanel` draws, on every screen including
           the sectionless ones. `showAdmin` puts the Administration gear in the
           rail's bottom zone; on compact it only reaches the user menu. */}
-      {!isCompact && (
+      {/* The tree, when one was supplied. Replaces the rail *and* the panel — it
+          carries both questions in one column, which is why neither renders below
+          when this does. Full layout only: the `!isCompact` guard is what keeps the
+          phone on its two-tier bottom bar. */}
+      {tree && !isCompact && (
+        <NavTree
+          tree={tree}
+          activeHref={pathname}
+          expandedModules={expandedModules}
+          onExpandedChange={onExpandedChange}
+          adminModule={showAdmin ? adminTreeModule : undefined}
+          isOpen={panelOpen}
+          onOpenChange={setPanelOpen}
+        />
+      )}
+
+      {!tree && !isCompact && (
         <ModuleRail
           links={links}
           isActive={isActive}
@@ -178,7 +228,11 @@ export function TwoTierShell({
       )}
 
       {/* Tier 2. Owns its own fork: a fixed column on full, and on compact a
-          bottom bar that carries tier 1 as well — see `navStyle` below. */}
+          bottom bar that carries tier 1 as well — see `navStyle` below.
+          With a tree, this renders on **compact only**: the tree has taken over
+          the desktop column, but the bottom bar is still the whole of navigation
+          on a phone and is deliberately unchanged. */}
+      {(!tree || isCompact) && (
       <SectionPanel
         sections={sections}
         iconNamespace={iconNamespace}
@@ -192,6 +246,7 @@ export function TwoTierShell({
         moduleLinks={links}
         navStyle={navStyle}
       />
+      )}
 
       {/* Tier 3, plus the page. Both sit in the content column, which
           `.app-main`'s padding-left has already offset past the tiers — so the
@@ -202,7 +257,15 @@ export function TwoTierShell({
           that holds it on the home screen's full layout doesn't render here.
           Honouring `hideHeader` on compact would leave the reader unable to log
           out. */}
-      {(isCompact || !hideHeader) && (
+      {/* `|| tree` for the same reason `isCompact ||` is there: `hideHeader` is only
+          safe when some *other* surface can take the profile menu, and on the full
+          layout that surface was the rail's bottom zone. The tree replaced the rail
+          and deliberately has no utility zone — design.md's rule that the bottom of
+          a navigation surface is for destinations, not actions — so honouring the
+          flag here would leave the home screen with no way to log out. Enforced in
+          the shell rather than asked of each caller, because a caller that forgot
+          would produce a dead end rather than a visible bug. */}
+      {(isCompact || tree || !hideHeader) && (
         <AppHeader
           crumbs={crumbs}
           // Never on compact: the bottom bar owns the module list on *every*
@@ -226,8 +289,13 @@ export function TwoTierShell({
           // trigger instead, and an open panel has its own `«`.
           // An empty `sections` means there is no tier 2 to bring back — the
           // home and account screens sit outside every module.
+          // Two shapes, one control. Under the tree there is always something to
+          // bring back — the tree doesn't depend on the module having sections —
+          // so the `sections.length` condition applies only to the panel.
           onExpandPanel={
-            !isCompact && !panelOpen && sections.length > 0 ? () => setPanelOpen(true) : undefined
+            !isCompact && !panelOpen && (tree || sections.length > 0)
+              ? () => setPanelOpen(true)
+              : undefined
           }
         />
       )}

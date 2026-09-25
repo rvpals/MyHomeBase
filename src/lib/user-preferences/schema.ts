@@ -37,6 +37,12 @@ export const userPreferencesUpdateSchema = z.object({
   // so an unrecognised value from an older client is corrected to the default
   // instead of rejecting the whole save and losing the other fields with it.
   compactNavStyle: z.enum(["drill-in", "segmented"]).catch("drill-in"),
+  // Not validated against the module list, deliberately — see `expandedModules` on
+  // `UserPreferences`. The cap is a sanity bound on a hand-written payload, not a
+  // count of modules: it is well above any plausible module list. `.catch` and
+  // `.default` for the same reason the styles have them — a stray value collapses
+  // the tree rather than rejecting a save that was also carrying the reader's theme.
+  expandedModules: z.array(z.string().min(1).max(100)).max(200).catch([]).default([]),
   // The whole location or nothing — see `WeatherLocation`. `null` is the wire form
   // of "clear it", distinct from the field being absent from an older client's
   // payload, which `.optional()` leaves alone.

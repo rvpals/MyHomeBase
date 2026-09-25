@@ -1,5 +1,81 @@
 # Change History
 
+## 2026-09-25 — Navigation becomes one tree, with a filter across every module
+
+### The desktop's navigation is now a single column
+
+The 48px module rail and the 240px section panel are gone from wide screens, replaced
+by **one 260px tree**. Home sits at the top as a single row; under it every module you
+can reach is a heading you click to expand, with its sections underneath. Administration
+is the last heading, for admins.
+
+The shape came from ServiceNow's favourites panel — a flat tree of collapsible headings
+rather than two separate columns answering two separate questions. Three arrangements
+were mocked up and compared side by side before this one was picked.
+
+**The rail and the panel were two module switchers waiting to happen.** Keeping the rail
+beside a tree that already lists every module would have been exactly the duplication
+`TreeNav` was deleted for, so the rail no longer renders anywhere. It is still in the
+repo for one release as a cheap revert, and is documented as having no call site —
+restyling it will not change any screen.
+
+### A filter box over all ~70 sections
+
+Above the tree is a filter. It searches **section labels across every module at once**,
+not just the one you're in, so typing `import` finds Journal's CSV Import, Investments'
+CSV Import and Expense's Import Transaction together, each tagged with the module it
+belongs to.
+
+A filter over one module's seven sections would barely be worth the input. Over seventy
+it becomes the main way to reach something you don't visit often, which is why it sits
+above the whole tree instead of inside a module.
+
+Matches that *start* with what you typed rank above matches in the middle — typing is
+prefix-shaped, so "cal" means Calendar far more often than it means Technical Analysis.
+Every matching module force-expands while you type, because a hit hidden behind a
+collapsed heading is a filter that looks broken, and your own collapse state comes back
+when you clear the box. Descriptions are deliberately *not* searched: "import" appears in
+half of them, and the result reads like no filter ran at all.
+
+### Collapse a module, and it stays collapsed
+
+Which modules are expanded is remembered per person, so the tree looks the way you left
+it on your next visit — including on another device. The module you are currently in is
+always expanded regardless, because a tree whose current page is hidden inside a closed
+heading has nothing highlighted and reads as lost.
+
+No new table for this: `sys_user_preferences` is already key/value, so it is one new key.
+
+### The whole tree collapses to a strip
+
+`«` beside the filter folds the tree down to a 28px strip and hands the content 232px
+back; the strip itself, or the `»` in the header, brings it back. It is the same control
+and the same stored preference the old section panel used, so collapsing navigation
+means collapsing navigation rather than collapsing one of two shapes of it.
+
+**The strip is a handle, not a rail.** It is deliberately too narrow to navigate from: a
+48px icon column for a list mixing modules *and* sections would be two ambiguous glyph
+columns in one, which is the thing the two-tier shell was built to stop.
+
+### Phones are untouched, on purpose
+
+The compact bottom bar and its sheet are exactly as they were. A tree is a shape for a
+pointer and a tall window — the seventy rows that make it worth having on a monitor are
+what would make it useless in a sheet covering three quarters of a phone screen. The two
+layouts now answer the same questions with genuinely different shapes, and the design
+docs say so, so a later session doesn't "fix" the inconsistency.
+
+### Under the hood
+
+The tree's logic — building it, filtering it, ranking hits, encoding the collapsed set —
+lives in `src/lib/navigation/` as plain functions with no React in sight, and ships with
+its own tests. The nine per-module section lists stay next to the routes whose URLs they
+build; the tree reaches them through a `SectionSource` port filled in at the composition
+root, the same way repositories already arrive.
+
+Two new icon slots (`chrome_tree_home`, `chrome_tree_filter`) are registered and
+replaceable from Admin → Display Settings → Icons.
+
 ## 2026-09-25 — Saved SQL, an index board that opens up, and lyrics from the file itself
 
 ### [Admin] SQL Explorer: save a statement and load it back

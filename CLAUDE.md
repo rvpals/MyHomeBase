@@ -8,12 +8,18 @@ Strict layering: **all logic lives in `src/lib/`; the presentation layers
 - **Before building any UI element:** read `./components.md` (the reusable-component registry) and reuse what already fits.
 - **Before styling any UI (colors, type, buttons, cards) or building a new module's view:** read `./design.md` and follow it — colors and fonts are theme tokens, not literal values.
 - **Before adding or moving any navigation/chrome element:** read `./design.md` →
-  *Navigation: the two-tier shell* and *Adding a UI element to the shell*. Navigation is a
-  48px module rail + a 240px section panel + a utility header; put the control in the tier
-  that matches what it does, and never hand-roll a new `fixed` bar.
-- **A new module never builds its own phone navigation.** Declaring `sections` is the
-  whole job — `SectionPanel` renders the desktop panel *and* the compact bottom bar (which
-  carries both tiers, in the arrangement the reader picked) from that one list. Read
+  *Navigation: the tree (desktop) and the two-tier bar (compact)* and *Adding a UI element
+  to the shell*. Desktop navigation is **one 260px tree** (`NavTree`) carrying Home, every
+  module and every section, above a filter box; compact keeps the **two-tier bottom bar**
+  (`SectionPanel`). Put the control where it belongs and never hand-roll a new `fixed` bar.
+  **The two layouts are deliberately different shapes — don't "fix" the inconsistency.**
+- **`ModuleRail` has no call site.** The tree replaced it. It is kept one release as a
+  cheap revert; restyling it will not change any screen. Same trap as `TreeNav`.
+- **A new module never builds its own navigation.** Declare `sections`, add one entry to
+  `src/app/(protected)/module-sections.ts`, and pass `tree`/`expandedModules`/
+  `onExpandedChange`/`adminTreeModule` from `getNavTreeData` to `TwoTierShell` — copy the
+  four lines from `journal-shell.tsx`. `sections` still feeds the compact bar and the
+  breadcrumb; the tree feeds the desktop column; **both are required.** Read
   `./design.md` → *What compact does differently* and `./modules.md` → step 7. Adding a
   bottom tab row or a compact-only nav to a module is the fastest way to break a phone
   layout here: the bottom edge is already claimed by the shared bar and the music player.

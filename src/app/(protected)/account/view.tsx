@@ -268,6 +268,10 @@ function PreferencesSection({
         favoriteModuleSlug,
         openFavoriteModuleOnStartup: openOnStartup,
         compactNavStyle: navStyle,
+        // Carried through unchanged, like the weather and clock fields below:
+        // every key is written on every save, so omitting this would collapse
+        // the reader's navigation tree the next time they changed a theme here.
+        expandedModules: preferences.expandedModules,
         weatherLocation,
         weatherUnit,
         clock,

@@ -7,6 +7,7 @@ import type { NavLink } from "@/components/nav-menus";
 import { TwoTierShell } from "@/components/two-tier-shell";
 import type { ModuleSetting } from "@/lib/module-settings";
 import type { Module } from "@/lib/modules";
+import type { NavigationTree, TreeModule } from "@/lib/navigation";
 import { DEFAULT_COLOR_THEME_ID, DEFAULT_ICON_SET_ID, type Setting } from "@/lib/settings";
 import { adminNav } from "./nav";
 import { resetAdminSettingsAction, saveAdminSettingsAction } from "./actions";
@@ -117,6 +118,10 @@ export function AdminShell({
   initialSettings,
   initialModuleSettings,
   railLinks,
+  tree,
+  expandedModules,
+  adminTreeModule,
+  setExpandedModules,
   currentUser,
   headerActions,
   logoutAction,
@@ -128,6 +133,18 @@ export function AdminShell({
   initialModuleSettings: ModuleSetting[];
   /** Tier 1's module list, loaded by the layout — this is a client component. */
   railLinks: NavLink[];
+  /**
+   * The full layout's navigation tree, loaded by the layout for the same reason
+   * `railLinks` is. `sections={adminNav}` below still feeds the compact bottom
+   * bar, which the tree does not touch.
+   */
+  tree: NavigationTree;
+  /** This admin's stored expanded set. */
+  expandedModules: string[];
+  /** Administration's own heading in the tree. */
+  adminTreeModule: TreeModule;
+  /** Persists the expanded set — a server action, passed in like `logoutAction`. */
+  setExpandedModules: (slugs: string[]) => Promise<void>;
   /**
    * Whole-app header actions — the message queue. Taken as a slot rather than
    * imported here for the same reason `railLinks` is a prop: this is a client
@@ -321,6 +338,12 @@ export function AdminShell({
         headerActions={headerActions}
         logoutAction={logoutAction}
         viewportPinned={viewportPinned}
+        // The full layout's one navigation column. `sections={adminNav}` above
+        // still feeds the compact bottom bar, which is unchanged.
+        tree={tree}
+        expandedModules={expandedModules}
+        onExpandedChange={setExpandedModules}
+        adminTreeModule={adminTreeModule}
       >
         <div className="relative p-8 pb-24 max-lg:p-4 max-lg:pb-24">{children}</div>
       </TwoTierShell>
