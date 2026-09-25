@@ -104,6 +104,23 @@ export const adminNav: SectionNode[] = [
     icon: "quote",
     children: [
       {
+        // The listing screen is also what the parent's `href` points at, but a
+        // group heading in `SectionPanel` renders as a disclosure button and drops
+        // its href -- so without this child the screen was reachable only from the
+        // home dashboard's Daily Quote widget. Listed first: it is the section's
+        // landing page, and Add/Import are actions taken from it.
+        //
+        // The id is permanent -- `SectionPanel` derives this row's icon slot from
+        // it, so renaming it later orphans any uploaded override.
+        id: "daily-quote-list",
+        label: "All Quotes",
+        href: "/admin/daily-quote",
+        hint: "Browse, edit and delete every quote in the collection",
+        // `quote`, same as the parent: the listing is the section, and the same
+        // subject in both places should read as the same thing.
+        icon: "quote",
+      },
+      {
         id: "daily-quote-add",
         label: "Add Quote",
         href: "/admin/daily-quote/add",

@@ -28,7 +28,7 @@ command list and exits 1. There is no `--help`.
 
 # Part 1 — Available commands
 
-Forty-nine commands, registered in [src/cli/index.ts](src/cli/index.ts).
+Fifty commands, registered in [src/cli/index.ts](src/cli/index.ts).
 
 | Command | Reads / writes | Network |
 |---|---|---|
@@ -69,6 +69,7 @@ Forty-nine commands, registered in [src/cli/index.ts](src/cli/index.ts).
 | [`ticker-monitors`](#ticker-monitors) | read (writes with `add`/`enable`/`disable`/`delete`/`run`) | no |
 | [`messages`](#messages) | read (writes with `read`/`read-all`/`file`/`delete`/`prune`) | no |
 | [`watch-lists`](#watch-lists) | read (writes with `add`/`watch`/`run`) | no |
+| [`saved-sql`](#saved-sql) | read (writes with `save`/`delete`) | no |
 
 Flag parsing is `--key value` pairs via [parse-flags.ts](src/cli/parse-flags.ts),
 except `ticker-overview` and `set-startup-message`, which read positionals and bare
@@ -2548,6 +2549,46 @@ quote; the scheduled pass always includes them. See
 **Exit** — 0 normally. 1 for an unknown action or kind, a non-numeric value, or a schema
 rejection (a `price` with no value, a range whose high end is not above its low end).
 Source: [src/cli/watch-lists.ts](src/cli/watch-lists.ts)
+
+---
+
+## `saved-sql`
+
+The SQL Explorer's saved statements, driving the same use-cases as the **Saved SQL** card
+on Admin → SQL Explorer → SQL Query.
+
+```bash
+npm run cli -- saved-sql list
+npm run cli -- saved-sql show "Recent positions"
+npm run cli -- saved-sql save "Recent positions" "Bought this year" "investments,debugging" "SELECT * FROM inv_stock_positions"
+npm run cli -- saved-sql delete 3
+```
+
+**Input** — a positional action. `show` takes a name, matched **case-insensitively**, the
+way the save dialog warns about a collision: whoever types this has the list in front of
+them, not the exact stored spelling. `save` takes a name, a description, a
+comma-separated tag string as one argument, then the statement — joined from the
+remaining arguments, so an unquoted multi-word statement still arrives whole. `delete`
+takes an id.
+
+**Calls** — `listSavedQueries`, `saveQuery` and `deleteSavedQuery` from `lib/sql-explorer`,
+on `deps.savedQueryRepo`.
+
+**Output** — `list` prints `[id] name [tags]` with the description indented beneath, or
+`Nothing saved yet.` `show` prints that summary followed by the statement itself.
+
+**`save` replaces a row with the same name**, matching the card — the table is
+`UNIQUE (name)`, so saving is an upsert rather than a create-or-update pair. `delete`
+throws on an id that isn't there, so a stale id is an error rather than a silent no-op.
+
+**There is deliberately no `run`.** Loading a saved statement never executes it here
+either — use `browse-sqlite` or the web screen's Execute. Statements aren't restricted to
+`SELECT`, so a stored `DELETE` must not fire from a command whose name reads like a read.
+See `migrations/0112_create_saved_sql_queries.md`.
+
+**Exit** — 0 normally. 1 for an unknown action, a missing name or id, a name that matches
+nothing, or a schema rejection (a blank name, an empty statement).
+Source: [src/cli/saved-sql.ts](src/cli/saved-sql.ts)
 
 ---
 

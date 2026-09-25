@@ -1,5 +1,77 @@
 # Change History
 
+## 2026-09-25 — Saved SQL, an index board that opens up, and lyrics from the file itself
+
+### [Admin] SQL Explorer: save a statement and load it back
+
+The SQL Query tab now has a **Saved SQL** card. Name a statement, give it a description
+and some tags, and it's there next time instead of being retyped or hunted for in
+scrollback.
+
+Saving under a name that already exists **replaces** that row — the dialog says so
+before it happens. That's a deliberate trade: the list is addressed by name, and two
+rows called "monthly totals" told apart only by a timestamp is a worse list than one
+that got overwritten on purpose.
+
+**Loading a saved query does not run it.** It fills the editor and stops; you press
+Execute. This deliberately does *not* mirror the Tables tree's "Open in SQL", which
+does run immediately — statements here aren't restricted to `SELECT`, since the tab
+runs writes too, so a saved `DELETE` must not be able to fire on a single click from a
+list.
+
+Tags are stored as a comma-joined string rather than a table, because unlike the
+Journal's tags these are never filtered on, renamed, or browsed — they're a label typed
+into a dialog and drawn back as chips on one card.
+
+Also from the terminal: `saved-sql list`, `show`, `save` and `delete`. There is no
+`saved-sql run`, for the reason above.
+
+**Needs migration 0112.**
+
+### [Investments] The Indexes card opens up
+
+Each row on the Indexes card now expands into a detail panel: the day range, the
+52-week range drawn as a track with a marker showing where today sits in it, the 50-
+and 200-day moving averages, the one-year change, the all-time high, and an intraday
+sparkline.
+
+These cost a second, more expensive provider call, so they're fetched only when the
+card is expanded — the collapsed dashboard is as cheap as it was. Any symbol that can't
+be enriched keeps the row it already had and draws an em-dash where the extras would
+go; a failed second pass never costs you the first.
+
+Coverage was measured rather than assumed across all eleven catalogue symbols: the
+52-week range, both moving averages and the all-time high come back for all of them,
+while the one-year change is missing for the three commodity futures. Two figures Yahoo
+appears to offer are deliberately left out — `ytdReturn` is null on every symbol (it's
+a fund field), and the all-time *low* is historically literal enough to read as a broken
+row (the S&P's is 4.40, from the 1930s; crude oil's is -40.32, from April 2020).
+
+**The sparklines are not comparable to each other.** Each scales to its own min and max,
+and the windows differ — a 24/7 crypto series spans midnight to now, a US index spans
+the opening bell. The card carries that caveat in a footnote.
+
+### [Music] Lyrics from the file's own tags, before the internet
+
+The player now reads embedded lyrics — ID3 `USLT`, FLAC `LYRICS`/`UNSYNCEDLYRICS`, M4A
+`©lyr` — and prefers them over a lookup. Words already in the file are the better
+answer: they're the ones whoever tagged this copy chose, they need no network, and they
+can't match the wrong song.
+
+Embedded tags are messier than "the words of a song" — plenty hold a full LRC document
+with per-line timestamps and `[ar:…]` header metadata. Those are normalised away, while
+section labels like `[Chorus]` and `[Verse 2]` are kept, since those are worth reading.
+
+The panel now says where the words came from: *From this file's own tags* versus
+*Matched on … from lrclib.net*. When both come up empty there's a Google search link —
+a link rather than a fetch, deliberately.
+
+### [Admin] Daily Quote: a way back to the list
+
+**Administration → Daily Quote → All Quotes.** The listing screen existed but had no nav
+entry: a group heading renders as a disclosure button and drops its own link, so the
+only route in was the home dashboard's Daily Quote widget.
+
 ## 2026-09-24 — Clearing out the message queue, and a dedup rule that measures distance
 
 ### [Journal] Duplicate places: a real distance, not a grid square

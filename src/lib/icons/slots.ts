@@ -1405,6 +1405,20 @@ export const ICON_SLOTS: IconSlot[] = [
     wired: true,
     namespace: "tree",
   },
+
+  /* The first Admin card to get a slot of its own. Everything else under Admin marks a
+     place in the section panel; this marks a card inside one screen, hence its own group. */
+  {
+    id: "admin_card_saved_sql",
+    label: "Saved SQL card",
+    group: "Admin cards",
+    where: "Admin → SQL Explorer → SQL Query → the Saved SQL card header.",
+    // Matches the SQL Explorer section mark it sits under -- the card is stored
+    // statements for that screen, not a different concept.
+    defaultConcept: "database",
+    wired: true,
+    namespace: "tree",
+  },
   {
     id: "admin_section_about",
     label: "About",
