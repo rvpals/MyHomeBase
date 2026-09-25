@@ -101,3 +101,30 @@ export interface ModuleTableGroup {
   isModule: boolean;
   tables: ModuleTableRow[];
 }
+
+/**
+ * One saved statement from the SQL Query tab's "Saved SQL" card.
+ *
+ * `tags` is an array here and a comma-joined string in the column — the split
+ * happens in the repository, so nothing above it ever sees the storage form.
+ */
+export interface SavedQuery {
+  id: number;
+  name: string;
+  description: string;
+  tags: string[];
+  sqlStatement: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * A saved query on its way in. No id: saving is an upsert keyed on `name`, so
+ * the caller never has to know whether the row already exists.
+ */
+export interface SaveQueryInput {
+  name: string;
+  description: string;
+  tags: string[];
+  sqlStatement: string;
+}

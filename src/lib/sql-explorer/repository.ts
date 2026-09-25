@@ -1,7 +1,15 @@
 import type Database from "better-sqlite3";
 import type { BlobCellSource } from "./blob-cells";
-import type { SqlExplorerRepository } from "./ports";
-import type { SchemaObject, SchemaObjectKind, SqlExecutionResult, TableInfo, TablePage } from "./types";
+import type { SavedQueryRepository, SqlExplorerRepository } from "./ports";
+import type {
+  SavedQuery,
+  SaveQueryInput,
+  SchemaObject,
+  SchemaObjectKind,
+  SqlExecutionResult,
+  TableInfo,
+  TablePage,
+} from "./types";
 
 const READ_ONLY_STATEMENT_PATTERN = /^(SELECT|PRAGMA|EXPLAIN)/i;
 
@@ -205,5 +213,73 @@ export class SqliteSqlExplorerRepository implements SqlExplorerRepository {
       return deleted;
     });
     return run();
+  }
+}
+
+interface SavedQueryRow {
+  id: number;
+  name: string;
+  description: string;
+  tags: string;
+  sql_statement: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Storage for the SQL Query tab's saved statements. Ordinary CRUD over one table. */
+export class SqliteSavedQueryRepository implements SavedQueryRepository {
+  constructor(private db: Database.Database) {}
+
+  // The column holds tags comma-joined; nothing above the repository sees that
+  // form. See migration 0112 for why the column is denormalized.
+  private toDomain(row: SavedQueryRow): SavedQuery {
+    return {
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      tags: row.tags === "" ? [] : row.tags.split(","),
+      sqlStatement: row.sql_statement,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  listSavedQueries(): SavedQuery[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, name, description, tags, sql_statement, created_at, updated_at
+           FROM sys_saved_sql_queries
+          ORDER BY name COLLATE NOCASE`,
+      )
+      .all() as SavedQueryRow[];
+    return rows.map((row) => this.toDomain(row));
+  }
+
+  upsertSavedQuery(input: SaveQueryInput): SavedQuery {
+    // ON CONFLICT rather than a SELECT-then-branch: the table is UNIQUE (name),
+    // so one statement does both and there is no window between the check and
+    // the write. created_at is deliberately left alone on the update path --
+    // the row is the same saved query, rewritten.
+    //
+    // updated_at is set explicitly here because the AFTER UPDATE trigger fires
+    // after RETURNING has already read the row, so relying on it alone would
+    // hand back the stale timestamp.
+    const row = this.db
+      .prepare(
+        `INSERT INTO sys_saved_sql_queries (name, description, tags, sql_statement)
+              VALUES (?, ?, ?, ?)
+         ON CONFLICT (name) DO UPDATE SET
+              description   = excluded.description,
+              tags          = excluded.tags,
+              sql_statement = excluded.sql_statement,
+              updated_at    = datetime('now')
+           RETURNING id, name, description, tags, sql_statement, created_at, updated_at`,
+      )
+      .get(input.name, input.description, input.tags.join(","), input.sqlStatement) as SavedQueryRow;
+    return this.toDomain(row);
+  }
+
+  deleteSavedQuery(id: number): boolean {
+    return this.db.prepare("DELETE FROM sys_saved_sql_queries WHERE id = ?").run(id).changes > 0;
   }
 }

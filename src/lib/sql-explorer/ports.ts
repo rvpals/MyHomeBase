@@ -1,5 +1,12 @@
 import type { BlobCellSource } from "./blob-cells";
-import type { SchemaObject, SqlExecutionResult, TableInfo, TablePage } from "./types";
+import type {
+  SavedQuery,
+  SaveQueryInput,
+  SchemaObject,
+  SqlExecutionResult,
+  TableInfo,
+  TablePage,
+} from "./types";
 
 export interface SqlExplorerRepository {
   listTables(): TableInfo[];
@@ -31,4 +38,29 @@ export interface SqlExplorerRepository {
    * `DELETE FROM` plus a `sqlite_sequence` clear, in one transaction.
    */
   truncateTable(tableName: string): number;
+}
+
+/**
+ * Storage for the SQL Query tab's saved statements.
+ *
+ * Deliberately separate from SqlExplorerRepository. That one is "run whatever
+ * SQL you are given against the live database" -- dangerous by design, and
+ * impossible to fake without stubbing ten unrelated methods. This is ordinary
+ * CRUD over one table, so its fake is a few lines and its tests read as tests
+ * of the use-cases rather than of a mock.
+ */
+export interface SavedQueryRepository {
+  /** Every saved query, ordered by name. The card reads the whole list. */
+  listSavedQueries(): SavedQuery[];
+  /**
+   * Inserts the query, or replaces the one already holding that name --
+   * `sys_saved_sql_queries` is UNIQUE (name), which is what makes saving a
+   * single path rather than a create/update branch. Returns the stored row.
+   */
+  upsertSavedQuery(input: SaveQueryInput): SavedQuery;
+  /**
+   * Deletes by id. Returns false when no row had that id, so the caller can
+   * tell "deleted" from "was not there" rather than reporting both as success.
+   */
+  deleteSavedQuery(id: number): boolean;
 }

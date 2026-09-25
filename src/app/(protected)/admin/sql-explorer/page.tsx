@@ -1,4 +1,9 @@
-import { groupTablesByModule, listSchemaObjectGroups, listTables } from "@/lib/sql-explorer";
+import {
+  groupTablesByModule,
+  listSavedQueries,
+  listSchemaObjectGroups,
+  listTables,
+} from "@/lib/sql-explorer";
 import { listModules } from "@/lib/modules";
 import { deps } from "@/lib/wiring";
 import { SqlExplorerView } from "./view";
@@ -13,6 +18,7 @@ export default function SqlExplorerPage() {
     <SqlExplorerView
       tables={tables}
       schemaGroups={listSchemaObjectGroups(deps.sqlExplorerRepo)}
+      savedQueries={listSavedQueries(deps.savedQueryRepo)}
       moduleGroups={groupTablesByModule(
         tables.map((table) => table.name),
         modules,

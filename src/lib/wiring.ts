@@ -53,7 +53,7 @@ import {
 } from "./music-magic/repository";
 import { SqliteScheduledRunRepository } from "./scheduled-jobs/repository";
 import { SqliteSettingsRepository } from "./settings/repository";
-import { SqliteSqlExplorerRepository } from "./sql-explorer/repository";
+import { SqliteSavedQueryRepository, SqliteSqlExplorerRepository } from "./sql-explorer/repository";
 import { BetterSqliteForeignDatabaseReader } from "./sqlite-browser/foreign-db";
 import { NodeSqliteFileStore } from "./sqlite-browser/file-store";
 import { SqliteUploadedDatabaseRepository } from "./sqlite-browser/repository";
@@ -269,6 +269,7 @@ export const deps = {
   taxLotRepo: new SqliteTaxLotRepository(db),
   stockAnalyticsRepo: new SqliteStockAnalyticsRepository(db),
   sqlExplorerRepo: new SqliteSqlExplorerRepository(db),
+  savedQueryRepo: new SqliteSavedQueryRepository(db),
   // The Tools module's SQLite File Browser (migrations/0097). Three pieces: the
   // metadata rows in the app DB, the uploaded files in the workspace folder, and
   // the reader that opens those files. The reader deliberately takes NO database

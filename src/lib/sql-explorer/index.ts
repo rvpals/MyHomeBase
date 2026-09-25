@@ -10,6 +10,8 @@ export type {
   TablePage,
   ModuleTableGroup,
   ModuleTableRow,
+  SavedQuery,
+  SaveQueryInput,
 } from "./types";
 export { buildTableReference, describeTable } from "./table-reference";
 export { groupTablesByModule } from "./module-tables";
@@ -34,8 +36,15 @@ export {
   type BlobCellSource,
 } from "./blob-cells";
 export { blobCellSourceSchema } from "./schema";
-export { sqlStatementSchema, readOnlySqlStatementSchema, tableNameSchema } from "./schema";
-export type { SqlExplorerRepository } from "./ports";
+export {
+  sqlStatementSchema,
+  readOnlySqlStatementSchema,
+  tableNameSchema,
+  saveQuerySchema,
+  savedQueryIdSchema,
+  tagListSchema,
+} from "./schema";
+export type { SqlExplorerRepository, SavedQueryRepository } from "./ports";
 export {
   listTables,
   executeStatement,
@@ -44,3 +53,4 @@ export {
   truncateTable,
   type ReadOnlyQueryResult,
 } from "./sql-explorer";
+export { listSavedQueries, saveQuery, deleteSavedQuery } from "./saved-queries";

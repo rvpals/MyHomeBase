@@ -1,7 +1,15 @@
 "use server";
 
-import { countTableRows, executeStatement, readTablePage, truncateTable } from "@/lib/sql-explorer";
-import type { SqlExecutionResult, TablePage } from "@/lib/sql-explorer";
+import {
+  countTableRows,
+  deleteSavedQuery,
+  executeStatement,
+  listSavedQueries,
+  readTablePage,
+  saveQuery,
+  truncateTable,
+} from "@/lib/sql-explorer";
+import type { SavedQuery, SqlExecutionResult, TablePage } from "@/lib/sql-explorer";
 import { deps } from "@/lib/wiring";
 import { requireAdmin } from "../../require-access";
 
@@ -81,6 +89,76 @@ export async function loadTablePageAction(tableName: string): Promise<TablePageR
     return {
       ok: false,
       error: error instanceof Error ? error.message : "Failed to read the table.",
+    };
+  }
+}
+
+export interface SavedQueryListResult {
+  ok: boolean;
+  queries?: SavedQuery[];
+  error?: string;
+}
+
+/** Backs the Saved SQL card's refresh after a save or a delete. */
+export async function listSavedQueriesAction(): Promise<SavedQueryListResult> {
+  try {
+    await requireAdmin();
+    return { ok: true, queries: listSavedQueries(deps.savedQueryRepo) };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Failed to read the saved queries.",
+    };
+  }
+}
+
+export interface SaveQueryResult {
+  ok: boolean;
+  queries?: SavedQuery[];
+  error?: string;
+}
+
+/**
+ * Saves a statement under a name, replacing whatever held that name before —
+ * the table is UNIQUE (name). The dialog warns before overwriting.
+ *
+ * Returns the whole refreshed list rather than the saved row, so the card is
+ * correct in one round trip whichever branch the upsert took.
+ */
+export async function saveQueryAction(input: {
+  name: string;
+  description: string;
+  tags: string;
+  sqlStatement: string;
+}): Promise<SaveQueryResult> {
+  try {
+    await requireAdmin();
+    saveQuery(deps.savedQueryRepo, input);
+    return { ok: true, queries: listSavedQueries(deps.savedQueryRepo) };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Failed to save the query.",
+    };
+  }
+}
+
+export interface DeleteSavedQueryResult {
+  ok: boolean;
+  queries?: SavedQuery[];
+  error?: string;
+}
+
+/** Removes one saved query. The view confirms with the reader first. */
+export async function deleteSavedQueryAction(id: number): Promise<DeleteSavedQueryResult> {
+  try {
+    await requireAdmin();
+    deleteSavedQuery(deps.savedQueryRepo, id);
+    return { ok: true, queries: listSavedQueries(deps.savedQueryRepo) };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Failed to delete the saved query.",
     };
   }
 }

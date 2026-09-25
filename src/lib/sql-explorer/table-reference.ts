@@ -37,6 +37,7 @@ const GROUPS: TableReferenceGroup[] = [
       ["sys_messages", "The application-wide message queue — one household-wide row per notice, newest first. `read_at IS NULL` means unread; `source` names whatever filed it (an Investments monitor, say)."],
       ["sys_deployments", "One row per go-live on the NAS: when it shipped, the build metadata carried over from the build log, and the captured build output."],
       ["sys_scheduled_runs", "Last-run bookkeeping for background jobs, one row per job — when it last ran, its status and a rendered detail line."],
+      ["sys_saved_sql_queries", "Named statements saved from this screen’s SQL Query tab — name, description, comma-joined tags and the SQL itself. Shared by every admin; saving under an existing name replaces that row."],
       ["sys_schema_migrations", "The migration tracker: one row per applied .sql file. Written by the migration runner — don't edit it by hand."],
     ],
   },

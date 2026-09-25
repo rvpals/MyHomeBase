@@ -9,6 +9,8 @@ import { Modal } from "@/components/modal";
 import { Tabs, type TabItem } from "@/components/tabs";
 import { TreeNav, type TreeNavNode } from "@/components/tree-nav";
 import { ModuleIcon } from "@/components/module-icons";
+import { SlotIcon } from "@/components/slot-icon";
+import { getIconSlot } from "@/lib/icons";
 import {
   buildTableReference,
   describeTable,
@@ -18,14 +20,17 @@ import {
   type ModuleTableGroup,
   type SchemaObject,
   type SchemaObjectGroup,
+  type SavedQuery,
   type SqlExecutionResult,
   type TableInfo,
   type TablePage,
 } from "@/lib/sql-explorer";
 import {
   countTableRowsAction,
+  deleteSavedQueryAction,
   executeSqlAction,
   loadTablePageAction,
+  saveQueryAction,
   truncateTableAction,
 } from "./actions";
 import { PAGE_CONTAINER } from "../../page-container";
@@ -572,14 +577,285 @@ function findSelected(
     ?.objects.find((object) => object.name === name);
 }
 
+/** The Saved SQL card's header mark. Static registry, so module scope is not I/O. */
+const SAVED_SQL_SLOT = getIconSlot("admin_card_saved_sql")!;
+
+/** Shared by the save dialog's three fields — the query textarea's styling, minus the mono face. */
+const FIELD_CLASSES =
+  "w-full rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
+
+/**
+ * Collects a name, description and tags for the statement in the editor.
+ *
+ * The name is the row's identity — `sys_saved_sql_queries` is UNIQUE (name) —
+ * so reusing one replaces it. That is said in the dialog rather than discovered
+ * afterwards: the warning appears as soon as the typed name matches something
+ * already saved, and the confirm button changes to "Replace".
+ */
+function SaveQueryDialog({
+  sql,
+  savedQueries,
+  onClose,
+  onSaved,
+}: {
+  sql: string;
+  savedQueries: SavedQuery[];
+  onClose: () => void;
+  onSaved: (queries: SavedQuery[], message: string) => void;
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [tags, setTags] = useState("");
+  const [error, setError] = useState<string | undefined>(undefined);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const trimmedName = name.trim();
+  // Case-insensitive, matching the list's NOCASE ordering and how a reader reads
+  // a list — "Totals" and "totals" are the same name to them. The database has
+  // the final say either way; this only decides what the dialog says first.
+  const willReplace = savedQueries.some(
+    (query) => query.name.toLowerCase() === trimmedName.toLowerCase(),
+  );
+
+  async function handleSave() {
+    setIsSaving(true);
+    setError(undefined);
+    try {
+      const response = await saveQueryAction({
+        name: trimmedName,
+        description: description.trim(),
+        tags,
+        sqlStatement: sql,
+      });
+      if (!response.ok) {
+        setError(response.error ?? "Failed to save the query.");
+        return;
+      }
+      onSaved(
+        response.queries ?? [],
+        willReplace ? `Replaced "${trimmedName}".` : `Saved "${trimmedName}".`,
+      );
+      onClose();
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <Modal
+      title="Save this query"
+      description="Saved queries are shared by every admin."
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave} disabled={isSaving || trimmedName === ""}>
+            {isSaving ? "Saving…" : willReplace ? "Replace" : "Save"}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <label className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-ink">Name</span>
+          <input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            autoFocus
+            maxLength={120}
+            placeholder="Positions bought this year"
+            className={FIELD_CLASSES}
+          />
+        </label>
+
+        {willReplace && (
+          <p className="text-sm text-red-400">
+            A saved query is already called &ldquo;{trimmedName}&rdquo;. Saving replaces its
+            description, tags and SQL.
+          </p>
+        )}
+
+        <label className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-ink">Description</span>
+          <textarea
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            rows={2}
+            maxLength={500}
+            placeholder="What this answers, and anything to watch for."
+            className={FIELD_CLASSES}
+          />
+        </label>
+
+        <label className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-ink">Tags</span>
+          <input
+            value={tags}
+            onChange={(event) => setTags(event.target.value)}
+            placeholder="investments, debugging"
+            className={FIELD_CLASSES}
+          />
+          <span className="text-xs text-muted">Separated by commas.</span>
+        </label>
+
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-ink">SQL</span>
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-md border border-line bg-paper px-3 py-2 font-mono text-xs text-muted">
+            {sql}
+          </pre>
+        </div>
+
+        {error && <p className="text-sm text-red-400">{error}</p>}
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * The saved statements, listed for loading and deleting.
+ *
+ * Load fills the editor and stops — it deliberately does NOT execute, unlike
+ * the Tables tree's "Open in SQL". A saved statement may be a DELETE, and a
+ * single click from a list is the wrong gesture to run one with.
+ */
+function SavedQueriesCard({
+  savedQueries,
+  onLoad,
+  onDeleted,
+  onError,
+}: {
+  savedQueries: SavedQuery[];
+  onLoad: (query: SavedQuery) => void;
+  onDeleted: (queries: SavedQuery[], message: string) => void;
+  onError: (message: string) => void;
+}) {
+  const [deletingId, setDeletingId] = useState<number | undefined>(undefined);
+
+  async function handleDelete(query: SavedQuery) {
+    // A plain confirm rather than a second Modal: deleting one saved statement
+    // is small and undone by saving it again, so a full dialog would be heavier
+    // than the decision. Truncate, which is neither, keeps its dialog.
+    if (!window.confirm(`Delete the saved query "${query.name}"?`)) return;
+    setDeletingId(query.id);
+    try {
+      const response = await deleteSavedQueryAction(query.id);
+      if (!response.ok) {
+        onError(response.error ?? "Failed to delete the saved query.");
+        return;
+      }
+      onDeleted(response.queries ?? [], `Deleted "${query.name}".`);
+    } finally {
+      setDeletingId(undefined);
+    }
+  }
+
+  const columns: DataGridColumn<SavedQuery>[] = [
+    {
+      key: "name",
+      header: "Name",
+      value: (query) => query.name,
+      render: (query) => <span className="font-medium text-ink">{query.name}</span>,
+      minWidth: 160,
+    },
+    {
+      key: "description",
+      header: "Description",
+      value: (query) => query.description,
+      render: (query) => (
+        <span className="text-muted">{query.description === "" ? "—" : query.description}</span>
+      ),
+      minWidth: 200,
+    },
+    {
+      key: "tags",
+      header: "Tags",
+      // Sorts and exports as the joined string; renders as chips.
+      value: (query) => query.tags.join(", "),
+      render: (query) =>
+        query.tags.length === 0 ? (
+          <span className="text-muted">—</span>
+        ) : (
+          <span className="flex flex-wrap gap-1">
+            {query.tags.map((tag) => (
+              <span
+                key={tag}
+                className="rounded-full border border-line bg-paper px-2 py-0.5 text-xs text-muted"
+              >
+                {tag}
+              </span>
+            ))}
+          </span>
+        ),
+      minWidth: 140,
+    },
+    {
+      key: "sqlStatement",
+      header: "SQL",
+      value: (query) => query.sqlStatement,
+      render: (query) => (
+        <span className="line-clamp-2 font-mono text-xs text-muted">{query.sqlStatement}</span>
+      ),
+      minWidth: 220,
+    },
+    {
+      key: "updatedAt",
+      header: "Updated",
+      value: (query) => query.updatedAt,
+      render: (query) => <span className="text-muted">{query.updatedAt}</span>,
+      minWidth: 140,
+    },
+    {
+      key: "actions",
+      header: "",
+      sortable: false,
+      value: () => null,
+      render: (query) => (
+        <span className="flex gap-2">
+          <Button size="sm" variant="secondary" onClick={() => onLoad(query)}>
+            Load
+          </Button>
+          <Button
+            size="sm"
+            variant="danger"
+            onClick={() => handleDelete(query)}
+            disabled={deletingId === query.id}
+          >
+            {deletingId === query.id ? "Deleting…" : "Delete"}
+          </Button>
+        </span>
+      ),
+      excludeFromRecordView: true,
+    },
+  ];
+
+  return (
+    <CollapsibleCard
+      title="Saved SQL"
+      titleIcon={<SlotIcon slot={SAVED_SQL_SLOT} className="h-4 w-4" />}
+    >
+      <DataGrid
+        columns={columns}
+        rows={savedQueries}
+        getRowKey={(query) => query.id}
+        emptyMessage="Nothing saved yet — run a query, then press Save."
+        exportFileName="saved-sql"
+      />
+    </CollapsibleCard>
+  );
+}
+
 export function SqlExplorerView({
   tables,
   schemaGroups,
   moduleGroups,
+  savedQueries: initialSavedQueries,
 }: {
   tables: TableInfo[];
   schemaGroups: SchemaObjectGroup[];
   moduleGroups: ModuleTableGroup[];
+  savedQueries: SavedQuery[];
 }) {
   const [sql, setSql] = useState("");
   const [result, setResult] = useState<SqlExecutionResult | undefined>(undefined);
@@ -588,6 +864,10 @@ export function SqlExplorerView({
   const [truncateTarget, setTruncateTarget] = useState<string | undefined>(undefined);
   const [notice, setNotice] = useState<string | undefined>(undefined);
   const [activeTab, setActiveTab] = useState("query");
+  // Server-rendered once, then owned here: save and delete both return the
+  // whole refreshed list, so the card stays correct without a router refresh.
+  const [savedQueries, setSavedQueries] = useState(initialSavedQueries);
+  const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
 
   async function handleExecute(statement: string) {
     setIsRunning(true);
@@ -614,9 +894,19 @@ export function SqlExplorerView({
         placeholder="SELECT * FROM inv_stock_positions"
         className="w-full rounded-md border border-line bg-paper px-3 py-2 font-mono text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
       />
-      <div>
+      {/* Wraps to two full-width buttons on a phone; side by side from 1024px. */}
+      <div className="flex gap-2 max-lg:flex-col">
         <Button onClick={() => handleExecute(sql)} disabled={isRunning || sql.trim() === ""}>
           {isRunning ? "Running…" : "Execute"}
+        </Button>
+        {/* Saving does not require having run the statement first — a query
+            worth keeping is often one still being written. */}
+        <Button
+          variant="secondary"
+          onClick={() => setIsSaveDialogOpen(true)}
+          disabled={sql.trim() === ""}
+        >
+          Save
         </Button>
       </div>
 
@@ -626,8 +916,33 @@ export function SqlExplorerView({
         <p className="text-sm text-ink">{result.changes} row(s) affected.</p>
       )}
       {result?.kind === "query" && <QueryResultGrid result={result} />}
+
+      <SavedQueriesCard
+        savedQueries={savedQueries}
+        onLoad={loadSavedQuery}
+        onDeleted={(queries, message) => {
+          setSavedQueries(queries);
+          setNotice(message);
+        }}
+        onError={setError}
+      />
     </div>
   );
+
+  /**
+   * Puts a saved statement in the editor without running it.
+   *
+   * Deliberately unlike `openInSql` below, which does execute: that one builds
+   * its own `SELECT * FROM <table>` and knows it is safe, whereas a saved
+   * statement is whatever an admin stored — possibly a DELETE. The reader
+   * presses Execute.
+   */
+  function loadSavedQuery(query: SavedQuery) {
+    setSql(query.sqlStatement);
+    setResult(undefined);
+    setError(undefined);
+    setNotice(`Loaded "${query.name}" — press Execute to run it.`);
+  }
 
   // Shared by both trees: drop a SELECT into the query tab and follow it over,
   // since that's where the result grid lives.
@@ -687,6 +1002,18 @@ export function SqlExplorerView({
       />
 
       {notice && <p className="mt-4 text-sm text-ink">{notice}</p>}
+
+      {isSaveDialogOpen && (
+        <SaveQueryDialog
+          sql={sql}
+          savedQueries={savedQueries}
+          onClose={() => setIsSaveDialogOpen(false)}
+          onSaved={(queries, message) => {
+            setSavedQueries(queries);
+            setNotice(message);
+          }}
+        />
+      )}
 
       {truncateTarget !== undefined && (
         <TruncateDialog

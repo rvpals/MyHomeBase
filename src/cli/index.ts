@@ -43,6 +43,7 @@ import { runScheduledRefreshCommand } from "./run-scheduled-refresh";
 import { setStartupMessageCommand } from "./set-startup-message";
 import { browseCsvCommand } from "./browse-csv";
 import { browseSqliteCommand } from "./browse-sqlite";
+import { savedSqlCommand } from "./saved-sql";
 import { takeAttendanceCommand } from "./take-attendance";
 import { taxLotsCommand } from "./tax-lots";
 import { simulateTickerCommand } from "./simulate-ticker";
@@ -104,6 +105,7 @@ const commands: Record<string, Command> = {
   "tax-lots": taxLotsCommand,
   "browse-sqlite": browseSqliteCommand,
   "browse-csv": browseCsvCommand,
+  "saved-sql": savedSqlCommand,
 };
 
 async function main(argv: string[]) {
