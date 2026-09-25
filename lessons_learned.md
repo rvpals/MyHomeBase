@@ -5,6 +5,62 @@ doesn't repeat them. Newest first.
 
 ---
 
+## 2026-09-25 — A blocked `powershell` silently skipped the release backup for a week
+
+**Severity:** step 2 of `/release` not performed for ~7 days. No data lost.
+**Found:** by investigating why "NAS access broke about a week ago".
+
+### What happened
+
+`/release` steps 2 (back up the production DB) and 5 (ship `CHANGE_HISTORY.md`)
+were both written as PowerShell `Copy-Item` blocks. The harness denies any Bash
+command containing `powershell` or `pwsh` — including a read-only
+`which powershell` — so both steps failed instantly in every session.
+
+Each session reported the step as blocked and moved on, which was honest but
+incomplete: the conclusion drawn was *"SMB/NAS access is broken"*, and it wasn't.
+Running `ls //NAS_DS223/app/myhomebase/` works. `cp` to the share works. Only the
+interpreter was unavailable.
+
+### Why it went unnoticed
+
+**The backups didn't stop, so nothing looked wrong.** `scripts/migrate.ts` takes
+its own backup before every migration run, and most releases carry a migration —
+so the data folder kept filling with plausible-looking `.bak-` files. Two
+different writers, distinguishable only by their stamp format:
+
+| Writer | Stamp | Example |
+|---|---|---|
+| `manual-release.ps1` (step 2) | local, seconds | `bak-2026-09-23T22-27-53` |
+| `scripts/migrate.ts` | UTC, ms, `Z` | `bak-2026-09-25T15-17-39-410Z` |
+
+Anyone glancing at the folder saw recent backups and concluded step 2 had run.
+
+**But the migration backup is weaker in two ways:** it copies the `.db` alone,
+missing the WAL, and it only runs when the release *has* a migration. When step 2
+was finally run properly on 2026-09-25 it captured a **0.5 MB `-wal`** holding
+committed rows absent from the `.db` — seven minutes after a migration backup
+that had missed them.
+
+Step 5 had no fallback at all, so the NAS `CHANGE_HISTORY.md` sat a full day
+stale and the About page served the previous release's notes.
+
+### What to do differently
+
+1. **Don't write a release step in a language the session can't run.**
+   `manual_release.bat` may be PowerShell — a human runs it. The `/release` steps
+   must work in Bash: step 2 is now `npm run backup:nas`
+   ([scripts/backup-nas-db.mjs](scripts/backup-nas-db.mjs)), step 5 is a plain `cp`.
+2. **"Blocked" deserves one probe before it's a conclusion.** The fix here was
+   one `ls` against the share. A denial names the *command*, not the capability —
+   check whether the underlying access still works before reporting a system down.
+3. **A side effect that resembles the real thing will hide its absence.**
+   The migration's backup looked enough like the release's backup to mask seven
+   days of a skipped step. When two mechanisms write to one place, make them
+   distinguishable on sight — the stamp formats above are why this was solvable.
+
+---
+
 ## 2026-09-23 — `rm -rf` on a typo'd path wiped the entire repo
 
 **Severity:** total loss of the local working tree, including `.git`.

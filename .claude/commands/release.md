@@ -21,6 +21,13 @@ a described one, so it's for releases not worth narrating — a dependency bump,
 tweak. Prefer this command when the changes deserve a real entry. Keep the two in step:
 a change to the steps below should be reflected in the script, and vice versa.
 
+That script is PowerShell, which is fine — **you** run it from a real shell. It is this
+command's *own* steps that must not depend on PowerShell, because the session running
+them usually cannot invoke it. Steps 2 and 5 therefore have Node/`cp` equivalents
+(`npm run backup:nas` and a plain `cp`) that do the same work;
+[scripts/backup-nas-db.mjs](scripts/backup-nas-db.mjs) deliberately mirrors the backup
+routine in `manual-release.ps1`, so a change to one belongs in the other.
+
 ## Deployment target
 
 **Synology NAS** (primary) — `/volume1/app/myhomebase` on `NAS_DS223`, reachable
@@ -55,6 +62,19 @@ release. If it isn't published, stop here.
 
 Over SMB — copy all three files, not just the `.db`:
 
+```bash
+npm run backup:nas              # add -- --dry-run to see what it would copy
+```
+
+That's [scripts/backup-nas-db.mjs](scripts/backup-nas-db.mjs), and it is the one to
+reach for. **PowerShell is frequently unavailable to this session** — the harness denies
+any command naming `powershell`/`pwsh`, even a read-only one — so the equivalent
+`Copy-Item` block silently became un-runnable and step 2 was skipped for a week without
+anyone noticing. The Node script needs no PowerShell and does the same three copies with
+the same local-time stamp.
+
+<details><summary>The PowerShell equivalent, for a shell that has it</summary>
+
 ```powershell
 $stamp = Get-Date -Format "yyyy-MM-ddTHH-mm-ss"
 $data = "\\NAS_DS223\app\myhomebase\data"
@@ -63,6 +83,7 @@ Copy-Item "$data\myhomebase.db-wal" "$data\myhomebase.db-wal.bak-$stamp"  -Force
 Copy-Item "$data\myhomebase.db-shm" "$data\myhomebase.db-shm.bak-$stamp"  -Force -ErrorAction SilentlyContinue
 Get-ChildItem "$data\*.bak-$stamp" | Select-Object Name, Length
 ```
+</details>
 
 **Why all three:** the app runs in WAL mode, so committed rows can still be sitting in
 `myhomebase.db-wal` and not yet in the `.db` file — a real release saw a 4.5 MB WAL.
@@ -70,7 +91,15 @@ Copying the `.db` alone while the server is running (which is what `scripts/migr
 does for its own backups) can miss the most recent writes. The `-wal`/`-shm` copies are
 best-effort: they're absent when the app has checkpointed and shut down cleanly.
 
-Confirm the new files exist and are a plausible size before continuing.
+**A migration's own backup is not a substitute.** `scripts/migrate.ts` copies the `.db`
+alone before it runs, with a UTC `toISOString()` stamp (`…bak-2026-09-25T15-17-39-410Z`)
+rather than this step's local one — so the two are easy to tell apart in the data folder.
+It misses the WAL, and it only runs at all when the release *has* a migration. On
+2026-09-25 this step caught a 0.5 MB WAL that the migration backup taken seven minutes
+earlier did not.
+
+Confirm the new files exist and are a plausible size before continuing — the script
+prints each name and size, and exits non-zero if the `.db` itself could not be copied.
 
 ## 3. Update the markdown docs
 
@@ -132,9 +161,26 @@ the deployed copy has to be refreshed after step 3. `REBUILD_PUBLISH_NAS.bat` al
 includes it in the package, so a republish covers it. If the docs changed *after* that
 publish, re-run the batch file or copy the single file over SMB:
 
+```bash
+cp CHANGE_HISTORY.md //NAS_DS223/app/myhomebase/CHANGE_HISTORY.md
+```
+
+Plain `cp` for the same reason step 2 uses a Node script: a `Copy-Item` here is denied
+outright in most sessions, and this step then gets reported as blocked when the share
+itself is perfectly writable. **SMB is not the problem — PowerShell is.** Confirm it
+landed by checking the deployed copy's date and first heading:
+
+```bash
+ls -la //NAS_DS223/app/myhomebase/CHANGE_HISTORY.md
+head -3 //NAS_DS223/app/myhomebase/CHANGE_HISTORY.md
+```
+
+<details><summary>The PowerShell equivalent, for a shell that has it</summary>
+
 ```powershell
 Copy-Item "CHANGE_HISTORY.md" "\\NAS_DS223\app\myhomebase\CHANGE_HISTORY.md" -Force
 ```
+</details>
 
 ## 6. Commit and push
 
