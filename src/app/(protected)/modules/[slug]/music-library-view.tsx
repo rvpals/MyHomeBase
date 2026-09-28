@@ -24,6 +24,7 @@ import {
   LIBRARY_VIEW_ICONS,
   LIBRARY_VIEW_INFO,
   isLibraryView,
+  movePlaylistEntry,
   type LibraryFolder,
   type LibraryFolderNode,
   type LibraryGroup,
@@ -45,6 +46,8 @@ import {
   listPlaylistsAction,
   listYearsAction,
   removeFromPlaylistAction,
+  renamePlaylistAction,
+  reorderPlaylistAction,
   searchTracksAction,
 } from "./music-actions";
 import { PlaylistSelectionBar, useTrackSelection } from "./music-selection";
@@ -740,6 +743,12 @@ function Playlists() {
   const [name, setName] = useState("");
   const [message, setMessage] = useState<string | undefined>(undefined);
   const [isBusy, startBusy] = useTransition();
+  // The playlist being renamed, held as a draft so Cancel can leave the row untouched.
+  // Name and description together, because `renamePlaylistAction` writes both and the
+  // Gallery's album rename -- the same two fields -- edits both.
+  const [editing, setEditing] = useState<
+    { id: number; name: string; description: string } | undefined
+  >(undefined);
 
   const refresh = useCallback(async () => {
     const rows = await listPlaylistsAction();
@@ -807,33 +816,105 @@ function Playlists() {
         </div>
       ) : (
         <ul className="divide-y divide-line rounded-xl border border-line">
-          {playlists.map((playlist) => (
-            <li key={playlist.id} className="flex items-center gap-2 px-3 py-2">
-              <button
-                type="button"
-                onClick={() => setOpenId(playlist.id)}
-                className="min-w-0 flex-1 text-left"
-              >
-                <span className="block truncate text-sm text-ink">{playlist.name}</span>
-                <span className="block truncate text-xs text-muted">
-                  {playlist.trackCount} {playlist.trackCount === 1 ? "track" : "tracks"}
-                  {playlist.description !== "" && ` - ${playlist.description}`}
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  startBusy(async () => {
-                    await deletePlaylistAction(playlist.id);
-                    await refresh();
-                  })
-                }
-                className="rounded px-2 py-1 text-xs text-muted hover:text-ink"
-              >
-                Delete
-              </button>
-            </li>
-          ))}
+          {playlists.map((playlist) =>
+            editing?.id === playlist.id ? (
+              <li key={playlist.id} className="px-3 py-2">
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    setMessage(undefined);
+                    startBusy(async () => {
+                      const result = await renamePlaylistAction({
+                        playlistId: playlist.id,
+                        name: editing.name,
+                        description: editing.description,
+                      });
+                      if ("error" in result) setMessage(result.error);
+                      else {
+                        setEditing(undefined);
+                        await refresh();
+                      }
+                    });
+                  }}
+                  className="flex flex-col gap-2"
+                >
+                  <input
+                    value={editing.name}
+                    onChange={(event) =>
+                      setEditing({ ...editing, name: event.target.value })
+                    }
+                    aria-label={`Rename ${playlist.name}`}
+                    autoFocus
+                    className="min-w-0 rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink"
+                  />
+                  <input
+                    value={editing.description}
+                    onChange={(event) =>
+                      setEditing({ ...editing, description: event.target.value })
+                    }
+                    placeholder="Description (optional)"
+                    aria-label={`Description for ${playlist.name}`}
+                    className="min-w-0 rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink"
+                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button type="submit" disabled={isBusy || editing.name.trim() === ""}>
+                      Save
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => {
+                        setEditing(undefined);
+                        setMessage(undefined);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </form>
+              </li>
+            ) : (
+              <li key={playlist.id} className="flex items-center gap-2 px-3 py-2">
+                <button
+                  type="button"
+                  onClick={() => setOpenId(playlist.id)}
+                  className="min-w-0 flex-1 text-left"
+                >
+                  <span className="block truncate text-sm text-ink">{playlist.name}</span>
+                  <span className="block truncate text-xs text-muted">
+                    {playlist.trackCount} {playlist.trackCount === 1 ? "track" : "tracks"}
+                    {playlist.description !== "" && ` - ${playlist.description}`}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMessage(undefined);
+                    setEditing({
+                      id: playlist.id,
+                      name: playlist.name,
+                      description: playlist.description,
+                    });
+                  }}
+                  className="rounded px-2 py-1 text-xs text-muted hover:text-ink"
+                >
+                  Rename
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    startBusy(async () => {
+                      await deletePlaylistAction(playlist.id);
+                      await refresh();
+                    })
+                  }
+                  className="rounded px-2 py-1 text-xs text-muted hover:text-ink"
+                >
+                  Delete
+                </button>
+              </li>
+            ),
+          )}
         </ul>
       )}
     </div>
@@ -897,6 +978,34 @@ function PlaylistDetail({
           const entryId = (row as TrackListRow & { playlistTrackId: number }).playlistTrackId;
           startBusy(async () => {
             await removeFromPlaylistAction(entryId);
+            await load();
+          });
+        }}
+        onMove={(row, direction) => {
+          const entryId = (row as TrackListRow & { playlistTrackId: number }).playlistTrackId;
+          const nextOrder = movePlaylistEntry(
+            state.rows.map((entry) => entry.playlistTrackId),
+            entryId,
+            direction,
+          );
+          // The move is applied locally first so the row travels under the pointer
+          // instead of after a round trip -- the reorder is a position rewrite that
+          // cannot partially apply, so there is nothing to roll back on failure.
+          // `load()` afterwards is what reconciles with the server.
+          setState((previous) => ({
+            ...previous,
+            rows: nextOrder
+              .map((id) => previous.rows.find((entry) => entry.playlistTrackId === id))
+              .filter(
+                (entry): entry is TrackListRow & { playlistTrackId: number } =>
+                  entry !== undefined,
+              ),
+          }));
+          startBusy(async () => {
+            await reorderPlaylistAction({
+              playlistId,
+              orderedPlaylistTrackIds: nextOrder,
+            });
             await load();
           });
         }}

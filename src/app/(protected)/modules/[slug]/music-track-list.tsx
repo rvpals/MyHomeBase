@@ -33,6 +33,7 @@ export function TrackList({
   selected,
   onToggleSelected,
   onRemove,
+  onMove,
 }: {
   rows: TrackListRow[];
   emptyMessage: string;
@@ -44,6 +45,13 @@ export function TrackList({
   onToggleSelected?: (trackId: number) => void;
   /** Present only inside a playlist, where a row can be taken out of the list. */
   onRemove?: (row: TrackListRow) => void;
+  /**
+   * Present only inside a playlist, which is the one view with an order of its own --
+   * every other view is sorted by the query. Arrows rather than drag-and-drop: they
+   * need no new dependency and stay tappable on a phone, matching the widget list on
+   * the Stocks configuration screen.
+   */
+  onMove?: (row: TrackListRow, direction: "up" | "down") => void;
 }) {
   const player = useMusicPlayer();
 
@@ -67,10 +75,32 @@ export function TrackList({
 
   return (
     <ul className="divide-y divide-line rounded-xl border border-line">
-      {rows.map((row) => {
+      {rows.map((row, index) => {
         const isCurrent = player?.current?.id === row.id;
         return (
           <li key={`${row.id}-${row.displayTitle}`} className="flex items-center gap-2 pr-2">
+            {onMove !== undefined && (
+              <span className="ml-2 flex shrink-0 flex-col gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => onMove(row, "up")}
+                  disabled={index === 0}
+                  aria-label={`Move ${row.displayTitle} up`}
+                  className="rounded border border-line px-1.5 text-xs leading-4 text-brass-dark hover:bg-paper-raised disabled:opacity-30"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onMove(row, "down")}
+                  disabled={index === rows.length - 1}
+                  aria-label={`Move ${row.displayTitle} down`}
+                  className="rounded border border-line px-1.5 text-xs leading-4 text-brass-dark hover:bg-paper-raised disabled:opacity-30"
+                >
+                  ↓
+                </button>
+              </span>
+            )}
             {selectable && (
               <input
                 type="checkbox"

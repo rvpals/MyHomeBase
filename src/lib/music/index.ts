@@ -243,6 +243,8 @@ export {
   type StreamableTrack,
 } from "./music";
 
+export { movePlaylistEntry } from "./move-playlist-entry";
+
 export {
   refreshAlbumCounts,
   scanLibrary,

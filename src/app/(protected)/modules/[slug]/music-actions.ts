@@ -865,6 +865,7 @@ export async function reorderPlaylistAction(input: {
   await requireModuleAccess(ACCESS_MODULE_SLUG);
   const parsed = reorderPlaylistSchema.parse(input);
   deps.musicRepo.reorderPlaylist(parsed.playlistId, parsed.orderedPlaylistTrackIds);
+  revalidatePath("/modules/music-library");
   return { ok: true };
 }
 
