@@ -11,7 +11,16 @@ import type { NavigationTree, TreeModule, TreeSection } from "./types";
 export const HOME_SECTION: TreeSection = {
   id: "home",
   label: "Home",
-  href: "/home",
+  // `/?home=1`, not `/home` — there is no `/home` route. The dashboard is
+  // `src/app/(protected)/page.tsx`, which is `/`, so `/home` 404s.
+  //
+  // The query string is not decoration either: `?home=1` means "I clicked Home",
+  // and that is what shows the dashboard to a reader whose preference is to open
+  // a favourite module on startup. A bare `/` would 404 no longer but bounce
+  // straight back out to that module, leaving the home screen unreachable — the
+  // exact bug the `askedForHome` check in `page.tsx` was written to fix. Same
+  // href the shell and the module rail already use.
+  href: "/?home=1",
   hint: "The dashboard you land on.",
   icon: "home",
 };

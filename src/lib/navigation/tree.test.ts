@@ -36,7 +36,10 @@ describe("buildNavigationTree", () => {
   it("puts Home at the top and every module under it", () => {
     const tree = buildNavigationTree(MODULES, SECTIONS);
 
-    expect(tree.home.href).toBe("/home");
+    // `/?home=1`, not `/home`: there is no `/home` route, and the query string
+    // is what shows the dashboard to a reader who would otherwise be redirected
+    // to a favourite module. This assertion previously pinned the broken value.
+    expect(tree.home.href).toBe("/?home=1");
     expect(tree.modules.map((m) => m.slug)).toEqual(["journal", "expense"]);
     expect(tree.modules[0].sections).toHaveLength(3);
     expect(tree.modules[0].href).toBe("/modules/journal");
@@ -75,7 +78,7 @@ describe("findActiveModule", () => {
   });
 
   it("returns undefined for Home and for anything outside a module", () => {
-    expect(findActiveModule(tree, "/home")).toBeUndefined();
+    expect(findActiveModule(tree, "/")).toBeUndefined();
     expect(findActiveModule(tree, "/account")).toBeUndefined();
   });
 

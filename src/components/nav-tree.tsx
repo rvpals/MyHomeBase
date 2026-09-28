@@ -18,7 +18,7 @@
 // on a number by hand is how the two drift.
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   filterTree,
   findActiveModule,
@@ -147,53 +147,208 @@ function SectionRow({
 }
 
 /**
- * A module's sections, with its own group headings as labels between rows.
+ * A module's sections: grouped ones as nested boxes, ungrouped ones on a spine.
  *
- * The tree spends its one level of nesting on the module, so a module's internal
- * groups are *labels*, not a second accordion — the same trade `CompactSectionList`
- * makes, and for the same reason: a heading is a 20px label, and collapsing one
- * inside an already-collapsible module would be two chevrons deep for six rows.
+ * Administration is the only module that declares groups, and its headings are a
+ * real second level — `Configuration`, `Display Settings`, `Daily Quote` each own
+ * their screens. They are drawn as containers, not as captions between rows, so the
+ * heading reads as the level it is. Still no second accordion: the boxes are always
+ * open, so nothing costs an extra click.
+ *
+ * `grouped={false}` turns the boxes off for the filtered view — see below.
  */
 function SectionList({
   module,
   sections,
   activeHref,
   matches,
+  grouped = true,
 }: {
   module: TreeModule;
   sections: TreeSection[];
   activeHref: string;
   matches?: Map<string, [number, number]>;
+  /**
+   * Whether to draw group boxes. False while filtering: hits arrive ranked by
+   * match quality rather than in `adminNav` order, so a query matching two
+   * sections of one group with another group's hit between them would break the
+   * run in two and draw the same heading twice. A ranked list is flat by nature —
+   * boxing it would impose an order the ranking has deliberately discarded.
+   */
+  grouped?: boolean;
 }) {
-  const rendered: ReactNode[] = [];
-  let lastGroup: string | undefined;
+  const runs = grouped ? groupSections(sections) : [{ sections }];
 
+  return (
+    <ul className="flex flex-col gap-1.5 py-1.5 pl-4 pr-1.5">
+      {runs.map((run) =>
+        run.group ? (
+          <SectionGroupBox
+            key={`group-${run.group}`}
+            module={module}
+            run={run}
+            activeHref={activeHref}
+            matches={matches}
+          />
+        ) : (
+          // Ungrouped sections — every module but Administration. Unchanged: a
+          // spine down the left with an elbow out to each row.
+          run.sections.map((section, index) => (
+            <SpinedRow
+              key={section.id}
+              module={module}
+              section={section}
+              isLast={index === run.sections.length - 1}
+              activeHref={activeHref}
+              matches={matches}
+            />
+          ))
+        ),
+      )}
+    </ul>
+  );
+}
+
+/** A run of adjacent sections sharing a `group` (or a run of ungrouped ones). */
+interface SectionRun {
+  group?: string;
+  groupHref?: string;
+  groupIcon?: string;
+  sections: TreeSection[];
+}
+
+/**
+ * Splits a module's sections into consecutive runs by `group`.
+ *
+ * Adjacency is the rule, not identity: a group interrupted by another and resumed
+ * draws as two boxes rather than one box with a hole in it. `TreeSection` documents
+ * that expectation, and `adminNav`'s order satisfies it.
+ */
+function groupSections(sections: TreeSection[]): SectionRun[] {
+  const runs: SectionRun[] = [];
   for (const section of sections) {
-    if (section.group && section.group !== lastGroup) {
-      rendered.push(
-        <li
-          key={`group-${section.group}`}
-          className="px-2 pb-0.5 pt-2 text-[0.6875rem] font-semibold uppercase tracking-wider text-muted"
-        >
-          {section.group}
-        </li>,
-      );
+    const current = runs[runs.length - 1];
+    if (current && current.group === section.group) {
+      current.sections.push(section);
+      continue;
     }
-    lastGroup = section.group;
-
-    rendered.push(
-      <li key={section.id}>
-        <SectionRow
-          moduleSlug={module.slug}
-          section={section}
-          active={section.href === activeHref}
-          match={matches?.get(`${module.slug}:${section.id}`)}
-        />
-      </li>,
-    );
+    runs.push({
+      group: section.group,
+      groupHref: section.groupHref,
+      groupIcon: section.groupIcon,
+      sections: [section],
+    });
   }
+  return runs;
+}
 
-  return <ul className="flex flex-col py-1 pl-4 pr-1">{rendered}</ul>;
+/** One section row on the module's spine, with its elbow. The ungrouped shape. */
+function SpinedRow({
+  module,
+  section,
+  isLast,
+  activeHref,
+  matches,
+}: {
+  module: TreeModule;
+  section: TreeSection;
+  isLast: boolean;
+  activeHref: string;
+  matches?: Map<string, [number, number]>;
+}) {
+  return (
+    <li className="relative pl-4">
+      {/* The trunk linking every section back up to the module heading. Stops
+          halfway down the last row, where its elbow leaves the trunk, so the
+          line never dangles below the final item. */}
+      <span
+        aria-hidden
+        className={`absolute left-0 w-px bg-line ${isLast ? "top-0 h-[1.125rem]" : "inset-y-0"}`}
+      />
+      {/* The elbow out to this row. `top-[1.125rem]` lands on the row's vertical
+          centre: `py-1.5` (6px) above a 20px line box. */}
+      <span aria-hidden className="absolute left-0 top-[1.125rem] h-px w-2.5 bg-line" />
+      <SectionRow
+        moduleSlug={module.slug}
+        section={section}
+        active={section.href === activeHref}
+        match={matches?.get(`${module.slug}:${section.id}`)}
+      />
+    </li>
+  );
+}
+
+/**
+ * A group of sections as a nested box inside the module's slab.
+ *
+ * The second level Administration actually has — `Configuration`, `Display
+ * Settings`, `Daily Quote` — drawn as a container rather than the caption it used
+ * to be, so the heading reads as a level of its own. Only Administration declares
+ * groups today, so this is the only place it appears.
+ *
+ * Inset and quieter than the module slab above it: `bg-paper`, a plain border and
+ * no `card-embossed`. A nested box with the same weight as its parent competes
+ * with it, and the module heading has to stay the loudest thing in the column.
+ *
+ * No spine or elbows inside. The box's own border is the containment signal, and
+ * running a second trunk down a bordered box is two answers to one question.
+ */
+function SectionGroupBox({
+  module,
+  run,
+  activeHref,
+  matches,
+}: {
+  module: TreeModule;
+  run: SectionRun;
+  activeHref: string;
+  matches?: Map<string, [number, number]>;
+}) {
+  // The header links only when the heading is itself a page. Most are not:
+  // "Configuration" has no route, and a header that navigates on some groups and
+  // not others is honest here precisely because it looks different — a link is
+  // styled as one, a label is not.
+  const headerContent = (
+    <>
+      {run.groupIcon && <TreeIcon name={run.groupIcon} className="h-3.5 w-3.5 shrink-0" />}
+      <span className="truncate">{run.group}</span>
+    </>
+  );
+  const headerClass =
+    "flex w-full items-center gap-1.5 px-2 py-1.5 text-[0.6875rem] font-semibold uppercase tracking-wider";
+  const isHeaderActive = run.groupHref !== undefined && run.groupHref === activeHref;
+
+  return (
+    <li className="overflow-hidden rounded-md border border-line bg-paper">
+      {run.groupHref ? (
+        <Link
+          href={run.groupHref}
+          aria-current={isHeaderActive ? "page" : undefined}
+          className={`${headerClass} border-b border-line transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brass ${
+            isHeaderActive
+              ? "bg-brass-soft text-brass-dark"
+              : "text-muted hover:bg-line/50 hover:text-ink"
+          }`}
+        >
+          {headerContent}
+        </Link>
+      ) : (
+        <span className={`${headerClass} border-b border-line text-muted`}>{headerContent}</span>
+      )}
+      <ul className="flex flex-col p-1">
+        {run.sections.map((section) => (
+          <li key={section.id}>
+            <SectionRow
+              moduleSlug={module.slug}
+              section={section}
+              active={section.href === activeHref}
+              match={matches?.get(`${module.slug}:${section.id}`)}
+            />
+          </li>
+        ))}
+      </ul>
+    </li>
+  );
 }
 
 /** One module heading and, when expanded, its sections. */
@@ -215,25 +370,32 @@ function ModuleGroup({
   matches?: Map<string, [number, number]>;
 }) {
   return (
-    <li>
+    // The slab. `card-embossed` + `card-raised-hover` is design.md's sanctioned pair
+    // for "a card that should read as a thick slab" — the same treatment the old
+    // section panel gave its accordion groups, and for the same reason: a heading and
+    // its children separated only by indentation is the weakest signal available in a
+    // column this narrow. `overflow-hidden` clips the children's spine to the box, so
+    // the focus ring on the header below is `ring-inset` or it would be cut off.
+    <li className="card-embossed card-raised-hover overflow-hidden rounded-lg border border-line bg-paper-raised">
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={expanded}
         title={module.hint ?? module.name}
-        className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
-          containsActive ? "font-medium text-brass-dark" : "text-ink hover:bg-line/40"
-        }`}
+        // `font-display` and `text-base`: a module name is a heading, and design.md
+        // sends headings and module names to the display face. It is the one thing
+        // in this column that names a *place you own* rather than a page inside one,
+        // so it is deliberately a step up in both size and face from its sections'
+        // `text-sm` body font.
+        className={`flex w-full items-center gap-2 px-2.5 py-2 text-left font-display text-base tracking-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brass ${
+          expanded ? "border-b border-line" : ""
+        } ${containsActive ? "font-semibold text-brass-dark" : "text-ink hover:bg-line/40"}`}
       >
-        <span
-          className={`inline-block w-3 shrink-0 text-muted transition-transform motion-reduce:transition-none ${
-            expanded ? "rotate-90" : ""
-          }`}
-          aria-hidden
-        >
-          &rsaquo;
-        </span>
-        <ModuleIcon name={module.icon} className="h-4 w-4 shrink-0" />
+        {/* No chevron. The slab says it already: expanded, it has a divider under
+            the heading and its sections below; collapsed, it is a closed box. A
+            glyph repeating that is a second answer to a question already answered,
+            and `aria-expanded` above carries it for anyone not reading the shape. */}
+        <ModuleIcon name={module.icon} className="h-[1.125rem] w-[1.125rem] shrink-0" />
         <span className="flex-1 truncate">{module.name}</span>
       </button>
       {expanded && sections.length > 0 && (
@@ -242,6 +404,9 @@ function ModuleGroup({
           sections={sections}
           activeHref={activeHref}
           matches={matches}
+          // `matches` is passed only while filtering, so its presence is the
+          // filtering flag the boxes key off — see `SectionList`'s `grouped`.
+          grouped={matches === undefined}
         />
       )}
     </li>
@@ -329,6 +494,13 @@ export function NavTree({
         sections: module.sections,
         open: expanded.has(module.slug),
       }));
+
+  // Home's href carries a query string (`/?home=1` — see `HOME_SECTION`), but
+  // `activeHref` is a `usePathname()` value and never has one. Comparing the two
+  // directly would leave the row unhighlighted on the very screen it points at,
+  // so the path is compared on its own. Only Home needs this: every other row's
+  // href is a bare path.
+  const isHomeActive = activeHref === tree.home.href.split("?")[0];
 
   // Collapsed: a strip, not a rail. Deliberately too narrow to navigate from —
   // it holds one control, and that control's whole job is to bring the tree back.
@@ -420,19 +592,25 @@ export function NavTree({
         <Link
           href={tree.home.href}
           title={tree.home.hint ?? tree.home.label}
-          aria-current={activeHref === tree.home.href ? "page" : undefined}
-          className={`mb-1 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
-            activeHref === tree.home.href
-              ? "bg-brass-soft font-medium text-brass-dark"
+          aria-current={isHomeActive ? "page" : undefined}
+          // Sized and faced like a module heading, because that is what it is at
+          // this level — a top-level destination, not a section. Left as a plain row
+          // rather than a slab: a slab is a container for children, and Home has
+          // none, so an empty one would promise something that never opens.
+          className={`mb-2 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 font-display text-base tracking-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
+            isHomeActive
+              ? "bg-brass-soft font-semibold text-brass-dark"
               : "text-ink hover:bg-line/60"
           }`}
         >
-          <span className="w-3 shrink-0" aria-hidden />
-          <SlotIcon slot={HOME_SLOT} className="h-4 w-4 shrink-0" />
+          <SlotIcon slot={HOME_SLOT} className="h-[1.125rem] w-[1.125rem] shrink-0" />
           <span className="truncate">{tree.home.label}</span>
         </Link>
 
-        <ul className="flex flex-col gap-0.5">
+        {/* `gap-2`, not `gap-0.5`: each module is now a raised slab with its own
+            cast shadow, and slabs stacked flush read as one box with lines across
+            it. The gap is what makes them separate objects. */}
+        <ul className="flex flex-col gap-2">
           {rows.map(({ module, sections, open }) => (
             <ModuleGroup
               key={module.slug}

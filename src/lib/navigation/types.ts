@@ -20,12 +20,25 @@ export interface TreeSection {
    * The heading this section sits under *within* its module ("Configuration",
    * "Data Management"), or `undefined` for an ungrouped section.
    *
-   * A string rather than nesting, because the tree has already spent its one level
-   * of nesting on the module. A module's own groups become labels between rows —
-   * the same trade `CompactSectionList` already makes, and for the same reason: a
-   * heading is a label, not a level, so nothing costs an extra click.
+   * Still a flat string rather than a nested node: consecutive sections sharing a
+   * `group` are what makes a group, so a module's sections stay one array and the
+   * tree stays buildable from `sectionsFor(slug)` alone. `NavTree` draws the run as
+   * a nested box inside the module's slab — the second level is a *rendering* of
+   * this field, not a second level of data. Sections of one group must therefore be
+   * adjacent in the array; a group interrupted and resumed draws as two boxes.
    */
   group?: string;
+  /**
+   * The group heading's own destination, when the heading is itself a page.
+   *
+   * Only meaningful alongside `group`, and usually absent: a heading is normally a
+   * pure label ("Configuration" has no `/admin/configuration` route). When it is
+   * set, `NavTree` makes the box's header a link. Every section in one group is
+   * expected to carry the same value, since they describe the same heading.
+   */
+  groupHref?: string;
+  /** The group heading's glyph, for `TreeIcon`. Same expectation as `groupHref`. */
+  groupIcon?: string;
 }
 
 /** A module — a collapsible heading, and never itself a destination. */

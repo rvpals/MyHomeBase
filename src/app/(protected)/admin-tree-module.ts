@@ -16,13 +16,21 @@ import { adminNav } from "./admin/nav";
 
 /**
  * Flattens `adminNav`'s accordion groups into leaves carrying their heading as a
- * `group` label — the shape the tree uses, since it spends its one level of nesting
- * on the module itself.
+ * `group` label, plus the heading's own href and icon.
+ *
+ * Flat rather than nested because `TreeSection` is flat: a run of adjacent sections
+ * sharing a `group` *is* the group, and `NavTree` draws that run as a nested box.
+ * `flatMap` preserves `adminNav`'s order, so each group's children stay adjacent and
+ * every group draws as exactly one box.
+ *
+ * `groupHref` is the heading's own page when it has one — only Daily Quote does;
+ * Configuration and Display Settings are pure headings with no route, so their
+ * children get `undefined` and their boxes render an unclickable header.
  *
  * A node with no `href` and no children is dropped: `adminNav` uses hrefless nodes
  * as pure headings, and one with nothing under it would be a label with no rows.
  */
-function flattenAdminNav(nodes: SectionNode[]): TreeSection[] {
+export function flattenAdminNav(nodes: SectionNode[]): TreeSection[] {
   return nodes.flatMap((node): TreeSection[] => {
     const children = node.children ?? [];
     if (children.length > 0) {
@@ -35,6 +43,8 @@ function flattenAdminNav(nodes: SectionNode[]): TreeSection[] {
           hint: child.hint,
           icon: child.icon,
           group: node.label,
+          groupHref: node.href,
+          groupIcon: node.icon,
         }));
     }
     if (!node.href) return [];
