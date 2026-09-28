@@ -360,11 +360,39 @@ export function StockDailyGlance({
       defaultOpen
       className={className}
       // This used to be a footnote below the mover lists. It explains the
-      // Total value / Per share selector at the top of the card body — so as a
+      // Total value / Per share selector that now sits immediately to its left — as a
       // footnote it was ~400px below the control it described, past two lists
       // the reader had to scroll through first.
       headerAction={
         <div className="flex items-center gap-2">
+          {/* The selector governs the mover lists only — per-share is meaningless
+              for the buckets below, which mix securities at different prices. It sits
+              here, right-aligned to the left of the Explanation note that describes it,
+              rather than at the top of the card body. `hidden max-lg:flex` below repeats
+              it under the title on a phone, where the title bar has no room for it. */}
+          <div className="flex items-center gap-1 text-xs max-lg:hidden">
+            <span className="mr-1 text-muted">Measure by</span>
+            {(["total", "perShare"] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => setMeasure(option)}
+                aria-pressed={measure === option}
+                title={
+                  option === "total"
+                    ? "Shares × price move — the effect on your portfolio"
+                    : "The move on one share — the security's own move, whatever you hold"
+                }
+                className={`rounded-md border px-2 py-1 font-medium transition-colors ${
+                  measure === option
+                    ? "border-brass bg-brass-soft text-brass-dark"
+                    : "border-line text-muted hover:bg-paper-raised"
+                }`}
+              >
+                {option === "total" ? "Total value" : "Per share"}
+              </button>
+            ))}
+          </div>
           {/* Ahead of the note so the order reads action-then-explanation, and
               because the same refresh icon sits in the same relative spot on the
               Investments dashboard heading. */}
@@ -396,11 +424,11 @@ export function StockDailyGlance({
 
       <GlanceRefreshProgress state={refresh} />
 
-      {/* The selector governs the mover lists only — per-share is meaningless
-          for the buckets below, which mix securities at different prices. It
-          sits at the top of the card rather than in the title bar so the title
-          bar stays a title, and so it wraps instead of crowding on a phone. */}
-      <div className="mb-4 flex flex-wrap items-center gap-1 text-xs">
+      {/* The compact half of the selector above. Below 1024px the title bar is already
+          carrying the title, the launch button, refresh and the Explanation note, so the
+          selector drops out of it (`max-lg:hidden` there) and reappears here at the top
+          of the body — where it can wrap freely instead of crowding the bar. */}
+      <div className="mb-4 hidden flex-wrap items-center gap-1 text-xs max-lg:flex">
         <span className="mr-1 text-muted">Measure by</span>
         {(["total", "perShare"] as const).map((option) => (
           <button

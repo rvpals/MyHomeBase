@@ -36,17 +36,22 @@ import { useRouter } from "next/navigation";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { TreeIcon } from "@/components/tree-icons";
 import { PhotoExifDialog } from "@/components/photo-exif-dialog";
+// From the leaf files, not the `@/lib/journal-photos` barrel: that barrel also
+// re-exports `NodePhotoFileStore`, which imports `node:fs/promises` and
+// `node:path`. A client component pulling those in fails the webpack build with
+// an unhandled-scheme error. Everything named here is pure. Same split
+// `src/lib/dashboard-texture/index.ts` documents for `better-sqlite3`.
 import {
   DEFAULT_SLIDESHOW_OPTIONS,
   SLIDESHOW_EFFECT_CHOICES,
   SLIDESHOW_INTERVAL_CHOICES,
-  photoJournalDate,
   slideshowIntervalMs,
-  type ExifGpsFix,
-  type ExifTag,
   type SlideshowEffect,
   type SlideshowOptions,
-} from "@/lib/journal-photos";
+} from "@/lib/journal-photos/slideshow";
+import { photoJournalDate } from "@/lib/journal-photos/viewer-date";
+import type { ExifGpsFix } from "@/lib/journal-photos/exif-all";
+import type { ExifTag } from "@/lib/journal-photos/exif-tags";
 
 /** One photo in the viewer. A type, not a record — the caller maps its own data in. */
 export interface ViewerPhoto {

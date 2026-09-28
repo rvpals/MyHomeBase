@@ -8,7 +8,12 @@ import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import type { Module } from "@/lib/modules";
-import { ALLOWED_AVATAR_MIME_TYPES, MAX_AVATAR_BYTES, type User, type UserRole } from "@/lib/user";
+// From the leaf files, not the `@/lib/user` barrel: that barrel also re-exports
+// `./user`, which imports `node:crypto`, and a client component pulling it in
+// fails the webpack build with an unhandled-scheme error. Same split
+// `src/lib/dashboard-texture/index.ts` documents for `better-sqlite3`.
+import { ALLOWED_AVATAR_MIME_TYPES, MAX_AVATAR_BYTES } from "@/lib/user/schema";
+import type { User, UserRole } from "@/lib/user/types";
 import {
   clearUserAvatarAction,
   createUserAction,

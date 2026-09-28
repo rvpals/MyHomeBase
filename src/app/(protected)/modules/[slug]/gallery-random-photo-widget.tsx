@@ -17,7 +17,10 @@ import { SlotIcon } from "@/components/slot-icon";
 import { TreeIcon } from "@/components/tree-icons";
 import type { FavPhoto } from "@/lib/fav-photos";
 import { getIconSlot } from "@/lib/icons";
-import type { RandomPhotoPick } from "@/lib/journal-photos";
+// From the leaf file, not the `@/lib/journal-photos` barrel: that barrel also
+// re-exports `NodePhotoFileStore`, which imports `node:fs/promises` and
+// `node:path`, and a client component pulling it in fails the webpack build.
+import type { RandomPhotoPick } from "@/lib/journal-photos/random";
 import { calendarAgeSince, formatCalendarAge } from "@/lib/shared/date";
 import {
   listAllPhotosInFolderAction,

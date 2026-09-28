@@ -1,12 +1,14 @@
-import {
-  EXIF_HEADER_BYTES,
-  dateFromFileName,
-  dayFolderDateOf,
-  listPhotoFoldersForRange,
-  readExifDate,
-  readJpegSize,
-  type PhotoFileStore,
-} from "@/lib/journal-photos";
+// From the leaf files, not the `@/lib/journal-photos` barrel. That barrel
+// re-exports `NodePhotoFileStore`, which imports `node:fs/promises` and
+// `node:path` — and `@/lib/photo-magic`'s own barrel re-exports this file, so a
+// client component importing a type from it would drag the Node builtins into
+// the browser bundle and fail the webpack build. Everything named here is pure;
+// the file store arrives as an injected port, never as a concrete import.
+import { EXIF_HEADER_BYTES, readExifDate } from "@/lib/journal-photos/exif";
+import { readJpegSize } from "@/lib/journal-photos/jpeg-size";
+import { dateFromFileName, dayFolderDateOf } from "@/lib/journal-photos/paths";
+import { listPhotoFoldersForRange } from "@/lib/journal-photos/range";
+import type { PhotoFileStore } from "@/lib/journal-photos/ports";
 import type { MagicScanRunRepository, PhotoIndexRepository } from "./ports";
 import type { IndexedPhoto, ScanRunProgress } from "./types";
 

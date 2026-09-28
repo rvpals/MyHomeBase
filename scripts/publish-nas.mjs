@@ -197,7 +197,12 @@ if (!response.ok) {
 const scratch = mkdtempSync(path.join(tmpdir(), "mhb-prebuild-"));
 const tarballPath = path.join(scratch, tarballName);
 writeFileSync(tarballPath, Buffer.from(await response.arrayBuffer()));
-execFileSync("tar", ["-xzf", tarballPath, "-C", scratch]);
+// `cwd` + a RELATIVE tarball path, not `-C <abs>`. Git Bash's GNU tar reads a
+// `C:\...` argument to `-f` as a remote host spec and dies with "Cannot connect
+// to C: resolve failed"; `--force-local` does not save it either. Running from
+// the destination sidesteps the whole drive-letter question — the same fix the
+// sharp step below already carries.
+execFileSync("tar", ["-xzf", path.relative(scratch, tarballPath)], { cwd: scratch });
 
 const arm64Binary = path.join(scratch, "build", "Release", "better_sqlite3.node");
 assertIsAarch64Elf(arm64Binary);
