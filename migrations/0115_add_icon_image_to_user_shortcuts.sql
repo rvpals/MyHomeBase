@@ -1,0 +1,61 @@
+-- Lets a shortcut carry an uploaded picture instead of a glyph.
+--
+-- WHY THIS IS A SEPARATE MIGRATION AND NOT PART OF 0114. It was briefly folded
+-- into 0114 on the reasoning that that file was still uncommitted, so nothing
+-- could have run it. That reasoning was wrong: being untracked by git says
+-- nothing about whether a migration has been APPLIED. 0114 had already run on
+-- the NAS, and the runner records applied filenames in sys_schema_migrations
+-- and skips them -- so an edited 0114 would never re-run there, and the live
+-- table would have kept the old shape while the code expected the new one.
+-- That is exactly what happened: `no such column: icon_image` on every home
+-- screen render.
+--
+-- The rule this cost: **a migration is immutable once it has run anywhere.**
+-- Check sys_schema_migrations, not git, before touching one.
+--
+-- So this is the exp_categories 0029 -> 0034 two-step that coding-guide.md
+-- warns about. It is the right shape here even so -- the alternative is
+-- rewriting history a deployed database has already applied.
+--
+-- WHAT THE COLUMNS ARE FOR. `icon` (a glyph name) and `icon_image` (a picture)
+-- are the two answers to one question -- what does this tile show -- mirroring
+-- the two answers `kind` gives to "where does it go". The upload WINS when
+-- present, and `icon` stays populated underneath it as the fallback, so
+-- removing a picture reveals the glyph rather than blanking the tile.
+--
+-- A per-row image is a BLOB plus a <name>_mime_type column served by a
+-- dedicated route, per coding-guide.md -> "Per-row images".
+--
+-- THE NON-OBVIOUS OBLIGATION that comes with the blob: every ordinary read of
+-- this table must name its columns explicitly and omit this one, or the bytes
+-- ride along on every home-screen render. The repository lists columns rather
+-- than using SELECT *, and derives `has_icon_image` in SQL so a caller can
+-- choose artwork-or-glyph without touching the bytes. The serving route is the
+-- single reader of the blob itself.
+--
+-- PRIVATE TO THE OWNER, unlike every other image column in this database. A
+-- vendor icon or a module graphic is household-wide, so "is this reader signed
+-- in" is the whole question its route asks. These rows are per-user, so the
+-- serving route looks the shortcut up scoped by the session's user id and 404s
+-- on someone else's -- otherwise one reader could enumerate ids and pull
+-- another's pictures. Signed-in and yours are different questions, and
+-- sys_user_shortcuts was built on that distinction.
+--
+-- Downscaled to a small WebP before it lands here (a tile draws the icon at
+-- ~28px), so this holds kilobytes, not the multi-megabyte original someone
+-- picked off a phone.
+--
+-- NULL means "no upload, draw the glyph" -- the only absence there is, since
+-- `icon` is always set. Existing rows get NULL and keep drawing their glyph,
+-- so this migration changes nothing on screen until someone uploads.
+ALTER TABLE sys_user_shortcuts ADD COLUMN icon_image BLOB;
+
+-- The type to serve icon_image back as. Empty string, not NULL, when there is
+-- no upload -- matching `url`, `module_slug` and `section_id`, so every
+-- "unused" column in this table spells absence the same way and no reader has
+-- to remember which ones are nullable.
+--
+-- SVG is excluded by the shared allowlist in src/lib/shared/image-upload.ts on
+-- purpose: it can carry script, and these bytes are served from the app's own
+-- origin.
+ALTER TABLE sys_user_shortcuts ADD COLUMN icon_mime_type TEXT NOT NULL DEFAULT '';

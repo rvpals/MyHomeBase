@@ -39,9 +39,13 @@ describe("resolveHomeWidgets", () => {
     const widgets = resolveHomeWidgets(
       "stockGlance,carousel,dailyQuote,todayInHistory",
     );
+    // `myShortcuts` is absent from this stored value, so it is restored at its
+    // catalogue position — immediately before `dailyQuote`, the first card that
+    // follows it in the catalogue and is present here.
     expect(widgets.map((widget) => widget.id)).toEqual([
       "stockGlance",
       "carousel",
+      "myShortcuts",
       "dailyQuote",
       "todayInHistory",
     ]);
@@ -81,6 +85,7 @@ describe("resolveHomeWidgets", () => {
     const widgets = resolveHomeWidgets("dailyQuote,todayInHistory,stockGlance");
     expect(widgets.map((widget) => widget.id)).toEqual([
       "carousel",
+      "myShortcuts",
       "dailyQuote",
       "todayInHistory",
       "stockGlance",

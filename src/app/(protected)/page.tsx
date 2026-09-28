@@ -27,10 +27,13 @@ import {
 } from "@/lib/stock-positions";
 import { getAccessibleModules, isAdmin } from "@/lib/user";
 import { getUserPreferences, resolveStartupDestination } from "@/lib/user-preferences";
+import { resolveShortcuts } from "@/lib/user-shortcuts";
 import { deps } from "@/lib/wiring";
 import { BadLoginAlert } from "./bad-login-alert";
 import { DailyQuoteWidget } from "./daily-quote-widget";
 import { HomeShell } from "./home-shell";
+import { MyShortcutsWidget } from "./my-shortcuts-widget";
+import { getNavTreeData } from "./nav-tree-data";
 import { StockDailyGlance } from "./modules/[slug]/stock-daily-glance";
 import { PAGE_CONTAINER } from "./page-container";
 import { StartupMessage } from "./startup-message";
@@ -100,6 +103,23 @@ export default async function Home({
     ? listTodayInHistory(deps.journalRepo, todayIsoLocal())
     : [];
 
+  // My Shortcuts (migrations/0114). Per-person, unlike every other card's data:
+  // the widget switch above is the household's, the tiles inside it are this
+  // reader's own.
+  //
+  // Each one is resolved against the reader's own navigation tree rather than
+  // being drawn from the stored row, which is what re-checks access on every
+  // render: the tree is already filtered by `getAccessibleModules`, so a
+  // shortcut into a module they have lost is reported as unavailable instead of
+  // linked. A stored href could not have been checked this way — see the
+  // migration log.
+  const shortcutTree =
+    currentUser && shows("myShortcuts") ? getNavTreeData(currentUser).tree : undefined;
+  const shortcuts =
+    shortcutTree && currentUser
+      ? resolveShortcuts(deps.userShortcutsRepo.list(currentUser.id), shortcutTree)
+      : [];
+
   // Set by a deployment; blank once someone has clicked OK. Read here rather than
   // in the layout so it appears on the home screen specifically.
   const startupMessage = getStartupMessage(deps.settingsRepo);
@@ -144,6 +164,10 @@ export default async function Home({
   // and leave the real first card with a stray gap above it.
   const hasContent: Record<HomeWidgetId, boolean> = {
     carousel: true,
+    // Always true, unlike Daily Quote: an empty shortcut list draws the card's
+    // empty state with its Add button, and hiding the card until a shortcut
+    // exists would leave nowhere to make the first one.
+    myShortcuts: Boolean(currentUser),
     dailyQuote: Boolean(quote),
     todayInHistory: true,
     stockGlance: positions.length > 0,
@@ -210,6 +234,25 @@ export default async function Home({
                     // the artwork from the image route.
                     hasImage: appModule.hasCarouselImage,
                     imageVersion: appModule.updatedAt,
+                  }))}
+                />
+              );
+            case "myShortcuts":
+              return (
+                <MyShortcutsWidget
+                  key={id}
+                  className={spacing}
+                  shortcuts={shortcuts}
+                  // Plain data across the boundary -- the card is a client
+                  // island. Only what the picker draws, and only the modules
+                  // this reader can reach.
+                  modules={(shortcutTree?.modules ?? []).map((treeModule) => ({
+                    slug: treeModule.slug,
+                    name: treeModule.name,
+                    sections: treeModule.sections.map((section) => ({
+                      id: section.id,
+                      label: section.label,
+                    })),
                   }))}
                 />
               );

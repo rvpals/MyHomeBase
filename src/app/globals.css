@@ -543,11 +543,42 @@ html[data-music-player] .app-main {
    bevel against. That is accepted rather than patched with per-theme alphas:
    forcing literals per polarity is exactly what the token system exists to
    avoid. */
+/* The depth cue that survives a dark theme.
+ *
+ * A cast shadow is `rgba(0,0,0,…)`, and on Daybreak it falls on near-white paper and
+ * reads immediately. On Signal Deck it falls on `#12161a` and is very nearly the same
+ * color as the page — black on near-black is not a shadow, it is nothing. Raising the
+ * alpha does not help; it is still black on black.
+ *
+ * What actually reads as raised on a dark surface is the **lit edge**, so that is what
+ * scales: `--edge-lit` mixes white against `--ink`, which is near-white on a dark theme
+ * and near-black on a light one. On Signal Deck the top edge brightens to a genuine
+ * highlight and the slab lifts; on Daybreak it stays a faint white hairline and the
+ * cast keeps doing the work, exactly as it already did. One expression, opposite
+ * behaviour per theme, no `isDark` flag to keep in step — and user-authored themes get
+ * it for free, which a hardcoded light/dark branch could never do.
+ *
+ * Same mechanism and same reasoning as `.shell-accent-text` above; see its comment for
+ * the measured version of the argument.
+ */
+:root {
+  --edge-lit: color-mix(in srgb, #fff 62%, var(--ink));
+  --edge-lit-soft: color-mix(in srgb, #fff 34%, var(--ink));
+}
+
 .card-embossed {
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    /* Lit top edge — the cue that carries the dark themes. */
+    inset 0 1px 0 color-mix(in srgb, var(--edge-lit) 26%, transparent),
+    /* Shaded underside, and a faint lit bottom lip just inside it. The lip is what
+       stops a dark slab dissolving into the page along its bottom border, where the
+       cast shadow has nothing to darken. */
     inset 0 -2px 3px -1px rgba(0, 0, 0, 0.28),
-    0 0 0 1px rgba(0, 0, 0, 0.24),
+    inset 0 -1px 0 color-mix(in srgb, var(--edge-lit-soft) 12%, transparent),
+    /* The rim. Pure black is invisible on Signal Deck, so it mixes toward `--ink`
+       the same way the lit edge does — a dark theme gets a pale hairline defining
+       the slab's outline, a light theme keeps the dark ring it always had. */
+    0 0 0 1px color-mix(in srgb, var(--edge-lit) 14%, rgba(0, 0, 0, 0.24)),
     0 3px 6px -2px rgba(0, 0, 0, 0.32),
     0 10px 22px -8px rgba(0, 0, 0, 0.34);
 }
@@ -560,9 +591,13 @@ html[data-music-player] .app-main {
    and must not move out from under the pointer mid-click. */
 .card-embossed.card-raised-hover:hover {
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    /* The lit edge brightens as the slab rises. On a dark theme this *is* the hover
+       feedback — the cast growing from one invisible black to a slightly larger
+       invisible black would read as nothing happening at all. */
+    inset 0 1px 0 color-mix(in srgb, var(--edge-lit) 38%, transparent),
     inset 0 -2px 3px -1px rgba(0, 0, 0, 0.32),
-    0 0 0 1px rgba(0, 0, 0, 0.28),
+    inset 0 -1px 0 color-mix(in srgb, var(--edge-lit-soft) 16%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--edge-lit) 20%, rgba(0, 0, 0, 0.28)),
     0 4px 8px -2px rgba(0, 0, 0, 0.36),
     0 14px 28px -8px rgba(0, 0, 0, 0.42);
 }
@@ -697,6 +732,59 @@ html[data-music-player="minimized"] {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(10rem, 14rem));
   justify-content: start;
+}
+
+/* A My Shortcuts tile: `Button`'s switch mechanic on a square, two-line target.
+
+   WHY THIS IS THE BUTTON VOCABULARY AND NOT A CARD'S. design.md draws the line at
+   *is it clickable*: a button is physical and collapses when pressed, a card or
+   panel stays calm with a hairline border and a soft cast. A shortcut tile is a
+   single clickable action that navigates — it is a button that happens to be
+   square, not a small card. So it takes the hard offset deliberately, and the
+   rule "don't give a new panel a hard shadow" is not being bent: this isn't a
+   panel.
+
+   WHY NOT JUST USE `Button`. Same reasoning the doc gives for extending rather
+   than duplicating — except `Button` is `rounded-full` and a single-line
+   `inline-flex`, and a tile is a rounded square stacking a glyph above a name
+   that wraps to two lines. Adding a "square, two-line" size to `Button` would put
+   a shape nothing else wants into the app's most-used component. The *mechanic*
+   is what matters and is copied exactly: 4px resting, 5px and a 0.5 lift on
+   hover, collapsed to 0 and pressed down on active, all in `--line` — the same
+   values and the same token `Button`'s `secondary` variant uses, so a tile and a
+   secondary button are made of the same material.
+
+   Reduced motion drops the travel but keeps the shadow change, as `Button` does. */
+.shortcut-tile {
+  box-shadow: 0 4px 0 0 var(--line);
+  transition: all 150ms;
+}
+
+.shortcut-tile:hover {
+  box-shadow: 0 5px 0 0 var(--line);
+  transform: translateY(-0.125rem);
+}
+
+.shortcut-tile:active {
+  box-shadow: 0 0 0 0 var(--line);
+  transform: translateY(0.25rem);
+}
+
+/* An unreachable tile is not pressable, so it keeps the resting depth and never
+   moves — a target that lifts under the cursor but goes nowhere reads as broken. */
+.shortcut-tile-dead {
+  box-shadow: 0 4px 0 0 var(--line);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shortcut-tile {
+    transition: none;
+  }
+
+  .shortcut-tile:hover,
+  .shortcut-tile:active {
+    transform: none;
+  }
 }
 
 /* Printing (and "Save as PDF"): print the `.print-sheet` element alone as a clean

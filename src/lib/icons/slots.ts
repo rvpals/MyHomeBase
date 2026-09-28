@@ -143,6 +143,35 @@ export const ICON_SLOTS: IconSlot[] = [
     wired: true,
     namespace: "tree",
   },
+  {
+    id: "homescreen_card_my_shortcuts",
+    label: "My Shortcuts card",
+    group: "Home screen",
+    where: "Home screen → the My Shortcuts card header, immediately left of the title.",
+    // `rocket`, not `link` — there is no link glyph in either set, and a slot's
+    // `defaultConcept` must name one that already renders. Launching is what a
+    // shortcut is for, so the compromise is a small one. (Same kind of substitution
+    // the floating clock made with `calendar`.)
+    defaultConcept: "rocket",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "homescreen_shortcut_add",
+    label: "Add shortcut",
+    group: "Home screen",
+    where: "Home screen → My Shortcuts card → the button that opens the new-shortcut dialog.",
+    defaultConcept: "plus",
+    wired: true,
+    namespace: "tree",
+  },
+  // A shortcut's OWN icon has deliberately no slot, and could not have one. A slot is a
+  // stable id for a fixed position, registered here at build time and persisted in
+  // `ico_slot_overrides.slot_id`; a reader's shortcut list is neither fixed nor known
+  // here, so there is no id to register. The glyph is user *data* — the same kind of
+  // thing as the name beside it — stored on the row and drawn with `TreeIcon`. The
+  // edit and delete controls on each tile are row actions, which the rules at the top
+  // of this file already exclude.
 
   /* ---------------------------------------------------------------------------------
      Investments — nav sections. Section panel, left of each section name.

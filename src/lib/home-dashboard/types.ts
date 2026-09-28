@@ -15,6 +15,13 @@
  * and a widget missing from a saved layout is inserted at its catalogue position — so
  * adding or retiring a card needs no migration.
  *
+ * **This list is app-wide, and that stays true even for a card whose contents are
+ * personal.** `myShortcuts` draws a different set of tiles for every reader, but whether
+ * the card exists at all is still one household decision an admin makes here — the same
+ * line migration 0096 drew between the scratchpad's shared tabs and its private notes.
+ * A per-user version of *this* list would be a different feature, and would leave the
+ * Dashboard Widgets screen with nothing to administer.
+ *
  * **`clock` was retired** from this catalogue when the Clock card was removed from the
  * home screen; the clock now lives in the floating layer instead (see
  * `FLOATING_COMPONENTS`). A stored `home_widgets` value still naming it is harmless for
@@ -23,6 +30,7 @@
  */
 export const HOME_WIDGET_IDS = [
   "carousel",
+  "myShortcuts",
   "dailyQuote",
   "todayInHistory",
   "stockGlance",
@@ -43,6 +51,12 @@ export const HOME_WIDGET_INFO: Record<HomeWidgetId, HomeWidgetInfo> = {
     label: "Module Carousel",
     description:
       "The scrolling strip of module cards with their artwork. Hiding it leaves the module rail as the way into a module, so the home screen stays navigable either way.",
+  },
+  myShortcuts: {
+    id: "myShortcuts",
+    label: "My Shortcuts",
+    description:
+      "Each person's own jump-off points — to a web address, or to any module or page in this app. The shortcuts themselves are private to whoever made them; this switch decides whether the card appears at all.",
   },
   dailyQuote: {
     id: "dailyQuote",

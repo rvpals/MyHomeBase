@@ -87,6 +87,7 @@ import { SqliteTickerRiskCacheRepository } from "./ticker-overview/repository";
 import { SqliteTickerProfileRepository } from "./ticker-profiles/repository";
 import { YahooTickerProfileClient } from "./ticker-profiles/yahoo-profile-client";
 import { SqliteUserPreferencesRepository } from "./user-preferences/repository";
+import { SqliteUserShortcutsRepository } from "./user-shortcuts/repository";
 import { SqliteUserRepository } from "./user/repository";
 
 const dbPath = process.env.MYHOMEBASE_DB ?? path.join(process.cwd(), "data", "myhomebase.db");
@@ -177,6 +178,10 @@ export const deps = {
   moduleSettingsRepo: new SqliteModuleSettingsRepository(db),
   userRepo: new SqliteUserRepository(db),
   userPreferencesRepo: new SqliteUserPreferencesRepository(db),
+  // The My Shortcuts home card (migrations/0114). Per-person, so every method on
+  // it is scoped by user id — read once on the home screen, written only from
+  // that card's own dialog.
+  userShortcutsRepo: new SqliteUserShortcutsRepository(db),
   sessionRepo: new SqliteSessionRepository(db),
   authEventRepo: new SqliteAuthEventRepository(db),
   // Logged-out arrivals at the site root (migrations/0102), and the addresses the
