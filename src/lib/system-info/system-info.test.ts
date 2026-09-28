@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SystemInfoRepository } from "./ports";
-import { formatBytes, getSystemInfo, parseEnvFile } from "./system-info";
+import { formatBytes } from "./format-bytes";
+import { getSystemInfo, parseEnvFile } from "./system-info";
 
 describe("parseEnvFile", () => {
   it("parses simple KEY=VALUE lines", () => {

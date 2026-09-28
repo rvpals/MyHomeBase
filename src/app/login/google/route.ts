@@ -2,9 +2,7 @@ import { randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { deps } from "@/lib/wiring";
-
-export const STATE_COOKIE_NAME = "myhomebase_google_oauth_state";
-const STATE_COOKIE_MAX_AGE_SECONDS = 5 * 60;
+import { STATE_COOKIE_MAX_AGE_SECONDS, STATE_COOKIE_NAME } from "./state-cookie";
 
 export async function GET() {
   if (!deps.googleOAuthClient) {

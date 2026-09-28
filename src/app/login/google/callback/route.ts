@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { SESSION_COOKIE_NAME, completeGoogleLogin } from "@/lib/auth";
 import { deps } from "@/lib/wiring";
-import { STATE_COOKIE_NAME } from "../route";
+import { STATE_COOKIE_NAME } from "../state-cookie";
 
 function redirectToLogin(request: NextRequest, error: string): NextResponse {
   return NextResponse.redirect(new URL(`/login?error=${error}`, request.url));

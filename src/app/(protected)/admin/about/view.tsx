@@ -23,7 +23,10 @@ import {
   type ChangeKind,
 } from "@/lib/change-history";
 import { DEPLOYMENTS_KEEP_COUNT } from "@/lib/deployments";
-import { formatBytes } from "@/lib/system-info";
+// From the leaf file, not the `@/lib/system-info` barrel: that barrel also
+// re-exports `./system-info`, which imports `node:path`, and a client component
+// pulling it in fails the webpack build with an unhandled-scheme error.
+import { formatBytes } from "@/lib/system-info/format-bytes";
 import { PAGE_CONTAINER } from "../../page-container";
 import {
   deleteDeploymentAction,
