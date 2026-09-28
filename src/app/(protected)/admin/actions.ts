@@ -4,9 +4,12 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import {
-  removeDashboardTextureImage,
+  addDashboardTexture,
+  deleteDashboardTexture,
+  renameDashboardTexture,
+  replaceDashboardTextureImage,
   saveDashboardTextureSettings,
-  setDashboardTextureImage,
+  selectDashboardTexture,
   type DashboardTextureSettings,
 } from "@/lib/dashboard-texture";
 import {
@@ -198,30 +201,58 @@ export interface DashboardTextureResult {
 }
 
 /**
- * Stores an uploaded background picture.
+ * An add, which additionally reports the id the library assigned.
  *
- * Takes `FormData` rather than a base64 string for the same reason
- * `saveModuleCarouselImageAction` does: a `File` streams as ordinary multipart,
- * where a base64 payload would inflate ~33% against the server-action body
- * limit. The lib boundary still receives base64, encoded here.
+ * The gallery needs it: without the real id, a tile added this render would
+ * carry a placeholder, and Tune / Replace / Delete on it would address a row
+ * that doesn't exist until the router refreshes.
  */
-export async function saveDashboardTextureImageAction(
+export interface DashboardTextureAddResult extends DashboardTextureResult {
+  id?: number;
+}
+
+/**
+ * Reads the `image` part of a texture upload as base64 for the lib boundary.
+ *
+ * The picture arrives as `FormData` rather than a base64 string for the same
+ * reason `saveModuleCarouselImageAction` does: a `File` streams as ordinary
+ * multipart, where a base64 payload would inflate ~33% against the server-action
+ * body limit. The lib boundary still receives base64, encoded here.
+ */
+async function readTextureUpload(formData: FormData) {
+  const file = formData.get("image");
+  if (!(file instanceof File)) return undefined;
+
+  return {
+    // Cast because the value came off a File and is unvalidated until the lib
+    // schema narrows it to the allowed set.
+    mimeType: file.type as never,
+    base64Data: Buffer.from(await file.arrayBuffer()).toString("base64"),
+  };
+}
+
+/**
+ * Adds an uploaded picture to the texture library.
+ *
+ * Does **not** select it: uploading a picture shouldn't silently change what the
+ * dashboard draws. The admin picks it from the gallery afterwards.
+ */
+export async function addDashboardTextureAction(
   formData: FormData,
-): Promise<DashboardTextureResult> {
+): Promise<DashboardTextureAddResult> {
   try {
     await requireAdmin();
-    const file = formData.get("image");
-    if (!(file instanceof File)) return { ok: false, error: "No image was received." };
+    const upload = await readTextureUpload(formData);
+    if (!upload) return { ok: false, error: "No image was received." };
 
-    setDashboardTextureImage(deps.dashboardTextureRepo, {
-      // Cast because the value came off a File and is unvalidated until the lib
-      // schema narrows it to the allowed set.
-      mimeType: file.type as never,
-      base64Data: Buffer.from(await file.arrayBuffer()).toString("base64"),
-    });
+    const id = addDashboardTexture(
+      deps.dashboardTextureRepo,
+      String(formData.get("name") ?? ""),
+      upload,
+    );
     // "layout" because the dashboard is a different route from this form.
     revalidatePath("/", "layout");
-    return { ok: true };
+    return { ok: true, id };
   } catch (error) {
     return {
       ok: false,
@@ -230,28 +261,92 @@ export async function saveDashboardTextureImageAction(
   }
 }
 
-/** Clears the picture, returning the dashboard to the theme's flat paper. */
-export async function removeDashboardTextureImageAction(): Promise<DashboardTextureResult> {
+/** Swaps one texture's picture, keeping its name, its knobs and its place. */
+export async function replaceDashboardTextureImageAction(
+  id: number,
+  formData: FormData,
+): Promise<DashboardTextureResult> {
   try {
     await requireAdmin();
-    removeDashboardTextureImage(deps.dashboardTextureRepo);
+    const upload = await readTextureUpload(formData);
+    if (!upload) return { ok: false, error: "No image was received." };
+
+    replaceDashboardTextureImage(deps.dashboardTextureRepo, id, upload);
     revalidatePath("/", "layout");
     return { ok: true };
   } catch (error) {
     return {
       ok: false,
-      error: error instanceof Error ? error.message : "Could not remove the image.",
+      error: error instanceof Error ? error.message : "Could not replace the image.",
     };
   }
 }
 
-/** Saves opacity / mode / blur, leaving the picture in place. */
+/** Renames a texture, leaving the picture alone. */
+export async function renameDashboardTextureAction(
+  id: number,
+  name: string,
+): Promise<DashboardTextureResult> {
+  try {
+    await requireAdmin();
+    renameDashboardTexture(deps.dashboardTextureRepo, id, name);
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not rename the texture.",
+    };
+  }
+}
+
+/**
+ * Removes a texture from the library.
+ *
+ * If it was the selected one the dashboard falls back to flat paper — the lib
+ * clears the pointer rather than promoting a neighbour.
+ */
+export async function deleteDashboardTextureAction(
+  id: number,
+): Promise<DashboardTextureResult> {
+  try {
+    await requireAdmin();
+    deleteDashboardTexture(deps.dashboardTextureRepo, id);
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not remove the texture.",
+    };
+  }
+}
+
+/** Points the dashboard at a library texture, or at none with `undefined`. */
+export async function selectDashboardTextureAction(
+  id: number | undefined,
+): Promise<DashboardTextureResult> {
+  try {
+    await requireAdmin();
+    selectDashboardTexture(deps.dashboardTextureRepo, id);
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not select the texture.",
+    };
+  }
+}
+
+/** Saves one texture's opacity / mode / blur, leaving its picture in place. */
 export async function saveDashboardTextureSettingsAction(
+  id: number,
   input: DashboardTextureSettings,
 ): Promise<DashboardTextureResult> {
   try {
     await requireAdmin();
-    saveDashboardTextureSettings(deps.dashboardTextureRepo, input);
+    saveDashboardTextureSettings(deps.dashboardTextureRepo, id, input);
     revalidatePath("/", "layout");
     return { ok: true };
   } catch (error) {
