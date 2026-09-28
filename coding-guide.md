@@ -11,7 +11,7 @@ module is obvious from the name alone. New tables must follow this.
 
 | Prefix | Module | Example tables |
 |---|---|---|
-| `sys_` | Platform — not a feature module | `sys_modules`, `sys_app_settings`, `sys_module_settings`, `sys_user_preferences`, `sys_users`, `sys_user_module_access`, `sys_sessions`, `sys_schema_migrations`, `sys_daily_quotes`, `sys_scheduled_runs`, `sys_dashboard_texture`, `sys_module_texture`, `sys_fav_photo`, `sys_deployments`, `sys_auth_events`, `sys_site_visits`, `sys_ip_allowlist`, `sys_messages`, `sys_saved_sql_queries` |
+| `sys_` | Platform — not a feature module | `sys_modules`, `sys_app_settings`, `sys_module_settings`, `sys_user_preferences`, `sys_users`, `sys_user_module_access`, `sys_sessions`, `sys_schema_migrations`, `sys_daily_quotes`, `sys_scheduled_runs`, `sys_dashboard_texture`, `sys_dashboard_textures`, `sys_module_texture`, `sys_fav_photo`, `sys_deployments`, `sys_auth_events`, `sys_site_visits`, `sys_ip_allowlist`, `sys_messages`, `sys_saved_sql_queries` |
 | `inv_` | Investments (brokerage accounts **and** per-stock tables — one prefix) | `inv_investment_accounts`, `inv_stock_positions`, `inv_stock_transactions`, `inv_stock_watch_lists`, `inv_stock_volatility_cache`, `inv_ticker_risk_cache`, `inv_ticker_logos`, `inv_index_logos`, `inv_daily_snapshots`, `inv_tax_lots`, `inv_ticker_monitors` |
 | `csv_` | CSV Analysis (incl. user-generated per-entry tables from `buildTableName`) | `csv_analytics_entries`, `csv_chart_presets`, `csv_govee` |
 | `jrn_` | MyJournal | `jrn_entries`, `jrn_categories`, `jrn_tags`, `jrn_entry_categories`, `jrn_entry_tags`, `jrn_entry_locations`, `jrn_entry_images`, `jrn_saved_filters`, `jrn_locations`, `jrn_location_categories`, `jrn_location_tags` |
@@ -73,6 +73,28 @@ Rules for adding tables:
   intentional exception to the "no abbreviations" rule in the coding standards.
 - Column names stay `snake_case`, self-documenting, no abbreviations (unchanged).
 - SQLite-internal tables (`sqlite_sequence`) are left untouched.
+
+### A migration is immutable once it has run anywhere
+
+Never edit a numbered `.sql` that has already been applied to any database — add
+the next number instead. The runner records applied filenames in
+`sys_schema_migrations` and **skips them**, so an edited migration never re-runs
+where it already ran: the live schema keeps the old shape while the code expects
+the new one.
+
+**`git status` does not tell you whether a migration has run.** This is the trap,
+and it has cost real downtime: migration 0114 was still untracked, which was read
+as "nothing can have run it" and its new columns were folded in rather than being
+given their own file. It *had* run on the NAS, so the deployed database never got
+the columns and every home-screen render died on `no such column: icon_image`
+(fixed by 0115).
+
+Untracked ≠ unapplied. The dev machine, `C:\webapp` and the NAS each have their
+own `sys_schema_migrations`, and the NAS is the one that matters. If you can't
+confirm a migration has never run, assume it has and write the next number.
+
+The cost of being wrong in the other direction is one redundant migration file.
+The cost of being wrong this way is a broken deployment that no re-run can fix.
 
 ### Renaming existing tables
 
@@ -178,12 +200,12 @@ legitimately blankable gets its own schema and its own repository write
 ### Per-row images
 
 A per-row image is a `BLOB` column plus a `<name>_mime_type` column, served by a
-dedicated route — never inlined as a base64 data URL. Nine tables do this:
+dedicated route — never inlined as a base64 data URL. Ten tables do this:
 `sys_users.avatar` (0011), `exp_creditcard_accounts.card_image` (0031),
 `exp_categories.icon_image` (0034), `inv_investment_accounts.icon_image` (0037),
 `sys_modules.carousel_image` (0040), `jrn_categories`/`jrn_tags.icon_image` (0042),
-`sys_dashboard_texture.image` (0063), `sys_module_texture.image` (0064) and
-`exp_vendors.icon_image` (0068).
+`sys_dashboard_texture.image` (0063), `sys_module_texture.image` (0064),
+`exp_vendors.icon_image` (0068) and `sys_user_shortcuts.icon_image` (0115).
 
 `exp_vendors` is the one to copy for a new table that needs an icon: the blob and its
 mime column are in the initial `CREATE` rather than bolted on by a later `ALTER`, which
@@ -202,6 +224,17 @@ ride along in every list and page render. Decoding and the mime allowlist live i
 `src/lib/shared/image-upload.ts` — use it rather than re-deriving the rules, and note
 that SVG is excluded on purpose (it can carry script, and these bytes are served from
 the app's own origin).
+
+**A per-user image needs a per-user route.** Nine of the ten tables above hold
+household-wide rows — a vendor, a category, a module — so their serving routes ask one
+question: is this reader signed in? `sys_user_shortcuts.icon_image` (0115) is the
+exception, and the first of its kind: those rows belong to one person. A route that only
+checked for a session would let any signed-in reader walk the ids and pull everyone
+else's pictures. So that route looks the row up **scoped by the session's user id** —
+the same user-scoped repository contract every other read of that table uses — and
+returns 404, not 403, for someone else's, since distinguishing them would confirm the id
+is real. Copy that shape, not the vendor route's, for any future image on a per-user
+table.
 
 **Expose presence, not bytes.** A caller usually only needs to know *whether* there is
 an image, to choose between the artwork and a fallback. Derive that in SQL

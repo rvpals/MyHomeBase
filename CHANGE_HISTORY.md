@@ -1,5 +1,164 @@
 # Change History
 
+## 2026-09-27 — Nav groups that are places, playlist reordering, and a build fix
+
+### Navigation: a group heading can be a page
+
+A module's sections are grouped under headings — "Configuration", "Data
+Management". Those headings were always pure labels. Now one can be a
+destination in its own right: where a heading has its own page, the tree draws
+it as a link with its own glyph, and clicking it goes there instead of doing
+nothing.
+
+Headings without a page are unchanged and stay plain labels, which is still the
+common case. The grouping itself is unchanged too — sections of one group are
+consecutive entries sharing a name, so a module's sections remain one flat list
+and the nested box on screen is a *rendering* of that, not a second level of
+data.
+
+### Music: reorder a playlist from the track list
+
+Playlist entries move up and down a place at a time. The move is computed over
+entry ids rather than track ids, which matters for a playlist holding the same
+track twice — the two copies move independently instead of jumping together.
+
+A move that would fall off either end leaves the order alone. The buttons are
+disabled at the ends anyway, so the only way to hit it is a second click landing
+after a reload.
+
+### Administration → About showed a build error instead of disk figures
+
+`formatBytes` lived beside the database-file report, which imports `node:path`.
+About is a client screen, so pulling one function through a module that reaches
+for a Node builtin failed the webpack build outright with an unhandled-scheme
+error.
+
+The function is pure arithmetic and now sits in its own file. The barrel still
+re-exports it, so nothing outside that folder changed.
+
+### A route no longer imports another route
+
+Google sign-in kept its OAuth state cookie's name and lifetime as exports on the
+`/login/google` route, and the callback route imported them from there. Both now
+read from a small shared module instead. No behavioural change — a route file is
+an endpoint, not a place to hang shared constants.
+
+## 2026-09-27 — Everyone keeps their own shortcuts on the home screen
+
+### A new home card: My Shortcuts
+
+A grid of tiles on the home screen, each one an icon, a name and a destination. A
+shortcut points at either **a web address** or **a page inside this app** — and for the
+second kind you pick a module, then a page within it, from a list that only ever offers
+what you can already open. A module's own main page is a valid choice, so "take me to
+Journal" is a shortcut like any other.
+
+Add, edit, reorder and remove all happen on the card itself. A shortcut list you have to
+go somewhere else to change is a list nobody curates, so the controls sit on each tile.
+Twelve per person — enough to be useful, few enough that the card can't push everything
+else off the screen.
+
+### The card is the household's, the tiles inside it are yours
+
+Whether My Shortcuts appears at all is still an administrator's call, in
+**Administration → Display Settings → Dashboard Widgets**, beside every other card.
+What's *in* it is private to whoever made it: two people looking at the same home screen
+see the same card holding entirely different tiles.
+
+That split is not new — it's the line migration 0096 already drew between the
+scratchpad's shared tabs and its private notes. Which cards exist is a household
+decision; what they contain needn't be.
+
+### Why a shortcut stores coordinates, not a link
+
+An in-app shortcut records *which module and which section*, never the path it resolves
+to. Storing the path would have been simpler and wrong in three ways, the last of which
+is the one that mattered:
+
+- A saved path **rots silently** the day a route moves, leaving a tile that 404s with
+  nothing left in the row to repair it from.
+- A **deleted** destination can't be told apart from a working one — a dead path can
+  only be clicked.
+- **Access has to be re-checked on every render.** Someone who loses access to a module
+  must stop being able to follow their shortcut into it, and that question can be asked
+  of a module slug but never of a URL.
+
+So every tile is resolved fresh against the navigation tree the reader would see anyway.
+A moved page follows automatically. One that's gone, or that's no longer yours, is drawn
+greyed out with the reason — shown rather than quietly removed, because a tile that
+vanishes on its own looks like data loss to the only person who can fix it.
+
+### An icon can be a glyph or your own picture
+
+Each shortcut takes either a glyph from the app's own set — which follows whichever icon
+set you've chosen — or **a picture you upload**. The upload wins when there is one, and
+the glyph stays selected underneath it, so removing a picture reveals the glyph rather
+than leaving a blank tile.
+
+PNG, JPEG, WebP or GIF, up to 256 KB. SVG is refused on purpose: it can carry script,
+and these are served back from the app's own origin. What lands in the database is a
+small WebP, not your original — a tile draws the icon at about 28 pixels, so storing a
+phone photograph whole would be the mistake the module carousel made in migration 0040.
+
+**Your uploaded pictures are yours.** Every other image in this app — a vendor's logo, a
+module's artwork — belongs to the household, so its route asks only whether you're
+signed in. Shortcuts belong to one person, so that question isn't enough: the route
+serving these looks the shortcut up against *your* id and returns a plain 404 for anyone
+else's, which also means nobody can discover which ids exist by probing.
+
+Neither the glyph nor the uploaded picture is an icon *slot*. Slots name fixed positions
+and are registered in advance, which a list of tiles you invent at runtime can never be.
+The card's own header icon and its Add button are slots, and both are replaceable from
+**Administration → Display Settings → Icons**.
+
+## 2026-09-26 — The dashboard keeps a library of textures, not one picture
+
+### Up to 20 background pictures, one of them showing
+
+**Administration → Configuration → Dashboard Texture** was a single upload slot: one
+picture, replace it or remove it. It is now a gallery of up to **20**. Each one can be
+renamed, replaced in place, or deleted, and clicking a picture is what puts it behind
+the home dashboard — clicking the chosen one again clears it, so there is a way back to
+plain paper that isn't "delete the picture".
+
+Uploading does **not** select. Adding a picture to the library shouldn't silently change
+what the dashboard draws; you pick it afterwards.
+
+### Each picture keeps its own opacity, blur and layout
+
+The three knobs used to be application-wide, which was right when there was one picture.
+With twenty they belong to the *image*: a dark photograph needs a far lower opacity than
+a pale seamless pattern, and a pattern wants **Tile** where a photograph wants **Cover**.
+Sharing one set would have meant re-tuning all three on every switch, and switching back
+would have lost the tuning.
+
+So the knobs moved onto each row. Selecting a texture restores the way you tuned it.
+Tuning is also separate from showing: **Tune** points the sliders and the preview at a
+picture without committing the dashboard to it.
+
+### Why the singleton table survived
+
+`sys_dashboard_texture` was pinned to one row by a `CHECK (id = 1)`, and migration 0063
+recorded that as deliberate — every write is an upsert against a constant key, so no
+reader has to work out which row is live. Storing twenty pictures by dropping that CHECK
+would have discarded exactly that property.
+
+Instead the roles split. **`sys_dashboard_textures`** (new) holds the pictures;
+`sys_dashboard_texture` keeps its single row and gains `selected_texture_id`, a pointer.
+The dashboard still reads one row by a constant key, and that read still never touches a
+BLOB — at 20 × 4 MB, a careless `SELECT *` here would be 80 MB through a page render, so
+the explicit column lists are load-bearing rather than stylistic.
+
+### Upgrading keeps your picture
+
+If a texture was already uploaded, migration 0113 copies it into the library as
+**"Texture 1"** carrying its current opacity, mode and blur, and selects it. The
+dashboard looks identical afterwards. An install that never uploaded one starts with an
+empty library and flat paper.
+
+Deleting the selected picture falls back to flat paper rather than promoting a
+neighbour — swapping in one nobody chose is a worse surprise than showing none.
+
 ## 2026-09-25 — Navigation becomes one tree, with a filter across every module
 
 ### The desktop's navigation is now a single column

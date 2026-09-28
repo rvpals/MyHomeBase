@@ -86,6 +86,7 @@ pattern instead of inventing one.
 | [`CsvMappingTable`](#csvmappingtable) | Map a CSV's columns to target fields | [src/components/csv-mapping-table.tsx](src/components/csv-mapping-table.tsx) | yes |
 | [`FilterCriteriaRow`](#filtercriteriarow) | **One line of a filter builder** — column, operator, value(s), remove | [src/components/filter-criteria-row.tsx](src/components/filter-criteria-row.tsx) | yes |
 | [`IconSelect`](#iconselect) | A dropdown whose options carry an image | [src/components/icon-select.tsx](src/components/icon-select.tsx) | yes |
+| [`ShortcutPicker`](#shortcutpicker) | **Pick a destination** — a web address, or any module/page in the app — plus its name and glyph | [src/components/shortcut-picker.tsx](src/components/shortcut-picker.tsx) | yes |
 | [`TokenPicker`](#tokenpicker) | **Several names on one record** — removable chips + a dropdown to add | [src/components/token-picker.tsx](src/components/token-picker.tsx) | yes |
 | [`ColorField`](#colorfield) | **One color** — a swatch that opens the OS picker + the hex typed out | [src/components/color-field.tsx](src/components/color-field.tsx) | yes |
 | [`ChartLine`](#chartline) | Time-series line chart | [src/components/chart-line.tsx](src/components/chart-line.tsx) | yes |
@@ -1441,6 +1442,14 @@ one — see design.md, *Navigation: the tree (desktop) and the two-tier bar (com
 **Filtering is `src/lib/navigation/filter.ts`, not this component.** Matching and ranking
 over ~70 sections is logic; this renders the result and paints the highlight.
 
+**A group heading can itself be a page.** Sections carrying the same `group` draw as a
+nested box inside their module's slab. When those sections also carry `groupHref`, the
+box's header becomes a link with `groupIcon` beside it; without one it stays a plain
+label, which remains the common case ("Configuration" has no page of its own). The
+grouping is still a flat field — *consecutive* sections sharing a `group` are what makes
+one, so the nested box is a rendering of that field and not a second level of data. A
+group interrupted and resumed in the array therefore draws as two boxes.
+
 **Icon slots.** Section icons resolve through `sectionSlotId`, so they stay individually
 replaceable. Four modules' slot namespaces differ from their slug (`investments`→`stock`,
 `csv-analysis`→`csv`, `music-library`→`music`, `picture-gallery`→`gallery`) — the
@@ -2326,6 +2335,64 @@ Options are built by `categoryIconSelectOptions` in
 listener is only registered while open. Icons are plain `<img loading="lazy">`, so
 the caller passes a URL (typically a DB-backed route like
 `/api/expense/categories/<name>/icon`) rather than image bytes.
+
+---
+
+## ShortcutPicker
+
+A dialog that captures a **destination plus how to label it**: an icon, a name, and
+either a web address or a place inside this app (module, then page within it).
+**This is why it exists:** picking an in-app destination means browsing the
+navigation tree, and no other picker here does that — `IconSelect` chooses one value
+from a list of image URLs, which is a different question.
+
+It is a *picker*, not a saver — it raises the finished draft and never writes
+anything. It also makes no access decisions: the modules it can browse arrive as a
+prop, already filtered to the reader.
+
+- **Source:** [src/components/shortcut-picker.tsx](src/components/shortcut-picker.tsx)
+- **Import:** `import { ShortcutPicker, type ShortcutPickerModule } from "@/components/shortcut-picker";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `title` | `string` | Dialog heading — "Add a shortcut" / "Edit shortcut". |
+| `modules` | `ShortcutPickerModule[]` — `{ slug, name, sections }` | What the reader may browse. **Pass an already-filtered list** — offering a module they can't open would let them save a shortcut that is unreachable the moment it's made. No `icon`: the module list is a native `<select>`, which can't render one. |
+| `initial?` | `Partial<ShortcutDraftInput> & { iconImageUrl? }` | Pre-fills the fields when editing. `iconImageUrl` shows the picture already stored — display-only, never re-uploaded. Omit to start blank. |
+| `error?` | `string` | From the last save attempt, shown above the buttons. The dialog stays open on a failure so the reader can fix one field. |
+| `saving?` | `boolean` | Disables the footer while a save is in flight; also passed to `Modal`'s `isBusy`. |
+| `onSave` | `(draft, icon: ShortcutIconIntent) => void` | The finished draft, **plus what to do about its picture** — `keep` / `upload` / `clear`. The caller saves and closes. |
+| `onClose` | `() => void` | Cancel, Escape, overlay click. |
+
+```tsx
+<ShortcutPicker
+  title="Add a shortcut"
+  modules={modules}
+  error={error}
+  saving={busy}
+  onSave={save}
+  onClose={() => setAdding(false)}
+/>
+```
+
+**Used by:** the My Shortcuts home-screen card
+[my-shortcuts-widget.tsx](src/app/(protected)/my-shortcuts-widget.tsx).
+
+**The icon is either/or.** The reader uploads a picture *or* picks a glyph, and an
+upload wins. The glyph stays selected underneath, because it is what the tile falls back
+to if the picture is removed — which is why this is one field and not two. The dialog
+does not upload anything itself: it raises a `ShortcutIconIntent` (`keep` / `upload` /
+`clear`) beside the draft, and the caller sequences the writes, because a picture can
+only be stored against a row that already exists. Size is checked here as well as on the
+server, so an oversized file is refused instantly in the app's own wording.
+
+**Notes:** the glyph grid offers every `TREE_ICON_NAMES` concept and renders each with
+`TreeIcon`, so it follows the reader's active icon set. Choosing a module clears the
+selected section — a section id means nothing in a different module, and keeping it
+would save an unreachable target. The module's own root is the empty section value,
+which is exactly how it's stored (see `migrations/0114`). Validation is **not** here:
+the URL rules live in the zod schema the action calls, and this only guards against
+submitting an obviously incomplete form.
 
 ---
 

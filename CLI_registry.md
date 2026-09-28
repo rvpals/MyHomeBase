@@ -2,7 +2,7 @@
 
 Reference for driving MyHomeBase from a terminal.
 
-**Part 1** documents the 27 commands that work today.
+**Part 1** documents the 51 commands that work today.
 **Part 2** is the full inventory of library use-cases — what a command *could* call.
 **Part 3** summarises the coverage gap.
 
@@ -28,7 +28,12 @@ command list and exits 1. There is no `--help`.
 
 # Part 1 — Available commands
 
-Fifty commands, registered in [src/cli/index.ts](src/cli/index.ts).
+Fifty-one commands, registered in [src/cli/index.ts](src/cli/index.ts).
+
+The table below is the index — every command links to its own section. Those sections
+are **not all contiguous**: the file grew by appending, so some sit after Part 2 and
+Part 3. Use the links rather than scrolling, and add a new command's section at the end
+alongside its row here.
 
 | Command | Reads / writes | Network |
 |---|---|---|
@@ -38,7 +43,11 @@ Fifty commands, registered in [src/cli/index.ts](src/cli/index.ts).
 | [`create-csv-analytics-entry`](#create-csv-analytics-entry) | write (creates a table) | no |
 | [`delete-csv-analytics-entry`](#delete-csv-analytics-entry) | write (drops a table) | no |
 | [`csv-bulk-edit`](#csv-bulk-edit) | read (`columns`/`rows`), write (`apply`) | no |
+| [`csv-views`](#csv-views) | read (`list`/`show`/`read`/`operators`), write (`create`/`update`/`enable`/`disable`/`delete`) | no |
+| [`import-csv-files`](#import-csv-files) | read (`plan`), write (`create`/`append`) | no |
+| [`csv-source-stats`](#csv-source-stats) | read | no |
 | [`import-journal-csv`](#import-journal-csv) | write | no |
+| [`import-journal-ics`](#import-journal-ics) | write (read with `--dry-run`/`--review`) | no |
 | [`journal-calendar`](#journal-calendar) | read | no |
 | [`journal-locations`](#journal-locations) | read + write | no |
 | [`browse-sqlite`](#browse-sqlite) | read + write | no |
@@ -48,6 +57,7 @@ Fifty commands, registered in [src/cli/index.ts](src/cli/index.ts).
 | [`explain-rule`](#explain-rule) | read | no |
 | [`expense-create-rule`](#expense-create-rule) | write | no |
 | [`normalize-icon-overrides`](#normalize-icon-overrides) | write (read with `--dry-run`) | no |
+| [`resize-carousel-images`](#resize-carousel-images) | write (read with `--dry-run`) | no |
 | [`refresh-positions`](#refresh-positions) | write | **yes** |
 | [`run-scheduled-refresh`](#run-scheduled-refresh) | write (read with `--status`) | **yes** (not with `--status`) |
 | [`list-scheduled-jobs`](#list-scheduled-jobs) | read | no |
@@ -55,6 +65,10 @@ Fifty commands, registered in [src/cli/index.ts](src/cli/index.ts).
 | [`ticker-overview`](#ticker-overview) | read (`--refresh` writes cache) | with `--market` |
 | [`simulate-ticker`](#simulate-ticker) | read (writes nothing) | **yes** |
 | [`market-indexes`](#market-indexes) | read (writes nothing) | **yes** |
+| [`export-portfolio`](#export-portfolio) | read (`--refresh-correlations` writes cache) | only with `--refresh-correlations` |
+| [`consult-ticker`](#consult-ticker) | read (writes nothing) | **yes** (not with `--no-quote`) |
+| [`favorite-quotes`](#favorite-quotes) | read | no |
+| [`tax-lots`](#tax-lots) | read (writes with `--save`) | no |
 | [`set-startup-message`](#set-startup-message) | write | no |
 | [`user-preferences`](#user-preferences) | read (writes with `--favorite`/`--startup`) | no |
 | [`calculator`](#calculator) | read (writes with `--expression`/`--clear-history`) | no |
@@ -70,6 +84,10 @@ Fifty commands, registered in [src/cli/index.ts](src/cli/index.ts).
 | [`messages`](#messages) | read (writes with `read`/`read-all`/`file`/`delete`/`prune`) | no |
 | [`watch-lists`](#watch-lists) | read (writes with `add`/`watch`/`run`) | no |
 | [`saved-sql`](#saved-sql) | read (writes with `save`/`delete`) | no |
+| [`take-attendance`](#take-attendance) | write | no |
+| [`attendance-report`](#attendance-report) | read | no |
+| [`scan-music`](#scan-music) | write | no (reads the music share) |
+| [`music-library`](#music-library) | read | no |
 
 Flag parsing is `--key value` pairs via [parse-flags.ts](src/cli/parse-flags.ts),
 except `ticker-overview` and `set-startup-message`, which read positionals and bare
@@ -1938,18 +1956,26 @@ There is no `src/lib/shared/index.ts`; import `@/lib/shared/<file>`.
 |---|---|
 | Exported use-cases across `src/lib/` | ~257 |
 | Reachable from the CLI | ~48 |
-| Registered commands | 35 |
+| Registered commands | 51 |
 | **Coverage** | **~19%** |
 
-**Modules with zero CLI reach (19):** `auth`, `change-history`, `daily-quote`,
-`dashboard-texture`, `geocoding`, `investment-accounts`, `market-data`,
-`module-settings`, `modules`, `next-day-actions`, `sql-explorer`,
-`stock-daily-snapshot`, `stock-watchlist`, `system-info`, `ticker-detail`,
-`ticker-favorites`, `ticker-logos`, `ticker-search`, `weather`.
+**Modules with zero CLI reach (13):** `auth`, `change-history`, `daily-quote`,
+`dashboard-texture`, `geocoding`, `market-data`, `next-day-actions`,
+`stock-daily-snapshot`, `ticker-detail`, `ticker-logos`, `ticker-search`, `weather`,
+`module-texture`.
 (`stock-dashboard` and `viewport` are pure preference/layout helpers — no CLI needed.)
 
+Six modules previously listed here now *do* have CLI reach: `investment-accounts`
+(via [`export-portfolio`](#export-portfolio)), `module-settings` and `modules` (via
+[`scan-music`](#scan-music) / [`resize-carousel-images`](#resize-carousel-images)),
+`sql-explorer` (via [`saved-sql`](#saved-sql)), `stock-watchlist` (via
+[`watch-lists`](#watch-lists)), `ticker-favorites` (via
+[`favorite-quotes`](#favorite-quotes)) and `system-info` (via
+[`deployments`](#deployments)).
+
 [ARCHITECTURE.md:119-121](ARCHITECTURE.md#L119-L121) states that "every use-case is
-reachable from both." At ~13%, that's currently aspirational rather than descriptive.
+reachable from both." At roughly a fifth, that's currently aspirational rather than
+descriptive.
 The architecture does support closing the gap — [ARCHITECTURE.md:148](ARCHITECTURE.md#L148)
 makes it a rule that adding a CLI command for an existing use-case requires **zero
 changes to `lib/`**.
@@ -2821,3 +2847,302 @@ Source: [src/cli/browse-csv.ts](src/cli/browse-csv.ts)
 - **Usage-string style differs.** [explain-rule.ts](src/cli/explain-rule.ts) documents
   itself as `npm run cli explain-rule -- --id 4231`; [ticker-overview.ts](src/cli/ticker-overview.ts)
   uses `npm run cli -- ticker-overview AAPL`. The latter is correct.
+
+## `csv-views`
+
+CSV Analysis **custom views** — the saved column/filter/sort definitions the *Custom
+Views* screen drives. `read` is the interesting one: it compiles the view to SQL and
+prints a page, which exercises the query against a real table without a browser.
+
+```
+npm run cli -- csv-views list [--entry 3]
+npm run cli -- csv-views show --id 2
+npm run cli -- csv-views create --entry 3 --name "Big sales" \
+                 --columns city,amount \
+                 --where "amount>=100" --where "city in Rome,Oslo" \
+                 --order "amount:desc" --order "city:asc" \
+                 --per-page 25 [--disabled]
+npm run cli -- csv-views update --id 2 --name "Renamed" --columns "" --per-page 50
+npm run cli -- csv-views enable --id 2
+npm run cli -- csv-views disable --id 2
+npm run cli -- csv-views delete --id 2
+npm run cli -- csv-views read --id 2 [--page 2]
+npm run cli -- csv-views operators
+```
+
+**Subcommands**
+
+| Subcommand | Does | Writes |
+|---|---|---|
+| `list` | every view, or one dataset's with `--entry` | no |
+| `show` | one view's full definition | no |
+| `create` | a new view on `--entry` | yes |
+| `update` | replaces a view's whole definition | yes |
+| `enable` / `disable` | flips `isEnabled` | yes |
+| `delete` | removes the view (the data is untouched) | yes |
+| `read` | runs the view, prints one page tab-separated | no |
+| `operators` | the operator catalogue and each one's arity | no |
+
+**Flags**
+
+| Flag | Values | Notes |
+|---|---|---|
+| `--entry` | dataset id | required for `create`; filters `list` |
+| `--id` | view id | required for `show`/`update`/`enable`/`disable`/`delete`/`read` |
+| `--name` | text | required for `create` |
+| `--description` | text | optional |
+| `--columns` | comma-separated | `--columns ""` explicitly means *every column* |
+| `--where` | **repeatable** criterion | see the grammar below |
+| `--order` | **repeatable** `column` or `column:desc` | direction must be `asc`/`desc` |
+| `--per-page` | integer | default `100` |
+| `--disabled` / `--enabled` | bare switch | `create` defaults to enabled |
+| `--page` | integer | `read` only, default `1` |
+
+**Criterion grammar** — `--where` accepts a symbol form or a word form. Symbols are
+matched longest-first, so `>=` is never read as `>`:
+
+```
+amount>=100          symbol operator   (>=, <=, <>, !=, >, <, =)
+city is empty        word operator, no value
+city in Rome,Oslo    word operator, comma-separated list
+amount between 1 20  word operator, two space-separated values
+```
+
+`--where` and `--order` are re-scanned from argv rather than read through `parseFlags`,
+which keeps only the last occurrence of a repeated key. A shell is a bad place to quote
+JSON, which is why these are repeatable flags rather than one blob.
+
+⚠️ **`update` replaces the whole definition.** Any part not passed is re-sent as it
+currently stands, so `--name X` alone does not clear the criteria — but a passed
+`--where` replaces *all* of them.
+
+**Calls** — `createCustomView` / `updateCustomView` / `setCustomViewEnabled` /
+`deleteCustomView` / `readCustomViewPage` against `deps.csvAnalyticsRepo`.
+
+**Output** — `read` prints the source headers then tab-separated rows, followed by a
+`N matching records · page X of Y` footer. The others print the view's detail block.
+
+**Exit** — `0` on success; `1` on an unknown subcommand, a missing/invalid id, or a
+schema rejection, with the message on stderr.
+Source: [src/cli/csv-views.ts](src/cli/csv-views.ts)
+
+---
+
+## `import-csv-files`
+
+Pools **several CSV files into one dataset** — the CLI peer of *CSV Analysis → Import
+Files*. All the files must share a header shape; each one contributes a label column
+value so rows stay attributable to their source.
+
+```
+npm run cli -- import-csv-files plan "Master Bathroom_export.csv" Basement.csv
+npm run cli -- import-csv-files create --name "Humidity" --table humidity --label Room \
+                 "Master Bathroom_export.csv" Basement.csv
+npm run cli -- import-csv-files append --entry 3 NewRoom.csv
+npm run cli -- import-csv-files help
+```
+
+**Subcommands**
+
+| Subcommand | Does | Writes |
+|---|---|---|
+| `plan` | previews columns, per-file row counts and header mismatches | no |
+| `create` | creates the dataset and its table | **yes** (creates a table) |
+| `append` | adds more files to an existing dataset | **yes** |
+
+**Flags**
+
+| Flag | Values | Notes |
+|---|---|---|
+| `--name` | text | required by `create` |
+| `--table` | table base name | required by `create`; the 3-letter-prefixed table is derived from it |
+| `--description` | text | optional |
+| `--entry` | dataset id | required by `append` |
+| `--label` | column name, **repeatable** (max 3) | e.g. `--label Room` |
+| `--value` | `<file.csv>=<value>` , **repeatable** | that label's value for one file |
+
+Everything that is not a flag is treated as a **file path**. When `--value` is omitted
+for a file, the value defaults to `suggestSourceName(fileName)` — the name inferred from
+the filename, which is usually what you want.
+
+`append` cannot redefine the label columns: it reuses the dataset's own, read back off
+`existing.sourceColumns`.
+
+**Calls** — `planPooledImport`, `importPooledFiles`, `appendPooledFiles` against
+`deps.csvAnalyticsRepo`. Files are read with `readFileSync`.
+
+**Output** — `plan` prints the data columns, the source columns, a per-file row count and
+the total, then any header mismatches. `create`/`append` print the resulting entry id,
+table name and row count.
+
+**Exit** — `0` on success; `1` when no file is named, when `create` lacks `--name`/
+`--table`, when `append` lacks a valid `--entry`, on an unknown subcommand, or when
+`plan` finds files that cannot be pooled together.
+Source: [src/cli/import-csv-files.ts](src/cli/import-csv-files.ts)
+
+---
+
+## `csv-source-stats`
+
+Per-source statistics over a **pooled** dataset — the CLI peer of *CSV Analysis →
+Compare*. Prints the same figures the screen shows, from the same use-case, which is how
+the arithmetic gets checked without a browser.
+
+```
+npm run cli -- csv-source-stats 3
+npm run cli -- csv-source-stats 3 --by room --measure humidity
+npm run cli -- csv-source-stats 3 --decimals 3
+npm run cli -- csv-source-stats help
+```
+
+**Input** — the entry id is a **positional**, not a flag.
+
+| Flag | Values | Default |
+|---|---|---|
+| `--by` | the source column to group by | the first groupable one |
+| `--measure` | the numeric column to summarise | the first measurable one |
+| `--decimals` | integer | `2` |
+
+Run with just an entry id to see which columns are available — both lists are echoed
+above the table.
+
+**Calls** — `groupableSourceColumns`, `measurableColumns` and `readSourceStats` against
+`deps.csvAnalyticsRepo`. Read-only.
+
+**Output** — one line per source with `n`, `avg`, `med`, `min`, `max`, `sd` and
+`missing`, then a combined row, then a `Highest / lowest` line.
+
+**Exit** — `0` on success; `1` when the id is not a number, when there is no such entry,
+when the dataset was **not created as a pooled import** (so it has no source column to
+group by), or when it has no numeric column to summarise.
+Source: [src/cli/csv-source-stats.ts](src/cli/csv-source-stats.ts)
+
+---
+
+## `import-journal-ics`
+
+Imports calendar events from an **`.ics` file** into the Journal — the same filter,
+presets and review the *Calendar Import* wizard offers. Every decision lives in
+`@/lib/journal`, so this command and the web screen cannot disagree about what a file
+means.
+
+```
+npm run cli -- import-journal-ics --file ./calendar.ics --dry-run
+npm run cli -- import-journal-ics --file ./calendar.ics --from 2026-01-01 --to 2026-12-31
+npm run cli -- import-journal-ics --file ./calendar.ics --review
+npm run cli -- import-journal-ics --file ./calendar.ics --categories "Log,Travel" --place "Home"
+npm run cli -- import-journal-ics --file ./calendar.ics --skip-dates 2026-03-04,2026-03-05
+```
+
+**Filter flags**
+
+| Flag | Values | Default |
+|---|---|---|
+| `--file` | path to the `.ics` | **required** |
+| `--from` / `--to` | `YYYY-MM-DD` | unbounded |
+| `--contains` / `--excludes` | text matched against the summary | none |
+| `--require-title` | bare switch — drop events with no summary | off |
+| `--no-all-day` | bare switch — drop all-day events | all-day included |
+
+**Preset flags** — applied to each imported entry
+
+| Flag | Values | Default |
+|---|---|---|
+| `--categories` | comma-separated | `Log` (pass `--categories ""` to opt out) |
+| `--tags` | comma-separated | none |
+| `--place` | place name | none |
+| `--note` | note prefix | none |
+| `--replace` | bare switch — overwrite the reader's own fields on a matched entry | off (local edits preserved) |
+
+**Mode flags**
+
+| Flag | Effect |
+|---|---|
+| `--dry-run` | prints the plan (`create` / `refresh` / `skip` per event); **writes nothing** |
+| `--review` | prints what the journal already holds on the dates this import would touch, then stops — unless combined with `--dry-run` |
+| `--skip-dates` | comma-separated `YYYY-MM-DD`; every event on a listed date is dropped |
+
+A **repeating event imports its first occurrence only**, and the count of them is called
+out before anything is written.
+
+**Calls** — `readIcsFile`, `buildIcsImportReview`, `applyIcsReviewDecision`,
+`planIcsImport` and `importIcsEvents` against `deps.journalRepo`.
+
+⚠️ **Writes unless `--dry-run` or a bare `--review` is given.** `--replace` is the
+destructive one: it overwrites fields on already-matched entries. The web screen confirms
+against a plan first; a CLI run has already made its choice by typing the flag.
+
+**Output** — a header counting events in the file, matching the filter, and skipped as
+unreadable; then the plan or the import summary, with a reason line per skipped row.
+
+**Exit** — `0` on success; `1` when `--file` is missing or the file cannot be read/parsed.
+Source: [src/cli/import-journal-ics.ts](src/cli/import-journal-ics.ts)
+
+---
+
+## `resize-carousel-images`
+
+⚠️ **Writes, and there is no undo beyond a database restore.** Re-encodes carousel
+graphics that are **already stored**, so ones uploaded before the resizer existed catch
+up without being re-uploaded by hand. Nothing used to resize these: the upload control
+only rejected files over 2 MB, so a full-size photo was stored whole and then downloaded
+whole to fill a 192px tile.
+
+```
+npm run cli -- resize-carousel-images --dry-run
+npm run cli -- resize-carousel-images
+npm run cli -- resize-carousel-images --max-edge 256
+npm run cli -- resize-carousel-images --help
+```
+
+| Flag | Values | Default |
+|---|---|---|
+| `--dry-run` | bare switch — report without writing | off |
+| `--max-edge` | pixels, `32`–`4096` | `800` (`CAROUSEL_IMAGE_MAX_EDGE`) |
+| `--help` / `-h` | print usage | — |
+
+Downscales each graphic to fit the target and re-encodes as **WebP**. It never upscales
+and never crops. An **animated GIF is left alone**, because flattening it to its first
+frame would silently kill the animation.
+
+**Safe to run repeatedly** — a second pass over an already-resized WebP is inside the box
+and already the right format, so it is reported as skipped rather than rewritten. One
+unreadable image does not abort the rest.
+
+**Calls** — `deps.moduleRepo.listAllCarouselImages()`, then `resizeCarouselImage` and
+`setModuleCarouselImage`. It writes through the **use-case** rather than a direct repo
+call so the slug check and the `updated_at` stamp stay in one place — that stamp is the
+`?v=` cache-buster, without which a browser keeps serving the old bytes.
+
+**Output** — one line per graphic (`before -> after`, dimensions, percent saved, or why
+it was skipped), then a `Rewrote N / skipped N / failed N / KB saved` summary.
+
+**Exit** — `0` normally, including when nothing is stored; `1` on an out-of-range
+`--max-edge` or a failure listing the stored images.
+Source: [src/cli/resize-carousel-images.ts](src/cli/resize-carousel-images.ts)
+
+---
+
+## `favorite-quotes`
+
+Prints the favorites jump list with its last-refreshed prices — the same use-case the
+star menu renders, formatted for a terminal. Takes **no arguments**.
+
+```
+npm run cli -- favorite-quotes
+```
+
+**Calls** — `listFavoriteQuotes(deps.tickerFavoriteRepo, deps.stockPositionRepo)`.
+Read-only, no network.
+
+Prices come from `inv_positions`, so they are **only as fresh as the last
+`refresh-positions` run** — pair the two if you want current figures. A favorite you do
+not hold has no position row and prints `—  (not held)` rather than a stale price.
+
+**Output** — one line per favorite: ticker, price, signed day gain/loss, day change
+percent, the `as of` timestamp, and the name when known.
+
+**Exit** — always `0`, including when there are no favorites (a fact, not an error).
+Source: [src/cli/favorite-quotes.ts](src/cli/favorite-quotes.ts)
+
+---

@@ -151,6 +151,13 @@ Don't blur this line by giving a card a hard shadow or a button a soft one.
   `Button` is made of, so it borrows the same 3px offset in the same direction and reads as
   part of the same world. That's [`Progress3D`](components.md#progress3d), and it's the
   whole licence: don't extend the reasoning to a card or a panel.
+- **A tile that navigates is a button, not a small card.** The My Shortcuts tiles
+  (`.shortcut-tile`) take the hard offset for the same reason a `Button` does: each one
+  is a single clickable action, and the only thing making it look card-like is that it
+  is square and stacks a glyph over a name. It borrows `Button`'s `secondary` values
+  exactly — 4px in `--line`, 5px and a lift on hover, collapsed on press — so a tile and
+  a secondary button read as the same material. This is **not** a licence for a card that
+  merely contains a link: the test is whether the whole surface is one target.
 - **No surface takes the button treatment, except the two nav columns.** The rule still
   holds everywhere else: a card, a bar, a sheet or a page surface gets a hairline border
   and a soft low-opacity shadow, never the hard offset. **Don't give a new panel a hard
@@ -175,7 +182,7 @@ Reach for one of these before writing a new `shadow-[...]`:
 | `.nav-raised-bottom` | A bar pinned at the **bottom** — the compact section trigger | the same, cast **upward** |
 | `.card-raised` | A card's resting lift — `CollapsibleCard` | inset highlight + hairline ring + tight cast |
 | `.card-raised-hover` | The same card's `:hover` | the cast grows and softens |
-| `.card-embossed` | An **opt-in bevel** for a card that should read as a thick slab — pair with `.card-raised-hover` | lit top edge + shadowed underside + ring + two-stop cast |
+| `.card-embossed` | An **opt-in bevel** for a card that should read as a thick slab — pair with `.card-raised-hover` | lit top edge + lit bottom lip + shadowed underside + ring + two-stop cast; the lit edges and the ring are **theme-derived** (see below) |
 | `.shell-slab-raised` | The **module rail and section panel** — the sanctioned surface exception | `Button`'s hard `4px` offset, rotated to point right, in translucent black (not `--line`, which vanishes on light themes) + a hairline ring |
 | `.shell-accent-text` | The accent green for text and glyphs on a `--brass-soft` tint in the **compact nav bar and its sheet** — not a general replacement for `--brass-dark` | `color-mix(--brass 78%, --ink)`: brightens toward `--brass` on a dark theme and deepens on a light one, because neither token alone clears AA on all eight (Signal Deck wants `--brass`, Daybreak wants `--brass-dark`) |
 | `.paper-texture` | A card that should read as a **physical sheet** — the journal's New Journal card, the Daily Quote card, and the Content field in Handwriting mode | translucent fibre grid + diagonal sheen, **no tint of its own** — so it needs a surface (`bg-paper-raised`) under it; over a dark stage on its own it renders as hairlines on black |
@@ -188,11 +195,25 @@ Reach for one of these before writing a new `shadow-[...]`:
 | `.mahjong-tile-tiltable` | A **clickable** tile, on hover/focus | a small `rotate3d` tilt toward the viewer — the one sanctioned 3D transform, and it goes entirely under reduced motion |
 | `.sudoku-board` / `.sudoku-box-seams` / `.sudoku-cell` / `.sudoku-cell-given` | The **sudoku board** — a tray, its six 3x3 seams, and a cell's bevel | a groove cut into the page (lit bottom lip + shaded top) holding low-bevelled slabs; the box seams are one continuous overlay layer above the cells, not thickened cell borders |
 | `.progress-3d-track` / `.progress-3d-fill` | The pair behind [`Progress3D`](components.md#progress3d) — **every progress bar** | a groove cut into the page (surface gradient + inset lip) holding a lit slab (accent gradient + `Button`'s hard offset shadow) |
+| `.shortcut-tile` / `.shortcut-tile-dead` | A **My Shortcuts tile** — a square, two-line clickable target | `Button`'s exact switch mechanic in `--line`: 4px resting, 5px + a 0.5 lift on hover, collapsed and pressed on active. The `-dead` variant keeps the resting depth and never moves, for an unreachable shortcut |
 | `[data-dashboard-texture]` | The home dashboard's **admin-uploaded** background picture | a `fixed` `::before` behind the cards; opacity + blur from the stored settings |
 | `[data-module-texture]` | A **module's own** uploaded background picture (Music Library today) | the same mechanism, keyed per module; set by that module's shell |
 
 Two things they encode that are easy to get wrong:
 
+- **A cast shadow does not read on a dark theme, and more opacity won't fix it.** Black on
+  Daybreak's near-white paper is depth; black on Signal Deck's `#12161a` is the same color
+  as the page. The cue that survives is the **lit edge**, so `.card-embossed` scales that
+  instead: `--edge-lit` / `--edge-lit-soft` mix white against `--ink`, which is near-white
+  on a dark theme and near-black on a light one. One expression, opposite behaviour per
+  theme. The rim mixes the same way, because a pure-black `0 0 0 1px` ring is invisible on
+  a dark page too.
+  **Don't branch on light/dark to solve this.** There is no `isDark` flag on a theme —
+  `colorSchemeFor()` derives `color-scheme` from the paper token, and CSS can't select on
+  it. More to the point, readers author their own themes, so a hardcoded branch is wrong
+  the moment someone makes a ninth. Mixing against `--ink` covers every theme that exists
+  and every theme that will. Same mechanism as `.shell-accent-text`, which solved the same
+  problem for text.
 - **A cast shadow falls away from the light**, so a bottom-pinned bar's must point *up*, at
   the content it overlaps — not down off the screen. That's the only difference between the
   two `nav-raised-*` classes, and it's why they're a pair rather than one class.
@@ -487,9 +508,28 @@ on one screen is the thing `TreeNav` was deleted for.
 
 - **Home is a leaf at the top**, outside the filter. It is the one fixed landmark in
   the column, and dropping it on a non-matching query would move it.
-- **Each module is a heading with a chevron.** Clicking toggles. The row carries the
-  icon and the name and nothing else — a section count was tried here and removed as
-  clutter, so don't add one back.
+- **Each module is a heading; clicking it toggles.** The row carries the icon and the
+  name and **nothing else** — no chevron, no count. Both were tried and both came out:
+  the slab already says open or closed (divider and sections, versus a closed box), and
+  a glyph repeating that is a second answer to a settled question. `aria-expanded`
+  carries it for anyone not reading the shape. Don't add either back.
+- **A module heading is `font-display text-base`; its sections are `text-sm` body.**
+  The step up in *both* size and face is the whole signal that one names a place you
+  own and the others name pages inside it — design.md's type rule already sends
+  "headings, module names" to the display face. Home matches the headings, because at
+  this level it is one.
+- **Each module is a slab**, `card-embossed card-raised-hover` on `bg-paper-raised`,
+  with `gap-2` between them. Reusing the sanctioned pair rather than a hand-rolled
+  shadow, and reusing it for the same reason the old section panel's accordion groups
+  did: a heading and its children separated only by indentation is the weakest signal
+  available in a column this narrow. The gap is load-bearing — flush slabs read as one
+  box with lines drawn across it.
+- **Sections connect to their heading with a spine and an elbow**, ported from the
+  section panel's accordion. The trunk stops halfway down the last row, where its
+  elbow leaves it, so the line never dangles past the final item. A **group label gets
+  the trunk but no elbow**: the trunk belongs to the module and breaking it at a
+  heading would read as two lists, while an elbow would promise a destination that
+  isn't there.
 - **A module's own groups become labels, not a second accordion.** The tree spends its
   one level of nesting on the module. Two chevrons deep for six rows is worse than a
   20px uppercase label, the same trade the compact sheet already makes.
