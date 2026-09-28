@@ -49,6 +49,7 @@ import {
 } from "./journal-metadata-transfer-view";
 import { JournalNewEntryView } from "./journal-new-entry-view";
 import { JournalPreferencesView } from "./journal-preferences-view";
+import { JournalReviewPanel } from "./journal-review-panel";
 import { JournalTaxonomyView } from "./journal-taxonomy-view";
 import { JournalTemplatesView } from "./journal-templates-view";
 import { JournalView } from "./journal-view";
@@ -190,6 +191,13 @@ function SectionBody({
         />
       );
     }
+
+    case "review-data":
+      // A server panel, like the Correct tab's: grouping the dates that carry
+      // more than one entry is a whole-journal read, which the client view
+      // can't do. Everything the merge dialog's entry form needs is read there
+      // too, so this case stays one line.
+      return <JournalReviewPanel />;
 
     case "configuration": {
       const journalModule = getModuleBySlug(deps.moduleRepo, JOURNAL_MODULE_SLUG);

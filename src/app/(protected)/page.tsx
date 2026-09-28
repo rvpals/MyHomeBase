@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { ModuleCarousel } from "@/components/module-carousel";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { getAuthEventSummary } from "@/lib/auth-events";
-import { dashboardTextureCssVars, getDashboardTexture } from "@/lib/dashboard-texture";
+import { homeTexture } from "@/lib/app-texture";
+import { getDashboardTexture } from "@/lib/dashboard-texture";
 import { getRandomQuote } from "@/lib/daily-quote";
 import {
   HOME_WIDGETS_SETTING_KEY,
@@ -151,12 +152,17 @@ export default async function Home({
   // hidden or not granted, in which case the card simply shows no glyph.
   const journalModule = modules.find((appModule) => appModule.slug === JOURNAL_MODULE_SLUG);
 
-  // The dashboard's optional background picture. `undefined` when no image has
-  // been uploaded, which is what keeps the fixed texture layer out of the DOM
-  // entirely rather than rendering one at opacity 0 — see globals.css,
-  // `[data-dashboard-texture]`. Cheap to read: the settings row carries
-  // `hasImage`, never the bytes (migrations/0063).
-  const textureVars = dashboardTextureCssVars(getDashboardTexture(deps.dashboardTextureRepo));
+  // The dashboard's optional background picture (migrations/0063, 0116).
+  //
+  // Drawn here ONLY when the texture is not app-wide. With the scope ticked on,
+  // the protected layout has already emitted this exact layer around
+  // `.app-main`, and drawing a second identical `fixed` layer inside it would
+  // composite the picture twice — doubling the opacity the admin tuned. With
+  // scope off the layout draws nothing, and the home screen is the one place the
+  // picture still belongs, which is 0063's original behaviour.
+  //
+  // Cheap to read: the settings row carries `hasImage`, never the bytes.
+  const textureVars = homeTexture(getDashboardTexture(deps.dashboardTextureRepo)).vars;
 
   // The cards that will actually appear, in order. Visibility alone isn't enough:
   // Daily Quote draws nothing until a quote exists and Daily Glance nothing without
@@ -180,10 +186,11 @@ export default async function Home({
     <HomeShell label="Home" icon="home" href="/?home=1" hideHeader>
       {/* The texture layer attaches to this wrapper, not to a nested element:
           its `::before` is `fixed` and must cover the viewport and sit behind
-          the cards. The attribute is absent when nothing was uploaded. */}
+          the cards. The attribute is absent when nothing was uploaded — and also
+          when the texture is app-wide, because the layout drew it already. */}
       <div
         className={PAGE_CONTAINER}
-        data-dashboard-texture={textureVars ? "" : undefined}
+        data-app-texture={textureVars ? "" : undefined}
         style={textureVars as CSSProperties | undefined}
       >
         {/* Neither of these two is an arrangeable card, so neither appears in

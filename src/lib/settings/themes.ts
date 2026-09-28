@@ -12,9 +12,11 @@ export type FontKey =
  *
  * The union above cannot be iterated, and two things now need to: the zod schema that
  * validates a user-built theme's font choice, and the admin builder's three font
- * dropdowns. Both must agree with the `next/font/google` loaders in
- * src/app/layout.tsx — a key here that nothing loads renders as the browser fallback.
- * Adding a font means a loader there, an entry in `FONT_VAR_MAP` there, and a key here.
+ * dropdowns. Both must agree with the `localFont` loaders in src/app/layout.tsx — a
+ * key here that nothing loads renders as the browser fallback. Adding a font means
+ * a `.woff2` in src/app/fonts/ (via `node scripts/fetch-fonts.mjs`), a loader in
+ * layout.tsx, an entry in `FONT_VAR_MAP` there, and a key here. The fonts are
+ * committed rather than fetched at build time — see src/app/fonts/README.md.
  */
 export const FONT_KEYS = [
   "space-grotesk",

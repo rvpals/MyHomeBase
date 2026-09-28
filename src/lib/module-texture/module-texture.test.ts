@@ -4,13 +4,14 @@ import {
   MAX_MODULE_TEXTURE_BYTES,
   getModuleTexture,
   getModuleTextureImage,
-  moduleTextureCssVars,
+  listModulesWithTexture,
   removeModuleTextureImage,
+  setModuleTextureChoice,
   saveModuleTextureSettings,
   setModuleTextureImage,
 } from "./module-texture";
 import type { ModuleTextureRepository } from "./ports";
-import type { ModuleTexture, ModuleTextureSettings } from "./types";
+import type { ModuleTexture, ModuleTextureSettings, ModuleTextureSource } from "./types";
 
 const SLUG = "music-library";
 
@@ -26,6 +27,8 @@ function makeRepo(initial?: Partial<ModuleTexture>): ModuleTextureRepository & {
   if (initial) {
     rows.set(SLUG, {
       moduleSlug: SLUG,
+      source: "inherit",
+      textureId: undefined,
       hasImage: false,
       opacity: 0.1,
       mode: "cover",
@@ -42,6 +45,8 @@ function makeRepo(initial?: Partial<ModuleTexture>): ModuleTextureRepository & {
       return (
         rows.get(moduleSlug) ?? {
           moduleSlug,
+          source: "inherit",
+          textureId: undefined,
           hasImage: false,
           opacity: 0.1,
           mode: "cover",
@@ -59,12 +64,31 @@ function makeRepo(initial?: Partial<ModuleTexture>): ModuleTextureRepository & {
       const current = this.getTexture(moduleSlug);
       rows.set(moduleSlug, {
         ...current,
+        // The mode moves with the bytes, as the real repository does (0117) —
+        // otherwise an upload lands in an 'inherit' row and is never drawn.
+        source: image ? "own" : "inherit",
+        textureId: undefined,
         hasImage: Boolean(image),
         updatedAt: "2026-08-25 11:00:00",
       });
     },
     setSettings(moduleSlug: string, settings: ModuleTextureSettings): void {
       rows.set(moduleSlug, { ...this.getTexture(moduleSlug), ...settings });
+    },
+    listSlugsWithImage(): string[] {
+      // Keyed on the mode, not on bytes — see the port. A module overrides when
+      // it does not inherit, which includes 'none' and 'library'.
+      return [...rows.values()]
+        .filter((row) => row.source !== "inherit")
+        .map((row) => row.moduleSlug)
+        .sort();
+    },
+    setChoice(moduleSlug: string, source: ModuleTextureSource, textureId?: number): void {
+      rows.set(moduleSlug, {
+        ...this.getTexture(moduleSlug),
+        source,
+        textureId: source === "library" ? textureId : undefined,
+      });
     },
   };
 }
@@ -183,44 +207,72 @@ describe("saveModuleTextureSettings", () => {
   });
 });
 
-describe("moduleTextureCssVars", () => {
-  it("returns undefined with no picture, so the shell emits no layer", () => {
-    expect(moduleTextureCssVars(getModuleTexture(makeRepo(), SLUG))).toBeUndefined();
+describe("listModulesWithTexture", () => {
+  it("is empty when no module has uploaded a picture", () => {
+    expect(listModulesWithTexture(makeRepo())).toEqual([]);
   });
 
-  it("builds a slug-scoped URL with the updatedAt cache-buster", () => {
-    const repo = makeRepo({ hasImage: true, updatedAt: "2026-08-25 12:00:00" });
+  it("names a module that has one", () => {
+    const repo = makeRepo();
+    setModuleTextureImage(repo, SLUG, PNG);
 
-    const vars = moduleTextureCssVars(getModuleTexture(repo, SLUG));
-
-    expect(vars?.["--module-texture-image"]).toContain("/api/modules/music-library/texture");
-    expect(vars?.["--module-texture-image"]).toContain("2026-08-25%2012%3A00%3A00");
+    expect(listModulesWithTexture(repo)).toEqual([SLUG]);
   });
 
-  it("makes size and repeat disagree between the two modes", () => {
-    const cover = moduleTextureCssVars(
-      getModuleTexture(makeRepo({ hasImage: true, mode: "cover" }), SLUG),
-    );
-    const tile = moduleTextureCssVars(
-      getModuleTexture(makeRepo({ hasImage: true, mode: "tile" }), SLUG),
-    );
+  it("omits a module whose picture was removed but whose knobs remain", () => {
+    // A row with no image means "no texture", not "a module to warn about" —
+    // the admin screen would otherwise claim a module overrides when it doesn't.
+    const repo = makeRepo();
+    setModuleTextureImage(repo, SLUG, PNG);
+    removeModuleTextureImage(repo, SLUG);
 
-    expect(cover).toMatchObject({
-      "--module-texture-size": "cover",
-      "--module-texture-repeat": "no-repeat",
-    });
-    expect(tile).toMatchObject({
-      "--module-texture-size": "auto",
-      "--module-texture-repeat": "repeat",
-    });
+    expect(listModulesWithTexture(repo)).toEqual([]);
+  });
+});
+
+describe("setModuleTextureChoice", () => {
+  it("points a module at a library picture", () => {
+    const repo = makeRepo();
+
+    setModuleTextureChoice(repo, SLUG, { source: "library", textureId: 4 });
+
+    expect(getModuleTexture(repo, SLUG)).toMatchObject({ source: "library", textureId: 4 });
   });
 
-  it("passes opacity and blur through as CSS-ready strings", () => {
-    const vars = moduleTextureCssVars(
-      getModuleTexture(makeRepo({ hasImage: true, opacity: 0.25, blur: 6 }), SLUG),
+  it("refuses a library choice with no picture named", () => {
+    expect(() => setModuleTextureChoice(makeRepo(), SLUG, { source: "library" })).toThrow(
+      /which library picture/i,
     );
+  });
 
-    expect(vars?.["--module-texture-opacity"]).toBe("0.25");
-    expect(vars?.["--module-texture-blur"]).toBe("6px");
+  it("refuses an id alongside a choice that cannot use one", () => {
+    expect(() =>
+      setModuleTextureChoice(makeRepo(), SLUG, { source: "none", textureId: 4 }),
+    ).toThrow(/only applies when picking from the library/i);
+  });
+
+  it("drops a stale id when switching away from the library", () => {
+    // Otherwise the id outlives the choice and resurfaces if the module is
+    // later set back to 'library'.
+    const repo = makeRepo();
+    setModuleTextureChoice(repo, SLUG, { source: "library", textureId: 4 });
+
+    setModuleTextureChoice(repo, SLUG, { source: "inherit" });
+
+    expect(getModuleTexture(repo, SLUG).textureId).toBeUndefined();
+  });
+
+  it("keeps an uploaded picture when the module switches to a library one", () => {
+    // Switching back to 'own' must not require a re-upload.
+    const repo = makeRepo();
+    setModuleTextureImage(repo, SLUG, PNG);
+
+    setModuleTextureChoice(repo, SLUG, { source: "library", textureId: 4 });
+
+    expect(getModuleTexture(repo, SLUG)).toMatchObject({ source: "library", hasImage: true });
+  });
+
+  it("rejects a malformed slug before it reaches storage", () => {
+    expect(() => setModuleTextureChoice(makeRepo(), "Not A Slug!", { source: "inherit" })).toThrow();
   });
 });

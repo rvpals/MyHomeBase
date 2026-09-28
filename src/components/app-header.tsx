@@ -60,8 +60,23 @@ export function AppHeader({
     // inside the content column so it starts where they end. That's what lets
     // one `padding-left` on `.app-main` position the header and the page body
     // together, rather than each of them re-deriving the same offset.
+    //
+    // `mt-*` and `mb-*` are the page's top air and the gap down to the page
+    // title — both live here rather than on `.app-main` or the pages, because
+    // this is the one component every shell renders and nine module sections
+    // would otherwise each need the same two values.
+    //
+    // The top one is a MARGIN on purpose, and the distinction matters:
+    //   - `padding-top` on `.app-main` lifts the bar too, but `top: 0` resolves
+    //     against the padding box, so the bar docks that far down and the page
+    //     scrolls through the gap permanently.
+    //   - a margin sits outside the border box, so it still lifts the bar at
+    //     rest, and margins don't move a sticky dock — the bar docks flush to
+    //     the viewport top and the air scrolls away with the page.
+    // That second behaviour is the one that was asked for. Don't convert this
+    // to padding on an ancestor.
     <header
-      className={`sticky top-0 z-20 flex h-12 items-center gap-2 border-b border-line bg-paper-raised px-3 ${className}`}
+      className={`sticky top-0 z-20 mt-6 mb-6 flex h-12 items-center gap-2 border-b border-line bg-paper-raised px-3 max-lg:mt-3 max-lg:mb-4 ${className}`}
     >
       {onExpandPanel && (
         <button

@@ -49,6 +49,7 @@ alongside its row here.
 | [`import-journal-csv`](#import-journal-csv) | write | no |
 | [`import-journal-ics`](#import-journal-ics) | write (read with `--dry-run`/`--review`) | no |
 | [`journal-calendar`](#journal-calendar) | read | no |
+| [`journal-same-date`](#journal-same-date) | read (writes with `--delete`, or `--merge --save`) | no |
 | [`journal-locations`](#journal-locations) | read + write | no |
 | [`browse-sqlite`](#browse-sqlite) | read + write | no |
 | [`browse-csv`](#browse-csv) | read + write | no |
@@ -401,6 +402,61 @@ here the logic would have leaked into the view.
 **Exit** — 0; 1 on an unknown `--scope`, an unknown `--format`, an unparseable `--date`, an
 unknown `--jump`, or a `--jump` with no entry in that direction.
 Source: [src/cli/journal-calendar.ts](src/cli/journal-calendar.ts)
+
+---
+
+## `journal-same-date`
+
+The Journal → Review Data screen from the terminal: the dates carrying more than one
+entry, plus the same Merge and Delete the web grid offers.
+
+```
+npm run cli -- journal-same-date
+npm run cli -- journal-same-date --date 2026-03-14
+npm run cli -- journal-same-date --merge 41,42,43
+npm run cli -- journal-same-date --merge 41,42,43 --save
+npm run cli -- journal-same-date --delete 41,42
+```
+
+**Input**
+
+| Flag | Type | Required | Notes |
+|---|---|---|---|
+| `--date` | `YYYY-MM-DD` | no | show only this date's group; without it, every grouped date |
+| `--merge` | id list | no | comma-separated entry ids. Prints the merged draft and **writes nothing** |
+| `--save` | boolean | no | with `--merge`, actually create the merged entry. **Put it last** — `parseFlags` treats every flag as taking a value |
+| `--delete` | id list | no | comma-separated entry ids to move to the recycle bin |
+
+**Calls** — `findSameDateGroups(listEntries(deps.journalRepo))` for the listing;
+`mergeEntryDraft` over the full entries read by `getEntry` for `--merge`, then
+`createEntry` when `--save` is given; `recycleEntries` for `--delete`. Every one is the
+same library function the web section's server actions call.
+
+**Output** — one block per grouped date, each entry as `#id  HH:MM  title` with its
+100-word excerpt indented beneath:
+
+```
+2 dates · 5 entries
+
+2026-03-14 — 3 entries
+  #   41  09:00  Morning run
+         Five miles along the towpath before it got hot.
+  #   42  12:30  (untitled)
+  #   43  21:00  Dinner with Anna
+```
+
+Merging is **non-destructive in both front-ends**: `--merge` prints a proposal, `--save`
+creates one new entry, and the source entries are left exactly where they were in either
+case — removing them is a separate `--delete`. `--delete` moves entries to the recycle
+bin (migration 0079), so it is undone from the web Correct tab rather than being final.
+
+This command is the section's layering check: the grouping, the reading order, the
+excerpt and the whole merged draft come from `src/lib/journal/same-date.ts`, so if the
+merge couldn't be produced here the logic would have leaked into the view.
+
+**Exit** — 0; 1 on a malformed id list, an id that no longer exists (for `--merge`), or a
+rejected delete.
+Source: [src/cli/journal-same-date.ts](src/cli/journal-same-date.ts)
 
 ---
 

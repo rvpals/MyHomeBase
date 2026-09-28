@@ -4,15 +4,16 @@ import {
   MAX_DASHBOARD_TEXTURES,
   MAX_DASHBOARD_TEXTURE_BYTES,
   addDashboardTexture,
-  dashboardTextureCssVars,
   deleteDashboardTexture,
   getDashboardTexture,
+  getDashboardTextureById,
   getDashboardTextureImage,
   listDashboardTextures,
   renameDashboardTexture,
   replaceDashboardTextureImage,
   saveDashboardTextureSettings,
   selectDashboardTexture,
+  setDashboardTextureAppWide,
 } from "./dashboard-texture";
 import type { DashboardTextureRepository } from "./ports";
 import type { DashboardTextureItem, DashboardTextureSettings } from "./types";
@@ -29,6 +30,7 @@ function makeRepo(): DashboardTextureRepository & {
   items: DashboardTextureItem[];
   images: Map<number, DecodedImage>;
   selectedId?: number;
+  appWide: boolean;
 } {
   let nextId = 1;
   let clock = 0;
@@ -38,6 +40,8 @@ function makeRepo(): DashboardTextureRepository & {
     items: [] as DashboardTextureItem[],
     images: new Map<number, DecodedImage>(),
     selectedId: undefined as number | undefined,
+    // Scope lives on the selection, not on a picture — migration 0116.
+    appWide: false,
 
     find(id: number) {
       return repo.items.find((item) => item.id === id);
@@ -48,6 +52,7 @@ function makeRepo(): DashboardTextureRepository & {
       if (!selected) {
         return {
           selectedId: undefined,
+          appWide: false,
           hasImage: false,
           opacity: 0.1,
           mode: "cover" as const,
@@ -57,6 +62,7 @@ function makeRepo(): DashboardTextureRepository & {
       }
       return {
         selectedId: selected.id,
+        appWide: repo.appWide,
         hasImage: selected.hasImage,
         opacity: selected.opacity,
         mode: selected.mode,
@@ -117,6 +123,12 @@ function makeRepo(): DashboardTextureRepository & {
       if (!item) return false;
       Object.assign(item, settings, { updatedAt: stamp() });
       return true;
+    },
+    setAppWide(appWide: boolean) {
+      repo.appWide = appWide;
+    },
+    getTextureById(id: number) {
+      return repo.find(id);
     },
   };
 
@@ -465,44 +477,80 @@ describe("saveDashboardTextureSettings", () => {
   });
 });
 
-describe("dashboardTextureCssVars", () => {
-  it("returns nothing when no picture is selected, so the layer is skipped", () => {
-    expect(dashboardTextureCssVars(makeRepo().getTexture())).toBeUndefined();
+describe("setDashboardTextureAppWide", () => {
+  it("turns the scope on and reports it back through the selection", () => {
+    const repo = makeRepo();
+    const id = addDashboardTexture(repo, "Linen", PNG);
+    selectDashboardTexture(repo, id);
+
+    setDashboardTextureAppWide(repo, true);
+
+    expect(getDashboardTexture(repo).appWide).toBe(true);
   });
 
-  it("builds cover-mode properties with a cache-busted url", () => {
-    const vars = dashboardTextureCssVars({
-      selectedId: 3,
-      hasImage: true,
-      opacity: 0.25,
-      mode: "cover",
-      blur: 8,
-      updatedAt: "2026-08-23 11:00:00",
-    });
+  it("is off by default, so migrating an install changes nothing on screen", () => {
+    const repo = makeRepo();
+    const id = addDashboardTexture(repo, "Linen", PNG);
+    selectDashboardTexture(repo, id);
 
-    expect(vars).toEqual({
-      "--dashboard-texture-image":
-        'url("/api/dashboard/texture?v=2026-08-23%2011%3A00%3A00")',
-      "--dashboard-texture-opacity": "0.25",
-      "--dashboard-texture-size": "cover",
-      "--dashboard-texture-repeat": "no-repeat",
-      "--dashboard-texture-blur": "8px",
-    });
+    expect(getDashboardTexture(repo).appWide).toBe(false);
   });
 
-  it("tiles at natural size in tile mode", () => {
-    const vars = dashboardTextureCssVars({
-      selectedId: 1,
-      hasImage: true,
-      opacity: 0.1,
-      mode: "tile",
-      blur: 0,
-      updatedAt: "x",
-    });
+  it("survives selecting a different picture", () => {
+    // The reason scope is stored on the selection rather than per picture: it
+    // describes the installation's intent, so auditioning textures must not
+    // silently switch every other screen back to flat paper.
+    const repo = makeRepo();
+    const first = addDashboardTexture(repo, "Linen", PNG);
+    const second = addDashboardTexture(repo, "Slate", PNG);
+    selectDashboardTexture(repo, first);
+    setDashboardTextureAppWide(repo, true);
 
-    expect(vars).toMatchObject({
-      "--dashboard-texture-size": "auto",
-      "--dashboard-texture-repeat": "repeat",
-    });
+    selectDashboardTexture(repo, second);
+
+    expect(getDashboardTexture(repo).appWide).toBe(true);
+  });
+
+  it("can be turned back off", () => {
+    const repo = makeRepo();
+    const id = addDashboardTexture(repo, "Linen", PNG);
+    selectDashboardTexture(repo, id);
+    setDashboardTextureAppWide(repo, true);
+
+    setDashboardTextureAppWide(repo, false);
+
+    expect(getDashboardTexture(repo).appWide).toBe(false);
+  });
+
+  it("is stored even with nothing selected, and reports as off until one is", () => {
+    // The flag can outlive the picture. Storage keeps it; the read reports the
+    // drawable truth, which is that there is nothing to draw.
+    const repo = makeRepo();
+
+    setDashboardTextureAppWide(repo, true);
+
+    expect(getDashboardTexture(repo).appWide).toBe(false);
+    expect(repo.appWide).toBe(true);
+  });
+});
+
+describe("getDashboardTextureById", () => {
+  it("returns one library picture without its bytes", () => {
+    const repo = makeRepo();
+    const id = addDashboardTexture(repo, "Linen", PNG);
+
+    const item = getDashboardTextureById(repo, id);
+
+    expect(item).toMatchObject({ id, name: "Linen", hasImage: true });
+  });
+
+  it("returns undefined for a picture that was deleted", () => {
+    // What a module's dangling pointer resolves to (0117); the caller treats it
+    // as "inherit" rather than an error.
+    const repo = makeRepo();
+    const id = addDashboardTexture(repo, "Linen", PNG);
+    deleteDashboardTexture(repo, id);
+
+    expect(getDashboardTextureById(repo, id)).toBeUndefined();
   });
 });

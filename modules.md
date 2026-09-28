@@ -496,6 +496,44 @@ knowing:
   Entries, Calendar and search still show log entries — they are visible and filterable,
   not hidden.
 
+**Review Data** is the third child of Data Management, and it answers a different
+question from the Correct tab next to it. Correct groups entries by **date + title** and
+calls the result a duplicate; Review Data groups by **date alone** and calls the result
+nothing — several entries on one day are perfectly normal, and the screen only lists them
+so a reader can decide. Four choices worth knowing:
+
+- **Untitled entries are kept**, which is the opposite of `findDuplicateGroups`. The
+  title-keyed grouping has to skip them, or a day with three untitled entries would
+  present as a duplicate set on the strength of having no title at all. Grouping by date
+  carries no such false signal, and an untitled entry on a crowded day is the single best
+  merge candidate on the screen — dropping it would hide the reason to visit.
+- **Merge is non-destructive.** `mergeEntryDraft` builds a *proposal* — date and time from
+  the earliest source, titles joined with `/`, each source's content under a
+  `— HH:MM · Title` provenance line, categories and tags unioned — and the reader edits it
+  in the ordinary `JournalEntryForm` before saving. Saving creates one new entry and
+  **leaves every source entry exactly where it was**; removing the originals is a separate,
+  explicit Delete. So a merge abandoned half way through cannot lose any writing, which a
+  merge-and-delete in one step could.
+- **Locations and weather are not carried into a merge.** Both belong to a specific moment
+  in a specific entry, and an entry covering four moments of a day has no single one of
+  either. The form lets the reader add them, resolved live, which is the same argument the
+  prefill templates make for not storing them.
+- **Reading and editing reuse the single-entry screen's own components.** The row
+  click opens `JournalViewer` in a modal and its built-in `onEdit` swaps in
+  `JournalEntryEditForm` — the same pair `/entries/[id]` renders, so an entry is read
+  and written identically from either route, and the locked-entry guard comes along
+  for free (the button disables itself, because `updateEntry` would reject one). A
+  saved edit re-reads both the entry *and* the grouping, since changing an entry's
+  date moves it to another group or out of the list altogether.
+- **Delete routes through the existing recycle bin** (migration 0079) rather than
+  destroying rows, and there is deliberately **no second bin screen here**. The Correct tab
+  already owns that list; a second view of it could disagree with the first about what is
+  in it, so this screen's confirmation dialog points the reader there instead.
+
+The whole thing added **no table and no column** — it is a new section over reads the
+module already had, plus one pure library file (`src/lib/journal/same-date.ts`) and its
+test.
+
 This is also the module that made **Configuration a nav group**, and now **Data
 Management** too. `SectionPanel` renders a node with children as an accordion heading and
 drops it from the compact sheet, so a parent cannot also be a page — the long-standing
@@ -1923,24 +1961,39 @@ that module. Stored in `sys_module_texture`, keyed by slug (migration 0064), wit
 opacity / cover-or-tile / blur alongside it. The **Music Library** is the only
 user today (*Configuration → Appearance*).
 
-To give another module one:
+**Most modules need none of this.** Since migration 0116 there is an app-wide
+texture (*Administration → Configuration → App Texture*) that already covers every
+screen, and since 0117 every module already has a background picker in
+*Administration → Configuration → Module Configuration* — it can inherit the app
+texture, point at any picture in the library, or show nothing at all, with **no
+code at all**. Every shell is already wired for those three.
 
-1. In the module's shell, read it and emit the wrapper — four lines, copied from
-   `music-shell.tsx`:
-   `moduleTextureCssVars(getModuleTexture(deps.moduleTextureRepo, SLUG))`, then
-   `data-module-texture={vars ? "" : undefined}` plus `style={vars}` on a div
-   around `{children}`.
+Uploading a picture *of its own* — the `own` mode — is the only case that needs
+new code, and it is only worth it when a module needs tuning no library picture
+can give it.
+
+To give a module its **own uploaded** picture (the Music Library's case):
+
+1. **Nothing in the shell.** Every existing shell already resolves all four
+   modes and emits the wrapper — that block was added to all nine in 0117, so a
+   module only needs this step if you are writing a *brand-new* shell, in which
+   case copy the `resolveAppTexture(...)` block and its wrapper div from
+   `journal-shell.tsx`.
 2. Add three actions to that module's actions file, mirroring the
    `saveMusicTextureImageAction` / `remove…` / `saveMusicTextureSettingsAction`
    trio, and gate them the way the rest of *that screen* is gated.
-3. Reuse the UI: `music-texture-control.tsx` is route-local by design. A **third**
-   module wanting a picture is the point to promote it into `src/components/` with
-   the slug and copy as props — see `components.md` → *Ask before creating*.
+3. Reuse the UI: `music-texture-control.tsx` is route-local by design. A **second**
+   module wanting its own upload is the point to promote it into `src/components/`
+   with the slug and copy as props — see `components.md` → *Ask before creating*.
+4. Nothing to do for the picker: *Module Configuration* lists every module, and
+   the `own` radio appears by itself once that module has bytes in its row.
 
 No migration, no new table: the table is keyed by slug and takes any module. Domain
 code sees only `hasImage`, never the bytes; the BLOB is read by
-`GET /api/modules/[slug]/texture` alone. Design constraints (why the layer wraps
-section content and not the nav, why opacity defaults low) are in `design.md` →
+`GET /api/modules/[slug]/texture` alone. Precedence between the two sources lives in
+`src/lib/app-texture/` and nowhere else — neither texture module knows about the
+other. Design constraints (why the layer wraps section content and not the nav, why
+opacity defaults low, where each layer is emitted) are in `design.md` →
 *The one sanctioned exception*.
 
 ### Floating components

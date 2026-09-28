@@ -5,6 +5,7 @@ import { useAdminSettings } from "../../admin-shell";
 import { PAGE_CONTAINER } from "../../../page-container";
 import { CarouselImageControl } from "./carousel-image-control";
 import { ModuleIconControl } from "./icon-control";
+import { ModuleTextureControl } from "./module-texture-control";
 
 export default function ModuleConfigurationPage() {
   const {
@@ -12,6 +13,8 @@ export default function ModuleConfigurationPage() {
     updateModuleField,
     moveModule,
     moduleSettings,
+    textureLibrary,
+    moduleTextureChoices,
     addModuleSetting,
     updateModuleSetting,
     removeModuleSetting,
@@ -115,6 +118,18 @@ export default function ModuleConfigurationPage() {
               moduleName={module.longName}
               hasImage={module.hasCarouselImage}
               imageVersion={module.updatedAt}
+            />
+
+            {/* The background this module draws (migration 0117). Also saves on
+                pick. A module with no row yet defaults to inheriting the
+                app-wide texture, which is what an unconfigured module does. */}
+            <ModuleTextureControl
+              slug={module.slug}
+              moduleName={module.longName}
+              source={moduleTextureChoices[module.slug]?.source ?? "inherit"}
+              textureId={moduleTextureChoices[module.slug]?.textureId}
+              hasOwnImage={moduleTextureChoices[module.slug]?.hasOwnImage ?? false}
+              textures={textureLibrary}
             />
 
             <CollapsibleCard title={`Module Settings — ${module.longName}`} className="mt-4">

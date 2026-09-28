@@ -298,6 +298,23 @@ export {
 } from "./duplicates";
 export type { DuplicateEntry, DuplicateGroup, DuplicateRow } from "./duplicates";
 
+// Same-date grouping for the Review Data section. A different question from the
+// duplicates above — date only, title ignored, untitled entries kept — plus the
+// non-destructive merge draft the "Merge" bulk action seeds the entry form with.
+export {
+  SAME_DATE_EXCERPT_WORDS,
+  countSameDateEntries,
+  findSameDateGroups,
+  mergeEntryDraft,
+  toSameDateRows,
+} from "./same-date";
+export type {
+  MergedEntryDraft,
+  SameDateEntry,
+  SameDateGroup,
+  SameDateRow,
+} from "./same-date";
+
 // The recycle bin behind the Correct tab's bulk delete (migration 0079).
 export {
   countRecycledEntries,

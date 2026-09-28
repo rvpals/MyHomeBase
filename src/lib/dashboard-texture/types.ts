@@ -34,10 +34,9 @@ export interface DashboardTextureItem {
 /**
  * What the dashboard draws — the selected library picture, flattened.
  *
- * Deliberately the same shape it had before migration 0113, plus `selectedId`.
- * The home dashboard calls `dashboardTextureCssVars` on this and neither knows
- * nor cares that there is a library behind it; keeping the shape meant
- * `src/app/(protected)/page.tsx` needed no change at all.
+ * The same shape it had before migration 0113, plus `selectedId` and — since
+ * 0116 — `appWide`. The screens hand this to `resolveAppTexture` and neither
+ * know nor care that there is a library behind it.
  *
  * `hasImage` false — with `selectedId` undefined — is the "no texture" state:
  * nothing selected, or a selection pointing at a row that has since been
@@ -46,6 +45,18 @@ export interface DashboardTextureItem {
 export interface DashboardTexture {
   /** The selected library row, or `undefined` when nothing is selected. */
   selectedId?: number;
+  /**
+   * Whether the selected picture is drawn behind **every** authenticated screen
+   * or behind the home dashboard alone (migration 0116).
+   *
+   * Scope lives here, on the selection, rather than on each library picture:
+   * unlike opacity/mode/blur it describes the installation's intent, not the
+   * image, so it must not change when a different texture is selected.
+   *
+   * A module with its own picture still wins on its own screens — see
+   * `src/lib/app-texture/`, which is the only place the two are combined.
+   */
+  appWide: boolean;
   hasImage: boolean;
   opacity: number;
   mode: DashboardTextureMode;

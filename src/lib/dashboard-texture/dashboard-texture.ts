@@ -70,6 +70,21 @@ export function getDashboardTextureImage(
 }
 
 /**
+ * One library picture by id, without its bytes.
+ *
+ * For a module drawing a library texture (0117): the pointer resolves to this
+ * row's opacity, mode, blur and `updatedAt`. Returns `undefined` for a picture
+ * that has since been deleted, which callers treat as "inherit" rather than an
+ * error.
+ */
+export function getDashboardTextureById(
+  repo: DashboardTextureRepository,
+  id: number,
+): DashboardTextureItem | undefined {
+  return repo.getTextureById(id);
+}
+
+/**
  * Adds a picture to the library and returns its id.
  *
  * Throws when the library is full, when the name is empty, or when the file is
@@ -136,6 +151,21 @@ export function selectDashboardTexture(
   if (!repo.selectTexture(id)) throw new Error("That texture no longer exists.");
 }
 
+/**
+ * Sets whether the selected picture covers every authenticated screen or the
+ * home dashboard alone (migration 0116).
+ *
+ * Takes no id: scope describes the selection, not a picture, so it survives
+ * switching between textures. Turning it on with nothing selected is legal and
+ * draws nothing — the flag is stored and takes effect when a picture is chosen.
+ */
+export function setDashboardTextureAppWide(
+  repo: DashboardTextureRepository,
+  appWide: boolean,
+): void {
+  repo.setAppWide(appWide);
+}
+
 /** Updates one picture's opacity / mode / blur, leaving its bytes in place. */
 export function saveDashboardTextureSettings(
   repo: DashboardTextureRepository,
@@ -146,36 +176,8 @@ export function saveDashboardTextureSettings(
   if (!repo.setSettings(id, settings)) throw new Error("That texture no longer exists.");
 }
 
-/**
- * The CSS custom properties for the texture layer, or `undefined` when there is
- * nothing to draw.
- *
- * Returned as a record rather than a finished `style` string so the caller
- * decides where it lands (the dashboard writes it onto its page container, next
- * to the theme tokens). `undefined` — rather than a layer at opacity 0 — is what
- * lets the page skip the element entirely: an empty fixed div that paints
- * nothing is still a compositing layer on every scroll.
- *
- * The URL carries `?v=<updatedAt>` because the serving route sends a 5-minute
- * max-age; without it, replacing or switching the picture would appear to do
- * nothing. `updatedAt` belongs to the selected row, so selecting a different
- * texture changes it too.
- */
-export function dashboardTextureCssVars(
-  texture: DashboardTexture,
-): Record<string, string> | undefined {
-  if (!texture.hasImage) return undefined;
-
-  return {
-    "--dashboard-texture-image": `url("/api/dashboard/texture?v=${encodeURIComponent(
-      texture.updatedAt,
-    )}")`,
-    "--dashboard-texture-opacity": String(texture.opacity),
-    // `cover` stretches one copy over the viewport; `tile` repeats it at its
-    // natural size. Two properties rather than one shorthand, because
-    // background-size and background-repeat have to disagree between the modes.
-    "--dashboard-texture-size": texture.mode === "cover" ? "cover" : "auto",
-    "--dashboard-texture-repeat": texture.mode === "cover" ? "no-repeat" : "repeat",
-    "--dashboard-texture-blur": `${texture.blur}px`,
-  };
-}
+// `dashboardTextureCssVars` used to live here, emitting `--dashboard-texture-*`
+// for a rule of the same name in globals.css. Both are gone (0116): there is now
+// one `[data-app-texture]` rule fed by one namespace, and `resolveAppTexture` in
+// src/lib/app-texture/ is what produces it -- because the picture behind a screen
+// may come from here or from a module, and only that module knows which wins.

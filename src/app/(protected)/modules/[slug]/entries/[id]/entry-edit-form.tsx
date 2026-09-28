@@ -22,6 +22,7 @@ export function JournalEntryEditForm({
   tagOptions,
   locationCategoryOptions = [],
   locationTagOptions = [],
+  isCompactContainer = false,
   onCancel,
   onSaved,
 }: {
@@ -33,6 +34,17 @@ export function JournalEntryEditForm({
   /** The saved-location library's taxonomy, for the location picker's chips. */
   locationCategoryOptions?: string[];
   locationTagOptions?: string[];
+  /**
+   * Render for a narrow container — inside a modal rather than on the
+   * full-width entry page.
+   *
+   * Only the two `TokenPicker`s need it: their dropdown and create field sit
+   * side by side until the *viewport* narrows, so in a modal on a desktop the
+   * create box is squeezed to nothing while the screen is plainly wide. The
+   * caller knows how much room it gave this form; neither the form nor the
+   * picker can see it.
+   */
+  isCompactContainer?: boolean;
   onCancel: () => void;
   onSaved: () => void;
 }) {
@@ -118,6 +130,7 @@ export function JournalEntryEditForm({
           onChange={setCategories}
           options={categoryOptions}
           allowCreate
+          stackControls={isCompactContainer}
           createPlaceholder="New category, e.g. FAMILY"
         />
 
@@ -128,6 +141,7 @@ export function JournalEntryEditForm({
           onChange={setTags}
           options={tagOptions}
           allowCreate
+          stackControls={isCompactContainer}
           createPlaceholder="New tag, e.g. Museum"
         />
 

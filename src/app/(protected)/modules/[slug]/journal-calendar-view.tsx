@@ -14,7 +14,7 @@
 
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/button";
 import { Comments } from "@/components/comments";
@@ -525,6 +525,16 @@ function JumpControl({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
+  // Focus and select the typed box when it mounts — the popover only renders
+  // while open, so "mounted" and "just opened" are the same moment. This ref has
+  // to be stable: an inline arrow is a new identity each render, so React would
+  // detach and re-attach it after *every* keystroke and re-select the whole box,
+  // making the next character replace what was already typed instead of appending.
+  const focusTypedBox = useCallback((node: HTMLInputElement | null) => {
+    inputRef.current = node;
+    node?.select();
+  }, []);
+
   /**
    * Opens the popover, seeding it from the remembered format and the period we
    * are already on — the reader edits a date rather than composing one.
@@ -614,13 +624,7 @@ function JumpControl({
           </label>
           <div className="mt-2 flex gap-2">
             <input
-              // Focus and select on mount, through the ref callback rather than
-              // an effect: the popover only renders while open, so "mounted" and
-              // "just opened" are the same moment.
-              ref={(node) => {
-                inputRef.current = node;
-                node?.select();
-              }}
+              ref={focusTypedBox}
               autoFocus
               id="journal-jump-date"
               type="text"

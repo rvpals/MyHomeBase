@@ -45,7 +45,15 @@ body {
 /* The page's own padding. There is no fixed top bar any more — the utility
    header (`AppHeader`) is `sticky` *inside* the content column, so it scrolls
    with the page rather than floating above it and needs no reserved space.
-   What's left is the gutter and the device insets. */
+   What's left is the gutter and the device insets.
+
+   The air above the breadcrumb bar is deliberately NOT here. It was, briefly,
+   as `padding-top` — but `top: 0` on a sticky element resolves against the
+   padding box, so the bar docked that far down from the viewport top and the
+   page scrolled through the gap forever. It is now a `mt-*` on `AppHeader`
+   itself: a margin sits outside the border box, so it still lifts the bar off
+   the edge at rest, and margins don't move a sticky dock — so the bar docks
+   flush and the air scrolls away with the page. Don't move it back. */
 .app-main {
   /* `+ env(safe-area-inset-top)` because src/app/layout.tsx sets
      `viewport-fit=cover` and `black-translucent`: the app paints *under* the
@@ -251,7 +259,8 @@ html[data-sectiontrigger] .app-main {
 }
 
 /* The accent green for text and glyphs sitting on a `--brass-soft` tint: the
-   compact bar's module glyph, and the active row in its sheet.
+   compact bar's module glyph, the active row in its sheet, and the My Shortcuts
+   tile action chips (move/edit/remove).
  *
  * Why not just `--brass-dark`, which every other active state uses? Because on
  * the dark themes it is too dull against the tint it sits on — measured on
@@ -268,9 +277,10 @@ html[data-sectiontrigger] .app-main {
  * `--brass`; it is near-black on a light theme, so the same rule deepens it
  * instead. One declaration, correct in both directions, still all tokens.
  *
- * Scoped to this one surface deliberately — it is not a general replacement for
- * `--brass-dark`. Widening it to every active state in the app is a design-token
- * change (`design.md`), not a find-and-replace. */
+ * Still not a general replacement for `--brass-dark`: it applies only where a
+ * glyph sits *on a `--brass-soft` fill*, which is the case it was measured for.
+ * Widening it to every active state in the app is a design-token change
+ * (`design.md`), not a find-and-replace. */
 .shell-accent-text {
   color: color-mix(in srgb, var(--brass) 78%, var(--ink));
 }
@@ -413,15 +423,23 @@ html[data-music-player] .app-main {
     linear-gradient(114deg, rgba(255, 255, 255, 0.02), rgba(0, 0, 0, 0.02));
 }
 
-/* The home dashboard's background picture (migrations/0063).
+/* The app's uploaded background picture (migrations/0063, 0064, 0113, 0116).
+
+   ONE rule for both sources. The picture behind a screen comes either from the
+   app-wide selection or from a module's own upload, and `resolveAppTexture` in
+   src/lib/app-texture/ decides which -- normalising both into the same
+   `--app-texture-*` properties. CSS cannot ask which source won and does not
+   need to: it draws what it is handed. This used to be two near-identical rules
+   (`[data-dashboard-texture]` and `[data-module-texture]`) that had to be kept
+   in step by hand.
 
    A `fixed` pseudo-element rather than a `background-image` on the page, for
    three reasons:
      1. It must sit BEHIND the cards, which carry `bg-paper-raised` and are what
         keep text legible over a photograph. A background on the scroll container
         would be painted under the content anyway, but `cover` would then size
-        to the *scroll height*, so a long dashboard would show a stretched crop
-        and a short one a different framing.
+        to the *scroll height*, so a long page would show a stretched crop and a
+        short one a different framing.
      2. `filter: blur()` on a real background-image would blur the element's
         content too. On its own layer it blurs only the picture.
      3. `opacity` here is the admin's dial. Applying it to a layer rather than
@@ -430,9 +448,9 @@ html[data-music-player] .app-main {
         the same intent `.paper-texture` has, by the only means available to an
         image whose colors we don't control.
 
-   Emitted only when a picture is uploaded: `dashboardTextureCssVars` returns
-   undefined otherwise and the wrapper renders no `data-dashboard-texture`, so
-   there is no always-on fixed compositing layer on a dashboard with no texture.
+   Emitted only when there is a picture to draw: `resolveAppTexture` returns no
+   vars otherwise and the wrapper renders no `data-app-texture` attribute, so an
+   install with no texture has no always-on fixed compositing layer.
 
    `scale(1.06)` counteracts blur's transparent edge -- a blurred layer fades out
    at its own boundary, which would otherwise show as a light vignette around the
@@ -445,60 +463,43 @@ html[data-music-player] .app-main {
    stacking context of its own, which traps the -1 child *inside* it: the layer
    lands above the body background and below the wrapper's content. The children
    then need no z-index of their own. */
-[data-dashboard-texture] {
+[data-app-texture] {
   position: relative;
   z-index: 0;
 }
 
-[data-dashboard-texture]::before {
+[data-app-texture]::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background-image: var(--dashboard-texture-image);
-  background-size: var(--dashboard-texture-size, cover);
-  background-repeat: var(--dashboard-texture-repeat, no-repeat);
+  background-image: var(--app-texture-image);
+  background-size: var(--app-texture-size, cover);
+  background-repeat: var(--app-texture-repeat, no-repeat);
   background-position: center;
-  opacity: var(--dashboard-texture-opacity, 0.1);
-  filter: blur(var(--dashboard-texture-blur, 0px));
+  opacity: var(--app-texture-opacity, 0.1);
+  filter: blur(var(--app-texture-blur, 0px));
   transform: scale(1.06);
 }
 
-/* A MODULE's background picture (migrations/0064) — the same mechanism as the
-   dashboard layer above, keyed to a module instead of the home screen. The Music
-   Library is the first to use it; the picture sits behind every one of that
-   module's sections.
+/* A module's own picture replaces the app-wide one rather than stacking on it.
 
-   A separate rule rather than a shared class because the two read different
-   custom properties, and a module screen must be able to carry its own picture
-   while the dashboard carries another. Everything the comment above explains --
-   why the wrapper needs `z-index: 0` to trap a `z-index: -1` child above the
-   opaque body background, why `scale(1.06)` hides a blurred layer's soft edge,
-   why opacity lives on the layer so the theme's `--paper` tints through rather
-   than being replaced -- applies here identically and is not repeated.
+   Both layers are `fixed` and both cover the viewport, so without this a module
+   that overrides would composite two photographs at once -- neither at the
+   opacity its admin tuned. Blending two uploads is not a design anyone chose.
 
-   Emitted only when a picture is uploaded: `moduleTextureCssVars` returns
-   undefined otherwise and the shell renders no `data-module-texture` attribute,
-   so a module with no picture gets no always-on compositing layer. */
-[data-module-texture] {
-  position: relative;
-  z-index: 0;
-}
+   `:has()` because the decision belongs to the INNER element: the layout emits
+   the outer layer around `.app-main` for every screen and cannot know which
+   module a child route is, while the module's shell knows exactly. So the module
+   marks itself with `data-app-texture-override` and the ancestor stands down.
+   The alternative -- threading the current module's slug into the layout -- would
+   make a shared layout depend on the module registry to draw a background.
 
-[data-module-texture]::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background-image: var(--module-texture-image);
-  background-size: var(--module-texture-size, cover);
-  background-repeat: var(--module-texture-repeat, no-repeat);
-  background-position: center;
-  opacity: var(--module-texture-opacity, 0.1);
-  filter: blur(var(--module-texture-blur, 0px));
-  transform: scale(1.06);
+   Scoped to `[data-app-texture]` so it only ever cancels a layer that exists;
+   on an install with no app-wide texture this rule matches nothing. */
+[data-app-texture]:has([data-app-texture-override])::before {
+  background-image: none;
 }
 
 /* The hover lift. `CollapsibleCard` is often clickable in effect (its whole

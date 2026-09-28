@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import type { NavLink } from "@/components/nav-menus";
 import { TwoTierShell } from "@/components/two-tier-shell";
+import type { DashboardTextureItem } from "@/lib/dashboard-texture";
 import type { ModuleSetting } from "@/lib/module-settings";
+import type { ModuleTextureSource } from "@/lib/module-texture";
 import type { Module } from "@/lib/modules";
 import type { NavigationTree, TreeModule } from "@/lib/navigation";
 import { DEFAULT_COLOR_THEME_ID, DEFAULT_ICON_SET_ID, type Setting } from "@/lib/settings";
@@ -40,6 +42,20 @@ export interface ModuleDraft {
   updatedAt?: string;
 }
 
+/**
+ * One module's background-texture choice, for Module Configuration's picker
+ * (migration 0117).
+ *
+ * Not a draft like the fields above: this control writes on pick rather than
+ * through the page's Save button, so it rides on the context purely to reach the
+ * client page — there is nothing here to dirty or reset.
+ */
+export interface ModuleTextureChoice {
+  source: ModuleTextureSource;
+  textureId?: number;
+  hasOwnImage: boolean;
+}
+
 export interface ModuleSettingDraft {
   key: string;
   value: string;
@@ -52,6 +68,10 @@ interface AdminContextValue {
   colorThemeId: string;
   iconSetId: string;
   moduleSettings: Record<string, ModuleSettingDraft[]>;
+  /** The app texture library, for the per-module background picker. */
+  textureLibrary: DashboardTextureItem[];
+  /** Each module's current background choice, keyed by slug. */
+  moduleTextureChoices: Record<string, ModuleTextureChoice>;
   isDirty: boolean;
   isSaving: boolean;
   updateModuleField: (slug: string, field: keyof ModuleDraft, value: string | boolean) => void;
@@ -117,6 +137,8 @@ export function AdminShell({
   initialModules,
   initialSettings,
   initialModuleSettings,
+  textureLibrary,
+  moduleTextureChoices,
   railLinks,
   tree,
   expandedModules,
@@ -131,6 +153,12 @@ export function AdminShell({
   initialModules: Module[];
   initialSettings: Setting[];
   initialModuleSettings: ModuleSetting[];
+  /**
+   * The texture library and each module's choice, loaded by the layout for the
+   * same reason `railLinks` is — this is a client component.
+   */
+  textureLibrary: DashboardTextureItem[];
+  moduleTextureChoices: Record<string, ModuleTextureChoice>;
   /** Tier 1's module list, loaded by the layout — this is a client component. */
   railLinks: NavLink[];
   /**
@@ -308,6 +336,8 @@ export function AdminShell({
         colorThemeId,
         iconSetId,
         moduleSettings,
+        textureLibrary,
+        moduleTextureChoices,
         isDirty,
         isSaving,
         updateModuleField,

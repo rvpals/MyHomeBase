@@ -7,16 +7,26 @@
 // from "./module-texture/repository" instead -- the same split
 // `src/lib/dashboard-texture/index.ts` and `src/lib/modules/index.ts` keep, for
 // the same reason.
-export type { ModuleTexture, ModuleTextureMode, ModuleTextureSettings } from "./types";
+export type {
+  ModuleTexture,
+  ModuleTextureMode,
+  ModuleTextureSettings,
+  ModuleTextureSource,
+} from "./types";
 export type { ModuleTextureRepository } from "./ports";
-export { moduleTextureSettingsSchema, moduleTextureSlugSchema } from "./schema";
-export type { ModuleTextureSettingsInput } from "./schema";
+export {
+  moduleTextureChoiceSchema,
+  moduleTextureSettingsSchema,
+  moduleTextureSlugSchema,
+} from "./schema";
+export type { ModuleTextureChoiceInput, ModuleTextureSettingsInput } from "./schema";
 export {
   MAX_MODULE_TEXTURE_BYTES,
   getModuleTexture,
   getModuleTextureImage,
-  moduleTextureCssVars,
+  listModulesWithTexture,
   removeModuleTextureImage,
   saveModuleTextureSettings,
+  setModuleTextureChoice,
   setModuleTextureImage,
 } from "./module-texture";

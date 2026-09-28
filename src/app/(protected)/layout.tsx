@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { MusicPlayerBar } from "@/components/music-player-bar";
@@ -8,8 +8,10 @@ import { FloatingHost } from "@/components/floating-host";
 import type { CalculatorActions } from "@/components/floating-calculator";
 import type { FloatingActions } from "@/components/floating-layer";
 import type { ScratchpadActions } from "@/components/floating-scratchpad";
+import { resolveAppTexture } from "@/lib/app-texture";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { listCalculations } from "@/lib/calculator";
+import { getDashboardTexture } from "@/lib/dashboard-texture";
 import { describeClock } from "@/lib/clock";
 import { getEnabledFloating } from "@/lib/floating";
 import { getScratchpad } from "@/lib/scratchpad";
@@ -127,6 +129,22 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
   const preferences = getUserPreferences(deps.userPreferencesRepo, currentUser.id);
   const { compactNavStyle } = preferences;
 
+  // The app-wide background picture (migration 0116). Resolved in the one layout
+  // every authenticated page shares, which is what makes "the same texture on
+  // every screen" a single wrapper rather than a line in each of nine module
+  // shells plus Administration plus the account screen.
+  //
+  // No module texture is passed: this layout cannot know which module a child
+  // route belongs to, and does not need to. A module that has its own picture
+  // suppresses this layer and draws its own from its shell — see
+  // `music-shell.tsx`, and `resolveAppTexture` for the precedence.
+  //
+  // Cheap: the settings row carries `hasImage`, never the bytes. `vars` is
+  // undefined unless an admin has both selected a picture and ticked the scope
+  // on, and then no attribute is rendered and there is no fixed compositing
+  // layer at all.
+  const appTexture = resolveAppTexture(getDashboardTexture(deps.dashboardTextureRepo));
+
   // The floating layer. Resolved here, in the one layout every authenticated page
   // shares, because a floating window has to outlive navigation — mounting it inside a
   // page would close it on every link, the same reason the music player lives here.
@@ -198,7 +216,19 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
           navigate between modules. The bar renders nothing until something plays. */}
       <CompactNavStyleProvider value={compactNavStyle}>
         <MusicPlayerProvider actions={musicQueueActions}>
-          <main className="app-main min-h-screen pb-8">{children}</main>
+          {/* The texture attaches to `.app-main` itself rather than to a nested
+              div: its `::before` is `fixed` so it covers the viewport either
+              way, but the wrapper must be a stacking context that contains the
+              page's content, and adding another element here would change the
+              padding `.app-main` reserves for the nav tiers. The attribute is
+              absent unless there is a picture to draw. */}
+          <main
+            className="app-main min-h-screen pb-8"
+            data-app-texture={appTexture.vars ? "" : undefined}
+            style={appTexture.vars as CSSProperties | undefined}
+          >
+            {children}
+          </main>
           <MusicPlayerBar />
           {/* Below the player so the layer's pucks stack above the player's own,
               and inside both providers so a floating component can read either. */}

@@ -10,8 +10,13 @@ import {
   replaceDashboardTextureImage,
   saveDashboardTextureSettings,
   selectDashboardTexture,
+  setDashboardTextureAppWide,
   type DashboardTextureSettings,
 } from "@/lib/dashboard-texture";
+import {
+  setModuleTextureChoice,
+  type ModuleTextureChoiceInput,
+} from "@/lib/module-texture";
 import {
   createColorTheme,
   deleteColorTheme,
@@ -335,6 +340,56 @@ export async function selectDashboardTextureAction(
     return {
       ok: false,
       error: error instanceof Error ? error.message : "Could not select the texture.",
+    };
+  }
+}
+
+/**
+ * Sets whether the selected texture covers every screen or the home dashboard
+ * alone (migration 0116).
+ *
+ * `revalidatePath("/", "layout")` matters more here than for its neighbours: the
+ * layer this flag controls is emitted by the protected layout, so every cached
+ * page in the app is stale the moment it changes.
+ */
+export async function setDashboardTextureAppWideAction(
+  appWide: boolean,
+): Promise<DashboardTextureResult> {
+  try {
+    await requireAdmin();
+    setDashboardTextureAppWide(deps.dashboardTextureRepo, appWide);
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not change where the texture shows.",
+    };
+  }
+}
+
+/**
+ * Sets which background a module draws — inherit, a library picture, its own
+ * upload, or nothing (migration 0117).
+ *
+ * `requireAdmin()` rather than `requireModuleAccess(slug)`: this is
+ * Administration -> Module Configuration, where an admin configures every
+ * module including ones they would not otherwise have access to. The slug is
+ * data here, not the caller's own module.
+ */
+export async function setModuleTextureChoiceAction(
+  slug: string,
+  input: ModuleTextureChoiceInput,
+): Promise<DashboardTextureResult> {
+  try {
+    await requireAdmin();
+    setModuleTextureChoice(deps.moduleTextureRepo, slug, input);
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not change the background.",
     };
   }
 }

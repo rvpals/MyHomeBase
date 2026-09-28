@@ -60,4 +60,23 @@ export interface DashboardTextureRepository {
    * when the id is not in the library.
    */
   setSettings(id: number, settings: DashboardTextureSettings): boolean;
+
+  /**
+   * Sets whether the selected picture is drawn behind every authenticated
+   * screen or behind the home dashboard alone (migration 0116).
+   *
+   * Scope belongs to the selection, so this takes no id and has no "not found"
+   * case — hence `void` where the writers above return a boolean.
+   */
+  setAppWide(appWide: boolean): void;
+
+  /**
+   * One library picture by id, or `undefined` when it is not in the library.
+   *
+   * **Never includes the image bytes.** Exists so a module pointing at a
+   * library picture (0117) can be drawn with that picture's own opacity, mode
+   * and blur — `listTextures()` would work but reads all 20 rows to answer
+   * about one, on every module page render.
+   */
+  getTextureById(id: number): DashboardTextureItem | undefined;
 }

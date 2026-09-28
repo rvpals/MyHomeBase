@@ -2,7 +2,9 @@ import type { ReactNode } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
+import { listDashboardTextures } from "@/lib/dashboard-texture";
 import { listAllModuleSettings } from "@/lib/module-settings";
+import { getModuleTexture } from "@/lib/module-texture";
 import { listModules } from "@/lib/modules";
 import { listSettings } from "@/lib/settings";
 import { getAccessibleModules, isAdmin } from "@/lib/user";
@@ -23,6 +25,25 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   const modules = listModules(deps.moduleRepo, { includeHidden: true });
   const settings = listSettings(deps.settingsRepo);
   const moduleSettings = listAllModuleSettings(deps.moduleSettingsRepo);
+
+  // The texture library and each module's current choice, for Module
+  // Configuration's background picker (migration 0117). Read here for the same
+  // reason `railLinks` is: `AdminShell` is a client component and cannot touch
+  // `deps`.
+  //
+  // Cheap despite being per-module: every one of these reads is a primary-key
+  // lookup that derives `image IS NOT NULL` in SQL, so no picture bytes are
+  // materialised — and the library list never carries bytes either.
+  const moduleTextures = listDashboardTextures(deps.dashboardTextureRepo);
+  const moduleTextureChoices = Object.fromEntries(
+    modules.map((appModule) => {
+      const texture = getModuleTexture(deps.moduleTextureRepo, appModule.slug);
+      return [
+        appModule.slug,
+        { source: texture.source, textureId: texture.textureId, hasOwnImage: texture.hasImage },
+      ];
+    }),
+  );
 
   // The two-tier shell's own data. `AdminShell` is a client component and can't
   // read `deps` or `cookies()` itself, so unlike the module shells — which are
@@ -51,6 +72,8 @@ export default async function AdminLayout({ children }: { children: ReactNode })
       initialModules={modules}
       initialSettings={settings}
       initialModuleSettings={moduleSettings}
+      textureLibrary={moduleTextures}
+      moduleTextureChoices={moduleTextureChoices}
       railLinks={railLinks}
       tree={navTree.tree}
       expandedModules={navTree.expandedModules}

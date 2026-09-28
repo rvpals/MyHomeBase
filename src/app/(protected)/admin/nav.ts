@@ -51,7 +51,7 @@ export const adminNav: SectionNode[] = [
       },
       {
         id: "configuration-texture",
-        label: "Dashboard Texture",
+        label: "App Texture",
         href: "/admin/configuration/texture",
         hint: "Set an optional background picture for the home dashboard",
         icon: "palette",

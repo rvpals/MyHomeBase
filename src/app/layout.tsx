@@ -1,14 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import {
-  Familjen_Grotesk,
-  Great_Vibes,
-  Inter,
-  IBM_Plex_Mono,
-  JetBrains_Mono,
-  Manrope,
-  Sora,
-  Space_Grotesk,
-} from "next/font/google";
+import localFont from "next/font/local";
 import { cookies } from "next/headers";
 import { AppVersionWatch } from "@/components/app-version-watch";
 import { IconOverrideProvider } from "@/components/icon-override-context";
@@ -34,57 +25,89 @@ import {
 import { deps } from "@/lib/wiring";
 import "./globals.css";
 
-const spaceGrotesk = Space_Grotesk({
+// The eight webfaces, loaded from committed files in ./fonts rather than
+// fetched from Google at build time.
+//
+// **This was `next/font/google` and must not go back.** Those loaders download
+// from fonts.gstatic.com *while the build runs*, and `npm run build` clears
+// `.next` first — so nothing cached between builds and every release was gated
+// on eight consecutive successful fetches through a corporate network. One
+// hiccup aborted `publish:nas` with "next/font/google queries have exactly one
+// entry", which reads like a bug in this file and isn't. See ./fonts/README.md.
+//
+// `declarations: [{ prop: "font-named-instance", value: "Regular" }]` is not
+// needed here; what matters is that each `src` entry declares the weight RANGE
+// a variable file actually covers. Next emits one @font-face per entry, and a
+// range lets the browser synthesise every weight in it — which is what keeps a
+// theme free to ask for 600 from a file whose entry says 500-700.
+//
+// The CSS variable names are unchanged from the Google loaders, deliberately:
+// they are the seam `FONT_VAR_MAP` below and the stored themes resolve through,
+// so preserving them means no migration and no theme rewrite.
+
+// Variable file covering 500-700 — the three weights the themes use.
+const spaceGrotesk = localFont({
+  src: [{ path: "./fonts/space-grotesk-variable.woff2", weight: "500 700", style: "normal" }],
   variable: "--font-space-grotesk",
-  subsets: ["latin"],
-  weight: ["500", "600", "700"],
+  display: "swap",
 });
 
-const sora = Sora({
+const sora = localFont({
+  src: [{ path: "./fonts/sora-variable.woff2", weight: "500 700", style: "normal" }],
   variable: "--font-sora",
-  subsets: ["latin"],
-  weight: ["500", "600", "700"],
+  display: "swap",
 });
 
-const familjenGrotesk = Familjen_Grotesk({
+const familjenGrotesk = localFont({
+  src: [{ path: "./fonts/familjen-grotesk-variable.woff2", weight: "500 700", style: "normal" }],
   variable: "--font-familjen-grotesk",
-  subsets: ["latin"],
-  weight: ["500", "600", "700"],
+  display: "swap",
 });
 
-const manrope = Manrope({
+// Manrope and Inter carried no `weight` array under the Google loaders, i.e.
+// their full variable range. Kept that way so the theme builder can assign
+// either to any slot at any weight.
+const manrope = localFont({
+  src: [{ path: "./fonts/manrope-variable.woff2", weight: "200 800", style: "normal" }],
   variable: "--font-manrope",
-  subsets: ["latin"],
+  display: "swap",
 });
 
-const inter = Inter({
+const inter = localFont({
+  src: [{ path: "./fonts/inter-variable.woff2", weight: "100 900", style: "normal" }],
   variable: "--font-inter",
-  subsets: ["latin"],
+  display: "swap",
 });
 
-const plexMono = IBM_Plex_Mono({
+// The one family Google still serves as separate statics, so it is the one with
+// three files. Three `src` entries, one per weight.
+const plexMono = localFont({
+  src: [
+    { path: "./fonts/ibm-plex-mono-400.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/ibm-plex-mono-500.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/ibm-plex-mono-600.woff2", weight: "600", style: "normal" },
+  ],
   variable: "--font-ibm-plex-mono",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  display: "swap",
 });
 
-const jetbrainsMono = JetBrains_Mono({
+const jetbrainsMono = localFont({
+  src: [{ path: "./fonts/jetbrains-mono-variable.woff2", weight: "400 500", style: "normal" }],
   variable: "--font-jetbrains-mono",
-  subsets: ["latin"],
-  weight: ["400", "500"],
+  display: "swap",
 });
 
 // Deliberately NOT a theme face: it is absent from FONT_KEYS, so the theme
 // builder never offers it and nobody can pick copperplate script as their body
 // font. It is exposed as its own `--font-script` token (globals.css) for the one
 // piece of decorative UI that wants handwriting — the Daily Quote card.
-const greatVibes = Great_Vibes({
+const greatVibes = localFont({
+  src: [{ path: "./fonts/great-vibes-variable.woff2", weight: "400", style: "normal" }],
   variable: "--font-great-vibes",
-  subsets: ["latin"],
-  weight: ["400"],
+  display: "swap",
 });
 
-// Maps a theme's font choice to the CSS variable the matching next/font/google
+// Maps a theme's font choice to the CSS variable the matching `localFont`
 // loader above exposes it under.
 const FONT_VAR_MAP: Record<FontKey, string> = {
   "space-grotesk": "var(--font-space-grotesk)",

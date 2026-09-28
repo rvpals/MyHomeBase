@@ -33,6 +33,7 @@ import {
   replaceDashboardTextureImageAction,
   saveDashboardTextureSettingsAction,
   selectDashboardTextureAction,
+  setDashboardTextureAppWideAction,
 } from "../../actions";
 
 const MAX_MB = Math.round(MAX_DASHBOARD_TEXTURE_BYTES / 1024 / 1024);
@@ -49,10 +50,20 @@ type PickerIntent = { kind: "add" } | { kind: "replace"; id: number };
 export function DashboardTextureControl({
   textures,
   selectedId: initialSelectedId,
+  appWide: initialAppWide,
+  overridingModules,
 }: {
   textures: DashboardTextureItem[];
   /** The library row the dashboard draws, or `undefined` for flat paper. */
   selectedId?: number;
+  /** Whether the selection covers every screen or the home dashboard alone. */
+  appWide: boolean;
+  /**
+   * Modules with a background picture of their own, which therefore ignore the
+   * app-wide setting. Named so the admin isn't left wondering why one module
+   * looks different — see migration 0116.
+   */
+  overridingModules: string[];
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const intent = useRef<PickerIntent>({ kind: "add" });
@@ -62,6 +73,7 @@ export function DashboardTextureControl({
   // server also patches this, so the two stay in step without a refetch.
   const [items, setItems] = useState(textures);
   const [selectedId, setSelectedId] = useState(initialSelectedId);
+  const [appWide, setAppWide] = useState(initialAppWide);
 
   // Which picture the knobs and the preview are showing. Starts at the selected
   // one, but deliberately independent of it: an admin should be able to tune a
@@ -205,6 +217,16 @@ export function DashboardTextureControl({
     );
   }
 
+  function handleAppWide(next: boolean) {
+    void run(
+      () => setDashboardTextureAppWideAction(next),
+      () => setAppWide(next),
+      next
+        ? "The texture now shows on every screen."
+        : "The texture now shows on the home dashboard only.",
+    );
+  }
+
   function handleDelete(id: number) {
     void run(
       () => deleteDashboardTextureAction(id),
@@ -263,6 +285,42 @@ export function DashboardTextureControl({
         onChange={(event) => void handleFile(event.target.files?.[0])}
         className="hidden"
       />
+
+      {/* Scope. Above the gallery because it decides what the gallery's selection
+          *means* — "this picture" reads differently when it lands on every
+          screen. A checkbox rather than a switch component: nothing in
+          components.md is a switch, and this is one boolean on one admin screen.
+
+          `flex-wrap` and a full-width label on a phone; the same element at
+          every width, which is the rule in design.md. */}
+      <div className="rounded-lg border border-line p-3 sm:p-4">
+        <label className="flex cursor-pointer items-start gap-3">
+          <input
+            type="checkbox"
+            checked={appWide}
+            disabled={isBusy}
+            onChange={(event) => handleAppWide(event.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-brass"
+          />
+          <span>
+            <span className="text-sm font-medium text-ink">Show on every screen</span>
+            <span className="mt-0.5 block text-xs text-muted">
+              Off, the picture stays on the home dashboard. On, it sits behind every screen
+              — the modules, Administration and your account — so the whole app shares one
+              background. A module with its own picture keeps it either way.
+            </span>
+          </span>
+        </label>
+
+        {appWide && overridingModules.length > 0 && (
+          <p className="mt-3 rounded-lg border border-dashed border-line px-3 py-2 text-xs text-muted">
+            {overridingModules.length === 1
+              ? `${overridingModules[0]} has its own background picture, so it won't use this one.`
+              : `${overridingModules.join(", ")} have their own background pictures, so they won't use this one.`}{" "}
+            Remove it from that module&apos;s own configuration screen to bring it in line.
+          </p>
+        )}
+      </div>
 
       <div className="rounded-lg border border-line p-3 sm:p-4">
         <div className="flex flex-wrap items-baseline justify-between gap-2">

@@ -2420,6 +2420,7 @@ For a single choice that needs an image beside each option, use
 | `allowCreate?` | `boolean` | Default `false`. Adds a text field for a name that isn't in `options` yet. Leave it off for a closed vocabulary. |
 | `createPlaceholder?` | `string` | Placeholder for that field. Ignored unless `allowCreate`. |
 | `hint?` | `string` | Small muted line under the control. |
+| `stackControls?` | `boolean` | Default `false`. Always put the create field on its own line below the dropdown. **For a picker in a narrow container on a wide screen** — inside a `Modal`, or in a grid column. See the note below. |
 | `className?` | `string` | Merged last, e.g. `"sm:col-span-2"` to span a two-column form grid. |
 
 ```tsx
@@ -2447,6 +2448,17 @@ action, not a held choice — and it disables itself once every option is chosen
 The component never registers a new name; a typed name is just a string in `value`
 until whatever saves the record decides what to do with it. Narrow screens stack
 the dropdown above the create field (`max-lg:flex-col`); chips wrap at any width.
+
+**`stackControls` — when `max-lg:` isn't enough.** The two controls sit side by
+side and only stack when the *viewport* is under 1024px. That is the right
+default for a form filling the page, and wrong for one inside a `Modal`: a
+`size="lg"` dialog is 896px wide, and a picker in its two-column grid gets about
+a quarter of that, so on a desktop the row stays horizontal and the create field
+is squeezed to a few characters while the screen is plainly wide. A container
+query would let the control decide for itself, but nothing in this repo uses one
+yet, so the caller — which knows how much room it gave the control — says so
+instead. Journal's Review Data passes it through both forms' `isCompactContainer`
+prop for exactly this reason.
 
 ---
 

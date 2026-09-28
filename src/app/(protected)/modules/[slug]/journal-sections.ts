@@ -15,6 +15,7 @@ export const JOURNAL_SECTIONS = [
   "report",
   "import",
   "calendar-import",
+  "review-data",
   "configuration",
   "templates",
   "metadata",
@@ -74,6 +75,10 @@ export const JOURNAL_SECTION_INFO: Record<JournalSection, { label: string; descr
     label: "Calendar Import",
     description: "Import events from a Google Calendar .ics export.",
   },
+  "review-data": {
+    label: "Review Data",
+    description: "Tidy up what the journal already holds — several entries on one date.",
+  },
   configuration: {
     label: "Preferences",
     description: "Preferences for how your journal works.",
@@ -132,6 +137,9 @@ export const JOURNAL_CONFIGURATION_SECTIONS: readonly JournalSection[] = [
 export const JOURNAL_DATA_MANAGEMENT_SECTIONS: readonly JournalSection[] = [
   "import",
   "calendar-import",
+  // Last in the group because it reads what the two importers above write: the
+  // several-entries-on-one-date pile is mostly what an import leaves behind.
+  "review-data",
 ];
 
 /**
@@ -166,6 +174,11 @@ export const JOURNAL_SECTION_ICONS: Record<JournalSection, string> = {
   // A wall calendar, for the section that reads one. Hand-drawn in
   // tree-icons.tsx: no Iconify set in TREE_ICON_GLYPHS covers this concept.
   "calendar-import": "calendar",
+  // `clipboard` — going down a list and checking things off, which is what this
+  // section is for. Free as a Journal glyph: deliberately not `list` (Entries'),
+  // not `calendar` (Calendar Import's, the row directly above it in the same
+  // group) and not `sliders` (Preferences').
+  "review-data": "clipboard",
   configuration: "sliders",
   // `note`, not `list` — that one is Entries', and two sections wearing the same
   // glyph is the collision modules.md warns about. A template is a jotting you

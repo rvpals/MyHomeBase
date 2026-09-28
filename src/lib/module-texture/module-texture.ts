@@ -14,7 +14,12 @@ import {
   type ImageUploadInput,
 } from "@/lib/shared/image-upload";
 import type { ModuleTextureRepository } from "./ports";
-import { moduleTextureSettingsSchema, moduleTextureSlugSchema } from "./schema";
+import {
+  moduleTextureChoiceSchema,
+  moduleTextureSettingsSchema,
+  moduleTextureSlugSchema,
+  type ModuleTextureChoiceInput,
+} from "./schema";
 import type { ModuleTexture, ModuleTextureSettings } from "./types";
 
 /**
@@ -68,6 +73,38 @@ export function removeModuleTextureImage(
   repo.setImage(moduleTextureSlugSchema.parse(moduleSlug), undefined);
 }
 
+/**
+ * Every module that does not inherit the app-wide texture.
+ *
+ * These are the modules an app-wide texture does not reach — whether because
+ * they draw their own picture, a library one, or nothing at all. See
+ * `src/lib/app-texture/`. Returns slugs; the caller resolves them to names.
+ */
+export function listModulesWithTexture(repo: ModuleTextureRepository): string[] {
+  return repo.listSlugsWithImage();
+}
+
+/**
+ * Sets which of the four sources a module draws (migration 0117).
+ *
+ * Validated at the boundary: a `'library'` choice must name a picture, and any
+ * other choice must not. Leaves an uploaded picture in place, so a module that
+ * switches to a library texture and back keeps its own without re-uploading.
+ *
+ * Does **not** check that `textureId` names a live library row. A deleted
+ * picture is resolved as `inherit` at render time by
+ * `src/lib/app-texture/` — validating here would only move the race, since the
+ * admin can delete a library picture at any point after this returns.
+ */
+export function setModuleTextureChoice(
+  repo: ModuleTextureRepository,
+  moduleSlug: string,
+  input: ModuleTextureChoiceInput,
+): void {
+  const choice = moduleTextureChoiceSchema.parse(input);
+  repo.setChoice(moduleTextureSlugSchema.parse(moduleSlug), choice.source, choice.textureId);
+}
+
 /** Updates opacity / mode / blur, leaving the picture in place. */
 export function saveModuleTextureSettings(
   repo: ModuleTextureRepository,
@@ -80,33 +117,8 @@ export function saveModuleTextureSettings(
   );
 }
 
-/**
- * The CSS custom properties for the texture layer, or `undefined` when there is
- * nothing to draw.
- *
- * Returned as a record rather than a finished `style` string so the caller decides
- * where it lands. `undefined` — rather than a layer at opacity 0 — is what lets
- * the shell skip the element entirely: an empty fixed div that paints nothing is
- * still a compositing layer on every scroll.
- *
- * The URL carries `?v=<updatedAt>` because the serving route sends a 5-minute
- * max-age; without it, replacing the picture would appear to do nothing.
- */
-export function moduleTextureCssVars(
-  texture: ModuleTexture,
-): Record<string, string> | undefined {
-  if (!texture.hasImage) return undefined;
-
-  return {
-    "--module-texture-image": `url("/api/modules/${encodeURIComponent(
-      texture.moduleSlug,
-    )}/texture?v=${encodeURIComponent(texture.updatedAt)}")`,
-    "--module-texture-opacity": String(texture.opacity),
-    // `cover` stretches one copy over the viewport; `tile` repeats it at its
-    // natural size. Two properties rather than one shorthand, because
-    // background-size and background-repeat have to disagree between the modes.
-    "--module-texture-size": texture.mode === "cover" ? "cover" : "auto",
-    "--module-texture-repeat": texture.mode === "cover" ? "no-repeat" : "repeat",
-    "--module-texture-blur": `${texture.blur}px`,
-  };
-}
+// `moduleTextureCssVars` used to live here, emitting `--module-texture-*` for a
+// rule of the same name in globals.css. Both are gone (0116): a module's picture
+// and the app-wide one now share one `[data-app-texture]` rule and one namespace,
+// and `resolveAppTexture` in src/lib/app-texture/ decides which of the two a
+// screen draws. This module still answers only for itself.

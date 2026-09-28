@@ -510,6 +510,15 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    id: "journal_section_review_data",
+    label: "Review Data",
+    group: "Journal sections",
+    where: "Journal → section panel → Data Management → Review Data.",
+    defaultConcept: "clipboard",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     // The id stays `journal_section_log` even though Log is no longer a section —
     // it is the second tab of Entries now. Slot ids are persisted in
     // `ico_slot_overrides.slot_id`, so renaming one orphans any icon already
@@ -641,6 +650,19 @@ export const ICON_SLOTS: IconSlot[] = [
     group: "Journal cards",
     where: "Journal → Data Management → Correct → the Recycled Entries card header.",
     defaultConcept: "trash",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "journal_card_same_date_entries",
+    label: "Same-date Entries card",
+    group: "Journal cards",
+    where:
+      "Journal → Review Data → the “Review multiple entries on same date” card header.",
+    // A wall calendar: the card is about a date carrying more than one entry.
+    // Distinct from the Duplicates card's `list` next door, which is about a
+    // repeated title rather than a shared day.
+    defaultConcept: "calendar",
     wired: true,
     namespace: "tree",
   },
@@ -1293,10 +1315,12 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    // Id unchanged deliberately: slot ids are permanent once uploads exist, so
+    // the screen's rename to "App Texture" (0116) moves the label and not this.
     id: "admin_section_configuration_texture",
-    label: "Dashboard Texture",
+    label: "App Texture",
     group: "Admin navigation",
-    where: "Admin → Display Settings → Dashboard Texture.",
+    where: "Admin → Configuration → App Texture.",
     defaultConcept: "palette",
     wired: true,
     namespace: "tree",

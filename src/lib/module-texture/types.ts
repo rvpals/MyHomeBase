@@ -2,6 +2,16 @@
 export type ModuleTextureMode = "cover" | "tile";
 
 /**
+ * Where a module's background comes from (migration 0117).
+ *
+ * Four states, three of which store no bytes on the module's row. `inherit` and
+ * `none` both store nothing at all, which is why this is an explicit column
+ * rather than something inferred from which fields are populated — they must
+ * render differently.
+ */
+export type ModuleTextureSource = "inherit" | "library" | "own" | "none";
+
+/**
  * A module's texture settings — **never the image bytes**.
  *
  * `hasImage` is computed in SQL (`image IS NOT NULL`) so a module shell can decide
@@ -13,6 +23,22 @@ export type ModuleTextureMode = "cover" | "tile";
 export interface ModuleTexture {
   /** The module this belongs to, e.g. `'music-library'`. */
   moduleSlug: string;
+  /**
+   * Which of the four sources this module draws (migration 0117).
+   *
+   * `'inherit'` for a module that has never been configured, which is the
+   * common case — the app-wide texture shows through.
+   */
+  source: ModuleTextureSource;
+  /**
+   * The `sys_dashboard_textures` row this module points at, when `source` is
+   * `'library'`. `undefined` otherwise.
+   *
+   * Carries no tuning of its own: a library picture is drawn with the opacity,
+   * mode and blur stored on *that* row, which is what makes "pick Linen, get
+   * Linen as tuned" true. See 0117 for the trade that implies.
+   */
+  textureId?: number;
   hasImage: boolean;
   /** 0..1. Low by default — a picture behind text has to stay quiet. */
   opacity: number;

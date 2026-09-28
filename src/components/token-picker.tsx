@@ -27,6 +27,20 @@ export interface TokenPickerProps {
   createPlaceholder?: string;
   /** Hint under the control, e.g. what the names are for. */
   hint?: string;
+  /**
+   * Always stack the dropdown above the create field, instead of putting them
+   * side by side until the viewport narrows.
+   *
+   * For a picker in a **narrow container on a wide screen** — inside a modal, or
+   * in a grid column. The default layout stacks at `max-lg:`, which is a
+   * *viewport* width: on a desktop the row stays horizontal however narrow the
+   * box around it actually is, and two `flex-1` controls sharing a quarter of the
+   * page leave the create field too small to type into. The caller knows how much
+   * room it gave this control; the control can't see it.
+   *
+   * Off by default, so every existing call site keeps exactly the layout it has.
+   */
+  stackControls?: boolean;
   /** Caller-supplied classes, merged last so they win. */
   className?: string;
 }
@@ -52,6 +66,7 @@ export function TokenPicker({
   allowCreate = false,
   createPlaceholder = "Add a new one…",
   hint,
+  stackControls = false,
   className = "",
 }: TokenPickerProps) {
   const [draft, setDraft] = useState("");
@@ -104,8 +119,9 @@ export function TokenPicker({
       )}
 
       {/* Side by side on desktop, stacked on a phone where two half-width
-          controls would both be too narrow to read. */}
-      <div className="flex gap-2 max-lg:flex-col">
+          controls would both be too narrow to read — or always stacked when the
+          caller says the box around this one is narrow (`stackControls`). */}
+      <div className={`flex gap-2 max-lg:flex-col ${stackControls ? "flex-col" : ""}`}>
         <select
           // Value is always "" — this is an action, not a held choice. The
           // chosen name becomes a chip and the dropdown returns to its prompt.

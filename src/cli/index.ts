@@ -26,6 +26,7 @@ import { importJournalCsvCommand } from "./import-journal-csv";
 import { importJournalIcsCommand } from "./import-journal-ics";
 import { journalCalendarCommand } from "./journal-calendar";
 import { journalLocationsCommand } from "./journal-locations";
+import { journalSameDateCommand } from "./journal-same-date";
 import { journalTemplatesCommand } from "./journal-templates";
 import { listCsvAnalyticsCommand } from "./list-csv-analytics";
 import { listScheduledJobsCommand } from "./list-scheduled-jobs";
@@ -75,6 +76,7 @@ const commands: Record<string, Command> = {
   "import-journal-ics": importJournalIcsCommand,
   "journal-calendar": journalCalendarCommand,
   "journal-locations": journalLocationsCommand,
+  "journal-same-date": journalSameDateCommand,
   "journal-templates": journalTemplatesCommand,
   "expense-top-spenders": expenseTopSpendersCommand,
   "export-portfolio": exportPortfolioCommand,

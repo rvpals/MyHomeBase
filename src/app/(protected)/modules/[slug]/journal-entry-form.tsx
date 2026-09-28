@@ -89,6 +89,45 @@ const emptyForm = (date: string, time: string) => ({
   content: "",
 });
 
+/**
+ * Values a caller can seed the form with, instead of a blank entry stamped with
+ * the current clock.
+ *
+ * Added for Review Data's Merge, which proposes an entry assembled from several
+ * others and needs the reader to edit it before it is saved. Every field is
+ * optional and anything omitted falls back to what a blank form would have had,
+ * so this cannot half-fill the form into an invalid state.
+ *
+ * Deliberately *not* the prefill-template path: a template fills only the fields
+ * you have left blank and is chosen from a dropdown inside the form, whereas
+ * this is the form's starting point, decided by the screen that mounted it.
+ */
+export interface JournalEntryFormInitialValues {
+  date?: string;
+  time?: string;
+  title?: string;
+  content?: string;
+  placeName?: string;
+  categories?: string[];
+  tags?: string[];
+}
+
+/** Applies `initialValues` over a blank form stamped with the current clock. */
+function seededForm(initialValues: JournalEntryFormInitialValues | undefined) {
+  const blank = emptyForm(todayIso(), nowIso());
+  if (!initialValues) return blank;
+  return {
+    ...blank,
+    ...(initialValues.date ? { date: initialValues.date } : {}),
+    ...(initialValues.time ? { time: initialValues.time } : {}),
+    ...(initialValues.title !== undefined ? { title: initialValues.title } : {}),
+    ...(initialValues.content !== undefined ? { content: initialValues.content } : {}),
+    ...(initialValues.placeName !== undefined ? { placeName: initialValues.placeName } : {}),
+    ...(initialValues.categories ? { categories: initialValues.categories } : {}),
+    ...(initialValues.tags ? { tags: initialValues.tags } : {}),
+  };
+}
+
 export function JournalEntryForm({
   categoryOptions,
   tagOptions,
@@ -96,6 +135,10 @@ export function JournalEntryForm({
   prefillTemplates = [],
   locationCategoryOptions = [],
   locationTagOptions = [],
+  initialValues,
+  onSaved,
+  saveLabel,
+  isCompactContainer = false,
 }: {
   categoryOptions: string[];
   tagOptions: string[];
@@ -110,11 +153,38 @@ export function JournalEntryForm({
    */
   locationCategoryOptions?: string[];
   locationTagOptions?: string[];
+  /**
+   * Starting values for the fields, instead of a blank entry. Review Data's
+   * Merge uses this to hand over the entry it assembled from several others.
+   * Absent on the New Entry screen, which wants a blank form.
+   */
+  initialValues?: JournalEntryFormInitialValues;
+  /**
+   * Called after a successful save. The New Entry screen leaves this off and
+   * gets the default behaviour (clear the form, ready for the next entry);
+   * Review Data's merge dialog uses it to close itself and refresh the list,
+   * because a merge is one entry and re-blanking the form there would offer to
+   * write a second.
+   */
+  onSaved?: () => void;
+  /** Overrides the Save button's label — "Save merged entry" for a merge. */
+  saveLabel?: string;
+  /**
+   * Render for a narrow container — inside a modal rather than on the
+   * full-width New Entry page.
+   *
+   * Only the two `TokenPicker`s need it: their dropdown and create field sit
+   * side by side until the *viewport* narrows, so in a modal on a desktop the
+   * create box is squeezed to nothing while the screen is plainly wide. Same
+   * prop, same reason, as `JournalEntryEditForm`'s.
+   */
+  isCompactContainer?: boolean;
 }) {
   const router = useRouter();
-  // Date and time both start at the writer's current clock. Lazy initialiser, so
-  // the clock is read when the form mounts rather than on every render.
-  const [form, setForm] = useState(() => emptyForm(todayIso(), nowIso()));
+  // Date and time both start at the writer's current clock, unless the caller
+  // seeded them. Lazy initialiser, so the clock is read when the form mounts
+  // rather than on every render.
+  const [form, setForm] = useState(() => seededForm(initialValues));
   const [locations, setLocations] = useState<JournalLocationInput[]>([]);
   const [weather, setWeather] = useState<EntryWeatherInput | null>(null);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -152,8 +222,13 @@ export function JournalEntryForm({
 
   // Re-reads the clock rather than restoring the mount-time values, so the next
   // entry of a sitting is stamped when it is written, not when the page loaded.
+  //
+  // With `initialValues` it goes back to those instead of to blank: on the merge
+  // dialog "Clear" means "undo my edits to the proposal", and wiping to an empty
+  // form there would throw away the assembled content with no way to get it back
+  // short of closing the dialog and ticking the rows again.
   function reset() {
-    setForm(emptyForm(todayIso(), nowIso()));
+    setForm(seededForm(initialValues));
     setLocations([]);
     setWeather(null);
     setTemplateId("");
@@ -267,7 +342,14 @@ export function JournalEntryForm({
         setError(result.error);
         return;
       }
-      reset(); // ready for the next entry
+      // A caller that supplied `onSaved` owns what happens next — the merge
+      // dialog closes itself and reloads its list. Without one, the form clears
+      // and is ready for the next entry, which is what New Entry wants.
+      if (onSaved) {
+        onSaved();
+      } else {
+        reset();
+      }
       router.refresh(); // re-fetch the recent-entries list on the server
     } finally {
       setIsBusy(false);
@@ -303,6 +385,7 @@ export function JournalEntryForm({
           onChange={(names) => setTaxonomy("categories", names)}
           options={categoryOptions}
           allowCreate
+          stackControls={isCompactContainer}
           createPlaceholder="New category, e.g. FAMILY"
         />
         <TokenPicker
@@ -311,6 +394,7 @@ export function JournalEntryForm({
           onChange={(names) => setTaxonomy("tags", names)}
           options={tagOptions}
           allowCreate
+          stackControls={isCompactContainer}
           createPlaceholder="New tag, e.g. Museum"
         />
       </div>
@@ -472,7 +556,7 @@ export function JournalEntryForm({
           from Main even when a Misc action raised it. */}
       <div className="flex gap-2">
         <Button onClick={handleSave} disabled={isBusy || form.date === ""}>
-          {isBusy ? "Saving…" : "Save entry"}
+          {isBusy ? "Saving…" : (saveLabel ?? "Save entry")}
         </Button>
         <Button variant="secondary" onClick={reset} disabled={isBusy}>
           Clear

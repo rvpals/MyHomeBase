@@ -279,6 +279,12 @@ function ShortcutTile({
   onRemove: () => void;
   onMove: (direction: "up" | "down") => void;
 }) {
+  // Whether this tile's action row is expanded. Per-tile and local: opening one
+  // tile's actions has no bearing on any other, and nothing outside this tile
+  // needs to know. Collapsed again after any action fires, so a row doesn't sit
+  // open over a tile whose list has just been reordered underneath it.
+  const [open, setOpen] = useState(false);
+
   // `TreeIcon` renders nothing for a concept it doesn't know, which is right in a
   // row where the label carries the meaning — but here the glyph is half the tile,
   // so a retired icon would leave a visible hole. Falls back to the default rather
@@ -318,11 +324,9 @@ function ShortcutTile({
     "border border-line bg-paper-raised p-3 text-center";
 
   return (
-    // `group` belongs here, on the shared parent: the row actions are a *sibling*
-    // of the tile, not a child, so a `group` on the tile itself would never
-    // trigger them. (It was on the tile until this restyle; the controls only
-    // appeared on a phone, where they're always visible anyway.)
-    <li className="group relative">
+    // No `group` any more — nothing here reveals on hover. The action row is
+    // toggled by its own gear, so this only needs to be the positioning parent.
+    <li className="relative">
       {shortcut.reachable ? (
         <Link
           href={shortcut.href}
@@ -352,32 +356,77 @@ function ShortcutTile({
       )}
 
       {/* Row actions — deliberately hand-drawn glyphs and no icon slots, per the
-          rules at the top of slots.ts. Revealed on hover on a desktop; always
-          visible on a phone, where there is no hover to reveal them with.
+          rules at the top of slots.ts.
 
-          They rise with the tile on hover (`group-hover:-translate-y-0.5`,
-          matching `.shortcut-tile`'s lift) because they are positioned against
-          this `<li>`, not against the tile that moves — without it they'd stay
-          put while the tile slid out from under them. The press-down is
-          deliberately *not* mirrored: these sit above the tile and a click on
-          one shouldn't look like the tile itself was pressed. */}
-      <div
-        className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition-all
-                   group-hover:-translate-y-0.5 group-hover:opacity-100 focus-within:opacity-100
-                   max-lg:translate-y-0 max-lg:opacity-100 motion-reduce:transition-none
-                   motion-reduce:group-hover:translate-y-0"
-      >
-        <TileButton label={`Move ${shortcut.name} earlier`} disabled={busy || isFirst} onClick={() => onMove("up")}>
-          ‹
-        </TileButton>
-        <TileButton label={`Move ${shortcut.name} later`} disabled={busy || isLast} onClick={() => onMove("down")}>
-          ›
-        </TileButton>
-        <TileButton label={`Edit ${shortcut.name}`} disabled={busy} onClick={onEdit}>
-          ✎
-        </TileButton>
-        <TileButton label={`Remove ${shortcut.name}`} disabled={busy} onClick={onRemove}>
-          ✕
+          ALWAYS VISIBLE, AND OPENED BY A CLICK, NOT A HOVER. This was four chips
+          revealed by `group-hover:opacity-100`, and on a desktop they never
+          painted: the tile is a *sibling* of this row and `.shortcut-tile:hover`
+          applies a `transform`, which promotes the tile to its own stacking
+          context and paints it over an absolutely-positioned sibling. The chips
+          reached `opacity: 1` and were covered — a `title` tooltip would show
+          while the button behind it stayed invisible, and only a drag-select
+          (forcing an uncomposited repaint) revealed them. A `z-index` did not
+          fix it. So the reveal no longer depends on hover at all: one gear that
+          is always painted, and a click expands the rest. That also gives a
+          phone the same affordance instead of a permanently-open row. */}
+      <div className="absolute right-1 top-1 z-10 flex items-start gap-0.5">
+        {open && (
+          <div className="flex gap-0.5">
+            <TileButton
+              label={`Move ${shortcut.name} earlier`}
+              disabled={busy || isFirst}
+              onClick={() => onMove("up")}
+            >
+              ‹
+            </TileButton>
+            <TileButton
+              label={`Move ${shortcut.name} later`}
+              disabled={busy || isLast}
+              onClick={() => onMove("down")}
+            >
+              ›
+            </TileButton>
+            <TileButton
+              label={`Edit ${shortcut.name}`}
+              disabled={busy}
+              onClick={() => {
+                setOpen(false);
+                onEdit();
+              }}
+            >
+              ✎
+            </TileButton>
+            <TileButton
+              label={`Remove ${shortcut.name}`}
+              disabled={busy}
+              onClick={() => {
+                setOpen(false);
+                onRemove();
+              }}
+            >
+              ✕
+            </TileButton>
+          </div>
+        )}
+
+        {/* The gear is drawn inline rather than `<TreeIcon name="gear">`: `gear`
+            marks the Configuration *section* in five modules, so it is a place a
+            themed icon set may redraw in full colour. This is a 24px row-action
+            control and has to stay a monochrome glyph, and adding `gear` to
+            ALWAYS_CLASSIC to get that would change those five nav entries. */}
+        <TileButton
+          label={open ? `Hide actions for ${shortcut.name}` : `Actions for ${shortcut.name}`}
+          disabled={false}
+          expanded={open}
+          onClick={() => setOpen((current) => !current)}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3 w-3">
+            <circle cx="12" cy="12" r="3.2" />
+            <path
+              d="M12 2.6v2.6M12 18.8v2.6M4.4 4.4l1.9 1.9M17.7 17.7l1.9 1.9M2.6 12h2.6M18.8 12h2.6M4.4 19.6l1.9-1.9M17.7 6.3l1.9-1.9"
+              strokeLinecap="round"
+            />
+          </svg>
         </TileButton>
       </div>
     </li>
@@ -388,11 +437,14 @@ function TileButton({
   label,
   disabled,
   onClick,
+  expanded,
   children,
 }: {
   label: string;
   disabled: boolean;
   onClick: () => void;
+  /** Set on the gear only — renders `aria-expanded` for the row it toggles. */
+  expanded?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -400,14 +452,34 @@ function TileButton({
       type="button"
       aria-label={label}
       title={label}
+      aria-expanded={expanded}
       disabled={disabled}
-      onClick={onClick}
-      // `bg-paper` + a hairline, not `bg-paper-raised`: the tile beneath is now
-      // `paper-raised` itself, so a chip in the same fill would vanish into it.
-      // Stepping *down* a surface reads as a control sitting on the tile.
-      className="flex h-5 w-5 items-center justify-center rounded border border-line
-                 bg-paper text-xs leading-none text-muted hover:text-ink
-                 disabled:opacity-30"
+      // The tile behind is a `<Link>` and this sits inside it visually but not in
+      // the DOM. A click must not also reach the link's navigation, and on a
+      // touch device `mousedown` would start the tile's press animation.
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onClick();
+      }}
+      // The accent pair, not a paper surface. This was `bg-paper border-line`
+      // on the theory that stepping *down* a surface reads as a control sitting
+      // on the `paper-raised` tile — but that only steps down on a dark theme.
+      // The light themes (Daybreak, Sea Glass) deliberately invert the
+      // relationship, so `paper` is a near-identical off-white against a white
+      // tile: #F4F1F2 fill with an #E7E2E4 hairline on #FFFFFF is ~1.04:1, and
+      // the whole action row was invisible on hover. `brass-soft`/`brass` is
+      // defined per theme and contrasts in both polarities — and it's the same
+      // accent the tile itself hovers to.
+      // The glyph colour is `.shell-accent-text`, not `text-brass-dark`: on a
+      // `brass-soft` fill neither raw token works across all eight themes
+      // (brass-dark measures 3.0:1 on Daybreak, brass 3.2:1 on Signal Deck).
+      // See the token's note in globals.css.
+      // `h-6 w-6`, up from the old `h-5 w-5`: the gear is now permanent rather
+      // than a hover reveal, so it is a real tap target on a phone.
+      className="shell-accent-text flex h-6 w-6 items-center justify-center rounded
+                 border border-brass bg-brass-soft text-xs leading-none
+                 hover:text-ink disabled:opacity-50"
     >
       {children}
     </button>

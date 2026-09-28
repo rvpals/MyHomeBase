@@ -1,5 +1,125 @@
 # Change History
 
+## 2026-09-28 — Journal: Review Data
+
+### Several entries on one day, in one place
+
+*My Journal → Data Management → **Review Data*** is a new screen. One card,
+**Review multiple entries on same date**, lists every date that carries more than
+one entry — whatever those entries are called, and ignoring the time of day.
+Each row shows the date (with "2 of 4"), the time, the title and the first 100
+words of the content. Clicking a row opens the whole entry, with an **Edit**
+button for fixing it on the spot; closing it comes back to the list with your
+page, sort and ticks intact. Editing reuses the same reader and the same form as
+the single-entry screen, so an entry is read and written identically whichever
+way you reached it — including the Edit button disabling itself on a locked
+entry.
+
+This is a different question from the **Correct** tab beside it. Correct looks
+for a repeated *title* on a date and calls what it finds a duplicate. Review Data
+looks only at the *date* and calls what it finds nothing at all — several entries
+on one day are perfectly normal, and the screen just puts them side by side so
+you can decide. One visible consequence: untitled entries appear here, where
+Correct has to leave them out.
+
+### Tick several, then Delete or Merge
+
+- **Delete** moves the ticked entries to the recycle bin — the same bin the
+  Correct tab restores from, so it is undoable rather than final. It asks first.
+- **Merge** drafts one new entry from the ticked ones and opens it in the normal
+  entry form for you to edit: date and time from the earliest, the titles joined
+  with `/`, and each entry's content under a `— 09:00 · Title` line so you can
+  still see which paragraph came from where. Categories and tags are combined.
+
+**Merging never deletes anything.** Saving the draft creates one new entry and
+leaves all the originals exactly where they were — if you want them gone, tick
+them and Delete afterwards. That is deliberate: a merge you change your mind
+about half way through can't cost you any writing.
+
+Locations and weather aren't carried into a merged draft. Both belong to one
+moment in one entry, and a merged entry covering four moments of a day has no
+single one of either — the form still lets you add them.
+
+### Also from the terminal
+
+`npm run cli -- journal-same-date` prints the same groups; `--merge 41,42,43`
+prints the draft it would build and writes nothing, `--save` creates it, and
+`--delete 41,42` fills the recycle bin.
+
+## 2026-09-28 — Each module picks its own background
+
+### A background picker on every module
+
+*Administration → Configuration → Module Configuration* now has a **Background
+texture** control on each module's card. Four choices:
+
+- **Use the app background** — the default, and what every module did before.
+- **Pick one from the library** — a thumbnail grid of the pictures already in
+  *Configuration → App Texture*. No new upload; the module points at that
+  picture and draws it with the opacity, blur and layout it was tuned with.
+- **Its own uploaded picture** — offered only for a module that has one. Today
+  that is the Music Library alone.
+- **None — plain paper** — an explicit opt-out that wins even when the app has a
+  background. A table-heavy screen can stay flat while everything else carries a
+  picture.
+
+Choosing saves immediately, like the icon and carousel controls beside it.
+
+### A pointer, not a copy
+
+A library choice stores the picture's id, not its bytes. Re-tuning a library
+picture therefore updates every module using it, and nine modules sharing one
+background cost one copy rather than nine. The trade: two modules can't show the
+same picture at different opacities — that is what an own upload is still for.
+
+Deleting a library picture a module was using drops that module back to the app
+background rather than breaking its screen.
+
+### The Music Library is untouched
+
+The migration backfills every module that already has an uploaded picture to
+`own`, so Music keeps drawing what it was drawing. Without that it would have
+landed on the default and silently shown the app-wide picture instead — with its
+own bytes still sitting in the row, which is the kind of regression nothing
+errors on.
+
+## 2026-09-27 — One background picture for the whole app
+
+### The texture can now cover every screen
+
+The uploaded background picture used to reach the home dashboard and nothing
+else. A new tick box in *Administration → Configuration → App Texture* —
+"Show on every screen" — puts it behind the modules, Administration and the
+account screen as well, so the whole app shares one background.
+
+**It ships off.** An existing install keeps the picture exactly where it was,
+on the home dashboard alone, until somebody ticks the box. A background that
+turns itself on across every screen at once during an upgrade is not a change
+anyone chose.
+
+Scope is stored on the *selection*, not on each picture, so auditioning a
+different texture doesn't quietly switch eight modules back to flat paper.
+Opacity, blur and cover-or-tile stay per picture, where they belong — those
+describe the image.
+
+### A module with its own picture keeps it
+
+The Music Library's background is untouched, and any module that uploads one
+later still overrides the app-wide picture on its own screens. The two never
+stack: one photograph or the other, never both compositing at half the opacity
+each was tuned for.
+
+The admin screen now names the modules that are overriding, so a module that
+looks different from the rest isn't a mystery to track down.
+
+### Two texture systems became one rule
+
+`[data-dashboard-texture]` and `[data-module-texture]` were near-identical CSS
+rules with parallel `--dashboard-texture-*` / `--module-texture-*` property
+sets, kept in step by hand. They are now one `[data-app-texture]` rule over one
+namespace, fed by `src/lib/app-texture/` — the only place that knows which of
+the two sources wins. Neither texture module learned about the other.
+
 ## 2026-09-27 — Nav groups that are places, playlist reordering, and a build fix
 
 ### Navigation: a group heading can be a page

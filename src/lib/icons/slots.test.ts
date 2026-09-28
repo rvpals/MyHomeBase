@@ -130,7 +130,7 @@ describe("sectionSlotId", () => {
       // the tab label rather than in the panel.
       journal: [
         "main", "new-entry", "entries", "calendar", "views", "report", "import",
-        "calendar-import", "configuration", "templates", "metadata",
+        "calendar-import", "review-data", "configuration", "templates", "metadata",
         "locations", "location-map", "location-metadata",
         "configuration-group", "import-group",
       ],

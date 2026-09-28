@@ -45,7 +45,7 @@ anyone writing components:
   no row matches. Editing it changes what "Reset" restores, not what the app renders.
 
 A user-built theme still has to reuse an existing `FontKey` — the seven faces are loaded
-by `next/font/google` calls in `src/app/layout.tsx`, so the builder offers exactly those
+by `localFont` calls in `src/app/layout.tsx`, so the builder offers exactly those
 and a new font needs wiring there first.
 
 **Contrast is warned about, never enforced.** The builder measures the pairings in
@@ -74,9 +74,18 @@ don't branch per-theme to fix it unless asked.)
 
 Fonts are also theme-driven — every theme pairs a display face, a body face, and a mono
 face, chosen from the seven `FONT_KEYS` (wired in `src/app/layout.tsx`, all loaded via
-`next/font/google`, and selected by the CSS vars `--font-display` / `--font-body` /
-`--font-mono-code`). All seven load on every request regardless of the active theme,
+`localFont` from committed files in `src/app/fonts/`, and selected by the CSS vars
+`--font-display` / `--font-body` / `--font-mono-code`). All seven load on every request regardless of the active theme,
 which is what lets a theme switch just repoint those three variables.
+
+**The font files are committed, not fetched at build time.** They live in
+`src/app/fonts/` and load through `next/font/local`. This used to be
+`next/font/google`, which downloads from fonts.gstatic.com *during the build* — and
+since `npm run build` clears `.next` first, every release was gated on eight
+consecutive successful fetches through a corporate network. One hiccup aborted
+`publish:nas` with an error that reads like a bug in `layout.tsx` and isn't. Refresh
+them with `npm run fetch:fonts`; never wire that into the build. See
+`src/app/fonts/README.md`.
 
 - Headings, module names, page titles → `font-display` (`font-display` Tailwind class).
 - Body copy, labels, buttons → `font-body` (Tailwind default `font-sans`, already applied to `<body>`).
@@ -84,9 +93,10 @@ which is what lets a theme switch just repoint those three variables.
 
 Don't reach for a font family outside this trio. A theme picks its own
 display/body/mono from `FONT_KEYS` — never hardcode a font family anywhere in `src/app`
-or `src/components`. Adding an eighth face means a `next/font/google` loader **and** an
-entry in `FONT_VAR_MAP` in `src/app/layout.tsx`, plus a key in `FONT_KEYS`; miss any one
-and a theme naming it silently renders the browser fallback.
+or `src/components`. Adding an eighth face means downloading it into `src/app/fonts/`
+(`npm run fetch:fonts`), a `localFont` loader **and** an entry in `FONT_VAR_MAP` in
+`src/app/layout.tsx`, plus a key in `FONT_KEYS`; miss any one and a theme naming it
+silently renders the browser fallback.
 
 ### The one exception: `font-script`
 
@@ -94,7 +104,7 @@ There is a fourth face, **Great Vibes** (copperplate calligraphy), exposed as
 `--font-script` in `globals.css` and reachable as the `font-script` Tailwind class. It is
 **not** a theme face and is deliberately absent from `FONT_KEYS`, so the theme builder
 never offers it — nobody can pick script as their body font. It points straight at its
-`next/font/google` loader in `src/app/layout.tsx` and does not change with the theme.
+`localFont` loader in `src/app/layout.tsx` and does not change with the theme.
 
 It exists for decorative type — handwriting where handwriting is the point. Before using
 it anywhere else, ask whether that surface is genuinely decorative; script is much less
@@ -196,8 +206,8 @@ Reach for one of these before writing a new `shadow-[...]`:
 | `.sudoku-board` / `.sudoku-box-seams` / `.sudoku-cell` / `.sudoku-cell-given` | The **sudoku board** — a tray, its six 3x3 seams, and a cell's bevel | a groove cut into the page (lit bottom lip + shaded top) holding low-bevelled slabs; the box seams are one continuous overlay layer above the cells, not thickened cell borders |
 | `.progress-3d-track` / `.progress-3d-fill` | The pair behind [`Progress3D`](components.md#progress3d) — **every progress bar** | a groove cut into the page (surface gradient + inset lip) holding a lit slab (accent gradient + `Button`'s hard offset shadow) |
 | `.shortcut-tile` / `.shortcut-tile-dead` | A **My Shortcuts tile** — a square, two-line clickable target | `Button`'s exact switch mechanic in `--line`: 4px resting, 5px + a 0.5 lift on hover, collapsed and pressed on active. The `-dead` variant keeps the resting depth and never moves, for an unreachable shortcut |
-| `[data-dashboard-texture]` | The home dashboard's **admin-uploaded** background picture | a `fixed` `::before` behind the cards; opacity + blur from the stored settings |
-| `[data-module-texture]` | A **module's own** uploaded background picture (Music Library today) | the same mechanism, keyed per module; set by that module's shell |
+| `[data-app-texture]` | The **admin-uploaded** background picture, from either source | a `fixed` `::before` behind the cards; opacity + blur from the stored settings. Emitted by the protected layout when the texture is app-wide, by the home page when it isn't, and by a module's shell when that module overrides |
+| `[data-app-texture-override]` | Marks a module's own layer, so the app-wide one behind it stands down | read only by `[data-app-texture]:has(…)`; never styled directly |
 
 Two things they encode that are easy to get wrong:
 
@@ -270,11 +280,41 @@ under the pointer mid-click.
 
 #### The one sanctioned exception: an uploaded background picture
 
-Two rules implement it — `[data-dashboard-texture]` for the home dashboard and
-`[data-module-texture]` for a module that wants its own (the Music Library today) — but
-it is **one** exception, not two: same mechanism, same constraints, different subject.
+**One rule implements it** — `[data-app-texture]`, fed by one `--app-texture-*`
+namespace — and there are two *sources* that can fill it: the app-wide selection
+(Administration → Configuration → App Texture) and a module's own upload (the Music
+Library today). `resolveAppTexture` in `src/lib/app-texture/` decides which wins; the CSS
+never asks. This used to be two near-identical rules that had to be kept in step by hand.
 
-Both put an **uploaded picture** behind a screen, and neither can obey the rule above: a
+**Where the layer is emitted** follows from that one decision:
+
+| Screen | Emitted by | When |
+|---|---|---|
+| Every authenticated screen | `src/app/(protected)/layout.tsx` | the texture is app-wide |
+| Home dashboard | `src/app/(protected)/page.tsx` | a picture is selected and it is *not* app-wide |
+| A module's sections | that module's shell | that module overrides — see below |
+
+**Each module chooses one of four sources** (migration 0117), from *Administration →
+Configuration → Module Configuration*:
+
+| Choice | Draws |
+|---|---|
+| `inherit` | the app-wide texture — the default, and what an unconfigured module does |
+| `library` | a picture from the app texture library, with **that picture's** opacity/mode/blur |
+| `own` | a picture uploaded on that module's own configuration screen (Music today) |
+| `none` | nothing, **even when an app-wide texture is set** |
+
+A module's choice **replaces** the app-wide layer rather than stacking on it — two
+uploads compositing at once is nobody's design. The module marks its wrapper with
+`data-app-texture-override` and `[data-app-texture]:has(…)` cancels the ancestor's
+image, because the shared layout can't know which module it is rendering. `none` sets
+that attribute too: it must cancel the inherited layer while emitting none of its own.
+
+A `library` choice stores a **pointer**, not a copy — so re-tuning a library picture
+updates every module using it, and two modules can't show one picture at different
+opacities. `own` is the escape hatch when a module needs its own tuning.
+
+Both sources put an **uploaded picture** behind a screen, and neither can obey the rule above: a
 photograph has its own colors and can't adapt to Daybreak versus BMS the way a
 black-and-white weave does. This is a deliberate, opt-in exception rather than a
 precedent — it exists because the picture *is* the point, chosen by the person looking at
@@ -284,9 +324,13 @@ What keeps it from wrecking a theme:
 
 - It renders **only when someone uploads one**. The default state is no layer at all, not
   a layer at opacity 0 — an always-on `fixed` pseudo-element would cost a compositing
-  layer on every scroll for nothing. (Who may upload follows the *screen*: the dashboard's
-  is admin-only because it lives in Administration; a module's follows that module's own
-  configuration screen.)
+  layer on every scroll for nothing. (Who may upload follows the *screen*: the app-wide
+  one is admin-only because it lives in Administration; a module's follows that module's
+  own configuration screen.)
+- Going **app-wide is opt-in** and ships off (migration 0116). An upgrade keeps the
+  picture on the home dashboard alone, exactly where it was, until an admin ticks the
+  scope on — a background that appears on every screen at once is the worst possible
+  thing to switch on for somebody.
 - Opacity defaults to **0.10** and is capped at 1 with a blur up to 40px, so the picture
   tints the theme's `--paper` showing through underneath rather than replacing it. That is
   the same *intent* as `.paper-texture`, by the only means available to an image whose
@@ -295,7 +339,9 @@ What keeps it from wrecking a theme:
   legibility never depends on the picture, which is why both upload screens preview a real
   card on top of it rather than the picture alone.
 - A module's layer wraps the **section content only**, not the rail or the section panel,
-  so the module's own navigation chrome stays on flat theme surfaces at any opacity.
+  so the module's own navigation chrome stays on flat theme surfaces at any opacity. The
+  app-wide layer attaches to `.app-main`, which is the same boundary: the nav tiers are
+  `fixed` outside it.
 
 Don't extend this to another surface without the same justification. A texture behind
 *content* is a legibility risk that a card's own background is what mitigates.

@@ -40,3 +40,34 @@ export const moduleTextureSlugSchema = z
   .min(1, "A module slug is required.")
   .max(64, "That module slug is too long.")
   .regex(/^[a-z0-9-]+$/, "A module slug is lowercase letters, numbers and hyphens.");
+
+/**
+ * A module's texture choice, validated at the boundary.
+ *
+ * `textureId` is required when the source is `'library'` and refused otherwise:
+ * a "library" choice with no id would resolve to nothing, and an id alongside
+ * `'none'` is a caller that has misunderstood the shape. Checked here rather
+ * than left to the CHECK constraint, which cannot express a rule spanning two
+ * columns and could only report a SQLite error if it could.
+ */
+export const moduleTextureChoiceSchema = z
+  .object({
+    source: z.enum(["inherit", "library", "own", "none"], {
+      message: "Choose inherit, library, own or none.",
+    }),
+    textureId: z
+      .number({ message: "A texture id must be a number." })
+      .int("A texture id must be a whole number.")
+      .positive("A texture id must be positive.")
+      .optional(),
+  })
+  .refine((choice) => choice.source !== "library" || choice.textureId !== undefined, {
+    message: "Choose which library picture to use.",
+    path: ["textureId"],
+  })
+  .refine((choice) => choice.source === "library" || choice.textureId === undefined, {
+    message: "A texture id only applies when picking from the library.",
+    path: ["textureId"],
+  });
+
+export type ModuleTextureChoiceInput = z.infer<typeof moduleTextureChoiceSchema>;

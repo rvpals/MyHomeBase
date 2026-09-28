@@ -38,17 +38,35 @@ interface TextureRow {
 }
 
 /**
+ * The selection singleton's own columns — today just the scope flag.
+ *
+ * Separate from `textureColumns` because it belongs to the other side of
+ * `getTexture()`'s join: `app_wide` is a property of the selection, not of the
+ * picture (migration 0116). `listTextures()` reads the library alone and never
+ * wants it.
+ */
+const SELECTION_COLUMNS = `selection.app_wide`;
+
+interface SelectionRow {
+  app_wide: number;
+}
+
+/**
  * The dashboard with no picture: nothing selected, or a selection pointing at a
  * row that has since been deleted.
  *
  * The knob values mirror the column defaults in migration 0113. They are never
- * drawn — `hasImage: false` makes `dashboardTextureCssVars` return `undefined`
- * and the page skips the layer — but returning a whole object rather than
+ * drawn — `hasImage: false` makes `resolveAppTexture` emit no vars and the page
+ * skips the layer — but returning a whole object rather than
  * `undefined` keeps every caller free of a branch for a state that means nothing
  * more than "no picture yet".
  */
 const TEXTURE_FALLBACK: DashboardTexture = {
   selectedId: undefined,
+  // False even when the row says otherwise: with no picture selected there is
+  // nothing to draw anywhere, so "app-wide" describes no layer at all. The flag
+  // is preserved in storage and comes back when a picture is selected again.
+  appWide: false,
   hasImage: false,
   opacity: 0.1,
   mode: "cover",
@@ -84,18 +102,23 @@ export class SqliteDashboardTextureRepository implements DashboardTextureReposit
     // database (see migration 0113), so this read cannot trust the column.
     const row = this.db
       .prepare(
-        `SELECT ${textureColumns("texture")}
+        `SELECT ${textureColumns("texture")}, ${SELECTION_COLUMNS}
            FROM sys_dashboard_texture AS selection
            JOIN sys_dashboard_textures AS texture
              ON texture.id = selection.selected_texture_id
           WHERE selection.id = 1`,
       )
-      .get() as TextureRow | undefined;
+      .get() as (TextureRow & SelectionRow) | undefined;
     if (!row) return TEXTURE_FALLBACK;
 
     const item = toItem(row);
     return {
       selectedId: item.id,
+      // From the selection side of the join, not the picture — see 0116. The
+      // INNER JOIN means a dangling selection yields no row at all and falls
+      // through to the fallback above, so this is only read when a real picture
+      // is selected.
+      appWide: row.app_wide === 1,
       hasImage: item.hasImage,
       opacity: item.opacity,
       mode: item.mode,
@@ -246,5 +269,41 @@ export class SqliteDashboardTextureRepository implements DashboardTextureReposit
       .run({ id, ...settings });
 
     return result.changes > 0;
+  }
+
+  setAppWide(appWide: boolean): void {
+    // Writes the selection row, not a picture row: scope belongs to the
+    // selection (migration 0116). An upsert for the same reason `selectTexture`
+    // uses one — the row's identity is the constant 1, so the write guarantees
+    // it rather than trusting 0063's seed to still be there.
+    //
+    // Returns void, not boolean: unlike the id-keyed writers above there is no
+    // "not found" case to report. The row is either updated or created.
+    //
+    // `updated_at` is bumped, which also moves the serving route's ?v=
+    // cache-buster. Harmless — the bytes are unchanged, so the refetch returns
+    // the same picture — and it is the same column every other write to this
+    // row touches.
+    this.db
+      .prepare(
+        `INSERT INTO sys_dashboard_texture (id, app_wide, updated_at)
+              VALUES (1, @appWide, datetime('now'))
+         ON CONFLICT(id) DO UPDATE SET
+              app_wide = excluded.app_wide,
+              updated_at = excluded.updated_at`,
+      )
+      .run({ appWide: appWide ? 1 : 0 });
+  }
+
+  getTextureById(id: number): DashboardTextureItem | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT ${textureColumns("texture")}
+           FROM sys_dashboard_textures AS texture
+          WHERE texture.id = ?`,
+      )
+      .get(id) as TextureRow | undefined;
+
+    return row ? toItem(row) : undefined;
   }
 }

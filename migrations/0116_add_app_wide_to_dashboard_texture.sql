@@ -1,0 +1,41 @@
+-- Lets the selected dashboard texture be drawn behind EVERY authenticated
+-- screen, not just the home dashboard.
+--
+-- WHY A FLAG ON THE SINGLETON, NOT A NEW TABLE. The question this answers is
+-- "where does the selected picture apply?", and the selection already lives in
+-- sys_dashboard_texture (0063, + selected_texture_id in 0113). Scope is a
+-- property of that one selection, so it belongs on the same pinned row: one
+-- read still answers both "which picture?" and "where?", and there is no second
+-- table whose absence a reader has to interpret.
+--
+-- Deliberately NOT per-picture, unlike opacity/mode/blur in 0113. Those three
+-- describe the image itself -- a dark photograph needs a different opacity than
+-- a pale pattern -- so carrying them per row is what makes switching textures
+-- restore the tuning. Scope describes the *installation's* intent ("I want one
+-- background everywhere"), which does not change when you audition a different
+-- picture. Per-picture, ticking it on a new selection would be a step you have
+-- to remember on every switch.
+--
+-- WHY THE TABLE NAMES STAY 'dashboard'. sys_dashboard_texture and
+-- sys_dashboard_textures now back an app-wide feature, so the names undersell
+-- them. They are kept anyway: migrations here are immutable, so renaming means a
+-- new table, a copy of up to 20 BLOBs, and every reader repointed -- real risk
+-- and real backup weight to buy a better noun. The home dashboard is still the
+-- subject when the flag is off, which is the default and the shipped state.
+--
+-- WHAT DOES *NOT* CHANGE. A module with its own picture in sys_module_texture
+-- (0064) still wins on its own screens; this flag only decides what the screens
+-- with no picture of their own draw. The two-layer resolution lives in
+-- src/lib/app-texture/, not in SQL.
+ALTER TABLE sys_dashboard_texture
+  ADD COLUMN app_wide INTEGER NOT NULL DEFAULT 0 CHECK (app_wide IN (0, 1));
+
+-- DEFAULT 0 is the whole upgrade story: an existing install renders
+-- byte-for-byte as it did, with the picture on the home dashboard and nowhere
+-- else, until an admin ticks the scope on. A new behaviour that switches itself
+-- on during a migration is one nobody chose -- and this one is visible on every
+-- screen at once, which is the worst place to surprise somebody.
+--
+-- INTEGER 0/1 with a CHECK rather than a bare INTEGER: SQLite has no boolean, and
+-- the CHECK is what stops storage representing a third value every reader would
+-- then have to handle. Same pattern the mode columns use in 0063, 0064 and 0113.

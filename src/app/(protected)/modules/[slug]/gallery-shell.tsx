@@ -6,10 +6,13 @@
 // differences are the slug and the section list.
 
 import { cookies } from "next/headers";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { TwoTierShell } from "@/components/two-tier-shell";
 import type { SectionNode } from "@/components/section-panel";
+import { moduleTextureLibraryId, resolveAppTexture } from "@/lib/app-texture";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
+import { getDashboardTexture, getDashboardTextureById } from "@/lib/dashboard-texture";
+import { getModuleTexture } from "@/lib/module-texture";
 import { getModuleBySlug, listModules } from "@/lib/modules";
 import { getAccessibleModules, isAdmin } from "@/lib/user";
 import { VIEWPORT_PINNED_COOKIE } from "@/lib/viewport";
@@ -68,6 +71,28 @@ export async function GalleryShell({ children }: { children: ReactNode }) {
     icon: GALLERY_SECTION_ICONS[section],
   }));
 
+  // This module's background (migrations 0064, 0116, 0117): its own upload, a
+  // picture chosen from the app library, nothing, or — the default — the
+  // app-wide texture that the protected layout already drew.
+  //
+  // All three reads are cheap: each derives `image IS NOT NULL` in SQL, so no
+  // picture bytes reach this render. The library lookup happens only when this
+  // module actually points at one.
+  const moduleTexture = getModuleTexture(deps.moduleTextureRepo, PICTURE_GALLERY_MODULE_SLUG);
+  const libraryId = moduleTextureLibraryId(moduleTexture);
+  const texture = resolveAppTexture(
+    getDashboardTexture(deps.dashboardTextureRepo),
+    moduleTexture,
+    libraryId === undefined
+      ? undefined
+      : getDashboardTextureById(deps.dashboardTextureRepo, libraryId),
+  );
+  // Only a choice of this module's own replaces what the layout drew. On
+  // `inherit` the layout's layer shows through and this shell adds nothing; on
+  // `none` the override attribute suppresses it and no picture is emitted.
+  const textureVars = texture.source === "module" ? texture.vars : undefined;
+  const suppressesAppTexture = texture.source === "module" || moduleTexture.source === "none";
+
   return (
     <TwoTierShell
       links={links}
@@ -100,7 +125,25 @@ export async function GalleryShell({ children }: { children: ReactNode }) {
       onExpandedChange={setExpandedModulesAction}
       adminTreeModule={navTree.adminTreeModule}
     >
-      {children}
+      {/* The texture wrapper goes inside the shell, around the section content
+          only: its `::before` is `fixed` so it still covers the viewport, but
+          keeping the tree and the section panel outside means this module's own
+          navigation chrome stays on flat theme surfaces at any opacity.
+
+          `data-app-texture-override` is what stops the app-wide layer showing
+          through — the shared layout can't know which module is rendering, so
+          the module announces itself and the ancestor stands down. See
+          `[data-app-texture]:has([data-app-texture-override])` in globals.css.
+          It is set for `none` as well as for a picture: that mode means "plain
+          paper here" and has to cancel the inherited layer while emitting none
+          of its own. */}
+      <div
+        data-app-texture={textureVars ? "" : undefined}
+        data-app-texture-override={suppressesAppTexture ? "" : undefined}
+        style={textureVars as CSSProperties | undefined}
+      >
+        {children}
+      </div>
     </TwoTierShell>
   );
 }
