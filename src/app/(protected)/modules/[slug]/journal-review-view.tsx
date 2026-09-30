@@ -281,6 +281,18 @@ export function JournalReviewView({
             columns={columns}
             rows={rows}
             getRowKey={(row) => row.id}
+            // Bands the zebra stripe by date rather than by row: every entry on
+            // one date shares a shade and the next date takes the other, so a
+            // group reads as a block in a flat list. Follows the order on screen,
+            // so sorting by Title (which scatters a date) correctly falls back to
+            // striping per row.
+            getRowGroupKey={(row) => row.date}
+            // A stronger stripe than the app-wide default, because here it marks
+            // a whole date block rather than separating one row from the next:
+            // across three rows the usual 94% mix is too faint to read as a band.
+            // Mixed toward `--ink`, so it darkens a light theme and lightens a
+            // dark one — see design.md, "The token system, not literal colors".
+            stripeClassName="bg-[color-mix(in_srgb,var(--paper-raised)_88%,var(--ink))]"
             emptyMessage="No date has more than one entry."
             exportFileName="journal-same-date-entries"
             storageKey="journal-same-date-grid"

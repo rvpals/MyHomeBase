@@ -23,6 +23,8 @@ import { StockSection } from "../stock-section";
 import { isStockSection } from "../stock-sections";
 import { ToolsSection } from "../tools-section";
 import { isToolsSection } from "../tools-sections";
+import { HouseholdSection } from "../household-section";
+import { isHouseholdSection } from "../household-sections";
 
 const ATTENDANCE_MODULE_SLUG = "attendance";
 const CSV_ANALYSIS_MODULE_SLUG = "csv-analysis";
@@ -33,6 +35,7 @@ const MUSIC_LIBRARY_MODULE_SLUG = "music-library";
 const PICTURE_GALLERY_MODULE_SLUG = "picture-gallery";
 const INVESTMENTS_MODULE_SLUG = "investments";
 const TOOLS_MODULE_SLUG = "tools";
+const HOUSEHOLD_MODULE_SLUG = "household";
 
 /**
  * A module's sub-section, e.g. /modules/expense/transactions or
@@ -65,6 +68,9 @@ function renderSection(
   requestedLots: string | undefined,
   requestedTickerLots: string | undefined,
   requestedSeedTickers: string | undefined,
+  recipeSearch: string | undefined,
+  recipeCategory: string | undefined,
+  recipeTag: string | undefined,
 ) {
   if (slug === ATTENDANCE_MODULE_SLUG && isAttendanceSection(section)) {
     return (
@@ -118,6 +124,16 @@ function renderSection(
   }
   if (slug === TOOLS_MODULE_SLUG && isToolsSection(section)) {
     return <ToolsSection section={section} />;
+  }
+  if (slug === HOUSEHOLD_MODULE_SLUG && isHouseholdSection(section)) {
+    return (
+      <HouseholdSection
+        section={section}
+        search={recipeSearch}
+        category={recipeCategory}
+        tag={recipeTag}
+      />
+    );
   }
   if (slug === INVESTMENTS_MODULE_SLUG && isStockSection(section)) {
     return (
@@ -178,6 +194,11 @@ export default async function ModuleSectionPage({
     // What the "Add by tickers" picker emits: short, and always current with the
     // ledger rather than a snapshot of it.
     seedTickers?: string | string[];
+    // The recipe list's filters, so a filtered box is a real URL — bookmarkable and
+    // sendable, rather than client state that a refresh throws away.
+    search?: string | string[];
+    category?: string | string[];
+    tag?: string | string[];
   }>;
 }) {
   const { slug, section } = await params;
@@ -197,6 +218,9 @@ export default async function ModuleSectionPage({
     lots,
     tickers,
     seedTickers,
+    search,
+    category,
+    tag,
   } = await searchParams;
   // A repeated ?filter= yields an array; take the first rather than joining, so a
   // crafted URL can't smuggle a second expression in.
@@ -236,6 +260,12 @@ export default async function ModuleSectionPage({
   // the stored view on anything it can't use.
   const requestedTickerLots = Array.isArray(tickers) ? tickers[0] : tickers;
   const requestedSeedTickers = Array.isArray(seedTickers) ? seedTickers[0] : seedTickers;
+  // Same first-element rule. Both stay raw: the Household module parses them with
+  // its own `recipeQuerySchema`, which trims and lower-cases, so a stale or crafted
+  // value narrows the list to nothing rather than 404ing.
+  const recipeSearch = Array.isArray(search) ? search[0] : search;
+  const recipeCategory = Array.isArray(category) ? category[0] : category;
+  const recipeTag = Array.isArray(tag) ? tag[0] : tag;
 
   const appModule = getModuleBySlug(deps.moduleRepo, slug);
   if (!appModule) notFound();
@@ -265,6 +295,9 @@ export default async function ModuleSectionPage({
     requestedLots,
     requestedTickerLots,
     requestedSeedTickers,
+    recipeSearch,
+    recipeCategory,
+    recipeTag,
   );
   if (!body) notFound();
 

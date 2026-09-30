@@ -1,5 +1,39 @@
 # Change History
 
+## 2026-09-29 — Household: Recipes, and a personal home-screen layout
+
+### Household → Recipes: category tabs, a full record view, and pictures in the editor
+
+The Recipes list is now tabs, not a Category dropdown: **All**, one tab per category
+(with counts), then **Uncategorised**. Category tabs are a real `?category=` URL and
+survive a refresh; Uncategorised is computed on the page itself and does not, which is
+the one place this differs. The grid itself is down to Name, Description, Tags, Made
+and Rating — Category, Source and the picture moved into a **record view**, opened by
+a new **View** button or a row click, which shows every field the recipe has,
+including ingredients, directions and notes (each in their own bordered, inset panel).
+
+The recipe editor changed shape too: Ingredients and Directions are each their own
+full-width row instead of sharing a two-column grid, Description grew to three lines,
+and the footer lost its Cancel button (the modal's own close control and Escape still
+work) — Save now reads **Save Recipe**. The editor can also attach a picture directly,
+with a preview, rather than requiring a save-then-reopen trip. Every picture — from the
+editor or from "Replace picture" in the record view — is now resized on the way in to
+a WebP capped at 800px on the long edge, the same treatment a module's carousel
+graphic already got; a 2 MB phone photo lands closer to 60–100 KB. Existing stored
+pictures are untouched.
+
+### A personal home-screen layout
+
+The home screen's cards can now be dragged into your own order and, on a screen wide
+enough for it, laid out in **one or two columns** — a control above the cards on the
+full layout only. This is separate from *Administration → Display Settings → Dashboard
+Widgets*, which still decides which cards exist at all and their household-wide default
+order; your own drag only rearranges what that setting already shows you, and an admin
+adding or hiding a card is still picked up correctly whether or not you've arranged
+your own. Drag is mouse-only, so every draggable card also carries up/down buttons as
+the keyboard path. Two columns only ever applies at 1280px and wider — a small laptop
+still gets the single stack it always has.
+
 ## 2026-09-28 — Journal: Review Data
 
 ### Several entries on one day, in one place

@@ -15,7 +15,8 @@ import type { ModuleSeed } from "./types";
 // migrations/0084_seed_picture_gallery_module.sql, as amended by
 // migrations/0085_picture_gallery_photo_icon.sql (which moved Picture Gallery off
 // the borrowed `heart` onto a real photo glyph), and
-// migrations/0098_seed_tools_module.sql.
+// migrations/0098_seed_tools_module.sql, and
+// migrations/0119_seed_household_module.sql.
 // "Reset to Default" restores the table to exactly this list — keep both in sync.
 export const DEFAULT_MODULES: ModuleSeed[] = [
   {
@@ -98,5 +99,14 @@ export const DEFAULT_MODULES: ModuleSeed[] = [
     sequence: 10,
     isVisible: true,
     icon: "tool",
+  },
+  {
+    slug: "household",
+    shortName: "Household",
+    longName: "Household",
+    description: "Recipes, receipts and the HSA — the household's paperwork.",
+    sequence: 11,
+    isVisible: true,
+    icon: "household",
   },
 ];

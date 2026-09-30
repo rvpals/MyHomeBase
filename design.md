@@ -193,6 +193,7 @@ Reach for one of these before writing a new `shadow-[...]`:
 | `.card-raised` | A card's resting lift — `CollapsibleCard` | inset highlight + hairline ring + tight cast |
 | `.card-raised-hover` | The same card's `:hover` | the cast grows and softens |
 | `.card-embossed` | An **opt-in bevel** for a card that should read as a thick slab — pair with `.card-raised-hover` | lit top edge + lit bottom lip + shadowed underside + ring + two-stop cast; the lit edges and the ring are **theme-derived** (see below) |
+| `.panel-inset` | A block of **content pressed into the page** — the recipe viewer's Ingredients/Directions/Notes | the inverse of `.card-embossed`: shaded top lip + lit bottom lip + a soft inner recess + a hairline ring. No gradient and no cast, because it wraps flowing text of any height and a recessed panel doesn't float. Needs a surface (`bg-paper`) under it |
 | `.shell-slab-raised` | The **module rail and section panel** — the sanctioned surface exception | `Button`'s hard `4px` offset, rotated to point right, in translucent black (not `--line`, which vanishes on light themes) + a hairline ring |
 | `.shell-accent-text` | The accent green for text and glyphs on a `--brass-soft` tint in the **compact nav bar and its sheet** — not a general replacement for `--brass-dark` | `color-mix(--brass 78%, --ink)`: brightens toward `--brass` on a dark theme and deepens on a light one, because neither token alone clears AA on all eight (Signal Deck wants `--brass`, Daybreak wants `--brass-dark`) |
 | `.paper-texture` | A card that should read as a **physical sheet** — the journal's New Journal card, the Daily Quote card, and the Content field in Handwriting mode | translucent fibre grid + diagonal sheen, **no tint of its own** — so it needs a surface (`bg-paper-raised`) under it; over a dark stage on its own it renders as hairlines on black |
@@ -516,6 +517,35 @@ spanning a 3440px ultrawide.
 `.app-main` owns the page's side gutter as `--app-gutter` rather than `px-8 max-lg:px-4`,
 so a bar inside it can cancel exactly that much and run edge to edge.
 Don't put the padding utilities back on it.
+
+### Two columns on a wide screen — and why the breakpoint is 1280px, not 1024px
+
+The 160rem container means a card stack on a 2560px monitor is one very wide column.
+The **home screen** answers that with an optional two-column layout
+([`home-widget-grid.tsx`](src/app/(protected)/home-widget-grid.tsx)), and the pattern is
+worth copying — but read the two rules before you do.
+
+**It splits at `xl:` (1280px), not at the app's usual 1024px boundary.** That is not an
+inconsistency to fix. 1024px is the *compact-versus-full* line: which components render,
+tree or bottom bar. This is a refinement **within** the full layout — "this screen is wider
+than the content needs" — and 1024px is a small laptop where two columns of cards are
+cramped. `stock-daily-glance.tsx` already used `xl:grid-cols-2` for the same reason.
+When you add a second column somewhere, `xl:` is the default; `lg:` needs a reason.
+
+**Three things make it work, and all three are easy to miss:**
+
+- `items-start` on the grid. Without it a cell stretches its card to the row's tallest,
+  so a **collapsed** `CollapsibleCard` beside an expanded one grows a tall empty body.
+- The gap moves to the grid (`gap-8`). Spacing that used to live on each card as `mt-8`
+  is wrong the moment two cards sit side by side — "the gap above card N" stops being a
+  property of card N.
+- A full-bleed card opts out with `xl:col-span-2`. The module carousel scrolls
+  horizontally; half the width defeats it.
+
+**`CollapsibleCard` itself was not changed for any of this, and must not be.** It has no
+width of its own — it fills whatever its parent gives it — so two-up is a *container*
+decision. A `halfWidth` prop could not work anyway: columns are declared by the parent, so
+a card can't place itself beside its sibling.
 
 ## Navigation: the tree (desktop) and the two-tier bar (compact)
 

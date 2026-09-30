@@ -56,6 +56,9 @@ describe("resolveUserPreferences", () => {
       openFavoriteModuleOnStartup: false,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
       expandedModules: [],
+      // One column, and no personal arrangement — an empty order means "follow the
+      // household order", not "every card in catalogue order".
+      homeLayout: { columns: 1, order: [] },
       weatherLocation: undefined,
       weatherUnit: "fahrenheit",
       // The clock's own defaults live in `resolveClockFaceOptions`; asserted here as
@@ -97,6 +100,7 @@ describe("resolveUserPreferences", () => {
       openFavoriteModuleOnStartup: true,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
       expandedModules: [],
+      homeLayout: { columns: 1, order: [] },
       weatherLocation: undefined,
       weatherUnit: "fahrenheit",
       clock: { face: "digital", showDate: true, showWeather: true, showWeekday: true },
@@ -175,7 +179,60 @@ describe("userPreferencesToEntries", () => {
         scratchpad: "bottom-right",
       },
       calculator: { angleMode: "deg", lastResult: undefined },
+      // Added by the resolver but not serialized here, for the same reason as
+      // `floating`: `original` omits `homeLayout`, so no home-layout keys were
+      // written and the resolver falls back to the shipped default.
+      homeLayout: { columns: 1, order: [] },
     });
+  });
+
+  // The field's whole point: a caller that doesn't own the home layout — the Account
+  // form saving a theme, a CLI command about favorites — must not disturb it.
+  it("omits the home layout keys entirely when the caller doesn't supply one", () => {
+    const entries = userPreferencesToEntries({
+      openFavoriteModuleOnStartup: false,
+      compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      expandedModules: [],
+      weatherUnit: "fahrenheit",
+      clock: { face: "digital" as const, showDate: true, showWeather: true, showWeekday: true },
+    });
+    const keys = entries.map((entry) => entry.key);
+    expect(keys).not.toContain(USER_PREFERENCE_KEYS.homeColumns);
+    expect(keys).not.toContain(USER_PREFERENCE_KEYS.homeWidgetOrder);
+  });
+
+  it("writes both home layout keys when one is supplied", () => {
+    const entries = userPreferencesToEntries({
+      openFavoriteModuleOnStartup: false,
+      compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      expandedModules: [],
+      homeLayout: { columns: 2, order: ["dailyQuote", "carousel"] },
+      weatherUnit: "fahrenheit",
+      clock: { face: "digital" as const, showDate: true, showWeather: true, showWeekday: true },
+    });
+    expect(entries).toContainEqual({ key: USER_PREFERENCE_KEYS.homeColumns, value: "2" });
+    expect(entries).toContainEqual({
+      key: USER_PREFERENCE_KEYS.homeWidgetOrder,
+      value: "dailyQuote,carousel",
+    });
+  });
+
+  it("round-trips a home layout", () => {
+    const original = {
+      favoriteModuleSlug: "expense",
+      openFavoriteModuleOnStartup: true,
+      compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      expandedModules: [],
+      homeLayout: { columns: 2 as const, order: ["todayInHistory" as const, "carousel" as const] },
+      weatherUnit: "fahrenheit" as const,
+      clock: { face: "digital" as const, showDate: true, showWeather: true, showWeekday: true },
+    };
+    const rows = userPreferencesToEntries(original).map((entry, index) => ({
+      id: index + 1,
+      userId: 7,
+      ...entry,
+    }));
+    expect(resolveUserPreferences(rows).homeLayout).toEqual(original.homeLayout);
   });
 });
 
@@ -324,6 +381,7 @@ describe("getUserPreferences", () => {
       openFavoriteModuleOnStartup: false,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
       expandedModules: [],
+      homeLayout: { columns: 1, order: [] },
       weatherLocation: undefined,
       weatherUnit: "fahrenheit",
       clock: { face: "digital", showDate: true, showWeather: true, showWeekday: true },
@@ -364,6 +422,7 @@ describe("saveUserPreferences", () => {
       openFavoriteModuleOnStartup: true,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
       expandedModules: [],
+      homeLayout: { columns: 1, order: [] },
       weatherLocation: undefined,
       weatherUnit: "fahrenheit",
       clock: { face: "digital", showDate: true, showWeather: true, showWeekday: true },
@@ -401,6 +460,7 @@ describe("saveUserPreferences", () => {
       openFavoriteModuleOnStartup: false,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
       expandedModules: [],
+      homeLayout: { columns: 1, order: [] },
       weatherLocation: undefined,
       weatherUnit: "fahrenheit",
       clock: { face: "digital", showDate: true, showWeather: true, showWeekday: true },
@@ -477,6 +537,7 @@ describe("resolveStartupDestination", () => {
       openFavoriteModuleOnStartup: false,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
       expandedModules: [],
+      homeLayout: { columns: 1, order: [] },
       weatherUnit: "fahrenheit",
       clock: { face: "digital", showDate: true, showWeather: true, showWeekday: true },
       floating: { clock: "closed", calculator: "closed", scratchpad: "closed" },

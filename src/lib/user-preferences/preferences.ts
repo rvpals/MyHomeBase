@@ -1,5 +1,10 @@
 import { resolveClockFaceOptions } from "@/lib/clock";
 import { resolvePuckCorners, resolveFloatingStates } from "@/lib/floating";
+import {
+  homeWidgetOrderToValue,
+  resolveHomeColumns,
+  resolveHomeWidgetOrder,
+} from "@/lib/home-layout";
 import { parseExpandedModules, serializeExpandedModules } from "@/lib/navigation";
 import { resolveCompactNavStyle } from "./nav-style";
 import type { UserPreference, UserPreferences, WeatherLocation } from "./types";
@@ -15,6 +20,15 @@ export const USER_PREFERENCE_KEYS = {
   // small, always read and written whole, and a row per module would need
   // cleaning up every time a module is deleted.
   expandedModules: "nav_expanded_modules",
+  // This reader's own home screen arrangement. Two keys rather than one blob so the
+  // column switch and a drag write independently — flipping to one column must not
+  // rewrite an order the reader spent time on, and vice versa.
+  //
+  // Neither is the household `home_widgets` app setting, which is an app-settings row
+  // an admin owns. These decide only how *this* reader sees the cards that setting
+  // already allowed.
+  homeColumns: "home_columns",
+  homeWidgetOrder: "home_widget_order",
   weatherLatitude: "weather_latitude",
   weatherLongitude: "weather_longitude",
   weatherPlaceName: "weather_place_name",
@@ -94,6 +108,13 @@ export function resolveUserPreferences(preferences: UserPreference[]): UserPrefe
     // serialiser writes sorted, and resolving to a different order would make
     // a round trip look like a change.
     expandedModules: [...parseExpandedModules(byKey.get(USER_PREFERENCE_KEYS.expandedModules))].sort(),
+    // Delegated to the home-layout module for the same reason the clock's options
+    // are: the defaults and the tolerance for a garbled value are facts about that
+    // feature. Not sorted, unlike `expandedModules` — here the order *is* the value.
+    homeLayout: {
+      columns: resolveHomeColumns(byKey.get(USER_PREFERENCE_KEYS.homeColumns)),
+      order: resolveHomeWidgetOrder(byKey.get(USER_PREFERENCE_KEYS.homeWidgetOrder)),
+    },
     weatherLocation: resolveWeatherLocation(byKey),
     // Anything unrecognised reads as Fahrenheit, matching the weather schema's own
     // default rather than inventing a second answer.
@@ -147,9 +168,32 @@ export function userPreferencesToEntries(
   // calculator's remembered state is written here (see above), so requiring them would
   // force every caller — the account action, the CLI, each test — to supply window
   // positions and a last result just to save a favorite.
-  preferences: Omit<UserPreferences, "floating" | "floatingCorners" | "calculator">,
+  //
+  // `homeLayout` is `Partial` on top of that: it is the one field whose absence must
+  // mean "leave what is stored" rather than "write the default". A caller that omits
+  // it (the Account form saving a theme) gets no home-layout keys in the result at
+  // all, so a drag made on the home screen survives a save made elsewhere.
+  preferences: Omit<UserPreferences, "floating" | "floatingCorners" | "calculator" | "homeLayout"> &
+    Partial<Pick<UserPreferences, "homeLayout">>,
 ): { key: string; value: string }[] {
+  const homeLayoutEntries = preferences.homeLayout
+    ? [
+        {
+          key: USER_PREFERENCE_KEYS.homeColumns,
+          value: String(preferences.homeLayout.columns),
+        },
+        // "" when the reader has no arrangement of their own — distinct from the key
+        // being absent above. Blank is a real value meaning "follow the household
+        // order", which is what `Reset order` writes.
+        {
+          key: USER_PREFERENCE_KEYS.homeWidgetOrder,
+          value: homeWidgetOrderToValue(preferences.homeLayout.order),
+        },
+      ]
+    : [];
+
   return [
+    ...homeLayoutEntries,
     {
       key: USER_PREFERENCE_KEYS.favoriteModuleSlug,
       value: preferences.favoriteModuleSlug ?? "",

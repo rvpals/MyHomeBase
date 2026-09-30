@@ -26,6 +26,13 @@ export const MODULE_ICON_NAMES = [
   // borrowing `heart` — the same placeholder Music Library wore between 0053 and
   // 0055. See migrations/0085_picture_gallery_photo_icon.md.
   "photo",
+  // A house with a chimney — the Household module. Deliberately not `home`, which
+  // names the *home screen* concept: the same artwork on "the dashboard" and on
+  // "this module" is exactly the collision the slot registry exists to prevent.
+  // Named in all eleven icon sets up front (a missing module concept is fatal in
+  // gen-icon-glyphs.mjs), so unlike Music Library and Picture Gallery this one
+  // needs no follow-up migration. See migrations/0119_seed_household_module.md.
+  "household",
 ] as const;
 
 export type ModuleIconName = (typeof MODULE_ICON_NAMES)[number];

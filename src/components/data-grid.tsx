@@ -27,6 +27,7 @@ import { useIsCompact } from "@/components/viewport-context";
 import {
   aggregate,
   computePageSlice,
+  computeRowBands,
   matchesFilter,
   matchesSearch,
   sortRows,
@@ -123,6 +124,41 @@ export interface DataGridProps<T> {
   rows: T[];
   /** Stable identity for each row, used as the React key and selection identity. */
   getRowKey: (row: T) => string | number;
+  /**
+   * Opt in to banding the zebra stripe by group instead of by row.
+   *
+   * Without it, the stripe alternates every row — the default, and what every
+   * grid in the app gets. With it, the stripe only flips when this key changes
+   * from one visible row to the next, so a run of rows sharing a key (a date's
+   * journal entries, say) shares one shade and the next run takes the other.
+   *
+   * The banding follows the order on screen, not the order in `rows`: sort by a
+   * column that scatters a group and its rows are no longer adjacent, so the
+   * bands correctly go back to reading one-per-row. It marks runs that are
+   * actually visible rather than claiming a grouping that isn't.
+   */
+  getRowGroupKey?: (row: T) => string | number;
+  /**
+   * Overrides the background of striped (odd) rows and cards.
+   *
+   * The default stripe is deliberately faint — it separates one row from the
+   * next in a long list. A grid that bands by group (`getRowGroupKey`) is asking
+   * the stripe to do more work: it marks where one *block* ends, across rows
+   * that may be several deep, so it can want more contrast than per-row zebra.
+   *
+   * Pass a Tailwind background utility built from theme tokens, not a literal
+   * color — `bg-[color-mix(in_srgb,var(--paper-raised)_88%,var(--ink))]` mixes
+   * toward the theme's contrasting tone, which lightens a dark theme and darkens
+   * a light one. A fixed grey reads correctly on one theme and wrong on the rest
+   * (design.md, "The token system, not literal colors").
+   *
+   * Note the two layouts stripe from different bases: the table's unstriped rows
+   * are `bg-paper`, the compact cards are `bg-paper-raised`. This replaces the
+   * stripe class in whichever layout is on screen, so a value chosen for one can
+   * look wrong in the other — the Review Data grid passes a mix that works from
+   * both, and it is applied over the card's own `bg-paper-raised`.
+   */
+  stripeClassName?: string;
   /** Shown instead of the table body when `rows` is empty. */
   emptyMessage?: string;
   /** Caller-supplied classes, merged last so they win. */
@@ -291,6 +327,8 @@ export function DataGrid<T>(props: DataGridProps<T>) {
         // phone could read the list but not act on it.
         enableSelection={props.enableSelection}
         renderSelectionActions={props.renderSelectionActions}
+        getRowGroupKey={props.getRowGroupKey}
+        stripeClassName={props.stripeClassName}
         className={props.className}
       />
     );
@@ -303,6 +341,8 @@ function DataGridFull<T>({
   columns,
   rows,
   getRowKey,
+  getRowGroupKey,
+  stripeClassName = "bg-paper-raised",
   emptyMessage = "No rows to show.",
   className = "",
   defaultPageSize = DEFAULT_PAGE_SIZE,
@@ -451,6 +491,15 @@ function DataGridFull<T>({
   const total = sortedRows.length;
   const slice = computePageSlice(total, pageSize, page);
   const visibleRows = sortedRows.slice(slice.startIndex, slice.endIndex);
+
+  // The zebra stripe's index per visible row. Plain alternation unless the caller
+  // opted into group banding, in which case a run of rows sharing a key shares a
+  // shade — see `getRowGroupKey`. Computed over the page's rows, so a group split
+  // across a page boundary restarts on the next page.
+  // Not memoised: `visibleRows` is a fresh slice every render, so a `useMemo` on
+  // it would recompute regardless while costing an extra dependency check. The
+  // walk is one pass over at most a page of rows.
+  const rowBands = getRowGroupKey ? computeRowBands(visibleRows, getRowGroupKey) : undefined;
 
   // Selection is always a subset of what the current search/filters show, so the
   // "12 selected" count always equals what a bulk action will touch. Rows that
@@ -953,7 +1002,7 @@ function DataGridFull<T>({
                         : undefined
                     }
                     tabIndex={onRowClick ? 0 : undefined}
-                    className={`${index % 2 === 1 ? "bg-paper-raised" : "bg-paper"} ${
+                    className={`${(rowBands?.[index] ?? index) % 2 === 1 ? stripeClassName : "bg-paper"} ${
                       selectedKeys.has(key) ? "outline outline-1 -outline-offset-1 outline-brass/40" : ""
                     } ${
                       onRowClick

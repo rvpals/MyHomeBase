@@ -84,6 +84,7 @@ pattern instead of inventing one.
 | [`FileDropzone`](#filedropzone) | Drag-and-drop file picker — **one** file | [src/components/file-dropzone.tsx](src/components/file-dropzone.tsx) | yes |
 | [`MultiFileDropzone`](#multifiledropzone) | **Several files at once** — drop zone plus the chosen list, each removable | [src/components/multi-file-dropzone.tsx](src/components/multi-file-dropzone.tsx) | yes |
 | [`CsvMappingTable`](#csvmappingtable) | Map a CSV's columns to target fields | [src/components/csv-mapping-table.tsx](src/components/csv-mapping-table.tsx) | yes |
+| [`CsvImportPanel`](#csvimportpanel) | **A whole CSV import screen** — drop, map, save the mapping, import | [src/components/csv-import-panel.tsx](src/components/csv-import-panel.tsx) | yes |
 | [`FilterCriteriaRow`](#filtercriteriarow) | **One line of a filter builder** — column, operator, value(s), remove | [src/components/filter-criteria-row.tsx](src/components/filter-criteria-row.tsx) | yes |
 | [`IconSelect`](#iconselect) | A dropdown whose options carry an image | [src/components/icon-select.tsx](src/components/icon-select.tsx) | yes |
 | [`ShortcutPicker`](#shortcutpicker) | **Pick a destination** — a web address, or any module/page in the app — plus its name and glyph | [src/components/shortcut-picker.tsx](src/components/shortcut-picker.tsx) | yes |
@@ -274,6 +275,8 @@ and an optional "Show SQL" re-run dialog. Do not build another table.
 | `columns` | `DataGridColumn<T>[]` | — | |
 | `rows` | `T[]` | — | Already-fetched data. The grid never fetches. |
 | `getRowKey` | `(row: T) => string \| number` | — | Stable row identity (React key + selection). |
+| `getRowGroupKey?` | `(row: T) => string \| number` | — | Bands the zebra stripe by group instead of by row: consecutive rows sharing this key share a shade, the next run takes the other. Applies to the table and the compact cards. Follows on-screen order, so a sort that scatters a group falls back to per-row striping; a group split across a page boundary restarts. |
+| `stripeClassName?` | `string` | `bg-paper-raised` (table) / 94% `--ink` mix (cards) | Background of striped (odd) rows. Pass a token-based utility, not a literal color. Mainly for a grid that bands by group, where the stripe marks a block and wants more contrast — Journal → Review Data uses an 88% mix. |
 | `emptyMessage?` | `string` | `"No rows to show."` | |
 | `defaultPageSize?` | `number \| "ALL"` | `100` | Paging appears once rows exceed it. |
 | `enableExport?` | `boolean` | `true` | "Export CSV" shows only if some column has `value`. |
@@ -433,7 +436,9 @@ name and value columns, so the pairs read as a grid. The seam is a right border 
 `dt`, not a gap with a background, so it spans the full height when either side wraps
 taller — which is also why the columns use padding rather than `gap-x`. Cards alternate
 with a shifted surface, the card-stack equivalent of zebra rows: odd cards mix
-`--paper-raised` 94% toward `--ink`.
+`--paper-raised` 94% toward `--ink`. That is the *default* — `DataGrid`'s
+`stripeClassName` overrides it, which a grid banding by group wants because its stripe
+marks a block several cards deep rather than separating one card from the next.
 
 **Mixed toward `--ink`, not toward black.** A translucent black wash was the first
 attempt and is invisible on the dark themes, which is most of them — 6% black on
@@ -1060,6 +1065,23 @@ Controlled, with an action that stays reachable while collapsed:
 </CollapsibleCard>
 ```
 
+### Width is the parent's business, not the card's
+
+`CollapsibleCard` has **no width of its own** — no `w-*`, no `max-w-*`. It fills whatever
+its parent gives it, which is why every stack of these is full-width: the callers wrap them
+in `flex flex-col`, a one-column layout.
+
+So **laying cards out two-up is a container change, and this component needs no edits for
+it.** The home screen does exactly that
+([`home-widget-grid.tsx`](src/app/(protected)/home-widget-grid.tsx)) — see
+[design.md](design.md) → *Two columns on a wide screen* for the breakpoint and the three
+rules that make it work.
+
+Don't add a `halfWidth`-style prop here. It couldn't work: grid and flex columns are
+declared by the *parent*, so a card setting its own 50% width in a `flex-col` parent would
+still stack — just half as wide, which is worse. And it would have to be threaded through
+every one of this component's ~120 call sites to achieve nothing.
+
 ### Surface treatments (opt-in, via `className`)
 
 The card's resting lift is `.card-raised` + `.card-raised-hover`, applied by the component
@@ -1172,7 +1194,12 @@ Journal module's Entries Main / Log split
 [journal-entries-view.tsx](src/app/(protected)/modules/[slug]/journal-entries-view.tsx)
 *(the Log tab's label carries a `SlotIcon`)*; the Security screen's Login / Visit split
 [admin/security/view.tsx](src/app/(protected)/admin/security/view.tsx) *(both labels
-carry a `SlotIcon`)*.
+carry a `SlotIcon`)*; Household → Recipes' category filter
+[household-recipes-view.tsx](src/app/(protected)/modules/[slug]/household-recipes-view.tsx)
+*(controlled — All / one tab per category / Uncategorised, each tab's `content` is
+`null` and the grid renders below the strip rather than inside a panel, because every
+tab shows the same grid over a different row set and nesting it would remount the
+table on every click, losing its sort, page and stored column widths)*.
 
 ---
 
@@ -2168,6 +2195,8 @@ this — don't hand-roll a second header/select/sample table.
 | `excludedRowIndexes?` | `ReadonlySet<number>` | Rows the user has dropped. Supply this **and** `onToggleRowExcluded` to turn on per-row exclusion; omit both and there are no row controls. |
 | `onToggleRowExcluded?` | `(rowIndex: number) => void` | Raised by a row's ×/Undo control. |
 | `rowNumberHeader?` | `string` | Header for the row-number column. Default `"#"`. Only shown with exclusion on. |
+| `selectionStyle?` | `"remove-button" \| "checkbox"` | How the exclusion control looks. Default `"remove-button"` (×/Undo). `"checkbox"` renders a ticked-means-import box per row. **Same state either way.** |
+| `onToggleAllRows?` | `(include: boolean) => void` | Ticks/clears every row from the header box. Only used with `selectionStyle="checkbox"`. |
 | `extraColumn?` | `{ header, renderHeaderControl?, renderCell }` | One importer-owned column before the CSV's own — for a per-row decision made at import time rather than read from the file. `renderCell(rowIndex, row)`. |
 | `className?` | `string` | Merged last. Use it to cap height (`max-h-[32rem]`) when passing every row. |
 
@@ -2218,6 +2247,113 @@ can't remove a row you can't see. Excluded rows render dimmed and struck through
 disappearing, so the row numbers keep matching the file. The index a row is keyed by is its
 index in `sampleRows`, which is why the caller must pass rows in file order when exclusion is
 on.
+
+---
+
+## CsvImportPanel
+
+**A whole CSV import screen**, not a widget: the dropzone, the mapping table, the
+saved-mapping controls, the skip-duplicates and overwrite toggles, the
+confirmation dialog for an overwrite, and the result summary. A module gets an
+importer by supplying its field list and its server actions — there is no second
+copy of any of this.
+
+Knows nothing about any module's domain. It never imports a module's actions; every
+server call arrives as a prop.
+
+- **Source:** [src/components/csv-import-panel.tsx](src/components/csv-import-panel.tsx)
+- **Import:** `import { CsvImportPanel, type CsvImportPlan, type CsvImportField } from "@/components/csv-import-panel";`
+- **Client component:** yes
+- **Builds on:** [`CsvMappingTable`](#csvmappingtable) for the column table and
+  [`FileDropzone`](#filedropzone) for the drop target.
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `fields` | `readonly CsvImportField[]` | The selectable target fields. Comes from the **lib**, not the view. |
+| `listFields?` | `readonly string[]` | Fields whose cell holds several values — these get the "Split on" dropdown. |
+| `dateFields?` | `readonly string[]` | Fields holding a date — these get the date-format box. |
+| `defaultFieldOptions?` | `(field: string) => FieldOptions \| undefined` | The options a freshly-picked field starts with. **Written into state, not just displayed** — see the note below. |
+| `namedMappings` | `NamedMapping[]` | Saved mappings for this import type, read on the server. |
+| `onPreview` | `(fileText) => Promise<CsvImportPreviewResult>` | Returns the preview, the auto-mapping and the saved mappings. |
+| `onSaveMapping` / `onUpdateMapping` / `onDeleteMapping` | actions | The saved-mapping controls. |
+| `onPlan?` | action returning `{ plan?: CsvImportPlan }` | The dry run. **Omit to hide the overwrite toggle** — an importer that can't update in place shouldn't offer it. |
+| `onImport` | action returning `{ summary?: ImportSummary }` | Does the write. |
+| `onTest?` | action returning `{ rows?: CsvImportTestRow[] }` | Parses the ticked rows without writing, for the **Test** dialog. **Omit to hide the Test button.** |
+| `onImported?` | `() => void` | Called after a successful import — usually `router.refresh()`. |
+| `recordNoun?` / `recordNounPlural?` | `string` | For the dialog copy: "Overwrite 3 existing recipes?". |
+| `duplicateHint?` | `string` | One line saying what makes two rows the same record. |
+| `dropzoneLabel?` | `string` | |
+| `children?` | `ReactNode` | Rendered above the dropzone — the module's own notes on its file format. |
+
+```tsx
+<CsvImportPanel
+  fields={RECIPE_IMPORT_FIELDS}
+  listFields={RECIPE_LIST_FIELDS}
+  defaultFieldOptions={defaultRecipeFieldOptions}
+  namedMappings={namedMappings}
+  onPreview={previewRecipeCsvAction}
+  onSaveMapping={saveRecipeMappingAction}
+  onUpdateMapping={updateRecipeMappingAction}
+  onDeleteMapping={deleteRecipeMappingAction}
+  onPlan={async (...args) => {
+    const result = await planRecipeImportAction(...args);
+    return { ...result, plan: result.plan ? toPanelPlan(result.plan) : undefined };
+  }}
+  onImport={runRecipeImportAction}
+  onImported={() => router.refresh()}
+  recordNoun="recipe"
+  recordNounPlural="recipes"
+/>
+```
+
+**Used by:** Household → Recipes → Import
+[household-import-view.tsx](src/app/(protected)/modules/[slug]/household-import-view.tsx).
+
+**Not yet used by** MyJournal's importer
+[journal-import-view.tsx](src/app/(protected)/modules/[slug]/journal-import-view.tsx), which
+predates this component and still hand-rolls the same markup inside its own Import/Correct/Reset
+tabs. Migrating it is a separate change; until then, **build new importers on this** rather than
+copying the journal view.
+
+**Row selection.** Every data row is listed with a tick-box (ticked = import),
+plus a select-all box in the header that shows the mixed state when only some are
+ticked. The panel passes **every** row to `CsvMappingTable`, not the random sample —
+you cannot untick a row you cannot see. State is held as the **excluded** set, so
+"all of them" is the empty set and a freshly dropped file imports in full; that is
+also the `excludedRowIndexes` shape every importer already takes. Dropping a file
+clears the selection, because the old indexes referred to a different file's rows.
+The Import button is disabled, and counts, from the selection.
+
+**The Test button.** Sits next to Import and shows what the ticked rows would
+actually store, field by field, **writing nothing**. It exists because a mis-set
+"split on" is otherwise invisible until the data is already in: an ingredients block
+that failed to split looks identical in the mapping table (one truncated cell)
+whether it is one line or twenty. The dialog renders values with
+`whitespace-pre-wrap`, so a block that did not split shows as one long line — which
+is the symptom. A row that would fail is listed with its reason rather than omitted.
+
+Build the test function on the **same parser the import uses**. A second parser
+written for the preview is free to disagree with the one that writes, which would
+make the dialog worse than useless — see `testRecipeImport` in
+[src/lib/household/csv-import.ts](src/lib/household/csv-import.ts), which shares
+`recordToRecipeInput` with the importer.
+
+**`CsvImportPlan` is deliberately module-agnostic** — `{ rowNumber, action, label, detail?,
+blockedReason? }`. Each module's plan type keeps its own vocabulary (a recipe row has a `name`,
+a journal row a date and title) and the view maps it onto this shape. The panel never learns
+what a record is.
+
+**Why `defaultFieldOptions` writes rather than displays.** A `<select>`'s rendered value fires
+no change event, so a default that lives only in the control is invisible to the import: the
+reader sees "Comma" and the importer splits on nothing. Picking a field therefore *writes* that
+field's defaults into the options, and replaces (never merges) whatever the previous field left
+behind — a comma inherited from Categories silently applying to Tags is the same bug from the
+other side.
+
+**Delimiter values are strings, and `\n` is the two-character escape**, not a real newline:
+that is what a single-line CSV cell actually contains when an export flattens a multi-line
+block. What the escape *means* is the adapter's call — see `toBlock` in
+[src/lib/household/csv-import.ts](src/lib/household/csv-import.ts).
 
 ---
 

@@ -1,4 +1,9 @@
 import { FLOATING_STATE_KEYS, floatingStateToValue, puckCornerKey } from "@/lib/floating";
+import {
+  homeLayoutPartialUpdateSchema,
+  homeWidgetOrderToValue,
+  type HomeLayoutPartialUpdate,
+} from "@/lib/home-layout";
 import type { UserPreferencesRepository } from "./ports";
 import {
   USER_PREFERENCE_KEYS,
@@ -111,6 +116,37 @@ export function saveFloatingCorner(
   const validated = floatingCornerUpdateSchema.parse(input);
   repo.setValue(userId, puckCornerKey(validated.id), validated.corner);
   return validated;
+}
+
+/**
+ * Records this reader's home screen arrangement — the column count, the card order,
+ * or both.
+ *
+ * Single-key writes, like `saveFloatingState` above and for the same reason: this
+ * fires on every drop and every flip of the column switch, and resending the whole
+ * preference set each time would let a stale home screen clobber a favorite the reader
+ * changed in another tab. Each field is optional, so flipping to one column cannot
+ * blank an order the reader spent time arranging.
+ *
+ * Writes only — it does not read the household `home_widgets` setting and cannot
+ * change which cards are drawn. Rearranging is all this can do.
+ */
+export function saveHomeLayout(
+  repo: UserPreferencesRepository,
+  userId: number,
+  input: HomeLayoutPartialUpdate,
+): void {
+  const validated = homeLayoutPartialUpdateSchema.parse(input);
+  if (validated.columns !== undefined) {
+    repo.setValue(userId, USER_PREFERENCE_KEYS.homeColumns, String(validated.columns));
+  }
+  if (validated.order !== undefined) {
+    repo.setValue(
+      userId,
+      USER_PREFERENCE_KEYS.homeWidgetOrder,
+      homeWidgetOrderToValue(validated.order),
+    );
+  }
 }
 
 /**

@@ -2,7 +2,7 @@
 
 Reference for driving MyHomeBase from a terminal.
 
-**Part 1** documents the 51 commands that work today.
+**Part 1** documents the 52 commands that work today.
 **Part 2** is the full inventory of library use-cases — what a command *could* call.
 **Part 3** summarises the coverage gap.
 
@@ -28,7 +28,7 @@ command list and exits 1. There is no `--help`.
 
 # Part 1 — Available commands
 
-Fifty-one commands, registered in [src/cli/index.ts](src/cli/index.ts).
+Fifty-two commands, registered in [src/cli/index.ts](src/cli/index.ts).
 
 The table below is the index — every command links to its own section. Those sections
 are **not all contiguous**: the file grew by appending, so some sit after Part 2 and
@@ -47,6 +47,7 @@ alongside its row here.
 | [`import-csv-files`](#import-csv-files) | read (`plan`), write (`create`/`append`) | no |
 | [`csv-source-stats`](#csv-source-stats) | read | no |
 | [`import-journal-csv`](#import-journal-csv) | write | no |
+| [`import-recipes-csv`](#import-recipes-csv) | write | no |
 | [`import-journal-ics`](#import-journal-ics) | write (read with `--dry-run`/`--review`) | no |
 | [`journal-calendar`](#journal-calendar) | read | no |
 | [`journal-same-date`](#journal-same-date) | read (writes with `--delete`, or `--merge --save`) | no |
@@ -89,6 +90,7 @@ alongside its row here.
 | [`attendance-report`](#attendance-report) | read | no |
 | [`scan-music`](#scan-music) | write | no (reads the music share) |
 | [`music-library`](#music-library) | read | no |
+| [`recipes`](#recipes) | read (writes with `--add`/`--made`/`--delete`) | no |
 
 Flag parsing is `--key value` pairs via [parse-flags.ts](src/cli/parse-flags.ts),
 except `ticker-overview` and `set-startup-message`, which read positionals and bare
@@ -289,6 +291,60 @@ match is declined, not overwritten. `--allow-duplicates` turns the check off for
 a file that deliberately holds another copy of something.
 **Exit** — 0; 1 on missing `--file`, an unknown mapping name, or a read failure.
 Source: [src/cli/import-journal-csv.ts](src/cli/import-journal-csv.ts)
+
+---
+
+## `import-recipes-csv`
+
+Imports recipes from a CSV, using either a saved mapping or auto-mapped headers.
+The Household counterpart of `import-journal-csv`, sharing its flags, its
+mapping store and the `CsvImportPanel` the web screen is built from.
+
+```
+npm run cli -- import-recipes-csv --file ./recipes.csv
+npm run cli -- import-recipes-csv --file ./recipes.csv --mapping "Paprika export"
+npm run cli -- import-recipes-csv --file ./recipes.csv --overwrite
+```
+
+**Input**
+
+| Flag | Type | Required | Notes |
+|---|---|---|---|
+| `--file` | path | yes | |
+| `--mapping` | string | no | name of a saved `Recipe` mapping; auto-maps from headers when omitted |
+| `--allow-duplicates` | boolean | no | import rows whose name already exists; **off** by default, so a re-run is a no-op |
+| `--overwrite` | boolean | no | replace a matched recipe in place instead of skipping it; takes precedence over `--allow-duplicates` |
+
+**Calls** — `listNamedMappings(deps.csvImportMappingRepo, "Recipe")` or
+`autoMapRecipeHeaders(parseCsv(fileText).headers)`, then
+`importRecipesCsv(deps.householdRepo, …, { skipDuplicates, overwrite })`.
+
+**Output** — a count plus a line per skipped row:
+
+```
+Imported 41, updated 0, skipped 2.
+  Row 18: no Name column mapped, or its cell was empty
+  Row 33: A recipe with this name already exists
+```
+
+Best-effort by design: a bad row is skipped and reported, not fatal.
+
+**Idempotent by default.** A recipe already exists when its **name** matches,
+ignoring case — a recipe has no date to match on, so the name is the key. Only
+`Name` must be mapped; it is both required and the match key, which is why a
+nameless row is skipped rather than imported as an untitled recipe.
+
+`--overwrite` is destructive and unattended: the web screen shows a plan and
+confirms first, but typing the flag *is* the confirmation here. It replaces the
+whole recipe, so a blank cell clears that field — the **picture is kept**,
+because it is not a column the update writes.
+
+Pictures cannot be imported. `Ingredients` and `Directions` are stored one item
+per line; a saved mapping records what to split those columns on (the default
+handles a literal `\n` in the cell).
+
+**Exit** — 0; 1 on missing `--file`, an unknown mapping name, or a read failure.
+Source: [src/cli/import-recipes-csv.ts](src/cli/import-recipes-csv.ts)
 
 ---
 
@@ -3200,5 +3256,61 @@ percent, the `as of` timestamp, and the name when known.
 
 **Exit** — always `0`, including when there are no favorites (a fact, not an error).
 Source: [src/cli/favorite-quotes.ts](src/cli/favorite-quotes.ts)
+
+---
+
+## `recipes`
+
+The Household module's recipe box from a terminal — the same use-cases the Recipes
+screen drives.
+
+```
+npm run cli -- recipes
+npm run cli -- recipes --search chicken
+npm run cli -- recipes --category Dessert
+npm run cli -- recipes --tag freezer
+npm run cli -- recipes --list-tags
+npm run cli -- recipes --list-categories
+npm run cli -- recipes --show 3
+npm run cli -- recipes --add "Roast chicken" --rating 9 --tags "sunday, easy"
+npm run cli -- recipes --add "Chili" --ingredients "2 onions\n1kg beef" --directions "Brown the beef\nSimmer 2h"
+npm run cli -- recipes --made 3
+npm run cli -- recipes --delete 3
+```
+
+**Input** — all optional; with no flags it lists everything. `--search` matches the
+name, description *and* ingredients, exactly as the screen's one box does. `--category`
+filters by category, case-insensitively, so a lower-cased flag still finds a stored
+"Dessert". `--tag` filters by tag. The two combine, and combine with `--search`.
+`--list-tags` and `--list-categories` each print that vocabulary with counts and stop.
+Both are named separately from `--tags`/`--category`, which are the *values* passed to
+`--add`, because `parseFlags` takes the next argv element as a flag's value and one
+name cannot mean both. `--add` takes a
+name plus optional `--description`, `--ingredients`, `--directions`, `--notes`,
+`--rating`, `--category`, `--source` and `--tags`. A category is stored as typed — it is
+not lower-cased the way tags are, and it is never split on a delimiter, since a recipe
+has exactly one. **Multi-line fields take `\n` escapes**, since a real newline is
+awkward to pass through a shell.
+
+**Calls** — `listRecipes`, `getRecipe`, `createRecipe`, `incrementMadeCount`,
+`deleteRecipe`, `listRecipeTags`, `listRecipeCategories` and `toLines`, all through
+`@/lib/household` — the
+same use-cases and the same zod schemas the web app calls, so a rating of 11 or a
+malformed `--source` is rejected identically in both.
+
+**Output** — the list prints id, rating, made count, name, category in `(round
+brackets)` and tags in `[square ones]`, one per line, with a total. The two bracket
+styles distinguish the one-per-recipe value from the many-per-recipe list at a glance. `--show` prints the whole recipe: the header figures, then the ingredients as
+a bulleted list and the directions numbered, both split by `toLines`. An unrated recipe
+prints `-`, never `0`.
+
+**The picture is deliberately not settable here.** The only sensible terminal form is a
+file path, and the use-case takes decoded bytes with a validated mime type. That is a
+gap in convenience rather than in reach — every other field round-trips.
+
+**Exit** — 0 normally, including when nothing matches (a fact, not an error); 1 when
+`--show`, `--made` or `--delete` names an id that does not exist, or when a schema
+rejects a value.
+Source: [src/cli/recipes.ts](src/cli/recipes.ts)
 
 ---

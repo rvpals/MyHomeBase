@@ -716,6 +716,52 @@ const FoldedMap: IconComponent = (props) => (
   </svg>
 );
 
+/* A chef's hat: the pleated crown and the band it sits on. Household's recipe box.
+
+   Drawn rather than borrowed because the three glyphs that might have stood in all
+   say something else in a nav this one shares:
+
+     `note`   a page of text. A recipe IS a page of text, which is the problem — the
+              glyph would name the content, not the place, and `note` is already the
+              Scratchpad's.
+     `list`   rows of anything. Ingredients are a list, but so is every other section
+              in the app that uses it.
+     `book`   a module concept, not a tree one, and already Journal's territory.
+
+   The CROWN'S SILHOUETTE is what has to survive 16px, so it is three arcs meeting a
+   flat band and nothing else — no pleat lines down the crown. Those were drawn first
+   and removed after rendering: at nav-row size four vertical strokes inside an already
+   rounded shape turn the hat into a scribble, and the outline alone still reads as a
+   chef's hat because nothing else in the set is that shape. */
+const ChefHat: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    {/* The crown: three lobes over a flat shoulder line. */}
+    <path d="M6.5 13.5a3.6 3.6 0 1 1 1.3-6.6 4 4 0 0 1 7.4 0 3.6 3.6 0 1 1 1.3 6.6" />
+    {/* The band, closed across the bottom so the hat sits on something. */}
+    <path d="M6.5 13.5v5.2a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-5.2" />
+    <line x1="6.5" y1="16.3" x2="17.5" y2="16.3" />
+  </svg>
+);
+
+/* A till slip: a rectangle with a torn bottom edge and two lines of print.
+
+   Household's paperwork — receipts and the HSA. The TORN EDGE is the whole glyph: a
+   plain rectangle with lines in it is `note`, and the zig-zag is the one mark that
+   says "this came out of a machine" rather than "someone wrote this".
+
+   Two print lines, not three or four. A receipt's real content is a column of figures,
+   but at 16px each extra rule closes the gap to its neighbour and the slip fills in
+   solid — two lines of differing length reads as "itemised" and still has air in it. */
+const Receipt: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    {/* Square at the top, torn across the bottom. */}
+    <path d="M5.5 20.5V4.5a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v16l-2-1.4-2 1.4-2-1.4-2 1.4-2-1.4-2 1.4Z" />
+    {/* The print: short line, long line. */}
+    <line x1="8.75" y1="8" x2="15.25" y2="8" />
+    <line x1="8.75" y1="11.5" x2="13" y2="11.5" />
+  </svg>
+);
+
 const TREE_ICONS = {
   flash: Flash,
   note: Note,
@@ -769,6 +815,8 @@ const TREE_ICONS = {
   "game-mahjong": GameMahjongMatch,
   pin: MapPin,
   map: FoldedMap,
+  recipe: ChefHat,
+  receipt: Receipt,
   rocket: RocketLaunch,
 } as const satisfies Record<TreeIconConcept, IconComponent>;
 

@@ -166,6 +166,12 @@ export async function userPreferencesCommand(args: string[]): Promise<void> {
         // there is no flag for it, and omitting it would collapse the reader's
         // navigation tree on a command about something else entirely.
         expandedModules: current.expandedModules,
+        // Carried through for the same reason — though unlike the fields around it,
+        // omitting this one would be harmless: `homeLayout` is the one optional
+        // field on the schema, and an absent value leaves the stored arrangement
+        // alone rather than resetting it. Passed anyway so this payload keeps
+        // reading as the complete picture of what is being written.
+        homeLayout: current.homeLayout,
         // Carried through unchanged. `saveUserPreferences` writes every key on every
         // save, so omitting these would blank the weather location this user set on
         // the Account screen — a CLI command about favorites must not clear it.
@@ -206,6 +212,15 @@ function printPreferences(
   console.log(`  favorite module: ${preferences.favoriteModuleSlug ?? "(none)"}`);
   console.log(`  open on startup: ${preferences.openFavoriteModuleOnStartup ? "yes" : "no"}`);
   console.log(`  phone nav style: ${preferences.compactNavStyle}`);
+  console.log(
+    `  home layout:     ${preferences.homeLayout.columns} column${
+      preferences.homeLayout.columns === 1 ? "" : "s"
+    }, ${
+      preferences.homeLayout.order.length > 0
+        ? preferences.homeLayout.order.join(" > ")
+        : "default order"
+    }`,
+  );
   console.log(`  clock face:      ${preferences.clock.face}`);
   console.log(
     `  clock shows:     ${

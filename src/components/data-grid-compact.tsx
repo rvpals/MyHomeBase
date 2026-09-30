@@ -25,6 +25,7 @@
 // pinned above the cards.
 
 import { useMemo, useState, type ReactNode } from "react";
+import { computeRowBands } from "@/lib/shared/table";
 import type { CellValue, DataGridColumn } from "./data-grid";
 
 export interface DataGridCompactProps<T> {
@@ -40,6 +41,17 @@ export interface DataGridCompactProps<T> {
   enableSelection?: boolean;
   /** Rendered above the cards while rows are selected — the caller's bulk actions. */
   renderSelectionActions?: (selectedRows: T[], clearSelection: () => void) => ReactNode;
+  /**
+   * Band the card stripe by group instead of by card — forwarded from `DataGrid`
+   * so a grid that bands on a wide screen bands the same way on a phone. See the
+   * prop of the same name on `DataGridProps`.
+   */
+  getRowGroupKey?: (row: T) => string | number;
+  /**
+   * Overrides the striped card's background — forwarded from `DataGrid`, see the
+   * prop of the same name there. Applied over the card's own `bg-paper-raised`.
+   */
+  stripeClassName?: string;
   className?: string;
 }
 
@@ -55,6 +67,16 @@ const CONTROL_CLASS =
  * (glance at the newest rows) instant while leaving everything reachable.
  */
 const PAGE_STEP = 50;
+
+/**
+ * The striped card's background, when the caller doesn't override it.
+ *
+ * Shifts whatever card surface the theme supplies rather than being a second
+ * literal color, and mixes toward `--ink` (the theme's contrasting tone) so the
+ * one rule lightens a dark card and darkens a light one — see the long note on
+ * `CompactRow`, and `stripeClassName` for overriding it.
+ */
+const DEFAULT_STRIPE_CLASS = "bg-[color-mix(in_srgb,var(--paper-raised)_94%,var(--ink))]";
 
 /** Lower-cased text of a cell's sortable value, for the search box. */
 function searchableText<T>(row: T, columns: DataGridColumn<T>[]): string {
@@ -80,6 +102,8 @@ export function DataGridCompact<T>({
   onRowClick,
   enableSelection = false,
   renderSelectionActions,
+  getRowGroupKey,
+  stripeClassName = DEFAULT_STRIPE_CLASS,
   className = "",
 }: DataGridCompactProps<T>) {
   const [query, setQuery] = useState("");
@@ -135,6 +159,13 @@ export function DataGridCompact<T>({
       return next;
     });
   }
+
+  // The cards actually rendered — the "show more" limit applied once, so the
+  // banding below is computed over exactly the stack on screen.
+  const shownRows = visible.slice(0, limit);
+  // Group banding, when the caller opted in: same-date cards share a shade and
+  // the next date flips. Plain per-card alternation otherwise, unchanged.
+  const cardBands = getRowGroupKey ? computeRowBands(shownRows, getRowGroupKey) : undefined;
 
   if (!leadColumn) return null;
 
@@ -207,11 +238,12 @@ export function DataGridCompact<T>({
         </p>
       ) : (
         <ul className="flex flex-col gap-2">
-          {visible.slice(0, limit).map((row, index) => (
+          {shownRows.map((row, index) => (
             <li key={getRowKey(row)}>
               <CompactRow
                 row={row}
-                rowIndex={index}
+                rowIndex={cardBands?.[index] ?? index}
+                stripeClassName={stripeClassName}
                 leadColumn={leadColumn}
                 detailColumns={detailColumns}
                 onRowClick={onRowClick}
@@ -248,12 +280,19 @@ function CompactRow<T>({
   leadColumn,
   detailColumns,
   onRowClick,
+  stripeClassName,
   isSelectable = false,
   isSelected = false,
   onToggleSelected,
 }: {
   row: T;
-  /** Position in the visible list, for the alternating card background. */
+  /** The striped card's background class. */
+  stripeClassName: string;
+  /**
+   * The card's stripe index. Its position in the visible list by default, or its
+   * band index when the grid was asked to stripe by group (`getRowGroupKey`) —
+   * either way, odd means striped.
+   */
   rowIndex: number;
   leadColumn: DataGridColumn<T>;
   detailColumns: DataGridColumn<T>[];
@@ -321,8 +360,13 @@ function CompactRow<T>({
   // sets the same property: this class comes later in the class list and both are
   // plain utilities, so this simply wins. The earlier gradient trick was only
   // needed to *layer* over the surface; mixing already accounts for it.
-  const stripeClass =
-    rowIndex % 2 === 1 ? "bg-[color-mix(in_srgb,var(--paper-raised)_94%,var(--ink))]" : "";
+  //
+  // The value itself is `DEFAULT_STRIPE_CLASS` unless the caller overrode it with
+  // `stripeClassName` — a grid that bands by group wants more contrast than
+  // per-row zebra, because its stripe marks a whole block. Everything above
+  // applies to whatever they pass, which is why the prop asks for a token mix
+  // rather than a literal color.
+  const stripeClass = rowIndex % 2 === 1 ? stripeClassName : "";
 
   const cardClass = `rounded-xl border bg-paper-raised p-3 ${stripeClass} ${
     isSelected ? "border-brass" : "border-line"

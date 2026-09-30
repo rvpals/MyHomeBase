@@ -172,6 +172,16 @@ const GROUPS: TableReferenceGroup[] = [
     ],
   },
   {
+    prefix: "hsh_",
+    module: "Household",
+    summary:
+      "The household's own paperwork. Recipes so far; the HSA Tracker owns no tables yet and will sit under this same prefix.",
+    tables: [
+      ["hsh_recipes", "One recipe: its name, description, ingredients and directions (one item per line, stored as text blocks), notes, how many times it has been made, a 1-10 rating (NULL means unrated, which is not the same as 1), a category (one per recipe, stored as typed and matched COLLATE NOCASE; blank means uncategorised, and there is no catalog table — the vocabulary is SELECT DISTINCT over this column), a source URL, and the dish photograph as a BLOB with its mime type. Reads for the list must select columns explicitly — a SELECT * pulls every photograph."],
+      ["hsh_recipe_tags", "Which tags are on which recipe, one row per pair and unique on it. Tags are created inline as a recipe is written; there is no managed tag catalog, and names are lower-cased at the boundary so casing cannot fork one tag into several."],
+    ],
+  },
+  {
     prefix: "ico_",
     module: "Icon customisation",
     summary: "Platform-wide, not a feature module.",

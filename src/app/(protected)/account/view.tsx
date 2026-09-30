@@ -272,6 +272,11 @@ function PreferencesSection({
         // every key is written on every save, so omitting this would collapse
         // the reader's navigation tree the next time they changed a theme here.
         expandedModules: preferences.expandedModules,
+        // Carried through for the same reason, and it matters more here than most:
+        // this is the reader's own home screen arrangement, made by dragging cards
+        // on a different screen entirely. Saving a theme from this form must not
+        // knock them back to one column and the household order.
+        homeLayout: preferences.homeLayout,
         weatherLocation,
         weatherUnit,
         clock,

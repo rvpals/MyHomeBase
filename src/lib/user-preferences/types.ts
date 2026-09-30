@@ -1,6 +1,7 @@
 import type { AngleMode } from "@/lib/calculator";
 import type { ClockFaceOptions } from "@/lib/clock";
 import type { FloatingId, FloatingState, PuckCorner } from "@/lib/floating";
+import type { HomeLayoutPreference } from "@/lib/home-layout";
 import type { TemperatureUnit } from "@/lib/weather";
 
 /** One stored preference row. The owner is part of the identity, not the key alone. */
@@ -65,6 +66,21 @@ export interface UserPreferences {
    * no tree to expand.
    */
   expandedModules: string[];
+  /**
+   * This reader's own home screen arrangement: how many columns, and in what order
+   * their cards sit.
+   *
+   * Personal, unlike the `home_widgets` app setting — that one stays household-wide
+   * and admin-owned, and still decides *which* cards exist and their default order.
+   * This only ever rearranges what that setting already allowed; see
+   * `applyPersonalOrder`. The two were always going to separate: the catalogue's own
+   * doc comment predicted a per-user layout would be "a different feature".
+   *
+   * Full layout only, like `expandedModules` — the column switch and the drag both
+   * render above the two-column breakpoint, so a phone reads the stored value and
+   * ignores it rather than being clamped.
+   */
+  homeLayout: HomeLayoutPreference;
   /**
    * The place the Floating Clock forecasts for, or `undefined` when the user hasn't
    * set one — in which case the clock shows the time alone.

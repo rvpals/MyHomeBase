@@ -163,6 +163,32 @@ const Photo: IconComponent = (props) => (
   </svg>
 );
 
+// A house with a chimney — the Household module.
+//
+// Its whole job is to be legibly NOT `Home` two rows above, which is the same
+// subject drawn plainly (roof, walls, door). Two things separate them, and both
+// were chosen because they survive 16px where finer detail does not:
+//
+//   the CHIMNEY breaks the roofline's silhouette, so the two differ in outline
+//   and not only in interior detail — which is all the eye gets at app-bar size;
+//   the WINDOW beside the door fills the wall that `Home` leaves empty.
+//
+// The door is drawn shorter than `Home`'s to make room for the window without
+// crowding it. Smoke was drawn above the chimney first and removed after
+// rendering: three curls at this size are three stray ticks floating over the
+// roof, and the chimney alone already carries the difference.
+const Household: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <path d="M3.5 11L12 4l8.5 7" />
+    {/* The chimney, on the right slope so it clears the roof's apex. */}
+    <path d="M16.5 6.85V4.5h2.2v4.2" />
+    <path d="M5.75 10v9a1 1 0 0 0 1 1h10.5a1 1 0 0 0 1-1v-9" />
+    {/* Door, then the window beside it. */}
+    <path d="M10 20v-4.5h2.75V20" />
+    <rect x="14.5" y="13.5" width="2.5" height="2.5" />
+  </svg>
+);
+
 const ICONS: Record<ModuleIconName, IconComponent> = {
   building: Building,
   home: Home,
@@ -179,6 +205,7 @@ const ICONS: Record<ModuleIconName, IconComponent> = {
   music: Music,
   game: Game,
   photo: Photo,
+  household: Household,
 };
 
 // The original hand-drawn set, kept as the "classic" option and the fallback for any

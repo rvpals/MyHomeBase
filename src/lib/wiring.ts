@@ -29,6 +29,7 @@ import {
   SqliteScratchpadRepository,
 } from "@/lib/scratchpad";
 import { SqliteGamesRepository } from "./games/repository";
+import { SqliteHouseholdRepository } from "./household/repository";
 import { NominatimGeocodingClient } from "./geocoding/nominatim-client";
 import { OpenMeteoWeatherClient } from "./weather/open-meteo-client";
 import { SqliteInvestmentAccountRepository } from "./investment-accounts/repository";
@@ -223,6 +224,11 @@ export const deps = {
   // repository for the games themselves — the catalogue is code, in
   // src/lib/games/catalogue.ts.
   gamesRepo: new SqliteGamesRepository(db),
+  // The Household module's recipe box (migrations/0118). One repository for the
+  // whole module: the HSA Tracker owns no tables yet, and when it does they sit
+  // under the same `hsh_` prefix — whether they also share this repository is a
+  // decision for the change that adds them, not one to pre-empt with an empty class.
+  householdRepo: new SqliteHouseholdRepository(db),
   // The Floating Calculator's history tape (migrations/0095). Per-user, unlike the
   // games board above — a calculator tape is private working-out.
   calculatorHistoryRepo: new SqliteCalculatorHistoryRepository(db),

@@ -50,6 +50,19 @@ export interface CsvMappingTableProps {
    */
   rowNumberHeader?: string;
   /**
+   * Render the exclusion control as a **tick-box** (ticked = will import)
+   * rather than the ×/Undo pair, and put a select-all box in the header.
+   *
+   * Same state either way — `excludedRowIndexes` is still the source of truth,
+   * so a caller can switch presentation without touching its import call. The
+   * tick-box reads better when choosing *which* rows to bring in; the ×/Undo
+   * reads better when the default is "all of them" and you're removing strays,
+   * which is why the Investments importer keeps it.
+   */
+  selectionStyle?: "remove-button" | "checkbox";
+  /** Ticks or clears every row at once. Only used with `selectionStyle="checkbox"`. */
+  onToggleAllRows?: (include: boolean) => void;
+  /**
    * An extra column of the importer's own, rendered before the CSV's columns — for
    * a decision made per row at import time rather than read from the file (the
    * Stocks importer puts its per-row Type dropdown here). Omit for no extra column.
@@ -74,11 +87,16 @@ export function CsvMappingTable({
   onToggleRowExcluded,
   rowNumberHeader = "#",
   extraColumn,
+  selectionStyle = "remove-button",
+  onToggleAllRows,
   className = "",
 }: CsvMappingTableProps) {
   // Both halves are needed for a working control, so one missing turns the feature
   // off rather than rendering a button that does nothing.
   const canExclude = Boolean(excludedRowIndexes && onToggleRowExcluded);
+  const useCheckboxes = canExclude && selectionStyle === "checkbox";
+  const includedCount = sampleRows.length - (excludedRowIndexes?.size ?? 0);
+  const allIncluded = includedCount === sampleRows.length && sampleRows.length > 0;
 
   return (
     <div className={`overflow-auto rounded-md border border-line ${className}`}>
@@ -86,8 +104,26 @@ export function CsvMappingTable({
         <thead>
           <tr className="border-b border-line bg-paper-raised">
             {canExclude && (
-              <th className="px-3 py-2 font-medium text-muted" scope="col">
-                {rowNumberHeader}
+              <th className="whitespace-nowrap px-3 py-2 font-medium text-muted" scope="col">
+                {useCheckboxes && onToggleAllRows ? (
+                  <label className="flex items-center gap-1.5">
+                    <input
+                      type="checkbox"
+                      checked={allIncluded}
+                      // Neither all nor none: the header box shows the mixed
+                      // state rather than lying about being on or off.
+                      ref={(node) => {
+                        if (node) node.indeterminate = !allIncluded && includedCount > 0;
+                      }}
+                      onChange={(event) => onToggleAllRows(event.target.checked)}
+                      aria-label="Import every row"
+                      className="accent-brass"
+                    />
+                    <span>{rowNumberHeader}</span>
+                  </label>
+                ) : (
+                  rowNumberHeader
+                )}
               </th>
             )}
             {extraColumn && (
@@ -150,7 +186,24 @@ export function CsvMappingTable({
                   isExcluded ? "opacity-40" : ""
                 }`}
               >
-                {canExclude && (
+                {canExclude && useCheckboxes && (
+                  <td className="whitespace-nowrap px-3 py-2">
+                    <label className="flex items-center gap-1.5">
+                      <input
+                        type="checkbox"
+                        // Ticked means "import this row" — the inverse of the
+                        // excluded set, which stays the stored shape so the
+                        // import call is identical for both presentations.
+                        checked={!isExcluded}
+                        onChange={() => onToggleRowExcluded?.(rowIndex)}
+                        aria-label={`Import row ${rowIndex + 1}`}
+                        className="accent-brass"
+                      />
+                      <span className="font-mono text-xs text-muted">{rowIndex + 1}</span>
+                    </label>
+                  </td>
+                )}
+                {canExclude && !useCheckboxes && (
                   <td className="whitespace-nowrap px-3 py-2">
                     <span className="mr-2 font-mono text-xs text-muted">{rowIndex + 1}</span>
                     <button

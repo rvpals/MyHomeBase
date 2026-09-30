@@ -51,6 +51,10 @@ export async function setExpandedModulesAction(slugs: string[]): Promise<void> {
       openFavoriteModuleOnStartup: current.openFavoriteModuleOnStartup,
       compactNavStyle: current.compactNavStyle,
       expandedModules: slugs,
+      // Carried through like the rest. Harmless to omit — `homeLayout` is optional
+      // and absence means "leave it alone" — but passed so this payload keeps
+      // reading as everything the save will write.
+      homeLayout: current.homeLayout,
       weatherLocation: current.weatherLocation ?? null,
       weatherUnit: current.weatherUnit,
       clock: current.clock,

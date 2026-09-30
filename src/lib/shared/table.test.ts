@@ -3,6 +3,7 @@ import {
   aggregate,
   compareValues,
   computePageSlice,
+  computeRowBands,
   matchesFilter,
   matchesSearch,
   parseFilterExpression,
@@ -249,5 +250,35 @@ describe("toCsvField / toCsv", () => {
 
   it("builds CRLF-separated CSV text", () => {
     expect(toCsv(["a", "b"], [[1, "x"], [2, null]])).toBe("a,b\r\n1,x\r\n2,");
+  });
+});
+
+describe("computeRowBands", () => {
+  const dated = (dates: string[]) => dates.map((date) => ({ date }));
+
+  it("gives every row of a consecutive run the same band, and flips on the next run", () => {
+    const rows = dated(["2026-03-14", "2026-03-14", "2026-03-14", "2026-03-15", "2026-03-15"]);
+    expect(computeRowBands(rows, (row) => row.date)).toEqual([0, 0, 0, 1, 1]);
+  });
+
+  it("alternates per row when every key differs", () => {
+    const rows = dated(["a", "b", "c", "d"]);
+    expect(computeRowBands(rows, (row) => row.date)).toEqual([0, 1, 2, 3]);
+  });
+
+  it("starts a new band when a key reappears after another key", () => {
+    // Groups are consecutive runs, not set membership: re-sorting can scatter a
+    // date, and the banding must follow what is adjacent on screen.
+    const rows = dated(["a", "b", "a"]);
+    expect(computeRowBands(rows, (row) => row.date)).toEqual([0, 1, 2]);
+  });
+
+  it("treats a repeated null key as one run", () => {
+    const rows = [{ date: null }, { date: null }, { date: "a" }];
+    expect(computeRowBands(rows, (row) => row.date)).toEqual([0, 0, 1]);
+  });
+
+  it("returns no bands for no rows", () => {
+    expect(computeRowBands([], (row: { date: string }) => row.date)).toEqual([]);
   });
 });

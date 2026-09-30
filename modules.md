@@ -39,6 +39,7 @@ are the `snake_case` equivalents.
 | `games` | Games | Games & Puzzles | Play a quick game and keep a high-score board. | 8 | `game` | `gam_` |
 | `picture-gallery` | Picture Gallery | My Picture Gallery | Browse the photo archive and the pictures you have kept. | 9 | `photo` | `pho_` |
 | `tools` | Tools | Tools & Utilities | This module list all the utilities and tools | 10 | `tool` | `tol_` |
+| `household` | Household | Household | Recipes, receipts and the HSA — the household's paperwork. | 11 | `household` | `hsh_` |
 
 Sequence 1 is deliberately vacant: it belonged to the Real Estate module, retired
 in `migrations/0026_drop_real_estate_module`. Its `rei_` prefix is retired with
@@ -1830,6 +1831,120 @@ Reachable from the CLI as `npm run cli -- browse-csv`, plus `--upload <path>`
 Narrow: sections in the shared bottom bar, nothing custom. The import options wrap to
 one control per line with `max-lg:flex-col`, and the grid goes compact at 1024px as
 above, carrying selection and both bulk actions with it.
+
+**Household** (`household`) — the household's own paperwork, as against any one
+person's. Two halves: **Recipes** (built, with its own CSV importer) and
+**HSA Tracker** (a placeholder).
+Migrations 0118 (tables) and 0119 (the module row); library module
+`src/lib/household`; tables `hsh_recipes` and `hsh_recipe_tags`.
+
+**The two halves are group headings, not a third navigation level.** There is nothing
+between a module and a section here, so "submodules" are `children` nodes in the tree
+and labelled groups in the compact bar — exactly what Journal does with Locations and
+Configuration. Each group's section list is its own `as const` array
+(`HOUSEHOLD_RECIPE_SECTIONS`, `HOUSEHOLD_HSA_SECTIONS`) with one entry today, which is
+the point: a second Recipes screen is one string plus a route branch, with no
+navigation work. A heading carries no `href` — `SectionPanel` renders it as a label
+and drops it from the compact sheet, so giving one a route would be a destination
+nothing reaches.
+
+Both group headings get their own icon slot alongside their child's
+(`household_section_recipes_group` vs `household_section_recipes`), because the panel
+derives a slot from every node id it draws. Journal's `locations-group` is the
+precedent for the suffix.
+
+Four choices in the recipe box worth knowing:
+
+- **A rating is 1-10 or absent, and absent renders "—", never 0.** Unrated and "rated
+  1" are different facts; a zero would sort and total as a considered judgement. The
+  bound lives in zod, not a `CHECK`, so the message reaches the form and widening the
+  scale later needs no table rebuild — SQLite cannot alter a constraint.
+- **`made_count` is a counter with its own use-case.** "I made this again" is one
+  click, not a trip through the edit form: routing it through the form would mean
+  re-submitting every other field, so two people cooking from one recipe would
+  overwrite each other's notes to record that they cooked.
+- **A bulk edit writes only the fields that were ticked.** That is the whole safety
+  property — a blank box cannot blank a column across a selection — and it is enforced
+  by the schema (`undefined` means leave alone, `null` on rating means clear it) rather
+  than by the dialog. Name, ingredients and directions are deliberately not offered:
+  setting twenty recipes to one name is never what a bulk edit means.
+- **Category is one value; tags are many.** A category is what the dish *is* (Dinner,
+  Dessert) and a recipe has exactly one; tags are cross-cutting labels and a recipe has
+  any number. That one-vs-many split is the whole reason to have both — without it the
+  second field would just be the first again under a new name. Category is a plain
+  column (migration 0120) with **no catalog table**: the editor's pick-or-type box is
+  fed by `SELECT DISTINCT`, so the offered vocabulary cannot drift from what is stored,
+  and there is no management screen to build. It is also the one field that **preserves
+  the case you type** while matching case-insensitively — a tag is lower-cased because
+  it renders as a chip, a category is a display label where "dessert" would read as a
+  bug.
+- **Ingredients and directions are text blocks, one item per line, not structured
+  rows.** Quantity/unit parsing would buy recipe scaling and a shopping list, neither
+  of which was asked for. Splitting them out later is additive; collapsing structured
+  rows back into text would lose whatever didn't fit the parser's grammar.
+
+**The list is category tabs over a five-column grid, not a Category dropdown.** `All`,
+then one tab per category (from `listRecipeCategories`, with counts), then
+`Uncategorised` — computed client-side, since the repository reads `category: ""` as
+"no filter at all" and cannot express it as a search param. A category tab is a real
+`?category=` URL and survives a refresh; `Uncategorised` is client state only and does
+not, which is the accepted cost of not touching the SQL layer for one tab. The grid
+itself carries Name, Description, Tags, Made and Rating; Category, Source and the
+picture moved to the record view, opened by a **View** button or a row click, which
+now always fetches the whole `Recipe` (`getRecipeAction`) rather than reading the
+grid's `RecipeSummary` row — the same rule `toForm` already enforced for the editor.
+The three long fields render inside `.panel-inset` (design.md's inset groove), one item
+per line.
+
+**The editor holds a picture until the recipe is saved, and resizes it on the way in.**
+Ingredients and Directions are each a full-width row rather than a shared two-column
+grid — both hold line-per-item text that wraps badly at half width. Description is a
+3-line textarea, still one paragraph (nothing splits it on newlines the way the two
+line-per-item fields are). The footer lost its Cancel button — the modal's own close
+control and Escape already dismiss it — and Save reads "Save Recipe". A picture chosen
+here is held in the dialog's own state and a preview shown immediately; a **new**
+recipe has no id to attach one to until `createRecipeAction` returns the row it just
+made, so the picture is posted in a second step right after. A failure in that second
+step closes the dialog rather than leaving it open over a hidden error banner, and says
+plainly that the recipe itself saved, so nothing is retyped. Every upload — editor or
+record-view "Replace picture" — is resized through `resizeRecipePicture`
+(`src/lib/household/resize-recipe-picture.ts`), which delegates to the carousel's own
+`resizeCarouselImage`: same 800px-edge, WebP-q82 shape as a carousel graphic, reused
+rather than re-decided, behind the same `CarouselImageProcessor` port so the use-case
+needs no `sharp` import. The 2 MB cap still checks the **incoming** upload, not the
+resized result. Existing stored pictures are untouched — this only changes what a new
+upload becomes.
+
+**Recipes imports CSVs through the shared panel, not a hand-rolled screen.** The
+`recipes-import` section is a ~20-line wrapper over
+[`CsvImportPanel`](src/components/csv-import-panel.tsx); the field list, header
+auto-mapping and the plan/import pair live in `src/lib/household/csv-import.ts`, and
+saved column mappings go in the app-wide `csv_named_mappings` table under the
+`"Recipe"` import type — **no new table**. A row matches an existing recipe on its
+**name**, ignoring case, because a recipe has no date to key on. Pictures cannot be
+imported; they are attached to a recipe afterwards. The full recipe is in
+`coding-guide.md` → *CSV import: one panel, one mapping table, one store*.
+
+The picture is a BLOB with its mime type, served by
+`/api/household/recipes/[id]/picture` and never selected into a list — the repository's
+`SUMMARY_COLUMNS` derives `picture IS NOT NULL` instead, so a 200-recipe list reads no
+image bytes. Search and tag both travel as search params, so a filtered box is a real
+URL.
+
+Reachable from the CLI as `npm run cli -- recipes`, plus `--search`, `--tag`,
+`--category`, `--list-tags`, `--list-categories`, `--show <id>`, `--add "Name"` (with
+`--description`, `--ingredients`, `--directions`, `--notes`, `--rating`, `--category`,
+`--source`, `--tags`), `--made <id>` and `--delete <id>`. Multi-line fields take `\n` escapes. Bulk import is its own
+command, `npm run cli -- import-recipes-csv --file <path>`. The picture is the one thing not
+settable from the terminal — the use-case takes decoded bytes with a validated mime
+type, and a file path is not that.
+
+Narrow: sections in the shared bottom bar, nothing custom. The filter row stacks with
+`max-lg:flex-col`, the category tab strip scrolls horizontally instead of wrapping
+(`overflow-x-auto`) since the tab count is the category count and unbounded, the
+editor's one remaining two-column grid (Category/Rating/Source/Tags) collapses to one
+(`max-lg:grid-cols-1`), and the grid goes compact at 1024px carrying selection and both
+bulk actions with it.
 
 ### Icons
 

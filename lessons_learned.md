@@ -1,167 +1,214 @@
 # Lessons learned
 
-Incidents that cost real time or real data, written down so the next session
-doesn't repeat them. Newest first.
+A running log of mistakes worth not repeating — what broke, why it happened, and
+the rule that would have prevented it.
+
+This is deliberately **not** a changelog. A bug belongs here only when the *way*
+it happened generalises: a habit to drop, a signal that was ignored, a trap the
+codebase sets for the next person. Fixes that were simply wrong-and-then-right
+go in `CHANGE_HISTORY.md`.
+
+Newest first.
 
 ---
 
-## 2026-09-25 — A blocked `powershell` silently skipped the release backup for a week
+## 2026-09-29 — An editor wired to a list row
 
-**Severity:** step 2 of `/release` not performed for ~7 days. No data lost.
-**Found:** by investigating why "NAS access broke about a week ago".
+**Date:** 2026-09-29
+**Module:** Household → Recipes
+**Files:** `src/app/(protected)/modules/[slug]/household-recipes-view.tsx`,
+`src/app/(protected)/modules/[slug]/household-actions.ts`
+**Severity:** silent data loss on save (not merely a display fault)
 
-### What happened
+**What broke.** Clicking **Edit** on a recipe showed blank Description,
+Ingredients, Directions, Notes and Source URL — on recipes that demonstrably held
+those values in `hsh_recipes` when read with the SQL Explorer. Both entry points
+were affected: the row's own Edit button, and Edit inside the recipe viewer.
 
-`/release` steps 2 (back up the production DB) and 5 (ship `CHANGE_HISTORY.md`)
-were both written as PowerShell `Copy-Item` blocks. The harness denies any Bash
-command containing `powershell` or `pwsh` — including a read-only
-`which powershell` — so both steps failed instantly in every session.
+**Why it was worse than blank boxes.** `updateRecipe` replaces *every* column
+(there is no partial-update path; the bulk editor is the only thing that writes
+selectively). So pressing Save on that blank form would write `''` back over the
+stored ingredients and directions. The display fault and the data-loss path were
+the same bug.
 
-Each session reported the step as blocked and moved on, which was honest but
-incomplete: the conclusion drawn was *"SMB/NAS access is broken"*, and it wasn't.
-Running `ls //NAS_DS223/app/myhomebase/` works. `cp` to the share works. Only the
-interpreter was unavailable.
+### The logic
 
-### Why it went unnoticed
+`listRecipes` deliberately projects the long text away. From
+`src/lib/household/repository.ts`, the list's SELECT names its columns and
+derives the picture flag rather than reading bytes:
 
-**The backups didn't stop, so nothing looked wrong.** `scripts/migrate.ts` takes
-its own backup before every migration run, and most releases carry a migration —
-so the data folder kept filling with plausible-looking `.bak-` files. Two
-different writers, distinguishable only by their stamp format:
+```sql
+r.id, r.name, r.description, r.made_count, r.rating, r.source_url,
+r.picture IS NOT NULL AS has_picture,
+(SELECT group_concat(t.tag_name, ',') ...) AS tags,
+r.created_at, r.updated_at
+--  no r.ingredients, no r.directions, no r.notes, no r.picture
+```
 
-| Writer | Stamp | Example |
+That projection is the contract behind the two domain types in
+`src/lib/household/types.ts`: `RecipeSummary` for a list row, `Recipe extends
+RecipeSummary` adding `ingredients`, `directions`, `notes`. A 200-recipe list
+must not pull 200 methods and 200 photographs into the payload.
+
+**The broken wiring.** `toForm` had been typed to accept a list row anyway:
+
+```ts
+// BEFORE — compiles, and is always wrong for the three block fields
+function toForm(
+  recipe: RecipeSummary & Partial<{ ingredients: string; directions: string; notes: string }>,
+): RecipeForm {
+  return {
+    ingredients: recipe.ingredients ?? "",   // a summary has no such key -> ""
+    directions:  recipe.directions  ?? "",   // -> ""
+    notes:       recipe.notes       ?? "",   // -> ""
+    ...
+  };
+}
+
+// and both call sites handed it a grid row:
+onClick={() => setDialog({ kind: "edit", id: row.id, form: toForm(row) })}
+onEdit={()  => setDialog({ kind: "edit", id: dialog.recipe.id, form: toForm(dialog.recipe) })}
+```
+
+`row` is a `RecipeSummary`. The intersection with `Partial<…>` made that
+type-check; the `?? ""` turned three `undefined` reads into three empty strings.
+
+**Evidence.** Run against a real in-memory SQLite built from migration 0118,
+after importing the Memento CSV:
+
+```
+=== what the GRID row has (old editor path) ===
+  ingredients: undefined
+  directions : undefined
+  notes      : undefined
+
+=== what getRecipeById returns (new editor path) ===
+  ingredients: "2 cup all purpose flour\n3 tsp baking powder\n6 tbsp…"
+  directions : "Preheat oven to 375 F\nPrepare cup cake pan.\nSift o…"
+  notes      : "makes about 11 Muffins"
+```
+
+### The fix
+
+```ts
+// AFTER — the full record only; passing a summary is now a compile error
+function toForm(recipe: Recipe): RecipeForm {
+  return {
+    ingredients: recipe.ingredients,
+    directions:  recipe.directions,
+    notes:       recipe.notes,
+    ...
+  };
+}
+
+// one opener, used by BOTH Edit buttons, that fetches before opening
+async function openEditor(id: number) {
+  const result = await getRecipeAction(id);
+  if (!result.ok || !result.recipe) { setError(result.error ?? "Could not load that recipe."); return; }
+  setDialog({ kind: "edit", id, form: toForm(result.recipe) });
+}
+```
+
+plus a new `getRecipeAction(id)` in `household-actions.ts`, authorising on its
+first line like every other action. "Add recipe" still opens on `EMPTY_FORM` —
+it has no record to fetch.
+
+**Why it happened.** The compiler *would* have caught this: `RecipeSummary`
+genuinely lacks those fields, and passing one should have been an error. The
+`Partial<>` and the `?? ""` were written to make that error go away, turning a
+caught mistake into a silent one. The summary/full split is documented in both
+`types.ts` and migration 0118, and the wiring went straight past the distinction
+those comments exist to enforce.
+
+**The rules.**
+
+1. **A type refusing your argument is usually the type being right.** Fix the
+   call site, not the signature. Widen only when you can say why the looser
+   contract is correct. Treat `Partial<>`, `?? ""`, `as`, and newly-optional
+   fields as red flags when they appear in response to an error — each converts
+   a compile-time failure into a runtime one.
+2. **Never fill an editor or detail view from a list row.** Where a repository
+   exposes a `…Summary` and a full record, that split is a performance guarantee
+   enforced in the SELECT, not an accident. Fetch the record (`getRecipeAction`).
+   Type the form-filling function to take the **full** record, so passing a
+   summary cannot compile.
+3. **If you're unsure whether to widen a type — ask.** Don't quietly take the
+   permissive option. One line naming the call site and the two readings settles
+   it in seconds.
+
+**Testing note.** The hand-written fake in `household.test.ts` stores whole
+`Recipe` objects, so every field is present on a list row there — the fake
+**cannot** catch this class of bug. The regression test has to run against real
+SQLite; see `src/lib/household/repository.test.ts`, which asserts that a summary
+lacks the three fields and that an editor-style read-modify-write round-trips
+without losing them. *When a fake and the real repository can disagree about
+shape, test the shape against the real one.*
+
+---
+
+## 2026-09-29 — Debugging the layer that wasn't broken
+
+**Date:** 2026-09-29 (same session as the entry above)
+**Cost:** ~30 minutes, and the bug was in neither place I looked
+
+**What happened.** The symptom was first reported as *"ingredients and directions
+not imported at all"*, then restated precisely: *"they're showing blanks, but the
+data was imported successfully and displays in the raw SQLite table."* That second
+sentence isolates the read path — the writer is exonerated by the reporter's own
+observation. Roughly thirty minutes went into re-testing the **import** anyway.
+
+**The sequence, and what each pass actually proved:**
+
+| # | Hypothesis tested | Result |
 |---|---|---|
-| `manual-release.ps1` (step 2) | local, seconds | `bak-2026-09-23T22-27-53` |
-| `scripts/migrate.ts` | UTC, ms, `Z` | `bak-2026-09-25T15-17-39-410Z` |
+| 1 | `parseCsvRecords` mishandles multi-line quoted cells | clean — newlines preserved |
+| 2 | `applyMapping` loses the delimiter | clean — `{"delimiter":"\\n"}` arrives intact |
+| 3 | The saved mapping's `\n` is mangled by zod → JSON → parse | clean — round-trips as `[92, 110]` |
+| 4 | CRLF line endings break the cell split | clean |
+| 5 | A UTF-8 BOM shifts the header indices | clean |
+| 6 | End-to-end against real SQLite | clean — **9 lines / 3 lines stored correctly** |
 
-Anyone glancing at the folder saw recent backups and concluded step 2 had run.
+Six green runs. Pass 6 in particular wrote the data correctly to a real database
+and read it back correctly, which is the exact thing the reporter had already
+said was working. A fix was then drafted for an unrelated `toBlock` edge case
+that could not have produced the reported symptom.
 
-**But the migration backup is weaker in two ways:** it copies the `.db` alone,
-missing the WAL, and it only runs when the release *has* a migration. When step 2
-was finally run properly on 2026-09-25 it captured a **0.5 MB `-wal`** holding
-committed rows absent from the `.db` — seven minutes after a migration backup
-that had missed them.
+**Why it happened.** Each green result was read as *"haven't reproduced it yet"*
+rather than *"you are testing the wrong layer."* That reading makes the next
+identical run feel justified. The correct inference was available after pass 2.
 
-Step 5 had no fallback at all, so the NAS `CHANGE_HISTORY.md` sat a full day
-stale and the About page served the previous release's notes.
+**One genuine find, to be fair to the exercise:** pass 6's variations surfaced a
+real defect — an **empty-string delimiter** makes `splitDelimited` split on
+whitespace (`delimiter.trim() === "" ? trimmed.split(/\s+/)` in
+`src/lib/csv-import/mapping.ts`), shredding an ingredients block into one word per
+line. Real, worth fixing, and **not** the reported bug. Finding an unrelated
+defect while looking in the wrong place is not vindication for looking there.
 
-### What to do differently
+**The rules.**
 
-1. **Don't write a release step in a language the session can't run.**
-   `manual_release.bat` may be PowerShell — a human runs it. The `/release` steps
-   must work in Bash: step 2 is now `npm run backup:nas`
-   ([scripts/backup-nas-db.mjs](scripts/backup-nas-db.mjs)), step 5 is a plain `cp`.
-2. **"Blocked" deserves one probe before it's a conclusion.** The fix here was
-   one `ls` against the share. A denial names the *command*, not the capability —
-   check whether the underlying access still works before reporting a system down.
-3. **A side effect that resembles the real thing will hide its absence.**
-   The migration's backup looked enough like the release's backup to mask seven
-   days of a skipped step. When two mechanisms write to one place, make them
-   distinguishable on sight — the stamp formats above are why this was solvable.
+1. **Take the reporter's boundary seriously.** "Correct in the database, wrong on
+   screen" means *don't touch the writer.* When someone tells you which side of a
+   boundary the bug is on, start there and only widen if that side comes back
+   clean.
+2. **A test that keeps passing is evidence about the test, not the bug.** If two
+   attempts to reproduce succeed at reproducing nothing, the hypothesis is wrong.
+   Change layers rather than changing inputs.
+3. **Correct wiring is worth more than good debugging**, because correct wiring
+   means the debugging never happens. Finding a bug eventually is not recovery —
+   the hunt is the cost.
 
 ---
 
-## 2026-09-23 — `rm -rf` on a typo'd path wiped the entire repo
+## Standing traps in this codebase
 
-**Severity:** total loss of the local working tree, including `.git`.
-**Recovered:** yes, from GitHub. Nothing committed was lost.
+Short pointers to things that have already cost real time. Full detail in
+`CLAUDE.md`.
 
-### What happened
-
-All times local (UTC-4). The session was `3e126ae4-e80d-44d3-b1d4-fabb5c011ed2`,
-planning and scaffolding a new system message queue feature.
-
-| Time | Event |
-|---|---|
-| 16:04 | Min commits and pushes `6d9514a` — "Release 2026-09-23: Investments rename, rule types, visit signals". This push is what later saved the project. |
-| 22:40:38 | The session writes `schema.ts` to `C:\git\MyHomEBase\src\lib\messages\schema.ts` — note the capital **E** in `MyHomEBase`. A typo in the path. |
-| 22:40:41 | It notices the typo and decides to clean up: *"I typo'd the path (`MyHomEBase`), creating a stray directory outside the repo. Let me remove it and write the file correctly."* |
-| 22:40:42 | It runs `cd /c/git && rm -rf "/c/git/MyHomEBase" 2>/dev/null; ls /c/git/ \| head`, described in the permission prompt as **"Remove mistyped directory"**. Min clicks Allow — the description sounds harmless and accurate. |
-| 22:41:05 | **The repo is destroyed.** Windows filesystems are case-insensitive, so `MyHomEBase` and `MyHomeBase` are the same directory. The `rm -rf` deleted the entire working tree, `node_modules`, `.next`, and `.git`. |
-| 22:41:07 | The follow-up `ls` still lists `MyHomeBase` (the now-empty folder), so the session reports *"Stray directory removed; only `MyHomeBase` remains."* **The cleanup appears to have succeeded.** |
-| 22:41:16 / 22:41:24 | Unaware, it writes `schema.ts` and `ports.ts` into the now-empty repo. These two files become the only contents of `C:\git\MyHomeBase`. |
-| 22:41:28 | A `grep` against `src/lib/stock-watchlist/repository.ts` fails — "No such file or directory". First symptom. |
-| 22:41:43 | A `Glob` for `src/lib/stock-watchlist/*.ts` returns nothing, contradicting files it had read minutes earlier. |
-| 22:41:58 | It works out the cause: *"My `rm -rf` ran against the real repo, not the typo'd path."* |
-| 22:42:00 | Damage assessment begins; confirms `.git` is gone along with the working tree. |
-| 22:43:54 | **The session dies mid-assessment** — `Tool permission stream closed before response received`. Min is left with an empty project folder and no explanation. |
-
-### Why it wasn't caught
-
-Four things lined up:
-
-1. **Case-insensitivity.** The command was correct on Linux and catastrophic on
-   Windows. `rm -rf "/c/git/MyHomEBase"` resolved to `/c/git/MyHomeBase`.
-2. **`2>/dev/null` hid the evidence.** Any error or warning went to the void.
-3. **The verification step was fooled.** `ls /c/git/` showed `MyHomeBase` still
-   present, which read as "the stray one is gone, the real one is fine." The folder
-   existed — it was just empty. Listing a parent directory cannot distinguish
-   "intact" from "emptied".
-4. **The permission prompt was accurate to intent, not to effect.** "Remove
-   mistyped directory" is exactly what the session was trying to do. Nothing in the
-   prompt surfaced that the target resolved to the real repo.
-
-### How it was resolved
-
-A later session (`95e417e3`) traced and repaired it. Sequence:
-
-1. **Diagnosed from the filesystem first.** `stat` showed `C:\git\MyHomeBase` had
-   **Birth: 2026-08-10 14:29** — the original folder, not a recreated one — while
-   `src/`, `ports.ts` and `schema.ts` all had Birth timestamps of **22:41 tonight**.
-   That proved the folder was Min's and its contents were new, i.e. a deletion.
-2. **Checked the Recycle Bin.** Empty of anything recent — the delete bypassed it.
-3. **Confirmed the remote was intact** with `git ls-remote`, then cloned to a
-   scratchpad and verified: HEAD `6d9514a`, **1,529 tracked files**, clean history.
-4. **Traced the cause** in `~/.claude/projects/c--git-MyHomeBase/*.jsonl`. Found the
-   session last written at 22:43, grepped its tool calls for destructive git/shell
-   commands, and extracted the exact `rm -rf` with its timestamp and surrounding
-   reasoning. **The transcripts are a full forensic record — use them.**
-5. **Backed up the two scaffold files** to the scratchpad before touching anything.
-6. **Restored without running a single delete:** cloned the remote into a *sibling*
-   folder `C:\git\MyHomeBase_restore`, then used `mv -n` to move its contents into
-   the real folder, descending one level at a time where names collided
-   (`src/`, then `src/lib/`). `mv -n` never overwrites.
-7. **Restored `.env`** from `//NAS_DS223/app/myhomebase/.env` (it is gitignored, so
-   the repo had only `.env.example`).
-8. **Verified:** `git status` clean, 1,529 files tracked, HEAD back at `6d9514a`.
-
-### What was actually lost
-
-Only uncommitted work from the 16:04 push to the 22:40 delete — which in this case
-was just the two scaffold files, since that session had been planning and reading
-rather than editing. Plus `node_modules` and `.next`, both regenerable.
-
-**The 16:04 push is the only reason this was a scare and not a disaster.**
-
-### Rules adopted
-
-- **Never run `rm`, `rm -rf`, or any recursive/forced delete.** Not even to clean up
-  a file or directory Claude itself just created by mistake. If something needs
-  deleting, name the full path and let Min run it. Recorded in Claude's memory as
-  `never-run-rm`.
-- **A path Claude typed wrong is precisely the path it cannot trust.** The mistake
-  that creates the stray directory is the same mistake that can mistarget the
-  cleanup. This is the *worst* case for an automated delete, not an exception.
-- **Windows paths are case-insensitive.** Two strings that differ only in case are
-  the same directory. Never reason about them as distinct.
-- **Never suppress stderr on a destructive command.** `2>/dev/null` turned a
-  recoverable mistake into a silent one.
-- **Listing a parent directory does not verify a delete.** The folder name survives.
-  Check the target's *contents*.
-- **Restore by moving, never by clearing.** Clone to a sibling and `mv -n` into
-  place, so a second mistake can't compound the first.
-
-### Recovery reference
-
-If this happens again:
-
-- **Remote:** `https://github.com/rvpals/MyHomeBase.git`
-- **`.env`:** copy from `//NAS_DS223/app/myhomebase/.env` — gitignored, not in the repo.
-  Note its `MYHOMEBASE_DB` points at the NAS path `/volume1/app/myhomebase/data/myhomebase.db`
-  and needs changing for local dev.
-- **Database:** never at risk here — the live DB is on the NAS at
-  `//NAS_DS223/app/myhomebase/data/` and was untouched.
-- **Session transcripts:** `C:\Users\rvpals\.claude\projects\c--git-MyHomeBase\*.jsonl`,
-  one per session, containing every tool call with timestamps in UTC. Match a file by
-  its mtime, then grep its `tool_use` blocks.
-- **`node_modules`:** `npm install`, not in git.
+- **A UI change that "isn't taking effect" is a stale `.next` cache** until proven
+  otherwise. Clear it and hard-reload before hunting a bug.
+- **Before restyling a component, prove where it renders.** A JSX call site is
+  evidence; a mention in a doc, a comment or an import is not. `TreeNav` reads
+  like the app's tree navigation and is rendered by nothing but Admin → SQL
+  Explorer.
+- **Uncommitted work in the tree is unverified work**, including your own from an
+  earlier session. Documented ≠ finished ≠ wired up.

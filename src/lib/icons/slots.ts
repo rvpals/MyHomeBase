@@ -860,6 +860,78 @@ export const ICON_SLOTS: IconSlot[] = [
   },
 
   /* ---------------------------------------------------------------------------------
+     Household — nav sections.
+
+     Five entries for three destinations, because two of the rows are GROUP HEADINGS:
+     the module's two halves (Recipes, HSA Tracker) are `children` nodes in the tree,
+     and `SectionPanel` derives a slot id from every node it draws, heading or not.
+
+     Each heading's id therefore carries a `_group` suffix to keep it clear of the
+     child section that owns the bare slug — `household_section_recipes_group` (the
+     heading) vs `household_section_recipes` (the screen). Journal's `locations-group`
+     records the same collision, which is where the convention comes from.
+  --------------------------------------------------------------------------------- */
+  {
+    id: "household_section_main",
+    label: "Home screen",
+    group: "Household sections",
+    where: "Household → section panel → Home screen.",
+    defaultConcept: "grid",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "household_section_recipes_group",
+    label: "Recipes",
+    group: "Household sections",
+    where: "Household → section panel → the Recipes group heading.",
+    // `recipe`, a concept added with this module: a chef's hat. Deliberately not
+    // `note` (a page of text — which is what a recipe's *content* is, not what the
+    // section *is*) and not `list`, which the child row below already uses.
+    defaultConcept: "recipe",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "household_section_recipes",
+    label: "Recipes",
+    group: "Household sections",
+    where: "Household → section panel → Recipes → Recipes.",
+    // `list` rather than another `recipe`: this row is the recipe *list*, and it sits
+    // directly under the heading that already wears the hat. Two identical glyphs one
+    // above the other would make the nesting harder to read, not easier.
+    defaultConcept: "list",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "household_section_hsa_group",
+    label: "HSA Tracker",
+    group: "Household sections",
+    where: "Household → section panel → the HSA Tracker group heading.",
+    // `receipt`, one of this module's two new concepts. NOT `wallet`, which was the
+    // first choice and is wrong: `wallet` is a MODULE icon concept (Expense's), and
+    // these slots resolve against `TREE_ICON_NAMES`, which has no such key. A slot
+    // naming a concept its namespace lacks renders nothing at all — the section
+    // would show a blank column. `slots.test.ts` catches exactly this.
+    defaultConcept: "receipt",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "household_section_hsa",
+    label: "Overview",
+    group: "Household sections",
+    where: "Household → section panel → HSA Tracker → Overview.",
+    // `clipboard` rather than a second `receipt`: the heading above now wears the
+    // till slip, and a row repeating its parent's glyph makes the nesting harder to
+    // read. Same reasoning as Recipes' `list` under the chef's hat.
+    defaultConcept: "clipboard",
+    wired: true,
+    namespace: "tree",
+  },
+
+  /* ---------------------------------------------------------------------------------
      Games — the six Arcade cards.
 
      Ids are derived from the catalogue key by `gameSlotId`, not named per call site:

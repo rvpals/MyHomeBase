@@ -35,6 +35,7 @@ export {
   saveFloatingState,
   saveFloatingCorner,
   saveCalculatorState,
+  saveHomeLayout,
   resolveStartupDestination,
   UnknownFavoriteModuleError,
 } from "./user-preferences";

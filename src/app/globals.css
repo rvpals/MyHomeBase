@@ -584,6 +584,33 @@ html[data-music-player] .app-main {
     0 10px 22px -8px rgba(0, 0, 0, 0.34);
 }
 
+/* A shallow groove for a block of CONTENT, as against a fixed-size object.
+   `.progress-3d-track` and `.sudoku-board` are the same idea, but both are a
+   known size holding things that rest in them; this one wraps flowing text that
+   can be three lines or thirty, so it carries no background gradient (which
+   would band visibly over a tall block) and no cast (a recessed panel does not
+   float off the page it is pressed into).
+
+   The lip is the inverse of `.card-embossed`: SHADED along the top where the
+   wall faces away from the lamp, LIT along the bottom where it catches it. That
+   inversion is the whole 3D cue -- swap the two and the panel pops out instead.
+
+   Edges mix against `--ink` via `--edge-lit`, not hardcoded white, for the
+   reason `.card-embossed` documents: a translucent-white lip is invisible on a
+   light theme, where the lit edge has to darken rather than brighten. The two
+   black stops are safe as literals because a shadow only ever darkens. */
+.panel-inset {
+  box-shadow:
+    /* The recess itself, falling from the top lip inward. */
+    inset 0 2px 4px -1px rgba(0, 0, 0, 0.22),
+    /* The top lip, in shadow. */ inset 0 1px 0 rgba(0, 0, 0, 0.16),
+    /* The bottom lip, catching the light. */ inset 0 -1px 0
+      color-mix(in srgb, var(--edge-lit-soft) 16%, transparent),
+    /* A hairline ring, since `--line` is deliberately low-contrast in every
+       theme and cannot define the panel's outline on its own. */ 0 0 0 1px
+      color-mix(in srgb, var(--edge-lit) 12%, rgba(0, 0, 0, 0.18));
+}
+
 /* The embossed hover, for a card that also carries `.card-raised-hover`. Comes
    after it in the file so it wins the specificity tie and the bevel isn't
    flattened back to the plain lift on hover. Grows the cast and deepens the

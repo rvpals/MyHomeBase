@@ -96,6 +96,13 @@ export const TREE_ICON_NAMES = [
   // Distinct from `pin` on purpose: the two sit adjacent in the same panel, and
   // one place vs many is exactly the difference the reader is picking between.
   "map",
+  // Household. A chef's hat for the recipe box, and a till slip for the paperwork.
+  // `recipe` is deliberately neither `note` nor `list` — both are already in use in
+  // adjacent navs, and a recipe box is a place, not a page of text or a set of rows.
+  // `receipt` arrives with `recipe` rather than after it: receipts are named in the
+  // module's own description, so the second consumer is already on the roadmap.
+  "recipe",
+  "receipt",
   // The "launch module" button on the home screen's cards — opens the module the card's
   // numbers belong to, at its landing page. A button, so it is in `ALWAYS_CLASSIC` and
   // no icon slot points at it.

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { homeLayoutUpdateSchema } from "@/lib/home-layout";
 
 // A stored row, validated on the way out of the database. `value` allows blank:
 // "no favorite module" is the empty string, because preference_value is
@@ -43,6 +44,20 @@ export const userPreferencesUpdateSchema = z.object({
   // `.default` for the same reason the styles have them — a stray value collapses
   // the tree rather than rejecting a save that was also carrying the reader's theme.
   expandedModules: z.array(z.string().min(1).max(100)).max(200).catch([]).default([]),
+  // The reader's own home screen arrangement.
+  //
+  // `.optional()` and **no `.default`**, unlike every other field here — and that
+  // difference is load-bearing. `saveUserPreferences` writes every key it is given,
+  // so a default would mean any caller that forgot this field (the Account form
+  // saving a theme, a CLI command about favorites) silently reset the reader back to
+  // one column and the household order. Every other field's default is a harmless
+  // "no opinion"; this one would be destructive.
+  //
+  // Absent therefore means **leave the stored arrangement alone**, which
+  // `userPreferencesToEntries` implements by omitting both keys entirely. Callers
+  // that do own the value still pass it through explicitly, the way the Account form
+  // already carries `expandedModules`.
+  homeLayout: homeLayoutUpdateSchema.optional(),
   // The whole location or nothing — see `WeatherLocation`. `null` is the wire form
   // of "clear it", distinct from the field being absent from an older client's
   // payload, which `.optional()` leaves alone.

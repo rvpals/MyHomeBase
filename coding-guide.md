@@ -22,6 +22,7 @@ module is obvious from the name alone. New tables must follow this.
 | `gam_` | Games | `gam_scores` |
 | `pho_` | Picture Gallery | `pho_albums`, `pho_album_photos`, `pho_magic_list`, `pho_magic_list_photos`, `pho_photo_index`, `pho_magic_scan_run` |
 | `tol_` | Tools | `tol_uploaded_databases`, `tol_uploaded_csv_files` |
+| `hsh_` | Household | `hsh_recipes`, `hsh_recipe_tags` |
 
 The `rei_` prefix (Real Estate Investment) was retired when that module was
 removed — see migration `0026_drop_real_estate_module`.
@@ -58,6 +59,13 @@ utility, and `tol_uploaded_csv_files` sits under the same prefix without a renam
 the namespace been `sql_`, a CSV tool's table would have had to either live under a
 wrong name or force a table rename — which is the expensive thing this rule exists to
 avoid.
+
+**Household is `hsh_` and not `rcp_`** (migration 0118), applying that lesson before
+it could cost anything. Recipes are the module's first feature, not its domain — the
+request that created it named recipes, receipts and the HSA together, and the HSA
+Tracker ships in the same change as a placeholder. So the second feature is already
+visible rather than merely predicted, and its tables will sit under `hsh_` with no
+rename.
 
 **A new table also wants a line in
 [`src/lib/sql-explorer/table-reference.ts`](src/lib/sql-explorer/table-reference.ts)**,
@@ -858,3 +866,110 @@ would have to resend the whole preference set, letting a stale tab clobber a fav
 `saveFloatingStateAction` also takes **no `revalidatePath`**: it fires on every minimize
 and restore, and revalidating the layout each time would re-render every page in the app
 to persist a position the client already applied optimistically.
+
+---
+
+## CSV import: one panel, one mapping table, one store
+
+Six modules import CSVs and more will. The shape is settled — **do not write a
+seventh from scratch, and do not copy an existing view.** Adding an importer is a
+lib adapter plus an actions file plus a ~20-line view.
+
+### The three pieces that already exist
+
+| Piece | Where | What it does |
+|---|---|---|
+| Generic machinery | [src/lib/csv-import/](src/lib/csv-import/) | Parsing, `applyMapping`, `splitDelimited`, `parseDateWithFormat`, `previewCsv`, and the saved-mapping CRUD. Knows nothing about any module. |
+| The screen | [`CsvImportPanel`](src/components/csv-import-panel.tsx) | Dropzone, mapping table, saved-mapping controls, the two toggles, the overwrite confirmation, the summary. Registered in `components.md`. |
+| The store | `csv_named_mappings` (migration 0019) | **One table for every module's saved mappings**, separated by its `import_type` column. |
+
+**A new importer needs no migration.** That is the point of the shared table: a
+saved mapping is `(import_type, name, column_mapping, field_options)`, and the
+module is the `import_type`. Adding a per-module mapping table is the mistake
+this design exists to prevent.
+
+### Adding an importer to a module
+
+1. **Add the import type.** One value in `ImportType`
+   ([src/lib/csv-import/types.ts](src/lib/csv-import/types.ts)) and the matching
+   string in `importTypeSchema` ([schema.ts](src/lib/csv-import/schema.ts)).
+   Both, or a save fails zod at runtime with the type-check green.
+   **This value is permanent** — it is written into every saved mapping row, so
+   renaming it later orphans the reader's saved mappings exactly the way an icon
+   slot id does.
+
+2. **Write the lib adapter** — `src/lib/<module>/csv-import.ts`. Copy the shape
+   of [src/lib/household/csv-import.ts](src/lib/household/csv-import.ts), which
+   is the current reference. It exports:
+   - `<MODULE>_IMPORT_FIELDS` — the mappable fields, `{ value, label }`. **In the
+     lib, not the view**, so the importer and the dropdown cannot disagree.
+   - `<MODULE>_LIST_FIELDS` / date fields — which fields get a delimiter or a
+     date-format control. Same reason.
+   - `default<Module>FieldOptions(field)` — the options a freshly-picked field
+     starts with.
+   - `autoMap<Module>Headers(headers)` — a lookup table from lower-cased header
+     to field. Unknown headers stay unmapped; **never guess.**
+   - `plan<Module>Import(...)` and `import<Module>Csv(...)`.
+   - `test<Module>Import(...)` — parses the selected rows and returns what
+     *would* be stored, taking **no repository** so it cannot write. Build it on
+     the same record-to-input function the import uses; a second parser written
+     for the preview is free to disagree with the one that writes.
+   - Accept `excludedRowIndexes` in the import options and drop those rows
+     **entirely** rather than reporting them as skips — a skip is something that
+     surprised the importer, and a row the reader unticked is not. Check it
+     before the blank-row test so the index the reader ticked lines up with the
+     row they saw, and keep every surviving row's own file row number.
+
+3. **Share one walk between plan and import.** Both call a private
+   `walk<Module>Csv(repo, …, onRow)` that decides each row once. Two separate
+   implementations drift, and the drift shows up as a confirmation dialog that
+   lies about what the import then does.
+
+4. **Write the actions** — `<module>-import-actions.ts`. Preview, the three
+   mapping actions, plan, run. Every one starts with
+   `requireModuleAccess(<FULL_SLUG>)`; each is its own POST endpoint.
+
+5. **Write the view** — `<module>-import-view.tsx`, a thin wrapper over
+   `CsvImportPanel`. Its only real work is mapping the module's plan rows onto
+   the panel's module-agnostic `CsvImportPlan`. Import the field lists from the
+   **leaf** lib module (`@/lib/<module>/csv-import`), never the barrel — the
+   barrel re-exports the Sqlite repository and would drag better-sqlite3 into the
+   client bundle.
+
+6. **Add the CLI command.** Same use-case, same saved mappings by name. Copy
+   [src/cli/import-recipes-csv.ts](src/cli/import-recipes-csv.ts); register it in
+   `src/cli/index.ts` and document it in `CLI_registry.md`.
+
+### The conventions every importer follows
+
+**Idempotent by default.** `skipDuplicates` is on, so re-importing the same file
+is a no-op. Each module picks its own match key and says so in the UI hint —
+Journal matches date + time + title, Recipes matches **name**, case-insensitively.
+Pick the key a human would use to say "that's the same one".
+
+**`overwrite` is the destructive path, and it is always confirmed.** It takes
+precedence over `skipDuplicates`, replaces the whole record (so a blank cell
+clears a field), and the web screen runs `plan…` first and shows exactly what
+changes. The CLI flag *is* the confirmation there.
+
+**Read the stored match ids once per key, before the run.** Rows this import
+inserts must not inflate the baseline, or the second legitimate identical row in
+one file looks like a duplicate of the first. Both current importers cache
+`storedIdsBy<Key>` and count `seenBy<Key>` separately; copy that.
+
+**A bad row is skipped and reported, never fatal and never silent.** Every row
+lands in the summary with its 1-based file row number (the header is row 1).
+
+**Options are written into state, not merely displayed.** A `<select>`'s rendered
+value fires no change event, so a default that lives only in the control is
+invisible to the import — the reader sees "Comma" and nothing splits. Picking a
+field writes that field's defaults and *replaces* the previous field's options
+rather than merging them.
+
+### What is not done yet
+
+**MyJournal's importer predates `CsvImportPanel`** and still hand-rolls the same
+markup inside its own Import/Correct/Reset tabs
+([journal-import-view.tsx](src/app/(protected)/modules/[slug]/journal-import-view.tsx)).
+It works, so it has been left alone; migrating it onto the panel is its own
+change. Until then the panel — not that view — is what a new importer copies.

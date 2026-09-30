@@ -249,6 +249,34 @@ export function computePageSlice(total: number, pageSize: number | "ALL", page: 
   };
 }
 
+/**
+ * Turns a visible run of rows into zebra-stripe band indexes, one per row.
+ *
+ * The plain zebra stripe alternates every row. This alternates every *group*:
+ * the band only advances when `getGroupKey` returns something different from the
+ * previous row's, so a run of rows sharing a key shares one band and the next
+ * run takes the other. Callers stripe on `band % 2` exactly as they did on
+ * `index % 2`.
+ *
+ * `rows` must already be in the order they appear on screen — the banding marks
+ * runs that are actually adjacent, so a sort that scatters a group correctly
+ * yields alternating single-row bands rather than pretending the group is still
+ * together. Keys are compared with `Object.is`, so a group is a *consecutive*
+ * run: the same key reappearing after another key starts a new band.
+ */
+export function computeRowBands<T>(rows: T[], getGroupKey: (row: T) => CellValue): number[] {
+  const bands: number[] = [];
+  let band = 0;
+  let previous: CellValue | undefined = undefined;
+  for (let index = 0; index < rows.length; index += 1) {
+    const key = getGroupKey(rows[index]!);
+    if (index > 0 && !Object.is(key, previous)) band += 1;
+    bands.push(band);
+    previous = key;
+  }
+  return bands;
+}
+
 /** Escapes one value for CSV, quoting only when the text needs it. */
 export function toCsvField(value: CellValue): string {
   const text = value === null ? "" : String(value);

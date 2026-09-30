@@ -46,6 +46,14 @@ import {
   gamesSectionHref,
 } from "./modules/[slug]/games-sections";
 import {
+  HOUSEHOLD_HSA_SECTIONS,
+  HOUSEHOLD_RECIPE_SECTIONS,
+  HOUSEHOLD_SECTIONS,
+  HOUSEHOLD_SECTION_ICONS,
+  HOUSEHOLD_SECTION_INFO,
+  householdSectionHref,
+} from "./modules/[slug]/household-sections";
+import {
   JOURNAL_CONFIGURATION_SECTIONS,
   JOURNAL_DATA_MANAGEMENT_SECTIONS,
   JOURNAL_LOCATION_SECTIONS,
@@ -112,6 +120,17 @@ const JOURNAL_GROUPS: Partial<Record<(typeof JOURNAL_SECTIONS)[number], string>>
 };
 
 /**
+ * Household's two halves, flattened the same way Journal's three are.
+ *
+ * Derived from the same constants `household-shell.tsx` builds its tree nodes from,
+ * so the desktop labels and the compact groups cannot drift apart.
+ */
+const HOUSEHOLD_GROUP_LABELS: Partial<Record<(typeof HOUSEHOLD_SECTIONS)[number], string>> = {
+  ...Object.fromEntries(HOUSEHOLD_RECIPE_SECTIONS.map((slug) => [slug, "Recipes"])),
+  ...Object.fromEntries(HOUSEHOLD_HSA_SECTIONS.map((slug) => [slug, "HSA Tracker"])),
+};
+
+/**
  * Module slug to its section list. Keyed by the slug in `sys_modules`, which is why
  * Investments appears as `investments` while its files are still named `stock-*` —
  * migration 0108 renamed the module, not the files.
@@ -146,6 +165,14 @@ const SECTION_BUILDERS: Record<string, () => TreeSection[]> = {
     toSections(GALLERY_SECTIONS, GALLERY_SECTION_INFO, GALLERY_SECTION_ICONS, gallerySectionHref),
   tools: () =>
     toSections(TOOLS_SECTIONS, TOOLS_SECTION_INFO, TOOLS_SECTION_ICONS, toolsSectionHref),
+  household: () =>
+    toSections(
+      HOUSEHOLD_SECTIONS,
+      HOUSEHOLD_SECTION_INFO,
+      HOUSEHOLD_SECTION_ICONS,
+      householdSectionHref,
+      HOUSEHOLD_GROUP_LABELS,
+    ),
 };
 
 /**

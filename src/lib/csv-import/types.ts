@@ -1,4 +1,14 @@
-export type ImportType = "Position" | "Transaction" | "Performance" | "Journal" | "Expense" | "Roster";
+export type ImportType =
+  | "Position"
+  | "Transaction"
+  | "Performance"
+  | "Journal"
+  | "Expense"
+  | "Roster"
+  // Household's recipe box. The value is what ties a saved mapping to its
+  // module in the shared `csv_named_mappings` table — the table is keyed by
+  // `import_type`, so a new importer needs a new value here and nothing else.
+  | "Recipe";
 
 /** CSV column index (as a string key) -> target field name. Columns absent from the map are ignored. */
 export type ColumnMapping = Record<string, string>;

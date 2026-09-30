@@ -14,6 +14,7 @@ import {
   visibleHomeWidgets,
   type HomeWidgetId,
 } from "@/lib/home-dashboard";
+import { DEFAULT_HOME_COLUMNS } from "@/lib/home-layout";
 import { listTodayInHistory } from "@/lib/journal";
 import { listModules } from "@/lib/modules";
 import { getSetting, getStartupMessage } from "@/lib/settings";
@@ -33,6 +34,7 @@ import { deps } from "@/lib/wiring";
 import { BadLoginAlert } from "./bad-login-alert";
 import { DailyQuoteWidget } from "./daily-quote-widget";
 import { HomeShell } from "./home-shell";
+import { HomeWidgetGrid, type HomeWidgetItem } from "./home-widget-grid";
 import { MyShortcutsWidget } from "./my-shortcuts-widget";
 import { getNavTreeData } from "./nav-tree-data";
 import { StockDailyGlance } from "./modules/[slug]/stock-daily-glance";
@@ -209,96 +211,130 @@ export default async function Home({
             it can't conjure a quote or a position that isn't there. The shipped
             default order is the one this screen has always used: quote, history,
             photo, glance -- quietest first, and the longest (Daily Glance, five
-            gainers and five losers) last so it isn't pushing the others off screen. */}
-        {drawnWidgets.map((id, position) => {
-          // The gap belongs to the position, not the card. Previously the carousel
-          // was always first and so carried no top margin while the others hardcoded
-          // `mt-8`; once any card can be first, that spacing has to be positional or
-          // a demoted carousel butts up against the card above it.
-          //
-          // The first card gets a smaller gap rather than none: this screen hides
-          // the utility header on the full layout, so there is no bar above it to
-          // sit under and the card would otherwise touch the top of the viewport.
-          // Smaller than `mt-8` because it's separating the card from the window
-          // edge, not from another card — the same reason it isn't just `mt-8`
-          // for everyone.
-          const spacing = position === 0 ? "mt-4" : "mt-8";
-          switch (id) {
-            case "carousel":
-              return (
-                // Plain data across the boundary -- the carousel is a client island
-                // and can't be handed the module records themselves.
-                <ModuleCarousel
-                  key={id}
-                  className={spacing}
-                  modules={modules.map((appModule) => ({
-                    slug: appModule.slug,
-                    name: appModule.longName,
-                    description: appModule.description,
-                    icon: appModule.icon,
-                    href: `/modules/${appModule.slug}`,
-                    // A flag and a timestamp, never the bytes -- the browser fetches
-                    // the artwork from the image route.
-                    hasImage: appModule.hasCarouselImage,
-                    imageVersion: appModule.updatedAt,
-                  }))}
-                />
-              );
-            case "myShortcuts":
-              return (
-                <MyShortcutsWidget
-                  key={id}
-                  className={spacing}
-                  shortcuts={shortcuts}
-                  // Plain data across the boundary -- the card is a client
-                  // island. Only what the picker draws, and only the modules
-                  // this reader can reach.
-                  modules={(shortcutTree?.modules ?? []).map((treeModule) => ({
-                    slug: treeModule.slug,
-                    name: treeModule.name,
-                    sections: treeModule.sections.map((section) => ({
-                      id: section.id,
-                      label: section.label,
-                    })),
-                  }))}
-                />
-              );
-            case "dailyQuote":
-              return quote ? (
-                <DailyQuoteWidget
-                  key={id}
-                  className={spacing}
-                  initialQuote={quote}
-                  isAdmin={currentUser ? isAdmin(currentUser) : false}
-                />
-              ) : null;
-            case "todayInHistory":
-              return (
-                <TodayInHistoryWidget
-                  key={id}
-                  className={spacing}
-                  todayInHistory={todayInHistory}
-                  icon={journalModule?.icon}
-                />
-              );
-            case "stockGlance":
-              return positions.length > 0 ? (
-                <StockDailyGlance
-                  key={id}
-                  className={spacing}
-                  moves={computeDayMovesByType(positions)}
-                  // Summed per ticker here, not in the view: a holding split across
-                  // two accounts is still one security, and that rollup is domain
-                  // logic.
-                  tickerMoves={computeTickerDayMoves(positions)}
-                  // Derived from the positions already in hand, so the card can
-                  // say how old its figures are without a second read.
-                  lastRefreshed={formatLastRefreshed(lastRefreshedAt(positions))}
-                  icon={stockModule?.icon}
-                />
-              ) : null;
-          }
-        })}
+            gainers and five losers) last so it isn't pushing the others off screen.
+
+            That household order is then rearranged by whatever *this reader* has
+            dragged into place -- see `HomeWidgetGrid` and `applyPersonalOrder`. The
+            two are separate on purpose: an admin owns which cards exist and their
+            default sequence, a reader owns how they sit on their own monitor.
+
+            Spacing is no longer positional. It used to be (`mt-4` for the first card,
+            `mt-8` for the rest) because the cards were a bare stack that nothing laid
+            out; the grid owns the gap now, which it has to -- once two cards sit side
+            by side, "the gap above card N" is not a property of card N any more. */}
+        <HomeWidgetGrid
+          initialColumns={preferences?.homeLayout.columns ?? DEFAULT_HOME_COLUMNS}
+          initialOrder={preferences?.homeLayout.order ?? []}
+          // `flatMap`, not `map`: a case that finds its data missing returns `[]` and
+          // drops out of the list rather than reaching the grid as a hole.
+          items={drawnWidgets.flatMap((id): HomeWidgetItem[] => {
+            switch (id) {
+              case "carousel":
+                return [
+                  {
+                    id,
+                    label: "Modules",
+                    // The one card that spans both columns: a horizontally-scrolling
+                    // full-bleed strip has nothing to gain from half the width.
+                    spansBothColumns: true,
+                    node: (
+                      // Plain data across the boundary -- the carousel is a client
+                      // island and can't be handed the module records themselves.
+                      <ModuleCarousel
+                        modules={modules.map((appModule) => ({
+                          slug: appModule.slug,
+                          name: appModule.longName,
+                          description: appModule.description,
+                          icon: appModule.icon,
+                          href: `/modules/${appModule.slug}`,
+                          // A flag and a timestamp, never the bytes -- the browser
+                          // fetches the artwork from the image route.
+                          hasImage: appModule.hasCarouselImage,
+                          imageVersion: appModule.updatedAt,
+                        }))}
+                      />
+                    ),
+                  },
+                ];
+              case "myShortcuts":
+                return [
+                  {
+                    id,
+                    label: "My Shortcuts",
+                    node: (
+                      <MyShortcutsWidget
+                        shortcuts={shortcuts}
+                        // Plain data across the boundary -- the card is a client
+                        // island. Only what the picker draws, and only the modules
+                        // this reader can reach.
+                        modules={(shortcutTree?.modules ?? []).map((treeModule) => ({
+                          slug: treeModule.slug,
+                          name: treeModule.name,
+                          sections: treeModule.sections.map((section) => ({
+                            id: section.id,
+                            label: section.label,
+                          })),
+                        }))}
+                      />
+                    ),
+                  },
+                ];
+              case "dailyQuote":
+                // `drawnWidgets` already filtered on `hasContent.dailyQuote`, which
+                // is `Boolean(quote)` -- but that ran in a different expression, so
+                // the compiler can't carry the narrowing here. Re-tested rather than
+                // asserted with `!`: the guard is free, and an assertion would be a
+                // promise about a filter several lines away that nothing would check
+                // again if `hasContent` ever changed.
+                if (!quote) return [];
+                return [
+                  {
+                    id,
+                    label: "Daily Quote",
+                    node: (
+                      <DailyQuoteWidget
+                        initialQuote={quote}
+                        isAdmin={currentUser ? isAdmin(currentUser) : false}
+                      />
+                    ),
+                  },
+                ];
+              case "todayInHistory":
+                return [
+                  {
+                    id,
+                    label: "Today In History",
+                    node: (
+                      <TodayInHistoryWidget
+                        todayInHistory={todayInHistory}
+                        icon={journalModule?.icon}
+                      />
+                    ),
+                  },
+                ];
+              case "stockGlance":
+                return [
+                  {
+                    id,
+                    label: "Stock Daily Glance",
+                    node: (
+                      <StockDailyGlance
+                        moves={computeDayMovesByType(positions)}
+                        // Summed per ticker here, not in the view: a holding split
+                        // across two accounts is still one security, and that rollup
+                        // is domain logic.
+                        tickerMoves={computeTickerDayMoves(positions)}
+                        // Derived from the positions already in hand, so the card can
+                        // say how old its figures are without a second read.
+                        lastRefreshed={formatLastRefreshed(lastRefreshedAt(positions))}
+                        icon={stockModule?.icon}
+                      />
+                    ),
+                  },
+                ];
+            }
+          })}
+        />
       </div>
     </HomeShell>
   );

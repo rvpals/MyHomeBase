@@ -23,6 +23,7 @@ import { favPhotosCommand } from "./fav-photos";
 import { favoriteQuotesCommand } from "./favorite-quotes";
 import { importCsvFilesCommand } from "./import-csv-files";
 import { importJournalCsvCommand } from "./import-journal-csv";
+import { importRecipesCsvCommand } from "./import-recipes-csv";
 import { importJournalIcsCommand } from "./import-journal-ics";
 import { journalCalendarCommand } from "./journal-calendar";
 import { journalLocationsCommand } from "./journal-locations";
@@ -45,6 +46,7 @@ import { setStartupMessageCommand } from "./set-startup-message";
 import { browseCsvCommand } from "./browse-csv";
 import { browseSqliteCommand } from "./browse-sqlite";
 import { savedSqlCommand } from "./saved-sql";
+import { recipesCommand } from "./recipes";
 import { takeAttendanceCommand } from "./take-attendance";
 import { taxLotsCommand } from "./tax-lots";
 import { simulateTickerCommand } from "./simulate-ticker";
@@ -73,6 +75,7 @@ const commands: Record<string, Command> = {
   "import-csv-files": importCsvFilesCommand,
   "csv-source-stats": csvSourceStatsCommand,
   "import-journal-csv": importJournalCsvCommand,
+  "import-recipes-csv": importRecipesCsvCommand,
   "import-journal-ics": importJournalIcsCommand,
   "journal-calendar": journalCalendarCommand,
   "journal-locations": journalLocationsCommand,
@@ -97,6 +100,7 @@ const commands: Record<string, Command> = {
   "user-preferences": userPreferencesCommand,
   calculator: calculatorCommand,
   scratchpad: scratchpadCommand,
+  recipes: recipesCommand,
   "take-attendance": takeAttendanceCommand,
   "attendance-report": attendanceReportCommand,
   "scan-music": scanMusicCommand,
