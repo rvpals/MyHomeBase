@@ -1,8 +1,10 @@
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { listUploadedCsvFiles } from "@/lib/csv-file-browser";
 import { getMaxUploadBytes, listUploadedDatabases } from "@/lib/sqlite-browser";
+import { buildTodoBoard } from "@/lib/todo";
 import { deps } from "@/lib/wiring";
 import { ToolsDashboardView } from "./tools-dashboard-view";
+import { ToolsTodoView } from "./tools-todo-view";
 import { ToolsInstructions } from "./tools-instructions";
 import { ToolsShell } from "./tools-shell";
 import { ToolsCsvBrowserView } from "./tools-csv-browser-view";
@@ -36,6 +38,17 @@ export async function ToolsSection({ section }: { section: ToolsSectionName }) {
 
         <div className="mt-4">
           {section === "main" && <ToolsDashboardView />}
+          {section === "todo" && (
+            // One read of each table for the whole board, rather than one per list —
+            // the screen draws every card at once, so a per-category query would be
+            // N+1 round trips. The view is a client island and gets plain data.
+            <ToolsTodoView
+              board={buildTodoBoard({
+                categoryRepo: deps.todoCategoryRepo,
+                itemRepo: deps.todoItemRepo,
+              })}
+            />
+          )}
           {section === "sqlite-browser" && (
             // The cap is read here rather than imported by the view, so the
             // screen shows the limit an admin actually configured.

@@ -21,6 +21,7 @@ describe("resolveJournalPreferences", () => {
       photoRoot: "",
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
+      excludedWords: [],
     });
   });
 
@@ -37,7 +38,16 @@ describe("resolveJournalPreferences", () => {
       photoRoot: "",
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
+      excludedWords: [],
     });
+  });
+
+  it("reads and normalizes the excluded-word list", () => {
+    const prefs = resolveJournalPreferences([
+      setting(JOURNAL_SETTING_KEYS.excludedWords, "Beach, picnic ,beach,,it"),
+    ]);
+    // Deduped, lowercased, and "it" dropped for being under the length floor.
+    expect(prefs.excludedWords).toEqual(["beach", "picnic"]);
   });
 
   it("ignores a partial/invalid location", () => {
@@ -47,6 +57,34 @@ describe("resolveJournalPreferences", () => {
 });
 
 describe("journalPreferencesToEntries", () => {
+  it("writes the excluded words as one comma-joined row", () => {
+    const entries = journalPreferencesToEntries({
+      defaultLocation: null,
+      temperatureUnit: "fahrenheit",
+      photoRoot: "",
+      handwritingSize: "xl",
+      reviewBeforeCalendarImport: false,
+      excludedWords: ["Beach", "picnic"],
+    });
+    const row = entries.find((entry) => entry.key === JOURNAL_SETTING_KEYS.excludedWords);
+    expect(row?.value).toBe("beach,picnic");
+  });
+
+  it("omits the excluded-words row entirely when the list is empty", () => {
+    const entries = journalPreferencesToEntries({
+      defaultLocation: null,
+      temperatureUnit: "fahrenheit",
+      photoRoot: "",
+      handwritingSize: "xl",
+      reviewBeforeCalendarImport: false,
+      excludedWords: [],
+    });
+    // A blank value would be rejected by the module-settings schema, so the
+    // empty list has to mean "no row".
+    expect(entries.some((entry) => entry.key === JOURNAL_SETTING_KEYS.excludedWords)).toBe(false);
+    expect(entries.every((entry) => entry.value !== "")).toBe(true);
+  });
+
   it("omits a blank location name (module-setting values must be non-empty)", () => {
     const entries = journalPreferencesToEntries({
       defaultLocation: { latitude: 1, longitude: 2, name: "" },
@@ -54,6 +92,7 @@ describe("journalPreferencesToEntries", () => {
       photoRoot: "",
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
+      excludedWords: [],
     });
     expect(entries.some((entry) => entry.key === JOURNAL_SETTING_KEYS.defaultLocationName)).toBe(false);
     expect(entries.every((entry) => entry.value !== "")).toBe(true);
@@ -70,6 +109,11 @@ describe("journalPreferencesToEntries", () => {
       handwritingSize: "3xl" as const,
       // Not the default either, for the same reason.
       reviewBeforeCalendarImport: true,
+      // Non-empty for the same reason as the two above: a round-trip through an
+      // empty list would also pass if the field were dropped entirely, so it
+      // would prove nothing. Two words rather than one so the serializer's
+      // separator handling is exercised as well.
+      excludedWords: ["the", "and"],
     };
     const rebuilt = resolveJournalPreferences(
       journalPreferencesToEntries(original).map((entry, index) => ({
@@ -92,6 +136,7 @@ describe("journalPreferencesToEntries", () => {
         photoRoot: "   ",
         handwritingSize: "xl",
         reviewBeforeCalendarImport: false,
+        excludedWords: [],
       }).some((entry) => entry.key === JOURNAL_SETTING_KEYS.photoRoot),
     ).toBe(false);
 
@@ -103,6 +148,7 @@ describe("journalPreferencesToEntries", () => {
       photoRoot: "  /volume1/MEDIA/PHOTO/BY YEAR  ",
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
+      excludedWords: [],
     });
     expect(entries.find((entry) => entry.key === JOURNAL_SETTING_KEYS.photoRoot)?.value).toBe(
       "/volume1/MEDIA/PHOTO/BY YEAR",
@@ -166,6 +212,7 @@ describe("handwriting size", () => {
       photoRoot: "",
       handwritingSize: "2xl",
       reviewBeforeCalendarImport: false,
+      excludedWords: [],
     });
     expect(entries.find((entry) => entry.key === JOURNAL_SETTING_KEYS.handwritingSize)?.value).toBe(
       "2xl",
@@ -208,6 +255,9 @@ describe("review before calendar import", () => {
         photoRoot: "",
         handwritingSize: "xl",
         reviewBeforeCalendarImport: enabled,
+        // Empty: this test is about the review flag's row, and an irrelevant
+        // non-empty value here would only add noise to what it asserts.
+        excludedWords: [],
       });
       expect(
         entries.find((entry) => entry.key === JOURNAL_SETTING_KEYS.reviewBeforeCalendarImport)

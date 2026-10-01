@@ -77,6 +77,32 @@ export const adminNav: SectionNode[] = [
         icon: "window",
       },
       {
+        // Fresh and permanent -- `SectionPanel` derives this section's icon slot
+        // from the id, so renaming it later orphans any uploaded override.
+        //
+        // Sits next to Chrome Style: the two together are "how the app's frame
+        // looks", and a reader tuning one usually wants the other.
+        id: "display-settings-borders",
+        label: "Border Weight",
+        href: "/admin/display-settings/borders",
+        hint: "Set how thick the application's borders are drawn",
+        // `window`, as Chrome Style and Application Configuration use: this is
+        // the app's own frame, and the baked sets draw no border concept.
+        icon: "window",
+      },
+      {
+        // Fresh and permanent, like its two siblings below -- `SectionPanel` derives
+        // this section's icon slot from the id, so renaming it later orphans any
+        // uploaded override.
+        id: "display-settings-chrome",
+        label: "Chrome Style",
+        href: "/admin/display-settings/chrome",
+        hint: "Set the border treatment for the header and the navigation tree",
+        // `window`, as Application Configuration and Floating Components use: this
+        // is the app's own frame, and the baked icon sets draw no bevel concept.
+        icon: "window",
+      },
+      {
         // Also fresh and permanent -- `SectionPanel` derives this section's icon slot
         // from it, so renaming it later orphans any uploaded override.
         id: "display-settings-scratchpad",
@@ -135,6 +161,23 @@ export const adminNav: SectionNode[] = [
         icon: "newspaper",
       },
     ],
+  },
+  {
+    // A top-level entry rather than a child of Display Settings, unlike Scratchpad
+    // Categories. The distinction is what the screen administers: the scratchpad's tabs
+    // are chrome for a floating window, where these lists are *content* the household
+    // works from every day — the same kind of thing as Daily Quote above, and arranged
+    // beside it.
+    //
+    // The id is permanent -- `SectionPanel` derives this row's icon slot from it, so
+    // renaming it later orphans any uploaded override.
+    id: "todo-lists",
+    label: "TODO Lists",
+    href: "/admin/todo",
+    hint: "Add, rename, reorder and remove the household's TODO lists",
+    // `clipboard`, matching the Tools section this administers -- the same subject in
+    // both places should read as the same thing.
+    icon: "clipboard",
   },
   {
     id: "security",

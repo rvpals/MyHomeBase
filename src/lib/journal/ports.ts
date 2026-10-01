@@ -135,6 +135,15 @@ export interface JournalRepository {
    */
   countLockedEntries(): number;
   /**
+   * How many entries carry the Log category — the Log section's population.
+   *
+   * A COUNT with a join rather than `listLogEntries().length`: that read is
+   * `LIMIT`ed (500 by default), so using it as a tally would silently report the
+   * cap once the Log outgrew it. Matched case-insensitively on the trimmed name,
+   * the same looseness as `isLogEntry` — a hand-typed "log" counts.
+   */
+  countLogEntries(): number;
+  /**
    * Deletes every entry and its child rows in one transaction, and returns how
    * many entries went. The managed category and tag lists, their icons, and the
    * saved filters are left alone — this empties the journal, it does not reset

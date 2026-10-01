@@ -5,6 +5,7 @@ import type { ImportSummary } from "@/lib/csv-import";
 import {
   applyIcsReviewDecision,
   buildIcsImportReview,
+  getEntry,
   icsExcludedDatesSchema,
   icsImportFilterSchema,
   icsImportPresetsSchema,
@@ -12,7 +13,9 @@ import {
   importIcsEvents,
   planIcsImport,
   readIcsFile,
+  updateEntry,
   type IcsImportReview,
+  type JournalEntry,
 } from "@/lib/journal";
 import { deps } from "@/lib/wiring";
 import { requireModuleAccess } from "../../require-access";
@@ -292,4 +295,87 @@ export async function runIcsImportAction(formData: FormData): Promise<IcsImportR
   } catch (error) {
     return toErrorResult(error, "Failed to import the calendar events.");
   }
+}
+
+// --- quick-editing an existing entry from the review dialog ------------------
+//
+// The review dialog raises dates where the journal already holds something. The
+// reader's answer is sometimes neither "import" nor "don't import" but "let me
+// fix what's already there" -- so these two actions let them edit that entry in
+// place without leaving the screen, which would cost them the parsed file and
+// every answer they had given.
+
+export interface IcsReviewEntryResult extends ActionResult {
+  entry?: JournalEntry;
+}
+
+/**
+ * The full entry behind one review row, for seeding the quick-edit fields.
+ *
+ * The review carries a 200-character excerpt of `content` (see
+ * `REVIEW_CONTENT_LIMIT`) because the dialog only has to make an entry
+ * recognisable. That is not enough to *edit* from: seeding a textarea with the
+ * excerpt and saving it would truncate the entry to whatever the dialog had
+ * room for. So the editor reads the real record first -- the same reason the
+ * entries list and the entry editor are deliberately different types.
+ */
+export async function getIcsReviewEntryAction(id: number): Promise<IcsReviewEntryResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    const entry = getEntry(deps.journalRepo, id);
+    if (!entry) return { ok: false, error: `No journal entry with id ${id}.` };
+    return { ok: true, entry };
+  } catch (error) {
+    return toErrorResult(error, "Failed to load that entry.");
+  }
+}
+
+/**
+ * Rewrites just the title and content of one existing entry.
+ *
+ * The read-modify-write happens here, on the server, rather than by shipping the
+ * whole entry to the dialog and trusting it to send every field back: `updateEntry`
+ * replaces the entire aggregate, so a client that echoed a stale copy would
+ * silently drop this entry's categories, tags, locations, weather or pin. Reading
+ * it immediately before writing means only the two fields the reader actually
+ * typed can change.
+ *
+ * A locked entry is refused by `updateEntry` itself. The dialog also disables the
+ * button for one, so this is the second line rather than the first -- but it is
+ * the line that holds, because an action is its own endpoint.
+ */
+export async function quickUpdateIcsReviewEntryAction(
+  id: number,
+  input: { title: string; content: string },
+): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    const existing = getEntry(deps.journalRepo, id);
+    if (!existing) return { ok: false, error: `No journal entry with id ${id}.` };
+
+    updateEntry(deps.journalRepo, id, {
+      // Everything the reader did not edit is carried across verbatim.
+      date: existing.date,
+      time: existing.time,
+      placeName: existing.placeName,
+      categories: existing.categories,
+      tags: existing.tags,
+      locations: existing.locations.map((location) => ({
+        latitude: location.latitude,
+        longitude: location.longitude,
+        locationName: location.locationName,
+      })),
+      weather: existing.weather,
+      isPinned: existing.isPinned,
+      // The two the quick edit owns.
+      title: input.title,
+      content: input.content,
+    });
+  } catch (error) {
+    return toErrorResult(error, "Failed to save your changes to that entry.");
+  }
+
+  revalidatePath(JOURNAL_MODULE_PATH);
+  revalidatePath(`${JOURNAL_MODULE_PATH}/entries/${id}`);
+  return { ok: true };
 }

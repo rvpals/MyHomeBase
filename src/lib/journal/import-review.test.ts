@@ -4,15 +4,16 @@ import {
   applyIcsReviewDecision,
   applyIcsReviewDecisionToFile,
   buildIcsImportReview,
+  icsReviewIndexesForDates,
   reviewIcsFile,
 } from "./import-review";
 import { ICS_SOURCE } from "./ics-import";
 import type { JournalRepository } from "./ports";
 import type { IcsEvent, IcsImportFilter, JournalEntry } from "./types";
 
-// The one port method the review reads. Named explicitly so the fake's
-// parameters stay typed — the same reason ics-import.test.ts does it.
-type ReviewRepo = Pick<JournalRepository, "listEntriesInDateRange">;
+// The port methods the review reads. Named explicitly so the fake's parameters
+// stay typed — the same reason ics-import.test.ts does it.
+type ReviewRepo = Pick<JournalRepository, "listEntriesInDateRange" | "findEntryIdsBySource">;
 
 function entry(overrides: Partial<JournalEntry> & { id: number; date: string }): JournalEntry {
   return {
@@ -35,9 +36,13 @@ function entry(overrides: Partial<JournalEntry> & { id: number; date: string }):
 }
 
 /**
- * An in-memory repository over a fixed entry list. Only the date-range read is
- * implemented, which is all `buildIcsImportReview` touches; `calls` records the
- * ranges asked for, so a test can prove one query per date rather than a scan.
+ * An in-memory repository over a fixed entry list. Only the two reads
+ * `buildIcsImportReview` touches are implemented; `calls` records the ranges
+ * asked for, so a test can prove one query per date rather than a scan.
+ *
+ * `findEntryIdsBySource` answers from the same entry list, so an entry given a
+ * `source`/`externalId` in a test is found by a matching event's UID — which is
+ * what makes `willRefresh` testable without a second fixture.
  */
 function fakeRepo(entries: JournalEntry[]): {
   repo: JournalRepository;
@@ -50,6 +55,13 @@ function fakeRepo(entries: JournalEntry[]): {
       return entries
         .filter((candidate) => candidate.date >= startDate && candidate.date <= endDate)
         .sort((left, right) => left.time.localeCompare(right.time));
+    },
+    findEntryIdsBySource(source, externalId) {
+      return entries
+        .filter(
+          (candidate) => candidate.source === source && candidate.externalId === externalId,
+        )
+        .map((candidate) => candidate.id);
     },
   };
   return { repo: repo as JournalRepository, calls };
@@ -160,6 +172,24 @@ describe("buildIcsImportReview", () => {
     expect(calls).toEqual([]);
   });
 
+  it("carries an existing entry's lock state, so the dialog can refuse to edit it", () => {
+    // The quick-edit disables itself on a locked entry rather than offering an
+    // edit `updateEntry` would throw on.
+    const { repo } = fakeRepo([
+      entry({ id: 1, date: "2026-03-14", title: "Locked", isLocked: true }),
+      entry({ id: 2, date: "2026-03-14", title: "Open", time: "10:00" }),
+    ]);
+
+    const review = buildIcsImportReview(repo, [event({ date: "2026-03-14" })]);
+
+    expect(
+      review.groups[0].existingEntries.map((existing) => [existing.title, existing.isLocked]),
+    ).toEqual([
+      ["Locked", true],
+      ["Open", false],
+    ]);
+  });
+
   it("marks an existing entry that came from a calendar import", () => {
     const { repo } = fakeRepo([
       entry({ id: 1, date: "2026-03-14", source: ICS_SOURCE, externalId: "uid-1" }),
@@ -186,6 +216,146 @@ describe("buildIcsImportReview", () => {
     ]);
 
     expect(review.groups.map((group) => group.date)).toEqual(["2026-01-02", "2026-03-14"]);
+  });
+});
+
+describe("the incoming side of a review group", () => {
+  it("carries each selected event's own fields, not just its title", () => {
+    const { repo } = fakeRepo([entry({ id: 1, date: "2026-03-14", title: "Wrote by hand" })]);
+
+    const review = buildIcsImportReview(repo, [
+      event({
+        date: "2026-03-14",
+        summary: "Swim practice",
+        description: "Lane 4, warm up first",
+        location: "Community pool",
+        time: "18:30",
+      }),
+    ]);
+
+    expect(review.groups[0].incomingEvents).toEqual([
+      {
+        eventIndex: 0,
+        time: "18:30",
+        isAllDay: false,
+        title: "Swim practice",
+        content: "Lane 4, warm up first",
+        isContentTruncated: false,
+        location: "Community pool",
+        willRefresh: false,
+      },
+    ]);
+  });
+
+  it("excerpts a long description the same way the existing side is excerpted", () => {
+    const { repo } = fakeRepo([entry({ id: 1, date: "2026-03-14" })]);
+    const long = "word ".repeat(200).trim();
+
+    const review = buildIcsImportReview(repo, [
+      event({ date: "2026-03-14", description: long }),
+    ]);
+
+    const incoming = review.groups[0].incomingEvents[0];
+    expect(incoming.isContentTruncated).toBe(true);
+    expect(incoming.content.length).toBeLessThanOrEqual(REVIEW_CONTENT_LIMIT);
+  });
+
+  it("marks an event whose UID is already imported as a refresh", () => {
+    // The clash the reader should worry about least: this event is their own
+    // earlier import coming back, so importing updates it in place.
+    const { repo } = fakeRepo([
+      entry({
+        id: 1,
+        date: "2026-03-14",
+        title: "Swim practice",
+        source: ICS_SOURCE,
+        externalId: "uid-1",
+      }),
+    ]);
+
+    const review = buildIcsImportReview(repo, [
+      event({ date: "2026-03-14", uid: "uid-1", summary: "Swim practice" }),
+    ]);
+
+    expect(review.groups[0].incomingEvents[0].willRefresh).toBe(true);
+  });
+
+  it("marks an event with an unseen UID as a new entry", () => {
+    const { repo } = fakeRepo([
+      entry({
+        id: 1,
+        date: "2026-03-14",
+        source: ICS_SOURCE,
+        externalId: "some-other-uid",
+      }),
+    ]);
+
+    const review = buildIcsImportReview(repo, [event({ date: "2026-03-14", uid: "uid-1" })]);
+
+    expect(review.groups[0].incomingEvents[0].willRefresh).toBe(false);
+  });
+
+  it("never claims a refresh for an event with no UID", () => {
+    // No UID means no identity to match, so the importer can only create it --
+    // saying otherwise would promise something the import won't do.
+    const { repo } = fakeRepo([
+      entry({ id: 1, date: "2026-03-14", source: ICS_SOURCE, externalId: "" }),
+    ]);
+
+    const review = buildIcsImportReview(repo, [event({ date: "2026-03-14", uid: "   " })]);
+
+    expect(review.groups[0].incomingEvents[0].willRefresh).toBe(false);
+  });
+
+  it("indexes each event by its position in the filtered list, not within the date", () => {
+    // The dialog's indexes have to line up with the ticks the grid made, so an
+    // event on the second reviewed date keeps its original position.
+    const { repo } = fakeRepo([
+      entry({ id: 1, date: "2026-03-14" }),
+      entry({ id: 2, date: "2026-03-16" }),
+    ]);
+
+    const review = buildIcsImportReview(repo, [
+      event({ date: "2026-03-14", uid: "uid-1" }),
+      event({ date: "2026-03-15", uid: "uid-2" }),
+      event({ date: "2026-03-16", uid: "uid-3" }),
+    ]);
+
+    expect(review.groups.map((group) => group.incomingEvents.map((e) => e.eventIndex))).toEqual([
+      [0],
+      [2],
+    ]);
+  });
+
+  it("keeps the ticked indexes when only part of the file is selected", () => {
+    const { repo } = fakeRepo([entry({ id: 1, date: "2026-03-14" })]);
+
+    const review = buildIcsImportReview(
+      repo,
+      [
+        event({ date: "2026-03-14", uid: "uid-1", summary: "Skipped" }),
+        event({ date: "2026-03-14", uid: "uid-2", summary: "Ticked" }),
+      ],
+      [1],
+    );
+
+    expect(review.groups[0].incomingEvents).toHaveLength(1);
+    expect(review.groups[0].incomingEvents[0].eventIndex).toBe(1);
+    expect(review.groups[0].incomingEvents[0].title).toBe("Ticked");
+  });
+
+  it("carries an all-day event with no time", () => {
+    const { repo } = fakeRepo([entry({ id: 1, date: "2026-03-14" })]);
+
+    const review = buildIcsImportReview(repo, [
+      event({ date: "2026-03-14", time: "", isAllDay: true, summary: "Public holiday" }),
+    ]);
+
+    expect(review.groups[0].incomingEvents[0]).toMatchObject({
+      time: "",
+      isAllDay: true,
+      title: "Public holiday",
+    });
   });
 });
 
@@ -221,6 +391,58 @@ describe("review excerpts", () => {
 
     expect(row.isContentTruncated).toBe(true);
     expect(row.content).toHaveLength(REVIEW_CONTENT_LIMIT);
+  });
+});
+
+describe("icsReviewIndexesForDates", () => {
+  // Built the way the dialog receives them, so these read against the real shape.
+  function reviewGroups(): ReturnType<typeof buildIcsImportReview>["groups"] {
+    const { repo } = fakeRepo([
+      entry({ id: 1, date: "2026-03-14" }),
+      entry({ id: 2, date: "2026-03-16" }),
+      entry({ id: 3, date: "2026-03-18" }),
+    ]);
+
+    return buildIcsImportReview(repo, [
+      event({ date: "2026-03-14", uid: "uid-1" }), // index 0
+      event({ date: "2026-03-15", uid: "uid-2" }), // index 1 — no existing entry
+      event({ date: "2026-03-16", uid: "uid-3" }), // index 2
+      event({ date: "2026-03-16", uid: "uid-4" }), // index 3 — same date
+      event({ date: "2026-03-18", uid: "uid-5" }), // index 4
+    ]).groups;
+  }
+
+  it("returns the indexes of every event on the decided dates", () => {
+    expect(icsReviewIndexesForDates(reviewGroups(), ["2026-03-16"])).toEqual([2, 3]);
+  });
+
+  it("gathers several dates, ascending, whatever order they were decided in", () => {
+    // The reader may have answered the third date before the first.
+    expect(icsReviewIndexesForDates(reviewGroups(), ["2026-03-18", "2026-03-14"])).toEqual([
+      0, 4,
+    ]);
+  });
+
+  it("returns nothing when no date has been decided", () => {
+    expect(icsReviewIndexesForDates(reviewGroups(), [])).toEqual([]);
+  });
+
+  it("ignores a date that isn't in the review", () => {
+    // A date already committed and dropped from the list, or one that never had
+    // an existing entry to review in the first place.
+    expect(icsReviewIndexesForDates(reviewGroups(), ["2026-03-15", "2026-01-01"])).toEqual([]);
+  });
+
+  it("does not duplicate an index if a date is listed twice", () => {
+    expect(icsReviewIndexesForDates(reviewGroups(), ["2026-03-16", "2026-03-16"])).toEqual([
+      2, 3,
+    ]);
+  });
+
+  it("keeps indexes pointing at the filtered list, not at a per-date position", () => {
+    // The whole point: index 4 is the fifth event in the file, not the first on
+    // its own date. Committing 2026-03-18 must import that event and no other.
+    expect(icsReviewIndexesForDates(reviewGroups(), ["2026-03-18"])).toEqual([4]);
   });
 });
 

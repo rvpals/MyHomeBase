@@ -21,6 +21,8 @@ import {
   type FontKey,
   getIconSet,
   getSetting,
+  resolveBorderWidths,
+  resolveChromeStyle,
 } from "@/lib/settings";
 import { deps } from "@/lib/wiring";
 import "./globals.css";
@@ -140,6 +142,20 @@ function getActiveIconSet() {
   return getIconSet(iconSetId);
 }
 
+// The bevel on the header and the navigation tree (migrations/0121). Resolved
+// rather than read raw so a garbled row degrades to the default instead of
+// emitting a `data-chrome-style` no CSS rule matches, which would leave the
+// chrome with no treatment at all.
+function getActiveChromeStyle() {
+  return resolveChromeStyle(getSetting(deps.settingsRepo, "chrome_style")?.value);
+}
+
+// The three border weights (migrations/0122). Resolved rather than read raw so a
+// garbled row degrades per axis to 1px instead of emitting an invalid width.
+function getActiveBorderWidths() {
+  return resolveBorderWidths(getSetting(deps.settingsRepo, "border_widths")?.value);
+}
+
 export function generateMetadata(): Metadata {
   const appName = getAppName();
   return {
@@ -185,6 +201,8 @@ export default async function RootLayout({
 }>) {
   const theme = getActiveTheme();
   const iconSet = getActiveIconSet();
+  const chromeStyle = getActiveChromeStyle();
+  const borderWidths = getActiveBorderWidths();
   // Scoped to the active set: an override only ever applies under the set it was
   // uploaded for, so switching sets swaps the whole map rather than filtering per render.
   const iconOverrides = getOverrideMap(deps.iconOverridesRepo, iconSet.id);
@@ -218,7 +236,12 @@ export default async function RootLayout({
   // in the root layout (not the protected layout) so /login gets it too. Fonts
   // are overridden the same way: every font this theme could pick is already
   // loaded above, so switching themes just repoints the --font-* variables.
-  const themeCss = `:root{color-scheme:${colorScheme};--paper:${theme.tokens.paper};--paper-raised:${theme.tokens.paperRaised};--ink:${theme.tokens.ink};--line:${theme.tokens.line};--muted:${theme.tokens.muted};--muted-inverse:${theme.tokens.mutedInverse};--brass:${theme.tokens.brass};--brass-dark:${theme.tokens.brassDark};--brass-soft:${theme.tokens.brassSoft};--font-display:${FONT_VAR_MAP[theme.tokens.fonts.display]};--font-body:${FONT_VAR_MAP[theme.tokens.fonts.body]};--font-mono-code:${FONT_VAR_MAP[theme.tokens.fonts.mono]};}`;
+  //
+  // The three `--*-width` values ride in the same block (migrations/0122). They
+  // are not theme tokens — they come from their own setting, not from the theme —
+  // but they belong to the same "render the admin's display choices before first
+  // paint" job, and a second <style> tag for three numbers would be noise.
+  const themeCss = `:root{color-scheme:${colorScheme};--paper:${theme.tokens.paper};--paper-raised:${theme.tokens.paperRaised};--ink:${theme.tokens.ink};--line:${theme.tokens.line};--muted:${theme.tokens.muted};--muted-inverse:${theme.tokens.mutedInverse};--brass:${theme.tokens.brass};--brass-dark:${theme.tokens.brassDark};--brass-soft:${theme.tokens.brassSoft};--font-display:${FONT_VAR_MAP[theme.tokens.fonts.display]};--font-body:${FONT_VAR_MAP[theme.tokens.fonts.body]};--font-mono-code:${FONT_VAR_MAP[theme.tokens.fonts.mono]};--chrome-outline-width:${borderWidths.outline}px;--chrome-divider-width:${borderWidths.divider}px;--line-width:${borderWidths.line}px;}`;
 
   return (
     <html
@@ -234,6 +257,11 @@ export default async function RootLayout({
       // (`TreeNav`) a module renders. Deliberately not a media query: the
       // layout can be pinned, so a wide window can be in compact.
       data-viewport={viewport}
+      // The chrome's border treatment, set server-side from the app-wide
+      // setting so the first HTML already draws the chosen bevel — the header
+      // and the tree are the worst surfaces on which to restyle themselves one
+      // frame after hydration. globals.css selects on this attribute.
+      data-chrome-style={chromeStyle}
       className={`${spaceGrotesk.variable} ${sora.variable} ${familjenGrotesk.variable} ${manrope.variable} ${inter.variable} ${plexMono.variable} ${jetbrainsMono.variable} ${greatVibes.variable} h-full antialiased`}
     >
       <head>

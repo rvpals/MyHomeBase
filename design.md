@@ -70,6 +70,71 @@ themes, and a 600–700 shade would read as low-contrast mud there. (Known trade
 the Daybreak light theme these 300–400 shades run a little light; acceptable for now —
 don't branch per-theme to fix it unless asked.)
 
+## Chrome Style and Border Weight — the frame, tuned separately from color
+
+Two more admin-configurable styling rules sit beside Color Themes, both scoped to the
+app's own **frame** rather than its content: **Administration → Display Settings →
+Chrome Style** and **→ Border Weight**. Like the color theme and icon set pickers, both
+are draft fields on `useAdminSettings()` committed by the shell's one "Save Settings"
+button — neither screen has its own `actions.ts`.
+
+**Chrome Style** (`chrome_style`, migrations/0121) picks the bevel the header
+(`AppHeader`) and the desktop navigation tree (`NavTree`) wear: `current` (flat, the
+look that shipped before this setting existed), `inset` (pressed into the page),
+`outset` (lifted off it, with the selected module inverted and pressed in), or `emboss`
+(a bevel cut into the surface, no cast shadow). One setting for both surfaces, because
+they're the same frame around the page — a raised header above a sunken column would
+read as a bug. The catalogue (`CHROME_STYLES`, labels, descriptions, trade-offs) lives in
+`src/lib/settings/chrome-style.ts`; the rules themselves are in `globals.css`.
+
+**Border Weight** (`border_widths`, migrations/0122) is three independently adjustable
+whole-pixel widths, each reaching a different scope: `outline` (the chrome's outer
+edges — header's bottom rule, tree column's right rule, each module slab's outline),
+`divider` (rules *inside* the navigation column — filter underline, grouped-section
+boxes), and `line` (every other `--line` border in the app, on every screen — the
+widest-reaching of the three, worth checking on a few real screens before settling on a
+value). Clamped to 1–4px (`MIN_BORDER_WIDTH`/`MAX_BORDER_WIDTH` in
+`src/lib/settings/border-widths.ts`): past 4 the `rounded-lg`/`rounded-xl` corners used
+everywhere start reading as lumps, and the 260px navigation column loses a pixel of
+label width per extra pixel of rule. Safe to grow because Tailwind's preflight sets
+`box-sizing: border-box` globally — a thicker border eats into its element rather than
+growing it, so no axis shifts layout.
+
+Three hook classes exist **only** to carry these styles, and are not layout:
+
+| Class | On |
+|---|---|
+| `.chrome-bar` | `AppHeader`'s `<header>` |
+| `.chrome-frame` | `NavTree`'s `<nav>` |
+| `.chrome-slab` | a module `<li>` inside `NavTree` |
+
+**Never key a Chrome Style or Border Weight rule off `.shell-tree` or `.shell-header`.**
+Those are layout classes (`.shell-tree` is `position: fixed; width: var(--nav-tree-width);
+z-index: 31`) — styling them directly once sent the admin picker's preview columns to the
+viewport's left edge, on top of the real navigation tree. The hook classes carry no
+geometry of their own, which is also what lets both admin screens preview a style
+live: the preview markup wears the same three classes inside a wrapper carrying its own
+`data-chrome-style` (or, for Border Weight, an inline style overriding
+`--chrome-outline-width`/`--chrome-divider-width`/`--line-width`), so the rules that draw
+the thumbnails are the same rules that draw the real chrome — not a second hand-written
+copy that could drift from it. `.chrome-slab` sits *beside* `.card-embossed` rather than
+replacing it, for the same reason: that class is shared with cards across the app, and
+overriding it directly would restyle every card, not just the chrome.
+
+Every edge in these rules mixes against `--ink` via `--edge-lit`, never a literal white —
+same mechanism as `.card-embossed` above, and for the same reason: a translucent-white
+lip is a highlight on a dark theme's near-black paper and invisible on a light theme's
+near-white paper. `current` gets no override rules at all; the absence of overrides *is*
+the style, so a fresh install with no `chrome_style` row renders identically to the
+pre-setting build. Don't "complete the set" by adding a `current` block.
+
+Both ids/keys are **permanent** once an install has chosen a non-default value — the
+same rule as an icon slot id or a color theme id. `resolveChromeStyle` and
+`resolveBorderWidths`/`parseBorderWidth` are deliberately total: a garbled or unknown
+stored value falls back to the default rather than throwing, because a bad settings row
+must not be able to break the chrome that carries the navigation to the screen that
+would fix it.
+
 ## Type
 
 Fonts are also theme-driven — every theme pairs a display face, a body face, and a mono

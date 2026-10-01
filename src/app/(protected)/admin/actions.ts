@@ -43,7 +43,11 @@ import {
   DEFAULT_COLOR_THEME_ID,
   getSetting,
   resetSettingsToDefaults,
+  borderWidthsToValue,
+  resolveChromeStyle,
   updateSettings,
+  type BorderWidths,
+  type ChromeStyle,
   type ColorThemeTokens,
   type Setting,
 } from "@/lib/settings";
@@ -55,6 +59,8 @@ export interface SaveAdminSettingsInput {
   applicationName: string;
   colorThemeId: string;
   iconSetId: string;
+  chromeStyle: ChromeStyle;
+  borderWidths: BorderWidths;
   moduleSettings: { moduleId: number; entries: ModuleSettingEntry[] }[];
 }
 
@@ -65,6 +71,15 @@ export async function saveAdminSettingsAction(input: SaveAdminSettingsInput): Pr
     { key: "application_name", value: input.applicationName },
     { key: "color_theme", value: input.colorThemeId },
     { key: "icon_set", value: input.iconSetId },
+    // Re-resolved at the boundary rather than trusted: this is a POST endpoint,
+    // so the typed field is a claim about the payload, not a guarantee. An
+    // unknown id lands on the default instead of persisting a value no CSS rule
+    // matches, which would leave the chrome with no treatment at all.
+    { key: "chrome_style", value: resolveChromeStyle(input.chromeStyle) },
+    // `borderWidthsToValue` clamps every axis to 1-4 on the way out, so a posted
+    // 40 lands as 4 rather than putting a 40px rule on every card in the app.
+    // Same boundary reasoning as `resolveChromeStyle` above.
+    { key: "border_widths", value: borderWidthsToValue(input.borderWidths) },
   ]);
   for (const moduleSetting of input.moduleSettings) {
     saveModuleSettings(deps.moduleSettingsRepo, moduleSetting);

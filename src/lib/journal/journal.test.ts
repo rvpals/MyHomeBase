@@ -248,6 +248,11 @@ function fakeRepo(): JournalRepository {
     },
     countAllEntries: () => entries.length,
     countLockedEntries: () => entries.filter((entry) => entry.isLocked).length,
+    // Mirrors the SQL's case-insensitive trimmed match on the Log category.
+    countLogEntries: () =>
+      entries.filter((entry) =>
+        entry.categories.some((category) => category.trim().toLowerCase() === "log"),
+      ).length,
     deleteAllEntries() {
       const deleted = entries.length;
       entries = [];
@@ -770,11 +775,25 @@ describe("countAllEntries", () => {
     createEntry(repo, { date: "2026-07-27" });
     createEntry(repo, { date: "2026-07-28", isLocked: true });
     createEntry(repo, { date: "2026-07-29", isLocked: true });
-    expect(countAllEntries(repo)).toEqual({ totalCount: 3, lockedCount: 2 });
+    expect(countAllEntries(repo)).toEqual({ totalCount: 3, lockedCount: 2, logCount: 0 });
+  });
+
+  it("counts Log entries separately, overlapping the locked count", () => {
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2026-07-27", categories: ["Log"] });
+    // Both locked and a Log entry — it counts once in each, so the two
+    // sub-counts deliberately do not sum to the total.
+    createEntry(repo, { date: "2026-07-28", categories: ["Log"], isLocked: true });
+    createEntry(repo, { date: "2026-07-29", categories: ["Trip"] });
+    expect(countAllEntries(repo)).toEqual({ totalCount: 3, lockedCount: 1, logCount: 2 });
   });
 
   it("reports zeroes for an empty journal", () => {
-    expect(countAllEntries(fakeRepo())).toEqual({ totalCount: 0, lockedCount: 0 });
+    expect(countAllEntries(fakeRepo())).toEqual({
+      totalCount: 0,
+      lockedCount: 0,
+      logCount: 0,
+    });
   });
 });
 
@@ -966,10 +985,13 @@ describe("withLogCondition", () => {
       ],
     };
 
-    // Main: the reader's filter AND not-a-log.
-    expect(findEntries(repo, withLogCondition(titleFilter, false))).toHaveLength(1);
-    // Log: the same filter, ANDed the other way.
-    expect(findEntries(repo, withLogCondition(titleFilter, true))).toHaveLength(1);
+    // Log: the reader's filter AND is-a-log.
+    expect(findEntries(repo, withLogCondition(titleFilter, "only"))).toHaveLength(1);
+    // The old Main behaviour, still available: filter AND not-a-log.
+    expect(findEntries(repo, withLogCondition(titleFilter, "exclude"))).toHaveLength(1);
+    // Main today: the filter untouched, so both "Rome trip" entries match
+    // whether or not they are logged activities.
+    expect(findEntries(repo, withLogCondition(titleFilter, "all"))).toHaveLength(2);
   });
 
   it("cannot leak a Log entry into Main through an OR-joined filter", () => {
@@ -993,8 +1015,35 @@ describe("withLogCondition", () => {
       ],
     };
 
-    expect(findEntries(repo, withLogCondition(orFilter, false))).toEqual([]);
-    expect(findEntries(repo, withLogCondition(orFilter, true))).toHaveLength(2);
+    expect(findEntries(repo, withLogCondition(orFilter, "exclude"))).toEqual([]);
+    expect(findEntries(repo, withLogCondition(orFilter, "only"))).toHaveLength(2);
+  });
+
+  it("returns the filter untouched for the \"all\" scope", () => {
+    // Main's scope. Returning the same filter — not a copy with an extra group —
+    // is what lets a tag carried only by Log entries be clicked through from the
+    // Statistics card: no condition is added that could contradict the count.
+    const original = {
+      join: "OR" as const,
+      groups: [
+        { join: "AND" as const, conditions: [{ field: "title" as const, operator: "contains" as const, value: "x" }] },
+      ],
+    };
+    expect(withLogCondition(original, "all")).toBe(original);
+    // The reader's own join survives, unlike the two narrowing scopes which
+    // force AND.
+    expect(withLogCondition(original, "all").join).toBe("OR");
+  });
+
+  it("lists logged and written entries together under \"all\"", () => {
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2026-01-01", title: "Call To Ting Ting", categories: ["Log"] });
+    createEntry(repo, { date: "2026-01-02", title: "Rome trip" });
+
+    const everything = { join: "AND" as const, groups: [] };
+    expect(findEntries(repo, withLogCondition(everything, "all"))).toHaveLength(2);
+    expect(findEntries(repo, withLogCondition(everything, "only"))).toHaveLength(1);
+    expect(findEntries(repo, withLogCondition(everything, "exclude"))).toHaveLength(1);
   });
 
   it("adds a group rather than mutating the filter it was given", () => {
@@ -1004,7 +1053,7 @@ describe("withLogCondition", () => {
         { join: "AND" as const, conditions: [{ field: "title" as const, operator: "contains" as const, value: "x" }] },
       ],
     };
-    const result = withLogCondition(original, false);
+    const result = withLogCondition(original, "exclude");
 
     expect(original.groups).toHaveLength(1);
     expect(result.groups).toHaveLength(2);

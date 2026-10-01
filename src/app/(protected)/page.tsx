@@ -19,6 +19,7 @@ import { listTodayInHistory } from "@/lib/journal";
 import { listModules } from "@/lib/modules";
 import { getSetting, getStartupMessage } from "@/lib/settings";
 import { todayIsoLocal } from "@/lib/shared/date";
+import { buildTodoBoard } from "@/lib/todo";
 import { getSiteVisitSummary } from "@/lib/site-visits";
 import {
   computeDayMovesByType,
@@ -42,9 +43,11 @@ import { PAGE_CONTAINER } from "./page-container";
 import { StartupMessage } from "./startup-message";
 import { SuspiciousVisitAlert } from "./suspicious-visit-alert";
 import { TodayInHistoryWidget } from "./today-in-history-widget";
+import { TodoWidget } from "./todo-widget";
 
 const INVESTMENTS_MODULE_SLUG = "investments";
 const JOURNAL_MODULE_SLUG = "journal";
+const TOOLS_MODULE_SLUG = "tools";
 
 export default async function Home({
   searchParams,
@@ -154,6 +157,17 @@ export default async function Home({
   // hidden or not granted, in which case the card simply shows no glyph.
   const journalModule = modules.find((appModule) => appModule.slug === JOURNAL_MODULE_SLUG);
 
+  // The TODO card, on the same rule as Daily Glance: shown only to someone who can open
+  // the module that owns these rows. `modules` is already access-filtered, so testing it
+  // costs nothing extra, and the board is read only once that's true — a reader without
+  // Tools pays for no query. The card's action enforces the same thing server-side, since
+  // hiding a card gates nothing on its own.
+  const toolsModule = modules.find((appModule) => appModule.slug === TOOLS_MODULE_SLUG);
+  const todoBoard =
+    toolsModule && shows("todo")
+      ? buildTodoBoard({ categoryRepo: deps.todoCategoryRepo, itemRepo: deps.todoItemRepo })
+      : undefined;
+
   // The dashboard's optional background picture (migrations/0063, 0116).
   //
   // Drawn here ONLY when the texture is not app-wide. With the scope ticked on,
@@ -179,6 +193,10 @@ export default async function Home({
     dailyQuote: Boolean(quote),
     todayInHistory: true,
     stockGlance: positions.length > 0,
+    // Always true once the module is granted, like My Shortcuts and unlike Daily
+    // Quote: a household with no lists yet gets the card's empty state pointing at
+    // Tools, and hiding it until a list exists would leave nothing to click.
+    todo: todoBoard !== undefined,
   };
   const drawnWidgets = visibleHomeWidgets(widgets).filter((id) => hasContent[id]);
 
@@ -297,6 +315,18 @@ export default async function Home({
                         isAdmin={currentUser ? isAdmin(currentUser) : false}
                       />
                     ),
+                  },
+                ];
+              case "todo":
+                // Re-tested rather than asserted with `!`, for the same reason the
+                // quote above is: `hasContent.todo` ran in a different expression, so
+                // the narrowing doesn't carry here.
+                if (!todoBoard) return [];
+                return [
+                  {
+                    id,
+                    label: "TODO",
+                    node: <TodoWidget board={todoBoard} />,
                   },
                 ];
               case "todayInHistory":

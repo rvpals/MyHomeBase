@@ -61,6 +61,7 @@ import { SqliteUploadedDatabaseRepository } from "./sqlite-browser/repository";
 import { BetterSqliteCsvTableStore } from "./csv-file-browser/csv-table-store";
 import { NodeCsvFileStore } from "./csv-file-browser/file-store";
 import { SqliteUploadedCsvFileRepository } from "./csv-file-browser/repository";
+import { SqliteTodoCategoryRepository, SqliteTodoItemRepository } from "./todo/repository";
 import { SqliteStockAnalyticsRepository } from "./stock-analytics/repository";
 import { SqliteDailySnapshotRepository } from "./stock-daily-snapshot/repository";
 import { SqliteStockPositionRepository } from "./stock-positions/repository";
@@ -296,6 +297,12 @@ export const deps = {
   uploadedCsvFileRepo: new SqliteUploadedCsvFileRepository(db),
   csvFileStore: new NodeCsvFileStore(toolsCsvUploadRoot),
   csvTableStore: new BetterSqliteCsvTableStore(),
+  // The Tools module's TODO Lists (migrations/0123). Two repositories, split along
+  // the line between the panel's lists and the items inside them -- but unlike the
+  // Scratchpad's matching pair, NEITHER is scoped by user: every row is the
+  // household's, and access to the Tools module is the only gate.
+  todoCategoryRepo: new SqliteTodoCategoryRepository(db),
+  todoItemRepo: new SqliteTodoItemRepository(db),
   systemInfoRepo: new RealSystemInfoRepository(),
   changeHistoryRepo: new FileChangeHistoryRepository(),
   // The deployment history the About screen lists (migrations/0078). Written on the

@@ -214,6 +214,61 @@ function CsvBrowserInstructions({ maxUploadBytes }: { maxUploadBytes: number }) 
   );
 }
 
+function TodoInstructions() {
+  return (
+    <>
+      <p className="text-sm text-muted">
+        The household&apos;s lists of things to do. Pick a list on the left to see only
+        that one, or leave <strong className="text-ink">All lists</strong> selected to see
+        every card at once.
+      </p>
+      <Section title="Everything here is shared">
+        <p>
+          Lists and items both belong to the household, not to whoever typed them —
+          everyone who can open Tools sees the same lists and can tick off, edit or delete
+          any item. That is deliberate: an errand list only works if whoever is next out
+          of the house can act on it. For something private, use the Scratchpad instead.
+        </p>
+      </Section>
+      <Section title="Ticking is not deleting">
+        <p>
+          A ticked item moves into that list&apos;s{" "}
+          <strong className="text-ink">Completed</strong> group and stays there, so you can
+          still see what was done. Open the group and hover an item to get the{" "}
+          <strong className="text-ink">✕</strong> that removes it for good, or use{" "}
+          <strong className="text-ink">Clear all</strong> to empty the group in one go.
+        </p>
+        <p>
+          Un-ticking an item puts it back on the list and forgets when it was completed.
+        </p>
+      </Section>
+      <Section title="Lists">
+        <p>
+          The number beside a list is how many items are still{" "}
+          <strong className="text-ink">to do</strong> — completed ones aren&apos;t counted,
+          so it reads as how much is left. Add a list with the box at the bottom of the
+          panel; names are case-insensitively unique, so there can&apos;t be both
+          &ldquo;Work&rdquo; and &ldquo;work&rdquo;.
+        </p>
+        <p>
+          A list can only be deleted once it is <strong className="text-ink">empty</strong>
+          , completed items included. That is the guard against someone tidying the panel
+          and taking the rest of the household&apos;s commitments with it — clear the list
+          first if you really mean it.
+        </p>
+      </Section>
+      <Section title="On the home screen">
+        <p>
+          The same lists appear as a card of tabs on the home screen, if an admin has
+          switched it on under Administration → Display Settings → Dashboard Widgets. It
+          shows the outstanding items and lets you tick them off; adding, editing and
+          deleting happen here.
+        </p>
+      </Section>
+    </>
+  );
+}
+
 export function ToolsInstructions({
   section,
   maxUploadBytes,
@@ -224,6 +279,7 @@ export function ToolsInstructions({
   return (
     <div className="flex flex-col gap-4">
       {section === "main" && <DashboardInstructions />}
+      {section === "todo" && <TodoInstructions />}
       {section === "sqlite-browser" && (
         <SqliteBrowserInstructions maxUploadBytes={maxUploadBytes} />
       )}

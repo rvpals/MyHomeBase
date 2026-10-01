@@ -1685,7 +1685,7 @@ plain data, so they are CLI-ready by construction (`createAlbum(deps.albumRepo, 
 and friends); adding commands for them would need no change to `src/lib/albums`.
 
 **Tools** (`tools`) — a home for small standalone utilities, the things that belong to
-no other module. Three sections: a Dashboard listing what is available, and two
+no other module. Four sections: a Dashboard listing what is available, and three
 utilities.
 
 The **SQLite File Browser** opens a `.db` file the reader uploads: its tables and views
@@ -1831,6 +1831,74 @@ Reachable from the CLI as `npm run cli -- browse-csv`, plus `--upload <path>`
 Narrow: sections in the shared bottom bar, nothing custom. The import options wrap to
 one control per line with `max-lg:flex-col`, and the grid goes compact at 1024px as
 above, carrying selection and both bulk actions with it.
+
+**TODO Lists** (migration 0123) is the third utility: the household's shared lists of
+things to do, as a section of Tools *and* as a home-screen card. Backed by
+`src/lib/todo` and two tables, `tol_todo_categories` and `tol_todo_items`.
+
+Five choices worth knowing, and the first is the one everything else follows from:
+
+- **Everything is shared — deliberately the opposite of the Scratchpad.** Migration 0096
+  splits ownership down the middle (shared tabs, private notes); neither table here has
+  a `user_id` at all. A scratchpad note is private working-out, but a TODO item is a
+  *household commitment*: "Pick up AML" has to be visible to whoever is next out of the
+  house and tickable by them, and a list where each person sees only their own items
+  cannot be a shared errand list. Access to the module is the only gate. The cost is
+  stated plainly in the migration log and in the screen's instructions card — **there is
+  no way to keep a private item here**, and the Scratchpad is the place for one.
+  `created_by` records who added an item without conferring ownership; nothing filters
+  on it.
+- **Ticking is not deleting.** A ticked item moves into the card's `Completed (N)` group
+  and stays readable; removing it is a separate deliberate act behind a hover ✕, with
+  `Clear all` for the bulk case. A schema where ticking deleted the row would make the
+  completed list — the part of the original screenshot with the most in it, 146 items in
+  one list — impossible. `done_at` is the one nullable column, for the reason
+  `hsh_recipes.rating` is: "not completed" genuinely has no timestamp, and it is cleared
+  again on un-tick so it can never claim a completion that was undone.
+- **The two halves sort differently, so there are two indexes.** Open items by their
+  arrangement (an errand list is ordered by what matters), completed by `done_at DESC`
+  (once something is done its place in the queue stops meaning anything, but "what did
+  we just finish" does not). One index cannot serve both, and reusing the open-items one
+  would scan and sort every item ever finished in that list. Both carry an explicit `id`
+  tiebreaker — `sort_order` ties are the ordinary case and `datetime('now')` has
+  one-second resolution, so without it the list appears to shuffle between renders.
+- **`isDone` is sent as an explicit target state, never a toggle.** On a shared list two
+  people can tick the same row at once, and a toggle computed from what the server
+  currently holds would flip the wrong way. The write is idempotent instead, so a
+  repeated or stale click converges rather than undoing someone else's.
+- **Deleting a list is refused while it holds anything**, completed items included, and
+  the refusal names the counts. Same reasoning as 0096: cascading would let one person
+  destroy commitments the rest of the household is relying on, and an "Uncategorised"
+  fallback would cost a permanent list that cannot be renamed or removed. `clearCompleted`
+  exists so emptying a finished list is one click rather than 146.
+
+**Lists can be added from two places, on two different guards, and that is intentional.**
+The Tools screen's side panel adds and deletes behind `requireModuleAccess("tools")` —
+creating a list while using the feature is ordinary. Administration → TODO Lists renames,
+reorders and removes behind `requireAdmin()`. Collapsing them would mean picking one
+guard for both screens, and neither is right for the other's.
+
+The **home-screen card** (`todo` in `HOME_WIDGET_IDS`) is a glance with a checkbox: the
+lists as a `Tabs` strip, the outstanding items with a checkbox each, and nothing else —
+adding, editing and the Completed group all live on the Tools screen, one click away
+through the card's title link. It is shown only to someone who can open Tools, on the
+same rule as Daily Glance, and its one action carries `requireModuleAccess("tools")`
+rather than `requireUser()`: a home-screen widget drawing a module's data does not make
+that data the home screen's.
+
+Reachable from the CLI as `npm run cli -- todo`, plus `--all`, `--list <name>`,
+`--add "…" --list <name>` (with `--notes`), `--done <id>`, `--undone <id>`,
+`--delete <id>`, `--new-list <name>`, `--rename-list <id> --name <new>`,
+`--delete-list <id>` and `--clear-completed <name>`. The listing prints each item's id
+first so ids copy straight back in. There is deliberately no `--user` flag — nothing
+here is per-person.
+
+Narrow: sections in the shared bottom bar, nothing custom. The category panel and the
+card grid are one flex row that becomes `max-lg:flex-col`, so the panel sits above the
+cards on a phone; the grid goes `grid-cols-3` → `max-xl:grid-cols-2` →
+`max-lg:grid-cols-1`. The hover-revealed ✕ and the list bin are `max-lg:opacity-100`,
+since a touch screen has no hover and they would otherwise be unreachable. No
+`useIsCompact()` anywhere — nothing needed a genuinely different component.
 
 **Household** (`household`) — the household's own paperwork, as against any one
 person's. Two halves: **Recipes** (built, with its own CSV importer) and

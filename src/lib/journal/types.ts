@@ -261,6 +261,20 @@ export interface JournalPreferences {
    * than arrive switched on.
    */
   reviewBeforeCalendarImport: boolean;
+  /**
+   * Words the reader dismissed from the home screen's "most frequently used
+   * words" ranking, via the (x) on each row.
+   *
+   * **Layered on top of** the built-in stopword list in `word-stats.ts`, not a
+   * replacement for it: the built-ins are a property of English and stay the
+   * floor, while this is one journal's own vocabulary. So the list only ever
+   * holds what the reader actually dismissed, which is what keeps the manage
+   * block in Preferences short enough to read.
+   *
+   * Stored normalized (lowercased, trimmed) because that is the form the
+   * tokenizer compares against — see `normalizeExcludedWord`.
+   */
+  excludedWords: string[];
 }
 
 // --- Prefill templates -------------------------------------------------------
@@ -464,6 +478,49 @@ export interface IcsImportReviewEntry {
   isContentTruncated: boolean;
   /** True when this entry came from a calendar import rather than being written. */
   isFromCalendar: boolean;
+  /**
+   * True when the entry is locked.
+   *
+   * Carried so the dialog's quick-edit can disable itself rather than offering
+   * an edit that `updateEntry` would refuse. The importer already skips a locked
+   * entry for the same reason.
+   */
+  isLocked: boolean;
+}
+
+/**
+ * One incoming calendar event, reduced to what the review dialog reads out.
+ *
+ * The mirror of `IcsImportReviewEntry`: the dialog puts the two side by side,
+ * so they carry the same fields where the two sides have the same thing to say
+ * (time, title, an excerpted body) and differ only where they genuinely differ.
+ */
+export interface IcsImportReviewEvent {
+  /** Position in the *filtered* event list — the same index the selection ticks. */
+  eventIndex: number;
+  /** HH:MM, or `""` for an all-day event. */
+  time: string;
+  isAllDay: boolean;
+  /** SUMMARY. `""` when the file gave none — the dialog shows "(untitled)". */
+  title: string;
+  /**
+   * DESCRIPTION, **possibly shortened** — same limit as the existing side's
+   * `content`, so neither column can dwarf the other.
+   */
+  content: string;
+  isContentTruncated: boolean;
+  /** LOCATION, or `""`. Shown because a preset place would override it. */
+  location: string;
+  /**
+   * True when this event's UID is already on an imported entry, so importing
+   * refreshes that entry rather than adding a second one.
+   *
+   * This is what separates "you're about to gain an entry on a day that already
+   * has one" from "this is your own earlier import coming back" — the second is
+   * usually not a clash at all. Always false for an event with no UID: without
+   * one there is no identity to match, so it can only create.
+   */
+  willRefresh: boolean;
 }
 
 /** One date the import would write into, and what the journal already holds there. */
@@ -472,6 +529,14 @@ export interface IcsImportReviewGroup {
   date: string;
   /** The existing entries on that date, oldest first. Never empty. */
   existingEntries: IcsImportReviewEntry[];
+  /**
+   * The selected events landing on that date, in file order. Never empty.
+   *
+   * The detailed other half of the comparison. `selectedEventCount` and
+   * `selectedEventTitles` are the same events summarised, kept because the CLI
+   * prints them and nothing is gained by making it derive them.
+   */
+  incomingEvents: IcsImportReviewEvent[];
   /** How many of the selected events fall on this date — what "don't import" drops. */
   selectedEventCount: number;
   /** Those events' titles, oldest first, so the dialog can say what is at stake. */

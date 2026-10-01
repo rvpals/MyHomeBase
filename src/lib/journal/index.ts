@@ -35,6 +35,7 @@ export type {
   IcsImportReview,
   IcsImportReviewGroup,
   IcsImportReviewEntry,
+  IcsImportReviewEvent,
 } from "./types";
 export {
   resolveJournalPreferences,
@@ -146,6 +147,14 @@ export {
 export type { JournalEntryMatchKey, JournalRepository } from "./ports";
 export { SqliteJournalRepository } from "./repository";
 export {
+  topWords,
+  tokenizeWords,
+  normalizeExcludedWord,
+  parseExcludedWords,
+  serializeExcludedWords,
+  type JournalWordCount,
+} from "./word-stats";
+export {
   listEntries,
   listRecentEntries,
   listEntriesInDateRange,
@@ -190,6 +199,7 @@ export {
   listLogEntries,
   listNonLogEntries,
   withLogCondition,
+  type JournalLogScope,
 } from "./journal";
 export {
   GENERATED_ICON_MIME_TYPE,
@@ -256,9 +266,11 @@ export {
 export {
   REVIEW_CONTENT_LIMIT,
   buildIcsImportReview,
+  excerptContent,
   reviewIcsFile,
   applyIcsReviewDecision,
   applyIcsReviewDecisionToFile,
+  icsReviewIndexesForDates,
 } from "./import-review";
 export { normalizeEntryTime } from "./time";
 

@@ -6,7 +6,7 @@
 // objects, so a lookup like TOOLS_SECTION_INFO[section] would come back undefined.
 // Same reasoning as csv-sections.ts and music-sections.ts.
 
-export const TOOLS_SECTIONS = ["main", "sqlite-browser", "csv-browser"] as const;
+export const TOOLS_SECTIONS = ["main", "todo", "sqlite-browser", "csv-browser"] as const;
 
 export type ToolsSection = (typeof TOOLS_SECTIONS)[number];
 
@@ -19,6 +19,10 @@ export const TOOLS_SECTION_INFO: Record<ToolsSection, { label: string; descripti
   main: {
     label: "Dashboard",
     description: "The utilities and tools available here.",
+  },
+  todo: {
+    label: "TODO Lists",
+    description: "The household's shared lists of things to do.",
   },
   "sqlite-browser": {
     label: "SQLite File Browser",
@@ -33,11 +37,16 @@ export const TOOLS_SECTION_INFO: Record<ToolsSection, { label: string; descripti
 /**
  * Section -> nav icon key, resolved by TreeIcon.
  *
- * All three are real TREE_ICONS concepts — an invented key renders NOTHING rather
+ * All four are real TREE_ICONS concepts — an invented key renders NOTHING rather
  * than falling back to a default.
  */
 export const TOOLS_SECTION_ICONS: Record<ToolsSection, string> = {
   main: "grid",
+  // `clipboard`, not `list`: `list` is the home screen's one-column layout button and
+  // several "rows of something" navs, where this means a checklist specifically. The
+  // two sit in the same panel as `database` and `csv-file`, so a shared glyph would
+  // make them harder to tell apart, not easier.
+  todo: "clipboard",
   "sqlite-browser": "database",
   "csv-browser": "csv-file",
 };

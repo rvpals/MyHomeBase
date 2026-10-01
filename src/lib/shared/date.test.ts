@@ -3,6 +3,7 @@ import {
   calendarAgeSince,
   describeDayOffset,
   formatCalendarAge,
+  formatDurationShort,
   parseIsoDateLocal,
   startOfMonthIso,
   startOfWeekIso,
@@ -283,5 +284,35 @@ describe("describeDayOffset", () => {
     expect(() => describeDayOffset("2026-02-31", "2026-09-21")).toThrow(/not a real date/);
     expect(() => describeDayOffset("21/09/2026", "2026-09-21")).toThrow(/YYYY-MM-DD/);
     expect(() => describeDayOffset("2026-09-21", "")).toThrow(/YYYY-MM-DD/);
+  });
+});
+
+describe("formatDurationShort", () => {
+  it("reports sub-second work in whole milliseconds", () => {
+    expect(formatDurationShort(0)).toBe("0ms");
+    expect(formatDurationShort(1)).toBe("1ms");
+    expect(formatDurationShort(999)).toBe("999ms");
+  });
+
+  it("reports seconds to one decimal place", () => {
+    expect(formatDurationShort(1000)).toBe("1.0s");
+    expect(formatDurationShort(1440)).toBe("1.4s");
+    expect(formatDurationShort(59_400)).toBe("59.4s");
+  });
+
+  it("switches to minutes and zero-padded seconds at a minute", () => {
+    expect(formatDurationShort(60_000)).toBe("1m 00s");
+    expect(formatDurationShort(125_000)).toBe("2m 05s");
+    expect(formatDurationShort(3_600_000)).toBe("60m 00s");
+  });
+
+  it("carries a rounded-up 60th second into the minute", () => {
+    // 59.6s of leftover rounds to 60, which must not render as "1m 60s".
+    expect(formatDurationShort(119_600)).toBe("2m 00s");
+  });
+
+  it("clamps a negative span to zero rather than showing a sign", () => {
+    // Only reachable via a clock adjustment mid-job; "-3s" is never right.
+    expect(formatDurationShort(-3000)).toBe("0ms");
   });
 });

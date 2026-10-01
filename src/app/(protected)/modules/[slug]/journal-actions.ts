@@ -18,6 +18,7 @@ import {
   findAdjacentEntryDate,
   findEntries,
   withLogCondition,
+  type JournalLogScope,
   generateCategoryIcon,
   generateMissingTaxonomyIcons,
   type GenerateIconsSummary,
@@ -358,14 +359,14 @@ export interface JournalEntriesResult extends ActionResult {
 /**
  * Runs a filter and returns the matching entries for the Entries browser.
  *
- * `includeLogs` is which tab is asking — the Log condition is ANDed on here, on
- * the server, rather than trusted from the filter the client sent. A re-query
- * from the Main tab therefore stays Log-free however the reader's saved filter
- * is shaped.
+ * `scope` is which tab is asking, and the Log condition is applied here, on the
+ * server, rather than trusted from the filter the client sent — so a re-query
+ * can't be widened by a hand-shaped saved filter. Main passes `"all"`, the Log
+ * tab `"only"`.
  */
 export async function findJournalEntriesAction(
   filter: JournalFilter,
-  includeLogs: boolean,
+  scope: JournalLogScope,
 ): Promise<JournalEntriesResult> {
   await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
@@ -373,7 +374,7 @@ export async function findJournalEntriesAction(
       ok: true,
       entries: findEntries(
         deps.journalRepo,
-        withLogCondition(filter, includeLogs),
+        withLogCondition(filter, scope),
         ENTRIES_RESULT_LIMIT,
       ),
     };

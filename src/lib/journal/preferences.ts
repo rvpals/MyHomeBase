@@ -4,6 +4,7 @@ import type {
   JournalPreferences,
   JournalTemperatureUnit,
 } from "./types";
+import { parseExcludedWords, serializeExcludedWords } from "./word-stats";
 
 // Module-settings keys the journal preferences are stored under.
 export const JOURNAL_SETTING_KEYS = {
@@ -14,6 +15,7 @@ export const JOURNAL_SETTING_KEYS = {
   photoRoot: "photo_root",
   handwritingSize: "handwriting_size",
   reviewBeforeCalendarImport: "review_before_calendar_import",
+  excludedWords: "excluded_words",
 } as const;
 
 const DEFAULT_TEMPERATURE_UNIT: JournalTemperatureUnit = "fahrenheit";
@@ -97,12 +99,18 @@ export function resolveJournalPreferences(settings: ModuleSetting[]): JournalPre
   const reviewBeforeCalendarImport =
     byKey.get(JOURNAL_SETTING_KEYS.reviewBeforeCalendarImport) === "true";
 
+  // Comma-joined in one row rather than a row per word: the list is read and
+  // written whole, and `parseExcludedWords` already tolerates the blanks,
+  // casing and duplicates a hand-edited value could carry.
+  const excludedWords = parseExcludedWords(byKey.get(JOURNAL_SETTING_KEYS.excludedWords) ?? "");
+
   return {
     defaultLocation,
     temperatureUnit,
     photoRoot,
     handwritingSize,
     reviewBeforeCalendarImport,
+    excludedWords,
   };
 }
 
@@ -145,6 +153,13 @@ export function journalPreferencesToEntries(
         value: preferences.defaultLocation.name,
       });
     }
+  }
+
+  // Omitted when empty for the same reason as photoRoot: the schema rejects a
+  // blank value, so "nothing excluded" has to be an absent row.
+  const excluded = serializeExcludedWords(preferences.excludedWords);
+  if (excluded !== "") {
+    entries.push({ key: JOURNAL_SETTING_KEYS.excludedWords, value: excluded });
   }
 
   return entries;

@@ -15,6 +15,19 @@
   --brass: #33e2b8;
   --brass-dark: #1c8a71;
   --brass-soft: #15332d;
+
+  /* The three border weights -- Administration > Display Settings > Border
+     Weight, stored app-wide in `border_widths` (migrations/0122) and overridden
+     from src/app/layout.tsx the same way the color tokens above are. Declared
+     here so a page rendered outside that layout -- a test, a harness -- still
+     gets the 1px the app drew before the setting existed.
+
+     Safe to grow because Tailwind's preflight sets `box-sizing: border-box`
+     globally: a thicker border eats into its element rather than growing it, so
+     no axis shifts layout. See the border-weight block further down. */
+  --chrome-outline-width: 1px;
+  --chrome-divider-width: 1px;
+  --line-width: 1px;
 }
 
 @theme inline {
@@ -630,6 +643,391 @@ html[data-music-player] .app-main {
     0 14px 28px -8px rgba(0, 0, 0, 0.42);
 }
 
+/* ============================================================================
+   The chrome's border treatment -- Administration > Display Settings > Chrome
+   Style, stored app-wide in the `chrome_style` setting (migrations/0121) and set
+   as `data-chrome-style` on <html> by the root layout.
+   ============================================================================
+
+   "Chrome" is two surfaces: the utility header `AppHeader` draws (breadcrumb,
+   app actions, profile) and the 260px desktop navigation column `NavTree` draws,
+   with its module slabs. One setting covers both because they are the same frame
+   around the page; a raised header above a sunken column reads as a bug rather
+   than a choice.
+
+   The catalogue of ids lives in src/lib/settings/chrome-style.ts and the ids are
+   PERMANENT -- each is stored per install and selected on here, so renaming one
+   silently drops an admin's choice.
+
+   THE THREE HOOK CLASSES, AND WHY THEY ARE NOT THE LAYOUT CLASSES.
+
+     .chrome-bar    the header bar        (on AppHeader's <header>)
+     .chrome-frame  the navigation column (on NavTree's <nav>)
+     .chrome-slab   a module slab         (on NavTree's module <li>)
+
+   These exist ONLY to be styled here. They set no geometry, so anything may wear
+   one -- which is what lets the admin picker preview a style by putting the same
+   three classes on miniature markup inside a wrapper carrying its own
+   `data-chrome-style`, drawing its thumbnails from these very rules instead of
+   from a second hand-written copy of four bevels that would drift from this one.
+
+   **These rules must never key off `.shell-tree`.** That class is LAYOUT:
+   `position: fixed; top: 0; bottom: 0; left: 0; width: var(--nav-tree-width);
+   z-index: 31` (see above). It shipped that way here once, and the picker's eight
+   preview columns each escaped their card, stacked at the viewport's left edge at
+   full height, and covered the real navigation tree -- which read as the nav
+   "shrinking" the instant a style was clicked. `.shell-header` was safe only by
+   accident: it happens to carry no layout of its own. Style the hooks, never the
+   layout classes. Same applies to `.card-embossed`, which `.chrome-slab` sits
+   beside rather than replaces -- that class is shared with cards across the app,
+   and overriding it directly would restyle every screen.
+
+   Four rules hold across all four styles:
+
+   1. **Every edge mixes against `--ink` via `--edge-lit`, never a literal
+      white.** A translucent-white lip is a highlight on `#12161a` and invisible
+      on near-white paper, so a hardcoded bevel works on exactly one polarity.
+      The two black stops are safe as literals because a shadow only darkens.
+      Same mechanism and reasoning as `.card-embossed` and `.panel-inset` above.
+
+   2. **`box-shadow`, `background-image` and `background-color` only -- never
+      geometry.** No padding, border-width, height or position is touched, so
+      switching style cannot move a single pixel of layout at either breakpoint.
+      That is what makes this safe to apply to the one bar every screen renders.
+
+      **Never the `background` SHORTHAND.** It resets `background-color` to
+      transparent, and the column's opaque `bg-paper-raised` is the fill that
+      hides the app-texture layer (`[data-app-texture]::before`) sitting behind
+      it. A gradient goes in `background-image` so the Tailwind color underneath
+      survives it.
+
+   3. **`.chrome-frame` and `.chrome-slab` rules are desktop-only by
+      construction, not by media query.** `NavTree` renders nothing on compact --
+      `SectionPanel` owns the bottom edge there -- so a column-scoped bevel simply
+      has no element to hit on a phone. `.chrome-bar` renders at both, and is
+      deliberately styled at both: it is the same frame either way.
+
+   4. **The selectors are tag-less -- `[data-chrome-style="x"]`, not
+      `html[data-chrome-style="x"]`.** The root layout sets the attribute on
+      `<html>`, which either form matches; but the picker's preview wrapper is a
+      plain div, and an `html`-prefixed selector could never match it. Dropping
+      the tag is the other half of what makes the previews reuse these rules.
+      See src/app/(protected)/admin/display-settings/chrome/view.tsx.
+
+   `current` gets no rules at all. It is the look that shipped before this
+   setting existed -- `.card-embossed` on the module slabs, flat header and
+   column with a single `--line` hairline -- so the absence of overrides IS the
+   style, and a fresh install with no `chrome_style` row renders identically to
+   the old build. Do not "complete the set" by adding a `current` block. */
+
+/* ---------------------------------------------------------------------------
+   Inset -- the chrome is pressed INTO the page.
+
+   Top lip shaded, bottom lip lit: the inversion `.panel-inset` documents, and
+   the whole 3D cue. Swap the two and the panel pops out instead.
+
+   The selected module slab is the one surface left flush and raised, so "where
+   you are" reads as the only thing not sunken. That inversion is deliberate --
+   it is what keeps selection legible when every other surface is a recess.
+   --------------------------------------------------------------------------- */
+[data-chrome-style="inset"] .chrome-bar {
+  box-shadow:
+    /* The recess, falling from the top lip inward. */
+    inset 0 2px 4px -1px rgba(0, 0, 0, 0.22),
+    /* The top lip, in shadow. */ inset 0 1px 0 rgba(0, 0, 0, 0.16),
+    /* The bottom lip, catching the light. */ inset 0 -1px 0
+      color-mix(in srgb, var(--edge-lit-soft) 16%, transparent);
+}
+
+[data-chrome-style="inset"] .chrome-frame {
+  /* Horizontal rather than vertical: this is a tall column against the content,
+     so the recess falls from its right edge inward. */
+  box-shadow:
+    inset -2px 0 4px -1px rgba(0, 0, 0, 0.22),
+    inset -1px 0 0 rgba(0, 0, 0, 0.16),
+    inset 1px 0 0 color-mix(in srgb, var(--edge-lit-soft) 16%, transparent);
+}
+
+/* The module slabs become shallow grooves. Overridden HERE rather than by
+   changing `.card-embossed` itself: that class is used by cards across the app,
+   and this setting is about the chrome only -- editing it would restyle every
+   card on every screen. Same reason the hover below is scoped. */
+[data-chrome-style="inset"] .chrome-slab {
+  background-color: color-mix(in srgb, var(--paper) 55%, var(--paper-raised));
+  box-shadow:
+    inset 0 2px 4px -1px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(0, 0, 0, 0.16),
+    inset 0 -1px 0 color-mix(in srgb, var(--edge-lit-soft) 16%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--edge-lit) 12%, rgba(0, 0, 0, 0.18));
+}
+
+/* Flattens the raised hover, which would otherwise fight the recess. Needs to
+   out-specify `.card-embossed.card-raised-hover:hover` above -- the attribute
+   selector plus the descendant does that without an `!important`. */
+[data-chrome-style="inset"] .chrome-slab.card-raised-hover:hover {
+  background-color: color-mix(in srgb, var(--paper) 35%, var(--paper-raised));
+  box-shadow:
+    inset 0 2px 5px -1px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 rgba(0, 0, 0, 0.2),
+    inset 0 -1px 0 color-mix(in srgb, var(--edge-lit-soft) 20%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--edge-lit) 16%, rgba(0, 0, 0, 0.22));
+}
+
+/* ---------------------------------------------------------------------------
+   Outset -- the chrome sits ON TOP of the page.
+
+   Lit top edge, shaded underside, plus a cast: the classic raised bevel, and
+   the same shape `.card-embossed` uses, applied to the header and column too.
+   The hard `0 2px 0 var(--line)` offset is `Button`'s own vocabulary.
+   --------------------------------------------------------------------------- */
+[data-chrome-style="outset"] .chrome-bar {
+  /* The hairline would double the cast's top edge, so the shadow replaces it. */
+  border-bottom-color: transparent;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--edge-lit) 28%, transparent),
+    0 2px 0 0 var(--line),
+    0 6px 14px -4px rgba(0, 0, 0, 0.42);
+}
+
+[data-chrome-style="outset"] .chrome-frame {
+  /* Raised above `.app-main`, so its cast falls on the content rather than
+     under it. `.chrome-frame` is already `z-index: 31`, which clears the page but
+     stays under the floating layer -- so no z-index is set here. */
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--edge-lit) 26%, transparent),
+    inset -1px 0 0 rgba(0, 0, 0, 0.2),
+    4px 0 10px -3px rgba(0, 0, 0, 0.4);
+}
+
+[data-chrome-style="outset"] .chrome-slab {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--edge-lit) 30%, transparent),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.3),
+    0 0 0 1px color-mix(in srgb, var(--edge-lit) 12%, rgba(0, 0, 0, 0.22)),
+    0 2px 0 0 var(--line),
+    0 5px 10px -3px rgba(0, 0, 0, 0.38);
+}
+
+/* Grows the cast and brightens the lit edge, but still never translates -- the
+   module heading is a toggle and must not move out from under the pointer
+   mid-click, for the reason `.card-raised-hover` documents. */
+[data-chrome-style="outset"] .chrome-slab.card-raised-hover:hover {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--edge-lit) 42%, transparent),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.34),
+    0 0 0 1px color-mix(in srgb, var(--edge-lit) 18%, rgba(0, 0, 0, 0.26)),
+    0 3px 0 0 var(--line),
+    0 8px 16px -4px rgba(0, 0, 0, 0.44);
+}
+
+/* ---------------------------------------------------------------------------
+   Emboss -- the bevel is cut into the surface itself.
+
+   No cast at all: every edge is a 1px lit/shaded pair over a faint vertical
+   gradient, so the chrome reads as stamped metal rather than as a floating
+   slab. The quietest of the three, and the closest in weight to `current`.
+
+   The gradients are safe on these two surfaces, though `.panel-inset`
+   deliberately refuses one: a gradient bands visibly over a block of flowing
+   text that can be three lines or thirty, but the header is a fixed 3rem and
+   the column's gradient resolves over a known, scrolling-independent height.
+   --------------------------------------------------------------------------- */
+[data-chrome-style="emboss"] .chrome-bar {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--paper-raised) 90%, var(--ink)) 0%,
+    var(--paper-raised) 50%,
+    color-mix(in srgb, var(--paper-raised) 96%, var(--paper)) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--edge-lit) 30%, transparent),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.3),
+    0 1px 0 0 color-mix(in srgb, var(--edge-lit-soft) 10%, transparent);
+}
+
+[data-chrome-style="emboss"] .chrome-frame {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--paper-raised) 88%, var(--ink)) 0%,
+    var(--paper-raised) 22%,
+    color-mix(in srgb, var(--paper-raised) 94%, var(--paper)) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--edge-lit) 22%, transparent),
+    inset -1px 0 0 rgba(0, 0, 0, 0.26),
+    inset -2px 0 0 color-mix(in srgb, var(--edge-lit-soft) 8%, transparent);
+}
+
+[data-chrome-style="emboss"] .chrome-slab {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--paper-raised) 92%, var(--ink)) 0%,
+    var(--paper-raised) 45%,
+    color-mix(in srgb, var(--paper-raised) 96%, var(--paper)) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--edge-lit) 34%, transparent),
+    inset 1px 0 0 color-mix(in srgb, var(--edge-lit-soft) 14%, transparent),
+    inset -1px 0 0 rgba(0, 0, 0, 0.26),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.32),
+    0 1px 0 0 color-mix(in srgb, var(--edge-lit-soft) 10%, transparent);
+}
+
+[data-chrome-style="emboss"] .chrome-slab.card-raised-hover:hover {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--edge-lit) 50%, transparent),
+    inset 1px 0 0 color-mix(in srgb, var(--edge-lit-soft) 18%, transparent),
+    inset -1px 0 0 rgba(0, 0, 0, 0.3),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.36),
+    0 1px 0 0 color-mix(in srgb, var(--edge-lit-soft) 14%, transparent);
+}
+
+
+/* ============================================================================
+   Border weights -- Administration > Display Settings > Border Weight, stored
+   app-wide in the `border_widths` setting (migrations/0122) and emitted as three
+   CSS variables by the root layout.
+   ============================================================================
+
+   Three axes, deliberately independent, because they have different reach:
+
+     --chrome-outline-width   the frame's outer edges
+     --chrome-divider-width   rules inside the navigation column
+     --line-width             every other `--line` border, app-wide
+
+   All three default to 1px in `:root` above, which is exactly what the app drew
+   before this setting existed -- so an install that has never saved a value, or
+   one this migration has not run against, is pixel-identical to the old build.
+
+   WHY THESE ARE VARIABLES AND NOT TAILWIND UTILITIES.
+   `border-b`, `border-r` and `border` compile to a literal `1px`, and Tailwind
+   v4 exposes no theme variable for border width -- so no setting can reach them.
+   The surfaces below declare their widths here instead, and the components drop
+   the Tailwind *width* utility while keeping `border-*-color`. Keeping the color
+   in Tailwind matters: `--line` is a theme token, so the color still follows the
+   active theme with no work in this file.
+
+   WHY GROWING A BORDER IS SAFE.
+   Tailwind's preflight sets `box-sizing: border-box` on everything, so a wider
+   border eats into its own element rather than growing it:
+     - the header keeps its `h-12`;
+     - the navigation column keeps `--nav-tree-width`, which `.app-main`'s
+       `padding-left` is derived from -- so the content column cannot end up
+       disagreeing with the column's real width.
+   That is the whole reason this can be offered as a free-form number rather
+   than a pair of hand-checked presets. Do not reintroduce a `width` or
+   `padding` change here to "make room" for a thicker rule; nothing needs it.
+
+   The 1-4 clamp lives in src/lib/settings/border-widths.ts and is applied on
+   read AND on write, so neither a hand-edited database row nor a posted payload
+   can put a 40px rule on screen. */
+
+/* --- The chrome's outer edges -------------------------------------------- */
+
+/* The header's bottom rule. `.chrome-bar` is the same geometry-free hook the
+   chrome-style bevels use -- see that block for why it is not `.shell-header`. */
+.chrome-bar {
+  border-bottom-width: var(--chrome-outline-width);
+}
+
+/* The navigation column's right rule. On `.chrome-frame`, not `.shell-tree`, so
+   the admin picker's preview columns get the same weight without also becoming
+   `position: fixed`. */
+.chrome-frame {
+  border-right-width: var(--chrome-outline-width);
+}
+
+/* Each module slab's outline -- all four sides, which is what the slab draws. */
+.chrome-slab {
+  border-width: var(--chrome-outline-width);
+}
+
+/* --- The navigation column's inner rules --------------------------------- */
+
+/* Each hook names the sides it actually borders, rather than a blanket
+   `border-width`. That distinction is load-bearing -- see the app-wide axis
+   below for what goes wrong when a single-side rule is widened on all four.
+
+   Scoped under `.chrome-frame` so these only apply inside the navigation
+   column: `nav-divider` and `nav-field` are generic enough names that an
+   unscoped rule would invite reuse somewhere they would then silently follow
+   the wrong axis. */
+.chrome-frame .nav-divider {
+  border-bottom-width: var(--chrome-divider-width);
+}
+
+.chrome-frame .nav-field {
+  border-width: var(--chrome-divider-width);
+}
+
+.chrome-frame .nav-group {
+  border-width: var(--chrome-divider-width);
+}
+
+.chrome-frame .nav-group-head {
+  border-bottom-width: var(--chrome-divider-width);
+}
+
+/* --- Everything else ----------------------------------------------------- */
+
+/* The app-wide axis: every border that opted into the theme's neutral `--line`
+   color and is not one of the chrome surfaces above.
+   ---------------------------------------------------------------------------
+   THIS IS THE WIDEST-REACHING RULE IN THIS FILE. It hits cards, tables, inputs
+   and panels on every screen. Two things about its shape are load-bearing.
+
+   1. **It is PER SIDE, not a blanket `border-width`.** 120 call sites in this
+      app draw a single rule -- `border-b border-line` under a table header,
+      `border-t border-line` above a footer. A blanket `border-width` sets all
+      four sides, so every one of those would become a full box the moment the
+      setting moved off 1px. Matching each side against its own
+      `border-*-color` keeps a bottom rule a bottom rule.
+
+      `border-*-style` has to come along for the ride: preflight sets
+      `border: 0 solid`, and Tailwind's width utilities also set
+      `border-*-style: var(--tw-border-style)`. An element bordered only on one
+      side has `solid` on that side already, so restating it is a no-op there --
+      but it is what stops a side we widen from being invisible if a future
+      utility leaves the style unset.
+
+   2. **It matches the `border-line` CLASS, not `*`.** A bare `*` would also
+      thicken borders deliberately given another color -- a focused input's
+      `--brass` ring, an error panel's red edge, chart gridlines -- and would
+      fight every `border-0` in the codebase. `[class*="border-line"]` reaches
+      exactly the elements that opted into the theme's neutral line (745 call
+      sites, plus 6 `border-line/NN` opacity variants that the substring match
+      picks up too), which is what an admin means by "everything else".
+
+      CSS cannot select on a computed property value, so matching the class is
+      the only way to express "borders that use the line token". That does mean
+      an element given `--line` some other way is not covered -- acceptable,
+      since every such border in this app goes through the utility.
+
+   `:where()` holds specificity at zero, so any component that sets its own
+   width -- a `border-2` or a `border-0` at a call site -- still wins without
+   `!important`. This is a default, not an override.
+
+   Written as four flat rules, one per physical side, rather than one nested
+   block: this file uses CSS nesting nowhere else, and four long selectors need
+   no preprocessor behaviour to be correct. `border-x`/`border-y` fold into the
+   relevant pair (neither is currently used with `border-line`, but a future
+   call site gets the right weight for free). */
+:where([class*="border-line"]:not(.chrome-bar, .chrome-frame, .chrome-slab, .nav-divider, .nav-field, .nav-group, .nav-group-head)):where([class~="border"], [class~="border-t"], [class~="border-y"]) {
+  border-top-width: var(--line-width);
+}
+
+:where([class*="border-line"]:not(.chrome-bar, .chrome-frame, .chrome-slab, .nav-divider, .nav-field, .nav-group, .nav-group-head)):where([class~="border"], [class~="border-r"], [class~="border-x"]) {
+  border-right-width: var(--line-width);
+}
+
+:where([class*="border-line"]:not(.chrome-bar, .chrome-frame, .chrome-slab, .nav-divider, .nav-field, .nav-group, .nav-group-head)):where([class~="border"], [class~="border-b"], [class~="border-y"]) {
+  border-bottom-width: var(--line-width);
+}
+
+:where([class*="border-line"]:not(.chrome-bar, .chrome-frame, .chrome-slab, .nav-divider, .nav-field, .nav-group, .nav-group-head)):where([class~="border"], [class~="border-l"], [class~="border-x"]) {
+  border-left-width: var(--line-width);
+}
+
 /* The music player's bottom offset. It clears the section nav rather than
    covering it: the nav bar is the primary way round a module, so the player --
    which is transient, and which you can always reopen from the module -- gives
@@ -760,6 +1158,29 @@ html[data-music-player="minimized"] {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(10rem, 14rem));
   justify-content: start;
+}
+
+/* A short `.tile-grid-lg` on a compact screen: one full-width tile per row.
+
+   The exception to "collections size themselves". Auto-fit with a 14rem cap is
+   right for a collection you scan, but it leaves a 402px phone holding two or
+   three tiles against a ragged empty column — a card that looks unfinished
+   rather than a row that simply ended. Below the call site's threshold the
+   tiles become full-width bars instead, which fills the card and makes each one
+   a bigger tap target.
+
+   Only the *column template* changes: no height is set here, so a bar keeps the
+   tile's `min-h-24` and its contents stay centred. The cap is dropped rather
+   than raised because the whole point is to consume whatever width there is.
+
+   Wrapped in `max-width` rather than offered as a `max-lg:` variant because it
+   replaces a `grid-template-columns` that a utility can't override cleanly, and
+   a media query keeps the wide-screen rule provably untouched. The call site
+   decides *when* to apply it; this only says what "full width" means. */
+@media (max-width: 1023.98px) {
+  .tile-grid-lg-fill {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* A My Shortcuts tile: `Button`'s switch mechanic on a square, two-line target.

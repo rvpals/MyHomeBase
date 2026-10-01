@@ -76,7 +76,20 @@ export function AppHeader({
     // That second behaviour is the one that was asked for. Don't convert this
     // to padding on an ancestor.
     <header
-      className={`sticky top-0 z-20 mt-6 mb-6 flex h-12 items-center gap-2 border-b border-line bg-paper-raised px-3 max-lg:mt-3 max-lg:mb-4 ${className}`}
+      // `chrome-bar` is a pure styling hook: globals.css selects on it under
+      // `[data-chrome-style="…"]` to apply the admin's chosen bevel
+      // (migrations/0121), and gives it `border-bottom-width` from
+      // `--chrome-outline-width` (migrations/0122). It sets no geometry beyond
+      // that border, which is what lets the admin pickers put the same class on
+      // a miniature preview bar and get the real treatment.
+      //
+      // **`border-b` is deliberately absent** — only `border-line`, the color,
+      // is here. Tailwind's width utilities compile to a literal `1px`, so
+      // leaving `border-b` on would pin the rule at 1px and the Border Weight
+      // setting would do nothing. Don't add it back; `.chrome-bar` owns the
+      // width. Same for `border-b-0`, which would zero it at a specificity
+      // the stylesheet can't beat.
+      className={`chrome-bar sticky top-0 z-20 mt-6 mb-6 flex h-12 items-center gap-2 border-line bg-paper-raised px-3 max-lg:mt-3 max-lg:mb-4 ${className}`}
     >
       {onExpandPanel && (
         <button

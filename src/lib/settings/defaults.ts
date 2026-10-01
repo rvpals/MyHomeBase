@@ -3,14 +3,18 @@ import {
   defaultHomeWidgets,
   homeWidgetsToValue,
 } from "@/lib/home-dashboard";
+import { DEFAULT_BORDER_WIDTHS, borderWidthsToValue } from "./border-widths";
+import { DEFAULT_CHROME_STYLE } from "./chrome-style";
 import { DEFAULT_ICON_SET_ID } from "./icon-sets";
 import { DEFAULT_COLOR_THEME_ID } from "./themes";
 import type { Setting } from "./types";
 
 // Mirrors the seed INSERTs in migrations/0002_create_app_settings.sql,
 // migrations/0004_seed_color_theme_setting.sql,
-// migrations/0023_seed_icon_set_setting.sql, and
-// migrations/0067_seed_home_widgets_setting.sql.
+// migrations/0023_seed_icon_set_setting.sql,
+// migrations/0067_seed_home_widgets_setting.sql, and
+// migrations/0121_seed_chrome_style_setting.sql, and
+// migrations/0122_seed_border_widths_setting.sql.
 // "Reset to Default" restores the table to exactly this list — keep both in sync.
 export const DEFAULT_APP_SETTINGS: Setting[] = [
   {
@@ -27,6 +31,23 @@ export const DEFAULT_APP_SETTINGS: Setting[] = [
     key: "icon_set",
     value: DEFAULT_ICON_SET_ID,
     description: "Selected module icon set for the application.",
+  },
+  {
+    // The bevel on the utility header and the navigation tree — see
+    // migrations/0121. Imported rather than spelled out so this default can't
+    // drift from the catalogue in ./chrome-style.
+    key: "chrome_style",
+    value: DEFAULT_CHROME_STYLE,
+    description: "Border treatment for the utility header and the navigation tree.",
+  },
+  {
+    // All three axes at 1px — the weight the app used before the setting existed.
+    // Encoded rather than spelled out so this default can't drift from the
+    // catalogue in ./border-widths. See migrations/0122.
+    key: "border_widths",
+    value: borderWidthsToValue(DEFAULT_BORDER_WIDTHS),
+    description:
+      "Border weights in pixels: the chrome outline, the navigation dividers, and every other border.",
   },
   {
     // Every home screen card visible, in catalogue order. The encoding and the id

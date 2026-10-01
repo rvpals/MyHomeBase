@@ -1,4 +1,4 @@
-export type { Setting } from "./types";
+export type { Setting, ChromeStyle, BorderWidths } from "./types";
 export { settingSchema, startupMessageSchema, type SettingUpdate } from "./schema";
 export type { SettingsRepository } from "./ports";
 export {
@@ -26,3 +26,20 @@ export {
   type FontKey,
 } from "./themes";
 export { ICON_SETS, DEFAULT_ICON_SET_ID, getIconSet, type IconSet } from "./icon-sets";
+export {
+  CHROME_STYLES,
+  DEFAULT_CHROME_STYLE,
+  getChromeStyle,
+  resolveChromeStyle,
+  type ChromeStyleInfo,
+} from "./chrome-style";
+export {
+  BORDER_WIDTH_KEYS,
+  DEFAULT_BORDER_WIDTHS,
+  MAX_BORDER_WIDTH,
+  MIN_BORDER_WIDTH,
+  borderWidthsToValue,
+  parseBorderWidth,
+  resolveBorderWidths,
+  type BorderWidthInfo,
+} from "./border-widths";

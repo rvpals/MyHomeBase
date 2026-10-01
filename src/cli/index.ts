@@ -48,6 +48,7 @@ import { browseSqliteCommand } from "./browse-sqlite";
 import { savedSqlCommand } from "./saved-sql";
 import { recipesCommand } from "./recipes";
 import { takeAttendanceCommand } from "./take-attendance";
+import { todoCommand } from "./todo";
 import { taxLotsCommand } from "./tax-lots";
 import { simulateTickerCommand } from "./simulate-ticker";
 import { tickerOverviewCommand } from "./ticker-overview";
@@ -101,6 +102,7 @@ const commands: Record<string, Command> = {
   calculator: calculatorCommand,
   scratchpad: scratchpadCommand,
   recipes: recipesCommand,
+  todo: todoCommand,
   "take-attendance": takeAttendanceCommand,
   "attendance-report": attendanceReportCommand,
   "scan-music": scanMusicCommand,

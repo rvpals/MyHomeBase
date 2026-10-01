@@ -319,12 +319,12 @@ function SectionGroupBox({
   const isHeaderActive = run.groupHref !== undefined && run.groupHref === activeHref;
 
   return (
-    <li className="overflow-hidden rounded-md border border-line bg-paper">
+    <li className="nav-group overflow-hidden rounded-md border-line bg-paper">
       {run.groupHref ? (
         <Link
           href={run.groupHref}
           aria-current={isHeaderActive ? "page" : undefined}
-          className={`${headerClass} border-b border-line transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brass ${
+          className={`${headerClass} nav-group-head border-line transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brass ${
             isHeaderActive
               ? "bg-brass-soft text-brass-dark"
               : "text-muted hover:bg-line/50 hover:text-ink"
@@ -333,7 +333,7 @@ function SectionGroupBox({
           {headerContent}
         </Link>
       ) : (
-        <span className={`${headerClass} border-b border-line text-muted`}>{headerContent}</span>
+        <span className={`${headerClass} nav-group-head border-line text-muted`}>{headerContent}</span>
       )}
       <ul className="flex flex-col p-1">
         {run.sections.map((section) => (
@@ -376,7 +376,13 @@ function ModuleGroup({
     // its children separated only by indentation is the weakest signal available in a
     // column this narrow. `overflow-hidden` clips the children's spine to the box, so
     // the focus ring on the header below is `ring-inset` or it would be cut off.
-    <li className="card-embossed card-raised-hover overflow-hidden rounded-lg border border-line bg-paper-raised">
+    //
+    // `chrome-slab` is a pure styling hook carrying no geometry — globals.css
+    // selects on it under `[data-chrome-style="…"]` for the admin's chosen bevel
+    // (migrations/0121). It sits BESIDE `card-embossed` rather than replacing it:
+    // that class is shared with cards across the app, and `current` is defined as
+    // the look you get with no chrome override at all.
+    <li className="chrome-slab card-embossed card-raised-hover overflow-hidden rounded-lg border-line bg-paper-raised">
       <button
         type="button"
         onClick={onToggle}
@@ -388,7 +394,7 @@ function ModuleGroup({
         // so it is deliberately a step up in both size and face from its sections'
         // `text-sm` body font.
         className={`flex w-full items-center gap-2 px-2.5 py-2 text-left font-display text-base tracking-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brass ${
-          expanded ? "border-b border-line" : ""
+          expanded ? "nav-divider border-line" : ""
         } ${containsActive ? "font-semibold text-brass-dark" : "text-ink hover:bg-line/40"}`}
       >
         {/* No chevron. The slab says it already: expanded, it has a divider under
@@ -511,7 +517,7 @@ export function NavTree({
     return (
       <nav
         aria-label="Main navigation"
-        className={`shell-tree flex flex-col items-center border-r border-line bg-paper-raised ${className}`}
+        className={`shell-tree chrome-frame flex flex-col items-center border-line bg-paper-raised ${className}`}
       >
         <button
           type="button"
@@ -533,10 +539,17 @@ export function NavTree({
   return (
     <nav
       aria-label="Main navigation"
-      className={`shell-tree flex flex-col border-r border-line bg-paper-raised ${className}`}
+      // Two classes doing two different jobs, and the split matters: `shell-tree`
+      // is the LAYOUT (fixed, full height, `--nav-tree-width`) and `chrome-frame`
+      // is a geometry-free styling hook for the admin's chrome bevel. Anything
+      // that wants the bevel without becoming a fixed column — the admin picker's
+      // preview thumbnails — wears `chrome-frame` alone. Never move the bevel
+      // rules onto `shell-tree`; see globals.css's chrome-style block for the
+      // failure that caused.
+      className={`shell-tree chrome-frame flex flex-col border-line bg-paper-raised ${className}`}
     >
-      <div className="flex items-center gap-1 border-b border-line p-2">
-        <label className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-line bg-paper px-2 py-1.5 text-sm focus-within:border-brass focus-within:ring-2 focus-within:ring-brass-soft">
+      <div className="nav-divider flex items-center gap-1 border-line p-2">
+        <label className="nav-field flex min-w-0 flex-1 items-center gap-2 rounded-lg border-line bg-paper px-2 py-1.5 text-sm focus-within:border-brass focus-within:ring-2 focus-within:ring-brass-soft">
           <SlotIcon slot={FILTER_SLOT} className="h-4 w-4 shrink-0 text-muted" />
           <input
             ref={inputRef}

@@ -18,7 +18,7 @@ import {
 // The cards are driven off a list rather than written out, which is what keeps
 // each one's title, blurb and icon identical to its entry in the section panel —
 // they all come from the same two registries.
-const TOOL_SECTIONS: ToolsSection[] = ["sqlite-browser", "csv-browser"];
+const TOOL_SECTIONS: ToolsSection[] = ["todo", "sqlite-browser", "csv-browser"];
 
 export function ToolsDashboardView() {
   return (

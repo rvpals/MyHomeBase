@@ -8,6 +8,7 @@ import {
 } from "./schema";
 import type { DecodedImage } from "@/lib/shared/image-upload";
 import { buildFilterSql } from "./filters";
+import { LOG_CATEGORY_NAME } from "./journal";
 import { parseStoredJournalFilter, parseStoredPrefillFields } from "./schema";
 import type {
   EntryWriteData,
@@ -557,6 +558,21 @@ export class SqliteJournalRepository implements JournalRepository {
     const row = this.db
       .prepare("SELECT COUNT(*) AS total FROM jrn_entries WHERE is_locked = 1")
       .get() as { total: number };
+    return row.total;
+  }
+
+  countLogEntries(): number {
+    // TRIM/LOWER on the stored name so a hand-typed "log " counts the same as the
+    // seeded "Log" — `isLogEntry` is this loose, and a tile disagreeing with the
+    // Log section's own row count would read as a bug. DISTINCT because an entry
+    // could in principle carry both "Log" and "log" as separate managed names.
+    const row = this.db
+      .prepare(
+        `SELECT COUNT(DISTINCT c.entry_id) AS total
+           FROM jrn_entry_categories c
+          WHERE LOWER(TRIM(c.category_name)) = LOWER(?)`,
+      )
+      .get(LOG_CATEGORY_NAME) as { total: number };
     return row.total;
   }
 

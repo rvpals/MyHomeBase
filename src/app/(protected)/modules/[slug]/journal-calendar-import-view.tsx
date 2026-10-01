@@ -7,14 +7,20 @@ import { CollapsibleCard } from "@/components/collapsible-card";
 import { Comments } from "@/components/comments";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { Modal } from "@/components/modal";
+import { Progress3D } from "@/components/progress-3d";
+import { excerptContent, icsReviewIndexesForDates } from "@/lib/journal";
+import { formatDurationShort } from "@/lib/shared/date";
 import type {
   IcsImportFilter,
   IcsImportPresets,
   IcsImportReview,
   JournalCategory,
+  JournalEntry,
   JournalTag,
 } from "@/lib/journal";
 import {
+  getIcsReviewEntryAction,
+  quickUpdateIcsReviewEntryAction,
   readIcsFileAction,
   reviewIcsImportAction,
   runIcsImportAction,
@@ -26,6 +32,20 @@ const INPUT_CLASS =
 
 /** The category the import defaults to — mirrors LOG_CATEGORY_NAME in the lib. */
 const DEFAULT_CATEGORY = "Log";
+
+/**
+ * How many reviewed dates the dialog shows at once.
+ *
+ * A year's calendar can raise dozens of dates that already hold an entry, each
+ * needing its own decision. Rendering them all is a scrolling wall nobody reads
+ * to the end of, so it is paged and committed in batches instead. Ten is about a
+ * desktop screenful of the two-column cards.
+ *
+ * A constant rather than a module preference: a stored setting would want a
+ * migration and a settings row, which is not worth it for a number that has no
+ * reason to differ per install.
+ */
+const REVIEW_PAGE_SIZE = 10;
 
 
 export interface JournalCalendarImportViewProps {
@@ -155,10 +175,60 @@ export function JournalCalendarImportView({
   const [pendingReview, setPendingReview] = useState<
     { review: IcsImportReview; indexes: number[] } | undefined
   >(undefined);
-  /** Dates the reader has said "don't import" to in the open dialog. */
-  const [excludedDates, setExcludedDates] = useState<string[]>([]);
+  /**
+   * What the reader has decided about each reviewed date, in the open dialog.
+   *
+   * A date **absent from this map is undecided** — not the same as "keep it",
+   * which is why this is a map rather than the list of exclusions it replaced.
+   * `Commit reviewed` writes only the dates decided here, so an untouched date
+   * can never be written by a batch the reader hasn't worked through yet.
+   *
+   * `Import all` keeps the older, looser meaning for the whole-run case: import
+   * everything except the dates explicitly declined.
+   */
+  const [decisions, setDecisions] = useState<Record<string, "import" | "skip">>({});
+  /** Which page of reviewed dates is on screen. Reset whenever the list changes. */
+  const [reviewPage, setReviewPage] = useState(0);
+  /** The dialog's Instructions card — controlled, so it never persists (see below). */
+  const [isInstructionsOpen, setIsInstructionsOpen] = useState(false);
+  /**
+   * How many events the in-flight import was handed, or `undefined` when nothing
+   * is running. Drives the progress dialog.
+   *
+   * The bar it feeds is deliberately **indeterminate**: `runIcsImportAction` is
+   * one server action that returns only when the whole import is done, so the
+   * client cannot see "3 of 47" without splitting the write into chunked calls.
+   * Showing a fake advancing percentage would be a lie about what is known, so
+   * the count is reported and the motion is left unquantified.
+   */
+  const [importingCount, setImportingCount] = useState<number | undefined>(undefined);
+  /** The finished import, held until the reader clicks OK. */
+  const [importResult, setImportResult] = useState<
+    | {
+        importedCount: number;
+        updatedCount: number;
+        skippedCount: number;
+        excludedCount: number;
+        requestedCount: number;
+        durationMs: number;
+      }
+    | undefined
+  >(undefined);
   /** Which reviewed dates have their existing entries expanded. */
   const [expandedDates, setExpandedDates] = useState<string[]>([]);
+  /**
+   * The open quick-edit, stacked over the review dialog.
+   *
+   * `entry` is undefined while the full record is being read -- the review row
+   * only carries an excerpt of the content, which is not enough to edit from.
+   */
+  const [quickEdit, setQuickEdit] = useState<
+    { id: number; date: string; entry?: JournalEntry } | undefined
+  >(undefined);
+  const [quickEditTitle, setQuickEditTitle] = useState("");
+  const [quickEditContent, setQuickEditContent] = useState("");
+  /** Entry ids the reader has edited from this dialog — the "edited" badge. */
+  const [editedEntryIds, setEditedEntryIds] = useState<number[]>([]);
 
   function splitNames(value: string): string[] {
     return value
@@ -265,42 +335,49 @@ export function JournalCalendarImportView({
    * off) and the review dialog's confirm land here, so the two cannot disagree
    * about what gets written.
    */
-  async function runImport(indexes: number[], skipDates: string[] = []) {
-    if (indexes.length === 0 || !file) return;
+  async function runImport(indexes: number[], skipDates: string[] = []): Promise<boolean> {
+    if (indexes.length === 0 || !file) return false;
     setIsBusy(true);
     setError("");
     setNotice("");
+    // Opens the progress dialog. Set before the await so the reader sees it for
+    // the whole call rather than after it returns.
+    setImportingCount(indexes.length);
+    // Wall-clock, measured around the action itself. `performance.now()` rather
+    // than `Date.now()`: it is monotonic, so a clock adjustment mid-import
+    // cannot produce a negative or wildly wrong duration.
+    const startedAt = performance.now();
     try {
       const result = await runIcsImportAction(
         buildPayload(file, appliedFilter, indexes, skipDates),
       );
       if (!result.ok || !result.summary) {
         setError(result.error ?? "Failed to import the calendar events.");
-        return;
+        return false;
       }
 
       const { importedCount, updatedCount, skippedCount } = result.summary;
       const excludedCount = result.excludedByReviewCount ?? 0;
-      setNotice(
-        `Imported ${importedCount} ${importedCount === 1 ? "entry" : "entries"}` +
-          (updatedCount > 0 ? `, refreshed ${updatedCount}` : "") +
-          (skippedCount > 0 ? `, skipped ${skippedCount}` : "") +
-          // Counted separately from `skippedCount`: the reader chose these, so
-          // they are not the importer declining to act on something.
-          (excludedCount > 0
-            ? `, left out ${excludedCount} on ${
-                skipDates.length === 1 ? "the date you kept" : "the dates you kept"
-              }`
-            : "") +
-          ".",
-      );
+      setImportResult({
+        importedCount,
+        updatedCount,
+        skippedCount,
+        excludedCount,
+        requestedCount: indexes.length,
+        durationMs: performance.now() - startedAt,
+      });
       // The action hands back refreshed rows, so the grid stops offering the
       // imported ones as new. Its own ticks are cleared by `clearSelection`.
       if (result.rows) setRows(result.rows);
       router.refresh();
+      return true;
     } catch (caught) {
       setError(describeUploadFailure(caught, file));
+      return false;
     } finally {
+      // Cleared in `finally` so a thrown import cannot leave the progress
+      // dialog up with nothing behind it.
+      setImportingCount(undefined);
       setIsBusy(false);
     }
   }
@@ -338,8 +415,12 @@ export function JournalCalendarImportView({
         return;
       }
 
-      setExcludedDates([]);
+      setDecisions({});
+      setReviewPage(0);
       setExpandedDates([]);
+      // Cleared with the rest of the per-dialog answers: an "edited" badge from
+      // an earlier run must not follow a fresh review onto unrelated rows.
+      setEditedEntryIds([]);
       setPendingReview({ review: result.review, indexes });
     } catch (caught) {
       setError(describeUploadFailure(caught, file));
@@ -348,10 +429,14 @@ export function JournalCalendarImportView({
     }
   }
 
-  function toggleExcludedDate(date: string) {
-    setExcludedDates((current) =>
-      current.includes(date) ? current.filter((value) => value !== date) : [...current, date],
-    );
+  /**
+   * Records what the reader decided about one date.
+   *
+   * Explicit rather than a toggle, because "undecided" is now a third state that
+   * `Commit reviewed` depends on — a toggle could only ever flip between two.
+   */
+  function decideDate(date: string, decision: "import" | "skip") {
+    setDecisions((current) => ({ ...current, [date]: decision }));
   }
 
   function toggleExpandedDate(date: string) {
@@ -360,13 +445,171 @@ export function JournalCalendarImportView({
     );
   }
 
-  /** Confirms the open review and imports whatever survived it. */
+  /**
+   * Opens the quick-edit over the review dialog and reads the full entry.
+   *
+   * The review dialog stays mounted underneath: it holds the parsed file, the
+   * ticked indexes and every "don't import" answer so far, none of which would
+   * survive navigating to the entry's own screen.
+   */
+  async function openQuickEdit(entryId: number, date: string) {
+    setQuickEdit({ id: entryId, date });
+    setQuickEditTitle("");
+    setQuickEditContent("");
+    const result = await getIcsReviewEntryAction(entryId);
+    if (!result.ok || !result.entry) {
+      setQuickEdit(undefined);
+      setError(result.error ?? "Failed to load that entry.");
+      return;
+    }
+    setQuickEditTitle(result.entry.title);
+    setQuickEditContent(result.entry.content);
+    setQuickEdit({ id: entryId, date, entry: result.entry });
+  }
+
+  /**
+   * Saves the quick edit, then takes that date out of the import.
+   *
+   * Editing what is already there is an answer to the clash: the reader has
+   * dealt with the day by hand, so importing on top of it is not what they
+   * asked for. Dropping the date records the same "skip" decision the
+   * "Don't import" button does, so there is one exclusion mechanism rather than
+   * two -- and pressing Import on that date still puts it back, which is what
+   * makes an accidental edit recoverable.
+   */
+  async function saveQuickEdit() {
+    if (!quickEdit?.entry) return;
+    const { id, date } = quickEdit;
+
+    setIsBusy(true);
+    try {
+      const result = await quickUpdateIcsReviewEntryAction(id, {
+        title: quickEditTitle,
+        content: quickEditContent,
+      });
+      if (!result.ok) {
+        setError(result.error ?? "Failed to save your changes to that entry.");
+        return;
+      }
+
+      // Patch the one row in place rather than re-running the review: a title or
+      // content edit cannot move the entry off its date, so no group can change
+      // shape, and re-reviewing would re-upload the whole file for nothing.
+      setPendingReview((current) =>
+        current
+          ? {
+              ...current,
+              review: {
+                ...current.review,
+                groups: current.review.groups.map((group) =>
+                  group.date === date
+                    ? {
+                        ...group,
+                        existingEntries: group.existingEntries.map((existing) =>
+                          existing.id === id
+                            ? {
+                                ...existing,
+                                title: quickEditTitle,
+                                // Re-excerpted through the library's own helper,
+                                // so a shortened edit stops claiming there is
+                                // more to show and the "…" means the same thing
+                                // it does on a freshly built review.
+                                ...excerptContent(quickEditContent),
+                              }
+                            : existing,
+                        ),
+                      }
+                    : group,
+                ),
+              },
+            }
+          : current,
+      );
+
+      setEditedEntryIds((current) => (current.includes(id) ? current : [...current, id]));
+      // The reader has handled this day by hand; don't write over it.
+      decideDate(date, "skip");
+      setQuickEdit(undefined);
+      setNotice(
+        `Saved your changes to that entry. ${date} is now set to be left out of the import — ` +
+          "press Import on that date if you still want the calendar's events as well.",
+      );
+      // The Entries list and the module chrome are stale now.
+      router.refresh();
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  /** The dates explicitly declined — what the import narrows itself by. */
+  const excludedDates = Object.keys(decisions).filter((date) => decisions[date] === "skip");
+  /** The dates explicitly kept, which is exactly what `Commit reviewed` writes. */
+  const committableDates = Object.keys(decisions).filter(
+    (date) => decisions[date] === "import",
+  );
+
+  // The reviewed dates, and the slice of them on screen. Derived rather than
+  // held in state: `commitReviewedDates` rewrites the group list, and a second
+  // copy would have to be kept in step with it.
+  const reviewedGroups = pendingReview?.review.groups ?? [];
+  const pageCount = Math.max(1, Math.ceil(reviewedGroups.length / REVIEW_PAGE_SIZE));
+  // Clamped, not trusted: committing the last page shortens the list, and a
+  // `reviewPage` left pointing past the end would render an empty dialog.
+  const safePage = Math.min(reviewPage, pageCount - 1);
+  const pageStart = safePage * REVIEW_PAGE_SIZE;
+  const visibleGroups = reviewedGroups.slice(pageStart, pageStart + REVIEW_PAGE_SIZE);
+  /** How many dates have an answer of either kind — what Commit reports. */
+  const decidedCount = committableDates.length + excludedDates.length;
+
+  /** Confirms the open review and imports everything not declined. */
   async function confirmReview() {
     if (!pendingReview) return;
     const { indexes } = pendingReview;
     const skipDates = excludedDates;
     setPendingReview(undefined);
     await runImport(indexes, skipDates);
+  }
+
+  /**
+   * Writes just the dates the reader has decided, and leaves the rest up.
+   *
+   * The batched answer to a long review: work through a page, commit that much,
+   * and the dialog stays open on what is left rather than making the reader hold
+   * forty dates in their head to reach one Import button.
+   *
+   * Safe without re-reviewing the remainder, which is the reason only *decided*
+   * dates are committed: the write touched only those dates, so no undecided
+   * date's existing entries can have changed underneath the open dialog.
+   */
+  async function commitReviewedDates() {
+    if (!pendingReview || !file) return;
+    const groups = pendingReview.review.groups;
+    const indexes = icsReviewIndexesForDates(groups, committableDates);
+    const decided = new Set([...committableDates, ...excludedDates]);
+
+    // Nothing kept, but dates were declined: there is still progress to record,
+    // so drop them and skip the write rather than calling the importer with an
+    // empty selection (which would mean "import everything matching the filter").
+    // Branching on what `runImport` returns, not on the `error` state: this
+    // closure captured `error` from an earlier render, so reading it here would
+    // test a stale value and drop dates after a failed write.
+    if (indexes.length > 0) {
+      const wrote = await runImport(indexes);
+      if (!wrote) return;
+    }
+
+    const remaining = groups.filter((group) => !decided.has(group.date));
+    setDecisions({});
+    setReviewPage(0);
+
+    if (remaining.length === 0) {
+      setPendingReview(undefined);
+      return;
+    }
+
+    setPendingReview((current) =>
+      current ? { ...current, review: { ...current.review, groups: remaining } } : current,
+    );
   }
 
   const columns: DataGridColumn<IcsPreviewRow>[] = [
@@ -710,10 +953,18 @@ export function JournalCalendarImportView({
         </div>
       </CollapsibleCard>
 
-      {pendingReview && (
+      {/* Hidden while a write is in flight so the progress dialog isn't a third
+          stacked overlay: `Commit reviewed` deliberately keeps the review open
+          across the import, unlike `Import all` which closes it first. The state
+          is untouched, so the remaining dates come straight back afterwards. */}
+      {pendingReview && importingCount === undefined && (
         <Modal
           title="Existing entries on these dates"
-          description={reviewDescription(pendingReview.review, excludedDates.length)}
+          description={reviewDescription(
+            pendingReview.review,
+            excludedDates.length,
+            committableDates.length,
+          )}
           size="lg"
           isBusy={isBusy}
           onClose={() => setPendingReview(undefined)}
@@ -726,28 +977,151 @@ export function JournalCalendarImportView({
               >
                 Cancel
               </Button>
+              {/* Writes only what has been decided, then leaves the dialog open
+                  on the rest — the batched path. Disabled until something is
+                  decided, so it can never mean "import everything". */}
+              <Button
+                variant="secondary"
+                onClick={() => void commitReviewedDates()}
+                disabled={isBusy || decidedCount === 0}
+                title={
+                  decidedCount === 0
+                    ? "Decide a date first — press Import or Don't import on one"
+                    : `Write the ${committableDates.length} date${
+                        committableDates.length === 1 ? "" : "s"
+                      } you kept and clear the ${decidedCount} you've reviewed`
+                }
+              >
+                {isBusy ? "Committing…" : `Commit reviewed (${decidedCount})`}
+              </Button>
               <Button onClick={() => void confirmReview()} disabled={isBusy}>
-                {isBusy ? "Importing…" : "Import"}
+                {isBusy ? "Importing…" : "Import all"}
               </Button>
             </>
           }
         >
           <div className="flex flex-col gap-3">
-            {pendingReview.review.groups.map((group) => {
-              const isExcluded = excludedDates.includes(group.date);
+            {/* Controlled, so it never writes to the persisted card map.
+                `CollapsibleCard` remembers an *uncontrolled* card by its mount
+                order within the route, and this one only mounts while the dialog
+                is open — it would claim whatever ordinal happened to be next and
+                could read a card on the page behind it. */}
+            <CollapsibleCard
+              title="How this screen works"
+              open={isInstructionsOpen}
+              onOpenChange={setIsInstructionsOpen}
+            >
+              <div className="flex flex-col gap-2 text-xs text-muted">
+                <p>
+                  Each card below is <strong className="text-ink">one date</strong> where the
+                  calendar would write on a day your journal already has something. The left
+                  column is what the <strong className="text-ink">calendar file</strong> holds;
+                  the right is what is <strong className="text-ink">already in the journal</strong>.
+                </p>
+                <p>
+                  Decide each date with <strong className="text-ink">Import</strong> or{" "}
+                  <strong className="text-ink">Don&apos;t import</strong>. A date you
+                  haven&apos;t pressed either on counts as{" "}
+                  <strong className="text-ink">not yet reviewed</strong> and will not be written
+                  by Commit.
+                </p>
+                <p>
+                  <strong className="text-ink">Commit reviewed</strong> writes just the dates you
+                  kept, then clears every date you&apos;ve decided and leaves the rest here — so
+                  a long calendar can be worked through {REVIEW_PAGE_SIZE} dates at a time instead
+                  of in one sitting. Nothing outside the dates you decided is touched.
+                </p>
+                <p>
+                  <strong className="text-ink">Import all</strong> ignores the paging and imports
+                  every date except the ones you declined.{" "}
+                  <strong className="text-ink">Cancel</strong> writes nothing at all.
+                </p>
+                <p>
+                  <strong className="text-ink">Edit</strong> on a journal entry fixes its title
+                  and content without leaving this screen. Saving an edit also sets that date to{" "}
+                  <strong className="text-ink">Don&apos;t import</strong>, on the assumption you
+                  have handled the day by hand — press Import on it if you want the
+                  calendar&apos;s events as well.
+                </p>
+              </div>
+            </CollapsibleCard>
+
+            {/* Only shown when there is more than one page: a short review
+                should not have to read past paging chrome it doesn't need. */}
+            {pageCount > 1 && (
+              <div className="flex items-center justify-between gap-3 rounded-md border border-line bg-paper px-3 py-2 max-lg:flex-col max-lg:items-stretch">
+                <p className="text-xs text-muted">
+                  Showing {pageStart + 1}–{pageStart + visibleGroups.length} of{" "}
+                  {reviewedGroups.length} dates · page {safePage + 1} of {pageCount}
+                  {decidedCount > 0 && (
+                    <span className="text-brass-dark"> · {decidedCount} decided</span>
+                  )}
+                </p>
+                <div className="flex shrink-0 gap-2 max-lg:w-full">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={isBusy || safePage === 0}
+                    onClick={() => setReviewPage(Math.max(0, safePage - 1))}
+                  >
+                    Back
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={isBusy || safePage >= pageCount - 1}
+                    onClick={() => setReviewPage(Math.min(pageCount - 1, safePage + 1))}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {visibleGroups.map((group) => {
+              const decision = decisions[group.date];
+              const isExcluded = decision === "skip";
               const isExpanded = expandedDates.includes(group.date);
+              // One toggle for the whole date: the two columns sit next to each
+              // other, so expanding only one would leave them visibly unequal.
+              const hasTruncated =
+                group.incomingEvents.some((incoming) => incoming.isContentTruncated) ||
+                group.existingEntries.some((existing) => existing.isContentTruncated);
               return (
                 <div
                   key={group.date}
                   className={`rounded-md border p-3 ${
-                    isExcluded ? "border-line bg-paper/40 opacity-60" : "border-line bg-paper"
+                    isExcluded
+                      ? "border-line bg-paper/40 opacity-60"
+                      : decision === "import"
+                        ? "border-brass bg-paper"
+                        : "border-line bg-paper"
                   }`}
                 >
                   {/* Stacks below 1024px: the date and the two buttons don't fit
                       on one line on a phone. */}
                   <div className="flex items-start justify-between gap-3 max-lg:flex-col">
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-ink">{group.date}</p>
+                      <p className="flex flex-wrap items-baseline gap-x-2 text-sm font-medium text-ink">
+                        {group.date}
+                        {/* Undecided is a real state now — Commit skips it — so
+                            it says so rather than looking the same as kept. */}
+                        {decision === undefined ? (
+                          <span className="text-xs font-normal text-muted">
+                            not yet reviewed
+                          </span>
+                        ) : (
+                          <span
+                            className={`rounded-sm px-1 py-px text-[10px] font-semibold uppercase tracking-wide ${
+                              decision === "import"
+                                ? "bg-brass-soft text-brass-dark"
+                                : "bg-line text-muted"
+                            }`}
+                          >
+                            {decision === "import" ? "importing" : "left out"}
+                          </span>
+                        )}
+                      </p>
                       <p className="text-xs text-muted">
                         {group.existingEntries.length} existing{" "}
                         {group.existingEntries.length === 1 ? "entry" : "entries"} ·{" "}
@@ -756,59 +1130,155 @@ export function JournalCalendarImportView({
                       </p>
                     </div>
                     <div className="flex shrink-0 gap-2 max-lg:w-full">
+                      {/* Both stay pressable whatever the current answer is: a
+                          decision is changeable until it is committed, and the
+                          active one is shown by its variant. */}
                       <Button
                         size="sm"
-                        variant={isExcluded ? "secondary" : "primary"}
-                        disabled={isBusy || !isExcluded}
-                        onClick={() => toggleExcludedDate(group.date)}
+                        variant={decision === "import" ? "primary" : "secondary"}
+                        disabled={isBusy}
+                        onClick={() => decideDate(group.date, "import")}
                       >
                         Import
                       </Button>
                       <Button
                         size="sm"
                         variant={isExcluded ? "primary" : "secondary"}
-                        disabled={isBusy || isExcluded}
-                        onClick={() => toggleExcludedDate(group.date)}
+                        disabled={isBusy}
+                        onClick={() => decideDate(group.date, "skip")}
                       >
-                        Don&apos;t import {group.date}
+                        Don&apos;t import
                       </Button>
                     </div>
                   </div>
 
-                  <ul className="mt-2 flex flex-col gap-2 border-t border-line pt-2">
-                    {group.existingEntries.map((existing) => (
-                      <li key={existing.id} className="text-xs">
-                        <p className="text-ink">
-                          {existing.time !== "" && (
-                            <span className="text-muted">{existing.time} </span>
-                          )}
-                          {existing.title === "" ? (
-                            <span className="text-muted">(untitled)</span>
-                          ) : (
-                            existing.title
-                          )}
-                          {existing.isFromCalendar && (
-                            <span
-                              className="text-muted"
-                              title="This entry was itself imported from a calendar"
-                            >
-                              {" "}
-                              · from calendar
-                            </span>
-                          )}
-                        </p>
-                        {existing.content !== "" && (
-                          <p className="mt-0.5 whitespace-pre-wrap text-muted">
-                            {isExpanded || !existing.isContentTruncated
-                              ? existing.content
-                              : `${existing.content}…`}
-                          </p>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
+                  {/* The two sides, side by side on a wide screen and stacked
+                      below 1024px. Each column carries three cues for which
+                      side it is -- a heading, a tinted left rule, and a chip on
+                      every row -- because once they stack, position says
+                      nothing, and a single row read on its own still has to be
+                      unambiguous. */}
+                  <div className="mt-3 grid grid-cols-2 gap-3 border-t border-line pt-3 max-lg:grid-cols-1">
+                    <section className="rounded-md border-l-2 border-brass bg-brass-soft/30 py-2 pl-3 pr-2">
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-brass-dark">
+                        From ICS · importing{" "}
+                        <span className="font-normal normal-case tracking-normal text-muted">
+                          ({group.incomingEvents.length})
+                        </span>
+                      </h4>
+                      <ul className="mt-2 flex flex-col gap-2">
+                        {group.incomingEvents.map((incoming) => (
+                          <li key={incoming.eventIndex} className="text-xs">
+                            <p className="flex flex-wrap items-baseline gap-x-1.5 text-ink">
+                              <span className="rounded-sm bg-brass-soft px-1 py-px text-[10px] font-semibold uppercase tracking-wide text-brass-dark">
+                                ICS
+                              </span>
+                              {incoming.isAllDay ? (
+                                <span className="text-muted">all day</span>
+                              ) : (
+                                incoming.time !== "" && (
+                                  <span className="text-muted">{incoming.time}</span>
+                                )
+                              )}
+                              {incoming.title === "" ? (
+                                <span className="text-muted">(untitled)</span>
+                              ) : (
+                                <span>{incoming.title}</span>
+                              )}
+                              <span
+                                className="text-muted"
+                                title={
+                                  incoming.willRefresh
+                                    ? "This event was imported before — importing refreshes that entry in place"
+                                    : "No entry carries this event's UID yet — importing adds a new one"
+                                }
+                              >
+                                · {incoming.willRefresh ? "refreshes existing" : "new entry"}
+                              </span>
+                            </p>
+                            {incoming.location !== "" && (
+                              <p className="mt-0.5 text-muted">{incoming.location}</p>
+                            )}
+                            {incoming.content !== "" && (
+                              <p className="mt-0.5 whitespace-pre-wrap text-muted">
+                                {isExpanded || !incoming.isContentTruncated
+                                  ? incoming.content
+                                  : `${incoming.content}…`}
+                              </p>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
 
-                  {group.existingEntries.some((existing) => existing.isContentTruncated) && (
+                    <section className="rounded-md border-l-2 border-line bg-paper-raised py-2 pl-3 pr-2">
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">
+                        Existing entry · already here{" "}
+                        <span className="font-normal normal-case tracking-normal text-muted">
+                          ({group.existingEntries.length})
+                        </span>
+                      </h4>
+                      <ul className="mt-2 flex flex-col gap-2">
+                        {group.existingEntries.map((existing) => (
+                          <li key={existing.id} className="text-xs">
+                            <p className="flex flex-wrap items-baseline gap-x-1.5 text-ink">
+                              <span className="rounded-sm bg-line px-1 py-px text-[10px] font-semibold uppercase tracking-wide text-muted">
+                                Journal
+                              </span>
+                              {existing.time !== "" && (
+                                <span className="text-muted">{existing.time}</span>
+                              )}
+                              {existing.title === "" ? (
+                                <span className="text-muted">(untitled)</span>
+                              ) : (
+                                <span>{existing.title}</span>
+                              )}
+                              {existing.isFromCalendar && (
+                                <span
+                                  className="text-muted"
+                                  title="This entry was itself imported from a calendar"
+                                >
+                                  · from calendar
+                                </span>
+                              )}
+                              {editedEntryIds.includes(existing.id) && (
+                                <span
+                                  className="rounded-sm bg-brass-soft px-1 py-px text-[10px] font-semibold uppercase tracking-wide text-brass-dark"
+                                  title="You edited this entry from this dialog"
+                                >
+                                  edited
+                                </span>
+                              )}
+                              {/* An inline row action, so a text link rather
+                                  than a button — design.md → the button rules. */}
+                              <button
+                                type="button"
+                                disabled={isBusy || existing.isLocked}
+                                onClick={() => void openQuickEdit(existing.id, group.date)}
+                                title={
+                                  existing.isLocked
+                                    ? "This entry is locked — unlock it before editing"
+                                    : "Edit this entry's title and content without leaving the import"
+                                }
+                                className="text-brass-dark underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:text-muted disabled:no-underline"
+                              >
+                                Edit
+                              </button>
+                            </p>
+                            {existing.content !== "" && (
+                              <p className="mt-0.5 whitespace-pre-wrap text-muted">
+                                {isExpanded || !existing.isContentTruncated
+                                  ? existing.content
+                                  : `${existing.content}…`}
+                              </p>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  </div>
+
+                  {hasTruncated && (
                     <button
                       type="button"
                       onClick={() => toggleExpandedDate(group.date)}
@@ -817,16 +1287,166 @@ export function JournalCalendarImportView({
                       {isExpanded ? "Show less" : "Show more"}
                     </button>
                   )}
-
-                  <p className="mt-2 text-xs text-muted">
-                    Importing:{" "}
-                    {group.selectedEventTitles
-                      .map((title) => (title === "" ? "(untitled)" : title))
-                      .join(", ")}
-                  </p>
                 </div>
               );
             })}
+          </div>
+        </Modal>
+      )}
+
+      {/* Stacked over the review dialog, which stays mounted underneath: it
+          holds the parsed file, the ticked indexes and every "don't import"
+          answer, none of which would survive going to the entry's own screen.
+          Both modals are `z-50`, so this one paints on top by being rendered
+          after it. */}
+      {quickEdit && (
+        <Modal
+          title="Edit this entry"
+          description={
+            quickEdit.entry
+              ? `Changing the title and content of the entry on ${quickEdit.date}. Saving also ` +
+                `leaves ${quickEdit.date} out of this import — press Import on that date if you ` +
+                "want the calendar's events as well."
+              : "Reading the entry…"
+          }
+          size="md"
+          isBusy={isBusy}
+          onClose={() => setQuickEdit(undefined)}
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => setQuickEdit(undefined)}
+                disabled={isBusy}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => void saveQuickEdit()}
+                disabled={isBusy || !quickEdit.entry}
+              >
+                {isBusy ? "Saving…" : "Save"}
+              </Button>
+            </>
+          }
+        >
+          {quickEdit.entry ? (
+            // One column at every width: two short fields have nothing to gain
+            // from a second, and this reads the same on a phone as on a desktop.
+            <div className="flex flex-col gap-3">
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted">Title</span>
+                <input
+                  type="text"
+                  value={quickEditTitle}
+                  onChange={(changed) => setQuickEditTitle(changed.target.value)}
+                  disabled={isBusy}
+                  className={`w-full ${INPUT_CLASS}`}
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-muted">Content</span>
+                <textarea
+                  value={quickEditContent}
+                  onChange={(changed) => setQuickEditContent(changed.target.value)}
+                  disabled={isBusy}
+                  rows={10}
+                  className={`w-full ${INPUT_CLASS}`}
+                />
+              </label>
+              <p className="text-xs text-muted">
+                Only the title and content change here. This entry&apos;s date, time, place,
+                categories, tags and pin are left exactly as they are — edit those on the
+                entry&apos;s own screen.
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-muted">Reading the entry…</p>
+          )}
+        </Modal>
+      )}
+
+      {/* While the write is in flight. No ✕ and no footer: there is nothing to
+          decide, and `isBusy` already suppresses Escape and the overlay click so
+          a half-finished import can't be orphaned by a stray keypress. */}
+      {importingCount !== undefined && (
+        <Modal
+          title="Importing"
+          size="sm"
+          isBusy
+          onClose={() => {
+            /* Not dismissable while writing — the import owns this dialog. */
+          }}
+        >
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-ink">
+              Importing {importingCount} {importingCount === 1 ? "entry" : "entries"}…
+            </p>
+            {/* Indeterminate on purpose: one server action means the client
+                cannot see how far through it is. A percentage here would be
+                invented. */}
+            <Progress3D value={undefined} ariaLabel="Calendar import progress" />
+            <p className="text-xs text-muted">
+              This can take a moment on a large calendar. Please don&apos;t close this
+              tab — the import finishes on the server either way, but you&apos;d lose the
+              summary.
+            </p>
+          </div>
+        </Modal>
+      )}
+
+      {/* The ending the reader has to acknowledge, rather than a notice that
+          scrolls away unread. */}
+      {importResult && (
+        <Modal
+          title="Import finished"
+          size="sm"
+          onClose={() => setImportResult(undefined)}
+          footer={
+            <Button onClick={() => setImportResult(undefined)}>OK</Button>
+          }
+        >
+          <div className="flex flex-col gap-2 text-sm">
+            <p className="text-ink">
+              {importResult.importedCount}{" "}
+              {importResult.importedCount === 1 ? "entry" : "entries"} imported
+              {importResult.updatedCount > 0 && (
+                <> · {importResult.updatedCount} refreshed</>
+              )}
+              .
+            </p>
+            <dl className="flex flex-col gap-1 text-xs text-muted">
+              <div className="flex justify-between gap-3">
+                <dt>Events sent to the importer</dt>
+                <dd className="text-ink">{importResult.requestedCount}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt>New entries</dt>
+                <dd className="text-ink">{importResult.importedCount}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt>Existing entries refreshed</dt>
+                <dd className="text-ink">{importResult.updatedCount}</dd>
+              </div>
+              {importResult.skippedCount > 0 && (
+                <div className="flex justify-between gap-3">
+                  <dt>Skipped by the importer</dt>
+                  <dd className="text-ink">{importResult.skippedCount}</dd>
+                </div>
+              )}
+              {importResult.excludedCount > 0 && (
+                <div className="flex justify-between gap-3">
+                  {/* Counted apart from `skipped`: the reader chose these, so it
+                      is not the importer declining to act on something. */}
+                  <dt>Left out on dates you kept</dt>
+                  <dd className="text-ink">{importResult.excludedCount}</dd>
+                </div>
+              )}
+              <div className="flex justify-between gap-3 border-t border-line pt-1">
+                <dt>Total duration</dt>
+                <dd className="text-ink">{formatDurationShort(importResult.durationMs)}</dd>
+              </div>
+            </dl>
           </div>
         </Modal>
       )}
@@ -835,7 +1455,11 @@ export function JournalCalendarImportView({
 }
 
 /** The dialog's sub-heading: what is being asked, and what has been answered. */
-function reviewDescription(review: IcsImportReview, excludedCount: number): string {
+function reviewDescription(
+  review: IcsImportReview,
+  excludedCount: number,
+  keptCount: number,
+): string {
   const dateCount = review.groups.length;
   const parts = [
     `${dateCount} of the ${review.totalDateCount} ${
@@ -851,9 +1475,22 @@ function reviewDescription(review: IcsImportReview, excludedCount: number): stri
     );
   }
 
+  if (keptCount > 0) {
+    parts.push(`${keptCount} ${keptCount === 1 ? "date is" : "dates are"} set to import.`);
+  }
+
   if (excludedCount > 0) {
     parts.push(
       `${excludedCount} ${excludedCount === 1 ? "date is" : "dates are"} set to be left out.`,
+    );
+  }
+
+  // Said explicitly because it is what Commit will *not* write — the reader
+  // should not have to infer it from the two counts above.
+  const undecided = dateCount - keptCount - excludedCount;
+  if (undecided > 0 && keptCount + excludedCount > 0) {
+    parts.push(
+      `${undecided} ${undecided === 1 ? "is" : "are"} still to review.`,
     );
   }
 

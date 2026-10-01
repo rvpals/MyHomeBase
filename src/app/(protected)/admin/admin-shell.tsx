@@ -10,7 +10,16 @@ import type { ModuleSetting } from "@/lib/module-settings";
 import type { ModuleTextureSource } from "@/lib/module-texture";
 import type { Module } from "@/lib/modules";
 import type { NavigationTree, TreeModule } from "@/lib/navigation";
-import { DEFAULT_COLOR_THEME_ID, DEFAULT_ICON_SET_ID, type Setting } from "@/lib/settings";
+import {
+  DEFAULT_COLOR_THEME_ID,
+  DEFAULT_ICON_SET_ID,
+  parseBorderWidth,
+  resolveBorderWidths,
+  resolveChromeStyle,
+  type BorderWidths,
+  type ChromeStyle,
+  type Setting,
+} from "@/lib/settings";
 import { adminNav } from "./nav";
 import { resetAdminSettingsAction, saveAdminSettingsAction } from "./actions";
 
@@ -67,6 +76,10 @@ interface AdminContextValue {
   applicationName: string;
   colorThemeId: string;
   iconSetId: string;
+  /** The chrome bevel draft — commits with the shell's Save button. */
+  chromeStyle: ChromeStyle;
+  /** The three border-weight drafts — commit with the shell's Save button. */
+  borderWidths: BorderWidths;
   moduleSettings: Record<string, ModuleSettingDraft[]>;
   /** The app texture library, for the per-module background picker. */
   textureLibrary: DashboardTextureItem[];
@@ -79,6 +92,8 @@ interface AdminContextValue {
   setApplicationName: (value: string) => void;
   setColorThemeId: (id: string) => void;
   setIconSetId: (id: string) => void;
+  setChromeStyle: (id: ChromeStyle) => void;
+  setBorderWidth: (axis: keyof BorderWidths, value: number) => void;
   addModuleSetting: (slug: string) => void;
   updateModuleSetting: (
     slug: string,
@@ -198,6 +213,19 @@ export function AdminShell({
   const [iconSetId, setIconSetIdState] = useState(
     () => initialSettings.find((setting) => setting.key === "icon_set")?.value ?? DEFAULT_ICON_SET_ID,
   );
+  // Resolved rather than cast: the stored value reaches the draft as a plain
+  // string, and a garbled row must land on the default instead of putting an id
+  // no CSS rule matches into the picker and then saving it back.
+  const [chromeStyle, setChromeStyleState] = useState<ChromeStyle>(() =>
+    resolveChromeStyle(
+      initialSettings.find((setting) => setting.key === "chrome_style")?.value,
+    ),
+  );
+  const [borderWidths, setBorderWidthsState] = useState<BorderWidths>(() =>
+    resolveBorderWidths(
+      initialSettings.find((setting) => setting.key === "border_widths")?.value,
+    ),
+  );
   const [moduleSettings, setModuleSettings] = useState<Record<string, ModuleSettingDraft[]>>(() =>
     groupSettingsBySlug(initialModules, initialModuleSettings),
   );
@@ -235,6 +263,18 @@ export function AdminShell({
 
   function setIconSetId(id: string) {
     setIconSetIdState(id);
+    setIsDirty(true);
+  }
+
+  function setChromeStyle(id: ChromeStyle) {
+    setChromeStyleState(id);
+    setIsDirty(true);
+  }
+
+  // Clamped here as well as on save: the input is `type="number"`, and a browser
+  // will happily hand over 40 from the keyboard even with `max` set.
+  function setBorderWidth(axis: keyof BorderWidths, value: number) {
+    setBorderWidthsState((current) => ({ ...current, [axis]: parseBorderWidth(value) }));
     setIsDirty(true);
   }
 
@@ -283,6 +323,8 @@ export function AdminShell({
         applicationName,
         colorThemeId,
         iconSetId,
+        chromeStyle,
+        borderWidths,
         moduleSettings: moduleSettingsPayload,
       });
       setIsDirty(false);
@@ -312,6 +354,16 @@ export function AdminShell({
       setIconSetIdState(
         result.settings.find((setting) => setting.key === "icon_set")?.value ?? DEFAULT_ICON_SET_ID,
       );
+      setChromeStyleState(
+        resolveChromeStyle(
+          result.settings.find((setting) => setting.key === "chrome_style")?.value,
+        ),
+      );
+      setBorderWidthsState(
+        resolveBorderWidths(
+          result.settings.find((setting) => setting.key === "border_widths")?.value,
+        ),
+      );
       // Module settings are left alone by design (no seeded default to revert
       // to) — just re-key the draft against any new module ids from the reset.
       setModuleSettings((current) => {
@@ -335,6 +387,8 @@ export function AdminShell({
         applicationName,
         colorThemeId,
         iconSetId,
+        chromeStyle,
+        borderWidths,
         moduleSettings,
         textureLibrary,
         moduleTextureChoices,
@@ -345,6 +399,8 @@ export function AdminShell({
         setApplicationName,
         setColorThemeId,
         setIconSetId,
+        setChromeStyle,
+        setBorderWidth,
         addModuleSetting,
         updateModuleSetting,
         removeModuleSetting,

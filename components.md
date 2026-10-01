@@ -100,6 +100,7 @@ pattern instead of inventing one.
 | [`BigValueReadout`](#bigvaluereadout) | **One number, large, while it changes** — a playback or a running total | [src/components/big-value-readout.tsx](src/components/big-value-readout.tsx) | yes |
 | [`UsageMeter`](#usagemeter) | A stat tile whose value is part of a known total | [src/components/usage-meter.tsx](src/components/usage-meter.tsx) | no |
 | [`Progress3D`](#progress3d) | **Any progress bar** — work underway, 0..max | [src/components/progress-3d.tsx](src/components/progress-3d.tsx) | no |
+| [`RankBar`](#rankbar) | **One row of a ranked list** — magnitude relative to the biggest | [src/components/rank-bar.tsx](src/components/rank-bar.tsx) | no |
 | [`JournalViewer`](#journalviewer) | Full detail sheet for one journal entry | [src/components/journal-viewer.tsx](src/components/journal-viewer.tsx) | yes |
 | [`PhotoViewer`](#photoviewer) | **THE photo viewer** — stage, thumbnail strip, slide show, capture details, Journal link, favourite heart, EXIF panel | [src/components/photo-viewer.tsx](src/components/photo-viewer.tsx) | yes |
 | [`PhotoExifDialog`](#photoexifdialog) | **One photograph's EXIF data** — Common / GPS / Misc tabs, with a map button | [src/components/photo-exif-dialog.tsx](src/components/photo-exif-dialog.tsx) | yes |
@@ -974,7 +975,7 @@ A titled card whose body expands/collapses. The standard wrapper for a secondary
 |------|------|-------|
 | `title` | `string` | Always-visible header text. **Plain text, not HTML** — write `&` not `&amp;`. |
 | `titleIcon?` | `ReactNode` | Small decorative glyph before the title, inside the toggle. Takes the accent colour and stays `shrink-0`, so a long title truncates around it. **Decorative only** — the title text is the accessible name, so pass an `aria-hidden` icon (`TreeIcon` already is). |
-| `defaultOpen?` | `boolean` | Default `false`. Ignored when `open` is supplied. |
+| `defaultOpen?` | `boolean` | Default `false`. Ignored when `open` is supplied, and only applies on a reader's **first** visit — see *Remembered state* below. |
 | `open?` | `boolean` | Supply with `onOpenChange` for controlled use; omit both to let the card own its state. |
 | `onOpenChange?` | `(open: boolean) => void` | Called with the state being moved to. |
 | `headerAction?` | `ReactNode` | Rendered on the title line, left of the chevron, **always visible**. Clicking it does not toggle the card. |
@@ -987,6 +988,28 @@ A titled card whose body expands/collapses. The standard wrapper for a secondary
   <JournalEntryForm onSubmit={handleCreate} />
 </CollapsibleCard>
 ```
+
+### Remembered state
+
+An **uncontrolled** card remembers whether the reader left it open, in
+`localStorage`, per route. Nothing is required at the call site — every card under
+the protected layout is covered by `CollapsibleCardScope`, which is mounted once in
+[src/app/(protected)/layout.tsx](src/app/(protected)/layout.tsx). Stored state beats
+`defaultOpen`, so a card the reader collapsed stays collapsed next visit.
+
+A **controlled** card (`open` + `onOpenChange`) never persists — its owner decides,
+and a second source of truth underneath would fight it.
+
+Two things to know before relying on it:
+
+- **Cards are keyed by position on the page, not by title.** A third of the call
+  sites compute their title from live data (`Edit: ${entry.name}`), so a title key
+  would change whenever the data did. The consequence: if a page conditionally
+  renders a card *above* others, the ones below shift and can load with a
+  neighbour's state until clicked once. Known and accepted; nothing is lost.
+- **A card with `defaultOpen` that the reader has collapsed paints open for one
+  frame**, then closes. `localStorage` can't be read during SSR, so the read is in a
+  mount effect — the same trade `DataGrid` and `ChartToolbar` make.
 
 With a glyph on the title line — reuse an existing icon rather than hand-rolling
 a second one ([`TreeIcon`](src/components/tree-icons.tsx) covers `history`,
@@ -1199,7 +1222,11 @@ carry a `SlotIcon`)*; Household → Recipes' category filter
 *(controlled — All / one tab per category / Uncategorised, each tab's `content` is
 `null` and the grid renders below the strip rather than inside a panel, because every
 tab shows the same grid over a different row set and nesting it would remount the
-table on every click, losing its sort, page and stored column widths)*.
+table on every click, losing its sort, page and stored column widths)*; the home
+screen's TODO card, one tab per list
+[todo-widget.tsx](src/app/(protected)/todo-widget.tsx) *(uncontrolled, and unlike
+Recipes above each tab's `content` is that list's own items — the strip is told to
+scroll rather than wrap, since the tab count is the list count and unbounded)*.
 
 ---
 
@@ -2819,6 +2846,46 @@ fraction of the whole", and only up to 5 slices.
 
 **Used by:** Investments allocation and dividend-income breakdown —
 [stock-positions-view.tsx](src/app/(protected)/modules/[slug]/stock-positions-view.tsx).
+
+---
+
+## RankBar
+
+A flat proportional bar for **one row of a ranked list** — "how big is this one
+relative to the biggest". Pure presentation: handed a value and the value a full bar
+represents, it draws, and it does no ranking, sorting or formatting of its own.
+
+**Not a chart and not a progress bar.** [`ChartBar`](#chartbar) is a full Recharts
+figure with its own axis and height — it *replaces* a list rather than sitting inside
+one. [`Progress3D`](#progress3d) is for work underway, and its hard offset shadow is
+licensed because it reads as a slab in a groove; borrowing that for a static statistic
+would put it in the button vocabulary. So this is deliberately flat — a tinted track
+with a filled portion, no shadow, no border, no animation.
+
+- **Source:** [src/components/rank-bar.tsx](src/components/rank-bar.tsx)
+- **Import:** `import { RankBar } from "@/components/rank-bar";`
+- **Client component:** no
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `value` | `number` | This row's magnitude. Zero or negative renders an empty track. |
+| `max` | `number` | What a full bar represents — normally the first row's value, since a ranked list arrives sorted. `0` or less renders an empty track rather than dividing by it. |
+| `ariaLabel?` | `string` | Describes the bar for assistive tech. **Omit it and the bar is `aria-hidden`** — correct when the row already prints the number beside it, which is the common case. |
+| `className?` | `string` | Merged last. The default width is `w-12`; pass `w-24` or wider where the row has room. |
+
+```tsx
+{/* Measured against the first row, with the count printed alongside, so the
+    bar itself needs no label. */}
+<RankBar value={row.count} max={rows[0].count} className="max-lg:hidden" />
+```
+
+**Notes:** a non-zero value never renders narrower than 2% — without that floor a count
+of 1 against a top count of 400 rounds to 0% and reads as missing data rather than as
+"very small".
+
+**Used by:** the journal home screen's three ranked lists — Top Tags, Top Categories and
+Top 10 Words —
+[journal-view.tsx](src/app/(protected)/modules/[slug]/journal-view.tsx).
 
 ---
 

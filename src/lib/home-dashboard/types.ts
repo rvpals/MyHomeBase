@@ -34,6 +34,7 @@ export const HOME_WIDGET_IDS = [
   "dailyQuote",
   "todayInHistory",
   "stockGlance",
+  "todo",
 ] as const;
 
 export type HomeWidgetId = (typeof HOME_WIDGET_IDS)[number];
@@ -75,6 +76,12 @@ export const HOME_WIDGET_INFO: Record<HomeWidgetId, HomeWidgetInfo> = {
     label: "Stock Daily Glance",
     description:
       "Today's move across the portfolio, by type and by ticker. Shown only to someone who can open the Investments module, and only when there are positions to report.",
+  },
+  todo: {
+    id: "todo",
+    label: "TODO Lists",
+    description:
+      "The household's TODO lists as tabs, with a checkbox on each item. The lists and the items are shared — everyone granted the Tools module sees and ticks the same ones. Shown only to someone who can open Tools.",
   },
 };
 

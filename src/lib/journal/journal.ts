@@ -154,22 +154,38 @@ export function isLogEntry(entry: JournalEntry): boolean {
 }
 
 /**
- * `filter` with "the entry does (or does not) carry the Log category" ANDed on
- * — the condition behind the Entries browser's Main/Log tabs.
+ * Which population a filtered read is scoped to.
  *
- * Added as its **own group** rather than as one more condition inside the
- * reader's groups. A saved filter may join its conditions with OR, and pushing
- * the Log test in beside them would make it one more alternative rather than a
- * requirement: `category hasAny Trip OR title ~ beach` would come back as
- * `... OR category hasNone Log`, which matches nearly everything. A separate
- * group combined with the top-level AND is the only arrangement that holds for
- * both joins.
- *
- * Note this forces the top-level join to AND. That is intentional and it is why
- * the tabs can't leak: a filter whose groups were OR-joined still cannot pull a
- * Log entry into Main.
+ * `"all"` exists because the Entries browser's **Main tab now shows everything**,
+ * Log entries included — previously it was `"exclude"`, and a tag whose entries
+ * were all logged activities (a phone-call tag, say) counted on the Statistics
+ * card but produced an empty Main list when the reader clicked it. The count was
+ * right and the destination couldn't show it.
  */
-export function withLogCondition(filter: JournalFilter, include: boolean): JournalFilter {
+export type JournalLogScope = "only" | "exclude" | "all";
+
+/**
+ * `filter` scoped to one population — the condition behind the Entries browser's
+ * Main/Log tabs.
+ *
+ * `"all"` returns the filter **unchanged**, which is the whole reason this takes a
+ * three-state scope rather than a boolean: "no Log condition" is not expressible
+ * as either value of an `include` flag, and Main needs exactly that.
+ *
+ * For the other two the condition is added as its **own group** rather than as one
+ * more condition inside the reader's groups. A saved filter may join its
+ * conditions with OR, and pushing the Log test in beside them would make it one
+ * more alternative rather than a requirement: `category hasAny Trip OR title ~
+ * beach` would come back as `... OR category hasNone Log`, which matches nearly
+ * everything. A separate group combined with the top-level AND is the only
+ * arrangement that holds for both joins.
+ *
+ * Note those two force the top-level join to AND, so the Log tab can't leak: a
+ * filter whose groups were OR-joined still cannot pull a non-Log entry into it.
+ * `"all"` preserves the reader's own join, because it adds nothing to combine.
+ */
+export function withLogCondition(filter: JournalFilter, scope: JournalLogScope): JournalFilter {
+  if (scope === "all") return filter;
   return {
     join: "AND",
     groups: [
@@ -179,7 +195,7 @@ export function withLogCondition(filter: JournalFilter, include: boolean): Journ
         conditions: [
           {
             field: "category",
-            operator: include ? "hasAny" : "hasNone",
+            operator: scope === "only" ? "hasAny" : "hasNone",
             values: [LOG_CATEGORY_NAME],
           },
         ],
@@ -204,7 +220,7 @@ export function withLogCondition(filter: JournalFilter, include: boolean): Journ
  * note on `isLogEntry`, which is looser, and why.
  */
 export function listLogEntries(repo: JournalRepository, limit = 500): JournalEntry[] {
-  return findEntries(repo, withLogCondition({ join: "AND", groups: [] }, true), limit);
+  return findEntries(repo, withLogCondition({ join: "AND", groups: [] }, "only"), limit);
 }
 
 /**
@@ -216,7 +232,7 @@ export function listLogEntries(repo: JournalRepository, limit = 500): JournalEnt
  * is still excluded.
  */
 export function listNonLogEntries(repo: JournalRepository, limit = 500): JournalEntry[] {
-  return findEntries(repo, withLogCondition({ join: "AND", groups: [] }, false), limit);
+  return findEntries(repo, withLogCondition({ join: "AND", groups: [] }, "exclude"), limit);
 }
 
 export function listFilters(repo: JournalRepository): SavedJournalFilter[] {
@@ -346,10 +362,20 @@ export interface JournalEntryTally {
   totalCount: number;
   /** How many of `totalCount` are locked. Locked entries are cleared too. */
   lockedCount: number;
+  /**
+   * How many of `totalCount` carry the Log category. Overlaps `lockedCount` —
+   * the three numbers are separate views of one population, not a breakdown
+   * that sums to the total.
+   */
+  logCount: number;
 }
 
 export function countAllEntries(repo: JournalRepository): JournalEntryTally {
-  return { totalCount: repo.countAllEntries(), lockedCount: repo.countLockedEntries() };
+  return {
+    totalCount: repo.countAllEntries(),
+    lockedCount: repo.countLockedEntries(),
+    logCount: repo.countLogEntries(),
+  };
 }
 
 /**

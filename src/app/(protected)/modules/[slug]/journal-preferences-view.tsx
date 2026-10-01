@@ -11,6 +11,7 @@ import {
 } from "@/lib/journal";
 import type { PhotoArchiveDiagnosis } from "@/lib/journal-photos";
 import { checkPhotoAccessAction, saveJournalPreferencesAction } from "./journal-actions";
+import { restoreWordAction } from "./journal-word-actions";
 import { JournalLocationField, type PickedLocation } from "./journal-location-field";
 
 const SELECT_CLASS =
@@ -44,6 +45,11 @@ export function JournalPreferencesView({ preferences }: { preferences: JournalPr
   const [reviewBeforeCalendarImport, setReviewBeforeCalendarImport] = useState(
     preferences.reviewBeforeCalendarImport,
   );
+  // Held in state rather than read straight from the prop so a restore updates
+  // the list immediately; the server action hands back the new list.
+  const [excludedWords, setExcludedWords] = useState(preferences.excludedWords);
+  const [restoring, setRestoring] = useState<string | undefined>(undefined);
+  const [restoreError, setRestoreError] = useState<string | undefined>(undefined);
   const [isBusy, setIsBusy] = useState(false);
   const [message, setMessage] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -51,6 +57,26 @@ export function JournalPreferencesView({ preferences }: { preferences: JournalPr
   const [isChecking, setIsChecking] = useState(false);
   const [report, setReport] = useState<AccessReport | undefined>(undefined);
   const [checkError, setCheckError] = useState<string | undefined>(undefined);
+
+  async function handleRestore(word: string) {
+    setRestoring(word);
+    setRestoreError(undefined);
+    try {
+      const result = await restoreWordAction(word);
+      if (!result.ok) {
+        setRestoreError(result.error ?? `Failed to restore "${word}".`);
+        return;
+      }
+      // The action hands back the stored list, so the chip row reflects what was
+      // actually written rather than an optimistic guess.
+      setExcludedWords(result.words ?? []);
+      // The home screen's ranking is computed on the server and has to be
+      // recomputed now this word counts again.
+      router.refresh();
+    } finally {
+      setRestoring(undefined);
+    }
+  }
 
   async function handleSave() {
     setIsBusy(true);
@@ -65,6 +91,11 @@ export function JournalPreferencesView({ preferences }: { preferences: JournalPr
         photoRoot,
         handwritingSize,
         reviewBeforeCalendarImport,
+        // Carried through untouched. This form does not edit the word list — the
+        // (x) buttons below write it directly — but the save behind this button
+        // is *wholesale*, so omitting the field here would delete every stored
+        // exclusion the moment anyone pressed Save.
+        excludedWords,
       };
       const result = await saveJournalPreferencesAction(next);
       if (!result.ok) {
@@ -210,6 +241,49 @@ export function JournalPreferencesView({ preferences }: { preferences: JournalPr
 
         {checkError && <p className="text-sm text-red-400">{checkError}</p>}
         {report && <AccessReportPanel report={report} />}
+      </div>
+
+      {/* Its own group, and the one block here that writes immediately rather
+          than on Save: each (x) is its own action, so there is nothing to keep. */}
+      <div className="flex flex-col gap-2 border-t border-line pt-4">
+        <span className="block text-sm font-medium text-ink">Excluded words</span>
+        <p className="text-xs text-muted">
+          Words dismissed from the home screen&apos;s{" "}
+          <span className="text-ink">Top 10 most frequently used words</span> with the ✕ beside
+          them. These are on top of a built-in list of common English words (the, this, was) that
+          is never ranked and can&apos;t be edited here. Removing a word from this list starts
+          counting it again.
+        </p>
+
+        {restoreError && <p className="text-sm text-red-400">{restoreError}</p>}
+
+        {excludedWords.length === 0 ? (
+          <p className="text-sm text-muted">
+            No words excluded yet. Dismiss one from the home screen&apos;s word list to add it
+            here.
+          </p>
+        ) : (
+          <ul className="flex flex-wrap gap-2">
+            {excludedWords.map((word) => (
+              <li
+                key={word}
+                className="flex items-center gap-1.5 rounded-full bg-brass-soft px-2.5 py-1 text-sm text-brass-dark"
+              >
+                <span className="truncate">{word}</span>
+                <button
+                  type="button"
+                  onClick={() => handleRestore(word)}
+                  disabled={restoring !== undefined}
+                  title={`Count "${word}" again`}
+                  aria-label={`Count "${word}" again`}
+                  className="shrink-0 font-mono text-xs leading-none transition-colors hover:text-red-400 disabled:opacity-40"
+                >
+                  {restoring === word ? "…" : "✕"}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <div className="border-t border-line pt-4">

@@ -23,10 +23,18 @@ function fakeRepo(seed: Setting[]): SettingsRepository {
       return state.find((setting) => setting.key === key);
     },
     updateAll(updates) {
+      // Upserts, mirroring the real `ON CONFLICT` statement: a key with no row
+      // yet is inserted rather than dropped. The fake used to drop it, which is
+      // what let the silent-no-op bug through — see the regression test below.
       state = state.map((setting) => {
         const update = updates.find((item) => item.key === setting.key);
         return update ? { ...setting, value: update.value } : setting;
       });
+      for (const update of updates) {
+        if (!state.some((setting) => setting.key === update.key)) {
+          state = [...state, { key: update.key, value: update.value }];
+        }
+      }
     },
     setValue(key, value) {
       const existing = state.find((setting) => setting.key === key);
@@ -68,6 +76,16 @@ describe("updateSettings", () => {
   it("rejects an update with an empty value", () => {
     const repo = fakeRepo(sample);
     expect(() => updateSettings(repo, [{ key: "application_name", value: "" }])).toThrow();
+  });
+
+  // Regression: `updateAll` was `UPDATE ... WHERE key = ?`, so a key whose
+  // seed migration had not run on the target database was silently skipped —
+  // the save reported success and the value never persisted. Shipped once with
+  // `chrome_style` against a deployed DB (migrations/0121).
+  it("writes a key that has no row yet instead of silently skipping it", () => {
+    const repo = fakeRepo(sample);
+    const result = updateSettings(repo, [{ key: "chrome_style", value: "emboss" }]);
+    expect(result.find((setting) => setting.key === "chrome_style")?.value).toBe("emboss");
   });
 });
 

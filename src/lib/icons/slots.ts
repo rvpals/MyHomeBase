@@ -157,6 +157,20 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    id: "homescreen_card_todo",
+    label: "TODO card",
+    group: "Home screen",
+    where: "Home screen → the TODO card header, immediately left of the title.",
+    // `list`, not the section's `clipboard`. The two are different positions and read
+    // differently: in the section panel the glyph distinguishes one Tools screen from
+    // three siblings, while here it labels a card among unrelated cards, where the
+    // simpler "rows of things" mark is the clearer one. Either can be overridden
+    // independently, which is the point of giving them separate slots.
+    defaultConcept: "list",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     id: "homescreen_shortcut_add",
     label: "Add shortcut",
     group: "Home screen",
@@ -827,6 +841,21 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    // Derived by `sectionSlotId` from the section slug `todo`. The slug and this id are
+    // locked together: renaming either without the other silently stops matching and
+    // orphans any uploaded override.
+    id: "tools_section_todo",
+    label: "TODO Lists",
+    group: "Tools sections",
+    where: "Tools → section panel → TODO Lists.",
+    // `clipboard` — a checklist on a board. Deliberately not `list`, which is the home
+    // screen's one-column layout button and reads as "rows of something" rather than
+    // "things to tick off".
+    defaultConcept: "clipboard",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     // Derived by `sectionSlotId` from the section slug `sqlite-browser` (hyphen ->
     // underscore). The slug and this id are locked together: renaming either without
     // the other silently stops matching and orphans any uploaded override.
@@ -1459,6 +1488,20 @@ export const ICON_SLOTS: IconSlot[] = [
     group: "Admin navigation",
     where: "Admin → Daily Quote → Import from Newsletter.",
     defaultConcept: "newspaper",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    // Derived by `sectionSlotId` from the `adminNav` row id `todo-lists` (hyphen ->
+    // underscore). The row id and this id are locked together: renaming either without
+    // the other silently stops matching and orphans any uploaded override.
+    id: "admin_section_todo_lists",
+    label: "TODO Lists",
+    group: "Admin navigation",
+    where: "Admin → section panel → TODO Lists.",
+    // `clipboard`, matching `tools_section_todo` -- the admin screen and the module
+    // section administer the same thing and should read as the same thing.
+    defaultConcept: "clipboard",
     wired: true,
     namespace: "tree",
   },

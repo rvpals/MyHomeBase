@@ -9,7 +9,9 @@ import { CollapsibleCard } from "@/components/collapsible-card";
 import { listNamedMappings } from "@/lib/csv-import";
 import {
   JOURNAL_PREFILL_FIELDS,
+  countAllEntries,
   listCategories,
+  listEntries,
   listEnabledPrefillTemplates,
   listPrefillSuggestions,
   listPrefillTemplates,
@@ -17,6 +19,7 @@ import {
   listTags,
   listTopCategories,
   listTopTags,
+  topWords,
   resolveJournalPreferences,
   type JournalPrefillField,
 } from "@/lib/journal";
@@ -57,6 +60,9 @@ import { JournalView } from "./journal-view";
 const JOURNAL_MODULE_SLUG = "journal";
 const RECENT_JOURNAL_ENTRY_LIMIT = 25;
 const TOP_TAXONOMY_LIMIT = 10;
+// "Top 10 most frequently used words". Scanning every entry's text is the cost
+// of this figure — there is no cache, so it is recomputed per render.
+const TOP_WORD_LIMIT = 10;
 
 /**
  * Location category/tag name -> icon URL, for the screens that render a place's
@@ -106,9 +112,21 @@ function SectionBody({
       // from the same reads; that form is the New Journal Entry section now.
       const categories = listCategories(deps.journalRepo);
       const tags = listTags(deps.journalRepo);
+      // The word ranking honours the reader's dismissals, which live with the
+      // module's other preferences rather than in a table of their own.
+      const homeModule = getModuleBySlug(deps.moduleRepo, JOURNAL_MODULE_SLUG);
+      const homePreferences = resolveJournalPreferences(
+        homeModule ? listModuleSettingsFor(deps.moduleSettingsRepo, homeModule.id) : [],
+      );
       return (
         <JournalView
           entries={listRecentEntries(deps.journalRepo, RECENT_JOURNAL_ENTRY_LIMIT)}
+          tally={countAllEntries(deps.journalRepo)}
+          topWords={topWords(
+            listEntries(deps.journalRepo),
+            TOP_WORD_LIMIT,
+            homePreferences.excludedWords,
+          )}
           topTags={listTopTags(deps.journalRepo, TOP_TAXONOMY_LIMIT)}
           topCategories={listTopCategories(deps.journalRepo, TOP_TAXONOMY_LIMIT)}
           categoryIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("category", categories))}

@@ -34,9 +34,23 @@ export class SqliteSettingsRepository implements SettingsRepository {
   }
 
   updateAll(updates: SettingUpdate[]): void {
-    const stmt = this.db.prepare("UPDATE sys_app_settings SET value = ? WHERE key = ?");
+    // Upsert, not a plain UPDATE, for the same reason `setValue` below is one: a
+    // database that predates the migration seeding a given key has no row for
+    // it, and `UPDATE ... WHERE key = ?` against a missing row affects nothing
+    // and reports no error -- so the save returns success and persists nothing.
+    //
+    // That is not hypothetical. It shipped with `chrome_style` (migrations/0121)
+    // against a deployed database the migration had not yet run on: the picker
+    // saved, said "Saved", and every refresh came back with the old style. The
+    // seed row is still required -- it carries the `description` column, which
+    // this statement deliberately leaves alone so an upsert can't blank it --
+    // but the write no longer silently depends on the migration having run.
+    const stmt = this.db.prepare(
+      `INSERT INTO sys_app_settings (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    );
     const applyUpdates = this.db.transaction((items: SettingUpdate[]) => {
-      items.forEach((item) => stmt.run(item.value, item.key));
+      items.forEach((item) => stmt.run(item.key, item.value));
     });
     applyUpdates(updates);
   }

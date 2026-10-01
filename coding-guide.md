@@ -21,7 +21,7 @@ module is obvious from the name alone. New tables must follow this.
 | `mus_` | Music Library | `mus_tracks`, `mus_albums`, `mus_scan_runs`, `mus_track_lyrics`, `mus_playlists`, `mus_playlist_tracks`, `mus_play_events`, `mus_magic_list`, `mus_magic_list_tracks`, `mus_play_queue`, `mus_play_queue_state` |
 | `gam_` | Games | `gam_scores` |
 | `pho_` | Picture Gallery | `pho_albums`, `pho_album_photos`, `pho_magic_list`, `pho_magic_list_photos`, `pho_photo_index`, `pho_magic_scan_run` |
-| `tol_` | Tools | `tol_uploaded_databases`, `tol_uploaded_csv_files` |
+| `tol_` | Tools | `tol_uploaded_databases`, `tol_uploaded_csv_files`, `tol_todo_categories`, `tol_todo_items` |
 | `hsh_` | Household | `hsh_recipes`, `hsh_recipe_tags` |
 
 The `rei_` prefix (Real Estate Investment) was retired when that module was
@@ -59,6 +59,13 @@ utility, and `tol_uploaded_csv_files` sits under the same prefix without a renam
 the namespace been `sql_`, a CSV tool's table would have had to either live under a
 wrong name or force a table rename — which is the expensive thing this rule exists to
 avoid.
+
+It came due a third time at migration 0123: **TODO Lists** is the module's third
+utility and shares nothing with the first two but the prefix, which is the point —
+`tol_todo_categories` and `tol_todo_items` needed no new namespace and no rename. A
+`tdo_` prefix was considered and rejected on exactly the rule above: TODO Lists is a
+*section* of Tools, not a module, so claiming a fourth prefix would have implied
+otherwise in this very table.
 
 **Household is `hsh_` and not `rcp_`** (migration 0118), applying that lesson before
 it could cost anything. Recipes are the module's first feature, not its domain — the

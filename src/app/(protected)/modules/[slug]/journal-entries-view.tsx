@@ -15,6 +15,9 @@
 // `findJournalEntriesAction`, not here — a client-side split could be bypassed
 // by a saved filter and would disagree with the row counts.
 //
+// Main is **every** entry (scope `"all"`) and Log is the Log-only view, so the
+// two deliberately overlap rather than partitioning the journal.
+//
 // Route-local. The filter tree, its SQL compilation and its English description
 // all live in src/lib/journal/filters.ts — this file only presents them.
 
@@ -205,9 +208,10 @@ function MainTab({
     setIsLoading(true);
     setError(undefined);
     try {
-      // `false` — this tab never shows logged activities, whatever the filter
-      // says. The server ANDs the condition on; see findJournalEntriesAction.
-      const result = await findJournalEntriesAction(filter, false);
+      // `"all"` — Main shows every entry, logged activities included, so no Log
+      // condition is added. The scope is still decided on the server; see
+      // findJournalEntriesAction.
+      const result = await findJournalEntriesAction(filter, "all");
       if (!result.ok) {
         setError(result.error);
         return;

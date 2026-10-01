@@ -193,6 +193,7 @@ const PREFERENCES: JournalPreferences = {
   handwritingSize: "2xl",
   // Likewise not the default.
   reviewBeforeCalendarImport: true,
+  excludedWords: [],
 };
 
 function bundleOf(overrides: Partial<JournalMetadataBundle> = {}): JournalMetadataBundle {

@@ -18,6 +18,7 @@ import type {
   IcsImportFilter,
   IcsImportReview,
   IcsImportReviewEntry,
+  IcsImportReviewEvent,
   IcsImportReviewGroup,
   JournalEntry,
 } from "./types";
@@ -32,8 +33,15 @@ import type {
  */
 export const REVIEW_CONTENT_LIMIT = 200;
 
-/** Shortens `content` to the limit on a word boundary where one is close enough. */
-function excerptContent(content: string): { content: string; isContentTruncated: boolean } {
+/**
+ * Shortens `content` to the limit on a word boundary where one is close enough.
+ *
+ * Exported because the review dialog's quick-edit has to re-excerpt an entry it
+ * just rewrote, to patch the row in place without re-running the whole review.
+ * Re-deriving the word-boundary rule in the view would be logic in a `.tsx`, and
+ * two copies of it could disagree about what "…" means.
+ */
+export function excerptContent(content: string): { content: string; isContentTruncated: boolean } {
   const collapsed = content.trim();
   if (collapsed.length <= REVIEW_CONTENT_LIMIT) {
     return { content: collapsed, isContentTruncated: false };
@@ -61,6 +69,39 @@ function toReviewEntry(entry: JournalEntry): IcsImportReviewEntry {
     // Says "this one came from a calendar too", which is the difference between
     // a clash worth stopping for and a re-import of the reader's own earlier run.
     isFromCalendar: entry.source === ICS_SOURCE,
+    isLocked: entry.isLocked,
+  };
+}
+
+/**
+ * One incoming event, reduced to what the review dialog reads out.
+ *
+ * `willRefresh` is the one field that needs the repository: it asks whether this
+ * event's UID is already on an imported entry, which is exactly the question
+ * `walkIcsEvents` asks when it decides between create and update. Asked the same
+ * way here -- `findEntryIdsBySource` on the same source and uid -- so the dialog
+ * cannot promise a create that the import then turns into a refresh.
+ *
+ * An event with no UID always reports false: there is nothing to match it by, so
+ * the importer can only create it (and says so).
+ */
+function toReviewEvent(
+  repo: JournalRepository,
+  event: IcsEvent,
+  eventIndex: number,
+): IcsImportReviewEvent {
+  const { content, isContentTruncated } = excerptContent(event.description);
+  const uid = event.uid.trim();
+
+  return {
+    eventIndex,
+    time: event.time,
+    isAllDay: event.isAllDay,
+    title: event.summary,
+    content,
+    isContentTruncated,
+    location: event.location,
+    willRefresh: uid !== "" && repo.findEntryIdsBySource(ICS_SOURCE, uid).length > 0,
   };
 }
 
@@ -93,16 +134,19 @@ export function buildIcsImportReview(
   selectedIndexes?: number[],
 ): IcsImportReview {
   const selected = selectedIndexes ? new Set(selectedIndexes) : undefined;
-  const chosen = events.filter(
-    (event, index) => (selected ? selected.has(index) : true) && event.date !== "",
-  );
+  // The index is kept alongside the event: it is the event's position in the
+  // *filtered* list, which is what the selection grid ticks, and filtering here
+  // would otherwise renumber them.
+  const chosen = events
+    .map((event, index) => ({ event, index }))
+    .filter(({ event, index }) => (selected ? selected.has(index) : true) && event.date !== "");
 
-  const dates = distinctDates(chosen);
+  const dates = distinctDates(chosen.map(({ event }) => event));
   const groups: IcsImportReviewGroup[] = [];
   let unaffectedEventCount = 0;
 
   for (const date of dates) {
-    const eventsOnDate = chosen.filter((event) => event.date === date);
+    const eventsOnDate = chosen.filter(({ event }) => event.date === date);
     // One date is a one-day range. Using the existing range reader rather than
     // adding a by-date port method: the query is indexed either way, and a
     // second way to ask the same question is a second thing to keep in step.
@@ -116,8 +160,11 @@ export function buildIcsImportReview(
     groups.push({
       date,
       existingEntries: existing.map(toReviewEntry),
+      // Only built for a date that is actually being reviewed, so the per-event
+      // UID lookup costs nothing on the dates that pass straight through.
+      incomingEvents: eventsOnDate.map(({ event, index }) => toReviewEvent(repo, event, index)),
       selectedEventCount: eventsOnDate.length,
-      selectedEventTitles: eventsOnDate.map((event) => event.summary),
+      selectedEventTitles: eventsOnDate.map(({ event }) => event.summary),
     });
   }
 
@@ -140,6 +187,37 @@ export function reviewIcsFile(
 ): IcsImportReview {
   const { events } = readIcsFile(fileText, filter);
   return buildIcsImportReview(repo, events, selectedIndexes);
+}
+
+/**
+ * The event indexes to import for a given set of decided dates.
+ *
+ * What a batched commit needs: the reader has said "import" to some of the
+ * reviewed dates and not yet looked at the rest, and only the decided ones may
+ * be written. The indexes come straight off each group's `incomingEvents`, which
+ * already carry their position in the filtered list -- so the caller never needs
+ * the parsed events, which deliberately never leave the server.
+ *
+ * A date in `dates` with no matching group contributes nothing rather than
+ * throwing: the reader answered a dialog built from a snapshot, and a date that
+ * has since been committed and dropped from the list needs no action.
+ *
+ * Ascending, and duplicate-free, so the result is a stable selection whatever
+ * order the reader made their decisions in.
+ */
+export function icsReviewIndexesForDates(
+  groups: IcsImportReviewGroup[],
+  dates: string[],
+): number[] {
+  const wanted = new Set(dates);
+  const indexes = new Set<number>();
+
+  for (const group of groups) {
+    if (!wanted.has(group.date)) continue;
+    for (const incoming of group.incomingEvents) indexes.add(incoming.eventIndex);
+  }
+
+  return [...indexes].sort((left, right) => left - right);
 }
 
 /**

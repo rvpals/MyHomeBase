@@ -143,7 +143,7 @@ describe("sectionSlotId", () => {
       games: ["main", "scores", "configuration"],
       music: ["main", "magic", "player", "queue", "scan", "configuration"],
       gallery: ["main", "favorites", "albums", "magic-list"],
-      tools: ["main", "sqlite-browser", "csv-browser"],
+      tools: ["main", "todo", "sqlite-browser", "csv-browser"],
       // The two `-group` ids are the tree's group headings (Recipes, HSA Tracker),
       // which `SectionPanel` derives a slot for exactly as it does for a real row.
       household: ["main", "recipes", "hsa", "recipes-group", "hsa-group"],
@@ -155,6 +155,7 @@ describe("sectionSlotId", () => {
         "configuration-themes", "configuration-icons", "configuration-texture",
         "display-settings-widgets", "display-settings-floating", "display-settings-scratchpad",
         "user-management", "daily-quote", "daily-quote-add", "daily-quote-import",
+        "todo-lists",
         "security", "background-tasks", "sql-explorer", "about",
       ],
     };

@@ -91,6 +91,7 @@ alongside its row here.
 | [`scan-music`](#scan-music) | write | no (reads the music share) |
 | [`music-library`](#music-library) | read | no |
 | [`recipes`](#recipes) | read (writes with `--add`/`--made`/`--delete`) | no |
+| [`todo`](#todo) | read (writes with `--add`/`--done`/`--delete`/the list flags) | no |
 
 Flag parsing is `--key value` pairs via [parse-flags.ts](src/cli/parse-flags.ts),
 except `ticker-overview` and `set-startup-message`, which read positionals and bare
@@ -3312,5 +3313,54 @@ gap in convenience rather than in reach — every other field round-trips.
 `--show`, `--made` or `--delete` names an id that does not exist, or when a schema
 rejects a value.
 Source: [src/cli/recipes.ts](src/cli/recipes.ts)
+
+---
+
+## `todo`
+
+The household's TODO lists from a terminal — the same use-cases the Tools screen and
+the home card drive.
+
+```
+npm run cli -- todo
+npm run cli -- todo --all
+npm run cli -- todo --list "To BUY"
+npm run cli -- todo --add "Costco LR44 battery" --list "To BUY"
+npm run cli -- todo --add "Instrument analysis" --list "Work TODO" --notes "SpectraMax L"
+npm run cli -- todo --done 12
+npm run cli -- todo --undone 12
+npm run cli -- todo --delete 12
+npm run cli -- todo --new-list "Learning"
+npm run cli -- todo --rename-list 3 --name "Reading"
+npm run cli -- todo --delete-list 3
+npm run cli -- todo --clear-completed "To BUY"
+```
+
+**Input** — all optional; with no flags it prints every list and its outstanding
+items. `--all` includes the completed ones, which are otherwise summarised as a count.
+`--list` narrows to one list, matched on its **name**, case-insensitively — a terminal
+knows the name, not the id. `--add` needs `--list` to say where, and takes an optional
+`--notes` for the detail line. `--done`, `--undone` and `--delete` each take an item
+**id**, which the listing prints first on every row for exactly that reason.
+
+`--rename-list` takes the list's id plus `--name`, rather than the name plus a new one:
+renaming is the one operation where matching on the old name is ambiguous with
+recapitalising it. `--delete-list` is refused while the list still holds anything,
+completed items included, and prints the counts the refusal names.
+
+There is deliberately **no `--user` flag**. Every list and item is the household's
+(migration 0123), so nothing here is filtered by person; the `created_by` attribution a
+web add records is left unset from the terminal rather than inventing an identity for
+it.
+
+**Calls** — `buildTodoBoard`, `createItem`, `setItemDone`, `deleteItem`,
+`clearCompleted`, `listCategories`, `createCategory`, `renameCategory` and
+`deleteCategory`, all through `@/lib/todo` — the same use-cases and the same zod
+schemas the web app calls, so a blank title or a duplicate list name is rejected
+identically in both.
+
+**Exit code** — `1` when a list or item id does not exist, when a delete is refused
+because the list is not empty, or when a schema rejects a value.
+Source: [src/cli/todo.ts](src/cli/todo.ts)
 
 ---

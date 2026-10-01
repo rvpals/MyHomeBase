@@ -221,3 +221,32 @@ export function describeDayOffset(isoDate: string, today: string): string {
   if (days === 1) return "tomorrow";
   return days < 0 ? `${unit(-days, "day")} ago` : `in ${unit(days, "day")}`;
 }
+
+/**
+ * A short, human duration for a job that just finished — "1.4s", "2m 05s".
+ *
+ * For reporting elapsed wall-clock time back to the reader, not for arithmetic.
+ * The thresholds are chosen so the number always carries information: under a
+ * second, whole milliseconds; under a minute, one decimal place (1.4s is worth
+ * distinguishing from 1.9s); above that, minutes and zero-padded seconds,
+ * because "2m 5s" misreads as 2.5 minutes at a glance.
+ *
+ * A negative input is clamped to zero rather than rendered with a sign: it can
+ * only come from a clock adjustment mid-job, and "-3s elapsed" is never the
+ * right thing to show.
+ */
+export function formatDurationShort(milliseconds: number): string {
+  const total = Math.max(0, milliseconds);
+
+  if (total < 1000) return `${Math.round(total)}ms`;
+
+  const seconds = total / 1000;
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+
+  const wholeMinutes = Math.floor(seconds / 60);
+  const leftoverSeconds = Math.round(seconds - wholeMinutes * 60);
+  // 59.6s rounds to 60 and would render "2m 60s"; carry it into the minute.
+  if (leftoverSeconds === 60) return `${wholeMinutes + 1}m 00s`;
+
+  return `${wholeMinutes}m ${String(leftoverSeconds).padStart(2, "0")}s`;
+}

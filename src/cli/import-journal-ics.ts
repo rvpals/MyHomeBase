@@ -101,20 +101,40 @@ export async function importJournalIcsCommand(args: string[]): Promise<void> {
             : "") +
           ".",
       );
+      // Both halves of the comparison, each under its own label -- the terminal
+      // has no columns to put them in, so the label is the only thing saying
+      // which side a line belongs to.
       for (const group of review.groups) {
         console.log(
           `  ${group.date} — ${group.existingEntries.length} existing, ` +
             `${group.selectedEventCount} to import`,
         );
+
+        console.log("    From ICS:");
+        for (const incoming of group.incomingEvents) {
+          const when = incoming.isAllDay ? "all-day" : incoming.time || "     ";
+          console.log(
+            `      ${when}  ${incoming.title || "(untitled)"}` +
+              `  [${incoming.willRefresh ? "refreshes existing" : "new entry"}]`,
+          );
+          if (incoming.location !== "") console.log(`              @ ${incoming.location}`);
+          if (incoming.content !== "") {
+            console.log(
+              `              ${incoming.content}${incoming.isContentTruncated ? "…" : ""}`,
+            );
+          }
+        }
+
+        console.log("    Existing entry:");
         for (const existing of group.existingEntries) {
           const when = existing.time !== "" ? existing.time : "     ";
           console.log(
-            `    ${when}  ${existing.title || "(untitled)"}` +
+            `      ${when}  ${existing.title || "(untitled)"}` +
               (existing.isFromCalendar ? "  [from calendar]" : ""),
           );
           if (existing.content !== "") {
             console.log(
-              `            ${existing.content}${existing.isContentTruncated ? "…" : ""}`,
+              `              ${existing.content}${existing.isContentTruncated ? "…" : ""}`,
             );
           }
         }

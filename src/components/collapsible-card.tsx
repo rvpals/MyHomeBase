@@ -1,6 +1,13 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCardScope } from "@/components/collapsible-card-scope";
+import {
+  cardStateStorageKey,
+  parseCardStates,
+  resolveCardOpen,
+  withCardState,
+} from "@/lib/collapsible-state";
 
 export interface CollapsibleCardProps {
   /** Header text, always visible. */
@@ -13,7 +20,15 @@ export interface CollapsibleCardProps {
    * text-only truncation behaviour.
    */
   titleIcon?: ReactNode;
-  /** Whether the body starts expanded. Ignored when `open` is supplied. */
+  /**
+   * Whether the body starts expanded. Ignored when `open` is supplied.
+   *
+   * Only the *first* visit: an uncontrolled card remembers what the reader last
+   * did with it (in localStorage, per route — see `CollapsibleCardScope`), and
+   * that memory wins over this once it exists. A card the reader collapsed
+   * stays collapsed on their next visit even with `defaultOpen` set, which is
+   * the point. Controlled cards never persist.
+   */
   defaultOpen?: boolean;
   /**
    * Supply this (with `onOpenChange`) to drive the card from outside — e.g. to pop
@@ -66,10 +81,62 @@ export function CollapsibleCard({
   const isControlled = open !== undefined;
   const isOpen = isControlled ? open : uncontrolledOpen;
 
+  // Remembering this card's state, when it is uncontrolled and inside a scope.
+  //
+  // A **controlled** card never persists: its owner supplied `open`, so the
+  // owner decides, and writing a second source of truth underneath it would
+  // fight whoever is driving it.
+  const scope = useCardScope();
+  const persists = !isControlled && scope !== undefined;
+
+  // Claimed once, on first render, and held for this card's whole life. A ref
+  // rather than state because assigning it must not cause a render, and
+  // re-claiming on every render would hand the same card a new number each time.
+  const ordinalRef = useRef<number | undefined>(undefined);
+  if (persists && ordinalRef.current === undefined) {
+    ordinalRef.current = scope.claimOrdinal();
+  }
+  const ordinal = ordinalRef.current;
+
+  // Read on mount, not in the `useState` initializer. localStorage doesn't
+  // exist during SSR, so reading it during render would make the server and the
+  // first client render disagree and blow up hydration — the reason `data-grid`
+  // and `chart-toolbar` both read in an effect too.
+  //
+  // The cost is one frame: a card with `defaultOpen` that the reader has since
+  // collapsed paints open, then closes. Accepted over a blocking inline script
+  // in the document head, which would have to duplicate the key scheme.
+  useEffect(() => {
+    if (!persists || ordinal === undefined) return;
+    const stored = parseCardStates(window.localStorage.getItem(cardStateStorageKey(scope.pathname)));
+    setUncontrolledOpen(resolveCardOpen(stored, ordinal, defaultOpen));
+    // Deliberately keyed on the route and this card's slot, not on `defaultOpen`:
+    // a parent that recomputes `defaultOpen` mid-life must not yank the card back
+    // from where the reader put it. Re-reads on navigation, which is when the
+    // stored map it should be reading actually changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [persists, ordinal, scope?.pathname]);
+
   function toggle() {
     const next = !isOpen;
     if (!isControlled) setUncontrolledOpen(next);
     onOpenChange?.(next);
+
+    if (persists && ordinal !== undefined) {
+      // Read-modify-write rather than holding the route's map in state: other
+      // cards on this page own their own entries, and re-reading means two
+      // cards toggled in quick succession can't clobber each other with a
+      // stale copy. A write is a handful of bytes, so the extra parse is free.
+      const key = cardStateStorageKey(scope.pathname);
+      try {
+        const stored = parseCardStates(window.localStorage.getItem(key));
+        window.localStorage.setItem(key, JSON.stringify(withCardState(stored, ordinal, next)));
+      } catch {
+        // Storage full, or blocked in a private window. The card still opens
+        // and closes — only the remembering is lost, which is not worth
+        // breaking a click over.
+      }
+    }
   }
 
   // Shared by both placements below — in the toggle normally, in its own little button

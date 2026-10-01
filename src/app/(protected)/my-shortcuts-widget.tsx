@@ -36,6 +36,15 @@ import {
   uploadShortcutIconAction,
 } from "./my-shortcuts-actions";
 
+/**
+ * Below this many shortcuts, the compact grid becomes full-width bars.
+ *
+ * Four, because four is the first count that makes a clean 2x2 on a phone —
+ * at three, the grid leaves a ragged empty cell and the card reads unfinished.
+ * Only consulted on compact; the wide grid is unaffected at every count.
+ */
+const COMPACT_FILL_MAX_SHORTCUTS = 4;
+
 // Resolved once at module scope — `getIconSlot` reads the static registry, so
 // this is not I/O. The guard is for the registry, not the user: a removed id
 // costs the card its glyph rather than crashing it.
@@ -182,7 +191,17 @@ export function MyShortcutsWidget({
           // `gap-y` is larger than `gap-x`: each tile casts a 4px offset shadow
           // below itself (and grows to 5px on hover), so the row beneath needs
           // clearance or the depth reads as a collision rather than a lift.
-          <ul className="tile-grid-lg gap-x-3 gap-y-4 pb-1">
+          //
+          // `tile-grid-lg-fill` below the threshold, because CSS can't count the
+          // children into a template — `auto-fit` sizes columns to the container,
+          // never to how many items there are. So the count is decided here and
+          // the class says what to do about it.
+          <ul
+            className={
+              "tile-grid-lg gap-x-3 gap-y-4 pb-1" +
+              (shortcuts.length < COMPACT_FILL_MAX_SHORTCUTS ? " tile-grid-lg-fill" : "")
+            }
+          >
             {shortcuts.map((shortcut, index) => (
               <ShortcutTile
                 key={shortcut.id}

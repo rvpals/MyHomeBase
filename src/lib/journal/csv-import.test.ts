@@ -104,6 +104,11 @@ function fakeRepo(): JournalRepository {
     },
     countAllEntries: () => entries.length,
     countLockedEntries: () => entries.filter((entry) => entry.isLocked).length,
+    // Mirrors the SQL's case-insensitive trimmed match on the Log category.
+    countLogEntries: () =>
+      entries.filter((entry) =>
+        entry.categories.some((category) => category.trim().toLowerCase() === "log"),
+      ).length,
     deleteAllEntries() {
       const deleted = entries.length;
       entries = [];

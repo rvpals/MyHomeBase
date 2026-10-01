@@ -1,5 +1,75 @@
 # Change History
 
+## 2026-09-30 — TODO Lists, Chrome Style & Border Weight, and Journal review improvements
+
+### TODO Lists: a new Tools section, and a home-screen card
+
+The household's shared errand lists — **Tools → TODO Lists**, plus a home-screen card.
+Lists and items are shared by everyone granted the Tools module (deliberately the
+opposite of the Floating Scratchpad): "Pick up AML" has to be visible and tickable by
+whoever is next out of the house, so there is no private item here — the Scratchpad is
+still the place for one. Ticking moves an item into a readable "Completed (N)" group
+rather than deleting it; removing it is a separate action behind a hover ✕, with
+"Clear all" for the bulk case. Lists can be added and deleted from the Tools screen
+itself; renaming, reordering and administrative removal live on their own screen at
+**Administration → TODO Lists**. The home-screen card shows the lists as tabs with a
+checkbox per item — adding, editing and the Completed group are one click away via the
+card's title link. Also reachable from the CLI: `npm run cli -- todo`, with `--add`,
+`--done`, `--delete`, `--new-list`, `--rename-list` and more (see `CLI_registry.md`).
+Backed by two new tables, `tol_todo_categories` and `tol_todo_items` (migration 0123),
+seeded with three starter lists.
+
+### Administration → Display Settings: Chrome Style and Border Weight
+
+Two new styling controls for the app's own frame — the utility header and the desktop
+navigation tree — alongside the existing Color Themes and Icon Sets pickers.
+**Chrome Style** (migration 0121) picks the bevel those two surfaces wear: Flat (the
+existing look), Inset (pressed into the page), Outset (lifted off it, with the current
+module inverted and pressed in), or Emboss (a bevel cut into the surface, no cast
+shadow). **Border Weight** (migration 0122) is three independent 1–4px sliders — the
+chrome's outer edges, the navigation tree's internal dividers, and every other border
+in the app — so a reader can make the frame heavier or lighter without touching font or
+color. Both previews live-render using the same CSS the real chrome uses, so what the
+picker shows is what gets applied. Neither setting changes any layout: existing
+installs render identically until a style is chosen.
+
+### Journal: the Entries browser's Main tab now shows Log entries too
+
+Previously, a tag or category whose entries were *all* logged activities (a phone-call
+tag, say) would count correctly on the Statistics card but produce an empty list when
+clicked from Main — the count and the destination disagreed. Main now shows every
+entry regardless of the Log category; only the dedicated Log tab excludes non-Log
+entries as before.
+
+### Journal: calendar import review, reworked
+
+The "review before importing" dialog (Preferences → "Review before calendar import")
+now pages through reviewed dates ten at a time instead of rendering every one in a long
+scroll, and tracks each date's decision explicitly rather than only recording the ones
+declined — so a batch commit can never act on a date the reader hasn't actually looked
+at. A reviewed entry can now be quick-edited from inside the dialog without leaving it,
+and carries an "edited" badge once changed; a locked entry disables the quick-edit
+instead of offering an edit that would be refused. A progress dialog now covers the
+import itself, showing the event count (the bar is intentionally indeterminate — the
+import is one server call, so there's no real "3 of 47" to report).
+
+### Journal: a dismissible Top 10 Words list, and relative-size bars
+
+The home screen's Top Tags, Top Categories and Top 10 Words lists now each draw a small
+proportional bar (`RankBar`) beside every row, sized against that list's own top entry
+— useful at a glance, hidden on a phone. A word in the Top 10 list can now be dismissed
+with an ✕, which excludes it from the ranking everywhere (on top of, not instead of,
+the fixed list of common English words already filtered); dismissed words can be
+restored from Journal → Preferences → Excluded words.
+
+### Smaller changes
+
+- **`CollapsibleCard`** now remembers whether a reader left an uncontrolled card open or
+  closed, per route, in `localStorage` — a card collapsed yesterday stays collapsed on
+  the next visit. Controlled cards (`open`/`onOpenChange`) are unaffected.
+- **My Shortcuts** fills its compact grid with full-width bars instead of a ragged 2x2
+  when there are fewer than four shortcuts.
+
 ## 2026-09-29 — Household: Recipes, and a personal home-screen layout
 
 ### Household → Recipes: category tabs, a full record view, and pictures in the editor

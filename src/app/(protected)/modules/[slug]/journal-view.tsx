@@ -6,9 +6,15 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
+import { RankBar } from "@/components/rank-bar";
 import { SlotIcon } from "@/components/slot-icon";
 import { getIconSlot } from "@/lib/icons";
-import type { JournalEntry, JournalTaxonomyCount } from "@/lib/journal";
+import type {
+  JournalEntry,
+  JournalEntryTally,
+  JournalTaxonomyCount,
+  JournalWordCount,
+} from "@/lib/journal";
 import { journalEntriesFilterHref, TaxonomyIconThumbnail } from "./journal-shared";
 
 // Resolved once at module scope — `getIconSlot` reads the static registry, no I/O. The
@@ -18,6 +24,7 @@ const TOP_TAGS_SLOT = getIconSlot("journal_heading_top_tags")!;
 const TOP_CATEGORIES_SLOT = getIconSlot("journal_heading_top_categories")!;
 const RECENT_SLOT = getIconSlot("journal_card_recent_entries")!;
 import { runJournalSqlAction } from "./journal-actions";
+import { excludeWordAction } from "./journal-word-actions";
 
 const COLUMNS: DataGridColumn<JournalEntry>[] = [
   { key: "date", header: "Date", value: (entry) => entry.date, render: (entry) => entry.date },
@@ -92,6 +99,11 @@ function TaxonomyList({
   /** Name -> uploaded icon URL. Names without an icon are simply absent. */
   iconUrls: Record<string, string>;
 }) {
+  // Every bar is read against the first row, which is the largest because the
+  // top-N query returns them sorted. `?? 0` covers the empty list, where the
+  // early return below means no bar is drawn anyway.
+  const topCount = counts[0]?.entryCount ?? 0;
+
   return (
     <section>
       <h3 className="flex items-center gap-2 font-display text-sm text-brass-dark">
@@ -119,10 +131,13 @@ function TaxonomyList({
               <Link
                 href={hrefFor(count.name)}
                 title={titleFor(count.name)}
-                className="min-w-0 truncate text-ink hover:text-brass-dark hover:underline"
+                className="min-w-0 flex-1 truncate text-ink hover:text-brass-dark hover:underline"
               >
                 {count.name}
               </Link>
+              {/* Relative amount, measured against the most-used name in this
+                  list. Hidden narrow for the same reason as the word list's. */}
+              <RankBar value={count.entryCount} max={topCount} className="max-lg:hidden" />
               {/* The count sits right beside the name rather than at the far
                   edge — a fixed-size circle, so a 4-digit total doesn't stretch
                   into a pill and break the column of dots. */}
@@ -140,12 +155,114 @@ function TaxonomyList({
   );
 }
 
+// One headline count. Local to this view, like the eight other `StatTile`s in the
+// app — there is no shared stat-tile component, and design.md fixes the shape
+// (container / label / value) rather than the component. No glyph and no lift:
+// its siblings elsewhere carry neither, and this one sits inside a raised card.
+function StatTile({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-xl border border-line p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted">{label}</p>
+      {/* Thousands separated, with a fixed locale rather than the browser's, so
+          the figure doesn't change shape per visitor. */}
+      <p className="mt-1 font-display text-xl text-ink">{value.toLocaleString("en-US")}</p>
+    </div>
+  );
+}
+
+// The ranked word list. Built as its own list rather than reusing `TaxonomyList`
+// above: that one links every row to a filtered entry list and carries an
+// uploaded icon per name, neither of which a word has — a word is not a
+// taxonomy term, so there is nothing to filter by and nothing to illustrate.
+function TopWordsList({ words }: { words: JournalWordCount[] }) {
+  const router = useRouter();
+  // Which word is being dismissed, so its row can show it is in flight. One at a
+  // time: the server re-ranks on every change, so a second click before the first
+  // lands would be acting on a list that is about to be replaced.
+  const [pending, setPending] = useState<string | undefined>(undefined);
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  async function handleExclude(word: string) {
+    setPending(word);
+    setError(undefined);
+    try {
+      const result = await excludeWordAction(word);
+      if (!result.ok) {
+        setError(result.error ?? `Failed to exclude "${word}".`);
+        return;
+      }
+      // The ranking is computed on the server from every entry's text, so the
+      // new list arrives by re-rendering the page rather than by patching this
+      // one. `revalidatePath` in the action invalidates it; this asks for it.
+      router.refresh();
+    } finally {
+      setPending(undefined);
+    }
+  }
+
+  if (words.length === 0) {
+    return <p className="mt-2 text-sm text-muted">Not enough writing yet to rank words.</p>;
+  }
+
+  // Every bar is read against the most-used word, which is `words[0]` because the
+  // list arrives sorted. So the top word is always a full bar and the rest are
+  // its share — the differences between ranks 2-10 stay visible, which a share-of
+  // -all-words scale would flatten to slivers.
+  const topCount = words[0].count;
+
+  return (
+    <>
+      {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+      <ul className="mt-3 flex flex-col gap-2">
+        {words.map((row, index) => (
+          <li key={row.word} className="flex items-center gap-2 text-sm">
+            <span className="w-5 shrink-0 text-right font-mono text-xs text-muted">
+              {index + 1}.
+            </span>
+            <span className="min-w-0 flex-1 truncate text-ink">{row.word}</span>
+
+            {/* Relative amount, measured against the most-used word. Hidden on a
+                phone, where the row has no width to spare and the count beside
+                it already carries the number. */}
+            <RankBar value={row.count} max={topCount} className="max-lg:hidden" />
+
+            {/* The same fixed-size brass circle the taxonomy rows use for their
+                counts, so the two lists in this card read as one system. */}
+            <span
+              title={`Used ${row.count.toLocaleString("en-US")} ${row.count === 1 ? "time" : "times"}`}
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brass-soft font-mono text-[0.625rem] font-semibold leading-none text-brass-dark"
+            >
+              {row.count}
+            </span>
+
+            {/* A text link rather than a `Button`: design.md puts inline
+                row-level actions as plain links, and ten pill buttons down a
+                short list would be visually louder than the list itself. */}
+            <button
+              type="button"
+              onClick={() => handleExclude(row.word)}
+              disabled={pending !== undefined}
+              title={`Stop counting "${row.word}"`}
+              aria-label={`Stop counting "${row.word}"`}
+              className="shrink-0 px-1 font-mono text-xs leading-none text-muted transition-colors hover:text-red-400 disabled:opacity-40"
+            >
+              {pending === row.word ? "…" : "✕"}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 function cellToText(value: unknown): string {
   return value === null || value === undefined ? "" : String(value);
 }
 
 export function JournalView({
   entries,
+  tally,
+  topWords,
   topTags,
   topCategories,
   categoryIcons = {},
@@ -153,6 +270,18 @@ export function JournalView({
   canRunSql = false,
 }: {
   entries: JournalEntry[];
+  /**
+   * The journal's headline counts. Deliberately *not* derived from
+   * `entries.length` — that array is the LIMITed recent slice, so it would read
+   * as the page size once the journal grows past it.
+   *
+   * `lockedCount` and `logCount` are separate views of the same population
+   * rather than a breakdown: a locked Log entry is in both, so the two do not
+   * sum to `totalCount`.
+   */
+  tally: JournalEntryTally;
+  /** The most-used words across every entry, already ranked and trimmed. */
+  topWords: JournalWordCount[];
   topTags: JournalTaxonomyCount[];
   topCategories: JournalTaxonomyCount[];
   /** Name -> icon URL for the Statistics lists; absent names just show no icon. */
@@ -199,31 +328,78 @@ export function JournalView({
 
   return (
     <div className="flex flex-col gap-8">
+      {/* `defaultOpen` covers anything the card can show. It was tags-or-categories
+          only; the counters and the word list live here now, and a journal with
+          entries but no taxonomy would have hidden them behind a closed card. */}
       <CollapsibleCard
         title="Statistics"
         titleIcon={<SlotIcon slot={STATS_SLOT} className="h-4 w-4" />}
-        defaultOpen={topTags.length > 0 || topCategories.length > 0}
+        defaultOpen={
+          tally.totalCount > 0 ||
+          topWords.length > 0 ||
+          topTags.length > 0 ||
+          topCategories.length > 0
+        }
       >
-        {/* Two lists side by side on a wide screen, stacked below lg. */}
-        <div className="grid gap-8 lg:grid-cols-2">
-          <TaxonomyList
-            heading="Top Tags"
-            icon={<SlotIcon slot={TOP_TAGS_SLOT} className="h-4 w-4" />}
-            counts={topTags}
-            emptyMessage="No tags yet."
-            hrefFor={(name) => journalEntriesFilterHref("tag", name)}
-            titleFor={(name) => `Show entries tagged "${name}"`}
-            iconUrls={tagIcons}
-          />
-          <TaxonomyList
-            heading="Top Categories"
-            icon={<SlotIcon slot={TOP_CATEGORIES_SLOT} className="h-4 w-4" />}
-            counts={topCategories}
-            emptyMessage="No categories yet."
-            hrefFor={(name) => journalEntriesFilterHref("category", name)}
-            titleFor={(name) => `Show entries in "${name}"`}
-            iconUrls={categoryIcons}
-          />
+        {/* Three counters in the house stat-tile shape (design.md -> "Stat tiles
+            / summary numbers"). `max-lg:grid-cols-1` stacks them on a phone and
+            leaves the desktop columns untouched — the same arrangement the
+            attendance report's three tiles use. */}
+        <div className="mb-8 grid grid-cols-3 gap-4 max-lg:grid-cols-1">
+          <StatTile label="Total Entries" value={tally.totalCount} />
+          <StatTile label="Total Locked Entries" value={tally.lockedCount} />
+          <StatTile label="Total Log Entries" value={tally.logCount} />
+        </div>
+
+        {/* The three ranked lists, one row of boxes on a full screen and a single
+            stacked column compact. `lg:grid-cols-3` with `max-lg:grid-cols-1`
+            keeps the compact case a plain stack — three 10-row lists side by side
+            on a phone would each be too narrow to read a name in.
+
+            Each list is boxed rather than separated by a rule: at three abreast a
+            vertical divider reads as the edge of the middle column and leaves the
+            outer two looking unbounded. The box is the quiet card treatment
+            (`border border-line`, no shadow — design.md → "cards are calm"), not
+            a nested `CollapsibleCard`, which would put a second row of chevrons
+            inside a card that already has one. */}
+        <div className="grid gap-4 lg:grid-cols-3 max-lg:grid-cols-1">
+          <div className="rounded-xl border border-line p-4">
+            <TaxonomyList
+              heading="Top Tags"
+              icon={<SlotIcon slot={TOP_TAGS_SLOT} className="h-4 w-4" />}
+              counts={topTags}
+              emptyMessage="No tags yet."
+              hrefFor={(name) => journalEntriesFilterHref("tag", name)}
+              titleFor={(name) => `Show entries tagged "${name}"`}
+              iconUrls={tagIcons}
+            />
+          </div>
+          <div className="rounded-xl border border-line p-4">
+            <TaxonomyList
+              heading="Top Categories"
+              icon={<SlotIcon slot={TOP_CATEGORIES_SLOT} className="h-4 w-4" />}
+              counts={topCategories}
+              emptyMessage="No categories yet."
+              hrefFor={(name) => journalEntriesFilterHref("category", name)}
+              titleFor={(name) => `Show entries in "${name}"`}
+              iconUrls={categoryIcons}
+            />
+          </div>
+          <div className="rounded-xl border border-line p-4">
+            {/* Heading built to match `TaxonomyList`'s exactly — same element,
+                same classes, same 1rem leading space where its siblings put a
+                slot icon — so the three boxes read as one set and the three lists
+                start on the same baseline. No icon of its own: a glyph here would
+                mark a *place* and so would need a registered slot, whose id is
+                permanent, and that is not a decision to make mid-layout.
+                "Interesting stats" is gone as a band — it was a heading for a
+                section that is now simply the third column. */}
+            <h3 className="flex items-center gap-2 font-display text-sm text-brass-dark">
+              <span aria-hidden="true" className="h-4 w-4 shrink-0" />
+              Top 10 Words
+            </h3>
+            <TopWordsList words={topWords} />
+          </div>
         </div>
       </CollapsibleCard>
 

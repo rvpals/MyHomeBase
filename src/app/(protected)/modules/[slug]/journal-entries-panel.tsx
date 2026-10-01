@@ -98,11 +98,14 @@ export function JournalEntriesPanel({
   // alternative — falling back to every entry — is indistinguishable from a
   // filter that matched everything, which is the failure most likely to mislead.
   //
-  // The Main tab's rows: the reader's filter with "not a Log entry" ANDed on, so
-  // a saved filter can never pull a logged activity onto this tab.
+  // The Main tab's rows: the reader's filter with **no Log condition** — Main is
+  // every entry, logged activities included. It used to exclude them, which made
+  // a deep link from the Statistics card dead for any tag carried only by Log
+  // entries: the card counted them and this list was defined not to show them.
+  // The Log tab is now the one that narrows, rather than the two partitioning.
   const entries = queryError
     ? []
-    : findEntries(deps.journalRepo, withLogCondition(filter, false), ENTRIES_LIMIT);
+    : findEntries(deps.journalRepo, withLogCondition(filter, "all"), ENTRIES_LIMIT);
 
   // The Log tab is the section that used to live at /modules/journal/log, moved
   // in whole: the same unfiltered list, and the same two icon maps its viewer

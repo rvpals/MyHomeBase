@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { CollapsibleCardScope } from "@/components/collapsible-card-scope";
 import { MusicPlayerBar } from "@/components/music-player-bar";
 import { MusicPlayerProvider } from "@/components/music-player-provider";
 import { CompactNavStyleProvider } from "@/components/nav-style-context";
@@ -227,7 +228,12 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
             data-app-texture={appTexture.vars ? "" : undefined}
             style={appTexture.vars as CSSProperties | undefined}
           >
-            {children}
+            {/* Gives every `CollapsibleCard` under a route its ordinal, so the
+                cards remember whether the reader left them open. Wraps
+                `children` only — deliberately not the floating layer below,
+                whose windows outlive navigation and would otherwise consume
+                ordinals that belong to the page. */}
+            <CollapsibleCardScope>{children}</CollapsibleCardScope>
           </main>
           <MusicPlayerBar />
           {/* Below the player so the layer's pucks stack above the player's own,
