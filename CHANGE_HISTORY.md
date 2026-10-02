@@ -1,5 +1,96 @@
 # Change History
 
+## 2026-10-01 — Merge cleanup, a Log-only lens, Table Usage, and chrome refinements
+
+### "Review only Log entries"
+
+A toggle in the *Review multiple entries on same date* card's title bar. Turn it
+on and the card considers **only Log entries** — so a date appears when it holds
+two or more logged activities, and the written-entry pile-ups drop out of the
+list. Turn it off and the card is exactly as before.
+
+The narrowing happens **before** the grouping, which is the part worth knowing: a
+date with one Log entry beside two written ones does not appear at all, rather
+than appearing with a single row reading "1 of 1". A date needs two or more *Log*
+entries to be a pile of logged activities.
+
+The toggle stays on while you work — deleting or merging under it re-reads the
+list through the same lens rather than quietly widening back out. It's a lens for
+this sitting, not a saved preference, so it starts off each visit.
+
+The terminal has it as `npm run cli -- journal-same-date --log-only`.
+
+### "Would you like to delete the originals?"
+
+Saving a merged entry in *Journal → Review Data* used to leave you with the job
+half done: the new entry existed, the entries it came from were still in the
+list, and you had to tick them again and press Delete. Now a dialog follows the
+save — **"Merged entry created successfully. Would you like to delete the
+original 3 entries?"** — with **Delete 3** and **Keep them**.
+
+Deleting moves them to the recycle bin, the same place the Delete button sends
+things, so it is still undoable from *CSV Import → Correct*.
+
+### Still never deletes before the merge is safe
+
+The order is unchanged and deliberate: the merged entry is **written first**, and
+only then is the cleanup offered. Abandoning the draft, or a save that fails,
+still can't cost you any writing. If the cleanup itself fails, the message says
+the merge succeeded and only the delete didn't — so it can't read as having lost
+the new entry.
+
+The prompt offers exactly the entries the merge actually read. If one of the
+ticked entries had vanished before the merge ran, it is not in the offer — the
+old behaviour of reusing the raw selection could have binned an entry whose words
+never reached the merged entry.
+
+### The terminal gets the same thing as a flag
+
+`npm run cli -- journal-same-date --merge 41,42,43 --save --delete-originals`.
+A terminal can't ask mid-command, so the answer is given up front; it is ignored
+without `--save`, and it runs only after the merged entry is written.
+
+### Administration → SQL Explorer: a new Table Usage tab
+
+A fourth tab alongside SQL Query, Tables Explorer and Modules, ranking every table by
+size on disk, largest first — **table bytes and index bytes counted separately**, so a
+small-but-heavily-indexed table reads as a different problem from one that's simply
+large, with the split visible on hover. Each row shows a `RankBar` against the biggest
+table, its percentage of the whole database, its row count (a real `COUNT(*)`, not an
+estimate), and an **Open** button that jumps straight to that table in Tables Explorer.
+
+Measured on demand via a **Measure** button rather than on page load: the underlying
+read walks SQLite's `dbstat` virtual table, which touches every page in the file, so
+the other three tabs no longer pay for it just by being opened.
+
+### Home screen: cards are now grabbed by their frame, not a handle row
+
+The drag-to-reorder cards introduced on 2026-09-29 carried a permanent handle row above
+each card. That row is gone — **the whole card frame is now the grab target**, and the
+up/down keyboard buttons surface only on hover or keyboard focus, in the frame's
+top-right corner, instead of sitting on screen at all times. A resting card now costs no
+extra height at all; nothing else about the drag (mouse-only, 1280px and up, autosaved
+order) changed.
+
+### Desktop navigation tree: scroll position survives every click
+
+The tree is remounted by every navigation (it lives under the route, not above it), so a
+fresh scroll container used to start back at 0 — click a module near the bottom of a
+long list and the column would visibly snap to the top while the page loaded. The tree
+now remembers its own scroll offset in `localStorage` and restores it before the first
+paint, so the column holds still across the whole session.
+
+### Music player: the transport moves to a full-width panel
+
+The seek bar, transport buttons, volume slider and sleep timer move out from under the
+album cover into one panel spanning the full width of the screen, below the cover and
+lyrics — a full-width seek bar is a meaningfully better scrub target than the ~20rem one
+squeezed under the artwork. Narrow screens stack the same panel's three clusters
+(volume, transport, extras) in reading order. The transport and lyrics-panel buttons
+now share one set of glyphs so the two surfaces can't drift into two different play
+icons, and a missing cover shows a subtle spinning-vinyl placeholder instead of a blank
+tile while a track is playing.
+
 ## 2026-09-30 — TODO Lists, Chrome Style & Border Weight, and Journal review improvements
 
 ### TODO Lists: a new Tools section, and a home-screen card

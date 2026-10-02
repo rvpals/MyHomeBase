@@ -128,3 +128,44 @@ export interface SaveQueryInput {
   tags: string[];
   sqlStatement: string;
 }
+
+/**
+ * One table's footprint on disk, as the repository measures it.
+ *
+ * `bytes` is the table's own pages only; `indexBytes` is every index SQLite
+ * keeps for it. They are separate because a table that is small but heavily
+ * indexed looks like a different problem from one that is simply large, and
+ * folding them into a single figure would hide which it is. The Table Usage
+ * tab adds them for its ranking and shows the index share underneath.
+ */
+export interface TableUsageMeasurement {
+  name: string;
+  /** Bytes in the table's own b-tree pages. */
+  bytes: number;
+  /** Bytes in every index on the table. Zero when it has none. */
+  indexBytes: number;
+  /** Pages backing the table and its indexes together. */
+  pages: number;
+  /** Rows in the table, from a real COUNT(*) rather than a page estimate. */
+  rowCount: number;
+}
+
+/**
+ * One row of the Table Usage tab: a measurement plus the figures the view
+ * ranks and draws with, so the view does no arithmetic of its own.
+ */
+export interface TableUsageRow extends TableUsageMeasurement {
+  /** `bytes + indexBytes` — what the row is sorted and sized by. */
+  totalBytes: number;
+  /** Share of every measured table's total, 0..100. `0` when nothing was measured. */
+  percentOfTotal: number;
+}
+
+/** The Table Usage tab's whole payload: the ranked rows and their total. */
+export interface TableUsageReport {
+  rows: TableUsageRow[];
+  /** Summed `totalBytes` across every row. */
+  totalBytes: number;
+  /** The largest row's `totalBytes`, which is what a full bar represents. */
+  maxTotalBytes: number;
+}

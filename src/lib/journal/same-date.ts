@@ -23,6 +23,7 @@
 // takes the ticked entries, neither re-checking that they shared a date at all.
 
 import { excerptWords } from "./duplicates";
+import { isLogEntry } from "./journal";
 import type { JournalEntry } from "./types";
 
 /**
@@ -56,6 +57,28 @@ export interface SameDateGroup {
   entries: SameDateEntry[];
 }
 
+/** How `findSameDateGroups` narrows the population before it groups. */
+export interface FindSameDateGroupsOptions {
+  /**
+   * Consider only Log entries — the card's "Review only Log entries" toggle.
+   *
+   * **Filters before grouping, not after.** A date qualifies only when it holds
+   * two or more *Log* entries; one Log entry sitting beside two written ones is
+   * not a pile of logged activities and does not appear. Filtering after the
+   * grouping would instead mean "dates that have several entries, of which some
+   * are logs", which answers a different question and would show single-Log
+   * dates as "1 of 1".
+   *
+   * Log-ness is `isLogEntry` — the Log *category*, matched case-insensitively.
+   * Deliberately the in-memory predicate rather than the exact-match SQL path
+   * (`listLogEntries`): this screen already holds every entry in memory to group
+   * it, so re-querying would be a second read of the same rows, and the looser
+   * match is the safer error here — a hand-typed "log" entry belongs in a pile
+   * of logged activities.
+   */
+  logOnly?: boolean;
+}
+
 /**
  * Groups `entries` by their calendar date, keeping only the dates carrying more
  * than one entry.
@@ -68,10 +91,18 @@ export interface SameDateGroup {
  * variance to normalize away, and a string compare is also the correct
  * chronological sort.
  */
-export function findSameDateGroups(entries: JournalEntry[]): SameDateGroup[] {
+export function findSameDateGroups(
+  entries: JournalEntry[],
+  options: FindSameDateGroupsOptions = {},
+): SameDateGroup[] {
+  // Narrowed *before* grouping, not after, so the "2 or more" test counts only
+  // the population being asked about. See FindSameDateGroupsOptions.logOnly for
+  // why that is the meaningful reading of the question.
+  const population = options.logOnly ? entries.filter(isLogEntry) : entries;
+
   const grouped = new Map<string, JournalEntry[]>();
 
-  for (const entry of entries) {
+  for (const entry of population) {
     const existing = grouped.get(entry.date) ?? [];
     existing.push(entry);
     grouped.set(entry.date, existing);

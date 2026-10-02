@@ -2885,7 +2885,9 @@ of 1 against a top count of 400 rounds to 0% and reads as missing data rather th
 
 **Used by:** the journal home screen's three ranked lists — Top Tags, Top Categories and
 Top 10 Words —
-[journal-view.tsx](src/app/(protected)/modules/[slug]/journal-view.tsx).
+[journal-view.tsx](src/app/(protected)/modules/[slug]/journal-view.tsx); and Admin → SQL
+Explorer → **Table Usage**, where it ranks each table's size on disk against the largest
+([view.tsx](src/app/(protected)/admin/sql-explorer/view.tsx)).
 
 ---
 

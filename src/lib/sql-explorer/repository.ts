@@ -9,6 +9,7 @@ import type {
   SqlExecutionResult,
   TableInfo,
   TablePage,
+  TableUsageMeasurement,
 } from "./types";
 
 const READ_ONLY_STATEMENT_PATTERN = /^(SELECT|PRAGMA|EXPLAIN)/i;
@@ -26,16 +27,10 @@ export class SqliteSqlExplorerRepository implements SqlExplorerRepository {
   constructor(private db: Database.Database) {}
 
   listTables(): TableInfo[] {
-    const tables = this.db
-      .prepare(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
-      )
-      .all() as { name: string }[];
-
-    return tables.map((table) => {
-      const columns = this.db.prepare(`PRAGMA table_info('${table.name}')`).all() as TableInfoRow[];
+    return this.listTableNames().map((name) => {
+      const columns = this.db.prepare(`PRAGMA table_info('${name}')`).all() as TableInfoRow[];
       return {
-        name: table.name,
+        name,
         columns: columns.map((column) => ({
           name: column.name,
           type: column.type,
@@ -186,6 +181,58 @@ export class SqliteSqlExplorerRepository implements SqlExplorerRepository {
       .get(tableName) as { name: string } | undefined;
     if (!row) throw new Error(`No such table or view: ${tableName}`);
     return row.name;
+  }
+
+  readTableUsage(): TableUsageMeasurement[] {
+    // `dbstat` reports one row per b-tree page, named for the object that owns
+    // it — so an index appears under its own name, not its table's. Joining to
+    // sqlite_schema gives each page an owning table (`tbl_name` is the parent
+    // for an index, and the object itself for a table), and `type` says which
+    // of the two columns the bytes belong in.
+    //
+    // Aggregating in SQL rather than in JS keeps one row per table crossing the
+    // boundary instead of one per page; a large database has a great many pages.
+    const rows = this.db
+      .prepare(
+        `SELECT m.tbl_name                                                   AS name,
+                SUM(CASE WHEN m.type = 'index' THEN 0 ELSE d.pgsize END)     AS bytes,
+                SUM(CASE WHEN m.type = 'index' THEN d.pgsize ELSE 0 END)     AS indexBytes,
+                COUNT(*)                                                     AS pages
+           FROM dbstat d
+           JOIN sqlite_schema m ON m.name = d.name
+          WHERE m.tbl_name NOT LIKE 'sqlite_%'
+            AND EXISTS (
+              SELECT 1 FROM sqlite_schema t
+               WHERE t.type = 'table' AND t.name = m.tbl_name
+            )
+          GROUP BY m.tbl_name`,
+      )
+      .all() as { name: string; bytes: number; indexBytes: number; pages: number }[];
+
+    const measured = new Map(rows.map((row) => [row.name, row]));
+
+    // Driven from the table list, not from `dbstat`, so a table with no pages
+    // at all still appears — at zero rather than missing from the ranking.
+    return this.listTableNames().map((name) => {
+      const row = measured.get(name);
+      return {
+        name,
+        bytes: row?.bytes ?? 0,
+        indexBytes: row?.indexBytes ?? 0,
+        pages: row?.pages ?? 0,
+        rowCount: this.countRows(name),
+      };
+    });
+  }
+
+  /** Every real table's name, SQLite's internals excluded. */
+  private listTableNames(): string[] {
+    const rows = this.db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+      )
+      .all() as { name: string }[];
+    return rows.map((row) => row.name);
   }
 
   countRows(tableName: string): number {

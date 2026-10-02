@@ -48,18 +48,26 @@ function toErrorResult(error: unknown, fallback: string): ActionResult {
  * excerpt is cut to 100 words inside `findSameDateGroups`, and only grouped
  * dates survive, so a journal of mostly one-entry days ships almost nothing.
  */
-function readSameDateGroups(): SameDateGroup[] {
-  return findSameDateGroups(listEntries(deps.journalRepo));
+function readSameDateGroups(logOnly = false): SameDateGroup[] {
+  return findSameDateGroups(listEntries(deps.journalRepo), { logOnly });
 }
 
 export interface SameDateDataResult extends ActionResult {
   groups?: SameDateGroup[];
 }
 
-export async function loadJournalSameDateDataAction(): Promise<SameDateDataResult> {
+/**
+ * `logOnly` travels on every read and every mutation's refresh, rather than
+ * being remembered server-side: the toggle is view state the browser owns, and
+ * an action that re-read with the default would silently widen the list the
+ * moment the reader deleted something while the toggle was on.
+ */
+export async function loadJournalSameDateDataAction(
+  logOnly = false,
+): Promise<SameDateDataResult> {
   await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
-    return { ok: true, groups: readSameDateGroups() };
+    return { ok: true, groups: readSameDateGroups(logOnly) };
   } catch (error) {
     return toErrorResult(error, "Failed to load the same-date entries.");
   }
@@ -80,12 +88,13 @@ export interface RecycleSameDateResult extends SameDateDataResult {
  */
 export async function recycleJournalSameDateEntriesAction(
   ids: number[],
+  logOnly = false,
 ): Promise<RecycleSameDateResult> {
   await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const { movedCount, skippedCount } = recycleEntries(deps.journalRepo, ids);
     revalidatePath(JOURNAL_MODULE_PATH);
-    return { ok: true, movedCount, skippedCount, groups: readSameDateGroups() };
+    return { ok: true, movedCount, skippedCount, groups: readSameDateGroups(logOnly) };
   } catch (error) {
     return toErrorResult(error, "Failed to delete the selected entries.");
   }
@@ -95,6 +104,16 @@ export interface MergeDraftResult extends ActionResult {
   draft?: MergedEntryDraft;
   /** How many of the requested ids were found and actually merged. */
   mergedCount?: number;
+  /**
+   * The ids that actually went into the draft, in reading order.
+   *
+   * Returned as well as the count because the view offers to delete the
+   * originals once the merged entry is saved, and that offer must name exactly
+   * the entries whose content was captured. A requested id that no longer
+   * existed is skipped here, so re-using the reader's original selection for
+   * the delete could bin an entry this merge never read.
+   */
+  mergedIds?: number[];
 }
 
 /**
@@ -103,12 +122,18 @@ export interface MergeDraftResult extends ActionResult {
  * The grid's rows carry a 100-word excerpt, not the whole entry, so the full
  * entries are fetched here before merging — a draft built from excerpts would
  * silently truncate the reader's writing, which is the one failure this screen
- * must not have. Nothing is written: the draft goes back to the browser, the
- * reader edits it in the ordinary entry form, and saving it creates a new entry
- * while every source entry stays exactly where it was.
+ * must not have. Nothing is written by *this* action: the draft goes back to the
+ * browser and the reader edits it in the ordinary entry form.
  *
- * Ids that no longer exist are skipped rather than failing the whole merge, and
- * `mergedCount` reports what was actually used so the view can say so.
+ * Saving creates a new entry and still leaves every source entry in place — the
+ * view then *offers* to bin the originals, which is a separate call to
+ * `recycleJournalSameDateEntriesAction`. The order matters: the sources are only
+ * ever removed after the merged entry is safely written, so a merge abandoned or
+ * failed half way through cannot lose any writing.
+ *
+ * Ids that no longer exist are skipped rather than failing the whole merge;
+ * `mergedCount` and `mergedIds` report what was actually used, so the view can
+ * say so and can scope that delete offer correctly.
  */
 export async function buildJournalMergeDraftAction(ids: number[]): Promise<MergeDraftResult> {
   await requireModuleAccess(ACCESS_MODULE_SLUG);
@@ -119,7 +144,12 @@ export async function buildJournalMergeDraftAction(ids: number[]): Promise<Merge
     if (entries.length === 0) {
       return { ok: false, error: "None of the selected entries could be read." };
     }
-    return { ok: true, draft: mergeEntryDraft(entries), mergedCount: entries.length };
+    return {
+      ok: true,
+      draft: mergeEntryDraft(entries),
+      mergedCount: entries.length,
+      mergedIds: entries.map((entry) => entry.id),
+    };
   } catch (error) {
     return toErrorResult(error, "Failed to build the merged entry.");
   }

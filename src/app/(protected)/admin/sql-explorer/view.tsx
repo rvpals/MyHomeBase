@@ -24,12 +24,15 @@ import {
   type SqlExecutionResult,
   type TableInfo,
   type TablePage,
+  type TableUsageReport,
 } from "@/lib/sql-explorer";
+import { RankBar } from "@/components/rank-bar";
 import {
   countTableRowsAction,
   deleteSavedQueryAction,
   executeSqlAction,
   loadTablePageAction,
+  loadTableUsageAction,
   saveQueryAction,
   truncateTableAction,
 } from "./actions";
@@ -296,6 +299,103 @@ function useTablePage() {
   }
 
   return { page, isLoading, error, load, clear };
+}
+
+/**
+ * What each table costs on disk, ranked, with a button to go read it.
+ *
+ * Measured on demand rather than with the page: the figures come from SQLite's
+ * `dbstat`, which walks the whole file, plus a row count per table. That is
+ * seconds on a large database and nobody opening the SQL Query tab should pay
+ * for it.
+ */
+function TableUsageTab({ onOpenInSql }: { onOpenInSql: (tableName: string) => void }) {
+  const [report, setReport] = useState<TableUsageReport | undefined>(undefined);
+  const [isMeasuring, setIsMeasuring] = useState(false);
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  async function measure() {
+    setIsMeasuring(true);
+    setError(undefined);
+    try {
+      const response = await loadTableUsageAction();
+      if (!response.ok) {
+        setError(response.error ?? "Failed to measure table usage.");
+        return;
+      }
+      setReport(response.report);
+    } finally {
+      setIsMeasuring(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-3 max-lg:flex-col max-lg:items-stretch">
+        <Button onClick={measure} disabled={isMeasuring}>
+          {isMeasuring ? "Measuring…" : report ? "Measure again" : "Measure"}
+        </Button>
+        <p className="text-xs text-muted">
+          Reads every page of the database file, so it takes a moment. Sizes include each
+          table&apos;s indexes.
+        </p>
+      </div>
+
+      {error && <p className="text-sm text-red-400">{error}</p>}
+
+      {report && (
+        <>
+          <p className="text-sm text-muted">
+            {report.rows.length} table(s), {formatByteSize(report.totalBytes)} in total.
+          </p>
+          <ul className="flex flex-col divide-y divide-line rounded-md border border-line bg-paper">
+            {report.rows.map((row) => (
+              <li
+                key={row.name}
+                className="flex items-center gap-3 px-3 py-2 max-lg:flex-wrap max-lg:gap-x-2"
+              >
+                <span className="min-w-0 flex-1 truncate font-mono text-sm text-ink max-lg:basis-full">
+                  {row.name}
+                </span>
+
+                {/* Measured against the biggest table, so the top row is a full
+                    bar. Hidden narrow, as the journal's ranked lists do — the
+                    figures beside it already carry the comparison. */}
+                <RankBar
+                  value={row.totalBytes}
+                  max={report.maxTotalBytes}
+                  className="w-24 max-lg:hidden"
+                />
+
+                <span
+                  title={
+                    row.indexBytes > 0
+                      ? `${formatByteSize(row.bytes)} table + ${formatByteSize(row.indexBytes)} indexes`
+                      : undefined
+                  }
+                  className="w-20 shrink-0 text-right font-mono text-sm text-ink max-lg:w-auto max-lg:text-left"
+                >
+                  {formatByteSize(row.totalBytes)}
+                </span>
+
+                <span className="w-12 shrink-0 text-right font-mono text-xs text-muted max-lg:w-auto">
+                  {row.percentOfTotal.toFixed(1)}%
+                </span>
+
+                <span className="w-24 shrink-0 text-right font-mono text-xs text-muted max-lg:w-auto">
+                  {row.rowCount.toLocaleString()} row(s)
+                </span>
+
+                <Button size="sm" variant="secondary" onClick={() => onOpenInSql(row.name)}>
+                  Open
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
 }
 
 /** The header above a browsed table — its name, purpose and row actions. */
@@ -982,6 +1082,7 @@ export function SqlExplorerView({
     { key: "query", label: "SQL Query", content: queryTab },
     { key: "tables", label: "Tables Explorer", content: tablesTab },
     { key: "modules", label: "Modules", content: modulesTab },
+    { key: "usage", label: "Table Usage", content: <TableUsageTab onOpenInSql={openInSql} /> },
   ];
 
   return (

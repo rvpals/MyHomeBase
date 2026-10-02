@@ -2671,3 +2671,36 @@ html[data-music-player="minimized"] {
 .leaflet-container a.leaflet-popup-close-button:hover {
   color: var(--ink);
 }
+
+/* The music player's stand-in for missing cover art: a record that turns while the
+   track plays, and holds still when it is paused.
+
+   A slow rotation of its own rather than Tailwind's `animate-spin`, which is a 1s
+   loading spinner -- a record at 60rpm reads as a cartoon. 3.3s is a nod to 33rpm.
+
+   Decorative: the artwork is absent, not loading, so nothing is being communicated
+   by the motion and it stops entirely under reduced motion (design.md). */
+@keyframes vinyl-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-vinyl {
+  animation: vinyl-spin 3.3s linear infinite;
+}
+
+/* Paused, not stopped: the record keeps whatever angle it reached, so resuming
+   continues from there rather than snapping back to the top. */
+.animate-vinyl[data-spinning="false"] {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-vinyl {
+    animation: none;
+  }
+}

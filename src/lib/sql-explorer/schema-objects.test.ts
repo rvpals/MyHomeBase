@@ -48,6 +48,7 @@ function fakeRepo(overrides: Partial<SqlExplorerRepository> = {}): SqlExplorerRe
     executeStatement: () => ({ kind: "statement", changes: 0 }),
     countRows: () => 0,
     readBlobCell: () => undefined,
+    readTableUsage: () => [],
     truncateTable: () => 0,
     ...overrides,
   };

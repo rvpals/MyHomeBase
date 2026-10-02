@@ -6,15 +6,27 @@
 // playing"; this screen is where you go to look at a song -- read the words, see the
 // cover at a size worth seeing, scrub with a real target.
 //
+// The transport is one panel across the foot of the screen, spanning both columns --
+// a full-width seek bar is a far better scrub target than a 20rem one. It is a card in
+// the page, not a `fixed` bar: the viewport's bottom edge already belongs to
+// `MusicPlayerBar` and the compact section trigger.
+//
 // Narrow screens stack the same pieces in one column via `max-lg:` variants rather
 // than switching component, because the arrangement genuinely is the same one: cover,
-// then metadata, then transport, then lyrics. Only the bar needed a different shape.
+// then metadata, then lyrics, then the transport panel -- whose three clusters stack
+// in turn. Only the bar needed a different shape.
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { AudioSpectrum } from "@/components/audio-spectrum";
 import { Button } from "@/components/button";
 import { Tabs, type TabItem } from "@/components/tabs";
 import { MusicSleepTimer } from "@/components/music-sleep-timer";
+import {
+  NextGlyph,
+  PauseGlyph,
+  PlayGlyph,
+  PreviousGlyph,
+} from "@/components/music-player-bar";
 import {
   albumCoverUrl,
   formatPlayerTime,
@@ -261,10 +273,7 @@ export function MusicPlayerView() {
       {/* Cover + transport */}
       <div>
         {coverUrl === undefined || coverFailedFor === current.albumId ? (
-          <div
-            className="aspect-square w-full rounded-xl border border-line bg-paper-raised"
-            aria-hidden="true"
-          />
+          <VinylPlaceholder isPlaying={isPlaying} />
         ) : (
           <img
             src={coverUrl}
@@ -277,64 +286,6 @@ export function MusicPlayerView() {
         <h2 className="mt-4 font-display text-xl text-ink">{current.title}</h2>
         <p className="text-sm text-muted">{current.artist || "Unknown artist"}</p>
         {current.album !== "" && <p className="text-xs text-muted">{current.album}</p>}
-
-        <div className="mt-4 flex items-center gap-2">
-          <span className="font-mono text-xs text-muted">{formatPlayerTime(position)}</span>
-          <input
-            type="range"
-            min={0}
-            max={Math.max(total, 1)}
-            step={1}
-            value={Math.min(position, total)}
-            onChange={(event) => player.seek(Number(event.target.value))}
-            aria-label="Seek"
-            className="h-1 flex-1 accent-brass"
-          />
-          <span className="font-mono text-xs text-muted">{formatPlayerTime(total)}</span>
-        </div>
-
-        {/* flex-wrap, because four buttons do not fit a 375px column in one line. */}
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Button variant="secondary" onClick={player.previous}>
-            Previous
-          </Button>
-          <Button onClick={player.toggle}>{isPlaying ? "Pause" : "Play"}</Button>
-          <Button variant="secondary" onClick={player.next}>
-            Next
-          </Button>
-          {/* The primary place to set a sleep timer on a phone: the compact player
-              bar has no room for the control, so it shows the countdown only. */}
-          <MusicSleepTimer
-            variant="inline"
-            remainingSeconds={player.sleepRemainingSeconds}
-            onStart={player.startSleepTimer}
-            onCancel={player.cancelSleepTimer}
-          />
-          {/* Stops the audio and hides the bar but keeps the queue -- see `stop` in
-              music-player-provider.tsx. "Clear the queue" is the Queue screen's job. */}
-          <Button variant="secondary" onClick={player.stop}>
-            Close player
-          </Button>
-        </div>
-
-        <label className="mt-4 flex items-center gap-2 text-xs text-muted">
-          Volume
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={volume}
-            onChange={(event) => player.setVolume(Number(event.target.value))}
-            className="h-1 flex-1 accent-brass"
-          />
-        </label>
-
-        {player.error !== undefined && (
-          <p className="mt-3 rounded border border-line bg-paper-raised p-2 text-xs text-muted">
-            {player.error}
-          </p>
-        )}
       </div>
 
       {/* Words, story and the visualizer picker, one panel with three tabs.
@@ -416,6 +367,120 @@ export function MusicPlayerView() {
         />
       </section>
 
+      {/* The transport, as one panel across the foot of the screen.
+          `lg:col-span-2`, so it spans the cover column and the tabs panel rather than
+          living under the artwork -- a full-width seek bar is a far better scrub
+          target than a 20rem one, which is the main reason it moved here.
+
+          Deliberately NOT `fixed`. The viewport's bottom edge already belongs to
+          `MusicPlayerBar` and, on compact, the section trigger -- design.md's
+          floating layer calls that list closed, so this panel scrolls with the page
+          like any other card. */}
+      <section className="rounded-xl border border-line p-4 lg:col-span-2">
+        {/* Seek, full width, on its own row above the rule. */}
+        <div className="flex items-center gap-3">
+          <span className="font-mono text-xs text-muted">{formatPlayerTime(position)}</span>
+          <input
+            type="range"
+            min={0}
+            max={Math.max(total, 1)}
+            step={1}
+            value={Math.min(position, total)}
+            onChange={(event) => player.seek(Number(event.target.value))}
+            aria-label="Seek"
+            className="h-1 flex-1 accent-brass"
+          />
+          <span className="font-mono text-xs text-muted">{formatPlayerTime(total)}</span>
+        </div>
+
+        <div className="mt-4 border-t border-line pt-4">
+          {/* One row on a desktop: volume left, transport centred, the two
+              secondary controls right. Narrow, it becomes a column -- the three
+              clusters stack in reading order, which is what the mock shows and what
+              a 390px screen has room for. */}
+          <div className="flex items-center gap-4 max-lg:flex-col max-lg:items-stretch max-lg:gap-3">
+            {/* `flex-1` + `basis-0` on both outer clusters so the transport sits
+                optically centred regardless of how wide the two ends are. */}
+            {/* A div, not a label: the speaker mark is decorative and the slider
+                carries its own `aria-label`, so there is no visible text to associate. */}
+            <div className="flex flex-1 basis-0 items-center gap-2 text-xs text-muted max-lg:order-3 max-lg:flex-none">
+              <VolumeGlyph />
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={volume}
+                onChange={(event) => player.setVolume(Number(event.target.value))}
+                aria-label="Volume"
+                className="h-1 min-w-0 flex-1 accent-brass lg:max-w-48"
+              />
+              <span className="w-9 shrink-0 text-right font-mono text-xs text-muted">
+                {Math.round(volume * 100)}%
+              </span>
+            </div>
+
+            {/* Icon pills, with Play promoted: bigger, and the primary fill. The
+                glyphs come from `MusicPlayerBar` so the bar and this screen cannot
+                drift into two different play triangles. Each carries an `ariaLabel`
+                -- `Button` requires one when the child is only a glyph. */}
+            <div className="flex shrink-0 items-center justify-center gap-3 max-lg:order-1">
+              <Button
+                variant="secondary"
+                onClick={player.previous}
+                ariaLabel="Previous track"
+                title="Previous track"
+                className="h-12 w-12 !px-0"
+              >
+                <PreviousGlyph />
+              </Button>
+              <Button
+                onClick={player.toggle}
+                ariaLabel={isPlaying ? "Pause" : "Play"}
+                title={isPlaying ? "Pause" : "Play"}
+                className="h-14 w-14 !px-0"
+              >
+                {isPlaying ? <PauseGlyph /> : <PlayGlyph />}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={player.next}
+                ariaLabel="Next track"
+                title="Next track"
+                className="h-12 w-12 !px-0"
+              >
+                <NextGlyph />
+              </Button>
+            </div>
+
+            <div className="flex flex-1 basis-0 items-center justify-end gap-2 max-lg:order-2 max-lg:flex-none max-lg:justify-center">
+              {/* The clock-icon trigger. `bar` is already exactly that -- an icon
+                  button that grows to carry the countdown once armed, with its panel
+                  opening upward -- so this is a variant swap, not new markup.
+                  Still the primary place to set a timer on a phone: the compact
+                  player bar shows the countdown only. */}
+              <MusicSleepTimer
+                variant="bar"
+                remainingSeconds={player.sleepRemainingSeconds}
+                onStart={player.startSleepTimer}
+                onCancel={player.cancelSleepTimer}
+              />
+              {/* Stops the audio and hides the bar but keeps the queue -- see `stop` in
+                  music-player-provider.tsx. "Clear the queue" is the Queue screen's job. */}
+              <Button variant="secondary" onClick={player.stop}>
+                Close player
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {player.error !== undefined && (
+          <p className="mt-3 rounded border border-line bg-paper-raised p-2 text-xs text-muted">
+            {player.error}
+          </p>
+        )}
+      </section>
+
       {/* The stage. Rendered last and only while open -- mounting it is what requests
           fullscreen, and unmounting it is what leaves. The audio is untouched by any
           of this: it lives in `MusicPlayerProvider` above this screen, so the track
@@ -432,6 +497,97 @@ export function MusicPlayerView() {
         </FullscreenStage>
       )}
     </div>
+  );
+}
+
+/**
+ * What stands in for cover art when there isn't any: a record on a turntable, turning
+ * while the track plays.
+ *
+ * Drawn rather than shipped as an image file so it takes the active theme -- the label
+ * is `brass`, the vinyl and the sheen are built from `ink`/`line`, so it recolours with
+ * every theme including the two light ones. A flat PNG would be a dark square sitting
+ * in a white page on Daybreak.
+ *
+ * `aria-hidden`: it carries no information the screen does not already say in text. The
+ * track title and artist are right beneath it, and "no cover art" is not news worth
+ * announcing.
+ */
+function VinylPlaceholder({ isPlaying }: { isPlaying: boolean }) {
+  return (
+    <div
+      className="grid aspect-square w-full place-items-center overflow-hidden rounded-xl border border-line bg-paper-raised"
+      aria-hidden="true"
+    >
+      {/* 86% so the record sits inside the sleeve with a margin, the way one does. */}
+      <svg viewBox="0 0 200 200" className="h-[86%] w-[86%]">
+        {/* The disc. Near-black in every theme: a record is the one thing here that
+            is not really a surface, so it takes `ink` at a low alpha over `paper`
+            rather than a token fill -- which keeps it dark on light themes too. */}
+        <circle cx="100" cy="100" r="96" fill="var(--paper)" />
+        <circle cx="100" cy="100" r="96" fill="var(--ink)" opacity="0.06" />
+        <circle cx="100" cy="100" r="96" fill="none" stroke="var(--line)" strokeWidth="1" />
+
+        {/* Everything that turns, as one group: grooves, sheen and label together,
+            so the whole record rotates rather than its parts sliding against each
+            other. `data-spinning` pauses it in place when the music is paused. */}
+        <g
+          className="animate-vinyl motion-reduce:animate-none"
+          data-spinning={isPlaying ? "true" : "false"}
+          style={{ transformOrigin: "100px 100px" }}
+        >
+          {/* Grooves. Hand-listed rather than generated in a loop: seven circles are
+              fewer characters than the map that would build them. */}
+          <g fill="none" stroke="var(--ink)" strokeWidth="0.75" opacity="0.14">
+            <circle cx="100" cy="100" r="88" />
+            <circle cx="100" cy="100" r="81" />
+            <circle cx="100" cy="100" r="74" />
+            <circle cx="100" cy="100" r="67" />
+            <circle cx="100" cy="100" r="60" />
+            <circle cx="100" cy="100" r="53" />
+            <circle cx="100" cy="100" r="46" />
+          </g>
+
+          {/* The glint off the surface. An arc rather than a gradient, so it reads as
+              light on the vinyl and turns visibly with it -- a radial gradient would
+              be rotationally symmetric and the spin would be invisible. */}
+          <path
+            d="M100 10 A90 90 0 0 1 176 52"
+            fill="none"
+            stroke="var(--ink)"
+            strokeWidth="7"
+            opacity="0.07"
+            strokeLinecap="round"
+          />
+
+          {/* The centre label, and the spindle hole punched through it. */}
+          <circle cx="100" cy="100" r="34" fill="var(--brass)" opacity="0.85" />
+          <circle cx="100" cy="100" r="34" fill="none" stroke="var(--line)" strokeWidth="0.75" />
+          <circle cx="100" cy="100" r="11" fill="var(--paper)" />
+          <circle cx="100" cy="100" r="11" fill="none" stroke="var(--line)" strokeWidth="0.75" />
+
+          {/* Two ticks on the label, so the rotation is legible even on a still
+              frame -- a plain disc gives the eye nothing to track. */}
+          <rect x="99" y="72" width="2" height="9" rx="1" fill="var(--paper)" opacity="0.5" />
+          <rect x="99" y="119" width="2" height="9" rx="1" fill="var(--paper)" opacity="0.5" />
+        </g>
+      </svg>
+    </div>
+  );
+}
+
+/**
+ * The speaker mark beside the volume slider.
+ *
+ * Local to this screen: the player bar has no volume control, so unlike the four
+ * transport glyphs there is nothing to share it with. Decorative -- the slider carries
+ * the accessible name.
+ */
+function VolumeGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 fill-current" aria-hidden="true">
+      <path d="M4 9h3l5-4v14l-5-4H4zm12.5 3a4 4 0 0 0-2-3.46v6.92A4 4 0 0 0 16.5 12z" />
+    </svg>
   );
 }
 

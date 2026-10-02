@@ -6,6 +6,7 @@ import type {
   SqlExecutionResult,
   TableInfo,
   TablePage,
+  TableUsageMeasurement,
 } from "./types";
 
 export interface SqlExplorerRepository {
@@ -30,6 +31,18 @@ export interface SqlExplorerRepository {
    * schema before any SQL is built, since neither can be a bound parameter.
    */
   readBlobCell(source: BlobCellSource): Uint8Array | undefined;
+  /**
+   * Every table's size on disk, measured rather than estimated.
+   *
+   * Reads SQLite's `dbstat` virtual table, which walks the whole database file
+   * — so this is the one call here that costs real time on a large database,
+   * and the Table Usage tab runs it on demand rather than on page load.
+   *
+   * Index pages are attributed to the table the index belongs to, not left as
+   * rows of their own, so a caller never has to know which names are indexes.
+   */
+  readTableUsage(): TableUsageMeasurement[];
+
   /**
    * Deletes every row from `tableName` and resets its AUTOINCREMENT counter, so
    * the next insert starts at 1. Returns the number of rows deleted.

@@ -18,7 +18,7 @@
 // on a number by hand is how the two drift.
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import {
   filterTree,
   findActiveModule,
@@ -40,6 +40,26 @@ import { TreeIcon } from "./tree-icons";
 // asserts every wired slot exists.
 const HOME_SLOT = getIconSlot("chrome_tree_home")!;
 const FILTER_SLOT = getIconSlot("chrome_tree_filter")!;
+
+// Where the tree's scroll offset is parked across navigations.
+//
+// The tree is rendered by `TwoTierShell`, which each module's own shell mounts —
+// so it lives *under* the route, not in the `(protected)` layout above it. Every
+// link therefore unmounts this component and mounts a fresh one, and a fresh
+// scroll container starts at 0: click a row near the bottom and the column snaps
+// back to Home while the page you asked for loads. Storing the offset is what
+// makes the tree hold still.
+//
+// `localStorage`, matching the section panel and the collapsible cards. One key
+// for the whole tree rather than one per route: the question it answers is "where
+// was this column", and that has a single answer regardless of which page is open.
+const SCROLL_STORAGE_KEY = "myhomebase:nav-tree-scroll";
+
+// `useLayoutEffect` runs before the browser paints, so the restored offset is the
+// first thing drawn rather than a visible jump one frame in. It warns when run
+// during SSR, though, and this component is server-rendered despite "use client" —
+// so on the server it falls back to `useEffect`, which never runs there anyway.
+const useIsomorphicLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 export interface NavTreeProps {
   tree: NavigationTree;
@@ -440,6 +460,43 @@ export function NavTree({
   );
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Put the column back where the reader left it, before the first paint.
+  //
+  // Runs on mount only: this component is remounted by every navigation (see
+  // `SCROLL_STORAGE_KEY`), so "on mount" *is* "on each navigation" here. Skipped
+  // while the tree is collapsed, when there is no scroll container to restore.
+  useIsomorphicLayoutEffect(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+    try {
+      const stored = Number(window.localStorage.getItem(SCROLL_STORAGE_KEY));
+      // Clamped rather than assigned blind: the stored offset was measured against
+      // whatever the tree looked like last time, and a module collapsed or a filter
+      // typed since then can leave it taller than the column now is. The browser
+      // would clamp anyway — doing it here keeps what we write back honest.
+      if (Number.isFinite(stored) && stored > 0) {
+        node.scrollTop = Math.min(stored, node.scrollHeight - node.clientHeight);
+      }
+    } catch {
+      // A browser with storage disabled gets a tree that starts at the top. That is
+      // the old behaviour, not a broken one, so there is nothing to report.
+    }
+  }, []);
+
+  // Written on scroll rather than on click: the reader can also get here with the
+  // wheel, a drag, or keyboard focus, and all of those should survive the next
+  // navigation too. No throttle — this is one small synchronous write against a
+  // key that is overwritten anyway, and debouncing it would risk losing the last
+  // position to the unmount that follows a click.
+  function handleScroll(event: UIEvent<HTMLDivElement>) {
+    try {
+      window.localStorage.setItem(SCROLL_STORAGE_KEY, String(event.currentTarget.scrollTop));
+    } catch {
+      // Storage disabled or full. The tree still scrolls; it just won't remember.
+    }
+  }
 
   // Navigating to another module expands it, without disturbing anything the
   // reader has collapsed. Keyed on the slug rather than the path so moving
@@ -598,7 +655,7 @@ export function NavTree({
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2">
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-2">
         {/* Home sits above the modules and outside the filter: it is one row that
             every reader knows by position, and dropping it on a non-matching query
             would move the one fixed landmark in the column. */}

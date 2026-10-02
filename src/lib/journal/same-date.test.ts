@@ -111,6 +111,101 @@ describe("findSameDateGroups", () => {
   });
 });
 
+describe("findSameDateGroups with logOnly", () => {
+  // The Log category is what makes an entry a logged activity — see
+  // LOG_CATEGORY_NAME and isLogEntry.
+  const log = (overrides: Partial<JournalEntry> & { id: number }) =>
+    entry({ categories: ["Log"], ...overrides });
+
+  it("keeps a date whose Log entries number two or more", () => {
+    const groups = findSameDateGroups(
+      [
+        log({ id: 1, date: "2026-03-14", time: "09:00" }),
+        log({ id: 2, date: "2026-03-14", time: "12:00" }),
+      ],
+      { logOnly: true },
+    );
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].entries.map((item) => item.id)).toEqual([1, 2]);
+  });
+
+  it("drops the non-Log entries from a mixed date", () => {
+    const groups = findSameDateGroups(
+      [
+        log({ id: 1, date: "2026-03-14", time: "09:00" }),
+        entry({ id: 2, date: "2026-03-14", time: "12:00", categories: ["FAMILY"] }),
+        log({ id: 3, date: "2026-03-14", time: "18:00" }),
+      ],
+      { logOnly: true },
+    );
+
+    expect(groups[0].entries.map((item) => item.id)).toEqual([1, 3]);
+  });
+
+  it("filters before grouping, so a lone Log entry beside written ones is not a group", () => {
+    // The load-bearing case for the toggle. Filtering *after* grouping would
+    // leave this date in with a single member, reading "1 of 1".
+    const groups = findSameDateGroups(
+      [
+        log({ id: 1, date: "2026-03-14", time: "09:00" }),
+        entry({ id: 2, date: "2026-03-14", time: "12:00", categories: ["FAMILY"] }),
+        entry({ id: 3, date: "2026-03-14", time: "18:00", categories: ["WORK"] }),
+      ],
+      { logOnly: true },
+    );
+
+    expect(groups).toEqual([]);
+  });
+
+  it("drops a date with no Log entries at all", () => {
+    const groups = findSameDateGroups(
+      [
+        entry({ id: 1, date: "2026-03-14", categories: ["FAMILY"] }),
+        entry({ id: 2, date: "2026-03-14", categories: ["WORK"] }),
+      ],
+      { logOnly: true },
+    );
+
+    expect(groups).toEqual([]);
+  });
+
+  it("matches the Log category case-insensitively", () => {
+    const groups = findSameDateGroups(
+      [
+        entry({ id: 1, date: "2026-03-14", time: "09:00", categories: ["log"] }),
+        entry({ id: 2, date: "2026-03-14", time: "12:00", categories: ["LOG"] }),
+      ],
+      { logOnly: true },
+    );
+
+    expect(groups).toHaveLength(1);
+  });
+
+  it("finds an entry's Log category alongside its other categories", () => {
+    const groups = findSameDateGroups(
+      [
+        entry({ id: 1, date: "2026-03-14", time: "09:00", categories: ["Travel", "Log"] }),
+        log({ id: 2, date: "2026-03-14", time: "12:00" }),
+      ],
+      { logOnly: true },
+    );
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].entries.map((item) => item.id)).toEqual([1, 2]);
+  });
+
+  it("behaves exactly as before when the option is off or absent", () => {
+    const entries = [
+      log({ id: 1, date: "2026-03-14", time: "09:00" }),
+      entry({ id: 2, date: "2026-03-14", time: "12:00", categories: ["FAMILY"] }),
+    ];
+
+    expect(findSameDateGroups(entries, { logOnly: false })).toEqual(findSameDateGroups(entries));
+    expect(findSameDateGroups(entries)[0].entries).toHaveLength(2);
+  });
+});
+
 describe("countSameDateEntries", () => {
   it("totals the members across every group", () => {
     const groups = findSameDateGroups([

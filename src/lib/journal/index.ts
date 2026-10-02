@@ -321,6 +321,7 @@ export {
   toSameDateRows,
 } from "./same-date";
 export type {
+  FindSameDateGroupsOptions,
   MergedEntryDraft,
   SameDateEntry,
   SameDateGroup,

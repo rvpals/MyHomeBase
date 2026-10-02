@@ -16,9 +16,11 @@ import { parseFlags } from "./parse-flags";
  * than one entry, plus the same Merge and Delete the web grid offers.
  *
  *   journal-same-date
+ *   journal-same-date --log-only
  *   journal-same-date --date 2026-03-14
  *   journal-same-date --merge 41,42,43
  *   journal-same-date --merge 41,42,43 --save
+ *   journal-same-date --merge 41,42,43 --save --delete-originals
  *   journal-same-date --delete 41,42
  *
  * This is the proof the section's logic really is in `src/lib/`: the grouping,
@@ -32,6 +34,10 @@ import { parseFlags } from "./parse-flags";
  * `--save` to actually create the merged entry — still leaving the sources
  * alone, exactly as clicking Save in the dialog does.
  *
+ * `--delete-originals` (with `--save`) also bins the sources, which is what the
+ * web dialog's follow-up prompt offers. It always runs *after* the merged entry
+ * is written, so a failure there leaves the originals intact.
+ *
  * `--delete` moves entries to the recycle bin (the same bin the Correct tab
  * restores from), so it is undoable there rather than destructive here.
  */
@@ -39,7 +45,7 @@ export async function journalSameDateCommand(args: string[]): Promise<void> {
   const flags = parseFlags(args);
 
   if (flags.merge !== undefined) {
-    mergeSelection(flags.merge, args.includes("--save"));
+    mergeSelection(flags.merge, args.includes("--save"), args.includes("--delete-originals"));
     return;
   }
 
@@ -50,14 +56,20 @@ export async function journalSameDateCommand(args: string[]): Promise<void> {
 
   // The whole journal, as the web panel reads it: a limit would hide the pair
   // sitting on one day in 2019, which is the thing this screen is for.
-  const groups = findSameDateGroups(listEntries(deps.journalRepo));
+  //
+  // `--log-only` is the card's "Review only Log entries" toggle, same option on
+  // the same library call — so the two front-ends can't disagree about which
+  // dates qualify.
+  const logOnly = args.includes("--log-only");
+  const groups = findSameDateGroups(listEntries(deps.journalRepo), { logOnly });
   const shown = flags.date ? groups.filter((group) => group.date === flags.date) : groups;
 
   if (shown.length === 0) {
+    const what = logOnly ? "Log entry" : "entry";
     console.log(
       flags.date
-        ? `${flags.date} does not carry more than one entry.`
-        : "No date has more than one entry.",
+        ? `${flags.date} does not carry more than one ${what}.`
+        : `No date has more than one ${what}.`,
     );
     return;
   }
@@ -80,8 +92,16 @@ export async function journalSameDateCommand(args: string[]): Promise<void> {
   }
 }
 
-/** `--merge 41,42,43` — print the draft, and with `--save` write it. */
-function mergeSelection(raw: string, save: boolean): void {
+/**
+ * `--merge 41,42,43` — print the draft, and with `--save` write it.
+ *
+ * `--delete-originals` is the terminal's form of the web dialog's "would you
+ * like to delete the originals?" prompt: a terminal can't ask mid-command, so
+ * the answer is given up front as a flag. It is ignored without `--save`, since
+ * there is nothing to clean up after a dry run, and it runs only *after* the
+ * merged entry is safely written — the same ordering the web path guarantees.
+ */
+function mergeSelection(raw: string, save: boolean, deleteOriginals: boolean): void {
   const ids = parseIds(raw);
   if (ids === undefined) return;
 
@@ -115,6 +135,9 @@ function mergeSelection(raw: string, save: boolean): void {
   if (!save) {
     console.log("");
     console.log("Nothing was written. Re-run with --save to create this entry.");
+    if (deleteOriginals) {
+      console.log("(--delete-originals was ignored: it only applies once --save writes.)");
+    }
     return;
   }
 
@@ -137,7 +160,26 @@ function mergeSelection(raw: string, save: boolean): void {
     isPinned: false,
   });
   console.log("");
-  console.log(`Created entry #${created.id}. The ${entries.length} source entries are untouched.`);
+  if (!deleteOriginals) {
+    console.log(
+      `Created entry #${created.id}. The ${entries.length} source entries are untouched — ` +
+        "re-run with --delete-originals, or use --delete, to bin them.",
+    );
+    return;
+  }
+
+  // Only now that the merged entry exists. The same `recycleEntries` the web
+  // path calls, so the originals are restorable from the Correct tab rather
+  // than destroyed.
+  console.log(`Created entry #${created.id}.`);
+  const { movedCount, skippedCount } = recycleEntries(
+    deps.journalRepo,
+    entries.map((entry) => entry.id),
+  );
+  console.log(
+    `Moved ${movedCount} original ${movedCount === 1 ? "entry" : "entries"} to the recycle bin` +
+      `${skippedCount ? `, skipped ${skippedCount} that no longer existed` : ""}.`,
+  );
 }
 
 /** `--delete 41,42` — move entries to the recycle bin. */

@@ -19,7 +19,7 @@ import { setHomeLayoutAction } from "./home-layout-actions";
  */
 export interface HomeWidgetItem {
   id: HomeWidgetId;
-  /** For the drag handle's accessible name and the move buttons' tooltips. */
+  /** Names the card in the move buttons' tooltips and accessible names. */
   label: string;
   node: ReactNode;
   /**
@@ -55,6 +55,19 @@ export interface HomeWidgetItem {
  * touch or for a keyboard. Touch is out of scope by construction — the control only
  * renders at 1280px and up — but a keyboard is not, so every draggable card also
  * carries up/down buttons. Those are the accessible path, not a nicety.
+ *
+ * **The card is grabbed by its frame, not by a handle row.** A draggable card sits in
+ * a few pixels of padding that are themselves the drag surface: the whole border of
+ * the card is the grab target, which is what a reader reaches for anyway. There is no
+ * permanent strip above the card, because a row of chrome on every card is a standing
+ * cost paid for an action taken once. The move buttons live in that frame too and
+ * surface on hover or keyboard focus — present when wanted, invisible at rest, and
+ * never occupying a row of their own.
+ *
+ * **Why the frame and not the card itself.** `CollapsibleCard` fills its own top edge
+ * with a toggle button and its body with content, so it has no spare edge to grab —
+ * making the card element draggable would mean every drag starting on a header or a
+ * link inside it. The padding belongs to this layout, not to the card.
  */
 export function HomeWidgetGrid({
   items,
@@ -188,9 +201,24 @@ export function HomeWidgetGrid({
           return (
             <div
               key={item.id}
+              // `group` so the move buttons can reveal on hover/focus anywhere in the
+              // frame. The padding is what makes the border grabbable: without it the
+              // draggable element would be exactly the card, whose every pixel is
+              // already a toggle, a link or a chart.
               className={`${item.spansBothColumns ? "xl:col-span-2" : ""} ${
-                isDragging ? "opacity-40" : ""
-              } ${isDropTarget ? "rounded-xl ring-2 ring-brass" : ""}`}
+                canDrag
+                  ? "group relative cursor-grab rounded-xl p-1.5 transition-shadow active:cursor-grabbing motion-reduce:transition-none"
+                  : ""
+              } ${isDragging ? "opacity-40" : ""} ${
+                // The two rings are written as one choice rather than two classes:
+                // `ring-1` and `ring-2` set the same property, so leaving both in
+                // the string would let whichever Tailwind happens to emit later win.
+                isDropTarget
+                  ? "ring-2 ring-brass"
+                  : canDrag
+                    ? "ring-1 ring-transparent hover:ring-brass-dark/40"
+                    : ""
+              }`}
               draggable={canDrag}
               onDragStart={() => canDrag && setDraggingId(item.id)}
               // Without `preventDefault` the browser treats this as an invalid drop
@@ -215,13 +243,27 @@ export function HomeWidgetGrid({
               }}
             >
               {canDrag && (
-                // The handle row: a grab affordance plus the keyboard path. Sits above
-                // the card rather than inside it, because `CollapsibleCard`'s header is
-                // a toggle and anything dropped in there competes with it for clicks.
-                <div className="mb-1 flex items-center justify-end gap-1">
-                  <span className="cursor-grab select-none px-1 text-muted" title={`Drag to move ${item.label}`} aria-hidden>
-                    ⠿
-                  </span>
+                /*
+                  The keyboard path, parked in the frame's top-right corner.
+
+                  `absolute` so it costs no height — this is the whole point of the
+                  change, that a card gains no row it has to carry at rest. It is
+                  `opacity-0` until the frame is hovered or something inside the
+                  buttons takes focus (`focus-within`), so the resting card is clean
+                  while a tabbing reader still gets a visible, reachable control.
+
+                  Not hidden behind `hidden`/`display:none`: that would take the
+                  buttons out of the tab order entirely and with them the only way to
+                  reorder cards without a mouse. Transparent-but-present keeps them
+                  focusable, which is what `focus-within` then reveals.
+                */
+                <div
+                  className="absolute right-1.5 top-1.5 z-10 flex items-center gap-1 opacity-0 transition-opacity motion-reduce:transition-none group-hover:opacity-100 group-focus-within:opacity-100"
+                  // The buttons are clicks, not grabs. Without this, pressing one
+                  // starts a card drag instead of moving the card by a slot.
+                  draggable={false}
+                  onDragStart={(event) => event.preventDefault()}
+                >
                   <Button
                     size="sm"
                     variant="secondary"
@@ -250,12 +292,12 @@ export function HomeWidgetGrid({
         })}
       </div>
 
-      {/* Said once, under the grid, rather than as a tooltip on each handle. Only in
-          two-column mode, which is the only place the handles exist. */}
+      {/* Said once, under the grid, rather than as a tooltip on every card. Only in
+          two-column mode, which is the only place dragging is possible. */}
       {isTwoColumn && draggableCount > 1 && (
         <p className="mt-4 hidden text-xs text-muted xl:block">
-          Drag a card by its handle to rearrange, or use the arrows. Your arrangement is
-          saved automatically.
+          Drag a card by its edge to rearrange, or use the arrows that appear on hover.
+          Your arrangement is saved automatically.
         </p>
       )}
     </div>

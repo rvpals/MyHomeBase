@@ -8,6 +8,9 @@ export type {
   SchemaObjectGroup,
   SchemaObjectKind,
   TablePage,
+  TableUsageMeasurement,
+  TableUsageReport,
+  TableUsageRow,
   ModuleTableGroup,
   ModuleTableRow,
   SavedQuery,
@@ -54,3 +57,4 @@ export {
   type ReadOnlyQueryResult,
 } from "./sql-explorer";
 export { listSavedQueries, saveQuery, deleteSavedQuery } from "./saved-queries";
+export { listTableUsage } from "./table-usage";

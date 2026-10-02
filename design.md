@@ -424,6 +424,7 @@ arbitrary value at the call site. The ones that exist:
 | `animate-tetris-line` / `-cell` / `-sweep` / `-quad` | The four layers of a Tetris line clear. |
 | `animate-card-deal` | A playing card flying from the deck to its seat. |
 | `animate-floating-puck-in` | A floating component's puck arriving in its corner. |
+| `animate-vinyl` | The music player's missing-cover placeholder, turning while a track plays. |
 
 Where an animation needs per-instance values — a stagger, a distance, a duration the
 view also has to know — they arrive as **CSS custom properties set inline** at the call

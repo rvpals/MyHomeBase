@@ -469,9 +469,11 @@ entry, plus the same Merge and Delete the web grid offers.
 
 ```
 npm run cli -- journal-same-date
+npm run cli -- journal-same-date --log-only
 npm run cli -- journal-same-date --date 2026-03-14
 npm run cli -- journal-same-date --merge 41,42,43
 npm run cli -- journal-same-date --merge 41,42,43 --save
+npm run cli -- journal-same-date --merge 41,42,43 --save --delete-originals
 npm run cli -- journal-same-date --delete 41,42
 ```
 
@@ -480,11 +482,13 @@ npm run cli -- journal-same-date --delete 41,42
 | Flag | Type | Required | Notes |
 |---|---|---|---|
 | `--date` | `YYYY-MM-DD` | no | show only this date's group; without it, every grouped date |
+| `--log-only` | boolean | no | consider only Log entries, so a date needs **two or more logged activities** to appear — the card's "Review only Log entries" toggle. A bare flag, so put it last |
 | `--merge` | id list | no | comma-separated entry ids. Prints the merged draft and **writes nothing** |
 | `--save` | boolean | no | with `--merge`, actually create the merged entry. **Put it last** — `parseFlags` treats every flag as taking a value |
+| `--delete-originals` | boolean | no | with `--save`, also bin the source entries once the merged entry is written — the web dialog's follow-up prompt. Ignored without `--save`. Also a bare flag, so put it last too |
 | `--delete` | id list | no | comma-separated entry ids to move to the recycle bin |
 
-**Calls** — `findSameDateGroups(listEntries(deps.journalRepo))` for the listing;
+**Calls** — `findSameDateGroups(listEntries(deps.journalRepo), { logOnly })` for the listing;
 `mergeEntryDraft` over the full entries read by `getEntry` for `--merge`, then
 `createEntry` when `--save` is given; `recycleEntries` for `--delete`. Every one is the
 same library function the web section's server actions call.
@@ -502,10 +506,13 @@ same library function the web section's server actions call.
   #   43  21:00  Dinner with Anna
 ```
 
-Merging is **non-destructive in both front-ends**: `--merge` prints a proposal, `--save`
-creates one new entry, and the source entries are left exactly where they were in either
-case — removing them is a separate `--delete`. `--delete` moves entries to the recycle
-bin (migration 0079), so it is undone from the web Correct tab rather than being final.
+Merging **never destroys anything before the merged entry exists**, in either front-end:
+`--merge` prints a proposal and writes nothing, `--save` creates one new entry, and the
+sources are only binned if `--delete-originals` is given — after the write, never before.
+That is the terminal's form of the web dialog's "would you like to delete the original
+*n* entries?" prompt; a terminal can't ask mid-command, so the answer comes up front.
+Every delete here moves entries to the recycle bin (migration 0079), so it is undone from
+the web Correct tab rather than being final.
 
 This command is the section's layering check: the grouping, the reading order, the
 excerpt and the whole merged draft come from `src/lib/journal/same-date.ts`, so if the

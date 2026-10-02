@@ -81,6 +81,18 @@ export function JournalReviewView({
   const [isEditing, setIsEditing] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | undefined>(undefined);
   const [merge, setMerge] = useState<PendingMerge | undefined>(undefined);
+  const [mergeCleanup, setMergeCleanup] = useState<PendingMergeCleanup | undefined>(undefined);
+  /**
+   * The "Review only Log entries" toggle — view state, not a stored preference:
+   * it is a lens you put the card into for this sitting.
+   *
+   * Narrowing happens on the server (`findSameDateGroups`'s `logOnly`) rather
+   * than by filtering `groups` here, because the toggle changes *which dates
+   * qualify at all* — a date with one Log entry beside two written ones has no
+   * pile of logs on it and must disappear, which a client-side row filter would
+   * render as "1 of 1".
+   */
+  const [logOnly, setLogOnly] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [notice, setNotice] = useState<string | undefined>(undefined);
   const [isBusy, setIsBusy] = useState(false);
@@ -118,6 +130,73 @@ export function JournalReviewView({
   }
 
   /**
+   * Flips the Log-only lens and re-reads the list under it.
+   *
+   * The new value is applied optimistically so the switch responds at once, and
+   * is passed explicitly to the action rather than read back from state — the
+   * `useState` setter has not landed by the time this call is made.
+   */
+  async function toggleLogOnly(next: boolean) {
+    setLogOnly(next);
+    setIsBusy(true);
+    setError(undefined);
+    setNotice(undefined);
+    try {
+      const result = await loadJournalSameDateDataAction(next);
+      if (!result.ok || !result.groups) {
+        // Put the switch back: the list on screen is still the old lens's, and
+        // leaving the two disagreeing is worse than not having flipped.
+        setLogOnly(!next);
+        setError(result.error ?? "Failed to re-read the list.");
+        return;
+      }
+      setGroups(result.groups);
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  /**
+   * Bins the entries a just-saved merge was built from.
+   *
+   * Deliberately the same `recycleJournalSameDateEntriesAction` the Delete
+   * button calls, so there is one delete path on this screen: the originals land
+   * in the recycle bin and are restorable, rather than this being a second,
+   * quieter kind of deletion that happens to be final.
+   *
+   * The merged entry is already written when this runs, so the worst case is the
+   * one this screen started from — the merge exists and the originals are still
+   * there — which the Delete button can finish by hand.
+   */
+  async function runMergeCleanup(sourceIds: number[]) {
+    setIsBusy(true);
+    setError(undefined);
+    try {
+      const result = await recycleJournalSameDateEntriesAction(sourceIds, logOnly);
+      if (!result.ok) {
+        // The merge itself succeeded, so this is not a failed merge — say so,
+        // or the reader is left thinking they have lost the new entry too.
+        setError(
+          `${result.error ?? "That didn't work."} The merged entry was saved — only ` +
+            "removing the originals failed. Tick them and use Delete to finish.",
+        );
+        setMergeCleanup(undefined);
+        return;
+      }
+      if (result.groups) setGroups(result.groups);
+      setMergeCleanup(undefined);
+      setNotice(
+        `Merged entry saved, and moved ${result.movedCount} original ` +
+          `${plural(result.movedCount ?? 0)} to the recycle bin — restore them from ` +
+          "Data Management → CSV Import → Correct if you need them back.",
+      );
+      router.refresh();
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  /**
    * Re-reads the entry that is open, after an edit was saved.
    *
    * The modal stays open on the freshly-saved entry rather than closing: an edit
@@ -131,7 +210,7 @@ export function JournalReviewView({
     try {
       const [entryResult, dataResult] = await Promise.all([
         getJournalSameDateEntryAction(entryId),
-        loadJournalSameDateDataAction(),
+        loadJournalSameDateDataAction(logOnly),
       ]);
       if (dataResult.ok && dataResult.groups) setGroups(dataResult.groups);
       // A saved edit that moved the entry off a grouped date leaves it with no
@@ -156,7 +235,7 @@ export function JournalReviewView({
     setError(undefined);
     setNotice(undefined);
     try {
-      const result = await recycleJournalSameDateEntriesAction(pending.ids);
+      const result = await recycleJournalSameDateEntriesAction(pending.ids, logOnly);
       if (!result.ok) {
         setError(result.error ?? "That didn't work.");
         return;
@@ -183,9 +262,11 @@ export function JournalReviewView({
    *
    * Nothing is written by this — `buildJournalMergeDraftAction` only assembles a
    * proposal from the full source entries. The reader edits it and saves, which
-   * creates one new entry and leaves every source entry untouched; removing the
-   * originals is then a separate, explicit Delete. That ordering is deliberate:
-   * a merge abandoned half way through cannot lose any writing.
+   * creates one new entry and still leaves every source entry in place; only
+   * then are they *offered* for deletion (`mergeCleanup`). That ordering is
+   * deliberate: the originals are never removed until the merged entry is safely
+   * written, so a merge abandoned or failed half way through cannot lose any
+   * writing.
    */
   async function startMerge(ids: number[], clearSelection: () => void) {
     setIsBusy(true);
@@ -197,7 +278,16 @@ export function JournalReviewView({
         setError(result.error ?? "Failed to build the merged entry.");
         return;
       }
-      setMerge({ draft: result.draft, sourceCount: result.mergedCount ?? ids.length, clearSelection });
+      // `mergedIds` is what the action actually read — never the raw selection,
+      // which can include an id that has since gone. Falling back to `ids` only
+      // covers an older action response shape.
+      const sourceIds = result.mergedIds ?? ids;
+      setMerge({
+        draft: result.draft,
+        sourceIds,
+        sourceCount: result.mergedCount ?? sourceIds.length,
+        clearSelection,
+      });
     } finally {
       setIsBusy(false);
     }
@@ -261,19 +351,39 @@ export function JournalReviewView({
         title="Review multiple entries on same date"
         titleIcon={<SlotIcon slot={SAME_DATE_SLOT} className="h-4 w-4" />}
         defaultOpen
+        // `headerAction`, so the lens sits on the title line and stays visible
+        // whether the card is open or shut — and outside the collapse toggle, so
+        // flipping it doesn't also close the card.
+        headerAction={
+          <label className="flex items-center gap-2 text-xs text-muted max-lg:text-[11px]">
+            <input
+              type="checkbox"
+              checked={logOnly}
+              disabled={isBusy}
+              onChange={(event) => void toggleLogOnly(event.target.checked)}
+            />
+            {/* `whitespace-nowrap` so the label can't wrap mid-phrase into the
+                chevron on a narrow header. */}
+            <span className="whitespace-nowrap">Review only Log entries</span>
+          </label>
+        }
       >
         <div className="flex flex-col gap-3">
           <p className="text-xs text-muted">
-            Every date carrying more than one entry, whatever the entries are called — the
-            time of day is ignored. Click a row to read the whole entry, <strong>Edit</strong>
+            {logOnly
+              ? "Every date carrying more than one Log entry — logged activities only, and a date needs two or more of them to appear here. "
+              : "Every date carrying more than one entry, whatever the entries are called — the time of day is ignored. "}
+            Click a row to read the whole entry, <strong>Edit</strong>
             it there if it needs fixing, and close it to come back here. Tick several, then{" "}
             <strong>Delete</strong> moves them to the recycle bin
             (recoverable under CSV Import → Correct), or <strong>Merge</strong> drafts one new
-            entry from them for you to edit and save, leaving the originals in place.
+            entry from them for you to edit and save — then asks whether to delete the
+            originals.
           </p>
           {groups.length > 0 && (
             <p className="text-xs text-muted">
-              {groups.length} {groups.length === 1 ? "date" : "dates"} · {entryCount} entries.
+              {groups.length} {groups.length === 1 ? "date" : "dates"} · {entryCount}{" "}
+              {logOnly ? "Log entries" : "entries"}.
             </p>
           )}
 
@@ -293,7 +403,11 @@ export function JournalReviewView({
             // Mixed toward `--ink`, so it darkens a light theme and lightens a
             // dark one — see design.md, "The token system, not literal colors".
             stripeClassName="bg-[color-mix(in_srgb,var(--paper-raised)_88%,var(--ink))]"
-            emptyMessage="No date has more than one entry."
+            emptyMessage={
+              logOnly
+                ? "No date has more than one Log entry."
+                : "No date has more than one entry."
+            }
             exportFileName="journal-same-date-entries"
             storageKey="journal-same-date-grid"
             enableSelection
@@ -377,8 +491,8 @@ export function JournalReviewView({
           title={`Merge ${merge.sourceCount} ${plural(merge.sourceCount)}`}
           description={
             "This is a draft — nothing has been saved and none of the original entries have " +
-            "been touched. Edit it as you like, then save it to create one new entry. Delete " +
-            "the originals afterwards if you want them gone."
+            "been touched. Edit it as you like, then save it to create one new entry. You'll " +
+            "be asked afterwards whether to delete the originals."
           }
           size="lg"
           onClose={() => setMerge(undefined)}
@@ -407,13 +521,59 @@ export function JournalReviewView({
               // form) re-runs the server panel, and the ticks are dropped because
               // the rows behind them have been re-numbered.
               merge.clearSelection();
+              // Hand straight over to the cleanup offer, carrying the ids before
+              // `merge` is cleared. The merged entry is written at this point, so
+              // binning the originals is now safe to offer.
+              setMergeCleanup({ sourceIds: merge.sourceIds });
               setMerge(undefined);
-              setNotice(
-                `Saved a new entry merged from ${merge.sourceCount} ${plural(merge.sourceCount)}. ` +
-                  "The originals are still here — delete them if you no longer want them.",
-              );
             }}
           />
+        </Modal>
+      )}
+
+      {mergeCleanup && (
+        <Modal
+          title="Merged entry created successfully"
+          description={
+            `Would you like to delete the original ${mergeCleanup.sourceIds.length} ` +
+            `${plural(mergeCleanup.sourceIds.length)} the merge was built from? They move ` +
+            "to the recycle bin, so this can be undone."
+          }
+          onClose={() => {
+            // Declining is a normal outcome, not a dismissal to recover from:
+            // the merged entry is saved and the originals stay. Say both, so
+            // closing this box never looks like the merge was lost.
+            setMergeCleanup(undefined);
+            setNotice("Merged entry saved. The originals are still here.");
+          }}
+          isBusy={isBusy}
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                disabled={isBusy}
+                onClick={() => {
+                  setMergeCleanup(undefined);
+                  setNotice("Merged entry saved. The originals are still here.");
+                }}
+              >
+                Keep them
+              </Button>
+              <Button
+                variant="danger"
+                disabled={isBusy}
+                onClick={() => void runMergeCleanup(mergeCleanup.sourceIds)}
+              >
+                {isBusy ? "Working…" : `Delete ${mergeCleanup.sourceIds.length}`}
+              </Button>
+            </>
+          }
+        >
+          <p className="text-sm text-ink">
+            The merged entry has been saved. Deleting the originals moves{" "}
+            {mergeCleanup.sourceIds.length} {plural(mergeCleanup.sourceIds.length)} to the
+            recycle bin.
+          </p>
         </Modal>
       )}
 
@@ -464,8 +624,26 @@ interface PendingDelete {
 /** An open merge dialog: the draft being edited, and how it got there. */
 interface PendingMerge {
   draft: MergedEntryDraft;
+  /**
+   * The entries the draft was built from — the ids the action actually read,
+   * not everything the reader ticked. Kept so the post-save prompt can offer to
+   * bin exactly the entries whose content ended up in the merged entry.
+   */
+  sourceIds: number[];
   sourceCount: number;
   clearSelection: () => void;
+}
+
+/**
+ * The "delete the originals?" offer, shown once a merged entry is safely saved.
+ *
+ * Separate state from `PendingMerge` because it outlives it: the merge dialog
+ * closes on save and this takes its place, so the two are never on screen
+ * together. It carries its own copy of the ids rather than reading them back
+ * off `merge`, which by then is gone.
+ */
+interface PendingMergeCleanup {
+  sourceIds: number[];
 }
 
 function plural(count: number): string {

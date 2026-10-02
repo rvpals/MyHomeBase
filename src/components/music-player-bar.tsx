@@ -351,7 +351,14 @@ function TransportButton({
   );
 }
 
-function PlayGlyph() {
+/*
+ * The four transport glyphs are exported for the player *screen*, whose bottom panel
+ * draws the same three controls as icon pills. Shared rather than copied so the two
+ * surfaces can't drift into two different play triangles. They stay here, next to the
+ * bar that was their first caller, rather than moving to a new component file -- two
+ * callers of a bare `<svg>` is not a registry entry.
+ */
+export function PlayGlyph() {
   return (
     <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current" aria-hidden="true">
       <path d="M8 5v14l11-7z" />
@@ -359,7 +366,7 @@ function PlayGlyph() {
   );
 }
 
-function PauseGlyph() {
+export function PauseGlyph() {
   return (
     <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current" aria-hidden="true">
       <path d="M6 5h4v14H6zm8 0h4v14h-4z" />
@@ -393,7 +400,7 @@ function CloseGlyph() {
   );
 }
 
-function PreviousGlyph() {
+export function PreviousGlyph() {
   return (
     <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" aria-hidden="true">
       <path d="M7 5h2v14H7zm3 7l9-7v14z" />
@@ -401,7 +408,7 @@ function PreviousGlyph() {
   );
 }
 
-function NextGlyph() {
+export function NextGlyph() {
   return (
     <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" aria-hidden="true">
       <path d="M15 5h2v14h-2zM5 5l9 7-9 7z" />

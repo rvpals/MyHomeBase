@@ -5,11 +5,17 @@ import {
   deleteSavedQuery,
   executeStatement,
   listSavedQueries,
+  listTableUsage,
   readTablePage,
   saveQuery,
   truncateTable,
 } from "@/lib/sql-explorer";
-import type { SavedQuery, SqlExecutionResult, TablePage } from "@/lib/sql-explorer";
+import type {
+  SavedQuery,
+  SqlExecutionResult,
+  TablePage,
+  TableUsageReport,
+} from "@/lib/sql-explorer";
 import { deps } from "@/lib/wiring";
 import { requireAdmin } from "../../require-access";
 
@@ -89,6 +95,32 @@ export async function loadTablePageAction(tableName: string): Promise<TablePageR
     return {
       ok: false,
       error: error instanceof Error ? error.message : "Failed to read the table.",
+    };
+  }
+}
+
+export interface TableUsageResult {
+  ok: boolean;
+  report?: TableUsageReport;
+  error?: string;
+}
+
+/**
+ * Backs the Table Usage tab's Measure button.
+ *
+ * Deliberately an action rather than part of the page's server render: reading
+ * `dbstat` walks the entire database file and counts every table's rows, so
+ * paying for it on every visit to SQL Explorer would slow down three tabs that
+ * do not need it. The reader asks for the measurement.
+ */
+export async function loadTableUsageAction(): Promise<TableUsageResult> {
+  try {
+    await requireAdmin();
+    return { ok: true, report: listTableUsage(deps.sqlExplorerRepo) };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Failed to measure table usage.",
     };
   }
 }

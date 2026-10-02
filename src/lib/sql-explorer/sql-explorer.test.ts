@@ -46,6 +46,9 @@ function fakeRepo(overrides: Partial<SqlExplorerRepository> = {}): SqlExplorerRe
       return 42;
     },
     readBlobCell: () => undefined,
+    readTableUsage() {
+      return [{ name: "widgets", bytes: 4_096, indexBytes: 0, pages: 1, rowCount: 42 }];
+    },
     truncateTable(tableName) {
       if (tableName !== "widgets") throw new Error(`No such table: ${tableName}`);
       truncated.push(tableName);
@@ -149,6 +152,7 @@ describe("executeReadOnlyQuery", () => {
       executeStatement: () => ({ kind: "statement", changes: 5 }),
       countRows: () => 0,
       readBlobCell: () => undefined,
+      readTableUsage: () => [],
       truncateTable: () => 0,
     };
     expect(() => executeReadOnlyQuery(lyingRepo, "SELECT 1")).toThrow();

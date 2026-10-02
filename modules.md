@@ -503,18 +503,40 @@ calls the result a duplicate; Review Data groups by **date alone** and calls the
 nothing — several entries on one day are perfectly normal, and the screen only lists them
 so a reader can decide. Four choices worth knowing:
 
+- **"Review only Log entries" narrows the population before grouping, not after.** The
+  card's title-bar toggle re-reads the list with `findSameDateGroups`'s `logOnly`, which
+  filters to Log entries *first* — so a date qualifies only when it holds **two or more
+  logged activities**, and a single Log entry beside two written ones disappears rather
+  than showing as "1 of 1". Filtering the rows client-side after the grouping would answer
+  a different question ("dates with several entries, some of them logs") and would strand
+  those one-member dates on screen. The flag therefore travels on every read *and* on
+  every mutation's refresh — a delete made while the toggle is on must not silently come
+  back under the wider lens. Log-ness is `isLogEntry` (the Log *category*, matched
+  case-insensitively), deliberately the in-memory predicate rather than the exact-match
+  SQL path: the screen already holds every entry in memory to group it, so `listLogEntries`
+  would be a second read of the same rows.
 - **Untitled entries are kept**, which is the opposite of `findDuplicateGroups`. The
   title-keyed grouping has to skip them, or a day with three untitled entries would
   present as a duplicate set on the strength of having no title at all. Grouping by date
   carries no such false signal, and an untitled entry on a crowded day is the single best
   merge candidate on the screen — dropping it would hide the reason to visit.
-- **Merge is non-destructive.** `mergeEntryDraft` builds a *proposal* — date and time from
-  the earliest source, titles joined with `/`, each source's content under a
-  `— HH:MM · Title` provenance line, categories and tags unioned — and the reader edits it
-  in the ordinary `JournalEntryForm` before saving. Saving creates one new entry and
-  **leaves every source entry exactly where it was**; removing the originals is a separate,
-  explicit Delete. So a merge abandoned half way through cannot lose any writing, which a
-  merge-and-delete in one step could.
+- **Merge writes before it deletes, never the other way round.** `mergeEntryDraft` builds
+  a *proposal* — date and time from the earliest source, titles joined with `/`, each
+  source's content under a `— HH:MM · Title` provenance line, categories and tags unioned
+  — and the reader edits it in the ordinary `JournalEntryForm` before saving. Saving
+  creates one new entry and leaves every source in place; **only then** does a second
+  dialog ask *"would you like to delete the original n entries?"*, with **Keep them** as
+  the non-destructive way out. So a merge abandoned, or a save that fails, cannot lose any
+  writing — which a merge-and-delete in one step could. If the cleanup itself fails the
+  message says the merge succeeded and only the delete didn't, because a bare error there
+  would read as having lost the new entry too.
+- **The cleanup offer names the entries the merge actually read**, not everything that was
+  ticked. `buildJournalMergeDraftAction` skips an id that has since disappeared, so it
+  returns `mergedIds` alongside `mergedCount` and the prompt scopes the delete to those —
+  reusing the raw selection could bin an entry whose content never made it into the merged
+  entry. The delete itself is the same `recycleJournalSameDateEntriesAction` the Delete
+  button calls, so there is one delete path on this screen rather than a second, quieter
+  kind that happens to be final.
 - **Locations and weather are not carried into a merge.** Both belong to a specific moment
   in a specific entry, and an entry covering four moments of a day has no single one of
   either. The form lets the reader add them, resolved live, which is the same argument the
