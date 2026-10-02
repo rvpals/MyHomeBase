@@ -29,6 +29,7 @@ import type {
   JournalTag,
   JournalTaxonomyCount,
   JournalTaxonomyIcon,
+  JournalYearCount,
   RecycledJournalEntry,
   SavedJournalFilter,
 } from "./types";
@@ -741,6 +742,35 @@ export class SqliteJournalRepository implements JournalRepository {
          LIMIT ?`,
       )
       .all(limit) as JournalTaxonomyCount[];
+  }
+
+  countEntriesByYearAndMonth(): JournalYearCount[] {
+    const yearRows = this.db
+      .prepare(
+        `SELECT CAST(STRFTIME('%Y', entry_date) AS INTEGER) AS year, COUNT(*) AS entryCount
+         FROM jrn_entries
+         GROUP BY year
+         ORDER BY year DESC`,
+      )
+      .all() as Array<{ year: number; entryCount: number }>;
+
+    return yearRows.map((yearRow) => {
+      const monthRows = this.db
+        .prepare(
+          `SELECT CAST(STRFTIME('%m', entry_date) AS INTEGER) AS month, COUNT(*) AS entryCount
+           FROM jrn_entries
+           WHERE CAST(STRFTIME('%Y', entry_date) AS INTEGER) = ?
+           GROUP BY month
+           ORDER BY month DESC`,
+        )
+        .all(yearRow.year) as Array<{ month: number; entryCount: number }>;
+
+      return {
+        year: yearRow.year,
+        entryCount: yearRow.entryCount,
+        months: monthRows,
+      };
+    });
   }
 
   // --- prefill templates (migration 0062) -----------------------------------

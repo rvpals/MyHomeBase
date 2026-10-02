@@ -180,6 +180,24 @@ export interface JournalTaxonomyCount {
   entryCount: number;
 }
 
+/**
+ * A month paired with how many entries fall in it, grouped by year.
+ */
+export interface JournalMonthCount {
+  month: number; // 1-12
+  entryCount: number;
+}
+
+/**
+ * A year with its entry count and a breakdown by month, for the "Count by years"
+ * section on the journal home screen.
+ */
+export interface JournalYearCount {
+  year: number;
+  entryCount: number;
+  months: JournalMonthCount[];
+}
+
 // Just enough of an entry to link to it (used for previous/next navigation).
 export interface JournalEntryRef {
   id: number;

@@ -72,6 +72,7 @@ pattern instead of inventing one.
 | [`NavStylePreview`](#navstylepreview) | A thumbnail of a phone navigation style, for the picker | [src/components/nav-style-preview.tsx](src/components/nav-style-preview.tsx) | no |
 | [`MusicPlayerProvider`](#musicplayerprovider) | Owns the single `<audio>` element and playback state — mount in the layout | [src/components/music-player-provider.tsx](src/components/music-player-provider.tsx) | yes |
 | [`MusicPlayerBar`](#musicplayerbar) | The persistent "what's playing" strip, above the section nav on every page | [src/components/music-player-bar.tsx](src/components/music-player-bar.tsx) | yes |
+| [`PersonalToolbars`](#personaltoolbars) | Admin-configured shortcut bars docked to a screen edge — **beside** the navigation, never replacing it | [src/components/personal-toolbar.tsx](src/components/personal-toolbar.tsx) | yes |
 | [`MusicSleepTimer`](#musicsleeptimer) | **Stop the music after a while** — preset/custom duration picker plus a live countdown | [src/components/music-sleep-timer.tsx](src/components/music-sleep-timer.tsx) | yes |
 | [`SelectionBar`](#selectionbar) | Tick several rows, then send them somewhere (with `useSelection`) | [src/components/selection-bar.tsx](src/components/selection-bar.tsx) | yes |
 | [`ViewportSwitch`](#viewportswitch) | The global compact/full switch | [src/components/viewport-switch.tsx](src/components/viewport-switch.tsx) | yes |
@@ -4732,3 +4733,48 @@ Like `FileDropzone` it never reads a file's contents; the caller decides how.
 | `disabled?` | `boolean` | |
 | `dedupeByName?` | `boolean` | Default `true`. Refuses a file whose name is already listed — dropping one twice would import its rows twice under one source name. |
 | `className?` | `string` | Merged last. |
+
+## PersonalToolbars
+
+Renders every personal toolbar a reader should currently see, and mirrors the
+`data-toolbar-<edge>` attributes that make the page reserve space for them.
+
+- **Import:** `import { PersonalToolbars } from "@/components/personal-toolbar";`
+- **Source:** [src/components/personal-toolbar.tsx](src/components/personal-toolbar.tsx)
+- **Mounted once**, in the protected layout — app-wide chrome that outlives
+  navigation, same as `FloatingHost`. Do not render it per page.
+
+| Prop | Type | Notes |
+|---|---|---|
+| `toolbars` | `ResolvedToolbar[]` | Already filtered and resolved by `resolveToolbarsFor` on the server. The component applies only `fullModeOnly`. |
+| `canEdit?` | `boolean` | Offers the ✎ shortcut into each bar's editor. **Admins only** — pass `isAdmin(currentUser)`. Defaults to `false`, so forgetting it hides an admin control rather than exposing one. A convenience, not a permission: the screen calls `requireAdmin()` itself. |
+
+**It is additive.** The navigation tree and the compact bottom bar are untouched;
+this renders *beside* them and returns `null` when there is nothing to show, which
+is the state of every install until an admin creates a toolbar. Nothing about where
+you are belongs on one — see `design.md` → *Personal toolbars*.
+
+**Why `fullModeOnly` is applied here rather than on the server:** a reader can pin
+the compact layout on a wide window, and `useIsCompact()` is the one value the whole
+app agrees on. Every other visibility rule (the admin's switch, the reader's hide
+list, dropping rows whose menu item no longer exists) is applied server-side so the
+first HTML is already correct.
+
+**Icons come from the menu item's own slot.** A menu item id *is* an icon slot id,
+so a shortcut shows whatever artwork that screen shows in the navigation tree,
+including an admin's upload — with no extra wiring.
+
+**The ✎ edit shortcut** is hidden at rest and revealed on hover or keyboard focus, so
+it costs no space on a 44px bar; `@media (hover: none)` keeps it permanently visible
+on touch, where hover never fires. It links to
+`/admin/display-settings/toolbars?edit=<id>`, which opens that bar's editor directly.
+Deliberately **not** a floating component — it is a control on an existing surface
+scoped to one bar, not a new floating thing needing a reader-facing switch.
+
+**Border Weight and Chrome Style apply automatically**, from `globals.css` — the bar
+is part of the app's frame, so it thickens and bevels with the header and the
+navigation column. Nothing is set on the component for either. Two things not to
+undo: don't add a `nav-raised-*` class (it fights the admin's bevel with a second
+cast shadow), and don't set `background` — the admin's colour goes to
+`--toolbar-surface` so the embossed gradient can tint it rather than being wiped.
+

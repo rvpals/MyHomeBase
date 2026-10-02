@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState, useTransition } from "react";
+import { useCallback, useRef, useMemo, useState, useTransition } from "react";
 import { Button } from "@/components/button";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { FileDropzone } from "@/components/file-dropzone";
@@ -58,6 +58,7 @@ export function ToolsSqliteBrowserView({
   >();
   const [confirmRemoveFile, setConfirmRemoveFile] = useState<UploadedDatabase | undefined>();
   const router = useRouter();
+  const gridRef = useRef<HTMLDivElement>(null);
 
   const isBusy = isPending || isUploading;
 
@@ -71,6 +72,10 @@ export function ToolsSqliteBrowserView({
           return;
         }
         setPage(result.page);
+        // Scroll to the table grid after the page state updates
+        setTimeout(() => {
+          gridRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 0);
       });
     },
     [],
@@ -231,11 +236,13 @@ export function ToolsSqliteBrowserView({
       </div>
 
       {page && (
-        <TableGrid
-          page={page}
-          isBusy={isBusy}
-          onDeleteRows={(rowIds, clearSelection) => setConfirmRows({ rowIds, clearSelection })}
-        />
+        <div ref={gridRef}>
+          <TableGrid
+            page={page}
+            isBusy={isBusy}
+            onDeleteRows={(rowIds, clearSelection) => setConfirmRows({ rowIds, clearSelection })}
+          />
+        </div>
       )}
 
       {confirmRows && (

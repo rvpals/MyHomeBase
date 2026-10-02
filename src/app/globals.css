@@ -73,8 +73,13 @@ body {
      notch / Dynamic Island, so content would otherwise start behind it. `env()`
      is `0px` on any device without insets, so every desktop browser and most
      Android ones are unaffected. Same reasoning for the bottom and side insets
-     below. */
-  padding-top: env(safe-area-inset-top);
+     below.
+
+     `+ var(--toolbar-top-height)` reserves a personal toolbar docked to the top
+     edge. That variable is `0px` unless one is actually rendered there, so this
+     is one expression for both states and this element keeps exactly one
+     `padding-top` declaration — see the personal-toolbar block further down. */
+  padding-top: calc(env(safe-area-inset-top) + var(--toolbar-top-height, 0px));
   /* The side gutter lives here rather than as `px-8 max-lg:px-4` on the element,
      because things inside it need to *cancel* it to run edge to edge. One
      variable means the bleed can't drift out of step with
@@ -309,6 +314,370 @@ html[data-music-player] .app-main {
     var(--section-trigger-height) + var(--music-player-height, 0px) +
       env(safe-area-inset-bottom)
   );
+}
+
+/* ---------------------------------------------------------------------------
+   Personal toolbars: an admin-configured bar of shortcuts docked to one of the
+   four screen edges.
+
+   NOT a replacement for any navigation tier. The tree, the compact bottom bar
+   and the player all keep their space; a toolbar composes with whatever is
+   already on its edge rather than overlapping it. A reader with no toolbars
+   sees no change at all, because every variable below is `0px` until
+   `ToolbarLayer` mirrors an attribute onto `<html>`.
+
+   Four variables rather than one, because each edge is reserved independently
+   and `.app-main` has to add the right one to the right side. They stay `0px`
+   unless a bar is actually rendered on that edge — `data-toolbar-<edge>` is set
+   by the client, for the reason every other seam here is: `.app-main` belongs
+   to a server layout that cannot see a reader's own hide list.
+
+   `lib` owns WHICH edges are occupied (`occupiedEdges`); these rules own the
+   pixels. Same split `resolvePuckSlots` makes for the floating layer — nothing
+   under `src/lib/` may know a bar's thickness. */
+:root {
+  --toolbar-top-height: 0px;
+  --toolbar-bottom-height: 0px;
+  --toolbar-left-width: 0px;
+  --toolbar-right-width: 0px;
+}
+
+/* 2.75rem (44px) is the minimum comfortable tap target, which is what sets the
+   thickness: a horizontal bar is one row of 44px buttons, a vertical one is a
+   44px column of them. Narrower would be a worse control on touch for no gain
+   in content width. */
+html[data-toolbar-top] {
+  --toolbar-top-height: 2.75rem;
+}
+html[data-toolbar-bottom] {
+  --toolbar-bottom-height: 2.75rem;
+}
+html[data-toolbar-left] {
+  --toolbar-left-width: 2.75rem;
+}
+html[data-toolbar-right] {
+  --toolbar-right-width: 2.75rem;
+}
+
+/* The page reserves room for whichever edges are occupied.
+   `padding-inline` composes with `--app-gutter`, which `.app-main` already sets;
+   these are separate declarations so they add to the gutter rather than
+   replacing it, and so a left bar doesn't indent the right side.
+
+   Deliberately NOT `padding-left`/`padding-right`: the shell rules above already
+   own `padding-left` for the tree and the rail, and a second declaration of the
+   same property would silently win or lose depending on source order. These add
+   their own inline-start/end padding on top via a separate box — see the
+   `.app-main` wrapper note in `ToolbarLayer`.
+
+   The top edge is folded into `.app-main`'s own `padding-top` above rather than
+   declared again here — `--toolbar-top-height` is `0px` until a top bar exists,
+   so that one expression covers both states and there is only ever one
+   `padding-top` on this element.
+
+   The SIDE edges are folded into `--app-gutter` for the same reason, and it is
+   the only correct seam: `.app-main`'s `padding-inline` uses the gutter, and the
+   two shell rules above add it to their own `padding-left` (`calc(rail + panel +
+   gutter)`). Declaring `padding-left` here instead would be a second declaration
+   of a property those rules already own, and which one won would depend on source
+   order. Widening the gutter flows through all three call sites at once.
+
+   A left toolbar and the navigation tree therefore stack: the tree's 260px, then
+   the bar's 44px, then the gutter. They do not overlap, because the tree's width
+   is reserved by `padding-left` and the bar's by the gutter inside it. */
+html[data-toolbar-left] .app-main {
+  --app-gutter: calc(
+    max(2rem, env(safe-area-inset-left), env(safe-area-inset-right)) +
+      var(--toolbar-left-width)
+  );
+}
+
+html[data-toolbar-right] .app-main {
+  --app-gutter: calc(
+    max(2rem, env(safe-area-inset-left), env(safe-area-inset-right)) +
+      var(--toolbar-right-width)
+  );
+}
+
+/* Both edges occupied: the gutter carries both, so neither side is short. A
+   separate rule rather than relying on the two above, because the later of them
+   would otherwise win outright and one bar would sit on top of the content. */
+html[data-toolbar-left][data-toolbar-right] .app-main {
+  --app-gutter: calc(
+    max(2rem, env(safe-area-inset-left), env(safe-area-inset-right)) +
+      var(--toolbar-left-width) + var(--toolbar-right-width)
+  );
+}
+
+@media (max-width: 1023.98px) {
+  html[data-toolbar-left] .app-main {
+    --app-gutter: calc(
+      max(1rem, env(safe-area-inset-left), env(safe-area-inset-right)) +
+        var(--toolbar-left-width)
+    );
+  }
+  html[data-toolbar-right] .app-main {
+    --app-gutter: calc(
+      max(1rem, env(safe-area-inset-left), env(safe-area-inset-right)) +
+        var(--toolbar-right-width)
+    );
+  }
+  html[data-toolbar-left][data-toolbar-right] .app-main {
+    --app-gutter: calc(
+      max(1rem, env(safe-area-inset-left), env(safe-area-inset-right)) +
+        var(--toolbar-left-width) + var(--toolbar-right-width)
+    );
+  }
+}
+
+html[data-toolbar-bottom] .app-main {
+  padding-bottom: calc(
+    var(--section-trigger-height) + var(--music-player-height, 0px) +
+      var(--toolbar-bottom-height) + env(safe-area-inset-bottom)
+  );
+}
+
+/* A docked toolbar. The shared geometry; each edge's own rule below places it.
+
+   z-30 — level with the nav tree, the section panel and the music puck, under
+   `AppChrome`'s z-40 and `Modal`'s z-50 so a dialog still covers a toolbar.
+   design.md caps chrome at z-40 and this is chrome. */
+.personal-toolbar {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  /* Items pack from the START of the bar — the left edge on a horizontal bar, the
+     TOP on a vertical one — in the order they were added. Explicit rather than
+     relying on flexbox's `flex-start` default, because "why is my first item at the
+     bottom?" is the obvious question to ask of a vertical bar and the answer should
+     be readable here. The only thing that moves items away from the start is a
+     `spacer`, which is exactly its job. */
+  justify-content: flex-start;
+  gap: 0.25rem;
+  overflow: auto;
+
+  /* The bar's own fill, as a variable so the Chrome Style gradients can mix
+     against it. `PersonalToolbars` overrides it inline when an administrator has
+     chosen a background colour; unset, it is the theme's raised surface, so an
+     unconfigured bar stays themed and survives a theme change.
+     ------------------------------------------------------------------------
+     This indirection is the whole reason an admin's colour and the embossed
+     chrome style can coexist: the gradient mixes `--toolbar-surface` with
+     `--ink`/`--paper` rather than naming `--paper-raised` directly, so it tints
+     the chosen colour instead of painting over it. */
+  --toolbar-surface: var(--paper-raised);
+  background-color: var(--toolbar-surface);
+  color: var(--ink);
+  border-color: var(--line);
+  border-style: solid;
+  /* `0` so only the one edge facing the content draws — that side is set per edge
+     from `--chrome-outline-width` in the border-weight block. */
+  border-width: 0;
+}
+
+/* Each edge spans the full axis and sits inside the device insets. A horizontal
+   bar clears the side insets; a vertical one clears top and bottom, and stacks
+   above whatever already owns the bottom edge so it can never cover the player
+   or the compact section trigger.
+
+   **These rules carry no `border-*-width`.** The one edge facing the content is
+   widened from `--chrome-outline-width` in the border-weight block further down,
+   so the bar follows Administration > Display Settings > Border Weight. A literal
+   `1px` here would pin it and the setting would silently do nothing -- the exact
+   trap `app-header.tsx` documents for `border-b`. */
+.personal-toolbar[data-edge="top"] {
+  top: env(safe-area-inset-top);
+  inset-inline: 0;
+  height: var(--toolbar-top-height);
+  padding-inline: max(0.5rem, env(safe-area-inset-left), env(safe-area-inset-right));
+}
+
+.personal-toolbar[data-edge="bottom"] {
+  bottom: calc(
+    var(--section-trigger-height) + var(--music-player-height, 0px) +
+      env(safe-area-inset-bottom)
+  );
+  inset-inline: 0;
+  height: var(--toolbar-bottom-height);
+  padding-inline: max(0.5rem, env(safe-area-inset-left), env(safe-area-inset-right));
+}
+
+/* The side bars start below a top toolbar and end above a bottom one, so two
+   adjacent bars meet rather than overlap. */
+.personal-toolbar[data-edge="left"],
+.personal-toolbar[data-edge="right"] {
+  top: calc(env(safe-area-inset-top) + var(--toolbar-top-height));
+  bottom: calc(
+    var(--section-trigger-height) + var(--music-player-height, 0px) +
+      var(--toolbar-bottom-height) + env(safe-area-inset-bottom)
+  );
+  width: var(--toolbar-left-width);
+  flex-direction: column;
+  padding-block: 0.5rem;
+}
+
+/* The left bar sits OUTSIDE whatever navigation column is already down the left
+   edge, not on top of it: the tree on the full layout (`--nav-tree-width`), or
+   the rail plus panel on the two-tier shell. Both are `0px` when no shell
+   rendered and on compact, where the tree is a sheet and the rail a dropdown —
+   so this one expression is correct on every layout.
+
+   Written as three variables added together rather than branching on
+   `data-shell`, because only one of the three is ever non-zero at a time:
+   `html[data-shell="tree"]` sets the tree width and leaves the other two at
+   their `0px` defaults, and the two-tier shell does the reverse. */
+.personal-toolbar[data-edge="left"] {
+  left: calc(
+    env(safe-area-inset-left) + var(--nav-tree-shell-width, 0px) +
+      var(--two-tier-shell-width, 0px)
+  );
+}
+
+/* Nothing else claims the right edge, so this one only clears the device inset. */
+.personal-toolbar[data-edge="right"] {
+  right: env(safe-area-inset-right);
+  width: var(--toolbar-right-width);
+}
+
+/* How much of the left edge the navigation shell is already using. Mirrors the
+   two `.app-main` padding-left rules above, so the toolbar and the content
+   column agree about where the navigation ends. Both default to `0px`, which is
+   what a page outside any shell — and every compact layout — gets. */
+html[data-shell="tree"] {
+  --nav-tree-shell-width: var(--nav-tree-width);
+}
+
+html[data-shell="two-tier"] {
+  --two-tier-shell-width: calc(
+    var(--module-rail-width) + var(--section-panel-width)
+  );
+}
+
+/* Compact puts both navigation tiers into overlays, so the left edge is free
+   again. Both the media query and the pinned attribute, for the reason the
+   shell rules above carry both: a reader can pin compact on a wide window. */
+@media (max-width: 1023.98px) {
+  html[data-shell="tree"] {
+    --nav-tree-shell-width: 0px;
+  }
+  html[data-shell="two-tier"] {
+    --two-tier-shell-width: 0px;
+  }
+}
+
+html[data-viewport="compact"] {
+  --nav-tree-shell-width: 0px;
+  --two-tier-shell-width: 0px;
+}
+
+/* The ✎ that opens a toolbar's editor (admins only — `PersonalToolbars` gates it).
+   ---------------------------------------------------------------------------
+   Hidden at rest and revealed on hover, so it costs no shortcut space on a 44px
+   bar. `opacity` rather than `display: none`, because a hidden-by-display
+   element is unreachable by keyboard and invisible to a screen reader — this
+   stays in the tree and in the tab order throughout.
+
+   Three ways to reveal it, and all three are needed:
+     1. hovering the bar      — the pointer case
+     2. focusing the button   — keyboard, which never hovers
+     3. a coarse pointer      — see below
+
+   The `auto` margin pushes it to the far end, and WHICH margin depends on the
+   bar's direction: a horizontal bar is a flex row, so `margin-left` pushes along
+   the main axis; a vertical bar is a flex column, where `margin-left` does
+   nothing to main-axis position and `margin-top` is the one that pushes. Getting
+   this wrong leaves the button trailing the last shortcut instead of sitting at
+   the end, which is why it is not a Tailwind `ml-auto` on the element. */
+.personal-toolbar-edit {
+  opacity: 0;
+}
+
+.personal-toolbar[data-edge="top"] .personal-toolbar-edit,
+.personal-toolbar[data-edge="bottom"] .personal-toolbar-edit {
+  margin-left: auto;
+}
+
+.personal-toolbar[data-edge="left"] .personal-toolbar-edit,
+.personal-toolbar[data-edge="right"] .personal-toolbar-edit {
+  margin-top: auto;
+}
+
+.personal-toolbar-edit:focus-visible,
+.personal-toolbar:hover .personal-toolbar-edit {
+  opacity: 0.7;
+}
+
+.personal-toolbar-edit:hover,
+.personal-toolbar-edit:focus-visible {
+  opacity: 1;
+}
+
+/* Touch has no hover, so a hover-only control is simply unreachable there —
+   `design.md` makes this point about `hover:` being dead weight on a phone. On a
+   coarse pointer the button is permanently visible instead. A media query on the
+   INPUT rather than the width, because the thing that matters is whether the
+   device can hover, not how wide it is: a touch laptop at 1400px needs this too. */
+@media (hover: none) {
+  .personal-toolbar-edit {
+    opacity: 0.7;
+  }
+}
+
+/* A spacer is flexible empty space, which is the whole of its job: it takes all
+   the slack going, so everything after it is pushed to the far end of the bar. */
+.personal-toolbar-spacer {
+  flex: 1 1 auto;
+  min-width: 0.5rem;
+  min-height: 0.5rem;
+}
+
+/* A separator is a drawn dividing line — the opposite of a spacer: it takes a
+   couple of pixels along the bar and spans the bar's full thickness across it.
+
+   `flex: 0 0 auto` because it must NOT absorb slack; that is the spacer's job, and
+   a separator that grew would push the groups it divides apart instead of marking
+   the join between them.
+
+   Two rules rather than one, because the line has to run across the bar's
+   thickness and "across" is a different axis per edge. The bar is a flex row on the
+   top and bottom edges and a flex column on the left and right (see
+   `.personal-toolbar[data-edge]` above), so the divider is a vertical hairline in
+   the first case and a horizontal one in the second.
+
+   `currentColor` at low alpha rather than `--line`, so the divider tints with the
+   admin's chosen text colour — on a bar with a custom background, the theme's own
+   line colour is very often invisible. */
+.personal-toolbar-separator {
+  flex: 0 0 auto;
+  background: currentColor;
+  opacity: 0.25;
+  border-radius: 1px;
+}
+
+/* Top and bottom edges: the bar runs horizontally, so the line is vertical.
+   `margin-inline` gives the divider breathing room from the buttons either side —
+   without it the line sits tight against a 36px button and reads as that button's
+   border rather than as a division between groups. */
+.personal-toolbar[data-edge="top"] .personal-toolbar-separator,
+.personal-toolbar[data-edge="bottom"] .personal-toolbar-separator {
+  width: 1px;
+  /* Not the bar's whole height: a full-bleed line would touch the bar's own top and
+     bottom borders and read as a seam in the chrome. 60% centres it as a mark. */
+  height: 60%;
+  margin-inline: 0.25rem;
+}
+
+/* Left and right edges: the bar runs vertically, so the line is horizontal. */
+.personal-toolbar[data-edge="left"] .personal-toolbar-separator,
+.personal-toolbar[data-edge="right"] .personal-toolbar-separator {
+  height: 1px;
+  width: 60%;
+  margin-block: 0.25rem;
+  /* The bar centres its children on the cross axis (`align-items: center`), but a
+     60%-wide child in a column needs that to actually apply — `align-self` is
+     explicit here so the line is centred rather than stretched to the full width. */
+  align-self: center;
 }
 
 
@@ -882,6 +1251,155 @@ html[data-music-player] .app-main {
     0 1px 0 0 color-mix(in srgb, var(--edge-lit-soft) 14%, transparent);
 }
 
+/* ---------------------------------------------------------------------------
+   A personal toolbar wears the same chrome style.
+   ---------------------------------------------------------------------------
+   A docked toolbar IS part of the app's frame, so a flat bar beside an embossed
+   header reads as a bug the same way a raised header over a sunken column
+   would. It therefore follows the one setting rather than carrying a look of
+   its own.
+
+   WHY `.personal-toolbar` AND NOT A NEW HOOK CLASS. The three hooks above exist
+   because their layout classes (`.shell-header`, `.shell-tree`) could not be
+   styled safely -- the block above records the bug where keying off
+   `.shell-tree` dragged `position: fixed` into eight preview thumbnails.
+   `.personal-toolbar` does carry layout, but it is never reused for a preview:
+   the admin screen previews a toolbar's COLOURS, not its bevel, and does so
+   with its own markup. So there is no second element needing these rules and no
+   hook to invent. If a bevel preview is ever added, split a geometry-free
+   `.chrome-edge` out then -- and read that block's warning first.
+
+   WHY THE BEVEL IS PER EDGE. A bevel is directional: light comes from above, so
+   the lit lip belongs on the edge facing away from the shadow. A top bar is lit
+   like the header, a bottom bar is the header inverted, and the side bars are
+   lit on their vertical edges like the navigation column. One blanket rule
+   would light three of the four from the wrong side.
+
+   **`background-color` is never set here**, which is what keeps an
+   administrator's chosen toolbar colour intact -- the bevel is shadows over
+   whatever colour the bar already has, so a green bar stays green and simply
+   gains the frame's treatment. `--toolbar-surface` is the bar's own fill
+   (defaulting to `--paper-raised`), so even the emboss gradient tints the
+   chosen colour rather than painting over it. See `.personal-toolbar`. */
+
+[data-chrome-style="inset"] .personal-toolbar[data-edge="top"] {
+  box-shadow:
+    inset 0 2px 4px -1px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(0, 0, 0, 0.16),
+    inset 0 -1px 0 color-mix(in srgb, var(--edge-lit-soft) 16%, transparent);
+}
+
+/* Inverted: a bar on the bottom edge recesses from its underside upward. */
+[data-chrome-style="inset"] .personal-toolbar[data-edge="bottom"] {
+  box-shadow:
+    inset 0 -2px 4px -1px rgba(0, 0, 0, 0.22),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 color-mix(in srgb, var(--edge-lit-soft) 16%, transparent);
+}
+
+/* The side bars recess horizontally, exactly as `.chrome-frame` does. */
+[data-chrome-style="inset"] .personal-toolbar[data-edge="left"] {
+  box-shadow:
+    inset -2px 0 4px -1px rgba(0, 0, 0, 0.22),
+    inset -1px 0 0 rgba(0, 0, 0, 0.16),
+    inset 1px 0 0 color-mix(in srgb, var(--edge-lit-soft) 16%, transparent);
+}
+
+[data-chrome-style="inset"] .personal-toolbar[data-edge="right"] {
+  box-shadow:
+    inset 2px 0 4px -1px rgba(0, 0, 0, 0.22),
+    inset 1px 0 0 rgba(0, 0, 0, 0.16),
+    inset -1px 0 0 color-mix(in srgb, var(--edge-lit-soft) 16%, transparent);
+}
+
+/* Outset -- the bar sits on top of the page, casting away from the content.
+   The hairline would double the cast's edge, so the shadow replaces it, exactly
+   as `.chrome-bar` does. */
+[data-chrome-style="outset"] .personal-toolbar[data-edge="top"] {
+  border-bottom-color: transparent;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--edge-lit) 28%, transparent),
+    0 2px 0 0 var(--line),
+    0 6px 14px -4px rgba(0, 0, 0, 0.42);
+}
+
+[data-chrome-style="outset"] .personal-toolbar[data-edge="bottom"] {
+  border-top-color: transparent;
+  box-shadow:
+    inset 0 -1px 0 color-mix(in srgb, var(--edge-lit) 28%, transparent),
+    0 -2px 0 0 var(--line),
+    0 -6px 14px -4px rgba(0, 0, 0, 0.42);
+}
+
+[data-chrome-style="outset"] .personal-toolbar[data-edge="left"] {
+  border-right-color: transparent;
+  box-shadow:
+    inset 1px 0 0 color-mix(in srgb, var(--edge-lit) 28%, transparent),
+    2px 0 0 0 var(--line),
+    6px 0 14px -4px rgba(0, 0, 0, 0.42);
+}
+
+[data-chrome-style="outset"] .personal-toolbar[data-edge="right"] {
+  border-left-color: transparent;
+  box-shadow:
+    inset -1px 0 0 color-mix(in srgb, var(--edge-lit) 28%, transparent),
+    -2px 0 0 0 var(--line),
+    -6px 0 14px -4px rgba(0, 0, 0, 0.42);
+}
+
+/* Emboss -- a lit/shaded lip pair over a faint gradient, no cast.
+   The gradient runs ALONG the bar's thickness, so it is vertical on a
+   horizontal bar and horizontal on a vertical one. It mixes against
+   `--toolbar-surface` rather than `--paper-raised`, which is what makes it tint
+   an administrator's chosen colour instead of replacing it. */
+[data-chrome-style="emboss"] .personal-toolbar[data-edge="top"] {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--toolbar-surface) 90%, var(--ink)) 0%,
+    var(--toolbar-surface) 50%,
+    color-mix(in srgb, var(--toolbar-surface) 96%, var(--paper)) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--edge-lit) 30%, transparent),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.3);
+}
+
+[data-chrome-style="emboss"] .personal-toolbar[data-edge="bottom"] {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--toolbar-surface) 96%, var(--paper)) 0%,
+    var(--toolbar-surface) 50%,
+    color-mix(in srgb, var(--toolbar-surface) 90%, var(--ink)) 100%
+  );
+  box-shadow:
+    inset 0 -1px 0 color-mix(in srgb, var(--edge-lit) 30%, transparent),
+    inset 0 1px 0 rgba(0, 0, 0, 0.3);
+}
+
+[data-chrome-style="emboss"] .personal-toolbar[data-edge="left"] {
+  background-image: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--toolbar-surface) 90%, var(--ink)) 0%,
+    var(--toolbar-surface) 50%,
+    color-mix(in srgb, var(--toolbar-surface) 96%, var(--paper)) 100%
+  );
+  box-shadow:
+    inset 1px 0 0 color-mix(in srgb, var(--edge-lit) 30%, transparent),
+    inset -1px 0 0 rgba(0, 0, 0, 0.3);
+}
+
+[data-chrome-style="emboss"] .personal-toolbar[data-edge="right"] {
+  background-image: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--toolbar-surface) 96%, var(--paper)) 0%,
+    var(--toolbar-surface) 50%,
+    color-mix(in srgb, var(--toolbar-surface) 90%, var(--ink)) 100%
+  );
+  box-shadow:
+    inset -1px 0 0 color-mix(in srgb, var(--edge-lit) 30%, transparent),
+    inset 1px 0 0 rgba(0, 0, 0, 0.3);
+}
+
 
 /* ============================================================================
    Border weights -- Administration > Display Settings > Border Weight, stored
@@ -940,6 +1458,36 @@ html[data-music-player] .app-main {
 /* Each module slab's outline -- all four sides, which is what the slab draws. */
 .chrome-slab {
   border-width: var(--chrome-outline-width);
+}
+
+/* A personal toolbar's edge against the page.
+   ---------------------------------------------------------------------------
+   Only the ONE side facing the content is widened, and which side that is
+   depends on the edge the bar is docked to -- so this is four rules rather
+   than a blanket `border-width`. The distinction matters for the same reason
+   the inner rules below name their sides: a single-side rule widened on all
+   four draws three borders nobody asked for, and on a 44px bar a 4px outline
+   would eat a fifth of its thickness.
+
+   `--chrome-outline-width` and not `--line-width`: a toolbar is an outer edge
+   of the app's frame, exactly like the header's bottom rule and the column's
+   right rule above, so it should thicken with them rather than with cards and
+   tables. The separators INSIDE a bar deliberately stay 1px hairlines -- they
+   are marks within a surface, not the frame around it. */
+.personal-toolbar[data-edge="top"] {
+  border-bottom-width: var(--chrome-outline-width);
+}
+
+.personal-toolbar[data-edge="bottom"] {
+  border-top-width: var(--chrome-outline-width);
+}
+
+.personal-toolbar[data-edge="left"] {
+  border-right-width: var(--chrome-outline-width);
+}
+
+.personal-toolbar[data-edge="right"] {
+  border-left-width: var(--chrome-outline-width);
 }
 
 /* --- The navigation column's inner rules --------------------------------- */

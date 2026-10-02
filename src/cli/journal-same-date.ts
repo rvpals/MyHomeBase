@@ -86,7 +86,11 @@ export async function journalSameDateCommand(args: string[]): Promise<void> {
       const time = entry.time === "" ? "  —  " : entry.time.slice(0, 5).padEnd(5);
       const title = entry.title.trim() === "" ? "(untitled)" : entry.title;
       const lock = entry.isLocked ? " [locked]" : "";
-      console.log(`  #${String(entry.id).padStart(5)}  ${time}  ${title}${lock}`);
+      // The web list's "L" badge, spelled out: a terminal has no room for a
+      // glyph whose meaning depends on a tooltip. Suppressed under --log-only,
+      // where every row is a log and the marker would be noise on all of them.
+      const log = !logOnly && entry.isLog ? " [log]" : "";
+      console.log(`  #${String(entry.id).padStart(5)}  ${time}  ${title}${log}${lock}`);
       if (entry.excerpt !== "") console.log(`         ${entry.excerpt.slice(0, 120)}`);
     }
   }

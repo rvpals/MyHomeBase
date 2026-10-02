@@ -14,6 +14,7 @@ import type {
   JournalEntryTally,
   JournalTaxonomyCount,
   JournalWordCount,
+  JournalYearCount,
 } from "@/lib/journal";
 import { journalEntriesFilterHref, TaxonomyIconThumbnail } from "./journal-shared";
 
@@ -255,6 +256,129 @@ function TopWordsList({ words }: { words: JournalWordCount[] }) {
   );
 }
 
+const MONTH_NAMES = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+function CountByYears({ yearCounts }: { yearCounts: JournalYearCount[] }) {
+  const router = useRouter();
+  const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set());
+
+  function toggleYear(year: number) {
+    const newExpanded = new Set(expandedYears);
+    if (newExpanded.has(year)) {
+      newExpanded.delete(year);
+    } else {
+      newExpanded.add(year);
+    }
+    setExpandedYears(newExpanded);
+  }
+
+  function navigateToYearEntries(year: number) {
+    const startDate = `${year}-01-01`;
+    const endDate = `${year}-12-31`;
+    const query = `date >= ${startDate} and date <= ${endDate}`;
+    router.push(`/modules/journal/entries?filter=${encodeURIComponent(query)}`);
+  }
+
+  function navigateToMonthEntries(year: number, month: number) {
+    const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+    const query = `date >= ${startDate} and date <= ${endDate}`;
+    router.push(`/modules/journal/entries?filter=${encodeURIComponent(query)}`);
+  }
+
+  if (yearCounts.length === 0) {
+    return <p className="mt-2 text-sm text-muted">No entries yet.</p>;
+  }
+
+  return (
+    <div className="mt-3 flex flex-col gap-2.5">
+      {yearCounts.map((yearCount) => {
+        const isExpanded = expandedYears.has(yearCount.year);
+
+        return (
+          <div
+            key={yearCount.year}
+            className="overflow-hidden rounded-lg border border-line bg-paper-raised"
+          >
+            <div className="flex w-full items-center gap-2 px-2.5 py-2 text-left text-sm font-medium text-ink">
+              <button
+                type="button"
+                onClick={() => toggleYear(yearCount.year)}
+                className="flex items-center gap-2 transition-colors hover:text-brass-dark"
+                title="Expand/collapse"
+              >
+                <span
+                  className={`shrink-0 text-xs text-muted transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                >
+                  ▶
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => navigateToYearEntries(yearCount.year)}
+                className="min-w-0 flex-1 truncate text-left transition-colors hover:text-brass-dark hover:underline"
+                title={`Show all entries from ${yearCount.year}`}
+              >
+                {yearCount.year}
+              </button>
+              <span className="shrink-0 font-mono text-xs font-normal text-muted">
+                {yearCount.entryCount}
+              </span>
+            </div>
+
+            {isExpanded && (
+              <div className="flex flex-col py-1.5 pl-4 pr-1.5">
+                {yearCount.months.map((monthCount, index) => {
+                  const isLast = index === yearCount.months.length - 1;
+                  return (
+                    <div key={monthCount.month} className="relative pl-4">
+                      <span
+                        aria-hidden
+                        className={`absolute left-0 w-px bg-line ${isLast ? "top-0 h-[1.125rem]" : "inset-y-0"}`}
+                      />
+                      <span
+                        aria-hidden
+                        className="absolute left-0 top-[1.125rem] h-px w-3 bg-line"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => navigateToMonthEntries(yearCount.year, monthCount.month)}
+                        className="w-full rounded-md px-2 py-1 text-left transition-colors hover:bg-line/60"
+                        title={`Show entries from ${MONTH_NAMES[monthCount.month - 1]} ${yearCount.year}`}
+                      >
+                        <span className="block truncate text-xs text-ink hover:text-brass-dark">
+                          {MONTH_NAMES[monthCount.month - 1]}
+                        </span>
+                        <span className="block truncate text-xs text-muted">
+                          {monthCount.entryCount} {monthCount.entryCount === 1 ? "entry" : "entries"}
+                        </span>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function cellToText(value: unknown): string {
   return value === null || value === undefined ? "" : String(value);
 }
@@ -265,6 +389,7 @@ export function JournalView({
   topWords,
   topTags,
   topCategories,
+  yearAndMonthCounts = [],
   categoryIcons = {},
   tagIcons = {},
   canRunSql = false,
@@ -284,6 +409,8 @@ export function JournalView({
   topWords: JournalWordCount[];
   topTags: JournalTaxonomyCount[];
   topCategories: JournalTaxonomyCount[];
+  /** Entry counts grouped by year and month. */
+  yearAndMonthCounts?: JournalYearCount[];
   /** Name -> icon URL for the Statistics lists; absent names just show no icon. */
   categoryIcons?: Record<string, string>;
   tagIcons?: Record<string, string>;
@@ -338,7 +465,8 @@ export function JournalView({
           tally.totalCount > 0 ||
           topWords.length > 0 ||
           topTags.length > 0 ||
-          topCategories.length > 0
+          topCategories.length > 0 ||
+          yearAndMonthCounts.length > 0
         }
       >
         {/* Three counters in the house stat-tile shape (design.md -> "Stat tiles
@@ -351,18 +479,15 @@ export function JournalView({
           <StatTile label="Total Log Entries" value={tally.logCount} />
         </div>
 
-        {/* The three ranked lists, one row of boxes on a full screen and a single
-            stacked column compact. `lg:grid-cols-3` with `max-lg:grid-cols-1`
-            keeps the compact case a plain stack — three 10-row lists side by side
+        {/* The ranked lists and count by years, 2x2 grid on desktop and single
+            stacked column compact. `lg:grid-cols-2` with `max-lg:grid-cols-1`
+            keeps the compact case a plain stack — two 10-row lists side by side
             on a phone would each be too narrow to read a name in.
 
-            Each list is boxed rather than separated by a rule: at three abreast a
-            vertical divider reads as the edge of the middle column and leaves the
-            outer two looking unbounded. The box is the quiet card treatment
-            (`border border-line`, no shadow — design.md → "cards are calm"), not
-            a nested `CollapsibleCard`, which would put a second row of chevrons
-            inside a card that already has one. */}
-        <div className="grid gap-4 lg:grid-cols-3 max-lg:grid-cols-1">
+            Each section is boxed rather than separated by a rule. The box is the
+            quiet card treatment (`border border-line`, no shadow — design.md →
+            "cards are calm"), not a nested `CollapsibleCard`. */}
+        <div className="grid gap-4 lg:grid-cols-2 max-lg:grid-cols-1">
           <div className="rounded-xl border border-line p-4">
             <TaxonomyList
               heading="Top Tags"
@@ -386,19 +511,18 @@ export function JournalView({
             />
           </div>
           <div className="rounded-xl border border-line p-4">
-            {/* Heading built to match `TaxonomyList`'s exactly — same element,
-                same classes, same 1rem leading space where its siblings put a
-                slot icon — so the three boxes read as one set and the three lists
-                start on the same baseline. No icon of its own: a glyph here would
-                mark a *place* and so would need a registered slot, whose id is
-                permanent, and that is not a decision to make mid-layout.
-                "Interesting stats" is gone as a band — it was a heading for a
-                section that is now simply the third column. */}
             <h3 className="flex items-center gap-2 font-display text-sm text-brass-dark">
               <span aria-hidden="true" className="h-4 w-4 shrink-0" />
               Top 10 Words
             </h3>
             <TopWordsList words={topWords} />
+          </div>
+          <div className="rounded-xl border border-line p-4">
+            <h3 className="flex items-center gap-2 font-display text-sm text-brass-dark">
+              <span aria-hidden="true" className="h-4 w-4 shrink-0" />
+              Count by Years
+            </h3>
+            <CountByYears yearCounts={yearAndMonthCounts} />
           </div>
         </div>
       </CollapsibleCard>

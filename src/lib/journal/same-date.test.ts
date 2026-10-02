@@ -106,6 +106,19 @@ describe("findSameDateGroups", () => {
     expect(short.excerpt).toBe("short one");
   });
 
+  it("flags which entries are Log entries, for the list's badge", () => {
+    // Carried on the row because the view never sees `categories` — only these
+    // trimmed fields cross to the client.
+    const groups = findSameDateGroups([
+      entry({ id: 1, date: "2026-03-14", time: "09:00", categories: ["Log"] }),
+      entry({ id: 2, date: "2026-03-14", time: "12:00", categories: ["FAMILY"] }),
+      entry({ id: 3, date: "2026-03-14", time: "18:00", categories: ["Travel", "log"] }),
+      entry({ id: 4, date: "2026-03-14", time: "21:00", categories: [] }),
+    ]);
+
+    expect(groups[0].entries.map((item) => item.isLog)).toEqual([true, false, true, false]);
+  });
+
   it("returns nothing for an empty journal", () => {
     expect(findSameDateGroups([])).toEqual([]);
   });

@@ -9,13 +9,38 @@
 // and call this before rendering, the same way they call `getUserPreferences`.
 
 import { ADMIN_TREE_MODULE } from "./admin-tree-module";
+import { adminMenuItemId, createMenuItemSource, moduleMenuItemId } from "./menu-item-source";
 import { moduleSectionSource } from "./module-sections";
-import { buildNavigationTree, type NavigationTree, type TreeModule } from "@/lib/navigation";
+import { buildNavigationTree, type NavigationTree, type TreeModule, type TreeSection } from "@/lib/navigation";
+import { overriddenTitles } from "@/lib/menu-items";
 import { getUserPreferences } from "@/lib/user-preferences";
 import { getAccessibleModules } from "@/lib/user";
 import type { User } from "@/lib/user";
 import { listModules } from "@/lib/modules";
 import { deps } from "@/lib/wiring";
+
+/**
+ * Applies administrator renames to a module's sections.
+ *
+ * A menu item's title is authoritative wherever the navigation shows it — the tree,
+ * the breadcrumb and the compact bar all render from these same `TreeSection`s, so
+ * overriding here covers all three from one place rather than three.
+ *
+ * The map holds **only** renamed items (see `overriddenTitles`), so on an install
+ * where nothing has been renamed this is a no-op over an empty object and every
+ * label is the one the section file declares.
+ */
+function withOverriddenLabels(
+  sections: TreeSection[],
+  titles: Record<string, string>,
+  idFor: (sectionId: string) => string,
+): TreeSection[] {
+  if (Object.keys(titles).length === 0) return sections;
+  return sections.map((section) => {
+    const title = titles[idFor(section.id)];
+    return title ? { ...section, label: title } : section;
+  });
+}
 
 export interface NavTreeData {
   tree: NavigationTree;
@@ -33,11 +58,22 @@ export interface NavTreeData {
  * absent from their tree for the same single reason it was absent from their rail.
  */
 export function getNavTreeData(currentUser: User): NavTreeData {
+  // Read once and used twice: `getAccessibleModules` filters this for the tree, while
+  // the menu item registry needs the unfiltered list. Two `listModules` calls on a
+  // path that runs for every page render would be two queries for one fact.
+  const allModules = listModules(deps.moduleRepo, { includeHidden: true });
   const accessibleModules = getAccessibleModules(
     currentUser,
-    listModules(deps.moduleRepo),
+    // `getAccessibleModules` has always been handed the visible list; hidden modules
+    // are not its job to filter and passing them would change who sees what.
+    allModules.filter((appModule) => appModule.isVisible),
     deps.userRepo,
   );
+
+  // Renamed menu items, as `id -> title`. Read once here rather than per row: the
+  // tree resolves a label for every section on every render, and the registry is
+  // one read of a table that is empty until an admin renames something.
+  const titles = overriddenTitles(createMenuItemSource(allModules), deps.menuItemOverrideRepo);
 
   return {
     tree: buildNavigationTree(
@@ -47,10 +83,18 @@ export function getNavTreeData(currentUser: User): NavTreeData {
         icon: appModule.icon,
         description: appModule.description,
       })),
-      moduleSectionSource,
+      {
+        sectionsFor: (moduleSlug) =>
+          withOverriddenLabels(moduleSectionSource.sectionsFor(moduleSlug), titles, (sectionId) =>
+            moduleMenuItemId(moduleSlug, sectionId),
+          ),
+      },
     ),
     expandedModules: getUserPreferences(deps.userPreferencesRepo, currentUser.id).expandedModules,
-    adminTreeModule: ADMIN_TREE_MODULE,
+    adminTreeModule: {
+      ...ADMIN_TREE_MODULE,
+      sections: withOverriddenLabels(ADMIN_TREE_MODULE.sections, titles, adminMenuItemId),
+    },
     links: accessibleModules.map((appModule) => ({
       slug: appModule.slug,
       name: appModule.shortName,

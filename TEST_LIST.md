@@ -31,6 +31,23 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-10-02 — Release (Count by Years)
+
+One new feature, no migrations. The tree-nav styling matches the Entries browser;
+date filtering is the only risky part — it constructs and URL-encodes date range
+queries.
+
+- [ ] **1.** Journal → Statistics card: "Count by Years" section appears with years
+  listed newest-first, each year clickable/expandable to show months December-to-January
+- [ ] **2.** Click a year (e.g., "2023") to navigate to Entries screen filtered to that
+  year's entries; date range query appears in the filter bar
+- [ ] **3.** Click a month (e.g., "October") to navigate to Entries screen filtered to
+  just that month; month boundary is correct (October has 31 days)
+- [ ] **4.** Tree-nav styling: chevron rotates on expand, spine and elbow lines draw
+  correctly, hover states work on both year and month rows
+
+---
+
 ## 2026-10-01 — Release (Merge cleanup, Log-only lens, Table Usage, chrome refinements)
 
 No new migrations — nothing here changes a table. The Table Usage tab reads SQLite's

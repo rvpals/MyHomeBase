@@ -4,6 +4,11 @@ import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { listModules } from "@/lib/modules";
 import { getAccessibleModules } from "@/lib/user";
 import { getEnabledFloating } from "@/lib/floating";
+import {
+  listToolbars,
+  parseHiddenToolbars,
+  TOOLBARS_HIDDEN_PREFERENCE_KEY,
+} from "@/lib/toolbars";
 import { getUserPreferences } from "@/lib/user-preferences";
 import {
   VIEWPORT_COOKIE,
@@ -19,6 +24,7 @@ import {
   saveFloatingCornerAction,
   saveFloatingStateAction,
   saveOwnPreferencesAction,
+  saveToolbarVisibilityAction,
   uploadOwnAvatarAction,
 } from "./actions";
 
@@ -35,6 +41,24 @@ export default async function AccountPage() {
     listModules(deps.moduleRepo),
     deps.userRepo,
   );
+
+  // The household's toolbars, with this reader's own hide state folded in. Only the
+  // administrator's visible ones are offered: a bar switched off for everyone is not
+  // something a reader can bring back, so listing it would be a dead control.
+  const hiddenToolbars = parseHiddenToolbars(
+    deps.userPreferencesRepo
+      .listByUserId(currentUser.id)
+      .find((row) => row.key === TOOLBARS_HIDDEN_PREFERENCE_KEY)?.value,
+  );
+  const toolbars = listToolbars(deps.toolbarRepo)
+    .filter((toolbar) => toolbar.isVisible)
+    .map((toolbar) => ({
+      id: toolbar.id,
+      name: toolbar.name,
+      edge: toolbar.edge,
+      fullModeOnly: toolbar.fullModeOnly,
+      hidden: hiddenToolbars.includes(toolbar.id),
+    }));
 
   return (
     // Belongs to no module, so the shell gives it the rail and the header but
@@ -59,6 +83,11 @@ export default async function AccountPage() {
         // Read here rather than in the view: which components are available is an
         // app-wide setting, and the view is a client island.
         enabledFloating={getEnabledFloating(deps.settingsRepo)}
+        // This reader's own show/hide. Passed only here and not from the admin
+        // preferences screen, because the action writes the *session's* preference
+        // — see the prop's own note on `AccountView`.
+        toolbars={toolbars}
+        onToggleToolbar={saveToolbarVisibilityAction}
         // Plain data across the boundary — the view is a client island and can't
         // be handed the module records themselves.
         modules={accessibleModules.map((appModule) => ({

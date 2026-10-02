@@ -1,6 +1,34 @@
 # Change History
 
+## 2026-10-02 — Journal: Count by Years and Months
+
+### "Count by Years" in the Statistics card
+
+A new section in the *My Journal* Statistics card shows entry counts grouped by
+year, with years sorted newest first. Click a year to expand and see the monthly
+breakdown, with months sorted December to January. All months display their entry
+count.
+
+Both years and months are clickable links to the Entries screen — click a year to
+see all entries from that year, or a month to narrow to just that month. The
+dates filter automatically adjusts for month boundaries, so October always shows
+the full 31 days even in the filter syntax.
+
+The layout is a tree-navigation style, matching the Entries browser's own tree
+nodes: chevron to expand/collapse, spine and elbow lines connecting parent to
+children, and the same color scheme.
+
 ## 2026-10-01 — Merge cleanup, a Log-only lens, Table Usage, and chrome refinements
+
+### An "L" badge on logged activities
+
+Entries carrying the Log category now show a small circular **L** beside their
+title in the *Review multiple entries on same date* list, so with the toggle off
+you can still tell at a glance which of a date's entries are logged activities
+and which are written. The terminal spells it `[log]`.
+
+It uses the same test as the toggle below, so the badge and the filter can't
+disagree about what counts as a log.
 
 ### "Review only Log entries"
 

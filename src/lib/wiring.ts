@@ -39,6 +39,8 @@ import { SqliteJournalRepository } from "./journal/repository";
 import { SqliteSavedLocationRepository } from "./journal-locations/repository";
 import { NodePhotoFileStore } from "./journal-photos/file-store";
 import { YahooFinanceClient } from "./market-data/yahoo-finance-client";
+import { SqliteMenuItemOverrideRepository } from "./menu-items/repository";
+import { SqliteToolbarRepository } from "./toolbars/repository";
 import { SqliteModuleSettingsRepository } from "./module-settings/repository";
 import { SharpCarouselImageProcessor } from "./modules/carousel-image-processor";
 import { SqliteModuleRepository } from "./modules/repository";
@@ -178,6 +180,14 @@ export const deps = {
   // No BLOBs, so unlike the texture repos there is no heavy column to keep off that path.
   colorThemeRepo: new SqliteColorThemeRepository(db),
   moduleSettingsRepo: new SqliteModuleSettingsRepository(db),
+  // Administrator overrides for a menu item's title and hint (migrations/0124).
+  // Sparse — a row only where something was actually renamed, so this is read whole
+  // on a navigation render and is empty on an install where nothing has changed.
+  menuItemOverrideRepo: new SqliteMenuItemOverrideRepository(db),
+  // Personal toolbars and their rows (migrations/0125). Read on every page render
+  // by the shell, which is why `listToolbars` loads every bar's items in one query
+  // rather than one per bar.
+  toolbarRepo: new SqliteToolbarRepository(db),
   userRepo: new SqliteUserRepository(db),
   userPreferencesRepo: new SqliteUserPreferencesRepository(db),
   // The My Shortcuts home card (migrations/0114). Per-person, so every method on

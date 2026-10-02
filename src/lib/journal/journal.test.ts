@@ -442,6 +442,9 @@ function fakeRepo(): JournalRepository {
     countRecycledEntries() {
       throw new Error("not used in these tests");
     },
+    countEntriesByYearAndMonth() {
+      throw new Error("not used in these tests");
+    },
   };
 }
 

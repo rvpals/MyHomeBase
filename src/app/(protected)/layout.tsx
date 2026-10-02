@@ -6,6 +6,7 @@ import { MusicPlayerBar } from "@/components/music-player-bar";
 import { MusicPlayerProvider } from "@/components/music-player-provider";
 import { CompactNavStyleProvider } from "@/components/nav-style-context";
 import { FloatingHost } from "@/components/floating-host";
+import { PersonalToolbars } from "@/components/personal-toolbar";
 import type { CalculatorActions } from "@/components/floating-calculator";
 import type { FloatingActions } from "@/components/floating-layer";
 import type { ScratchpadActions } from "@/components/floating-scratchpad";
@@ -16,11 +17,21 @@ import { getDashboardTexture } from "@/lib/dashboard-texture";
 import { describeClock } from "@/lib/clock";
 import { getEnabledFloating } from "@/lib/floating";
 import { getScratchpad } from "@/lib/scratchpad";
+import { listMenuItems } from "@/lib/menu-items";
+import { listModules } from "@/lib/modules";
+import {
+  listToolbars,
+  parseHiddenToolbars,
+  resolveToolbarsFor,
+  TOOLBARS_HIDDEN_PREFERENCE_KEY,
+} from "@/lib/toolbars";
 import { recordSiteVisit } from "@/lib/site-visits";
+import { isAdmin } from "@/lib/user";
 import { getUserPreferences } from "@/lib/user-preferences";
 import { getForecast, type WeatherForecast } from "@/lib/weather";
 import { deps } from "@/lib/wiring";
 import { readSiteVisitContext } from "../login/request-context";
+import { createMenuItemSource } from "./menu-item-source";
 import { ClockWeather } from "./clock-weather";
 import {
   clearCalculationHistoryAction,
@@ -130,6 +141,31 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
   const preferences = getUserPreferences(deps.userPreferencesRepo, currentUser.id);
   const { compactNavStyle } = preferences;
 
+  // Personal toolbars (migration 0125) — additional shortcut bars docked to a screen
+  // edge. **Not navigation**: the tree and the compact bar are untouched, and a reader
+  // with no toolbars sees exactly what they saw before.
+  //
+  // Resolved here, in the one layout every authenticated page shares, for the same
+  // reason the floating layer is: a bar is app-wide chrome that outlives navigation.
+  // Every visibility rule except `fullModeOnly` is applied on the server — the admin's
+  // switch, this reader's hide list, and dropping rows whose menu item no longer
+  // exists — so the first HTML is already correct. `fullModeOnly` is the client's,
+  // because the reader can pin the compact layout on a wide window.
+  const hiddenToolbars = parseHiddenToolbars(
+    deps.userPreferencesRepo
+      .listByUserId(currentUser.id)
+      .find((row) => row.key === TOOLBARS_HIDDEN_PREFERENCE_KEY)?.value,
+  );
+  const toolbars = resolveToolbarsFor(
+    listToolbars(deps.toolbarRepo),
+    listMenuItems(
+      createMenuItemSource(listModules(deps.moduleRepo, { includeHidden: true })),
+      deps.menuItemOverrideRepo,
+    ),
+    // `isCompact: false` — the server does not decide this one; see above.
+    { isCompact: false, hiddenIds: hiddenToolbars },
+  );
+
   // The app-wide background picture (migration 0116). Resolved in the one layout
   // every authenticated page shares, which is what makes "the same texture on
   // every screen" a single wrapper rather than a line in each of nine module
@@ -236,6 +272,15 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
             <CollapsibleCardScope>{children}</CollapsibleCardScope>
           </main>
           <MusicPlayerBar />
+          {/* Docked shortcut bars. **Additive** — this renders nothing at all for a
+              reader with no toolbars, and it never replaces a navigation tier: the
+              tree and the compact bottom bar are untouched. Placed after the player
+              because its CSS stacks above `--music-player-height`, so the player
+              keeps the bottom edge and a bottom toolbar sits on top of it. */}
+          {/* `canEdit` offers the ✎ shortcut into each bar's editor. Admins only —
+              the screen it links to calls `requireAdmin()` itself, so this decides
+              whether the control is *offered*, never whether it is allowed. */}
+          <PersonalToolbars toolbars={toolbars} canEdit={isAdmin(currentUser)} />
           {/* Below the player so the layer's pucks stack above the player's own,
               and inside both providers so a floating component can read either. */}
           <FloatingHost

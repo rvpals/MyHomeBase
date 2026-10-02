@@ -18,6 +18,12 @@ import {
   type Note,
 } from "@/lib/scratchpad";
 import { listModules } from "@/lib/modules";
+import {
+  parseHiddenToolbars,
+  serializeHiddenToolbars,
+  setToolbarHidden,
+  TOOLBARS_HIDDEN_PREFERENCE_KEY,
+} from "@/lib/toolbars";
 import { clearUserAvatar, getAccessibleModules, setUserAvatar, setUserPassword } from "@/lib/user";
 import {
   saveCalculatorState,
@@ -379,4 +385,46 @@ export async function deleteScratchpadNoteAction(id: number): Promise<Scratchpad
   } catch (error) {
     return toErrorResult(error, "Failed to delete the note.");
   }
+}
+
+/**
+ * Shows or hides one personal toolbar, for this reader only.
+ *
+ * `requireUser()` on the first line, same category as the floating state above: a
+ * toolbar is whole-app chrome no module owns. The session decides whose preference
+ * this is, so it cannot be used to rearrange someone else's screen.
+ *
+ * Written with `setValue` — ONE key — rather than through the preferences form,
+ * which writes every key it carries. Folding this into that form would mean
+ * pressing Save on an unrelated field reset the reader's hidden list, and every
+ * toggle would have to resend the whole preference set. Same rule
+ * `saveFloatingState` follows, and the reason `userPreferencesToEntries` excludes
+ * these independent keys.
+ *
+ * `revalidatePath("/", "layout")` because the bars are rendered by the protected
+ * layout that every page shares — unlike the floating layer, which applies its own
+ * state optimistically on the client, this one has to come back from the server.
+ */
+export async function saveToolbarVisibilityAction(
+  toolbarId: number,
+  hidden: boolean,
+): Promise<ActionResult> {
+  try {
+    const currentUser = await requireUser();
+    const stored = deps.userPreferencesRepo
+      .listByUserId(currentUser.id)
+      .find((row) => row.key === TOOLBARS_HIDDEN_PREFERENCE_KEY)?.value;
+
+    deps.userPreferencesRepo.setValue(
+      currentUser.id,
+      TOOLBARS_HIDDEN_PREFERENCE_KEY,
+      serializeHiddenToolbars(
+        setToolbarHidden(parseHiddenToolbars(stored), toolbarId, hidden),
+      ),
+    );
+    revalidatePath("/", "layout");
+  } catch (error) {
+    return toErrorResult(error, "Failed to save the toolbar's visibility.");
+  }
+  return { ok: true };
 }

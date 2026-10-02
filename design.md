@@ -877,6 +877,52 @@ sections, and so no bottom bar) and
 [`UserMenu`](components.md#navmenus) (the profile menu), both in
 `src/components/nav-menus.tsx`.
 
+## Personal toolbars: a fifth surface, beside the navigation
+
+A **personal toolbar** is an admin-configured strip of shortcuts docked to one of the
+four screen edges. Full mechanics in `coding-guide.md` → *Personal toolbars*; this
+section is the layout contract.
+
+**It does not replace a navigation tier, and must never be made to.** The tree
+(desktop) and the two-tier bottom bar (compact) render exactly as they did. A toolbar
+carries *shortcuts* — the handful of screens one person opens constantly — and
+nothing about **where you are** may live on one. That is the same rule the floating
+layer carries, and the reason is the same: a reader who turns every toolbar off must
+still be able to navigate the whole app.
+
+So when you add a control, the table in *Adding a UI element to the shell* still
+decides the tier. A toolbar is not an escape hatch from it; it is a place for a
+shortcut to a destination that already has a proper home in the tree.
+
+- **It reserves space; it does not float.** Every edge composes with what is already
+  there — a bottom bar stacks above the compact section trigger and the music player,
+  a left bar starts after the tree. The page's content column shrinks to match, so a
+  toolbar can never cover what you were reading. This is the one thing that makes it
+  different in kind from the floating layer, which deliberately overlays.
+- **The four `--toolbar-*` variables are `0px`** until a bar is rendered on that edge,
+  so an install with no toolbars is byte-identical in layout to one before the feature.
+- **Side edges widen `--app-gutter`**, never `padding-left` — the shell rules already
+  own that property. See the coding guide for why.
+- **`z-30`**, level with the tree and the music puck; chrome stays under `z-40` and
+  `Modal` owns `z-50`.
+- **44px thick**, which is the minimum comfortable tap target. A horizontal bar is one
+  row of buttons; a vertical one is a column.
+- **Say what compact does.** The honest answer for most bars is *don't show one* —
+  the bottom edge is already claimed and the side edges are ~390px apart. That is what
+  the **Full mode only** switch is for, and it is the right default for a bar with more
+  than a few items. A toolbar is not exempt from the "every UI change works on a phone"
+  rule; it just gets to answer it by staying off the phone.
+- **Colours are admin-chosen literals** — the one sanctioned exception to *colours are
+  theme tokens*. Leaving them unset is the default and keeps the bar themed, which is
+  what you want unless the point is a bar that stands out.
+- **It wears the app's Border Weight and Chrome Style.** The content-facing edge takes
+  `--chrome-outline-width`, and the bevel comes from `data-chrome-style` — per edge,
+  because a bevel is directional. So a toolbar thickens and bevels with the header and
+  the navigation column rather than carrying a look of its own, which is the whole
+  point: it is part of the same frame. A chosen background colour survives the bevel
+  (it is applied as `--toolbar-surface`, which the embossed gradient tints rather than
+  replaces), so the two settings compose instead of fighting.
+
 ## The floating layer
 
 A **floating component** sits *over* the page rather than in it: a small image parked in

@@ -48,6 +48,16 @@ export interface SameDateEntry {
   excerpt: string;
   isLocked: boolean;
   isPinned: boolean;
+  /**
+   * Whether this entry carries the Log category — the list's "L" badge.
+   *
+   * Resolved here rather than left to the view, because the view only receives
+   * these trimmed rows: `categories` is not among the fields that cross, so a
+   * client-side `isLogEntry` call would have nothing to read. Same `isLogEntry`
+   * predicate the `logOnly` option filters on, so the badge and the toggle can
+   * never disagree about what counts as a log.
+   */
+  isLog: boolean;
   createdAt: string;
 }
 
@@ -126,6 +136,7 @@ export function findSameDateGroups(
         excerpt: excerptWords(entry.content, SAME_DATE_EXCERPT_WORDS),
         isLocked: entry.isLocked,
         isPinned: entry.isPinned,
+        isLog: isLogEntry(entry),
         createdAt: entry.createdAt,
       })),
     });

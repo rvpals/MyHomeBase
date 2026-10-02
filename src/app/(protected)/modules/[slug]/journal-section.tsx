@@ -10,6 +10,7 @@ import { listNamedMappings } from "@/lib/csv-import";
 import {
   JOURNAL_PREFILL_FIELDS,
   countAllEntries,
+  countEntriesByYearAndMonth,
   listCategories,
   listEntries,
   listEnabledPrefillTemplates,
@@ -129,6 +130,7 @@ function SectionBody({
           )}
           topTags={listTopTags(deps.journalRepo, TOP_TAXONOMY_LIMIT)}
           topCategories={listTopCategories(deps.journalRepo, TOP_TAXONOMY_LIMIT)}
+          yearAndMonthCounts={countEntriesByYearAndMonth(deps.journalRepo)}
           categoryIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("category", categories))}
           tagIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("tag", tags))}
           canRunSql={isAdmin}

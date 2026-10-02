@@ -315,7 +315,7 @@ function renderChangeHistory(markdown: string): ReactNode[] {
     } else {
       flushList();
       blocks.push(
-        <p key={blocks.length} className="text-sm text-muted">
+        <p key={blocks.length} className="text-sm text-ink">
           <InlineText text={line} />
         </p>,
       );
@@ -325,6 +325,184 @@ function renderChangeHistory(markdown: string): ReactNode[] {
   flushFence();
 
   return blocks;
+}
+
+function ChangeHistoryTab({
+  markdown,
+  summary,
+}: {
+  markdown: string | null;
+  summary: ChangeHistorySummary | null;
+}) {
+  const [groupByModule, setGroupByModule] = useState(false);
+
+  if (!markdown) {
+    return (
+      <div className="rounded-xl border border-dashed border-line p-8 text-center">
+        <p className="font-display text-lg text-ink">No change history yet</p>
+        <p className="mt-1 text-sm text-muted">
+          Run the <code className="font-mono">build_project</code> skill to create{" "}
+          <code className="font-mono">CHANGE_HISTORY.md</code>.
+        </p>
+      </div>
+    );
+  }
+
+  // Group changes by module when requested
+  const groupedContent = groupByModule ? renderChangeHistoryByModule(markdown) : renderChangeHistory(markdown);
+
+  return (
+    <div className="space-y-2">
+      {summary ? (
+        <div className="mb-8">
+          <ChangeHistoryTotals summary={summary} />
+        </div>
+      ) : null}
+      <div className="mt-4">
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => setGroupByModule(!groupByModule)}
+          title="Click to see change history by module"
+        >
+          {groupByModule ? "By Date" : "By Module"}
+        </Button>
+      </div>
+      {groupedContent}
+    </div>
+  );
+}
+
+function inferModuleFromContent(h3Title: string, followingContent: string): string {
+  // Pattern 1: "Module Name: Feature" format
+  const colonIndex = h3Title.indexOf(":");
+  if (colonIndex > 0) {
+    const potentialModule = h3Title.slice(0, colonIndex).trim();
+    if (potentialModule && potentialModule.length < 50 && !/^(also|known issues)/i.test(potentialModule)) {
+      return potentialModule;
+    }
+  }
+
+  // Pattern 2: Look for explicit module references in content
+  const moduleKeywords: Record<string, string[]> = {
+    "Journal": ["journal", "journal →"],
+    "Home": ["home screen", "home card"],
+    "Admin": ["administration", "admin →", "administration →"],
+    "Music": ["music player", "album cover"],
+    "Photos": ["photos", "photo"],
+    "Household": ["household"],
+    "Notes": ["notes"],
+    "Todo": ["todo"],
+  };
+
+  const contentLower = followingContent.toLowerCase();
+  for (const [module, keywords] of Object.entries(moduleKeywords)) {
+    for (const keyword of keywords) {
+      if (contentLower.includes(keyword)) {
+        return module;
+      }
+    }
+  }
+
+  return "General";
+}
+
+function renderChangeHistoryByModule(markdown: string): ReactNode[] {
+  const lines = markdown.split("\n");
+  const releases: Array<{
+    date: string;
+    sections: Map<string, { items: string[] }>;
+  }> = [];
+
+  let currentReleaseDate: string = "";
+  let currentReleaseIndex: number = -1;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trimEnd();
+
+    // New release (h2)
+    if (line.startsWith("## ")) {
+      const dateMatch = line.match(/^## ([^ ]+ [^ ]+)/);
+      if (dateMatch) {
+        currentReleaseDate = dateMatch[1];
+        currentReleaseIndex = releases.findIndex((r) => r.date === currentReleaseDate);
+        if (currentReleaseIndex === -1) {
+          releases.push({
+            date: currentReleaseDate,
+            sections: new Map(),
+          });
+          currentReleaseIndex = releases.length - 1;
+        }
+      }
+    }
+
+    // Feature section (h3)
+    if (line.startsWith("### ") && currentReleaseIndex >= 0) {
+      const body = line.slice(4).trim();
+
+      // Gather following content until next h3 or h2
+      let contentLines: string[] = [];
+      for (let j = i + 1; j < lines.length; j++) {
+        if (lines[j].startsWith("## ") || lines[j].startsWith("### ")) break;
+        contentLines.push(lines[j]);
+      }
+      const followingContent = contentLines.join(" ");
+
+      const module = inferModuleFromContent(body, followingContent);
+
+      if (!releases[currentReleaseIndex].sections.has(module)) {
+        releases[currentReleaseIndex].sections.set(module, { items: [] });
+      }
+
+      // Store the h3 and its content
+      releases[currentReleaseIndex].sections.get(module)!.items.push(line, ...contentLines);
+    }
+  }
+
+  // Render: for each module (sorted), show releases in reverse chronological order
+  const allModules = new Set<string>();
+  releases.forEach((r) => r.sections.forEach((_, module) => allModules.add(module)));
+
+  const sortedModules = Array.from(allModules).sort();
+  const blocks: ReactNode[] = [];
+
+  for (const module of sortedModules) {
+    // Collect this module's entries across all releases, newest first
+    const moduleReleases = releases
+      .map((release, index) => ({
+        release,
+        index,
+        items: release.sections.get(module)?.items,
+      }))
+      .filter((r) => r.items)
+      .reverse(); // Newest releases first
+
+    if (moduleReleases.length === 0) continue;
+
+    blocks.push(
+      <div key={module} className="mt-8 border-t border-line pt-6 first:mt-0 first:border-t-0 first:pt-0">
+        <h2 className="font-display text-xl font-semibold text-ink">{module}</h2>
+        <div className="mt-4 space-y-4">
+          {moduleReleases.map((item) => (
+            <div key={`${item.release.date}-${module}`} className="rounded-lg border border-line bg-paper-raised p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted">{item.release.date}</p>
+              <div className="mt-2">
+                {renderChangeHistory((item.items as string[]).join("\n"))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>,
+    );
+  }
+
+  return blocks.length > 0
+    ? blocks
+    : [
+        <p key="empty" className="text-sm text-muted">
+          No modules found in change history.
+        </p>,
+      ];
 }
 
 export function AboutView({
@@ -696,26 +874,7 @@ export function AboutView({
     {
       key: "change-history",
       label: "Change History",
-      content: (
-        <div className="space-y-2">
-          {changeHistorySummary ? (
-            <div className="mb-8">
-              <ChangeHistoryTotals summary={changeHistorySummary} />
-            </div>
-          ) : null}
-          {changeHistoryMarkdown ? (
-            renderChangeHistory(changeHistoryMarkdown)
-          ) : (
-            <div className="rounded-xl border border-dashed border-line p-8 text-center">
-              <p className="font-display text-lg text-ink">No change history yet</p>
-              <p className="mt-1 text-sm text-muted">
-                Run the <code className="font-mono">build_project</code> skill to create{" "}
-                <code className="font-mono">CHANGE_HISTORY.md</code>.
-              </p>
-            </div>
-          )}
-        </div>
-      ),
+      content: <ChangeHistoryTab markdown={changeHistoryMarkdown} summary={changeHistorySummary} />,
     },
     {
       key: "deployments",

@@ -46,6 +46,8 @@ import { setStartupMessageCommand } from "./set-startup-message";
 import { browseCsvCommand } from "./browse-csv";
 import { browseSqliteCommand } from "./browse-sqlite";
 import { savedSqlCommand } from "./saved-sql";
+import { menuItemsCommand } from "./menu-items";
+import { toolbarsCommand } from "./toolbars";
 import { tableUsageCommand } from "./table-usage";
 import { recipesCommand } from "./recipes";
 import { takeAttendanceCommand } from "./take-attendance";
@@ -116,6 +118,8 @@ const commands: Record<string, Command> = {
   "browse-csv": browseCsvCommand,
   "saved-sql": savedSqlCommand,
   "table-usage": tableUsageCommand,
+  "menu-items": menuItemsCommand,
+  toolbars: toolbarsCommand,
 };
 
 async function main(argv: string[]) {

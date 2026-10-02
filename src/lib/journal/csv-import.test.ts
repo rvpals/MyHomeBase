@@ -256,6 +256,9 @@ function fakeRepo(): JournalRepository {
     countRecycledEntries: () => {
       throw new Error("not used");
     },
+    countEntriesByYearAndMonth: () => {
+      throw new Error("not used");
+    },
   };
 }
 

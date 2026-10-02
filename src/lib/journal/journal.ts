@@ -30,6 +30,7 @@ import type {
   JournalTag,
   JournalTaxonomyCount,
   JournalTaxonomyIcon,
+  JournalYearCount,
   SavedJournalFilter,
   TodayInHistoryEntry,
 } from "./types";
@@ -591,4 +592,9 @@ export function listTopCategories(repo: JournalRepository, limit = 10): JournalT
     throw new Error(`listTopCategories: limit must be a positive integer, got ${limit}.`);
   }
   return repo.listTopCategories(limit);
+}
+
+/** Entry counts by year and month, newest year first, months DESC within each year. */
+export function countEntriesByYearAndMonth(repo: JournalRepository): JournalYearCount[] {
+  return repo.countEntriesByYearAndMonth();
 }

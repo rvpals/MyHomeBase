@@ -2,7 +2,7 @@
 
 Reference for driving MyHomeBase from a terminal.
 
-**Part 1** documents the 52 commands that work today.
+**Part 1** documents the 58 commands that work today.
 **Part 2** is the full inventory of library use-cases — what a command *could* call.
 **Part 3** summarises the coverage gap.
 
@@ -28,7 +28,7 @@ command list and exits 1. There is no `--help`.
 
 # Part 1 — Available commands
 
-Fifty-two commands, registered in [src/cli/index.ts](src/cli/index.ts).
+Fifty-eight commands, registered in [src/cli/index.ts](src/cli/index.ts).
 
 The table below is the index — every command links to its own section. Those sections
 are **not all contiguous**: the file grew by appending, so some sit after Part 2 and
@@ -92,6 +92,8 @@ alongside its row here.
 | [`music-library`](#music-library) | read | no |
 | [`recipes`](#recipes) | read (writes with `--add`/`--made`/`--delete`) | no |
 | [`todo`](#todo) | read (writes with `--add`/`--done`/`--delete`/the list flags) | no |
+| [`menu-items`](#menu-items) | read (writes with `set`/`reset`) | no |
+| [`toolbars`](#toolbars) | read (writes with `add`/`set`/`delete`/the item flags) | no |
 
 Flag parsing is `--key value` pairs via [parse-flags.ts](src/cli/parse-flags.ts),
 except `ticker-overview` and `set-startup-message`, which read positionals and bare
@@ -494,7 +496,8 @@ npm run cli -- journal-same-date --delete 41,42
 same library function the web section's server actions call.
 
 **Output** — one block per grouped date, each entry as `#id  HH:MM  title` with its
-100-word excerpt indented beneath:
+100-word excerpt indented beneath. A logged activity is marked `[log]` (the web list's
+"L" badge), suppressed under `--log-only` where every row would carry it:
 
 ```
 2 dates · 5 entries
@@ -502,7 +505,7 @@ same library function the web section's server actions call.
 2026-03-14 — 3 entries
   #   41  09:00  Morning run
          Five miles along the towpath before it got hot.
-  #   42  12:30  (untitled)
+  #   42  12:30  (untitled) [log]
   #   43  21:00  Dinner with Anna
 ```
 
@@ -3369,5 +3372,109 @@ identically in both.
 **Exit code** — `1` when a list or item id does not exist, when a delete is refused
 because the list is not empty, or when a schema rejects a value.
 Source: [src/cli/todo.ts](src/cli/todo.ts)
+
+---
+
+## menu-items
+
+```
+npm run cli -- menu-items list [--module <slug>] [--renamed] [--filter <text>]
+npm run cli -- menu-items set <id> [--title <text>] [--hint <text>]
+npm run cli -- menu-items reset <id>
+```
+
+Every navigable destination in the application — each module's sections, every
+Administration screen, and Home — with the **permanent id** that addresses it. The
+terminal peer of Administration → Display Settings → Menu Items.
+
+`list` groups by owning module and marks a renamed item with `*`. `--module admin`
+selects the Administration screens; Home belongs to no module and always appears
+first. `--filter` matches the id, the title, the description or the module name,
+which is what makes it usable against ~88 rows.
+
+**An item's id is its icon slot id** (`journal_section_locations`), so the same
+string addresses its artwork on Admin → Display Settings → Icons. There is no
+separate menu-item id space and no counter — the id derives from the section slug.
+See `coding-guide.md` → *Menu items: the id is the slot id*.
+
+`set` with `--title ""` restores the shipped name, which is the same thing `reset`
+does; `--hint ""` is different — it clears the description to nothing deliberately,
+because plenty of sections ship without one. Writing values that match the shipped
+ones removes the override row rather than storing a no-op.
+
+**Calls** — `listMenuItems`, `setMenuItemOverride` and `clearMenuItemOverride`
+through `@/lib/menu-items`, over the same `createMenuItemSource` the web app builds
+its navigation from, so the ids and titles are identical in both.
+
+**Exit code** — `1` when the id names no menu item, when a title exceeds 60
+characters or a description 200, or when no `--title`/`--hint` is given to `set`.
+Source: [src/cli/menu-items.ts](src/cli/menu-items.ts)
+
+---
+
+## toolbars
+
+```
+npm run cli -- toolbars list
+npm run cli -- toolbars add --name <text> [--edge top|bottom|left|right] [--background <colour>] [--border <colour>] [--text <colour>] [--full-mode-only] [--hidden]
+npm run cli -- toolbars set <id> [--name <text>] [--edge <edge>] [--visible 0|1] [--full-mode-only 0|1]
+npm run cli -- toolbars delete <id>
+npm run cli -- toolbars add-item <toolbarId> --screen <menuItemId> [--label <text>]
+npm run cli -- toolbars add-item <toolbarId> --separator
+npm run cli -- toolbars add-item <toolbarId> --space
+npm run cli -- toolbars remove-item <itemId>
+```
+
+An item is one of three kinds. The last two are easy to confuse and are deliberately
+separate:
+
+| Flag | Kind | Along the bar | Visible |
+|---|---|---|---|
+| `--screen <id>` | a shortcut | one button | yes |
+| `--separator` | a **drawn dividing line** | ~1px | **yes** |
+| `--space` | **flexible empty space** — pushes what follows to the far end | all the slack | no |
+
+`--label` is the shortcut's **tooltip**, not visible text — a toolbar row is its icon
+alone, so this is the only thing naming it. Omit it to use the screen's own name.
+
+There was a fourth kind, `--heading`, which drew a text caption. It was removed in
+migration 0127: a label cannot fit a 44px bar of glyphs, so it truncated to nothing.
+Use `--separator` to group instead.
+
+Personal toolbars — strips of shortcuts docked to a screen edge. The terminal peer
+of Administration → Display Settings → Personal Toolbars.
+
+**A toolbar is additive chrome.** It sits beside the navigation tree and the compact
+bottom bar rather than replacing either, so nothing here can remove navigation from
+anyone's screen. The worst a mistake does is add a bar, and `delete` undoes it.
+
+`list` prints each bar with its edge, its flags and its rows. A row whose menu item
+no longer exists is flagged `MISSING … — not shown`: it is silently dropped from the
+real toolbar, so this is the only place to discover one in order to `remove-item` it.
+
+A screen is named by its **menu item id** — run `menu-items list` to find one. The id
+is also its icon slot id, so a shortcut draws whatever artwork that screen shows in
+the navigation tree.
+
+`set` leaves any flag you omit at its stored value. Colours are hex or
+`rgb()`/`hsl()`; omit one to follow the application's theme, which is the default and
+keeps the bar in step when the colour scheme changes. `add` defaults to **visible**
+(pass `--hidden` for otherwise), because creating a bar and finding nothing on screen
+reads as a failure.
+
+Note `is_visible` here is the **administrator's** switch — it hides the bar from
+everyone. Each reader's own show/hide is a preference set from their Account page and
+is deliberately not reachable from this command, which has no session to act for.
+
+**Calls** — `listToolbars`, `createToolbar`, `updateToolbar`, `deleteToolbar`,
+`addToolbarItem` and `removeToolbarItem` through `@/lib/toolbars`, with the same zod
+schemas the web app uses, so a bad colour or a headless heading is rejected
+identically in both.
+
+**Exit code** — `1` when a toolbar or item id does not exist, when a colour is not a
+hex/`rgb()`/`hsl()` value, when an edge is not one of the four, when a `--screen`
+names no menu item, or when `add-item` is given none of
+`--screen`/`--separator`/`--space`.
+Source: [src/cli/toolbars.ts](src/cli/toolbars.ts)
 
 ---

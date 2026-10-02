@@ -614,6 +614,230 @@ apply — it protects a file served as a document, not markup running in the pag
 presentation attributes at write time. If you ever store SVG for a new purpose, reuse
 that function; don't hand-roll a blocklist.
 
+## Menu items: the id is the slot id, and it allocates itself
+
+A **menu item** is one navigable destination — a module section, an Administration
+screen, or Home. It is the unit an administrator can retitle (Admin → Display
+Settings → Menu Items) and the unit a personal toolbar points at.
+
+**There is no "next free id" to look up, and no counter to bump.** A menu item's id
+*is* its icon slot id, derived from the section slug:
+
+```
+menu item id  ==  sectionSlotId(<namespace>, <slug>)  ==  <namespace>_section_<slug>
+```
+
+So adding a section to a `*-sections.ts` file creates its menu item automatically.
+The registry ([src/app/(protected)/menu-item-source.ts](src/app/(protected)/menu-item-source.ts))
+walks the same `SECTION_BUILDERS` and `adminNav` the navigation tree is built from —
+it is derived, never hand-maintained, and there is no list to remember to update.
+
+| Piece | Where | What it owns |
+|---|---|---|
+| `MenuItem` / `MenuItemSource` | [src/lib/menu-items](src/lib/menu-items) | The model and the seam |
+| `listMenuItems` / `setMenuItemOverride` | the same folder | Resolution and the override rules, unit-tested with no browser |
+| `createMenuItemSource` | [src/app/(protected)/menu-item-source.ts](src/app/(protected)/menu-item-source.ts) | The derivation, and the namespace map |
+| `sys_menu_item_overrides` | migration 0124 | Sparse: one row per *changed* item |
+
+### Why not a separate numeric id
+
+It was considered and rejected. Every section already has a permanent unique
+identity in `ICON_SLOTS`, persisted in `ico_slot_overrides.slot_id`. A second id
+space would give every subnode two identities and **two places to set an icon** —
+exactly the trap *What must NOT become a slot* names above ("a second, competing way
+to set one value"). A derived id also cannot be forgotten, where an allocator can.
+
+### The namespace is not always the module slug
+
+Four modules were renamed after their slots were registered, and the slot ids
+deliberately did not follow — renaming one orphans every uploaded icon:
+
+| Module slug | Icon namespace |
+|---|---|
+| `investments` | `stock` |
+| `csv-analysis` | `csv` |
+| `picture-gallery` | `gallery` |
+| `music-library` | `music` |
+
+`ICON_NAMESPACES` in the source file is the map, and it must match each shell's
+`iconNamespace` prop exactly. **A mismatch does not throw** — it silently produces an
+id that addresses no registered slot — so `menu-item-source.test.ts` resolves every
+derived id against `ICON_SLOTS`. That test caught two missing namespace entries and
+four unregistered slots (`household_section_recipes_import`,
+`admin_section_display_settings_borders`, `…_chrome`, `…_daily_quote_list`) the first
+time it ran; the per-namespace lists in `slots.test.ts` had omitted the same four.
+
+### Adding a section — what you owe
+
+1. Add the slug to the module's `*_SECTIONS` and its `*_SECTION_INFO`/`_ICONS`, as
+   before. The menu item appears on its own.
+2. Register the derived slot in `ICON_SLOTS` and add the slug to the matching list in
+   `slots.test.ts`. This was always the rule; the menu item registry is now a second
+   thing that silently misbehaves if you skip it.
+3. Nothing else. No id to allocate, no registry to edit, no migration.
+
+### The ids are permanent, and the blast radius is now wider
+
+Renaming a section slug already orphaned an uploaded icon. It now **also** orphans the
+title override in `sys_menu_item_overrides` and any toolbar row pointing at it. Same
+rule as before, more to lose — prefer a stale slug with a comment over a tidy one.
+
+### A title override is authoritative everywhere
+
+`overriddenTitles` is applied in `getNavTreeData`, so a renamed item reads the same in
+the tree, the breadcrumb and the compact bar. The map holds **only** renamed items, so
+an install where nothing has been renamed pays for an empty object and every label is
+the one its section file declares. A **blank** title is treated as no override — an
+unnamed row in the navigation tree would be unidentifiable in the one screen you would
+go to in order to fix it. A blank *hint* is a real value, since plenty of sections
+ship with no description.
+
+## Personal toolbars: shortcut bars docked to an edge
+
+A **personal toolbar** is an admin-configured strip of shortcuts pinned to one of
+the four screen edges, pointing at the menu items above.
+
+**It is additive, and that is the rule to hold onto.** The navigation tree (full
+layout) and the two-tier bottom bar (compact) are untouched by this feature — a
+toolbar sits *beside* them. Nothing about *where you are* may live on one; that
+belongs to a navigation tier per `design.md` → *Adding a UI element to the shell*.
+A reader who hides every toolbar still has complete navigation. If a change here
+starts to look like "the toolbar replaces X", it is the wrong change.
+
+| Piece | Where | What it owns |
+|---|---|---|
+| `resolveToolbar` / `resolveToolbarsFor` | [src/lib/toolbars](src/lib/toolbars) | Which bars a reader sees, and which rows still resolve |
+| `occupiedEdges` | the same folder | Which edges are taken — an **edge**, never a pixel |
+| `parseHiddenToolbars` | [visibility.ts](src/lib/toolbars/visibility.ts) | One reader's hide list |
+| `PersonalToolbars` | [src/components/personal-toolbar.tsx](src/components/personal-toolbar.tsx) | Rendering, and mirroring `data-toolbar-<edge>` |
+| `.personal-toolbar` | `globals.css` | The offset arithmetic |
+
+### Ownership is split, like the floating layer's
+
+An **administrator** decides which bars exist and how each looks; each **reader**
+decides whether a given bar is on their own screen (`toolbars_hidden`, one
+preference key). Same split `floating_enabled` makes, and for the same reason: "put
+that bar away" is a personal gesture, and an admin-only switch would leave a reader
+unable to undo their own screen.
+
+The reader's half is written with `setValue` — **one key** — never through the
+preferences form, which writes every key it carries. Folding it in would mean
+pressing Save on an unrelated field reset the hide list.
+
+### The rules that keep it from breaking the layout
+
+- **Never write a new `fixed inset-x-0`.** Every edge composes with what is already
+  there: a bottom bar stacks above `--section-trigger-height` *and*
+  `--music-player-height`, and a left bar starts after `--nav-tree-width` (or the
+  rail plus panel). Four `--toolbar-*` variables are `0px` until a bar is actually
+  rendered on that edge, so the arithmetic is one expression for both states.
+- **Side edges are reserved through `--app-gutter`, not `padding-left`.** The two
+  shell rules already own `padding-left` (`calc(rail + panel + gutter)`), so a second
+  declaration would win or lose on source order. Widening the gutter flows through
+  all three call sites at once.
+- **`lib` owns which edge, CSS owns the pixels.** `occupiedEdges` returns edges.
+  Nothing under `src/lib/` may know a bar is 44px thick.
+- **Stay at `z-30`**, level with the tree and the music puck — `Modal` owns `z-50`.
+- **`fullModeOnly` is applied on the client**, not the server, because a reader can
+  pin the compact layout on a wide window. Every *other* visibility rule is applied
+  server-side so the first HTML is already right.
+
+### A stale row is dropped, not rendered
+
+A toolbar row stores a menu item **id string**, and it cannot be a foreign key —
+menu items come from code, not a table. So nothing at the database level stops a row
+from naming a section a later release removes. Handled at both ends: `addToolbarItem`
+validates against the live registry on the way in, and `resolveToolbar` drops an
+unresolvable row on the way out. A bar left with no actionable rows is not rendered
+at all, rather than appearing as an empty coloured stripe.
+
+### A row is an icon — there is no text on the bar
+
+Three item kinds: a `menu-item` shortcut, a `separator` (a drawn dividing line) and a
+`spacer` (flexible space). A row's `label` is its **tooltip and accessible name**,
+never visible text — at 44px the bar has room for a glyph and nothing else.
+
+**There was a `heading` kind that drew a caption. It was removed in migration 0127
+and should not come back.** It truncated to nothing or forced the bar wider than the
+layout reserves for it — reported from the real screen as *"it doesn't show fully"*,
+exactly what the geometry predicts. A separator does the same grouping job with a
+mark instead of a word and fits by construction. If grouping ever needs to be *named*
+rather than marked, that is a different surface; a bar of icons is not where a caption
+belongs. `toolbars.test.ts` asserts the kind is rejected, so a reintroduction has to
+be deliberate.
+
+### The ✎ edit shortcut
+
+Each rendered bar carries a small pencil linking to
+`/admin/display-settings/toolbars?edit=<id>`, which opens that toolbar's editor
+directly. Three things about it are deliberate:
+
+- **Admins only.** `PersonalToolbars` takes `canEdit`, defaulting to **`false`** so a
+  caller that forgets it shows nothing rather than showing an admin control to
+  everyone. It is a convenience, never a permission — the screen calls
+  `requireAdmin()` itself, so passing `true` to a non-admin offers a link that
+  redirects, it does not grant access.
+- **It is not a floating component**, and should not become one. `design.md` closes
+  that list, but this is a control *on* an existing surface scoped to one bar — like
+  the tree's filter box — not a free-floating thing needing a reader-facing switch.
+- **Hidden at rest, revealed on hover or focus**, so it costs no space on a 44px
+  bar. `opacity`, never `display: none`, which would drop it from the tab order.
+  `@media (hover: none)` makes it permanently visible on touch, where a hover-only
+  control is simply unreachable — keyed on the *input*, not the width, so a touch
+  laptop gets it too.
+
+The `auto` margin that pushes it to the far end is **per edge** in `globals.css`:
+`margin-left` on a horizontal bar, `margin-top` on a vertical one. A Tailwind
+`ml-auto` is wrong on the side bars — those are flex columns, where `margin-left`
+does not move anything along the main axis.
+
+`?edit=` lives in the URL rather than client state so the result is a real address.
+The view seeds its open state from it rather than applying it in an effect (an effect
+would flash the list first, and would re-open the editor every time it was closed),
+and closing or deleting clears the param with `router.replace`.
+
+### It wears the app's Border Weight and Chrome Style
+
+A docked toolbar is part of the app's frame, so it follows the same two admin
+settings the header and the navigation column do. A flat bar beside an embossed
+header reads as a bug, the same way a raised header over a sunken column would.
+
+| Setting | How the toolbar picks it up |
+|---|---|
+| Border Weight | the **one** edge facing the content takes `--chrome-outline-width` |
+| Chrome Style | `[data-chrome-style="…"] .personal-toolbar[data-edge="…"]` |
+
+- **`--chrome-outline-width`, not `--line-width`.** A toolbar's edge is an outer
+  edge of the frame, like the header's bottom rule — not a card border. Separators
+  *inside* a bar stay 1px hairlines: they are marks within a surface, not the frame.
+- **Only the content-facing side is widened**, so this is four rules rather than a
+  blanket `border-width`. A 4px outline on all four sides would eat a fifth of a
+  44px bar's thickness.
+- **The bevel is per edge**, because a bevel is directional: a top bar is lit like
+  the header, a bottom bar is the header inverted, and the side bars are lit on
+  their vertical edges like the column. One blanket rule would light three of the
+  four from the wrong side.
+- **Never set `background` (the shorthand) on the bar.** It wipes
+  `background-image` and kills the embossed gradient — the same trap the chrome
+  surfaces carry. The admin's colour goes to `--toolbar-surface`.
+- **No hardcoded elevation.** `.personal-toolbar` carried a `nav-raised-*` class
+  once; it fought whichever bevel the admin had chosen, giving one edge two cast
+  shadows. The chrome style owns elevation now.
+
+### Colours are literals here, and only here
+
+A deliberate exception to `design.md`'s "colours are tokens, not literals": the whole
+feature is that an admin picks them. `NULL` is the default, so an unconfigured bar
+stays themed. The **format** is allowlisted in `schema.ts` to hex and `rgb()`/`hsl()`
+— these land in an inline `style`, so `url(...)` must never reach the DOM.
+
+The chosen background is applied as `--toolbar-surface`, which the embossed chrome
+style's gradient mixes against instead of naming `--paper-raised`. That indirection
+is what lets a chosen colour and a bevel coexist: the gradient **tints** the colour
+rather than painting over it. A custom *border* colour is inline, so it also beats
+the `outset` style's `border-*-color: transparent` — accepted deliberately, with the
+cost that `outset` draws a slightly heavier edge when a border colour is set.
+
 ## The floating layer: a component that lives over the page
 
 A **floating component** has two shapes — a small image parked in a screen corner (the

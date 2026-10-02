@@ -503,6 +503,14 @@ calls the result a duplicate; Review Data groups by **date alone** and calls the
 nothing — several entries on one day are perfectly normal, and the screen only lists them
 so a reader can decide. Four choices worth knowing:
 
+- **A small "L" badge marks a logged activity in the list.** `isLog` is resolved in the
+  library and travels on the row, because the view only receives the trimmed
+  `SameDateEntry` fields — `categories` is not among them, so a client-side `isLogEntry`
+  call would have nothing to read. It uses the same predicate the `logOnly` option filters
+  on, so the badge and the toggle can never disagree. The badge sits on the title rather
+  than in a column of its own (a column for one character would cost width on every row to
+  say nothing about most of them) and is kept out of the column's sort/search `value`,
+  since it is a property of the row and not part of its name.
 - **"Review only Log entries" narrows the population before grouping, not after.** The
   card's title-bar toggle re-reads the list with `findSameDateGroups`'s `logOnly`, which
   filters to Log entries *first* — so a date qualifies only when it holds **two or more

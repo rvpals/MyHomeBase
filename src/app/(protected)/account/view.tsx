@@ -474,6 +474,93 @@ function NavStyleField({
  * passed — the sections themselves are identical, which is the point of reusing this
  * rather than growing a second copy that drifts.
  */
+/**
+ * This reader's show/hide for each personal toolbar.
+ *
+ * Mirrors `FloatingComponentsSection` above: an administrator decides which bars
+ * exist, each reader decides which are on their own screen. Writes one key per
+ * toggle through its own action — never the preferences form, which would let
+ * pressing Save on an unrelated field reset the list.
+ */
+function ToolbarsSection({
+  toolbars,
+  onToggle,
+}: {
+  toolbars: readonly AccountToolbarOption[];
+  onToggle: (id: number, hidden: boolean) => Promise<ActionResult>;
+}) {
+  const router = useRouter();
+  const [busyId, setBusyId] = useState<number | undefined>(undefined);
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  async function toggle(id: number, hidden: boolean) {
+    setBusyId(id);
+    setError(undefined);
+    try {
+      const result = await onToggle(id, hidden);
+      if (!result.ok) {
+        setError(result.error ?? "Failed to save.");
+        return;
+      }
+      // The bars live in the protected layout, so the server has to re-render
+      // them — unlike the floating layer, which applies its own move locally.
+      router.refresh();
+    } finally {
+      setBusyId(undefined);
+    }
+  }
+
+  return (
+    <section className="mt-8">
+      <h2 className="font-display text-lg text-ink">Toolbars</h2>
+      <p className="mt-1 text-sm text-muted">
+        Strips of shortcuts docked to the edge of the screen. These are extra — the
+        normal navigation is unchanged, so hiding one costs you nothing but the
+        shortcuts.
+      </p>
+
+      {error ? <p className="mt-3 text-sm text-red-400">{error}</p> : null}
+
+      {toolbars.length === 0 ? (
+        <p className="mt-3 text-sm text-muted">
+          No toolbars have been set up for the household yet.
+        </p>
+      ) : (
+        <ul className="mt-3 space-y-2">
+          {toolbars.map((toolbar) => (
+            <li key={toolbar.id} className="flex items-center gap-2 text-sm text-ink">
+              <input
+                id={`toolbar-${toolbar.id}`}
+                type="checkbox"
+                checked={!toolbar.hidden}
+                disabled={busyId === toolbar.id}
+                onChange={(event) => void toggle(toolbar.id, !event.target.checked)}
+              />
+              <label htmlFor={`toolbar-${toolbar.id}`}>
+                {toolbar.name}
+                <span className="ml-2 text-xs text-muted">
+                  {toolbar.edge} edge
+                  {toolbar.fullModeOnly ? " · full mode only" : ""}
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** One toolbar as this screen needs it — plain data, since the view is a client island. */
+export interface AccountToolbarOption {
+  id: number;
+  name: string;
+  edge: string;
+  fullModeOnly: boolean;
+  /** Whether *this* reader has hidden it. */
+  hidden: boolean;
+}
+
 export function AccountView({
   user,
   viewport,
@@ -481,6 +568,8 @@ export function AccountView({
   preferences,
   modules,
   enabledFloating,
+  toolbars,
+  onToggleToolbar,
   actions,
   heading = "My Account",
   banner,
@@ -501,6 +590,16 @@ export function AccountView({
   modules: AccountModuleOption[];
   /** Which floating components an admin has made available to the household. */
   enabledFloating: readonly FloatingId[];
+  /**
+   * The household's personal toolbars, with this reader's own hide state.
+   *
+   * Optional, and omitted by the admin screen for the same reason `viewport` is:
+   * the toggle writes the **session's** preference, so showing it under someone
+   * else's name would offer a control that silently edited the admin's own screen.
+   * `AccountView` drops the whole Toolbars section when it is absent.
+   */
+  toolbars?: readonly AccountToolbarOption[];
+  onToggleToolbar?: (id: number, hidden: boolean) => Promise<ActionResult>;
   /** The writes, injected — see `AccountViewActions`. */
   actions: AccountViewActions;
   /** The `h1`. The admin screen names the account it is editing instead. */
@@ -530,6 +629,13 @@ export function AccountView({
           corners={preferences.floatingCorners}
           actions={actions}
         />
+
+        {/* Only when both were passed — the admin screen omits them, because the
+            toggle writes the session's own preference. Same reasoning as the
+            Layout note below. */}
+        {toolbars && onToggleToolbar ? (
+          <ToolbarsSection toolbars={toolbars} onToggle={onToggleToolbar} />
+        ) : null}
 
         {/* Read-only here. The switch itself lives in the top bar, because it
             is the one control that drives the whole UI's layout and belongs

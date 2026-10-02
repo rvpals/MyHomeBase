@@ -934,6 +934,24 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    // Registered late: this section shipped with the module but was missed here, and
+    // `slots.test.ts`'s household list omitted it too, so nothing caught the gap
+    // until `menu-item-source.test.ts` resolved every derived id against the
+    // registry. Its icon has been drawn from the bare `upload` concept all along —
+    // registering the slot changes nothing on screen and makes the position
+    // replaceable like its siblings.
+    id: "household_section_recipes_import",
+    label: "Import",
+    group: "Household sections",
+    where: "Household → section panel → Recipes → Import.",
+    // `upload`, matching HOUSEHOLD_SECTION_ICONS — a slot's default must render what
+    // the position rendered before it was slotted, or registering it is a visible
+    // change rather than an invisible one.
+    defaultConcept: "upload",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     id: "household_section_hsa_group",
     label: "HSA Tracker",
     group: "Household sections",
@@ -1436,6 +1454,27 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    // Derived by `sectionSlotId` from the `adminNav` row id `display-settings-toolbars`.
+    id: "admin_section_display_settings_toolbars",
+    label: "Personal Toolbars",
+    group: "Admin navigation",
+    where: "Admin → Display Settings → Personal Toolbars.",
+    defaultConcept: "window",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    // Derived by `sectionSlotId` from the `adminNav` row id `display-settings-menu-items`
+    // (hyphens -> underscores). The row id and this id are one fact in two files.
+    id: "admin_section_display_settings_menu_items",
+    label: "Menu Items",
+    group: "Admin navigation",
+    where: "Admin → Display Settings → Menu Items.",
+    defaultConcept: "grid",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     id: "admin_section_display_settings_floating",
     label: "Floating Components",
     group: "Admin navigation",
@@ -1456,6 +1495,30 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    // Registered late, with the two below and `household_section_recipes_import`:
+    // these rows shipped with their features but were missed here, and the lists in
+    // `slots.test.ts` omitted them too, so nothing caught the gap until
+    // `menu-item-source.test.ts` resolved every derived id against the registry.
+    // Each default matches what `adminNav` already draws, so registering them
+    // changes nothing on screen — it only makes the positions replaceable.
+    id: "admin_section_display_settings_borders",
+    label: "Border Weight",
+    group: "Admin navigation",
+    where: "Admin → Display Settings → Border Weight.",
+    defaultConcept: "window",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "admin_section_display_settings_chrome",
+    label: "Chrome Style",
+    group: "Admin navigation",
+    where: "Admin → Display Settings → Chrome Style.",
+    defaultConcept: "window",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     id: "admin_section_user_management",
     label: "User Management",
     group: "Admin navigation",
@@ -1469,6 +1532,18 @@ export const ICON_SLOTS: IconSlot[] = [
     label: "Daily Quote",
     group: "Admin navigation",
     where: "Admin → section panel → Daily Quote.",
+    defaultConcept: "quote",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    // The listing row under the Daily Quote heading — the heading itself is
+    // `admin_section_daily_quote` above. Registered late, like its three siblings
+    // noted further up; `quote` is what `adminNav` already draws for it.
+    id: "admin_section_daily_quote_list",
+    label: "All Quotes",
+    group: "Admin navigation",
+    where: "Admin → Daily Quote → All Quotes.",
     defaultConcept: "quote",
     wired: true,
     namespace: "tree",

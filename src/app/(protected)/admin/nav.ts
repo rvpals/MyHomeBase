@@ -77,6 +77,34 @@ export const adminNav: SectionNode[] = [
         icon: "window",
       },
       {
+        // Fresh and permanent -- `SectionPanel` derives this section's icon slot from
+        // the id, so renaming it later orphans any uploaded override.
+        //
+        // Sits beside Menu Items, which is what a toolbar points at: an admin
+        // building a bar picks from that screen's list, so the two belong together.
+        id: "display-settings-toolbars",
+        label: "Personal Toolbars",
+        href: "/admin/display-settings/toolbars",
+        hint: "Add bars of shortcuts docked to the edge of the screen",
+        // `window`, as the other app-frame screens here use: a toolbar is part of
+        // the application's own frame, and the baked sets draw no toolbar concept.
+        icon: "window",
+      },
+      {
+        // Fresh and permanent -- `SectionPanel` derives this section's icon slot from
+        // the id, so renaming it later orphans any uploaded override.
+        //
+        // Sits in Display Settings rather than at the top level: this screen changes
+        // what the navigation *reads*, which is appearance, not what it *contains*.
+        // Module Configuration above is the one that decides what exists.
+        id: "display-settings-menu-items",
+        label: "Menu Items",
+        href: "/admin/display-settings/menu-items",
+        hint: "Rename any screen in the application, or change the description under it",
+        // `grid`, as Dashboard Widgets uses: this is a list of every place in the app.
+        icon: "grid",
+      },
+      {
         // Fresh and permanent -- `SectionPanel` derives this section's icon slot
         // from the id, so renaming it later orphans any uploaded override.
         //

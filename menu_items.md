@@ -3,6 +3,19 @@
 Every navigation node a signed-in reader can reach, with the module it belongs to
 and the description the navigation itself shows.
 
+> **This document is now a snapshot of a live system, not the system itself.**
+> A **menu item** is a first-class concept in the code as of migration 0124: every
+> destination below has a permanent unique id, an administrator can retitle it at
+> Administration → Display Settings → Menu Items, and `menu-items list` prints the
+> same table from a terminal. The id is the item's **icon slot id** — there is no
+> second id space and no counter. See `coding-guide.md` → *Menu items: the id is the
+> slot id, and it allocates itself*.
+>
+> **The ids are the addressable part.** This file lists titles and hrefs for reading;
+> the id column in the admin screen and the CLI is what a personal toolbar stores.
+> Counts here (78 nodes) exclude group headings, which the registry *does* carry as
+> items — the live registry has **88**.
+
 **Generated from the registries, not hand-written.** The source of truth is:
 
 - `src/lib/navigation/tree.ts` → `HOME_SECTION` and `buildNavigationTree` (Home, then

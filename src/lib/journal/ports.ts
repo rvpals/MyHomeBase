@@ -10,11 +10,13 @@ import type {
   JournalEntry,
   JournalEntryNeighbors,
   JournalFilter,
+  JournalMonthCount,
   JournalPrefillField,
   JournalPrefillTemplate,
   JournalTag,
   JournalTaxonomyCount,
   JournalTaxonomyIcon,
+  JournalYearCount,
   RecycledJournalEntry,
   SavedJournalFilter,
 } from "./types";
@@ -196,6 +198,9 @@ export interface JournalRepository {
   // `limit` — for the "Top Tags" / "Top Categories" lists.
   listTopTags(limit: number): JournalTaxonomyCount[];
   listTopCategories(limit: number): JournalTaxonomyCount[];
+
+  // Entry counts grouped by year and month, newest year first, months DESC within each year.
+  countEntriesByYearAndMonth(): JournalYearCount[];
 
   // Prefill templates (migration 0062). `savePrefillTemplate` covers both create
   // and update — the input carries an optional id — because the editor is one

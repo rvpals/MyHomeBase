@@ -326,8 +326,32 @@ export function JournalReviewView({
       // Untitled entries are kept on this screen (unlike the Duplicates card,
       // which groups by title and has to skip them), so the blank case is a real
       // row that needs to read as deliberate rather than as missing data.
-      render: (row) =>
-        row.title.trim() === "" ? <span className="italic text-muted">(untitled)</span> : row.title,
+      // The "L" badge marks a logged activity. It lives on the title rather than
+      // in a column of its own: a whole column for one character would cost grid
+      // width on every row to say nothing about most of them, and the thing the
+      // reader is scanning is the title anyway. Matches the fixed-size circular
+      // badge the home screen's Top Tags counts use.
+      render: (row) => (
+        <span className="flex items-center gap-1.5">
+          {row.title.trim() === "" ? (
+            <span className="italic text-muted">(untitled)</span>
+          ) : (
+            row.title
+          )}
+          {row.isLog && (
+            <span
+              title="Log entry — a logged activity"
+              aria-label="Log entry"
+              className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-brass-soft font-mono text-[0.5rem] font-semibold leading-none text-brass-dark"
+            >
+              L
+            </span>
+          )}
+        </span>
+      ),
+      // Sorts and searches on the title alone — the badge is a property of the
+      // row, not part of its name, and folding an "L" into the sort key would
+      // scatter the titles it is attached to.
       value: (row) => row.title,
     },
     {
