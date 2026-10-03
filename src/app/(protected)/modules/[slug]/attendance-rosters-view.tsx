@@ -7,8 +7,10 @@ import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { Modal } from "@/components/modal";
+import { SlotIcon } from "@/components/slot-icon";
 import type { AttendanceClass, Student } from "@/lib/attendance";
 import type { NamedMapping } from "@/lib/csv-import";
+import { getIconSlot } from "@/lib/icons/slots";
 import { AttendanceRosterImportView } from "./attendance-roster-import-view";
 import {
   addStudentAction,
@@ -22,6 +24,9 @@ const INPUT_CLASS =
   "w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
 
 const LABEL_CLASS = "text-xs font-medium uppercase tracking-wide text-muted";
+
+const ADD_STUDENT_CARD_SLOT = getIconSlot("attendance_card_add_student")!;
+const IMPORT_ROSTER_CARD_SLOT = getIconSlot("attendance_card_import_roster")!;
 
 interface StudentFormState {
   firstName: string;
@@ -114,7 +119,11 @@ export function AttendanceRostersView({
 
   return (
     <div className="flex flex-col gap-6">
-      <CollapsibleCard title="Add a student" defaultOpen={students.length === 0}>
+      <CollapsibleCard
+        title="Add a student"
+        titleIcon={<SlotIcon slot={ADD_STUDENT_CARD_SLOT} />}
+        defaultOpen={students.length === 0}
+      >
         <StudentForm
           onSubmit={(values) => addStudentAction(values)}
           submitLabel="Add student"
@@ -124,7 +133,10 @@ export function AttendanceRostersView({
 
       {/* Collapsed by default: importing is an occasional, start-of-term job,
           and the roster itself is what this screen is for. */}
-      <CollapsibleCard title="Import a roster (CSV)">
+      <CollapsibleCard
+        title="Import a roster (CSV)"
+        titleIcon={<SlotIcon slot={IMPORT_ROSTER_CARD_SLOT} />}
+      >
         <AttendanceRosterImportView namedMappings={importMappings} />
       </CollapsibleCard>
 

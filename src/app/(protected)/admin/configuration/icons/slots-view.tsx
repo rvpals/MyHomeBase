@@ -157,32 +157,49 @@ export function IconSlotsView({
   setName: string;
   overrides: Record<string, IconOverride>;
 }) {
+  const [activeGroup, setActiveGroup] = useState<string>(groups[0]?.group ?? "");
+
   return (
-    <section className="mt-12">
-      <h2 className="font-display text-2xl font-semibold text-ink">Icon positions</h2>
-      <p className="mt-2 text-sm text-muted">
+    <section>
+      <p className="text-sm text-muted">
         Replace the icon in one specific place without changing the set everywhere. Uploads
         apply to <span className="font-medium text-ink">{setName}</span> only — pick a
-        different set above and each position starts from that set&apos;s own glyph again.
+        different set in the Icon Sets tab and each position starts from that set&apos;s own glyph again.
       </p>
-      <p className="mt-2 text-sm text-muted">
+      <p className="mt-3 text-sm text-muted">
         An <span className="font-medium text-ink">SVG</span> is tinted to the theme accent
         like the built-in icons. A PNG or JPEG keeps its own colors, so it won&apos;t match
         the theme. Keep files under {Math.round(ICON_OVERRIDE_MAX_BYTES / 1024)} KB.
       </p>
-      <p className="mt-2 text-sm text-muted">
+      <p className="mt-3 text-sm text-muted">
         Uploaded images are tidied up automatically: a flattened transparency checkerboard
         (what you get exporting to JPEG) is turned back into real transparency, empty margin
         is cropped, and the result is stored as a 256px PNG. So a big export is fine —
         it&apos;ll come out small and sharp. A photo is left alone rather than guessed at.
       </p>
 
-      {groups.map((entry) => (
-        <div key={entry.group} className="mt-6">
-          <p className="font-mono text-xs font-medium uppercase tracking-widest text-brass-dark">
+      {/* Group tabs */}
+      <div className="mt-6 flex flex-wrap gap-2 border-b border-line pb-3">
+        {groups.map((entry) => (
+          <button
+            key={entry.group}
+            type="button"
+            onClick={() => setActiveGroup(entry.group)}
+            className={`px-3 py-2 text-sm font-medium transition ${
+              activeGroup === entry.group
+                ? "border-b-2 border-brass text-ink"
+                : "text-muted hover:text-ink"
+            }`}
+          >
             {entry.group}
-          </p>
-          <div className="mt-3 space-y-3">
+          </button>
+        ))}
+      </div>
+
+      {/* Active group content */}
+      {groups.map((entry) => (
+        activeGroup === entry.group && (
+          <div key={entry.group} className="mt-6 space-y-3">
             {entry.slots.map((slot) => (
               <SlotRow
                 key={slot.id}
@@ -192,7 +209,7 @@ export function IconSlotsView({
               />
             ))}
           </div>
-        </div>
+        )
       ))}
     </section>
   );

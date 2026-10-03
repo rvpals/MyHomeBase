@@ -11,6 +11,8 @@ export type {
   TickerDayMove,
   MoverMeasure,
   TransactionStats,
+  PositionChange,
+  PeriodType,
 } from "./types";
 export { UNASSIGNED_ACCOUNT_ID } from "./types";
 export {
@@ -81,4 +83,5 @@ export {
   type TransactionAccountMatching,
   POSITION_IMPORT_FIELDS,
   TRANSACTION_IMPORT_FIELDS,
+  calculatePeriodChanges,
 } from "./stock-positions";

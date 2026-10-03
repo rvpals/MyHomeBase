@@ -26,23 +26,7 @@ belongs in the script, and vice versa. Same for
 `INSTRUCTION_SETUP_SYNOLOGY.md`; deploy/restart/stop is `ADMIN_MANUAL.md`. (Windows was
 retired — for that, `manual_release.bat -Target Windows`.)
 
-## 1. Confirm the NAS publish is done
-
-Wait for confirmation. Don't publish it yourself — that's a manual step outside this
-repo. **The NAS serves the old build until it is restarted**; a copy alone is not a
-release. If it isn't published, stop here.
-
-```powershell
-.\REBUILD_PUBLISH_NAS.bat          # build + copy over SMB
-```
-```bash
-cd /volume1/app/myhomebase          # then, over SSH
-kill "$(cat app.pid)" 2>/dev/null; sleep 2
-node --env-file-if-exists=.env migrate.cjs   # only if this release adds migrations
-./start.sh
-```
-
-## 2. Back up the NAS production database
+## 1. Back up the NAS production database
 
 ```bash
 npm run backup:nas              # add -- --dry-run to see what it would copy
@@ -59,7 +43,7 @@ one, and only runs when the release has a migration.
 Confirm the new files exist at a plausible size before continuing — the script prints
 each name and size, and exits non-zero if the `.db` couldn't be copied.
 
-## 3. Update the markdown docs
+## 2. Update the markdown docs
 
 Bring any stale root `.md` file into line with the app. Base this on `git status` /
 `git diff` against `HEAD`, plus the conversation for the *why*.
@@ -74,7 +58,7 @@ Bring any stale root `.md` file into line with the app. Base this on `git status
 
 Update what's actually out of date. Say which files were checked and what changed.
 
-## 4. Add this release's changes to `TEST_LIST.md`
+## 3. Add this release's changes to `TEST_LIST.md`
 
 `CHANGE_HISTORY.md` records what was *written*; `TEST_LIST.md` records what has been
 *tried*, and only the second survives the gap between sessions. Add items to the top
@@ -98,7 +82,7 @@ under a heading for this release's date, from the same evidence as step 3:
 
 Phrase each item as the behaviour a person would go and look at, not the code changed.
 
-## 5. Ship the changelog to NAS
+## 4. Ship the changelog to NAS
 
 The About page reads `CHANGE_HISTORY.md` from the running app's working directory, so the
 deployed copy needs refreshing after step 3. `REBUILD_PUBLISH_NAS.bat` includes it, so a
@@ -110,7 +94,7 @@ ls -la //NAS_DS223/app/myhomebase/CHANGE_HISTORY.md
 head -3 //NAS_DS223/app/myhomebase/CHANGE_HISTORY.md
 ```
 
-## 6. Commit and push
+## 5. Commit and push
 
 - Review `git status` / `git diff` once more so nothing unexpected (secrets, debug files,
   scratch scripts) is staged.

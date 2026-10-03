@@ -1216,6 +1216,37 @@ export const ICON_SLOTS: IconSlot[] = [
   },
 
   /* ---------------------------------------------------------------------------------
+     Attendance — cards.
+  --------------------------------------------------------------------------------- */
+  {
+    id: "attendance_card_add_class",
+    label: "Add a class",
+    group: "Attendance cards",
+    where: "Attendance → Classes section → Add a class card header.",
+    defaultConcept: "users",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "attendance_card_add_student",
+    label: "Add a student",
+    group: "Attendance cards",
+    where: "Attendance → Rosters section → Add a student card header.",
+    defaultConcept: "person",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "attendance_card_import_roster",
+    label: "Import a roster",
+    group: "Attendance cards",
+    where: "Attendance → Rosters section → Import a roster (CSV) card header.",
+    defaultConcept: "download",
+    wired: true,
+    namespace: "tree",
+  },
+
+  /* ---------------------------------------------------------------------------------
      Music Library — nav sections.
   --------------------------------------------------------------------------------- */
   {

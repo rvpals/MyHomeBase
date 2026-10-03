@@ -406,7 +406,7 @@ function SectionBody({
 
       return (
         <StockDashboardView
-          summary={computePortfolioSummary(positions)}
+          summary={computePortfolioSummary(positions, snapshots)}
           byType={computeAllocation(positions, (position) => position.type)}
           byStrategy={computeAllocation(positions, (position) => position.assetStrategy)}
           bySector={computeAllocation(positions, (position) =>
@@ -421,6 +421,7 @@ function SectionBody({
           snapshots={snapshots}
           toDate={summarizeToDate(snapshots, today)}
           widgets={visibleDashboardWidgets(loadDashboardWidgets())}
+          positions={positions}
         />
       );
     }
@@ -614,7 +615,9 @@ export async function StockSection({
   // sides of that call — it's a reduce over already-loaded rows, not a second
   // query, so the duplicate costs nothing.
   const seedSummary =
-    section === "main" ? computePortfolioSummary(listPositions(deps.stockPositionRepo)) : undefined;
+    section === "main"
+      ? computePortfolioSummary(listPositions(deps.stockPositionRepo), snapshots)
+      : undefined;
 
   return (
     // The two-tier shell: a module rail, a section panel and a utility header,

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { ModuleIconPreview } from "@/components/module-icons";
 import type { ModuleIconSetId } from "@/components/module-icon-sets.generated";
 import type { IconOverride, IconSlot } from "@/lib/icons";
@@ -24,6 +25,7 @@ export function IconsView({
   overrides: Record<string, IconOverride>;
 }) {
   const { iconSetId, setIconSetId } = useAdminSettings();
+  const [activeTab, setActiveTab] = useState<"sets" | "positions">("sets");
 
   // The picker is a draft; overrides are stored against the saved set. Saying so beats
   // silently attaching an upload to a set the reader thinks they've moved off.
@@ -35,69 +37,103 @@ export function IconsView({
         Configuration
       </p>
       <h1 className="mt-2 font-display text-3xl font-semibold text-ink">Icons</h1>
-      <p className="mt-2 text-sm text-muted">
-        Pick the icon set used for module icons on the home screen and sidebar. Color sets
-        keep their own colors and aren&apos;t tinted to the theme accent. Applies everywhere
-        once saved.
-      </p>
 
-      <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {ICON_SETS.map((set) => {
-          const active = set.id === iconSetId;
-          return (
-            <button
-              key={set.id}
-              type="button"
-              onClick={() => setIconSetId(set.id)}
-              aria-pressed={active}
-              className={`rounded-xl border bg-paper-raised p-4 text-left transition ${
-                active ? "border-brass ring-2 ring-brass" : "border-line hover:border-brass/50"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <span className="font-display text-base font-semibold text-ink">{set.name}</span>
-                {active && (
-                  <span className="ml-auto shrink-0 rounded-full bg-brass px-2 py-0.5 text-xs font-medium text-paper">
-                    Selected
-                  </span>
-                )}
-              </div>
-              <p className="mt-1 text-sm text-muted">{set.description}</p>
-              <div className="mt-4 flex items-center gap-2.5">
-                {PREVIEW_ICONS.map((name) => (
-                  <span
-                    key={name}
-                    className={`flex h-10 w-10 items-center justify-center rounded-lg ${
-                      set.colorful ? "border border-line bg-paper" : "bg-brass text-paper"
-                    }`}
-                  >
-                    <ModuleIconPreview
-                      setId={set.id as ModuleIconSetId}
-                      name={name}
-                      className="h-6 w-6"
-                    />
-                  </span>
-                ))}
-              </div>
-            </button>
-          );
-        })}
+      <div className="mt-6 flex gap-6 border-b border-line">
+        <button
+          type="button"
+          onClick={() => setActiveTab("sets")}
+          className={`pb-3 text-sm font-medium transition ${
+            activeTab === "sets"
+              ? "border-b-2 border-brass text-ink"
+              : "text-muted hover:text-ink"
+          }`}
+        >
+          Icon Sets
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("positions")}
+          className={`pb-3 text-sm font-medium transition ${
+            activeTab === "positions"
+              ? "border-b-2 border-brass text-ink"
+              : "text-muted hover:text-ink"
+          }`}
+        >
+          Icon Positions
+        </button>
       </div>
 
-      {hasUnsavedSetChange && (
-        <p className="mt-6 rounded-lg border border-brass/40 bg-brass/5 p-3 text-sm text-ink">
-          You&apos;ve picked a different set but haven&apos;t saved yet. The positions below
-          still apply to <span className="font-medium">{savedSetName}</span> — save first,
-          then reload this page to customize the new set.
-        </p>
+      {activeTab === "sets" && (
+        <div className="mt-8">
+          <p className="text-sm text-muted">
+            Pick the icon set used for module icons on the home screen and sidebar. Color sets
+            keep their own colors and aren&apos;t tinted to the theme accent. Applies everywhere
+            once saved.
+          </p>
+
+          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {ICON_SETS.map((set) => {
+              const active = set.id === iconSetId;
+              return (
+                <button
+                  key={set.id}
+                  type="button"
+                  onClick={() => setIconSetId(set.id)}
+                  aria-pressed={active}
+                  className={`rounded-xl border bg-paper-raised p-4 text-left transition ${
+                    active ? "border-brass ring-2 ring-brass" : "border-line hover:border-brass/50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-display text-base font-semibold text-ink">{set.name}</span>
+                    {active && (
+                      <span className="ml-auto shrink-0 rounded-full bg-brass px-2 py-0.5 text-xs font-medium text-paper">
+                        Selected
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-sm text-muted">{set.description}</p>
+                  <div className="mt-4 flex items-center gap-2.5">
+                    {PREVIEW_ICONS.map((name) => (
+                      <span
+                        key={name}
+                        className={`flex h-10 w-10 items-center justify-center rounded-lg ${
+                          set.colorful ? "border border-line bg-paper" : "bg-brass text-paper"
+                        }`}
+                      >
+                        <ModuleIconPreview
+                          setId={set.id as ModuleIconSetId}
+                          name={name}
+                          className="h-6 w-6"
+                        />
+                      </span>
+                    ))}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {hasUnsavedSetChange && (
+            <p className="mt-6 rounded-lg border border-brass/40 bg-brass/5 p-3 text-sm text-ink">
+              You&apos;ve picked a different set but haven&apos;t saved yet. The positions below
+              still apply to <span className="font-medium">{savedSetName}</span> — save first,
+              then reload this page to customize the new set.
+            </p>
+          )}
+        </div>
       )}
 
-      <IconSlotsView
-        groups={slotGroups}
-        setId={savedSetId}
-        setName={savedSetName}
-        overrides={overrides}
-      />
+      {activeTab === "positions" && (
+        <div className="mt-8">
+          <IconSlotsView
+            groups={slotGroups}
+            setId={savedSetId}
+            setName={savedSetName}
+            overrides={overrides}
+          />
+        </div>
+      )}
     </div>
   );
 }

@@ -344,10 +344,17 @@ export function StockIndexesCard() {
    * Opening the card is a request for today's numbers, so fetch them — nobody
    * expands Indexes to read a stale board. Collapsing fetches nothing, and a
    * fetch already in flight is left alone.
+   *
+   * After 4 PM, use the cached board instead of refetching — the market is closed
+   * and prices won't move until tomorrow.
    */
   function handleOpenChange(next: boolean) {
     setOpen(next);
     if (!next || loading) return;
+
+    const now = new Date();
+    const isAfter4PM = now.getHours() >= 16;
+    if (isAfter4PM && board) return;
 
     const fetchedAt = board ? Date.parse(board.fetchedAt) : Number.NaN;
     const isFresh = !Number.isNaN(fetchedAt) && Date.now() - fetchedAt < FRESH_FOR_MS;
@@ -389,7 +396,7 @@ export function StockIndexesCard() {
       )}
 
       {board ? (
-        <div className="flex flex-col gap-5">
+        <div className="grid grid-cols-1 gap-5 max-lg:gap-4 lg:grid-cols-2">
           {board.groups.map((group) => (
             <GroupSection
               key={group.group}
@@ -399,22 +406,6 @@ export function StockIndexesCard() {
               onToggle={toggleRow}
             />
           ))}
-
-          <p className="text-xs text-muted">
-            Fetched {fetchedLabel(board.fetchedAt)}. Levels are quoted in their own units —
-            points for an index, dollars for a commodity, percent for a yield. Open a row for
-            its ranges and averages; each sparkline is scaled to its own day, so two of them
-            can&apos;t be compared to each other.
-          </p>
-
-          {/* A provider that lost a symbol is worth saying out loud, so a missing
-              row doesn't read as a missing index. */}
-          {board.failures.length > 0 && (
-            <p className="text-xs text-brass-dark">
-              Couldn&apos;t fetch: {board.failures.map((failure) => failure.label).join(", ")}. Press
-              Refresh to try again.
-            </p>
-          )}
         </div>
       ) : (
         !error && (
@@ -424,6 +415,26 @@ export function StockIndexesCard() {
               : "No index levels yet — press Refresh to fetch them."}
           </p>
         )
+      )}
+
+      {board && (
+        <>
+          <p className="mt-5 text-xs text-muted">
+            Fetched {fetchedLabel(board.fetchedAt)}. Levels are quoted in their own units —
+            points for an index, dollars for a commodity, percent for a yield. Open a row for
+            its ranges and averages; each sparkline is scaled to its own day, so two of them
+            can&apos;t be compared to each other.
+          </p>
+
+          {/* A provider that lost a symbol is worth saying out loud, so a missing
+              row doesn't read as a missing index. */}
+          {board.failures.length > 0 && (
+            <p className="mt-2 text-xs text-brass-dark">
+              Couldn&apos;t fetch: {board.failures.map((failure) => failure.label).join(", ")}. Press
+              Refresh to try again.
+            </p>
+          )}
+        </>
       )}
     </CollapsibleCard>
   );

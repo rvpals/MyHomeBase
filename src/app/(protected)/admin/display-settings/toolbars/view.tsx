@@ -13,7 +13,7 @@
 // a phone gets one column. No `useIsCompact()` fork — nothing here needs a different
 // *component* narrow, only a narrower one.
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type DragEventHandler } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
@@ -428,6 +428,8 @@ function ToolbarItems({
   const [moduleSlug, setModuleSlug] = useState("");
   const [menuItemId, setMenuItemId] = useState("");
   const [label, setLabel] = useState("");
+  const [draggingId, setDraggingId] = useState<number | undefined>();
+  const [dropTargetId, setDropTargetId] = useState<number | undefined>();
 
   // The module list, derived from the catalogue rather than passed separately, so a
   // module with no sections cannot appear as an empty group.
@@ -469,6 +471,26 @@ function ToolbarItems({
     await run(() => reorderToolbarItemsAction(toolbar.id, next));
   }
 
+  function handleDrop(targetItem: (typeof toolbar.items)[number]) {
+    setDropTargetId(undefined);
+    if (!draggingId) return;
+
+    const draggingIndex = toolbar.items.findIndex((item) => item.id === draggingId);
+    const targetIndex = toolbar.items.findIndex((item) => item.id === targetItem.id);
+
+    if (draggingIndex === -1 || targetIndex === -1 || draggingIndex === targetIndex) {
+      setDraggingId(undefined);
+      return;
+    }
+
+    const next = [...toolbar.items.map((item) => item.id)];
+    next.splice(draggingIndex, 1);
+    next.splice(targetIndex, 0, draggingId);
+    setDraggingId(undefined);
+
+    void run(() => reorderToolbarItemsAction(toolbar.id, next));
+  }
+
   return (
     <div className="mt-6 border-t border-line pt-6">
       <h3 className="font-display text-lg font-semibold text-ink">Items</h3>
@@ -482,70 +504,105 @@ function ToolbarItems({
       {toolbar.items.length === 0 ? (
         <p className="mt-4 text-sm text-muted">Nothing on this toolbar yet.</p>
       ) : (
-        <ul className="mt-4 divide-y divide-line rounded-xl border border-line">
-          {toolbar.items.map((item, index) => {
-            const target = item.menuItemId ? byId.get(item.menuItemId) : undefined;
-            return (
-              <li key={item.id} className="flex items-center justify-between gap-3 p-3">
-                <div className="min-w-0">
-                  {item.kind === "spacer" ? (
-                    <p className="text-sm italic text-muted">Flexible space</p>
-                  ) : item.kind === "separator" ? (
-                    // Drawn as an actual rule in the list, not just named: it is the
-                    // one row whose whole purpose is how it looks, so the admin list
-                    // should show it rather than describe it.
-                    <p className="flex items-center gap-2 text-sm italic text-muted">
-                      <span aria-hidden className="h-px w-8 bg-line" />
-                      Separator
-                    </p>
-                  ) : (
-                    <>
-                      <p className="truncate text-sm font-medium text-ink">
-                        {item.label ?? target?.title ?? "Unknown screen"}
+        <>
+          <ul className="mt-4 divide-y divide-line rounded-xl border border-line">
+            {toolbar.items.map((item, index) => {
+              const target = item.menuItemId ? byId.get(item.menuItemId) : undefined;
+              const isDragging = draggingId === item.id;
+              const isDropTarget = dropTargetId === item.id && draggingId !== item.id;
+
+              return (
+                <li
+                  key={item.id}
+                  className={`group relative flex cursor-grab items-center justify-between gap-3 p-3 transition-shadow active:cursor-grabbing motion-reduce:transition-none ${
+                    isDragging ? "opacity-40" : ""
+                  } ${isDropTarget ? "ring-2 ring-brass" : "ring-1 ring-transparent hover:ring-line/50"}`}
+                  draggable
+                  onDragStart={() => setDraggingId(item.id)}
+                  onDragOver={(event) => {
+                    if (!draggingId) return;
+                    event.preventDefault();
+                    setDropTargetId(item.id);
+                  }}
+                  onDragLeave={() => setDropTargetId((current) => (current === item.id ? undefined : current))}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    handleDrop(item);
+                  }}
+                  onDragEnd={() => {
+                    setDraggingId(undefined);
+                    setDropTargetId(undefined);
+                  }}
+                >
+                  <div className="min-w-0 flex-1">
+                    {item.kind === "spacer" ? (
+                      <p className="text-sm italic text-muted">Flexible space</p>
+                    ) : item.kind === "separator" ? (
+                      // Drawn as an actual rule in the list, not just named: it is the
+                      // one row whose whole purpose is how it looks, so the admin list
+                      // should show it rather than describe it.
+                      <p className="flex items-center gap-2 text-sm italic text-muted">
+                        <span aria-hidden className="h-px w-8 bg-line" />
+                        Separator
                       </p>
-                      <p className="truncate text-xs text-muted">
-                        {target
-                          ? `${target.moduleName} · ${target.href}`
-                          : // A row whose menu item no longer exists. It is simply not
-                            // drawn on the real toolbar; saying so here is the only
-                            // place an admin can find out and remove it.
-                            `Missing screen (${item.menuItemId}) — not shown on the toolbar`}
-                      </p>
-                    </>
-                  )}
-                </div>
-                <div className="flex shrink-0 gap-1">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    ariaLabel="Move up"
-                    disabled={isBusy || index === 0}
-                    onClick={() => void move(index, -1)}
+                    ) : (
+                      <>
+                        <p className="truncate text-sm font-medium text-ink">
+                          {item.label ?? target?.title ?? "Unknown screen"}
+                        </p>
+                        <p className="truncate text-xs text-muted">
+                          {target
+                            ? `${target.moduleName} · ${target.href}`
+                            : // A row whose menu item no longer exists. It is simply not
+                              // drawn on the real toolbar; saying so here is the only
+                              // place an admin can find out and remove it.
+                              `Missing screen (${item.menuItemId}) — not shown on the toolbar`}
+                        </p>
+                      </>
+                    )}
+                  </div>
+                  <div
+                    className="flex shrink-0 gap-1 opacity-0 transition-opacity motion-reduce:transition-none group-hover:opacity-100 group-focus-within:opacity-100"
+                    draggable={false}
+                    onDragStart={(event) => {
+                      event.preventDefault();
+                    }}
                   >
-                    ↑
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    ariaLabel="Move down"
-                    disabled={isBusy || index === toolbar.items.length - 1}
-                    onClick={() => void move(index, 1)}
-                  >
-                    ↓
-                  </Button>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    disabled={isBusy}
-                    onClick={() => void run(() => removeToolbarItemAction(toolbar.id, item.id))}
-                  >
-                    Remove
-                  </Button>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      ariaLabel="Move up"
+                      disabled={isBusy || index === 0}
+                      onClick={() => void move(index, -1)}
+                    >
+                      ↑
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      ariaLabel="Move down"
+                      disabled={isBusy || index === toolbar.items.length - 1}
+                      onClick={() => void move(index, 1)}
+                    >
+                      ↓
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      disabled={isBusy}
+                      onClick={() => void run(() => removeToolbarItemAction(toolbar.id, item.id))}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="mt-4 text-xs text-muted">
+            Drag an item to rearrange, or use the arrows that appear on hover.
+          </p>
+        </>
       )}
 
       <div className="mt-4 rounded-xl border border-line p-3">

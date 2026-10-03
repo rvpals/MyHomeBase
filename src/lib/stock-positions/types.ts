@@ -88,6 +88,10 @@ export interface PortfolioSummary {
   totalUnrealizedGainLossCents: number;
   /** Total return against `totalCostCents`. 0 when no position reports a basis. */
   totalReturnPct: number;
+  /** Annualized volatility over the last 30 days. 0 when insufficient data. */
+  volatility30DayPct: number;
+  /** Annualized volatility over the last 52 weeks. 0 when insufficient data. */
+  volatility52WeekPct: number;
 }
 
 /** How much something is worth and how far it moved today. */
@@ -151,3 +155,17 @@ export interface TransactionStats {
   maxPricePerShareCents: number;
   minPricePerShareCents: number;
 }
+
+/** A position's performance over a time period. */
+export interface PositionChange {
+  ticker: string;
+  name: string;
+  type: PositionType;
+  currentValueCents: number;
+  periodValueCents: number;
+  periodGainLossCents: number;
+  periodGainLossPct: number;
+  quantity: number;
+}
+
+export type PeriodType = "week" | "month" | "year";

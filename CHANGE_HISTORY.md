@@ -1,5 +1,53 @@
 # Change History
 
+## 2026-10-02 (late) — Portfolio: Biggest Changes and Volatility, tabbed Icons, draggable toolbars
+
+### Portfolio Summary: a "Biggest Changes" tab
+
+The Portfolio Summary card on the Investments dashboard gains a **Biggest Changes**
+tab between Summary and History. Pick **This Week**, **This Month** or **This Year**
+and it lists your top gainers and top losers (up to ten each) for that period.
+
+Each figure is shares × (current price − the price at the start of the period), using
+real daily closes fetched per ticker, not an estimate from the day's move. A ticker
+whose history can't be fetched is skipped rather than failing the whole table. The
+numbers come from a new `POST /api/stocks/biggest-changes` route, signed-in users only.
+
+### Portfolio Summary: new tiles, descriptions, and volatility
+
+- **Volatility** replaces *Unassigned*: annualized portfolio volatility over the last
+  30 days and the last 52 weeks, computed from the daily snapshots. It shows 0 until
+  there are at least three snapshots in the window.
+- **Annual Income** now also shows the dividend yield as a percentage of total value.
+- Every tile has an **info icon**; hover it for a one-line explanation.
+
+### Indexes card
+
+- Opening the card **after 4 PM** reuses the board already fetched instead of
+  refetching, since the market has closed.
+- On a wide screen the groups sit in **two columns**; a phone keeps one.
+
+### Icons configuration: two tabs, grouped positions
+
+*Configuration → Icons* is split into **Icon Sets** and **Icon Positions** tabs. Inside
+Icon Positions the slots are grouped under a tab per group instead of one long page.
+
+### Attendance: card icons
+
+Three new icon slots put an icon in the card headers of *Add a class*, *Add a student*
+and *Import a roster (CSV)*: `attendance_card_add_class`, `attendance_card_add_student`,
+`attendance_card_import_roster`. They can be replaced in Icon Positions like any other.
+
+### Personal toolbars: drag to reorder
+
+Items on a toolbar in *Display settings → Toolbars* can be **dragged** into a new order.
+The up/down/Remove buttons now appear on hover (or keyboard focus) rather than always.
+
+### Release process
+
+`/release` no longer waits on a NAS publish step; it starts at the database backup. The
+test checklist is now `Testing_List.md`, and a `/testing` command walks its unticked items.
+
 ## 2026-10-02 — Journal: Count by Years and Months
 
 ### "Count by Years" in the Statistics card

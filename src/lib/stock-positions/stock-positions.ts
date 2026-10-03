@@ -37,8 +37,10 @@ import type {
   DayMovesByType,
   MoverMeasure,
   PortfolioSummary,
+  PositionChange,
   PositionKey,
   PositionType,
+  PeriodType,
   StockPosition,
   StockTransaction,
   TickerDayMove,
@@ -257,8 +259,14 @@ export function annualIncomeCents(position: StockPosition): number {
  * Totals value, day gain/loss, asset-class split, cost basis and annual dividend
  * income across a set of positions. Cost-basis totals only count positions that
  * report a basis, so one unimported holding can't understate the whole return.
+ *
+ * Optionally computes volatility when snapshots are provided — uses the last 30 days
+ * and 52 weeks of daily portfolio values to calculate annualized volatility.
  */
-export function computePortfolioSummary(positions: StockPosition[]): PortfolioSummary {
+export function computePortfolioSummary(
+  positions: StockPosition[],
+  snapshots?: { snapshotDate: string; totalValueCents: number }[],
+): PortfolioSummary {
   const summary = positions.reduce<PortfolioSummary>(
     (acc, position) => ({
       positionCount: acc.positionCount + 1,
@@ -278,6 +286,8 @@ export function computePortfolioSummary(positions: StockPosition[]): PortfolioSu
         acc.totalUnrealizedGainLossCents +
         (position.costCents > 0 ? position.unrealizedGainLossCents : 0),
       totalReturnPct: 0, // computed below
+      volatility30DayPct: 0, // computed below
+      volatility52WeekPct: 0, // computed below
     }),
     {
       positionCount: 0,
@@ -291,6 +301,8 @@ export function computePortfolioSummary(positions: StockPosition[]): PortfolioSu
       totalCostCents: 0,
       totalUnrealizedGainLossCents: 0,
       totalReturnPct: 0,
+      volatility30DayPct: 0,
+      volatility52WeekPct: 0,
     },
   );
 
@@ -302,7 +314,51 @@ export function computePortfolioSummary(positions: StockPosition[]): PortfolioSu
       ? 0
       : (summary.totalUnrealizedGainLossCents / summary.totalCostCents) * 100;
 
+  // Compute volatility if snapshots are provided
+  if (snapshots && snapshots.length > 0) {
+    const today = new Date();
+    const thirtyDaysAgo = new Date(today);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const fiftyTwoWeeksAgo = new Date(today);
+    fiftyTwoWeeksAgo.setFullYear(fiftyTwoWeeksAgo.getFullYear() - 1);
+
+    const thirtyDaySnapshots = snapshots.filter(
+      (s) => new Date(s.snapshotDate) >= thirtyDaysAgo,
+    );
+    const fiftyTwoWeekSnapshots = snapshots.filter(
+      (s) => new Date(s.snapshotDate) >= fiftyTwoWeeksAgo,
+    );
+
+    summary.volatility30DayPct = computeVolatilityPct(
+      thirtyDaySnapshots.map((s) => s.totalValueCents),
+    );
+    summary.volatility52WeekPct = computeVolatilityPct(
+      fiftyTwoWeekSnapshots.map((s) => s.totalValueCents),
+    );
+  }
+
   return summary;
+}
+
+function computeVolatilityPct(prices: number[]): number {
+  if (prices.length < 2) return 0;
+
+  const logReturns: number[] = [];
+  for (let i = 1; i < prices.length; i++) {
+    if (prices[i - 1] > 0) {
+      logReturns.push(Math.log(prices[i] / prices[i - 1]));
+    }
+  }
+
+  if (logReturns.length < 2) return 0;
+
+  const mean = logReturns.reduce((sum, value) => sum + value, 0) / logReturns.length;
+  const variance =
+    logReturns.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (logReturns.length - 1);
+  const dailyStdDev = Math.sqrt(variance);
+  const annualizedVolPct = dailyStdDev * Math.sqrt(252) * 100;
+
+  return Math.round(annualizedVolPct * 100) / 100;
 }
 
 /** What a re-priced position contributes to the two headline figures. */
@@ -342,6 +398,95 @@ export function applyRefreshedPosition(
     dayChangePct:
       priorDayValueCents === 0 ? 0 : (totalDayGainLossCents / priorDayValueCents) * 100,
   };
+}
+
+/**
+ * Calculate date range for the period (first/last trading day in range).
+ * Returns ISO date strings.
+ */
+function getPeriodDateRange(period: PeriodType): { startDate: string; endDate: string } {
+  const today = new Date();
+  const endDate = today.toISOString().split("T")[0];
+  const startDate = new Date(today);
+
+  if (period === "week") {
+    startDate.setDate(startDate.getDate() - 7);
+  } else if (period === "month") {
+    startDate.setDate(1);
+  } else {
+    startDate.setFullYear(startDate.getFullYear(), 0, 1);
+  }
+
+  return {
+    startDate: startDate.toISOString().split("T")[0],
+    endDate,
+  };
+}
+
+/**
+ * Calculate top gainers and losers using actual historical price data.
+ * Fetches daily closing prices for each ticker over the period and calculates
+ * P&L as: shares × (current price - period start price).
+ */
+export async function calculatePeriodChanges(
+  positions: StockPosition[],
+  marketDataClient: MarketDataClient,
+  period: PeriodType,
+): Promise<{ gainers: PositionChange[]; losers: PositionChange[] }> {
+  if (positions.length === 0) return { gainers: [], losers: [] };
+
+  const { startDate, endDate } = getPeriodDateRange(period);
+  const changes: PositionChange[] = [];
+
+  for (const position of positions) {
+    if (position.quantity <= 0 || position.currentPriceCents <= 0) continue;
+
+    try {
+      const history = await marketDataClient.getHistory(position.ticker, "1y", "1d");
+      if (history.length === 0) continue;
+
+      const periodStartQuote = history.find((h) => {
+        const dateStr = new Date(h.timestamp * 1000).toISOString().split("T")[0];
+        return dateStr >= startDate;
+      });
+
+      if (!periodStartQuote) continue;
+
+      const periodStartPriceCents = periodStartQuote.closeCents;
+      const periodStartValueCents = Math.round(position.quantity * periodStartPriceCents);
+      const currentValueCents = position.valueCents;
+
+      const periodGainLossCents = currentValueCents - periodStartValueCents;
+      const periodGainLossPct =
+        periodStartValueCents > 0 ? (periodGainLossCents / periodStartValueCents) * 100 : 0;
+
+      changes.push({
+        ticker: position.ticker,
+        name: position.name,
+        type: position.type,
+        currentValueCents,
+        periodValueCents: periodStartValueCents,
+        periodGainLossCents,
+        periodGainLossPct,
+        quantity: position.quantity,
+      });
+    } catch {
+      // Skip tickers that fail to fetch
+      continue;
+    }
+  }
+
+  const gainers = changes
+    .filter((c) => c.periodGainLossCents > 0)
+    .sort((a, b) => b.periodGainLossCents - a.periodGainLossCents)
+    .slice(0, 10);
+
+  const losers = changes
+    .filter((c) => c.periodGainLossCents < 0)
+    .sort((a, b) => a.periodGainLossCents - b.periodGainLossCents)
+    .slice(0, 10);
+
+  return { gainers, losers };
 }
 
 /**

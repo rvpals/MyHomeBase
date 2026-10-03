@@ -7,6 +7,7 @@ import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { Modal } from "@/components/modal";
+import { SlotIcon } from "@/components/slot-icon";
 import {
   CLASS_WEEKDAYS,
   CLASS_WEEKDAY_LABELS,
@@ -15,6 +16,7 @@ import {
   type ClassWeekday,
   type Student,
 } from "@/lib/attendance";
+import { getIconSlot } from "@/lib/icons/slots";
 import {
   createClassAction,
   deleteClassAction,
@@ -27,6 +29,8 @@ const INPUT_CLASS =
   "w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
 
 const LABEL_CLASS = "text-xs font-medium uppercase tracking-wide text-muted";
+
+const ADD_CLASS_CARD_SLOT = getIconSlot("attendance_card_add_class")!;
 
 function studentName(student: Student): string {
   return `${student.firstName} ${student.lastName}`.trim();
@@ -134,7 +138,11 @@ export function AttendanceClassesView({
 
   return (
     <div className="flex flex-col gap-6">
-      <CollapsibleCard title="Add a class" defaultOpen={classes.length === 0}>
+      <CollapsibleCard
+        title="Add a class"
+        titleIcon={<SlotIcon slot={ADD_CLASS_CARD_SLOT} />}
+        defaultOpen={classes.length === 0}
+      >
         <ClassForm
           submitLabel="Add class"
           onSubmit={(values) => createClassAction(values)}

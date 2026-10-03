@@ -11,14 +11,16 @@ import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { SlotIcon } from "@/components/slot-icon";
 import { Tabs } from "@/components/tabs";
+import { TreeIcon } from "@/components/tree-icons";
 import { getIconSlot } from "@/lib/icons";
 import type { DashboardWidgetId } from "@/lib/stock-dashboard";
 import { snapshotChangePct } from "@/lib/stock-daily-snapshot";
 import type { DailySnapshot, PeriodSummary, ToDateSummaries } from "@/lib/stock-daily-snapshot";
-import type { AllocationSlice, PortfolioSummary } from "@/lib/stock-positions";
+import type { AllocationSlice, PortfolioSummary, StockPosition } from "@/lib/stock-positions";
 import { centsToDollars, formatCents } from "@/lib/shared/money";
 import { StockIndexesCard } from "./stock-indexes-card";
 import { StockPlaybackControl } from "./stock-playback-control";
+import { StockBiggestChanges } from "./stock-biggest-changes";
 import { useStockRefreshProgress } from "./stock-refresh-progress-context";
 
 // Module scope: the registry is a static table, so this is a lookup, not I/O. The
@@ -44,16 +46,28 @@ function StatTile({
   label,
   value,
   hint,
+  description,
   valueClassName = "text-ink",
 }: {
   label: string;
   value: string;
   hint?: string;
+  description?: string;
   valueClassName?: string;
 }) {
   return (
     <div className="rounded-xl border border-line p-4">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted">{label}</p>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted">{label}</p>
+        {description && (
+          <div title={description} className="cursor-help">
+            <TreeIcon
+              name="info"
+              className="h-4 w-4 shrink-0 text-muted hover:text-brass transition-colors"
+            />
+          </div>
+        )}
+      </div>
       <p className={`mt-1 font-display text-xl ${valueClassName}`}>{value}</p>
       {hint && <p className="mt-1 text-xs text-muted">{hint}</p>}
     </div>
@@ -125,6 +139,7 @@ function PortfolioSummaryCard({
   byStrategy,
   bySector,
   sectorsPending,
+  positions,
 }: {
   summary: PortfolioSummary;
   snapshots: DailySnapshot[];
@@ -137,6 +152,7 @@ function PortfolioSummaryCard({
   byStrategy: AllocationSlice[];
   bySector: AllocationSlice[];
   sectorsPending: boolean;
+  positions: StockPosition[];
 }) {
   const { liveSummary, isRefreshing, setLiveSummary } = useStockRefreshProgress();
 
@@ -324,6 +340,13 @@ function PortfolioSummaryCard({
       <NoHistoryYet what="Playback" />
     );
 
+  // Top gainers and losers over different time periods.
+  const changesTab = positions.length > 0 ? (
+    <StockBiggestChanges positions={positions} />
+  ) : (
+    <NoHistoryYet what="Biggest changes data" />
+  );
+
   return (
     <CollapsibleCard
       title="Portfolio Summary"
@@ -356,13 +379,14 @@ function PortfolioSummaryCard({
             : "no history captured yet — press the refresh icon by the heading"}
       </p>
 
-      {/* All three tabs always render, even with no snapshots: a tab set that
+      {/* All four tabs always render, even with no snapshots: a tab set that
           changes shape under you is harder to read than one whose panels say
           they're waiting on data. */}
       <Tabs
         className="mt-6"
         items={[
           { key: "summary", label: "Summary", content: summaryTab },
+          { key: "changes", label: "Biggest Changes", content: changesTab },
           { key: "history", label: "History", content: historyTab },
           { key: "playback", label: "Playback", content: playbackTab },
         ]}
@@ -474,6 +498,7 @@ export function StockDashboardView({
   snapshots,
   toDate,
   widgets,
+  positions,
 }: {
   summary: PortfolioSummary;
   byType: AllocationSlice[];
@@ -493,6 +518,8 @@ export function StockDashboardView({
   toDate: ToDateSummaries;
   /** Which widgets to draw and in what order — from Configuration → Dashboard widgets. */
   widgets: DashboardWidgetId[];
+  /** All held positions. */
+  positions: StockPosition[];
 }) {
   const hasCostBasis = summary.totalCostCents > 0;
 
@@ -521,6 +548,7 @@ export function StockDashboardView({
         byStrategy={byStrategy}
         bySector={bySector}
         sectorsPending={sectorsPending}
+        positions={positions}
       />
     ),
   };
@@ -554,13 +582,19 @@ function StatTiles({
   accountCount: number;
   unassignedCount: number;
 }) {
+  const dividendYieldPct =
+    summary.totalValueCents > 0 ? (summary.annualDividendIncomeCents / summary.totalValueCents) * 100 : 0;
+
   return (
     <>
-        <StatTile label="Positions" value={String(summary.positionCount)} hint={`${accountCount} account(s)`} />
+        <StatTile
+          label="Positions"
+          value={String(summary.positionCount)}
+          hint={`${accountCount} account(s)`}
+          description="Total number of holdings across all accounts"
+        />
         <StatTile
           label="Total Return"
-          // A zero cost basis means "not imported yet", not "free" — say so rather
-          // than printing a fake 0.00%.
           value={
             hasCostBasis
               ? `${formatCents(summary.totalUnrealizedGainLossCents)} (${summary.totalReturnPct.toFixed(2)}%)`
@@ -568,19 +602,29 @@ function StatTiles({
           }
           hint={hasCostBasis ? `on ${formatCents(summary.totalCostCents)} cost` : "import a positions CSV with cost basis"}
           valueClassName={hasCostBasis ? gainClass(summary.totalUnrealizedGainLossCents) : "text-muted"}
+          description="Unrealized gain or loss since original purchase, as a dollar amount and percentage"
         />
-        <StatTile label="Cost Basis" value={hasCostBasis ? formatCents(summary.totalCostCents) : "—"} />
+        <StatTile
+          label="Cost Basis"
+          value={hasCostBasis ? formatCents(summary.totalCostCents) : "—"}
+          description="Total amount paid for all positions. Used to calculate total return percentage."
+        />
         <StatTile
           label="Annual Income"
-          value={formatCents(summary.annualDividendIncomeCents)}
+          value={`${formatCents(summary.annualDividendIncomeCents)} (${dividendYieldPct.toFixed(2)}%)`}
           hint="forward dividends"
+          description="Expected annual dividend and interest income as a dollar amount and yield percentage"
         />
-        <StatTile label="Transactions" value={String(transactionCount)} />
         <StatTile
-          label="Unassigned"
-          value={String(unassignedCount)}
-          hint={unassignedCount > 0 ? "positions with no account" : "every position has an account"}
-          valueClassName={unassignedCount > 0 ? "text-brass-dark" : "text-ink"}
+          label="Transactions"
+          value={String(transactionCount)}
+          description="Total number of buy and sell transactions recorded"
+        />
+        <StatTile
+          label="Volatility"
+          value={`30d: ${summary.volatility30DayPct.toFixed(2)}% · 52w: ${summary.volatility52WeekPct.toFixed(2)}%`}
+          hint="annualized"
+          description="Portfolio price volatility annualized over 30 days and 52 weeks. Higher values indicate more price swings."
         />
     </>
   );
