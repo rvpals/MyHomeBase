@@ -1,5 +1,10 @@
-import type { MarketDataClient, MarketEventsClient, QuoteSummaryClient } from "./ports";
-import type { MarketEvent, PricePoint, Quote, RawQuoteSummary } from "./types";
+import type {
+  ExchangeRateClient,
+  MarketDataClient,
+  MarketEventsClient,
+  QuoteSummaryClient,
+} from "./ports";
+import type { FxQuote, MarketEvent, PricePoint, Quote, RawQuoteSummary } from "./types";
 
 /**
  * The quoteSummary modules the detail tab reads, fetched as one request.
@@ -85,7 +90,7 @@ const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 export class YahooFinanceClient
-  implements MarketDataClient, MarketEventsClient, QuoteSummaryClient
+  implements MarketDataClient, MarketEventsClient, QuoteSummaryClient, ExchangeRateClient
 {
   private crumb: string | null = null;
   private cookie = "";
@@ -116,6 +121,45 @@ export class YahooFinanceClient
       dayHighCents: highs.length ? Math.round(Math.max(...highs) * 100) : 0,
       dayLowCents: lows.length ? Math.round(Math.min(...lows) * 100) : 0,
       dividendRateCents: Math.round(dividendRate * 100),
+    };
+  }
+
+  /**
+   * One FX pair, unrounded.
+   *
+   * The same v8 chart endpoint `getQuote` uses, and deliberately a separate
+   * method rather than a call into it: `getQuote` rounds to cents and chases a
+   * dividend rate that no currency pair has. Neither applies here, and both
+   * would cost something — precision in the first case, an authenticated
+   * round-trip in the second.
+   *
+   * `range=5d` rather than `1d`: over a weekend or a holiday a 1-day window can
+   * come back with no bars at all, and FX is quoted continuously enough that the
+   * meta block is what matters anyway. Nothing here reads the bars.
+   */
+  async getRate(symbol: string): Promise<FxQuote> {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=5d&interval=1d`;
+    const response = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
+    if (!response.ok) throw new Error(`Yahoo rate ${symbol}: HTTP ${response.status}`);
+
+    const data = (await response.json()) as ChartResponse;
+    const result = data.chart?.result?.[0];
+    if (!result) throw new Error(`No rate data for ${symbol}.`);
+
+    const meta = result.meta;
+    const rate = meta.regularMarketPrice;
+    // A rate of zero is not a rate — it means the provider answered with a shape
+    // we recognise but no usable number, and dividing by it downstream would
+    // produce Infinity rather than an error anyone can read.
+    if (typeof rate !== "number" || !Number.isFinite(rate) || rate <= 0) {
+      throw new Error(`No rate data for ${symbol}.`);
+    }
+
+    return {
+      symbol,
+      rate,
+      previousClose: meta.chartPreviousClose ?? meta.previousClose ?? 0,
+      shortName: meta.shortName,
     };
   }
 

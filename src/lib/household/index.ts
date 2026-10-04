@@ -71,3 +71,75 @@ export {
   type RecipeImportPlanRow,
 } from "./csv-import";
 export { SqliteHouseholdRepository } from "./repository";
+export {
+  HSA_TYPES,
+  type HsaCard,
+  type HsaExpense,
+  type HsaReceipt,
+  type HsaType,
+} from "./hsa-types";
+export {
+  HSA_RECEIPT_MIME_TYPES,
+  MAX_HSA_RECEIPT_BYTES,
+  bulkDeleteHsaExpensesSchema,
+  bulkSetReimbursedSchema,
+  hsaExpenseSchema,
+  hsaReceiptUploadSchema,
+  type HsaExpenseData,
+  type HsaExpenseInput,
+  type HsaReceiptMimeType,
+  type HsaReceiptUploadInput,
+} from "./hsa-schema";
+export type { HsaRepository } from "./hsa-ports";
+export {
+  clearHsaReceipt,
+  createHsaCard,
+  createHsaExpense,
+  deleteHsaCard,
+  deleteHsaExpenses,
+  getHsaExpense,
+  getHsaReceipt,
+  listHsaCards,
+  listHsaExpenses,
+  listHsaProductServices,
+  renameHsaCard,
+  setHsaCardActive,
+  setHsaReceipt,
+  setHsaReimbursed,
+  updateHsaExpense,
+  type DeleteHsaExpensesResult,
+  type HsaReceiptFiles,
+  type SetHsaReceiptResult,
+} from "./hsa";
+export {
+  buildReceiptPath,
+  receiptExtension,
+  receiptMimeTypeFor,
+  sanitizeNameSegment,
+  withCollisionSuffix,
+  type ReceiptPathInput,
+} from "./receipt-path";
+export {
+  NodeReceiptFileStore,
+  resolveInside,
+  type FolderListing,
+  type ReceiptFileStore,
+  type ReceiptRootCheck,
+} from "./receipt-store";
+export {
+  HOUSEHOLD_MODULE_SLUG,
+  HOUSEHOLD_SETTING_KEYS,
+  describeReceiptRootCheck,
+  getHouseholdSettings,
+  hsaReceiptRootSchema,
+  resolveHouseholdSettings,
+  setHsaReceiptRoot,
+  type HouseholdSettings,
+} from "./settings";
+export {
+  UNDATED_YEAR_LABEL,
+  groupHsaExpensesByYear,
+  yearOf,
+  type HsaYearGroup,
+} from "./hsa-grouping";
+export { SqliteHsaRepository } from "./hsa-repository";

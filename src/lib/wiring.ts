@@ -30,6 +30,8 @@ import {
 } from "@/lib/scratchpad";
 import { SqliteGamesRepository } from "./games/repository";
 import { SqliteHouseholdRepository } from "./household/repository";
+import { SqliteHsaRepository } from "./household/hsa-repository";
+import { NodeReceiptFileStore } from "./household/receipt-store";
 import { NominatimGeocodingClient } from "./geocoding/nominatim-client";
 import { OpenMeteoWeatherClient } from "./weather/open-meteo-client";
 import { SqliteInvestmentAccountRepository } from "./investment-accounts/repository";
@@ -235,11 +237,15 @@ export const deps = {
   // repository for the games themselves — the catalogue is code, in
   // src/lib/games/catalogue.ts.
   gamesRepo: new SqliteGamesRepository(db),
-  // The Household module's recipe box (migrations/0118). One repository for the
-  // whole module: the HSA Tracker owns no tables yet, and when it does they sit
-  // under the same `hsh_` prefix — whether they also share this repository is a
-  // decision for the change that adds them, not one to pre-empt with an empty class.
+  // The Household module's recipe box (migrations/0118).
   householdRepo: new SqliteHouseholdRepository(db),
+  // The Household module's HSA Tracker (migrations/0128). Its own repository: the
+  // two halves share the `hsh_` prefix, not behaviour.
+  hsaRepo: new SqliteHsaRepository(db),
+  // The folder HSA receipts are filed into (migrations/0129). Takes the folder per
+  // call rather than at construction: it is a setting, so correcting it takes effect on
+  // the next save with no restart — the same reason photoFileStoreFor is a factory.
+  receiptFileStore: new NodeReceiptFileStore(),
   // The Floating Calculator's history tape (migrations/0095). Per-user, unlike the
   // games board above — a calculator tape is private working-out.
   calculatorHistoryRepo: new SqliteCalculatorHistoryRepository(db),
@@ -333,6 +339,10 @@ export const deps = {
   // cache lives on the client, so sharing one instance is what keeps the Indexes
   // board's detail pass from re-running the cookie dance per symbol.
   quoteSummaryClient: marketDataClient,
+  // And its fourth, same instance again. FX rides the unauthenticated chart
+  // endpoint, so this one needs no crumb at all -- see `ExchangeRateClient` in
+  // src/lib/market-data/ports.ts for why rates are not served by `getQuote`.
+  exchangeRateClient: marketDataClient,
   tickerNewsClient: new YahooTickerNewsClient(),
   tickerLogoRepo: new SqliteTickerLogoRepository(db),
   tickerLogoClient: new FmpTickerLogoClient(),

@@ -313,9 +313,8 @@ export function JournalReviewView({
       key: "time",
       header: "Time",
       render: (row) => (
-        <span className="flex items-center gap-1 whitespace-nowrap">
+        <span className="whitespace-nowrap">
           {row.time || <span className="text-muted">no time</span>}
-          {row.isLocked && <TreeIcon name="shield" className="h-3 w-3" />}
         </span>
       ),
       value: (row) => row.time,
@@ -345,6 +344,16 @@ export function JournalReviewView({
               className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-brass-soft font-mono text-[0.5rem] font-semibold leading-none text-brass-dark"
             >
               L
+            </span>
+          )}
+          {row.isLocked && (
+            <span
+              title="Locked — unlock it before editing or overwriting"
+              aria-label="Locked"
+              role="img"
+              className="flex shrink-0 items-center text-muted"
+            >
+              <TreeIcon name="lock" className="h-3 w-3" />
             </span>
           )}
         </span>

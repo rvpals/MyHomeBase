@@ -6,7 +6,6 @@ import { TreeIcon } from "@/components/tree-icons";
 import type { HomeWidgetId } from "@/lib/home-dashboard";
 import {
   applyPersonalOrder,
-  moveHomeWidgetInOrder,
   reorderHomeWidgets,
   type HomeColumnCount,
 } from "@/lib/home-layout";
@@ -19,7 +18,7 @@ import { setHomeLayoutAction } from "./home-layout-actions";
  */
 export interface HomeWidgetItem {
   id: HomeWidgetId;
-  /** Names the card in the move buttons' tooltips and accessible names. */
+  /** Names the card in the layout's accessible names. */
   label: string;
   node: ReactNode;
   /**
@@ -50,19 +49,15 @@ export interface HomeWidgetItem {
  * too wide), not a compact-versus-full decision, and two columns of cards on a 1024px
  * laptop are cramped. See design.md.
  *
- * **Drag is mouse-only, and that is why the move buttons exist.** This ships on the
- * native HTML5 drag events rather than a library, which means it does not fire for
- * touch or for a keyboard. Touch is out of scope by construction — the control only
- * renders at 1280px and up — but a keyboard is not, so every draggable card also
- * carries up/down buttons. Those are the accessible path, not a nicety.
+ * **Drag is mouse-only.** This ships on the native HTML5 drag events rather than a
+ * library, which means it does not fire for touch or for a keyboard. Touch is out of
+ * scope by construction — the control only renders at 1280px and up.
  *
  * **The card is grabbed by its frame, not by a handle row.** A draggable card sits in
  * a few pixels of padding that are themselves the drag surface: the whole border of
  * the card is the grab target, which is what a reader reaches for anyway. There is no
  * permanent strip above the card, because a row of chrome on every card is a standing
- * cost paid for an action taken once. The move buttons live in that frame too and
- * surface on hover or keyboard focus — present when wanted, invisible at rest, and
- * never occupying a row of their own.
+ * cost paid for an action taken once.
  *
  * **Why the frame and not the card itself.** `CollapsibleCard` fills its own top edge
  * with a toggle button and its body with content, so it has no spare edge to grab —
@@ -129,11 +124,6 @@ export function HomeWidgetGrid({
     if (next !== currentOrder) persistOrder(next);
   }
 
-  function handleMove(id: HomeWidgetId, direction: "up" | "down") {
-    const next = moveHomeWidgetInOrder(currentOrder, id, direction);
-    if (next !== currentOrder) persistOrder(next);
-  }
-
   // "No opinion" is the empty order — the same value a fresh account has — so reset
   // hands the reader back to whatever the household default currently is rather than
   // freezing today's default into their row.
@@ -193,7 +183,7 @@ export function HomeWidgetGrid({
           isTwoColumn ? "xl:grid-cols-2" : ""
         }`}
       >
-        {ordered.map((item, position) => {
+        {ordered.map((item) => {
           const canDrag = isTwoColumn && !item.spansBothColumns;
           const isDragging = draggingId === item.id;
           const isDropTarget = dropTargetId === item.id && draggingId !== item.id;
@@ -201,8 +191,7 @@ export function HomeWidgetGrid({
           return (
             <div
               key={item.id}
-              // `group` so the move buttons can reveal on hover/focus anywhere in the
-              // frame. The padding is what makes the border grabbable: without it the
+              // The padding is what makes the border grabbable: without it the
               // draggable element would be exactly the card, whose every pixel is
               // already a toggle, a link or a chart.
               className={`${item.spansBothColumns ? "xl:col-span-2" : ""} ${
@@ -242,50 +231,6 @@ export function HomeWidgetGrid({
                 setDropTargetId(undefined);
               }}
             >
-              {canDrag && (
-                /*
-                  The keyboard path, parked in the frame's top-right corner.
-
-                  `absolute` so it costs no height — this is the whole point of the
-                  change, that a card gains no row it has to carry at rest. It is
-                  `opacity-0` until the frame is hovered or something inside the
-                  buttons takes focus (`focus-within`), so the resting card is clean
-                  while a tabbing reader still gets a visible, reachable control.
-
-                  Not hidden behind `hidden`/`display:none`: that would take the
-                  buttons out of the tab order entirely and with them the only way to
-                  reorder cards without a mouse. Transparent-but-present keeps them
-                  focusable, which is what `focus-within` then reveals.
-                */
-                <div
-                  className="absolute right-1.5 top-1.5 z-10 flex items-center gap-1 opacity-0 transition-opacity motion-reduce:transition-none group-hover:opacity-100 group-focus-within:opacity-100"
-                  // The buttons are clicks, not grabs. Without this, pressing one
-                  // starts a card drag instead of moving the card by a slot.
-                  draggable={false}
-                  onDragStart={(event) => event.preventDefault()}
-                >
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => handleMove(item.id, "up")}
-                    disabled={position === 0}
-                    title={`Move ${item.label} earlier`}
-                    ariaLabel={`Move ${item.label} earlier`}
-                  >
-                    ↑
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => handleMove(item.id, "down")}
-                    disabled={position === ordered.length - 1}
-                    title={`Move ${item.label} later`}
-                    ariaLabel={`Move ${item.label} later`}
-                  >
-                    ↓
-                  </Button>
-                </div>
-              )}
               {item.node}
             </div>
           );
@@ -296,8 +241,8 @@ export function HomeWidgetGrid({
           two-column mode, which is the only place dragging is possible. */}
       {isTwoColumn && draggableCount > 1 && (
         <p className="mt-4 hidden text-xs text-muted xl:block">
-          Drag a card by its edge to rearrange, or use the arrows that appear on hover.
-          Your arrangement is saved automatically.
+          Drag a card by its edge to rearrange. Your arrangement is saved
+          automatically.
         </p>
       )}
     </div>

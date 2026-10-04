@@ -372,6 +372,17 @@ const Shield: IconComponent = (props) => (
   </svg>
 );
 
+// A closed padlock: shackle arc above a rounded body. The shackle is drawn as a
+// separate path rather than one continuous outline so it stays legible at 12px,
+// which is the size the journal's locked-entry marker renders at.
+const Lock: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+    <rect x="5" y="10" width="14" height="10" rx="2" />
+    <path d="M12 14v2" />
+  </svg>
+);
+
 // A circular arrow. Drawn as a three-quarter arc with a gap at the top right
 // and a chevron head closing it: a full circle plus an arrowhead reads as a
 // clock at 16px, and the open gap is what makes the direction legible.
@@ -818,6 +829,7 @@ const TREE_ICONS = {
   recipe: ChefHat,
   receipt: Receipt,
   rocket: RocketLaunch,
+  lock: Lock,
 } as const satisfies Record<TreeIconConcept, IconComponent>;
 
 /**
@@ -854,6 +866,11 @@ const ALWAYS_CLASSIC = new Set<TreeIconName>([
   "refresh",
   "search",
   "flash",
+  // A locked journal entry is a *state* the reader toggles, sitting inline beside a
+  // title at 12px. A themed set's own "security" artwork is usually a shield or a
+  // badge, which is the read this glyph exists to avoid — see `lock` in
+  // tree-icon-names.ts.
+  "lock",
   // A favorite star is a *state*, carried by outline vs solid. A themed set
   // redrawing it would lose that distinction, so both stay hand-drawn.
   "star",

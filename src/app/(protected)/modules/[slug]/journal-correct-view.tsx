@@ -140,8 +140,18 @@ export function JournalCorrectView({
       // Sorting on this keeps copies of one entry adjacent, which is what makes
       // a flat grid readable as groups.
       render: (row) => (
-        <span className="whitespace-nowrap">
+        <span className="flex items-center gap-1.5 whitespace-nowrap">
           {row.groupKey}
+          {row.isLocked && (
+            <span
+              title="Locked — unlock it before editing or overwriting"
+              aria-label="Locked"
+              role="img"
+              className="flex shrink-0 items-center text-muted"
+            >
+              <TreeIcon name="lock" className="h-3 w-3" />
+            </span>
+          )}
           <span className="ml-2 text-xs text-muted">
             {row.copyIndex} of {row.copyCount}
           </span>
@@ -153,9 +163,8 @@ export function JournalCorrectView({
       key: "time",
       header: "Time",
       render: (row) => (
-        <span className="flex items-center gap-1 whitespace-nowrap">
+        <span className="whitespace-nowrap">
           {row.time || <span className="text-muted">no time</span>}
-          {row.isLocked && <TreeIcon name="shield" className="h-3 w-3" />}
         </span>
       ),
       value: (row) => row.time,

@@ -53,7 +53,13 @@ function HalfCard({
   );
 }
 
-export function HouseholdMainView({ recipeCount }: { recipeCount: number }) {
+export function HouseholdMainView({
+  recipeCount,
+  hsaCount,
+}: {
+  recipeCount: number;
+  hsaCount: number;
+}) {
   return (
     <div className={PAGE_CONTAINER}>
       {/* Two across on a wide screen, stacked on a phone. `max-lg:` first, so the
@@ -70,8 +76,8 @@ export function HouseholdMainView({ recipeCount }: { recipeCount: number }) {
           href="/modules/household/hsa"
           slot={HSA_SLOT}
           title="HSA Tracker"
-          blurb="Health savings account contributions and claims."
-          detail="Not built yet"
+          blurb="HSA expenses and their receipts — what was paid, with which card, and what is still to reimburse."
+          detail={`${hsaCount} ${hsaCount === 1 ? "expense" : "expenses"}`}
         />
       </div>
     </div>

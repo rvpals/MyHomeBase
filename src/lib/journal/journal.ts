@@ -345,7 +345,14 @@ export function updateEntry(
   repo.registerCategoriesIfMissing(categories);
   repo.registerTagsIfMissing(tags);
 
-  return repo.updateEntry(id, { ...validated, categories, tags });
+  // `isLocked` is carried from the stored row, not from `validated`. The update
+  // schema is the create schema, where it defaults to `false`, and the repository
+  // writes `is_locked` unconditionally — so a caller that doesn't resend the flag
+  // (none of them do) would silently unlock the entry it just edited. Today the
+  // guard above means only an unlocked entry ever reaches this line, so the value
+  // is `false` either way; pinning it here is what keeps that true if the guard is
+  // ever relaxed. `setLocked` remains the only way to change a lock.
+  return repo.updateEntry(id, { ...validated, categories, tags, isLocked: existing.isLocked });
 }
 
 /** Deletes an entry and its child rows. Refuses a locked entry, same as update. */

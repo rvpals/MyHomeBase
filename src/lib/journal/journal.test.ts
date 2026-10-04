@@ -755,6 +755,28 @@ describe("updateEntry", () => {
     const repo = fakeRepo();
     expect(() => updateEntry(repo, 999, { date: "2026-07-27" })).toThrow();
   });
+
+  // The update schema defaults isLocked to false and the repository writes the
+  // column unconditionally, so an edit that doesn't resend the flag must not be
+  // able to clear it. No caller resends it today.
+  it("leaves the lock alone when the input omits isLocked", () => {
+    const repo = fakeRepo();
+    const created = createEntry(repo, { date: "2026-07-27", title: "First" });
+    const updated = updateEntry(repo, created.id, { date: "2026-07-27", title: "Edited" });
+    expect(updated.isLocked).toBe(false);
+  });
+
+  it("ignores an isLocked of true in the update input", () => {
+    const repo = fakeRepo();
+    const created = createEntry(repo, { date: "2026-07-27", title: "First" });
+    // setLocked is the only way to lock an entry; an update must not be a back door.
+    const updated = updateEntry(repo, created.id, {
+      date: "2026-07-27",
+      title: "Edited",
+      isLocked: true,
+    });
+    expect(updated.isLocked).toBe(false);
+  });
 });
 
 describe("deleteEntry", () => {

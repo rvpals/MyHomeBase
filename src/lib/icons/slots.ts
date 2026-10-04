@@ -307,6 +307,19 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    id: "stock_card_currencies",
+    label: "Foreign Currencies card",
+    group: "Investments cards",
+    where: "Investments → Dashboard → the Foreign Currencies card header.",
+    // `stock-quote` rather than `chart`: the sibling Indexes card holds `chart`, and
+    // these are prices read as a level right now rather than as a line over time.
+    // There is no money or currency concept in the set — if one is ever added this is
+    // the slot that should move to it. The flags on the rows are artwork, not slots.
+    defaultConcept: "stock-quote",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     id: "stock_card_portfolio_summary",
     label: "Portfolio Summary card",
     group: "Investments cards",
@@ -967,13 +980,25 @@ export const ICON_SLOTS: IconSlot[] = [
   },
   {
     id: "household_section_hsa",
-    label: "Overview",
+    label: "Receipts",
     group: "Household sections",
-    where: "Household → section panel → HSA Tracker → Overview.",
+    where: "Household → section panel → HSA Tracker → Receipts.",
     // `clipboard` rather than a second `receipt`: the heading above now wears the
     // till slip, and a row repeating its parent's glyph makes the nesting harder to
     // read. Same reasoning as Recipes' `list` under the chef's hat.
     defaultConcept: "clipboard",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    // Replaced `household_section_hsa_cards`, which never shipped: Cards moved onto
+    // this screen before any icon was uploaded for it, so retiring that id orphaned
+    // nothing.
+    id: "household_section_configuration",
+    label: "Configuration",
+    group: "Household sections",
+    where: "Household → section panel → Configuration.",
+    defaultConcept: "gear",
     wired: true,
     namespace: "tree",
   },

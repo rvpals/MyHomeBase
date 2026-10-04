@@ -22,7 +22,7 @@ module is obvious from the name alone. New tables must follow this.
 | `gam_` | Games | `gam_scores` |
 | `pho_` | Picture Gallery | `pho_albums`, `pho_album_photos`, `pho_magic_list`, `pho_magic_list_photos`, `pho_photo_index`, `pho_magic_scan_run` |
 | `tol_` | Tools | `tol_uploaded_databases`, `tol_uploaded_csv_files`, `tol_todo_categories`, `tol_todo_items` |
-| `hsh_` | Household | `hsh_recipes`, `hsh_recipe_tags` |
+| `hsh_` | Household | `hsh_recipes`, `hsh_recipe_tags`, `hsh_hsa_expenses`, `hsh_hsa_cards` |
 
 The `rei_` prefix (Real Estate Investment) was retired when that module was
 removed — see migration `0026_drop_real_estate_module`.
@@ -70,9 +70,10 @@ otherwise in this very table.
 **Household is `hsh_` and not `rcp_`** (migration 0118), applying that lesson before
 it could cost anything. Recipes are the module's first feature, not its domain — the
 request that created it named recipes, receipts and the HSA together, and the HSA
-Tracker ships in the same change as a placeholder. So the second feature is already
-visible rather than merely predicted, and its tables will sit under `hsh_` with no
-rename.
+Tracker shipped in the same change as a placeholder. So the second feature was already
+visible rather than merely predicted — and migration 0128 then landed
+`hsh_hsa_expenses` and `hsh_hsa_cards` under that same prefix with no rename, which is
+the fourth time this rule has paid for itself.
 
 **A new table also wants a line in
 [`src/lib/sql-explorer/table-reference.ts`](src/lib/sql-explorer/table-reference.ts)**,
@@ -487,8 +488,10 @@ and asserts each resolves. Extend those lists when adding a module.
   `ALWAYS_CLASSIC` in `tree-icons.tsx` keeps them hand-drawn so an inline delete control
   can't become full-colour artwork that weakens the destructive read.
 - **State glyphs** — `star`/`star-filled`, `heart`/`heart-filled`, play/pause, the
-  now-playing marker. The outline-vs-solid contrast *is* the information; overriding
-  half a pair destroys it.
+  now-playing marker, `lock`. The outline-vs-solid contrast *is* the information;
+  overriding half a pair destroys it. `lock` has no pair — a Journal entry draws it or
+  draws nothing — but it is the same kind of thing: a state the reader toggled, not a
+  place they can go, so it is in `ALWAYS_CLASSIC` and takes no slot.
 - **A module's own icon.** Already user-editable under Admin → Configuration → Module
   Configuration, backed by `sys_modules.icon`. A slot would be a second, competing way
   to set one value. (Administration is the sole exception: it has no `sys_modules` row,

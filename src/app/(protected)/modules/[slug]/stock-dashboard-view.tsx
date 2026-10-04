@@ -8,16 +8,17 @@ import { useEffect, type ReactNode } from "react";
 import { ChartBar } from "@/components/chart-bar";
 import { ChartLine } from "@/components/chart-line";
 import { CollapsibleCard } from "@/components/collapsible-card";
+import { Comments } from "@/components/comments";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { SlotIcon } from "@/components/slot-icon";
 import { Tabs } from "@/components/tabs";
-import { TreeIcon } from "@/components/tree-icons";
 import { getIconSlot } from "@/lib/icons";
 import type { DashboardWidgetId } from "@/lib/stock-dashboard";
 import { snapshotChangePct } from "@/lib/stock-daily-snapshot";
 import type { DailySnapshot, PeriodSummary, ToDateSummaries } from "@/lib/stock-daily-snapshot";
 import type { AllocationSlice, PortfolioSummary, StockPosition } from "@/lib/stock-positions";
 import { centsToDollars, formatCents } from "@/lib/shared/money";
+import { ForeignCurrenciesCard } from "./stock-currencies-card";
 import { StockIndexesCard } from "./stock-indexes-card";
 import { StockPlaybackControl } from "./stock-playback-control";
 import { StockBiggestChanges } from "./stock-biggest-changes";
@@ -59,14 +60,7 @@ function StatTile({
     <div className="rounded-xl border border-line p-4">
       <div className="flex items-start justify-between gap-2">
         <p className="text-xs font-medium uppercase tracking-wide text-muted">{label}</p>
-        {description && (
-          <div title={description} className="cursor-help">
-            <TreeIcon
-              name="info"
-              className="h-4 w-4 shrink-0 text-muted hover:text-brass transition-colors"
-            />
-          </div>
-        )}
+        {description && <Comments title={label} content={description} className="-mr-1 -mt-1 shrink-0" />}
       </div>
       <p className={`mt-1 font-display text-xl ${valueClassName}`}>{value}</p>
       {hint && <p className="mt-1 text-xs text-muted">{hint}</p>}
@@ -535,6 +529,9 @@ export function StockDashboardView({
     // Self-contained: it takes no props because it fetches its own board from its
     // own Refresh all button, so the server loads nothing for it on page render.
     indexes: <StockIndexesCard />,
+    // Self-contained in the same way, and for the same reason: its own Refresh
+    // button is the only thing that fetches, so the server loads nothing for it.
+    currencies: <ForeignCurrenciesCard />,
     summary: (
       <PortfolioSummaryCard
         summary={summary}

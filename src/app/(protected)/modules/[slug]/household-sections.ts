@@ -6,7 +6,10 @@
 // objects, so a lookup like HOUSEHOLD_SECTION_INFO[section] would come back
 // undefined. Same reasoning as tools-sections.ts and journal-sections.ts.
 
-export const HOUSEHOLD_SECTIONS = ["main", "recipes", "recipes-import", "hsa"] as const;
+// `configuration` is last on purpose: the shell draws Home first, then the two group
+// headings, then Configuration — the usual "settings at the bottom" place. It is
+// admin-only; see household-section.tsx.
+export const HOUSEHOLD_SECTIONS = ["main", "recipes", "recipes-import", "hsa", "configuration"] as const;
 
 export type HouseholdSection = (typeof HOUSEHOLD_SECTIONS)[number];
 
@@ -55,8 +58,14 @@ export const HOUSEHOLD_SECTION_INFO: Record<
     description: "Bring recipes in from a CSV, mapping its columns onto the recipe fields.",
   },
   hsa: {
-    label: "Overview",
-    description: "Health savings account contributions and claims.",
+    // The label was "Overview" while this was a placeholder. The slug `hsa` and its
+    // icon slot are unchanged — only the label is free to move.
+    label: "Receipts",
+    description: "Every HSA expense, its receipt, and whether it has been reimbursed.",
+  },
+  configuration: {
+    label: "Configuration",
+    description: "Where HSA receipts are filed, and the cards offered in Paid with.",
   },
 };
 
@@ -78,6 +87,8 @@ export const HOUSEHOLD_SECTION_ICONS: Record<HouseholdSection, string> = {
   // `clipboard` rather than a second `receipt`: the group heading above wears the
   // till slip, and a row repeating its parent's glyph obscures the nesting.
   hsa: "clipboard",
+  // `gear`, the configuration glyph.
+  configuration: "gear",
 };
 
 /** The group headings' own labels, hints and icons. Not destinations. */

@@ -146,26 +146,75 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-10-04 — Release (HSA Tracker, Foreign Currencies, Journal lock marker)
+
+**Migrations 0128 and 0129 must be applied on the NAS first** — without them every HSA
+screen fails with "no such table"/"no such column". **The receipt folder must be set in
+Household → Configuration before any receipt can be attached**; attaching is refused
+until it is, so test that refusal before setting it. Configuration is admin-only — check
+it with a non-admin too. The Take photo button and the browser-side photo resize are
+**phone-only** paths. Foreign Currencies calls an external provider eleven times, so it
+needs network and may be slow.
+
+- [ ] **1.** Household → HSA Tracker → Receipts: the section replaces the old placeholder screen
+- [ ] **2.** HSA: a new expense with date, time, amount, product/service, type and payee saves and appears in the grid
+- [ ] **3.** HSA: Date and Time default to now when the dialog opens, and a past date can be entered instead
+- [ ] **4.** HSA: Product or Service offers what you have entered before, and still accepts a new value typed in
+- [ ] **5.** HSA: a zero amount, a negative, or a third decimal is refused rather than silently rounded
+- [ ] **6.** HSA: the view switch cuts the grid All / By year; latest year first, one year open at a time
+- [ ] **7.** HSA: a year header shows its count, receipts held, what is still unreimbursed, and the year's total
+- [ ] **8.** HSA: clicking a row opens the record viewer (not the generic modal), with the receipt in its own block
+- [ ] **9.** HSA: marking an expense reimbursed and un-reimbursing it both stick
+- [ ] **10.** HSA: the grid's Receipt column shows Open or a dash, and sorts/exports as Yes/No
+- [ ] **11.** HSA: deleting an expense warns that its receipt file goes too, then removes both
+- [ ] **12.** Household → Configuration: the section exists at module level and is admin-only — a non-admin gets a not-found, not a hidden row
+- [ ] **13.** Configuration: the server-side folder browser walks folders one level at a time
+- [ ] **14.** Configuration: saving a folder the server cannot write to is refused with a reason, not saved
+- [ ] **15.** Configuration: Cards — adding, hiding and deleting a card all work; a hidden card stops being offered
+- [ ] **16.** HSA: an expense whose card was later renamed or deleted still shows its original Paid with value
+- [ ] **17.** HSA: with no receipt folder set, attaching a receipt is refused and the expense still saves
+- [ ] **18.** HSA: an attached receipt is filed on the NAS under `<folder>/<year>/<date>_<payee>_<amount>_<id>.<ext>`
+- [ ] **19.** HSA: editing an expense's Date, Payee or Amount renames the receipt file on disk
+- [ ] **20.** HSA: changing an expense's year moves its receipt into that year's folder
+- [ ] **21.** HSA: removing a receipt from an expense deletes the file after warning
+- [ ] **22.** HSA: clicking the stored path in the viewer opens the file; a PDF opens as a PDF
+- [ ] **23.** HSA (phone): Take photo opens the rear camera directly; it is hidden on a desktop
+- [ ] **24.** HSA (phone): Attach receipt offers the photo library and Files, and accepts a PDF
+- [ ] **25.** HSA (phone): a large camera photo uploads successfully and stays legible down to the line items
+- [ ] **26.** Investments → Dashboard: the Foreign Currencies card lists eleven currencies with flag, name, rate and today's move
+- [ ] **27.** Foreign Currencies: nothing is fetched until the card is expanded; Refresh refetches
+- [ ] **28.** Foreign Currencies: reopening the card within a minute reuses the board instead of refetching
+- [ ] **29.** Foreign Currencies: rates show their real precision (four decimals where the pair needs it), not rounded to cents
+- [ ] **30.** Foreign Currencies: the flags render as drawn shapes on Windows, not as letter pairs
+- [ ] **31.** Journal → Review: the locked marker is a padlock on the entry's title, not in the Time column
+- [ ] **32.** Journal → Correct: the locked marker is a padlock beside the group, not in the Time column
+- [ ] **33.** Journal: editing a locked entry still leaves it locked afterwards
+- [ ] **34.** Home screen: the up/down move buttons are gone from draggable cards; dragging the frame still reorders
+- [ ] **35.** Configuration → Icons → Icon Positions: `stock_card_currencies` and `household_section_configuration` can be given an uploaded icon
+- [ ] **36.** CLI: `npm run cli -- hsa` lists expenses; `--add`, `--reimburse`, `--delete` and the card flags all work
+- [ ] **37.** CLI: `npm run cli -- hsa --set-receipt-root` sets the folder and `--receipt-root` prints it
+- [ ] **38.** Admin → SQL Explorer → Table references: `hsh_hsa_expenses` and `hsh_hsa_cards` appear under Household, not Unclassified
+
 ## 2026-10-02 (late) — Release (Biggest Changes, Volatility, tabbed Icons, draggable toolbars)
 
 No migrations. New icon slots appear only in Icon Positions. Biggest Changes calls the
 market-data provider once per held ticker, so it needs network and may be slow. Drag
 reorder is desktop-only to try; check the Indexes two-column layout on both widths.
 
-- [ ] **1.** Investments → Portfolio Summary: a "Biggest Changes" tab sits between Summary and History
-- [ ] **2.** Biggest Changes: This Week / This Month / This Year each load a gainers table and a losers table (max ten rows each)
-- [ ] **3.** Biggest Changes: a period with no history for any ticker shows an empty state rather than an error
-- [ ] **4.** Portfolio Summary tiles: Volatility shows 30d and 52w percentages; Unassigned is gone
-- [ ] **5.** Annual Income tile shows dollars plus a yield percentage
-- [ ] **6.** Hovering the info icon on each summary tile shows its description
-- [ ] **7.** Indexes card: after 4 PM, opening it does not refetch; before 4 PM a stale board refetches
-- [ ] **8.** Indexes card: two columns on a desktop, one column on a phone
-- [ ] **9.** Configuration → Icons: Icon Sets and Icon Positions tabs switch correctly; picking a set still saves
-- [ ] **10.** Icon Positions: one tab per group, only the active group's slots are listed; uploading an override still works
-- [ ] **11.** Attendance → Classes / Rosters: the Add a class, Add a student and Import a roster cards show an icon, replaceable in Icon Positions (group "Attendance cards")
-- [ ] **12.** Display settings → Toolbars: drag an item to a new position and the order persists after reload
-- [ ] **13.** Toolbar items: the ↑ ↓ Remove buttons appear on hover or keyboard focus and still work
-- [ ] **14.** Phone: Biggest Changes tables and the tabbed Icons screen are usable at a narrow width
+- [ ] **39.** Investments → Portfolio Summary: a "Biggest Changes" tab sits between Summary and History
+- [ ] **40.** Biggest Changes: This Week / This Month / This Year each load a gainers table and a losers table (max ten rows each)
+- [ ] **41.** Biggest Changes: a period with no history for any ticker shows an empty state rather than an error
+- [ ] **42.** Portfolio Summary tiles: Volatility shows 30d and 52w percentages; Unassigned is gone
+- [ ] **43.** Annual Income tile shows dollars plus a yield percentage
+- [ ] **44.** Hovering the info icon on each summary tile shows its description
+- [ ] **45.** Indexes card: after 4 PM, opening it does not refetch; before 4 PM a stale board refetches
+- [ ] **46.** Indexes card: two columns on a desktop, one column on a phone
+- [ ] **47.** Configuration → Icons: Icon Sets and Icon Positions tabs switch correctly; picking a set still saves
+- [ ] **48.** Icon Positions: one tab per group, only the active group's slots are listed; uploading an override still works
+- [ ] **49.** Attendance → Classes / Rosters: the Add a class, Add a student and Import a roster cards show an icon, replaceable in Icon Positions (group "Attendance cards")
+- [ ] **50.** Display settings → Toolbars: drag an item to a new position and the order persists after reload
+- [ ] **51.** Toolbar items: the ↑ ↓ Remove buttons appear on hover or keyboard focus and still work
+- [ ] **52.** Phone: Biggest Changes tables and the tabbed Icons screen are usable at a narrow width
 
 ---
 
@@ -175,13 +224,13 @@ One new feature, no migrations. The tree-nav styling matches the Entries browser
 date filtering is the only risky part — it constructs and URL-encodes date range
 queries.
 
-- [ ] **1.** Journal → Statistics card: "Count by Years" section appears with years
+- [ ] **53.** Journal → Statistics card: "Count by Years" section appears with years
   listed newest-first, each year clickable/expandable to show months December-to-January
-- [ ] **2.** Click a year (e.g., "2023") to navigate to Entries screen filtered to that
+- [ ] **54.** Click a year (e.g., "2023") to navigate to Entries screen filtered to that
   year's entries; date range query appears in the filter bar
-- [ ] **3.** Click a month (e.g., "October") to navigate to Entries screen filtered to
+- [ ] **55.** Click a month (e.g., "October") to navigate to Entries screen filtered to
   just that month; month boundary is correct (October has 31 days)
-- [ ] **4.** Tree-nav styling: chevron rotates on expand, spine and elbow lines draw
+- [ ] **56.** Tree-nav styling: chevron rotates on expand, spine and elbow lines draw
   correctly, hover states work on both year and month rows
 
 ---
@@ -200,33 +249,33 @@ Items 8–10 are chrome-only polish with no migration and no new table: the home
 drag target, the nav tree's scroll memory, and the music player's transport panel —
 item 10 is desktop/phone parity, since the panel has to restack narrow.
 
-- [ ] **5.** Journal → Review Data → "Review multiple entries on same date" card: the
+- [ ] **57.** Journal → Review Data → "Review multiple entries on same date" card: the
   title-bar "Review only Log entries" toggle narrows the list to dates with two or more
   Log entries; turning it off restores the full list
-- [ ] **6.** Journal → Review Data: a date with one Log entry and two written entries
+- [ ] **58.** Journal → Review Data: a date with one Log entry and two written entries
   does not appear under the Log-only toggle (it must not show as "1 of 1")
-- [ ] **7.** CLI: `npm run cli -- journal-same-date --log-only` matches what the toggle
+- [ ] **59.** CLI: `npm run cli -- journal-same-date --log-only` matches what the toggle
   shows on the web screen for the same data
-- [ ] **8.** Journal → Review Data: merging several entries and saving now shows a
+- [ ] **60.** Journal → Review Data: merging several entries and saving now shows a
   follow-up dialog — "Merged entry created successfully. Would you like to delete the
   original N entries?" — with Delete N and Keep them
-- [ ] **9.** Journal → Review Data: if one of the ticked entries vanished before the
+- [ ] **61.** Journal → Review Data: if one of the ticked entries vanished before the
   merge ran, the cleanup dialog's count and offer reflect only the entries the merge
   actually read, not the original selection; choosing Delete N sends exactly those to
   the recycle bin (undoable from CSV Import → Correct)
-- [ ] **10.** CLI: `npm run cli -- journal-same-date --merge 41,42,43 --save
+- [ ] **62.** CLI: `npm run cli -- journal-same-date --merge 41,42,43 --save
   --delete-originals` creates the merged entry and then recycles the three sources in
   one command; omitting `--save` leaves `--delete-originals` with no effect
-- [ ] **11.** Administration → SQL Explorer → Table Usage: pressing Measure lists every
+- [ ] **63.** Administration → SQL Explorer → Table Usage: pressing Measure lists every
   table ranked by size (table + index bytes), each row showing a proportional bar,
   percent of total, and a real row count; Open jumps to that table in Tables Explorer
-- [ ] **12.** Home screen (desktop, two-column layout): a card is now dragged by its
+- [ ] **64.** Home screen (desktop, two-column layout): a card is now dragged by its
   whole frame rather than a handle row; the up/down keyboard buttons appear only on
   hover or keyboard focus, in the card's top-right corner
-- [ ] **13.** Desktop navigation tree: scroll partway down a long module list, click a
+- [ ] **65.** Desktop navigation tree: scroll partway down a long module list, click a
   module or section, and the tree opens already scrolled to the same position instead
   of snapping back to the top
-- [ ] **14.** Music → player screen: the seek bar, transport, volume and sleep timer now
+- [ ] **66.** Music → player screen: the seek bar, transport, volume and sleep timer now
   sit in one full-width panel below the cover and lyrics; narrow, the panel's three
   clusters stack in reading order, and a track with no cover art shows a spinning vinyl
   placeholder that pauses when playback pauses
@@ -251,66 +300,66 @@ review rework; item 27 is its own regression check (an untouched date must never
 written by a batch commit). Items 33–35 are Top Words and the new rank bars. Items 36–37
 are small polish.
 
-- [ ] **15.** Tools → TODO Lists: the side panel lists every list with an item count;
+- [ ] **67.** Tools → TODO Lists: the side panel lists every list with an item count;
   switching lists swaps the grid without a page reload
-- [ ] **16.** Tools → TODO Lists: adding an item requires a list and a title; it appears
+- [ ] **68.** Tools → TODO Lists: adding an item requires a list and a title; it appears
   immediately at the bottom of that list's outstanding items
-- [ ] **17.** Tools → TODO Lists: ticking an item moves it into a "Completed (N)" group
+- [ ] **69.** Tools → TODO Lists: ticking an item moves it into a "Completed (N)" group
   rather than deleting it, and the same list opened from a second account/browser shows
   the same tick (lists and items are shared, not per-person)
-- [ ] **18.** Tools → TODO Lists: the hover ✕ removes a single completed item; "Clear
+- [ ] **70.** Tools → TODO Lists: the hover ✕ removes a single completed item; "Clear
   all" empties the whole Completed group in one click
-- [ ] **19.** Tools → TODO Lists: on a phone, the ✕ and list-delete controls are visible
+- [ ] **71.** Tools → TODO Lists: on a phone, the ✕ and list-delete controls are visible
   without hovering (there is no hover on touch)
-- [ ] **20.** Home screen: the TODO card shows the same lists as tabs with a checkbox per
+- [ ] **72.** Home screen: the TODO card shows the same lists as tabs with a checkbox per
   outstanding item; its title links straight to the Tools screen
-- [ ] **21.** Administration → TODO Lists: renaming and reordering a list is immediate;
+- [ ] **73.** Administration → TODO Lists: renaming and reordering a list is immediate;
   deleting a list that still holds items (completed ones included) is refused and names
   the counts in the refusal
-- [ ] **22.** CLI: `npm run cli -- todo` lists every list and its outstanding items;
+- [ ] **74.** CLI: `npm run cli -- todo` lists every list and its outstanding items;
   `--add "…" --list "<name>"`, `--done <id>`, `--delete <id>` and `--new-list "<name>"`
   each work and match what the web screens show afterward
-- [ ] **23.** Administration → Display Settings → Chrome Style: picking Inset, Outset or
+- [ ] **75.** Administration → Display Settings → Chrome Style: picking Inset, Outset or
   Emboss changes the header and the navigation tree's bevel immediately on Save; the
   four preview cards show four visibly different treatments before saving anything
-- [ ] **24.** Administration → Display Settings → Border Weight: moving the Chrome
+- [ ] **76.** Administration → Display Settings → Border Weight: moving the Chrome
   outline, Inner dividers and Everything else sliders each visibly thickens only their
   own scope (header/tree outer edge; tree's internal rules; every other border app-wide)
   and nothing shifts layout at 1–4px
-- [ ] **25.** Journal → a tag or category whose entries are all tagged "Log": clicking
+- [ ] **77.** Journal → a tag or category whose entries are all tagged "Log": clicking
   it from the Statistics card's Main-tab view now shows those entries instead of an
   empty list (previously the count was right and the list was empty)
-- [ ] **26.** Journal → Entries browser: the dedicated Log tab still excludes non-Log
+- [ ] **78.** Journal → Entries browser: the dedicated Log tab still excludes non-Log
   entries as before — only the Main tab's behavior changed
-- [ ] **27.** Journal → Preferences → "Review before calendar import" on, then import a
+- [ ] **79.** Journal → Preferences → "Review before calendar import" on, then import a
   calendar with more than 10 conflicting dates: the review dialog pages 10 at a time,
   and "Commit reviewed" writes only the dates actually decided on-screen, never an
   un-paged-to date
-- [ ] **28.** Journal → calendar import review dialog: a conflicting date's existing
+- [ ] **80.** Journal → calendar import review dialog: a conflicting date's existing
   entry can be quick-edited without closing the dialog, and the row gets an "edited"
   badge afterward
-- [ ] **29.** Journal → calendar import review dialog: a locked existing entry's
+- [ ] **81.** Journal → calendar import review dialog: a locked existing entry's
   quick-edit is disabled rather than offered and then rejected
-- [ ] **30.** Journal → calendar import: starting an import shows a progress dialog
+- [ ] **82.** Journal → calendar import: starting an import shows a progress dialog
   with the event count while it runs, and a result summary (imported/updated/
   skipped/excluded counts, with duration) once it finishes
-- [ ] **31.** Journal → calendar import: "Import all" still imports everything except
+- [ ] **83.** Journal → calendar import: "Import all" still imports everything except
   dates explicitly declined, matching the pre-existing behavior
-- [ ] **32.** Journal → calendar import review dialog: the Instructions card's open/
+- [ ] **84.** Journal → calendar import review dialog: the Instructions card's open/
   closed state does not persist between dialog openings (it is controlled, unlike other
   collapsible cards)
-- [ ] **33.** Journal home screen: Top Tags, Top Categories and Top 10 Words each show a
+- [ ] **85.** Journal home screen: Top Tags, Top Categories and Top 10 Words each show a
   small proportional bar beside every row, sized against that list's own top entry;
   hidden on a phone
-- [ ] **34.** Journal home screen → Top 10 Words: clicking the ✕ beside a word removes
+- [ ] **86.** Journal home screen → Top 10 Words: clicking the ✕ beside a word removes
   it from the ranking everywhere, and a word that would otherwise rank in the top 10
   moves up to fill its place
-- [ ] **35.** Journal → Preferences → Excluded words: a dismissed word is listed as a
+- [ ] **87.** Journal → Preferences → Excluded words: a dismissed word is listed as a
   chip; clicking it restores the word and it can rank again on the home screen
-- [ ] **36.** Any screen with a collapsible card (e.g. Journal's Recent Entries):
+- [ ] **88.** Any screen with a collapsible card (e.g. Journal's Recent Entries):
   collapse one, navigate away and back — it stays collapsed; a card using controlled
   `open`/`onOpenChange` is unaffected
-- [ ] **37.** Home screen → My Shortcuts with 1–3 shortcuts on a phone: the tiles fill
+- [ ] **89.** Home screen → My Shortcuts with 1–3 shortcuts on a phone: the tiles fill
   the row as full-width bars instead of leaving a ragged empty grid cell
 
 ---
@@ -332,46 +381,46 @@ screen's personal layout; item 50 is its own regression check, since the two
 orderings (household default vs. a reader's drag) must never leak into each
 other.
 
-- [ ] **38.** Household → Recipes: the list shows tabs — All, one per category with
+- [ ] **90.** Household → Recipes: the list shows tabs — All, one per category with
   a count, then Uncategorised — instead of a Category dropdown; clicking a
   category tab narrows the grid and updates the URL (`?category=`)
-- [ ] **39.** Household → Recipes: the Uncategorised tab's count matches the number
+- [ ] **91.** Household → Recipes: the Uncategorised tab's count matches the number
   of recipes with no category set, and narrows the grid to exactly those
-- [ ] **40.** Household → Recipes: a bookmarked or refreshed `?category=` URL opens
+- [ ] **92.** Household → Recipes: a bookmarked or refreshed `?category=` URL opens
   on the right tab; Uncategorised does not survive a refresh (falls back to All)
-- [ ] **41.** Household → Recipes: the grid shows Name, Description, Tags, Made and
+- [ ] **93.** Household → Recipes: the grid shows Name, Description, Tags, Made and
   Rating; Category, Source and the picture are gone from the grid but still
   visible in the record view
-- [ ] **42.** Household → Recipes: clicking **View**, or clicking anywhere on a row,
+- [ ] **94.** Household → Recipes: clicking **View**, or clicking anywhere on a row,
   opens a record view showing every field — including ingredients, directions
   and notes, each inside its own bordered/inset panel
-- [ ] **43.** Household → Recipes → Edit: Ingredients and Directions are each a
+- [ ] **95.** Household → Recipes → Edit: Ingredients and Directions are each a
   full-width row (not side-by-side), Description is a 3-line box, there is no
   Cancel button (the modal's own close and Escape still work), and Save reads
   "Save Recipe"
-- [ ] **44.** Household → Recipes → Add: choosing a picture before saving shows a
+- [ ] **96.** Household → Recipes → Add: choosing a picture before saving shows a
   preview immediately; saving the new recipe attaches that picture without a
   second trip back into the editor
-- [ ] **45.** Household → Recipes: if attaching a picture fails right after a
+- [ ] **97.** Household → Recipes: if attaching a picture fails right after a
   successful save, the message says the recipe *was* saved and names the
   picture as the only thing that didn't attach — never reads as if nothing
   happened
-- [ ] **46.** Household → Recipes: a picture added through the editor or through
+- [ ] **98.** Household → Recipes: a picture added through the editor or through
   "Replace picture" in the record view is visibly smaller than the original
   file (check its size via the browser's network tab or file download) —
   existing pictures added before this release are untouched
-- [ ] **47.** Home screen (full/desktop layout, ≥1280px wide): a control above the
+- [ ] **99.** Home screen (full/desktop layout, ≥1280px wide): a control above the
   cards switches between one and two columns
-- [ ] **48.** Home screen: dragging a card by its handle moves it to a new
+- [ ] **100.** Home screen: dragging a card by its handle moves it to a new
   position; the new order persists after a refresh
-- [ ] **49.** Home screen: with no pointer, the up/down buttons on a card move it
+- [ ] **101.** Home screen: with no pointer, the up/down buttons on a card move it
   one place at a time, wrapping neither at the top nor the bottom of the list
-- [ ] **50.** Home screen: an admin reordering *Administration → Display Settings
+- [ ] **102.** Home screen: an admin reordering *Administration → Display Settings
   → Dashboard Widgets* is picked up by a reader who has never dragged a card,
   but does **not** change the arrangement of a reader who has
-- [ ] **51.** Home screen: the module carousel always spans both columns and is
+- [ ] **103.** Home screen: the module carousel always spans both columns and is
   not draggable, regardless of the column count
-- [ ] **52.** Home screen on a phone or a narrow window (<1280px): no column
+- [ ] **104.** Home screen on a phone or a narrow window (<1280px): no column
   control appears, and the cards are a single stack exactly as before this
   release
 
@@ -393,20 +442,20 @@ since a wrong backfill would silently swap Music's picture for the app-wide one.
 same reason — this ships off, so an existing install must render unchanged until an
 admin ticks it on.
 
-- [ ] **53.** Journal → Data Management → Review Data: the card lists every date carrying more than one entry, each row showing its position ("2 of 4"), time, title and a 100-word excerpt — including untitled entries, which the Correct tab beside it leaves out
-- [ ] **54.** Journal → Review Data: clicking a row opens the full entry, with an Edit button that opens the same form the single-entry screen uses; closing it returns to the list with page, sort and ticks intact
-- [ ] **55.** Journal → Review Data: Edit is disabled on a locked entry, the same as it is from `/entries/[id]`
-- [ ] **56.** Journal → Review Data: ticking several entries and choosing Merge drafts one new entry (earliest date/time, titles joined with `/`, each source's content under a `— HH:MM · Title` line, categories and tags combined) and opens it in the ordinary entry form — saving creates the new entry and leaves every source entry exactly where it was
-- [ ] **57.** Journal → Review Data: locations and weather are not carried into a merged draft, and the form still lets you add them
-- [ ] **58.** Journal → Review Data: ticking several entries and choosing Delete asks first, then moves them to the recycle bin (restorable from the Correct tab)
-- [ ] **59.** CLI: `npm run cli -- journal-same-date`, `--merge 41,42,43` (prints only), `--merge ... --save` (creates), and `--delete 41,42` all behave as documented
-- [ ] **60.** Administration → Configuration → Module Configuration: the Music Library's background texture control shows "Its own uploaded picture" already selected, and the module's screens still show the same picture as before this release
-- [ ] **61.** Administration → Configuration → Module Configuration: a module with no picture of its own can pick "Pick one from the library" and choose a thumbnail from the App Texture library; that module's screens then show it with that picture's own opacity/blur
-- [ ] **62.** Administration → Configuration → Module Configuration: a module set to "None — plain paper" stays flat even when an app-wide texture is on
-- [ ] **63.** Administration → Configuration → App Texture: deleting a library picture that a module was pointed at drops that module back to the app background rather than breaking its screen
-- [ ] **64.** Administration → Configuration → App Texture: on an install that has not touched the new "Show on every screen" tick box, the background still appears only on the home dashboard, exactly as before this release
-- [ ] **65.** Administration → Configuration → App Texture: ticking "Show on every screen" puts the selected picture behind every module, Administration and the account screen, all sharing one background
-- [ ] **66.** Administration → Configuration → App Texture: with the app-wide texture on, a module that still has its own uploaded picture (Music) keeps showing its own picture instead of the app-wide one
+- [ ] **105.** Journal → Data Management → Review Data: the card lists every date carrying more than one entry, each row showing its position ("2 of 4"), time, title and a 100-word excerpt — including untitled entries, which the Correct tab beside it leaves out
+- [ ] **106.** Journal → Review Data: clicking a row opens the full entry, with an Edit button that opens the same form the single-entry screen uses; closing it returns to the list with page, sort and ticks intact
+- [ ] **107.** Journal → Review Data: Edit is disabled on a locked entry, the same as it is from `/entries/[id]`
+- [ ] **108.** Journal → Review Data: ticking several entries and choosing Merge drafts one new entry (earliest date/time, titles joined with `/`, each source's content under a `— HH:MM · Title` line, categories and tags combined) and opens it in the ordinary entry form — saving creates the new entry and leaves every source entry exactly where it was
+- [ ] **109.** Journal → Review Data: locations and weather are not carried into a merged draft, and the form still lets you add them
+- [ ] **110.** Journal → Review Data: ticking several entries and choosing Delete asks first, then moves them to the recycle bin (restorable from the Correct tab)
+- [ ] **111.** CLI: `npm run cli -- journal-same-date`, `--merge 41,42,43` (prints only), `--merge ... --save` (creates), and `--delete 41,42` all behave as documented
+- [ ] **112.** Administration → Configuration → Module Configuration: the Music Library's background texture control shows "Its own uploaded picture" already selected, and the module's screens still show the same picture as before this release
+- [ ] **113.** Administration → Configuration → Module Configuration: a module with no picture of its own can pick "Pick one from the library" and choose a thumbnail from the App Texture library; that module's screens then show it with that picture's own opacity/blur
+- [ ] **114.** Administration → Configuration → Module Configuration: a module set to "None — plain paper" stays flat even when an app-wide texture is on
+- [ ] **115.** Administration → Configuration → App Texture: deleting a library picture that a module was pointed at drops that module back to the app background rather than breaking its screen
+- [ ] **116.** Administration → Configuration → App Texture: on an install that has not touched the new "Show on every screen" tick box, the background still appears only on the home dashboard, exactly as before this release
+- [ ] **117.** Administration → Configuration → App Texture: ticking "Show on every screen" puts the selected picture behind every module, Administration and the account screen, all sharing one background
+- [ ] **118.** Administration → Configuration → App Texture: with the app-wide texture on, a module that still has its own uploaded picture (Music) keeps showing its own picture instead of the app-wide one
 
 ---
 
@@ -428,20 +477,20 @@ than vanish.
 Item 76 is desktop-only (there is no hover on a phone); item 77 is its phone
 counterpart, where the tile controls are always visible instead.
 
-- [ ] **67.** Home: the My Shortcuts card appears, and Admin → Display Settings → Dashboard Widgets can hide and reorder it like any other card
-- [ ] **68.** Add a shortcut to a web address — a bare `example.com` gets `https://` added, and the tile opens it in a new tab
-- [ ] **69.** Add a shortcut to a page in this app: pick a module, then a section — and separately, a module's own main page
-- [ ] **70.** A shortcut into a module you can no longer open draws greyed out with a reason, rather than disappearing
-- [ ] **71.** Upload a picture as a shortcut's icon; removing it falls back to the glyph underneath rather than leaving the tile blank
-- [ ] **72.** Two accounts: each sees only their own shortcuts, and one cannot fetch the other's uploaded icon by its URL
-- [ ] **73.** Edit, reorder and remove a shortcut from the card itself; renaming one keeps its uploaded picture
-- [ ] **74.** The twelfth shortcut is the last — Add is refused with a message rather than failing silently
-- [ ] **75.** An oversized picture (over 256 KB) is refused immediately with the app's own wording, not a server error
-- [ ] **76.** Desktop: shortcut tiles read as 3D buttons — they lift on hover and press down on click, and the row controls appear on hover
-- [ ] **77.** Phone: the tiles reflow to the width available and their edit controls are visible without hovering
-- [ ] **78.** Navigation: a section group whose heading has its own page draws as a link with its glyph; headings without one stay plain labels
-- [ ] **79.** Music: reorder a playlist entry up and down — a playlist holding the same track twice moves the two copies independently
-- [ ] **80.** Administration → About loads and shows its disk figures (this screen previously failed to build)
+- [ ] **119.** Home: the My Shortcuts card appears, and Admin → Display Settings → Dashboard Widgets can hide and reorder it like any other card
+- [ ] **120.** Add a shortcut to a web address — a bare `example.com` gets `https://` added, and the tile opens it in a new tab
+- [ ] **121.** Add a shortcut to a page in this app: pick a module, then a section — and separately, a module's own main page
+- [ ] **122.** A shortcut into a module you can no longer open draws greyed out with a reason, rather than disappearing
+- [ ] **123.** Upload a picture as a shortcut's icon; removing it falls back to the glyph underneath rather than leaving the tile blank
+- [ ] **124.** Two accounts: each sees only their own shortcuts, and one cannot fetch the other's uploaded icon by its URL
+- [ ] **125.** Edit, reorder and remove a shortcut from the card itself; renaming one keeps its uploaded picture
+- [ ] **126.** The twelfth shortcut is the last — Add is refused with a message rather than failing silently
+- [ ] **127.** An oversized picture (over 256 KB) is refused immediately with the app's own wording, not a server error
+- [ ] **128.** Desktop: shortcut tiles read as 3D buttons — they lift on hover and press down on click, and the row controls appear on hover
+- [ ] **129.** Phone: the tiles reflow to the width available and their edit controls are visible without hovering
+- [ ] **130.** Navigation: a section group whose heading has its own page draws as a link with its glyph; headings without one stay plain labels
+- [ ] **131.** Music: reorder a playlist entry up and down — a playlist holding the same track twice moves the two copies independently
+- [ ] **132.** Administration → About loads and shows its disk figures (this screen previously failed to build)
 
 ---
 
@@ -460,14 +509,14 @@ alone, so the test is that nothing about it *changed*. Item 88 needs two devices
 or one device and a logout, to prove the preference is stored per person rather
 than in that browser.
 
-- [ ] **81.** Every module and Admin: the left column is one tree — Home on top, each module a heading that expands to its sections
-- [ ] **82.** The tree: clicking a module heading expands and collapses it; the module you are currently in is always open
-- [ ] **83.** Filter: typing `import` finds Journal, Investments and Expense sections together, each labelled with its module
-- [ ] **84.** Filter: matches starting with what you typed rank first; Esc clears; clearing restores the collapse state you had
-- [ ] **85.** Collapse: `«` folds the tree to a thin strip and the content widens; the strip and the header's `»` both reopen it
-- [ ] **86.** Icons: Admin → Display Settings → Icons can replace the tree's Home and filter glyphs, and each module's section icons still resolve
-- [ ] **87.** Phone: the bottom bar and its sheet behave exactly as before — no tree, no strip, nothing new
-- [ ] **88.** The set of expanded modules survives a reload, and is remembered per user rather than per browser
+- [ ] **133.** Every module and Admin: the left column is one tree — Home on top, each module a heading that expands to its sections
+- [ ] **134.** The tree: clicking a module heading expands and collapses it; the module you are currently in is always open
+- [ ] **135.** Filter: typing `import` finds Journal, Investments and Expense sections together, each labelled with its module
+- [ ] **136.** Filter: matches starting with what you typed rank first; Esc clears; clearing restores the collapse state you had
+- [ ] **137.** Collapse: `«` folds the tree to a thin strip and the content widens; the strip and the header's `»` both reopen it
+- [ ] **138.** Icons: Admin → Display Settings → Icons can replace the tree's Home and filter glyphs, and each module's section icons still resolve
+- [ ] **139.** Phone: the bottom bar and its sheet behave exactly as before — no tree, no strip, nothing new
+- [ ] **140.** The set of expanded modules survives a reload, and is remembered per user rather than per browser
 
 ---
 
@@ -482,16 +531,16 @@ during market hours; item 96 needs a file whose tags actually carry lyrics, whic
 not every track in the library has. Item 98 is phone-relevant — the expanded index
 panel adds six figures and a sparkline to a row that was already tight.
 
-- [ ] **89.** Admin → SQL Explorer → SQL Query: save a statement with a name, description and tags; it appears on the Saved SQL card
-- [ ] **90.** Admin → SQL Explorer: Load fills the editor and does **not** execute — confirm with a statement you would not want run
-- [ ] **91.** Admin → SQL Explorer: saving under an existing name replaces that row, and the dialog warns before it does
-- [ ] **92.** Investments → Indexes card: a row expands to show day range, 52-week range with its marker, moving averages, one-year change, all-time high and a sparkline
-- [ ] **93.** Investments → Indexes card: a symbol whose second pass fails keeps its row and shows em-dashes (the three commodity futures have no one-year change)
-- [ ] **94.** Music: a track with embedded lyrics shows them attributed "From this file's own tags", without a network lookup
-- [ ] **95.** Music: a track with no embedded and no lrclib match offers the Google search link
-- [ ] **96.** Investments → Indexes card: the expanded panel and sparkline are readable on a phone
-- [ ] **97.** Admin → Daily Quote → All Quotes: the new nav entry opens the listing screen
-- [ ] **98.** CLI: `saved-sql list` / `show` / `save` / `delete` behave as documented
+- [ ] **141.** Admin → SQL Explorer → SQL Query: save a statement with a name, description and tags; it appears on the Saved SQL card
+- [ ] **142.** Admin → SQL Explorer: Load fills the editor and does **not** execute — confirm with a statement you would not want run
+- [ ] **143.** Admin → SQL Explorer: saving under an existing name replaces that row, and the dialog warns before it does
+- [ ] **144.** Investments → Indexes card: a row expands to show day range, 52-week range with its marker, moving averages, one-year change, all-time high and a sparkline
+- [ ] **145.** Investments → Indexes card: a symbol whose second pass fails keeps its row and shows em-dashes (the three commodity futures have no one-year change)
+- [ ] **146.** Music: a track with embedded lyrics shows them attributed "From this file's own tags", without a network lookup
+- [ ] **147.** Music: a track with no embedded and no lrclib match offers the Google search link
+- [ ] **148.** Investments → Indexes card: the expanded panel and sparkline are readable on a phone
+- [ ] **149.** Admin → Daily Quote → All Quotes: the new nav entry opens the listing screen
+- [ ] **150.** CLI: `saved-sql list` / `show` / `save` / `delete` behave as documented
 
 ---
 
@@ -503,13 +552,13 @@ scan that used to return nothing may now return groups, and blank-named places
 can group on distance alone. Items 105 and 104 are phone-relevant: the popup and the
 picker's refusal message both have to be readable narrow.
 
-- [ ] **99.** Admin → Message Queue: the screen lists read and unread together, newest first, with each message's source
-- [ ] **100.** Admin → Message Queue: tick rows and Delete removes them; Purge by age (7/30/90/365 days) clears everything older and keeps the rest
-- [ ] **101.** Journal → Merging & Dedup: the "Within" slider (10–500m, default 75m) rescans on release, and groups found by distance are labelled "proximity"
-- [ ] **102.** Journal → Merging & Dedup: two pins ~25–50m apart with similar names now group (they did not before); merging one still works
-- [ ] **103.** Journal → entry form: adding a location already on the entry is refused with a message, and the draft pin stays put — from both the map tab and the library tab
-- [ ] **104.** Journal: clicking a numbered map pin opens a popup with number, name, address, coordinates and chips, readable in the dark theme
-- [ ] **105.** Journal: a single entry page shows the module rail, section panel and header (no more bare page with a "Back to My Journal" link)
+- [ ] **151.** Admin → Message Queue: the screen lists read and unread together, newest first, with each message's source
+- [ ] **152.** Admin → Message Queue: tick rows and Delete removes them; Purge by age (7/30/90/365 days) clears everything older and keeps the rest
+- [ ] **153.** Journal → Merging & Dedup: the "Within" slider (10–500m, default 75m) rescans on release, and groups found by distance are labelled "proximity"
+- [ ] **154.** Journal → Merging & Dedup: two pins ~25–50m apart with similar names now group (they did not before); merging one still works
+- [ ] **155.** Journal → entry form: adding a location already on the entry is refused with a message, and the draft pin stays put — from both the map tab and the library tab
+- [ ] **156.** Journal: clicking a numbered map pin opens a popup with number, name, address, coordinates and chips, readable in the dark theme
+- [ ] **157.** Journal: a single entry page shows the module rail, section panel and header (no more bare page with a "Back to My Journal" link)
 
 ---
 
@@ -520,389 +569,389 @@ touched ~83 files and renamed 17 tables, so the items below are worth a walk
 through even where the screen looks unchanged — a missed server action throws
 only when that one feature is used, not when the page loads.
 
-- [ ] **106.** Investments: the module opens at /modules/investments, named Investments on the rail and home grid
-- [ ] **107.** Investments: every section loads — Dashboard, Positions, Transactions, Account Performance, Watch & Test, Chart & Analysis, CSV Import, Tax Lots, Export for AI Analysis, Settings
-- [ ] **108.** Investments: the actions still write — add/edit a position, a transaction, a watchlist entry, an account
-- [ ] **109.** Investments: Tax Lots deep links still resolve (ticker picker, and the links out of the positions grid)
-- [ ] **110.** Investments: CSV import of a broker file
-- [ ] **111.** Admin → SQL Explorer: the Investments group lists the inv_ tables, and Table References names them
-- [ ] **112.** Admin → Background Tasks: the Investments auto-refresh still finds its module
-- [ ] **113.** Home: the Daily Glance card renders and its "Launch Investments" link goes to the new URL
-- [ ] **114.** Investments: uploaded section/card icons survived the rename (slot ids were deliberately left on `stock_*`)
-- [x] **115.** Expense: Transaction Rule Types — group rules by type, filter the rules list, manage types in Meta Data  — tested 2026-09-23
-- [x] **116.** Security → Visits: why a visit was scored suspicious (signals on the row)
+- [ ] **158.** Investments: the module opens at /modules/investments, named Investments on the rail and home grid
+- [ ] **159.** Investments: every section loads — Dashboard, Positions, Transactions, Account Performance, Watch & Test, Chart & Analysis, CSV Import, Tax Lots, Export for AI Analysis, Settings
+- [ ] **160.** Investments: the actions still write — add/edit a position, a transaction, a watchlist entry, an account
+- [ ] **161.** Investments: Tax Lots deep links still resolve (ticker picker, and the links out of the positions grid)
+- [ ] **162.** Investments: CSV import of a broker file
+- [ ] **163.** Admin → SQL Explorer: the Investments group lists the inv_ tables, and Table References names them
+- [ ] **164.** Admin → Background Tasks: the Investments auto-refresh still finds its module
+- [ ] **165.** Home: the Daily Glance card renders and its "Launch Investments" link goes to the new URL
+- [ ] **166.** Investments: uploaded section/card icons survived the rename (slot ids were deliberately left on `stock_*`)
+- [x] **167.** Expense: Transaction Rule Types — group rules by type, filter the rules list, manage types in Meta Data  — tested 2026-09-23
+- [x] **168.** Security → Visits: why a visit was scored suspicious (signals on the row)
 
 ---
 
 ## 2026-09-22 — Release
 
-- [x] **117.** CSV Analysis: pooled datasets
-- [x] **118.** Admin-set preferences (allow edit user's preferences)
-- [x] **119.** Location icons
+- [x] **169.** CSV Analysis: pooled datasets
+- [x] **170.** Admin-set preferences (allow edit user's preferences)
+- [x] **171.** Location icons
 
 ## 2026-09-20
 
-- [x] **120.** Journal: filter the category and tag lists in Meta Data
-- [x] **121.** Journal: a saved-location library
-- [x] **122.** Journal: Entries as one screen with two tabs
-- [x] **123.** Tools: a CSV file browser beside the SQLite one
+- [x] **172.** Journal: filter the category and tag lists in Meta Data
+- [x] **173.** Journal: a saved-location library
+- [x] **174.** Journal: Entries as one screen with two tabs
+- [x] **175.** Tools: a CSV file browser beside the SQLite one
 
 ## 2026-09-19
 
-- [x] **124.** Journal: keep or file a photo from an entry
-- [x] **125.** TreeNav: each group reads as its own embossed card
-- [x] **126.** Tools: SQLite uploads over 4 MB, with an admin-set cap
-- [ ] **127.** Stocks: icons on the indexes board
-- [ ] **128.** Stocks: playback of portfolio history
-- [ ] **129.** Music: a sleep timer that stops the player after a set time
+- [x] **176.** Journal: keep or file a photo from an entry
+- [x] **177.** TreeNav: each group reads as its own embossed card
+- [x] **178.** Tools: SQLite uploads over 4 MB, with an admin-set cap
+- [ ] **179.** Stocks: icons on the indexes board
+- [ ] **180.** Stocks: playback of portfolio history
+- [ ] **181.** Music: a sleep timer that stops the player after a set time
 
 ## 2026-09-17
 
-- [ ] **130.** Home screen: launch a card's module from its title
-- [ ] **131.** Journal: review existing entries before importing from a calendar
-- [ ] **132.** Tools: a new module, opening with a SQLite file browser
+- [ ] **182.** Home screen: launch a card's module from its title
+- [ ] **183.** Journal: review existing entries before importing from a calendar
+- [ ] **184.** Tools: a new module, opening with a SQLite file browser
 
 ## 2026-09-15
 
-- [ ] **133.** Floating layer: a clock over every page
-- [ ] **134.** Floating layer: a calculator over every page
-- [ ] **135.** Floating layer: a scratchpad over every page
-- [ ] **136.** Stocks: the indexes board loads when you open the card
-- [ ] **137.** Admin: clear deployment records in bulk, or prune to the newest few
-- [ ] **138.** Journal: jump to the next day that has an entry
-- [ ] **139.** NAS: a startup crash that says what broke
+- [ ] **185.** Floating layer: a clock over every page
+- [ ] **186.** Floating layer: a calculator over every page
+- [ ] **187.** Floating layer: a scratchpad over every page
+- [ ] **188.** Stocks: the indexes board loads when you open the card
+- [ ] **189.** Admin: clear deployment records in bulk, or prune to the newest few
+- [ ] **190.** Journal: jump to the next day that has an entry
+- [ ] **191.** NAS: a startup crash that says what broke
 
 ## 2026-09-14
 
-- [ ] **140.** Journal: date the template suggestion by the local calendar
-- [ ] **141.** Themes: tell the browser a dark theme is dark
-- [ ] **142.** Export for AI: measured correlations, and the sectors you hold nothing in
-- [ ] **143.** Home: a Clock card, with the weather where you are
-- [ ] **144.** Picture Gallery: Magic List — photographs conjured from a description
-- [ ] **145.** Stocks: candlesticks in the ticker viewer's Today card
-- [ ] **146.** Stocks: consult AI about one ticker
-- [ ] **147.** Stocks: a transaction knows which account it belongs to
+- [ ] **192.** Journal: date the template suggestion by the local calendar
+- [ ] **193.** Themes: tell the browser a dark theme is dark
+- [ ] **194.** Export for AI: measured correlations, and the sectors you hold nothing in
+- [ ] **195.** Home: a Clock card, with the weather where you are
+- [ ] **196.** Picture Gallery: Magic List — photographs conjured from a description
+- [ ] **197.** Stocks: candlesticks in the ticker viewer's Today card
+- [ ] **198.** Stocks: consult AI about one ticker
+- [ ] **199.** Stocks: a transaction knows which account it belongs to
 
 ## 2026-09-13
 
-- [ ] **148.** Attendance: bigger cards in the register grid
-- [ ] **149.** Admin: random theme generation
-- [ ] **150.** Music Library: an Albums view
-- [ ] **151.** Stocks & ETFs: a recorded trade can update the holding
-- [ ] **152.** MyJournal: New Entry becomes a section
-- [ ] **153.** Games: Bridge
-- [ ] **154.** SQL Explorer: BLOB cells fetched on demand
-- [ ] **155.** SQL Explorer: tables grouped by module
-- [ ] **156.** Account: two compact navigation styles, and the reader picks
-- [ ] **157.** Icon names: the compiler catches glyph-table drift
+- [ ] **200.** Attendance: bigger cards in the register grid
+- [ ] **201.** Admin: random theme generation
+- [ ] **202.** Music Library: an Albums view
+- [ ] **203.** Stocks & ETFs: a recorded trade can update the holding
+- [ ] **204.** MyJournal: New Entry becomes a section
+- [ ] **205.** Games: Bridge
+- [ ] **206.** SQL Explorer: BLOB cells fetched on demand
+- [ ] **207.** SQL Explorer: tables grouped by module
+- [ ] **208.** Account: two compact navigation styles, and the reader picks
+- [ ] **209.** Icon names: the compiler catches glyph-table drift
 
 ## 2026-09-11
 
-- [ ] **158.** Journal: Calendar Import — read a Google/Outlook .ics and pick events to import
-- [ ] **159.** Journal: re-importing a renamed or moved event updates it instead of duplicating
-- [ ] **160.** Journal: a large .ics (2.4 MB) uploads without tripping the action-argument limit
-- [ ] **161.** Journal: restoring an imported entry from the recycle bin keeps its identity
-- [ ] **162.** Stocks: a portfolio brief for an LLM
-- [ ] **163.** Attendance: one register per class per day again
-- [ ] **164.** Attendance: session labels read in local time, not four hours ahead
+- [ ] **210.** Journal: Calendar Import — read a Google/Outlook .ics and pick events to import
+- [ ] **211.** Journal: re-importing a renamed or moved event updates it instead of duplicating
+- [ ] **212.** Journal: a large .ics (2.4 MB) uploads without tripping the action-argument limit
+- [ ] **213.** Journal: restoring an imported entry from the recycle bin keeps its identity
+- [ ] **214.** Stocks: a portfolio brief for an LLM
+- [ ] **215.** Attendance: one register per class per day again
+- [ ] **216.** Attendance: session labels read in local time, not four hours ahead
 
 ## 2026-09-10
 
-- [ ] **165.** Picture Gallery: albums
-- [ ] **166.** Picture Gallery: a + on every photograph
-- [ ] **167.** Home screen: a handwritten quote, no header, and a slimmer rail
+- [ ] **217.** Picture Gallery: albums
+- [ ] **218.** Picture Gallery: a + on every photograph
+- [ ] **219.** Home screen: a handwritten quote, no header, and a slimmer rail
 
 ## 2026-09-09
 
-- [ ] **168.** Security: every exported server action authorises on its first line
-- [ ] **169.** Stocks & ETFs: analyze several tickers at once, and link to an analysis
-- [ ] **170.** Music Library: the song on YouTube
-- [ ] **171.** Music Library: a real fullscreen visualizer
-- [ ] **172.** Picture Gallery: a module of its own, not a corner of the home screen
+- [ ] **220.** Security: every exported server action authorises on its first line
+- [ ] **221.** Stocks & ETFs: analyze several tickers at once, and link to an analysis
+- [ ] **222.** Music Library: the song on YouTube
+- [ ] **223.** Music Library: a real fullscreen visualizer
+- [ ] **224.** Picture Gallery: a module of its own, not a corner of the home screen
 
 ## 2026-09-08
 
-- [ ] **173.** Games: Mahjong pickers and board frame
-- [ ] **174.** Stocks & ETFs: today's session in the ticker viewer
-- [ ] **175.** Journal: a space-separated Tags column no longer imports as one long tag
-- [ ] **176.** CSV Analytics: bulk edit rows
-- [ ] **177.** CSV Analytics: a CLI for bulk edit
-- [ ] **178.** Photographs: one viewer, with a capture timestamp and a heart
+- [ ] **225.** Games: Mahjong pickers and board frame
+- [ ] **226.** Stocks & ETFs: today's session in the ticker viewer
+- [ ] **227.** Journal: a space-separated Tags column no longer imports as one long tag
+- [ ] **228.** CSV Analytics: bulk edit rows
+- [ ] **229.** CSV Analytics: a CLI for bulk edit
+- [ ] **230.** Photographs: one viewer, with a capture timestamp and a heart
 
 ## 2026-09-06 — Release
 
-- [ ] **179.** Games: Mahjong, the four-player game against three bots
-- [ ] **180.** Stocks & ETFs: the Tax Lot Portfolio Analyzer
-- [ ] **181.** About: count untagged changes instead of reporting zero
-- [ ] **182.** Home: the Random Photo card streams instead of blocking first paint
-- [ ] **183.** Photos: an absolute path can no longer escape the photo folder
-- [ ] **184.** Compact grids: long values are readable
-- [ ] **185.** Compact grids: a second layout for reading
-- [ ] **186.** Music: the story behind the song, beside the lyrics
-- [ ] **187.** Games: Mahjong Match
-- [ ] **188.** Games: card icons across the whole arcade
-- [ ] **189.** Attendance: upload your own icon for a student action
-- [ ] **190.** CSV Analysis: named views over a dataset
+- [ ] **231.** Games: Mahjong, the four-player game against three bots
+- [ ] **232.** Stocks & ETFs: the Tax Lot Portfolio Analyzer
+- [ ] **233.** About: count untagged changes instead of reporting zero
+- [ ] **234.** Home: the Random Photo card streams instead of blocking first paint
+- [ ] **235.** Photos: an absolute path can no longer escape the photo folder
+- [ ] **236.** Compact grids: long values are readable
+- [ ] **237.** Compact grids: a second layout for reading
+- [ ] **238.** Music: the story behind the song, beside the lyrics
+- [ ] **239.** Games: Mahjong Match
+- [ ] **240.** Games: card icons across the whole arcade
+- [ ] **241.** Attendance: upload your own icon for a student action
+- [ ] **242.** CSV Analysis: named views over a dataset
 
 ## 2026-09-03
 
-- [ ] **191.** Attendance: a class records the weekday it meets on
-- [ ] **192.** Attendance: the home screen opens on today's register
-- [ ] **193.** Photos: a viewer component with its own actions
-- [ ] **194.** Journal: a photos slideshow and folder module
-- [ ] **195.** Games: sudoku and blackjack polish
-- [ ] **196.** Stocks: the refresh total counts up as prices land
+- [ ] **243.** Attendance: a class records the weekday it meets on
+- [ ] **244.** Attendance: the home screen opens on today's register
+- [ ] **245.** Photos: a viewer component with its own actions
+- [ ] **246.** Journal: a photos slideshow and folder module
+- [ ] **247.** Games: sudoku and blackjack polish
+- [ ] **248.** Stocks: the refresh total counts up as prices land
 
 ## 2026-09-02 — Release
 
-- [ ] **197.** Expense: top-5 cards link through to their transactions
-- [ ] **198.** Expense: the vendor rollup stops inventing vendors from payment lines
-- [ ] **199.** Stocks: the indexes refresh becomes an icon
-- [ ] **200.** Favourite photos: a slideshow
-- [ ] **201.** Carousel graphics are resized on upload
-- [ ] **202.** SQL Explorer: a schema browser
-- [ ] **203.** SQL Explorer: prose for every table
-- [ ] **204.** Music: a spectrum analyser under the cover art
-- [ ] **205.** Games: Sudoku
-- [ ] **206.** Games: Blackjack
-- [ ] **207.** Games: Minesweeper
-- [ ] **208.** Journal: a recycle bin
-- [ ] **209.** Journal: a Correct tab
-- [ ] **210.** Journal: metadata backup
+- [ ] **249.** Expense: top-5 cards link through to their transactions
+- [ ] **250.** Expense: the vendor rollup stops inventing vendors from payment lines
+- [ ] **251.** Stocks: the indexes refresh becomes an icon
+- [ ] **252.** Favourite photos: a slideshow
+- [ ] **253.** Carousel graphics are resized on upload
+- [ ] **254.** SQL Explorer: a schema browser
+- [ ] **255.** SQL Explorer: prose for every table
+- [ ] **256.** Music: a spectrum analyser under the cover art
+- [ ] **257.** Games: Sudoku
+- [ ] **258.** Games: Blackjack
+- [ ] **259.** Games: Minesweeper
+- [ ] **260.** Journal: a recycle bin
+- [ ] **261.** Journal: a Correct tab
+- [ ] **262.** Journal: metadata backup
 
 ## 2026-09-01 — Release
 
-- [ ] **211.** Journal import: an overwrite mode, with the plan shown before it writes
-- [ ] **212.** Favourite photos: their own screen
-- [ ] **213.** Favourite photos: a zip download
-- [ ] **214.** Admin: a deployment history, with the build log attached
-- [ ] **215.** Games: Tetris
-- [ ] **216.** Games: Arrow Clearing becomes an actual puzzle
-- [ ] **217.** SQL Explorer: a Truncate button, behind a warning that counts the rows
-- [ ] **218.** Journal import: normalized entry time stops a re-import duplicating
+- [ ] **263.** Journal import: an overwrite mode, with the plan shown before it writes
+- [ ] **264.** Favourite photos: their own screen
+- [ ] **265.** Favourite photos: a zip download
+- [ ] **266.** Admin: a deployment history, with the build log attached
+- [ ] **267.** Games: Tetris
+- [ ] **268.** Games: Arrow Clearing becomes an actual puzzle
+- [ ] **269.** SQL Explorer: a Truncate button, behind a warning that counts the rows
+- [ ] **270.** Journal import: normalized entry time stops a re-import duplicating
 
 ## 2026-08-30
 
-- [ ] **219.** Themes: colour themes are data, and the builder warns before you blind yourself
-- [ ] **220.** Games: Arrow Clearing cannot generate an unsolvable board
-- [ ] **221.** Games: an arcade, and a scoreboard the whole house shares
+- [ ] **271.** Themes: colour themes are data, and the builder warns before you blind yourself
+- [ ] **272.** Games: Arrow Clearing cannot generate an unsolvable board
+- [ ] **273.** Games: an arcade, and a scoreboard the whole house shares
 
 ## 2026-08-29
 
-- [ ] **222.** Stocks: five threads on refresh
-- [ ] **223.** Stocks: a wildcard that was lying to you
-- [ ] **224.** Home: the random photo card says how old the photo is
-- [ ] **225.** Stocks: Watch & Test — watch lists, signals and simulation on one screen
-- [ ] **226.** Expense: re-run a rule over transactions you have already imported
-- [ ] **227.** Expense: a vendor is somebody now, not just a total
+- [ ] **274.** Stocks: five threads on refresh
+- [ ] **275.** Stocks: a wildcard that was lying to you
+- [ ] **276.** Home: the random photo card says how old the photo is
+- [ ] **277.** Stocks: Watch & Test — watch lists, signals and simulation on one screen
+- [ ] **278.** Expense: re-run a rule over transactions you have already imported
+- [ ] **279.** Expense: a vendor is somebody now, not just a total
 
 ## 2026-08-28
 
-- [ ] **228.** Home screen: arrange it yourself
-- [ ] **229.** CSV Analysis: the two-tier nav
-- [ ] **230.** Home: a photograph drawn at random
-- [ ] **231.** Uploaded icons get cleaned up on the way in
-- [ ] **232.** Icons: any single icon can be replaced without changing the icon set (73 slots)
-- [ ] **233.** Admin → Configuration → Icons: upload an SVG or image per position
-- [ ] **234.** Icons: uploaded SVG is sanitized on write
-- [ ] **235.** Home: a picture behind the day
-- [ ] **236.** Expense: rules that say why
+- [ ] **280.** Home screen: arrange it yourself
+- [ ] **281.** CSV Analysis: the two-tier nav
+- [ ] **282.** Home: a photograph drawn at random
+- [ ] **283.** Uploaded icons get cleaned up on the way in
+- [ ] **284.** Icons: any single icon can be replaced without changing the icon set (73 slots)
+- [ ] **285.** Admin → Configuration → Icons: upload an SVG or image per position
+- [ ] **286.** Icons: uploaded SVG is sanitized on write
+- [ ] **287.** Home: a picture behind the day
+- [ ] **288.** Expense: rules that say why
 
 ## 2026-08-26
 
-- [ ] **237.** Admin → Background Tasks: every timer in one place, including jobs that never ran
-- [ ] **238.** A job killed mid-pass reads as interrupted, never as ok
-- [ ] **239.** CLI: list-scheduled-jobs gives the same answer without the web server
-- [ ] **240.** Last-run stamps survive the restarts a deploy performs
-- [ ] **241.** Stocks: an Indexes card of eleven benchmarks in four groups
-- [ ] **242.** Stocks: a new dashboard widget lands beside its neighbour, not at the bottom
-- [ ] **243.** Stocks → Simulation: "what if I'd bought then?" across ten windows
+- [ ] **289.** Admin → Background Tasks: every timer in one place, including jobs that never ran
+- [ ] **290.** A job killed mid-pass reads as interrupted, never as ok
+- [ ] **291.** CLI: list-scheduled-jobs gives the same answer without the web server
+- [ ] **292.** Last-run stamps survive the restarts a deploy performs
+- [ ] **293.** Stocks: an Indexes card of eleven benchmarks in four groups
+- [ ] **294.** Stocks: a new dashboard widget lands beside its neighbour, not at the bottom
+- [ ] **295.** Stocks → Simulation: "what if I'd bought then?" across ten windows
 
 ## 2026-08-25
 
-- [ ] **244.** Music: a scan that finishes (no OOM on a large NAS folder)
-- [ ] **245.** Music: an abandoned scan run closes itself instead of reading "running" forever
-- [ ] **246.** Progress3D: one progress bar across the app
-- [ ] **247.** Per-module background pictures
-- [ ] **248.** Attendance: a Detail report — the whole term as a grid
-- [ ] **249.** About: a Server Log tab
+- [ ] **296.** Music: a scan that finishes (no OOM on a large NAS folder)
+- [ ] **297.** Music: an abandoned scan run closes itself instead of reading "running" forever
+- [ ] **298.** Progress3D: one progress bar across the app
+- [ ] **299.** Per-module background pictures
+- [ ] **300.** Attendance: a Detail report — the whole term as a grid
+- [ ] **301.** About: a Server Log tab
 
 ## 2026-08-19
 
-- [ ] **250.** Stocks: find a ticker, and star the ones you watch daily
-- [ ] **251.** Music Library: Magic Playlists assembled from a query
-- [ ] **252.** Music Library: a visible play queue
-- [ ] **253.** Music Library: lyrics on demand
-- [ ] **254.** Grids that count their own columns
-- [ ] **255.** Seven more glyphs
-- [ ] **256.** Ticker detail: how far a trade has moved since you made it
-- [ ] **257.** Music Library: stream 20,000 songs off the NAS
-- [ ] **258.** Attendance: two registers a day
-- [ ] **259.** Attendance: student actions, a teacher-editable catalog
-- [ ] **260.** Attendance: 12 icon sets, applied to the section nav too
+- [ ] **302.** Stocks: find a ticker, and star the ones you watch daily
+- [ ] **303.** Music Library: Magic Playlists assembled from a query
+- [ ] **304.** Music Library: a visible play queue
+- [ ] **305.** Music Library: lyrics on demand
+- [ ] **306.** Grids that count their own columns
+- [ ] **307.** Seven more glyphs
+- [ ] **308.** Ticker detail: how far a trade has moved since you made it
+- [ ] **309.** Music Library: stream 20,000 songs off the NAS
+- [ ] **310.** Attendance: two registers a day
+- [ ] **311.** Attendance: student actions, a teacher-editable catalog
+- [ ] **312.** Attendance: 12 icon sets, applied to the section nav too
 
 ## 2026-08-16
 
-- [ ] **261.** Attendance: a new module — pick a class, tap who is here, save
-- [ ] **262.** Attendance: a student can sit in several classes
-- [ ] **263.** "Absent" and "attendance was never taken" stay distinguishable
-- [ ] **264.** Admin → Security: a sign-in audit log recording logins, failures and logouts
-- [ ] **265.** Stocks: allocation by sector
-- [ ] **266.** Stocks: candlestick charts
-- [ ] **267.** Admin: import daily quotes from a newsletter
+- [ ] **313.** Attendance: a new module — pick a class, tap who is here, save
+- [ ] **314.** Attendance: a student can sit in several classes
+- [ ] **315.** "Absent" and "attendance was never taken" stay distinguishable
+- [ ] **316.** Admin → Security: a sign-in audit log recording logins, failures and logouts
+- [ ] **317.** Stocks: allocation by sector
+- [ ] **318.** Stocks: candlestick charts
+- [ ] **319.** Admin: import daily quotes from a newsletter
 
 ## 2026-08-15
 
-- [ ] **268.** Journal: clickable taxonomy
-- [ ] **269.** About page: inline markdown in the change log
-- [ ] **270.** About page: memory as meters
-- [ ] **271.** Home: Daily Glance moves off the Stocks dashboard
-- [ ] **272.** Installable PWA: stable identity, module shortcuts, iOS launch screens
-- [ ] **273.** Per-user preferences: a favourite module you can open on startup
+- [ ] **320.** Journal: clickable taxonomy
+- [ ] **321.** About page: inline markdown in the change log
+- [ ] **322.** About page: memory as meters
+- [ ] **323.** Home: Daily Glance moves off the Stocks dashboard
+- [ ] **324.** Installable PWA: stable identity, module shortcuts, iOS launch screens
+- [ ] **325.** Per-user preferences: a favourite module you can open on startup
 
 ## 2026-08-14
 
-- [ ] **274.** Journal: a filtered Entries browser with saved AND/OR filters
-- [ ] **275.** Journal: icons for categories and tags
-- [ ] **276.** Deploys apply their own migrations, and fail loudly rather than serving new code
-- [ ] **277.** CSV Analytics: add columns without re-importing a file
-- [ ] **278.** ModuleCarousel: a grid on desktop, coverflow on phones
-- [ ] **279.** DataGrid: column headers popped up into a 3D bar
-- [ ] **280.** Journal: home-screen search
-- [ ] **281.** The section bar moved to the bottom, and modules collapsed into a menu
+- [ ] **326.** Journal: a filtered Entries browser with saved AND/OR filters
+- [ ] **327.** Journal: icons for categories and tags
+- [ ] **328.** Deploys apply their own migrations, and fail loudly rather than serving new code
+- [ ] **329.** CSV Analytics: add columns without re-importing a file
+- [ ] **330.** ModuleCarousel: a grid on desktop, coverflow on phones
+- [ ] **331.** DataGrid: column headers popped up into a 3D bar
+- [ ] **332.** Journal: home-screen search
+- [ ] **333.** The section bar moved to the bottom, and modules collapsed into a menu
 
 ## 2026-08-11
 
-- [ ] **282.** CSV Analytics: add custom columns during append/truncate
+- [ ] **334.** CSV Analytics: add custom columns during append/truncate
 
 ## 2026-08-10
 
-- [ ] **283.** The section tree became a bar, and surfaces learned to lift
+- [ ] **335.** The section tree became a bar, and surfaces learned to lift
 
 ## 2026-08-08
 
-- [ ] **284.** The compact section bar
-- [ ] **285.** User management gated on admin
-- [ ] **286.** Home: announce a new deployment
-- [ ] **287.** Navigation moved to the edges — a top bar plus a compact bottom module bar
-- [ ] **288.** Both nav bars minimise to a puck and remember it
-- [ ] **289.** Every chart got a gear
+- [ ] **336.** The compact section bar
+- [ ] **337.** User management gated on admin
+- [ ] **338.** Home: announce a new deployment
+- [ ] **339.** Navigation moved to the edges — a top bar plus a compact bottom module bar
+- [ ] **340.** Both nav bars minimise to a puck and remember it
+- [ ] **341.** Every chart got a gear
 
 ## 2026-08-07
 
-- [ ] **290.** Restart the NAS after a publish without SSH
-- [ ] **291.** The app works on a phone — one layout boundary at 1024px, decided server-side
-- [ ] **292.** Installable to the home screen
-- [ ] **293.** Stocks: ticker viewer as cards, with Events and Yahoo Detail tabs
-- [ ] **294.** Stocks: risk cached and served at any age, refreshed only by Recalculate
-- [ ] **295.** Stocks: earnings data no longer vanishes (Yahoo User-Agent and crumb race)
-- [ ] **296.** Home: the module grid becomes a carousel with per-module artwork
-- [ ] **297.** Image uploads send a File in FormData rather than base64
+- [ ] **342.** Restart the NAS after a publish without SSH
+- [ ] **343.** The app works on a phone — one layout boundary at 1024px, decided server-side
+- [ ] **344.** Installable to the home screen
+- [ ] **345.** Stocks: ticker viewer as cards, with Events and Yahoo Detail tabs
+- [ ] **346.** Stocks: risk cached and served at any age, refreshed only by Recalculate
+- [ ] **347.** Stocks: earnings data no longer vanishes (Yahoo User-Agent and crumb race)
+- [ ] **348.** Home: the module grid becomes a carousel with per-module artwork
+- [ ] **349.** Image uploads send a File in FormData rather than base64
 
 ## 2026-08-05
 
-- [ ] **298.** Stocks: positions split into Stocks / ETF / Others
-- [ ] **299.** Stocks: Daily Glance — one table for the three buckets, with the total
-- [ ] **300.** Stocks: Account Performance Over Time on one set of axes
-- [ ] **301.** Stocks: remember which account a broker's CSV label means
-- [ ] **302.** Hide the sidebar to its accent strip, and give the page back the gutter
-- [ ] **303.** Stocks: performance chart points shaped by what they are
-- [ ] **304.** Stocks: ticker viewer — everything about one symbol in one dialog
-- [ ] **305.** Stocks: choose which dashboard widgets show, and in what order
-- [ ] **306.** Stocks: record the brokerage firm on a trade, and fix duplicate detection
-- [ ] **307.** Stocks: cost basis, so total return is possible at all
-- [ ] **308.** Stocks: daily snapshots, value and gain/loss per bucket
-- [ ] **309.** Stocks: an icon per investment account
-- [ ] **310.** Stocks: eight routed sections behind a TreeNav, loading per section
-- [ ] **311.** Stocks: Refresh All with per-ticker progress
-- [ ] **312.** Stocks: a per-ticker news lookup
-- [ ] **313.** CSV import: one screen for all three types, listing every row
-- [ ] **314.** A verification gate: typecheck, boundary, tests, migration dry-run, e2e
+- [ ] **350.** Stocks: positions split into Stocks / ETF / Others
+- [ ] **351.** Stocks: Daily Glance — one table for the three buckets, with the total
+- [ ] **352.** Stocks: Account Performance Over Time on one set of axes
+- [ ] **353.** Stocks: remember which account a broker's CSV label means
+- [ ] **354.** Hide the sidebar to its accent strip, and give the page back the gutter
+- [ ] **355.** Stocks: performance chart points shaped by what they are
+- [ ] **356.** Stocks: ticker viewer — everything about one symbol in one dialog
+- [ ] **357.** Stocks: choose which dashboard widgets show, and in what order
+- [ ] **358.** Stocks: record the brokerage firm on a trade, and fix duplicate detection
+- [ ] **359.** Stocks: cost basis, so total return is possible at all
+- [ ] **360.** Stocks: daily snapshots, value and gain/loss per bucket
+- [ ] **361.** Stocks: an icon per investment account
+- [ ] **362.** Stocks: eight routed sections behind a TreeNav, loading per section
+- [ ] **363.** Stocks: Refresh All with per-ticker progress
+- [ ] **364.** Stocks: a per-ticker news lookup
+- [ ] **365.** CSV import: one screen for all three types, listing every row
+- [ ] **366.** A verification gate: typecheck, boundary, tests, migration dry-run, e2e
 
 ## 2026-08-03
 
-- [ ] **315.** Full-width layout: one shared container across every full-page screen
-- [ ] **316.** A fixed sidebar raised above the page, so a module gets the rest of the screen
-- [ ] **317.** Expense: spend stats
-- [ ] **318.** Expense: an auto-import switch
-- [ ] **319.** Expense: an uploadable icon per category
-- [ ] **320.** Stocks: cache and show ticker logos
-- [ ] **321.** DataGrid: filter expressions
-- [ ] **322.** DataGrid: column aggregates
-- [ ] **323.** DataGrid: record view
-- [ ] **324.** Modal extracted as its own component
-- [ ] **325.** Three colour themes and three icon sets
+- [ ] **367.** Full-width layout: one shared container across every full-page screen
+- [ ] **368.** A fixed sidebar raised above the page, so a module gets the rest of the screen
+- [ ] **369.** Expense: spend stats
+- [ ] **370.** Expense: an auto-import switch
+- [ ] **371.** Expense: an uploadable icon per category
+- [ ] **372.** Stocks: cache and show ticker logos
+- [ ] **373.** DataGrid: filter expressions
+- [ ] **374.** DataGrid: column aggregates
+- [ ] **375.** DataGrid: record view
+- [ ] **376.** Modal extracted as its own component
+- [ ] **377.** Three colour themes and three icon sets
 
 ## 2026-08-02
 
-- [ ] **326.** Expense: automatic CSV import from a watched folder, one sub-folder per card
-- [ ] **327.** Expense: a processed file is renamed .backup, a failure .failed
-- [ ] **328.** Expense: post-import rules — one condition, any number of field assignments
-- [ ] **329.** Expense: "Manually Run Import Clean up" with real progress
-- [ ] **330.** Expense: the tree-nav overhaul
-- [ ] **331.** Expense: a new module for credit-card spending
-- [ ] **332.** Expense: fuzzy auto-categorisation by glob against the statement description
-- [ ] **333.** Expense: CSV import with a saved column mapping per card company
-- [ ] **334.** Admin: import daily quotes from a newsletter
+- [ ] **378.** Expense: automatic CSV import from a watched folder, one sub-folder per card
+- [ ] **379.** Expense: a processed file is renamed .backup, a failure .failed
+- [ ] **380.** Expense: post-import rules — one condition, any number of field assignments
+- [ ] **381.** Expense: "Manually Run Import Clean up" with real progress
+- [ ] **382.** Expense: the tree-nav overhaul
+- [ ] **383.** Expense: a new module for credit-card spending
+- [ ] **384.** Expense: fuzzy auto-categorisation by glob against the statement description
+- [ ] **385.** Expense: CSV import with a saved column mapping per card company
+- [ ] **386.** Admin: import daily quotes from a newsletter
 
 ## 2026-07-30
 
-- [ ] **335.** Result grid: search, filters, sticky header, column control, row selection
-- [ ] **336.** Journal: entry authoring with category/tag autocomplete
-- [ ] **337.** Journal: a Leaflet location picker with search and multiple pins
-- [ ] **338.** Journal: fetch today's weather
-- [ ] **339.** Journal: the entry screen, with Print/Save-PDF, Edit, Lock and Delete
-- [ ] **340.** Journal: Today In History
+- [ ] **387.** Result grid: search, filters, sticky header, column control, row selection
+- [ ] **388.** Journal: entry authoring with category/tag autocomplete
+- [ ] **389.** Journal: a Leaflet location picker with search and multiple pins
+- [ ] **390.** Journal: fetch today's weather
+- [ ] **391.** Journal: the entry screen, with Print/Save-PDF, Edit, Lock and Delete
+- [ ] **392.** Journal: Today In History
 
 ## 2026-07-27
 
-- [ ] **341.** Journal: a new module, with CSV import of a real export
-- [ ] **342.** Real Estate and Property Watch removed
-- [ ] **343.** Every table renamed to a 3-letter module prefix
-- [ ] **344.** Daily Quote
+- [ ] **393.** Journal: a new module, with CSV import of a real export
+- [ ] **394.** Real Estate and Property Watch removed
+- [ ] **395.** Every table renamed to a 3-letter module prefix
+- [ ] **396.** Daily Quote
 
 ## 2026-07-25
 
-- [ ] **345.** Self-signup, always as a plain user with no module access
-- [ ] **346.** Admin elevation behind a secret that stays hidden until you type "adm"
-- [ ] **347.** User-selectable module icon sets
-- [ ] **348.** Daybreak, the first light theme
+- [ ] **397.** Self-signup, always as a plain user with no module access
+- [ ] **398.** Admin elevation behind a secret that stays hidden until you type "adm"
+- [ ] **399.** User-selectable module icon sets
+- [ ] **400.** Daybreak, the first light theme
 
 ## 2026-07-21
 
-- [ ] **349.** Interactive DataGrid: click-to-sort, paging, Export CSV, Show SQL
-- [ ] **350.** CSV Analysis: Show Data and Chart per entry
-- [ ] **351.** CSV chart builder with presets
-- [ ] **352.** ChartXY: line/bar/scatter/area with zoom
+- [ ] **401.** Interactive DataGrid: click-to-sort, paging, Export CSV, Show SQL
+- [ ] **402.** CSV Analysis: Show Data and Chart per entry
+- [ ] **403.** CSV chart builder with presets
+- [ ] **404.** ChartXY: line/bar/scatter/area with zoom
 
 ## 2026-07-19
 
-- [ ] **353.** CSV Analytics: a new module
-- [ ] **354.** Theme and UI polish
-- [ ] **355.** ARM/Synology NAS deployment support
+- [ ] **405.** CSV Analytics: a new module
+- [ ] **406.** Theme and UI polish
+- [ ] **407.** ARM/Synology NAS deployment support
 
 ## 2026-07-18
 
-- [ ] **356.** Stocks & ETFs: accounts, positions, transactions and portfolio summary
-- [ ] **357.** Stocks & ETFs: a Yahoo Finance market-data client with manual/CLI refresh
-- [ ] **358.** Stocks & ETFs: volatility, correlation and Sharpe analytics
-- [ ] **359.** Stocks & ETFs: a Next Day Actions signal scanner
-- [ ] **360.** Stocks & ETFs: CSV import with saved column-mapping presets
-- [ ] **361.** Admin: SQL Explorer
-- [ ] **362.** ChartLine, ChartBar and Tabs components
-- [ ] **363.** Publish applies pending migrations, with an automatic backup
-- [ ] **364.** ~~Real Estate: property portfolio and a RentCast watch list~~ *(removed 2026-07-27, migration 0026)*
+- [ ] **408.** Stocks & ETFs: accounts, positions, transactions and portfolio summary
+- [ ] **409.** Stocks & ETFs: a Yahoo Finance market-data client with manual/CLI refresh
+- [ ] **410.** Stocks & ETFs: volatility, correlation and Sharpe analytics
+- [ ] **411.** Stocks & ETFs: a Next Day Actions signal scanner
+- [ ] **412.** Stocks & ETFs: CSV import with saved column-mapping presets
+- [ ] **413.** Admin: SQL Explorer
+- [ ] **414.** ChartLine, ChartBar and Tabs components
+- [ ] **415.** Publish applies pending migrations, with an automatic backup
+- [ ] **416.** ~~Real Estate: property portfolio and a RentCast watch list~~ *(removed 2026-07-27, migration 0026)*
 
 ## 2026-07-13
 
-- [ ] **365.** Google auto-registration
-- [ ] **366.** User avatars
-- [ ] **367.** start.bat port cleanup
+- [ ] **417.** Google auto-registration
+- [ ] **418.** User avatars
+- [ ] **419.** start.bat port cleanup
 
 ## 2026-07-12
 
-- [ ] **368.** User management
-- [ ] **369.** Authentication and Google sign-in
-- [ ] **370.** Administration section
-- [ ] **371.** Module Settings
-- [ ] **372.** Initial scaffold: modules, settings, admin section
+- [ ] **420.** User management
+- [ ] **421.** Authentication and Google sign-in
+- [ ] **422.** Administration section
+- [ ] **423.** Module Settings
+- [ ] **424.** Initial scaffold: modules, settings, admin section

@@ -1,5 +1,127 @@
 # Change History
 
+## 2026-10-04 — HSA Tracker, Foreign Currencies, and a Journal lock marker
+
+### Household: the HSA Tracker is built
+
+The Household module's second half stops being a placeholder. **HSA Tracker →
+Receipts** is a ledger of health-account expenses and the receipts that back them —
+not an account balance, and deliberately no yearly limit or contribution tracking.
+The point is to hold receipts for as long as you like and know which are still
+unreimbursed.
+
+Each expense records the date and time (seeded from your clock, editable so a past
+receipt is entered under its real date), the amount, the product or service, a type
+(Pharmacy, Medical, Dental, Vision, Transportation, Dependent Care, Other), the
+payee, an optional date of service, the card it was paid with, a note, and whether
+it has been reimbursed. **Product or Service** is a pick-or-type box fed by what you
+have already entered, so the vocabulary builds itself.
+
+The list is one grid under a view switch: **All**, or **By year** — latest year
+first, one year open at a time, each year's header carrying its count, how many
+receipts it holds, what is still unreimbursed and the year's total. Clicking a row
+opens a purpose-built viewer rather than a generic record modal, with the receipt in
+its own block.
+
+### HSA receipts are files on the NAS, not rows in the database
+
+A receipt is filed as `<folder>/<YYYY>/<YYYY-MM-DD>_<Payee>_<$Amount>_<id>.<ext>` —
+for example `2026/2026-10-03_CVS_$42.50_17.jpg` — under a folder you set once. The
+stored path is **relative** to that folder, so moving the archive later is one
+setting rather than a rewrite of every row.
+
+- **The file's name follows the record.** Editing the Date, Payee or Amount renames
+  the file; changing the year moves it into that year's folder. The move happens
+  before the database write and is undone if that write fails, so the row and the
+  folder can never disagree.
+- **Deleting an expense or removing its receipt deletes the file**, after a warning
+  that says so.
+- **With no folder set, attaching a receipt is refused.** There is no fallback to the
+  database, so receipts live in exactly one place. Expenses can still be recorded
+  without one.
+- **A large phone photo is shrunk in the browser** to 2000px of JPEG before it is
+  sent — bigger than a recipe picture's 800px, because a receipt has to stay legible
+  down to its line items.
+- **Two file buttons, because one cannot be both.** *Take photo* opens the rear
+  camera directly and is hidden on a desktop, where the browser would just show a
+  second file dialog. *Attach receipt* offers the photo library and Files, and is the
+  only one of the two that accepts a PDF.
+
+### Household: a Configuration section
+
+A new module-level **Configuration** section, **admin-only**, holds the receipt
+folder and the **Cards** list that feeds an expense's *Paid with* box.
+
+The folder is browsed **on the server**, one level at a time — a browser's own file
+dialog never hands the page a real path, and the folder has to be one the server can
+write to anyway. That is also why the section is admin-only: the browser lists every
+folder the server can reach. Saving checks the folder **by writing a probe file and
+deleting it** rather than trusting a permission flag, which lies on an SMB share and
+under a Synology ACL; a folder that fails is refused rather than saved and discovered
+on the first receipt.
+
+A card stores as **its name, not an id**, so renaming or deleting one never rewrites
+or orphans an old receipt. A card can be hidden instead of deleted, and the editor
+still shows a no-longer-listed card as the selected value so opening an old expense
+doesn't blank it.
+
+### Investments: a Foreign Currencies card
+
+A new card on the Investments dashboard shows **what one US dollar buys**, across
+eleven currencies — yuan, euro, sterling, yen, the Canadian and Australian dollars,
+the Swiss franc, won, Hong Kong dollar, rupee and Taiwan dollar. Flat rows: flag,
+name, rate, today's move.
+
+Like the Indexes card beside it, nothing is fetched on page load — expanding the card
+fetches the board, and the Refresh button refetches it. A board younger than a minute
+is reused when the card is reopened.
+
+Rates are carried as **plain numbers, not cents**: EUR/USD quotes to four decimals,
+and rounding that to integer cents would throw away the two digits that actually
+move. The eleven flags are drawn as **inline SVG** rather than emoji, which have no
+glyphs at all on Windows and render as bare letter pairs.
+
+### Journal: the lock marker moved, and is a padlock
+
+A locked entry's marker moves out of the **Time** column and onto the entry's
+**title** in Review, and onto the **group** in Correct — where the thing it describes
+actually is. The glyph is a **padlock** rather than the shield it was: a shield reads
+as "protected by something", a padlock as "fastened shut by you", which is what the
+lock is.
+
+**A locked entry can no longer be silently unlocked by an edit.** The update path now
+carries the stored lock flag rather than letting the form's default re-write it.
+Toggling the lock stays the only way to change it.
+
+### Home screen: the card move buttons are gone
+
+The up/down buttons on the home screen's draggable cards were removed; dragging a
+card by its frame is the way to reorder. Drag is mouse-only and the control only
+renders at 1280px and up.
+
+### New icon slots
+
+| Slot | Where |
+|---|---|
+| `stock_card_currencies` | Investments → Dashboard → the Foreign Currencies card header |
+| `household_section_configuration` | Household → section panel → Configuration |
+
+The Household section formerly labelled *Cards* is now **Receipts**; Cards moved onto
+the Configuration screen. `household_section_hsa_cards` never shipped, so retiring it
+orphaned nothing.
+
+### Under the hood
+
+- Migration **0128** adds `hsh_hsa_expenses` and `hsh_hsa_cards` under the existing
+  Household prefix — no new module row.
+- Migration **0129** replaces the receipt BLOB with `receipt_path`.
+- `npm run cli -- hsa` drives the whole tracker from a terminal — list, `--show`,
+  `--add`, `--reimburse`, `--delete`, the card flags, and `--set-receipt-root`.
+- A fourth market-data port, `ExchangeRateClient`, serves rates without going through
+  the quote path that rounds to cents and fires an authenticated round-trip per
+  symbol.
+
+
 ## 2026-10-02 (late) — Portfolio: Biggest Changes and Volatility, tabbed Icons, draggable toolbars
 
 ### Portfolio Summary: a "Biggest Changes" tab

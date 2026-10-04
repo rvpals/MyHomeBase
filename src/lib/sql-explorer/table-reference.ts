@@ -175,10 +175,12 @@ const GROUPS: TableReferenceGroup[] = [
     prefix: "hsh_",
     module: "Household",
     summary:
-      "The household's own paperwork. Recipes so far; the HSA Tracker owns no tables yet and will sit under this same prefix.",
+      "The household's own paperwork: the recipe box and the HSA Tracker.",
     tables: [
       ["hsh_recipes", "One recipe: its name, description, ingredients and directions (one item per line, stored as text blocks), notes, how many times it has been made, a 1-10 rating (NULL means unrated, which is not the same as 1), a category (one per recipe, stored as typed and matched COLLATE NOCASE; blank means uncategorised, and there is no catalog table — the vocabulary is SELECT DISTINCT over this column), a source URL, and the dish photograph as a BLOB with its mime type. Reads for the list must select columns explicitly — a SELECT * pulls every photograph."],
       ["hsh_recipe_tags", "Which tags are on which recipe, one row per pair and unique on it. Tags are created inline as a recipe is written; there is no managed tag catalog, and names are lower-cased at the boundary so casing cannot fork one tag into several."],
+      ["hsh_hsa_expenses", "One HSA expense: when it was recorded (date and time, editable), the amount in integer cents, the product or service, a type (Pharmacy, Medical, Dental, Vision, Transportation, Dependent Care, Other — enforced in code, not a CHECK), the payee, an optional date of service, the card it was paid with as a name snapshot (not an id, so renaming or deleting a card never rewrites history), a note, whether it was reimbursed, and where its receipt is filed — receipt_path is relative to the Household module's hsa_receipt_root setting (e.g. '2026/2026-10-03_CVS_$42.50_17.jpg'), alongside the mime type and the name the upload arrived under. The file itself lives on the NAS, not in this database; whether a receipt is attached is derived from receipt_path, never stored. "],
+      ["hsh_hsa_cards", "The pick list behind an expense's Paid with box: one row per card, unique on its name case-insensitively, with an active flag so a retired card can be hidden without being deleted."],
     ],
   },
   {

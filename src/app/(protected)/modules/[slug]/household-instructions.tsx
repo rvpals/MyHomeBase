@@ -28,8 +28,8 @@ function MainInstructions() {
             what went into it, how you made it, and how many times you have.
           </li>
           <li>
-            <strong className="text-ink">HSA Tracker</strong> — not built yet. A
-            placeholder so the section exists while the rest is designed.
+            <strong className="text-ink">HSA Tracker</strong> — every HSA expense and its
+            receipt, with what is still to reimburse.
           </li>
         </ul>
       </Section>
@@ -188,10 +188,112 @@ function ImportInstructions() {
 
 function HsaInstructions() {
   return (
-    <p className="text-sm text-muted">
-      Not built yet — this section is a placeholder. Nothing is stored for it, and no
-      setting here affects anything else in the module.
-    </p>
+    <>
+      <p className="text-sm text-muted">
+        One row per HSA expense — a receipt you are holding on to, whether or not it has
+        been reimbursed yet. Nothing here is totalled against a yearly limit; the amount
+        is simply what that receipt was for.
+      </p>
+      <Section title="Adding an expense">
+        <ul className="flex list-disc flex-col gap-1 pl-5">
+          <li>
+            <strong className="text-ink">Date and Time</strong> start at the moment you
+            open the form. Change them to record a past expense under its real date.
+          </li>
+          <li>
+            <strong className="text-ink">Product or service</strong> offers what you have
+            entered before and accepts a new one typed in.
+          </li>
+          <li>
+            <strong className="text-ink">Paid with</strong> is a pick list of the cards you
+            set up under HSA Tracker → Cards.
+          </li>
+          <li>
+            <strong className="text-ink">Date of service</strong> is optional — use it when
+            a bill arrives after the visit.
+          </li>
+          <li>
+            <strong className="text-ink">Reimbursed</strong> starts as No.
+          </li>
+        </ul>
+      </Section>
+      <Section title="Receipts">
+        <ul className="flex list-disc flex-col gap-1 pl-5">
+          <li>
+            On a phone, <strong className="text-ink">Take photo</strong> opens the camera
+            straight away — photograph the receipt and it becomes the attachment.{" "}
+            <strong className="text-ink">Attach receipt</strong> picks an existing photo or
+            a PDF instead, and is the only button on a desktop.
+          </li>
+          <li>
+            A large photo is shrunk to a readable size before it is saved; a PDF can be up
+            to 2.5 MB. Click the file name in the list to open it.
+          </li>
+          <li>
+            The file is saved in the receipt folder, under a folder for the year of the
+            expense&apos;s date. An administrator sets that folder under{" "}
+            <strong className="text-ink">Configuration</strong>; until one is set, receipts
+            cannot be attached.
+          </li>
+          <li>
+            Deleting an expense, or removing its receipt, also{" "}
+            <strong className="text-ink">deletes the file</strong>. You are warned first.
+          </li>
+        </ul>
+      </Section>
+      <Section title="Several at once">
+        <p>
+          Tick rows to mark them reimbursed (or not) together, or to delete them. The grid
+          footer totals whatever is currently filtered.
+        </p>
+      </Section>
+    </>
+  );
+}
+
+function ConfigurationInstructions() {
+  return (
+    <>
+      <p className="text-sm text-muted">
+        The Household module&apos;s settings. Only an administrator can open this screen.
+      </p>
+      <Section title="HSA receipt folder">
+        <ul className="flex list-disc flex-col gap-1 pl-5">
+          <li>
+            A folder <strong className="text-ink">on the machine running MyHomeBase</strong>,
+            not on your phone — which is why Browse lists the server&apos;s own folders.
+          </li>
+          <li>
+            Inside it, one folder per year is created as it is needed, and each receipt is
+            filed under the year of its expense&apos;s date. A receipt is named from the
+            date, payee and amount, so correcting any of those renames the file — and
+            changing the year moves it.
+          </li>
+          <li>
+            <strong className="text-ink">Check access</strong> writes a probe file and
+            deletes it, which is the only honest test of a network share. Saving runs the
+            same check first and refuses a folder that fails it.
+          </li>
+          <li>
+            Until a folder is set, receipts cannot be attached. Expenses can still be
+            recorded.
+          </li>
+          <li>
+            Changing the folder does not move receipts already filed. Each one is stored
+            relative to the folder, so point it at a copy that still holds the year
+            folders, or move them across yourself.
+          </li>
+        </ul>
+      </Section>
+      <Section title="Cards">
+        <p>
+          The cards offered in an expense&apos;s <strong className="text-ink">Paid with</strong>{" "}
+          box. An expense remembers the card&apos;s name as it was when you entered it, so
+          renaming or deleting a card never changes an expense already recorded. Hide a
+          card to stop offering it without removing it from the list.
+        </p>
+      </Section>
+    </>
   );
 }
 
@@ -202,6 +304,7 @@ export function HouseholdInstructions({ section }: { section: HouseholdSection }
       {section === "recipes" && <RecipesInstructions />}
       {section === "recipes-import" && <ImportInstructions />}
       {section === "hsa" && <HsaInstructions />}
+      {section === "configuration" && <ConfigurationInstructions />}
     </div>
   );
 }

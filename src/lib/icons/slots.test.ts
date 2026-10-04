@@ -146,7 +146,7 @@ describe("sectionSlotId", () => {
       tools: ["main", "todo", "sqlite-browser", "csv-browser"],
       // The two `-group` ids are the tree's group headings (Recipes, HSA Tracker),
       // which `SectionPanel` derives a slot for exactly as it does for a real row.
-      household: ["main", "recipes", "recipes-import", "hsa", "recipes-group", "hsa-group"],
+      household: ["main", "recipes", "recipes-import", "hsa", "configuration", "recipes-group", "hsa-group"],
       admin: [
         "configuration", "configuration-modules", "configuration-application",
         // Under the Display Settings group, but the ids stayed `configuration-*` so

@@ -22,7 +22,7 @@
  * them again, inside the Summary tab, because the widget list can no longer
  * express that preference.
  */
-export const DASHBOARD_WIDGET_IDS = ["indexes", "summary"] as const;
+export const DASHBOARD_WIDGET_IDS = ["indexes", "currencies", "summary"] as const;
 
 export type DashboardWidgetId = (typeof DASHBOARD_WIDGET_IDS)[number];
 
@@ -39,6 +39,12 @@ export const DASHBOARD_WIDGET_INFO: Record<DashboardWidgetId, DashboardWidgetInf
     label: "Indexes",
     description:
       "The major market benchmarks — S&P 500, NASDAQ, Dow, Russell, VIX, gold, silver, oil, the 10-year yield, the dollar index and bitcoin. Fetched on demand by the card's own Refresh all button, never on page load.",
+  },
+  currencies: {
+    id: "currencies",
+    label: "Foreign Currencies",
+    description:
+      "What one US dollar buys, across eleven currencies — yuan, euro, sterling, yen, the Canadian and Australian dollars, the Swiss franc, won, Hong Kong dollar, rupee and Taiwan dollar. Fetched on demand by the card's own Refresh button, never on page load.",
   },
   summary: {
     id: "summary",

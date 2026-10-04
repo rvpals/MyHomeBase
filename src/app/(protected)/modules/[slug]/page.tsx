@@ -76,7 +76,7 @@ function ModuleBody({
   }
 
   if (slug === HOUSEHOLD_MODULE_SLUG) {
-    return <HouseholdSection section="main" />;
+    return <HouseholdSection section="main" isAdmin={isCurrentUserAdmin} />;
   }
 
   return (

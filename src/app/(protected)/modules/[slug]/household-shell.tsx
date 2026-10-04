@@ -83,11 +83,25 @@ export async function HouseholdShell({ children }: { children: ReactNode }) {
   // Neither heading carries an `href` — `SectionPanel` renders a node with children
   // as a label rather than a link, and drops it from the compact sheet entirely, so
   // giving one a route would be a destination nothing reaches.
+  //
+  // Configuration is the exception to "ungrouped sections first": it sits AFTER both
+  // groups, the usual place for settings.
+  //
+  // It is admin-only, and this hides it from the COMPACT bar only. The desktop tree is
+  // built by `getNavTreeData` from `moduleSectionSource`, whose `sectionsFor(slug)` is
+  // given no reader — so a non-admin still sees the row there, and clicking it gets a
+  // 404 from `household-section.tsx`. Filtering it out of both would mean threading the
+  // reader through the shared `SectionSource` port, which every module would feel; the
+  // page check is the real guard either way.
   const grouped = new Set<string>([...HOUSEHOLD_RECIPE_SECTIONS, ...HOUSEHOLD_HSA_SECTIONS]);
+  const isConfiguration = (section: HouseholdSection) => section === "configuration";
   const sections: SectionNode[] = [
-    ...HOUSEHOLD_SECTIONS.filter((section) => !grouped.has(section)).map(toNode),
+    ...HOUSEHOLD_SECTIONS.filter(
+      (section) => !grouped.has(section) && !isConfiguration(section),
+    ).map(toNode),
     { ...HOUSEHOLD_GROUPS.recipes, children: HOUSEHOLD_RECIPE_SECTIONS.map(toNode) },
     { ...HOUSEHOLD_GROUPS.hsa, children: HOUSEHOLD_HSA_SECTIONS.map(toNode) },
+    ...(isAdmin(currentUser) ? HOUSEHOLD_SECTIONS.filter(isConfiguration).map(toNode) : []),
   ];
 
   // This module's background (migrations 0064, 0116, 0117): its own upload, a

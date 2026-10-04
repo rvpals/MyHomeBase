@@ -49,6 +49,7 @@ import { savedSqlCommand } from "./saved-sql";
 import { menuItemsCommand } from "./menu-items";
 import { toolbarsCommand } from "./toolbars";
 import { tableUsageCommand } from "./table-usage";
+import { hsaCommand } from "./hsa";
 import { recipesCommand } from "./recipes";
 import { takeAttendanceCommand } from "./take-attendance";
 import { todoCommand } from "./todo";
@@ -105,6 +106,7 @@ const commands: Record<string, Command> = {
   calculator: calculatorCommand,
   scratchpad: scratchpadCommand,
   recipes: recipesCommand,
+  hsa: hsaCommand,
   todo: todoCommand,
   "take-attendance": takeAttendanceCommand,
   "attendance-report": attendanceReportCommand,

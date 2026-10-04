@@ -107,6 +107,11 @@ export const TREE_ICON_NAMES = [
   // numbers belong to, at its landing page. A button, so it is in `ALWAYS_CLASSIC` and
   // no icon slot points at it.
   "rocket",
+  // Journal's locked-entry marker. A padlock rather than reusing `shield`: the
+  // shield reads as "protected by something", the padlock as "fastened shut by
+  // you", and the lock is a toggle the reader sets by hand. A *state* glyph, so
+  // it is in `ALWAYS_CLASSIC` and no icon slot points at it.
+  "lock",
 ] as const;
 
 /** One concept `TreeIcon` can draw. */

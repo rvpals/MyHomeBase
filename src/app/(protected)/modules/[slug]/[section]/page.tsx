@@ -129,6 +129,7 @@ function renderSection(
     return (
       <HouseholdSection
         section={section}
+        isAdmin={isAdmin}
         search={recipeSearch}
         category={recipeCategory}
         tag={recipeTag}

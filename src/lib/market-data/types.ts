@@ -8,6 +8,29 @@ export interface Quote {
   dividendRateCents: number;
 }
 
+/**
+ * One foreign-exchange rate, as a plain number rather than cents.
+ *
+ * **Why this is not a `Quote`.** Every other price in this module is carried in
+ * integer cents, which is right for something priced in dollars and wrong for a
+ * rate: EUR/USD quotes to four decimals, and rounding 1.0847 to 108 cents would
+ * throw away the two digits that actually move. So `rate` is a float, and the
+ * rounding decision belongs to whoever displays it.
+ *
+ * Yahoo quotes these as `USDEUR=X`-style symbols through the same chart endpoint
+ * an equity uses — no crumb, no cookie, no authenticated call.
+ */
+export interface FxQuote {
+  /** The provider's symbol, e.g. `USDCNY=X`. */
+  symbol: string;
+  /** Units of the quote currency per one unit of the base. */
+  rate: number;
+  /** The previous session's close, for the day move. 0 when the provider omits it. */
+  previousClose: number;
+  /** The provider's own name for the pair, e.g. "USD/CNY". */
+  shortName?: string;
+}
+
 /** A corporate action or a reported quarter — the dated things that move a price. */
 export type MarketEventKind = "dividend" | "split" | "earnings";
 

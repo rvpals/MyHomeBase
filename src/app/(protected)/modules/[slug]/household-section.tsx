@@ -1,12 +1,22 @@
+import { notFound } from "next/navigation";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { listNamedMappings } from "@/lib/csv-import";
-import { listRecipeCategories, listRecipeTags, listRecipes } from "@/lib/household";
+import {
+  listHsaCards,
+  listHsaExpenses,
+  listHsaProductServices,
+  listRecipeCategories,
+  listRecipeTags,
+  listRecipes,
+} from "@/lib/household";
 import { deps } from "@/lib/wiring";
+import { HouseholdConfigurationView } from "./household-configuration-view";
 import { HouseholdHsaView } from "./household-hsa-view";
 import { HouseholdImportView } from "./household-import-view";
 import { HouseholdInstructions } from "./household-instructions";
 import { HouseholdMainView } from "./household-main-view";
 import { HouseholdRecipesView } from "./household-recipes-view";
+import { configuredHsaReceiptRoot } from "./household-receipt-root";
 import { HouseholdShell } from "./household-shell";
 import {
   HOUSEHOLD_SECTION_INFO,
@@ -19,16 +29,24 @@ import {
 
 export async function HouseholdSection({
   section,
+  isAdmin,
   search,
   category,
   tag,
 }: {
   section: HouseholdSectionName;
+  /** Configuration is admin-only — it sets the receipt folder and lists the server's own folders. */
+  isAdmin: boolean;
   /** The recipe list's filters, parsed from search params by the route. */
   search?: string;
   category?: string;
   tag?: string;
 }) {
+  // The real guard, not the hidden nav row: a non-admin typing the URL gets a 404
+  // rather than the folder browser. The actions behind it authorise again on their
+  // own, because an action is its own endpoint.
+  if (section === "configuration" && !isAdmin) notFound();
+
   const info = HOUSEHOLD_SECTION_INFO[section];
 
   // Loaded only for the section that renders them. The home screen shows counts,
@@ -67,7 +85,10 @@ export async function HouseholdSection({
         </CollapsibleCard>
 
         <div className="mt-4">
-          {section === "main" && <HouseholdMainView recipeCount={recipes.length} />}
+          {section === "main" && <HouseholdMainView
+              recipeCount={recipes.length}
+              hsaCount={listHsaExpenses(deps.hsaRepo).length}
+            />}
           {section === "recipes" && (
             <HouseholdRecipesView
               recipes={recipes}
@@ -79,7 +100,20 @@ export async function HouseholdSection({
             />
           )}
           {section === "recipes-import" && <HouseholdImportView namedMappings={importMappings} />}
-          {section === "hsa" && <HouseholdHsaView />}
+          {section === "hsa" && (
+            <HouseholdHsaView
+              expenses={listHsaExpenses(deps.hsaRepo)}
+              cards={listHsaCards(deps.hsaRepo)}
+              productServices={listHsaProductServices(deps.hsaRepo)}
+              receiptRootSet={configuredHsaReceiptRoot() !== ""}
+            />
+          )}
+          {section === "configuration" && (
+            <HouseholdConfigurationView
+              receiptRoot={configuredHsaReceiptRoot()}
+              cards={listHsaCards(deps.hsaRepo)}
+            />
+          )}
         </div>
       </div>
     </HouseholdShell>

@@ -2,7 +2,7 @@
 
 Reference for driving MyHomeBase from a terminal.
 
-**Part 1** documents the 58 commands that work today.
+**Part 1** documents the 59 commands that work today.
 **Part 2** is the full inventory of library use-cases — what a command *could* call.
 **Part 3** summarises the coverage gap.
 
@@ -91,6 +91,7 @@ alongside its row here.
 | [`scan-music`](#scan-music) | write | no (reads the music share) |
 | [`music-library`](#music-library) | read | no |
 | [`recipes`](#recipes) | read (writes with `--add`/`--made`/`--delete`) | no |
+| [`hsa`](#hsa) | read (writes with `--add`/`--reimburse`/`--delete`/the card flags) | no |
 | [`todo`](#todo) | read (writes with `--add`/`--done`/`--delete`/the list flags) | no |
 | [`menu-items`](#menu-items) | read (writes with `set`/`reset`) | no |
 | [`toolbars`](#toolbars) | read (writes with `add`/`set`/`delete`/the item flags) | no |
@@ -3478,3 +3479,52 @@ names no menu item, or when `add-item` is given none of
 Source: [src/cli/toolbars.ts](src/cli/toolbars.ts)
 
 ---
+
+## `hsa`
+
+The Household module's HSA Tracker from a terminal — the same use-cases the HSA Tracker
+screen drives.
+
+```
+npm run cli -- hsa
+npm run cli -- hsa --show 3
+npm run cli -- hsa --add "Prescription" --amount 42.50 --payee CVS --type Pharmacy
+npm run cli -- hsa --add "Eye exam" --amount 120 --payee "Dr. Lee" --type Vision --date 2026-09-01 --paid-with "Visa 1234" --receipt ./receipt.jpg
+npm run cli -- hsa --reimburse 3,4
+npm run cli -- hsa --unreimburse 3
+npm run cli -- hsa --delete 3,4
+npm run cli -- hsa --cards
+npm run cli -- hsa --add-card "Visa 1234"
+npm run cli -- hsa --delete-card 2
+npm run cli -- hsa --receipt-root
+npm run cli -- hsa --set-receipt-root //NAS_DS223/app/myhomebase/hsa-receipts
+```
+
+**Input** — with no flags it lists every expense, newest first. `--add` takes the product
+or service as its value, plus `--amount` (dollars), `--payee` and `--type` (Pharmacy,
+Medical, Dental, Vision, Transportation, Dependent Care or Other), and optionally
+`--date`, `--time` (both default to now, as the web form does), `--service-date`,
+`--paid-with`, `--note`, `--reimbursed yes` and `--receipt <path>`. The receipt's type is
+read from its extension (PNG, JPEG, WebP, GIF, PDF) and the file is filed in the
+receipt folder under the year of the expense's date. It is stored at full size — the
+browser is what shrinks a phone photo, and a file named on the command line is usually
+already the right size. `--receipt-root` prints the configured folder;
+`--set-receipt-root` sets it, checking it is writable first, and a blank value clears it.
+With no folder set, `--receipt` is refused.
+
+**Calls** — `listHsaExpenses`, `getHsaExpense`, `createHsaExpense`, `setHsaReceipt`,
+`setHsaReimbursed`, `deleteHsaExpenses`, `listHsaCards`, `createHsaCard`,
+`deleteHsaCard`, `getHouseholdSettings` and `setHsaReceiptRoot`, through `@/lib/household` — the same zod schema the form uses, so a zero
+amount, a third decimal or an unknown type is rejected identically in both.
+
+**Output** — one line per expense: id, date, amount, `reimbursed` or `OPEN`, whether a
+receipt is attached, and product — payee (type). `--show` prints the whole record.
+
+**Deleting removes the receipt file too**, as the screen does. A file that could not be
+removed is named on stderr and sets exit 1, because the rows are already gone and
+retrying the delete would not fix it.
+
+**Exit** — 0 normally, including an empty list; 1 when `--show` names an id that does
+not exist, a schema rejects a value, or a receipt file could not be deleted.
+Source: [src/cli/hsa.ts](src/cli/hsa.ts)
+

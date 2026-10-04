@@ -1932,9 +1932,106 @@ since a touch screen has no hover and they would otherwise be unreachable. No
 
 **Household** (`household`) — the household's own paperwork, as against any one
 person's. Two halves: **Recipes** (built, with its own CSV importer) and
-**HSA Tracker** (a placeholder).
+**HSA Tracker** (built, migrations 0128 and 0129).
 Migrations 0118 (tables) and 0119 (the module row); library module
-`src/lib/household`; tables `hsh_recipes` and `hsh_recipe_tags`.
+`src/lib/household`; tables `hsh_recipes`, `hsh_recipe_tags`, `hsh_hsa_expenses` and
+`hsh_hsa_cards`.
+
+**The HSA Tracker is a ledger of receipts, not an account balance.** One section under
+the HSA Tracker heading — **Receipts** (slug `hsa`) — plus a module-level
+**Configuration** section holding the receipt folder and the card list.
+There is deliberately no yearly limit, contribution or running total beyond the grid's
+own footer sum — the point is to hold receipts for as long as you like and know which
+are still unreimbursed. Choices worth knowing:
+
+- **Its own repository and port** (`HsaRepository`, `SqliteHsaRepository`, wired as
+  `deps.hsaRepo`), not more methods on `HouseholdRepository`: the two halves share a
+  table prefix, not behaviour.
+- **Amount is integer cents, entered as dollars.** The zod schema converts it, so the CLI
+  and the form accept the same strings; zero, negatives and a third decimal are refused
+  rather than silently rounded.
+- **"Paid with" stores the card's name, not its id.** Renaming or deleting a card in
+  Cards never rewrites or orphans an old receipt; the cost is that a rename doesn't flow
+  back into history. A card can be hidden instead of deleted. The editor still shows a
+  no-longer-listed card as the selected value, so opening an old expense doesn't blank it.
+- **"Receipt attached?" is derived** from `receipt_path`, never a Y/N column that could
+  disagree with the file it describes.
+- **Receipt files live on the NAS, not in the database** (migration 0129). They are filed
+  as `<folder>/<YYYY>/<YYYY-MM-DD>_<Payee>_<$Amount>_<id>.<ext>` —
+  `2026/2026-10-03_CVS_$42.50_17.jpg` — the year taken from the
+  expense's date, under the folder set in Configuration. `receipt_path` stores the path
+  **relative** to that folder, so moving the archive is one setting rather than a rewrite
+  of every row. Served by `/api/household/hsa/[id]/receipt`, which checks the Household
+  module (not just a session — it's health and money paperwork).
+- **The file's name follows the record, and the folder follows the year.** Editing the
+  Date, Payee or Amount renames the file; a new year moves it. The move happens *before*
+  the database write and is undone if that write fails, so the row and the folder can
+  never disagree. A name already taken by a stray file gets `-2`, `-3`.
+- **Deleting an expense or removing a receipt deletes the file**, after a warning that
+  says so. Rows are written first and files second: a leftover file is a visible orphan
+  in a folder, where a row pointing at a deleted file would be a broken link on screen.
+  A file that cannot be deleted is *reported*, not thrown.
+- **With no folder set, attaching a receipt is refused** — there is no fallback to the
+  database, so receipts live in exactly one place. Expenses can still be recorded.
+- **A large phone photo is shrunk in the browser** (`household-hsa-receipt-file.ts`) to
+  2000px of JPEG, because a server action's body is capped at 4 MB and a camera JPEG is
+  often bigger. 2000 rather than a recipe picture's 800: a receipt has to stay legible
+  down to the line items. This is the *only* resize — the server files what it is given,
+  and re-checks the type, the 2.5 MB cap and a PDF's `%PDF-` signature.
+- **Two file inputs, because one cannot be both.** **Take photo** carries
+  `capture="environment"` and opens the rear camera directly — the one-tap path for
+  photographing a receipt in your hand — and is hidden above 1024px, since a desktop
+  browser ignores `capture` and would just show a second file dialog. **Attach receipt**
+  carries no `capture`, so a phone offers Take Photo, Photo Library and Files in one
+  sheet, and it is the only one of the two that accepts a PDF. The camera button is
+  hidden by a wrapping `span`, not a `lg:hidden` on the `Button`: `Button` concatenates
+  `className` after its own `inline-flex`, so a display override there is a specificity
+  argument worth not having.
+- **Product or Service** is a pick-or-type box fed by `SELECT DISTINCT`, with no catalog
+  table — the same pattern as a recipe's Category.
+- **The list is one grid under a `ViewModeSwitch`: All, or By year.** Latest year first,
+  each year's rows newest first, and one year open at a time — several expanded grids
+  would each carry their own toolbar, paging and footer total, at which point nothing
+  reads as a summary. The same call the Expense Transactions screen makes, and the same
+  reason it is a switch rather than a "By year" button: every option answers the same
+  question about the same rows, so a one-way button would leave no way back. A year
+  header carries its count, how many receipts it holds, what is still unreimbursed and
+  the year's total. The grouping is pure (`src/lib/household/hsa-grouping.ts`), and
+  reads the year off the stored `YYYY-MM-DD` string rather than a `Date` — constructing
+  one west of UTC would file a 1 January expense under the previous year. A row whose
+  date is unreadable groups under "No usable date" and sorts last rather than being
+  dropped: it is still money.
+- **A row opens a purpose-built viewer**, not `DataGrid`'s generic record modal (which is
+  turned off). The receipt gets its own block there — an attached/none indicator and the
+  stored path as a link that opens the file. Nothing loads the bytes until it is clicked:
+  a receipt is read full size or not at all, and a PDF cannot preview in an `img`. The
+  grid shows the same thing as **one** Receipt column (◉ Open, or a dash) rather than the
+  "Receipt attached?" Yes/No plus a separate file-name link it started as — both answered
+  one question and the pair cost width on every row. Its sort/filter/export `value` is
+  still "Yes"/"No", so the column behaves exactly as the flag did.
+- **Date and Time are two fields**, seeded from the browser's clock when the dialog opens
+  and editable, so a past receipt is entered under its real date.
+
+**Configuration is admin-only, and is a module-level section rather than a third nav
+level.** It carries the receipt folder and the Cards list. Three choices worth knowing:
+
+- **The folder is browsed on the server, not the client.** A browser's own file dialog
+  never hands the page a real path, and the folder has to be one the *server* can write
+  to anyway — so `browseFoldersAction` walks the server's folders one level at a time.
+  That is also why the section is admin-only: the browser lists every folder the server
+  can reach, which on the NAS is the whole share. The page `notFound()`s for a non-admin
+  and every action behind it calls `requireAdmin`; hiding the nav row is not the guard.
+- **Saving checks by writing.** `checkRoot` writes a probe file and deletes it rather
+  than trusting `access(W_OK)`, which lies on an SMB share and under a Synology ACL. A
+  folder that fails is refused rather than saved and discovered on the first receipt.
+- **The setting is a `sys_module_settings` row** (`hsa_receipt_root`), like the Journal's
+  `photo_root`, so it needed no migration. Every stored path is resolved through
+  `resolveInside`, which refuses anything escaping the folder — the guard between a
+  crafted `receipt_path` and the rest of the share.
+
+Reachable from the CLI as `npm run cli -- hsa` (list, `--show`, `--add`, `--reimburse`,
+`--delete`, `--cards`, `--add-card`, `--delete-card`, `--receipt-root`,
+`--set-receipt-root`).
 
 **The two halves are group headings, not a third navigation level.** There is nothing
 between a module and a section here, so "submodules" are `children` nodes in the tree

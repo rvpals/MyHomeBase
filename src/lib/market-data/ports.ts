@@ -1,4 +1,4 @@
-import type { MarketEvent, PricePoint, Quote, RawQuoteSummary } from "./types";
+import type { FxQuote, MarketEvent, PricePoint, Quote, RawQuoteSummary } from "./types";
 
 export interface MarketDataClient {
   getQuote(ticker: string): Promise<Quote>;
@@ -38,4 +38,23 @@ export interface QuoteSummaryClient {
    * reported as missing sections, not as a failure.
    */
   getQuoteSummary(ticker: string): Promise<RawQuoteSummary>;
+}
+
+/**
+ * Foreign-exchange rates.
+ *
+ * A fourth port for the same reason the second and third exist: one caller wants
+ * rates and nothing else, and folding this into `MarketDataClient` would make
+ * every existing fake implement a method it never calls. `YahooFinanceClient`
+ * implements all four.
+ *
+ * Deliberately **not** served by `MarketDataClient.getQuote`. That method rounds
+ * to integer cents and runs a dividend-rate fallback when the field is missing —
+ * which it always is for a currency pair — so reusing it would both destroy the
+ * precision a rate needs and fire an authenticated round-trip per symbol for a
+ * number that does not exist. See `FxQuote`.
+ */
+export interface ExchangeRateClient {
+  /** Throws when the provider can't be reached or returns nothing for the pair. */
+  getRate(symbol: string): Promise<FxQuote>;
 }
