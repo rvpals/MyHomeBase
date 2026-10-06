@@ -1370,6 +1370,112 @@ describe("getAttendanceReportById action tallies", () => {
   });
 });
 
+describe("buildAttendanceDetailReport action legend", () => {
+  /** A term where Ava is late once and Ben earns credit once. */
+  function withActions() {
+    const seeded = seededRepo();
+    const { late, extraCredit } = seedActions(seeded.repo);
+
+    saveAttendance(seeded.repo, {
+      classId: seeded.mathClass.id,
+      attendanceDate: "2026-08-17",
+      recordedByUserId: 1,
+      entries: [
+        { studentId: seeded.ava.id, status: "present", actionIds: [late.id] },
+        { studentId: seeded.ben.id, status: "present", actionIds: [extraCredit.id] },
+        { studentId: seeded.chi.id, status: "present" },
+      ],
+    });
+
+    return { ...seeded, late, extraCredit };
+  }
+
+  it("lists every action the grid shows, with its catalog description", () => {
+    const { repo, mathClass, late } = withActions();
+
+    const { actionLegend } = buildAttendanceDetailReport(repo, mathClass.id);
+
+    expect(actionLegend).toHaveLength(2);
+    expect(actionLegend[0]).toMatchObject({
+      actionId: late.id,
+      code: "L",
+      name: "Late",
+      description: "Being late to class.",
+    });
+  });
+
+  it("leaves the description empty for an action that has none", () => {
+    const { repo, mathClass } = withActions();
+
+    const entry = buildAttendanceDetailReport(repo, mathClass.id).actionLegend.find(
+      (candidate) => candidate.code === "EC",
+    );
+    // Empty, not undefined and not the name repeated -- the view drops the
+    // dash and prints the name alone.
+    expect(entry?.description).toBe("");
+  });
+
+  it("orders by catalog sequence, so the legend reads like the picker", () => {
+    const { repo, mathClass } = withActions();
+
+    expect(
+      buildAttendanceDetailReport(repo, mathClass.id).actionLegend.map((e) => e.code),
+    ).toEqual(["L", "EC"]);
+  });
+
+  it("omits an action the catalog holds but no one was given", () => {
+    const { repo, mathClass, ava } = seededRepo();
+    seedActions(repo);
+
+    saveAttendance(repo, {
+      classId: mathClass.id,
+      attendanceDate: "2026-08-17",
+      recordedByUserId: 1,
+      entries: [{ studentId: ava.id, status: "present" }],
+    });
+
+    // A line explaining a code that appears nowhere on the sheet is noise --
+    // the same rule actionTallies follows.
+    expect(buildAttendanceDetailReport(repo, mathClass.id).actionLegend).toEqual([]);
+  });
+
+  it("still explains a retired action, since the term's grid still shows it", () => {
+    const { repo, mathClass, late } = withActions();
+
+    setStudentActionActive(repo, late.id, false);
+
+    // Retiring an action takes it out of the picker, not out of the days that
+    // already recorded it -- so its code is still printed and still needs a key.
+    const entry = buildAttendanceDetailReport(repo, mathClass.id).actionLegend.find(
+      (candidate) => candidate.code === "L",
+    );
+    expect(entry?.description).toBe("Being late to class.");
+  });
+
+  it("keeps the recorded code and name when the catalog row has gone", () => {
+    const { repo, mathClass, late } = withActions();
+
+    // Through the port, not `deleteStudentAction` -- that use-case deliberately
+    // refuses once a session has recorded the action. This is the state a direct
+    // SQL delete or a restored-from-older-backup catalog leaves behind, and the
+    // legend has to stay readable in it rather than throw.
+    repo.deleteStudentAction(late.id);
+
+    const entry = buildAttendanceDetailReport(repo, mathClass.id).actionLegend.find(
+      (candidate) => candidate.actionId === late.id,
+    );
+    // The cells still print "L", so the legend must still explain "L". Only the
+    // description is lost with the catalog row.
+    expect(entry).toMatchObject({ code: "L", name: "Late", description: "" });
+  });
+
+  it("is empty for a class with no attendance at all", () => {
+    const { repo, mathClass } = seededRepo();
+
+    expect(buildAttendanceDetailReport(repo, mathClass.id).actionLegend).toEqual([]);
+  });
+});
+
 describe("deleteAttendanceRecords", () => {
   /** Three registers on consecutive days, for the batch cases below. */
   function withThreeRegisters() {

@@ -98,6 +98,64 @@ export type UpdateEntryInput = z.input<typeof updateEntrySchema>;
 // present. This is the fully-resolved shape the repository persists.
 export type EntryWriteData = z.output<typeof createEntrySchema>;
 
+// --- Bulk edit (Entries, Main and Log tabs) ----------------------------------
+//
+// A selection edit is deliberately NOT `updateEntrySchema`: that one replaces the
+// whole aggregate, so driving a bulk edit through it would need every untouched
+// field resent per row and would clobber locations. This schema instead names the
+// *few* fields a selection may change, and every one is optional — only what the
+// caller sends is written. Date, time and title are absent on purpose: they
+// identify an entry, and setting one across a selection would collapse rows the
+// importer's duplicate check treats as distinct.
+
+/** How a bulk edit folds a name list into what each entry already carries. */
+export const bulkNameModeSchema = z.enum(["add", "remove", "replace"]);
+
+export type BulkNameMode = z.infer<typeof bulkNameModeSchema>;
+
+/**
+ * One name-list change: a mode and the names it applies.
+ *
+ * `names` may be empty only for `replace` — "replace with nothing" is a
+ * meaningful instruction (clear the field), while "add nothing" and "remove
+ * nothing" are no-ops that almost certainly mean the reader forgot to type.
+ */
+export const bulkNameChangeSchema = z
+  .object({
+    mode: bulkNameModeSchema,
+    names: z.array(z.string()).default([]),
+  })
+  .refine((change) => change.mode === "replace" || change.names.length > 0, {
+    message: "Name at least one category or tag, or switch the mode to Replace.",
+  });
+
+export type BulkNameChangeInput = z.input<typeof bulkNameChangeSchema>;
+export type BulkNameChangeData = z.output<typeof bulkNameChangeSchema>;
+
+export const bulkEntryEditSchema = z
+  .object({
+    categories: bulkNameChangeSchema.optional(),
+    tags: bulkNameChangeSchema.optional(),
+    placeName: z.string().trim().optional(),
+  })
+  .refine((changes) => Object.values(changes).some((value) => value !== undefined), {
+    message: "Enable at least one field to change.",
+  });
+
+export type BulkEntryEditInput = z.input<typeof bulkEntryEditSchema>;
+export type BulkEntryEditData = z.output<typeof bulkEntryEditSchema>;
+
+/**
+ * The ids a bulk edit or bulk delete applies to.
+ *
+ * Non-empty for the same reason `recycle.ts`'s list is: every caller is acting on
+ * a reader's tick-boxes, so an empty array means the UI lost the selection — a
+ * bug worth surfacing rather than a no-op worth hiding.
+ */
+export const entryIdsSchema = z
+  .array(z.number().int().positive())
+  .min(1, "Select at least one entry.");
+
 export const journalCategorySchema = z.object({
   name: z.string().min(1),
   description: z.string(),
@@ -118,6 +176,29 @@ export type UpsertCategoryInput = z.infer<typeof upsertCategorySchema>;
 export const upsertTagSchema = upsertCategorySchema;
 
 export type UpsertTagInput = z.infer<typeof upsertTagSchema>;
+
+/**
+ * Folding several categories/tags into one name — the Meta Data card's bulk
+ * Merge.
+ *
+ * `target` is **trimmed before the length check**, which `upsertCategorySchema`
+ * deliberately isn't: that one mirrors a text input the reader can see and fix,
+ * while this name is about to be written onto every entry carrying a source, so
+ * a target of `"   "` must fail here rather than create an all-whitespace
+ * category nothing can select.
+ *
+ * `sources` allows a single name on purpose — merging one category into a new
+ * name is a *rename*, which is the other thing this control is for.
+ */
+export const mergeTaxonomySchema = z.object({
+  sources: z.array(z.string().min(1)).min(1),
+  target: z
+    .string()
+    .transform((value) => value.trim())
+    .refine((value) => value.length > 0, { message: "Enter a name to merge into." }),
+});
+
+export type MergeTaxonomyInput = z.infer<typeof mergeTaxonomySchema>;
 
 // --- Calendar view -----------------------------------------------------------
 //

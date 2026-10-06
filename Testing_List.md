@@ -146,6 +146,182 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-10-05 — Release (toolbar textures, multi-file HSA receipts, attendance print, Icons filter)
+
+**Migration 0130 must be applied on the NAS first** — without it the Toolbars screen
+fails with "no such column" (`texture_id`). Items 12–16 are phone-only. The Journal work
+in this release has its own sections directly below.
+
+- [ ] **1.** Admin → Display Settings → Toolbars: a toolbar has a background-texture grid fed by the App Texture library, and an opacity slider
+- [ ] **2.** Picking a texture shows it tiled behind that bar's shortcuts, with the glyphs still readable above it
+- [ ] **3.** Two bars can show the same picture at different strengths
+- [ ] **4.** The texture still shows under the **emboss** chrome style (not just flat)
+- [ ] **5.** With an empty library the picker says where pictures come from instead of offering an upload
+- [ ] **6.** Deleting a library picture a bar used leaves that bar plain — no broken image
+- [ ] **7.** HSA: attaching **several** files at once saves one receipt, and the viewer names every file in it
+- [ ] **8.** HSA: removing one row from the dropzone's list re-packs the rest; emptying it saves nothing
+- [ ] **9.** HSA: a single attached file is stored byte-for-byte (open it and compare)
+- [ ] **10.** HSA: a receipt over 15 MB is refused with a message in MB; one near 10 MB uploads (the 16 MB body limit)
+- [ ] **11.** HSA: Date and Time start empty; "Use current date & time" fills them; Payee and Product or Service open a list on focus
+- [ ] **12.** HSA (phone): the dropzone offers the photo library and Files, and the camera shot is shrunk
+- [ ] **13.** Attendance → Reports: the term report prints landscape on one sheet with ruled cells and the date header repeating
+- [ ] **14.** Attendance: an **Action codes** legend sits under the grid and lists only codes that appear
+- [ ] **15.** Attendance (phone): the legend stacks and the grid still scrolls sideways
+- [ ] **16.** Info marks (HelpNote) are a small accent glyph with a thumb-sized tap area on a phone and no oversized hit box on desktop
+- [ ] **17.** Admin → Configuration → Icons: the filter box matches name, location, id and concept across all groups, and the tabs reappear when cleared
+- [ ] **18.** Journal: the category/tag pickers on the entry form (page and modal) filter, pick and create from one box
+
+---
+
+## 2026-10-05 — Journal Review Data: BusyOverlay on the long writes
+
+No migration, no new component — this wires the existing `BusyOverlay` into
+**Journal → Data Management → Review Data**, on the card "Review multiple entries on
+same date". Five operations now dim the page while they run, each with its own message
+and second line.
+
+The one to watch is **saving a merged entry**: that write lives inside
+`JournalEntryForm`, which got a new optional `onSavingChange` prop to report its busy
+state out. The **New Entry** section uses the same form *without* that prop, so item 8
+is the regression check.
+
+- [ ] **1.** Flipping **"Review only Log entries"** dims the page and says "Finding dates with several Log entries…"; unflipping says "several entries…"
+- [ ] **2.** **Delete checked** dims the page, names the count ("Moving 3 entries to the recycle bin…") and mentions it's restorable
+- [ ] **3.** **Lock & exclude from review** dims the page and says it's regrouping afterwards
+- [ ] **4.** **Merge → Save merged entry** dims the page — including the merge dialog itself, which must **not** stay lit above the scrim
+- [ ] **5.** The merge's follow-up **"delete the originals?"** confirm also dims while it runs, saying the merged entry is already saved
+- [ ] **6.** Editing an entry in place and saving dims the page while the list regroups
+- [ ] **7.** Every overlay **goes away** when the work finishes — including on the error paths (e.g. a failed delete leaves the error message visible, not a stuck scrim)
+- [ ] **8.** **Regression:** Journal → New Journal Entry still saves normally, with **no** overlay — only the Save button label changes, as before
+- [ ] **9.** The spinner card is readable in **both light and dark** themes (the scrim is ink-based, so it darkens rather than brightens)
+- [ ] **10.** Narrow (<1024px): the overlay's message card stays inside the viewport and its text doesn't overflow
+
+---
+
+## 2026-10-05 — Journal Entries: bulk select, edit and delete
+
+No migration — this writes existing `jrn_entry_categories` / `jrn_entry_tags` /
+`jrn_entries.place_name` rows. Everything is in **Journal → Entries**, and every item
+must be checked on **both tabs** (Main and Log) — they share one dialog
+(`journal-entries-bulk-edit.tsx`) but refresh different lists afterwards.
+
+The two behaviours most worth watching: **Replace discards what you can't see on the
+row**, and **locked entries are skipped by an edit but still moved by a delete**. That
+asymmetry is deliberate (the bin keeps the lock, so a delete is recoverable). Needs a
+journal with at least one locked entry and a few entries carrying tags already.
+
+- [ ] **1.** Tick-boxes appear on the Main tab's grid, with select-all in the header, and "N selected" with **Bulk edit** / **Delete** once anything is ticked
+- [ ] **2.** The same two buttons appear on the **Log** tab, alongside its existing "Delete checked"
+- [ ] **3.** Bulk edit with nothing ticked in the dialog: **Apply** stays disabled until a field is ticked
+- [ ] **4.** **Add** tags appends to what each entry already has — existing tags survive, and the new one lands on all of them
+- [ ] **5.** Adding a tag an entry already carries in different case ("Museum" onto "museum") is a no-op — no duplicate, and the entry keeps **its own** spelling
+- [ ] **6.** **Remove** strips only the named tags, case-insensitively; other tags on the entry are untouched
+- [ ] **7.** **Replace** overwrites outright — the hint says so before you click, and what the entries had is gone afterwards
+- [ ] **8.** **Replace** with no names clears the field entirely (the picker empty, Apply still enabled — this is the one mode that allows it)
+- [ ] **9.** Add/Remove with no names: Apply is disabled, and the mode hint explains why
+- [ ] **10.** Categories and tags can be changed in **one** pass, each with its own mode (e.g. add a category *and* replace the tags)
+- [ ] **11.** A tag typed into the picker that doesn't exist yet is created and joins the managed list (check **Meta Data** after) — but **Remove** of an unknown name creates nothing
+- [ ] **12.** **Place**: setting it writes to every selected entry; leaving it empty with the box ticked **clears** it, and the dialog warns before you apply
+- [ ] **13.** Locked entries in the selection are **skipped**, and the notice says so: "Updated 4 entries. 1 was locked and skipped."
+- [ ] **14.** Unlocking that entry and re-running the same bulk edit now changes it
+- [ ] **15.** An entry's **locations/map pins survive** a bulk tag edit — open one afterwards and check the pins are still there (this is the regression the implementation avoids by not going through `replaceChildren`)
+- [ ] **16.** An entry's date, time, title and text are untouched by every mode
+- [ ] **17.** The entry's **"last updated"** timestamp moves after a categories/tags-only edit (not just after a place change)
+- [ ] **18.** **Delete** opens a confirm naming the count, says the entries go to the recycle bin, and Cancel leaves the ticks and the list alone
+- [ ] **19.** Deleting a selection **including a locked entry** moves it too, and the confirm says so up front
+- [ ] **20.** Deleted entries are in **Data Management → CSV Import → Correct → Recycled Entries**, and a restored one comes back **still locked**
+- [ ] **21.** After any bulk action the ticks clear, the row count above the grid updates, and the list matches the server on reload
+- [ ] **22.** With a saved filter selected on Main, a bulk edit **re-queries that filter** — an entry edited out of it disappears from the list
+- [ ] **23.** On the Log tab, bulk-replacing categories so an entry loses "Log" makes it **disappear from that tab** (and it's still findable on Main)
+- [ ] **24.** Narrow (<1024px): tick-boxes and the selection bar work in the card layout, both buttons stay reachable, and the dialog's fields stack to one column
+- [ ] **25.** CLI: `npm run cli -- journal-bulk-edit --ids 41,42 --add-tags "Beach"` reports the same summary line the web notice shows
+- [ ] **26.** CLI: `--dry-run` lists the entries, marks locked ones `[locked — would be skipped]`, and writes nothing
+- [ ] **27.** CLI: `--set-tags ""` clears the tags; `--place "Lisbon"` sets the place
+- [ ] **28.** CLI: passing two modes for one field (`--add-tags` *and* `--set-tags`) is refused rather than silently picking one
+- [ ] **29.** CLI: `--delete` bins the selection and reports the count — and the rows show up in the web Recycled Entries card
+
+---
+
+## 2026-10-05 — Journal Review Data: Lock & exclude from review
+
+No migration — this reuses the existing entry lock (`jrn_entries.is_locked`) rather
+than adding a second flag. Everything is in **Journal → Data Management → Review
+Data**. The key behaviour: locked entries are now dropped **before** grouping, so a
+date left with fewer than two *unlocked* entries disappears from the list entirely.
+That also means the lock set from anywhere else (the entry editor, an import) hides
+a date here too — intended, but item 6 is the one to watch. Needs a journal with at
+least one date carrying 3+ entries to check items 2–4 properly.
+
+- [ ] **1.** "Lock & exclude from review" appears between Merge and Delete once rows are ticked, and only then
+- [ ] **2.** Locking **both** entries of a two-entry date removes that date from the list
+- [ ] **3.** Locking **two of three** entries on a date removes the whole date — no stray row left reading "1 of 1"
+- [ ] **4.** Locking **one of three** keeps the date, and the remaining rows renumber to "1 of 2" / "2 of 2"
+- [ ] **5.** The confirm dialog names the count, says nothing is deleted, and Cancel leaves the ticks and the list alone
+- [ ] **6.** A date hidden by this is genuinely gone on reload — and unlocking one of its entries from the Entries list brings the date back
+- [ ] **7.** The entries themselves survive: content, categories and tags are untouched, only the lock changed
+- [ ] **8.** Locking an already-locked selection reports "already locked — nothing changed" rather than an error
+- [ ] **9.** The ticks clear after a lock, and the date/entry count above the grid drops to match
+- [ ] **10.** Lock works with "Review only Log entries" on, and the list re-reads under that lens rather than widening
+- [ ] **11.** Delete and Merge still behave as before — the new button didn't disturb them
+- [ ] **12.** Narrow (<1024px): all three bulk buttons wrap and stay reachable, and the long button label doesn't overflow its card
+- [ ] **13.** CLI: `npm run cli -- journal-same-date` no longer lists locked entries, and says so when the result is empty
+- [ ] **14.** CLI: `journal-same-date --lock 41,42` locks them and reports the count; re-running reports nothing changed
+- [ ] **15.** CLI: `journal-same-date --include-locked` lists them again, marked `[locked]`, so an id can be found to unlock
+
+---
+
+## 2026-10-05 — Journal Meta Data: Clean up and bulk delete
+
+No migration. Everything here is in **Journal → Meta Data → Categories & Tags**, and
+every item must be checked on **both** the Category and Tags tabs — the panel is one
+component rendered twice, so a bug shows on both, but so does a fix that only looks
+right on one. "Clean up" is a **two-step** flow on purpose: it ticks rows and deletes
+nothing. Deleting a category/tag also detaches it from every entry carrying it, so
+items 7–9 need a journal with some categories actually in use.
+
+- [x] **1.** Each row has a checkbox; ticking it outlines the row, and "Select all (n)" ticks/unticks the whole list
+- [x] **2.** "n selected" and "Delete n selected" appear only with a selection, and the count matches the ticks
+- [x] **3.** Clean up on a list where every name is in use says so and ticks nothing
+- [x] **4.** Clean up with unused names prompts with the count and the names, and Cancel leaves the ticks alone
+- [x] **5.** Clean up → OK ticks exactly the unused rows, clears the filter box, and deletes nothing until Delete is pressed
+- [x] **6.** Clean up replaces an earlier hand-made selection rather than adding to it
+- [x] **7.** Bulk Delete of unused-only names confirms with "None of them are used by an entry"
+- [x] **8.** Bulk Delete of a hand-ticked **in-use** name warns, naming it and its entry count, before deleting
+- [x] **9.** After a bulk Delete the rows are gone, the ticks are cleared, and the entries that carried the name survive minus that category/tag
+- [x] **10.** With the filter box active, "Select all" and Delete touch only the matching rows
+- [x] **11.** Ticks do not leak between the Category and Tags tabs
+- [x] **12.** A tick on a row deleted by its own per-row 🗑 button does not linger in the count
+- [x] **13.** Narrow (<1024px): the checkbox, the select-all row and Delete all wrap and stay reachable
+- [ ] **14.** CLI: `npm run cli -- journal-taxonomy category` lists every name with its entry count, unused ones marked
+- [ ] **15.** CLI: `journal-taxonomy tag --unused` lists only unused names and writes nothing
+- [ ] **16.** CLI: `--delete` without `--unused` is refused; `--unused --delete` removes them and reports the count
+- [x] **17.** A category used on an entry under a different casing (`work` vs `Work`) is **not** reported as unused  — 2026-10-05
+- [x] **18.** Merge: "Merge n selected" appears beside Delete once rows are ticked, and opens a dialog
+- [x] **19.** Merge: the name field is pre-filled with the first selected name and is editable
+- [x] **20.** Merge: the summary updates as you type — entry count, and whether the name already exists
+- [x] **21.** Merge into an **existing** name says so, and that name keeps its own icon and description afterwards
+- [x] **22.** Merge into a **new** name creates it; with exactly one selected name having an icon, it inherits that icon
+- [x] **23.** Merge: pressing Merge prompts *"Your new category would be updated to "X". Are you sure?"*; Cancel writes nothing
+- [x] **24.** Merge → Yes: every entry that carried a selected name now carries the new name, and the old rows are gone
+- [x] **25.** Merge: an entry that carried **two** of the merged names ends up carrying the new name **once** (no duplicate, no error)
+- [x] **26.** Merge: the dialog's entry count matches the real total — check with a journal where one entry carries two merged names
+- [x] **27.** Merge: a **saved filter** naming a merged category is rewritten and still returns its entries afterwards
+- [x] **28.** Merge: a **prefill template** naming a merged category is rewritten; applying it fills the new name
+- [x] **29.** Merge: a filter/template naming none of the merged names is left untouched
+- [x] **30.** Merge: merging a **single** name into a new one works as a rename
+- [x] **31.** Merge: typing an existing name in a different case (`travel` vs `Travel`) reuses that row, not a second one
+- [x] **32.** Merge: a blank or whitespace-only name leaves the Merge button disabled
+- [x] **33.** Merge: selecting a name and merging it *into itself* folds the others in and keeps it
+- [x] **34.** Merge: narrow (<1024px) — the dialog, its summary block and both buttons stay usable
+- [ ] **35.** CLI: `journal-taxonomy category --merge "a,b" --into X` prints the plan and writes nothing
+- [ ] **36.** CLI: adding `--apply` performs the merge and reports filters/templates updated
+- [ ] **37.** CLI: `--merge` without `--into` is refused
+- [x] **38.** Merge: a full-screen dim with a spinner and "Merging…" covers the page, dialog included, while it writes  — 2026-10-05
+- [x] **39.** Bulk Delete and "Autopopulate icon" show the same dim with their own message  — 2026-10-05
+- [ ] **40.** Overlay: narrow (<1024px) — the message card stays centred and readable
+
+---
+
 ## 2026-10-04 — Release (HSA Tracker, Foreign Currencies, Journal lock marker)
 
 **Migrations 0128 and 0129 must be applied on the NAS first** — without them every HSA
@@ -224,14 +400,14 @@ One new feature, no migrations. The tree-nav styling matches the Entries browser
 date filtering is the only risky part — it constructs and URL-encodes date range
 queries.
 
-- [ ] **53.** Journal → Statistics card: "Count by Years" section appears with years
-  listed newest-first, each year clickable/expandable to show months December-to-January
-- [ ] **54.** Click a year (e.g., "2023") to navigate to Entries screen filtered to that
-  year's entries; date range query appears in the filter bar
-- [ ] **55.** Click a month (e.g., "October") to navigate to Entries screen filtered to
-  just that month; month boundary is correct (October has 31 days)
-- [ ] **56.** Tree-nav styling: chevron rotates on expand, spine and elbow lines draw
-  correctly, hover states work on both year and month rows
+- [x] **53.** Journal → Statistics card: "Count by Years" section appears with years
+  listed newest-first, each year clickable/expandable to show months December-to-January — tested 2026-10-04
+- [x] **54.** Click a year (e.g., "2023") to navigate to Entries screen filtered to that
+  year's entries; date range query appears in the filter bar — tested 2026-10-04
+- [x] **55.** Click a month (e.g., "October") to navigate to Entries screen filtered to
+  just that month; month boundary is correct (October has 31 days) — tested 2026-10-04
+- [x] **56.** Tree-nav styling: chevron rotates on expand, spine and elbow lines draw
+  correctly, hover states work on both year and month rows — tested 2026-10-04
 
 ---
 
@@ -249,36 +425,36 @@ Items 8–10 are chrome-only polish with no migration and no new table: the home
 drag target, the nav tree's scroll memory, and the music player's transport panel —
 item 10 is desktop/phone parity, since the panel has to restack narrow.
 
-- [ ] **57.** Journal → Review Data → "Review multiple entries on same date" card: the
+- [x] **57.** Journal → Review Data → "Review multiple entries on same date" card: the
   title-bar "Review only Log entries" toggle narrows the list to dates with two or more
-  Log entries; turning it off restores the full list
-- [ ] **58.** Journal → Review Data: a date with one Log entry and two written entries
-  does not appear under the Log-only toggle (it must not show as "1 of 1")
-- [ ] **59.** CLI: `npm run cli -- journal-same-date --log-only` matches what the toggle
-  shows on the web screen for the same data
-- [ ] **60.** Journal → Review Data: merging several entries and saving now shows a
+  Log entries; turning it off restores the full list — tested 2026-10-04
+- [x] **58.** Journal → Review Data: a date with one Log entry and two written entries
+  does not appear under the Log-only toggle (it must not show as "1 of 1") — tested 2026-10-04
+- [x] **59.** CLI: `npm run cli -- journal-same-date --log-only` matches what the toggle
+  shows on the web screen for the same data — tested 2026-10-04
+- [x] **60.** Journal → Review Data: merging several entries and saving now shows a
   follow-up dialog — "Merged entry created successfully. Would you like to delete the
-  original N entries?" — with Delete N and Keep them
-- [ ] **61.** Journal → Review Data: if one of the ticked entries vanished before the
+  original N entries?" — with Delete N and Keep them — tested 2026-10-04
+- [x] **61.** Journal → Review Data: if one of the ticked entries vanished before the
   merge ran, the cleanup dialog's count and offer reflect only the entries the merge
   actually read, not the original selection; choosing Delete N sends exactly those to
-  the recycle bin (undoable from CSV Import → Correct)
-- [ ] **62.** CLI: `npm run cli -- journal-same-date --merge 41,42,43 --save
+  the recycle bin (undoable from CSV Import → Correct) — tested 2026-10-04
+- [x] **62.** CLI: `npm run cli -- journal-same-date --merge 41,42,43 --save
   --delete-originals` creates the merged entry and then recycles the three sources in
-  one command; omitting `--save` leaves `--delete-originals` with no effect
-- [ ] **63.** Administration → SQL Explorer → Table Usage: pressing Measure lists every
+  one command; omitting `--save` leaves `--delete-originals` with no effect — tested 2026-10-04
+- [x] **63.** Administration → SQL Explorer → Table Usage: pressing Measure lists every
   table ranked by size (table + index bytes), each row showing a proportional bar,
-  percent of total, and a real row count; Open jumps to that table in Tables Explorer
-- [ ] **64.** Home screen (desktop, two-column layout): a card is now dragged by its
+  percent of total, and a real row count; Open jumps to that table in Tables Explorer — tested 2026-10-04
+- [x] **64.** Home screen (desktop, two-column layout): a card is now dragged by its
   whole frame rather than a handle row; the up/down keyboard buttons appear only on
-  hover or keyboard focus, in the card's top-right corner
-- [ ] **65.** Desktop navigation tree: scroll partway down a long module list, click a
+  hover or keyboard focus, in the card's top-right corner — tested 2026-10-04
+- [x] **65.** Desktop navigation tree: scroll partway down a long module list, click a
   module or section, and the tree opens already scrolled to the same position instead
-  of snapping back to the top
-- [ ] **66.** Music → player screen: the seek bar, transport, volume and sleep timer now
+  of snapping back to the top — tested 2026-10-04
+- [x] **66.** Music → player screen: the seek bar, transport, volume and sleep timer now
   sit in one full-width panel below the cover and lyrics; narrow, the panel's three
   clusters stack in reading order, and a track with no cover art shows a spinning vinyl
-  placeholder that pauses when playback pauses
+  placeholder that pauses when playback pauses — tested 2026-10-04
 
 ## 2026-09-30 — Release (TODO Lists, Chrome Style & Border Weight, Journal review)
 

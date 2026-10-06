@@ -18,6 +18,7 @@ import {
   findSameDateGroups,
   getEntry,
   listEntries,
+  lockEntries,
   mergeEntryDraft,
   recycleEntries,
 } from "@/lib/journal";
@@ -97,6 +98,41 @@ export async function recycleJournalSameDateEntriesAction(
     return { ok: true, movedCount, skippedCount, groups: readSameDateGroups(logOnly) };
   } catch (error) {
     return toErrorResult(error, "Failed to delete the selected entries.");
+  }
+}
+
+export interface LockSameDateResult extends SameDateDataResult {
+  lockedCount?: number;
+  skippedCount?: number;
+}
+
+/**
+ * Locks the ticked entries, which is also how they leave this screen.
+ *
+ * `findSameDateGroups` drops locked entries before it groups, so the refreshed
+ * groups returned here no longer contain them — and any date left with fewer
+ * than two unlocked entries is gone entirely. That is the point of the action:
+ * a date the reader has settled stops being offered for review every time.
+ *
+ * Returns the refreshed groups for the same reason the delete action does: the
+ * list after a lock is not something the view can guess by removing the ticked
+ * rows, because locking two of a date's three entries removes all three.
+ *
+ * Unlike the delete beside it, nothing is destroyed — only `is_locked` is
+ * written — so this needs no recycle-bin round trip and is undone by unlocking
+ * the entry from the Entries list.
+ */
+export async function lockJournalSameDateEntriesAction(
+  ids: number[],
+  logOnly = false,
+): Promise<LockSameDateResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    const { lockedCount, skippedCount } = lockEntries(deps.journalRepo, ids);
+    revalidatePath(JOURNAL_MODULE_PATH);
+    return { ok: true, lockedCount, skippedCount, groups: readSameDateGroups(logOnly) };
+  } catch (error) {
+    return toErrorResult(error, "Failed to lock the selected entries.");
   }
 }
 

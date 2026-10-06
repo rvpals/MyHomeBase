@@ -9,6 +9,7 @@
 // bottom bar — this screen adds shortcut bars beside them, and an admin who creates
 // none changes nothing about the app.
 
+import { listDashboardTextures } from "@/lib/dashboard-texture";
 import { listMenuItems } from "@/lib/menu-items";
 import { listModules } from "@/lib/modules";
 import { listToolbars } from "@/lib/toolbars";
@@ -43,6 +44,10 @@ export default async function ToolbarsPage({
   const modules = listModules(deps.moduleRepo, { includeHidden: true });
   const menuItems = listMenuItems(createMenuItemSource(modules), deps.menuItemOverrideRepo);
   const toolbars = listToolbars(deps.toolbarRepo);
+  // The shared app texture library, for the editor's background picker. Never
+  // carries the image bytes — the picker's thumbnails come from the serving
+  // route, so this stays cheap on a page render.
+  const textures = listDashboardTextures(deps.dashboardTextureRepo);
   const editToolbarId =
     Number.isInteger(requestedId) && toolbars.some((toolbar) => toolbar.id === requestedId)
       ? requestedId
@@ -65,6 +70,7 @@ export default async function ToolbarsPage({
       <ToolbarsView
         toolbars={toolbars}
         menuItems={menuItems}
+        textures={textures}
         editToolbarId={editToolbarId}
       />
     </div>

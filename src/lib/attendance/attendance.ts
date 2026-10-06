@@ -28,6 +28,7 @@ import type {
   AttendanceActionTally,
   AttendanceClass,
   AttendanceDetailCell,
+  AttendanceActionLegendEntry,
   AttendanceDetailReport,
   AttendanceDetailRow,
   AttendanceEntry,
@@ -672,7 +673,68 @@ export function buildAttendanceDetailReport(
     className: attendanceClass.name,
     dates,
     rows,
+    actionLegend: buildActionLegend(repo, rows),
   };
+}
+
+/**
+ * The legend under the detail grid: every action the grid actually shows, with
+ * its description.
+ *
+ * `code` and `name` come from the cells, not the catalog, so the legend can
+ * never explain a code under a different name than the one printed above it --
+ * both are the snapshot taken when the action was recorded. Only `description`
+ * is read live, because `RecordedStudentAction` never stored one; an action
+ * whose catalog row has since been deleted simply has none.
+ *
+ * Retired actions are included (`listStudentActions(true)`): a term's grid can
+ * legitimately contain a code that has since left the picker, and dropping its
+ * description would leave the one code a reader is most likely to query
+ * unexplained.
+ *
+ * Ordered by the catalog's `sequence` so the legend reads in the same order as
+ * the picker that produced it. An action missing from the catalog sorts last --
+ * it has no sequence to sort on, and it is the least informative line.
+ */
+function buildActionLegend(
+  repo: AttendanceRepository,
+  rows: AttendanceDetailRow[],
+): AttendanceActionLegendEntry[] {
+  // First sighting wins. Every sighting carries the same snapshot, so this
+  // picks a representative rather than resolving a conflict.
+  const byActionId = new Map<number, AttendanceActionLegendEntry>();
+  for (const row of rows) {
+    for (const cell of row.cells) {
+      for (const action of cell.actions) {
+        if (byActionId.has(action.actionId)) continue;
+        byActionId.set(action.actionId, {
+          actionId: action.actionId,
+          code: action.code,
+          name: action.name,
+          description: "",
+        });
+      }
+    }
+  }
+
+  if (byActionId.size === 0) return [];
+
+  const catalog = new Map(repo.listStudentActions(true).map((action) => [action.id, action]));
+
+  for (const entry of byActionId.values()) {
+    entry.description = catalog.get(entry.actionId)?.description ?? "";
+  }
+
+  // A deleted catalog row sorts after everything present, rather than ahead of
+  // it the way a 0 would.
+  const sequenceOf = (actionId: number) =>
+    catalog.get(actionId)?.sequence ?? Number.MAX_SAFE_INTEGER;
+
+  return [...byActionId.values()].sort(
+    (a, b) =>
+      sequenceOf(a.actionId) - sequenceOf(b.actionId) ||
+      a.code.localeCompare(b.code, undefined, { sensitivity: "base" }),
+  );
 }
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 // The toolbar use-cases. Pure functions over a repository and a menu item registry.
 
+import type { DashboardTextureItem } from "@/lib/dashboard-texture";
 import type { MenuItem } from "@/lib/menu-items";
 import type { ToolbarRepository } from "./ports";
 import { toolbarItemSchema, toolbarSchema, type ToolbarInput, type ToolbarItemInput } from "./schema";
@@ -7,10 +8,65 @@ import { isOrnamentalKind } from "./types";
 import type {
   ResolvedToolbar,
   ResolvedToolbarItem,
+  ResolvedToolbarTexture,
   Toolbar,
   ToolbarItem,
   ToolbarWithItems,
 } from "./types";
+
+/**
+ * What `resolveToolbar` needs beyond the toolbar itself.
+ *
+ * `textures` is the app texture library (`listDashboardTextures`), passed in as
+ * data rather than fetched here — this module owns no repository but the one it
+ * is given, and the library belongs to `dashboard-texture`. The same reason
+ * `resolveAppTexture` takes its library row as an argument.
+ *
+ * Optional, and absent means "no bar draws a texture". That keeps every existing
+ * caller valid and makes the texture feature additive: a caller that has not been
+ * taught about the library gets flat bars rather than broken ones.
+ */
+export interface ResolveToolbarOptions {
+  isCompact: boolean;
+  hiddenIds: readonly number[];
+  textures?: readonly DashboardTextureItem[];
+}
+
+/**
+ * The toolbar's chosen picture, or `undefined` when it has none.
+ *
+ * Returns undefined in three cases that are deliberately not distinguished —
+ * nothing chosen, a pointer at a deleted picture, and a row whose bytes are
+ * missing. All three mean the same thing to a renderer: draw a flat bar. The
+ * stale-pointer case is the one migration 0130 is about; resolving it to
+ * `undefined` rather than to a URL is what stops a deleted picture from leaving a
+ * 404ing layer on a bar nobody has edited since.
+ *
+ * `hasImage` is checked as well as the lookup, mirroring `resolveAppTexture`: a
+ * library row always has bytes today (the column is `NOT NULL`), and the check
+ * costs nothing while making the renderer's precondition explicit.
+ */
+function resolveTexture(
+  toolbar: Toolbar,
+  textures: readonly DashboardTextureItem[] | undefined,
+): ResolvedToolbarTexture | undefined {
+  if (toolbar.textureId === undefined || !textures) return undefined;
+
+  const picture = textures.find((texture) => texture.id === toolbar.textureId);
+  if (!picture?.hasImage) return undefined;
+
+  return {
+    // `?v=<updatedAt>` because the serving route sends a 5-minute max-age —
+    // without it, replacing the picture in the library would appear to do nothing
+    // on a bar that points at it. Same cache-buster `resolveAppTexture` builds.
+    image: `url("/api/dashboard/texture?id=${picture.id}&v=${encodeURIComponent(
+      picture.updatedAt,
+    )}")`,
+    // The toolbar's own opacity, NOT the library row's. This is the one place a
+    // toolbar's texture diverges from a module's by design — see migration 0130.
+    opacity: toolbar.textureOpacity,
+  };
+}
 
 export function listToolbars(repo: ToolbarRepository): ToolbarWithItems[] {
   return repo.listToolbars();
@@ -123,7 +179,7 @@ export function reorderToolbarItems(
 export function resolveToolbar(
   toolbar: ToolbarWithItems,
   menuItems: readonly MenuItem[],
-  options: { isCompact: boolean; hiddenIds: readonly number[] },
+  options: ResolveToolbarOptions,
 ): ResolvedToolbar | undefined {
   if (!toolbar.isVisible) return undefined;
   if (options.hiddenIds.includes(toolbar.id)) return undefined;
@@ -165,6 +221,7 @@ export function resolveToolbar(
     backgroundColor: toolbar.backgroundColor,
     borderColor: toolbar.borderColor,
     textColor: toolbar.textColor,
+    texture: resolveTexture(toolbar, options.textures),
     edge: toolbar.edge,
     fullModeOnly: toolbar.fullModeOnly,
     items: trimEdgeOrnament(items),
@@ -180,7 +237,7 @@ export function resolveToolbar(
 export function resolveToolbarsFor(
   toolbars: readonly ToolbarWithItems[],
   menuItems: readonly MenuItem[],
-  options: { isCompact: boolean; hiddenIds: readonly number[] },
+  options: ResolveToolbarOptions,
 ): ResolvedToolbar[] {
   return toolbars
     .map((toolbar) => resolveToolbar(toolbar, menuItems, options))

@@ -4,6 +4,7 @@ import {
   findSameDateGroups,
   getEntry,
   listEntries,
+  lockEntries,
   mergeEntryDraft,
   recycleEntries,
   type JournalEntry,
@@ -22,6 +23,8 @@ import { parseFlags } from "./parse-flags";
  *   journal-same-date --merge 41,42,43 --save
  *   journal-same-date --merge 41,42,43 --save --delete-originals
  *   journal-same-date --delete 41,42
+ *   journal-same-date --lock 41,42
+ *   journal-same-date --include-locked
  *
  * This is the proof the section's logic really is in `src/lib/`: the grouping,
  * the excerpt, the reading order and the whole merged draft come from
@@ -40,6 +43,16 @@ import { parseFlags } from "./parse-flags";
  *
  * `--delete` moves entries to the recycle bin (the same bin the Correct tab
  * restores from), so it is undoable there rather than destructive here.
+ *
+ * `--lock` is the web card's "Lock & exclude from review": it marks the entries
+ * settled, and since locked entries are dropped before grouping they — and any
+ * date left with fewer than two unlocked entries — stop appearing in this
+ * listing. Nothing is deleted; unlocking an entry brings its date back.
+ *
+ * `--include-locked` lists them anyway. The web card has no such toggle, so
+ * this is the one place the two front-ends differ in what they *show* — not in
+ * what they can do: the option is on the same library call, and a terminal is
+ * where you go to find out what you excluded and which id to unlock.
  */
 export async function journalSameDateCommand(args: string[]): Promise<void> {
   const flags = parseFlags(args);
@@ -54,6 +67,11 @@ export async function journalSameDateCommand(args: string[]): Promise<void> {
     return;
   }
 
+  if (flags.lock !== undefined) {
+    lockSelection(flags.lock);
+    return;
+  }
+
   // The whole journal, as the web panel reads it: a limit would hide the pair
   // sitting on one day in 2019, which is the thing this screen is for.
   //
@@ -61,15 +79,20 @@ export async function journalSameDateCommand(args: string[]): Promise<void> {
   // the same library call — so the two front-ends can't disagree about which
   // dates qualify.
   const logOnly = args.includes("--log-only");
-  const groups = findSameDateGroups(listEntries(deps.journalRepo), { logOnly });
+  const includeLocked = args.includes("--include-locked");
+  const groups = findSameDateGroups(listEntries(deps.journalRepo), { logOnly, includeLocked });
   const shown = flags.date ? groups.filter((group) => group.date === flags.date) : groups;
 
   if (shown.length === 0) {
     const what = logOnly ? "Log entry" : "entry";
+    // Locked entries are excluded unless asked for, so an empty list can mean
+    // "all reviewed" rather than "nothing to review" — say so, or the reader
+    // has no way to tell the two apart from this output.
+    const hint = includeLocked ? "" : " Locked entries are excluded; add --include-locked to see them.";
     console.log(
       flags.date
-        ? `${flags.date} does not carry more than one ${what}.`
-        : `No date has more than one ${what}.`,
+        ? `${flags.date} does not carry more than one unlocked ${what}.${hint}`
+        : `No date has more than one unlocked ${what}.${hint}`,
     );
     return;
   }
@@ -199,6 +222,32 @@ function deleteSelection(raw: string): void {
     );
   } catch (error) {
     console.error(error instanceof Error ? error.message : "Failed to delete those entries.");
+    process.exitCode = 1;
+  }
+}
+
+/**
+ * `--lock 41,42` — mark entries settled and drop them out of this listing.
+ *
+ * The same `lockEntries` the web button calls, so the two front-ends cannot
+ * disagree about what locking does or what it reports.
+ */
+function lockSelection(raw: string): void {
+  const ids = parseIds(raw);
+  if (ids === undefined) return;
+
+  try {
+    const { lockedCount, skippedCount } = lockEntries(deps.journalRepo, ids);
+    if (lockedCount === 0) {
+      console.log("Nothing changed — those entries were already locked, or no longer exist.");
+      return;
+    }
+    console.log(
+      `Locked ${lockedCount} ${lockedCount === 1 ? "entry" : "entries"} and excluded them from review` +
+        `${skippedCount ? `, skipped ${skippedCount} already locked or missing` : ""}.`,
+    );
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : "Failed to lock those entries.");
     process.exitCode = 1;
   }
 }

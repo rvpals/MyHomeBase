@@ -197,8 +197,10 @@ function HsaInstructions() {
       <Section title="Adding an expense">
         <ul className="flex list-disc flex-col gap-1 pl-5">
           <li>
-            <strong className="text-ink">Date and Time</strong> start at the moment you
-            open the form. Change them to record a past expense under its real date.
+            <strong className="text-ink">Date and Time</strong> start empty — most
+            receipts are entered after the fact, so there is no sensible default. Press{" "}
+            <strong className="text-ink">Use current date &amp; time</strong> when the
+            expense is happening now, or just pick the date it really happened.
           </li>
           <li>
             <strong className="text-ink">Product or service</strong> offers what you have

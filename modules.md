@@ -1973,11 +1973,39 @@ are still unreimbursed. Choices worth knowing:
   A file that cannot be deleted is *reported*, not thrown.
 - **With no folder set, attaching a receipt is refused** — there is no fallback to the
   database, so receipts live in exactly one place. Expenses can still be recorded.
-- **A large phone photo is shrunk in the browser** (`household-hsa-receipt-file.ts`) to
-  2000px of JPEG, because a server action's body is capped at 4 MB and a camera JPEG is
-  often bigger. 2000 rather than a recipe picture's 800: a receipt has to stay legible
-  down to the line items. This is the *only* resize — the server files what it is given,
-  and re-checks the type, the 2.5 MB cap and a PDF's `%PDF-` signature.
+- **An attached file is stored byte-for-byte; only a camera shot is re-encoded.** The
+  reader picked that exact file, so re-encoding it would hand the archive something they
+  never saw — a scan losing its text layer, a careful photo losing detail. A camera shot
+  has no such original: it is shrunk to 2000px of JPEG in the browser
+  (`household-hsa-receipt-file.ts`) because a phone emits 4-8 MB. 2000 rather than a
+  recipe picture's 800, since a receipt has to stay legible down to the line items.
+- **Several files attached at once become one zip**, so an expense still holds exactly
+  one file and the whole rename/move/delete path is untouched. They are chosen in a
+  `MultiFileDropzone` — the registered component, not a second one — which replaced the
+  Attach button entirely, since it is click-to-browse as well as drag-and-drop and two
+  controls for one job is noise. The list stays editable (drop some, remove a wrong one,
+  drop more) and is packed only on save: a zip cannot be taken apart again, so the list
+  is the only record of what went into it. **Take photo** survives beside it, phone-only,
+  because opening the camera is a different act from choosing a file. Each file keeps its own
+  name inside the archive and the entries are STORED, so unpacking returns the originals
+  bit-for-bit. `src/lib/zip` already existed for the gallery's downloads and is reused —
+  no dependency was added. A zip is something this app *produces*: it is in the mime
+  allowlist so the upload validates, but deliberately not in the picker's `accept`.
+- **The receipt travels as a `FormData` blob, not a base64 argument** — and this is the
+  load-bearing part of the 15 MB cap. React charges its decoder **one array slot per
+  character** of a string argument in a multi-argument server action, ceiling ~1,000,001,
+  so the base64 path would have failed somewhere under 1 MB of file with
+  *"Maximum array nesting exceeded"* — a framework error naming nesting, which is
+  neither nesting nor size. `next.config.ts` records the same lesson from the calendar
+  importer, and `readIcsFileAction` is the precedent. A blob is binary on the wire:
+  nothing is inflated by a third, nothing is counted, and the only budget left is
+  `bodySizeLimit` (raised to 16 MB). The use-case still takes a plain `Buffer`, so the
+  CLI calls it unchanged — only the action boundary knows about `FormData`.
+- **The server re-checks what can lie**: the type allowlist, the 15 MB cap, and the
+  file's own first bytes (`%PDF-`, `PK\x03\x04`). Signatures are checked for the
+  container formats only — an image is displayed, never executed, so a mislabelled one
+  is a broken picture rather than a hazard, while a "PDF" that is really HTML served
+  from this app's own origin is not.
 - **Two file inputs, because one cannot be both.** **Take photo** carries
   `capture="environment"` and opens the rear camera directly — the one-tap path for
   photographing a receipt in your hand — and is hidden above 1024px, since a desktop
@@ -1987,8 +2015,13 @@ are still unreimbursed. Choices worth knowing:
   hidden by a wrapping `span`, not a `lg:hidden` on the `Button`: `Button` concatenates
   `className` after its own `inline-flex`, so a display override there is a specificity
   argument worth not having.
-- **Product or Service** is a pick-or-type box fed by `SELECT DISTINCT`, with no catalog
-  table — the same pattern as a recipe's Category.
+- **Product or Service and Payee both suggest what you have entered before**, fed by
+  `SELECT DISTINCT` over the expenses with no catalog table — the same pattern as a
+  recipe's Category. Both are `IconSelect`, the app's free-text combobox, rather than a
+  `datalist`: a datalist has no visible affordance at all (no arrow, and most browsers
+  only suggest once you type), so a reader cannot tell the suggestions exist. This one
+  opens its list on focus and on click, and still commits anything typed. Payee had no
+  suggestions at all until this — an oversight, since it is the same kind of field.
 - **The list is one grid under a `ViewModeSwitch`: All, or By year.** Latest year first,
   each year's rows newest first, and one year open at a time — several expanded grids
   would each carry their own toolbar, paging and footer total, at which point nothing
@@ -2009,8 +2042,16 @@ are still unreimbursed. Choices worth knowing:
   "Receipt attached?" Yes/No plus a separate file-name link it started as — both answered
   one question and the pair cost width on every row. Its sort/filter/export `value` is
   still "Yes"/"No", so the column behaves exactly as the flag did.
-- **Date and Time are two fields**, seeded from the browser's clock when the dialog opens
-  and editable, so a past receipt is entered under its real date.
+- **Date and Time are two fields, and they start empty.** Deliberately unlike the
+  Journal's entry form, which seeds both from the clock: a journal entry is written on
+  the day it happened, while an HSA receipt is usually entered after the fact — days or
+  a year later. A pre-filled today would therefore be wrong more often than right, and a
+  wrong date that looks deliberate is worse than a blank one the schema refuses. A
+  **Use current date & time** button fills both in one click, reading the clock at the
+  moment it is pressed rather than when the dialog opened. Browser-side, for the reason
+  the Journal's form is: the clock that matters is the writer's, not the server's.
+  `dateSchema` reports blank separately from malformed, so the first save of an empty
+  form says "pick the date" rather than offering YYYY-MM-DD formatting advice.
 
 **Configuration is admin-only, and is a module-level section rather than a third nav
 level.** It carries the receipt folder and the Cards list. Three choices worth knowing:

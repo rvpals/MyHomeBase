@@ -13,7 +13,7 @@ import type { ScratchpadActions } from "@/components/floating-scratchpad";
 import { resolveAppTexture } from "@/lib/app-texture";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { listCalculations } from "@/lib/calculator";
-import { getDashboardTexture } from "@/lib/dashboard-texture";
+import { getDashboardTexture, listDashboardTextures } from "@/lib/dashboard-texture";
 import { describeClock } from "@/lib/clock";
 import { getEnabledFloating } from "@/lib/floating";
 import { getScratchpad } from "@/lib/scratchpad";
@@ -162,8 +162,16 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
       createMenuItemSource(listModules(deps.moduleRepo, { includeHidden: true })),
       deps.menuItemOverrideRepo,
     ),
-    // `isCompact: false` — the server does not decide this one; see above.
-    { isCompact: false, hiddenIds: hiddenToolbars },
+    {
+      // `isCompact: false` — the server does not decide this one; see above.
+      isCompact: false,
+      hiddenIds: hiddenToolbars,
+      // The app texture library, so a bar pointing at one of its pictures
+      // (migration 0130) resolves to a URL here rather than in the component.
+      // Cheap: `listDashboardTextures` never reads the image bytes, and the
+      // library is capped at 20 rows.
+      textures: listDashboardTextures(deps.dashboardTextureRepo),
+    },
   );
 
   // The app-wide background picture (migration 0116). Resolved in the one layout

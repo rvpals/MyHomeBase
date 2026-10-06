@@ -400,6 +400,52 @@ function fakeRepo(): JournalRepository {
         .sort((a, b) => b.entryCount - a.entryCount || a.name.localeCompare(b.name))
         .slice(0, limit);
     },
+    // Unlimited counts, keyed by the name as it sits on the entry — the real
+    // repository groups the join tables without a LIMIT. Taxonomy-usage reads
+    // are covered in taxonomy-usage.test.ts; these keep this fake complete.
+    countEntriesByCategory() {
+      const counts = new Map<string, number>();
+      for (const entry of entries) {
+        for (const category of entry.categories) counts.set(category, (counts.get(category) ?? 0) + 1);
+      }
+      return [...counts.entries()]
+        .map(([name, entryCount]) => ({ name, entryCount }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    },
+    countEntriesByTag() {
+      const counts = new Map<string, number>();
+      for (const entry of entries) {
+        for (const tag of entry.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
+      return [...counts.entries()]
+        .map(([name, entryCount]) => ({ name, entryCount }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    },
+    // Merging is exercised in taxonomy-merge.test.ts, which brings a fake
+    // modelling the join table's uniqueness. These keep this fake complete.
+    countDistinctEntriesWithCategories(names) {
+      const ids = new Set<number>();
+      for (const entry of entries) {
+        if (entry.categories.some((category) => names.includes(category))) ids.add(entry.id);
+      }
+      return ids.size;
+    },
+    countDistinctEntriesWithTags(names) {
+      const ids = new Set<number>();
+      for (const entry of entries) {
+        if (entry.tags.some((tag) => names.includes(tag))) ids.add(entry.id);
+      }
+      return ids.size;
+    },
+    bulkEditEntries() {
+      throw new Error("not used");
+    },
+    mergeCategories() {
+      throw new Error("not used");
+    },
+    mergeTags() {
+      throw new Error("not used");
+    },
     // Prefill templates are exercised in prefill.test.ts, which brings its own
     // fake. These satisfy the port so this file keeps compiling; nothing here
     // asserts against them.

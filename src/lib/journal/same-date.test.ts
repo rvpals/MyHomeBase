@@ -3,9 +3,11 @@ import {
   SAME_DATE_EXCERPT_WORDS,
   countSameDateEntries,
   findSameDateGroups,
+  lockEntries,
   mergeEntryDraft,
   toSameDateRows,
 } from "./same-date";
+import type { JournalRepository } from "./ports";
 import type { JournalEntry } from "./types";
 
 function entry(overrides: Partial<JournalEntry> & { id: number }): JournalEntry {
@@ -392,5 +394,179 @@ describe("mergeEntryDraft", () => {
     expect(draft.title).toBe("Run");
     expect(draft.content).toBe("— 09:00 · Run\nFive miles.");
     expect(draft.categories).toEqual(["Health"]);
+  });
+});
+
+describe("findSameDateGroups with locked entries", () => {
+  it("leaves locked entries out of the list", () => {
+    const groups = findSameDateGroups([
+      entry({ id: 1, date: "2026-03-14", time: "09:00" }),
+      entry({ id: 2, date: "2026-03-14", time: "12:00" }),
+      entry({ id: 3, date: "2026-03-14", time: "21:00", isLocked: true }),
+    ]);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].entries.map((item) => item.id)).toEqual([1, 2]);
+  });
+
+  it("drops the whole date once fewer than two entries are left unlocked", () => {
+    // The point of the feature: locking two of a date's three entries must
+    // remove the date entirely, not leave one row behind reading "1 of 1".
+    const groups = findSameDateGroups([
+      entry({ id: 1, date: "2026-03-14", isLocked: true }),
+      entry({ id: 2, date: "2026-03-14", isLocked: true }),
+      entry({ id: 3, date: "2026-03-14" }),
+    ]);
+
+    expect(groups).toEqual([]);
+  });
+
+  it("drops a date whose entries are all locked", () => {
+    const groups = findSameDateGroups([
+      entry({ id: 1, date: "2026-03-14", isLocked: true }),
+      entry({ id: 2, date: "2026-03-14", isLocked: true }),
+    ]);
+
+    expect(groups).toEqual([]);
+  });
+
+  it("re-counts 'n of m' over the unlocked entries only", () => {
+    const rows = toSameDateRows(
+      findSameDateGroups([
+        entry({ id: 1, date: "2026-03-14", time: "09:00" }),
+        entry({ id: 2, date: "2026-03-14", time: "12:00", isLocked: true }),
+        entry({ id: 3, date: "2026-03-14", time: "21:00" }),
+      ]),
+    );
+
+    expect(rows.map((row) => `${row.entryIndex}/${row.entryCount}`)).toEqual(["1/2", "2/2"]);
+  });
+
+  it("includes locked entries when asked to", () => {
+    const groups = findSameDateGroups(
+      [
+        entry({ id: 1, date: "2026-03-14", isLocked: true }),
+        entry({ id: 2, date: "2026-03-14", isLocked: true }),
+      ],
+      { includeLocked: true },
+    );
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].entries.map((item) => item.id)).toEqual([1, 2]);
+  });
+
+  it("applies the lock exclusion and logOnly together", () => {
+    // Both narrowings run before grouping, so this date needs two entries that
+    // are a Log *and* unlocked to survive.
+    const entries = [
+      entry({ id: 1, date: "2026-03-14", categories: ["Log"] }),
+      entry({ id: 2, date: "2026-03-14", categories: ["Log"], isLocked: true }),
+      entry({ id: 3, date: "2026-03-14", categories: ["Log"] }),
+      entry({ id: 4, date: "2026-03-14" }),
+    ];
+
+    const groups = findSameDateGroups(entries, { logOnly: true });
+    expect(groups).toHaveLength(1);
+    expect(groups[0].entries.map((item) => item.id)).toEqual([1, 3]);
+
+    // Locking one more leaves a single unlocked Log entry, so the date goes.
+    entries[3].isLocked = true;
+    expect(
+      findSameDateGroups(
+        [entries[0], { ...entries[2], isLocked: true }, entries[1], entries[3]],
+        { logOnly: true },
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe("lockEntries", () => {
+  function fakeRepo(seed: JournalEntry[]) {
+    const entries = seed.map((item) => ({ ...item }));
+    const locked: number[] = [];
+    return {
+      entries,
+      locked,
+      repo: {
+        getEntryById: (id: number) => entries.find((item) => item.id === id),
+        setEntryLocked: (id: number, isLocked: boolean) => {
+          const existing = entries.find((item) => item.id === id);
+          if (!existing) throw new Error(`Entry ${id} not found.`);
+          existing.isLocked = isLocked;
+          locked.push(id);
+          return existing;
+        },
+      } as unknown as JournalRepository,
+    };
+  }
+
+  it("locks every selected entry and reports the count", () => {
+    const { entries, repo } = fakeRepo([
+      entry({ id: 1, date: "2026-03-14" }),
+      entry({ id: 2, date: "2026-03-14" }),
+    ]);
+
+    expect(lockEntries(repo, [1, 2])).toEqual({ lockedCount: 2, skippedCount: 0 });
+    expect(entries.every((item) => item.isLocked)).toBe(true);
+  });
+
+  it("takes those entries out of the review list afterwards", () => {
+    // The behaviour the button exists for, end to end: lock the pair, re-group,
+    // and the date is gone.
+    const { entries, repo } = fakeRepo([
+      entry({ id: 1, date: "2026-03-14" }),
+      entry({ id: 2, date: "2026-03-14" }),
+    ]);
+    expect(findSameDateGroups(entries)).toHaveLength(1);
+
+    lockEntries(repo, [1, 2]);
+
+    expect(findSameDateGroups(entries)).toEqual([]);
+  });
+
+  it("skips ids that no longer exist rather than failing the call", () => {
+    const { entries, repo } = fakeRepo([entry({ id: 1, date: "2026-03-14" })]);
+
+    expect(lockEntries(repo, [1, 99])).toEqual({ lockedCount: 1, skippedCount: 1 });
+    expect(entries[0].isLocked).toBe(true);
+  });
+
+  it("skips entries that are locked already and writes nothing for them", () => {
+    const { locked, repo } = fakeRepo([
+      entry({ id: 1, date: "2026-03-14", isLocked: true }),
+      entry({ id: 2, date: "2026-03-14" }),
+    ]);
+
+    expect(lockEntries(repo, [1, 2])).toEqual({ lockedCount: 1, skippedCount: 1 });
+    // Only the unlocked one was written to.
+    expect(locked).toEqual([2]);
+  });
+
+  it("reports an all-already-locked selection as a no-op", () => {
+    const { locked, repo } = fakeRepo([
+      entry({ id: 1, date: "2026-03-14", isLocked: true }),
+      entry({ id: 2, date: "2026-03-14", isLocked: true }),
+    ]);
+
+    expect(lockEntries(repo, [1, 2])).toEqual({ lockedCount: 0, skippedCount: 2 });
+    expect(locked).toEqual([]);
+  });
+
+  it("counts a repeated id once", () => {
+    const { repo } = fakeRepo([entry({ id: 1, date: "2026-03-14" })]);
+
+    expect(lockEntries(repo, [1, 1])).toEqual({ lockedCount: 1, skippedCount: 0 });
+  });
+
+  it("rejects an empty selection", () => {
+    const { repo } = fakeRepo([entry({ id: 1, date: "2026-03-14" })]);
+
+    expect(() => lockEntries(repo, [])).toThrow(/at least one entry/i);
+  });
+
+  it("rejects a non-positive id", () => {
+    const { repo } = fakeRepo([entry({ id: 1, date: "2026-03-14" })]);
+
+    expect(() => lockEntries(repo, [0])).toThrow();
   });
 });

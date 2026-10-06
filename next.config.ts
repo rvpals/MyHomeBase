@@ -35,7 +35,11 @@ const nextConfig: NextConfig = {
       // charges one slot per string character in a multi-argument call — fixed
       // by sending the file as a FormData blob instead. See
       // journal-calendar-import-actions.ts.
-      bodySizeLimit: "4mb",
+      // Raised to 16mb for HSA receipts, which travel as a FormData blob and are
+      // capped at 15 MB by MAX_HSA_RECEIPT_BYTES — a scanned statement, or several
+      // files zipped into one archive, needs far more headroom than an icon. A blob
+      // is NOT base64-inflated, so the body is the file plus a little, not 1.33x it.
+      bodySizeLimit: "16mb",
     },
   },
 };

@@ -84,6 +84,7 @@ const detail: AttendanceDetailReport = {
       absentCount: 1,
     },
   ],
+  actionLegend: [{ actionId: 1, code: "L", name: "Late", description: "Arrived after the bell." }],
 };
 
 describe("attendanceDetailReportToCsv", () => {

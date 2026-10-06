@@ -22,6 +22,7 @@ export {
   reorderToolbarItems,
   resolveToolbar,
   resolveToolbarsFor,
+  type ResolveToolbarOptions,
   updateToolbar,
   updateToolbarItem,
 } from "./toolbars";
@@ -40,6 +41,7 @@ export {
   TOOLBAR_ITEM_KINDS,
   type ResolvedToolbar,
   type ResolvedToolbarItem,
+  type ResolvedToolbarTexture,
   type Toolbar,
   type ToolbarEdge,
   type ToolbarItem,

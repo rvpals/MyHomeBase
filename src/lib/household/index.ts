@@ -80,11 +80,12 @@ export {
 } from "./hsa-types";
 export {
   HSA_RECEIPT_MIME_TYPES,
+  HSA_RECEIPT_PICKABLE_MIME_TYPES,
   MAX_HSA_RECEIPT_BYTES,
   bulkDeleteHsaExpensesSchema,
   bulkSetReimbursedSchema,
   hsaExpenseSchema,
-  hsaReceiptUploadSchema,
+  hsaReceiptMetaSchema,
   type HsaExpenseData,
   type HsaExpenseInput,
   type HsaReceiptMimeType,
@@ -101,6 +102,7 @@ export {
   getHsaReceipt,
   listHsaCards,
   listHsaExpenses,
+  listHsaPayees,
   listHsaProductServices,
   renameHsaCard,
   setHsaCardActive,

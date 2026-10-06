@@ -4,6 +4,7 @@ import { listNamedMappings } from "@/lib/csv-import";
 import {
   listHsaCards,
   listHsaExpenses,
+  listHsaPayees,
   listHsaProductServices,
   listRecipeCategories,
   listRecipeTags,
@@ -105,6 +106,7 @@ export async function HouseholdSection({
               expenses={listHsaExpenses(deps.hsaRepo)}
               cards={listHsaCards(deps.hsaRepo)}
               productServices={listHsaProductServices(deps.hsaRepo)}
+              payees={listHsaPayees(deps.hsaRepo)}
               receiptRootSet={configuredHsaReceiptRoot() !== ""}
             />
           )}

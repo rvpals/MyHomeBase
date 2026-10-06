@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { DashboardTextureItem } from "@/lib/dashboard-texture";
 import type { MenuItem } from "@/lib/menu-items";
 import type { ToolbarItemWrite, ToolbarRepository, ToolbarWrite } from "./ports";
 import {
@@ -38,10 +39,27 @@ function toolbar(overrides: Partial<ToolbarWithItems> = {}): ToolbarWithItems {
     id: 1,
     name: "Favourites",
     edge: "left",
+    // No `textureId` by default — a bar with no picture is the common case. The
+    // opacity is still present because the column is NOT NULL (0130); it only
+    // matters once a picture is chosen.
+    textureOpacity: 0.15,
     fullModeOnly: false,
     isVisible: true,
     sortOrder: 0,
     items: [],
+    ...overrides,
+  };
+}
+
+/** A library picture, as `listDashboardTextures` would return it (never the bytes). */
+function texture(overrides: Partial<DashboardTextureItem> & { id: number }): DashboardTextureItem {
+  return {
+    name: `Picture ${overrides.id}`,
+    hasImage: true,
+    opacity: 0.1,
+    mode: "tile",
+    blur: 0,
+    updatedAt: "2026-10-04 12:00:00",
     ...overrides,
   };
 }
@@ -321,6 +339,70 @@ describe("resolveToolbar", () => {
   });
 });
 
+describe("resolveToolbar — background texture", () => {
+  const ROW = [item({ id: 1, menuItemId: "journal_section_main" })];
+
+  it("resolves a chosen library picture to a cache-busted url at the bar's own opacity", () => {
+    const resolved = resolveToolbar(
+      toolbar({ items: ROW, textureId: 7, textureOpacity: 0.4 }),
+      MENU_ITEMS,
+      { ...VISIBLE, textures: [texture({ id: 7, updatedAt: "2026-10-04 09:30:00" })] },
+    );
+
+    expect(resolved?.texture).toEqual({
+      image: 'url("/api/dashboard/texture?id=7&v=2026-10-04%2009%3A30%3A00")',
+      // 0.4 from the toolbar, NOT the 0.1 on the library row — the divergence
+      // migration 0130 is about. A full-page opacity is invisible on a 44px bar.
+      opacity: 0.4,
+    });
+  });
+
+  it("has no texture when the bar has chosen no picture", () => {
+    const resolved = resolveToolbar(toolbar({ items: ROW }), MENU_ITEMS, {
+      ...VISIBLE,
+      textures: [texture({ id: 7 })],
+    });
+
+    expect(resolved?.texture).toBeUndefined();
+  });
+
+  it("drops a pointer at a deleted picture rather than emitting a url that 404s", () => {
+    // The stale-pointer case the migration allows: `texture_id` is not a foreign
+    // key, so deleting a library picture leaves this bar pointing at nothing.
+    const resolved = resolveToolbar(
+      toolbar({ items: ROW, textureId: 99 }),
+      MENU_ITEMS,
+      { ...VISIBLE, textures: [texture({ id: 7 })] },
+    );
+
+    expect(resolved?.texture).toBeUndefined();
+    // The bar itself still renders — a missing picture is not a missing toolbar.
+    expect(resolved?.items).toHaveLength(1);
+  });
+
+  it("has no texture when the caller passes no library at all", () => {
+    // `textures` is optional so the feature is additive: a caller that has not
+    // been taught about the library gets flat bars, not broken ones.
+    const resolved = resolveToolbar(
+      toolbar({ items: ROW, textureId: 7 }),
+      MENU_ITEMS,
+      VISIBLE,
+    );
+
+    expect(resolved?.texture).toBeUndefined();
+  });
+
+  it("ignores a library row carrying no bytes", () => {
+    const resolved = resolveToolbar(
+      toolbar({ items: ROW, textureId: 7 }),
+      MENU_ITEMS,
+      { ...VISIBLE, textures: [texture({ id: 7, hasImage: false })] },
+    );
+
+    expect(resolved?.texture).toBeUndefined();
+  });
+});
+
 describe("resolveToolbarsFor", () => {
   it("returns only the bars this reader should see", () => {
     const bars = [
@@ -409,6 +491,48 @@ describe("createToolbar", () => {
     });
 
     expect(created.backgroundColor).toBeUndefined();
+  });
+
+  it("defaults the texture opacity, so a caller that ignores textures still saves", () => {
+    // The CLI and every pre-0130 form post reach here without naming an opacity.
+    const created = createToolbar(fakeRepo(), {
+      name: "Plain",
+      edge: "top",
+      fullModeOnly: false,
+      isVisible: true,
+    });
+
+    expect(created.textureId).toBeUndefined();
+    expect(created.textureOpacity).toBe(0.15);
+  });
+
+  it("rejects an opacity outside 0..1, matching the table's CHECK", () => {
+    expect(() =>
+      createToolbar(fakeRepo(), {
+        name: "Too strong",
+        edge: "top",
+        fullModeOnly: false,
+        isVisible: true,
+        textureId: 3,
+        textureOpacity: 1.5,
+      }),
+    ).toThrow();
+  });
+
+  it("keeps a texture pointer the library may not have, since staleness is allowed", () => {
+    // Deliberately NOT validated against the library: whether a picture still
+    // exists is a repository question, and a delete elsewhere must not make an
+    // unrelated toolbar un-saveable. The resolver drops it at render time.
+    const created = createToolbar(fakeRepo(), {
+      name: "Textured",
+      edge: "left",
+      fullModeOnly: false,
+      isVisible: true,
+      textureId: 404,
+      textureOpacity: 0.3,
+    });
+
+    expect(created.textureId).toBe(404);
   });
 });
 

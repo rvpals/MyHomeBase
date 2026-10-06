@@ -9,6 +9,7 @@ import {
   getHsaReceipt,
   listHsaCards,
   listHsaExpenses,
+  listHsaPayees,
   listHsaProductServices,
   renameHsaCard,
   setHsaCardActive,
@@ -124,6 +125,15 @@ class FakeHsaRepository implements HsaRepository {
     return [...seen.values()].sort((a, b) => a.localeCompare(b));
   }
 
+  listPayees(): string[] {
+    const seen = new Map<string, string>();
+    for (const expense of this.expenses.values()) {
+      const key = expense.payee.toLowerCase();
+      if (!seen.has(key)) seen.set(key, expense.payee);
+    }
+    return [...seen.values()].sort((a, b) => a.localeCompare(b));
+  }
+
   listCards(): HsaCard[] {
     return [...this.cards.values()].sort((a, b) => a.name.localeCompare(b.name));
   }
@@ -219,11 +229,12 @@ const VALID = {
   payee: "CVS",
 };
 
-const b64 = (text: string | Buffer) => Buffer.from(text).toString("base64");
+/** Receipts travel as bytes, not base64 — see MAX_HSA_RECEIPT_BYTES. */
+const bytes = (text: string | Buffer) => Buffer.from(text);
 
 const upload = (over: Partial<HsaReceiptUploadInput> = {}): HsaReceiptUploadInput => ({
   mimeType: "image/jpeg",
-  base64Data: b64("jpeg-bytes"),
+  data: bytes("jpeg-bytes"),
   fileName: "IMG_0001.jpg",
   ...over,
 });
@@ -266,6 +277,8 @@ describe("createHsaExpense", () => {
     ["blank product", { productService: "  " }],
     ["blank payee", { payee: "" }],
     ["unknown type", { type: "Spa" as never }],
+    // The common case now that the editor starts blank, so it gets its own message.
+    ["blank date", { entryDate: "" }],
     ["impossible date", { entryDate: "2026-02-31" }],
     ["malformed date", { entryDate: "10/03/2026" }],
     ["bad time", { entryTime: "25:00" }],
@@ -317,8 +330,8 @@ describe("setHsaReceipt", () => {
   it("replacing a receipt overwrites it in place when the name is unchanged", async () => {
     const { repo, store, files } = setup();
     const { id } = createHsaExpense(repo, VALID);
-    await setHsaReceipt(repo, files, { id, receipt: upload({ base64Data: b64("first") }) });
-    const result = await setHsaReceipt(repo, files, { id, receipt: upload({ base64Data: b64("second") }) });
+    await setHsaReceipt(repo, files, { id, receipt: upload({ data: bytes("first") }) });
+    const result = await setHsaReceipt(repo, files, { id, receipt: upload({ data: bytes("second") }) });
 
     expect(store.files.size).toBe(1);
     expect(store.files.get(result.path)?.toString()).toBe("second");
@@ -330,7 +343,7 @@ describe("setHsaReceipt", () => {
     const first = await setHsaReceipt(repo, files, { id, receipt: upload() });
     const second = await setHsaReceipt(repo, files, {
       id,
-      receipt: { mimeType: "application/pdf", base64Data: b64("%PDF-1.4 x"), fileName: "bill.pdf" },
+      receipt: { mimeType: "application/pdf", data: bytes("%PDF-1.4 x"), fileName: "bill.pdf" },
     });
 
     expect(second.path.endsWith(".pdf")).toBe(true);
@@ -345,7 +358,7 @@ describe("setHsaReceipt", () => {
     store.failRemove = true;
     const second = await setHsaReceipt(repo, files, {
       id,
-      receipt: { mimeType: "image/png", base64Data: b64("png"), fileName: "r.png" },
+      receipt: { mimeType: "image/png", data: bytes("png"), fileName: "r.png" },
     });
     expect(second.oldFileNotDeleted).toBe(first.path);
     expect(getHsaExpense(repo, id)?.receiptPath).toBe(second.path);
@@ -357,9 +370,36 @@ describe("setHsaReceipt", () => {
     await expect(
       setHsaReceipt(repo, files, {
         id,
-        receipt: { mimeType: "application/pdf", base64Data: b64("<html>"), fileName: "x.pdf" },
+        receipt: { mimeType: "application/pdf", data: bytes("<html>"), fileName: "x.pdf" },
       }),
     ).rejects.toThrow("not a PDF");
+  });
+
+  it("files a zip, which is what several attached files become", async () => {
+    const { repo, store, files } = setup();
+    const { id } = createHsaExpense(repo, VALID);
+    const result = await setHsaReceipt(repo, files, {
+      id,
+      receipt: {
+        mimeType: "application/zip",
+        data: bytes("PK and the rest of an archive"),
+        fileName: "receipt.jpg + statement.pdf (2 files)",
+      },
+    });
+    expect(result.path).toBe(`2026/2026-10-03_CVS_$42.50_${id}.zip`);
+    expect(store.files.has(result.path)).toBe(true);
+    expect(getHsaExpense(repo, id)?.receiptFileName).toBe("receipt.jpg + statement.pdf (2 files)");
+  });
+
+  it("refuses a file that claims to be a zip but is not", async () => {
+    const { repo, files } = setup();
+    const { id } = createHsaExpense(repo, VALID);
+    await expect(
+      setHsaReceipt(repo, files, {
+        id,
+        receipt: { mimeType: "application/zip", data: bytes("not an archive"), fileName: "x.zip" },
+      }),
+    ).rejects.toThrow("not a zip archive");
   });
 
   it("refuses a type outside the allowlist, such as SVG", async () => {
@@ -378,7 +418,7 @@ describe("setHsaReceipt", () => {
     const { repo, files } = setup();
     const { id } = createHsaExpense(repo, VALID);
     const big = Buffer.alloc(MAX_HSA_RECEIPT_BYTES + 1, 1);
-    await expect(setHsaReceipt(repo, files, { id, receipt: upload({ base64Data: b64(big) }) })).rejects.toThrow(
+    await expect(setHsaReceipt(repo, files, { id, receipt: upload({ data: bytes(big) }) })).rejects.toThrow(
       "too large",
     );
   });
@@ -582,6 +622,16 @@ describe("listHsaProductServices", () => {
     createHsaExpense(repo, { ...VALID, productService: "prescription" });
     createHsaExpense(repo, { ...VALID, productService: "Eye exam" });
     expect(listHsaProductServices(repo)).toEqual(["Eye exam", "Prescription"]);
+  });
+});
+
+describe("listHsaPayees", () => {
+  it("offers each payee once, case-insensitively", () => {
+    const { repo } = setup();
+    createHsaExpense(repo, { ...VALID, payee: "CVS" });
+    createHsaExpense(repo, { ...VALID, payee: "cvs" });
+    createHsaExpense(repo, { ...VALID, payee: "Dr. Lee" });
+    expect(listHsaPayees(repo)).toEqual(["CVS", "Dr. Lee"]);
   });
 });
 

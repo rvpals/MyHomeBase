@@ -799,6 +799,27 @@ The view seeds its open state from it rather than applying it in an effect (an e
 would flash the list first, and would re-open the editor every time it was closed),
 and closing or deleting clears the param with `router.replace`.
 
+### The ON/OFF switch on each list row
+
+`VisibilityToggle` flips one bar's `isVisible` straight from the list, saving on
+click rather than through the editor's Save button — the editor's own "Visible"
+checkbox still exists, but reaching it is open → scroll → tick → Save → close, and
+"turn that bar off, it's in the way" wants to be one click.
+
+**It resends every field, not just the flag.** `updateToolbarAction` takes a complete
+`ToolbarInput` and the repository's `UPDATE` sets every column, so posting
+`{ isVisible }` alone would blank the bar's name, colours and texture. The handler
+reuses `toDraft(toolbar)` to build the payload rather than spreading the stored row,
+because that helper already maps the stored shape to the input shape (an unset colour
+is `""` going in, `undefined` coming out) — duplicating that mapping is how the two
+would drift. If a field is ever added to a toolbar, it belongs in `Draft` and this
+keeps working; add it only to the form and this will quietly erase it.
+
+It switches the **admin's** flag — whether the bar exists for the household — not a
+reader's own hide list, which stays on their Account page. The two are separate by
+design (see *Ownership is split* above), so the tooltip says "for the household"
+rather than implying it controls one person's screen.
+
 ### It wears the app's Border Weight and Chrome Style
 
 A docked toolbar is part of the app's frame, so it follows the same two admin
@@ -840,6 +861,46 @@ is what lets a chosen colour and a bevel coexist: the gradient **tints** the col
 rather than painting over it. A custom *border* colour is inline, so it also beats
 the `outset` style's `border-*-color: transparent` — accepted deliberately, with the
 cost that `outset` draws a slightly heavier edge when a border colour is set.
+
+### A background texture, from the shared library
+
+A bar may draw one of the pictures in Configuration → App Texture behind its glyphs
+(migration 0130). It stores a **pointer** (`texture_id`) and its own strength
+(`texture_opacity`) — no bytes, no second library, no new serving route.
+
+| Piece | Where | What it owns |
+|---|---|---|
+| `resolveTexture` (inside `resolveToolbar`) | [src/lib/toolbars/toolbars.ts](src/lib/toolbars/toolbars.ts) | Resolving the pointer to a cache-busted URL, and dropping a stale one |
+| `ResolveToolbarOptions.textures` | the same file | The library, passed in as **data** — this module holds no texture repository |
+| `.personal-toolbar[data-textured]::before` | `globals.css` | The layer itself |
+
+Four rules, each of which has a reason that is easy to undo by accident:
+
+- **It must not go on `background-image`.** The `emboss` chrome style paints its
+  bevel gradient into that property, so a picture set there works on `flat` and
+  silently vanishes on `emboss` — the same class of trap as setting `background`
+  above. Hence the pseudo-element, which also keeps it under the bevel and over the
+  bar's fill.
+- **`resolveToolbarsFor` needs the library passed in**, or no bar draws a texture.
+  Deliberately optional so the feature is additive: a caller that has not been
+  taught about it gets flat bars rather than broken ones. The one call site is the
+  protected layout.
+- **The URL is built in `lib`, never at a call site.** It carries `?v=<updatedAt>`
+  because the serving route sends a 5-minute max-age; without it, replacing a
+  picture in the library appears to do nothing. Third place that cache-buster is
+  built, and the third place to get it subtly wrong.
+- **A stale pointer resolves to no texture.** `texture_id` is not a foreign key
+  (project convention, and 0117 made the same call), so deleting a library picture
+  leaves bars pointing at nothing. Resolving that to `undefined` is what stops a
+  delete from leaving a 404ing layer on a bar nobody has edited since.
+
+**Opacity is per-bar, and that is the one place this diverges from a module's
+texture.** A module reuses the library picture's own tuning — "pick Linen, get Linen
+as tuned" (0117). A 44px strip shows a few hundred square pixels, where a value
+tuned for a full page reads as nothing at all, so a toolbar carries its own. For the
+same reason there is no `mode` and no `blur`: the layer always tiles, because `cover`
+on a 44px bar shows one sliver of a picture, and there is nothing in a 44px tile for
+a Gaussian to do except erase it.
 
 ## The floating layer: a component that lives over the page
 

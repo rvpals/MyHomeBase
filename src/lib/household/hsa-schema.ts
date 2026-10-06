@@ -4,21 +4,30 @@ import { HSA_TYPES } from "./hsa-types";
 /**
  * The largest receipt accepted, measured on the incoming file.
  *
- * The ceiling is a server action's 4 MB body (`serverActions.bodySizeLimit`), and
- * base64 inflates a file by a third on the way — so 3 MB of file is about 4.0 MB on
- * the wire, which is already at the edge. 2.9 MB leaves a little room for the rest of
- * the payload and is the practical maximum.
+ * 15 MB, against a `bodySizeLimit` of 16 MB. The receipt travels as a **binary blob
+ * in `FormData`**, not as a base64 string argument, which is what makes a number this
+ * size possible at all:
  *
- * It was 2.5 MB when every image was shrunk in the browser. An *attached* file is now
- * sent byte-for-byte (only the camera path shrinks), so this cap is what a scanned PDF
- * or a full-size photo actually has to fit inside.
+ * - base64 inflated every file by a third, so the old 2.9 MB was ~3.9 MB on the wire;
+ * - worse, React charges **one array slot per character** of a string argument in a
+ *   multi-argument server action call, with a ceiling near 1,000,001 — so the base64
+ *   path would in practice have failed somewhere under 1 MB of file, with a framework
+ *   error rather than this module's message. `next.config.ts` records the same lesson
+ *   from the calendar importer.
+ *
+ * A blob is counted in neither way: the only budget left is the body size, and that
+ * is a real one we set.
  */
-export const MAX_HSA_RECEIPT_BYTES = 2.9 * 1024 * 1024;
+export const MAX_HSA_RECEIPT_BYTES = 15 * 1024 * 1024;
 
 /**
  * What a receipt may be. SVG is excluded for the reason `IMAGE_UPLOAD_MIME_TYPES`
  * excludes it: the bytes are served back from this app's own origin, and an SVG can
  * carry script.
+ *
+ * `application/zip` is what several files attached at once become — the browser packs
+ * them into one archive so an expense still holds exactly one file. It is NOT offered
+ * in the file picker: a zip is something this app produces, not something to upload.
  */
 export const HSA_RECEIPT_MIME_TYPES = [
   "image/png",
@@ -26,21 +35,41 @@ export const HSA_RECEIPT_MIME_TYPES = [
   "image/webp",
   "image/gif",
   "application/pdf",
+  "application/zip",
 ] as const;
 
 export type HsaReceiptMimeType = (typeof HSA_RECEIPT_MIME_TYPES)[number];
 
-export const hsaReceiptUploadSchema = z.object({
+/** What the picker offers. The zip is produced here, never chosen. */
+export const HSA_RECEIPT_PICKABLE_MIME_TYPES = HSA_RECEIPT_MIME_TYPES.filter(
+  (type) => type !== "application/zip",
+);
+
+/**
+ * One receipt on its way in, as the use-case takes it.
+ *
+ * `data` is **bytes**, not base64: the upload arrives as a binary blob in `FormData`
+ * (see `MAX_HSA_RECEIPT_BYTES` for why), so nothing is ever encoded as a string. The
+ * action converts the blob; the use-case and the CLI both hand over a Buffer.
+ *
+ * Not a zod object, because `z.instanceof(Buffer)` buys nothing a type check does not
+ * already give at this boundary — the action validates the parts that can lie (the
+ * declared type, the size, the signature) explicitly.
+ */
+export interface HsaReceiptUploadInput {
+  mimeType: HsaReceiptMimeType;
+  data: Buffer;
+  /** The file's own name — never a path. Kept so the receipt can be recognised later. */
+  fileName: string;
+}
+
+/** Validates the parts of an upload that travel as text beside the blob. */
+export const hsaReceiptMetaSchema = z.object({
   mimeType: z.enum(HSA_RECEIPT_MIME_TYPES, {
     message: "Attach a PNG, JPEG, WebP, GIF image or a PDF.",
   }),
-  /** Base64 of the file, as read in the browser. */
-  base64Data: z.string().min(1, "The file is empty."),
-  /** The file's own name, kept so the receipt can be recognised later. */
   fileName: z.string().trim().min(1, "The file has no name.").max(200, "That file name is too long."),
 });
-
-export type HsaReceiptUploadInput = z.infer<typeof hsaReceiptUploadSchema>;
 
 function isRealIsoDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -52,9 +81,15 @@ function isRealIsoDate(value: string): boolean {
   );
 }
 
+// Blank is reported separately from malformed: the editor's Date field now starts
+// empty (an HSA receipt is usually entered after the fact, so a pre-filled today is
+// wrong more often than right), which makes "you have not set one" the common case
+// and "that is not a real date" the rare one. A single message would have greeted
+// every first save with YYYY-MM-DD formatting advice.
 const dateSchema = z
   .string()
   .trim()
+  .min(1, "Pick the date of the expense — or use the current date & time button.")
   .refine(isRealIsoDate, "Enter a real date as YYYY-MM-DD.");
 
 /** Optional: blank, or null, means not recorded. */
@@ -130,11 +165,16 @@ export const bulkSetReimbursedSchema = z.object({
 });
 export type BulkSetReimbursedInput = z.input<typeof bulkSetReimbursedSchema>;
 
-export const setHsaReceiptSchema = z.object({
-  id: hsaExpenseIdSchema,
-  receipt: hsaReceiptUploadSchema,
-});
-export type SetHsaReceiptInput = z.input<typeof setHsaReceiptSchema>;
+/**
+ * Attaching a receipt to an expense.
+ *
+ * The id is validated here; the receipt's own bytes are checked in the use-case,
+ * which is where the size cap and the file-signature tests live.
+ */
+export interface SetHsaReceiptInput {
+  id: number;
+  receipt: HsaReceiptUploadInput;
+}
 
 export const hsaCardIdSchema = z.number().int().positive();
 

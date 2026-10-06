@@ -1,0 +1,58 @@
+-- Personal toolbars: an optional background texture, drawn behind the bar's glyphs.
+--
+-- WHAT THIS ADDS. A toolbar can now point at a picture in the EXISTING app texture
+-- library (`sys_dashboard_textures`, migration 0113) and draw it tiled behind its
+-- shortcuts, at an opacity of its own. Nothing here stores image bytes: the pointer
+-- resolves through the library's own serving route (`/api/dashboard/texture?id=`),
+-- which is already session-gated and already cache-busted by the library row's
+-- `updated_at`. So this migration adds two scalar columns and no BLOB.
+--
+-- WHY ALTER TABLE AND NOT COPY-RENAME-DROP. Both columns are additive and neither
+-- changes an existing CHECK -- `coding-guide.md` reserves copy-rename-drop for a
+-- constraint change, which 0126 and 0127 both were on the sibling items table. Adding
+-- a column with its own CHECK is something SQLite's ALTER TABLE does support, so the
+-- cheap form is the correct one here.
+--
+-- WHY `texture_id` IS NOT A FOREIGN KEY. Two reasons, and the first is project
+-- convention: no DB-level foreign keys anywhere in this schema. The second is the one
+-- that actually shapes the code -- migration 0117 made exactly this choice for
+-- `sys_module_texture.texture_id` and the reasoning carries over unchanged. An admin
+-- deleting a library picture should not have that delete cascade into unrelated
+-- chrome, nor be blocked by a bar nobody is looking at. So a pointer at a deleted
+-- picture is allowed to go stale, and `resolveToolbar` treats an unresolvable pointer
+-- as "no texture" -- the same fall-through `resolveAppTexture` already performs for a
+-- module's stale library pointer. The alternative is a layer whose URL 404s, which
+-- renders as a visibly broken bar rather than a plain one.
+--
+-- WHY THERE IS NO `texture_mode` COLUMN. The library's own rows carry `cover` or
+-- `tile`, and a toolbar deliberately stores neither: it ALWAYS tiles. A personal
+-- toolbar is 44px across its short axis, so `cover` would scale one copy of the
+-- picture to the bar's box and show a single sliver of it -- for most pictures, one
+-- flat smear of colour. A column with one usable value is a control an admin can only
+-- get wrong, so the renderer hardcodes `repeat` and this schema says nothing.
+--
+-- WHY `texture_opacity` LIVES HERE AND NOT ON THE LIBRARY ROW. This is the one place
+-- a toolbar's texture deliberately diverges from how a module draws one. A module
+-- fills a viewport, so migration 0117 could reasonably say "pick Linen, get Linen as
+-- it was tuned" and reuse the library row's opacity. A 44px strip shows a few hundred
+-- square pixels of the same picture, and a background tuned to 0.10 for a full page
+-- is effectively invisible in it. Tuning per bar is therefore not a nicety: without
+-- it, selecting a texture on a toolbar would often look like selecting nothing. The
+-- cost -- two bars showing one picture at different strengths -- is the intended
+-- outcome here, not the trade 0117 was avoiding.
+ALTER TABLE sys_toolbars ADD COLUMN texture_id INTEGER;
+
+-- 0..1, matching `sys_dashboard_textures.opacity`'s own bounds so the two cannot
+-- disagree about what a valid opacity is. The bounds are restated in `schema.ts`
+-- because this CHECK is the last line of defence and reports a SQLite error, while
+-- the schema reports something the toolbar editor can show -- the same split 0064
+-- documents for the module texture knobs. Neither is redundant: the CLI reaches the
+-- same use-case without passing through the form.
+--
+-- DEFAULT 0.15, not the 0.10 a full-page background defaults to, for the reason the
+-- header gives: a 44px bar shows so little of a picture that the full-page default
+-- reads as no texture at all. NOT NULL with a default, so every existing row gets a
+-- usable value and the renderer never has to branch on a missing opacity for a bar
+-- that has a picture.
+ALTER TABLE sys_toolbars ADD COLUMN texture_opacity REAL NOT NULL DEFAULT 0.15
+  CHECK (texture_opacity >= 0 AND texture_opacity <= 1);

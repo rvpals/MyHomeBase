@@ -135,6 +135,28 @@ export interface Toolbar {
   backgroundColor?: string;
   borderColor?: string;
   textColor?: string;
+  /**
+   * The app texture library picture drawn behind this bar's glyphs, by id
+   * (migration 0130). Undefined — the default and common case — is a flat bar.
+   *
+   * A plain id rather than a foreign key, so this can go **stale**: deleting a
+   * library picture does not reach into the toolbars that pointed at it. A
+   * pointer that no longer resolves renders as no texture, which `resolveToolbar`
+   * handles — the same fall-through `resolveAppTexture` performs for a module's
+   * stale pointer. See the migration for why that beats a cascade.
+   */
+  textureId?: number;
+  /**
+   * How strongly the texture shows, 0..1. Defaults to 0.15 in the table.
+   *
+   * Per-toolbar rather than taken from the library row, which is the one place a
+   * toolbar's texture deliberately differs from a module's. A module fills a
+   * viewport, so 0117 could reuse the picture's own tuning; a 44px strip shows a
+   * few hundred square pixels, where a background tuned for a full page reads as
+   * nothing at all. Always meaningful, even with no `textureId` — it is the value
+   * the editor's slider starts from when a picture is first chosen.
+   */
+  textureOpacity: number;
   edge: ToolbarEdge;
   /**
    * Show this toolbar only on the full layout.
@@ -182,6 +204,26 @@ export interface ResolvedToolbarItem {
   menuItemId?: string;
 }
 
+/**
+ * A texture resolved for rendering: the picture's URL and how strongly to draw it.
+ *
+ * The URL is built in `lib`, not at the call site, for the same reason
+ * `resolveAppTexture` builds its own: it carries a `?v=` cache-buster taken from
+ * the library row's `updatedAt`, because the serving route sends a 5-minute
+ * max-age and a replaced picture would otherwise appear not to change. A
+ * component handed a bare id would have to know that, and would be the third
+ * place to get it subtly wrong.
+ *
+ * No `mode` and no `blur`: a toolbar always tiles, since `cover` on a 44px bar
+ * shows one sliver of a picture. See migration 0130.
+ */
+export interface ResolvedToolbarTexture {
+  /** A ready-to-use CSS `url(...)` value, cache-buster included. */
+  image: string;
+  /** 0..1, from the toolbar's own column rather than the library row's. */
+  opacity: number;
+}
+
 /** A toolbar ready to render: colors, edge, and rows that all resolve. */
 export interface ResolvedToolbar {
   id: number;
@@ -189,6 +231,16 @@ export interface ResolvedToolbar {
   backgroundColor?: string;
   borderColor?: string;
   textColor?: string;
+  /**
+   * The background picture, or `undefined` when this bar has none — which covers
+   * both "no picture chosen" and "chosen picture has since been deleted".
+   *
+   * Undefined rather than a zero-opacity texture, so the renderer can leave the
+   * custom properties off entirely: an unset `background-image` makes the
+   * pseudo-element free, where one at opacity 0 still costs a paint. Same
+   * reasoning `ResolvedAppTexture` records for its optional `vars`.
+   */
+  texture?: ResolvedToolbarTexture;
   edge: ToolbarEdge;
   fullModeOnly: boolean;
   items: ResolvedToolbarItem[];

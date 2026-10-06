@@ -13,6 +13,7 @@ import {
   attendanceReportToCsv,
 } from "@/lib/attendance";
 import type {
+  AttendanceActionLegendEntry,
   AttendanceClass,
   AttendanceDetailReport,
   AttendanceDetailRow,
@@ -326,7 +327,7 @@ function shortDate(isoDate: string): string {
  */
 function DetailSheet({ report }: { report: AttendanceDetailReport }) {
   return (
-    <div className="print-sheet rounded-xl border border-line p-6 max-lg:p-4">
+    <div className="print-sheet print-landscape rounded-xl border border-line p-6 max-lg:p-4">
       <header>
         <h3 className="font-display text-2xl text-ink">{report.className}</h3>
         <p className="mt-1 text-sm text-muted">
@@ -338,8 +339,11 @@ function DetailSheet({ report }: { report: AttendanceDetailReport }) {
       </header>
 
       {/* `-mx-*` lets the scroll area reach the card's edges, so a wide grid uses
-          the full width rather than scrolling inside a padded box. */}
-      <div className="mt-4 -mx-6 overflow-x-auto max-lg:-mx-4">
+          the full width rather than scrolling inside a padded box. `print-grid`
+          hands the whole table to the print rules in globals.css: ruled cells,
+          content-width columns and no scrollbox, so a term fits one landscape
+          sheet. */}
+      <div className="print-grid mt-4 -mx-6 overflow-x-auto max-lg:-mx-4">
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b border-line">
@@ -378,7 +382,50 @@ function DetailSheet({ report }: { report: AttendanceDetailReport }) {
         Any further codes are the actions noted that day; a day registered more than
         once shows its latest session.
       </p>
+
+      <ActionLegend entries={report.actionLegend} />
     </div>
+  );
+}
+
+/**
+ * Decodes the action codes the grid above uses.
+ *
+ * Only the codes that actually appear are listed (the builder filters), so an
+ * empty legend means the term carried no actions at all -- in which case the
+ * heading would introduce nothing and the whole block is dropped.
+ *
+ * NARROW SCREENS: a two-column definition list, which stacks naturally; the
+ * description wraps under its own column rather than forcing the sheet wide.
+ */
+function ActionLegend({ entries }: { entries: AttendanceActionLegendEntry[] }) {
+  if (entries.length === 0) return null;
+
+  return (
+    <section className="print-legend mt-4 border-t border-line pt-3">
+      <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">
+        Action codes
+      </h4>
+
+      <dl className="mt-2 flex flex-col gap-1 text-xs">
+        {entries.map((entry) => (
+          <div key={entry.actionId} className="flex gap-2">
+            <dt className="shrink-0">
+              <span className="rounded bg-brass-soft px-1 font-mono text-[10px] font-semibold text-brass-dark">
+                {entry.code}
+              </span>
+            </dt>
+            <dd className="text-muted">
+              <span className="font-medium text-ink">{entry.name}</span>
+              {/* Empty both when the action has no description and when its
+                  catalog row is gone -- see AttendanceActionLegendEntry. The
+                  name alone is still a usable legend line. */}
+              {entry.description && <> &mdash; {entry.description}</>}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   );
 }
 

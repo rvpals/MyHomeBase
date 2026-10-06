@@ -564,6 +564,19 @@ in `src/app/globals.css` — don't hand-roll print CSS per view:
   dark, so inheriting the tokens would waste ink and read poorly).
 - **`no-print`** on anything inside the sheet that shouldn't appear on paper —
   action buttons, nav links, inline controls.
+- **`print-grid`** on a wide data table's wrapper (or the table itself) inside a
+  sheet. On paper it rules every cell, drops padding to a hair, lets columns
+  shrink to their content instead of `w-full`, un-sticks a pinned column,
+  un-truncates clamped text, repeats `<thead>` across pages and keeps rows off
+  the fold. **Opt-in**: a narrow sheet reads better as airy ruled rows than as a
+  boxed grid.
+- **`print-landscape`** on a sheet that needs the long edge of the paper. It uses
+  a named `@page`, so it rotates only the sheets that ask — a bare
+  `@page { size: landscape }` would turn every printable screen.
+
+`print-grid` + `print-landscape` are what make the attendance **Detail** grid (a
+column per day of a term) fit one sheet; see `AttendanceReportView`'s
+`DetailSheet`.
 
 The caller triggers printing itself (`window.print()`), so a reusable component
 takes an `onPrint` callback rather than reaching for the browser API. See
@@ -915,6 +928,16 @@ shortcut to a destination that already has a proper home in the tree.
 - **Colours are admin-chosen literals** — the one sanctioned exception to *colours are
   theme tokens*. Leaving them unset is the default and keeps the bar themed, which is
   what you want unless the point is a bar that stands out.
+- **A texture comes from the shared library, never a new upload.** A bar may draw one
+  of the pictures in Configuration → App Texture behind its glyphs. The library is the
+  same one the dashboard and the modules use, so a new background is uploaded in one
+  place and available everywhere — a per-toolbar upload control would be a second
+  library to keep and a second set of BLOBs to back up. Two ways a toolbar's texture
+  deliberately differs from a module's: **opacity is per-bar** (a 44px strip shows so
+  little of a picture that a full-page value reads as nothing), and it **always
+  tiles** (`cover` would scale one copy to the bar's box and show a sliver). The
+  picture draws on a pseudo-element so the Chrome Style bevel still composes over it;
+  see migration 0130.
 - **It wears the app's Border Weight and Chrome Style.** The content-facing edge takes
   `--chrome-outline-width`, and the bevel comes from `data-chrome-style` — per edge,
   because a bevel is directional. So a toolbar thickens and bevels with the header and

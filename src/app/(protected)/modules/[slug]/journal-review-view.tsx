@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
+import { BusyOverlay } from "@/components/busy-overlay";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { JournalViewer } from "@/components/journal-viewer";
@@ -25,6 +26,7 @@ import {
   buildJournalMergeDraftAction,
   getJournalSameDateEntryAction,
   loadJournalSameDateDataAction,
+  lockJournalSameDateEntriesAction,
   recycleJournalSameDateEntriesAction,
 } from "./journal-review-actions";
 import { journalEntriesFilterHref } from "./journal-shared";
@@ -80,6 +82,7 @@ export function JournalReviewView({
   // every time a different entry is opened, so a modal never opens mid-edit.
   const [isEditing, setIsEditing] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | undefined>(undefined);
+  const [pendingLock, setPendingLock] = useState<PendingLock | undefined>(undefined);
   const [merge, setMerge] = useState<PendingMerge | undefined>(undefined);
   const [mergeCleanup, setMergeCleanup] = useState<PendingMergeCleanup | undefined>(undefined);
   /**
@@ -96,6 +99,30 @@ export function JournalReviewView({
   const [error, setError] = useState<string | undefined>(undefined);
   const [notice, setNotice] = useState<string | undefined>(undefined);
   const [isBusy, setIsBusy] = useState(false);
+  /**
+   * Set only while the **list itself** is being re-read — the Log-only lens and
+   * the reload after an edit. Separate from `isBusy` on purpose: that flag also
+   * covers the delete/lock/merge confirms, which already say they are working
+   * inside their own dialog, and dimming the whole screen for those would be a
+   * second, louder answer to a question the dialog has already answered.
+   *
+   * This one has no dialog of its own. Re-scanning the journal for dates
+   * carrying several entries reads every entry, which on a full journal takes
+   * long enough that a checkbox flipping with nothing else happening reads as a
+   * click that didn't land.
+   */
+  const [isScanning, setIsScanning] = useState(false);
+  /**
+   * What the overlay says — each path sets it before raising the flag.
+   *
+   * A pair rather than one string because the second line is the *consequence*
+   * and genuinely differs: a re-scan is reading the whole journal, a delete is
+   * writing to the bin. One generic line covering both would say nothing.
+   */
+  const [scanLabel, setScanLabel] = useState<{ message: string; detail: string }>({
+    message: "Finding dates with several entries…",
+    detail: "Reading every entry in the journal to group them by date.",
+  });
 
   const rows = toSameDateRows(groups);
   const entryCount = countSameDateEntries(groups);
@@ -139,6 +166,13 @@ export function JournalReviewView({
   async function toggleLogOnly(next: boolean) {
     setLogOnly(next);
     setIsBusy(true);
+    setScanLabel({
+      message: next
+        ? "Finding dates with several Log entries…"
+        : "Finding dates with several entries…",
+      detail: "Reading every entry in the journal to group them by date.",
+    });
+    setIsScanning(true);
     setError(undefined);
     setNotice(undefined);
     try {
@@ -153,6 +187,7 @@ export function JournalReviewView({
       setGroups(result.groups);
     } finally {
       setIsBusy(false);
+      setIsScanning(false);
     }
   }
 
@@ -170,6 +205,11 @@ export function JournalReviewView({
    */
   async function runMergeCleanup(sourceIds: number[]) {
     setIsBusy(true);
+    setScanLabel({
+      message: `Moving ${sourceIds.length} original ${plural(sourceIds.length)} to the recycle bin…`,
+      detail: "The merged entry is already saved — this is only the clean-up.",
+    });
+    setIsScanning(true);
     setError(undefined);
     try {
       const result = await recycleJournalSameDateEntriesAction(sourceIds, logOnly);
@@ -193,6 +233,7 @@ export function JournalReviewView({
       router.refresh();
     } finally {
       setIsBusy(false);
+      setIsScanning(false);
     }
   }
 
@@ -207,6 +248,11 @@ export function JournalReviewView({
    */
   async function reloadAfterEdit(entryId: number) {
     setIsBusy(true);
+    setScanLabel({
+      message: "Saving and re-reading the list…",
+      detail: "An edit can move an entry to another date, so the whole list is regrouped.",
+    });
+    setIsScanning(true);
     try {
       const [entryResult, dataResult] = await Promise.all([
         getJournalSameDateEntryAction(entryId),
@@ -227,11 +273,17 @@ export function JournalReviewView({
       router.refresh();
     } finally {
       setIsBusy(false);
+      setIsScanning(false);
     }
   }
 
   async function runDelete(pending: PendingDelete) {
     setIsBusy(true);
+    setScanLabel({
+      message: `Moving ${pending.ids.length} ${plural(pending.ids.length)} to the recycle bin…`,
+      detail: "Restorable afterwards from Data Management → CSV Import → Correct.",
+    });
+    setIsScanning(true);
     setError(undefined);
     setNotice(undefined);
     try {
@@ -254,6 +306,50 @@ export function JournalReviewView({
       router.refresh();
     } finally {
       setIsBusy(false);
+      setIsScanning(false);
+    }
+  }
+
+  /**
+   * Locks the ticked entries, which is what takes their date off this screen.
+   *
+   * The groups are replaced from the action's response for the same reason the
+   * delete path does it: locked entries are dropped *before* grouping, so
+   * locking two of a date's three entries removes the whole date, which a
+   * locally-applied "hide the ticked rows" guess would get wrong.
+   */
+  async function runLock(pending: PendingLock) {
+    setIsBusy(true);
+    setScanLabel({
+      message: `Locking ${pending.ids.length} ${plural(pending.ids.length)}…`,
+      detail: "Locked entries are dropped before grouping, so the list is regrouped after.",
+    });
+    setIsScanning(true);
+    setError(undefined);
+    setNotice(undefined);
+    try {
+      const result = await lockJournalSameDateEntriesAction(pending.ids, logOnly);
+      if (!result.ok) {
+        setError(result.error ?? "That didn't work.");
+        return;
+      }
+      if (result.groups) setGroups(result.groups);
+      // The ticks referred to rows that have now gone from the list.
+      pending.clearSelection();
+      setPendingLock(undefined);
+      const locked = result.lockedCount ?? 0;
+      setNotice(
+        locked === 0
+          ? "Those entries were already locked — nothing changed."
+          : `Locked ${locked} ${plural(locked)} and removed them from review` +
+              `${result.skippedCount ? `, skipped ${result.skippedCount} already locked or missing` : ""}` +
+              ". Unlock an entry from the Entries list to bring its date back.",
+      );
+      // The entry count in the module chrome and the Entries list are stale now.
+      router.refresh();
+    } finally {
+      setIsBusy(false);
+      setIsScanning(false);
     }
   }
 
@@ -377,6 +473,11 @@ export function JournalReviewView({
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Covers the viewport, the open entry modal included, while the list is
+          re-read. Rendered here rather than inside the card so the dim reaches
+          the whole page — see the note at the top of busy-overlay.tsx. */}
+      <BusyOverlay isBusy={isScanning} message={scanLabel.message} detail={scanLabel.detail} />
+
       {error && <p className="text-sm text-red-400">{error}</p>}
       {notice && <p className="text-sm text-muted">{notice}</p>}
 
@@ -409,9 +510,12 @@ export function JournalReviewView({
             Click a row to read the whole entry, <strong>Edit</strong>
             it there if it needs fixing, and close it to come back here. Tick several, then{" "}
             <strong>Delete</strong> moves them to the recycle bin
-            (recoverable under CSV Import → Correct), or <strong>Merge</strong> drafts one new
+            (recoverable under CSV Import → Correct), <strong>Merge</strong> drafts one new
             entry from them for you to edit and save — then asks whether to delete the
-            originals.
+            originals — or <strong>Lock &amp; exclude from review</strong> marks them settled
+            and takes them off this list for good. Locked entries never appear here, so a
+            date left with fewer than two unlocked entries drops out entirely; unlock one
+            from the Entries list to bring its date back.
           </p>
           {groups.length > 0 && (
             <p className="text-xs text-muted">
@@ -457,6 +561,22 @@ export function JournalReviewView({
                 >
                   Merge checked
                 </Button>
+                {/* Sits between Merge and Delete deliberately: it is the
+                    "I'm done with these" action, non-destructive, and keeping
+                    the destructive Delete last leaves it hardest to mis-click. */}
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={isBusy}
+                  onClick={() =>
+                    setPendingLock({
+                      ids: selectedRows.map((row) => row.id),
+                      clearSelection,
+                    })
+                  }
+                >
+                  Lock &amp; exclude from review
+                </Button>
                 <Button
                   size="sm"
                   variant="danger"
@@ -499,10 +619,6 @@ export function JournalReviewView({
               tagOptions={tagOptions}
               locationCategoryOptions={locationCategoryOptions}
               locationTagOptions={locationTagOptions}
-              // A modal is a narrow box on a wide screen, which `max-lg:` can't
-              // detect — without this the category and tag create fields are
-              // squeezed to nothing here while the viewport is plainly desktop.
-              isCompactContainer
               onCancel={() => setIsEditing(false)}
               onSaved={() => void reloadAfterEdit(openEntry.id)}
             />
@@ -544,9 +660,18 @@ export function JournalReviewView({
             locationTagOptions={locationTagOptions}
             initialValues={merge.draft}
             saveLabel="Save merged entry"
-            // Same narrow-container problem as the edit form above: this is a
-            // modal, so the pickers' create fields need their own line.
-            isCompactContainer
+            // Writing the merged entry is a long write behind a dialog whose
+            // only other signal is the Save button's label. The form owns the
+            // flag and only reports it here.
+            onSavingChange={(saving) => {
+              if (saving) {
+                setScanLabel({
+                  message: "Saving the merged entry…",
+                  detail: "The original entries are left untouched until you choose.",
+                });
+              }
+              setIsScanning(saving);
+            }}
             onSaved={() => {
               // The new entry lands on the same date as its sources, so that date
               // now has one more entry, not one fewer — the list has to be
@@ -610,6 +735,39 @@ export function JournalReviewView({
         </Modal>
       )}
 
+      {pendingLock && (
+        <Modal
+          title={`Lock ${pendingLock.ids.length} ${plural(pendingLock.ids.length)}?`}
+          description={
+            `Locking the checked ${pendingLock.ids.length} ${plural(pendingLock.ids.length)} ` +
+            "takes them out of this review list, so you won't be shown them again. A date " +
+            "left with fewer than two unlocked entries disappears from the list entirely. " +
+            "Nothing is deleted — unlock an entry from the Entries list to bring it back."
+          }
+          onClose={() => setPendingLock(undefined)}
+          isBusy={isBusy}
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => setPendingLock(undefined)}
+                disabled={isBusy}
+              >
+                Cancel
+              </Button>
+              <Button disabled={isBusy} onClick={() => void runLock(pendingLock)}>
+                {isBusy ? "Working…" : `Lock ${pendingLock.ids.length}`}
+              </Button>
+            </>
+          }
+        >
+          <p className="text-sm text-ink">
+            {pendingLock.ids.length} {plural(pendingLock.ids.length)} selected. Locked entries
+            also can&apos;t be edited or overwritten by an import until you unlock them.
+          </p>
+        </Modal>
+      )}
+
       {pendingDelete && (
         <Modal
           title={`Delete ${pendingDelete.ids.length} ${plural(pendingDelete.ids.length)}?`}
@@ -650,6 +808,20 @@ export function JournalReviewView({
  * drop those ticks once the write lands.
  */
 interface PendingDelete {
+  ids: number[];
+  clearSelection: () => void;
+}
+
+/**
+ * A pending "Lock & exclude from review", held across its confirm dialog.
+ *
+ * Same shape and same reasoning as `PendingDelete` — the ids are captured when
+ * the dialog opens so it acts on exactly what was ticked then, and the grid's
+ * `clearSelection` rides along because the locked rows leave the list once the
+ * write lands. A separate state from `pendingDelete` so the two confirmations
+ * can never be on screen at once or act on each other's selection.
+ */
+interface PendingLock {
   ids: number[];
   clearSelection: () => void;
 }

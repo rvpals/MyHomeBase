@@ -399,7 +399,6 @@ export function StockDailyGlance({
           <GlanceRefreshButton state={refresh} />
           <Comments
             title="Explanation"
-            label="Explanation"
             content={
               <p>
                 <span className="text-ink">Total value</span> is shares × the price move — how much

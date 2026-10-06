@@ -4,6 +4,7 @@ export {
   CLASS_WEEKDAYS,
   CLASS_WEEKDAY_LABELS,
   CLASS_WEEKDAY_UNSET,
+  type AttendanceActionLegendEntry,
   type AttendanceActionTally,
   type AttendanceClass,
   type AttendanceDetailCell,

@@ -15,6 +15,9 @@ const EXTENSIONS: Record<string, string> = {
   "image/webp": "webp",
   "image/gif": "gif",
   "application/pdf": "pdf",
+  // What several files attached at once become: the browser packs them into one
+  // archive, so an expense still holds exactly one file.
+  "application/zip": "zip",
 };
 
 export function receiptExtension(mimeType: string): string {

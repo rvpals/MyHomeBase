@@ -1,4 +1,5 @@
 import type {
+  BulkEntryEditData,
   EntryWriteData,
   JournalFilterWriteData,
   PrefillTemplateWriteData,
@@ -40,6 +41,16 @@ export interface JournalEntryMatchKey {
 // The interface a journal use-case depends on. The real SQLite implementation
 // is wired in at wiring.ts; tests wire in an in-memory fake. Use-cases never see
 // the concrete class.
+/** What a bulk edit actually did — see `bulkEditEntries`. */
+export interface BulkEntryEditOutcome {
+  /** Ids that were written. */
+  updatedIds: number[];
+  /** Ids that exist but are locked, so were left untouched. */
+  skippedLockedIds: number[];
+  /** Ids that no longer exist at all. */
+  missingIds: number[];
+}
+
 export interface JournalRepository {
   // Entries — each create/update/delete writes the entry and its child rows
   // (categories, tags, locations) in a single transaction.
@@ -88,6 +99,23 @@ export interface JournalRepository {
   createEntry(input: EntryWriteData): JournalEntry;
   updateEntry(id: number, input: EntryWriteData): JournalEntry;
   deleteEntry(id: number): void;
+  /**
+   * Applies the same change to every id in `ids`, in one transaction, and reports
+   * what happened per row.
+   *
+   * Deliberately **not** expressible as a loop of `updateEntry`: that one rewrites
+   * the whole aggregate (including `jrn_entry_locations`), so using it to change a
+   * tag would drop every entry's locations on the floor. This writes only the
+   * child rows and columns the change names.
+   *
+   * Locked entries are **skipped, not written** — `updateEntry` refuses them, and
+   * a bulk path that quietly edited them would be a way around the lock. They come
+   * back in `skippedLockedIds` so the caller can say so rather than silently
+   * under-reporting. (Bulk *delete* is the opposite and moves locked entries too;
+   * see the note on `recycleEntries` — the bin preserves the lock, so that one is
+   * recoverable rather than a bypass.)
+   */
+  bulkEditEntries(ids: number[], changes: BulkEntryEditData): BulkEntryEditOutcome;
   /**
    * How many stored entries carry this exact date, time and title — the CSV
    * importer's duplicate check.
@@ -198,6 +226,64 @@ export interface JournalRepository {
   // `limit` — for the "Top Tags" / "Top Categories" lists.
   listTopTags(limit: number): JournalTaxonomyCount[];
   listTopCategories(limit: number): JournalTaxonomyCount[];
+
+  /**
+   * How many entries carry each category/tag name — *every* name that appears on
+   * an entry, with no limit.
+   *
+   * Deliberately separate from `listTopCategories`/`listTopTags` rather than a
+   * `limit`-less overload of them: those answer "the busiest few, biggest
+   * first" for a dashboard card, and their required `limit` is the guard that
+   * keeps a card from rendering two hundred rows. This answers "which managed
+   * names does no entry use", which is only correct over the *whole* set — a
+   * top-N read can't distinguish "unused" from "fell outside the cap", and a
+   * caller passing a magic large number to fake it would be a silent
+   * correctness bug the day the journal outgrew it.
+   *
+   * Names come back exactly as stored on the entry rows, un-normalized; folding
+   * `"work"` and `"Work"` together is the use-case's job, not the query's.
+   */
+  countEntriesByCategory(): JournalTaxonomyCount[];
+  countEntriesByTag(): JournalTaxonomyCount[];
+
+  /**
+   * Folds `sources` into `target`, in one transaction — the Meta Data card's
+   * bulk Merge. Creates `target` in the managed list if it isn't there, moves
+   * every entry pairing over, and deletes the source rows.
+   *
+   * **Why this is one repository method and not a loop of renames.**
+   * `jrn_entry_categories` carries `UNIQUE (entry_id, category_name)`, so a
+   * plain `UPDATE ... SET category_name = target` throws the moment one entry
+   * carries two of the sources — which is the ordinary case when merging
+   * near-duplicates. The implementation therefore *adds* the target pairing with
+   * `INSERT OR IGNORE` and then deletes the source pairings, sidestepping the
+   * unique index instead of fighting it. Getting that wrong is a constraint
+   * error on real data, so it lives here once rather than at each caller.
+   *
+   * Atomic for the same reason: a half-done merge would leave entries pointing
+   * at a managed row that had already been deleted.
+   *
+   * `target` may itself be one of `sources` (folding the others into one of
+   * them); that source is then kept rather than deleted. Icon and description
+   * handling is the use-case's call, not this method's — see `mergeTaxonomy`.
+   *
+   * Returns how many entries ended up carrying `target`.
+   */
+  mergeCategories(sources: string[], target: string): number;
+  mergeTags(sources: string[], target: string): number;
+
+  /**
+   * How many **distinct** entries carry any of `names` — what a merge of those
+   * names into one would leave behind.
+   *
+   * Its own method rather than a sum over `countEntriesByCategory`, because
+   * summing double-counts: merging two near-duplicates, the ordinary case, has
+   * entries carrying both, and `7 + 4` would promise 11 where the answer is 9.
+   * This number is shown in the confirm the reader decides on, so it has to be
+   * the real one. `COUNT(DISTINCT entry_id)` is the whole implementation.
+   */
+  countDistinctEntriesWithCategories(names: string[]): number;
+  countDistinctEntriesWithTags(names: string[]): number;
 
   // Entry counts grouped by year and month, newest year first, months DESC within each year.
   countEntriesByYearAndMonth(): JournalYearCount[];

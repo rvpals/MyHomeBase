@@ -1,5 +1,66 @@
 # Change History
 
+## 2026-10-05 — Journal bulk tools, toolbar textures, multi-file HSA receipts, and a printable attendance grid
+
+**Migration 0130 must be applied on the NAS** (`sys_toolbars.texture_id`,
+`sys_toolbars.texture_opacity`). Everything else is code only.
+
+### Journal: bulk tools on Entries, Meta Data and Review Data
+
+- **Entries → bulk select, edit and delete.** Both the Main and Log tabs get tick-boxes,
+  select-all, and **Bulk edit** / **Delete** once anything is ticked. A bulk edit sets
+  categories and tags each in its own mode — **Add**, **Remove** or **Replace** — and
+  optionally a place. Tag matching is case-insensitive and an entry keeps its own
+  spelling. Locked entries are *skipped* by an edit but still *moved* by a delete (the
+  recycle bin keeps the lock, so the delete is recoverable). Map pins are untouched.
+  CLI: `journal-bulk-edit`.
+- **Meta Data → Clean up, bulk delete and Merge.** Categories and Tags get row ticks, a
+  two-step **Clean up** that ticks unused names and deletes nothing, **Delete n
+  selected** with a warning for in-use names, and **Merge n selected** into one name —
+  rewriting entries, saved filters and prefill templates, and counting an entry that
+  carried two merged names once. CLI: `journal-taxonomy`.
+- **Review Data → Lock & exclude from review.** Reuses the entry lock rather than a new
+  flag; locked entries are dropped before grouping, so a date left with fewer than two
+  unlocked entries leaves the list. CLI: `journal-same-date --lock` / `--include-locked`.
+- **`BusyOverlay`** (new, `src/components/busy-overlay.tsx`): a full-screen dim with a
+  spinner and a message, wired into the long writes above. `JournalEntryForm` gained an
+  optional `onSavingChange` so the merge dialog can report its busy state out.
+- `TokenPicker` is now a single combobox (type to filter, pick, or create) instead of a
+  dropdown beside a create box, so the `isCompactContainer`/`stackControls` workaround
+  is gone.
+
+### Personal toolbars: a background texture
+
+A bar can draw a picture from the **existing** app texture library behind its shortcuts,
+at an opacity of its own (**Admin → Display Settings → Toolbars**). It always tiles — a
+44px strip would show one sliver of a `cover` picture — and draws on a `::before` layer
+because the `emboss` chrome style already owns `background-image`. A picture deleted from
+the library simply stops showing. See `migrations/0130_add_toolbar_texture.md`.
+
+### Household: HSA receipts
+
+- **Several files at once** are packed in the browser into one zip, so an expense still
+  holds exactly one file and the rename/move/delete path is unchanged. A single file is
+  still stored byte-for-byte.
+- The receipt now travels as a binary `FormData` blob rather than base64, and the server
+  action body limit rose from 4 MB to **16 MB** (`next.config.ts`) to fit the 15 MB cap.
+- The editor's file area is a dropzone with a removable file list; **Payee** and
+  **Product or Service** are real comboboxes fed by past values; Date and Time now start
+  **empty**, with a **Use current date & time** button.
+
+### Attendance: a printable term grid
+
+The attendance report prints landscape with ruled, content-width cells, no scrollbox and
+the header repeated per page, and gains an **Action codes** legend under the grid
+decoding every code that appears (`actionLegend` on the report).
+
+### Smaller
+
+- **Admin → Configuration → Icons** has a filter box searching name, location, id and
+  default concept across every group; the tabs step aside while it is in use.
+- The `Comments` info mark is now a bare accent glyph with a 44px touch target on compact,
+  and its "About"/"Instruction" labels are dropped from the call sites.
+
 ## 2026-10-04 — HSA Tracker, Foreign Currencies, and a Journal lock marker
 
 ### Household: the HSA Tracker is built

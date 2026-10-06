@@ -476,6 +476,58 @@ html[data-toolbar-bottom] .app-main {
   border-width: 0;
 }
 
+/* An optional background picture from the app texture library, drawn behind the
+   bar's glyphs (migration 0130). `PersonalToolbars` sets the two custom
+   properties and marks the bar `data-textured` when an admin has chosen one.
+   ---------------------------------------------------------------------------
+   WHY A PSEUDO-ELEMENT AND NOT `background-image` ON THE BAR. Because the
+   `emboss` chrome style already paints its bevel gradient into that exact
+   property further down this file, so a picture set there would be erased by
+   whichever chrome style happens to be active -- a texture that works on
+   `flat` and silently vanishes on `emboss`. The same collision this file
+   records for setting `background` (the shorthand) over `--toolbar-surface`.
+   A separate layer composites cleanly above the bar's chosen fill and below
+   both the bevel and the shortcuts.
+
+   WHY IT ALWAYS TILES. `background-size` is left at the picture's natural size
+   and `background-repeat: repeat`, with no `cover` option -- unlike
+   `[data-app-texture]`, which takes both from the library row. A toolbar is
+   44px across its short axis: `cover` would scale one copy of the picture to
+   that box and show a single sliver of it. So the mode is not stored and not
+   configurable; see the migration.
+
+   WHY `z-index: 0` AND NOT `-1`. `.personal-toolbar` is already
+   `position: fixed`, which makes it a containing block but NOT a stacking
+   context (it sets no z-index of its own beyond the `30` above -- which does
+   make one). A `-1` child would therefore be trapped behind the bar's own
+   `background-color`, which is opaque, and never seen. `0` keeps it in flow
+   above that fill; the shortcuts are positioned descendants that paint later,
+   so they need no z-index of their own. */
+.personal-toolbar[data-textured]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: var(--toolbar-texture-image);
+  background-repeat: repeat;
+  background-position: center;
+  opacity: var(--toolbar-texture-opacity, 0.15);
+  /* Clipped to the bar's own rounded corners where a chrome style gives it any,
+     so the picture cannot square off a bevelled edge. */
+  border-radius: inherit;
+}
+
+/* The shortcuts sit above the texture. `.personal-toolbar`'s children are
+   otherwise unpositioned, so they would paint in the same layer as the
+   pseudo-element and a dark picture at high opacity could wash over a glyph.
+   One rule for every child rather than a class on each row, since there is no
+   row this does not apply to. */
+.personal-toolbar[data-textured] > * {
+  position: relative;
+  z-index: 1;
+}
+
 /* Each edge spans the full axis and sits inside the device insets. A horizontal
    bar clears the side insets; a vertical one clears top and bottom, and stacks
    above whatever already owns the bottom edge so it can never cover the player
@@ -1822,6 +1874,90 @@ html[data-music-player="minimized"] {
 
   .no-print {
     display: none !important;
+  }
+
+  /* A wide data grid on paper: `print-grid` on the <table> (or any ancestor of
+     one) inside a `.print-sheet`. Opt-in rather than applied to every printed
+     table, because the narrow sheets -- a single day's attendance, a journal
+     entry -- read better as airy ruled rows than as a boxed grid.
+
+     Three things make a term-wide grid fit a landscape sheet:
+
+       - `table-layout: auto` + `width: auto` lets each column shrink to its
+         widest cell. The screen table is `w-full`, which stretches a dozen
+         one-letter columns to fill the viewport; on paper that is what pushes
+         the last dates off the edge.
+       - Padding drops to a hair either side, since the cells hold one or two
+         characters and the vertical rules now do the separating that the
+         whitespace used to.
+       - Vertical rules on every cell. Without them a column of P's and A's
+         with no gutter is hard to track across a row by eye. */
+  .print-grid table {
+    table-layout: auto !important;
+    width: auto !important;
+    border-collapse: collapse !important;
+  }
+
+  .print-grid th,
+  .print-grid td {
+    border: 1px solid #999 !important;
+    padding: 1px 3px !important;
+  }
+
+  /* The pinned first column is a screen affordance -- on paper there is nothing
+     to scroll, and `sticky` with a `left-0` offset can shift the cell. */
+  .print-grid th.sticky,
+  .print-grid td.sticky {
+    position: static !important;
+  }
+
+  /* The sheet's `-mx-6` edge-bleed and its scroll container are screen-only
+     too: a scrollbox on paper clips, rather than scrolls, whatever overflows. */
+  .print-grid {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* The student name is clamped and truncated on screen so one long name can't
+     widen the pinned column past a phone. On paper the column is as wide as it
+     needs to be, and a truncated name on a printed roster is a defect. */
+  .print-grid .truncate {
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: nowrap !important;
+    max-width: none !important;
+  }
+
+  /* A legend is only useful whole: splitting it across the fold puts half the
+     codes on a page the reader has to turn away from to use them. */
+  .print-legend {
+    break-inside: avoid;
+  }
+
+  /* Repeat the date header on every sheet a long roster spills onto, and keep a
+     student's row from breaking across the page fold. */
+  .print-grid thead {
+    display: table-header-group;
+  }
+
+  .print-grid tr {
+    break-inside: avoid;
+  }
+}
+
+/* A grid this wide needs the long edge of the paper. Scoped to its own @page
+   name so only the sheets that ask for it turn -- `@page { size: landscape }`
+   in the shared block would rotate the brief attendance sheet and the journal
+   entry as well. */
+@media print {
+  @page landscape-sheet {
+    size: landscape;
+    margin: 10mm;
+  }
+
+  .print-landscape {
+    page: landscape-sheet;
   }
 }
 

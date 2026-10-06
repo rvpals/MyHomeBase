@@ -23,6 +23,13 @@ import {
   generateMissingTaxonomyIcons,
   type GenerateIconsSummary,
   type TaxonomyKind,
+  findUnusedTaxonomy,
+  taxonomyInUseAmong,
+  type TaxonomyUsage,
+  mergeTaxonomy,
+  planTaxonomyMerge,
+  type TaxonomyMergePlan,
+  type TaxonomyMergeResult,
   generateTagIcon,
   journalPreferencesToEntries,
   listFilters,
@@ -68,6 +75,31 @@ export interface ActionResult {
 export interface GenerateIconsResult extends ActionResult {
   generated?: number;
   failed?: number;
+}
+
+/** `ActionResult` plus the unused names, for the Meta Data "Clean up" scan. */
+export interface UnusedTaxonomyResult extends ActionResult {
+  /** Managed names no entry carries, as stored — what the view ticks. */
+  names?: string[];
+  /** Which of the names asked about are still in use, busiest first. */
+  inUse?: TaxonomyUsage[];
+}
+
+/** `ActionResult` plus what a merge would do, for the dialog's live summary. */
+export interface TaxonomyMergePlanResult extends ActionResult {
+  plan?: TaxonomyMergePlan;
+}
+
+/** `ActionResult` plus what a completed merge did. */
+export interface TaxonomyMergeActionResult extends ActionResult {
+  result?: TaxonomyMergeResult;
+}
+
+/** `ActionResult` plus what a bulk taxonomy delete actually removed. */
+export interface DeleteTaxonomyResult extends ActionResult {
+  deleted?: number;
+  /** Names that could not be deleted, each with why — the rest still went. */
+  failures?: Array<{ name: string; error: string }>;
 }
 
 function toErrorResult(error: unknown, fallback: string): ActionResult {
@@ -333,6 +365,123 @@ export async function generateMissingJournalIconsAction(
   }
   revalidatePath(JOURNAL_MODULE_PATH);
   return { ok: true, ...summary };
+}
+
+/**
+ * The "Clean up" scan: which managed categories/tags no entry uses.
+ *
+ * Read-only on purpose — it deletes nothing and writes nothing. The view ticks
+ * the names it returns and the reader presses Delete, so a mis-click on a
+ * crowded screen can't quietly strip the taxonomy. No `revalidatePath` for the
+ * same reason: nothing changed.
+ */
+export async function findUnusedJournalTaxonomyAction(
+  kind: TaxonomyKind,
+): Promise<UnusedTaxonomyResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
+  try {
+    return { ok: true, names: findUnusedTaxonomy(deps.journalRepo, kind) };
+  } catch (error) {
+    return toErrorResult(error, "Failed to check which ones are unused.");
+  }
+}
+
+/**
+ * Which of `names` entries still carry — what the bulk-delete confirm reads out
+ * before it detaches anything.
+ *
+ * Its own action rather than part of the delete: the reader sees the breakdown
+ * and can still cancel, so the question has to be answerable without committing
+ * to the write. Also read-only.
+ */
+export async function journalTaxonomyInUseAction(
+  kind: TaxonomyKind,
+  names: string[],
+): Promise<UnusedTaxonomyResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
+  try {
+    return { ok: true, inUse: taxonomyInUseAmong(deps.journalRepo, kind, names) };
+  } catch (error) {
+    return toErrorResult(error, "Failed to check which ones are still in use.");
+  }
+}
+
+/**
+ * Deletes several categories or tags at once — the Meta Data list's bulk Delete.
+ *
+ * Loops the same single-name use-case the per-row delete button uses, so each
+ * name is removed from the managed list *and* detached from its entries in one
+ * transaction, exactly as before. Deliberately not one big transaction across
+ * all of them: a single bad name shouldn't roll back the other forty, and the
+ * reader gets told which ones didn't go.
+ */
+export async function deleteJournalTaxonomyAction(
+  kind: TaxonomyKind,
+  names: string[],
+): Promise<DeleteTaxonomyResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
+
+  let deleted = 0;
+  const failures: Array<{ name: string; error: string }> = [];
+  for (const name of names) {
+    try {
+      if (kind === "category") deleteCategory(deps.journalRepo, name);
+      else deleteTag(deps.journalRepo, name);
+      deleted += 1;
+    } catch (error) {
+      failures.push({
+        name,
+        error: error instanceof Error ? error.message : "Failed to delete it.",
+      });
+    }
+  }
+
+  revalidatePath(JOURNAL_MODULE_PATH);
+  return { ok: failures.length === 0, deleted, failures };
+}
+
+/**
+ * What merging the selected names into `target` would do — the numbers the
+ * Merge dialog shows while the reader is still typing.
+ *
+ * Read-only, and separate from the merge itself so the dialog can update the
+ * entry count and the "already exists" warning on each keystroke without
+ * risking a write. No `revalidatePath`: nothing changed.
+ */
+export async function planJournalTaxonomyMergeAction(
+  kind: TaxonomyKind,
+  sources: string[],
+  target: string,
+): Promise<TaxonomyMergePlanResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
+  try {
+    return { ok: true, plan: planTaxonomyMerge(deps.journalRepo, kind, { sources, target }) };
+  } catch (error) {
+    return toErrorResult(error, "Failed to work out what that merge would do.");
+  }
+}
+
+/**
+ * Folds the selected categories or tags into one name.
+ *
+ * **Not undoable** — there is no recycle bin for taxonomy, so which entry
+ * carried which original name is gone once this lands. The UI confirms twice
+ * before calling it.
+ */
+export async function mergeJournalTaxonomyAction(
+  kind: TaxonomyKind,
+  sources: string[],
+  target: string,
+): Promise<TaxonomyMergeActionResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
+  let result: TaxonomyMergeResult;
+  try {
+    result = mergeTaxonomy(deps.journalRepo, kind, { sources, target });
+  } catch (error) {
+    return toErrorResult(error, "Failed to merge them.");
+  }
+  revalidatePath(JOURNAL_MODULE_PATH);
+  return { ok: true, result };
 }
 
 export async function clearJournalTagIconAction(name: string): Promise<ActionResult> {

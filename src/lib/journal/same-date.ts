@@ -22,8 +22,10 @@
 // produces candidates; the delete path takes the ticked ids and the merge path
 // takes the ticked entries, neither re-checking that they shared a date at all.
 
+import { z } from "zod";
 import { excerptWords } from "./duplicates";
 import { isLogEntry } from "./journal";
+import type { JournalRepository } from "./ports";
 import type { JournalEntry } from "./types";
 
 /**
@@ -70,6 +72,29 @@ export interface SameDateGroup {
 /** How `findSameDateGroups` narrows the population before it groups. */
 export interface FindSameDateGroupsOptions {
   /**
+   * Include locked entries, which are otherwise left out entirely.
+   *
+   * A lock is this screen's "I have reviewed this date, stop showing it to me":
+   * the `Lock & exclude from review` bulk action sets it, and the exclusion is
+   * the whole point — a date you have settled must not come back next time.
+   *
+   * **Excluded before grouping, exactly like `logOnly`.** A date qualifies only
+   * when it holds two or more *unlocked* entries, so locking two of a date's
+   * three drops the entire date rather than leaving one row behind claiming to
+   * be "1 of 1". Locking is therefore how a date leaves this screen for good,
+   * and unlocking any of its entries brings it back.
+   *
+   * Note this reuses the ordinary entry lock rather than adding a second flag,
+   * so an entry locked elsewhere (to guard it against editing) also stops
+   * appearing here. That is the accepted trade of having one concept: the lock
+   * badge the rows already render is the explanation for the absence.
+   *
+   * No screen passes this today — the Review card has no "show locked" toggle.
+   * It exists so the grouping stays a total function of its inputs, and so the
+   * exclusion itself is directly testable.
+   */
+  includeLocked?: boolean;
+  /**
    * Consider only Log entries — the card's "Review only Log entries" toggle.
    *
    * **Filters before grouping, not after.** A date qualifies only when it holds
@@ -93,6 +118,9 @@ export interface FindSameDateGroupsOptions {
  * Groups `entries` by their calendar date, keeping only the dates carrying more
  * than one entry.
  *
+ * Locked entries are left out unless `includeLocked` says otherwise — see that
+ * option for why the lock doubles as "reviewed, stop showing me this date".
+ *
  * Groups come back newest date first; within a group, entries are ordered by
  * time then id, so the day reads in the order it was lived and "merge these in
  * order" produces a chronological entry.
@@ -106,9 +134,12 @@ export function findSameDateGroups(
   options: FindSameDateGroupsOptions = {},
 ): SameDateGroup[] {
   // Narrowed *before* grouping, not after, so the "2 or more" test counts only
-  // the population being asked about. See FindSameDateGroupsOptions.logOnly for
-  // why that is the meaningful reading of the question.
-  const population = options.logOnly ? entries.filter(isLogEntry) : entries;
+  // the population being asked about. See FindSameDateGroupsOptions.logOnly and
+  // .includeLocked for why that is the meaningful reading of the question: both
+  // narrowings decide which dates qualify at all, which a filter applied to the
+  // finished groups could not do.
+  let population = options.includeLocked ? entries : entries.filter((entry) => !entry.isLocked);
+  if (options.logOnly) population = population.filter(isLogEntry);
 
   const grouped = new Map<string, JournalEntry[]>();
 
@@ -314,4 +345,76 @@ export function mergeEntryDraft(entries: JournalEntry[]): MergedEntryDraft {
     categories: unionNames(ordered.map((entry) => entry.categories)),
     tags: unionNames(ordered.map((entry) => entry.tags)),
   };
+}
+
+// --- Locking ----------------------------------------------------------------
+
+/**
+ * A list of ids from a boundary (a form post, a CLI argument).
+ *
+ * Same shape and same reasoning as `recycle.ts`'s: non-empty because every
+ * caller is acting on a user's tick-boxes, and the de-dupe keeps a
+ * double-submitted checkbox from making the reported count disagree with what
+ * the user was shown. Declared here rather than imported from `recycle.ts` so
+ * the two screens' validation can diverge without one silently changing the
+ * other — the same reason `SAME_DATE_EXCERPT_WORDS` is not the duplicates one.
+ */
+const idListSchema = z
+  .array(z.number().int().positive())
+  .min(1, "Select at least one entry.")
+  .transform((ids) => [...new Set(ids)]);
+
+export interface LockEntriesResult {
+  /** How many entries this call actually locked. */
+  lockedCount: number;
+  /**
+   * How many requested ids were left alone — either they no longer exist, or
+   * they were locked already.
+   *
+   * The two are deliberately counted together rather than reported separately:
+   * to the reader who ticked the rows, both mean "nothing changed for this one",
+   * and neither is an error worth failing the whole call over. A selection that
+   * is entirely already-locked is a no-op that reports itself honestly.
+   */
+  skippedCount: number;
+}
+
+/**
+ * Locks the given entries — the Review Data card's "Lock & exclude from review".
+ *
+ * Locking is what takes a date off that screen: `findSameDateGroups` drops
+ * locked entries before it groups, so a date left with fewer than two unlocked
+ * entries stops appearing at all. That is the use-case's whole purpose — to
+ * stop re-reading the same settled dates — and it is why this lives beside the
+ * grouping rather than next to `setLocked` in `journal.ts`.
+ *
+ * The ids are taken as given: this does NOT re-check that they shared a date.
+ * The card found the candidates, a human read them and ticked the ones they are
+ * finished with, and second-guessing that here would refuse a lock the reader
+ * deliberately asked for.
+ *
+ * Reversible by design, unlike the delete beside it: nothing is written to an
+ * entry but its `is_locked` flag, so unlocking any entry puts its date back on
+ * the card with its content untouched. There is no bulk unlock here because the
+ * Review card cannot show a locked entry to untick — unlocking happens on the
+ * entry itself.
+ *
+ * An id that no longer exists is skipped rather than failing the whole call, so
+ * one stale row in a selection cannot block the rest.
+ */
+export function lockEntries(repo: JournalRepository, ids: number[]): LockEntriesResult {
+  const validated = idListSchema.parse(ids);
+
+  let lockedCount = 0;
+  for (const id of validated) {
+    const existing = repo.getEntryById(id);
+    // Skip the missing *and* the already-locked. Re-setting the flag on an
+    // entry that already carries it would be a pointless write, and counting it
+    // as locked would overstate what this call changed.
+    if (!existing || existing.isLocked) continue;
+    repo.setEntryLocked(id, true);
+    lockedCount += 1;
+  }
+
+  return { lockedCount, skippedCount: validated.length - lockedCount };
 }

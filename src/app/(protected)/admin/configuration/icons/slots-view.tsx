@@ -158,6 +158,33 @@ export function IconSlotsView({
   overrides: Record<string, IconOverride>;
 }) {
   const [activeGroup, setActiveGroup] = useState<string>(groups[0]?.group ?? "");
+  const [filter, setFilter] = useState("");
+
+  const needle = filter.trim().toLowerCase();
+  const isFiltering = needle.length > 0;
+
+  // Matched across `label`, `where` and `id`. `where` is the click path ("Admin →
+  // Configuration → Icons"), which is how someone who knows the screen but not the
+  // slug finds a row; `id` is how someone who has seen the slug in the code finds it.
+  const matchedGroups = groups
+    .map((entry) => ({
+      group: entry.group,
+      slots: isFiltering
+        ? entry.slots.filter((slot) =>
+            `${slot.label} ${slot.where} ${slot.id} ${slot.defaultConcept}`
+              .toLowerCase()
+              .includes(needle),
+          )
+        : entry.slots,
+    }))
+    .filter((entry) => entry.slots.length > 0);
+
+  // A query searches every group, not just the open tab: a reader looking for one icon
+  // knows what it *is*, rarely which group it was filed under — a within-tab filter
+  // would miss the row and say nothing was found. So while filtering, the tabs step
+  // aside and matches render grouped by where they came from.
+  const totalSlots = groups.reduce((total, entry) => total + entry.slots.length, 0);
+  const matchCount = matchedGroups.reduce((total, entry) => total + entry.slots.length, 0);
 
   return (
     <section>
@@ -178,39 +205,88 @@ export function IconSlotsView({
         it&apos;ll come out small and sharp. A photo is left alone rather than guessed at.
       </p>
 
-      {/* Group tabs */}
-      <div className="mt-6 flex flex-wrap gap-2 border-b border-line pb-3">
-        {groups.map((entry) => (
-          <button
-            key={entry.group}
-            type="button"
-            onClick={() => setActiveGroup(entry.group)}
-            className={`px-3 py-2 text-sm font-medium transition ${
-              activeGroup === entry.group
-                ? "border-b-2 border-brass text-ink"
-                : "text-muted hover:text-ink"
-            }`}
-          >
-            {entry.group}
-          </button>
-        ))}
+      <div className="mt-6">
+        <label htmlFor="icon-slot-filter" className="sr-only">
+          Filter icon positions
+        </label>
+        <input
+          id="icon-slot-filter"
+          type="search"
+          value={filter}
+          onChange={(event) => setFilter(event.target.value)}
+          placeholder="Filter by name, location or id…"
+          className="w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+        />
+        <p className="mt-2 text-xs text-muted">
+          {isFiltering
+            ? `${matchCount} of ${totalSlots} positions, across every group`
+            : `${totalSlots} positions in ${groups.length} groups`}
+        </p>
       </div>
 
-      {/* Active group content */}
-      {groups.map((entry) => (
-        activeGroup === entry.group && (
-          <div key={entry.group} className="mt-6 space-y-3">
-            {entry.slots.map((slot) => (
-              <SlotRow
-                key={slot.id}
-                slot={slot}
-                setId={setId}
-                initialOverride={overrides[slot.id]}
-              />
-            ))}
-          </div>
+      {/* Group tabs — hidden while filtering, when results span every group anyway. */}
+      {!isFiltering && (
+        <div className="mt-6 flex flex-wrap gap-2 border-b border-line pb-3">
+          {groups.map((entry) => (
+            <button
+              key={entry.group}
+              type="button"
+              onClick={() => setActiveGroup(entry.group)}
+              className={`px-3 py-2 text-sm font-medium transition ${
+                activeGroup === entry.group
+                  ? "border-b-2 border-brass text-ink"
+                  : "text-muted hover:text-ink"
+              }`}
+            >
+              {entry.group}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {isFiltering ? (
+        matchCount === 0 ? (
+          <p className="mt-6 rounded-lg border border-line p-6 text-center text-sm text-muted">
+            No icon position matches “{filter.trim()}”. Try part of a name, a screen it
+            appears on, or its id.
+          </p>
+        ) : (
+          // Grouped under headings rather than one flat list: two slots can share a label
+          // ("Dashboard" belongs to every module), so the group is what tells them apart.
+          matchedGroups.map((entry) => (
+            <div key={entry.group} className="mt-6">
+              <h3 className="text-xs font-medium uppercase tracking-wide text-muted">
+                {entry.group}
+              </h3>
+              <div className="mt-3 space-y-3">
+                {entry.slots.map((slot) => (
+                  <SlotRow
+                    key={slot.id}
+                    slot={slot}
+                    setId={setId}
+                    initialOverride={overrides[slot.id]}
+                  />
+                ))}
+              </div>
+            </div>
+          ))
         )
-      ))}
+      ) : (
+        groups.map((entry) => (
+          activeGroup === entry.group && (
+            <div key={entry.group} className="mt-6 space-y-3">
+              {entry.slots.map((slot) => (
+                <SlotRow
+                  key={slot.id}
+                  slot={slot}
+                  setId={setId}
+                  initialOverride={overrides[slot.id]}
+                />
+              ))}
+            </div>
+          )
+        ))
+      )}
     </section>
   );
 }

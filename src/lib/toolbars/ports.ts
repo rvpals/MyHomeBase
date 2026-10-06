@@ -8,6 +8,9 @@ export interface ToolbarWrite {
   backgroundColor?: string;
   borderColor?: string;
   textColor?: string;
+  /** The library picture to draw behind the bar, or absent for none (0130). */
+  textureId?: number;
+  textureOpacity: number;
   edge: Toolbar["edge"];
   fullModeOnly: boolean;
   isVisible: boolean;

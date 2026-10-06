@@ -11,7 +11,6 @@ import { groupHsaExpensesByYear } from "@/lib/household/hsa-grouping";
 // repositories, which would drag better-sqlite3 into this client bundle.
 import type { HsaCard, HsaExpense } from "@/lib/household/hsa-types";
 import { centsToDollars, formatCents } from "@/lib/shared/money";
-import { toLocalTimeLabel, todayIsoLocal } from "@/lib/shared/date";
 import { PAGE_CONTAINER } from "../../page-container";
 import {
   clearHsaReceiptAction,
@@ -22,18 +21,21 @@ import {
   updateHsaExpenseAction,
 } from "./household-actions";
 import { HsaEditor, type HsaForm, type HsaReceiptChoice } from "./household-hsa-editor";
+import { receiptFormData } from "./household-hsa-receipt-file";
 
 /**
- * A blank form stamped with the current date and time.
+ * A blank form.
  *
- * Built when the dialog opens rather than once at module load, so the second expense
- * of a sitting is stamped when it is written. Browser-side for the same reason the
- * Journal's entry form is: the clock that matters is the writer's.
+ * Date and time start **empty**, not stamped with now. An HSA receipt is usually
+ * entered after the fact — days or a year later — so a pre-filled today is wrong more
+ * often than it is right, and a wrong date that looks deliberate is worse than a blank
+ * one the schema refuses to save. The editor's "Use current date & time" button fills
+ * them in one click when today really is the answer.
  */
 function emptyForm(): HsaForm {
   return {
-    entryDate: todayIsoLocal(),
-    entryTime: toLocalTimeLabel(new Date()),
+    entryDate: "",
+    entryTime: "",
     amount: "",
     productService: "",
     type: "Pharmacy",
@@ -105,12 +107,15 @@ export function HouseholdHsaView({
   expenses,
   cards,
   productServices,
+  payees,
   receiptRootSet,
 }: {
   expenses: HsaExpense[];
   /** Every card; only the active ones are offered in the editor. */
   cards: HsaCard[];
   productServices: string[];
+  /** Every payee already recorded, for the editor's autocomplete. */
+  payees: string[];
   /** Whether a receipt folder is configured. Without one, a receipt cannot be attached. */
   receiptRootSet: boolean;
 }) {
@@ -192,7 +197,7 @@ export function HouseholdHsaView({
     if (receipt.kind !== "keep") {
       const result =
         receipt.kind === "new"
-          ? await setHsaReceiptAction(expenseId, receipt.upload)
+          ? await setHsaReceiptAction(receiptFormData(expenseId, receipt.upload))
           : await clearHsaReceiptAction(expenseId);
       if (result.ok && "oldFileNotDeleted" in result && result.oldFileNotDeleted) {
         setIsBusy(false);
@@ -522,6 +527,7 @@ export function HouseholdHsaView({
           receipt={dialog.receipt}
           activeCards={activeCardNames}
           productServices={productServices}
+          payees={payees}
           canAttachReceipt={receiptRootSet}
           isNew={dialog.id === undefined}
           isBusy={isBusy}

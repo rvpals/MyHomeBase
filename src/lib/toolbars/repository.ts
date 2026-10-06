@@ -10,6 +10,8 @@ interface ToolbarRow {
   background_color: string | null;
   border_color: string | null;
   text_color: string | null;
+  texture_id: number | null;
+  texture_opacity: number;
   edge: string;
   full_mode_only: number;
   is_visible: number;
@@ -32,6 +34,8 @@ function toToolbar(row: ToolbarRow): Toolbar {
     backgroundColor: row.background_color ?? undefined,
     borderColor: row.border_color ?? undefined,
     textColor: row.text_color ?? undefined,
+    textureId: row.texture_id ?? undefined,
+    textureOpacity: row.texture_opacity,
     // The column is a plain TEXT with a CHECK constraint, so the cast is safe at
     // the boundary the constraint guards.
     edge: row.edge as Toolbar["edge"],
@@ -52,7 +56,7 @@ function toItem(row: ItemRow): ToolbarItem {
   };
 }
 
-const TOOLBAR_COLUMNS = `id, name, background_color, border_color, text_color, edge, full_mode_only, is_visible, sort_order`;
+const TOOLBAR_COLUMNS = `id, name, background_color, border_color, text_color, texture_id, texture_opacity, edge, full_mode_only, is_visible, sort_order`;
 const ITEM_COLUMNS = `id, toolbar_id, kind, menu_item_id, label, sort_order`;
 
 export class SqliteToolbarRepository implements ToolbarRepository {
@@ -106,8 +110,8 @@ export class SqliteToolbarRepository implements ToolbarRepository {
     const result = this.db
       .prepare(
         `INSERT INTO sys_toolbars
-           (name, background_color, border_color, text_color, edge, full_mode_only, is_visible, sort_order)
-         VALUES (@name, @backgroundColor, @borderColor, @textColor, @edge, @fullModeOnly, @isVisible, @sortOrder)`,
+           (name, background_color, border_color, text_color, texture_id, texture_opacity, edge, full_mode_only, is_visible, sort_order)
+         VALUES (@name, @backgroundColor, @borderColor, @textColor, @textureId, @textureOpacity, @edge, @fullModeOnly, @isVisible, @sortOrder)`,
       )
       .run({ ...this.bindToolbar(toolbar), sortOrder: next.next });
 
@@ -122,6 +126,8 @@ export class SqliteToolbarRepository implements ToolbarRepository {
            background_color = @backgroundColor,
            border_color = @borderColor,
            text_color = @textColor,
+           texture_id = @textureId,
+           texture_opacity = @textureOpacity,
            edge = @edge,
            full_mode_only = @fullModeOnly,
            is_visible = @isVisible
@@ -211,6 +217,11 @@ export class SqliteToolbarRepository implements ToolbarRepository {
       backgroundColor: toolbar.backgroundColor ?? null,
       borderColor: toolbar.borderColor ?? null,
       textColor: toolbar.textColor ?? null,
+      // No existence check on the way in. A pointer at a deleted library picture
+      // is a legitimate stored state (0130) and the resolver drops it at render
+      // time, so this layer stores what it is given.
+      textureId: toolbar.textureId ?? null,
+      textureOpacity: toolbar.textureOpacity,
       edge: toolbar.edge,
       // SQLite has no boolean; the columns are 0/1 and the conversion happens here
       // rather than leaking an integer to every caller.

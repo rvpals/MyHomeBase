@@ -278,6 +278,30 @@ export interface AttendanceDetailRow {
 }
 
 /**
+ * One action explained under the detail grid, so a reader can decode a column
+ * of bare codes without the app in front of them.
+ *
+ * `code` and `name` are the values the cells themselves carry -- the snapshot
+ * taken when the action was recorded, not a live catalog read. A legend built
+ * from the current catalog could print a renamed action under a code the grid
+ * above shows differently, and a printed sheet has no way to resolve that
+ * disagreement.
+ *
+ * `description` has no snapshot to fall back on: `RecordedStudentAction` never
+ * stored one. It is therefore the one field read live from the catalog, and is
+ * **empty** both when the action carries no description and when its catalog row
+ * has since been deleted. Those collapse together on purpose -- neither gives a
+ * reader anything to print.
+ */
+export interface AttendanceActionLegendEntry {
+  actionId: number;
+  code: string;
+  name: string;
+  /** Empty when unrecorded, or when the catalog row is gone. */
+  description: string;
+}
+
+/**
  * The whole-term grid for one class.
  *
  * One column per date the class was taken. Since migration 0092 a date holds at
@@ -296,6 +320,15 @@ export interface AttendanceDetailReport {
    * reasoning that makes `studentName` a stored value rather than a live lookup.
    */
   rows: AttendanceDetailRow[];
+  /**
+   * The actions that actually appear in `rows`, in catalog order, each with its
+   * description -- the legend printed under the grid.
+   *
+   * Only actions the grid uses are listed. An unused action in the catalog would
+   * be a line explaining a code that appears nowhere on the sheet, the same
+   * reasoning that keeps `actionTallies` to what occurred.
+   */
+  actionLegend: AttendanceActionLegendEntry[];
 }
 
 /** One session in a picker: enough to label it, without its entries. */

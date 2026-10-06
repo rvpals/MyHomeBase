@@ -40,6 +40,13 @@ export interface HsaRepository {
    */
   listProductServices(): string[];
 
+  /**
+   * Every payee already recorded, one spelling each, for the editor's autocomplete.
+   * Same `SELECT DISTINCT` rule as `listProductServices` — no catalog table, so it
+   * cannot offer a payee nothing used nor miss one that something did.
+   */
+  listPayees(): string[];
+
   /** Every card, active or not, alphabetical. */
   listCards(): HsaCard[];
   getCardById(id: number): HsaCard | undefined;

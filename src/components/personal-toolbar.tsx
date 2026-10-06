@@ -102,6 +102,14 @@ function ToolbarRow({ item, isActive }: { item: ResolvedToolbarItem; isActive: b
  *   *tint* a chosen colour rather than paint over it. Setting `background`
  *   (the shorthand) would also wipe `background-image` and kill the gradient
  *   outright — the same trap `globals.css` records for the chrome surfaces.
+ *
+ * ## The texture is a pseudo-element, for the same reason
+ *
+ * An optional picture from the app texture library draws behind the glyphs
+ * (migration 0130). It goes to `--toolbar-texture-*`, read by
+ * `.personal-toolbar::before` — **never** to `background-image` on the bar,
+ * which the embossed style already owns. The URL arrives fully built from
+ * `resolveToolbar`, cache-buster included; this component never assembles one.
  */
 function Toolbar({
   toolbar,
@@ -117,9 +125,22 @@ function Toolbar({
       aria-label={toolbar.name}
       data-edge={toolbar.edge}
       className="personal-toolbar"
+      // `data-textured` gates the `::before` layer, so a bar with no picture
+      // emits no pseudo-element at all rather than one at opacity 0 — an
+      // always-on layer costs a paint for nothing. Same reasoning
+      // `ResolvedAppTexture` records for leaving its `vars` undefined.
+      data-textured={toolbar.texture ? "" : undefined}
       style={
         {
           "--toolbar-surface": toolbar.backgroundColor,
+          // The texture goes to custom properties read by
+          // `.personal-toolbar::before`, NOT to `background-image` on the bar
+          // itself: the `emboss` chrome style paints its bevel gradient into
+          // that exact property, so a picture set there is wiped by whichever
+          // chrome style is active. Undefined when there is no texture, which
+          // drops the declarations entirely.
+          "--toolbar-texture-image": toolbar.texture?.image,
+          "--toolbar-texture-opacity": toolbar.texture?.opacity,
           color: toolbar.textColor,
           // Inline, so this beats the `outset` style's
           // `border-*-color: transparent` — which that style sets to stop its

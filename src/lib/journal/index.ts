@@ -57,6 +57,8 @@ export {
   journalTagSchema,
   upsertCategorySchema,
   upsertTagSchema,
+  mergeTaxonomySchema,
+  type MergeTaxonomyInput,
   MAX_JOURNAL_ICON_BYTES,
   JOURNAL_IMAGE_MIME_TYPES,
   journalFilterSchema,
@@ -204,6 +206,20 @@ export {
   withLogCondition,
   type JournalLogScope,
 } from "./journal";
+// Which managed categories/tags no entry uses — the Meta Data section's
+// "Clean up" button and the breakdown its bulk Delete confirms with.
+export {
+  findUnusedTaxonomy,
+  normalizeTaxonomyName,
+  taxonomyInUseAmong,
+  taxonomyUsageCounts,
+} from "./taxonomy-usage";
+export type { TaxonomyUsage, TaxonomyUsageKind } from "./taxonomy-usage";
+// Folding several categories/tags into one name — the same card's bulk Merge.
+// Follows the rename into saved filters and prefill templates, which store
+// taxonomy names as JSON rather than as foreign keys.
+export { mergeTaxonomy, planTaxonomyMerge } from "./taxonomy-merge";
+export type { TaxonomyMergePlan, TaxonomyMergeResult } from "./taxonomy-merge";
 export {
   GENERATED_ICON_MIME_TYPE,
   buildGeneratedIconSvg,
@@ -320,11 +336,13 @@ export {
   SAME_DATE_EXCERPT_WORDS,
   countSameDateEntries,
   findSameDateGroups,
+  lockEntries,
   mergeEntryDraft,
   toSameDateRows,
 } from "./same-date";
 export type {
   FindSameDateGroupsOptions,
+  LockEntriesResult,
   MergedEntryDraft,
   SameDateEntry,
   SameDateGroup,
@@ -341,3 +359,18 @@ export {
   restoreRecycledEntries,
 } from "./recycle";
 export type { PurgeResult, RecycleResult, RestoreResult } from "./recycle";
+
+// Bulk edit for a ticked selection on the Entries screen — the companion to the
+// recycle bin above. That one is the selection delete, this one the selection
+// change; they differ on locked entries and bulk-edit.ts explains why.
+export { applyNameChange, bulkEditEntries, describeBulkEditResult } from "./bulk-edit";
+export type { BulkEditResult } from "./bulk-edit";
+export type {
+  BulkEntryEditData,
+  BulkEntryEditInput,
+  BulkNameChangeData,
+  BulkNameChangeInput,
+  BulkNameMode,
+} from "./schema";
+export { bulkEntryEditSchema, entryIdsSchema } from "./schema";
+export type { BulkEntryEditOutcome } from "./ports";

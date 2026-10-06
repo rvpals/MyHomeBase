@@ -214,6 +214,27 @@ function fakeRepo(): JournalRepository {
     listTopCategories: () => {
       throw new Error("not used");
     },
+    countEntriesByCategory: () => {
+      throw new Error("not used");
+    },
+    countEntriesByTag: () => {
+      throw new Error("not used");
+    },
+    bulkEditEntries: () => {
+      throw new Error("not used");
+    },
+    countDistinctEntriesWithCategories: () => {
+      throw new Error("not used");
+    },
+    countDistinctEntriesWithTags: () => {
+      throw new Error("not used");
+    },
+    mergeCategories: () => {
+      throw new Error("not used");
+    },
+    mergeTags: () => {
+      throw new Error("not used");
+    },
     // Prefill templates are covered in prefill.test.ts; the importer never
     // touches them, so these only satisfy the port.
     listPrefillTemplates: () => {

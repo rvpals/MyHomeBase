@@ -13,6 +13,7 @@ import {
   deleteRecipe,
   deleteRecipes,
   describeReceiptRootCheck,
+  hsaReceiptMetaSchema,
   getRecipe,
   incrementMadeCount,
   renameHsaCard,
@@ -27,7 +28,6 @@ import {
   type CreateRecipeInput,
   type FolderListing,
   type HsaExpenseInput,
-  type HsaReceiptUploadInput,
   type Recipe,
   type RecipePictureInput,
   type UpdateRecipeInput,
@@ -282,17 +282,46 @@ export interface SetHsaReceiptActionResult extends ActionResult {
 }
 
 /**
- * Files a receipt in the receipt folder. An action rather than a route handler: the
- * editor shrinks a large phone photo first and the cap is 2.5 MB, which base64 turns
- * into roughly 3.4 MB — inside Next's 4 MB `serverActions.bodySizeLimit`.
+ * Files a receipt in the receipt folder.
+ *
+ * ## Why `FormData`, and not `(id, receipt)`
+ *
+ * Because the file used to travel as a base64 **string argument**, and React charges
+ * its decoder **one array slot per character** of every string in a multi-argument
+ * call, with a ceiling near 1,000,001. Any receipt much over ~750 KB would therefore
+ * have failed with *"Maximum array nesting exceeded"* — a framework error naming
+ * nesting, which is neither nesting nor size — rather than this module's own message.
+ * `next.config.ts` records the same lesson from the calendar importer, and
+ * `readIcsFileAction` is the precedent followed here.
+ *
+ * A `Blob` in `FormData` is binary on the wire: nothing is base64-inflated by a
+ * third, and nothing is counted as string slots. The only budget left is
+ * `bodySizeLimit`, which is a real one. The id rides along as an ordinary field.
+ *
+ * The use-case underneath still takes plain data, so the CLI calls it directly and
+ * unchanged (ARCHITECTURE.md → every use-case callable from both). Only this boundary
+ * knows about `FormData`.
  */
 export async function setHsaReceiptAction(
-  id: number,
-  receipt: HsaReceiptUploadInput,
+  formData: FormData,
 ): Promise<SetHsaReceiptActionResult> {
   try {
     await requireModuleAccess(ACCESS_MODULE_SLUG);
-    const result = await setHsaReceipt(deps.hsaRepo, hsaReceiptFiles(), { id, receipt });
+
+    const file = formData.get("file");
+    if (!(file instanceof Blob)) {
+      return { ok: false, error: "No file was received. Choose the receipt again." };
+    }
+    const id = Number(formData.get("id"));
+    const { mimeType, fileName } = hsaReceiptMetaSchema.parse({
+      mimeType: formData.get("mimeType"),
+      fileName: formData.get("fileName"),
+    });
+
+    const result = await setHsaReceipt(deps.hsaRepo, hsaReceiptFiles(), {
+      id,
+      receipt: { mimeType, fileName, data: Buffer.from(await file.arrayBuffer()) },
+    });
     revalidatePath(HSA_PATH);
     return { ok: true, oldFileNotDeleted: result.oldFileNotDeleted };
   } catch (error) {

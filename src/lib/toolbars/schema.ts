@@ -39,6 +39,29 @@ const optionalColor = z
   .optional()
   .transform((value) => (value ? value : undefined));
 
+/**
+ * The library picture this bar draws, or absent for none.
+ *
+ * Not checked against the library here: this schema validates *shape*, and
+ * whether a picture still exists is a question only a repository can answer. A
+ * stale id is a legitimate stored state by design (migration 0130), so rejecting
+ * one at the boundary would make a toolbar un-saveable because of an unrelated
+ * delete. `resolveToolbar` drops a pointer that no longer resolves.
+ *
+ * A blank string becomes `undefined` for the same reason the colours do — that is
+ * what a cleared `<select>` posts, and "no texture" is the default state.
+ */
+const optionalTextureId = z
+  .union([
+    z
+      .number({ message: "A texture id must be a number." })
+      .int("A texture id must be a whole number.")
+      .positive("A texture id must be positive."),
+    z.literal(""),
+  ])
+  .optional()
+  .transform((value) => (value === "" ? undefined : value));
+
 export const toolbarSchema = z.object({
   name: z
     .string()
@@ -48,6 +71,17 @@ export const toolbarSchema = z.object({
   backgroundColor: optionalColor,
   borderColor: optionalColor,
   textColor: optionalColor,
+  textureId: optionalTextureId,
+  // The same 0..1 bounds the table CHECKs, restated because the CHECK reports a
+  // SQLite error and this reports something the editor can show — the split 0064
+  // documents for the module texture knobs. `.default()` rather than required:
+  // every caller that does not care about textures (the CLI, an older form post)
+  // gets the table's own default without having to name it.
+  textureOpacity: z
+    .number({ message: "Opacity must be a number." })
+    .min(0, "Opacity cannot be negative.")
+    .max(1, "Opacity cannot exceed 1.")
+    .default(0.15),
   // `TOOLBAR_EDGES` is a `const` tuple, so this infers the literal union rather
   // than `string` — which is what keeps `ToolbarInput` assignable to `ToolbarWrite`
   // with no cast. See the constant's own note.

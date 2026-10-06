@@ -7,6 +7,7 @@
  */
 
 import {
+  HSA_RECEIPT_MIME_TYPES,
   MAX_HSA_RECEIPT_BYTES,
   bulkDeleteHsaExpensesSchema,
   bulkSetReimbursedSchema,
@@ -14,11 +15,11 @@ import {
   hsaCardNameSchema,
   hsaExpenseIdSchema,
   hsaExpenseSchema,
-  setHsaReceiptSchema,
   type BulkDeleteHsaExpensesInput,
   type BulkSetReimbursedInput,
   type HsaExpenseData,
   type HsaExpenseInput,
+  type HsaReceiptMimeType,
   type SetHsaReceiptInput,
 } from "./hsa-schema";
 import type { HsaRepository } from "./hsa-ports";
@@ -202,11 +203,27 @@ export interface SetHsaReceiptResult {
 }
 
 /**
+ * The first bytes a file of this type must start with, where there is one worth
+ * checking. The declared type is the browser's guess; a signature is the file itself.
+ *
+ * Only the container formats are listed. An image is re-encoded or displayed, never
+ * executed, so a mislabelled one is a broken picture rather than a hazard — while a
+ * "PDF" that is really HTML, served back from this app's own origin, is not.
+ */
+const FILE_SIGNATURES: Partial<Record<HsaReceiptMimeType, { magic: string; label: string }>> = {
+  "application/pdf": { magic: "%PDF-", label: "a PDF" },
+  // Every zip starts `PK\x03\x04`. This app writes them itself (several files
+  // attached at once), so a failure here means something went wrong on the way out.
+  "application/zip": { magic: "PK\u0003\u0004", label: "a zip archive" },
+};
+
+/**
  * Checks an uploaded receipt and files it under `<folder>/<YYYY>/`.
  *
- * Refused outright when no folder is set — receipts live in exactly one place. The file
- * is stored as it arrived (the browser has already shrunk a large phone photo); the
- * checks here — type allowlist, size cap, a PDF's own signature — are the real ones.
+ * Refused outright when no folder is set — receipts live in exactly one place. The
+ * bytes are stored exactly as they arrive: an attached file is never re-encoded, and
+ * only a camera shot was shrunk, in the browser. The checks here — type allowlist,
+ * size cap, the file's own signature — are the real ones.
  *
  * Replacing a receipt writes the new file, records it, and only then deletes the old
  * one, so a failure at any step leaves a working receipt behind.
@@ -216,21 +233,26 @@ export async function setHsaReceipt(
   files: HsaReceiptFiles,
   input: SetHsaReceiptInput,
 ): Promise<SetHsaReceiptResult> {
-  const { id, receipt } = setHsaReceiptSchema.parse(input);
+  const { id, receipt } = input;
   const root = requireRoot(files);
   const expense = repo.getExpenseById(id);
   if (!expense) throw new Error(`No expense with id ${id}.`);
 
-  const data = Buffer.from(receipt.base64Data, "base64");
+  if (!(HSA_RECEIPT_MIME_TYPES as readonly string[]).includes(receipt.mimeType)) {
+    throw new Error("Attach a PNG, JPEG, WebP, GIF image or a PDF.");
+  }
+
+  const data = receipt.data;
   if (data.length === 0) throw new Error("The file could not be read.");
   if (data.length > MAX_HSA_RECEIPT_BYTES) {
     throw new Error(
-      `That file is too large — keep a receipt under ${(MAX_HSA_RECEIPT_BYTES / 1024 / 1024).toFixed(1)} MB.`,
+      `That file is too large — keep a receipt under ${(MAX_HSA_RECEIPT_BYTES / 1024 / 1024).toFixed(0)} MB.`,
     );
   }
-  // The declared type is the browser's guess; the file's own first bytes are not.
-  if (receipt.mimeType === "application/pdf" && data.subarray(0, 5).toString("latin1") !== "%PDF-") {
-    throw new Error("That file is not a PDF.");
+
+  const signature = FILE_SIGNATURES[receipt.mimeType];
+  if (signature && data.subarray(0, signature.magic.length).toString("latin1") !== signature.magic) {
+    throw new Error(`That file is not ${signature.label}.`);
   }
 
   const desired = buildReceiptPath({ ...expense, mimeType: receipt.mimeType });
@@ -276,6 +298,11 @@ export async function clearHsaReceipt(
 /** Every product or service already recorded — the editor's autocomplete. */
 export function listHsaProductServices(repo: HsaRepository): string[] {
   return repo.listProductServices();
+}
+
+/** Every payee already recorded — the editor's autocomplete. */
+export function listHsaPayees(repo: HsaRepository): string[] {
+  return repo.listPayees();
 }
 
 /** Every card, active or not — the Configuration screen. The editor offers only `isActive` ones. */

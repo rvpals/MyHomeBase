@@ -681,7 +681,6 @@ export function JournalCalendarImportView({
         headerAction={
           <Comments
             title="About"
-            label="About"
             content={
               "Export your calendar from Google Calendar (Settings → Import & export → Export), " +
               "unzip it, and pick one of the .ics files. Nothing is sent anywhere — the file is " +

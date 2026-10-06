@@ -57,7 +57,7 @@ pattern instead of inventing one.
 | [`FloatingLayer`](#floatinglayer) | **A component that floats over the page** — puck in a corner, window card when opened | [src/components/floating-layer.tsx](src/components/floating-layer.tsx) | yes |
 | [`ClockFace`](#clockface) | The clock itself — digital or analog, with date/weekday/weather toggles | [src/components/clock-face.tsx](src/components/clock-face.tsx) | yes |
 | [`CalculatorKeypad`](#calculatorkeypad) | A calculator's display and keypad — scientific keys, optional keyboard capture | [src/components/calculator-keypad.tsx](src/components/calculator-keypad.tsx) | yes |
-| [`Comments`](#comments) | A note/instruction parked beside a feature, behind an info chip | [src/components/comments.tsx](src/components/comments.tsx) | yes |
+| [`Comments`](#comments) | A note/instruction parked beside a feature, behind a small accent glyph | [src/components/comments.tsx](src/components/comments.tsx) | yes |
 | [`CollapsibleCard`](#collapsiblecard) | A titled section that expands/collapses | [src/components/collapsible-card.tsx](src/components/collapsible-card.tsx) | yes |
 | [`Tabs`](#tabs) | One-of-N panels in the same space | [src/components/tabs.tsx](src/components/tabs.tsx) | yes |
 | [`TreeNav`](#treenav) | **Two-level tree** — expandable groups, selectable leaves | [src/components/tree-nav.tsx](src/components/tree-nav.tsx) | yes |
@@ -89,7 +89,7 @@ pattern instead of inventing one.
 | [`FilterCriteriaRow`](#filtercriteriarow) | **One line of a filter builder** — column, operator, value(s), remove | [src/components/filter-criteria-row.tsx](src/components/filter-criteria-row.tsx) | yes |
 | [`IconSelect`](#iconselect) | A dropdown whose options carry an image | [src/components/icon-select.tsx](src/components/icon-select.tsx) | yes |
 | [`ShortcutPicker`](#shortcutpicker) | **Pick a destination** — a web address, or any module/page in the app — plus its name and glyph | [src/components/shortcut-picker.tsx](src/components/shortcut-picker.tsx) | yes |
-| [`TokenPicker`](#tokenpicker) | **Several names on one record** — removable chips + a dropdown to add | [src/components/token-picker.tsx](src/components/token-picker.tsx) | yes |
+| [`TokenPicker`](#tokenpicker) | **Several names on one record** — removable chips + a combobox that filters and creates | [src/components/token-picker.tsx](src/components/token-picker.tsx) | yes |
 | [`ColorField`](#colorfield) | **One color** — a swatch that opens the OS picker + the hex typed out | [src/components/color-field.tsx](src/components/color-field.tsx) | yes |
 | [`ChartLine`](#chartline) | Time-series line chart | [src/components/chart-line.tsx](src/components/chart-line.tsx) | yes |
 | [`ChartBar`](#chartbar) | Category comparison / part-to-whole | [src/components/chart-bar.tsx](src/components/chart-bar.tsx) | yes |
@@ -143,7 +143,7 @@ or stop audio, and holds no preference of its own.
 | `mode?` | `"bars" \| "fire" \| "wave" \| "circular" \| "galaxy"` | Default `"bars"`. Controlled by the caller; the component stores no mode. `circular` and `galaxy` are **fullscreen-only** — see below. |
 | `isPlaying` | `boolean` | Pauses the frame loop. A paused visualizer costs nothing rather than drawing silence. |
 | `fill?` | `boolean` | Default `false` (a fixed-height strip). `true` fills the container — for [`FullscreenStage`](#fullscreenstage). |
-| `className?` | `string` | Merged last. |
+| `className?` | `string` | Merged last. Position it if you must; don't re-add padding or a background. |
 
 ```tsx
 <AudioSpectrum
@@ -236,6 +236,69 @@ switch. **Every** clickable action uses this — do not hand-roll a `<button cla
 
 **Notes:** `primary`/`secondary` take their fill and shadow from theme tokens; `danger`
 stays a fixed semantic red across every color theme. Respects `prefers-reduced-motion`.
+
+---
+
+## BusyOverlay
+
+**The "please wait" screen.** A dim over the whole viewport with a spinner and a
+message, shown while a write is in flight. Use it for any action that writes for long
+enough that a changed button label isn't enough — a bulk edit, a merge, a batch fetch.
+
+- **Source:** [src/components/busy-overlay.tsx](src/components/busy-overlay.tsx)
+- **Import:** `import { BusyOverlay } from "@/components/busy-overlay";`
+- **Client component:** yes
+
+| Prop | Type | Default | Notes |
+|------|------|---------|-------|
+| `isBusy` | `boolean` | — | Renders nothing at all when false. |
+| `message` | `string` | — | What is happening, e.g. `"Merging…"`. Short — it sits under a spinner. |
+| `detail?` | `ReactNode` | — | A second line for the consequence rather than the action. Omit when there's nothing to add. |
+| `tone?` | `"default" \| "subtle"` | `"default"` | `subtle` dims less, when a heavy scrim would jar for quick work. |
+| `className?` | `string` | — | Merged last. |
+
+```tsx
+<BusyOverlay
+  isBusy={isBusy}
+  message="Merging…"
+  detail="Entries, saved filters and templates are being updated. Please wait."
+/>
+```
+
+**Used by:**
+
+- Journal → Meta Data → Categories & Tags
+  ([journal-taxonomy-view.tsx](src/app/(protected)/modules/[slug]/journal-taxonomy-view.tsx)) —
+  the Merge dialog, bulk Delete, and the icon autopopulate.
+- Journal → Data Management → Review Data
+  ([journal-review-view.tsx](src/app/(protected)/modules/[slug]/journal-review-view.tsx)) —
+  the "Review multiple entries on same date" card, on all five of its long
+  operations: the Log-only re-scan, the reload after an in-place edit, bulk
+  Delete, Lock, saving a merged entry, and the merge's clean-up delete. Each sets
+  its own `message`/`detail` pair first — "Reading every entry…" is the wrong
+  second line for a delete, so one generic string was not enough.
+  Saving the merged entry is the interesting one: that write lives inside
+  [`JournalEntryForm`](src/app/(protected)/modules/[slug]/journal-entry-form.tsx),
+  which owns its own busy flag and only *reports* it out through the optional
+  `onSavingChange` prop. The New Entry screen leaves that prop off and is
+  unaffected — it's a page, not a dialog, so its Save button label is signal enough.
+
+**Render it as a sibling of a `Modal`, not a child.** It is `z-[60]` where `Modal` is
+`z-50`, so the dialog dims along with the rest of the page — otherwise the thing the
+reader is being told to wait on is the brightest thing on screen. An equal z-index would
+not do it: ties fall back to DOM order.
+
+**The scrim is `bg-ink/60`, not paper.** Dimming means darkening; a paper-based scrim
+would *brighten* the page on a light theme. The message then sits on its own raised
+`bg-paper` card, because plain text on a dimmed page reads as part of the scrim rather
+than as the thing to look at.
+
+**It does not trap focus or block navigation**, and deliberately so — `Modal`'s own
+`isBusy` already blocks Escape, the backdrop and the close button, so pass that too when
+the work must not be abandoned. This component covers the screen, swallows stray clicks,
+and says what is happening. A real navigation guard (intercepting `next/link` clicks and
+`beforeunload`) was built and then dropped: `beforeunload` can only raise the browser's
+own unworded dialog, and dimming turned out to cover the realistic case.
 
 ---
 
@@ -346,7 +409,8 @@ Row-click navigation:
 - Investments simulation — [stock-simulation-view.tsx](src/app/(protected)/modules/[slug]/stock-simulation-view.tsx) *(a fixed ten-row table: `showToolbar={false}` with `defaultPageSize="ALL"`, keeping sort and the status bar's CSV export)*
 - CSV Analysis — [csv-analytics-view.tsx](src/app/(protected)/modules/[slug]/csv-analytics-view.tsx) *(row selection + bulk edit over an **arbitrary** schema: the dialog's fields are the dataset's own columns, so the grid is keyed by the table's real SQLite `rowid` rather than by row position)*
 - MyJournal Calendar Import — [journal-calendar-import-view.tsx](src/app/(protected)/modules/[slug]/journal-calendar-import-view.tsx) *(selection as a **pick-what-to-import** list: the ticked rows are the import's input, and rows the plan marked unimportable are filtered out of the action rather than disabled)*
-- MyJournal Log — [journal-log-view.tsx](src/app/(protected)/modules/[slug]/journal-log-view.tsx) *(the **Log** tab of Entries, not a section of its own; row click opens `JournalViewer` in a `Modal`; bulk delete to the recycle bin)*
+- MyJournal Entries — [journal-entries-view.tsx](src/app/(protected)/modules/[slug]/journal-entries-view.tsx) *(the **Main** tab; row selection + bulk edit/delete. The bulk edit is [journal-entries-bulk-edit.tsx](src/app/(protected)/modules/[slug]/journal-entries-bulk-edit.tsx), shared with the Log tab; unlike Expense’s single-valued fields it offers **Add / Remove / Replace** per field, because an entry holds several categories and tags)*
+- MyJournal Log — [journal-log-view.tsx](src/app/(protected)/modules/[slug]/journal-log-view.tsx) *(the **Log** tab of Entries, not a section of its own; row click opens `JournalViewer` in a `Modal`; the same bulk edit as Main, plus bulk delete to the recycle bin)*
 - SQL Explorer, Investments (accounts / positions / watchlist / analytics / next-day actions)
 
 **Filter operators.** A column filter box is a substring match by default, and also
@@ -388,6 +452,22 @@ order and doesn't survive a re-read, so a bulk action keyed on it can write the 
 rows. CSV Analysis therefore carries the table's SQLite `rowid` alongside the values
 (`CsvEntryData.rowIds`) and keys the grid by that. If a new grid can't answer "what
 names this row in the database", it isn't ready for `enableSelection` yet.
+
+**Selection is internal, which decides some call sites against this grid.** There is no
+controlled-selection prop: `selectedKeys` lives in `DataGrid` and the only way out is the
+`clearSelection` callback `renderSelectionActions` is handed. A screen that needs to tick
+rows *programmatically* — "find the unused ones and select them for me" — therefore can't
+use it as-is. Journal → Meta Data's Categories & Tags lists
+([journal-taxonomy-view.tsx](src/app/(protected)/modules/[slug]/journal-taxonomy-view.tsx))
+are the worked example: they keep a plain `<ul>` with their own checkbox column so the
+"Clean up" button can set the selection, and because those rows are one line each and want
+to stay that way. Their bulk actions are Merge and Delete; Merge opens a `Modal` rather
+than a `confirm` because it needs a name typed in. Copy that shape rather than adding a controlled-selection prop here for
+one caller — but do copy its *rules*, below.
+
+**If you hand-roll selection, copy two rules from here.** Key it by real row identity, not
+position (above), and derive every on-screen count *and* the action's input from the
+filtered selection, so "3 selected" can never disagree with what the action touches.
 
 **Below 1024px it isn't a table.** `DataGrid` is a thin dispatcher: it reads
 `useIsCompact()` and renders either the full table or [`DataGridCompact`](#datagridcompact).
@@ -902,9 +982,9 @@ browser bundle to render markup that never changes.
 
 ## Comments
 
-**A note or instruction parked next to a feature.** A small info chip; pressing it opens
+**A note or instruction parked next to a feature.** A small accent glyph; pressing it opens
 the text in a dialog. Reach for this when a control needs
-explaining but the explanation isn't worth permanent screen space — the chip costs a line
+explaining but the explanation isn't worth permanent screen space — the mark costs a line
 of nothing, where the same copy inline pushes the feature itself down the page.
 
 - **Source:** [src/components/comments.tsx](src/components/comments.tsx)
@@ -913,22 +993,21 @@ of nothing, where the same copy inline pushes the feature itself down the page.
 
 | Prop | Type | Notes |
 |------|------|-------|
-| `title` | `string` | The dialog heading, **and** the chip's accessible name when there's no visible `label`. |
+| `title` | `string` | The dialog heading, **and** the mark's accessible name when there's no visible `label`. |
 | `content` | `ReactNode` | The note. `ReactNode` not `string`, so it can carry a list or emphasis; a plain string is the common case. |
-| `label?` | `string` | Text beside the glyph. Omit for an icon-only chip. |
+| `label?` | `string` | Text beside the glyph. **Unused today** — every mark is glyph-only, with `title` as the hover hint. |
 | `icon?` | `"info" \| "note" \| "clip"` | Default `"info"` — the circled "i", the near-universal mark for "explanatory text lives here". `"note"` (sticky note) and `"clip"` (paper clip) are for content that's genuinely a jotting or an attachment rather than an explanation. |
 | `size?` | `"sm" \| "md"` | Dialog width, forwarded to `Modal`. Default `"sm"`. |
 | `className?` | `string` | Merged last. |
 
 ```tsx
 <Comments
-  title="Instructions"
-  label="How this works"
+  title="Explanation"
   content="Positions can be typed in by hand or imported from a broker CSV."
 />
 ```
 
-Icon-only, beside a heading — `title` is the accessible name, so nothing is lost:
+Glyph-only, beside a heading — `title` is the accessible name, so nothing is lost:
 
 ```tsx
 <h2 className="flex items-center gap-2 font-display text-lg text-ink">
@@ -940,21 +1019,30 @@ Icon-only, beside a heading — `title` is the accessible name, so nothing is lo
 **Used by:** the home screen's Today In History card
 [today-in-history-widget.tsx](<src/app/(protected)/today-in-history-widget.tsx>), in
 `CollapsibleCard`'s `headerAction` slot — that combination is the one to copy for a
-dashboard card, since the chip stays reachable while the card is collapsed and pressing it
+dashboard card, since the mark stays reachable while the card is collapsed and pressing it
 doesn't toggle the card. Also the Investments dashboard's refresh control
 [stock-refresh-control.tsx](src/app/(protected)/modules/[slug]/stock-refresh-control.tsx),
-where a `title="Note"` chip sits beside the section heading and explains what the refresh
+where a `title="Note"` mark sits beside the section heading and explains what the refresh
 icon next to it does.
 
-**Notes:** the chip is the low-emphasis `bg-brass-soft` / `text-brass-dark` badge from
-`design.md`, **not** a `Button` — this is an aside beside a heading, and the hard offset
-shadow would read as the section's primary action. It inherits every dialog behaviour from
+**Notes:** the mark is a **bare `text-brass` glyph** — no fill, no padding, no border, and
+**not** a `Button`. This is an aside beside a heading, so anything that boxed it would read
+as the section's own control; it used to be a `bg-brass-soft` badge and that was too heavy
+next to a title and far too heavy in a stat tile's corner. Hover/focus deepens it to
+`text-ink` rather than adding a fill. It inherits every dialog behaviour from
 [`Modal`](#modal) (Escape, overlay click, focus trap, scroll lock), so don't add key
 handling here.
 
-**Below 1024px:** unchanged, it's small already. `py-1.5` on a 16px glyph puts the hit area
-near the 44px comfortable tap target, and `Modal`'s `sm` is `w-full max-w-md`, which fits a
-390px screen.
+**Don't pass a `className` that re-adds padding or a background.** The whole point is that
+the glyph occupies almost no layout, and a caller that boxes it back up reintroduces the
+problem for every other call site's benefit of none.
+
+**Below 1024px:** the visible mark stays 14px (`h-3.5 w-3.5`), but an `after:` pseudo-element
+gives it a **44×44 hit area** that costs no layout, so a thumb gets a comfortable target
+while neighbouring controls aren't pushed around. `lg:after:hidden` removes it for a
+pointer — an invisible box that much larger than its glyph would otherwise swallow clicks
+aimed at whatever sits beside it. `Modal`'s `sm` is `w-full max-w-md`, which fits a 390px
+screen.
 
 All three glyphs come from [`tree-icons.tsx`](src/components/tree-icons.tsx) — `info` was
 already there for Admin's About page; `note` and `clip` were added alongside this component
@@ -2487,7 +2575,7 @@ commits what you type, so a value that isn't in the list is still allowed.
 />
 ```
 
-**Used by:** the Expense category pickers — the transaction form and bulk-edit dialog
+**Used by:** Household → HSA Tracker, the expense editor's Product or service and Payee fields (no icons — it is used there purely as the app's free-text combobox, since a `datalist` gives no sign the suggestions exist); the Expense category pickers — the transaction form and bulk-edit dialog
 [expense-transactions-view.tsx](src/app/(protected)/modules/[slug]/expense-transactions-view.tsx)
 and the post-import rule editor
 [expense-rules-view.tsx](src/app/(protected)/modules/[slug]/expense-rules-view.tsx).
@@ -2562,14 +2650,17 @@ submitting an obviously incomplete form.
 
 ## TokenPicker
 
-A set of chosen names — each one its own removable chip, with a dropdown of the
-known names to add from. **Reach for it whenever a record holds *several* of
-something from a vocabulary** (categories, tags, labels). It replaces the
-delimited free-text field — "FAMILY, PERSONAL" typed into an `<input>` — where a
-typo silently creates a new name and there is nothing to click to remove one.
+A set of chosen names — each one its own removable chip, above **one combobox**
+that both filters the known names and creates new ones. **Reach for it whenever a
+record holds *several* of something from a vocabulary** (categories, tags,
+labels). It replaces the delimited free-text field — "FAMILY, PERSONAL" typed
+into an `<input>` — where a typo silently creates a new name and there is nothing
+to click to remove one.
 
 For a single choice that needs an image beside each option, use
-[`IconSelect`](#iconselect) instead.
+[`IconSelect`](#iconselect) instead. That one holds the value it's given and
+writes each keystroke back; this one clears itself on every commit, because the
+value lives in the chips.
 
 - **Source:** [src/components/token-picker.tsx](src/components/token-picker.tsx)
 - **Import:** `import { TokenPicker } from "@/components/token-picker";`
@@ -2577,14 +2668,13 @@ For a single choice that needs an image beside each option, use
 
 | Prop | Type | Notes |
 |------|------|-------|
-| `label` | `string` | Rendered above the control, and used to build the two `aria-label`s (singularised by dropping a trailing `s`). |
+| `label` | `string` | Rendered above the control, and used to build the `aria-label` (singularised by dropping a trailing `s`). |
 | `value` | `string[]` | The chosen names, in the order they'll be saved. |
 | `onChange` | `(next: string[]) => void` | Raises the whole next array. |
-| `options` | `string[]` | Every known name. Already-chosen ones are filtered out of the dropdown, so picking can't duplicate. |
-| `allowCreate?` | `boolean` | Default `false`. Adds a text field for a name that isn't in `options` yet. Leave it off for a closed vocabulary. |
-| `createPlaceholder?` | `string` | Placeholder for that field. Ignored unless `allowCreate`. |
+| `options` | `string[]` | Every known name. Already-chosen ones are filtered out of the list, so picking can't duplicate. |
+| `allowCreate?` | `boolean` | Default `false`. Offers a `+ Create "…"` row for a name that isn't in `options` yet. Leave it off for a closed vocabulary — the field then only filters. |
+| `createPlaceholder?` | `string` | The combobox's placeholder. Word it for both jobs, e.g. `"Filter or add a tag…"`. |
 | `hint?` | `string` | Small muted line under the control. |
-| `stackControls?` | `boolean` | Default `false`. Always put the create field on its own line below the dropdown. **For a picker in a narrow container on a wide screen** — inside a `Modal`, or in a grid column. See the note below. |
 | `className?` | `string` | Merged last, e.g. `"sm:col-span-2"` to span a two-column form grid. |
 
 ```tsx
@@ -2595,7 +2685,7 @@ For a single choice that needs an image beside each option, use
   onChange={(names) => setTaxonomy("tags", names)}
   options={tagOptions}
   allowCreate
-  createPlaceholder="New tag, e.g. Museum"
+  createPlaceholder="Filter or add a tag…"
 />
 ```
 
@@ -2606,23 +2696,29 @@ and the edit form
 
 **Notes:** duplicate detection is case-insensitive, so adding "Museum" when
 "museum" is already chosen is a no-op and the stored casing is whatever went in
-first. The create field commits on Enter (`preventDefault`, so it can't submit the
-surrounding form) and on blur. The dropdown's own value is always `""` — it's an
-action, not a held choice — and it disables itself once every option is chosen.
-The component never registers a new name; a typed name is just a string in `value`
-until whatever saves the record decides what to do with it. Narrow screens stack
-the dropdown above the create field (`max-lg:flex-col`); chips wrap at any width.
+first. The same folding gates the create row, which appears only for a name that
+is in neither `options` nor `value` — so it never offers to "create" a name the
+record already holds. Picking or creating clears the field and **leaves the list
+open**, because these fields usually get three or four names in a row. The
+component never registers a new name; a typed name is just a string in `value`
+until whatever saves the record decides what to do with it.
 
-**`stackControls` — when `max-lg:` isn't enough.** The two controls sit side by
-side and only stack when the *viewport* is under 1024px. That is the right
-default for a form filling the page, and wrong for one inside a `Modal`: a
-`size="lg"` dialog is 896px wide, and a picker in its two-column grid gets about
-a quarter of that, so on a desktop the row stays horizontal and the create field
-is squeezed to a few characters while the screen is plainly wide. A container
-query would let the control decide for itself, but nothing in this repo uses one
-yet, so the caller — which knows how much room it gave the control — says so
-instead. Journal's Review Data passes it through both forms' `isCompactContainer`
-prop for exactly this reason.
+**Keyboard and dismissal.** `↓`/`↑` move the highlight, `Enter` takes the
+highlighted row, `Escape` and `Tab` close. `Enter` is always `preventDefault`ed
+so it can't submit the surrounding form and save a half-filled record. **Blur
+discards the draft rather than committing it** — tabbing out of a half-typed
+filter must not mint a tag called "Mus". (The pre-combobox version did commit on
+blur, when the create field was separate and typing in it meant only one thing.)
+
+**One control at every width.** The combobox is full-width at every size and the
+popup is `absolute w-full` beneath it, so there is no pair of side-by-side
+controls to squeeze and no viewport branch. This replaced a `<select>` + create
+`<input>` row that stacked at `max-lg:` — a *viewport* width, which left the
+create field clipped to a few characters whenever the picker sat in a narrow box
+on a wide screen (a grid column, or a `Modal`). The old `stackControls` prop
+existed only to opt out of that and is **gone**; callers that passed it, and the
+`isCompactContainer` props that fed it through both journal forms, were removed
+with it.
 
 ---
 
@@ -4721,7 +4817,7 @@ spot a wrong one, remove it, drop more — rather than a single event.
 
 Like `FileDropzone` it never reads a file's contents; the caller decides how.
 
-**Used by:** CSV Analysis → Import Files
+**Used by:** Household → HSA Tracker, the expense editor's receipt field ([household-hsa-editor.tsx](src/app/(protected)/modules/[slug]/household-hsa-editor.tsx)), where several dropped files are zipped into one archive on save; CSV Analysis → Import Files
 ([csv-multi-import-view.tsx](src/app/(protected)/modules/[slug]/csv-multi-import-view.tsx)).
 
 | Prop | Type | Notes |
@@ -4777,4 +4873,23 @@ navigation column. Nothing is set on the component for either. Two things not to
 undo: don't add a `nav-raised-*` class (it fights the admin's bevel with a second
 cast shadow), and don't set `background` — the admin's colour goes to
 `--toolbar-surface` so the embossed gradient can tint it rather than being wiped.
+
+**An optional background texture** (migration 0130) draws behind the shortcuts, from
+the shared app texture library — the same pictures Configuration → App Texture feeds
+to the dashboard and the modules. The admin picks one per bar in the toolbar editor.
+Three things about it:
+
+- **It goes to `--toolbar-texture-image` / `--toolbar-texture-opacity`, read by
+  `.personal-toolbar[data-textured]::before` — never to `background-image`.** The
+  `emboss` chrome style already paints its bevel gradient into that property, so a
+  picture set there is erased on whichever chrome style is active. Same trap as
+  `background` above.
+- **The URL arrives fully built from `resolveToolbar`**, cache-buster included. The
+  component never assembles one; `resolveToolbarsFor` needs the library passed in as
+  `textures` to resolve a pointer at all, and a bar whose chosen picture has since
+  been deleted resolves to no texture rather than a 404ing layer.
+- **Opacity is per-toolbar, not the picture's own** — unlike a module's texture,
+  which reuses the library row's tuning. A 44px bar shows so little of a picture
+  that a full-page opacity reads as nothing; see migration 0130. It always tiles,
+  for the same reason.
 

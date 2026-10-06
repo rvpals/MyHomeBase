@@ -27,7 +27,9 @@ import { importRecipesCsvCommand } from "./import-recipes-csv";
 import { importJournalIcsCommand } from "./import-journal-ics";
 import { journalCalendarCommand } from "./journal-calendar";
 import { journalLocationsCommand } from "./journal-locations";
+import { journalBulkEditCommand } from "./journal-bulk-edit";
 import { journalSameDateCommand } from "./journal-same-date";
+import { journalTaxonomyCommand } from "./journal-taxonomy";
 import { journalTemplatesCommand } from "./journal-templates";
 import { listCsvAnalyticsCommand } from "./list-csv-analytics";
 import { listScheduledJobsCommand } from "./list-scheduled-jobs";
@@ -82,9 +84,11 @@ const commands: Record<string, Command> = {
   "import-journal-csv": importJournalCsvCommand,
   "import-recipes-csv": importRecipesCsvCommand,
   "import-journal-ics": importJournalIcsCommand,
+  "journal-bulk-edit": journalBulkEditCommand,
   "journal-calendar": journalCalendarCommand,
   "journal-locations": journalLocationsCommand,
   "journal-same-date": journalSameDateCommand,
+  "journal-taxonomy": journalTaxonomyCommand,
   "journal-templates": journalTemplatesCommand,
   "expense-top-spenders": expenseTopSpendersCommand,
   "export-portfolio": exportPortfolioCommand,

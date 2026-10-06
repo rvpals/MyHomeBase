@@ -201,6 +201,21 @@ export class SqliteHsaRepository implements HsaRepository {
     return rows.map((row) => row.name);
   }
 
+  listPayees(): string[] {
+    // Same shape as listProductServices: grouped COLLATE NOCASE so "CVS" and "cvs"
+    // are one entry, with MIN() picking a single spelling deterministically.
+    const rows = this.db
+      .prepare(
+        `SELECT MIN(payee) AS name
+           FROM hsh_hsa_expenses
+          WHERE payee <> ''
+          GROUP BY payee COLLATE NOCASE
+          ORDER BY name COLLATE NOCASE`,
+      )
+      .all() as { name: string }[];
+    return rows.map((row) => row.name);
+  }
+
   listCards(): HsaCard[] {
     const rows = this.db
       .prepare(`SELECT id, name, is_active, created_at FROM hsh_hsa_cards ORDER BY name COLLATE NOCASE`)

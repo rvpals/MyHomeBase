@@ -137,8 +137,8 @@ export function JournalEntryForm({
   locationTagOptions = [],
   initialValues,
   onSaved,
+  onSavingChange,
   saveLabel,
-  isCompactContainer = false,
 }: {
   categoryOptions: string[];
   tagOptions: string[];
@@ -167,18 +167,22 @@ export function JournalEntryForm({
    * write a second.
    */
   onSaved?: () => void;
+  /**
+   * Raised with `true` when a save starts and `false` when it settles, so a
+   * caller that wraps this form can show its own waiting state.
+   *
+   * Review Data's merge dialog uses it to raise a `BusyOverlay`: writing a
+   * merged entry is a long write behind a dialog whose only other signal is the
+   * Save button's label changing, which is exactly what that overlay is for. The
+   * New Entry screen leaves it off — it is a page, not a dialog, and the button
+   * label is signal enough there.
+   *
+   * The form still owns the flag; this only reports it. Nothing here waits on
+   * the caller, so a caller that ignores it behaves exactly as before.
+   */
+  onSavingChange?: (isSaving: boolean) => void;
   /** Overrides the Save button's label — "Save merged entry" for a merge. */
   saveLabel?: string;
-  /**
-   * Render for a narrow container — inside a modal rather than on the
-   * full-width New Entry page.
-   *
-   * Only the two `TokenPicker`s need it: their dropdown and create field sit
-   * side by side until the *viewport* narrows, so in a modal on a desktop the
-   * create box is squeezed to nothing while the screen is plainly wide. Same
-   * prop, same reason, as `JournalEntryEditForm`'s.
-   */
-  isCompactContainer?: boolean;
 }) {
   const router = useRouter();
   // Date and time both start at the writer's current clock, unless the caller
@@ -335,6 +339,7 @@ export function JournalEntryForm({
 
   async function handleSave() {
     setIsBusy(true);
+    onSavingChange?.(true);
     setError(undefined);
     try {
       const result = await createJournalEntryAction({ ...form, locations, weather: weather ?? undefined });
@@ -353,6 +358,7 @@ export function JournalEntryForm({
       router.refresh(); // re-fetch the recent-entries list on the server
     } finally {
       setIsBusy(false);
+      onSavingChange?.(false);
     }
   }
 
@@ -385,8 +391,7 @@ export function JournalEntryForm({
           onChange={(names) => setTaxonomy("categories", names)}
           options={categoryOptions}
           allowCreate
-          stackControls={isCompactContainer}
-          createPlaceholder="New category, e.g. FAMILY"
+          createPlaceholder="Filter or add a category…"
         />
         <TokenPicker
           label="Tags"
@@ -394,8 +399,7 @@ export function JournalEntryForm({
           onChange={(names) => setTaxonomy("tags", names)}
           options={tagOptions}
           allowCreate
-          stackControls={isCompactContainer}
-          createPlaceholder="New tag, e.g. Museum"
+          createPlaceholder="Filter or add a tag…"
         />
       </div>
 

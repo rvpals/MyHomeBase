@@ -17,6 +17,7 @@ import { useMemo, useState, type DragEventHandler } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
+import type { DashboardTextureItem } from "@/lib/dashboard-texture";
 import type { MenuItem } from "@/lib/menu-items";
 import {
   isOrnamentalKind,
@@ -55,6 +56,9 @@ interface Draft {
   backgroundColor: string;
   borderColor: string;
   textColor: string;
+  /** The library picture id, or `undefined` for no texture. */
+  textureId?: number;
+  textureOpacity: number;
   fullModeOnly: boolean;
   isVisible: boolean;
 }
@@ -69,6 +73,10 @@ function toDraft(toolbar?: ToolbarWithItems): Draft {
     backgroundColor: toolbar?.backgroundColor ?? "",
     borderColor: toolbar?.borderColor ?? "",
     textColor: toolbar?.textColor ?? "",
+    textureId: toolbar?.textureId,
+    // The table's own default, so a bar that has never had a picture starts
+    // somewhere visible rather than at 0 the first time one is chosen.
+    textureOpacity: toolbar?.textureOpacity ?? 0.15,
     fullModeOnly: toolbar?.fullModeOnly ?? false,
     isVisible: toolbar?.isVisible ?? true,
   };
@@ -118,13 +126,222 @@ function ColorField({
   );
 }
 
+/**
+ * The background texture: a thumbnail grid from the app texture library, plus this
+ * bar's own strength.
+ *
+ * Pictures are **not** uploaded here. The library lives at Configuration → App
+ * Texture and is shared with the dashboard and the modules; this screen only points
+ * at one, the same way `ModuleTextureControl` does. So an empty library is a normal
+ * state and gets a sentence saying where pictures come from rather than an upload
+ * control this screen has no business owning.
+ *
+ * ## Why opacity is here and not taken from the picture
+ *
+ * A module drawing a library picture reuses that picture's tuning (migration 0117) —
+ * right for something that fills a viewport. A toolbar is 44px across, so a
+ * background tuned to 0.10 for a full page is invisible in it, and migration 0130
+ * gives each bar its own strength instead. That is why this control exists on a
+ * screen where its sibling module control has none.
+ *
+ * NARROW SCREENS: the grid steps 4 → 6 → 8 columns with plain responsive variants,
+ * so it is the same component at every width — the rule in `design.md`.
+ */
+function TextureField({
+  textures,
+  textureId,
+  textureOpacity,
+  onChange,
+}: {
+  textures: DashboardTextureItem[];
+  textureId?: number;
+  textureOpacity: number;
+  onChange: (next: { textureId?: number; textureOpacity: number }) => void;
+}) {
+  // `id` is in the URL so each tile shows its own picture, and `v=` busts the
+  // serving route's 5-minute cache. Same URL shape the module control builds.
+  const thumbnail = (item: DashboardTextureItem) =>
+    `/api/dashboard/texture?id=${item.id}&v=${encodeURIComponent(item.updatedAt)}`;
+
+  return (
+    <div className="mt-4 rounded-lg border border-line p-3">
+      <p className={LABEL}>Background texture</p>
+
+      {textures.length === 0 ? (
+        <p className="mt-2 text-xs text-muted">
+          No pictures in the library yet. Upload them at Administration →
+          Configuration → App&nbsp;Texture, then pick one here.
+        </p>
+      ) : (
+        <>
+          <p className="mt-1 text-xs text-muted">
+            A picture drawn behind this bar&apos;s shortcuts. It always tiles — a
+            44px bar is too thin to show a stretched photograph. Pictures come from
+            Configuration → App&nbsp;Texture.
+          </p>
+
+          <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-8">
+            {/* "None" is a tile rather than a Clear button beside the grid, so
+                turning a texture off is the same gesture as choosing one. */}
+            <button
+              type="button"
+              onClick={() => onChange({ textureId: undefined, textureOpacity })}
+              title="No texture"
+              aria-pressed={textureId === undefined}
+              className={`flex aspect-square items-center justify-center rounded-md border bg-paper text-xs text-muted transition-colors ${
+                textureId === undefined
+                  ? "border-brass ring-2 ring-brass"
+                  : "border-line hover:border-brass/50"
+              }`}
+            >
+              None
+            </button>
+
+            {textures.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onChange({ textureId: item.id, textureOpacity })}
+                // The picture's name, because a tile of an abstract texture at
+                // 48px is not something a reader can identify by sight.
+                title={item.name}
+                aria-pressed={textureId === item.id}
+                className={`overflow-hidden rounded-md border transition-colors ${
+                  textureId === item.id
+                    ? "border-brass ring-2 ring-brass"
+                    : "border-line hover:border-brass/50"
+                }`}
+              >
+                {/* A plain `img`, not `next/image`: these are session-gated bytes
+                    from a route that already sets its own caching, and the
+                    optimizer cannot read them. Same choice the module control and
+                    the texture gallery make. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={thumbnail(item)}
+                  alt={item.name}
+                  className="aspect-square w-full object-cover"
+                />
+              </button>
+            ))}
+          </div>
+
+          {/* Shown only with a picture chosen — a strength slider for no texture is
+              a control that does nothing, and hiding it says so more clearly than
+              disabling it would. */}
+          {textureId !== undefined ? (
+            <div className="mt-3">
+              <label htmlFor="toolbar-texture-opacity" className={LABEL}>
+                Strength — {Math.round(textureOpacity * 100)}%
+              </label>
+              <input
+                id="toolbar-texture-opacity"
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={textureOpacity}
+                onChange={(event) =>
+                  onChange({ textureId, textureOpacity: Number(event.target.value) })
+                }
+                className="mt-1 w-full accent-brass"
+              />
+              <p className="mt-1 text-xs text-muted">
+                This bar&apos;s own strength, not the picture&apos;s. A thin bar shows
+                very little of a texture, so it usually wants more than a full-page
+                background does.
+              </p>
+            </div>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * An ON/OFF switch for one toolbar's household visibility, on the list row.
+ *
+ * ## It saves on click, not on a Save button
+ *
+ * That is the point of it: the editor already carries a "Visible" checkbox, and
+ * reaching it is open → scroll → tick → Save → close. This is for the gesture that
+ * wants to be one click — turning a bar off because it is in the way right now.
+ * Same choice the icon and carousel controls on the Modules screen make, and for
+ * the same reason: there is nothing to batch, one switch is one write.
+ *
+ * ## What it is and is not switching
+ *
+ * This is the **admin's** switch — `isVisible`, which decides whether the toolbar
+ * exists for the household at all. It is not a reader's own hide list, which lives
+ * in their preferences and is reachable only from their Account page. Turning this
+ * off takes the bar off everyone's screen; turning it on returns it to everyone who
+ * has not hidden it themselves. The two are deliberately separate (migration 0125
+ * records why), so the tooltip says "for the household" rather than implying this
+ * controls what any one person sees.
+ *
+ * A `button` with `role="switch"` rather than a checkbox: it carries its own ON/OFF
+ * text and fires immediately, which is a switch's semantics rather than a form
+ * field's. `aria-checked` is what a screen reader announces, so the visible text
+ * and the state cannot drift apart.
+ */
+function VisibilityToggle({
+  toolbar,
+  isBusy,
+  onToggle,
+}: {
+  toolbar: ToolbarWithItems;
+  isBusy: boolean;
+  onToggle: () => void;
+}) {
+  const isOn = toolbar.isVisible;
+
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={isOn}
+      disabled={isBusy}
+      onClick={onToggle}
+      // Named for the bar: a list of several of these would otherwise all announce
+      // as the same control.
+      title={
+        isOn
+          ? `Turn the “${toolbar.name}” toolbar off for the household`
+          : `Turn the “${toolbar.name}” toolbar on for the household`
+      }
+      aria-label={`Show the ${toolbar.name} toolbar`}
+      className={`flex items-center gap-1.5 rounded-full border px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
+        isOn
+          ? "border-brass bg-brass-soft text-brass-dark"
+          : "border-line bg-paper text-muted hover:border-brass/50"
+      }`}
+    >
+      {/* Colour alone would not separate the two states for a reader who cannot
+          see it, which is why the ON/OFF text sits beside the dot. */}
+      <span
+        aria-hidden
+        className={`h-2 w-2 rounded-full ${isOn ? "bg-brass-dark" : "bg-muted"}`}
+      />
+      {isOn ? "ON" : "OFF"}
+    </button>
+  );
+}
+
 export function ToolbarsView({
   toolbars,
   menuItems,
+  textures,
   editToolbarId,
 }: {
   toolbars: ToolbarWithItems[];
   menuItems: MenuItem[];
+  /**
+   * The app texture library, for the editor's background picker. Empty is a normal
+   * state — nothing has been uploaded yet — and the picker says where pictures
+   * come from rather than offering an upload this screen does not own.
+   */
+  textures: DashboardTextureItem[];
   /**
    * Open this toolbar's editor immediately — `?edit=<id>`, which the ✎ button on a
    * rendered toolbar links to. Already validated by the page, so it either names a
@@ -191,6 +408,8 @@ export function ToolbarsView({
       backgroundColor: draft.backgroundColor,
       borderColor: draft.borderColor,
       textColor: draft.textColor,
+      textureId: draft.textureId,
+      textureOpacity: draft.textureOpacity,
       fullModeOnly: draft.fullModeOnly,
       isVisible: draft.isVisible,
     };
@@ -207,13 +426,42 @@ export function ToolbarsView({
     if (ok && editingId === "new") setEditingId(undefined);
   }
 
+  /**
+   * Flips one toolbar's household visibility straight from the list row.
+   *
+   * **Every field is resent, not just `isVisible`.** `updateToolbarAction` replaces
+   * the whole row — it takes a complete `ToolbarInput` and the repository's UPDATE
+   * sets every column — so posting the one flag would blank the bar's name, its
+   * colours and its texture. `toDraft` is reused to build that payload rather than
+   * spreading `toolbar`, because it already converts the stored shape to the input
+   * shape the schema expects (an unset colour is `""` on the way in, `undefined` on
+   * the way out), and duplicating that mapping here is how the two would drift.
+   *
+   * Items are untouched: they live in their own table and the action does not read
+   * them.
+   */
+  async function toggleVisible(toolbar: ToolbarWithItems) {
+    const next = !toolbar.isVisible;
+
+    await run(
+      () =>
+        updateToolbarAction(toolbar.id, {
+          ...toDraft(toolbar),
+          isVisible: next,
+        }),
+      next
+        ? `“${toolbar.name}” is on.`
+        : `“${toolbar.name}” is off — it is off everyone's screen.`,
+    );
+  }
+
   return (
     <>
       <CollapsibleCard className="mt-8" title="Toolbars">
         <p className="text-sm text-muted">
-          Each toolbar docks to one edge. Creating one does not put it on anyone&apos;s
-          screen by itself — it has to be visible here, and each person can still hide
-          it from their own Account page.
+          Each toolbar docks to one edge. <strong className="text-ink">ON</strong> means
+          it exists for the household — switch it off and it leaves everyone&apos;s
+          screen. Each person can still hide an ON toolbar from their own Account page.
         </p>
 
         {error && editingId === undefined ? (
@@ -233,11 +481,11 @@ export function ToolbarsView({
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-ink">
                     {toolbar.name}
-                    {!toolbar.isVisible ? (
-                      <span className="ml-2 rounded-full bg-line px-2 py-0.5 text-xs font-normal text-muted">
-                        hidden
-                      </span>
-                    ) : null}
+                    {/* The "hidden" pill that used to sit here is gone: the ON/OFF
+                        switch on this same row now says the same thing, and two
+                        indicators for one state is the kind of noise that makes a
+                        reader wonder whether they mean different things. The switch
+                        wins because it is also the control. */}
                     {toolbar.fullModeOnly ? (
                       <span className="ml-2 rounded-full bg-brass-soft px-2 py-0.5 text-xs font-normal text-brass-dark">
                         full mode only
@@ -249,7 +497,12 @@ export function ToolbarsView({
                     {toolbar.items.length === 1 ? "" : "s"}
                   </p>
                 </div>
-                <div className="flex shrink-0 gap-2">
+                <div className="flex shrink-0 items-center gap-2">
+                  <VisibilityToggle
+                    toolbar={toolbar}
+                    isBusy={isBusy}
+                    onToggle={() => void toggleVisible(toolbar)}
+                  />
                   <Button variant="secondary" onClick={() => open(toolbar)}>
                     Edit
                   </Button>
@@ -333,6 +586,13 @@ export function ToolbarsView({
             Leave a colour empty to follow the application&apos;s theme — which keeps the
             toolbar in step when the colour scheme changes.
           </p>
+
+          <TextureField
+            textures={textures}
+            textureId={draft.textureId}
+            textureOpacity={draft.textureOpacity}
+            onChange={(next) => setDraft({ ...draft, ...next })}
+          />
 
           <div className="mt-4 space-y-2">
             <label className="flex items-center gap-2 text-sm text-ink">

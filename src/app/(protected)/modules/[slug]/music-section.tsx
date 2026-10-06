@@ -35,7 +35,7 @@ export async function MusicSection({ section }: { section: MusicSection }) {
                 visit the copy is read once and then in the way. The other sections have no
                 instruction card to move. */}
             {section === "magic" && (
-              <Comments title="Instruction" label="Instruction" content={<MagicInstructions />} />
+              <Comments title="Instruction" content={<MagicInstructions />} />
             )}
           </h1>
           <p className="text-sm text-muted">{info.description}</p>

@@ -49,11 +49,13 @@ alongside its row here.
 | [`import-journal-csv`](#import-journal-csv) | write | no |
 | [`import-recipes-csv`](#import-recipes-csv) | write | no |
 | [`import-journal-ics`](#import-journal-ics) | write (read with `--dry-run`/`--review`) | no |
+| [`journal-bulk-edit`](#journal-bulk-edit) | write (read with `--dry-run`) | no |
 | [`journal-calendar`](#journal-calendar) | read | no |
-| [`journal-same-date`](#journal-same-date) | read (writes with `--delete`, or `--merge --save`) | no |
+| [`journal-same-date`](#journal-same-date) | read (writes with `--delete`, `--lock`, or `--merge --save`) | no |
 | [`journal-locations`](#journal-locations) | read + write | no |
 | [`browse-sqlite`](#browse-sqlite) | read + write | no |
 | [`browse-csv`](#browse-csv) | read + write | no |
+| [`journal-taxonomy`](#journal-taxonomy) | read (writes with `--unused --delete`, or `--merge --apply`) | no |
 | [`journal-templates`](#journal-templates) | read (writes with `set`/`enable`/`disable`/`delete`) | no |
 | [`expense-top-spenders`](#expense-top-spenders) | read | no |
 | [`explain-rule`](#explain-rule) | read | no |
@@ -465,10 +467,79 @@ Source: [src/cli/journal-calendar.ts](src/cli/journal-calendar.ts)
 
 ---
 
+## `journal-bulk-edit`
+
+The Journal → Entries screen's bulk actions from the terminal: the same selection edit and
+selection delete the grid's tick-boxes drive, on both the Main and Log tabs.
+
+The three modes are three flag prefixes rather than one `--mode` switch, so a single
+command can add tags *and* replace categories in one pass — exactly what the dialog's two
+independent mode pickers allow. Only one mode per field: passing two is refused rather
+than resolved by flag order.
+
+**Locked entries are skipped by an edit and moved by `--delete`.** That asymmetry is
+deliberate and matches the web app: the bin preserves `is_locked`, so a delete is
+recoverable rather than a bypass, while an edit genuinely would be one.
+
+```
+npm run cli -- journal-bulk-edit --ids 41,42,43 --add-tags "Beach,Summer"
+npm run cli -- journal-bulk-edit --ids 41,42 --remove-tags "Draft"
+npm run cli -- journal-bulk-edit --ids 41,42 --set-tags "Beach"
+npm run cli -- journal-bulk-edit --ids 41,42 --add-categories "Travel"
+npm run cli -- journal-bulk-edit --ids 41,42 --set-categories ""
+npm run cli -- journal-bulk-edit --ids 41,42 --place "Lisbon"
+npm run cli -- journal-bulk-edit --ids 41,42 --add-tags "Beach" --dry-run
+npm run cli -- journal-bulk-edit --ids 41,42 --delete
+```
+
+**Input**
+
+| Flag | Type | Required | Notes |
+|---|---|---|---|
+| `--ids` | id list | **yes** | comma-separated entry ids — the ticked rows |
+| `--add-tags` | name list | no | comma-separated; appended to what each entry already carries |
+| `--remove-tags` | name list | no | stripped from the selection, case-insensitively |
+| `--set-tags` | name list | no | **Replace** — overwrites outright. `--set-tags ""` clears the field |
+| `--add-categories` | name list | no | as `--add-tags`, for categories |
+| `--remove-categories` | name list | no | as `--remove-tags`, for categories |
+| `--set-categories` | name list | no | as `--set-tags`, for categories |
+| `--place` | string | no | sets `place_name` on every entry. An empty string clears it |
+| `--dry-run` | boolean | no | print which entries would change and which are locked; write nothing. A bare flag, so put it last |
+| `--delete` | boolean | no | move the selection to the recycle bin instead of editing it. A bare flag, so put it last |
+
+**Calls** — `bulkEditEntries(deps.journalRepo, ids, changes)` for an edit and
+`recycleEntries` for `--delete`, both the same library functions the web actions in
+`journal-bulk-actions.ts` call. The summary line comes from `describeBulkEditResult`, so
+the terminal and the web notice cannot disagree about what happened.
+
+**Output** — one summary line, naming anything that didn't change:
+
+```
+Updated 12 entries. 3 were locked and skipped. 1 no longer exists.
+```
+
+Under `--dry-run`, the selection is listed first and nothing is written:
+
+```
+  #   41  2026-03-14  Morning run
+  #   42  2026-03-14  Dinner with Anna  [locked — would be skipped]
+
+Dry run — nothing written. 1 would change, 1 locked and skipped.
+```
+
+Date, time and title are deliberately **not** editable here or in the web dialog: they
+identify an entry, and setting one across a selection would collapse rows the importer's
+duplicate check treats as distinct.
+
 ## `journal-same-date`
 
 The Journal → Review Data screen from the terminal: the dates carrying more than one
-entry, plus the same Merge and Delete the web grid offers.
+entry, plus the same Merge, Delete and Lock the web grid offers.
+
+Locked entries are **excluded from the listing** — locking is how a settled date leaves
+this screen in both front-ends — so an empty result can mean "all reviewed" rather than
+"nothing to review". `--include-locked` is the way to see them again and find the id to
+unlock; the web card has no such toggle.
 
 ```
 npm run cli -- journal-same-date
@@ -478,6 +549,8 @@ npm run cli -- journal-same-date --merge 41,42,43
 npm run cli -- journal-same-date --merge 41,42,43 --save
 npm run cli -- journal-same-date --merge 41,42,43 --save --delete-originals
 npm run cli -- journal-same-date --delete 41,42
+npm run cli -- journal-same-date --lock 41,42
+npm run cli -- journal-same-date --include-locked
 ```
 
 **Input**
@@ -490,11 +563,13 @@ npm run cli -- journal-same-date --delete 41,42
 | `--save` | boolean | no | with `--merge`, actually create the merged entry. **Put it last** — `parseFlags` treats every flag as taking a value |
 | `--delete-originals` | boolean | no | with `--save`, also bin the source entries once the merged entry is written — the web dialog's follow-up prompt. Ignored without `--save`. Also a bare flag, so put it last too |
 | `--delete` | id list | no | comma-separated entry ids to move to the recycle bin |
+| `--lock` | id list | no | comma-separated entry ids to lock and exclude from review. Already-locked and missing ids are skipped, not errors. Nothing is deleted — unlock the entry to bring its date back |
+| `--include-locked` | boolean | no | list locked entries too, which are otherwise excluded. A bare flag, so put it last |
 
-**Calls** — `findSameDateGroups(listEntries(deps.journalRepo), { logOnly })` for the listing;
-`mergeEntryDraft` over the full entries read by `getEntry` for `--merge`, then
-`createEntry` when `--save` is given; `recycleEntries` for `--delete`. Every one is the
-same library function the web section's server actions call.
+**Calls** — `findSameDateGroups(listEntries(deps.journalRepo), { logOnly, includeLocked })`
+for the listing; `mergeEntryDraft` over the full entries read by `getEntry` for `--merge`,
+then `createEntry` when `--save` is given; `recycleEntries` for `--delete`; `lockEntries`
+for `--lock`. Every one is the same library function the web section's server actions call.
 
 **Output** — one block per grouped date, each entry as `#id  HH:MM  title` with its
 100-word excerpt indented beneath. A logged activity is marked `[log]` (the web list's
@@ -523,8 +598,114 @@ excerpt and the whole merged draft come from `src/lib/journal/same-date.ts`, so 
 merge couldn't be produced here the logic would have leaked into the view.
 
 **Exit** — 0; 1 on a malformed id list, an id that no longer exists (for `--merge`), or a
-rejected delete.
+rejected delete or lock.
 Source: [src/cli/journal-same-date.ts](src/cli/journal-same-date.ts)
+
+---
+
+## `journal-taxonomy`
+
+The Journal → Meta Data card's **Clean up** from the terminal: which managed categories
+or tags no entry actually uses, and the bulk delete its ticked rows feed.
+
+```
+npm run cli -- journal-taxonomy category
+npm run cli -- journal-taxonomy tag
+npm run cli -- journal-taxonomy category --unused
+npm run cli -- journal-taxonomy tag --unused --delete
+npm run cli -- journal-taxonomy category --merge "Trips,Vacation" --into Travel
+npm run cli -- journal-taxonomy category --merge "Trips,Vacation" --into Travel --apply
+```
+
+**Input**
+
+| Flag | Type | Required | Notes |
+|---|---|---|---|
+| *(first bare arg)* | `category` \| `tag` | **yes** | which managed list. `categories`/`tags` are accepted too |
+| `--unused` | boolean | no | list only the names no entry carries, instead of the whole list with counts |
+| `--delete` | boolean | no | with `--unused`, actually delete them. **Only valid with `--unused`** — see below |
+| `--merge` | name list | no | comma-separated names to fold into one. Prints the plan and **writes nothing** without `--apply` |
+| `--into` | string | with `--merge` | the name they become. Created if it doesn't exist; an existing one keeps its icon and description |
+| `--apply` | boolean | no | with `--merge`, actually perform it. A bare flag, so put it last |
+
+**Calls** — `taxonomyUsageCounts` for the full listing, `findUnusedTaxonomy` for
+`--unused`, `taxonomyInUseAmong` for the pre-delete re-check, then `deleteCategory` /
+`deleteTag` per name. The same library functions the web card's Clean up and bulk Delete
+call, so the two front-ends cannot disagree about which names are unused.
+
+**Output** — the whole managed list with each name's entry count, `unused` spelled out
+rather than shown as `0`:
+
+```
+4 categories · 2 used by no entry
+
+  Errands   unused
+  Obsolete  unused
+  Travel         7
+  Work          34
+```
+
+**`--delete` is scoped to `--unused` deliberately.** Deleting a hand-picked list of names
+from here would be a destructive command with no confirm, where the web path at least
+spells out what is still in use first. Before it writes, the command re-checks the names
+through `taxonomyInUseAmong` and **abandons the run** if any turn out to be in use — that
+can only happen if something changed between the two reads, and detaching a name from
+live entries without a word is the one outcome worth refusing.
+
+Deleting a category or tag removes it from the managed list **and** detaches it from every
+entry carrying it, in one transaction per name (the same `deleteCategory`/`deleteTag` the
+per-row delete button calls). Entries keep their history; they just lose that name. Names
+are deleted one at a time rather than in one big transaction, so a single bad name doesn't
+abandon the rest — matching the web action.
+
+Names are compared case- and whitespace-insensitively against the names on entries, the
+same looseness as `isLogEntry`: a hand-typed `work` counts as a use of the managed `Work`,
+because the alternative is reporting a live category as unused and offering to delete it.
+
+### Merging
+
+`--merge "a,b" --into "New"` is the card's **Merge** button: it folds several names into
+one. Dry-run by default like `journal-same-date --merge`, so the plan prints and nothing
+is written until `--apply`:
+
+```
+Merging 2 categories into "Travel":
+  Trips
+  Vacation
+
+  "Travel" will be created. Icon inherited from "Trips".
+  9 entries will carry "Travel".
+  Saved filters to update: Holidays
+  Templates to update: Holiday
+
+Nothing was written. Re-run with --apply to perform this merge.
+```
+
+**A merge cannot be undone.** There is no recycle bin for taxonomy, so which entry carried
+which original name is gone once it lands.
+
+Three things it gets right that a hand-written `UPDATE` would not:
+
+- **`jrn_entry_categories` carries `UNIQUE (entry_id, category_name)`**, so renaming in
+  place throws the moment one entry carries two of the merged names — the ordinary case for
+  near-duplicates. The repository adds the target pairing with `INSERT OR IGNORE` and then
+  deletes the sources, so a shared entry collapses to one row instead of erroring.
+- **The entry count is `COUNT(DISTINCT entry_id)`, never a sum** of the per-name counts.
+  Summing double-counts entries carrying two sources, which would overstate the figure the
+  reader is deciding on.
+- **Saved filters and prefill templates are rewritten too.** Both store taxonomy names
+  inside JSON (`jrn_saved_filters.filter_json`, the template fields blob), so nothing in
+  the database follows the rename on its own; a filter reading "category is Trips" would
+  silently match no entries, which looks like an empty journal rather than an error.
+
+Merging a name into itself (`--into` naming one of the sources) folds the others into it
+and keeps it. The target is matched case-insensitively, so `--into travel` with an existing
+`Travel` reuses that row rather than creating a second one differing only in case.
+
+**Exit** — 0; 1 on a missing or unrecognised kind, `--delete` without `--unused`, the
+in-use re-check refusing the run, any name that failed to delete, `--merge` without a
+usable `--into`, or a merge the schema rejected.
+Source: [src/cli/journal-taxonomy.ts](src/cli/journal-taxonomy.ts)
 
 ---
 
@@ -3506,9 +3687,9 @@ Medical, Dental, Vision, Transportation, Dependent Care or Other), and optionall
 `--date`, `--time` (both default to now, as the web form does), `--service-date`,
 `--paid-with`, `--note`, `--reimbursed yes` and `--receipt <path>`. The receipt's type is
 read from its extension (PNG, JPEG, WebP, GIF, PDF) and the file is filed in the
-receipt folder under the year of the expense's date. It is stored at full size — the
-browser is what shrinks a phone photo, and a file named on the command line is usually
-already the right size. `--receipt-root` prints the configured folder;
+receipt folder under the year of the expense's date. It is stored byte-for-byte, up to
+15 MB — only the web editor's camera button ever re-encodes anything, and a file named
+on the command line is usually already the size it should be. `--receipt-root` prints the configured folder;
 `--set-receipt-root` sets it, checking it is writable first, and a blank value clears it.
 With no folder set, `--receipt` is refused.
 

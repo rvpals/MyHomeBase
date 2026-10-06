@@ -60,7 +60,7 @@ function StatTile({
     <div className="rounded-xl border border-line p-4">
       <div className="flex items-start justify-between gap-2">
         <p className="text-xs font-medium uppercase tracking-wide text-muted">{label}</p>
-        {description && <Comments title={label} content={description} className="-mr-1 -mt-1 shrink-0" />}
+        {description && <Comments title={label} content={description} className="mt-0.5 shrink-0" />}
       </div>
       <p className={`mt-1 font-display text-xl ${valueClassName}`}>{value}</p>
       {hint && <p className="mt-1 text-xs text-muted">{hint}</p>}

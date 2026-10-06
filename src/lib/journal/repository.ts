@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
-import type { JournalEntryMatchKey, JournalRepository } from "./ports";
+import type { BulkEntryEditOutcome, JournalEntryMatchKey, JournalRepository } from "./ports";
+import { applyNameChange } from "./bulk-edit";
 import {
   entryLocationSchema,
   journalCategorySchema,
@@ -11,6 +12,7 @@ import { buildFilterSql } from "./filters";
 import { LOG_CATEGORY_NAME } from "./journal";
 import { parseStoredJournalFilter, parseStoredPrefillFields } from "./schema";
 import type {
+  BulkEntryEditData,
   EntryWriteData,
   JournalFilterWriteData,
   PrefillTemplateWriteData,
@@ -744,6 +746,137 @@ export class SqliteJournalRepository implements JournalRepository {
       .all(limit) as JournalTaxonomyCount[];
   }
 
+  // Both unlimited by design — see the port. Ordered by name so the caller gets
+  // a stable list without re-sorting; the counts are what matter, not the rank.
+  countEntriesByCategory(): JournalTaxonomyCount[] {
+    return this.db
+      .prepare(
+        `SELECT category_name AS name, COUNT(*) AS entryCount
+         FROM jrn_entry_categories
+         GROUP BY category_name
+         ORDER BY name ASC`,
+      )
+      .all() as JournalTaxonomyCount[];
+  }
+
+  countEntriesByTag(): JournalTaxonomyCount[] {
+    return this.db
+      .prepare(
+        `SELECT tag_name AS name, COUNT(*) AS entryCount
+         FROM jrn_entry_tags
+         GROUP BY tag_name
+         ORDER BY name ASC`,
+      )
+      .all() as JournalTaxonomyCount[];
+  }
+
+  countDistinctEntriesWithCategories(names: string[]): number {
+    return this.countDistinctEntriesWith("category", names);
+  }
+
+  countDistinctEntriesWithTags(names: string[]): number {
+    return this.countDistinctEntriesWith("tag", names);
+  }
+
+  /**
+   * DISTINCT, not a sum — see the port. Names are compared case-insensitively
+   * so this agrees with the merge about which pairings it is about to touch.
+   */
+  private countDistinctEntriesWith(kind: "category" | "tag", names: string[]): number {
+    if (names.length === 0) return 0;
+    const pairTable = kind === "category" ? "jrn_entry_categories" : "jrn_entry_tags";
+    const nameColumn = kind === "category" ? "category_name" : "tag_name";
+    const placeholders = names.map(() => "?").join(", ");
+
+    const row = this.db
+      .prepare(
+        `SELECT COUNT(DISTINCT entry_id) AS entryCount FROM ${pairTable}
+         WHERE LOWER(TRIM(${nameColumn})) IN (${placeholders})`,
+      )
+      .get(...names.map((name) => name.trim().toLowerCase())) as { entryCount: number };
+    return row.entryCount;
+  }
+
+  mergeCategories(sources: string[], target: string): number {
+    return this.mergeTaxonomy("category", sources, target);
+  }
+
+  mergeTags(sources: string[], target: string): number {
+    return this.mergeTaxonomy("tag", sources, target);
+  }
+
+  /**
+   * The shared body of mergeCategories/mergeTags — the two differ only in which
+   * pair of tables they touch.
+   *
+   * The ordering matters and is the whole point of the method:
+   *
+   *  1. Ensure `target` exists in the managed list (`INSERT OR IGNORE`, so an
+   *     existing row keeps its description and icon — see `mergeTaxonomy`).
+   *  2. `INSERT OR IGNORE` a `(entry_id, target)` pairing for every entry
+   *     carrying any source. OR IGNORE is what makes the merge safe against
+   *     `UNIQUE (entry_id, <name>)`: an entry already carrying the target, or
+   *     carrying two sources at once, simply keeps its single row instead of
+   *     raising a constraint error.
+   *  3. Delete the source pairings — but never the target's own, which is why
+   *     the delete excludes `target` rather than just listing `sources`.
+   *  4. Delete the source rows from the managed list, again excluding `target`
+   *     so that merging a name into itself keeps it.
+   *
+   * Steps 2 and 3 cannot be collapsed into an `UPDATE`; that is exactly the
+   * constraint violation the port's comment describes.
+   */
+  private mergeTaxonomy(kind: "category" | "tag", sources: string[], target: string): number {
+    const pairTable = kind === "category" ? "jrn_entry_categories" : "jrn_entry_tags";
+    const nameColumn = kind === "category" ? "category_name" : "tag_name";
+    const listTable = kind === "category" ? "jrn_categories" : "jrn_tags";
+
+    const run = this.db.transaction(() => {
+      // The name the reader typed is the name that survives, exactly as typed —
+      // the merge never substitutes a different spelling for it.
+      const resolvedTarget = target;
+      this.db.prepare(`INSERT OR IGNORE INTO ${listTable} (name) VALUES (?)`).run(resolvedTarget);
+
+      // Everything except the exact row we are keeping.
+      //
+      // Compared by **exact stored name**, not case-insensitively. Merging
+      // "Work" and "WORK" is the case that forces this: SQLite's TEXT primary
+      // key is case-sensitive, so those are two distinct rows that normalize
+      // alike. A case-insensitive filter dropped *both* from the doomed list,
+      // skipped the merge entirely, and left "WORK" sitting there with its
+      // entries. Only the exact target may be excluded here.
+      const doomed = sources.filter((source) => source !== resolvedTarget);
+
+      if (doomed.length > 0) {
+        const placeholders = doomed.map(() => "?").join(", ");
+
+        // Step 2. The SELECT picks the entries carrying a source; OR IGNORE
+        // absorbs every collision described above.
+        this.db
+          .prepare(
+            `INSERT OR IGNORE INTO ${pairTable} (entry_id, ${nameColumn})
+             SELECT DISTINCT entry_id, ? FROM ${pairTable} WHERE ${nameColumn} IN (${placeholders})`,
+          )
+          .run(resolvedTarget, ...doomed);
+
+        // Step 3.
+        this.db
+          .prepare(`DELETE FROM ${pairTable} WHERE ${nameColumn} IN (${placeholders})`)
+          .run(...doomed);
+
+        // Step 4.
+        this.db.prepare(`DELETE FROM ${listTable} WHERE name IN (${placeholders})`).run(...doomed);
+      }
+
+      const row = this.db
+        .prepare(`SELECT COUNT(*) AS entryCount FROM ${pairTable} WHERE ${nameColumn} = ?`)
+        .get(resolvedTarget) as { entryCount: number };
+      return row.entryCount;
+    });
+
+    return run();
+  }
+
   countEntriesByYearAndMonth(): JournalYearCount[] {
     const yearRows = this.db
       .prepare(
@@ -886,6 +1019,83 @@ export class SqliteJournalRepository implements JournalRepository {
 
   // Wipes an entry's child rows and re-inserts them from the input. Called only
   // inside createEntry/updateEntry transactions; sort_order follows array order.
+  // --- Bulk edit (Entries screen, Main and Log tabs) -------------------------
+
+  /**
+   * Applies one change to many entries in a single transaction.
+   *
+   * Row by row rather than set-based SQL, because `add`/`remove` are folds over
+   * what each entry already carries — there is no one `UPDATE ... WHERE id IN
+   * (...)` that expresses "append this tag unless it's already there, matching
+   * case-insensitively". The loop is bounded by the selection (500 rows at the
+   * grid's cap), all inside one transaction, so it is one round trip's worth of
+   * lock-holding rather than 500.
+   *
+   * Only the named child tables and columns are written. `jrn_entry_locations`
+   * is deliberately never touched here, which is the whole reason this does not
+   * go through `replaceChildren`: that one wipes locations, and a bulk tag edit
+   * that silently dropped every entry's map pins would be a data-loss bug.
+   */
+  bulkEditEntries(ids: number[], changes: BulkEntryEditData): BulkEntryEditOutcome {
+    const outcome: BulkEntryEditOutcome = { updatedIds: [], skippedLockedIds: [], missingIds: [] };
+    if (ids.length === 0) return outcome;
+
+    const readRow = this.db.prepare("SELECT id, is_locked FROM jrn_entries WHERE id = ?");
+    const setPlaceName = this.db.prepare("UPDATE jrn_entries SET place_name = ? WHERE id = ?");
+    // Bumps `updated_at` via the jrn_entries_set_updated_at trigger (0027). A
+    // categories/tags-only change writes nothing to jrn_entries, so without this
+    // no-op the trigger never fires and an entry edited in bulk would still claim
+    // the timestamp it had before. Assigning id to itself is the cheapest way to
+    // say "this row changed" without altering a value.
+    //
+    // The trigger's own UPDATE does not re-fire it: SQLite's `recursive_triggers`
+    // defaults OFF and nothing here turns it on. `updateEntry` above depends on
+    // exactly the same thing, so this is not a new assumption.
+    const touch = this.db.prepare("UPDATE jrn_entries SET id = id WHERE id = ?");
+
+    const deleteCategories = this.db.prepare("DELETE FROM jrn_entry_categories WHERE entry_id = ?");
+    const insertCategory = this.db.prepare(
+      "INSERT INTO jrn_entry_categories (entry_id, category_name) VALUES (?, ?)",
+    );
+    const deleteTags = this.db.prepare("DELETE FROM jrn_entry_tags WHERE entry_id = ?");
+    const insertTag = this.db.prepare(
+      "INSERT INTO jrn_entry_tags (entry_id, tag_name) VALUES (?, ?)",
+    );
+
+    this.db.transaction(() => {
+      for (const id of ids) {
+        const row = readRow.get(id) as { id: number; is_locked: number } | undefined;
+        if (!row) {
+          outcome.missingIds.push(id);
+          continue;
+        }
+        // The lock is enforced here as well as in the use-case because this is
+        // the layer that would actually do the writing. See the note on the port.
+        if (row.is_locked === 1) {
+          outcome.skippedLockedIds.push(id);
+          continue;
+        }
+
+        if (changes.categories) {
+          const next = applyNameChange(this.categoryNamesFor(id), changes.categories);
+          deleteCategories.run(id);
+          for (const name of next) insertCategory.run(id, name);
+        }
+        if (changes.tags) {
+          const next = applyNameChange(this.tagNamesFor(id), changes.tags);
+          deleteTags.run(id);
+          for (const name of next) insertTag.run(id, name);
+        }
+        if (changes.placeName !== undefined) setPlaceName.run(changes.placeName, id);
+        else touch.run(id);
+
+        outcome.updatedIds.push(id);
+      }
+    })();
+
+    return outcome;
+  }
+
   // --- Recycle bin (migration 0079) ------------------------------------------
   //
   // An entry is four tables. Every operation below copies or removes all four in

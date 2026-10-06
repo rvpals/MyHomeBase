@@ -176,7 +176,9 @@ export async function hsaCommand(args: string[]): Promise<void> {
           id: expense.id,
           receipt: {
             mimeType,
-            base64Data: readFileSync(flags.receipt).toString("base64"),
+            // Bytes, not base64: the use-case takes a Buffer, and only the web
+            // action ever deals in blobs and form fields.
+            data: readFileSync(flags.receipt),
             fileName: basename(flags.receipt),
           },
         });

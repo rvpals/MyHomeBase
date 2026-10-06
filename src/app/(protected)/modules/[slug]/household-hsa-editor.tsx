@@ -1,11 +1,56 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/button";
 import { Modal } from "@/components/modal";
+import { IconSelect, type IconSelectOption } from "@/components/icon-select";
+import { MultiFileDropzone } from "@/components/multi-file-dropzone";
 import { HSA_TYPES, type HsaType } from "@/lib/household/hsa-types";
-import type { HsaReceiptUploadInput } from "@/lib/household/hsa-schema";
-import { prepareReceiptFile, type ReceiptSource } from "./household-hsa-receipt-file";
+import { toLocalTimeLabel, todayIsoLocal } from "@/lib/shared/date";
+import {
+  HSA_RECEIPT_PICKABLE_MIME_TYPES,
+} from "@/lib/household/hsa-schema";
+import {
+  prepareReceipt,
+  type PreparedReceipt,
+  type ReceiptSource,
+} from "./household-hsa-receipt-file";
+
+/**
+ * Past values as combobox rows.
+ *
+ * `IconSelect` is the app's one free-text combobox — `allowFreeText` defaults to true,
+ * so typing both filters the list and commits whatever is typed. No `iconUrl`: these
+ * are plain strings, and the component indents an icon-less row so labels stay aligned.
+ *
+ * Used instead of a `datalist` (which is what these two fields were) because a
+ * datalist has no visible affordance at all — no arrow, and most browsers only suggest
+ * once you start typing, so a reader cannot tell the suggestions exist. This opens on
+ * focus and on click.
+ */
+function suggestionOptions(values: string[]): IconSelectOption[] {
+  return values.map((value) => ({ value, label: value }));
+}
+
+/**
+ * What the dropzone's picker offers.
+ *
+ * The allowlist, plus extensions — a file dialog matches those more reliably than a
+ * MIME type, which is why the CSV importer pairs them too. `image/*` is included so a
+ * phone's photo library is not greyed out when it reports a type this list does not
+ * name; anything genuinely outside the allowlist is still refused on the way in, by
+ * `prepareReceipt` and again on the server.
+ */
+const RECEIPT_ACCEPT = [
+  ...HSA_RECEIPT_PICKABLE_MIME_TYPES,
+  "image/*",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".webp",
+  ".gif",
+  ".pdf",
+].join(",");
 
 // The add/edit dialog for one HSA expense. Pure presentation: it holds no state of its
 // own beyond a file-picker error — the form, the held receipt and the save live in
@@ -35,7 +80,7 @@ export interface HsaForm {
 export type HsaReceiptChoice =
   | { kind: "keep" }
   | { kind: "remove" }
-  | { kind: "new"; upload: HsaReceiptUploadInput; previewUrl?: string };
+  | { kind: "new"; upload: PreparedReceipt; previewUrl?: string };
 
 const INPUT_CLASS =
   "rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
@@ -56,6 +101,7 @@ export function HsaEditor({
   receipt,
   activeCards,
   productServices,
+  payees,
   canAttachReceipt,
   isNew,
   isBusy,
@@ -75,6 +121,8 @@ export function HsaEditor({
   activeCards: string[];
   /** Every product or service already recorded, for the autocomplete. */
   productServices: string[];
+  /** Every payee already recorded, for the autocomplete. */
+  payees: string[];
   /** False when no receipt folder is configured — attaching is impossible until it is. */
   canAttachReceipt: boolean;
   isNew: boolean;
@@ -86,13 +134,33 @@ export function HsaEditor({
   onSave: () => void;
 }) {
   const set = (patch: Partial<HsaForm>) => onChange({ ...form, ...patch });
-  const fileInput = useRef<HTMLInputElement>(null);
+  // Only the camera needs its own input now: the dropzone owns the file picker.
   const cameraInput = useRef<HTMLInputElement>(null);
   const [fileError, setFileError] = useState<string>();
   const [isReading, setIsReading] = useState(false);
   // Removing a STORED receipt deletes the file from the folder on save, so it is
   // confirmed. Discarding a file chosen a moment ago deletes nothing and is not.
   const [isConfirmingRemove, setIsConfirmingRemove] = useState(false);
+  /**
+   * What the dropzone is showing.
+   *
+   * Held here rather than derived from `receipt`, because a zip cannot be taken apart
+   * again — once several files are packed, the list is the only record of what went in,
+   * and removing a row has to re-pack the rest. The prepared upload and this list are
+   * written together in `handleFiles`.
+   */
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+
+  // Releases the last preview URL when the dialog goes away. Kept in a ref rather than
+  // read from `receipt` inside the cleanup, so the effect does not re-run — and revoke
+  // a URL that is still on screen — every time the held receipt changes.
+  const previewUrlRef = useRef<string | undefined>(undefined);
+  previewUrlRef.current = receipt.kind === "new" ? receipt.previewUrl : undefined;
+  useEffect(() => {
+    return () => {
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    };
+  }, []);
 
   // A card that was deactivated or deleted since this expense was entered must still
   // show as the selected value, or opening the editor would silently blank it on save.
@@ -101,16 +169,39 @@ export function HsaEditor({
       ? [form.paidWith, ...activeCards]
       : activeCards;
 
-  async function handleFile(file: File, source: ReceiptSource) {
+  async function handleFiles(files: File[], source: ReceiptSource) {
     setFileError(undefined);
+
+    // Emptying the dropzone clears the held upload rather than preparing nothing. It
+    // does NOT mark a stored receipt for removal — that is the Remove button, which
+    // warns first, because this one only ever drops a file not yet saved.
+    if (files.length === 0) {
+      setPendingFiles([]);
+      if (receipt.kind === "new") {
+        if (receipt.previewUrl) URL.revokeObjectURL(receipt.previewUrl);
+        onReceipt({ kind: "keep" });
+      }
+      return;
+    }
+
     setIsReading(true);
     try {
-      const upload = await prepareReceiptFile(file, source);
+      const upload = await prepareReceipt(files, source);
+      // The previous preview's URL pins its blob in memory until it is revoked, and
+      // re-picking a photo would otherwise strand one per attempt. Revoked here rather
+      // than on unmount because this is the only place one is replaced; the last one
+      // is released by the effect below.
+      if (receipt.kind === "new" && receipt.previewUrl) URL.revokeObjectURL(receipt.previewUrl);
+      // A camera shot replaces the list; it is one file and did not come from the
+      // dropzone. An attach IS the list.
+      setPendingFiles(files);
       onReceipt({
         kind: "new",
         upload,
+        // An object URL rather than a data URL: the bytes never become a string,
+        // which is the whole point of the blob path.
         previewUrl: upload.mimeType.startsWith("image/")
-          ? `data:${upload.mimeType};base64,${upload.base64Data}`
+          ? URL.createObjectURL(upload.blob)
           : undefined,
       });
     } catch (caught) {
@@ -140,6 +231,27 @@ export function HsaEditor({
             {error}
           </p>
         )}
+
+        {/* Directly under the title rather than in the title bar: `Modal`'s header
+            right-hand side is window chrome (minimize / maximize / close), and a
+            content control wedged beside the ✕ reads as chrome and risks being hit
+            instead of it. Full width on a phone so it is a comfortable tap target. */}
+        <div className="flex max-lg:flex-col">
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={isBusy}
+            onClick={() =>
+              // Read at the moment of the click, not when the dialog opened: on a form
+              // left sitting, the stamp should be when you asked for it. Browser-side
+              // for the reason the Journal's entry form is — the clock that matters is
+              // the writer's, not the server's.
+              set({ entryDate: todayIsoLocal(), entryTime: toLocalTimeLabel(new Date()) })
+            }
+          >
+            Use current date &amp; time
+          </Button>
+        </div>
 
         {/* Date and time sit side by side on a desktop and stack on a phone. */}
         <div className="grid grid-cols-2 gap-3 max-lg:grid-cols-1">
@@ -185,29 +297,26 @@ export function HsaEditor({
         </div>
 
         <Field label="Product or service">
-          {/* A datalist, not a select: it offers what was entered before but accepts a
-              new one typed straight in. Fed by SELECT DISTINCT, so it cannot drift
-              from what is stored. */}
-          <input
-            className={INPUT_CLASS}
-            list="household-hsa-products"
+          {/* Offers what was entered before and accepts anything new typed straight
+              in. Fed by SELECT DISTINCT over the expenses, so the list cannot drift
+              from what is actually stored. */}
+          <IconSelect
+            options={suggestionOptions(productServices)}
             value={form.productService}
+            onChange={(productService) => set({ productService })}
             placeholder="Prescription, Eye exam…"
-            onChange={(event) => set({ productService: event.target.value })}
+            ariaLabel="Product or service"
           />
-          <datalist id="household-hsa-products">
-            {productServices.map((name) => (
-              <option key={name} value={name} />
-            ))}
-          </datalist>
         </Field>
 
         <div className="grid grid-cols-2 gap-3 max-lg:grid-cols-1">
           <Field label="Payee (store or doctor's office)">
-            <input
-              className={INPUT_CLASS}
+            <IconSelect
+              options={suggestionOptions(payees)}
               value={form.payee}
-              onChange={(event) => set({ payee: event.target.value })}
+              onChange={(payee) => set({ payee })}
+              placeholder="CVS, Dr. Lee…"
+              ariaLabel="Payee"
             />
           </Field>
           <Field label="Date of service (optional)">
@@ -256,151 +365,130 @@ export function HsaEditor({
         </Field>
 
         <Field label="Receipt">
-          <div className="flex items-start gap-3 max-lg:flex-col">
+          <div className="flex flex-col gap-2">
+            {/* The dropzone is also click-to-browse, so there is no separate "Attach"
+                button beside it — two controls doing one job. Take photo stays, because
+                opening the camera is a different act from choosing a file, and it is
+                the one thing a phone cannot do by dragging. */}
+            <MultiFileDropzone
+              files={pendingFiles}
+              onFilesChange={(next) => void handleFiles(next, "attach")}
+              accept={RECEIPT_ACCEPT}
+              label={
+                hasStored
+                  ? "Drag a replacement here, or click to browse"
+                  : "Drag receipts here, or click to browse"
+              }
+              disabled={isBusy || isReading || !canAttachReceipt}
+            />
+
+            {/* Phone only — see the camera input below. Hidden by a wrapper rather than
+                a `lg:hidden` on the Button: `Button` concatenates `className` after its
+                own `inline-flex`, so a display override there is a specificity argument
+                the wrapper avoids. */}
+            <span className="max-lg:contents lg:hidden">
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={isBusy || isReading || !canAttachReceipt}
+                title={canAttachReceipt ? undefined : "No receipt folder is set."}
+                onClick={() => cameraInput.current?.click()}
+              >
+                {isReading ? "Reading…" : "Take photo"}
+              </Button>
+            </span>
+
+            {/* `capture="environment"` asks for the rear camera directly. A desktop
+                browser ignores `capture`, which is why the button above is phone-only.
+                No `multiple`: a camera returns one shot. */}
+            <input
+              ref={cameraInput}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void handleFiles([file], "camera");
+                event.target.value = "";
+              }}
+            />
+
+            {/* A thumbnail of a single chosen image, so a camera shot can be checked
+                before saving. Not shown for a zip or a PDF: there is nothing to draw,
+                and a stack of thumbnails would repeat the dropzone's own list. */}
             {receipt.kind === "new" && receipt.previewUrl && (
-              // eslint-disable-next-line @next/next/no-img-element -- a local data URL
-              // with no known dimensions; next/image would need a loader for bytes that
-              // never touch the network.
+              // eslint-disable-next-line @next/next/no-img-element -- a local object
+              // URL with no known dimensions; next/image would need a loader for bytes
+              // that never touch the network.
               <img
                 src={receipt.previewUrl}
                 alt=""
                 className="h-24 w-24 rounded-md border border-line object-cover"
               />
             )}
-            <div className="flex flex-col gap-1">
-              {/* Two inputs, because one cannot be both. This one has no `capture`,
-                  so a phone offers Take Photo, Photo Library and Files in one sheet and
-                  a desktop opens an ordinary file dialog. It is the only one that
-                  accepts a PDF. */}
-              <input
-                ref={fileInput}
-                type="file"
-                accept="image/*,application/pdf"
-                className="hidden"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) void handleFile(file, "attach");
-                  // Cleared so choosing the same file twice fires `change` again.
-                  event.target.value = "";
-                }}
-              />
-              {/* `capture="environment"` asks for the rear camera directly, skipping
-                  that sheet — the one-tap path for the common case of photographing a
-                  receipt you are holding. A desktop browser ignores `capture` and would
-                  show a plain file dialog, which is why the button it drives is hidden
-                  above 1024px: two buttons doing the same thing there would be noise.
-                  No PDF in `accept`: a camera cannot produce one. */}
-              <input
-                ref={cameraInput}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="hidden"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) void handleFile(file, "camera");
-                  event.target.value = "";
-                }}
-              />
-              <div className="flex flex-wrap gap-2">
-                {/* Phone only — see the camera input above. Hidden by a wrapper rather
-                    than a `lg:hidden` on the Button: `Button` concatenates `className`
-                    after its own `inline-flex`, so a display override there is a
-                    specificity argument the wrapper simply avoids. A `max-lg:` variant
-                    rather than a `useIsCompact()` read, per design.md: same control,
-                    restyled away, so the desktop layout provably cannot regress. */}
-                <span className="max-lg:contents lg:hidden">
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={isBusy || isReading || !canAttachReceipt}
-                    title={canAttachReceipt ? undefined : "No receipt folder is set."}
-                    onClick={() => cameraInput.current?.click()}
-                  >
-                    {isReading ? "Reading…" : "Take photo"}
-                  </Button>
-                </span>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={isBusy || isReading || !canAttachReceipt}
-                  title={canAttachReceipt ? undefined : "No receipt folder is set."}
-                  onClick={() => fileInput.current?.click()}
-                >
-                  {isReading
-                    ? "Reading…"
-                    : receipt.kind === "new" || hasStored
-                      ? "Replace receipt"
-                      : "Attach receipt"}
-                </Button>
-                {(receipt.kind === "new" || hasStored) && (
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    disabled={isBusy}
-                    // Discarding a held file falls back to whatever was stored (or to
-                    // nothing, on a new expense) and deletes nothing, so it needs no
-                    // confirmation; removing a stored receipt deletes the file, so it does.
-                    onClick={() =>
-                      receipt.kind === "new" ? onReceipt({ kind: "keep" }) : setIsConfirmingRemove(true)
-                    }
-                  >
-                    {receipt.kind === "new" ? "Discard new file" : "Remove receipt"}
-                  </Button>
-                )}
-              </div>
-              {isConfirmingRemove && (
-                // An inline panel rather than a second Modal: two stacked dialogs would
-                // each trap focus and share one z-index.
-                <div className="panel-inset rounded-md bg-paper px-3 py-2">
-                  <p className="text-xs text-ink">
-                    Saving will <strong>delete the file</strong> from the receipt folder. This
-                    cannot be undone.
-                  </p>
-                  <div className="mt-2 flex gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => setIsConfirmingRemove(false)}>
-                      Keep it
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="danger"
-                      onClick={() => {
-                        onReceipt({ kind: "remove" });
-                        setIsConfirmingRemove(false);
-                      }}
-                    >
-                      Remove it
-                    </Button>
-                  </div>
-                </div>
-              )}
-              {receipt.kind === "new" && (
-                <span className="text-xs text-muted">
-                  {receipt.upload.fileName} — saved when you press Save Expense.
-                </span>
-              )}
-              {receipt.kind === "keep" && hasStored && expenseId !== undefined && (
+
+            {/* What will happen on save, in one line. */}
+            {receipt.kind === "new" ? (
+              <span className="text-xs text-muted">
+                {pendingFiles.length > 1
+                  ? `${pendingFiles.length} files — zipped into one archive and saved when you press Save Expense.`
+                  : `${receipt.upload.fileName} — saved when you press Save Expense.`}
+              </span>
+            ) : receipt.kind === "remove" ? (
+              <span className="text-xs text-muted">
+                The stored receipt and its file are deleted when you save.
+              </span>
+            ) : hasStored && expenseId !== undefined ? (
+              <span className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                <span>◉ Attached:</span>
                 <a
                   href={`/api/household/hsa/${expenseId}/receipt`}
                   target="_blank"
                   rel="noreferrer noopener"
-                  className="text-xs text-brass underline"
+                  className="break-all text-brass underline"
                 >
                   {existingReceiptName}
                 </a>
-              )}
-              {receipt.kind === "remove" && (
-                <span className="text-xs text-muted">
-                  The stored receipt and its file are deleted when you save.
-                </span>
-              )}
-              <span className="text-xs text-muted">
-                {canAttachReceipt
-                  ? "Take photo opens the camera and shrinks the shot to fit. Attach sends the file exactly as it is, up to 2.9 MB. Either way it is renamed and filed under its year in the receipt folder."
-                  : "No receipt folder is set — an administrator can set one under Household → Configuration."}
+                <Button size="sm" variant="danger" disabled={isBusy} onClick={() => setIsConfirmingRemove(true)}>
+                  Remove receipt
+                </Button>
               </span>
-              {fileError && <span className="text-xs text-ink">{fileError}</span>}
-            </div>
+            ) : null}
+
+            {isConfirmingRemove && (
+              // An inline panel rather than a second Modal: two stacked dialogs would
+              // each trap focus and share one z-index.
+              <div className="panel-inset rounded-md bg-paper px-3 py-2">
+                <p className="text-xs text-ink">
+                  Saving will <strong>delete the file</strong> from the receipt folder. This
+                  cannot be undone.
+                </p>
+                <div className="mt-2 flex gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => setIsConfirmingRemove(false)}>
+                    Keep it
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    onClick={() => {
+                      onReceipt({ kind: "remove" });
+                      setPendingFiles([]);
+                      setIsConfirmingRemove(false);
+                    }}
+                  >
+                    Remove it
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <span className="text-xs text-muted">
+              {canAttachReceipt
+                ? "Attached files are stored exactly as they are, up to 15 MB; several become one zip. Take photo shrinks the shot to fit. Either way it is renamed and filed under its year in the receipt folder."
+                : "No receipt folder is set — an administrator can set one under Household → Configuration."}
+            </span>
+            {fileError && <span className="text-xs text-ink">{fileError}</span>}
           </div>
         </Field>
       </div>

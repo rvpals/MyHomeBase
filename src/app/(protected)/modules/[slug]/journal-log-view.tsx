@@ -11,11 +11,15 @@ import type { JournalEntry } from "@/lib/journal";
 import { getJournalEntryAction } from "./journal-correct-actions";
 import { journalEntriesFilterHref } from "./journal-shared";
 import { deleteLogEntriesAction } from "./journal-log-actions";
+import { JournalEntriesBulkEdit } from "./journal-entries-bulk-edit";
 
 export interface JournalLogViewProps {
   entries: JournalEntry[];
   categoryIcons: Record<string, string>;
   tagIcons: Record<string, string>;
+  /** The managed lists, for the bulk-edit dialog's pickers. */
+  categoryOptions: string[];
+  tagOptions: string[];
 }
 
 /**
@@ -36,12 +40,21 @@ export interface JournalLogViewProps {
  * which keeps search and selection working; the viewer is a `Modal`, which is
  * already responsive.
  */
-export function JournalLogView({ entries: initialEntries, categoryIcons, tagIcons }: JournalLogViewProps) {
+export function JournalLogView({
+  entries: initialEntries,
+  categoryIcons,
+  tagIcons,
+  categoryOptions,
+  tagOptions,
+}: JournalLogViewProps) {
   const router = useRouter();
 
   const [entries, setEntries] = useState(initialEntries);
   const [viewing, setViewing] = useState<JournalEntry | undefined>();
   const [confirm, setConfirm] = useState<{ ids: number[]; clearSelection: () => void } | undefined>();
+  const [bulkEdit, setBulkEdit] = useState<
+    { rows: JournalEntry[]; clearSelection: () => void } | undefined
+  >();
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -161,7 +174,6 @@ export function JournalLogView({ entries: initialEntries, categoryIcons, tagIcon
         </p>
         <Comments
           title="About"
-          label="About"
           content={
             "A log entry is a short record of something that happened — a practice, a lesson, " +
             "an appointment — rather than something you sat down to write. Anything the " +
@@ -186,18 +198,49 @@ export function JournalLogView({ entries: initialEntries, categoryIcons, tagIcon
         // properly, which the generic record read-out can't.
         enableRecordView={false}
         renderSelectionActions={(selectedRows, clearSelection) => (
-          <Button
-            size="sm"
-            variant="danger"
-            disabled={isBusy}
-            onClick={() =>
-              setConfirm({ ids: selectedRows.map((entry) => entry.id), clearSelection })
-            }
-          >
-            Delete checked
-          </Button>
+          <>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={isBusy}
+              onClick={() => setBulkEdit({ rows: selectedRows, clearSelection })}
+            >
+              Bulk edit
+            </Button>
+            <Button
+              size="sm"
+              variant="danger"
+              disabled={isBusy}
+              onClick={() =>
+                setConfirm({ ids: selectedRows.map((entry) => entry.id), clearSelection })
+              }
+            >
+              Delete checked
+            </Button>
+          </>
         )}
       />
+
+      {bulkEdit && (
+        <JournalEntriesBulkEdit
+          selected={bulkEdit.rows}
+          categoryOptions={categoryOptions}
+          tagOptions={tagOptions}
+          // The Log tab's list is the unfiltered Log read, so that is what it
+          // asks for back — an entry bulk-edited out of the Log category
+          // disappears from this tab, which is the honest result.
+          scope={{ tab: "log" }}
+          onCancel={() => setBulkEdit(undefined)}
+          onApplied={(nextEntries, message) => {
+            setEntries(nextEntries);
+            setNotice(message);
+            setError("");
+            bulkEdit.clearSelection();
+            setBulkEdit(undefined);
+            router.refresh();
+          }}
+        />
+      )}
 
       {viewing && (
         <Modal title={viewing.title === "" ? "Log entry" : viewing.title} onClose={() => setViewing(undefined)}>

@@ -41,8 +41,14 @@ import {
   findJournalEntriesAction,
   saveJournalFilterAction,
 } from "./journal-actions";
+import {
+  deleteJournalEntriesAction,
+  type BulkRefreshScope,
+} from "./journal-bulk-actions";
+import { JournalEntriesBulkEdit } from "./journal-entries-bulk-edit";
 import { JournalFilterBuilder } from "./journal-filter-builder";
 import { JournalLogView } from "./journal-log-view";
+import { Modal } from "@/components/modal";
 
 // Resolved once at module scope; the registry is static, so this is not I/O.
 const FILTERS_SLOT = getIconSlot("journal_card_entry_filters")!;
@@ -128,6 +134,8 @@ export function JournalEntriesView({
                 entries={logEntries}
                 categoryIcons={categoryIcons}
                 tagIcons={tagIcons}
+                categoryOptions={categoryOptions}
+                tagOptions={tagOptions}
               />
             ),
           },
@@ -201,6 +209,17 @@ function MainTab({
   // Dropped as soon as the reader picks something else — the caller's query
   // describes the rows they were handed, not whatever is on screen now.
   const [showAppliedQuery, setShowAppliedQuery] = useState(Boolean(appliedQuery));
+  // The bulk actions on the ticked rows. `clearSelection` is handed in by
+  // `DataGrid` — selection lives there, and this is the only way to drop it
+  // after the rows it referred to have changed.
+  const [bulkEdit, setBulkEdit] = useState<
+    { rows: JournalEntry[]; clearSelection: () => void } | undefined
+  >();
+  const [confirmDelete, setConfirmDelete] = useState<
+    { rows: JournalEntry[]; clearSelection: () => void } | undefined
+  >();
+  const [isBulkBusy, setIsBulkBusy] = useState(false);
+  const [notice, setNotice] = useState("");
 
   const selected = filters.find((candidate) => String(candidate.id) === selectedId);
 
@@ -245,6 +264,51 @@ function MainTab({
     }
     setIsBuilderOpen(false);
     setEditing(undefined);
+  }
+
+  /**
+   * The filter the grid currently reflects, so a bulk action can re-query the
+   * same rows. An ad-hoc `appliedQuery` isn't reconstructable here — only its
+   * text was passed down, not its parsed tree — so that case falls back to the
+   * unfiltered list rather than guessing. The rows a reader then sees are a
+   * superset of what they had, which is the safe direction to be wrong in.
+   */
+  function currentScope(): BulkRefreshScope {
+    return { tab: "main", filter: selected?.filter ?? emptyFilter() };
+  }
+
+  /** Shared by both bulk actions: swap in the server's rows, say what happened. */
+  function applyBulkResult(nextEntries: JournalEntry[], message: string, clearSelection: () => void) {
+    setEntries(nextEntries);
+    setNotice(message);
+    setError(undefined);
+    clearSelection();
+    setBulkEdit(undefined);
+    setConfirmDelete(undefined);
+    // The module's other screens (Today in History, the Calendar) read the same
+    // rows, so they need re-rendering too — the action revalidated the path.
+    router.refresh();
+  }
+
+  async function runBulkDelete(rows: JournalEntry[], clearSelection: () => void) {
+    setIsBulkBusy(true);
+    setError(undefined);
+    setNotice("");
+    try {
+      const result = await deleteJournalEntriesAction(
+        rows.map((entry) => entry.id),
+        currentScope(),
+      );
+      if (!result.ok || !result.entries) {
+        setError(result.error ?? "Failed to delete the selected entries.");
+        return;
+      }
+      applyBulkResult(result.entries, result.message ?? "Entries deleted.", clearSelection);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Failed to delete the selected entries.");
+    } finally {
+      setIsBulkBusy(false);
+    }
   }
 
   async function handleDelete(filter: SavedJournalFilter) {
@@ -310,6 +374,7 @@ function MainTab({
       </div>
 
       {error && <p className="text-sm text-red-400">{error}</p>}
+      {notice && <p className="text-sm text-muted">{notice}</p>}
 
       <CollapsibleCard
         title="Filter conditions"
@@ -340,16 +405,25 @@ function MainTab({
 
       <section>
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-          <p className="text-sm text-muted">
-            {isLoading
-              ? "Applying filter…"
-              : `${entries.length} ${entries.length === 1 ? "entry" : "entries"}${
-                  selected
-                    ? ` matching "${selected.name}"`
-                    : showAppliedQuery
-                      ? " matching the applied filter"
-                      : ""
-                }. Click a row to open it.`}
+          <p className="flex flex-wrap items-center gap-1.5 text-sm text-muted">
+            {isLoading ? (
+              "Applying filter…"
+            ) : (
+              <>
+                <span className="rounded-full bg-brass-soft px-2 py-0.5 text-xs font-semibold text-brass-dark tabular-nums">
+                  {entries.length}
+                </span>
+                <span>
+                  {`${entries.length === 1 ? "entry" : "entries"}${
+                    selected
+                      ? ` matching "${selected.name}"`
+                      : showAppliedQuery
+                        ? " matching the applied filter"
+                        : ""
+                  }. Click a row to open it.`}
+                </span>
+              </>
+            )}
           </p>
         </div>
         <DataGrid
@@ -363,8 +437,80 @@ function MainTab({
           exportFileName="journal-entries"
           storageKey="myhomebase:journal-entries-grid"
           onRowClick={(entry) => router.push(`/modules/journal/entries/${entry.id}`)}
+          enableSelection
+          renderSelectionActions={(selectedRows, clearSelection) => (
+            <>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={isBulkBusy}
+                onClick={() => setBulkEdit({ rows: selectedRows, clearSelection })}
+              >
+                Bulk edit
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                disabled={isBulkBusy}
+                onClick={() => setConfirmDelete({ rows: selectedRows, clearSelection })}
+              >
+                Delete
+              </Button>
+            </>
+          )}
         />
       </section>
+
+      {bulkEdit && (
+        <JournalEntriesBulkEdit
+          selected={bulkEdit.rows}
+          categoryOptions={categoryOptions}
+          tagOptions={tagOptions}
+          scope={currentScope()}
+          onCancel={() => setBulkEdit(undefined)}
+          onApplied={(nextEntries, message) =>
+            applyBulkResult(nextEntries, message, bulkEdit.clearSelection)
+          }
+        />
+      )}
+
+      {confirmDelete && (
+        <Modal
+          title="Delete these entries?"
+          description="They move to the recycle bin under Data Management, and can be restored from there."
+          onClose={() => setConfirmDelete(undefined)}
+          isBusy={isBulkBusy}
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => setConfirmDelete(undefined)}
+                disabled={isBulkBusy}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                disabled={isBulkBusy}
+                onClick={() => void runBulkDelete(confirmDelete.rows, confirmDelete.clearSelection)}
+              >
+                {isBulkBusy ? "Working…" : "Delete"}
+              </Button>
+            </>
+          }
+        >
+          <p className="text-sm text-ink">
+            {confirmDelete.rows.length}{" "}
+            {confirmDelete.rows.length === 1 ? "entry" : "entries"} selected.
+          </p>
+          {confirmDelete.rows.some((entry) => entry.isLocked) && (
+            <p className="mt-2 text-sm text-muted">
+              Some of these are <span className="text-ink">locked</span>. They move to the bin
+              too, still locked — restoring one brings it back locked.
+            </p>
+          )}
+        </Modal>
+      )}
 
       {isBuilderOpen && (
         <JournalFilterBuilder
