@@ -40,7 +40,36 @@ export interface JournalEntry {
   placeName: string;
   weather?: Weather;
   isPinned: boolean;
+  /**
+   * Guards *editing* only. It has never encrypted anything — see `isEncrypted`
+   * for that. The two are independent: an entry can be locked, encrypted, both,
+   * or neither.
+   */
   isLocked: boolean;
+  /**
+   * Whether `title` and `content` live in the encrypted columns instead of the
+   * plaintext ones (migration 0131).
+   *
+   * When true, `title` and `content` read as `""` and the real text is in
+   * `titleEncrypted` / `contentEncrypted`, openable only with the entry's own
+   * password. Everything else on the entry — date, place, weather, categories,
+   * tags, locations, images — stays plaintext so the lists, calendar and filters
+   * keep working.
+   */
+  isEncrypted: boolean;
+  /**
+   * `v1:salt:iv:tag:ciphertext` for the title, or `""` when not encrypted.
+   * Separate blob from the content, with its own salt and IV.
+   */
+  titleEncrypted: string;
+  /** `v1:salt:iv:tag:ciphertext` for the content, or `""` when not encrypted. */
+  contentEncrypted: string;
+  /**
+   * A reminder shown beside the unlock prompt. **Stored in the clear** — it has
+   * to be readable before anything can be decrypted, which is exactly why it
+   * must never contain the password itself. `""` = no hint.
+   */
+  passwordHint: string;
   categories: string[]; // category names, referencing JournalCategory.name
   tags: string[]; // tag names, referencing JournalTag.name
   locations: EntryLocation[];
@@ -504,6 +533,16 @@ export interface IcsImportReviewEntry {
    * entry for the same reason.
    */
   isLocked: boolean;
+  /**
+   * True when the entry is encrypted (migration 0131).
+   *
+   * Same job as `isLocked` above and for a sharper reason: the quick-edit writes
+   * a title and content straight back, and this dialog has no password, so an
+   * edit here could only ever write blanks over text nobody can read. The title
+   * and content below are the *blanked* columns for such an entry, which is why
+   * the dialog shows a placeholder instead.
+   */
+  isEncrypted: boolean;
 }
 
 /**

@@ -10,7 +10,11 @@ import { Modal } from "@/components/modal";
 import { SlotIcon } from "@/components/slot-icon";
 import { TreeIcon } from "@/components/tree-icons";
 import { getIconSlot } from "@/lib/icons";
-import { toDuplicateRows } from "@/lib/journal";
+import {
+  ENCRYPTED_TITLE_PLACEHOLDER,
+  displayEntryTitle,
+  toDuplicateRows,
+} from "@/lib/journal";
 import type {
   DuplicateGroup,
   DuplicateRow,
@@ -191,13 +195,18 @@ export function JournalCorrectView({
     {
       key: "title",
       header: "Title",
+      // A binned entry can be encrypted (migration 0131) -- its ciphertext moved
+      // into the bin with it, so the row shows the placeholder rather than the
+      // blank title column.
       render: (entry) =>
-        entry.title.trim() === "" ? (
+        entry.isEncrypted ? (
+          <span className="italic text-muted">{ENCRYPTED_TITLE_PLACEHOLDER}</span>
+        ) : entry.title.trim() === "" ? (
           <span className="italic text-muted">(untitled)</span>
         ) : (
           entry.title
         ),
-      value: (entry) => entry.title,
+      value: (entry) => displayEntryTitle(entry.title, entry.isEncrypted),
     },
     {
       key: "date",
@@ -348,7 +357,11 @@ export function JournalCorrectView({
           // always visible in the modal — an entry read out of the bin must not
           // look like a live one.
           title={`${openEntry.isRecycled ? "[DELETED] " : ""}${
-            openEntry.entry.title.trim() === "" ? "Journal entry" : openEntry.entry.title
+            openEntry.entry.isEncrypted
+              ? ENCRYPTED_TITLE_PLACEHOLDER
+              : openEntry.entry.title.trim() === ""
+                ? "Journal entry"
+                : openEntry.entry.title
           }`}
           description={openEntry.isRecycled ? "This entry is in the recycle bin." : undefined}
           size="lg"

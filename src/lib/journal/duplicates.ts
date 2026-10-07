@@ -80,6 +80,12 @@ export function findDuplicateGroups(entries: JournalEntry[]): DuplicateGroup[] {
   const grouped = new Map<string, JournalEntry[]>();
 
   for (const entry of entries) {
+    // Encrypted entries are skipped for the same reason untitled ones are: their
+    // title column is blank (migration 0131), so three encrypted entries on one
+    // date would present as a duplicate group on the strength of having no
+    // readable title at all. That is noise, not a finding — and unlike an
+    // untitled entry, nothing here could ever tell whether they really match.
+    if (entry.isEncrypted) continue;
     if (entry.title.trim() === "") continue;
     const key = groupKey(entry);
     const existing = grouped.get(key) ?? [];

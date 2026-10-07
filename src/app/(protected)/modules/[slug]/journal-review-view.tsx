@@ -11,7 +11,11 @@ import { Modal } from "@/components/modal";
 import { SlotIcon } from "@/components/slot-icon";
 import { TreeIcon } from "@/components/tree-icons";
 import { getIconSlot } from "@/lib/icons";
-import { countSameDateEntries, toSameDateRows } from "@/lib/journal";
+import {
+  ENCRYPTED_TITLE_PLACEHOLDER,
+  countSameDateEntries,
+  toSameDateRows,
+} from "@/lib/journal";
 import type {
   JournalEntry,
   JournalPreferences,
@@ -598,7 +602,13 @@ export function JournalReviewView({
 
       {openEntry && (
         <Modal
-          title={openEntry.title.trim() === "" ? "Journal entry" : openEntry.title}
+          title={
+            openEntry.isEncrypted
+              ? ENCRYPTED_TITLE_PLACEHOLDER
+              : openEntry.title.trim() === ""
+                ? "Journal entry"
+                : openEntry.title
+          }
           description={isEditing ? "Editing this entry." : undefined}
           size="lg"
           isBusy={isBusy}

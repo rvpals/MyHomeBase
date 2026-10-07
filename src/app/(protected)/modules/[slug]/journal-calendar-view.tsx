@@ -26,6 +26,7 @@ import {
   CALENDAR_CELL_TITLE_LIMIT,
   CALENDAR_CELL_TITLE_LIMIT_COMPACT,
   DEFAULT_JOURNAL_DATE_FORMAT,
+  ENCRYPTED_TITLE_PLACEHOLDER,
   JOURNAL_DATE_FORMATS,
   WEEKDAY_LABELS,
   buildMonthGrid,
@@ -294,7 +295,16 @@ export function JournalCalendarView({
 
       {openEntry ? (
         <Modal
-          title={openEntry.title.trim() === "" ? "Journal entry" : openEntry.title}
+          // An encrypted entry's modal is titled by the placeholder: the
+          // viewer inside renders its own unlock prompt, and a modal header
+          // reading "Journal entry" would hide which entry was opened.
+          title={
+            openEntry.isEncrypted
+              ? ENCRYPTED_TITLE_PLACEHOLDER
+              : openEntry.title.trim() === ""
+                ? "Journal entry"
+                : openEntry.title
+          }
           size="lg"
           onClose={() => setOpenEntryId(undefined)}
           footer={
@@ -1029,8 +1039,16 @@ function DayEntriesPanel({
                 </span>
                 {/* Full title here — the elision is a cell constraint, not a
                     property of the entry, so the list shows the whole thing. */}
-                <span className="min-w-0 flex-1 truncate text-sm text-ink">
-                  {entry.title.trim() === "" ? "(untitled)" : entry.title}
+                <span
+                  className={`min-w-0 flex-1 truncate text-sm ${
+                    entry.isEncrypted ? "text-muted" : "text-ink"
+                  }`}
+                >
+                  {entry.isEncrypted
+                    ? ENCRYPTED_TITLE_PLACEHOLDER
+                    : entry.title.trim() === ""
+                      ? "(untitled)"
+                      : entry.title}
                 </span>
                 {entry.placeName === "" ? null : (
                   <span className="truncate text-xs text-muted max-lg:w-full">

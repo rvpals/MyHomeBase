@@ -1,5 +1,12 @@
 import type Database from "better-sqlite3";
-import type { BulkEntryEditOutcome, JournalEntryMatchKey, JournalRepository } from "./ports";
+import type {
+  BulkEncryptOutcome,
+  BulkEncryptRequest,
+  BulkEntryEditOutcome,
+  BulkEntryLockOutcome,
+  JournalEntryMatchKey,
+  JournalRepository,
+} from "./ports";
 import { applyNameChange } from "./bulk-edit";
 import {
   entryLocationSchema,
@@ -8,6 +15,7 @@ import {
   journalTagSchema,
 } from "./schema";
 import type { DecodedImage } from "@/lib/shared/image-upload";
+import { displayEntryTitle } from "./encryption";
 import { buildFilterSql } from "./filters";
 import { LOG_CATEGORY_NAME } from "./journal";
 import { parseStoredJournalFilter, parseStoredPrefillFields } from "./schema";
@@ -49,6 +57,12 @@ interface EntryRow {
   weather_code: number | null;
   is_pinned: number;
   is_locked: number;
+  // Migration 0131. Optional on the row type because the recycle-bin select and
+  // a few projections below don't carry them; `mapEntry` defaults each one.
+  is_encrypted?: number;
+  title_encrypted?: string;
+  content_encrypted?: string;
+  password_hint?: string;
   source: string;
   external_id: string;
   external_content: string;
@@ -219,6 +233,10 @@ function entryToDomain(
     weather,
     isPinned: row.is_pinned === 1,
     isLocked: row.is_locked === 1,
+    isEncrypted: row.is_encrypted === 1,
+    titleEncrypted: row.title_encrypted ?? "",
+    contentEncrypted: row.content_encrypted ?? "",
+    passwordHint: row.password_hint ?? "",
     categories,
     tags,
     locations,
@@ -313,14 +331,19 @@ export class SqliteJournalRepository implements JournalRepository {
     // wildcard — and the ESCAPE clause tells SQLite that "\" is the escape char.
     const escaped = term.replace(/[\\%_]/g, (ch) => `\\${ch}`);
     const pattern = `%${escaped}%`;
+    // An encrypted entry's title and content columns are blank (migration 0131),
+    // so matching them would be meaningless -- and matching a blank against a
+    // '%%' search would sweep every encrypted entry into the results. Its date,
+    // time, place and taxonomy are still plaintext and still searchable, so the
+    // entry stays findable by everything except the words inside it.
     const rows = this.db
       .prepare(
         `SELECT e.*
          FROM jrn_entries e
          WHERE e.entry_date LIKE ? ESCAPE '\\'
             OR e.entry_time LIKE ? ESCAPE '\\'
-            OR e.title LIKE ? ESCAPE '\\'
-            OR e.content LIKE ? ESCAPE '\\'
+            OR (e.is_encrypted = 0 AND e.title LIKE ? ESCAPE '\\')
+            OR (e.is_encrypted = 0 AND e.content LIKE ? ESCAPE '\\')
             OR e.place_name LIKE ? ESCAPE '\\'
             OR EXISTS (SELECT 1 FROM jrn_entry_categories c
                        WHERE c.entry_id = e.id AND c.category_name LIKE ? ESCAPE '\\')
@@ -413,30 +436,38 @@ export class SqliteJournalRepository implements JournalRepository {
     // ordering the list uses, without spelling out the nested OR chain.
     const older = this.db
       .prepare(
-        `SELECT id, entry_date, title FROM jrn_entries
+        `SELECT id, entry_date, title, is_encrypted FROM jrn_entries
          WHERE (entry_date, entry_time, id) < (?, ?, ?)
          ORDER BY entry_date DESC, entry_time DESC, id DESC
          LIMIT 1`,
       )
       .get(anchor.entry_date, anchor.entry_time, anchor.id) as
-      | { id: number; entry_date: string; title: string }
+      | { id: number; entry_date: string; title: string; is_encrypted: number }
       | undefined;
 
     const newer = this.db
       .prepare(
-        `SELECT id, entry_date, title FROM jrn_entries
+        `SELECT id, entry_date, title, is_encrypted FROM jrn_entries
          WHERE (entry_date, entry_time, id) > (?, ?, ?)
          ORDER BY entry_date ASC, entry_time ASC, id ASC
          LIMIT 1`,
       )
       .get(anchor.entry_date, anchor.entry_time, anchor.id) as
-      | { id: number; entry_date: string; title: string }
+      | { id: number; entry_date: string; title: string; is_encrypted: number }
       | undefined;
 
-    const toRef = (row: { id: number; entry_date: string; title: string }): JournalEntryRef => ({
+    // The neighbour strip names the entry either side of this one, so an
+    // encrypted neighbour shows the placeholder rather than its blanked title
+    // column (migration 0131).
+    const toRef = (row: {
+      id: number;
+      entry_date: string;
+      title: string;
+      is_encrypted: number;
+    }): JournalEntryRef => ({
       id: row.id,
       date: row.entry_date,
-      title: row.title,
+      title: displayEntryTitle(row.title, row.is_encrypted === 1),
     });
 
     return {
@@ -450,11 +481,13 @@ export class SqliteJournalRepository implements JournalRepository {
       `INSERT INTO jrn_entries
          (entry_date, entry_time, title, content, place_name,
           weather_temp, weather_unit, weather_description, weather_code,
-          is_pinned, is_locked, source, external_id, external_content)
+          is_pinned, is_locked, is_encrypted, title_encrypted, content_encrypted,
+          password_hint, source, external_id, external_content)
        VALUES
          (@date, @time, @title, @content, @placeName,
           @weatherTemp, @weatherUnit, @weatherDescription, @weatherCode,
-          @isPinned, @isLocked, @source, @externalId, @externalContent)`,
+          @isPinned, @isLocked, @isEncrypted, @titleEncrypted, @contentEncrypted,
+          @passwordHint, @source, @externalId, @externalContent)`,
     );
 
     const id = this.db.transaction(() => {
@@ -476,6 +509,8 @@ export class SqliteJournalRepository implements JournalRepository {
          place_name = @placeName, weather_temp = @weatherTemp, weather_unit = @weatherUnit,
          weather_description = @weatherDescription, weather_code = @weatherCode,
          is_pinned = @isPinned, is_locked = @isLocked,
+         is_encrypted = @isEncrypted, title_encrypted = @titleEncrypted,
+         content_encrypted = @contentEncrypted, password_hint = @passwordHint,
          source = @source, external_id = @externalId,
          external_content = @externalContent
        WHERE id = @id`,
@@ -504,11 +539,16 @@ export class SqliteJournalRepository implements JournalRepository {
     // Rides idx_jrn_entries_match_key (migration 0072) on all three columns.
     // TRIM on the stored side too: a title that arrived with trailing space from
     // an earlier import must still match the same title read cleanly today.
+    //
+    // Encrypted entries are excluded (migration 0131): their title column is
+    // blank, so an import of an untitled event on the same date and time would
+    // otherwise "match" one and overwrite text nobody can read to check.
     const row = this.db
       .prepare(
         `SELECT COUNT(*) AS matches FROM jrn_entries
          WHERE entry_date = @date
            AND entry_time = @time
+           AND is_encrypted = 0
            AND TRIM(title) = @title`,
       )
       .get({ ...key, title: key.title.trim() }) as { matches: number };
@@ -524,6 +564,7 @@ export class SqliteJournalRepository implements JournalRepository {
         `SELECT id FROM jrn_entries
          WHERE entry_date = @date
            AND entry_time = @time
+           AND is_encrypted = 0
            AND TRIM(title) = @title
          ORDER BY id`,
       )
@@ -610,6 +651,36 @@ export class SqliteJournalRepository implements JournalRepository {
     const updated = this.getEntryById(id);
     if (!updated) throw new Error(`Failed to read back journal entry ${id}.`);
     return updated;
+  }
+
+  bulkSetEntriesLocked(ids: number[], isLocked: boolean): BulkEntryLockOutcome {
+    const outcome: BulkEntryLockOutcome = { changedIds: [], unchangedIds: [], missingIds: [] };
+    if (ids.length === 0) return outcome;
+
+    const readRow = this.db.prepare("SELECT id, is_locked FROM jrn_entries WHERE id = ?");
+    const setLock = this.db.prepare("UPDATE jrn_entries SET is_locked = ? WHERE id = ?");
+    const target = isLocked ? 1 : 0;
+
+    this.db.transaction(() => {
+      for (const id of ids) {
+        const row = readRow.get(id) as { id: number; is_locked: number } | undefined;
+        if (!row) {
+          outcome.missingIds.push(id);
+          continue;
+        }
+        // Rows already in the target state are reported, not re-written. The
+        // UPDATE would be harmless, but counting it as a change would let
+        // "Locked 40 entries" describe a selection that was already locked.
+        if (row.is_locked === target) {
+          outcome.unchangedIds.push(id);
+          continue;
+        }
+        setLock.run(target, id);
+        outcome.changedIds.push(id);
+      }
+    })();
+
+    return outcome;
   }
 
   listCategories(): JournalCategory[] {
@@ -1096,6 +1167,71 @@ export class SqliteJournalRepository implements JournalRepository {
     return outcome;
   }
 
+  bulkEncryptEntries(ids: number[], request: BulkEncryptRequest): BulkEncryptOutcome {
+    const outcome: BulkEncryptOutcome = {
+      encryptedIds: [],
+      skippedLockedIds: [],
+      skippedEncryptedIds: [],
+      missingIds: [],
+    };
+    if (ids.length === 0) return outcome;
+
+    const readRow = this.db.prepare(
+      "SELECT id, title, content, is_locked, is_encrypted FROM jrn_entries WHERE id = ?",
+    );
+    // Only the six encryption columns. `updateEntry` rewrites the whole
+    // aggregate including child rows, so reusing it here would delete and
+    // reinsert every entry's categories, tags and locations to change two
+    // fields — the same argument bulkEditEntries makes above.
+    //
+    // The plaintext is blanked in this one statement, so there is never a
+    // moment on disk where both the plaintext and the ciphertext exist.
+    const sealRow = this.db.prepare(
+      `UPDATE jrn_entries SET
+         title = '', content = '',
+         is_encrypted = 1,
+         title_encrypted = @titleEncrypted,
+         content_encrypted = @contentEncrypted,
+         password_hint = @passwordHint
+       WHERE id = @id`,
+    );
+
+    // One transaction for the whole batch, deliberately: a half-sealed
+    // selection would leave rows needing a password with no record of which.
+    // better-sqlite3 rolls back automatically if the callback throws, which is
+    // what carries a mid-batch cipher failure back out as "nothing happened".
+    this.db.transaction(() => {
+      for (const id of ids) {
+        const row = readRow.get(id) as
+          | { id: number; title: string; content: string; is_locked: number; is_encrypted: number }
+          | undefined;
+        if (!row) {
+          outcome.missingIds.push(id);
+          continue;
+        }
+        if (row.is_locked === 1) {
+          outcome.skippedLockedIds.push(id);
+          continue;
+        }
+        if (row.is_encrypted === 1) {
+          outcome.skippedEncryptedIds.push(id);
+          continue;
+        }
+
+        const sealed = request.seal(row.title, row.content);
+        sealRow.run({
+          id,
+          titleEncrypted: sealed.titleEncrypted,
+          contentEncrypted: sealed.contentEncrypted,
+          passwordHint: request.hint,
+        });
+        outcome.encryptedIds.push(id);
+      }
+    })();
+
+    return outcome;
+  }
+
   // --- Recycle bin (migration 0079) ------------------------------------------
   //
   // An entry is four tables. Every operation below copies or removes all four in
@@ -1105,15 +1241,20 @@ export class SqliteJournalRepository implements JournalRepository {
     if (ids.length === 0) return 0;
 
     const insertParent = this.db.prepare(
+      // The encryption columns travel with the entry (migration 0131). Leaving
+      // them out would bin the blanked title and content and drop the ciphertext,
+      // so a restored entry would be unreadable forever with nothing to say why.
       `INSERT INTO jrn_recycled_entries (
          entry_id, entry_date, entry_time, title, content, place_name,
          weather_temp, weather_unit, weather_description, weather_code,
-         is_pinned, is_locked, source, external_id, external_content,
+         is_pinned, is_locked, is_encrypted, title_encrypted, content_encrypted,
+         password_hint, source, external_id, external_content,
          created_at, updated_at
        )
        SELECT id, entry_date, entry_time, title, content, place_name,
               weather_temp, weather_unit, weather_description, weather_code,
-              is_pinned, is_locked, source, external_id, external_content,
+              is_pinned, is_locked, is_encrypted, title_encrypted, content_encrypted,
+              password_hint, source, external_id, external_content,
               created_at, updated_at
        FROM jrn_entries WHERE id = ?`,
     );
@@ -1185,12 +1326,14 @@ export class SqliteJournalRepository implements JournalRepository {
       `INSERT INTO jrn_entries (
          id, entry_date, entry_time, title, content, place_name,
          weather_temp, weather_unit, weather_description, weather_code,
-         is_pinned, is_locked, source, external_id, external_content,
+         is_pinned, is_locked, is_encrypted, title_encrypted, content_encrypted,
+         password_hint, source, external_id, external_content,
          created_at, updated_at
        ) VALUES (
          @id, @entry_date, @entry_time, @title, @content, @place_name,
          @weather_temp, @weather_unit, @weather_description, @weather_code,
-         @is_pinned, @is_locked, @source, @external_id, @external_content,
+         @is_pinned, @is_locked, @is_encrypted, @title_encrypted, @content_encrypted,
+         @password_hint, @source, @external_id, @external_content,
          @created_at, @updated_at
        )`,
     );
@@ -1198,12 +1341,14 @@ export class SqliteJournalRepository implements JournalRepository {
       `INSERT INTO jrn_entries (
          entry_date, entry_time, title, content, place_name,
          weather_temp, weather_unit, weather_description, weather_code,
-         is_pinned, is_locked, source, external_id, external_content,
+         is_pinned, is_locked, is_encrypted, title_encrypted, content_encrypted,
+         password_hint, source, external_id, external_content,
          created_at, updated_at
        ) VALUES (
          @entry_date, @entry_time, @title, @content, @place_name,
          @weather_temp, @weather_unit, @weather_description, @weather_code,
-         @is_pinned, @is_locked, @source, @external_id, @external_content,
+         @is_pinned, @is_locked, @is_encrypted, @title_encrypted, @content_encrypted,
+         @password_hint, @source, @external_id, @external_content,
          @created_at, @updated_at
        )`,
     );
@@ -1240,6 +1385,21 @@ export class SqliteJournalRepository implements JournalRepository {
           weather_code: row.weather_code,
           is_pinned: row.is_pinned,
           is_locked: row.is_locked,
+          // Migration 0131. Defaulted rather than asserted: a row binned before
+          // the migration has these columns but no meaningful value, and an
+          // entry restored from one is simply a normal plaintext entry.
+          is_encrypted: row.is_encrypted ?? 0,
+          title_encrypted: row.title_encrypted ?? "",
+          content_encrypted: row.content_encrypted ?? "",
+          password_hint: row.password_hint ?? "",
+          // These three are named by both INSERTs above but were never bound --
+          // a pre-existing gap, not something 0131 introduced. better-sqlite3
+          // throws on a missing named parameter, so restore could not have been
+          // working; binding them here is the fix. Defaulted the same way the
+          // provenance columns default everywhere else (migration 0088).
+          source: row.source ?? "",
+          external_id: row.external_id ?? "",
+          external_content: row.external_content ?? "",
           created_at: row.created_at,
           updated_at: row.updated_at,
         };
@@ -1553,6 +1713,10 @@ function entryParams(input: EntryWriteData): Record<string, string | number | nu
     weatherCode: input.weather ? input.weather.code : null,
     isPinned: input.isPinned ? 1 : 0,
     isLocked: input.isLocked ? 1 : 0,
+    isEncrypted: input.isEncrypted ? 1 : 0,
+    titleEncrypted: input.titleEncrypted,
+    contentEncrypted: input.contentEncrypted,
+    passwordHint: input.passwordHint,
     source: input.source,
     externalId: input.externalId,
     externalContent: input.externalContent,

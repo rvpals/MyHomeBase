@@ -146,6 +146,33 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-10-07 — Release (encrypted Journal entries, bulk Lock/Unlock/Encrypt, grid status bar)
+
+**Migration 0131 must be applied on the NAS first** — without it every Journal entry
+screen fails with "no such column" (`is_encrypted`). Use **throwaway entries**: a
+forgotten password destroys the entry permanently. Items 16–17 are phone-only.
+
+- [ ] **1.** Journal → open an entry → **Encrypt** (footer): the dialog explains there is no recovery and asks for the password twice
+- [ ] **2.** Mismatched passwords are refused; a hint is optional and the dialog warns it is stored in the clear
+- [ ] **3.** After encrypting, the entry shows a lock badge and a placeholder title in the Entries list and the viewer header
+- [ ] **4.** The sealed entry shows an unlock prompt in place of its body, with the hint; a wrong password says so and stays sealed
+- [ ] **5.** The right password reveals the title and text; leaving the page and returning seals it again
+- [ ] **6.** Editing an unlocked entry saves and it is still encrypted afterwards (open it fresh and unlock to confirm)
+- [ ] **7.** Remove encryption asks for the password, then the entry reads as a normal one again
+- [ ] **8.** Date, time, place, tags and map pins of an encrypted entry are unchanged and still filter/show on the calendar
+- [ ] **9.** An encrypted entry is not found by Journal search, and doesn't appear in Top 10 Words
+- [ ] **10.** Two encrypted entries on one date are **not** reported as duplicates
+- [ ] **11.** Re-importing a CSV/ICS never overwrites an encrypted entry
+- [ ] **12.** Entries → tick several → **Lock** / **Unlock**: the confirm names the count; locked entries are written too, and "already locked" is reported separately
+- [ ] **13.** Entries → tick several → **Encrypt**: one password for the selection, the page dims with a spinner while it runs, and every ticked entry ends up sealed
+- [ ] **14.** An already-encrypted entry in a bulk Encrypt selection is skipped and the notice says so
+- [ ] **15.** Admin → Configuration → Icons lists "Encrypted entry" and "Encrypt entry", and an upload replaces them
+- [ ] **16.** (phone) The unlock prompt and encrypt dialog fit the screen and the keyboard doesn't hide the buttons
+- [ ] **17.** (phone) The Entries cards layout shows the new status bar with the count badge, and "Show more" updates it
+- [ ] **18.** Desktop grid footers (any DataGrid screen) show the record count as a brass badge; card stripes alternate visibly
+
+---
+
 ## 2026-10-05 — Release (toolbar textures, multi-file HSA receipts, attendance print, Icons filter)
 
 **Migration 0130 must be applied on the NAS first** — without it the Toolbars screen

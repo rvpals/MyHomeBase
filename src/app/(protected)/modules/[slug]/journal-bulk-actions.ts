@@ -17,7 +17,11 @@
 import { revalidatePath } from "next/cache";
 import {
   bulkEditEntries,
+  bulkEncryptEntries,
+  bulkSetEntriesLocked,
   describeBulkEditResult,
+  describeBulkEncryptResult,
+  describeBulkLockResult,
   findEntries,
   listLogEntries,
   recycleEntries,
@@ -126,5 +130,75 @@ export async function bulkEditJournalEntriesAction(
     };
   } catch (error) {
     return toErrorResult(error, "Failed to edit the selected entries.");
+  }
+}
+
+/**
+ * Locks or unlocks every ticked entry.
+ *
+ * The one bulk action that deliberately **writes locked rows**: changing the
+ * lock is the operation, so refusing a locked entry would leave no way to
+ * unlock one. Bulk *edit* above is the opposite and skips them, because there a
+ * write would be a genuine bypass. See the note at the top of
+ * src/lib/journal/bulk-lock.ts.
+ *
+ * `isLocked` is the target state, not a toggle — the screen offers Lock and
+ * Unlock as two buttons so a mixed selection has a defined result.
+ */
+export async function bulkLockJournalEntriesAction(
+  ids: number[],
+  isLocked: boolean,
+  scope: BulkRefreshScope,
+): Promise<BulkActionResult & { changedCount?: number; unchangedCount?: number }> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    const result = bulkSetEntriesLocked(deps.journalRepo, ids, isLocked);
+    revalidatePath(JOURNAL_MODULE_PATH);
+    return {
+      ok: true,
+      changedCount: result.changedCount,
+      unchangedCount: result.unchangedCount,
+      entries: refresh(scope),
+      message: describeBulkLockResult(result),
+    };
+  } catch (error) {
+    return toErrorResult(
+      error,
+      `Failed to ${isLocked ? "lock" : "unlock"} the selected entries.`,
+    );
+  }
+}
+
+/**
+ * Seals the title and content of every eligible ticked entry under one password.
+ *
+ * **The password crosses the wire and is never stored** — not here, not in the
+ * repository, not in the database. It is used to derive a key, and then it is
+ * gone with the request. That also means there is no recovery path: this action
+ * cannot undo itself, and nothing on the server can open the result. The dialog
+ * says so before the reader confirms.
+ *
+ * Locked and already-encrypted entries are skipped and counted, not refused —
+ * one ineligible row must not block a forty-row batch. The counts are in
+ * `message`.
+ */
+export async function bulkEncryptJournalEntriesAction(
+  ids: number[],
+  password: string,
+  hint: string,
+  scope: BulkRefreshScope,
+): Promise<BulkActionResult & { encryptedCount?: number }> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    const result = bulkEncryptEntries(deps.journalRepo, ids, password, hint);
+    revalidatePath(JOURNAL_MODULE_PATH);
+    return {
+      ok: true,
+      encryptedCount: result.encryptedCount,
+      entries: refresh(scope),
+      message: describeBulkEncryptResult(result),
+    };
+  } catch (error) {
+    return toErrorResult(error, "Failed to encrypt the selected entries.");
   }
 }

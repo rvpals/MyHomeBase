@@ -4,10 +4,14 @@ import { useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
+import { EncryptionPrompt } from "@/components/encryption-prompt";
 import { JournalViewer } from "@/components/journal-viewer";
 import type { EntryLocation, JournalEntry, JournalEntryNeighbors } from "@/lib/journal";
 import {
+  decryptJournalEntryAction,
   deleteJournalEntryAction,
+  encryptJournalEntryAction,
+  removeJournalEntryEncryptionAction,
   setEntryLockAction,
 } from "../../journal-actions";
 import { journalEntriesFilterHref } from "../../journal-shared";
@@ -97,6 +101,103 @@ export function JournalEntryScreen({
   const [mapView, setMapView] = useState<MapView | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
 
+  // --- encryption (migration 0131) -------------------------------------------
+  //
+  // This component owns the unlock, because it is the one thing above both the
+  // viewer and the edit form. The password lives **here and nowhere else**: not
+  // in a cookie, not in storage, not on the server between calls. Navigating
+  // away unmounts this component and takes it with it, which is the whole of the
+  // unlock lifetime — `NavTree` remounts on every navigation anyway.
+  //
+  // There is deliberately no idle timer: an unlock expiring mid-edit would throw
+  // away writing in progress, which is worse than the exposure it prevents.
+  const [password, setPassword] = useState<string | undefined>(undefined);
+  const [openedText, setOpenedText] = useState<{ title: string; content: string } | undefined>(
+    undefined,
+  );
+  const [encryptionError, setEncryptionError] = useState<string | undefined>(undefined);
+  // Which prompt is on screen, when one is. `undefined` = none.
+  const [prompt, setPrompt] = useState<"encrypt" | "remove" | undefined>(undefined);
+
+  const isUnlocked = entry.isEncrypted && openedText !== undefined;
+
+  async function handleUnlock(typed: string) {
+    setIsBusy(true);
+    setEncryptionError(undefined);
+    try {
+      const result = await decryptJournalEntryAction(entry.id, typed);
+      if (!result.ok || !result.text) {
+        setEncryptionError(result.error ?? "That password does not open this entry.");
+        return;
+      }
+      setOpenedText(result.text);
+      setPassword(typed);
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleEncrypt(typed: string, hint: string) {
+    setIsBusy(true);
+    setEncryptionError(undefined);
+    try {
+      const result = await encryptJournalEntryAction(entry.id, typed, hint);
+      if (!result.ok) {
+        setEncryptionError(result.error);
+        return;
+      }
+      // Not left unlocked: the reader just proved they know the password by
+      // typing it twice, and leaving the plaintext on screen after sealing it
+      // reads as if nothing happened.
+      setPrompt(undefined);
+      setOpenedText(undefined);
+      setPassword(undefined);
+      router.refresh();
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleRemoveEncryption(typed: string) {
+    setIsBusy(true);
+    setEncryptionError(undefined);
+    try {
+      const result = await removeJournalEntryEncryptionAction(entry.id, typed);
+      if (!result.ok) {
+        setEncryptionError(result.error);
+        return;
+      }
+      setPrompt(undefined);
+      setOpenedText(undefined);
+      setPassword(undefined);
+      router.refresh();
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  /** Drops the decrypted text and the password without touching the entry. */
+  function handleLock() {
+    setOpenedText(undefined);
+    setPassword(undefined);
+    setEncryptionError(undefined);
+    setIsEditing(false);
+  }
+
+  /**
+   * The entry as the viewer and the edit form should see it.
+   *
+   * An unlocked entry is shown with its decrypted title and content spliced back
+   * in. This object is **never** sent to `updateJournalEntryAction` — the edit
+   * form routes an encrypted save through `updateEncryptedJournalEntryAction`
+   * instead, and the use-case refuses to write plaintext over ciphertext even if
+   * something slipped through.
+   */
+  const shownEntry: JournalEntry =
+    isUnlocked && openedText
+      ? { ...entry, title: openedText.title, content: openedText.content }
+      : entry;
+
   async function handleToggleLock(nextLocked: boolean) {
     setIsBusy(true);
     setError(undefined);
@@ -148,9 +249,58 @@ export function JournalEntryScreen({
           now, so the module rail and the section panel are the way back. */}
       {error && <p className="no-print text-sm text-red-400">{error}</p>}
 
-      {isEditing ? (
+      {/* A sealed entry shows the prompt in place of its body. Rendered inline
+          rather than as an overlay: nothing about an entry belongs on the
+          floating layer, and the bottom edge is already the shared nav's. */}
+      {entry.isEncrypted && !isUnlocked && (
+        <EncryptionPrompt
+          mode="unlock"
+          hint={entry.passwordHint}
+          error={encryptionError}
+          isBusy={isBusy}
+          onSubmit={(typed) => handleUnlock(typed)}
+          className="no-print"
+        />
+      )}
+
+      {/* Encrypting and removing encryption are dialogs, not inline cards: both
+          are deliberate decisions with a consequence that cannot be undone, and
+          a dialog stops the rest of the entry competing for attention while one
+          is being made. The *unlock* prompt above stays inline on purpose --
+          it sits where the body would be, so it reads as the entry being shut
+          rather than as the app asking a question. */}
+      {prompt === "encrypt" && (
+        <EncryptionPrompt
+          asModal
+          mode="encrypt"
+          error={encryptionError}
+          isBusy={isBusy}
+          onSubmit={handleEncrypt}
+          onCancel={() => {
+            setPrompt(undefined);
+            setEncryptionError(undefined);
+          }}
+        />
+      )}
+      {prompt === "remove" && (
+        <EncryptionPrompt
+          asModal
+          mode="confirm"
+          hint={entry.passwordHint}
+          error={encryptionError}
+          isBusy={isBusy}
+          onSubmit={(typed) => handleRemoveEncryption(typed)}
+          onCancel={() => {
+            setPrompt(undefined);
+            setEncryptionError(undefined);
+          }}
+        />
+      )}
+
+      {entry.isEncrypted && !isUnlocked ? null : isEditing ? (
         <JournalEntryEditForm
-          entry={entry}
+          entry={shownEntry}
+          encryptionPassword={password}
           categoryOptions={categoryOptions}
           tagOptions={tagOptions}
           locationCategoryOptions={locationCategoryOptions}
@@ -163,7 +313,17 @@ export function JournalEntryScreen({
         />
       ) : (
         <JournalViewer
-          entry={entry}
+          entry={shownEntry}
+          isUnlocked={isUnlocked}
+          onEncrypt={() => {
+            setEncryptionError(undefined);
+            setPrompt("encrypt");
+          }}
+          onRemoveEncryption={() => {
+            setEncryptionError(undefined);
+            setPrompt("remove");
+          }}
+          onLock={handleLock}
           onPrint={() => window.print()}
           onEdit={() => setIsEditing(true)}
           onShowLocation={(location) => setMapView({ kind: "one", location })}

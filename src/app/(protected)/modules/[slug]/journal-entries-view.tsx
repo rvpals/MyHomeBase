@@ -25,12 +25,17 @@ import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
+import { BulkConfirm } from "@/components/bulk-confirm";
+import { BusyOverlay } from "@/components/busy-overlay";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
+import { EncryptionPrompt } from "@/components/encryption-prompt";
 import { SlotIcon } from "@/components/slot-icon";
 import { Tabs } from "@/components/tabs";
 import { getIconSlot } from "@/lib/icons";
 import {
+  ENCRYPTED_TITLE_PLACEHOLDER,
   describeFilter,
+  displayEntryTitle,
   emptyFilter,
   type JournalEntry,
   type JournalFilter,
@@ -42,13 +47,14 @@ import {
   saveJournalFilterAction,
 } from "./journal-actions";
 import {
+  bulkEncryptJournalEntriesAction,
+  bulkLockJournalEntriesAction,
   deleteJournalEntriesAction,
   type BulkRefreshScope,
 } from "./journal-bulk-actions";
 import { JournalEntriesBulkEdit } from "./journal-entries-bulk-edit";
 import { JournalFilterBuilder } from "./journal-filter-builder";
 import { JournalLogView } from "./journal-log-view";
-import { Modal } from "@/components/modal";
 
 // Resolved once at module scope; the registry is static, so this is not I/O.
 const FILTERS_SLOT = getIconSlot("journal_card_entry_filters")!;
@@ -56,11 +62,30 @@ const FILTERS_SLOT = getIconSlot("journal_card_entry_filters")!;
 // uploaded override, so the slot moved to the tab rather than being retired —
 // see "Ids are permanent" in coding-guide.md.
 const LOG_SLOT = getIconSlot("journal_section_log")!;
+// Migration 0131. The lock badge on an encrypted row's Title cell.
+const ENCRYPTED_SLOT = getIconSlot("journal_entry_encrypted")!;
 
 const COLUMNS: DataGridColumn<JournalEntry>[] = [
   { key: "date", header: "Date", value: (entry) => entry.date, render: (entry) => entry.date },
   { key: "time", header: "Time", value: (entry) => entry.time, render: (entry) => entry.time },
-  { key: "title", header: "Title", value: (entry) => entry.title, render: (entry) => entry.title },
+  {
+    key: "title",
+    header: "Title",
+    // An encrypted entry's title column is blank (migration 0131), so both the
+    // sort value and the cell use the placeholder — otherwise every encrypted
+    // row would sort together at the top under an empty string and read as a
+    // set of untitled entries.
+    value: (entry) => displayEntryTitle(entry.title, entry.isEncrypted),
+    render: (entry) =>
+      entry.isEncrypted ? (
+        <span className="inline-flex items-center gap-1.5 text-muted">
+          <SlotIcon slot={ENCRYPTED_SLOT} className="h-3.5 w-3.5" />
+          {ENCRYPTED_TITLE_PLACEHOLDER}
+        </span>
+      ) : (
+        entry.title
+      ),
+  },
   {
     key: "categories",
     header: "Categories",
@@ -218,6 +243,18 @@ function MainTab({
   const [confirmDelete, setConfirmDelete] = useState<
     { rows: JournalEntry[]; clearSelection: () => void } | undefined
   >();
+  // `isLocked` is the target state, not a toggle — Lock and Unlock are two
+  // buttons so a mixed selection has a defined result. See bulk-lock.ts.
+  const [confirmLock, setConfirmLock] = useState<
+    { rows: JournalEntry[]; clearSelection: () => void; isLocked: boolean } | undefined
+  >();
+  // The password is held only for the duration of the request and never stored
+  // — `EncryptionPrompt` clears its own fields on submit, and nothing here
+  // keeps a copy. See bulk-encrypt.ts on why there is no recovery path.
+  const [confirmEncrypt, setConfirmEncrypt] = useState<
+    { rows: JournalEntry[]; clearSelection: () => void } | undefined
+  >();
+  const [encryptError, setEncryptError] = useState<string | undefined>(undefined);
   const [isBulkBusy, setIsBulkBusy] = useState(false);
   const [notice, setNotice] = useState("");
 
@@ -285,6 +322,8 @@ function MainTab({
     clearSelection();
     setBulkEdit(undefined);
     setConfirmDelete(undefined);
+    setConfirmLock(undefined);
+    setConfirmEncrypt(undefined);
     // The module's other screens (Today in History, the Calendar) read the same
     // rows, so they need re-rendering too — the action revalidated the path.
     router.refresh();
@@ -306,6 +345,67 @@ function MainTab({
       applyBulkResult(result.entries, result.message ?? "Entries deleted.", clearSelection);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Failed to delete the selected entries.");
+    } finally {
+      setIsBulkBusy(false);
+    }
+  }
+
+  async function runBulkLock(
+    rows: JournalEntry[],
+    isLocked: boolean,
+    clearSelection: () => void,
+  ) {
+    const failed = `Failed to ${isLocked ? "lock" : "unlock"} the selected entries.`;
+    setIsBulkBusy(true);
+    setError(undefined);
+    setNotice("");
+    try {
+      const result = await bulkLockJournalEntriesAction(
+        rows.map((entry) => entry.id),
+        isLocked,
+        currentScope(),
+      );
+      if (!result.ok || !result.entries) {
+        setError(result.error ?? failed);
+        return;
+      }
+      applyBulkResult(result.entries, result.message ?? "Entries updated.", clearSelection);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : failed);
+    } finally {
+      setIsBulkBusy(false);
+    }
+  }
+
+  async function runBulkEncrypt(
+    rows: JournalEntry[],
+    password: string,
+    hint: string,
+    clearSelection: () => void,
+  ) {
+    setIsBulkBusy(true);
+    setEncryptError(undefined);
+    setError(undefined);
+    setNotice("");
+    try {
+      const result = await bulkEncryptJournalEntriesAction(
+        rows.map((entry) => entry.id),
+        password,
+        hint,
+        currentScope(),
+      );
+      if (!result.ok || !result.entries) {
+        // Shown inside the prompt rather than as the page-level error: the
+        // dialog stays open so the password can be retyped, and a message
+        // behind it would be invisible.
+        setEncryptError(result.error ?? "Failed to encrypt the selected entries.");
+        return;
+      }
+      applyBulkResult(result.entries, result.message ?? "Entries encrypted.", clearSelection);
+    } catch (caught) {
+      setEncryptError(
+        caught instanceof Error ? caught.message : "Failed to encrypt the selected entries.",
+      );
     } finally {
       setIsBulkBusy(false);
     }
@@ -450,6 +550,37 @@ function MainTab({
               </Button>
               <Button
                 size="sm"
+                variant="secondary"
+                disabled={isBulkBusy}
+                onClick={() =>
+                  setConfirmLock({ rows: selectedRows, clearSelection, isLocked: true })
+                }
+              >
+                Lock
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={isBulkBusy}
+                onClick={() =>
+                  setConfirmLock({ rows: selectedRows, clearSelection, isLocked: false })
+                }
+              >
+                Unlock
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={isBulkBusy}
+                onClick={() => {
+                  setEncryptError(undefined);
+                  setConfirmEncrypt({ rows: selectedRows, clearSelection });
+                }}
+              >
+                Encrypt
+              </Button>
+              <Button
+                size="sm"
                 variant="danger"
                 disabled={isBulkBusy}
                 onClick={() => setConfirmDelete({ rows: selectedRows, clearSelection })}
@@ -475,42 +606,102 @@ function MainTab({
       )}
 
       {confirmDelete && (
-        <Modal
+        <BulkConfirm
           title="Delete these entries?"
           description="They move to the recycle bin under Data Management, and can be restored from there."
-          onClose={() => setConfirmDelete(undefined)}
-          isBusy={isBulkBusy}
-          footer={
-            <>
-              <Button
-                variant="secondary"
-                onClick={() => setConfirmDelete(undefined)}
-                disabled={isBulkBusy}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="danger"
-                disabled={isBulkBusy}
-                onClick={() => void runBulkDelete(confirmDelete.rows, confirmDelete.clearSelection)}
-              >
-                {isBulkBusy ? "Working…" : "Delete"}
-              </Button>
-            </>
+          count={confirmDelete.rows.length}
+          noun={{ one: "entry", many: "entries" }}
+          caveat={
+            confirmDelete.rows.some((entry) => entry.isLocked) ? (
+              <>
+                Some of these are <span className="text-ink">locked</span>. They move to the bin
+                too, still locked — restoring one brings it back locked.
+              </>
+            ) : undefined
           }
-        >
-          <p className="text-sm text-ink">
-            {confirmDelete.rows.length}{" "}
-            {confirmDelete.rows.length === 1 ? "entry" : "entries"} selected.
-          </p>
-          {confirmDelete.rows.some((entry) => entry.isLocked) && (
-            <p className="mt-2 text-sm text-muted">
-              Some of these are <span className="text-ink">locked</span>. They move to the bin
-              too, still locked — restoring one brings it back locked.
-            </p>
-          )}
-        </Modal>
+          confirmLabel="Delete"
+          isBusy={isBulkBusy}
+          onCancel={() => setConfirmDelete(undefined)}
+          onConfirm={() => void runBulkDelete(confirmDelete.rows, confirmDelete.clearSelection)}
+        />
       )}
+
+      {confirmLock && (
+        <BulkConfirm
+          title={confirmLock.isLocked ? "Lock these entries?" : "Unlock these entries?"}
+          description={
+            confirmLock.isLocked
+              ? "A locked entry can't be edited or deleted on its own screen until it is unlocked."
+              : "Unlocking makes these entries editable again."
+          }
+          count={confirmLock.rows.length}
+          noun={{ one: "entry", many: "entries" }}
+          caveat={(() => {
+            // Only the rows that won't change are worth a caveat — saying "3 of 40
+            // are already locked" is what stops the result line reading as a
+            // partial failure afterwards.
+            const unchanged = confirmLock.rows.filter(
+              (entry) => entry.isLocked === confirmLock.isLocked,
+            ).length;
+            if (unchanged === 0) return undefined;
+            return (
+              <>
+                {unchanged === 1 ? "1 is" : `${unchanged} are`} already{" "}
+                {confirmLock.isLocked ? "locked" : "unlocked"} and will be left alone.
+              </>
+            );
+          })()}
+          confirmLabel={confirmLock.isLocked ? "Lock" : "Unlock"}
+          tone="primary"
+          isBusy={isBulkBusy}
+          onCancel={() => setConfirmLock(undefined)}
+          onConfirm={() =>
+            void runBulkLock(
+              confirmLock.rows,
+              confirmLock.isLocked,
+              confirmLock.clearSelection,
+            )
+          }
+        />
+      )}
+
+      {confirmEncrypt && (
+        <EncryptionPrompt
+          mode="encrypt"
+          asModal
+          count={confirmEncrypt.rows.length}
+          heading={
+            confirmEncrypt.rows.length === 1
+              ? "Encrypt this entry"
+              : `Encrypt ${confirmEncrypt.rows.length} entries`
+          }
+          actionLabel="Encrypt"
+          error={encryptError}
+          isBusy={isBulkBusy}
+          onCancel={() => {
+            setConfirmEncrypt(undefined);
+            setEncryptError(undefined);
+          }}
+          onSubmit={(password, hint) =>
+            void runBulkEncrypt(
+              confirmEncrypt.rows,
+              password,
+              hint,
+              confirmEncrypt.clearSelection,
+            )
+          }
+        />
+      )}
+
+      {/* A sibling of the dialogs above, not a child — it is z-[60] to Modal's
+          z-50 so the dialog dims along with the page. Encrypting a long
+          selection is the slowest write on this screen, and it is the one that
+          must not be interrupted. */}
+      <BusyOverlay
+        isBusy={isBulkBusy && confirmEncrypt !== undefined}
+        message="Encrypting…"
+        detail="Don't close this window."
+      />
 
       {isBuilderOpen && (
         <JournalFilterBuilder

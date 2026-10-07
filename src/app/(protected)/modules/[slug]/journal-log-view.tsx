@@ -7,6 +7,7 @@ import { Comments } from "@/components/comments";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { JournalViewer } from "@/components/journal-viewer";
 import { Modal } from "@/components/modal";
+import { ENCRYPTED_TITLE_PLACEHOLDER, displayEntryTitle } from "@/lib/journal";
 import type { JournalEntry } from "@/lib/journal";
 import { getJournalEntryAction } from "./journal-correct-actions";
 import { journalEntriesFilterHref } from "./journal-shared";
@@ -120,8 +121,14 @@ export function JournalLogView({
       key: "title",
       header: "Title",
       render: (entry) =>
-        entry.title === "" ? <span className="text-muted">(untitled)</span> : entry.title,
-      value: (entry) => entry.title,
+        entry.isEncrypted ? (
+          <span className="text-muted">{ENCRYPTED_TITLE_PLACEHOLDER}</span>
+        ) : entry.title === "" ? (
+          <span className="text-muted">(untitled)</span>
+        ) : (
+          entry.title
+        ),
+      value: (entry) => displayEntryTitle(entry.title, entry.isEncrypted),
     },
     {
       key: "placeName",
@@ -243,7 +250,16 @@ export function JournalLogView({
       )}
 
       {viewing && (
-        <Modal title={viewing.title === "" ? "Log entry" : viewing.title} onClose={() => setViewing(undefined)}>
+        <Modal
+          title={
+            viewing.isEncrypted
+              ? ENCRYPTED_TITLE_PLACEHOLDER
+              : viewing.title === ""
+                ? "Log entry"
+                : viewing.title
+          }
+          onClose={() => setViewing(undefined)}
+        >
           <JournalViewer
             entry={viewing}
             categoryIcons={categoryIcons}

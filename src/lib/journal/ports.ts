@@ -51,6 +51,44 @@ export interface BulkEntryEditOutcome {
   missingIds: number[];
 }
 
+/** What a bulk lock/unlock actually did — see `bulkSetEntriesLocked`. */
+export interface BulkEntryLockOutcome {
+  /** Ids whose lock state actually changed. */
+  changedIds: number[];
+  /** Ids that were already in the requested state. */
+  unchangedIds: number[];
+  /** Ids that no longer exist at all. */
+  missingIds: number[];
+}
+
+/** What a bulk encrypt actually did — see `bulkEncryptEntries`. */
+export interface BulkEncryptOutcome {
+  /** Ids that were sealed. */
+  encryptedIds: number[];
+  /** Ids that exist but are locked, so were left untouched. */
+  skippedLockedIds: number[];
+  /** Ids that were already encrypted, so had nothing to do. */
+  skippedEncryptedIds: number[];
+  /** Ids that no longer exist at all. */
+  missingIds: number[];
+}
+
+/**
+ * How a bulk encrypt seals one row, plus the hint to store beside it.
+ *
+ * `seal` is a **function, not a password**: the crypto lives in
+ * src/lib/journal/bulk-encrypt.ts and the repository only writes what it is
+ * handed, so the password never reaches the persistence layer at all.
+ */
+export interface BulkEncryptRequest {
+  seal: (title: string, content: string) => {
+    titleEncrypted: string;
+    contentEncrypted: string;
+  };
+  /** Stored in the clear, once per sealed entry. */
+  hint: string;
+}
+
 export interface JournalRepository {
   // Entries — each create/update/delete writes the entry and its child rows
   // (categories, tags, locations) in a single transaction.
@@ -186,6 +224,28 @@ export interface JournalRepository {
   deleteAllEntries(): number;
   setEntryPinned(id: number, isPinned: boolean): JournalEntry;
   setEntryLocked(id: number, isLocked: boolean): JournalEntry;
+  /**
+   * Sets the lock on many entries at once, in one transaction.
+   *
+   * **Writes locked rows**, unlike `bulkEditEntries` which skips them. Changing
+   * the lock is the operation here, so refusing a locked row would make an
+   * unlock impossible — the same reason `setLocked` in journal.ts carries no
+   * lock check.
+   *
+   * Touches `is_locked` and nothing else: no `updated_at` bump, no child rows. A
+   * lock is a change of custody rather than of the entry.
+   */
+  bulkSetEntriesLocked(ids: number[], isLocked: boolean): BulkEntryLockOutcome;
+  /**
+   * Seals many entries in **one transaction** — all of them or none.
+   *
+   * A partial batch is the failure mode worth preventing here: the plaintext is
+   * blanked in the same write that stores the ciphertext, so a crash halfway
+   * through would leave some rows needing a password and no record of which.
+   *
+   * Locked and already-encrypted rows are skipped and reported, not written.
+   */
+  bulkEncryptEntries(ids: number[], request: BulkEncryptRequest): BulkEncryptOutcome;
 
   // Managed category list.
   listCategories(): JournalCategory[];

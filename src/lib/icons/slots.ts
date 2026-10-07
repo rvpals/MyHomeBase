@@ -600,6 +600,30 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    // Migration 0131. Marks the *place* an encrypted entry occupies, which is
+    // why it is a slot rather than a bare glyph: the badge says "this entry is
+    // sealed" wherever the entry appears.
+    id: "journal_entry_encrypted",
+    label: "Encrypted entry",
+    group: "Journal sections",
+    // Deliberately does not claim the calendar: `calendarEntryLabel` returns the
+    // placeholder text, but the calendar grid renders no per-entry icon, so
+    // naming it here would send someone looking for a badge that isn't drawn.
+    where: "Journal → the lock badge on an encrypted entry, in the Entries list's Title cell and the entry viewer's header.",
+    defaultConcept: "lock",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "journal_encrypt_action",
+    label: "Encrypt entry",
+    group: "Journal sections",
+    where: "Journal → entry viewer → the Encrypt button in the footer toolbar.",
+    defaultConcept: "lock",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     id: "journal_section_locations",
     label: "Location Manager",
     group: "Journal sections",

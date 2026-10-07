@@ -3,6 +3,12 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
+import { Comments } from "@/components/comments";
+import { EncryptionPrompt } from "@/components/encryption-prompt";
+import {
+  ENTRY_ENCRYPTION_EXPLAINER_TITLE,
+  EntryEncryptionExplainer,
+} from "@/components/entry-encryption-explainer";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { FullscreenStage, canGoFullscreen } from "@/components/fullscreen-stage";
 import { Tabs } from "@/components/tabs";
@@ -17,6 +23,7 @@ import {
   type JournalPrefillTemplate,
 } from "@/lib/journal";
 import {
+  createEncryptedJournalEntryAction,
   createJournalEntryAction,
   fetchWeatherAction,
   reverseGeocodeAction,
@@ -196,6 +203,10 @@ export function JournalEntryForm({
   const [isFetchingWeather, setIsFetchingWeather] = useState(false);
   const [isLocatingAndFetching, setIsLocatingAndFetching] = useState(false);
   const [templateId, setTemplateId] = useState("");
+  // Whether the "Save entry encrypted" dialog is open (migration 0131). The
+  // password lives inside EncryptionPrompt and is handed straight to the action
+  // -- this form never holds it, and a cancelled dialog leaves the draft alone.
+  const [isEncryptPromptOpen, setIsEncryptPromptOpen] = useState(false);
   // Content-card view state. Both are transient: a mode you put the field into
   // for this sitting, not a stored preference, so they reset with the form.
   const [isHandwriting, setIsHandwriting] = useState(false);
@@ -356,6 +367,45 @@ export function JournalEntryForm({
         reset();
       }
       router.refresh(); // re-fetch the recent-entries list on the server
+    } finally {
+      setIsBusy(false);
+      onSavingChange?.(false);
+    }
+  }
+
+  /**
+   * Saves the draft already sealed — the "Save entry encrypted" button.
+   *
+   * One action, not save-then-encrypt: two calls would put the plaintext on disk
+   * in between, and a failure after the first would leave an entry the writer
+   * believes is encrypted and isn't.
+   *
+   * On failure the dialog stays open with the message, so the typed password
+   * isn't lost along with the draft.
+   */
+  async function handleSaveEncrypted(password: string, hint: string) {
+    setIsBusy(true);
+    onSavingChange?.(true);
+    setError(undefined);
+    try {
+      const result = await createEncryptedJournalEntryAction(
+        { ...form, locations, weather: weather ?? undefined },
+        password,
+        hint,
+      );
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setIsEncryptPromptOpen(false);
+      // Same contract as handleSave: a caller that supplied `onSaved` owns what
+      // happens next, otherwise the form clears for the next entry.
+      if (onSaved) {
+        onSaved();
+      } else {
+        reset();
+      }
+      router.refresh();
     } finally {
       setIsBusy(false);
       onSavingChange?.(false);
@@ -558,14 +608,64 @@ export function JournalEntryForm({
       {/* Outside the tab strip on purpose: a Save button that disappears on one
           of two tabs is a trap, and the error line above has to stay readable
           from Main even when a Misc action raised it. */}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <Button onClick={handleSave} disabled={isBusy || form.date === ""}>
           {isBusy ? "Saving…" : (saveLabel ?? "Save entry")}
         </Button>
+        {/* Migration 0131. A second save, not a toggle beside the first: which
+            button you press is the decision, and a checkbox that silently makes
+            Save mean something irreversible is exactly the wrong shape for a
+            choice with no undo. Offered only on a genuinely new entry -- a
+            caller that passes `saveLabel` (Review Data's merge dialog) has its
+            own one-entry flow, and that entry can be encrypted afterwards from
+            its own page like any other. */}
+        {saveLabel === undefined && (
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setError(undefined);
+              setIsEncryptPromptOpen(true);
+            }}
+            disabled={isBusy || form.date === ""}
+          >
+            Save entry encrypted
+          </Button>
+        )}
+        {/* The explanation, reachable without opening the dialog -- someone
+            deciding whether to encrypt at all should not have to start the
+            irreversible flow to read what it does. Same prose the dialog shows. */}
+        {saveLabel === undefined && (
+          <span className="flex items-center">
+            <Comments
+              title={ENTRY_ENCRYPTION_EXPLAINER_TITLE}
+              content={<EntryEncryptionExplainer />}
+              size="md"
+            />
+          </span>
+        )}
         <Button variant="secondary" onClick={reset} disabled={isBusy}>
           Clear
         </Button>
       </div>
+
+      {/* The same dialog the entry page uses to encrypt an existing entry, so
+          the warning wording and the confirm-password rule are identical in both
+          places rather than written twice. */}
+      {isEncryptPromptOpen && (
+        <EncryptionPrompt
+          asModal
+          mode="encrypt"
+          heading="Save this entry encrypted"
+          actionLabel="Save encrypted"
+          error={error}
+          isBusy={isBusy}
+          onSubmit={handleSaveEncrypted}
+          onCancel={() => {
+            setIsEncryptPromptOpen(false);
+            setError(undefined);
+          }}
+        />
+      )}
 
       {/* Mounted only while fullscreen, per FullscreenStage's contract: it
           requests fullscreen on mount and reports every way out — Escape, the

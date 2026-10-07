@@ -70,6 +70,7 @@ function toReviewEntry(entry: JournalEntry): IcsImportReviewEntry {
     // a clash worth stopping for and a re-import of the reader's own earlier run.
     isFromCalendar: entry.source === ICS_SOURCE,
     isLocked: entry.isLocked,
+    isEncrypted: entry.isEncrypted,
   };
 }
 

@@ -178,6 +178,11 @@ export function topWords(
 
   const counts = new Map<string, number>();
   for (const entry of entries) {
+    // An encrypted entry has nothing to count: its title and content columns are
+    // blank and the real text is unreadable without that entry's own password
+    // (migration 0131). Skipped rather than tokenized, so the ranking reflects
+    // the prose it can actually see instead of being diluted by empty strings.
+    if (entry.isEncrypted) continue;
     // Title and content both count, so a word used only in titles still ranks.
     // Joined with a space so the last word of the title can't fuse with the
     // first of the content.

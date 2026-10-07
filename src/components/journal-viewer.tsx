@@ -15,8 +15,21 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/button";
+import { Comments } from "@/components/comments";
+import {
+  ENTRY_ENCRYPTION_EXPLAINER_TITLE,
+  EntryEncryptionExplainer,
+} from "@/components/entry-encryption-explainer";
 import { CollapsibleCard } from "@/components/collapsible-card";
+import { SlotIcon } from "@/components/slot-icon";
+import { getIconSlot } from "@/lib/icons";
+import { ENCRYPTED_TITLE_PLACEHOLDER } from "@/lib/journal";
 import type { EntryLocation, JournalEntry } from "@/lib/journal";
+
+// Migration 0131. Resolved once at module scope, as the entries view does with
+// its own slots — `getIconSlot` is a lookup over a frozen table, not a hook.
+const ENCRYPTED_SLOT = getIconSlot("journal_entry_encrypted")!;
+const ENCRYPT_ACTION_SLOT = getIconSlot("journal_encrypt_action")!;
 
 export interface JournalViewerProps {
   entry: JournalEntry;
@@ -38,6 +51,20 @@ export interface JournalViewerProps {
   onShowAllLocations?: () => void;
   /** Called with the lock state to move to. Omit to hide the Lock button. */
   onToggleLock?: (nextLocked: boolean) => void;
+  /**
+   * Whether an encrypted entry is currently open (migration 0131).
+   *
+   * When true, `entry.title` and `entry.content` hold the **decrypted** text —
+   * the caller splices them in — so the body renders normally and the toolbar
+   * offers Lock and Remove encryption instead of Encrypt.
+   */
+  isUnlocked?: boolean;
+  /** Opens the encrypt prompt. Omit to hide the Encrypt button. */
+  onEncrypt?: () => void;
+  /** Opens the remove-encryption prompt. Omit to hide that button. */
+  onRemoveEncryption?: () => void;
+  /** Drops the decrypted text and re-seals the view. Omit to hide Lock again. */
+  onLock?: () => void;
   /** Called after the user confirms. Omit to hide the Delete button. */
   onDelete?: () => void;
   /**
@@ -261,6 +288,10 @@ export function JournalViewer({
   onShowLocation,
   onShowAllLocations,
   onToggleLock,
+  isUnlocked = false,
+  onEncrypt,
+  onRemoveEncryption,
+  onLock,
   onDelete,
   previousHref,
   previousDate,
@@ -343,6 +374,14 @@ export function JournalViewer({
               Locked
             </span>
           )}
+          {entry.isEncrypted && (
+            // Says which of the two states the reader is in. "Encrypted" alone
+            // would be ambiguous once the text is on screen.
+            <span className="inline-flex items-center gap-1 rounded-full bg-brass-soft px-2 py-0.5 text-xs font-semibold text-brass-dark">
+              <SlotIcon slot={ENCRYPTED_SLOT} className="h-3.5 w-3.5" />
+              {isUnlocked ? "Encrypted — open" : "Encrypted"}
+            </span>
+          )}
           {/* Flexible spacer: pushes the category/tag icons to the row's far
               right when there's room, and lets them wrap below on a narrow
               screen instead of squeezing the date/time. */}
@@ -350,8 +389,14 @@ export function JournalViewer({
           <TaxonomyIconRow names={entry.categories} icons={categoryIcons} hrefFor={categoryHref} />
           <TaxonomyIconRow names={entry.tags} icons={tagIcons} hrefFor={tagHref} />
         </div>
-        {entry.title !== "" && (
-          <h2 className="mt-2 font-display text-2xl font-semibold text-ink">{entry.title}</h2>
+        {entry.isEncrypted && !isUnlocked ? (
+          <h2 className="mt-2 font-display text-2xl font-semibold text-muted">
+            {ENCRYPTED_TITLE_PLACEHOLDER}
+          </h2>
+        ) : (
+          entry.title !== "" && (
+            <h2 className="mt-2 font-display text-2xl font-semibold text-ink">{entry.title}</h2>
+          )
         )}
       </header>
 
@@ -408,12 +453,29 @@ export function JournalViewer({
         </dl>
       )}
 
-      {entry.content !== "" && (
+      {/* A sealed entry says so where its text would be. Without this the body
+          simply wouldn't render (the column is blank), and the entry would read
+          as one that was written empty — which is a different thing. The viewer
+          itself offers no unlock: that belongs to the entry screen, which owns
+          the password. In a modal (Calendar, Log, Review, Correct) this is the
+          whole of what an encrypted entry shows, and the footer links out to the
+          entry's own page. */}
+      {entry.isEncrypted && !isUnlocked ? (
         <div className="border-t border-line py-4">
           <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Content</h3>
-          {/* Imported entries keep their original line breaks. */}
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink">{entry.content}</p>
+          <p className="text-sm leading-relaxed text-muted">
+            This entry&rsquo;s title and body are encrypted. Open it from the Journal entry
+            page and enter its password to read it.
+          </p>
         </div>
+      ) : (
+        entry.content !== "" && (
+          <div className="border-t border-line py-4">
+            <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Content</h3>
+            {/* Imported entries keep their original line breaks. */}
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink">{entry.content}</p>
+          </div>
+        )
       )}
 
       {/* `no-print`: the photo card is a screen affordance — it holds buttons and
@@ -460,6 +522,49 @@ export function JournalViewer({
             {onToggleLock && (
               <Button size="sm" variant="secondary" onClick={() => onToggleLock(!entry.isLocked)} disabled={isBusy}>
                 {entry.isLocked ? "Unlock" : "Lock"}
+              </Button>
+            )}
+            {/* Encryption (migration 0131). Offered only on an entry that isn't
+                already encrypted, and never on a locked one — the use-case
+                refuses that, so the button is disabled rather than failing
+                after the click, matching Edit and Delete above. */}
+            {onEncrypt && !entry.isEncrypted && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={onEncrypt}
+                disabled={isBusy || entry.isLocked}
+              >
+                <SlotIcon slot={ENCRYPT_ACTION_SLOT} className="h-4 w-4" />
+                Encrypt
+              </Button>
+            )}
+            {/* The explanation, beside the button that starts the irreversible
+                thing. Shown whenever Encrypt is offered -- once an entry is
+                already sealed, the account of what that did is less useful than
+                the Unlock field in front of them. */}
+            {onEncrypt && !entry.isEncrypted && (
+              <span className="flex items-center">
+                <Comments
+                  title={ENTRY_ENCRYPTION_EXPLAINER_TITLE}
+                  content={<EntryEncryptionExplainer />}
+                  size="md"
+                />
+              </span>
+            )}
+            {onLock && entry.isEncrypted && isUnlocked && (
+              <Button size="sm" variant="secondary" onClick={onLock} disabled={isBusy}>
+                Close
+              </Button>
+            )}
+            {onRemoveEncryption && entry.isEncrypted && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={onRemoveEncryption}
+                disabled={isBusy || entry.isLocked}
+              >
+                Remove encryption
               </Button>
             )}
             {onDelete && !isConfirmingDelete && (

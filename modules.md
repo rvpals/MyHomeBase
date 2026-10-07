@@ -497,6 +497,41 @@ knowing:
   Entries, Calendar and search still show log entries — they are visible and filterable,
   not hidden.
 
+**Encrypted entries** (migration 0131) seal one entry's **title and content** behind a
+password that entry owns alone. The same password may be reused across entries, but there
+is no vault and no master key — each entry opens only with its own.
+
+There are **two ways in**, and they differ in whether plaintext ever touches the disk:
+
+- **New Entry → "Save entry encrypted"** creates the entry already sealed, in one write.
+  Not save-then-encrypt: two calls would write the plaintext first, and a failure between
+  them would leave an entry the writer believes is encrypted and isn't.
+- **An existing entry → "Encrypt"** on its own page seals it in place, blanking the
+  plaintext columns in the same write that stores the ciphertext.
+
+Both open the same dialog (`EncryptionPrompt`), so the warning wording and the
+confirm-password rule cannot drift between them.
+
+- **Everything that is not the entry's text stays plaintext**: date, time, place, weather,
+  categories, tags, locations and photos. That is what the Entries list, the Calendar and
+  the filters are built from, so sealing them would cost the module most of its navigation
+  for no gain — the words the reader wrote are the secret, not the fact that a Tuesday has
+  an entry.
+- **There is no recovery.** No admin override, no reset. `src/lib/journal/encryption.ts`
+  stores nothing derived from the password except the ciphertext, and the AES-GCM
+  authentication tag *is* the password check — so a forgotten password ends that entry.
+  The encrypt prompt says this and asks for the password twice.
+- **`is_locked` is unrelated and untouched.** It guards *editing* and has never encrypted
+  anything. An entry can be locked, encrypted, both or neither.
+- **Encrypted entries are excluded from four derived views** that would otherwise read a
+  blanked column as real text: search, Top 10 Words, duplicate detection, and the
+  importer's date+time+title match key (so a CSV or calendar re-import can never target
+  one). Merging on the Same Date screen refuses them outright rather than skipping them —
+  a merge deletes its sources, and silently dropping an entry nobody can read would
+  destroy it.
+- **The hint is stored in the clear**, which is what lets it be read before anything is
+  decrypted. The form that collects it says so.
+
 **Review Data** is the third child of Data Management, and it answers a different
 question from the Correct tab next to it. Correct groups entries by **date + title** and
 calls the result a duplicate; Review Data groups by **date alone** and calls the result

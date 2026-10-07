@@ -1,5 +1,50 @@
 # Change History
 
+## 2026-10-07 — Encrypted Journal entries, bulk Lock/Unlock/Encrypt
+
+**Migration 0131 must be applied on the NAS** (four columns and an index on
+`jrn_entries`). Code only otherwise.
+
+### Journal: per-entry encryption
+
+An entry can be sealed with its own password. Encrypting blanks `title` and `content` and
+stores each as an AES-256-GCM blob (`v1:salt:iv:tag:ciphertext`, scrypt key, fresh salt
+and IV every time) in `title_encrypted` / `content_encrypted`. Date, time, place, weather,
+categories, tags, locations and images stay plaintext so the entry still shows in lists,
+the calendar and under its tags; lists show a placeholder in place of the title.
+
+- **No recovery.** There is no verifier hash, reset or admin override — the GCM tag is the
+  password check, and a forgotten password destroys that entry. The encrypt dialog says so
+  and asks for the password twice. The optional **hint is stored in the clear**.
+- **The unlock lives in the entry screen's component state only** — not a cookie, not
+  storage, not the server. Leaving the page drops it; there is no idle timer, so an unlock
+  never expires mid-edit. Editing an unlocked entry goes through its own action, and the
+  use-case refuses to write plaintext over ciphertext.
+- **Independent of Lock.** `is_locked` still only guards editing; an entry can be locked,
+  encrypted, both or neither.
+- **Excluded where blank text would mislead:** search, Top 10 Words, duplicate detection
+  and the CSV/ICS importer's title match key (a re-import never targets an encrypted entry).
+- New components: `EncryptionPrompt` (unlock / encrypt / confirm), `EntryEncryptionExplainer`
+  (the one account of how it works, shown in three places), `BulkConfirm`. New icon slots
+  `journal_entry_encrypted` and `journal_encrypt_action`.
+
+### Journal → Entries: bulk Lock, Unlock and Encrypt
+
+The selection bar gains **Lock**, **Unlock** and **Encrypt** beside Bulk edit and Delete.
+Lock/Unlock write locked entries too (changing the lock *is* the operation) and report
+"already in that state" separately from a write. Encrypt is the slowest write on the
+screen — one scrypt derivation per entry — so it alone dims the page with `BusyOverlay`.
+
+### Data grid
+
+The footer's record count is now a `bg-brass-soft` badge, and the compact cards layout
+gets the same status bar (count, or `50 of 1,234` while "Show more" is capped). Card
+striping now emits exactly one background utility so the stripes actually show.
+
+### Docs
+
+`encryption-plans.md` now says Plan 1 is built and Plan 2 (secrets vault) is still not.
+
 ## 2026-10-05 — Journal bulk tools, toolbar textures, multi-file HSA receipts, and a printable attendance grid
 
 **Migration 0130 must be applied on the NAS** (`sys_toolbars.texture_id`,

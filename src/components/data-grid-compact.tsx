@@ -35,6 +35,12 @@ export interface DataGridCompactProps<T> {
   emptyMessage?: string;
   /** Show the controls row above the cards (search + Sort by). Default true. */
   showToolbar?: boolean;
+  /**
+   * Show the footer status bar (the record-count badge). Default true. Forwarded
+   * from `DataGrid`'s prop of the same name, so a caller that asked for a bare
+   * grid on a wide screen gets a bare stack of cards too.
+   */
+  showStatusBar?: boolean;
   enableSearch?: boolean;
   onRowClick?: (row: T) => void;
   /** Add a checkbox to each card. Default false. */
@@ -98,6 +104,7 @@ export function DataGridCompact<T>({
   getRowKey,
   emptyMessage = "Nothing to show.",
   showToolbar = true,
+  showStatusBar = true,
   enableSearch = true,
   onRowClick,
   enableSelection = false,
@@ -163,6 +170,8 @@ export function DataGridCompact<T>({
   // The cards actually rendered — the "show more" limit applied once, so the
   // banding below is computed over exactly the stack on screen.
   const shownRows = visible.slice(0, limit);
+  const shownCount = shownRows.length;
+  const isFiltered = visible.length !== rows.length;
   // Group banding, when the caller opted in: same-date cards share a shade and
   // the next date flips. Plain per-card alternation otherwise, unchanged.
   const cardBands = getRowGroupKey ? computeRowBands(shownRows, getRowGroupKey) : undefined;
@@ -266,10 +275,29 @@ export function DataGridCompact<T>({
         </button>
       )}
 
-      <p className="mt-3 text-xs text-muted">
-        Showing {Math.min(limit, visible.length)} of {visible.length}
-        {visible.length !== rows.length && ` (filtered from ${rows.length})`}.
-      </p>
+      {/* The status bar, the card-stack counterpart to the full grid's footer. It
+          carries the same raised bevel and the same `bg-brass-soft` count badge, so
+          the number reads identically on a phone and on a desktop.
+
+          It deliberately does NOT grow a per-page selector or prev/next. Those two
+          answer "which slice am I looking at", and this layout has no slices — it
+          has one growing stack and a "Show more" button, which is the affordance a
+          thumb wants. Adding page controls here would be inventing state the cards
+          don't have. What it reports instead is how far down the stack you are,
+          which the stack itself can't show. */}
+      {showStatusBar && visible.length > 0 && (
+        <div className="relative z-10 mt-3 rounded-lg border border-line bg-paper-raised px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_-3px_6px_-2px_rgba(0,0,0,0.5)]">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+            <span className="rounded-full bg-brass-soft px-2 py-0.5 font-semibold tabular-nums text-brass-dark">
+              {shownCount === visible.length
+                ? visible.length.toLocaleString()
+                : `${shownCount.toLocaleString()} of ${visible.length.toLocaleString()}`}
+            </span>
+            <span>{visible.length === 1 ? "record" : "records"}</span>
+            {isFiltered && <span>(filtered from {rows.length.toLocaleString()})</span>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -356,19 +384,25 @@ function CompactRow<T>({
   // is the theme's *contrasting* tone, mixing toward it lightens a dark card and
   // darkens a light one — one rule, correct on both polarities.
   //
-  // `color-mix` in a `background-color` is safe here even though `bg-paper-raised`
-  // sets the same property: this class comes later in the class list and both are
-  // plain utilities, so this simply wins. The earlier gradient trick was only
-  // needed to *layer* over the surface; mixing already accounts for it.
+  // Exactly ONE background utility lands on the card — the stripe *replaces*
+  // `bg-paper-raised` rather than sitting after it. The previous version emitted
+  // both and relied on "this class comes later in the class list, so it wins",
+  // which is not how CSS works: the cascade reads the order the rules were
+  // *generated* into the stylesheet, not the order of names in `class`. Tailwind
+  // does not promise an arbitrary `bg-[color-mix(…)]` sorts after a named
+  // `bg-paper-raised`, so the stripe silently lost on every card and the stack
+  // read as uniform. This is the same shape the full grid has always used at its
+  // row level (`? stripeClassName : "bg-paper"`), which is why the table striped
+  // correctly while the cards did not.
   //
   // The value itself is `DEFAULT_STRIPE_CLASS` unless the caller overrode it with
   // `stripeClassName` — a grid that bands by group wants more contrast than
   // per-row zebra, because its stripe marks a whole block. Everything above
   // applies to whatever they pass, which is why the prop asks for a token mix
   // rather than a literal color.
-  const stripeClass = rowIndex % 2 === 1 ? stripeClassName : "";
+  const stripeClass = rowIndex % 2 === 1 ? stripeClassName : "bg-paper-raised";
 
-  const cardClass = `rounded-xl border bg-paper-raised p-3 ${stripeClass} ${
+  const cardClass = `rounded-xl border p-3 ${stripeClass} ${
     isSelected ? "border-brass" : "border-line"
   }`;
 

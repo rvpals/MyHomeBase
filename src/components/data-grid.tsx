@@ -320,6 +320,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
         getRowKey={props.getRowKey}
         emptyMessage={props.emptyMessage}
         showToolbar={props.showToolbar}
+        showStatusBar={props.showStatusBar}
         enableSearch={props.enableSearch}
         onRowClick={props.onRowClick}
         // Forwarded, unlike the other wide-screen affordances: a bulk action is the
@@ -719,13 +720,19 @@ function DataGridFull<T>({
     }
   }
 
-  const rangeLabel =
+  // The count is the status bar's one hard number, so it reads as a badge rather
+  // than as more muted prose: the figure goes in a `bg-brass-soft` chip (design.md's
+  // low-emphasis chip/badge token) and the noun stays plain text beside it. When the
+  // grid is paginated the badge carries the range *and* the total, because splitting
+  // "1–100" from "of 1,234" across a chip boundary reads as two unrelated numbers.
+  const countBadge =
     total === 0
-      ? "0 records"
+      ? "0"
       : slice.totalPages > 1
-        ? `${(slice.startIndex + 1).toLocaleString()}–${slice.endIndex.toLocaleString()} of ${total.toLocaleString()} records`
-        : `${total.toLocaleString()} record${total === 1 ? "" : "s"}`;
-  const filteredNote = isFiltered ? ` (filtered from ${rows.length.toLocaleString()})` : "";
+        ? `${(slice.startIndex + 1).toLocaleString()}–${slice.endIndex.toLocaleString()} of ${total.toLocaleString()}`
+        : total.toLocaleString();
+  const countNoun = total === 1 && slice.totalPages <= 1 ? "record" : "records";
+  const filteredNote = isFiltered ? `filtered from ${rows.length.toLocaleString()}` : "";
 
   const leadingColumnCount = (enableSelection ? 1 : 0) + (enableRecordView ? 1 : 0);
   const columnCount = visibleColumns.length + leadingColumnCount;
@@ -1099,9 +1106,12 @@ function DataGridFull<T>({
         <div className="relative z-10 border-t border-line bg-paper-raised px-4 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_-3px_6px_-2px_rgba(0,0,0,0.5)]">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-3 text-xs text-muted">
-              <span>
-                {rangeLabel}
-                {filteredNote}
+              <span className="flex items-center gap-1.5">
+                <span className="rounded-full bg-brass-soft px-2 py-0.5 font-semibold tabular-nums text-brass-dark">
+                  {countBadge}
+                </span>
+                <span>{countNoun}</span>
+                {filteredNote && <span>({filteredNote})</span>}
               </span>
               <label className="flex items-center gap-1">
                 <span>Per page</span>

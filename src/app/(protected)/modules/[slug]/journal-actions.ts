@@ -10,9 +10,15 @@ import { isAdmin } from "@/lib/user";
 import {
   clearCategoryIcon,
   clearTagIcon,
+  createEncryptedEntry,
   createEntry,
+  decryptEntry,
+  type DecryptedEntryText,
   deleteCategory,
   deleteEntry,
+  editEncryptedEntry,
+  encryptEntry,
+  removeEntryEncryption,
   deleteFilter,
   deleteTag,
   findAdjacentEntryDate,
@@ -202,6 +208,139 @@ export async function setEntryLockAction(id: number, isLocked: boolean): Promise
     setLocked(deps.journalRepo, id, isLocked);
   } catch (error) {
     return toErrorResult(error, "Failed to change the lock state.");
+  }
+  revalidatePath(JOURNAL_MODULE_PATH);
+  revalidatePath(`${JOURNAL_MODULE_PATH}/entries/${id}`);
+  return { ok: true };
+}
+
+// --- encryption (migration 0131) ---------------------------------------------
+//
+// One password per entry, supplied on every operation and held nowhere. The
+// password crosses the wire to these actions and is used to derive a key in
+// `src/lib/journal/encryption.ts`; it is never written to the database, never
+// logged, and never returned in an `ActionResult`.
+//
+// None of these revalidate with the decrypted text in hand — `revalidatePath`
+// re-renders the server component, which reads the *encrypted* row, so nothing
+// decrypted is ever cached.
+
+/**
+ * Creates an entry that is sealed from the moment it exists — the New Entry
+ * screen's "Save entry encrypted".
+ *
+ * One action rather than create-then-encrypt from the client: two round trips
+ * would write the plaintext title and content to disk in between, and a failure
+ * after the first would leave an entry the writer believes is encrypted and
+ * isn't.
+ */
+export async function createEncryptedJournalEntryAction(
+  input: NewJournalEntryInput,
+  password: string,
+  hint: string,
+): Promise<ActionResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
+  try {
+    createEncryptedEntry(
+      deps.journalRepo,
+      {
+        date: input.date,
+        time: input.time,
+        title: input.title,
+        content: input.content,
+        placeName: input.placeName,
+        categories: input.categories,
+        tags: input.tags,
+        locations: input.locations,
+        weather: input.weather,
+        isPinned: input.isPinned ?? false,
+      },
+      password,
+      hint,
+    );
+  } catch (error) {
+    return toErrorResult(error, "Failed to save the encrypted entry.");
+  }
+  revalidatePath(JOURNAL_MODULE_PATH);
+  return { ok: true };
+}
+
+/** What `decryptJournalEntryAction` hands back on success. */
+export interface DecryptEntryResult extends ActionResult {
+  text?: DecryptedEntryText;
+}
+
+/**
+ * Seals an entry under `password`. The hint is stored in the clear, so the form
+ * that collects it warns against putting the password in it.
+ */
+export async function encryptJournalEntryAction(
+  id: number,
+  password: string,
+  hint: string,
+): Promise<ActionResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
+  try {
+    encryptEntry(deps.journalRepo, id, password, hint);
+  } catch (error) {
+    return toErrorResult(error, "Failed to encrypt the entry.");
+  }
+  revalidatePath(JOURNAL_MODULE_PATH);
+  revalidatePath(`${JOURNAL_MODULE_PATH}/entries/${id}`);
+  return { ok: true };
+}
+
+/**
+ * Opens an entry for reading. **Writes nothing** — no revalidate, because
+ * nothing on the server changed and a re-render would only re-read the
+ * ciphertext this call just decrypted.
+ */
+export async function decryptJournalEntryAction(
+  id: number,
+  password: string,
+): Promise<DecryptEntryResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
+  try {
+    return { ok: true, text: decryptEntry(deps.journalRepo, id, password) };
+  } catch (error) {
+    return toErrorResult(error, "Failed to open the entry.");
+  }
+}
+
+/**
+ * Saves edited text back into an entry that stays encrypted.
+ *
+ * Separate from `updateJournalEntryAction` on purpose: that one carries the
+ * whole aggregate and is the path every unencrypted edit takes, and it now
+ * deliberately refuses to write plaintext over an encrypted entry. This is the
+ * only way encrypted text changes.
+ */
+export async function updateEncryptedJournalEntryAction(
+  id: number,
+  password: string,
+  text: DecryptedEntryText,
+): Promise<ActionResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
+  try {
+    editEncryptedEntry(deps.journalRepo, id, password, text);
+  } catch (error) {
+    return toErrorResult(error, "Failed to save the entry.");
+  }
+  revalidatePath(JOURNAL_MODULE_PATH);
+  revalidatePath(`${JOURNAL_MODULE_PATH}/entries/${id}`);
+  return { ok: true };
+}
+
+/** Decrypts an entry permanently, restoring its plaintext title and content. */
+export async function removeJournalEntryEncryptionAction(
+  id: number,
+  password: string,
+): Promise<ActionResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
+  try {
+    removeEntryEncryption(deps.journalRepo, id, password);
+  } catch (error) {
+    return toErrorResult(error, "Failed to remove encryption from the entry.");
   }
   revalidatePath(JOURNAL_MODULE_PATH);
   revalidatePath(`${JOURNAL_MODULE_PATH}/entries/${id}`);

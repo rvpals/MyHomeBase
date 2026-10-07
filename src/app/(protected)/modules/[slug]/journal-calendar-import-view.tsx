@@ -8,7 +8,11 @@ import { Comments } from "@/components/comments";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { Modal } from "@/components/modal";
 import { Progress3D } from "@/components/progress-3d";
-import { excerptContent, icsReviewIndexesForDates } from "@/lib/journal";
+import {
+  ENCRYPTED_TITLE_PLACEHOLDER,
+  excerptContent,
+  icsReviewIndexesForDates,
+} from "@/lib/journal";
 import { formatDurationShort } from "@/lib/shared/date";
 import type {
   IcsImportFilter,
@@ -1230,7 +1234,11 @@ export function JournalCalendarImportView({
                               {existing.title === "" ? (
                                 <span className="text-muted">(untitled)</span>
                               ) : (
-                                <span>{existing.title}</span>
+                                <span className={existing.isEncrypted ? "text-muted" : undefined}>
+                                  {existing.isEncrypted
+                                    ? ENCRYPTED_TITLE_PLACEHOLDER
+                                    : existing.title}
+                                </span>
                               )}
                               {existing.isFromCalendar && (
                                 <span
@@ -1252,12 +1260,14 @@ export function JournalCalendarImportView({
                                   than a button — design.md → the button rules. */}
                               <button
                                 type="button"
-                                disabled={isBusy || existing.isLocked}
+                                disabled={isBusy || existing.isLocked || existing.isEncrypted}
                                 onClick={() => void openQuickEdit(existing.id, group.date)}
                                 title={
                                   existing.isLocked
                                     ? "This entry is locked — unlock it before editing"
-                                    : "Edit this entry's title and content without leaving the import"
+                                    : existing.isEncrypted
+                                      ? "This entry is encrypted — open it from the Journal to edit it"
+                                      : "Edit this entry's title and content without leaving the import"
                                 }
                                 className="text-brass-dark underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:text-muted disabled:no-underline"
                               >

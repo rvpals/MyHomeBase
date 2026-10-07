@@ -179,6 +179,14 @@ export {
   type JournalEntryTally,
   setPinned,
   setLocked,
+  // Per-entry encryption (migration 0131). One password per entry; `isLocked`
+  // above is a separate, unrelated edit guard.
+  createEncryptedEntry,
+  encryptEntry,
+  decryptEntry,
+  editEncryptedEntry,
+  removeEntryEncryption,
+  type DecryptedEntryText,
   listCategories,
   upsertCategory,
   deleteCategory,
@@ -365,6 +373,16 @@ export type { PurgeResult, RecycleResult, RestoreResult } from "./recycle";
 // change; they differ on locked entries and bulk-edit.ts explains why.
 export { applyNameChange, bulkEditEntries, describeBulkEditResult } from "./bulk-edit";
 export type { BulkEditResult } from "./bulk-edit";
+
+// Bulk lock/unlock for that same selection. The third selection action, and the
+// one that deliberately *does* write locked rows — see bulk-lock.ts.
+export { bulkSetEntriesLocked, describeBulkLockResult } from "./bulk-lock";
+export type { BulkLockResult } from "./bulk-lock";
+
+// Bulk encrypt for that same selection — the fourth selection action, and the
+// only one that cannot be undone. See bulk-encrypt.ts.
+export { bulkEncryptEntries, describeBulkEncryptResult } from "./bulk-encrypt";
+export type { BulkEncryptResult } from "./bulk-encrypt";
 export type {
   BulkEntryEditData,
   BulkEntryEditInput,
@@ -373,4 +391,23 @@ export type {
   BulkNameMode,
 } from "./schema";
 export { bulkEntryEditSchema, entryIdsSchema } from "./schema";
-export type { BulkEntryEditOutcome } from "./ports";
+export type {
+  BulkEncryptOutcome,
+  BulkEncryptRequest,
+  BulkEntryEditOutcome,
+  BulkEntryLockOutcome,
+} from "./ports";
+
+// The crypto behind per-entry encryption. `WrongPasswordError` is exported so an
+// action can tell "that password is wrong" from a genuine failure and show the
+// reader the right message; the encrypt/decrypt primitives are exported for the
+// CLI, which drives the same use-cases as the web app.
+export {
+  ENCRYPTED_TITLE_PLACEHOLDER,
+  MalformedCipherTextError,
+  WrongPasswordError,
+  decryptEntryText,
+  displayEntryTitle,
+  encryptEntryText,
+  isEncryptedBlob,
+} from "./encryption";

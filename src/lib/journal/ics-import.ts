@@ -323,6 +323,22 @@ function walkIcsEvents(
       return;
     }
 
+    // Encryption is stronger still (migration 0131). The title-key importer can't
+    // reach an encrypted entry at all -- `findEntryIdsMatching` filters them out
+    // in SQL -- but this one matches on the VEVENT UID, so an entry imported
+    // from a calendar and encrypted afterwards is still findable here. Writing
+    // over it would destroy text that nothing in this importer can read, and
+    // `preserveLocalEdits` cannot help: the "local edits" it preserves are the
+    // blanked plaintext columns.
+    if (existing?.isEncrypted) {
+      onRow({
+        ...base,
+        action: "skip",
+        blockedReason: "Encrypted — remove encryption before re-importing",
+      });
+      return;
+    }
+
     // With `preserveLocalEdits` (the default) the reader's own fields are carried
     // across; without it the entry is replaced whole, which is what this
     // importer did before 0089.

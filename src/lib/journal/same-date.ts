@@ -24,6 +24,7 @@
 
 import { z } from "zod";
 import { excerptWords } from "./duplicates";
+import { displayEntryTitle } from "./encryption";
 import { isLogEntry } from "./journal";
 import type { JournalRepository } from "./ports";
 import type { JournalEntry } from "./types";
@@ -60,6 +61,13 @@ export interface SameDateEntry {
    * never disagree about what counts as a log.
    */
   isLog: boolean;
+  /**
+   * Migration 0131. The list shows a placeholder instead of the title and no
+   * excerpt, and the merge refuses to include it — an encrypted entry's text
+   * cannot be read here, so merging it would write a blank into the merged
+   * entry and then delete the only copy of the ciphertext.
+   */
+  isEncrypted: boolean;
   createdAt: string;
 }
 
@@ -163,11 +171,14 @@ export function findSameDateGroups(
         id: entry.id,
         date: entry.date,
         time: entry.time,
-        title: entry.title,
-        excerpt: excerptWords(entry.content, SAME_DATE_EXCERPT_WORDS),
+        title: displayEntryTitle(entry.title, entry.isEncrypted),
+        // No excerpt for an encrypted entry: its content column is blank, so
+        // this would be an empty string presented as "the first 100 words".
+        excerpt: entry.isEncrypted ? "" : excerptWords(entry.content, SAME_DATE_EXCERPT_WORDS),
         isLocked: entry.isLocked,
         isPinned: entry.isPinned,
         isLog: isLogEntry(entry),
+        isEncrypted: entry.isEncrypted,
         createdAt: entry.createdAt,
       })),
     });
@@ -318,6 +329,20 @@ export function mergeEntryDraft(entries: JournalEntry[]): MergedEntryDraft {
   const ordered = inReadingOrder(entries);
   if (ordered.length === 0) {
     return { date: "", time: "", title: "", content: "", placeName: "", categories: [], tags: [] };
+  }
+
+  // An encrypted entry cannot be merged (migration 0131). Its title and content
+  // columns are blank, so it would contribute an empty block to the draft — and
+  // the merge then deletes its sources, destroying the only copy of text nobody
+  // in this function can read. Refused loudly rather than silently skipped: a
+  // reader who selected one meant to include it, and a merge that quietly drops
+  // an entry is worse than one that stops and says why.
+  const encrypted = ordered.filter((entry) => entry.isEncrypted);
+  if (encrypted.length > 0) {
+    const ids = encrypted.map((entry) => `#${entry.id}`).join(", ");
+    throw new Error(
+      `Cannot merge encrypted entries (${ids}). Remove encryption from them first.`,
+    );
   }
 
   const titles: string[] = [];

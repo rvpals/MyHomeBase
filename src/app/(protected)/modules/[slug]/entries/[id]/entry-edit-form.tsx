@@ -5,6 +5,7 @@ import { Button } from "@/components/button";
 import { TokenPicker } from "@/components/token-picker";
 import type { JournalEntry } from "@/lib/journal";
 import {
+  updateEncryptedJournalEntryAction,
   updateJournalEntryAction,
   type JournalLocationInput,
 } from "../../journal-actions";
@@ -18,6 +19,7 @@ const INPUT_CLASS =
 // aggregate, so anything not resubmitted would be dropped.
 export function JournalEntryEditForm({
   entry,
+  encryptionPassword,
   categoryOptions,
   tagOptions,
   locationCategoryOptions = [],
@@ -25,7 +27,21 @@ export function JournalEntryEditForm({
   onCancel,
   onSaved,
 }: {
+  /**
+   * The entry to edit. For an encrypted entry this carries the **decrypted**
+   * title and content, spliced in by `entry-screen.tsx` — so the fields below
+   * show real text while the stored row stays sealed.
+   */
   entry: JournalEntry;
+  /**
+   * The password that opened this entry, when it is encrypted and unlocked.
+   *
+   * Held only for the lifetime of the screen above and passed straight back to
+   * the action on save; it is never stored here. Undefined for an ordinary
+   * entry, and `handleSave` refuses to save an encrypted entry without it rather
+   * than falling through to the plaintext path.
+   */
+  encryptionPassword?: string;
   /** Every known category name, for the picker's dropdown. */
   categoryOptions: string[];
   /** Every known tag name, for the picker's dropdown. */
@@ -64,6 +80,29 @@ export function JournalEntryEditForm({
     setIsBusy(true);
     setError(undefined);
     try {
+      // An encrypted entry saves in two parts, because its text and its metadata
+      // live in different columns and only the text needs the password.
+      //
+      // The text goes first: if the password is wrong the entry is left entirely
+      // untouched, which is the safe order. The metadata save that follows runs
+      // through the ordinary path, where the use-case carries the ciphertext
+      // across unchanged and keeps the plaintext columns blank.
+      if (entry.isEncrypted) {
+        if (encryptionPassword === undefined) {
+          setError("This entry is locked. Unlock it before saving.");
+          return;
+        }
+        const encryptedResult = await updateEncryptedJournalEntryAction(
+          entry.id,
+          encryptionPassword,
+          { title, content },
+        );
+        if (!encryptedResult.ok) {
+          setError(encryptedResult.error);
+          return;
+        }
+      }
+
       const result = await updateJournalEntryAction(entry.id, {
         date,
         time,

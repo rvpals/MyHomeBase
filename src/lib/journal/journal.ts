@@ -3,6 +3,7 @@ import {
   type DecodedImage,
   type ImageUploadInput,
 } from "@/lib/shared/image-upload";
+import { decryptEntryText, encryptEntryText } from "./encryption";
 import { isSafeGeneratedIconSvg } from "./generated-icons";
 import { fetchIconSvg } from "./icon-fetch";
 import type { JournalRepository } from "./ports";
@@ -352,7 +353,27 @@ export function updateEntry(
   // guard above means only an unlocked entry ever reaches this line, so the value
   // is `false` either way; pinning it here is what keeps that true if the guard is
   // ever relaxed. `setLocked` remains the only way to change a lock.
-  return repo.updateEntry(id, { ...validated, categories, tags, isLocked: existing.isLocked });
+  //
+  // The encryption columns are carried the same way and for a sharper version of
+  // the same reason: they also default to blank in the schema, and writing those
+  // defaults over a real entry would blank the ciphertext while leaving
+  // `is_encrypted` set — the entry's text destroyed, with nothing on screen to
+  // say so. `editEncryptedEntry` is the only path that may change them.
+  return repo.updateEntry(id, {
+    ...validated,
+    categories,
+    tags,
+    isLocked: existing.isLocked,
+    isEncrypted: existing.isEncrypted,
+    titleEncrypted: existing.titleEncrypted,
+    contentEncrypted: existing.contentEncrypted,
+    passwordHint: existing.passwordHint,
+    // An encrypted entry's plaintext columns stay blank. Without this a save
+    // from a screen holding decrypted text would write that text straight back
+    // in the clear — the one failure here that is both silent and unrecoverable.
+    title: existing.isEncrypted ? "" : validated.title,
+    content: existing.isEncrypted ? "" : validated.content,
+  });
 }
 
 /** Deletes an entry and its child rows. Refuses a locked entry, same as update. */
@@ -409,6 +430,223 @@ export function setPinned(repo: JournalRepository, id: number, isPinned: boolean
 export function setLocked(repo: JournalRepository, id: number, isLocked: boolean): JournalEntry {
   if (!repo.getEntryById(id)) throw new Error(`No journal entry with id ${id}.`);
   return repo.setEntryLocked(id, isLocked);
+}
+
+// --- Encryption (migration 0131) ---------------------------------------------
+//
+// One password per entry. The same password may be reused across entries, but
+// each is sealed independently — there is no vault, no master key, and nothing
+// that can open two entries at once.
+//
+// **Nothing here stores the password or anything derived from it** other than the
+// ciphertext. Forgetting it destroys that entry permanently; the UI says so
+// before it happens. `isLocked` is a separate, unrelated edit guard.
+
+/** An entry's decrypted text, returned for display and never written back. */
+export interface DecryptedEntryText {
+  title: string;
+  content: string;
+}
+
+/**
+ * Seals an entry's title and content under `password`.
+ *
+ * The plaintext columns are blanked in the same write that stores the ciphertext,
+ * so there is no window in which both exist. Everything else — date, place,
+ * weather, categories, tags, locations and images — stays readable, because that
+ * is what the lists, the calendar and the filters are built from.
+ *
+ * `hint` is stored **in the clear** and must never contain the password; the form
+ * that collects it says so.
+ */
+export function encryptEntry(
+  repo: JournalRepository,
+  id: number,
+  password: string,
+  hint = "",
+): JournalEntry {
+  const existing = repo.getEntryById(id);
+  if (!existing) throw new Error(`No journal entry with id ${id}.`);
+  if (existing.isLocked) {
+    throw new Error(`Journal entry ${id} is locked; unlock it before encrypting.`);
+  }
+  if (existing.isEncrypted) throw new Error(`Journal entry ${id} is already encrypted.`);
+  if (password === "") throw new Error("A password is required to encrypt an entry.");
+
+  return repo.updateEntry(id, {
+    ...toWriteData(existing),
+    title: "",
+    content: "",
+    isEncrypted: true,
+    // Separate blobs, each with its own salt and IV — never one key over two
+    // plaintexts with a shared IV.
+    titleEncrypted: encryptEntryText(existing.title, password),
+    contentEncrypted: encryptEntryText(existing.content, password),
+    passwordHint: hint,
+  });
+}
+
+/**
+ * Creates an entry already sealed — the New Entry screen's "Save entry
+ * encrypted".
+ *
+ * One write, not create-then-encrypt. Doing it in two steps would put the
+ * plaintext title and content on disk in between, and a failure after the first
+ * step would leave an entry the writer believes is encrypted and isn't. Here the
+ * text is encrypted **before** `createEntry` is called, so the plaintext columns
+ * are never written at all.
+ *
+ * Everything else about the entry — date, place, weather, categories, tags,
+ * locations — is created exactly as an ordinary entry's would be, including the
+ * auto-registration of unknown category and tag names.
+ */
+export function createEncryptedEntry(
+  repo: JournalRepository,
+  input: CreateEntryInput,
+  password: string,
+  hint = "",
+): JournalEntry {
+  if (password === "") throw new Error("A password is required to encrypt an entry.");
+
+  // Parsed first so the defaults are applied and `title`/`content` are strings
+  // rather than possibly-undefined — the same shape createEntry would see.
+  const validated = createEntrySchema.parse(input);
+
+  return createEntry(repo, {
+    ...validated,
+    title: "",
+    content: "",
+    isEncrypted: true,
+    titleEncrypted: encryptEntryText(validated.title, password),
+    contentEncrypted: encryptEntryText(validated.content, password),
+    passwordHint: hint,
+  });
+}
+
+/**
+ * Opens an entry for reading. **Writes nothing.**
+ *
+ * Throws `WrongPasswordError` from `./encryption` when the password is wrong —
+ * which is also what a tampered blob produces, since GCM cannot tell the two
+ * apart and inventing a distinction would mean trusting something other than the
+ * authentication tag.
+ */
+export function decryptEntry(
+  repo: JournalRepository,
+  id: number,
+  password: string,
+): DecryptedEntryText {
+  const existing = repo.getEntryById(id);
+  if (!existing) throw new Error(`No journal entry with id ${id}.`);
+  if (!existing.isEncrypted) throw new Error(`Journal entry ${id} is not encrypted.`);
+
+  return {
+    title: decryptEntryText(existing.titleEncrypted, password),
+    content: decryptEntryText(existing.contentEncrypted, password),
+  };
+}
+
+/**
+ * Saves new text into an entry that stays encrypted.
+ *
+ * The password is verified by decrypting the stored blobs first, so a wrong one
+ * fails **before** anything is written — otherwise a typo would re-seal the entry
+ * under a password the reader doesn't know, destroying it.
+ *
+ * Re-encrypts with a **fresh salt and IV**. Reusing the previous IV under the
+ * same key would leak the relationship between the old and new text.
+ */
+export function editEncryptedEntry(
+  repo: JournalRepository,
+  id: number,
+  password: string,
+  text: DecryptedEntryText,
+): JournalEntry {
+  const existing = repo.getEntryById(id);
+  if (!existing) throw new Error(`No journal entry with id ${id}.`);
+  if (existing.isLocked) {
+    throw new Error(`Journal entry ${id} is locked; unlock it before editing.`);
+  }
+  if (!existing.isEncrypted) throw new Error(`Journal entry ${id} is not encrypted.`);
+
+  // Proves the password opens this entry. Throws before any write if it doesn't.
+  decryptEntryText(existing.titleEncrypted, password);
+
+  return repo.updateEntry(id, {
+    ...toWriteData(existing),
+    title: "",
+    content: "",
+    isEncrypted: true,
+    titleEncrypted: encryptEntryText(text.title, password),
+    contentEncrypted: encryptEntryText(text.content, password),
+    passwordHint: existing.passwordHint,
+  });
+}
+
+/**
+ * Decrypts an entry permanently, restoring its plaintext title and content and
+ * clearing the blobs, the flag and the hint.
+ *
+ * The reverse of `encryptEntry`, and the step to take before rolling migration
+ * 0131 back — a rollback with entries still encrypted destroys their only copy.
+ */
+export function removeEntryEncryption(
+  repo: JournalRepository,
+  id: number,
+  password: string,
+): JournalEntry {
+  const existing = repo.getEntryById(id);
+  if (!existing) throw new Error(`No journal entry with id ${id}.`);
+  if (existing.isLocked) {
+    throw new Error(`Journal entry ${id} is locked; unlock it before decrypting.`);
+  }
+  if (!existing.isEncrypted) throw new Error(`Journal entry ${id} is not encrypted.`);
+
+  // Both blobs are opened before anything is written: a half-restored entry
+  // would be worse than one that stays sealed.
+  const title = decryptEntryText(existing.titleEncrypted, password);
+  const content = decryptEntryText(existing.contentEncrypted, password);
+
+  return repo.updateEntry(id, {
+    ...toWriteData(existing),
+    title,
+    content,
+    isEncrypted: false,
+    titleEncrypted: "",
+    contentEncrypted: "",
+    passwordHint: "",
+  });
+}
+
+/**
+ * An entry as the repository's whole-aggregate write shape.
+ *
+ * `updateEntry` replaces everything, so each encryption use-case has to resend
+ * the fields it isn't changing. Written out here once rather than spread across
+ * four call sites that could each forget a different one.
+ */
+function toWriteData(entry: JournalEntry) {
+  return {
+    date: entry.date,
+    time: entry.time,
+    title: entry.title,
+    content: entry.content,
+    placeName: entry.placeName,
+    weather: entry.weather,
+    isPinned: entry.isPinned,
+    isLocked: entry.isLocked,
+    categories: entry.categories,
+    tags: entry.tags,
+    locations: entry.locations.map((location) => ({
+      latitude: location.latitude,
+      longitude: location.longitude,
+      locationName: location.locationName,
+      savedLocationId: location.savedLocationId,
+    })),
+    source: entry.source,
+    externalId: entry.externalId,
+    externalContent: entry.externalContent,
+  };
 }
 
 export function listCategories(repo: JournalRepository): JournalCategory[] {

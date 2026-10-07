@@ -12,6 +12,8 @@
 // Date from it would shift the day for anyone west of UTC and put an entry in
 // the wrong cell. `Date.UTC` in, `toISOString().slice(0, 10)` out.
 
+import { ENCRYPTED_TITLE_PLACEHOLDER } from "./encryption";
+
 /** Which of the three grids the screen is showing. */
 export type JournalCalendarScope = "month" | "week" | "year";
 
@@ -143,6 +145,12 @@ export interface CalendarEntryLike {
   date: string;
   time: string;
   title: string;
+  /**
+   * Migration 0131. Optional so the existing callers that build this projection
+   * by hand keep compiling; absent reads as "not encrypted", which is what every
+   * entry written before the migration is.
+   */
+  isEncrypted?: boolean;
 }
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -256,7 +264,14 @@ export function journalCalendarRange(scope: JournalCalendarScope, anchor: string
  */
 export function calendarEntryLabel(entry: CalendarEntryLike): CalendarEntryLabel {
   const title = entry.title.trim();
-  const display = title === "" ? "(untitled)" : title;
+  // An encrypted entry still occupies its day and still has to be clickable, so
+  // it gets a placeholder rather than being hidden — the cell says the entry is
+  // there without saying what it is.
+  const display = entry.isEncrypted
+    ? ENCRYPTED_TITLE_PLACEHOLDER
+    : title === ""
+      ? "(untitled)"
+      : title;
   const isTruncated = display.length > CALENDAR_TITLE_MAX_LENGTH;
   return {
     id: entry.id,

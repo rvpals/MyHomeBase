@@ -33,6 +33,12 @@ export const journalEntrySchema = z.object({
   weather: weatherSchema.optional(),
   isPinned: z.boolean(),
   isLocked: z.boolean(),
+  // Migration 0131. Defaulted so a row read back from a database that predates
+  // the migration still parses — the repository maps missing columns to these.
+  isEncrypted: z.boolean().default(false),
+  titleEncrypted: z.string().default(""),
+  contentEncrypted: z.string().default(""),
+  passwordHint: z.string().default(""),
   categories: z.array(z.string()),
   tags: z.array(z.string()),
   locations: z.array(entryLocationSchema),
@@ -83,6 +89,18 @@ export const createEntrySchema = z.object({
   source: z.string().default(""),
   externalId: z.string().default(""),
   externalContent: z.string().default(""),
+  // Migration 0131. Deliberately part of the write shape rather than a separate
+  // path: `updateEntry` is a whole-aggregate replace, so an encrypted entry
+  // being edited has to be able to write its re-encrypted blobs back through the
+  // same call. Every existing caller keeps compiling via the defaults, and a
+  // caller that omits them writes a normal plaintext entry exactly as before.
+  //
+  // The use-case — not this schema — enforces the rule that matters: an entry
+  // with `isEncrypted` true must never be written with plaintext title/content.
+  isEncrypted: z.boolean().default(false),
+  titleEncrypted: z.string().default(""),
+  contentEncrypted: z.string().default(""),
+  passwordHint: z.string().default(""),
 });
 
 // Input type (what callers pass): fields with a default are optional. This is

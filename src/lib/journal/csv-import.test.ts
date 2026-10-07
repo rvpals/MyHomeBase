@@ -53,6 +53,10 @@ function fakeRepo(): JournalRepository {
         weather: input.weather,
         isPinned: input.isPinned,
         isLocked: input.isLocked,
+        isEncrypted: input.isEncrypted,
+        titleEncrypted: input.titleEncrypted,
+        contentEncrypted: input.contentEncrypted,
+        passwordHint: input.passwordHint,
         categories: [...input.categories],
         tags: [...input.tags],
         locations,
@@ -88,6 +92,10 @@ function fakeRepo(): JournalRepository {
         weather: input.weather,
         isPinned: input.isPinned,
         isLocked: input.isLocked,
+        isEncrypted: input.isEncrypted,
+        titleEncrypted: input.titleEncrypted,
+        contentEncrypted: input.contentEncrypted,
+        passwordHint: input.passwordHint,
         categories: [...input.categories],
         tags: [...input.tags],
         locations,
@@ -221,6 +229,12 @@ function fakeRepo(): JournalRepository {
       throw new Error("not used");
     },
     bulkEditEntries: () => {
+      throw new Error("not used");
+    },
+    bulkSetEntriesLocked: () => {
+      throw new Error("not used");
+    },
+    bulkEncryptEntries: () => {
       throw new Error("not used");
     },
     countDistinctEntriesWithCategories: () => {

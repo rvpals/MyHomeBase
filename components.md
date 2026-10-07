@@ -53,6 +53,7 @@ pattern instead of inventing one.
 | [`DataGridCompact2`](#datagridcompact2) | `DataGrid`'s other compact form — one record per tab. Via `compactLayout="record"`, **not called directly** | [src/components/data-grid-compact-2.tsx](src/components/data-grid-compact-2.tsx) | yes |
 | [`BlobCell`](#blobcell) | A BLOB cell in a grid — its type/size plus Save, and Preview if it is an image | [src/components/blob-cell.tsx](src/components/blob-cell.tsx) | yes |
 | [`Modal`](#modal) | **Any dialog** — overlay, panel, Esc/focus handling | [src/components/modal.tsx](src/components/modal.tsx) | yes |
+| [`BulkConfirm`](#bulkconfirm) | **Confirming a bulk action on a ticked selection** — count, caveat, Cancel/confirm | [src/components/bulk-confirm.tsx](src/components/bulk-confirm.tsx) | yes |
 | [`FullscreenStage`](#fullscreenstage) | **A real fullscreen display** — chromeless black stage via the Fullscreen API | [src/components/fullscreen-stage.tsx](src/components/fullscreen-stage.tsx) | yes |
 | [`FloatingLayer`](#floatinglayer) | **A component that floats over the page** — puck in a corner, window card when opened | [src/components/floating-layer.tsx](src/components/floating-layer.tsx) | yes |
 | [`ClockFace`](#clockface) | The clock itself — digital or analog, with date/weekday/weather toggles | [src/components/clock-face.tsx](src/components/clock-face.tsx) | yes |
@@ -103,6 +104,8 @@ pattern instead of inventing one.
 | [`Progress3D`](#progress3d) | **Any progress bar** — work underway, 0..max | [src/components/progress-3d.tsx](src/components/progress-3d.tsx) | no |
 | [`RankBar`](#rankbar) | **One row of a ranked list** — magnitude relative to the biggest | [src/components/rank-bar.tsx](src/components/rank-bar.tsx) | no |
 | [`JournalViewer`](#journalviewer) | Full detail sheet for one journal entry | [src/components/journal-viewer.tsx](src/components/journal-viewer.tsx) | yes |
+| [`EncryptionPrompt`](#encryptionprompt) | **Password prompt for an encrypted journal entry** — unlock, encrypt, or confirm-before-decrypting | [src/components/encryption-prompt.tsx](src/components/encryption-prompt.tsx) | yes |
+| [`EntryEncryptionExplainer`](#entryencryptionexplainer) | **The one account of how entry encryption works** — prose, rendered in three places | [src/components/entry-encryption-explainer.tsx](src/components/entry-encryption-explainer.tsx) | no |
 | [`PhotoViewer`](#photoviewer) | **THE photo viewer** — stage, thumbnail strip, slide show, capture details, Journal link, favourite heart, EXIF panel | [src/components/photo-viewer.tsx](src/components/photo-viewer.tsx) | yes |
 | [`PhotoExifDialog`](#photoexifdialog) | **One photograph's EXIF data** — Common / GPS / Misc tabs, with a map button | [src/components/photo-exif-dialog.tsx](src/components/photo-exif-dialog.tsx) | yes |
 | [`PhotoMapDialog`](#photomapdialog) | Where a photograph was taken, as a modal map | [src/components/photo-map-dialog.tsx](src/components/photo-map-dialog.tsx) | yes |
@@ -282,6 +285,13 @@ enough that a changed button label isn't enough — a bulk edit, a merge, a batc
   which owns its own busy flag and only *reports* it out through the optional
   `onSavingChange` prop. The New Entry screen leaves that prop off and is
   unaffected — it's a page, not a dialog, so its Save button label is signal enough.
+- Journal → Entries, the Main tab
+  ([journal-entries-view.tsx](<src/app/(protected)/modules/[slug]/journal-entries-view.tsx>)) —
+  the selection **Encrypt**, which is the slowest write on that screen (one scrypt
+  derivation per entry) and the one that must not be interrupted partway. It is
+  gated on `isBulkBusy && confirmEncrypt !== undefined` rather than on `isBulkBusy`
+  alone, so the quick selection actions beside it — Lock, Unlock, Delete — don't
+  dim the whole page for work that is over before the scrim renders.
 
 **Render it as a sibling of a `Modal`, not a child.** It is `z-[60]` where `Modal` is
 `z-50`, so the dialog dims along with the rest of the page — otherwise the thing the
@@ -346,7 +356,7 @@ and an optional "Show SQL" re-run dialog. Do not build another table.
 | `defaultPageSize?` | `number \| "ALL"` | `100` | Paging appears once rows exceed it. |
 | `enableExport?` | `boolean` | `true` | "Export CSV" shows only if some column has `value`. |
 | `exportFileName?` | `string` | `"export"` | Without extension. |
-| `showStatusBar?` | `boolean` | `true` | The footer bar: record count, per-page, paging, Export CSV, Show SQL. `false` for a bare grid. |
+| `showStatusBar?` | `boolean` | `true` | The footer bar: record count (as a `bg-brass-soft` badge), per-page, paging, Export CSV, Show SQL. `false` for a bare grid. **Forwarded to the compact cards layout**, which shows the bar with the count badge only — see [`DataGridCompact`](#datagridcompact). |
 | `showToolbar?` | `boolean` | `true` | The whole controls row at once — search, Filters, Columns, Rows (and on a phone, Sort by). `false` for a dashboard card where the row is pure chrome. |
 | `enableSearch?` | `boolean` | `true` | |
 | `enableColumnFilters?` | `boolean` | `true` | Per-column filter row, hidden until opened. |
@@ -409,7 +419,7 @@ Row-click navigation:
 - Investments simulation — [stock-simulation-view.tsx](src/app/(protected)/modules/[slug]/stock-simulation-view.tsx) *(a fixed ten-row table: `showToolbar={false}` with `defaultPageSize="ALL"`, keeping sort and the status bar's CSV export)*
 - CSV Analysis — [csv-analytics-view.tsx](src/app/(protected)/modules/[slug]/csv-analytics-view.tsx) *(row selection + bulk edit over an **arbitrary** schema: the dialog's fields are the dataset's own columns, so the grid is keyed by the table's real SQLite `rowid` rather than by row position)*
 - MyJournal Calendar Import — [journal-calendar-import-view.tsx](src/app/(protected)/modules/[slug]/journal-calendar-import-view.tsx) *(selection as a **pick-what-to-import** list: the ticked rows are the import's input, and rows the plan marked unimportable are filtered out of the action rather than disabled)*
-- MyJournal Entries — [journal-entries-view.tsx](src/app/(protected)/modules/[slug]/journal-entries-view.tsx) *(the **Main** tab; row selection + bulk edit/delete. The bulk edit is [journal-entries-bulk-edit.tsx](src/app/(protected)/modules/[slug]/journal-entries-bulk-edit.tsx), shared with the Log tab; unlike Expense’s single-valued fields it offers **Add / Remove / Replace** per field, because an entry holds several categories and tags)*
+- MyJournal Entries — [journal-entries-view.tsx](src/app/(protected)/modules/[slug]/journal-entries-view.tsx) *(the **Main** tab; row selection + bulk edit/lock/unlock/encrypt/delete — the Lock and Unlock pair confirm through [`BulkConfirm`](#bulkconfirm), as Delete does; **Encrypt** goes through [`EncryptionPrompt`](#encryptionprompt) in `encrypt` mode with a `count`, behind a [`BusyOverlay`](#busyoverlay). The bulk edit is [journal-entries-bulk-edit.tsx](src/app/(protected)/modules/[slug]/journal-entries-bulk-edit.tsx), shared with the Log tab; unlike Expense’s single-valued fields it offers **Add / Remove / Replace** per field, because an entry holds several categories and tags)*
 - MyJournal Log — [journal-log-view.tsx](src/app/(protected)/modules/[slug]/journal-log-view.tsx) *(the **Log** tab of Entries, not a section of its own; row click opens `JournalViewer` in a `Modal`; the same bulk edit as Main, plus bulk delete to the recycle bin)*
 - SQL Explorer, Investments (accounts / positions / watchlist / analytics / next-day actions)
 
@@ -433,7 +443,9 @@ re-flow the rest. "Reset" in the Columns panel clears widths, order and hidden t
 
 **Notes:** headers sit in a raised `bg-brass-soft` bar and are click-to-sort
 (asc → desc → none) for columns with `value`; rows alternate `bg-paper`/`bg-paper-raised`.
-The footer is a raised status bar: record count (noting "filtered from N"), page-size
+The footer is a raised status bar: record count as a `bg-brass-soft` badge carrying the
+number (or the `1–100 of 1,234` range when paginated) with the noun beside it in `muted`,
+noting "filtered from N"; page-size
 selector (10…1000/ALL, plus whatever `defaultPageSize` is set to), and prev/next. Export
 reflects the current filter + sort across all pages. Selection is **pruned to the filtered
 set** — changing the search or a filter drops ticks for rows that no longer match, so
@@ -489,9 +501,20 @@ can't fix it, because a table's premise is that columns line up across rows and 
 room for them to. A card drops that premise: the first column becomes the heading (the
 thing that identifies the record) and the rest become label/value pairs.
 
-**It implements a deliberate subset** — search, sort, row click and selection. Column
-reorder/resize, per-column filters, CSV export and density stay on the full layout: they
-need a pointer and a wide screen, and cramming them in would recreate the problem.
+**It implements a deliberate subset** — search, sort, row click, selection and the footer
+status bar. Column reorder/resize, per-column filters, CSV export and density stay on the
+full layout: they need a pointer and a wide screen, and cramming them in would recreate
+the problem.
+
+**The status bar** is the same raised bar and the same `bg-brass-soft` count badge as the
+full grid's footer, so the number reads identically on both layouts. It honours
+`showStatusBar`, forwarded from `DataGrid`, and is hidden when there are no rows (the
+empty-state panel already says so). The badge shows the total on its own once the whole
+stack is rendered, and `50 of 1,234` while the "Show more" cap is still in effect — how
+far down the stack you are is the one fact the cards themselves can't show. It
+deliberately has **no per-page selector and no prev/next**: those answer "which slice am I
+looking at" and this layout has no slices, just a growing stack behind one "Show more"
+button. Don't add them.
 
 **Selection is in the subset, and wasn't at first.** `enableSelection` and
 `renderSelectionActions` were originally not forwarded here, so a grid with bulk actions
@@ -521,6 +544,17 @@ with a shifted surface, the card-stack equivalent of zebra rows: odd cards mix
 `--paper-raised` 94% toward `--ink`. That is the *default* — `DataGrid`'s
 `stripeClassName` overrides it, which a grid banding by group wants because its stripe
 marks a block several cards deep rather than separating one card from the next.
+
+**Exactly one background utility lands on a card.** The stripe *replaces*
+`bg-paper-raised`; it does not sit after it. This shipped broken for a while and the
+striping was invisible on every cards-layout grid: the card emitted both classes and
+relied on "the stripe comes later in the class list, so it wins", which is not how the
+cascade works — it reads the order the rules were *generated* into the stylesheet, and
+Tailwind makes no promise that an arbitrary `bg-[color-mix(…)]` sorts after a named
+`bg-paper-raised`. The full grid never had the bug because its row has always picked one
+or the other (`? stripeClassName : "bg-paper"`). Keep that shape. This is the
+`style-hooks-not-layout-classes` trap in a different costume: two utilities fighting over
+one property.
 
 **Mixed toward `--ink`, not toward black.** A translucent black wash was the first
 attempt and is invisible on the dark themes, which is most of them — 6% black on
@@ -665,6 +699,73 @@ level and cannot be intercepted, so a custom one would duplicate or fight it.
 [music-player-view.tsx](src/app/(protected)/modules/[slug]/music-player-view.tsx), for
 the visualizer. Audio is unaffected — it lives in `MusicPlayerProvider` above the
 screen, so the track keeps playing while the stage is up.
+
+## BulkConfirm
+
+**The confirmation step for an action about to hit a ticked selection.** Shows how many
+rows are selected, an optional caveat about the ones that won't behave like the rest, and
+a Cancel / confirm pair. A thin, opinionated wrapper over [`Modal`](#modal) — reach for it
+whenever a `DataGrid` selection action needs confirming, and reach for `Modal` directly
+when the dialog needs fields rather than a yes/no.
+
+- **Source:** [src/components/bulk-confirm.tsx](src/components/bulk-confirm.tsx)
+- **Import:** `import { BulkConfirm } from "@/components/bulk-confirm";`
+- **Client component:** yes (it renders a `Modal`)
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `title` | `string` | The heading. Phrase it as the question being answered — "Delete these entries?" |
+| `description?` | `ReactNode` | Sub-heading explaining what the action does. Forwarded to `Modal`. |
+| `count` | `number` | How many rows are selected. Rendered as the first line of the body. |
+| `noun` | `{ one: string; many: string }` | What the rows are called. **Both forms**, because appending an `s` here would be wrong for "entries". |
+| `caveat?` | `ReactNode` | The line under the count: what's different about part of the selection. **Pass `undefined` when it doesn't apply** — see the note below. |
+| `confirmLabel` | `string` | The confirm button's label. The verb ("Delete", "Lock"), never "OK". |
+| `tone?` | `"danger" \| "primary"` | Confirm button weight, forwarded to `Button`. Default `"danger"`. Use `"primary"` for a reversible action — a bulk lock is not a destructive one. |
+| `isBusy?` | `boolean` | Disables both buttons, swaps the confirm label to "Working…", and blocks Escape/overlay close via `Modal`. |
+| `onConfirm` | `() => void` | Pressed the confirm button. |
+| `onCancel` | `() => void` | Cancel, Escape, overlay click and the ✕ all land here. |
+
+```tsx
+{confirmDelete && (
+  <BulkConfirm
+    title="Delete these entries?"
+    description="They move to the recycle bin under Data Management."
+    count={confirmDelete.rows.length}
+    noun={{ one: "entry", many: "entries" }}
+    caveat={
+      confirmDelete.rows.some((entry) => entry.isLocked) ? (
+        <>Some of these are <span className="text-ink">locked</span>. They move to the bin too.</>
+      ) : undefined
+    }
+    confirmLabel="Delete"
+    isBusy={isBulkBusy}
+    onCancel={() => setConfirmDelete(undefined)}
+    onConfirm={() => void runBulkDelete(confirmDelete.rows, confirmDelete.clearSelection)}
+  />
+)}
+```
+
+**Used by:** the MyJournal Entries screen
+[journal-entries-view.tsx](<src/app/(protected)/modules/[slug]/journal-entries-view.tsx>),
+for all three of its selection actions — Delete (`danger`) and the Lock/Unlock pair
+(`primary`, sharing one piece of state that carries the target lock as a boolean).
+
+**The count is the point.** A bulk action's real hazard isn't that the reader didn't mean
+to press the button, it's that they've lost track of what's ticked — so a dialog that only
+asks "Are you sure?" answers the wrong question. That's why `count` and `noun` are required
+rather than optional.
+
+**Keep `caveat` conditional.** It is for the rows that will behave differently from the
+rest — locked entries that move to the bin anyway, rows already in the state you're setting.
+A caveat rendered unconditionally stops being read, and then it isn't there on the one
+occasion it mattered.
+
+**Not a replacement for `window.confirm`** everywhere — the saved-filter delete on that
+same screen still uses one, deliberately. That's a single named thing with no selection to
+mis-read, and a full dialog for it would be heavier than the decision warrants.
+
+**Below 1024px:** nothing of its own. `Modal`'s default `md` is `w-full max-w-lg`, which
+fits a 390px screen, and the footer's two buttons sit in `Modal`'s own action row.
 
 ## Modal
 
@@ -3483,6 +3584,10 @@ print/export view share it.
 | `onShowLocation?` | `(location: EntryLocation) => void` | Adds a per-location "Map" button. |
 | `onShowAllLocations?` | `() => void` | Adds a "Map All Locations" button below the list. **Only rendered when the entry has more than one location** — with one, the per-location "Map" button already does the same job. The caller renders the multi-pin map. |
 | `onToggleLock?` | `(nextLocked: boolean) => void` | Omit to hide Lock. |
+| `isUnlocked?` | `boolean` | Whether an encrypted entry is currently open (migration 0131). When true the caller has spliced the **decrypted** title and content into `entry`, so the body renders normally and the toolbar offers Close / Remove encryption instead of Encrypt. |
+| `onEncrypt?` | `() => void` | Opens the caller's encrypt prompt. Omit to hide Encrypt. Disabled while locked — the use-case refuses a locked entry. |
+| `onRemoveEncryption?` | `() => void` | Opens the caller's remove-encryption prompt. Omit to hide that button. |
+| `onLock?` | `() => void` | Drops the decrypted text and re-seals the view without touching the entry. Omit to hide Close. |
 | `onDelete?` | `() => void` | Omit to hide Delete. Guarded by an inline confirm. |
 | `previousHref?` / `previousDate?` | `string` | Adds a Previous button, left of the date/time, linking to the older neighbour. `previousDate` fills the caption below it. Omit both to hide the button. The caller computes the href — this component stays free of routing knowledge. |
 | `nextHref?` / `nextDate?` | `string` | Same, for the newer neighbour. |
@@ -3545,6 +3650,132 @@ reads it — an icon-only row would otherwise be unlabelled. A name with no uplo
 skipped rather than given a placeholder: a row of empty squares says less than a shorter
 row. Because the header is `flex-wrap`, the icons drop to their own line on a narrow screen
 instead of squeezing the date.
+
+---
+
+## EncryptionPrompt
+
+The password form for an encrypted journal entry (migration 0131) — three jobs that are the
+same handful of fields in different combinations, kept as one component so the wording and
+the styling can't drift apart.
+
+**Pure presentation.** It collects a password and raises it. It never decrypts, never calls
+an action, and never keeps the password after the submit — the screen above owns that,
+because that screen is also what decides how long an unlock lasts. In the journal, that is
+[entry-screen.tsx](src/app/(protected)/modules/[slug]/entries/[id]/entry-screen.tsx), which
+holds the password in React state only and loses it on navigation.
+
+- **Source:** [src/components/encryption-prompt.tsx](src/components/encryption-prompt.tsx)
+- **Import:** `import { EncryptionPrompt } from "@/components/encryption-prompt";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `mode` | `"unlock" \| "encrypt" \| "confirm"` | `unlock` — one password field plus the hint. `encrypt` — password twice, an optional hint, and the no-recovery warning. `confirm` — one password field, for removing encryption. |
+| `asModal?` | `boolean` | Renders as a `Modal` instead of an inline card — same fields, same validation. Encrypt and Remove encryption use it; the unlock prompt deliberately does not. `Modal`'s `isBusy` is wired through, so Escape / overlay / ✕ are suppressed mid-write. |
+| `hint?` | `string` | The entry's stored hint, shown above the field in `unlock`. Blank renders nothing. |
+| `error?` | `string` | Shown in place of the built-in validation message — a failed unlock, usually. |
+| `isBusy?` | `boolean` | Disables the form while the caller's action is in flight. |
+| `onSubmit` | `(password: string, hint: string) => void` | Raised with the typed password, and in `encrypt` the typed hint. |
+| `onCancel?` | `() => void` | Omit to render without a Cancel button — which is what the inline unlock prompt does, since there is nothing to go back to. **Required in practice with `asModal`**, since a dialog must be closable. |
+| `heading?` / `actionLabel?` | `string` | Override the heading and the confirm button's label. The New Entry screen's **Save entry encrypted** uses them ("Save this entry encrypted" / "Save encrypted"), because there the dialog finishes a *save* rather than encrypting something that already exists. The warning text and the confirm-password rule are unchanged. |
+| `count?` | `number` | How many entries a **bulk** encrypt will seal, shown above the warning. In a batch the count is the number most worth checking before confirming, since nothing can open the result afterwards. Omit for the single-entry prompts — they say which entry they mean by being on its screen. Only the count is taken, not the rows: this component has no business knowing what a `JournalEntry` is. |
+| `className?` | `string` | |
+
+**Why the confirm field is client-side.** In `encrypt` mode the two passwords are compared
+here rather than server-side, because a mistyped password seals the entry under something
+the reader does not know and **there is no recovery from that** — no admin override, no
+reset. Catching it before the submit is the only place it can be caught at all.
+
+**The hint is stored in the clear**, which is what makes it readable before anything is
+decrypted and also what makes it dangerous. The field says so beneath itself.
+
+**The password fields say `autocomplete="new-password"`, not `"off"` — don't "fix" this.**
+Chrome and Safari deliberately ignore `off` on password inputs (it was abused too widely),
+so `off` still raises the "Save password?" bubble. `new-password` is the value they honour,
+and it suppresses the save prompt *and* autofill. `data-1p-ignore`, `data-lpignore` and
+`data-bwignore` cover 1Password, LastPass and Bitwarden, which ignore the standard
+attribute. The hint field gets the same treatment: it isn't a password, but a browser
+heuristic will offer it as the "username" to file alongside one.
+
+**The attribute alone was not enough.** Two more pieces sit beside it, and neither is
+redundant — each closes a trigger `autocomplete` doesn't reach:
+
+1. **The password inputs are blanked in the DOM before `onSubmit` is raised**, via refs
+   rather than state. Chrome fires the bubble on the *navigation that follows* a submit and
+   reads the input's live value at that moment; every caller unmounts the prompt and calls
+   `router.refresh()` in the same React batch, so a React-only clear lands too late. This
+   is why the New Entry and single-entry Encrypt screens still prompted after the first
+   fix while the bulk encrypt didn't — the bulk path doesn't navigate the same way.
+2. **A decoy `autocomplete="username"` input**, empty, `readOnly` and `aria-hidden`. A lone
+   password field reads to Chrome as a credential form; an empty username beside it does
+   not. It must be *rendered* — `hidden` and `display:none` fields are skipped by the
+   heuristic — so it is sized to nothing and taken out of the tab order and the a11y tree.
+
+Letting a browser save this password would be **actively harmful**, not merely untidy.
+Nothing in this app stores it, so a reader who lets Chrome remember it has moved their only
+copy somewhere this app can neither read nor restore — and a cleared browser profile then
+destroys the entry. This is the opposite of the app's **account** password fields (login,
+register, Account, User Management), where the save prompt is correct and is deliberately
+left switched on.
+
+**Inline or dialog.** Both presentations share one component rather than being two call
+sites of a field set, because the rule that matters — that a mistyped password is caught
+*before* the submit — must not be able to drift between them. Which to use:
+
+- **Dialog** (`asModal`) for Encrypt and Remove encryption: deliberate, interrupting
+  decisions whose consequence can't be undone, where the rest of the entry shouldn't
+  compete for attention. The Entries screen's **bulk** encrypt
+  ([journal-entries-view.tsx](<src/app/(protected)/modules/[slug]/journal-entries-view.tsx>))
+  uses the same dialog with a `count` and a "Encrypt N entries" heading, rather than a
+  second password form — the confirm-password rule above is exactly the rule a batch
+  needs most, and a fork would let the two drift.
+- **Inline** for the unlock prompt: it renders where the entry's body would be, so it reads
+  as the entry being shut rather than as the app asking a question.
+
+**Compact:** inline, it is one column under `sm` with `max-lg:p-4` trimming the padding; as
+a dialog it inherits `Modal`'s own compact behaviour. Either way it is never a floating
+surface and never a `fixed` bar — nothing about an entry belongs on the floating layer, and
+the bottom edge is already the shared nav's and the music player's.
+
+---
+
+## EntryEncryptionExplainer
+
+The explanation of how per-entry journal encryption works (migration 0131), written once
+and rendered in three places: the New Entry screen's chip, the entry viewer's chip, and
+collapsed inside the encrypt dialog itself.
+
+**It exists to stop three copies of the same prose drifting apart.** The account someone
+gets must not depend on where they asked for it, and this is a feature whose details
+(what is sealed, what isn't, that there is no recovery) have to stay exactly true.
+
+- **Source:** [src/components/entry-encryption-explainer.tsx](src/components/entry-encryption-explainer.tsx)
+- **Import:** `import { EntryEncryptionExplainer, ENTRY_ENCRYPTION_EXPLAINER_TITLE } from "@/components/entry-encryption-explainer";`
+- **Client component:** no — it is prose, not a view of anything
+
+**No props.** It carries no width, padding or background of its own, so it sits in whatever
+the caller provides. `ENTRY_ENCRYPTION_EXPLAINER_TITLE` is exported alongside so all three
+places use one heading.
+
+| Where | How |
+|---|---|
+| New Entry screen | `Comments` chip beside **Save entry encrypted** |
+| Entry viewer | `Comments` chip beside **Encrypt** |
+| The encrypt dialog | a `<details>`, collapsed |
+
+**Why the dialog uses `<details>` and not [`Comments`](#comments).** `Comments` opens its
+own `Modal`, and the dialog already *is* one — both are `z-50` with no portal, and no
+existing call site nests them. The disclosure is inline there instead; only the container
+differs, never the words.
+
+```tsx
+<Comments
+  title={ENTRY_ENCRYPTION_EXPLAINER_TITLE}
+  content={<EntryEncryptionExplainer />}
+  size="md"
+/>
+```
 
 ---
 
