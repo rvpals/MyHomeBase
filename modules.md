@@ -592,9 +592,32 @@ so a reader can decide. Four choices worth knowing:
   saved edit re-reads both the entry *and* the grouping, since changing an entry's
   date moves it to another group or out of the list altogether.
 - **Delete routes through the existing recycle bin** (migration 0079) rather than
-  destroying rows, and there is deliberately **no second bin screen here**. The Correct tab
-  already owns that list; a second view of it could disagree with the first about what is
-  in it, so this screen's confirmation dialog points the reader there instead.
+  destroying rows, and there is deliberately **no second bin screen here**. The **Recycle
+  Bin** section below owns that list; a second view of it could disagree with the first
+  about what is in it, so this screen's confirmation dialog points the reader there.
+
+**Recycle Bin** is the fourth child of Data Management, and it exists for one reason:
+deleting an entry has always moved it somewhere, but the only way back in was CSV Import →
+Correct — a path whose name promises nothing about deleted entries, two levels from where
+the delete happened. The bin was reachable, not discoverable.
+
+- **It renders the same `JournalCorrectView` the Correct tab does**, with a `show` prop
+  (`"both" | "recycled"`) hiding the Duplicates card. Not a second component: the two cards
+  deliberately share one state machine, because a delete moves an entry from one to the
+  other and every action replaces both lists wholesale. Splitting the recycle card out
+  would have meant a second copy of all five action handlers, each of which would then
+  have to be kept in step with the first.
+- **The Correct tab keeps its copy of the card.** Two entry points to one view, so nobody
+  who already knows the old path loses it. They cannot drift, being the same component.
+- **The standalone section skips the whole-journal read.** `findDuplicateGroups(listEntries(…))`
+  is unbounded by design — it must see every entry to find a 2019 duplicate — but the
+  Recycle Bin never renders that card, so the panel passes `[]` instead of paying for it.
+  The bin alone is a cheap, bounded query.
+- **It needed no migration and no new action.** The section list is TypeScript, not seeded
+  rows, and `journal-correct-actions.ts` already had all five (recycle, restore, delete
+  forever, empty, count). The one new registry entry is the nav row's icon slot,
+  `journal_section_recycle_bin` — the card keeps its own `journal_card_recycled_entries`,
+  which is a different place and so a different slot.
 
 The whole thing added **no table and no column** — it is a new section over reads the
 module already had, plus one pure library file (`src/lib/journal/same-date.ts`) and its

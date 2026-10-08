@@ -30,6 +30,7 @@ import { journalLocationsCommand } from "./journal-locations";
 import { journalBulkEditCommand } from "./journal-bulk-edit";
 import { journalSameDateCommand } from "./journal-same-date";
 import { journalTaxonomyCommand } from "./journal-taxonomy";
+import { journalReportsCommand } from "./journal-reports";
 import { journalTemplatesCommand } from "./journal-templates";
 import { listCsvAnalyticsCommand } from "./list-csv-analytics";
 import { listScheduledJobsCommand } from "./list-scheduled-jobs";
@@ -89,6 +90,7 @@ const commands: Record<string, Command> = {
   "journal-locations": journalLocationsCommand,
   "journal-same-date": journalSameDateCommand,
   "journal-taxonomy": journalTaxonomyCommand,
+  "journal-reports": journalReportsCommand,
   "journal-templates": journalTemplatesCommand,
   "expense-top-spenders": expenseTopSpendersCommand,
   "export-portfolio": exportPortfolioCommand,

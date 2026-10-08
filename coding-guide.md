@@ -14,7 +14,7 @@ module is obvious from the name alone. New tables must follow this.
 | `sys_` | Platform — not a feature module | `sys_modules`, `sys_app_settings`, `sys_module_settings`, `sys_user_preferences`, `sys_users`, `sys_user_module_access`, `sys_sessions`, `sys_schema_migrations`, `sys_daily_quotes`, `sys_scheduled_runs`, `sys_dashboard_texture`, `sys_dashboard_textures`, `sys_module_texture`, `sys_fav_photo`, `sys_deployments`, `sys_auth_events`, `sys_site_visits`, `sys_ip_allowlist`, `sys_messages`, `sys_saved_sql_queries` |
 | `inv_` | Investments (brokerage accounts **and** per-stock tables — one prefix) | `inv_investment_accounts`, `inv_stock_positions`, `inv_stock_transactions`, `inv_stock_watch_lists`, `inv_stock_volatility_cache`, `inv_ticker_risk_cache`, `inv_ticker_logos`, `inv_index_logos`, `inv_daily_snapshots`, `inv_tax_lots`, `inv_ticker_monitors` |
 | `csv_` | CSV Analysis (incl. user-generated per-entry tables from `buildTableName`) | `csv_analytics_entries`, `csv_chart_presets`, `csv_govee` |
-| `jrn_` | MyJournal | `jrn_entries`, `jrn_categories`, `jrn_tags`, `jrn_entry_categories`, `jrn_entry_tags`, `jrn_entry_locations`, `jrn_entry_images`, `jrn_saved_filters`, `jrn_locations`, `jrn_location_categories`, `jrn_location_tags` |
+| `jrn_` | MyJournal | `jrn_entries`, `jrn_categories`, `jrn_tags`, `jrn_entry_categories`, `jrn_entry_tags`, `jrn_entry_locations`, `jrn_entry_images`, `jrn_saved_filters`, `jrn_locations`, `jrn_location_categories`, `jrn_location_tags`, `jrn_reports`, `jrn_report_details` |
 | `exp_` | Expense tracker | `exp_transactions`, `exp_creditcard_accounts`, `exp_categories`, `exp_vendors`, `exp_post_import_rules`, `exp_post_import_rule_actions`, `exp_rule_types` |
 | `att_` | Attendance | `att_students`, `att_classes`, `att_class_enrollments`, `att_attendance_records`, `att_attendance_entries`, `att_student_actions`, `att_attendance_entry_actions` |
 | `ico_` | Icon customisation — platform-wide, not a feature module | `ico_slot_overrides` |
@@ -276,6 +276,68 @@ multipart with neither problem, and needs no `FileReader` in the browser. Conver
 base64 server-side if the use-case wants it. `saveModuleCarouselImageAction` is the
 worked example. Also check the size **client-side** before uploading, so an oversized
 file is refused instantly with the app's own wording instead of a 500.
+
+## Stored SQL: the Journal report WHERE fragment
+
+Journal Reports (migration 0132) is the **only** place in the app where a stored
+string becomes live SQL without being parameterised. It exists because the
+filter-query syntax can't express a subquery or a `HAVING`, and the one person who
+owns this database legitimately wants that reach. It is also the one thing here
+worth being careful about, so the rules are explicit.
+
+A report selects its entries one of two ways, named by `jrn_reports.where_mode`:
+
+| Mode | Column | Who | How it becomes SQL |
+|---|---|---|---|
+| `filter` (default) | `where_query` | anyone with Journal access | `parseFilterQuery` → `buildFilterSql`, whose `FIELD_COLUMNS` allowlist means **no user text ever reaches SQL as an identifier** |
+| `sql` | `where_sql` | **admins only** | spliced into the `WHERE` after `assertReadOnlyFragment` |
+
+**If you add a screen that stores SQL, reuse this shape — don't invent a second one.**
+
+Three rules the raw-SQL path follows, each for a reason that has a failure behind it:
+
+1. **Validate on save AND on run.** `assertReadOnlyFragment`
+   (`src/lib/journal-reports/sql-guard.ts`) runs in both places. Validating only
+   on save makes *the table* the trust boundary, and the table is a file on a
+   NAS that gets restored from backups and hand-edited in SQL Explorer.
+2. **Gate in the action, not the UI.** `saveReportAction` and
+   `previewReportAction` both call `requireAdmin()` when the mode is `sql`.
+   Hiding the editor's toggle protects nothing — a server action is its own POST
+   endpoint. Note the *preview* needs the same gate as the save: without it,
+   previewing is a way to execute arbitrary SQL without ever storing a report.
+3. **Parenthesise the fragment before appending anything.** `compileReportWhere`
+   emits `(<fragment>) AND e.is_encrypted = 0`. Unparenthesised, a fragment
+   containing `OR` binds as `a OR (b AND excluded)` and quietly pulls encrypted
+   entries back in through the left branch.
+
+The guard blanks string literals before keyword-matching, so `title LIKE
+'%update%'` is accepted while a live `UPDATE` is not. It is **not** a SQL parser
+and not a defence against someone who already holds an admin session — it is a
+guard against a mistyped or over-ambitious fragment destroying data in a
+single-user app whose database has no second copy. Say that plainly rather than
+implying the fragment is sandboxed.
+
+**Encrypted entries are excluded by the runner, in both modes.** An encrypted
+entry (migration 0131) has `title = ''` and `content = ''`, so including one
+prints a blank row — a failure that reads as a broken template rather than a
+wrong filter. Appending `AND e.is_encrypted = 0` in code means no report author
+has to remember it, and forgetting it is not a possible mistake.
+
+### The stored HTML is a template, not output
+
+`jrn_report_details.html` holds `{{field}}` markup, never rendered HTML. Storing
+finished output would freeze a snapshot that never reflects entries written
+later. The renderer is a **substitution pass, not an interpreter**: there is no
+loop construct, and aggregates come from prebuilt `{{table.*}}` placeholders
+precisely so there doesn't have to be one. If a new report needs a construct the
+substitution can't express, add a `{{table.*}}` for it in `render.ts` rather than
+growing a template language that lives in a database column.
+
+Every substituted **value** is HTML-escaped (`escapeHtml`); the **template** is
+sanitised on save (`sanitizeReportHtml` strips `<script>`, `on*=` handlers and
+`javascript:`/`data:` URLs). Those are different jobs: the values are journal
+data and must print as text, the template is author-written markup that must keep
+working. Don't collapse them into one pass.
 
 ## The message queue: telling the reader something after the fact
 

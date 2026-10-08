@@ -857,6 +857,109 @@ html[data-viewport="compact"] {
     linear-gradient(114deg, rgba(255, 255, 255, 0.02), rgba(0, 0, 0, 0.02));
 }
 
+/* An unrolled scroll — the Daily Quote card's body. A style hook, not a layout
+   class: it carries no geometry of its own beyond the curl's own height, so the
+   widget keeps owning its spacing (design.md, "give decoration its own
+   geometry-free hook").
+
+   Three pieces that only make sense together:
+     `.scroll-sheet` — the hanging sheet between the two rolls.
+     `.scroll-roll`  — one rolled dowel. The top one is the bare class; the
+                       bottom adds `.scroll-roll-bottom`, which flips it so both
+                       catch the same overhead light.
+
+   Everything is translucent black and white over the theme's own surface, the
+   same rule `.paper-texture` follows — a literal parchment tan would be right on
+   Daybreak and wrong on Signal Deck. The lit edges mix through `--edge-lit`
+   against `--ink`, so the highlight that sells the curl is near-white on a dark
+   theme and near-black on a light one, exactly as `.card-embossed` does it. No
+   cast shadow carries the depth, because a cast reads as nothing on a dark page.
+
+   The sheet's two edge gradients are the inside of the curl: the paper darkens
+   as it turns under the dowel at each end, which is what stops the rolls from
+   reading as two bars parked above and below a rectangle. */
+.scroll-sheet {
+  background-image:
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--edge-lit) 9%, transparent) 0px,
+      transparent 10px
+    ),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.16), transparent 18px),
+    linear-gradient(to top, rgba(0, 0, 0, 0.16), transparent 18px),
+    linear-gradient(100deg, rgba(255, 255, 255, 0.025), rgba(0, 0, 0, 0.025));
+  box-shadow:
+    inset 1px 0 0 rgba(0, 0, 0, 0.1),
+    inset -1px 0 0 rgba(0, 0, 0, 0.1);
+}
+
+/* The dowel. A cylinder is a highlight band running along its length with the
+   surface falling off to shadow on both sides, so this is one vertical gradient
+   with a lit stripe a third of the way down — off-centre, because a centred
+   highlight reads as a flat stripe rather than a turned surface.
+
+   `border-radius` on the long edges only: the ends are cut, as a rolled sheet's
+   are. The 1px ring keeps it legible where the theme's paper and the dowel's
+   darkest point land close together. */
+.scroll-roll {
+  height: 14px;
+  border-radius: 9px / 7px;
+  background-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.26) 0%,
+    color-mix(in srgb, var(--edge-lit) 20%, transparent) 34%,
+    color-mix(in srgb, var(--edge-lit) 7%, transparent) 52%,
+    rgba(0, 0, 0, 0.2) 82%,
+    rgba(0, 0, 0, 0.3) 100%
+  );
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--edge-lit) 10%, rgba(0, 0, 0, 0.2)),
+    0 1px 3px -1px rgba(0, 0, 0, 0.28);
+}
+
+/* The bottom roll is the top one turned over, so its lit band sits below centre
+   and both dowels catch the same overhead light.
+
+   The flip takes the cast shadow with it, which would throw it upward onto the
+   sheet. Re-declared here pointing down the other way, so after the flip it
+   lands under the dowel where gravity put it — the same "a cast falls away from
+   the light" rule that splits `.nav-raised-top` from `-bottom`. */
+.scroll-roll-bottom {
+  transform: scaleY(-1);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--edge-lit) 10%, rgba(0, 0, 0, 0.2)),
+    0 -1px 3px -1px rgba(0, 0, 0, 0.28);
+}
+/* The bottom dowel when it carries the widget's controls (Daily Quote).
+
+   A plain `.scroll-roll` is a 14px decorative bar with a fixed height; this one
+   has to grow to whatever the glyphs inside it need, so the height becomes a
+   minimum and the radius scales with it. Everything else — the gradient, the
+   ring, the downward cast — is inherited from the two classes it composes with,
+   so the lit band still reads as the same turned surface.
+
+   This is why it is NOT paired with `.scroll-roll-bottom`, which is how the
+   decorative bottom dowel gets its lighting: that class works by `scaleY(-1)`,
+   and flipping the box would flip the text and glyphs inside it too. So this
+   re-declares the gradient bottom-up itself (`to top`) — the same turned surface,
+   without standing the contents on their heads. `transform: none` is belt and
+   braces in case the two are ever written together. */
+.scroll-roll-controls {
+  height: auto;
+  min-height: 30px;
+  border-radius: 10px / 9px;
+  transform: none;
+  background-image: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.26) 0%,
+    color-mix(in srgb, var(--edge-lit) 20%, transparent) 34%,
+    color-mix(in srgb, var(--edge-lit) 7%, transparent) 52%,
+    rgba(0, 0, 0, 0.2) 82%,
+    rgba(0, 0, 0, 0.3) 100%
+  );
+}
+
+
 /* The app's uploaded background picture (migrations/0063, 0064, 0113, 0116).
 
    ONE rule for both sources. The picture behind a screen comes either from the
@@ -1834,6 +1937,92 @@ html[data-music-player="minimized"] {
   .shortcut-tile:active {
     transform: none;
   }
+}
+
+/* A rendered Journal report's own markup (migration 0132).
+   
+   The author writes plain HTML -- <h2>, <table>, <article> -- with no classes,
+   because a stored template cannot know this app's utility classes and should
+   not have to. Tailwind's preflight strips default element styling, so without
+   these rules a report's headings and tables render as undifferentiated text.
+   
+   Scoped to `.report-output` so it styles only the injected markup and can
+   never leak into the app's own chrome. Colors come from theme tokens, so a
+   report follows the active theme on screen; the print block below forces
+   ink-on-white for paper. */
+.report-output h1 {
+  font-family: var(--font-display), serif;
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.2;
+  margin: 0 0 0.5rem;
+  color: var(--ink);
+}
+
+.report-output h2 {
+  font-family: var(--font-display), serif;
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 1.25rem 0 0.4rem;
+  color: var(--ink);
+}
+
+.report-output h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 1rem 0 0.25rem;
+  color: var(--ink);
+}
+
+.report-output p {
+  margin: 0.4rem 0;
+}
+
+.report-output ul,
+.report-output ol {
+  margin: 0.4rem 0 0.4rem 1.25rem;
+  list-style: revert;
+}
+
+.report-output table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.6rem 0;
+}
+
+.report-output th,
+.report-output td {
+  border-bottom: 1px solid var(--line);
+  padding: 0.3rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.report-output th {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.report-output article {
+  margin: 1rem 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.report-output article:last-child {
+  border-bottom: 0;
+}
+
+.report-output small {
+  color: var(--muted);
+}
+
+.report-output a {
+  color: var(--brass);
+  text-decoration: underline;
 }
 
 /* Printing (and "Save as PDF"): print the `.print-sheet` element alone as a clean

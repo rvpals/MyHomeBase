@@ -546,6 +546,19 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    // The Recycle Bin became a section of its own because the recycle card was only
+    // reachable through CSV Import → Correct — a path whose name says nothing about
+    // deleted entries. The card keeps its own `journal_card_recycled_entries` slot;
+    // this one is the nav row, which is a different place and so a different slot.
+    id: "journal_section_recycle_bin",
+    label: "Recycle Bin",
+    group: "Journal sections",
+    where: "Journal → section panel → Data Management → Recycle Bin.",
+    defaultConcept: "trash",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     // The id stays `journal_section_log` even though Log is no longer a section —
     // it is the second tab of Entries now. Slot ids are persisted in
     // `ico_slot_overrides.slot_id`, so renaming one orphans any icon already
@@ -646,6 +659,50 @@ export const ICON_SLOTS: IconSlot[] = [
     label: "Location Meta Data",
     group: "Journal sections",
     where: "Journal → section panel → Locations → Location Meta Data.",
+    defaultConcept: "shapes",
+    wired: true,
+    namespace: "tree",
+  },
+  // --- Journal reports (migration 0132) -----------------------------------
+  //
+  // A group of their own rather than more "Journal cards" entries: these mark
+  // the Report section's own screens, not the Home dashboard's cards.
+  //
+  // Deliberately NOT slotted: the delete and duplicate row actions, and the
+  // Print button. Those are row actions and controls rather than places, which
+  // coding-guide.md keeps as bare glyphs.
+  {
+    id: "journal_report_list",
+    label: "Reports list",
+    group: "Journal reports",
+    where: "Journal → Report → the list-of-reports card header.",
+    defaultConcept: "chart",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "journal_report_run",
+    label: "Run report",
+    group: "Journal reports",
+    where: "Journal → Report → the Run action on each report row.",
+    defaultConcept: "window",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "journal_report_edit",
+    label: "Edit report",
+    group: "Journal reports",
+    where: "Journal → Report → the Edit action on each report row.",
+    defaultConcept: "sliders",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "journal_report_field",
+    label: "Insert field",
+    group: "Journal reports",
+    where: "Journal → Report → editor → the insert-field picker button.",
     defaultConcept: "shapes",
     wired: true,
     namespace: "tree",

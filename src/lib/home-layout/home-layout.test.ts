@@ -12,7 +12,7 @@ import {
 
 describe("defaultHomeLayout", () => {
   it("ships as one column with no personal opinion", () => {
-    expect(defaultHomeLayout()).toEqual({ columns: 1, order: [] });
+    expect(defaultHomeLayout()).toEqual({ columns: 1, order: [], hidden: [] });
   });
 });
 

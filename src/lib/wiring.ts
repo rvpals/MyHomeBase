@@ -39,6 +39,7 @@ import { SharpIconImageProcessor } from "./icons/image-processor";
 import { SqliteIconOverridesRepository } from "./icons/repository";
 import { SqliteJournalRepository } from "./journal/repository";
 import { SqliteSavedLocationRepository } from "./journal-locations/repository";
+import { SqliteJournalReportRepository } from "./journal-reports/repository";
 import { NodePhotoFileStore } from "./journal-photos/file-store";
 import { YahooFinanceClient } from "./market-data/yahoo-finance-client";
 import { SqliteMenuItemOverrideRepository } from "./menu-items/repository";
@@ -220,6 +221,10 @@ export const deps = {
   // own rather than more methods on journalRepo: the library owns its own five
   // tables and nothing in the journal's reads consults them.
   savedLocationRepo: new SqliteSavedLocationRepository(db),
+  // Journal Reports (migration 0132). Its own repository rather than more
+  // methods on journalRepo: it owns jrn_reports and jrn_report_details, and the
+  // journal's own reads never consult either.
+  journalReportRepo: new SqliteJournalReportRepository(db),
   /**
    * A read-only view of the photo archive at `root`.
    *

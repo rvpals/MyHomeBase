@@ -397,6 +397,12 @@ export interface JournalEntryTally {
    * that sums to the total.
    */
   logCount: number;
+  /**
+   * How many entries sit in the recycle bin. Unlike the other three this one is
+   * *not* a view of `totalCount` — binned rows live in `jrn_recycled_entries`
+   * and have already left the journal, so it counts a disjoint population.
+   */
+  recycledCount: number;
 }
 
 export function countAllEntries(repo: JournalRepository): JournalEntryTally {
@@ -404,6 +410,7 @@ export function countAllEntries(repo: JournalRepository): JournalEntryTally {
     totalCount: repo.countAllEntries(),
     lockedCount: repo.countLockedEntries(),
     logCount: repo.countLogEntries(),
+    recycledCount: repo.countRecycledEntries(),
   };
 }
 

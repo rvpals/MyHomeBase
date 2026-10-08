@@ -2,6 +2,7 @@ import { FLOATING_STATE_KEYS, floatingStateToValue, puckCornerKey } from "@/lib/
 import {
   homeLayoutPartialUpdateSchema,
   homeWidgetOrderToValue,
+  hiddenHomeWidgetsToValue,
   type HomeLayoutPartialUpdate,
 } from "@/lib/home-layout";
 import type { UserPreferencesRepository } from "./ports";
@@ -120,16 +121,18 @@ export function saveFloatingCorner(
 
 /**
  * Records this reader's home screen arrangement — the column count, the card order,
- * or both.
+ * the cards they have closed, or any combination.
  *
  * Single-key writes, like `saveFloatingState` above and for the same reason: this
- * fires on every drop and every flip of the column switch, and resending the whole
- * preference set each time would let a stale home screen clobber a favorite the reader
- * changed in another tab. Each field is optional, so flipping to one column cannot
- * blank an order the reader spent time arranging.
+ * fires on every drop, every flip of the column switch and every card closed, and
+ * resending the whole preference set each time would let a stale home screen clobber a
+ * favorite the reader changed in another tab. Each field is optional, so flipping to
+ * one column cannot blank an order the reader spent time arranging, and closing a card
+ * cannot rewrite either.
  *
- * Writes only — it does not read the household `home_widgets` setting and cannot
- * change which cards are drawn. Rearranging is all this can do.
+ * Writes only — it does not read the household `home_widgets` setting and cannot make
+ * a card an admin hid appear. `hidden` subtracts from what that setting allows; it
+ * never adds, and `applyHiddenWidgets` is where that is enforced on the way out.
  */
 export function saveHomeLayout(
   repo: UserPreferencesRepository,
@@ -145,6 +148,13 @@ export function saveHomeLayout(
       userId,
       USER_PREFERENCE_KEYS.homeWidgetOrder,
       homeWidgetOrderToValue(validated.order),
+    );
+  }
+  if (validated.hidden !== undefined) {
+    repo.setValue(
+      userId,
+      USER_PREFERENCE_KEYS.homeHiddenWidgets,
+      hiddenHomeWidgetsToValue(validated.hidden),
     );
   }
 }

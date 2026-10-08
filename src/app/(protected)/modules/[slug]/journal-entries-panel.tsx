@@ -51,6 +51,12 @@ export interface JournalEntriesPanelProps {
    * is also given — a named filter is the more specific instruction.
    */
   filterQuery?: string;
+  /**
+   * Which tab to open on — "log" for the Log tab, anything else (or nothing)
+   * for Main. Not validated here: `Tabs` falls back to its first tab on a key
+   * it doesn't recognise, so a stale `?tab=` lands on Main rather than 404ing.
+   */
+  initialTab?: string;
   /** Optional heading, for embedding outside the Entries section. */
   title?: string;
   description?: string;
@@ -59,6 +65,7 @@ export interface JournalEntriesPanelProps {
 export function JournalEntriesPanel({
   filterName,
   filterQuery,
+  initialTab,
   title,
   description,
 }: JournalEntriesPanelProps) {
@@ -122,6 +129,7 @@ export function JournalEntriesPanel({
       initialFilterId={initialFilterId}
       appliedQuery={appliedQuery}
       queryError={queryError}
+      initialTab={initialTab}
       title={title}
       description={description}
       logEntries={listLogEntries(deps.journalRepo, ENTRIES_LIMIT)}

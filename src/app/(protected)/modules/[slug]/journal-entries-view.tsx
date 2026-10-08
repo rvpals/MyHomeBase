@@ -112,6 +112,7 @@ export function JournalEntriesView({
   initialFilterId,
   appliedQuery,
   queryError,
+  initialTab,
   title,
   description,
   logEntries,
@@ -130,6 +131,10 @@ export function JournalEntriesView({
       )}
 
       <Tabs
+        // Uncontrolled still — the tab is a starting point, not state the URL
+        // keeps in step. `Tabs` ignores a key it doesn't know and shows Main,
+        // so no validation is needed on the way in.
+        defaultActiveKey={initialTab === "log" ? "log" : "main"}
         items={[
           {
             key: "main",
@@ -190,6 +195,12 @@ export interface JournalEntriesViewProps {
   appliedQuery?: { text: string; description: string };
   /** Why a supplied filterName/filterQuery couldn't be used. */
   queryError?: string;
+  /**
+   * Which tab to open on — only "log" does anything, everything else lands on
+   * Main. The Statistics card's "Total Log Entries" tile is what sets it;
+   * `?filter=` can't reach the Log tab, since it only ever narrows Main.
+   */
+  initialTab?: string;
   /** Overrides for the heading above the grid, when embedded outside the section. */
   title?: string;
   description?: string;

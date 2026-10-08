@@ -2,10 +2,14 @@
 
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/button";
+import { Modal } from "@/components/modal";
 import { TreeIcon } from "@/components/tree-icons";
 import type { HomeWidgetId } from "@/lib/home-dashboard";
 import {
+  applyHiddenWidgets,
   applyPersonalOrder,
+  hideHomeWidget,
+  orderWithHiddenPreserved,
   reorderHomeWidgets,
   type HomeColumnCount,
 } from "@/lib/home-layout";
@@ -68,15 +72,22 @@ export function HomeWidgetGrid({
   items,
   initialColumns,
   initialOrder,
+  initialHidden,
 }: {
   /** The cards to draw, in the household order the page resolved. */
   items: HomeWidgetItem[];
   initialColumns: HomeColumnCount;
   /** This reader's stored arrangement, or `[]` when they have never dragged. */
   initialOrder: HomeWidgetId[];
+  /** The cards this reader has closed, or `[]` when they have closed none. */
+  initialHidden: HomeWidgetId[];
 }) {
   const [columns, setColumns] = useState<HomeColumnCount>(initialColumns);
   const [order, setOrder] = useState<HomeWidgetId[]>(initialOrder);
+  const [hidden, setHidden] = useState<HomeWidgetId[]>(initialHidden);
+  // The card the reader has pressed ✕ on, held until they confirm or cancel. The whole
+  // item rather than the id, so the dialog can name it without a second lookup.
+  const [confirmClose, setConfirmClose] = useState<HomeWidgetItem | undefined>();
   const [draggingId, setDraggingId] = useState<HomeWidgetId | undefined>();
   // The card the pointer is currently over, for the drop indicator. Separate from
   // `draggingId` because the two are different cards for the whole of a drag.
@@ -86,10 +97,16 @@ export function HomeWidgetGrid({
   // render rather than held in state: `items` is the server's answer to "what is
   // drawn today", and a copy in state would go stale the moment a card's data
   // appears or disappears.
-  const laid = applyPersonalOrder(
+  //
+  // Closed cards come out *first*, then the rest are ordered: filtering after would
+  // let a closed card occupy a position in the arrangement, and `applyPersonalOrder`
+  // appends anything it is not told about — so an order written while a card was
+  // closed would silently reopen it on the next drag.
+  const drawable = applyHiddenWidgets(
     items.map((item) => item.id),
-    order,
+    hidden,
   );
+  const laid = applyPersonalOrder(drawable, order);
   const byId = new Map(items.map((item) => [item.id, item]));
   const ordered = laid.flatMap((id) => {
     const item = byId.get(id);
@@ -121,15 +138,33 @@ export function HomeWidgetGrid({
     if (!draggingId) return;
     const next = reorderHomeWidgets(currentOrder, draggingId, targetId);
     setDraggingId(undefined);
-    if (next !== currentOrder) persistOrder(next);
+    // Reordered among the visible cards, then written with the closed ones folded
+    // back in, so closing a card never costs it its place in the arrangement.
+    if (next !== currentOrder) persistOrder(orderWithHiddenPreserved(next, order, hidden));
   }
 
   // "No opinion" is the empty order — the same value a fresh account has — so reset
   // hands the reader back to whatever the household default currently is rather than
-  // freezing today's default into their row.
+  // freezing today's default into their row. Clearing the closed set is part of the
+  // same gesture: this is the only route back for a closed card, so a reset that left
+  // one hidden would be a dead end.
   function handleReset() {
     setOrder([]);
-    void setHomeLayoutAction({ order: [] });
+    setHidden([]);
+    void setHomeLayoutAction({ order: [], hidden: [] });
+  }
+
+  // The ✕, after the reader has confirmed. Only `hidden` is written — the card keeps
+  // its place in the stored order, so reopening it via Reset puts it back where the
+  // reader had dragged it rather than at the end.
+  function handleClose(id: HomeWidgetId) {
+    setConfirmClose(undefined);
+    const next = hideHomeWidget(hidden, id);
+    if (next === hidden) return;
+    setHidden(next);
+    // Not awaited, like the reorder above: the card has already gone from the screen,
+    // and a failed write costs a remembered preference, not a navigation.
+    void setHomeLayoutAction({ hidden: next });
   }
 
   const isTwoColumn = columns === 2;
@@ -159,10 +194,17 @@ export function HomeWidgetGrid({
         >
           <TreeIcon name="grid" className="h-4 w-4" />
         </Button>
-        {/* Only worth offering once there is something to reset. */}
-        {order.length > 0 && (
-          <Button size="sm" variant="secondary" onClick={handleReset} title="Reset to the default order">
-            Reset order
+        {/* Only worth offering once there is something to reset — an arrangement, a
+            closed card, or both. This is the one way back for a closed card, so the
+            condition has to cover `hidden` as well as `order`. */}
+        {(order.length > 0 || hidden.length > 0) && (
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={handleReset}
+            title="Restore the default order and bring back any cards you have closed"
+          >
+            Reset layout
           </Button>
         )}
       </div>
@@ -191,12 +233,18 @@ export function HomeWidgetGrid({
           return (
             <div
               key={item.id}
-              // The padding is what makes the border grabbable: without it the
-              // draggable element would be exactly the card, whose every pixel is
-              // already a toggle, a link or a chart.
-              className={`${item.spansBothColumns ? "xl:col-span-2" : ""} ${
+              // The padding does double duty. For a draggable card it is what makes
+              // the border grabbable — without it the draggable element would be
+              // exactly the card, whose every pixel is already a toggle, a link or a
+              // chart. For every card it is what keeps the ✕ off the card's own
+              // top-right corner, which on a `CollapsibleCard` is its toggle.
+              //
+              // `relative` and `group` are unconditional for the same reason: the ✕ is
+              // positioned against this wrapper and revealed by its hover, on a
+              // draggable card and a spanning one alike.
+              className={`group relative p-1.5 ${item.spansBothColumns ? "xl:col-span-2" : ""} ${
                 canDrag
-                  ? "group relative cursor-grab rounded-xl p-1.5 transition-shadow active:cursor-grabbing motion-reduce:transition-none"
+                  ? "cursor-grab rounded-xl transition-shadow active:cursor-grabbing motion-reduce:transition-none"
                   : ""
               } ${isDragging ? "opacity-40" : ""} ${
                 // The two rings are written as one choice rather than two classes:
@@ -231,6 +279,41 @@ export function HomeWidgetGrid({
                 setDropTargetId(undefined);
               }}
             >
+              {/*
+                The close affordance.
+
+                `hidden xl:block` with the control strip, deliberately: Reset layout is
+                the only route back for a closed card and it only renders at 1280px, so
+                offering the ✕ on a phone would be a one-way door. See design.md.
+
+                Revealed on hover or keyboard focus rather than drawn permanently —
+                a visible ✕ on every card is standing chrome paid for an action taken
+                once, the same argument the drag handle lost. `focus-within` keeps it
+                reachable by Tab, where hover alone would make it keyboard-only-invisible.
+
+                `draggable={false}` so a press on the ✕ starts a click, not a drag of
+                the card underneath it.
+              */}
+              <button
+                type="button"
+                draggable={false}
+                onClick={() => setConfirmClose(item)}
+                aria-label={`Close ${item.label}`}
+                title={`Close ${item.label}`}
+                className="absolute right-3 top-3 z-10 hidden rounded-md bg-paper-raised/90 p-1 text-muted opacity-0 transition-opacity hover:bg-brass-soft hover:text-brass-dark focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none xl:block"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  className="h-4 w-4"
+                  aria-hidden="true"
+                >
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
               {item.node}
             </div>
           );
@@ -244,6 +327,39 @@ export function HomeWidgetGrid({
           Drag a card by its edge to rearrange. Your arrangement is saved
           automatically.
         </p>
+      )}
+
+      {/*
+        Confirm before closing. `Modal` directly rather than `BulkConfirm`, whose whole
+        value is a count of a ticked selection — there is no selection here, and "1 card
+        selected" would be answering a question nobody asked.
+
+        The dialog names the card, because "Close this card?" is exactly as unhelpful as
+        "Are you sure?" when six of them are on screen.
+      */}
+      {confirmClose && (
+        <Modal
+          title={`Close ${confirmClose.label}?`}
+          description="It will be hidden on your home screen only — everyone else still sees it."
+          onClose={() => setConfirmClose(undefined)}
+          size="sm"
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setConfirmClose(undefined)}>
+                Cancel
+              </Button>
+              {/* "primary", not "danger": nothing is deleted and Reset layout brings
+                  it back. */}
+              <Button variant="primary" onClick={() => handleClose(confirmClose.id)}>
+                Close card
+              </Button>
+            </>
+          }
+        >
+          <p className="text-sm text-ink">
+            You can bring it back with <strong>Reset layout</strong>, above the cards.
+          </p>
+        </Modal>
       )}
     </div>
   );

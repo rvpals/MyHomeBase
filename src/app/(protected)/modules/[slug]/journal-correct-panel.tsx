@@ -9,15 +9,20 @@
 
 import { findDuplicateGroups, listCategories, listEntries, listRecycledEntries, listTags } from "@/lib/journal";
 import { deps } from "@/lib/wiring";
-import { JournalCorrectView } from "./journal-correct-view";
+import { JournalCorrectView, type JournalCorrectViewMode } from "./journal-correct-view";
 import { journalTaxonomyIconUrlsByName } from "./journal-shared";
 
-export function JournalCorrectPanel() {
+export function JournalCorrectPanel({ show = "both" }: { show?: JournalCorrectViewMode } = {}) {
   // The whole journal, not a page of it: two entries duplicating each other in
   // 2019 are exactly what this screen exists to find, and any limit here would
   // hide them. The excerpt is cut to 100 words inside findDuplicateGroups, so
   // what crosses to the client is bounded even though this read isn't.
-  const duplicateGroups = findDuplicateGroups(listEntries(deps.journalRepo));
+  //
+  // Skipped entirely for the Recycle Bin section: that screen never renders the
+  // Duplicates card, so reading and grouping every entry in the journal would be
+  // pure cost. The recycle bin alone is a cheap, bounded query.
+  const duplicateGroups =
+    show === "both" ? findDuplicateGroups(listEntries(deps.journalRepo)) : [];
   const recycledEntries = listRecycledEntries(deps.journalRepo);
 
   const categories = listCategories(deps.journalRepo);
@@ -27,6 +32,7 @@ export function JournalCorrectPanel() {
     <JournalCorrectView
       duplicateGroups={duplicateGroups}
       recycledEntries={recycledEntries}
+      show={show}
       categoryIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("category", categories))}
       tagIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("tag", tags))}
     />

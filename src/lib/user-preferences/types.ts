@@ -67,14 +67,15 @@ export interface UserPreferences {
    */
   expandedModules: string[];
   /**
-   * This reader's own home screen arrangement: how many columns, and in what order
-   * their cards sit.
+   * This reader's own home screen arrangement: how many columns, in what order their
+   * cards sit, and which they have closed.
    *
    * Personal, unlike the `home_widgets` app setting — that one stays household-wide
    * and admin-owned, and still decides *which* cards exist and their default order.
-   * This only ever rearranges what that setting already allowed; see
-   * `applyPersonalOrder`. The two were always going to separate: the catalogue's own
-   * doc comment predicted a per-user layout would be "a different feature".
+   * This rearranges and subtracts from what that setting already allowed, never adds
+   * to it; see `applyPersonalOrder` and `applyHiddenWidgets`. The two were always
+   * going to separate: the catalogue's own doc comment predicted a per-user layout
+   * would be "a different feature".
    *
    * Full layout only, like `expandedModules` — the column switch and the drag both
    * render above the two-column breakpoint, so a phone reads the stored value and

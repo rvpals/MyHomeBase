@@ -262,6 +262,7 @@ Reach for one of these before writing a new `shadow-[...]`:
 | `.shell-slab-raised` | The **module rail and section panel** — the sanctioned surface exception | `Button`'s hard `4px` offset, rotated to point right, in translucent black (not `--line`, which vanishes on light themes) + a hairline ring |
 | `.shell-accent-text` | The accent green for text and glyphs on a `--brass-soft` tint in the **compact nav bar and its sheet** — not a general replacement for `--brass-dark` | `color-mix(--brass 78%, --ink)`: brightens toward `--brass` on a dark theme and deepens on a light one, because neither token alone clears AA on all eight (Signal Deck wants `--brass`, Daybreak wants `--brass-dark`) |
 | `.paper-texture` | A card that should read as a **physical sheet** — the journal's New Journal card, the Daily Quote card, and the Content field in Handwriting mode | translucent fibre grid + diagonal sheen, **no tint of its own** — so it needs a surface (`bg-paper-raised`) under it; over a dark stage on its own it renders as hairlines on black |
+| `.scroll-sheet` / `.scroll-roll` (+ `.scroll-roll-bottom`, `.scroll-roll-controls`) | The **Daily Quote** widget, drawn as an unrolled scroll — a dowel, the hanging sheet, a dowel. The lower dowel is also its control bar | the sheet darkens into the curl at each end; the dowel is one vertical gradient with its lit band off-centre, so it turns rather than reading as a stripe. Edges mix via `--edge-lit`, so the curl reads on every theme. `-bottom` flips a *decorative* dowel with `scaleY(-1)` and re-declares its cast, which the flip would otherwise throw upward; `-controls` instead grows to fit its contents and re-declares the gradient `to top`, because flipping a dowel that holds text would flip the text. Decoration only — the widget still owns width and padding |
 | `.playing-card-face` / `.playing-card-rim` / `.playing-card-back` | **Every playing card** — see [`PlayingCard`](components.md#playingcard) | lit top edge + shaded underside + diagonal sheen + inner hairline + two-stop cast |
 | `.playing-card-lifted` | A card in the **hand being acted on** | the same, cast grown; rises 2px by margin (see below) |
 | `.mahjong-tile` / `.mahjong-tile-face` / `.mahjong-tile-back` | **Every mahjong tile** — see [`MahjongTile`](components.md#mahjongtile) | a genuinely **extruded body** (a stack of hard 1px shadows walking down-right) + a face inset with a carved lip; `--tile-depth` sets the thickness per size |
@@ -621,10 +622,36 @@ When you add a second column somewhere, `xl:` is the default; `lg:` needs a reas
 - A full-bleed card opts out with `xl:col-span-2`. The module carousel scrolls
   horizontally; half the width defeats it.
 
+**Closing a card is `xl:` too, and for a harder reason than taste.** Each card carries a
+`✕` in its top-right corner that hides it **for that reader only**, confirmed through a
+`Modal` that names the card. The way back is the control strip's **Reset layout**, which
+also only renders at 1280px — so putting the `✕` on a phone would be a one-way door, a
+card dismissed with no reachable control to bring it back. Where an affordance and its
+undo live at different breakpoints, the affordance follows the undo.
+
+The hidden list is per-reader (`home_hidden_widgets`), separate from the household
+`home_widgets` setting an admin owns, and strictly **subtractive**: `applyHiddenWidgets`
+runs over the list the page already decided to draw, so a reader can hide a card an admin
+shows but never resurrect one an admin hid. The `✕` is revealed on hover or focus rather
+than drawn permanently — standing chrome on every card is a cost paid once for an action
+taken once.
+
 **`CollapsibleCard` itself was not changed for any of this, and must not be.** It has no
 width of its own — it fills whatever its parent gives it — so two-up is a *container*
 decision. A `halfWidth` prop could not work anyway: columns are declared by the parent, so
 a card can't place itself beside its sibling.
+
+**One home widget has no card, and it is the only one.** Daily Quote renders as a bare
+scroll (`.scroll-sheet` + two `.scroll-roll`s). A scroll is already a complete object
+with its own edges, so a card around it drew a second, squarer frame a few pixels outside
+the first — two borders describing the same thing. The licence is narrow and it is the
+content’s own shape: a widget whose body is rows, numbers or a chart has no edges of its
+own and still takes a `CollapsibleCard`. Dropping the card costs the **collapse** (judged
+cheap — the scroll is shorter than the card was) and nothing else: close and
+drag-to-rearrange live on `HomeWidgetGrid`’s wrapper, which works on any node. The
+quote’s own controls moved onto the lower dowel — the one place in the app where standing
+chrome beat a hover reveal, because drawing a new quote is what the widget is *for*, where
+closing a card is done once.
 
 ## Navigation: the tree (desktop) and the two-tier bar (compact)
 

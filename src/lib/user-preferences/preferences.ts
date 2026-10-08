@@ -2,6 +2,8 @@ import { resolveClockFaceOptions } from "@/lib/clock";
 import { resolvePuckCorners, resolveFloatingStates } from "@/lib/floating";
 import {
   homeWidgetOrderToValue,
+  hiddenHomeWidgetsToValue,
+  resolveHiddenHomeWidgets,
   resolveHomeColumns,
   resolveHomeWidgetOrder,
 } from "@/lib/home-layout";
@@ -20,15 +22,17 @@ export const USER_PREFERENCE_KEYS = {
   // small, always read and written whole, and a row per module would need
   // cleaning up every time a module is deleted.
   expandedModules: "nav_expanded_modules",
-  // This reader's own home screen arrangement. Two keys rather than one blob so the
-  // column switch and a drag write independently — flipping to one column must not
-  // rewrite an order the reader spent time on, and vice versa.
+  // This reader's own home screen arrangement. Three keys rather than one blob so the
+  // column switch, a drag and a card's own close write independently — flipping to one
+  // column must not rewrite an order the reader spent time on, and closing a card must
+  // not rewrite either.
   //
-  // Neither is the household `home_widgets` app setting, which is an app-settings row
-  // an admin owns. These decide only how *this* reader sees the cards that setting
-  // already allowed.
+  // None is the household `home_widgets` app setting, which is an app-settings row an
+  // admin owns. These decide only how *this* reader sees the cards that setting has
+  // already allowed — `home_hidden_widgets` can subtract from them, never add.
   homeColumns: "home_columns",
   homeWidgetOrder: "home_widget_order",
+  homeHiddenWidgets: "home_hidden_widgets",
   weatherLatitude: "weather_latitude",
   weatherLongitude: "weather_longitude",
   weatherPlaceName: "weather_place_name",
@@ -114,6 +118,7 @@ export function resolveUserPreferences(preferences: UserPreference[]): UserPrefe
     homeLayout: {
       columns: resolveHomeColumns(byKey.get(USER_PREFERENCE_KEYS.homeColumns)),
       order: resolveHomeWidgetOrder(byKey.get(USER_PREFERENCE_KEYS.homeWidgetOrder)),
+      hidden: resolveHiddenHomeWidgets(byKey.get(USER_PREFERENCE_KEYS.homeHiddenWidgets)),
     },
     weatherLocation: resolveWeatherLocation(byKey),
     // Anything unrecognised reads as Fahrenheit, matching the weather schema's own
@@ -188,6 +193,12 @@ export function userPreferencesToEntries(
         {
           key: USER_PREFERENCE_KEYS.homeWidgetOrder,
           value: homeWidgetOrderToValue(preferences.homeLayout.order),
+        },
+        // Blank means "nothing closed", the value `Reset layout` writes. Distinct
+        // from the key being absent, which leaves whatever is stored alone.
+        {
+          key: USER_PREFERENCE_KEYS.homeHiddenWidgets,
+          value: hiddenHomeWidgetsToValue(preferences.homeLayout.hidden),
         },
       ]
     : [];

@@ -54,7 +54,7 @@ import type {
 // Hand-written in-memory fake. It models the managed category/tag lists and the
 // entry<->name pairings (as the arrays on each entry) so the auto-register rule
 // and the delete-detaches-pairings rule can be asserted without a database.
-function fakeRepo(): JournalRepository {
+function fakeRepo(recycledCount = 0): JournalRepository {
   let entries: JournalEntry[] = [];
   let categories: JournalCategory[] = [];
   let tags: JournalTag[] = [];
@@ -479,7 +479,9 @@ function fakeRepo(): JournalRepository {
       return [];
     },
     // The recycle bin (0079) has its own use-cases and its own fake in
-    // recycle.test.ts. Nothing in this file exercises it.
+    // recycle.test.ts. Nothing in this file exercises the bin's behaviour —
+    // but `countAllEntries` now reads its size for the Statistics tile, so the
+    // count is backed by a number the tests can set while the rest still throw.
     recycleEntries() {
       throw new Error("not used in these tests");
     },
@@ -495,9 +497,7 @@ function fakeRepo(): JournalRepository {
     emptyRecycleBin() {
       throw new Error("not used in these tests");
     },
-    countRecycledEntries() {
-      throw new Error("not used in these tests");
-    },
+    countRecycledEntries: () => recycledCount,
     countEntriesByYearAndMonth() {
       throw new Error("not used in these tests");
     },
@@ -856,7 +856,12 @@ describe("countAllEntries", () => {
     createEntry(repo, { date: "2026-07-27" });
     createEntry(repo, { date: "2026-07-28", isLocked: true });
     createEntry(repo, { date: "2026-07-29", isLocked: true });
-    expect(countAllEntries(repo)).toEqual({ totalCount: 3, lockedCount: 2, logCount: 0 });
+    expect(countAllEntries(repo)).toEqual({
+      totalCount: 3,
+      lockedCount: 2,
+      logCount: 0,
+      recycledCount: 0,
+    });
   });
 
   it("counts Log entries separately, overlapping the locked count", () => {
@@ -866,7 +871,12 @@ describe("countAllEntries", () => {
     // sub-counts deliberately do not sum to the total.
     createEntry(repo, { date: "2026-07-28", categories: ["Log"], isLocked: true });
     createEntry(repo, { date: "2026-07-29", categories: ["Trip"] });
-    expect(countAllEntries(repo)).toEqual({ totalCount: 3, lockedCount: 1, logCount: 2 });
+    expect(countAllEntries(repo)).toEqual({
+      totalCount: 3,
+      lockedCount: 1,
+      logCount: 2,
+      recycledCount: 0,
+    });
   });
 
   it("reports zeroes for an empty journal", () => {
@@ -874,6 +884,21 @@ describe("countAllEntries", () => {
       totalCount: 0,
       lockedCount: 0,
       logCount: 0,
+      recycledCount: 0,
+    });
+  });
+
+  it("counts the recycle bin, which is not part of the total", () => {
+    // The bin holds rows that have already left `jrn_entries`, so a journal of
+    // two entries with three binned ones reports 2 and 3 — deliberately not 5.
+    const repo = fakeRepo(3);
+    createEntry(repo, { date: "2026-07-27" });
+    createEntry(repo, { date: "2026-07-28" });
+    expect(countAllEntries(repo)).toEqual({
+      totalCount: 2,
+      lockedCount: 0,
+      logCount: 0,
+      recycledCount: 3,
     });
   });
 });

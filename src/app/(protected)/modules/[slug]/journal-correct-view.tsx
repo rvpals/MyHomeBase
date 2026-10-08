@@ -33,16 +33,35 @@ import { journalEntriesFilterHref } from "./journal-shared";
 const DUPLICATES_SLOT = getIconSlot("journal_card_duplicates")!;
 const RECYCLED_SLOT = getIconSlot("journal_card_recycled_entries")!;
 
+/**
+ * Which cards to render.
+ *
+ * `"both"` is the Correct tab, unchanged. `"recycled"` is the standalone Recycle
+ * Bin section, which shows only the second card.
+ *
+ * This is a prop rather than a second component because the two cards share one
+ * state machine on purpose (see the component docblock): a delete moves an entry
+ * from one card to the other, and every action replaces both lists wholesale.
+ * Splitting the recycle card out would mean duplicating all five action handlers
+ * for a view that is already written and proven.
+ */
+export type JournalCorrectViewMode = "both" | "recycled";
+
 export interface JournalCorrectViewProps {
   duplicateGroups: DuplicateGroup[];
   recycledEntries: RecycledJournalEntry[];
   categoryIcons: Record<string, string>;
   tagIcons: Record<string, string>;
+  /** Defaults to `"both"`, so the existing Correct tab call site is unchanged. */
+  show?: JournalCorrectViewMode;
 }
 
 /**
- * The Correct tab: find duplicate entries and delete the redundant ones, then
- * restore or purge what those deletes produced.
+ * Find duplicate entries and delete the redundant ones, then restore or purge
+ * what those deletes produced.
+ *
+ * Two call sites, one component (see `show`): the Correct tab under CSV Import
+ * renders both cards, and the Recycle Bin section renders only the second.
  *
  * Both lists are `DataGrid`s — the registered result grid, which brings paging,
  * search, per-column filters, selection pruned to the filtered set, CSV export
@@ -60,6 +79,7 @@ export function JournalCorrectView({
   recycledEntries: initialRecycled,
   categoryIcons,
   tagIcons,
+  show = "both",
 }: JournalCorrectViewProps) {
   const router = useRouter();
   const [groups, setGroups] = useState(initialGroups);
@@ -238,49 +258,51 @@ export function JournalCorrectView({
       {error && <p className="text-sm text-red-400">{error}</p>}
       {notice && <p className="text-sm text-muted">{notice}</p>}
 
-      <CollapsibleCard
-        title="Duplicates"
-        titleIcon={<SlotIcon slot={DUPLICATES_SLOT} className="h-4 w-4" />}
-        defaultOpen
-      >
-        <div className="flex flex-col gap-3">
-          <p className="text-xs text-muted">
-            Entries sharing a date and a title — including ones written at different times of
-            the same day. Click a row to read the whole entry, tick the copies you don&apos;t
-            want, and Delete moves them to the recycle bin below rather than destroying them.
-          </p>
+      {show === "both" && (
+        <CollapsibleCard
+          title="Duplicates"
+          titleIcon={<SlotIcon slot={DUPLICATES_SLOT} className="h-4 w-4" />}
+          defaultOpen
+        >
+          <div className="flex flex-col gap-3">
+            <p className="text-xs text-muted">
+              Entries sharing a date and a title — including ones written at different times of
+              the same day. Click a row to read the whole entry, tick the copies you don&apos;t
+              want, and Delete moves them to the recycle bin below rather than destroying them.
+            </p>
 
-          <DataGrid
-            columns={duplicateColumns}
-            rows={duplicateRows}
-            getRowKey={(row) => row.id}
-            emptyMessage="No duplicate entries found."
-            exportFileName="journal-duplicates"
-            storageKey="journal-duplicates-grid"
-            enableSelection
-            onRowClick={(row) => void openLiveEntry(row.id)}
-            // The viewer modal is the record view here: it renders an entry
-            // properly, which the generic record read-out can't.
-            enableRecordView={false}
-            renderSelectionActions={(selectedRows, clearSelection) => (
-              <Button
-                size="sm"
-                variant="danger"
-                disabled={isBusy}
-                onClick={() =>
-                  setConfirm({
-                    kind: "recycle",
-                    ids: selectedRows.map((row) => row.id),
-                    clearSelection,
-                  })
-                }
-              >
-                Delete checked
-              </Button>
-            )}
-          />
-        </div>
-      </CollapsibleCard>
+            <DataGrid
+              columns={duplicateColumns}
+              rows={duplicateRows}
+              getRowKey={(row) => row.id}
+              emptyMessage="No duplicate entries found."
+              exportFileName="journal-duplicates"
+              storageKey="journal-duplicates-grid"
+              enableSelection
+              onRowClick={(row) => void openLiveEntry(row.id)}
+              // The viewer modal is the record view here: it renders an entry
+              // properly, which the generic record read-out can't.
+              enableRecordView={false}
+              renderSelectionActions={(selectedRows, clearSelection) => (
+                <Button
+                  size="sm"
+                  variant="danger"
+                  disabled={isBusy}
+                  onClick={() =>
+                    setConfirm({
+                      kind: "recycle",
+                      ids: selectedRows.map((row) => row.id),
+                      clearSelection,
+                    })
+                  }
+                >
+                  Delete checked
+                </Button>
+              )}
+            />
+          </div>
+        </CollapsibleCard>
+      )}
 
       <CollapsibleCard
         title="Recycled Entries"

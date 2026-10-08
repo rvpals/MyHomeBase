@@ -160,14 +160,49 @@ function TaxonomyList({
 // app — there is no shared stat-tile component, and design.md fixes the shape
 // (container / label / value) rather than the component. No glyph and no lift:
 // its siblings elsewhere carry neither, and this one sits inside a raised card.
-function StatTile({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-xl border border-line p-4">
+function StatTile({
+  label,
+  value,
+  href,
+  title,
+}: {
+  label: string;
+  value: number;
+  /**
+   * Where the tile goes when clicked. Optional because "Total Entries" has no
+   * destination worth having — the Entries section unfiltered is one nav click
+   * away and the tile would just be a second route to it.
+   */
+  href?: string;
+  /** Hover hint, so the destination is readable before committing to the click. */
+  title?: string;
+}) {
+  // The box is identical either way; only the wrapper differs. Written as one
+  // `body` reused by both branches rather than two near-copies, so a later
+  // change to the tile's shape can't drift between the linked and plain cases.
+  const body = (
+    <>
       <p className="text-xs font-medium uppercase tracking-wide text-muted">{label}</p>
       {/* Thousands separated, with a fixed locale rather than the browser's, so
           the figure doesn't change shape per visitor. */}
       <p className="mt-1 font-display text-xl text-ink">{value.toLocaleString("en-US")}</p>
-    </div>
+    </>
+  );
+
+  if (!href) return <div className="rounded-xl border border-line p-4">{body}</div>;
+
+  // `block` so the whole tile is the target, not just the text inside it — a
+  // card-sized hit area is the point on a phone. Hover lifts the border to brass
+  // rather than adding a shadow: design.md → "cards are calm", and the tile sits
+  // inside a raised card already.
+  return (
+    <Link
+      href={href}
+      title={title}
+      className="block rounded-xl border border-line p-4 transition-colors hover:border-brass focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+    >
+      {body}
+    </Link>
   );
 }
 
@@ -402,7 +437,8 @@ export function JournalView({
    *
    * `lockedCount` and `logCount` are separate views of the same population
    * rather than a breakdown: a locked Log entry is in both, so the two do not
-   * sum to `totalCount`.
+   * sum to `totalCount`. `recycledCount` is different again — binned entries
+   * have left the journal, so it counts rows `totalCount` does not include.
    */
   tally: JournalEntryTally;
   /** The most-used words across every entry, already ranked and trimmed. */
@@ -469,14 +505,39 @@ export function JournalView({
           yearAndMonthCounts.length > 0
         }
       >
-        {/* Three counters in the house stat-tile shape (design.md -> "Stat tiles
+        {/* Four counters in the house stat-tile shape (design.md -> "Stat tiles
             / summary numbers"). `max-lg:grid-cols-1` stacks them on a phone and
             leaves the desktop columns untouched — the same arrangement the
-            attendance report's three tiles use. */}
-        <div className="mb-8 grid grid-cols-3 gap-4 max-lg:grid-cols-1">
+            attendance report's tiles use. Four across on desktop rather than
+            three-plus-an-orphan on a second row. */}
+        <div className="mb-8 grid grid-cols-4 gap-4 max-lg:grid-cols-1">
           <StatTile label="Total Entries" value={tally.totalCount} />
-          <StatTile label="Total Locked Entries" value={tally.lockedCount} />
-          <StatTile label="Total Log Entries" value={tally.logCount} />
+          <StatTile
+            label="Total Locked Entries"
+            value={tally.lockedCount}
+            // `locked = yes` is the filter grammar's own spelling (filter-query.ts
+            // maps `locked` → `isLocked`), so this is the same link the reader
+            // could have typed into the Entries filter box themselves.
+            href={`/modules/journal/entries?filter=${encodeURIComponent("locked = yes")}`}
+            title="Show every locked entry"
+          />
+          <StatTile
+            label="Total Log Entries"
+            value={tally.logCount}
+            // The Log tab, not a Main filtered to `category = Log`. Main does
+            // include Log entries (the panel reads it with scope "all"), so that
+            // filter would work — but the Log tab IS the old Log section, with
+            // the grid and viewer built for these rows. The tile says "Log
+            // Entries"; it should land on the screen of that name.
+            href="/modules/journal/entries?tab=log"
+            title="Show the Log tab"
+          />
+          <StatTile
+            label="Total Recycled Entries"
+            value={tally.recycledCount}
+            href="/modules/journal/recycle-bin"
+            title="Show the recycle bin"
+          />
         </div>
 
         {/* The ranked lists and count by years, 2x2 grid on desktop and single

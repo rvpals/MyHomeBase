@@ -43,22 +43,43 @@ export const homeWidgetOrderSchema = z
   })
   .catch([]);
 
-/** The whole personal layout — the boundary for a save that sets both. */
+/**
+ * The cards a reader has closed.
+ *
+ * Structurally identical to `homeWidgetOrderSchema` — a partial list, no duplicates,
+ * `.catch([])` — and written out rather than aliased because the two answer different
+ * questions and will not necessarily stay the same: a cap of "every card" is a
+ * coincidence here (you can close them all) where for the order it is a invariant.
+ *
+ * Duplicates are rejected for the same reason: a repeated id is a caller bug, and
+ * de-duplicating silently would hide it. `hideHomeWidget` cannot produce one.
+ */
+export const homeWidgetHiddenSchema = z
+  .array(homeWidgetIdSchema)
+  .max(HOME_WIDGET_IDS.length)
+  .refine((ids) => new Set(ids).size === ids.length, {
+    message: "A widget is listed more than once.",
+  })
+  .catch([]);
+
+/** The whole personal layout — the boundary for a save that sets all three. */
 export const homeLayoutUpdateSchema = z.object({
   columns: homeColumnCountSchema,
   order: homeWidgetOrderSchema,
+  hidden: homeWidgetHiddenSchema,
 });
 
 export type HomeLayoutUpdate = z.infer<typeof homeLayoutUpdateSchema>;
 
 /**
- * One *or both* halves of the layout, the boundary for `saveHomeLayout`.
+ * One, two or all three parts of the layout — the boundary for `saveHomeLayout`.
  *
  * Spelled out rather than `homeLayoutUpdateSchema.partial()`, which does not work
- * here: `.partial()` wraps each field in `.optional()`, but both fields carry a
+ * here: `.partial()` wraps each field in `.optional()`, but every field carries a
  * `.catch`, and a caught schema swallows `undefined` and hands back its fallback
  * instead of staying absent. A drag that sent only an order would therefore arrive
- * carrying `columns: 1` and quietly knock a reader out of two-column mode.
+ * carrying `columns: 1` and quietly knock a reader out of two-column mode — and,
+ * now, `hidden: []`, silently reopening every card they had closed.
  *
  * `.optional()` **outside** the `.catch` is what keeps "field absent" distinct from
  * "field present but garbled" — absent stays `undefined` and is not written at all,
@@ -67,6 +88,7 @@ export type HomeLayoutUpdate = z.infer<typeof homeLayoutUpdateSchema>;
 export const homeLayoutPartialUpdateSchema = z.object({
   columns: homeColumnCountSchema.optional(),
   order: homeWidgetOrderSchema.optional(),
+  hidden: homeWidgetHiddenSchema.optional(),
 });
 
 export type HomeLayoutPartialUpdate = z.infer<typeof homeLayoutPartialUpdateSchema>;

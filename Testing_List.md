@@ -146,6 +146,41 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-10-07 — Release (Journal Reports, Recycle Bin section, Daily Quote scroll, closable Home cards)
+
+**Migration 0132 must be applied on the NAS first** — without it the Report section fails
+with "no such table: jrn_reports". Item 23 is desktop-only (1280px+); item 25 is
+phone-only.
+
+- [ ] **1.** Journal → Report lists six built-in reports, each with Run and Edit
+- [ ] **2.** Run "Year in Review": headline numbers appear, then the entries
+- [ ] **3.** Run "Writing Activity", "Category & Tag Usage" and "Word Trends": each shows its table with no per-entry rows
+- [ ] **4.** Run "Entry Log" and "Locations Visited" and see the entry list
+- [ ] **5.** A report's output can be printed, and encrypted entries never appear as blank rows
+- [ ] **6.** A built-in report can be edited and saved, but has no Delete
+- [ ] **7.** Create a new report with a filter query (e.g. `category = TRIP`); running it selects only those entries
+- [ ] **8.** A malformed filter query is reported as an error rather than selecting everything
+- [ ] **9.** The insert-field picker puts a placeholder into the template
+- [ ] **10.** Saving a template containing `<script>` or an `onclick=` handler strips it
+- [ ] **11.** Duplicate a report, then delete the copy
+- [ ] **12.** As an admin the editor offers a SQL mode; as a non-admin it doesn't
+- [ ] **13.** SQL mode rejects `;`, `--` and `DELETE`/`UPDATE`, but accepts `title LIKE '%update%'`
+- [ ] **14.** Preview in SQL mode honours the same checks
+- [ ] **15.** `npm run cli -- journal-reports list` and `run --id N` print the reports and rendered HTML
+- [ ] **16.** Journal → Data Management shows a Recycle Bin section with its own icon
+- [ ] **17.** Recycle Bin lists deleted entries; Restore, Delete forever and Empty work, with no Duplicates card
+- [ ] **18.** CSV Import → Correct still shows both the Duplicates and Recycled Entries cards
+- [ ] **19.** Journal overview shows a fourth tile with the recycled count
+- [ ] **20.** Clicking an overview stat tile opens the Entries screen filtered to it; Total Entries is not a link
+- [ ] **21.** Admin → Configuration → Icons lists the Journal reports slots and "Recycle Bin", and an upload replaces them
+- [ ] **22.** Home: Daily Quote shows as an unrolled scroll with no card frame, and the new-quote control on the lower dowel draws a quote
+- [ ] **23.** Home (desktop): hovering a card reveals a `✕`; confirming hides it and it stays hidden after reload
+- [ ] **24.** Home: **Reset layout** brings back closed cards; a card an admin hid stays hidden
+- [ ] **25.** (phone) The Daily Quote scroll fits the screen and there is no `✕` on cards
+- [ ] **26.** Scroll looks right on a light and a dark theme
+
+---
+
 ## 2026-10-07 — Release (encrypted Journal entries, bulk Lock/Unlock/Encrypt, grid status bar)
 
 **Migration 0131 must be applied on the NAS first** — without it every Journal entry

@@ -32,6 +32,13 @@ import {
   listSavedLocations,
   type LocationTaxonomyKind,
 } from "@/lib/journal-locations";
+import {
+  getReportWithDetails,
+  listReports,
+  reportDocument,
+  reportFileName,
+  runReport,
+} from "@/lib/journal-reports";
 import { listModuleSettingsFor } from "@/lib/module-settings";
 import { getModuleBySlug } from "@/lib/modules";
 import { deps } from "@/lib/wiring";
@@ -53,6 +60,9 @@ import {
 } from "./journal-metadata-transfer-view";
 import { JournalNewEntryView } from "./journal-new-entry-view";
 import { JournalPreferencesView } from "./journal-preferences-view";
+import { JournalReportEditor } from "./journal-report-editor";
+import { JournalReportRunView } from "./journal-report-run-view";
+import { JournalReportsView } from "./journal-reports-view";
 import { JournalReviewPanel } from "./journal-review-panel";
 import { JournalTaxonomyView } from "./journal-taxonomy-view";
 import { JournalTemplatesView } from "./journal-templates-view";
@@ -91,19 +101,28 @@ function SectionBody({
   section,
   isAdmin,
   filterQuery,
+  requestedTab,
   calendarScope,
   calendarAnchor,
   selectedDate,
+  requestedReportEdit,
+  requestedReportRun,
 }: {
   section: JournalSection;
   isAdmin: boolean;
   /** From ?filter= — an ad-hoc filter query for the Entries section. */
   filterQuery?: string;
+  /** From ?tab= — which Entries tab to open on, "main" or "log". */
+  requestedTab?: string;
   /** From ?scope=/?anchor=/?date= — which period the Calendar shows, and the
    *  day whose entries are listed under it. */
   calendarScope?: string;
   calendarAnchor?: string;
   selectedDate?: string;
+  /** From ?edit= — which report the Report section is editing, or "new". */
+  requestedReportEdit?: string;
+  /** From ?run= — which report the Report section is running. */
+  requestedReportRun?: string;
 }) {
   switch (section) {
     case "main": {
@@ -164,7 +183,9 @@ function SectionBody({
     case "entries":
       // ?filter= (set by the Top Tags/Categories cards) pre-selects a slice;
       // without it this lists everything and the reader picks from the dropdown.
-      return <JournalEntriesPanel filterQuery={filterQuery} />;
+      // ?tab=log (set by the Statistics card's Log tile) opens on the Log tab
+      // instead of Main — ?filter= only ever narrows Main.
+      return <JournalEntriesPanel filterQuery={filterQuery} initialTab={requestedTab} />;
 
     case "calendar":
       // Unvalidated params by design: the panel degrades a bad one to the
@@ -189,6 +210,12 @@ function SectionBody({
           correctSlot={<JournalCorrectPanel />}
         />
       );
+
+    case "recycle-bin":
+      // The same view the Correct tab renders, with the Duplicates card off.
+      // Deleting an entry has always moved it here; until this section existed
+      // the only way back was CSV Import → Correct, which no reader would guess.
+      return <JournalCorrectPanel show="recycled" />;
 
     case "calendar-import": {
       // The managed lists feed the preset fields' autocomplete. Read here on the
@@ -339,6 +366,77 @@ function SectionBody({
       );
     }
 
+    case "report": {
+      // Three screens behind one route, chosen by the query string: the list,
+      // the editor (?edit=), and a run report (?run=). In the URL rather than
+      // client state so each is linkable and survives a refresh — the same
+      // reasoning ?filter= uses on the Entries section.
+      //
+      // `isAdmin` gates the raw-SQL toggle in the editor. That is presentation
+      // only: the actual guard is `requireAdmin()` inside the save and preview
+      // actions, because an action is its own POST endpoint and a hidden
+      // control protects nothing.
+      if (requestedReportRun) {
+        const id = Number(requestedReportRun);
+        const loaded = Number.isFinite(id) ? getReportWithDetails(id, deps.journalReportRepo) : undefined;
+        // A stale ?run= falls back to the list rather than 404ing.
+        if (loaded) {
+          // Same three lines every other section uses: the module row, its
+          // settings, then resolve. `resolveJournalPreferences` takes the
+          // settings list, not a repository.
+          const reportModule = getModuleBySlug(deps.moduleRepo, JOURNAL_MODULE_SLUG);
+          const reportPreferences = resolveJournalPreferences(
+            reportModule ? listModuleSettingsFor(deps.moduleSettingsRepo, reportModule.id) : [],
+          );
+          try {
+            const result = runReport(loaded.report.id, deps.journalReportRepo, {
+              dismissedWords: reportPreferences.excludedWords,
+            });
+            return (
+              <JournalReportRunView
+                report={loaded.report}
+                html={result.html}
+                entryCount={result.entryCount}
+                document={reportDocument(loaded.report.name, result.html)}
+                fileName={reportFileName(loaded.report.name)}
+              />
+            );
+          } catch (error) {
+            // A bad filter query or SQL fragment. Rendered as the report's own
+            // error with a link to fix it, rather than an error boundary that
+            // says nothing about which report broke.
+            return (
+              <JournalReportRunView
+                report={loaded.report}
+                error={error instanceof Error ? error.message : "The report could not be run."}
+              />
+            );
+          }
+        }
+      }
+
+      if (requestedReportEdit) {
+        if (requestedReportEdit === "new") {
+          return <JournalReportEditor canUseSql={isAdmin} />;
+        }
+        const id = Number(requestedReportEdit);
+        const loaded = Number.isFinite(id) ? getReportWithDetails(id, deps.journalReportRepo) : undefined;
+        if (loaded) {
+          return (
+            <JournalReportEditor
+              report={loaded.report}
+              details={loaded.details}
+              canUseSql={isAdmin}
+            />
+          );
+        }
+      }
+
+      return (
+        <JournalReportsView reports={listReports(deps.journalReportRepo)} canUseSql={isAdmin} />
+      );
+    }
+
     default:
       return (
         <div className="rounded-xl border border-dashed border-line p-8 text-center">
@@ -353,16 +451,22 @@ export async function JournalSection({
   section,
   isAdmin,
   filterQuery,
+  requestedTab,
   calendarScope,
   calendarAnchor,
   selectedDate,
+  requestedReportEdit,
+  requestedReportRun,
 }: {
   section: JournalSection;
   isAdmin: boolean;
   filterQuery?: string;
+  requestedTab?: string;
   calendarScope?: string;
   calendarAnchor?: string;
   selectedDate?: string;
+  requestedReportEdit?: string;
+  requestedReportRun?: string;
 }) {
   // Defensive: an unknown section would otherwise crash on info.label. The route
   // already validates, so this only catches a future caller getting it wrong.
@@ -403,9 +507,12 @@ export async function JournalSection({
           section={section}
           isAdmin={isAdmin}
           filterQuery={filterQuery}
+          requestedTab={requestedTab}
           calendarScope={calendarScope}
           calendarAnchor={calendarAnchor}
           selectedDate={selectedDate}
+          requestedReportEdit={requestedReportEdit}
+          requestedReportRun={requestedReportRun}
         />
       </div>
     </JournalShell>

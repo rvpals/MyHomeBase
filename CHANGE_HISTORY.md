@@ -1,5 +1,46 @@
 # Change History
 
+## 2026-10-07 — Journal Reports, Recycle Bin section, Daily Quote scroll, closable Home cards
+
+**Migration 0132 must be applied on the NAS** (`jrn_reports`, `jrn_report_details`, six
+seeded reports). Everything else is code only.
+
+### Journal: Reports
+
+The **Report** section now holds saved, printable reports over the journal. A report is
+a header (name, description, which entries it selects) plus an HTML **template** of up to
+three parts — header, per-entry row, footer — with `{{field}}`, `{{stat.*}}` and
+`{{table.*}}` placeholders. The template is stored, not the output, so a report always
+reflects the journal as it is today.
+
+- **Six built-ins** (Year in Review, Writing Activity, Category & Tag Usage, Entry Log,
+  Locations Visited, Word Trends): editable, not deletable. The three rollups carry no
+  row part and use the prebuilt `{{table.*}}` placeholders.
+- **Selecting entries:** the compact filter-query syntax for anyone with Journal access;
+  a raw SQL `WHERE` fragment for **admins only**. The fragment is checked on save *and*
+  on run, gated by `requireAdmin()` in the action (preview included), and parenthesised
+  before anything is appended. Encrypted entries are excluded by the runner in both modes.
+- Values are HTML-escaped on render; the template is sanitised on save.
+- **CLI:** `journal-reports list | show | run` (`--document` for a full page). Registered
+  in `CLI_registry.md`.
+- New icon slots in a "Journal reports" group: `journal_report_list`, `_run`, `_edit`,
+  `_field`.
+
+### Journal: Recycle Bin section, linked stat tiles
+
+**Recycle Bin** is a fourth Data Management section, rendering the same view as CSV
+Import → Correct (which keeps its copy). It skips the whole-journal duplicate scan. The
+Journal overview gains a fourth tile counting binned entries, and tiles link to their
+filtered Entries screen. New slot `journal_section_recycle_bin`.
+
+### Home: Daily Quote scroll, closable cards, per-reader hidden list
+
+The Daily Quote widget is drawn as an unrolled scroll (`.scroll-sheet`, `.scroll-roll`)
+with no card around it; its "new quote" controls moved onto the lower dowel. On desktop
+(1280px+) every Home card has a hover-revealed `✕` that hides it for that reader, after a
+confirmation. **Reset layout** brings them back. The list is the per-reader preference
+`home_hidden_widgets` — subtractive only, it can never show a card an admin hid.
+
 ## 2026-10-07 — Encrypted Journal entries, bulk Lock/Unlock/Encrypt
 
 **Migration 0131 must be applied on the NAS** (four columns and an index on

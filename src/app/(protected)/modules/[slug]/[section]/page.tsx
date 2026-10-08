@@ -71,6 +71,9 @@ function renderSection(
   recipeSearch: string | undefined,
   recipeCategory: string | undefined,
   recipeTag: string | undefined,
+  requestedTab: string | undefined,
+  requestedReportEdit: string | undefined,
+  requestedReportRun: string | undefined,
 ) {
   if (slug === ATTENDANCE_MODULE_SLUG && isAttendanceSection(section)) {
     return (
@@ -108,11 +111,14 @@ function renderSection(
         section={section}
         isAdmin={isAdmin}
         filterQuery={filterQuery}
+        requestedTab={requestedTab}
         calendarScope={calendarScope}
         calendarAnchor={calendarAnchor}
         // ?date= is shared with the Attendance report rather than given a second
         // name: both mean "the day this screen is showing".
         selectedDate={requestedDate}
+        requestedReportEdit={requestedReportEdit}
+        requestedReportRun={requestedReportRun}
       />
     );
   }
@@ -200,6 +206,16 @@ export default async function ModuleSectionPage({
     search?: string | string[];
     category?: string | string[];
     tag?: string | string[];
+    // Which tab a tabbed section opens on — Journal's Entries (Main / Log) is
+    // the only reader so far. Left raw: the view falls back to its first tab on
+    // a key it doesn't know, so a stale link lands somewhere sensible.
+    tab?: string | string[];
+    // Which Journal report the Report section is editing (`new` for a fresh
+    // one) or running. In the URL rather than client state so an editor and a
+    // run are both linkable and survive a refresh -- the same reasoning
+    // ?filter= uses.
+    edit?: string | string[];
+    run?: string | string[];
   }>;
 }) {
   const { slug, section } = await params;
@@ -222,6 +238,9 @@ export default async function ModuleSectionPage({
     search,
     category,
     tag,
+    tab,
+    edit,
+    run,
   } = await searchParams;
   // A repeated ?filter= yields an array; take the first rather than joining, so a
   // crafted URL can't smuggle a second expression in.
@@ -247,6 +266,11 @@ export default async function ModuleSectionPage({
   // view validates the grouping against TRANSACTION_GROUP_BYS and matches the
   // key against the groups it actually built, so a stale or crafted URL falls
   // back to the ungrouped list rather than 404ing.
+  // Same first-element rule, and both stay raw strings: the Report section
+  // resolves each against the reports that actually exist, so a stale link lands
+  // on the list rather than 404ing.
+  const requestedReportEdit = Array.isArray(edit) ? edit[0] : edit;
+  const requestedReportRun = Array.isArray(run) ? run[0] : run;
   const requestedGroupBy = Array.isArray(groupBy) ? groupBy[0] : groupBy;
   const requestedGroupKey = Array.isArray(group) ? group[0] : group;
   // Same first-element rule. Left raw: the section resolves it against the
@@ -267,6 +291,9 @@ export default async function ModuleSectionPage({
   const recipeSearch = Array.isArray(search) ? search[0] : search;
   const recipeCategory = Array.isArray(category) ? category[0] : category;
   const recipeTag = Array.isArray(tag) ? tag[0] : tag;
+  // Same first-element rule. Raw again: an unknown tab key is ignored by the
+  // strip rather than 404ing a link that was valid before a tab was renamed.
+  const requestedTab = Array.isArray(tab) ? tab[0] : tab;
 
   const appModule = getModuleBySlug(deps.moduleRepo, slug);
   if (!appModule) notFound();
@@ -299,6 +326,9 @@ export default async function ModuleSectionPage({
     recipeSearch,
     recipeCategory,
     recipeTag,
+    requestedTab,
+    requestedReportEdit,
+    requestedReportRun,
   );
   if (!body) notFound();
 

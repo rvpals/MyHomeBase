@@ -49,4 +49,28 @@ export interface HomeLayoutPreference {
    * the same reason: a stored layout must survive the app changing underneath it.
    */
   order: HomeWidgetId[];
+  /**
+   * The cards this reader has closed with the card's own `✕`, or `[]` when they
+   * have closed none.
+   *
+   * **Subtractive only, and that is the whole rule.** This can hide a card the
+   * household setting shows; it can never resurrect one an admin hid, nor one whose
+   * data is absent today. `applyHiddenWidgets` runs over the list the page has
+   * already decided to draw, so the admin's decision is upstream of this one and
+   * stays that way — the same direction `applyPersonalOrder` respects for order.
+   *
+   * Separate from `order` rather than folded into it as a `-` prefix (the encoding
+   * the household `home_widgets` setting uses). Two reasons: these are two
+   * independent gestures that must write independently — closing a card must not
+   * rewrite an arrangement, and a drag must not resurrect a closed card — and a
+   * reader with no order at all (`[]`, "follow the household order") can still have
+   * closed something, which a combined list could not express without inventing a
+   * full order for them.
+   *
+   * May name a card that has since been retired or hidden by an admin;
+   * `resolveHiddenHomeWidgets` drops what it no longer recognises and
+   * `applyHiddenWidgets` ignores the rest, so a stored value survives the app
+   * changing underneath it without a migration.
+   */
+  hidden: HomeWidgetId[];
 }

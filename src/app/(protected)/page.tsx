@@ -243,6 +243,9 @@ export default async function Home({
         <HomeWidgetGrid
           initialColumns={preferences?.homeLayout.columns ?? DEFAULT_HOME_COLUMNS}
           initialOrder={preferences?.homeLayout.order ?? []}
+          // Passed through rather than filtered here: the grid applies it, so a card
+          // closed with the ✕ disappears without a round trip to the server.
+          initialHidden={preferences?.homeLayout.hidden ?? []}
           // `flatMap`, not `map`: a case that finds its data missing returns `[]` and
           // drops out of the list rather than reaching the grid as a hole.
           items={drawnWidgets.flatMap((id): HomeWidgetItem[] => {

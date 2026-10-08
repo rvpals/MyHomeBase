@@ -90,6 +90,7 @@ alongside its row here.
 | [`saved-sql`](#saved-sql) | read (writes with `save`/`delete`) | no |
 | [`take-attendance`](#take-attendance) | write | no |
 | [`attendance-report`](#attendance-report) | read | no |
+| [`journal-reports`](#journal-reports) | read | no |
 | [`scan-music`](#scan-music) | write | no (reads the music share) |
 | [`music-library`](#music-library) | read | no |
 | [`recipes`](#recipes) | read (writes with `--add`/`--made`/`--delete`) | no |
@@ -1234,6 +1235,32 @@ same `attendanceReportToCsv` as the Report screen's Export button, so the two ag
 **Exit** — 0 (including when no attendance exists — that's a fact, not an error); 1 when
 `--class` is missing or unknown.
 Source: [src/cli/attendance-report.ts](src/cli/attendance-report.ts)
+
+---
+
+## `journal-reports`
+
+Lists, shows and runs Journal reports — the terminal counterpart of Journal → Report.
+
+```
+npm run cli -- journal-reports list
+npm run cli -- journal-reports show --id 3
+npm run cli -- journal-reports run --id 3
+npm run cli -- journal-reports run --id 3 --limit 10
+npm run cli -- journal-reports run --id 3 --document > year.html
+```
+
+**Input** — a subcommand: `list`, `show` or `run`. `show` and `run` need `--id N`. `--limit N` caps the entries a `run` renders; `--document` wraps the output in a full printable HTML page.
+
+**Calls** — `listReports`, `getReportWithDetails`, `runReport`, `reportDocument`, `reportFileName`, `reportTemplateWarnings` from `src/lib/journal-reports`, plus `resolveJournalPreferences`.
+
+**Output** — `list` prints id, name, `[built-in]`/`[sql]` flags, description and the selection; `run` prints the rendered HTML only, so stdout can be redirected to a file. Encrypted entries are always excluded.
+
+**Exit** — 0; 1 for an unknown subcommand or a missing/invalid `--id`.
+
+There is no `save`: a template is multi-line HTML and a shell is a bad place to quote it — use the web editor.
+
+Source: [src/cli/journal-reports.ts](src/cli/journal-reports.ts)
 
 ---
 

@@ -221,6 +221,13 @@ function printPreferences(
         : "default order"
     }`,
   );
+  console.log(
+    `  home closed:     ${
+      preferences.homeLayout.hidden.length > 0
+        ? preferences.homeLayout.hidden.join(", ")
+        : "(none)"
+    }`,
+  );
   console.log(`  clock face:      ${preferences.clock.face}`);
   console.log(
     `  clock shows:     ${

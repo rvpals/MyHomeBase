@@ -16,6 +16,7 @@ export const JOURNAL_SECTIONS = [
   "import",
   "calendar-import",
   "review-data",
+  "recycle-bin",
   "configuration",
   "templates",
   "metadata",
@@ -79,6 +80,13 @@ export const JOURNAL_SECTION_INFO: Record<JournalSection, { label: string; descr
     label: "Review Data",
     description: "Tidy up what the journal already holds — several entries on one date.",
   },
+  "recycle-bin": {
+    // Deleting entries has always moved them here, but the only way in was the
+    // Correct tab under CSV Import — a place whose name promises nothing about
+    // deleted entries. This section is that same view, reachable by its own name.
+    label: "Recycle Bin",
+    description: "Entries you deleted — restore them, or remove them for good.",
+  },
   configuration: {
     label: "Preferences",
     description: "Preferences for how your journal works.",
@@ -140,6 +148,9 @@ export const JOURNAL_DATA_MANAGEMENT_SECTIONS: readonly JournalSection[] = [
   // Last in the group because it reads what the two importers above write: the
   // several-entries-on-one-date pile is mostly what an import leaves behind.
   "review-data",
+  // Last: it holds what every other screen's deletes produce, so it reads as the
+  // end of the pipeline rather than a step in it.
+  "recycle-bin",
 ];
 
 /**
@@ -179,6 +190,10 @@ export const JOURNAL_SECTION_ICONS: Record<JournalSection, string> = {
   // not `calendar` (Calendar Import's, the row directly above it in the same
   // group) and not `sliders` (Preferences').
   "review-data": "clipboard",
+  // `trash` — free as a section glyph. It is used as a bare action glyph on the
+  // Recycled Entries card's empty-bin button, which is a button, not a
+  // destination, so no two nav rows end up wearing the same mark.
+  "recycle-bin": "trash",
   configuration: "sliders",
   // `note`, not `list` — that one is Entries', and two sections wearing the same
   // glyph is the collision modules.md warns about. A template is a jotting you

@@ -101,6 +101,7 @@ group becomes a label between rows rather than a second accordion.
 | CSV Import | `import` | Data Management | `/modules/journal/import` | Import a CSV file, reset the journal, and bulk-correct entries. |
 | Calendar Import | `calendar-import` | Data Management | `/modules/journal/calendar-import` | Import events from a Google Calendar .ics export. |
 | Review Data | `review-data` | Data Management | `/modules/journal/review-data` | Tidy up what the journal already holds — several entries on one date. |
+| Recycle Bin | `recycle-bin` | Data Management | `/modules/journal/recycle-bin` | Entries you deleted — restore them, or remove them for good. |
 | Preferences | `configuration` | Configuration | `/modules/journal/configuration` | Preferences for how your journal works. |
 | Templates | `templates` | Configuration | `/modules/journal/templates` | Define different templates used in the journal module. |
 | Meta Data | `metadata` | Configuration | `/modules/journal/metadata` | Categories and tags, and the icons that stand for them. |
