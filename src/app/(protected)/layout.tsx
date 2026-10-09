@@ -12,6 +12,7 @@ import type { FloatingActions } from "@/components/floating-layer";
 import type { ScratchpadActions } from "@/components/floating-scratchpad";
 import { resolveAppTexture } from "@/lib/app-texture";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
+import { cardFrameVars, getCardFrameSelection } from "@/lib/card-frame";
 import { listCalculations } from "@/lib/calculator";
 import { getDashboardTexture, listDashboardTextures } from "@/lib/dashboard-texture";
 import { describeClock } from "@/lib/clock";
@@ -190,6 +191,17 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
   // layer at all.
   const appTexture = resolveAppTexture(getDashboardTexture(deps.dashboardTextureRepo));
 
+  // The application-wide card frame (migrations/0133), published as CSS
+  // variables on the same element. Every `CustomizableCard` under it picks the
+  // frame up through `.card-framed` in globals.css, so changing the selection
+  // restyles every one of them and no call site passes anything.
+  //
+  // Cheap for the same reason the texture read is: `getSelection()` joins to
+  // the library for scalars and never touches the BLOB. `undefined` when no
+  // frame is selected, and then no attribute is rendered and none of the
+  // `.card-framed` rules match.
+  const cardFrame = cardFrameVars(getCardFrameSelection(deps.cardFrameRepo));
+
   // The floating layer. Resolved here, in the one layout every authenticated page
   // shares, because a floating window has to outlive navigation — mounting it inside a
   // page would close it on every link, the same reason the music player lives here.
@@ -270,7 +282,20 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
           <main
             className="app-main min-h-screen pb-8"
             data-app-texture={appTexture.vars ? "" : undefined}
-            style={appTexture.vars as CSSProperties | undefined}
+            // "on" / "off" rather than a bare attribute: the value tells the
+            // CSS whether the frame paints the card's middle, which is a
+            // change to the `border-image-slice` syntax rather than to a value
+            // inside it and so cannot ride on a custom property.
+            data-card-frame={cardFrame?.["--card-frame-center"]}
+            // Both sets of custom properties ride on this one element. They
+            // share no names, so the merge is a plain spread; `undefined`
+            // stays undefined when neither is set, which keeps the `style`
+            // attribute off the element entirely.
+            style={
+              appTexture.vars || cardFrame
+                ? ({ ...appTexture.vars, ...cardFrame } as CSSProperties)
+                : undefined
+            }
           >
             {/* Gives every `CollapsibleCard` under a route its ordinal, so the
                 cards remember whether the reader left them open. Wraps

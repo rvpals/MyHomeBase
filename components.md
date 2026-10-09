@@ -60,6 +60,7 @@ pattern instead of inventing one.
 | [`CalculatorKeypad`](#calculatorkeypad) | A calculator's display and keypad — scientific keys, optional keyboard capture | [src/components/calculator-keypad.tsx](src/components/calculator-keypad.tsx) | yes |
 | [`Comments`](#comments) | A note/instruction parked beside a feature, behind a small accent glyph | [src/components/comments.tsx](src/components/comments.tsx) | yes |
 | [`CollapsibleCard`](#collapsiblecard) | A titled section that expands/collapses | [src/components/collapsible-card.tsx](src/components/collapsible-card.tsx) | yes |
+| [`CustomizableCard`](#customizablecard) | **Redesign sandbox** — a clone of `CollapsibleCard`, free to restyle | [src/components/customizable-card.tsx](src/components/customizable-card.tsx) | yes |
 | [`Tabs`](#tabs) | One-of-N panels in the same space | [src/components/tabs.tsx](src/components/tabs.tsx) | yes |
 | [`TreeNav`](#treenav) | **Two-level tree** — expandable groups, selectable leaves | [src/components/tree-nav.tsx](src/components/tree-nav.tsx) | yes |
 | [`ViewModeSwitch`](#viewmodeswitch) | **Same data, re-cut** — segmented control, `<select>` when narrow | [src/components/view-mode-switch.tsx](src/components/view-mode-switch.tsx) | yes |
@@ -1357,6 +1358,79 @@ toggle button that takes the free space (so the chevron still sits right when th
 action) plus the action beside it. **A card that starts collapsed but owns a
 long-running action should be controlled and open itself when that action starts** —
 otherwise the progress and result render out of sight.
+
+---
+
+## CustomizableCard
+
+**A redesign sandbox.** A behaviour-identical clone of [`CollapsibleCard`](#collapsiblecard),
+kept as its own component so its *look* can be reworked without touching the 128 call sites
+that render the original.
+
+- **Source:** [src/components/customizable-card.tsx](src/components/customizable-card.tsx)
+- **Import:** `import { CustomizableCard } from "@/components/customizable-card";`
+- **Client component:** yes
+
+**Props are identical to [`CollapsibleCard`](#collapsiblecard)** — `title`, `titleIcon`,
+`defaultOpen`, `open`, `onOpenChange`, `headerAction`, `titleAction`, `children`,
+`className`. Read that entry for what each one does; they are not duplicated here, because
+two copies of a prop table drift.
+
+```tsx
+<CustomizableCard title="Add an entry" defaultOpen>
+  <JournalEntryForm onSubmit={handleCreate} />
+</CustomizableCard>
+```
+
+### Why it exists
+
+A `variant` prop on `CollapsibleCard` would have put experimental styling one typo away
+from every dashboard, settings block and module section in the app. A separate component
+can be pointed at a single screen, looked at on a real page, and reverted by deleting one
+import. The visual divergence from the original is the **point** — don't "fix" the two back
+into agreement, and don't reach for this one in new code expecting a stable look.
+
+### Picture frames (migration 0133)
+
+A `CustomizableCard` draws the **application-wide card frame** when an admin has selected
+one in Administration → Display Settings → Card Frames. A frame is a nine-slice picture:
+its four corners are placed untouched at the card's corners, its four edge strips run
+along the sides, and its middle optionally fills behind the content.
+
+**No call site passes anything.** The protected layout resolves the selection once and
+publishes `--card-frame-*` custom properties plus a `data-card-frame` attribute on
+`<main>`; `.card-framed` in `globals.css` is scoped to that ancestor. So selecting a frame
+restyles every `CustomizableCard` at once, and with nothing selected none of those rules
+match and the card renders exactly as [`CollapsibleCard`](#collapsiblecard) does.
+
+Two deliberate behaviours worth knowing:
+
+- **A frame replaces `.card-raised`'s ring, shadow and radius**, rather than layering over
+  them. An ornate border plus a hairline ring reads as two borders, and the radius would
+  clip the artwork's corners — which is exactly where the detail lives. A caller's
+  `className` still comes last, so a one-off can opt back in.
+- **The centre is painted by `border-image`'s own `fill` keyword**, not by a second
+  background layer. A separate layer has to choose its own scaling, and any choice
+  disagrees with the border's — leaving a hard seam where the two meet, straight across
+  artwork whose edges are soft. `fill` slices the middle with the same nine-patch geometry
+  as the edges, so they are one continuous image at every card size.
+- **The opacity slider therefore dims the whole frame, border included**, since `fill`
+  makes the centre part of that one layer. Independent background dimming was traded away
+  to remove the seam.
+
+`CollapsibleCard` deliberately does **not** read any of this — keeping its 128 call sites
+untouched is the reason the two components are separate.
+
+### It shares the original's remembered state
+
+`CustomizableCard` claims its ordinal from the same `CollapsibleCardScope` counter as
+`CollapsibleCard`, so swapping one for the other mid-page leaves every *other* card's
+remembered open/closed state exactly where it was. A private counter would renumber the
+page and scramble its neighbours.
+
+The flip side, stated plainly: because position is the key, a card that replaces another at
+the same position **inherits that card's remembered state**. While experimenting this is
+what you want — the card you just swapped stays as you left it.
 
 ---
 

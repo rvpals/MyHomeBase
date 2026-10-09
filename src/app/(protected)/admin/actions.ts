@@ -14,6 +14,15 @@ import {
   type DashboardTextureSettings,
 } from "@/lib/dashboard-texture";
 import {
+  addCardFrame,
+  deleteCardFrame,
+  renameCardFrame,
+  replaceCardFrameImage,
+  saveCardFrameSettings,
+  selectCardFrame,
+  type CardFrameSettings,
+} from "@/lib/card-frame";
+import {
   setModuleTextureChoice,
   type ModuleTextureChoiceInput,
 } from "@/lib/module-texture";
@@ -677,6 +686,174 @@ export async function resetColorThemeAction(id: string): Promise<ColorThemeResul
     return {
       ok: false,
       error: error instanceof Error ? error.message : "Could not reset that theme.",
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Card frames (migrations/0133)
+//
+// The nine-slice picture drawn as every `CustomizableCard`'s border and
+// background. One selection applies application-wide, so each of these ends
+// with `revalidatePath("/", "layout")` -- the frame variables are emitted by
+// the protected layout, and any cached page is stale the moment they change.
+// ---------------------------------------------------------------------------
+
+export interface CardFrameResult {
+  ok: boolean;
+  error?: string;
+}
+
+export interface CardFrameAddResult extends CardFrameResult {
+  id?: number;
+}
+
+/**
+ * Adds an uploaded picture to the frame library.
+ *
+ * Does **not** select it: uploading a frame shouldn't silently restyle every
+ * card in the application. The admin picks it from the gallery afterwards,
+ * having set its slices first.
+ *
+ * The slices arrive in the same `FormData` as the picture rather than in a
+ * later call, because a frame with no slices draws nothing -- an upload that
+ * left them unset would land in the gallery as an invisible tile.
+ */
+export async function addCardFrameAction(formData: FormData): Promise<CardFrameAddResult> {
+  try {
+    await requireAdmin();
+    const upload = await readTextureUpload(formData);
+    if (!upload) return { ok: false, error: "No image was received." };
+
+    const id = addCardFrame(
+      deps.cardFrameRepo,
+      String(formData.get("name") ?? ""),
+      upload,
+      readFrameSettings(formData),
+    );
+    revalidatePath("/", "layout");
+    return { ok: true, id };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not save the frame.",
+    };
+  }
+}
+
+/**
+ * Reads the slice/opacity knobs out of an upload's form.
+ *
+ * Numbers arrive as strings from `FormData`, so each is coerced here and
+ * validated by the lib's zod schema -- which is what turns `"abc"` into a
+ * sentence the admin screen can show rather than a `NaN` reaching SQLite.
+ */
+function readFrameSettings(formData: FormData): CardFrameSettings {
+  const num = (key: string, fallback: number) => {
+    const raw = formData.get(key);
+    if (raw === null) return fallback;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : NaN;
+  };
+  return {
+    insets: {
+      top: num("sliceTop", 0),
+      right: num("sliceRight", 0),
+      bottom: num("sliceBottom", 0),
+      left: num("sliceLeft", 0),
+    },
+    fillOpacity: num("fillOpacity", 1),
+    fill: String(formData.get("fill") ?? "stretch") as CardFrameSettings["fill"],
+    centerFill: formData.get("centerFill") !== "0",
+  };
+}
+
+/** Swaps one frame's picture, keeping its name, its slices and its place. */
+export async function replaceCardFrameImageAction(
+  id: number,
+  formData: FormData,
+): Promise<CardFrameResult> {
+  try {
+    await requireAdmin();
+    const upload = await readTextureUpload(formData);
+    if (!upload) return { ok: false, error: "No image was received." };
+
+    replaceCardFrameImage(deps.cardFrameRepo, id, upload);
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not replace the image.",
+    };
+  }
+}
+
+export async function renameCardFrameAction(id: number, name: string): Promise<CardFrameResult> {
+  try {
+    await requireAdmin();
+    renameCardFrame(deps.cardFrameRepo, id, name);
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not rename the frame.",
+    };
+  }
+}
+
+/**
+ * Removes a frame. If it was the selected one, the repository clears the
+ * selection in the same transaction and every card returns to its theme border.
+ */
+export async function deleteCardFrameAction(id: number): Promise<CardFrameResult> {
+  try {
+    await requireAdmin();
+    deleteCardFrame(deps.cardFrameRepo, id);
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not delete the frame.",
+    };
+  }
+}
+
+/**
+ * Points every `CustomizableCard` at a frame, or at none.
+ *
+ * `undefined` is how frames are turned off, and is not an error.
+ */
+export async function selectCardFrameAction(id: number | undefined): Promise<CardFrameResult> {
+  try {
+    await requireAdmin();
+    selectCardFrame(deps.cardFrameRepo, id);
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not select the frame.",
+    };
+  }
+}
+
+/** Updates one frame's slices and knobs, leaving its picture alone. */
+export async function saveCardFrameSettingsAction(
+  id: number,
+  settings: CardFrameSettings,
+): Promise<CardFrameResult> {
+  try {
+    await requireAdmin();
+    saveCardFrameSettings(deps.cardFrameRepo, id, settings);
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not save the frame settings.",
     };
   }
 }

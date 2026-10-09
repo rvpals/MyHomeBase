@@ -17,6 +17,7 @@ import { FileChangeHistoryRepository } from "./change-history/repository";
 import { SqliteColorThemeRepository } from "./color-themes/repository";
 import { SqliteCsvAnalyticsRepository } from "./csv-analytics/repository";
 import { SqliteCsvImportMappingRepository } from "./csv-import/repository";
+import { SqliteCardFrameRepository } from "./card-frame/repository";
 import { SqliteDashboardTextureRepository } from "./dashboard-texture/repository";
 import { SqliteDeploymentRepository } from "./deployments/repository";
 import { SqliteModuleTextureRepository } from "./module-texture/repository";
@@ -291,6 +292,11 @@ export const deps = {
   // split as above: the BLOB is read only by
   // src/app/api/modules/[slug]/texture/route.ts.
   moduleTextureRepo: new SqliteModuleTextureRepository(db),
+  // The nine-slice picture framing every `CustomizableCard` (migrations/0133).
+  // Same split as the two above: the BLOB is read only by
+  // src/app/api/card-frame/route.ts, and the selection read on every protected
+  // render touches scalars alone.
+  cardFrameRepo: new SqliteCardFrameRepository(db),
   stockPositionRepo: new SqliteStockPositionRepository(db),
   stockDailySnapshotRepo: new SqliteDailySnapshotRepository(db),
   // Last-run bookkeeping for background jobs, keyed by job name (migrations/0061).

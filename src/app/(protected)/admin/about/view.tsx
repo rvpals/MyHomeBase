@@ -10,7 +10,7 @@ import type { ReactNode } from "react";
 import { useState, useEffect, useRef } from "react";
 import { clearCachesAndReload } from "@/components/app-version-watch";
 import { Button } from "@/components/button";
-import { CollapsibleCard } from "@/components/collapsible-card";
+import { CustomizableCard } from "@/components/customizable-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { Modal } from "@/components/modal";
 import { Tabs, type TabItem } from "@/components/tabs";
@@ -780,7 +780,7 @@ export function AboutView({
       label: "Application",
       content: (
         <>
-          <CollapsibleCard title="Application & System Info" defaultOpen>
+          <CustomizableCard title="Application & System Info" defaultOpen>
             <p className="font-display text-lg text-ink">{appName}</p>
             <p className="mt-1 text-sm text-muted">Version {appVersion}</p>
 
@@ -836,7 +836,7 @@ export function AboutView({
                 />
               ))}
             </div>
-          </CollapsibleCard>
+          </CustomizableCard>
 
           <div className="mt-10">
             <h2 className="font-display text-xl text-ink">Database Files</h2>

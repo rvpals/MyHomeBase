@@ -1,5 +1,51 @@
 # Change History
 
+## 2026-10-08 — Card Frames, and CustomizableCard
+
+**Migration 0133 must be applied on the NAS** (`sys_card_frames`, `sys_card_frame`). Without
+it Administration → Display Settings → Card Frames and the About → Application card fail
+with "no such table". Applying it changes no screen: nothing is selected, so every card
+keeps its current look.
+
+### Card Frames
+
+An admin can upload a picture and use it as the **border and background of a card**. It is
+a nine-slice frame: four slice values (top/right/bottom/left, in the picture's own pixels)
+cut it into nine pieces — corners placed untouched, edges running along the sides, middle
+filling behind the content — so one PNG fits a card of any size.
+
+- **Administration → Display Settings → Card Frames** — a gallery (up to 20 frames), upload,
+  click-to-rename, Replace, Delete, and a **Slices** editor with a live preview that is a
+  real card, not a mock. Edges can *stretch*, *repeat* or *round*; the picture's middle can
+  be switched off to use it as a border only.
+- **One setting for the whole application.** Selecting a frame restyles every
+  `CustomizableCard` at once; selecting it again turns frames off. No call site passes
+  anything — the layout publishes the selection as CSS variables.
+- **The middle is seamless.** It is painted by the same nine-slice as the edges, so there is
+  no hard seam where background meets border. The price: the opacity slider fades the whole
+  frame, border included.
+- A frame replaces the card's ring and shadow and uses an 8px corner radius.
+
+### CustomizableCard
+
+A behaviour-identical clone of `CollapsibleCard`, kept separate so its look can change
+without touching the 128 call sites of the original. It shares the original's remembered
+open/closed state. **Only one screen uses it so far:** the *Application & System Info* card
+on Administration → About → Application. Every other card is unchanged.
+
+### Files
+
+New: `src/lib/card-frame/`, `src/components/customizable-card.tsx`,
+`src/app/api/card-frame/route.ts`, `admin/display-settings/card-frames/`,
+`migrations/0133_create_card_frames.{sql,md}`, and the source artwork in `misc/card/`.
+Changed: `globals.css`, the protected `layout.tsx`, `admin/actions.ts`, `admin/nav.ts`,
+`about/view.tsx`, `lib/wiring.ts`, `components.md`, `design.md`.
+
+Nav slot id `display-settings-card-frames` is permanent once an icon is uploaded for it.
+
+**Not covered by any automated run.** The unit tests were written but never executed, and
+the final seam/radius CSS was changed after the last look at it on screen.
+
 ## 2026-10-07 — Journal Reports, Recycle Bin section, Daily Quote scroll, closable Home cards
 
 **Migration 0132 must be applied on the NAS** (`jrn_reports`, `jrn_report_details`, six

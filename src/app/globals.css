@@ -3577,3 +3577,125 @@ html[data-music-player="minimized"] {
     animation: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Card frames: a nine-slice picture as a card's border and background.
+
+   Drawn only by `CustomizableCard`, and only when an admin has selected a frame
+   (migrations/0133). `CollapsibleCard` deliberately never reads these — the
+   whole reason the two components exist separately is that the 128 call sites
+   of the original must not move.
+
+   HOW THE VARIABLES ARRIVE. The protected layout resolves the application-wide
+   selection once per render and publishes `--card-frame-*` on a wrapper, the
+   same mechanism `[data-app-texture]` uses. So selecting a frame restyles every
+   card at once and no call site passes anything. When nothing is selected the
+   layout omits the attribute entirely and none of this matches.
+   --------------------------------------------------------------------------- */
+[data-card-frame] .card-framed {
+  /* `border-image` needs a border box to paint into, and the shorthand's width
+     comes from the four slices so the artwork renders at its natural thickness.
+     `border-style: solid` is mandatory -- with the default `none` the border box
+     is zero-width and the image never appears, which is the classic way this
+     silently draws nothing. */
+  border-style: solid;
+  border-color: transparent;
+  border-width: var(--card-frame-width);
+  border-image-source: var(--card-frame-image);
+  border-image-width: var(--card-frame-width);
+  border-image-repeat: var(--card-frame-repeat, stretch);
+
+  /* The frame replaces the theme's ring and cast rather than layering over it:
+     an ornate border plus `.card-raised`'s hairline ring reads as two borders,
+     and the shadow fights artwork that already has its own depth. Asked for and
+     agreed when this feature was planned. The caller's `className` still comes
+     after, so a one-off can opt back in. */
+  box-shadow: none;
+
+  /* The centre, painted by `border-image` ITSELF via the `fill` keyword rather
+     than as a second layer.
+
+     WHY THIS AND NOT A SEPARATE BACKGROUND. A separate layer has to choose its
+     own scaling, and any choice disagrees with the border's: `cover` rescales
+     the middle to the card's box while the border stays at natural size, so the
+     two meet in a hard seam wherever the scales differ. That seam is a straight
+     cut across artwork whose own edges are soft and ragged, which reads as the
+     card slicing the picture. `fill` slices the centre with the SAME nine-patch
+     geometry as the border, so the middle and the edges are by construction one
+     continuous image at every card size.
+
+     The cost, accepted deliberately: `fill` is part of the border-image layer,
+     and a layer carries one opacity -- so the opacity slider now dims the frame
+     and the background together rather than the background alone. Chosen over a
+     permanently visible seam. See `--card-frame-fill-opacity` below. */
+  border-image-slice: var(--card-frame-slice) fill;
+  /* A gentle radius, not the theme's full `rounded-xl`.
+
+     Square corners let the artwork's own corner decide the silhouette, but they
+     also leave the card reading as a hard rectangle against rounded neighbours.
+     8px softens the outline while staying well inside a typical frame's corner
+     motif -- the ornate corner still paints, it is only the outermost pixel or
+     two of the picture's bounding box that is clipped. A full 12px starts
+     cutting into the detail on a frame with a tight corner. */
+  border-radius: 8px;
+}
+
+/* Centre off: the same frame, drawn as a border only, with the theme's own card
+   colour showing through the middle. Re-declares the slice WITHOUT `fill`
+   rather than trying to blank a variable -- omitting the keyword changes the
+   declaration's syntax, not one of its values, and a custom property that
+   substitutes to nothing leaves a trailing separator behind. Two explicit rules
+   are the honest way to express it.
+
+   Keyed off the ANCESTOR's `data-card-frame` value rather than an attribute on
+   each card: the selection is application-wide, so the layout already knows,
+   and a card would otherwise need a prop threaded to every call site purely to
+   repeat what its ancestor states once.
+
+   The background has to come back too: with `fill` gone the middle is
+   transparent, and the card would otherwise show the page straight through. */
+[data-card-frame="off"] .card-framed {
+  border-image-slice: var(--card-frame-slice);
+  background-color: var(--paper-raised);
+
+}
+
+/* The frame's opacity.
+ *
+ * Applied to the whole card rather than to a background layer, because the
+ * centre is now painted by `border-image`'s `fill` keyword (above) and that is
+ * one layer with one opacity. Dimming it dims the frame and the background
+ * together -- which is the trade taken to remove the seam a separately scaled
+ * background layer always produced.
+ *
+ * `opacity` on the card itself would also fade the text inside it, so the
+ * variable drives a `::before` carrying nothing but the colour of the page
+ * showing through: at full opacity it is invisible, and as the slider comes
+ * down it washes the frame out toward the paper underneath.
+ *
+ * `inset: -1px` so the wash covers the border box's own outer edge; without it
+ * a hairline of undimmed artwork survives at the very rim. */
+[data-card-frame] .card-framed {
+  position: relative;
+}
+
+[data-card-frame] .card-framed::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background-color: var(--paper);
+  /* The inverse of the frame's opacity: at 1 the wash is fully transparent and
+     the artwork shows as drawn; at 0.25 the paper reads through at 75%. */
+  opacity: calc(1 - var(--card-frame-fill-opacity, 1));
+}
+
+/* The card's own children sit above the fill layer. Without this they share
+   `z-index: auto` with it and the painting order depends on DOM order alone,
+   which puts a background-coloured header band over its own card. */
+[data-card-frame] .card-framed > * {
+  position: relative;
+  z-index: 1;
+}

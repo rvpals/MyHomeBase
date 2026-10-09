@@ -146,6 +146,34 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-10-08 — Release (Card Frames, CustomizableCard)
+
+**Migration 0133 must be applied on the NAS first** — without it the Card Frames page and the
+About → Application card fail with "no such table". Only the *Application & System Info* card
+uses the new component. Item 17 is phone-only. Items 9–12 reflect CSS changed after the
+last look at it, so test them first.
+
+- [ ] **1.** Administration → Display Settings lists a **Card Frames** entry beside Border Weight and Chrome Style, and it opens the page
+- [ ] **2.** Card Frames: Add picture uploads a PNG as a tile named "Frame 1" and does **not** change any card
+- [ ] **3.** Card Frames: a picture over 4 MB is refused with a message naming the size
+- [ ] **4.** Card Frames: click a tile's name to rename it; Enter saves, Escape cancels
+- [ ] **5.** Card Frames: Slices opens an editor whose preview is a real card; changing a number moves the border live
+- [ ] **6.** Card Frames: Save persists the slices, and reopening Slices shows the saved numbers
+- [ ] **7.** Card Frames: click a tile to use it — Administration → About → Application → *Application & System Info* now draws the frame
+- [ ] **8.** With a frame selected, every other card in the app (e.g. Home widgets, other About tabs) looks exactly as before
+- [ ] **9.** The frame's middle and edges form one continuous picture — no hard seam at the border, at a narrow and a wide window
+- [ ] **10.** The card's outer corners are softly rounded and the ornate corner detail is still visible
+- [ ] **11.** Card Frames: the Frame opacity slider fades the whole frame toward the page colour, text stays readable
+- [ ] **12.** Card Frames: unticking "Paint the picture's middle" gives a border-only frame with the theme's card colour inside (**never yet seen**)
+- [ ] **13.** Card Frames: Stretch, Repeat and Round change how the edges run along the sides
+- [ ] **14.** Card Frames: Replace swaps the picture but keeps its name and slices
+- [ ] **15.** Card Frames: click the selected tile again, and every card returns to its normal look
+- [ ] **16.** Card Frames: deleting the selected frame returns every card to its normal look
+- [ ] **17.** Phone width: the framed About card is readable, the header chevron works, and nothing overflows (**phone-only**)
+- [ ] **18.** Collapse and expand the framed card, reload, and it remembers its state
+
+---
+
 ## 2026-10-07 — Release (Journal Reports, Recycle Bin section, Daily Quote scroll, closable Home cards)
 
 **Migration 0132 must be applied on the NAS first** — without it the Report section fails

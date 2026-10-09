@@ -108,6 +108,21 @@ export const adminNav: SectionNode[] = [
         // Fresh and permanent -- `SectionPanel` derives this section's icon slot
         // from the id, so renaming it later orphans any uploaded override.
         //
+        // Sits beside Border Weight and Chrome Style, which is the group this
+        // belongs to: all three decide how a surface's edge is drawn. This one
+        // replaces that edge with a picture rather than tuning the drawn one.
+        id: "display-settings-card-frames",
+        label: "Card Frames",
+        href: "/admin/display-settings/card-frames",
+        hint: "Use a picture as the border and background of a card",
+        // `window`, as Border Weight and Chrome Style use: this is the app's
+        // own frame, and the baked icon sets draw no frame concept.
+        icon: "window",
+      },
+      {
+        // Fresh and permanent -- `SectionPanel` derives this section's icon slot
+        // from the id, so renaming it later orphans any uploaded override.
+        //
         // Sits next to Chrome Style: the two together are "how the app's frame
         // looks", and a reader tuning one usually wants the other.
         id: "display-settings-borders",
