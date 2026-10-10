@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  arrowBestScores,
   formatScore,
   getGame,
   listAvailableGames,
@@ -7,10 +8,12 @@ import {
   listRecentScores,
   listTopScores,
   recordScore,
+  scoreCardKey,
+  scoreGameName,
 } from "./games";
 import type { ScoreRepository } from "./ports";
 import type { ScoreWriteData } from "./schema";
-import type { Score } from "./types";
+import { ARROW_DIFFICULTIES, ARROW_DIFFICULTY_SETUP, type Score } from "./types";
 
 /** An in-memory ScoreRepository, so the use-cases are tested without SQLite. */
 function fakeRepo(seed: Score[] = []): ScoreRepository & { rows: Score[] } {
@@ -183,6 +186,29 @@ describe("the catalogue", () => {
     const keys = listGames(fakeRepo()).map((entry) => entry.game.key);
     expect(new Set(keys).size).toBe(keys.length);
   });
+
+  it("accepts every Arrow Clearing tier as a recordable key", () => {
+    /*
+      The tiers are scoreboard keys with no catalogue entry of their own, so the
+      catalogue-only version of `isKnownGame` rejected them — and `recordScoreSchema`
+      uses it, which would have silently refused to save every Harder and Nightmare
+      result while the game itself looked like it was working.
+    */
+    const repo = fakeRepo();
+    for (const tier of ARROW_DIFFICULTIES) {
+      const key = ARROW_DIFFICULTY_SETUP[tier].gameKey;
+      expect(() => recordScore(repo, { gameKey: key, userId: 7, score: 100 })).not.toThrow();
+    }
+  });
+
+  it("still refuses a key that merely looks like an Arrow Clearing tier", () => {
+    // The guard enumerates the tiers rather than matching a prefix, so an invented
+    // `arrow-clearing-*` key cannot open a leaderboard nobody can play.
+    const repo = fakeRepo();
+    expect(() =>
+      recordScore(repo, { gameKey: "arrow-clearing-trivial", userId: 7, score: 100 }),
+    ).toThrow();
+  });
 });
 
 describe("formatScore", () => {
@@ -193,5 +219,66 @@ describe("formatScore", () => {
   it("falls back to a bare number for a retired game", () => {
     // A scoreboard row for a game no longer in the catalogue must still render.
     expect(formatScore("pong", 1500)).toBe("1,500");
+  });
+
+  it("labels an Arrow Clearing tier that has no catalogue entry of its own", () => {
+    // The three tiers post to three keys behind one card, so only the entry tier's key
+    // is in the catalogue. Without `scoreCardKey` this fell through to the bare-number
+    // branch and a Nightmare score lost its unit.
+    expect(formatScore("arrow-clearing-nightmare", 1500)).toBe("1,500 pts");
+  });
+});
+
+describe("scoreCardKey and scoreGameName", () => {
+  it("maps every Arrow Clearing tier back to the one card", () => {
+    for (const tier of ARROW_DIFFICULTIES) {
+      const key = ARROW_DIFFICULTY_SETUP[tier].gameKey;
+      expect(scoreCardKey(key)).toBe("arrow-clearing-hard");
+      // The catalogue must actually hold what we map to, or the name and the icon slot
+      // both fall back to the raw key.
+      expect(getGame(scoreCardKey(key))).toBeDefined();
+    }
+  });
+
+  it("leaves a non-arrow key alone", () => {
+    expect(scoreCardKey("2048")).toBe("2048");
+    expect(scoreGameName("2048")).toBe("2048");
+  });
+
+  it("names each tier distinctly, so three leaderboards do not read as one", () => {
+    const names = ARROW_DIFFICULTIES.map((tier) =>
+      scoreGameName(ARROW_DIFFICULTY_SETUP[tier].gameKey),
+    );
+    expect(new Set(names).size).toBe(names.length);
+    expect(names).toContain("Arrow Clearing — Nightmare");
+  });
+
+  it("falls back to the raw key for a retired game", () => {
+    // A score outlives its game leaving the catalogue; the row must still render.
+    expect(scoreGameName("pong")).toBe("pong");
+  });
+});
+
+describe("arrowBestScores", () => {
+  it("reports a best per tier, not per card", () => {
+    const repo = fakeRepo([
+      score({ id: 1, gameKey: "arrow-clearing-hard", score: 500 }),
+      score({ id: 2, gameKey: "arrow-clearing-hard", score: 900 }),
+      score({ id: 3, gameKey: "arrow-clearing-nightmare", score: 300 }),
+    ]);
+
+    const bests = arrowBestScores(repo);
+
+    expect(bests.hard).toBe(900);
+    expect(bests.nightmare).toBe(300);
+    // Reported as 0 rather than undefined, so the view has a number to render.
+    expect(bests.harder).toBe(0);
+  });
+
+  it("covers every tier, so a new one cannot be missed", () => {
+    const bests = arrowBestScores(fakeRepo());
+    for (const tier of ARROW_DIFFICULTIES) {
+      expect(bests[tier]).toBe(0);
+    }
   });
 });

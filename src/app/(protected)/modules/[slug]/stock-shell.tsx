@@ -128,6 +128,7 @@ export async function StockShell({ children }: { children: ReactNode }) {
       expandedModules={navTree.expandedModules}
       onExpandedChange={setExpandedModulesAction}
       adminTreeModule={navTree.adminTreeModule}
+      navTexture={navTree.navTexture}
     >
       {/* The texture wrapper goes inside the shell, around the section content
           only: its `::before` is `fixed` so it still covers the viewport, but

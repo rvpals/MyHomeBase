@@ -677,6 +677,22 @@ const GameMahjongMatch: IconComponent = (props) => (
   </svg>
 );
 
+/* Pac-Man: the disc with a wedge bitten out of it, plus one pellet ahead of the mouth.
+   Filled rather than outlined — an outlined wedge reads as a pie chart at 16px, and the
+   filled silhouette is the single most recognisable shape in the arcade. The pellet is
+   what fixes the reading as "eating" rather than "a slice missing", and it also gives
+   the glyph the leftward motion the other game marks lack. */
+const GamePacman: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <path
+      d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 7.8-4.5L12 12l7.8-4.5A9 9 0 0 0 12 3z"
+      fill="currentColor"
+      stroke="none"
+    />
+    <circle cx="20.5" cy="12" r="1.6" fill="currentColor" stroke="none" />
+  </svg>
+);
+
 /* A rocket launching: the nose-cone body on a diagonal, one porthole, two fins and a
    short exhaust plume off the tail. The "launch module" button on the home screen's
    cards.
@@ -824,6 +840,7 @@ const TREE_ICONS = {
   "game-blackjack": GameBlackjack,
   "game-minesweeper": GameMinesweeper,
   "game-mahjong": GameMahjongMatch,
+  "game-pacman": GamePacman,
   pin: MapPin,
   map: FoldedMap,
   recipe: ChefHat,

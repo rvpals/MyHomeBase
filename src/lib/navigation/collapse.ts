@@ -78,3 +78,30 @@ export function resolveInitialExpanded(
   next.add(activeModuleSlug);
   return next;
 }
+
+/**
+ * The expanded set for "expand all": every module the tree draws.
+ *
+ * Takes the slugs rather than reading a module list, so the caller decides what
+ * "all" means — the tree renders the reader's modules *plus* the admin group when
+ * one is present, and a function that reached for the module registry itself would
+ * expand a heading that isn't on screen.
+ */
+export function expandAllModules(slugs: Iterable<string>): Set<string> {
+  return new Set(
+    [...slugs].map((slug) => slug.trim()).filter((slug) => slug.length > 0),
+  );
+}
+
+/**
+ * The expanded set for "collapse all": nothing, bar the module being read.
+ *
+ * The active module survives deliberately, and it is not a half-measure: every
+ * mount re-expands it through `resolveInitialExpanded`, so a collapse-all that
+ * returned a genuinely empty set would be undone by the next navigation and read
+ * as a button that doesn't stick. Collapsing to empty here and re-expanding there
+ * are the same state; this way the screen agrees with the store.
+ */
+export function collapseAllModules(activeModuleSlug: string | undefined): Set<string> {
+  return activeModuleSlug ? new Set([activeModuleSlug]) : new Set();
+}

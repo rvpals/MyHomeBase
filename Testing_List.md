@@ -146,6 +146,35 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-10-09 — Release (Pac-Man, Arrow Clearing tiers, navigation texture, tree expand/collapse all)
+
+**No migration.** Item 15 is phone-only. Pac-Man (1–6) and the three Arrow Clearing tiers (7–10) are brand new, so test them first.
+
+- [ ] **1.** Games: the Arcade lists a **Pac-Man** card with its icon, and Play opens the board full-bleed
+- [ ] **2.** Pac-Man: arrow keys steer, a queued turn is taken at the next junction, pellets are eaten and the score rises
+- [ ] **3.** Pac-Man: a power pellet turns the ghosts frightened, and chomping them pays 200, 400, 800, 1600
+- [ ] **4.** Pac-Man: the bazooka pickup appears, arms one shot, and the shot destroys one ghost for a flat 300
+- [ ] **5.** Pac-Man: being caught costs a life; the last one ends the run and posts a score on Scores
+- [ ] **6.** Pac-Man: sound plays (and respects the Games sound setting)
+- [ ] **7.** Arrow Clearing: one Arcade card, with Hard / Harder / Nightmare picked inside the game
+- [ ] **8.** Arrow Clearing: Harder and Nightmare boards are visibly longer and straighter than Hard, with no huge empty patches
+- [ ] **9.** Arrow Clearing: a Harder and a Nightmare win each post a score, named with the tier, on the Scores table
+- [ ] **10.** Arrow Clearing: Unlimited lives lets a blocked tap cost nothing, and the run posts **no** score — even after switching it back off
+- [ ] **11.** Games: Bridge has a **Rules** button in the board header that opens and closes the rules, and the arrow/steering keys do nothing while it is open
+- [ ] **12.** Games: the instructions for each game read correctly after the rewrite
+- [ ] **13.** Administration → Configuration → App Texture: a **Toolbar texture** card picks a library picture and an opacity, and Save persists it
+- [ ] **14.** Toolbar texture: the desktop navigation tree shows the picture behind its rows, text still readable, and choosing None removes it
+- [ ] **15.** Toolbar texture: the same picture appears behind the compact bottom bar in all its arrangements (**phone-only**)
+- [ ] **16.** Toolbar texture: collapsing the tree to its 28px strip still shows the texture
+- [ ] **17.** Navigation tree: Collapse all closes every module except the one you are in, and it stays that way after navigating
+- [ ] **18.** Navigation tree: Expand all opens every module including Administration, and persists
+- [ ] **19.** Navigation tree: both buttons are disabled while the filter box has text
+- [ ] **20.** Journal → Review: a same-date entry row has a red × that moves it to the recycle bin at once, with a notice, and the list does not jump or re-sort
+- [ ] **21.** Journal → Review: the deleted entry is restorable from Data Management → CSV Import → Correct
+- [ ] **22.** Household: the HSA expense form has no Time field, and Use current date fills just the date
+
+---
+
 ## 2026-10-08 — Release (Card Frames, CustomizableCard)
 
 **Migration 0133 must be applied on the NAS first** — without it the Card Frames page and the

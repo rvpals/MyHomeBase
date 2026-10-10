@@ -115,36 +115,61 @@ export interface MoveResult {
 export const ARROW_LIVES = 5;
 
 /**
- * The board tiers, each its own catalogue key.
+ * The board tiers, in ascending difficulty.
  *
- * **There is one tier.** It started as three (5x5 / 7x7 / 9x9) and the two smaller ones
- * were withdrawn in migration 0077: even the 9x9 was no challenge, so an easier board
- * below it was pointless, and three cards on the Arcade implied a difficulty ladder the
- * game did not have.
+ * Three tiers behind **one** Arcade card, with the picker inside the game — the shape
+ * Sudoku and Minesweeper use. It briefly had three *cards* (5x5 / 7x7 / 9x9), withdrawn
+ * in migration 0077 because three cards for one game meant three scoreboards and implied
+ * a ladder the generator did not actually have. The ladder is real now, so the tiers are
+ * back; the one-card shape is what stays.
  *
- * Kept as a one-element list rather than deleted outright, so `ArrowDifficulty`,
- * `arrowDifficultyOf` and the per-tier catalogue mapping all survive: adding a tier
- * back is then a line here plus a catalogue entry, where rebuilding the concept from
- * scratch would be a refactor.
- *
- * The ids are stored in `gam_scores.game_key`, so they are permanent once anyone has
- * played. That is why the surviving key is still `arrow-clearing-hard` even though the
- * label no longer says "Hard" — renaming it would orphan every score already posted.
+ * Each tier still keeps **its own** `gameKey`, so a Nightmare clear is not ranked against
+ * a Hard one — they are different amounts of work. Those ids live in
+ * `gam_scores.game_key` and are permanent once anyone has played, which is why the entry
+ * tier is still keyed `arrow-clearing-hard` even though it is now the *easiest* of three.
+ * Renaming it would orphan every score already posted, exactly as renaming an icon slot
+ * id orphans an upload.
  */
-export const ARROW_DIFFICULTIES = ["hard"] as const;
+export const ARROW_DIFFICULTIES = ["hard", "harder", "nightmare"] as const;
 
 export type ArrowDifficulty = (typeof ARROW_DIFFICULTIES)[number];
 
 /**
- * Board size and arrow count per tier.
+ * Board size, arrow count and generator tuning per tier.
  *
- * 50x50 with a target of 1500, which saturates at **~359 arrows** over ~71% of the board
- * — roughly 360 taps to clear, and about 33x the ~11-arrow board this briefly shrank to.
+ * **Every tier is 50x50.** The ladder is in how the arrows are *shaped*, not in how big
+ * the grid is — growing the board would also grow the tap-precision problem the zoom
+ * controls exist to solve, and a bigger grid mostly adds scrolling rather than
+ * difficulty. See `lengthWeights` and `straightBias`.
  *
  * `arrows` is a ceiling the generator is not expected to reach. It stops when no legal
  * placement is left, and that saturation point is a property of the board *size*, not of
  * this number: at 18x18 a target of 120 and a target of 170 both settled at 84 arrows.
- * **To get more arrows, grow the board — not this.**
+ * **To get more arrows, grow the board — not this.** Note the higher tiers settle at
+ * *fewer* pieces for the same coverage, because each piece is longer.
+ *
+ * ## Why a finished board has gaps in it, and what actually shrinks them
+ *
+ * A board stops filling at ~70% coverage, and the leftover space is **not** space the
+ * generator failed to search. Every placement needs a clear straight exit lane at the
+ * moment it is made, so as the board fills the surviving free cells get walled in.
+ * Measured on a finished 50x50 Nightmare board: of 1166 free cells, **only 7 still had a
+ * clear line to any edge.** The other 1159 are enclosed — an arrow placed in one could
+ * never leave, so putting one there would break the solvability guarantee outright.
+ *
+ * Two things that look like the fix and are not:
+ *
+ * - **Raising `arrows`.** Generation already stops before reaching the target. Measured:
+ *   no change whatsoever (Nightmare sat at 220 arrows with a target of 900 and of 2000).
+ * - **Widening the search past the depth band** in `findPlacement`. Tried, and it made
+ *   boards *worse* — 205 arrows down to 151, with larger voids — because the wider pool
+ *   returns short shallow near-misses that burn a placement a better spot could have
+ *   used. There is a note at that code saying so.
+ *
+ * What does work is **arrow length**: a maximal arrow walls off much more ground than it
+ * covers, so a tier whose weights ramp straight to the 12-cell cap produces the biggest
+ * voids. Peaking in the middle of the long range keeps pieces long while roughly halving
+ * the empty regions. That is why Nightmare's weights are shaped the way they are.
  *
  * A board this size is only viable because generation is O(1) per candidate rather than
  * walking each exit path — see `OccupancyGrid` in `game-arrows.ts`. Before that, 50x50
@@ -159,12 +184,97 @@ export type ArrowDifficulty = (typeof ARROW_DIFFICULTIES)[number];
  */
 export const ARROW_DIFFICULTY_SETUP: Record<
   ArrowDifficulty,
-  { size: number; arrows: number; gameKey: string; label: string }
+  {
+    size: number;
+    arrows: number;
+    gameKey: string;
+    label: string;
+    /**
+     * How often each arrow length is aimed for, as relative weights indexed by length.
+     *
+     * Index 0 is unused so a length reads as its own index. **Index 1 is zero on every
+     * tier**: a single-cell arrow draws as a bare arrowhead with no line behind it, which
+     * reads as a stray glyph rather than a piece of the maze. See `MIN_ARROW_LENGTH`.
+     *
+     * The tiers differ only in where the mass sits. Hard is weighted toward short, which
+     * is what gives it texture at the cost of a lot of two-cell pieces; the higher tiers
+     * move the mass up the scale, so clearing one piece sweeps a long run off the board
+     * rather than nibbling a corner. That is the whole point of the ladder — a long arrow
+     * leaving is the satisfying part.
+     */
+    lengthWeights: readonly number[];
+    /**
+     * How strongly a growing tail prefers to carry straight on, in [0, 1).
+     *
+     * 0 is the original behaviour: at each step the tail picks a random free neighbour,
+     * which produces the tangled, knotted pieces of the entry tier. At 0.8 the tail
+     * continues in the direction it was already going whenever that cell is free, so
+     * pieces come out as long clean runs with the occasional deliberate bend.
+     *
+     * This is the "less entangled" half of the ladder, and it is deliberately *inverse*
+     * to the usual intuition that harder means messier. A knot of short tangled arrows is
+     * fiddly rather than hard; a board of long straight runs is harder to *order*, because
+     * each piece crosses more of the grid and so blocks more of its neighbours.
+     *
+     * Not 1.0 even at the top: a tail that can never turn is a straight stick, and
+     * `growPath` would stop dead at the first obstacle instead of routing around it,
+     * which caps how long pieces can actually get on a filling board.
+     */
+    straightBias: number;
+  }
 > = {
-  hard: { size: 50, arrows: 1500, gameKey: "arrow-clearing-hard", label: "50x50" },
+  hard: {
+    size: 50,
+    arrows: 1500,
+    gameKey: "arrow-clearing-hard",
+    label: "Hard",
+    // The original tuning, untouched: this is the board every existing score was set on.
+    lengthWeights: [0, 0, 20, 16, 13, 10, 8, 7, 6, 5, 4, 3, 3],
+    straightBias: 0,
+  },
+  harder: {
+    size: 50,
+    arrows: 1200,
+    gameKey: "arrow-clearing-harder",
+    label: "Harder",
+    // Mass moved off the two-cell end and onto the middle and upper lengths.
+    lengthWeights: [0, 0, 3, 5, 8, 11, 13, 14, 14, 13, 12, 11, 10],
+    straightBias: 0.55,
+  },
+  nightmare: {
+    size: 50,
+    arrows: 900,
+    gameKey: "arrow-clearing-nightmare",
+    label: "Nightmare",
+    /*
+      Long runs, peaking at 8-9 cells rather than running flat-out to the 12 cap.
+
+      The first attempt did ramp straight to the cap (`…18, 20, 22, 24` with bias 0.8)
+      and it looked wrong on the board: mean length was higher (7.89) but it left
+      **large empty regions** — 42 fully-empty 5x5 neighbourhoods a board, with gaps up
+      to 24 cells wide. A maximal arrow walls off far more ground than it covers, so the
+      enclosed-cell problem below bites hardest exactly when every piece is maximal.
+
+      Peaking in the middle of the long range instead keeps the pieces long (7.21 mean,
+      barely changed) while halving the voids to 20 and the worst gap to 18, and it fits
+      *more* arrows on the board (240 against 221). Index 2 is zero here, not just index
+      1: on this tier a two-cell stub is the shape the ladder exists to remove, and
+      cramped spots have the 3-cell weight to fall back on.
+    */
+    lengthWeights: [0, 0, 0, 2, 4, 7, 11, 14, 16, 15, 13, 10, 8],
+    straightBias: 0.7,
+  },
 };
 
-/** The difficulty a catalogue key belongs to, or undefined for a non-arrow game. */
+/**
+ * The difficulty a catalogue key belongs to, or undefined for a non-arrow game.
+ *
+ * The Arcade no longer uses it — with one card and the picker inside the game, the view
+ * owns the tier. What does use it is the scoreboard: `gam_scores` stores one key per
+ * tier, so `scoreCardKey` and `scoreGameName` need this to turn a stored
+ * `arrow-clearing-nightmare` back into a catalogue entry it can name and draw an icon
+ * for. Changing it changes how the Scores table reads.
+ */
 export function arrowDifficultyOf(gameKey: string): ArrowDifficulty | undefined {
   return ARROW_DIFFICULTIES.find(
     (difficulty) => ARROW_DIFFICULTY_SETUP[difficulty].gameKey === gameKey,
@@ -1559,3 +1669,421 @@ export const BRIDGE_HCP: Readonly<Record<string, number>> = {
   Q: 2,
   J: 1,
 };
+
+/* ---------------------------------------------------------------------------------
+   Pac-Man.
+--------------------------------------------------------------------------------- */
+
+/**
+ * The maze, as ASCII art.
+ *
+ * Written as a picture rather than as coordinate pairs — the opposite of the choice
+ * `SHAPES` makes in `game-tetris.ts`, and for the opposite reason. A tetromino is
+ * *rotated*, so its cells have to be arithmetic; a maze is never transformed at all,
+ * it is only read. A picture is therefore the representation that can be checked by
+ * eye, and a 28x31 maze written as 868 coordinate pairs could not be.
+ *
+ * The legend:
+ *   - `#` wall
+ *   - `.` pellet
+ *   - `o` power pellet
+ *   - ` ` empty floor
+ *   - `-` the ghost house door (walkable by a ghost, never by Pac-Man)
+ *
+ * This is the original arcade layout: 28 columns by 31 rows, the two side tunnels on
+ * row 14, and the ghost house in the middle. The dimensions are not declared beside
+ * this string but *derived* from it — see `PACMAN_COLS` — so the three can never
+ * disagree. `game-pacman.test.ts` asserts the picture is rectangular and that both
+ * tunnel mouths line up, which is the failure a hand-edited maze actually produces.
+ */
+export const PACMAN_MAZE = [
+  "############################",
+  "#............##............#",
+  "#.####.#####.##.#####.####.#",
+  "#o####.#####.##.#####.####o#",
+  "#.####.#####.##.#####.####.#",
+  "#..........................#",
+  "#.####.##.########.##.####.#",
+  "#.####.##.########.##.####.#",
+  "#......##....##....##......#",
+  "######.##### ## #####.######",
+  "     #.##### ## #####.#     ",
+  "     #.##          ##.#     ",
+  "     #.## ###--### ##.#     ",
+  "######.## #      # ##.######",
+  "      .   #      #   .      ",
+  "######.## #      # ##.######",
+  "     #.## ######## ##.#     ",
+  "     #.##          ##.#     ",
+  "     #.## ######## ##.#     ",
+  "######.## ######## ##.######",
+  "#............##............#",
+  "#.####.#####.##.#####.####.#",
+  "#.####.#####.##.#####.####.#",
+  "#o..##.......  .......##..o#",
+  "###.##.##.########.##.##.###",
+  "###.##.##.########.##.##.###",
+  "#......##....##....##......#",
+  "#.##########.##.##########.#",
+  "#.##########.##.##########.#",
+  "#..........................#",
+  "############################",
+] as const;
+
+/** Maze width in tiles, derived from `PACMAN_MAZE` so the two cannot drift apart. */
+export const PACMAN_COLS = PACMAN_MAZE[0].length;
+
+/** Maze height in tiles, derived from `PACMAN_MAZE` for the same reason. */
+export const PACMAN_ROWS = PACMAN_MAZE.length;
+
+/** What one maze tile holds. The walls never change; the pellets are eaten. */
+export type PacmanTile = "wall" | "pellet" | "power" | "empty" | "door";
+
+/**
+ * The four compass directions, plus the stopped state.
+ *
+ * `"none"` is a real value rather than `undefined` because it is a thing Pac-Man
+ * genuinely does: pressed into a wall he stops, and the game still has to know which
+ * way he last faced so the sprite points somewhere sensible. A union with `undefined`
+ * would push that question onto every caller.
+ */
+export const PACMAN_DIRECTIONS = ["up", "down", "left", "right", "none"] as const;
+
+export type PacmanDirection = (typeof PACMAN_DIRECTIONS)[number];
+
+/** A tile coordinate in the maze. Row 0 is the top. */
+export interface PacmanPoint {
+  row: number;
+  col: number;
+}
+
+/**
+ * The four ghosts, by their arcade names.
+ *
+ * These are keys, not labels: each indexes a different targeting rule in
+ * `game-pacman.ts` and a different colour in the view. Renaming one renames a
+ * behaviour, so they are as fixed as the tetromino letters.
+ */
+export const GHOST_NAMES = ["blinky", "pinky", "inky", "clyde"] as const;
+
+export type GhostName = (typeof GHOST_NAMES)[number];
+
+/**
+ * What a ghost is currently doing. The four modes have genuinely different rules,
+ * not merely different colours:
+ *
+ *   - `scatter` — heads for its own corner, ignoring Pac-Man entirely.
+ *   - `chase` — hunts, each ghost by its own rule. See `ghostTarget`.
+ *   - `frightened` — flees, choosing at random, and can be eaten.
+ *   - `eaten` — a pair of eyes returning to the house to be reborn.
+ */
+export type GhostMode = "scatter" | "chase" | "frightened" | "eaten";
+
+/** One ghost: where it is, which way it is going, and what it is doing. */
+export interface Ghost {
+  name: GhostName;
+  row: number;
+  col: number;
+  direction: PacmanDirection;
+  mode: GhostMode;
+  /**
+   * Ticks remaining before this ghost leaves the house at the start of a life.
+   *
+   * The arcade releases the four on a stagger rather than all at once — all four
+   * arriving together is both unfair and visually unreadable. Zero means "out".
+   */
+  penTicks: number;
+}
+
+/** Why a run ended, or `undefined` while it is still going. */
+export type PacmanOutcome = "caught" | undefined;
+
+/**
+ * A whole game, as one immutable value.
+ *
+ * Every rule in `game-pacman.ts` takes one of these and returns the next — including
+ * the clock, which is `tick`. The same trade `game-tetris.ts` makes, and for the same
+ * reason: a test advances a hundred ticks in a loop and never waits on a real timer.
+ */
+export interface PacmanState {
+  /**
+   * The maze's mutable layer: one entry per tile, row-major.
+   *
+   * Only the pellets really live here — the walls are copied in so one lookup answers
+   * "what is at this tile", but nothing ever writes a wall. A flat array for the
+   * reason 2048's `Board` and Tetris's `Playfield` are flat: every lookup is an index
+   * computation, and `row * PACMAN_COLS + col` is the whole of it.
+   */
+  pellets: readonly PacmanTile[];
+  pacman: PacmanPoint;
+  /** The direction Pac-Man is travelling right now. */
+  direction: PacmanDirection;
+  /**
+   * The direction the player has asked for but which is not yet legal.
+   *
+   * **This is what makes the controls feel right**, and it is not a cosmetic detail.
+   * A player presses Up slightly before reaching the corridor they mean to turn into;
+   * without a buffer that input is simply dropped and the turn is missed. Holding the
+   * request and applying it on the first tick it becomes legal is what the arcade
+   * does, and it is the difference between tight controls and sticky ones.
+   */
+  queued: PacmanDirection;
+  ghosts: readonly Ghost[];
+  score: number;
+  lives: number;
+  level: number;
+  /**
+   * Pellets remaining on the board.
+   *
+   * Tracked rather than counted, because it is read on every single tick to decide
+   * whether the board is clear; recounting 868 tiles that often is the one piece of
+   * arithmetic in this game worth avoiding.
+   */
+  pelletsLeft: number;
+  /** Ticks remaining of the current power pellet, or 0 when not frightened. */
+  frightenedTicks: number;
+  /**
+   * Ghosts eaten during the *current* power pellet.
+   *
+   * Resets on each pellet, because the 200/400/800/1600 ladder is per-pellet: all
+   * four on one pellet pays 3000, but two on each of two pellets pays 1200. Carrying
+   * the count across would quietly pay the wrong number.
+   */
+  ghostsEatenThisPower: number;
+  /** Ticks elapsed this life, which drives the scatter/chase phase schedule. */
+  phaseTicks: number;
+  /** Total moves, recorded alongside the score as the game's `moves` count. */
+  moves: number;
+  /**
+   * Whether the extra life has already been awarded.
+   *
+   * A flag rather than a score comparison: the award fires on *crossing*
+   * `PACMAN_EXTRA_LIFE_AT`, and a test like `score >= 10000` is true on every tick
+   * after it and would hand out a life per pellet for the rest of the run.
+   */
+  extraLifeAwarded: boolean;
+  outcome: PacmanOutcome;
+  /**
+   * Set for one tick when Pac-Man is caught, so the view can play the death cue.
+   *
+   * Carried on the state rather than derived, for the reason `LineClear` is in
+   * Tetris: by the time the next state exists the event is over and nothing is left
+   * to say it happened. The library still decides no timing and no styling.
+   */
+  dying: boolean;
+  /**
+   * The bazooka currently lying in the maze, or `undefined` when there is none.
+   *
+   * One at a time, deliberately. Several pickups on the board at once would turn a
+   * decision about which risk to take into a supply run.
+   */
+  bazooka: Bazooka | undefined;
+  /** Ticks until the next bazooka appears. Counts down only while none is on the board. */
+  bazookaCooldown: number;
+  /**
+   * Shots held. Caps at one — collecting while already loaded does not stack.
+   *
+   * A number rather than a boolean so the cap is a *rule in one place*
+   * (`collectBazooka`) rather than a type that forbids ever changing it. Raising the
+   * cap later is then a constant, not a refactor of every call site.
+   */
+  ammo: number;
+  /** The shell in flight, or `undefined`. Only ever one — see `Projectile`. */
+  projectile: Projectile | undefined;
+  /**
+   * The ghost a shell destroyed this tick, for the view to cue and flash.
+   *
+   * Carried for exactly the reason `dying` is: once the next state exists the event
+   * is over, and the ghost is already drifting home as eyes with nothing left to say
+   * it was shot rather than chomped.
+   */
+  shotGhost: GhostName | undefined;
+  /** Set for one tick when a bazooka is collected, so the view can cue the pickup. */
+  collectedBazooka: boolean;
+}
+
+/** Points for one pellet. */
+export const PACMAN_PELLET_POINTS = 10;
+
+/** Points for one power pellet. */
+export const PACMAN_POWER_POINTS = 50;
+
+/**
+ * Points for eating a ghost, doubling per ghost within one power pellet.
+ *
+ * The arcade's ladder: 200, 400, 800, 1600 — so clearing all four on a single pellet
+ * is worth 3000, which is the whole reason to chase rather than merely survive.
+ */
+export const PACMAN_GHOST_POINTS = [200, 400, 800, 1600] as const;
+
+/** Lives a run starts with. Three, as the arcade does. */
+export const PACMAN_LIVES = 3;
+
+/** Score at which the player earns an extra life. Once per run, as the arcade does. */
+export const PACMAN_EXTRA_LIFE_AT = 10_000;
+
+/**
+ * How long a power pellet lasts, in ticks, at level 1.
+ *
+ * Shortens with the level (see `frightenedTicksFor`), which is the arcade's main
+ * difficulty lever — by the late boards a power pellet barely buys you one ghost.
+ */
+export const PACMAN_FRIGHTENED_TICKS = 60;
+
+/**
+ * The scatter/chase schedule, in ticks from the start of a life.
+ *
+ * The ghosts alternate between hunting and retreating to their corners, and that
+ * alternation is what makes the game playable at all: four ghosts in permanent chase
+ * corner Pac-Man almost immediately. Each entry is a phase and how long it lasts; the
+ * last runs forever, which is why a board gets relentless if you take too long over it.
+ */
+export const PACMAN_PHASES = [
+  { mode: "scatter", ticks: 25 },
+  { mode: "chase", ticks: 100 },
+  { mode: "scatter", ticks: 25 },
+  { mode: "chase", ticks: 100 },
+  { mode: "scatter", ticks: 25 },
+  { mode: "chase", ticks: Number.POSITIVE_INFINITY },
+] as const satisfies readonly { mode: "scatter" | "chase"; ticks: number }[];
+
+/**
+ * Each ghost's scatter corner, as a tile deliberately *outside* the maze.
+ *
+ * A target beyond the wall is the arcade's own trick: a ghost can never arrive, so it
+ * orbits the nearest corner instead of stopping dead on a tile. Aiming at a reachable
+ * tile would park all four and the scatter phase would stop being a reprieve.
+ */
+export const GHOST_SCATTER_CORNERS: Readonly<Record<GhostName, PacmanPoint>> = {
+  blinky: { row: -2, col: PACMAN_COLS - 2 },
+  pinky: { row: -2, col: 1 },
+  inky: { row: PACMAN_ROWS + 1, col: PACMAN_COLS - 1 },
+  clyde: { row: PACMAN_ROWS + 1, col: 0 },
+};
+
+/** Where Pac-Man starts each life: the open row below the ghost house. */
+export const PACMAN_START: PacmanPoint = { row: 23, col: 13 };
+
+/**
+ * Where each ghost starts a life.
+ *
+ * Blinky starts *outside* the house and the other three inside it — the arcade's
+ * arrangement, and the reason Blinky is the one on your tail from the first second.
+ */
+export const GHOST_STARTS: Readonly<Record<GhostName, PacmanPoint>> = {
+  blinky: { row: 11, col: 13 },
+  pinky: { row: 14, col: 13 },
+  inky: { row: 14, col: 11 },
+  clyde: { row: 14, col: 15 },
+};
+
+/**
+ * The tile a ghost aims for while `eaten`, and where it re-enters the house.
+ *
+ * Also the tile the three penned ghosts climb to on release, so one constant covers
+ * both directions through the door.
+ */
+export const GHOST_HOUSE_DOOR: PacmanPoint = { row: 11, col: 13 };
+
+/**
+ * Ticks each ghost waits in the house at the start of a life.
+ *
+ * The stagger described on `Ghost.penTicks`. Blinky is already out, so his is zero.
+ */
+export const GHOST_PEN_TICKS: Readonly<Record<GhostName, number>> = {
+  blinky: 0,
+  pinky: 8,
+  inky: 20,
+  clyde: 34,
+};
+
+/* ---------------------------------------------------------------------------------
+   The bazooka.
+
+   A pickup that spawns in the maze, is collected by walking over it, and buys one
+   shot at one ghost. Not part of the arcade game — a deliberate addition to this
+   one, and the reason every constant below is named for what it *does* rather than
+   for an original it does not have.
+
+   The design decision that shapes all of this: a shot ghost goes to the existing
+   `eaten` mode rather than to a new "destroyed" one. Its eyes float home and it
+   revives on the normal schedule, which means the bazooka reuses machinery that is
+   already correct instead of inventing a second respawn path to keep in step.
+--------------------------------------------------------------------------------- */
+
+/** The pickup, sitting in the maze waiting to be walked over. */
+export interface Bazooka {
+  row: number;
+  col: number;
+  /**
+   * Ticks before this one despawns uncollected.
+   *
+   * It expires rather than waiting forever, and that is what keeps the feature a
+   * decision: an uncollected bazooka left on the board all level would eventually be
+   * picked up for free, so the pickup would cost nothing but a detour whenever you
+   * happened to pass. A timer makes it something you choose to go for.
+   */
+  ttl: number;
+}
+
+/**
+ * A shell in flight.
+ *
+ * Only one can exist at a time, since ammunition caps at a single shot — so this is
+ * `Projectile | undefined` on the state rather than an array. A list would imply a
+ * salvo the rules do not allow.
+ */
+export interface Projectile {
+  row: number;
+  col: number;
+  /** Fixed at the moment of firing; a shell does not steer. */
+  direction: PacmanDirection;
+}
+
+/**
+ * Ticks between a bazooka despawning (or being collected) and the next one spawning.
+ *
+ * **Measured against how long a life actually lasts, not guessed.** This shipped at 70
+ * and the bazooka was effectively unreachable: the cooldown restarts on every death
+ * (see `loseLife`), and a typical life runs about 60 ticks — so 77% of lives ended
+ * before a pickup had ever appeared, and most players would never see one at all. At
+ * 25 every life is long enough to reach the first spawn.
+ *
+ * The lesson worth keeping: this number is only meaningful relative to the *player's*
+ * survival time, and a bot that plays better than a person will hide the problem
+ * completely.
+ */
+export const BAZOOKA_SPAWN_TICKS = 25;
+
+/** How long an uncollected bazooka waits before it despawns. See `Bazooka.ttl`. */
+export const BAZOOKA_TTL_TICKS = 80;
+
+/**
+ * The fewest tiles between Pac-Man and a newly spawned bazooka.
+ *
+ * Measured as straight-line distance, so it is cheap and approximate — the point is
+ * only that a pickup never materialises on top of the player, which would make it a
+ * reward for standing still rather than for going to get it.
+ */
+export const BAZOOKA_MIN_SPAWN_DISTANCE = 8;
+
+/**
+ * Tiles a shell travels per tick.
+ *
+ * Faster than anything else on the board, which is most of what makes it read as a
+ * projectile rather than as a slow second Pac-Man. It is resolved tile by tile along
+ * the way (see `stepProjectile`), so speed never lets it skip over a ghost.
+ */
+export const PROJECTILE_SPEED = 4;
+
+/**
+ * Points for destroying a ghost with the bazooka.
+ *
+ * Flat, and deliberately **off** the 200/400/800/1600 power-pellet ladder: a shot
+ * must not advance `ghostsEatenThisPower`, or it would inflate the payout of the next
+ * ghost chomped during a power pellet. The big rewards stay with the riskier play of
+ * running one down on foot, which is the behaviour worth encouraging — and it is why
+ * shooting a *frightened* ghost is the poorer choice, since the ladder would usually
+ * have paid more.
+ */
+export const BAZOOKA_GHOST_POINTS = 300;

@@ -1,5 +1,5 @@
 import { CollapsibleCard } from "@/components/collapsible-card";
-import { listGames, listTopScores } from "@/lib/games";
+import { arrowBestScores, listGames, listTopScores } from "@/lib/games";
 import { deps } from "@/lib/wiring";
 import { GamesArcadeView } from "./games-arcade-view";
 import { GamesConfigurationView } from "./games-configuration-view";
@@ -35,7 +35,14 @@ export async function GamesSection({ section }: { section: GamesSectionName }) {
         </CollapsibleCard>
 
         <div className="mt-6">
-          {section === "main" && <GamesArcadeView games={listGames(deps.gamesRepo)} />}
+          {/* Arrow Clearing is one card but three scoreboards, so its per-tier bests
+              are read alongside the catalogue — see `arrowBestScores`. */}
+          {section === "main" && (
+            <GamesArcadeView
+              games={listGames(deps.gamesRepo)}
+              arrowBests={arrowBestScores(deps.gamesRepo)}
+            />
+          )}
           {section === "scores" && (
             <GamesScoresView
               scores={listTopScores(deps.gamesRepo, { limit: TOP_SCORE_LIMIT })}

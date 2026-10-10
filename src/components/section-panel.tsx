@@ -17,8 +17,16 @@
 // by side, which reads worse than either extreme.
 
 import Link from "next/link";
-import { createContext, useContext, useEffect, useId, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useId,
+  useState,
+  type CSSProperties,
+} from "react";
 import { getIconSlot, sectionSlotId } from "@/lib/icons";
+import { navTextureVars, type ResolvedNavTexture } from "@/lib/nav-texture";
 import type { CompactNavStyle } from "@/lib/user-preferences";
 import { ModuleIcon } from "./module-icons";
 import { SlotIcon } from "./slot-icon";
@@ -112,6 +120,16 @@ export interface SectionPanelProps {
    * the identical 240px panel, which is why this is called *compact* nav style.
    */
   navStyle?: CompactNavStyle;
+  /**
+   * An optional background picture for the compact bar, resolved by
+   * `@/lib/nav-texture` from the app-wide setting and the texture library.
+   *
+   * Compact only in practice: on desktop this component renders the 240px panel
+   * that `NavTree` replaced, and the tree draws its own copy of the same
+   * texture. One setting feeds both, so a reader who picks a picture gets it at
+   * either width rather than at whichever one the admin happened to be on.
+   */
+  texture?: ResolvedNavTexture;
   className?: string;
 }
 
@@ -406,6 +424,7 @@ function SectionPanelBody({
   onOpenChange,
   moduleLinks = [],
   navStyle = "drill-in",
+  texture,
   className = "",
 }: Omit<SectionPanelProps, "iconNamespace">) {
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -484,6 +503,16 @@ function SectionPanelBody({
   // -------------------------------------------------------------------------
   if (isCompact) {
     const showingModules = sheetTier === "modules";
+
+    // The background texture, as props to spread onto whichever bar shape this
+    // branch returns. Computed once rather than written out three times: the
+    // sectionless bar, the segmented bar and the drill-in bar are three shapes
+    // of one surface, and three copies of the same two attributes is how they
+    // drift. Spreads to nothing when no picture is chosen, which is what keeps
+    // the `::before` layer off an untextured bar entirely.
+    const textureProps = texture
+      ? { "data-nav-textured": "", style: navTextureVars(texture) as CSSProperties }
+      : {};
     // `moduleLinks` can legitimately be empty — a shell that passes none keeps a
     // sections-only bar rather than offering a dead module control.
     const canSwitchModule = moduleLinks.length > 0;
@@ -512,6 +541,7 @@ function SectionPanelBody({
             onClick={() => openSheet("modules")}
             aria-haspopup="dialog"
             aria-expanded={sheetOpen}
+            {...textureProps}
             className={`shell-trigger flex items-center gap-2 border-t border-line bg-paper-raised px-4 py-3 text-left transition-colors hover:bg-line/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${className}`}
           >
             <ModuleIdentityIcon icon={module.icon} className="h-5 w-5 shrink-0 shell-accent-text" />
@@ -573,6 +603,7 @@ function SectionPanelBody({
           // Split bar: each tier is one tap, at the cost of a narrower target
           // for the module half and a glyph rather than a name for the module.
           <div
+            {...textureProps}
             className={`shell-trigger flex items-stretch border-t border-line bg-paper-raised ${className}`}
           >
             {canSwitchModule && (
@@ -624,6 +655,7 @@ function SectionPanelBody({
             onClick={() => openSheet("sections")}
             aria-haspopup="dialog"
             aria-expanded={sheetOpen}
+            {...textureProps}
             className={`shell-trigger flex items-center gap-2 border-t border-line bg-paper-raised px-4 py-3 text-left transition-colors hover:bg-line/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${className}`}
           >
             <ModuleIdentityIcon icon={module.icon} className="h-5 w-5 shrink-0 shell-accent-text" />

@@ -1,5 +1,48 @@
 # Change History
 
+## 2026-10-09 — Pac-Man, Arrow Clearing tiers, navigation texture, tree expand/collapse all
+
+**No migration.** The two new settings (`NAV_TEXTURE_ID`, `NAV_TEXTURE_OPACITY`) are
+upserted on save and read as "off" when absent, so nothing needs applying on the NAS.
+
+### Games & Puzzles
+
+- **Pac-Man** — a tenth game. Tile-stepped maze with four ghosts that each target
+  differently, a turn buffer, power pellets (200/400/800/1600 chain), and a **bazooka**
+  pickup that arms one shot and destroys one ghost for a flat 300. Synthesized sound through
+  `useGameSounds`. Posts to its own `pacman` leaderboard; icon slot `games_card_pacman`.
+- **Arrow Clearing is now Hard / Harder / Nightmare** behind one Arcade card, picked inside
+  the game. All 50x50; harder tiers mean longer, straighter arrows (up to 12 cells), not
+  messier ones. Each tier keeps its own leaderboard, and the Scores table names the tier.
+  An **unlimited lives** practice mode is available; a run that used it posts no score.
+- **Rules button on the Bridge board** — a new `Modal` `titleAction` slot puts it in the
+  header, and the games' steering keys are swallowed while the rules are open.
+- Game instructions rewritten (`games-instructions.tsx`).
+
+### Navigation
+
+- **Navigation texture** — Administration → Configuration → App Texture has a new
+  *Toolbar texture* card: pick a library picture and an opacity. One setting draws behind
+  both the desktop tree and the compact bar. Off by default.
+- **Collapse all / Expand all** buttons in the tree's filter row. Both persist, both are
+  disabled while filtering, and collapse-all keeps the module being read open.
+
+### Journal & Household
+
+- **Journal → Review → same-date entries:** a red × badge on each row moves that entry to
+  the recycle bin with no confirmation and no reload, so the list keeps its position.
+- **HSA expense form:** the Time field is gone; "Use current date" fills the date only.
+
+### Files
+
+New: `src/lib/nav-texture/`, `src/lib/games/game-pacman.{ts,test.ts}`,
+`game-pacman-view.tsx`, `admin/configuration/texture/nav-texture-control.tsx`.
+Changed: `src/lib/games/*`, `src/lib/navigation/collapse.{ts,test.ts}`,
+`src/lib/settings/defaults.ts`, `src/lib/icons/*`, `nav-tree.tsx`, `section-panel.tsx`,
+`two-tier-shell.tsx`, `modal.tsx`, every module shell (threads `navTexture`),
+`nav-tree-data.ts`, `globals.css`, `components.md`, `modules.md`, `design.md`.
+
+
 ## 2026-10-08 — Card Frames, and CustomizableCard
 
 **Migration 0133 must be applied on the NAS** (`sys_card_frames`, `sys_card_frame`). Without

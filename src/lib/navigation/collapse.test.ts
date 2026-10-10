@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  collapseAllModules,
+  expandAllModules,
   parseExpandedModules,
   resolveInitialExpanded,
   serializeExpandedModules,
@@ -95,5 +97,53 @@ describe("resolveInitialExpanded", () => {
     const stored = new Set(["expense"]);
     resolveInitialExpanded(stored, "journal");
     expect([...stored]).toEqual(["expense"]);
+  });
+});
+
+describe("expandAllModules", () => {
+  it("expands every slug it is given", () => {
+    expect([...expandAllModules(["journal", "expense"])].sort()).toEqual([
+      "expense",
+      "journal",
+    ]);
+  });
+
+  it("expands the admin group too when the caller includes it", () => {
+    // The tree draws the reader's modules plus admin; "all" has to mean what is
+    // on screen, or the button leaves one heading shut.
+    expect(expandAllModules(["journal", "administration"]).has("administration")).toBe(true);
+  });
+
+  it("drops blanks and whitespace, and de-duplicates", () => {
+    expect([...expandAllModules([" journal ", "", "journal"])]).toEqual(["journal"]);
+  });
+
+  it("returns an empty set when there are no modules", () => {
+    expect(expandAllModules([]).size).toBe(0);
+  });
+
+  it("does not alias the iterable it was given", () => {
+    const slugs = new Set(["journal"]);
+    const next = expandAllModules(slugs);
+    next.add("expense");
+    expect([...slugs]).toEqual(["journal"]);
+  });
+});
+
+describe("collapseAllModules", () => {
+  it("collapses everything to nothing when no module is active", () => {
+    expect(collapseAllModules(undefined).size).toBe(0);
+  });
+
+  it("keeps the active module expanded", () => {
+    // `resolveInitialExpanded` re-expands it on every mount, so returning an
+    // empty set here would be undone by the next navigation.
+    expect([...collapseAllModules("journal")]).toEqual(["journal"]);
+  });
+
+  it("agrees with resolveInitialExpanded, so the choice survives a remount", () => {
+    const collapsed = collapseAllModules("journal");
+    const remounted = resolveInitialExpanded(collapsed, "journal");
+    expect([...remounted].sort()).toEqual([...collapsed].sort());
   });
 });

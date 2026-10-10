@@ -39,6 +39,17 @@ export interface ModalProps {
   titleIcon?: ReactNode;
   /** Optional sub-heading under the title — context, not actions. */
   description?: ReactNode;
+  /**
+   * Optional control in the header, sitting between the title block and the
+   * `_ ▢ ✕` window chrome — for an affordance that acts on *this dialog* rather
+   * than confirming it (the Arcade's Bridge board carries a "Rules" button here).
+   *
+   * Deliberately not `footer`: a `size="full"` game renders no footer at all, and
+   * growing one back for a single button would return the row of chrome under the
+   * board that full-bleed exists to drop. Keep it to one or two small controls —
+   * this is a title bar, not a toolbar, and it shares its row with the chrome.
+   */
+  titleAction?: ReactNode;
   /** The dialog body. */
   children: ReactNode;
   /**
@@ -124,6 +135,7 @@ export function Modal({
   title,
   titleIcon,
   description,
+  titleAction,
   children,
   footer,
   onClose,
@@ -356,6 +368,9 @@ export function Modal({
             )}
           </div>
           <div className="flex shrink-0 items-center gap-1">
+            {/* Left of the chrome, with a gap after it: an action that belongs to the
+                dialog's content should not read as a fourth window button. */}
+            {titleAction && <div className="mr-2 flex items-center gap-2">{titleAction}</div>}
             {/* Window-chrome order, `_ ▢ ✕`, matching MusicPlayerBar's two buttons
                 and every desktop window the reader has ever used. Minimize first
                 because it is the least destructive of the three. */}

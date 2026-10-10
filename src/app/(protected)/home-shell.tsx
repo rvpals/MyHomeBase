@@ -113,6 +113,7 @@ export async function HomeShell({
       expandedModules={navTree.expandedModules}
       onExpandedChange={setExpandedModulesAction}
       adminTreeModule={navTree.adminTreeModule}
+      navTexture={navTree.navTexture}
     >
       {children}
     </TwoTierShell>

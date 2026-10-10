@@ -276,6 +276,7 @@ Reach for one of these before writing a new `shadow-[...]`:
 | `.shortcut-tile` / `.shortcut-tile-dead` | A **My Shortcuts tile** — a square, two-line clickable target | `Button`'s exact switch mechanic in `--line`: 4px resting, 5px + a 0.5 lift on hover, collapsed and pressed on active. The `-dead` variant keeps the resting depth and never moves, for an unreachable shortcut |
 | `[data-app-texture]` | The **admin-uploaded** background picture, from either source | a `fixed` `::before` behind the cards; opacity + blur from the stored settings. Emitted by the protected layout when the texture is app-wide, by the home page when it isn't, and by a module's shell when that module overrides |
 | `[data-app-texture-override]` | Marks a module's own layer, so the app-wide one behind it stands down | read only by `[data-app-texture]:has(…)`; never styled directly |
+| `[data-nav-textured]` | The **navigation** (`NavTree`, `SectionPanel`'s three compact bars) when an admin has picked a toolbar texture | a `::before` layer from `--nav-texture-image` / `--nav-texture-opacity`; children sit above it. Presence-keyed, so an untextured nav matches nothing. One app-wide setting (Administration → Configuration → App Texture → Toolbar texture) feeds desktop and compact |
 
 Two things they encode that are easy to get wrong:
 

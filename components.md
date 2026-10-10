@@ -783,6 +783,7 @@ that's what this was extracted from.
 | `title` | `string` | Heading, and the dialog's accessible name. |
 | `titleIcon?` | `ReactNode` | Small glyph left of the title, for a dialog that *is* a place (the Arcade's boards badge themselves with the game's icon). **Decorative only** — `title` remains the accessible name, so pass an `aria-hidden` icon (`SlotIcon`/`TreeIcon` already are). Stays `shrink-0`. |
 | `description?` | `ReactNode` | Sub-heading under the title — context, not actions. |
+| `titleAction?` | `ReactNode` | A control in the header, between the title and the `_ ▢ ✕` chrome, for an affordance that acts on *this dialog* rather than confirming it — the Arcade's Bridge board puts its **Rules** toggle here. Not `footer`: a `size="full"` game renders no footer, and growing one back for one button returns the row of chrome full-bleed exists to drop. One or two small controls — it shares its row with the window chrome. |
 | `children` | `ReactNode` | The body. The only part that scrolls. |
 | `footer?` | `ReactNode` | Bottom-right action bar; pass `Button`s in reading order. |
 | `onClose` | `() => void` | Fired by Escape, an overlay click, and the ✕. |
@@ -1707,6 +1708,7 @@ data and gets the chrome placed for it. Full design rationale:
 | `expandedModules` | `string[]?` | The reader's stored expanded set. Tree only. |
 | `onExpandedChange` | `(slugs: string[]) => void` | Persists it — a server action in practice. Tree only. |
 | `adminTreeModule` | `TreeModule?` | Administration as a tree heading. Passed to `NavTree` only when `showAdmin`. |
+| `navTexture` | `ResolvedNavTexture?` | The navigation's background picture, threaded to whichever surface is drawn. **Not tree-only**, unlike the three props above: one app-wide setting covers desktop and compact. From `getNavTreeData`. |
 
 **`sections` is still required when `tree` is set.** They feed different layouts —
 `sections` the compact bar and the breadcrumb, `tree` the desktop column. A shell that
@@ -1755,6 +1757,7 @@ one — see design.md, *Navigation: the tree (desktop) and the two-tier bar (com
 | `adminModule` | `TreeModule?` | Administration as a final heading. `TwoTierShell` passes it only when `showAdmin`. |
 | `isOpen` | `boolean?` | Default `true`. `false` renders a 28px strip carrying one reopen control — **not** a navigable rail. |
 | `onOpenChange` | `(open: boolean) => void` | The `«` in the tree closes it; the `»` in [`AppHeader`](#appheader) brings it back. State and storage key are shared with the section panel's old collapse. |
+| `texture` | `ResolvedNavTexture?` | An optional background picture, from `@/lib/nav-texture` via `getNavTreeData`. Gates a `::before` layer; omitted renders no layer at all. Set app-wide at **Admin → Display Settings → App Texture → Toolbar texture**. |
 | `className` | `string?` | Merged last. |
 
 **Filtering is `src/lib/navigation/filter.ts`, not this component.** Matching and ranking
@@ -1836,6 +1839,7 @@ two arrangements the reader has chosen.
 | `isOpen` / `onOpenChange` | `boolean` / `(open) => void` | Desktop only; the header's `»` is the way back. |
 | `moduleLinks` | `CompactModuleLink[]` | Tier 1, for compact's bar to switch between. Desktop ignores it — there the rail is tier 1. With no sections these become a **module-only bar**; empty *and* sectionless renders nothing. |
 | `navStyle` | `"drill-in" \| "segmented"` | Which compact arrangement. Desktop ignores it. From `useCompactNavStyle()` via the shell. |
+| `texture` | `ResolvedNavTexture?` | The same background picture [`NavTree`](#navtree) draws — **one app-wide setting feeds both**, so the navigation reads the same at either width. Spread onto all three compact bar shapes. |
 
 **Open or closed — there is no middle state**, deliberately unlike the old `TreeNav`'s
 full/rail/strip. A 48px icon rail for sections beside the 48px rail for modules is two

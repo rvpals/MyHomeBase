@@ -1,7 +1,14 @@
 import { GAME_CATALOGUE, findGame, listPlayableGames } from "./catalogue";
 import type { ScoreRepository } from "./ports";
 import { recordScoreSchema, topScoresQuerySchema } from "./schema";
-import type { CatalogueGame, Score } from "./types";
+import {
+  ARROW_DIFFICULTIES,
+  ARROW_DIFFICULTY_SETUP,
+  arrowDifficultyOf,
+  type ArrowDifficulty,
+  type CatalogueGame,
+  type Score,
+} from "./types";
 
 /**
  * The Games use-cases: functions that take data and return data.
@@ -33,6 +40,25 @@ export function listAvailableGames(): readonly CatalogueGame[] {
   return listPlayableGames();
 }
 
+/**
+ * The best score for each Arrow Clearing tier, keyed by tier.
+ *
+ * Arrow Clearing is one catalogue entry but three scoreboards — the tiers are picked
+ * inside the game and each posts to its own `gameKey`, so `listGames` (which maps the
+ * *catalogue*) only ever sees the entry tier's best. The board needs all three, because
+ * switching tier mid-session has to switch the "Best" it shows with it.
+ *
+ * Returns 0 rather than undefined for an unplayed tier: every caller is displaying a
+ * number, and three separate "or zero" fallbacks at the call site is worse than one here.
+ */
+export function arrowBestScores(repo: ScoreRepository): Record<ArrowDifficulty, number> {
+  const bests = {} as Record<ArrowDifficulty, number>;
+  for (const tier of ARROW_DIFFICULTIES) {
+    bests[tier] = repo.getBestScore(ARROW_DIFFICULTY_SETUP[tier].gameKey)?.score ?? 0;
+  }
+  return bests;
+}
+
 /** The catalogue entry for a key, or undefined. */
 export function getGame(key: string): CatalogueGame | undefined {
   return findGame(key);
@@ -62,12 +88,50 @@ export function listRecentScores(repo: ScoreRepository, limit = 10): Score[] {
 }
 
 /**
+ * The catalogue key a stored score should be *displayed* under.
+ *
+ * Almost always the key itself. The exception is Arrow Clearing, whose three tiers each
+ * post to their own `gameKey` but share a single catalogue entry — so a Nightmare score
+ * would otherwise find no catalogue row and render as the raw string
+ * `arrow-clearing-nightmare`, with no name, no unit and no icon (icon slot ids are
+ * derived from the key by `gameSlotId`).
+ *
+ * Resolving here rather than adding catalogue entries per tier: entries are *cards*, and
+ * three cards is exactly the shape migration 0077 withdrew. Resolving here rather than at
+ * the view: the scoreboard, the CLI report and anything else reading `gam_scores` back
+ * all need the same answer.
+ *
+ * Note this collapses the tiers for *labelling only* — the stored keys stay distinct, so
+ * the three leaderboards remain separate. A row still says which tier it was via its
+ * own key where that matters.
+ */
+export function scoreCardKey(gameKey: string): string {
+  const tier = arrowDifficultyOf(gameKey);
+  return tier ? ARROW_DIFFICULTY_SETUP.hard.gameKey : gameKey;
+}
+
+/**
+ * The display name for a stored score's key — the catalogue name, with the Arrow
+ * Clearing tier appended so three leaderboards do not read as one.
+ *
+ * Falls back to the raw key rather than throwing: a scoreboard row for a retired game
+ * must still render (see `catalogue.ts`).
+ */
+export function scoreGameName(gameKey: string): string {
+  const game = findGame(scoreCardKey(gameKey));
+  if (!game) return gameKey;
+
+  const tier = arrowDifficultyOf(gameKey);
+  return tier ? `${game.name} — ${ARROW_DIFFICULTY_SETUP[tier].label}` : game.name;
+}
+
+/**
  * Formats a score with its game's unit, so a view never hardcodes "points".
  * An unknown key falls back to a bare number rather than throwing — a scoreboard row
  * for a retired game must still render (see `catalogue.ts`).
  */
 export function formatScore(gameKey: string, score: number): string {
-  const game = findGame(gameKey);
+  const game = findGame(scoreCardKey(gameKey));
   if (!game) return score.toLocaleString();
   return game.scoreUnit === "seconds"
     ? `${score.toLocaleString()}s`

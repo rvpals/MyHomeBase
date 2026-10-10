@@ -1,11 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import { Modal } from "@/components/modal";
 import { SlotIcon } from "@/components/slot-icon";
-import { arrowDifficultyOf, formatScore, type GameSummary } from "@/lib/games";
+import {
+  formatScore,
+  type ArrowDifficulty,
+  type GameSummary,
+} from "@/lib/games";
 import { gameSlotId, getIconSlot } from "@/lib/icons";
+import { GameRules, hasGameRules } from "./games-instructions";
 import { Game2048View } from "./game-2048-view";
 import { GameBlackjackView } from "./game-blackjack-view";
 import { GameBridgeView } from "./game-bridge-view";
@@ -13,6 +18,7 @@ import { GameArrowsView } from "./game-arrows-view";
 import { GameMahjongMatchView } from "./game-mahjong-match-view";
 import { GameMahjongView } from "./game-mahjong-view";
 import { GameMinesweeperView } from "./game-minesweeper-view";
+import { GamePacmanView } from "./game-pacman-view";
 import { GameSudokuView } from "./game-sudoku-view";
 import { GameTetrisView } from "./game-tetris-view";
 
@@ -43,10 +49,88 @@ function GameIcon({ gameKey, className }: { gameKey: string; className?: string 
   return <SlotIcon slot={slot} className={className} />;
 }
 
-export function GamesArcadeView({ games }: { games: GameSummary[] }) {
+/** The `id` the Rules button points `aria-controls` at. A constant because both the
+ *  button and the panel need it and only one Bridge board is ever open. */
+const RULES_PANEL_ID = "game-rules-panel";
+
+export function GamesArcadeView({
+  games,
+  arrowBests,
+}: {
+  games: GameSummary[];
+  /** Best score per Arrow Clearing tier. One card, three scoreboards — see below. */
+  arrowBests: Record<ArrowDifficulty, number>;
+}) {
   const [openKey, setOpenKey] = useState<string | undefined>(undefined);
+  // Whether the Bridge board is showing its rules. Owned here rather than in
+  // `GameBridgeView` because the button that toggles it lives in the `Modal` header,
+  // which this component renders — pushing the state down would mean handing a callback
+  // up through the board for no gain. Resets whenever a game is opened or closed, so
+  // the panel never reappears over a fresh hand.
+  const [isRulesOpen, setIsRulesOpen] = useState(false);
   const open = games.find((entry) => entry.game.key === openKey);
-  const arrowDifficulty = open ? arrowDifficultyOf(open.game.key) : undefined;
+
+  /*
+    While the rules are open, swallow the keys the games steer with.
+
+    Every real-time board binds its controls to `window` (Tetris and Pac-Man both do),
+    so without this a player reading the rules is still silently driving: arrows move
+    the piece they cannot see, and Pac-Man's Space fires the bazooka they just looked
+    up. Both games also `preventDefault` those keys, so Space would not even scroll
+    the panel they are reading.
+
+    A capture-phase listener on `window` is what reaches them first — the games' own
+    handlers are bubble-phase on the same target, so nothing else can intercept. Only
+    the gameplay keys are taken: Escape still closes the dialog, and Tab still moves
+    through the panel, because swallowing those would trap the reader.
+
+    This is deliberately NOT a pause. Pausing would mean threading a prop through all
+    ten game views, and the two that keep a clock already offer their own Pause button
+    a few pixels away — stopping the input is the part the player cannot do for
+    themselves.
+  */
+  useEffect(() => {
+    if (!isRulesOpen) return;
+
+    const swallowed = new Set([
+      "ArrowUp",
+      "ArrowDown",
+      "ArrowLeft",
+      "ArrowRight",
+      " ",
+      "w",
+      "a",
+      "s",
+      "d",
+      "W",
+      "A",
+      "S",
+      "D",
+    ]);
+
+    function onKeyDownCapture(event: KeyboardEvent) {
+      if (!swallowed.has(event.key)) return;
+      // Typing in a field inside the panel is not steering. No game here has one
+      // today, but a rules panel that ate a reader's keystrokes would be a bizarre
+      // bug to track down later.
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+      event.stopPropagation();
+    }
+
+    window.addEventListener("keydown", onKeyDownCapture, true);
+    return () => window.removeEventListener("keydown", onKeyDownCapture, true);
+  }, [isRulesOpen]);
+
+  function openGame(key: string) {
+    setIsRulesOpen(false);
+    setOpenKey(key);
+  }
+
+  function closeGame() {
+    setIsRulesOpen(false);
+    setOpenKey(undefined);
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -60,7 +144,7 @@ export function GamesArcadeView({ games }: { games: GameSummary[] }) {
       <ul className="grid grid-cols-2 gap-4 xl:grid-cols-3 max-lg:grid-cols-1">
         {games.map((entry) => (
           <li key={entry.game.key}>
-            <GameCard summary={entry} onOpen={() => setOpenKey(entry.game.key)} />
+            <GameCard summary={entry} onOpen={() => openGame(entry.game.key)} />
           </li>
         ))}
       </ul>
@@ -70,8 +154,34 @@ export function GamesArcadeView({ games }: { games: GameSummary[] }) {
           title={open.game.name}
           titleIcon={<GameIcon gameKey={open.game.key} className="h-5 w-5 text-brass-dark" />}
           description={open.game.description}
-          onClose={() => setOpenKey(undefined)}
+          onClose={closeGame}
           size="full"
+          // Every game carries a Rules button, showing that game's own rules.
+          //
+          // This began as Bridge's alone, on the reasoning that its rules are the ones
+          // you need *during* a hand rather than before one. That was true of Bridge
+          // and wrong as a rule: the instruction card on the section page is the only
+          // other copy, and reaching it means closing the game — so a player who
+          // forgets what Clyde does, or which key fires the bazooka, has to abandon the
+          // board to find out. The text is the same components the card composes (see
+          // `RULES_BY_GAME`), so there is one copy of each game's rules and this is a
+          // second way in rather than a second version.
+          //
+          // Gated on `hasGameRules` rather than offered unconditionally: a button that
+          // opened an empty panel would be worse than no button.
+          titleAction={
+            hasGameRules(open.game.key) ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setIsRulesOpen((shown) => !shown)}
+                ariaExpanded={isRulesOpen}
+                ariaControls={RULES_PANEL_ID}
+              >
+                Rules
+              </Button>
+            ) : undefined
+          }
           // No `footer`, deliberately: `Modal` omits the whole bottom bar when it is
           // absent, which gives a full-bleed game the extra ~50px and drops a row of
           // chrome from under the board. Leaving the game is still three ways available
@@ -84,17 +194,50 @@ export function GamesArcadeView({ games }: { games: GameSummary[] }) {
             space available on a desktop, and on a short phone the controls stay
             reachable by scrolling instead of being clipped.
           */}
-          <div className="flex min-h-full flex-col items-center justify-center">
+          <div className="relative flex min-h-full flex-col items-center justify-center">
+            {/*
+              The rules, over the board rather than beside it. A nested `Modal` was the
+              obvious call and is the wrong one — two stacked dialogs share Escape and
+              the focus trap, and both would restore `body.overflow` on close, which is
+              the same reason the Bridge board's own result panel is a plain div. This
+              is `absolute` within the scrolling body, so it covers the board without
+              moving it: a panel that pushed the board down would reflow the very game
+              you are reading the rules *about* — and on a timed game like Tetris or
+              Pac-Man, which keep ticking, that reflow lands mid-move.
+
+              Desktop: a right-hand column, so the board stays visible beside it.
+              `max-lg:` makes it full-width, because a board at 390px has no room to
+              give half its width away.
+            */}
+            {isRulesOpen && (
+              <div
+                id={RULES_PANEL_ID}
+                className="absolute inset-y-0 right-0 z-10 w-full max-w-md overflow-auto border-l border-line bg-paper-raised px-4 py-3 card-raised max-lg:max-w-none max-lg:border-l-0"
+              >
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <h4 className="font-display text-base text-ink">Rules</h4>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setIsRulesOpen(false)}
+                    ariaLabel="Close the rules"
+                  >
+                    Close
+                  </Button>
+                </div>
+                <GameRules gameKey={open.game.key} />
+              </div>
+            )}
             <div className="w-full max-w-3xl">
               {/* One branch per playable game. A new game adds a case here and an
                   entry to GAME_CATALOGUE — no schema change, no nav change. */}
               {open.game.key === "2048" && <Game2048View bestScore={open.best?.score ?? 0} />}
-              {/* The three Arrow Clearing keys are three boards of the same game, so
-                  they share one view and pass their own difficulty. `arrowDifficultyOf`
-                  maps the key back, keeping that mapping in the library beside the
-                  keys. */}
-              {arrowDifficulty && (
-                <GameArrowsView difficulty={arrowDifficulty} bestScore={open.best?.score ?? 0} />
+              {/* One key for all three Arrow Clearing boards, as with Sudoku and
+                  Minesweeper — the tier is picked inside the game. Unlike those, each
+                  tier keeps its own scoreboard, so the bests are handed in per tier
+                  rather than read from this card's single `best`. */}
+              {open.game.key === "arrow-clearing-hard" && (
+                <GameArrowsView difficulty="hard" arrowBests={arrowBests} />
               )}
               {open.game.key === "tetris" && (
                 <GameTetrisView bestScore={open.best?.score ?? 0} />
@@ -125,6 +268,9 @@ export function GamesArcadeView({ games }: { games: GameSummary[] }) {
               {/* The second card game, sharing the deck in `playing-cards.ts` with
                   Blackjack above — the split that module documents made this cheap. */}
               {open.game.key === "bridge" && <GameBridgeView bestScore={open.best?.score ?? 0} />}
+              {/* The maze game. The arcade's second real-time one after Tetris, and
+                  the first where the opponents move on the clock as well. */}
+              {open.game.key === "pacman" && <GamePacmanView bestScore={open.best?.score ?? 0} />}
             </div>
           </div>
         </Modal>

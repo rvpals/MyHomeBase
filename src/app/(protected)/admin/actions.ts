@@ -60,6 +60,12 @@ import {
   type ColorThemeTokens,
   type Setting,
 } from "@/lib/settings";
+import {
+  NAV_TEXTURE_ID_KEY,
+  NAV_TEXTURE_OPACITY_KEY,
+  NO_NAV_TEXTURE,
+  resolveNavTextureOpacity,
+} from "@/lib/nav-texture";
 import { isAdmin } from "@/lib/user";
 import { deps } from "@/lib/wiring";
 
@@ -854,6 +860,51 @@ export async function saveCardFrameSettingsAction(
     return {
       ok: false,
       error: error instanceof Error ? error.message : "Could not save the frame settings.",
+    };
+  }
+}
+
+
+/**
+ * Saves the navigation's background texture -- which library picture the
+ * navigation draws behind its rows, and how strongly.
+ *
+ * One app-wide choice covering both navigation surfaces: the desktop tree and
+ * the compact bottom bar. There is no per-surface variant on purpose -- a reader
+ * sees one of the two at a time, so a second setting would be a control whose
+ * effect nobody can observe.
+ *
+ * Writes through `updateSettings` like every other app setting, which is also why
+ * "no picture" is stored as `NO_NAV_TEXTURE` rather than a blank: that schema
+ * requires a non-empty value. The opacity is clamped by the same function the
+ * resolver uses, so the stored value and the drawn one cannot disagree -- the
+ * settings table has no CHECK to fall back on.
+ */
+export async function saveNavTextureAction(input: {
+  textureId?: number;
+  opacity: number;
+}): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await requireAdmin();
+    updateSettings(deps.settingsRepo, [
+      {
+        key: NAV_TEXTURE_ID_KEY,
+        value: input.textureId === undefined ? NO_NAV_TEXTURE : String(input.textureId),
+      },
+      {
+        key: NAV_TEXTURE_OPACITY_KEY,
+        value: String(resolveNavTextureOpacity(String(input.opacity))),
+      },
+    ]);
+    // `"layout"`, not the texture page: the navigation renders on every screen
+    // from every shell, so a narrower revalidate would leave the tree showing the
+    // old picture everywhere except the screen that changed it.
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not save the toolbar texture.",
     };
   }
 }

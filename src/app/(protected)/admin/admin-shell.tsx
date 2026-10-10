@@ -9,6 +9,7 @@ import type { DashboardTextureItem } from "@/lib/dashboard-texture";
 import type { ModuleSetting } from "@/lib/module-settings";
 import type { ModuleTextureSource } from "@/lib/module-texture";
 import type { Module } from "@/lib/modules";
+import type { ResolvedNavTexture } from "@/lib/nav-texture";
 import type { NavigationTree, TreeModule } from "@/lib/navigation";
 import {
   DEFAULT_COLOR_THEME_ID,
@@ -158,6 +159,7 @@ export function AdminShell({
   tree,
   expandedModules,
   adminTreeModule,
+  navTexture,
   setExpandedModules,
   currentUser,
   headerActions,
@@ -186,6 +188,12 @@ export function AdminShell({
   expandedModules: string[];
   /** Administration's own heading in the tree. */
   adminTreeModule: TreeModule;
+  /**
+   * The app-wide navigation texture, from `getNavTreeData` like `tree`. Not
+   * tree-only: `TwoTierShell` draws it on whichever navigation it renders, so
+   * the compact bottom bar gets it too.
+   */
+  navTexture?: ResolvedNavTexture;
   /** Persists the expanded set — a server action, passed in like `logoutAction`. */
   setExpandedModules: (slugs: string[]) => Promise<void>;
   /**
@@ -430,6 +438,7 @@ export function AdminShell({
         expandedModules={expandedModules}
         onExpandedChange={setExpandedModules}
         adminTreeModule={adminTreeModule}
+        navTexture={navTexture}
       >
         <div className="relative p-8 pb-24 max-lg:p-4 max-lg:pb-24">{children}</div>
       </TwoTierShell>

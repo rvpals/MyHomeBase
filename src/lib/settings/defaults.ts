@@ -3,6 +3,12 @@ import {
   defaultHomeWidgets,
   homeWidgetsToValue,
 } from "@/lib/home-dashboard";
+import {
+  DEFAULT_NAV_TEXTURE_OPACITY,
+  NAV_TEXTURE_ID_KEY,
+  NAV_TEXTURE_OPACITY_KEY,
+  NO_NAV_TEXTURE,
+} from "@/lib/nav-texture";
 import { DEFAULT_BORDER_WIDTHS, borderWidthsToValue } from "./border-widths";
 import { DEFAULT_CHROME_STYLE } from "./chrome-style";
 import { DEFAULT_ICON_SET_ID } from "./icon-sets";
@@ -57,6 +63,26 @@ export const DEFAULT_APP_SETTINGS: Setting[] = [
     value: homeWidgetsToValue(defaultHomeWidgets()),
     description:
       'Which home screen cards are drawn and in what order. A "-" prefix hides one.',
+  },
+  {
+    // The navigation's background picture, off by default: a fresh install draws
+    // a plain column, exactly as it did before the setting existed.
+    //
+    // These two have NO seed migration, unlike every entry above. They do not
+    // need one -- `updateAll` upserts, so saving works against a table that has
+    // never held these keys -- but they are listed here because "Reset to
+    // Default" rebuilds this table from exactly this array, and a key missing
+    // from it would come back absent rather than off. Absent happens to resolve
+    // to the same thing here, which is why this is tidiness rather than a bug.
+    key: NAV_TEXTURE_ID_KEY,
+    value: NO_NAV_TEXTURE,
+    description:
+      "The app texture library picture drawn behind the navigation, or 0 for none.",
+  },
+  {
+    key: NAV_TEXTURE_OPACITY_KEY,
+    value: String(DEFAULT_NAV_TEXTURE_OPACITY),
+    description: "How strongly the navigation's background picture is drawn, from 0 to 1.",
   },
   {
     // Blank means "nothing to show" — see migrations/0041.

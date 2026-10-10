@@ -18,8 +18,18 @@
 // on a number by hand is how the two drift.
 
 import Link from "next/link";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type UIEvent,
+} from "react";
+import {
+  collapseAllModules,
+  expandAllModules,
   filterTree,
   findActiveModule,
   findActiveSection,
@@ -31,6 +41,7 @@ import {
   type TreeSection,
 } from "@/lib/navigation";
 import { getIconSlot, sectionSlotId } from "@/lib/icons";
+import { navTextureVars, type ResolvedNavTexture } from "@/lib/nav-texture";
 import { ModuleIcon } from "./module-icons";
 import { SlotIcon } from "./slot-icon";
 import { TreeIcon } from "./tree-icons";
@@ -40,6 +51,13 @@ import { TreeIcon } from "./tree-icons";
 // asserts every wired slot exists.
 const HOME_SLOT = getIconSlot("chrome_tree_home")!;
 const FILTER_SLOT = getIconSlot("chrome_tree_filter")!;
+
+// The three square chrome buttons in the filter row -- collapse-all, expand-all
+// and hide -- are one size and one face, so the two bulk toggles share this and
+// the hide button keeps its own copy inline. Geometry-free decoration only: the
+// row positions them.
+const BULK_TOGGLE_CLASS =
+  "flex h-7 w-6 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-line/60 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass disabled:pointer-events-none disabled:opacity-40";
 
 // Where the tree's scroll offset is parked across navigations.
 //
@@ -86,6 +104,16 @@ export interface NavTreeProps {
    */
   isOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /**
+   * An optional background picture, resolved by `@/lib/nav-texture` from the
+   * app-wide setting and the texture library. Undefined — the default — renders
+   * no layer at all rather than a transparent one.
+   *
+   * Passed down rather than read here: this is a client component, the
+   * resolution is a server read, and `TwoTierShell` already carries the rest of
+   * the tree's data from the layout for the same reason.
+   */
+  texture?: ResolvedNavTexture;
   className?: string;
 }
 
@@ -447,6 +475,7 @@ export function NavTree({
   adminModule,
   isOpen = true,
   onOpenChange,
+  texture,
   className = "",
 }: NavTreeProps) {
   const activeModule = findActiveModule(tree, activeHref);
@@ -547,6 +576,24 @@ export function NavTree({
     onExpandedChange?.([...next]);
   }
 
+  // Expand-all and collapse-all. Both persist through `onExpandedChange`, the
+  // same path one heading's chevron takes -- a reader who shuts the whole tree
+  // means it, and having it reopen on the next page would be the bug.
+  //
+  // `allModules`, not `tree.modules`: the admin group is a heading like any other
+  // and "all" has to mean what is actually on screen.
+  function handleExpandAll() {
+    const next = expandAllModules(allModules.map((module) => module.slug));
+    setExpanded(next);
+    onExpandedChange?.([...next]);
+  }
+
+  function handleCollapseAll() {
+    const next = collapseAllModules(activeModule?.slug);
+    setExpanded(next);
+    onExpandedChange?.([...next]);
+  }
+
   // The rows to draw: every module when idle, only modules with hits when filtering.
   // While filtering every shown module is open regardless of `expanded` — a match
   // hidden behind a collapsed heading is a filter that looks broken.
@@ -574,6 +621,12 @@ export function NavTree({
     return (
       <nav
         aria-label="Main navigation"
+        // Textured even when collapsed: the strip is still the navigation, and
+        // a picture that vanishes on collapse reads as a bug rather than as a
+        // setting. At 28px it shows very little, which is the honest result of
+        // collapsing a column, not a reason to special-case it.
+        data-nav-textured={texture ? "" : undefined}
+        style={texture ? (navTextureVars(texture) as CSSProperties) : undefined}
         className={`shell-tree chrome-frame flex flex-col items-center border-line bg-paper-raised ${className}`}
       >
         <button
@@ -603,6 +656,13 @@ export function NavTree({
       // preview thumbnails — wears `chrome-frame` alone. Never move the bevel
       // rules onto `shell-tree`; see globals.css's chrome-style block for the
       // failure that caused.
+      //
+      // The texture is a third, separate concern again: `data-nav-textured`
+      // gates a `::before` layer and the two custom properties feed it. It is an
+      // attribute rather than a fourth class because the rule has to key off
+      // *presence*, and an element with no picture must match nothing at all.
+      data-nav-textured={texture ? "" : undefined}
+      style={texture ? (navTextureVars(texture) as CSSProperties) : undefined}
       className={`shell-tree chrome-frame flex flex-col border-line bg-paper-raised ${className}`}
     >
       <div className="nav-divider flex items-center gap-1 border-line p-2">
@@ -636,6 +696,31 @@ export function NavTree({
             </button>
           )}
         </label>
+
+        {/* Collapse-all and expand-all. Disabled while filtering, not hidden: a
+            filtered tree forces every shown module open regardless of `expanded`
+            (see `rows`), so these would appear to do nothing -- and a control that
+            vanishes as you type moves the two buttons beside it under the cursor. */}
+        <button
+          type="button"
+          onClick={handleCollapseAll}
+          disabled={filtering}
+          title="Collapse all"
+          aria-label="Collapse all"
+          className={BULK_TOGGLE_CLASS}
+        >
+          <span aria-hidden>&larr;</span>
+        </button>
+        <button
+          type="button"
+          onClick={handleExpandAll}
+          disabled={filtering}
+          title="Expand all"
+          aria-label="Expand all"
+          className={BULK_TOGGLE_CLASS}
+        >
+          <span aria-hidden>&rarr;</span>
+        </button>
 
         {/* Collapse. Beside the filter rather than in a header of its own: the
             tree has no module-identity row to hang one on — it belongs to no

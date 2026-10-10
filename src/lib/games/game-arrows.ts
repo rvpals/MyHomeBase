@@ -31,9 +31,11 @@ export type Random = () => number;
 /**
  * The longest arrow the generator will place.
  *
- * A real board wants a mix — a few long snakes crossing it, plenty of small pieces
- * filling in between — so this is the ceiling of a distribution, not the length every
- * arrow gets. See `LENGTH_WEIGHTS`.
+ * The ceiling of a distribution, not the length every arrow gets: each tier aims for a
+ * different spread of lengths below this cap. See `ARROW_DIFFICULTY_SETUP.lengthWeights`.
+ *
+ * Every tier's weight array must end at this index — the cap is what the view's layout
+ * and the generator's cramped-corner fallback are both sized against.
  */
 export const MAX_ARROW_LENGTH = 12;
 
@@ -47,36 +49,37 @@ export const MAX_ARROW_LENGTH = 12;
 export const MIN_ARROW_LENGTH = 2;
 
 /**
- * How often each arrow length is aimed for, as relative weights indexed by length.
+ * The generator knobs that differ between tiers, read from `ARROW_DIFFICULTY_SETUP`.
  *
- * Weighted toward short deliberately. Two reasons, one aesthetic and one arithmetic:
- * a board of uniformly long snakes has no texture, and 120 pieces only fit on an 18x18
- * if most of them are small.
- *
- * This replaced asking for the maximum every time, which produced a **barbell**: a walk
- * either found room and ran to the cap, or was boxed in immediately and stopped at one
- * cell. Measured, that gave 6.3 single-cell and 4.6 max-length arrows per board with
- * almost nothing between them (0.2 at length 4, 0.0 at length 5) — the opposite of a
- * varied board.
- *
- * Index 0 is unused so a length reads as its own index. **Index 1 is zero on purpose**:
- * a single-cell arrow draws as a bare arrowhead with no line behind it, which looks like
- * a stray glyph rather than a piece of the maze. Every arrow gets at least a head and one
- * tail cell.
- *
- * `growPath` can still return a 1-cell run when a spot is too cramped for the length it
- * was asked for — `MIN_ARROW_LENGTH` is what stops those being placed.
+ * These were module constants when there was one board. They are a parameter now because
+ * **the difficulty ladder _is_ this tuning** — every tier is the same 50x50 grid and the
+ * same rules, differing only in how long the pieces are and how much they wind. See the
+ * field docs on `ARROW_DIFFICULTY_SETUP`.
  */
-const LENGTH_WEIGHTS: readonly number[] = [0, 0, 20, 16, 13, 10, 8, 7, 6, 5, 4, 3, 3];
+interface Tuning {
+  /** Relative weights indexed by length; see `ARROW_DIFFICULTY_SETUP.lengthWeights`. */
+  lengthWeights: readonly number[];
+  /** How strongly a tail carries straight on, in [0, 1). */
+  straightBias: number;
+}
 
-/** Sum of the weights. Hoisted — it is constant, and `pickLength` runs per placement. */
-const LENGTH_WEIGHT_TOTAL = LENGTH_WEIGHTS.reduce((sum, weight) => sum + weight, 0);
-
-/** Picks a target length from `LENGTH_WEIGHTS`. */
-function pickLength(random: Random): number {
-  let roll = random() * LENGTH_WEIGHT_TOTAL;
-  for (let length = 1; length < LENGTH_WEIGHTS.length; length += 1) {
-    roll -= LENGTH_WEIGHTS[length];
+/**
+ * Picks a target length from the tier's weights.
+ *
+ * Weighting the length at all replaced asking for the maximum every time, which produced
+ * a **barbell**: a walk either found room and ran to the cap, or was boxed in immediately
+ * and stopped at one cell. Measured, that gave 6.3 single-cell and 4.6 max-length arrows
+ * per board with almost nothing between them (0.2 at length 4, 0.0 at length 5) — the
+ * opposite of a varied board.
+ *
+ * `growPath` can still return a shorter run than asked for when a spot is too cramped —
+ * `MIN_ARROW_LENGTH` is what stops a 1-cell result being placed.
+ */
+function pickLength(weights: readonly number[], random: Random): number {
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  let roll = random() * total;
+  for (let length = 1; length < weights.length; length += 1) {
+    roll -= weights[length];
     if (roll <= 0) return length;
   }
   return 1;
@@ -91,6 +94,19 @@ const STEPS: Record<Direction, Cell> = {
 };
 
 const ALL_DIRECTIONS: readonly Direction[] = ["up", "down", "left", "right"];
+
+/**
+ * The reverse of each direction.
+ *
+ * Used by `growPath`: a tail is laid away from the head, so the direction it travels is
+ * the opposite of the arrow's exit direction.
+ */
+const OPPOSITE: Record<Direction, Direction> = {
+  up: "down",
+  down: "up",
+  left: "right",
+  right: "left",
+};
 
 /** Whether a cell is on a board of `size` x `size`. */
 export function isOnBoard(cell: Cell, size: number): boolean {
@@ -236,6 +252,14 @@ function shuffled<T>(items: readonly T[], random: Random): T[] {
  * and not already part of this path. That is what produces the long tangled runs the
  * board is made of, rather than the short straight sticks this generator first drew.
  *
+ * `straightBias` is what makes the higher tiers less tangled. At 0 the next cell is a
+ * uniform pick among the free neighbours — knotty pieces. Above 0 the walk first tries
+ * to **carry straight on**, and only falls back to a random neighbour when the cell
+ * ahead is unusable or the roll fails. Falling back rather than stopping is what lets a
+ * mostly-straight piece route around an obstacle and still reach its target length; a
+ * walk that could only go straight would stop at the first thing in its way and come out
+ * short, which is the opposite of what the setting is for.
+ *
  * Two invariants the tests pin down, because both are easy to lose here:
  *
  * - **`cells[0]` is the head and stays the head.** The piece leaves the board head
@@ -256,6 +280,7 @@ function growPath(
   length: number,
   board: OccupancyGrid,
   random: Random,
+  straightBias: number,
 ): Cell[] {
   const cells: Cell[] = [head];
   const own = new Set<number>([head.row * board.size + head.col]);
@@ -295,19 +320,38 @@ function growPath(
   const forward = STEPS[direction];
   let cursor = { row: head.row - forward.row, col: head.col - forward.col };
 
+  /*
+    The direction the tail is currently travelling, which is *away* from the head — the
+    opposite of the arrow's exit direction. Tracked so `straightBias` has something to
+    carry on along; it is updated to whatever direction each step actually took.
+  */
+  let heading: Direction = OPPOSITE[direction];
+
   for (let placed = 1; placed < length; placed += 1) {
     if (!usable(cursor)) break;
 
     cells.push(cursor);
     own.add(cursor.row * board.size + cursor.col);
 
+    // Carry straight on when the tier asks for it and the cell ahead is free. The roll
+    // comes first so the random stream is consumed identically whether or not the
+    // straight cell happens to be usable — otherwise a tier's boards would depend on
+    // the grid state in a way that makes a seeded test unreproducible.
+    const goStraight = random() < straightBias;
+    const ahead = step(cursor, heading);
+    if (goStraight && usable(ahead)) {
+      cursor = ahead;
+      continue;
+    }
+
     // Where the tail could continue from here.
     const options = shuffled(ALL_DIRECTIONS, random)
-      .map((next) => step(cursor, next))
-      .filter(usable);
+      .map((next) => ({ next, cell: step(cursor, next) }))
+      .filter((option) => usable(option.cell));
 
     if (options.length === 0) break;
-    cursor = options[0];
+    cursor = options[0].cell;
+    heading = options[0].next;
   }
 
   return cells;
@@ -335,12 +379,14 @@ function growPath(
  * not be.
  */
 export function generatePuzzle(difficulty: ArrowDifficulty, random: Random): ArrowPuzzle {
-  const { size, arrows: target } = ARROW_DIFFICULTY_SETUP[difficulty];
+  const { size, arrows: target, lengthWeights, straightBias } =
+    ARROW_DIFFICULTY_SETUP[difficulty];
   const board = new OccupancyGrid(size);
   const placed: Arrow[] = [];
+  const tuning: Tuning = { lengthWeights, straightBias };
 
   for (let index = 0; index < target; index += 1) {
-    const placement = findPlacement(board, random);
+    const placement = findPlacement(board, random, tuning);
     if (!placement) break;
 
     placed.push({ id: index + 1, cells: placement.cells, direction: placement.direction });
@@ -462,6 +508,7 @@ class OccupancyGrid {
 function findPlacement(
   board: OccupancyGrid,
   random: Random,
+  tuning: Tuning,
 ): { cells: Cell[]; direction: Direction } | undefined {
   /*
     The target length is rolled ONCE, here, for the whole placement.
@@ -472,7 +519,7 @@ function findPlacement(
     roll longest. A weighted sample is only a sample if it is drawn once per thing
     being decided.
   */
-  const targetLength = pickLength(random);
+  const targetLength = pickLength(tuning.lengthWeights, random);
 
   /*
     Collect every legal head, then choose among them — rather than tracking a single
@@ -526,40 +573,77 @@ function findPlacement(
   const deepEnough = candidates.filter((entry) => entry.depth >= deepest - DEPTH_BAND);
 
   /*
-    Try the deep candidates in random order and take the first that fits the rolled
-    length. Growing a path is the expensive step, so this stops at the first success
-    rather than growing every candidate to compare them.
-
-    `ATTEMPT_LIMIT` bounds it: on a large board the deep band can hold thousands of
+    `ATTEMPT_LIMIT` bounds each pass: on a large board a band can hold thousands of
     candidates, and growing a path for every one of them when none fits is what made
     generation quadratic in the band size. Sixty attempts is ample to find a spot when
-    one exists, and when none does the fallback below is what gets used anyway.
+    one exists.
   */
   const ATTEMPT_LIMIT = 60;
-  let fallback: { cells: Cell[]; direction: Direction } | undefined;
-  let attempts = 0;
 
-  for (const entry of shuffled(deepEnough, random)) {
-    if (attempts >= ATTEMPT_LIMIT) break;
-    attempts += 1;
+  /*
+    Tries candidates in random order and takes the first that fits the rolled length.
+    Growing a path is the expensive step, so this stops at the first success rather than
+    growing every candidate to compare them.
 
-    const head = { row: entry.row, col: entry.col };
-    const cells = growPath(head, entry.direction, targetLength, board, random);
-    if (cells.length >= targetLength) return { cells, direction: entry.direction };
+    Returns the roomiest near-miss when nothing fits, so a board with no room for a long
+    arrow still places the longest one available rather than giving up on the placement.
+    A run below MIN_ARROW_LENGTH is never kept, even as a fallback: a lone arrowhead with
+    no tail is the one shape worth refusing to draw.
+  */
+  const tryPool = (
+    pool: typeof candidates,
+  ): { cells: Cell[]; direction: Direction; exact: boolean } | undefined => {
+    let fallback: { cells: Cell[]; direction: Direction; exact: boolean } | undefined;
+    let attempts = 0;
 
-    // Remember the roomiest near-miss, so a board with no room for a long arrow still
-    // places the longest one available rather than giving up on the placement.
-    //
-    // A run below MIN_ARROW_LENGTH is never kept, even as a fallback: a lone arrowhead
-    // with no tail is the one shape worth refusing to draw. Late in generation this is
-    // what ends the run of placements, which is the intended behaviour — the board is
-    // full enough at that point.
-    if (cells.length >= MIN_ARROW_LENGTH && (!fallback || cells.length > fallback.cells.length)) {
-      fallback = { cells, direction: entry.direction };
+    for (const entry of shuffled(pool, random)) {
+      if (attempts >= ATTEMPT_LIMIT) break;
+      attempts += 1;
+
+      const head = { row: entry.row, col: entry.col };
+      const cells = growPath(
+        head,
+        entry.direction,
+        targetLength,
+        board,
+        random,
+        tuning.straightBias,
+      );
+      if (cells.length >= targetLength) {
+        return { cells, direction: entry.direction, exact: true };
+      }
+
+      if (
+        cells.length >= MIN_ARROW_LENGTH &&
+        (!fallback || cells.length > fallback.cells.length)
+      ) {
+        fallback = { cells, direction: entry.direction, exact: false };
+      }
     }
-  }
 
-  return fallback;
+    return fallback;
+  };
+
+  /*
+    The deep band only, and **widening this does not fill the board** — that was tried.
+
+    The intuition is that generation stops with open ground left because it is only
+    looking at a thin slice of the grid, so a second pass over every candidate should
+    mop up the rest. It does the opposite: measured, it took Nightmare from 205 arrows
+    down to 151 and *increased* the empty regions, because the wider pool hands back
+    short shallow near-misses that the deep pass would have rejected, and each one burns
+    a placement that a better spot could have used.
+
+    The real reason the board stops filling is structural, not a search limit. Every
+    placement needs a clear straight exit lane at the moment it is made; as the board
+    fills, the surviving free cells get walled in. On a finished 50x50 Nightmare board,
+    **only 7 of 1166 free cells still have a clear line to any edge** — the other 1159
+    are enclosed, and an arrow in one of them could never leave. They are not space the
+    generator overlooked; they are space it is forbidden to use. See the note on gaps in
+    `ARROW_DIFFICULTY_SETUP`.
+  */
+  const placement = tryPool(deepEnough);
+  return placement ? { cells: placement.cells, direction: placement.direction } : undefined;
 }
 
 

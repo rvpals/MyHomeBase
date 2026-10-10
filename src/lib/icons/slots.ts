@@ -1186,6 +1186,15 @@ export const ICON_SLOTS: IconSlot[] = [
     wired: true,
     namespace: "tree",
   },
+  {
+    id: "games_card_pacman",
+    label: "Pac-Man",
+    group: "Games cards",
+    where: "Games & Puzzles → Arcade → the Pac-Man card.",
+    defaultConcept: "game-pacman",
+    wired: true,
+    namespace: "tree",
+  },
 
   /* ---------------------------------------------------------------------------------
      Expense — nav sections.

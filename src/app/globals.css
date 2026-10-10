@@ -528,6 +528,56 @@ html[data-toolbar-bottom] .app-main {
   z-index: 1;
 }
 
+/* The navigation's background texture.
+   ---------------------------------------------------------------------------
+   An optional picture from the app texture library drawn behind the navigation
+   rows. `NavTree` (the desktop column) and `SectionPanel` (the compact bar) each
+   set `--nav-texture-image` / `--nav-texture-opacity` and mark themselves
+   `data-nav-textured` when an admin has chosen one; one rule serves both,
+   because what differs between them is their geometry and that is not this
+   rule's business.
+
+   Every "why" from the toolbar block above applies here unchanged, and for the
+   same reasons -- so rather than restate them:
+
+     - A PSEUDO-ELEMENT, not `background-image` on the element, because the
+       `emboss` chrome style paints its bevel gradient into that property and
+       would erase the picture. `.chrome-frame` wears those bevels, which is
+       exactly what the navigation column wears.
+     - IT ALWAYS TILES. The tree is 260px wide and the compact bar shorter
+       still; `cover` would show one scaled sliver of the picture. The mode is
+       neither stored nor configurable.
+     - `z-index: 0`, NOT `-1`, or the layer is trapped behind the column's own
+       opaque `bg-paper-raised` fill and never seen.
+
+   `inset: 0` with `position: absolute` resolves against the navigation element,
+   which is already `position: fixed` on the desktop (`.shell-tree`) and
+   positioned on compact -- so the layer covers the column exactly, scrolls with
+   nothing, and costs no second compositing layer on a scroll the rows do. */
+[data-nav-textured]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: var(--nav-texture-image);
+  background-repeat: repeat;
+  background-position: center;
+  opacity: var(--nav-texture-opacity, 0.15);
+  /* Clipped to whatever rounding a chrome style gives the column, so the
+     picture cannot square off a bevelled edge. */
+  border-radius: inherit;
+}
+
+/* The rows sit above the texture, for the reason the toolbar's twin gives: the
+   navigation's children are otherwise unpositioned, so they would paint in the
+   same layer as the pseudo-element and a dark picture could wash over a label.
+   One rule for every child -- there is no row this does not apply to. */
+[data-nav-textured] > * {
+  position: relative;
+  z-index: 1;
+}
+
 /* Each edge spans the full axis and sits inside the device insets. A horizontal
    bar clears the side insets; a vertical one clears top and bottom, and stacks
    above whatever already owns the bottom edge so it can never cover the player
@@ -3698,4 +3748,576 @@ html[data-music-player="minimized"] {
 [data-card-frame] .card-framed > * {
   position: relative;
   z-index: 1;
+}
+
+/* ---------------------------------------------------------------------------------
+   Pac-Man.
+
+   Two animations only. The sprites' movement is a CSS transition set inline by the
+   view (see `Sprite` in `game-pacman-view.tsx`), not a keyframe — it interpolates
+   between two positions the library decides, which is a transition's job.
+--------------------------------------------------------------------------------- */
+
+/* A power pellet pulses, which is what separates it from the 240 ordinary ones at a
+   glance. Scale rather than opacity: a fading dot reads as a rendering artefact,
+   where a throbbing one reads as something charged. */
+@keyframes pacman-power-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.65);
+    opacity: 0.75;
+  }
+}
+
+.animate-pacman-power {
+  animation: pacman-power-pulse 500ms ease-in-out infinite;
+}
+
+/* The death: Pac-Man spins and shrinks away.
+
+   The arcade folds him into a closing wedge, which needs a sprite sheet; a spin into
+   nothing is the same gesture — "he is gone, and it was not instant" — in one
+   transform. Timed from `--pacman-death-ms` so the animation and the clock pause the
+   view takes are the same number, and cannot drift. */
+@keyframes pacman-die {
+  0% {
+    transform: rotate(0deg) scale(1);
+    opacity: 1;
+  }
+  70% {
+    transform: rotate(540deg) scale(0.3);
+    opacity: 0.8;
+  }
+  100% {
+    transform: rotate(720deg) scale(0);
+    opacity: 0;
+  }
+}
+
+.animate-pacman-death {
+  animation: pacman-die var(--pacman-death-ms, 900ms) ease-in forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The power pellet still has to be *distinguishable* from an ordinary one — that is
+     information, not decoration — so the pulse stops at a size rather than switching
+     off and leaving two identical dots. */
+  .animate-pacman-power {
+    animation: none;
+    transform: scale(0.85);
+  }
+
+  /* The death likewise still has to be visible, or a life appears to vanish on its
+     own. The spin goes and a fade remains, as the Tetris clear does. */
+  .animate-pacman-death {
+    animation: pacman-death-fade var(--pacman-death-ms, 900ms) ease-out forwards;
+  }
+}
+
+@keyframes pacman-death-fade {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ---------------------------------------------------------------------------------
+   Pac-Man himself: a moulded toy rather than a flat disc.
+
+   Four things together make a circle read as a sphere, and all four are needed — any
+   one alone still looks flat:
+
+     1. **A light source.** The radial gradient is offset to the upper left (30% 28%),
+        so the highlight sits where a lamp above and to the left would put it. A
+        centred gradient reads as a target, not a ball.
+     2. **A terminator.** The gradient darkens to a deep amber at the lower right,
+        which is the shaded side. Yellow-to-yellow would just look glossy.
+     3. **A rim.** The inset shadow darkens the outer edge all the way round, which is
+        what separates a sphere from a disc with a gradient painted on it — a real
+        ball curves away from the viewer at its silhouette.
+     4. **A contact shadow.** The drop-shadow under him grounds the toy on the maze
+        floor. Without it he reads as a sticker on the board rather than an object
+        sitting on it.
+
+   The colours are literal for the reason the ghost colours are, recorded in
+   `design.md` under *Exception — semantic red/green stays literal*: this is a
+   self-contained black playfield, not app chrome, and Pac-Man is yellow in the same
+   non-negotiable way Blinky is red. A theme token here would be a themed Pac-Man.
+--------------------------------------------------------------------------------- */
+
+.pacman-toy {
+  /* A `span` is inline by default, and width/height do nothing on an inline box — so
+     without this the toy renders at zero size and Pac-Man is simply absent from the
+     maze. The ghosts never hit this because they carry Tailwind's `block`. */
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle at 30% 28%,
+    #fffde3 0%,
+    #ffef66 18%,
+    #ffe100 42%,
+    #f5c400 68%,
+    #c98a00 100%
+  );
+  /* The rim, and a warm bounce light along the bottom-left — light reflecting back up
+     off the maze floor. The bounce is what stops the shaded side going muddy. */
+  box-shadow:
+    inset calc(var(--sprite-unit, 1px) * -2) calc(var(--sprite-unit, 1px) * -3)
+      calc(var(--sprite-unit, 1px) * 5) rgba(120, 72, 0, 0.55),
+    inset calc(var(--sprite-unit, 1px) * 3) calc(var(--sprite-unit, 1px) * 3)
+      calc(var(--sprite-unit, 1px) * 4) rgba(255, 255, 224, 0.45),
+    inset 0 calc(var(--sprite-unit, 1px) * -4) calc(var(--sprite-unit, 1px) * 6)
+      rgba(255, 196, 0, 0.35);
+  /* Grounds him on the board. Two shadows: a tight dark one for contact, a wider
+     yellow glow so the toy looks lit rather than merely painted. */
+  filter: drop-shadow(
+      0 calc(var(--sprite-unit, 1px) * 2) calc(var(--sprite-unit, 1px) * 2) rgba(0, 0, 0, 0.6)
+    )
+    drop-shadow(0 0 calc(var(--sprite-unit, 1px) * 5) rgba(255, 214, 0, 0.45));
+  /* The mouth is cut out of the sphere rather than drawn over it, so the dark maze
+     shows through the wedge — which is what a bite actually is. `clip-path` on the
+     element itself keeps the gradient, the rim and the mouth as one object.
+
+     The wedge points along +X; the wrapper rotates the whole toy to face his
+     direction of travel, so this never has to know which way he is going. */
+  clip-path: polygon(
+    50% 50%,
+    100% 28%,
+    100% 0%,
+    0% 0%,
+    0% 100%,
+    100% 100%,
+    100% 72%
+  );
+  animation: pacman-chomp 260ms steps(1, end) infinite alternate;
+}
+
+/* The chomp: the wedge opens and closes.
+
+   `steps(1, end)` rather than a smooth interpolation — a clip-path tween between two
+   polygons is expensive and, more to the point, the arcade *snaps* between a few mouth
+   positions. A smooth morph reads as a pulsing blob; the snap reads as chewing. */
+@keyframes pacman-chomp {
+  0% {
+    clip-path: polygon(50% 50%, 100% 48%, 100% 0%, 0% 0%, 0% 100%, 100% 100%, 100% 52%);
+  }
+  50% {
+    clip-path: polygon(50% 50%, 100% 28%, 100% 0%, 0% 0%, 0% 100%, 100% 100%, 100% 72%);
+  }
+  100% {
+    clip-path: polygon(50% 50%, 100% 5%, 100% 0%, 0% 0%, 0% 100%, 100% 100%, 100% 95%);
+  }
+}
+
+/* The eye. A small dark bead high on the head, with its own highlight — the one
+   feature that turns a bitten ball into a face. Positioned in percentages so it
+   scales with the board like everything else here.
+
+   It sits *inside* the rotating wrapper, so it swings round with him; that is correct
+   for left/right travel and is what the arcade does vertically too. */
+.pacman-eye {
+  position: absolute;
+  top: 20%;
+  left: 54%;
+  width: 15%;
+  height: 15%;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 30%, #6b5200 0%, #2a1f00 60%, #140f00 100%);
+  box-shadow: 0 0 0 1px rgba(255, 240, 150, 0.25);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The chewing is decoration, so it stops — but the mouth must still be *open*, or
+     Pac-Man becomes an indistinguishable yellow ball. Held at the mid position. */
+  .pacman-toy {
+    animation: none;
+    clip-path: polygon(50% 50%, 100% 28%, 100% 0%, 0% 0%, 0% 100%, 100% 100%, 100% 72%);
+  }
+}
+
+/* ---------------------------------------------------------------------------------
+   The fire trail.
+
+   One flame per tile Pac-Man has recently left, laid down behind him and fading as it
+   ages. The view keeps the last few positions (see `TRAIL_LENGTH` in
+   `game-pacman-view.tsx`) and hands each one an age, which drives everything here
+   through the `--flame-age` custom property: 0 is the tile he just left, 1 is the
+   oldest ember about to vanish.
+
+   **The trail is presentation only.** Nothing in `src/lib/games/game-pacman.ts` knows
+   it exists — it cannot catch a ghost, light a pellet or change a collision. It is
+   drawn from positions the rules already produced, which is why it lives entirely in
+   the view and in this file.
+
+   Fire reads as fire because of *colour temperature over time*, not because of shape:
+   a flame is white-hot at its base, yellow then orange above that, and dull red as it
+   dies. An ember that merely fades out stays the same colour and reads as a ghost
+   trail or a motion blur. So each flame cools as it ages rather than only thinning.
+--------------------------------------------------------------------------------- */
+
+.pacman-flame {
+  position: absolute;
+  border-radius: 9999px;
+  pointer-events: none;
+  /* Additive-ish stacking: where two flames overlap they brighten, which is what
+     makes the trail look like one continuous fire rather than a row of dots. */
+  mix-blend-mode: screen;
+  background: radial-gradient(
+    circle at 50% 55%,
+    rgba(255, 255, 240, var(--flame-core, 0.9)) 0%,
+    rgba(255, 226, 110, var(--flame-core, 0.9)) 22%,
+    rgba(255, 150, 30, var(--flame-mid, 0.7)) 48%,
+    rgba(214, 64, 10, var(--flame-edge, 0.45)) 72%,
+    rgba(90, 20, 0, 0) 100%
+  );
+  filter: blur(var(--sprite-unit, 1px));
+  animation: pacman-flame-flicker 320ms ease-out infinite alternate;
+}
+
+/* The flicker. Small and fast — a flame that lurches reads as a wobble, where a
+   slight, quick tremor reads as combustion. Scale and opacity only, so it costs no
+   layout. */
+@keyframes pacman-flame-flicker {
+  0% {
+    transform: scale(0.88) translateY(2%);
+    opacity: 0.85;
+  }
+  100% {
+    transform: scale(1.06) translateY(-4%);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The flicker goes; the fire stays. A player who asked for less motion is asking
+     not to be jittered at, not to have the trail removed — and the trail is the thing
+     that shows which way Pac-Man came from. */
+  .pacman-flame {
+    animation: none;
+    transform: scale(0.96);
+  }
+}
+
+/* ---------------------------------------------------------------------------------
+   The ghosts: moulded 3D toys rather than flat domes.
+
+   Built from the same four principles as `.pacman-toy` — a light source, a
+   terminator, a rim and a contact shadow — plus two things a ghost needs and a
+   sphere does not:
+
+     - **A skirt.** The scalloped hem is most of what says "ghost" rather than
+       "capsule", and it is drawn as a row of overlapping discs on the body's own
+       colour so it inherits the shading. Three blobs read better than four at these
+       sizes; five turn to mush below ~18px a tile.
+     - **A face that aims.** The pupils are offset toward the direction of travel,
+       which is the single cheapest thing that makes four identical shapes look like
+       they are *hunting* rather than drifting. The view passes the offset; the CSS
+       only knows how to draw an eye.
+
+   The body colour arrives as `--ghost-body` from the call site, because it is the one
+   thing that differs per ghost and per mode (hunting / frightened / flashing). Every
+   shadow and highlight here is colour-agnostic — black and white at low opacity — so
+   one rule set serves red, pink, cyan, orange, blue and white without six variants.
+
+   Colours stay literal for the reason recorded on `.pacman-toy` and in `design.md`
+   under *Exception — semantic red/green stays literal*: on this black playfield a
+   ghost's colour is how you identify its behaviour, not decoration a theme may
+   restyle.
+--------------------------------------------------------------------------------- */
+
+.ghost-toy {
+  position: absolute;
+  /* The dome fills the sprite except for the bottom fifth, which the skirt hangs
+     into. `inset` is deliberately NOT used here — it would set `bottom: 0` and then
+     fight the `bottom` below, and which one won would depend on source order. */
+  top: 0;
+  left: 0;
+  right: 0;
+  border-top-left-radius: 9999px;
+  border-top-right-radius: 9999px;
+  background:
+    /* The lit side, upper left — same lamp position as Pac-Man's, so the two read as
+       being in the same scene. */
+    radial-gradient(ellipse 70% 60% at 32% 26%, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0) 60%),
+    /* The terminator, lower right. */
+    radial-gradient(ellipse 85% 75% at 72% 82%, rgba(0, 0, 0, 0.42) 0%, rgba(0, 0, 0, 0) 65%),
+    var(--ghost-body, #ff0000);
+  /* The rim: darkened at the silhouette, with a bright catch along the top of the
+     dome. Without the rim a gradient-filled dome still reads as a flat decal. */
+  box-shadow:
+    inset calc(var(--sprite-unit, 1px) * -2) calc(var(--sprite-unit, 1px) * -2)
+      calc(var(--sprite-unit, 1px) * 4) rgba(0, 0, 0, 0.38),
+    inset calc(var(--sprite-unit, 1px) * 2) calc(var(--sprite-unit, 1px) * 2)
+      calc(var(--sprite-unit, 1px) * 3) rgba(255, 255, 255, 0.4),
+    inset 0 calc(var(--sprite-unit, 1px) * 2) calc(var(--sprite-unit, 1px) * 2)
+      rgba(255, 255, 255, 0.3);
+  filter: drop-shadow(
+    0 calc(var(--sprite-unit, 1px) * 2) calc(var(--sprite-unit, 1px) * 2) rgba(0, 0, 0, 0.55)
+  );
+  bottom: 20%;
+}
+
+/* The scalloped hem, as three overlapping discs sharing the body's colour and
+   shading. Positioned as one row so the whole skirt bobs with the body rather than
+   sliding against it. */
+.ghost-skirt {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 30%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.55));
+  animation: ghost-wave 420ms ease-in-out infinite alternate;
+}
+
+.ghost-scallop {
+  width: 34%;
+  height: 100%;
+  border-radius: 9999px;
+  background:
+    radial-gradient(ellipse 85% 75% at 70% 20%, rgba(0, 0, 0, 0.4) 0%, rgba(0, 0, 0, 0) 70%),
+    var(--ghost-body, #ff0000);
+  /* Pulled up under the dome so there is no gap where the two meet — the overlap is
+     what makes body and skirt look moulded from one piece. */
+  margin-top: -42%;
+}
+
+/* The hem ripples as it drifts. Alternating the middle scallop against the outer two
+   is what reads as cloth; moving all three together reads as the whole ghost bouncing. */
+@keyframes ghost-wave {
+  0% {
+    transform: translateY(0) scaleY(1);
+  }
+  100% {
+    transform: translateY(-6%) scaleY(0.88);
+  }
+}
+
+/* --- The face ------------------------------------------------------------------ */
+
+/* The eye white. A moulded bead, not a flat circle: the inset shadow at the top makes
+   it sit *in* the body rather than on it, which is the difference between a 3D toy and
+   a sticker. */
+.ghost-eye {
+  position: absolute;
+  top: 24%;
+  width: 30%;
+  height: 34%;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 38% 30%, #ffffff 0%, #f2f4ff 55%, #c9cde6 100%);
+  box-shadow:
+    inset 0 2px 2px rgba(60, 60, 90, 0.35),
+    0 1px 1px rgba(0, 0, 0, 0.3);
+}
+
+.ghost-eye-left {
+  left: 13%;
+}
+
+.ghost-eye-right {
+  right: 13%;
+}
+
+/* The pupil. Offset toward the direction of travel by `--pupil-x` / `--pupil-y`,
+   which the view sets — so the ghosts visibly look where they are going. A deep blue
+   rather than black, with a highlight, because pure black at this size reads as a
+   hole punched in the eye. */
+.ghost-pupil {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 52%;
+  height: 46%;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 28%, #4a5bd0 0%, #1a1f6b 55%, #0a0d35 100%);
+  box-shadow: inset 0 -1px 1px rgba(255, 255, 255, 0.25);
+  transform: translate(
+    calc(-50% + var(--pupil-x, 0%) * 1),
+    calc(-50% + var(--pupil-y, 0%) * 1)
+  );
+  transition: transform 90ms linear;
+}
+
+/* The teeth: a jagged band across the lower face.
+
+   Drawn as one element with a zigzag `clip-path` rather than as several tooth
+   elements — a single polygon cannot drift out of alignment, and at 14px a tile the
+   gaps between separate teeth would sub-pixel into a grey smear.
+
+   **Hunting ghosts only.** A frightened ghost must read as fleeing and edible; giving
+   it teeth would contradict the one thing the blue state exists to communicate. The
+   view decides, and simply does not render this element when frightened. */
+.ghost-teeth {
+  position: absolute;
+  left: 14%;
+  right: 14%;
+  bottom: 26%;
+  height: 20%;
+  background: linear-gradient(to bottom, #ffffff 0%, #e8e8f0 60%, #c5c5d4 100%);
+  /* Four points down, three up — an odd count so the band ends on a down-point at
+     both edges and looks like a closed snarl rather than a cut-off saw. */
+  clip-path: polygon(
+    0% 0%,
+    100% 0%,
+    100% 45%,
+    85% 100%,
+    71% 45%,
+    57% 100%,
+    43% 45%,
+    29% 100%,
+    15% 45%,
+    0% 100%
+  );
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
+}
+
+/* The eyes of an eaten ghost, drifting home. No body, because there is nothing there
+   to catch — and no teeth, because it is not hunting. Larger than the eyes on a body,
+   since they are now the whole sprite. */
+.ghost-eyes-only {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8%;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}
+
+.ghost-eyes-only .ghost-eye {
+  position: relative;
+  top: auto;
+  left: auto;
+  right: auto;
+  width: 40%;
+  height: 46%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The hem stops rippling; everything that carries *information* — the colour, the
+     eyes, the teeth, the pupil direction — is untouched. */
+  .ghost-skirt {
+    animation: none;
+  }
+
+  /* The pupils still aim, they just snap rather than glide. */
+  .ghost-pupil {
+    transition: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------------
+   The bazooka pickup and its shell.
+
+   Both are deliberately the only *green* things on the board. Every other object
+   here is yellow (Pac-Man, pellets), one of the four ghost colours, or frightened
+   blue — so a new colour is read instantly as a new kind of thing, with no need to
+   recognise the shape first at 19px a tile.
+--------------------------------------------------------------------------------- */
+
+/* The pickup: a stubby launcher tube seen side-on, bobbing in place.
+
+   Drawn as a horizontal capsule with a muzzle flare at one end and a grip beneath,
+   which is about as much detail as survives a tile this size. The bob is what stops
+   it reading as part of the maze — a stationary object on a static floor disappears,
+   and this one has a deadline the player needs to notice. */
+.pacman-bazooka {
+  position: absolute;
+  inset: 18% 4%;
+  border-radius: 9999px;
+  background: linear-gradient(
+    to bottom,
+    #9fe870 0%,
+    #5fbf3a 38%,
+    #2f7d1c 78%,
+    #1d5411 100%
+  );
+  box-shadow:
+    inset 0 calc(var(--sprite-unit, 1px) * 2) calc(var(--sprite-unit, 1px) * 2)
+      rgba(255, 255, 255, 0.45),
+    inset 0 calc(var(--sprite-unit, 1px) * -2) calc(var(--sprite-unit, 1px) * 2)
+      rgba(0, 0, 0, 0.45),
+    0 0 calc(var(--sprite-unit, 1px) * 6) rgba(120, 255, 90, 0.5);
+  animation: pacman-bazooka-bob 700ms ease-in-out infinite alternate;
+}
+
+/* The muzzle: a brighter ring at the business end, which is what makes the capsule
+   read as a *tube* rather than as a pill. */
+.pacman-bazooka::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: -6%;
+  width: 34%;
+  height: 150%;
+  transform: translateY(-50%);
+  border-radius: 9999px;
+  background: radial-gradient(circle at 50% 50%, #d9ffb0 0%, #76d94a 55%, #2f7d1c 100%);
+  box-shadow: 0 0 calc(var(--sprite-unit, 1px) * 4) rgba(160, 255, 110, 0.6);
+}
+
+@keyframes pacman-bazooka-bob {
+  0% {
+    transform: translateY(6%);
+  }
+  100% {
+    transform: translateY(-10%);
+  }
+}
+
+/* About to expire. Flashing rather than fading, because a fade reads as "drawn
+   wrong" where a flash reads as "hurry up" — and the difference matters when it is
+   the player's only warning that the pickup has a deadline. */
+.pacman-bazooka-fading {
+  animation:
+    pacman-bazooka-bob 700ms ease-in-out infinite alternate,
+    pacman-bazooka-blink 260ms steps(1, end) infinite alternate;
+}
+
+@keyframes pacman-bazooka-blink {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.25;
+  }
+}
+
+/* The shell: a small bright bolt with a trailing glow.
+
+   Smaller than a pellet is wide so it never obscures the maze it crosses, but much
+   brighter — at four tiles a tick it is on screen for only a frame or two per tile,
+   and anything dimmer would simply not be seen. */
+.pacman-shell {
+  position: absolute;
+  inset: 28%;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 45% 40%, #ffffff 0%, #c8ff9a 35%, #5fbf3a 70%, #1d5411 100%);
+  box-shadow:
+    0 0 calc(var(--sprite-unit, 1px) * 5) rgba(190, 255, 150, 0.95),
+    0 0 calc(var(--sprite-unit, 1px) * 12) rgba(120, 255, 90, 0.6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The bob stops; the blink does not. One is decoration and the other is the only
+     warning that the pickup is about to vanish, which is information. */
+  .pacman-bazooka {
+    animation: none;
+  }
+
+  .pacman-bazooka-fading {
+    animation: pacman-bazooka-blink 400ms steps(1, end) infinite alternate;
+  }
 }

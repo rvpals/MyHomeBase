@@ -13,13 +13,35 @@ import {
 } from "@/lib/dashboard-texture";
 import { listModulesWithTexture } from "@/lib/module-texture";
 import { listModules } from "@/lib/modules";
+import {
+  NAV_TEXTURE_ID_KEY,
+  NAV_TEXTURE_OPACITY_KEY,
+  resolveNavTextureOpacity,
+} from "@/lib/nav-texture";
+import { getSetting } from "@/lib/settings";
 import { deps } from "@/lib/wiring";
 import { PAGE_CONTAINER } from "../../../page-container";
 import { DashboardTextureControl } from "./dashboard-texture-control";
+import { NavTextureControl } from "./nav-texture-control";
 
 export default function DashboardTexturePage() {
   const textures = listDashboardTextures(deps.dashboardTextureRepo);
   const selected = getDashboardTexture(deps.dashboardTextureRepo);
+
+  // The navigation's own texture: two settings rows, read raw and handed to the
+  // card below as resolved values. The id is left as a number the picker can
+  // compare against a library row rather than resolved to a URL — this screen
+  // chooses a picture, it does not draw one. A pointer at a deleted picture
+  // therefore shows as "None", which is what the navigation will draw too.
+  const navTextureId = Number(getSetting(deps.settingsRepo, NAV_TEXTURE_ID_KEY)?.value);
+  const navTexture = {
+    textureId: textures.some((texture) => texture.id === navTextureId)
+      ? navTextureId
+      : undefined,
+    opacity: resolveNavTextureOpacity(
+      getSetting(deps.settingsRepo, NAV_TEXTURE_OPACITY_KEY)?.value,
+    ),
+  };
 
   // Which modules override the app-wide picture with one of their own (0116),
   // resolved from slugs to the names the admin actually sees in the nav. A slug
@@ -57,6 +79,17 @@ export default function DashboardTexturePage() {
         appWide={selected.appWide}
         overridingModules={overridingModules}
       />
+
+      {/* Below the library, because it points INTO it: the gallery is where
+          pictures come from, and a card asking you to pick one reads oddly above
+          the thing you pick from. */}
+      <div className="mt-6">
+        <NavTextureControl
+          textures={textures}
+          textureId={navTexture.textureId}
+          opacity={navTexture.opacity}
+        />
+      </div>
     </div>
   );
 }

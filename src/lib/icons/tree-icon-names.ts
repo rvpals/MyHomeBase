@@ -81,7 +81,7 @@ export const TREE_ICON_NAMES = [
   "photo",
   "photo-folder",
   "album",
-  // The seven Arcade game cards.
+  // The Arcade game cards.
   "game-2048",
   "game-arrows",
   "game-tetris",
@@ -89,6 +89,7 @@ export const TREE_ICON_NAMES = [
   "game-blackjack",
   "game-minesweeper",
   "game-mahjong",
+  "game-pacman",
   // Journal's Location Manager. A map pin — the mark for a single saved place.
   // Deliberately not `flash`/`plus`: this says *where*, not *do something*.
   "pin",

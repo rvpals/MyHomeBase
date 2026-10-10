@@ -2,7 +2,7 @@
 
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { SlotIcon } from "@/components/slot-icon";
-import { findGame, formatScore, type Score } from "@/lib/games";
+import { formatScore, scoreCardKey, scoreGameName, type Score } from "@/lib/games";
 import { gameSlotId, getIconSlot } from "@/lib/icons";
 
 // The shared high-score board. One DataGrid — the app's mandated table, which already
@@ -39,15 +39,20 @@ export function GamesScoresView({ scores }: { scores: Score[] }) {
       // game has been retired from the catalogue still sorts with its siblings.
       value: (row) => row.gameKey,
       // The cell shows the catalogue's name and icon instead, which is what a reader
-      // recognises: the raw key reads `arrow-clearing-hard`, including a difficulty
-      // suffix for boards that no longer exist. Falls back to the key when the game has
-      // left the catalogue, since a score deliberately outlives its game.
+      // recognises: the raw key reads `arrow-clearing-hard`, suffix and all.
+      //
+      // Both go through `scoreCardKey`, because a key is not always a catalogue entry:
+      // Arrow Clearing's three tiers post to three keys behind one card, so looking the
+      // raw key up would leave a Nightmare row with no name and no icon. `scoreGameName`
+      // adds the tier back as a suffix, so the three leaderboards stay distinguishable.
+      // Both fall back to the raw key when the game has left the catalogue, since a
+      // score deliberately outlives its game.
       render: (row) => {
-        const slot = getIconSlot(gameSlotId(row.gameKey));
+        const slot = getIconSlot(gameSlotId(scoreCardKey(row.gameKey)));
         return (
           <span className="flex items-center gap-2 text-ink">
             {slot && <SlotIcon slot={slot} className="h-4 w-4 shrink-0 text-brass-dark" />}
-            {findGame(row.gameKey)?.name ?? row.gameKey}
+            {scoreGameName(row.gameKey)}
           </span>
         );
       },

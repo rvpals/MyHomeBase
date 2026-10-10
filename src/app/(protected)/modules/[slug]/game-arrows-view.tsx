@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/button";
 import { useGameSounds } from "@/components/use-game-sounds";
 import {
+  ARROW_DIFFICULTIES,
   ARROW_DIFFICULTY_SETUP,
   ARROW_LIVES,
   clearArrow,
@@ -310,12 +311,25 @@ interface RouteFlash {
 }
 
 export function GameArrowsView({
-  difficulty,
-  bestScore,
+  difficulty: initialDifficulty,
+  arrowBests,
 }: {
   difficulty: ArrowDifficulty;
-  bestScore: number;
+  /**
+   * Best score per tier, since each tier has its own scoreboard. Keyed rather than a
+   * single number because switching tier has to switch the "Best" shown with it — a
+   * Nightmare record means nothing against a Hard board.
+   */
+  arrowBests: Record<ArrowDifficulty, number>;
 }) {
+  /*
+    The tier is owned here, not by the Arcade.
+
+    All three tiers sit behind one catalogue key and one card, with the picker in the
+    game — the shape Sudoku and Minesweeper use. The prop is only the tier to open on,
+    which is why it is read as an initial value rather than used directly.
+  */
+  const [difficulty, setDifficulty] = useState<ArrowDifficulty>(initialDifficulty);
   const setup = ARROW_DIFFICULTY_SETUP[difficulty];
 
   // Undefined until the mount effect deals a board. The opening layout is random, so
@@ -330,6 +344,30 @@ export function GameArrowsView({
   // behind the arrows. Useful when tracing exactly which row a head is sitting in, so
   // it is offered rather than removed.
   const [showGrid, setShowGrid] = useState(false);
+
+  /*
+    Unlimited lives, and the flag that remembers a board was played with it.
+
+    `unlimitedLives` can be flipped at any point, including when the last heart is about
+    to go. `practiceRun` is the consequence and is deliberately **sticky**: once a board
+    has been played with unlimited lives, turning the toggle back off does not make that
+    run scoreable again. Without that, the toggle would be a way to take the safety net
+    through the hard part of a board and then hand in a clean score.
+
+    Unscored rather than scored-and-flagged because `gam_scores` has no column to carry
+    the distinction — marking it on the leaderboard would need a migration. The simpler
+    version: a practice run just does not write a row. It is also the honest reading of
+    what unlimited lives does to this game, since `ARROW_LIVES` exists precisely to stop
+    a board being brute-forced by tapping everything.
+  */
+  const [unlimitedLives, setUnlimitedLives] = useState(false);
+  const [practiceRun, setPracticeRun] = useState(false);
+
+  const toggleUnlimited = useCallback((on: boolean) => {
+    setUnlimitedLives(on);
+    // One-way: only ever set here, and cleared by `newGame`.
+    if (on) setPracticeRun(true);
+  }, []);
 
   /*
     Zoom and pan.
@@ -376,29 +414,57 @@ export function GameArrowsView({
     timersRef.current.push(timer);
   }, []);
 
-  const newGame = useCallback(() => {
-    clearTimers();
-    setBoard(generatePuzzle(difficulty, Math.random).board);
-    setLives(ARROW_LIVES);
-    setCleared(0);
-    setMisses(0);
-    setHistory([]);
-    setClearing([]);
-    setBumping(undefined);
-    setFlash(undefined);
-    setHinted(undefined);
-    setSaveNote(undefined);
-    setOutcome(undefined);
-    savedRef.current = false;
-  }, [clearTimers, difficulty]);
+  /*
+    Deals a board for a tier, switching to it in the same step.
 
-  // Deals the opening board on mount, and re-deals when the difficulty changes.
+    The tier is a **required argument** rather than read from state, which is what keeps
+    this out of the render loop: reading `difficulty` would put it in the dependency
+    array, so the identity would change on every tier switch and the mount effect below
+    would re-fire and deal a second board over the one just dealt. It also deals the
+    right board immediately — `setDifficulty` has not applied yet when a picker press
+    runs, so a state read here would be one board behind.
+
+    Same shape as Minesweeper's `newGame(level)`, for the same reasons.
+  */
+  const newGame = useCallback(
+    (tier: ArrowDifficulty) => {
+      clearTimers();
+      setDifficulty(tier);
+      setBoard(generatePuzzle(tier, Math.random).board);
+      setLives(ARROW_LIVES);
+      setCleared(0);
+      setMisses(0);
+      setHistory([]);
+      setClearing([]);
+      setBumping(undefined);
+      setFlash(undefined);
+      setHinted(undefined);
+      setSaveNote(undefined);
+      setOutcome(undefined);
+      savedRef.current = false;
+      // Scoring is the default you opt out of, per board: a fresh board is a scored
+      // board unless the toggle is flipped again.
+      setUnlimitedLives(false);
+      setPracticeRun(false);
+    },
+    [clearTimers],
+  );
+
+  /*
+    Deals the opening board, once, on mount.
+
+    This used to depend on `newGame` and re-deal whenever the difficulty changed, which
+    was right when the tier arrived as a prop. Now the picker calls `newGame(tier)`
+    itself, so re-dealing here would throw that board away before it was drawn — which
+    is why `newGame` takes its tier as an argument and depends only on `clearTimers`.
+    Its identity is therefore stable, so this runs once despite the honest dep array.
+  */
   useEffect(() => {
     /* eslint-disable-next-line react-hooks/set-state-in-effect --
        Seeding client-only random state on mount; a lazy initialiser would run during
        SSR and render different markup on the server than on the client. */
-    newGame();
-  }, [newGame]);
+    newGame(initialDifficulty);
+  }, [newGame, initialDifficulty]);
 
   useEffect(() => clearTimers, [clearTimers]);
 
@@ -418,7 +484,16 @@ export function GameArrowsView({
       const route = [arrow.cells[0], ...pathAhead(arrow, board.size)];
 
       if (isBlocked(board, arrowId)) {
-        const remainingLives = lives - 1;
+        /*
+          Misses still count with unlimited lives on — only the *consequence* is removed.
+          The counter feeds `scoreBoard`, so the end panel can still say how cleanly a
+          practice board was played even though nothing is saved.
+
+          Lives are held at full rather than allowed to run negative: the hearts row is
+          replaced by an infinity marker while this is on, and a negative count would
+          surface the moment the toggle went back off.
+        */
+        const remainingLives = unlimitedLives ? lives : lives - 1;
         setLives(remainingLives);
         setMisses((value) => value + 1);
         setBumping(arrowId);
@@ -462,7 +537,7 @@ export function GameArrowsView({
         later(() => setOutcome("won"), ROUTE_FLASH_MS + CLEAR_MS + 120);
       }
     },
-    [board, clearing, later, lives, outcome, sounds],
+    [board, clearing, later, lives, outcome, sounds, unlimitedLives],
   );
 
   const undo = useCallback(() => {
@@ -496,7 +571,14 @@ export function GameArrowsView({
   const finalScore = scoreBoard(cleared, misses);
   useEffect(() => {
     if (!outcome || savedRef.current) return;
+    // Marked either way, so a practice run cannot start saving if the toggle is flipped
+    // off after the board ends.
     savedRef.current = true;
+
+    if (practiceRun) {
+      setSaveNote("Practice run — not saved to the board.");
+      return;
+    }
 
     void saveScoreAction(setup.gameKey, finalScore, cleared + misses).then((result) => {
       setSaveNote(
@@ -507,10 +589,21 @@ export function GameArrowsView({
           : result.error,
       );
     });
-  }, [outcome, finalScore, cleared, misses, setup.gameKey]);
+  }, [outcome, finalScore, cleared, misses, setup.gameKey, practiceRun]);
 
   const remaining = board?.arrows.length ?? 0;
-  const shownBest = Math.max(bestScore, outcome ? finalScore : 0);
+  /*
+    The best for the tier being played, not for the card that was opened.
+
+    `arrowBests` is a server snapshot taken when the section rendered, so it does not
+    move as scores are posted in this sitting; `finalScore` is folded in below to cover
+    the run that just ended. A practice score never counts toward it — it was not saved,
+    so claiming it as a record would contradict the scoreboard on the next reload.
+  */
+  const shownBest = Math.max(
+    arrowBests[difficulty] ?? 0,
+    outcome && !practiceRun ? finalScore : 0,
+  );
   const extent = setup.size * CELL;
 
   const zoom = ZOOM_LEVELS[zoomIndex];
@@ -663,14 +756,36 @@ export function GameArrowsView({
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap items-end gap-3">
-          <Hearts lives={lives} />
+          <Hearts lives={lives} unlimited={unlimitedLives} />
           <Stat label="Left" value={remaining.toLocaleString()} />
           <Stat label="Cleared" value={cleared.toLocaleString()} />
+          {/* The best for this tier, so the number changes with the picker. */}
           <Stat label="Best" value={shownBest.toLocaleString()} />
         </div>
 
         {/* Controls wrap to their own row on a phone rather than squeezing. */}
         <div className="flex flex-wrap gap-2">
+          {/*
+            The tier, as three buttons rather than a select — the reason Sudoku and
+            Minesweeper give: there are exactly three, it is the first decision of every
+            board, and each one deals immediately rather than arming a separate "New
+            board" press.
+
+            Dealing on press means a press mid-board discards it. That is the same trade
+            those two games already make, and the board is not saved anywhere, so there
+            is nothing to lose beyond the sitting itself.
+          */}
+          {ARROW_DIFFICULTIES.map((tier) => (
+            <Button
+              key={tier}
+              onClick={() => newGame(tier)}
+              variant={tier === difficulty ? "primary" : "secondary"}
+              size="sm"
+              title={`Deal a new ${ARROW_DIFFICULTY_SETUP[tier].label} board`}
+            >
+              {ARROW_DIFFICULTY_SETUP[tier].label}
+            </Button>
+          ))}
           <Button
             onClick={undo}
             variant="secondary"
@@ -710,7 +825,28 @@ export function GameArrowsView({
             />
             Show grid lines
           </label>
-          <Button onClick={newGame} variant="secondary" size="sm">
+          {/*
+            Unlimited lives. Same one-off native checkbox as the grid toggle beside it.
+
+            The `title` states the trade *before* it is taken, rather than leaving it to
+            be discovered at the end panel — a player who only learns their board was
+            unscored after clearing 359 arrows has been wasted an evening. The label
+            carries it too, since a `title` never appears on a touch device.
+          */}
+          <label
+            className="flex cursor-pointer items-center gap-2 rounded-lg border border-line bg-paper-raised px-3 py-1.5 text-xs text-muted"
+            title="Play without running out of lives. A board played this way is not saved to the scoreboard."
+          >
+            <input
+              type="checkbox"
+              checked={unlimitedLives}
+              onChange={(event) => toggleUnlimited(event.target.checked)}
+              className="h-3.5 w-3.5 accent-brass"
+            />
+            Unlimited lives
+            {practiceRun && <span className="text-[0.65rem] opacity-70">(not scored)</span>}
+          </label>
+          <Button onClick={() => newGame(difficulty)} variant="secondary" size="sm">
             New board
           </Button>
 
@@ -891,7 +1027,9 @@ export function GameArrowsView({
           misses={misses}
           remaining={remaining}
           saveNote={saveNote}
-          onNewGame={newGame}
+          practice={practiceRun}
+          tierLabel={setup.label}
+          onNewGame={() => newGame(difficulty)}
           onDismiss={() => setOutcome(undefined)}
         />
       )}
@@ -1039,8 +1177,33 @@ function ArrowPiece({
   );
 }
 
-/** The remaining lives, as filled and hollow hearts. */
-function Hearts({ lives }: { lives: number }) {
+/**
+ * The remaining lives, as filled and hollow hearts — or one infinity mark when the run
+ * has unlimited lives.
+ *
+ * The unlimited state gets its own glyph rather than five permanently-full hearts: the
+ * hearts say "five chances", and a row that simply never decrements reads as a bug
+ * rather than as a mode. `aria-label` carries the same distinction, so a screen reader
+ * is told the rule has changed instead of hearing an unchanging count.
+ */
+function Hearts({ lives, unlimited }: { lives: number; unlimited: boolean }) {
+  if (unlimited) {
+    return (
+      <div
+        className="flex items-center gap-1.5 rounded-lg border border-line bg-paper-raised px-3 py-1.5"
+        role="img"
+        aria-label="Unlimited lives — this board is not scored"
+      >
+        <span aria-hidden="true" className="text-sm leading-none text-red-400">
+          ♥
+        </span>
+        <span aria-hidden="true" className="text-sm leading-none text-muted">
+          ∞
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div
       className="flex items-center gap-1 rounded-lg border border-line bg-paper-raised px-3 py-1.5"
@@ -1072,6 +1235,8 @@ function ResultPanel({
   misses,
   remaining,
   saveNote,
+  practice,
+  tierLabel,
   onNewGame,
   onDismiss,
 }: {
@@ -1081,6 +1246,10 @@ function ResultPanel({
   misses: number;
   remaining: number;
   saveNote: string | undefined;
+  /** Whether the run was played with unlimited lives, and so was not scored. */
+  practice: boolean;
+  /** Which tier was played. Named here because the score is per tier. */
+  tierLabel: string;
   onNewGame: () => void;
   onDismiss: () => void;
 }) {
@@ -1101,7 +1270,12 @@ function ResultPanel({
         won ? "border-brass" : "border-red-400"
       }`}
     >
-      <h3 className="font-display text-lg text-ink">{won ? "Board clear" : "Out of lives"}</h3>
+      <h3 className="font-display text-lg text-ink">
+        {won ? "Board clear" : "Out of lives"}
+        {/* The tier, because each has its own scoreboard — "1,400 points" means
+            something different on Nightmare than on Hard. */}
+        <span className="ml-2 text-sm font-normal text-muted">{tierLabel}</span>
+      </h3>
       <p className="mt-0.5 text-sm text-muted">
         {won
           ? `Solved with ${misses} wasted ${misses === 1 ? "tap" : "taps"}.`
@@ -1124,7 +1298,9 @@ function ResultPanel({
       <div className="mt-3 font-display text-4xl tabular-nums text-brass">
         {score.toLocaleString()}
       </div>
-      <div className="text-xs uppercase tracking-wide text-muted">points</div>
+      <div className="text-xs uppercase tracking-wide text-muted">
+        {practice ? "points — practice" : "points"}
+      </div>
 
       <p className="mt-2 text-sm text-muted">
         {cleared} {cleared === 1 ? "arrow" : "arrows"} cleared.{" "}

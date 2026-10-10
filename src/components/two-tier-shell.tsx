@@ -29,6 +29,7 @@ import { ModuleRail } from "./module-rail";
 import { NavTree } from "./nav-tree";
 import { SectionPanel, type SectionNode } from "./section-panel";
 import type { NavigationTree, TreeModule } from "@/lib/navigation";
+import type { ResolvedNavTexture } from "@/lib/nav-texture";
 import { useCompactNavStyle } from "./nav-style-context";
 import { useIsCompact } from "./viewport-context";
 
@@ -86,6 +87,17 @@ export interface TwoTierShellProps {
   /** Administration as a tree heading, for an admin. Tree only. */
   adminTreeModule?: TreeModule;
   /**
+   * The navigation's optional background picture, resolved server-side by
+   * `@/lib/nav-texture` and threaded through to whichever navigation surface
+   * this shell ends up drawing -- the desktop tree or the compact bar.
+   *
+   * Unlike `tree` and its three companions above, this is NOT tree-only: the
+   * setting is one app-wide choice, and a reader on a phone should see the
+   * picture they picked. Shells pass it the same way they pass `tree`, from
+   * `getNavTreeData`.
+   */
+  navTexture?: ResolvedNavTexture;
+  /**
    * Drops tier 3 on the **full layout only** — the home screen, whose breadcrumb
    * reads just "Home" and whose bar is therefore an empty rule above the content.
    *
@@ -116,6 +128,7 @@ export function TwoTierShell({
   expandedModules = [],
   onExpandedChange,
   adminTreeModule,
+  navTexture,
   children,
 }: TwoTierShellProps) {
   const pathname = usePathname();
@@ -209,6 +222,7 @@ export function TwoTierShell({
           adminModule={showAdmin ? adminTreeModule : undefined}
           isOpen={panelOpen}
           onOpenChange={setPanelOpen}
+          texture={navTexture}
         />
       )}
 
@@ -245,6 +259,11 @@ export function TwoTierShell({
         // layout; the desktop panel ignores it, because there the rail is tier 1.
         moduleLinks={links}
         navStyle={navStyle}
+        // The same picture the tree draws. Compact is where this lands in
+        // practice -- on desktop a shell with a `tree` renders `NavTree` instead
+        // -- but it is passed unconditionally, because which of the two is on
+        // screen is this component's decision and not the texture's.
+        texture={navTexture}
       />
       )}
 

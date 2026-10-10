@@ -1035,9 +1035,9 @@ is never retried at all. So a track is asked about at most once, ever.
 **Games** (`games`) — a small arcade with a shared high-score board. Sections:
 **Arcade** (the list of games; Play opens the board full-bleed), **Scores**, and
 **Configuration**. Library: `src/lib/games`. One table, `gam_scores`
-(`migrations/0074`); registered by `0075`. Nine games so far: **2048**,
+(`migrations/0074`); registered by `0075`. Ten games so far: **2048**,
 **Arrow Clearing**, **Tetris**, **Sudoku**, **Blackjack**, **Minesweeper**,
-**Mahjong Match**, **Mahjong**, and **Bridge**.
+**Mahjong Match**, **Mahjong**, **Bridge**, and **Pac-Man**.
 
 Five choices worth knowing, all recorded in `0074`'s log:
 
@@ -1054,6 +1054,31 @@ Five choices worth knowing, all recorded in `0074`'s log:
   unknown key rather than throwing; validation happens on the way *in*, via
   `recordScoreSchema`, which is what stops a crafted request writing scores for a game
   that does not exist.
+- **Pac-Man is tile-stepped, not pixel-stepped.** The arcade moves sprites in
+  fractions of a tile; `src/lib/games/game-pacman.ts` moves a whole tile per tick and
+  the view adds a CSS transition so what the player sees still glides. That costs the
+  sliding look and buys a state that is exactly comparable between ticks — which is
+  what makes the four ghosts' targeting rules, the turn buffer and the collision test
+  plain data a test can assert. It is also why collisions are checked *twice* per
+  tick and why `collides` takes before-and-after positions: on a grid, two sprites
+  moving head-on would otherwise swap tiles and both walk away. The maze itself is
+  ASCII art in `types.ts` — the one representation that can be checked by eye — and
+  `PACMAN_COLS`/`PACMAN_ROWS` are derived from it so the picture and the geometry
+  cannot disagree. Its sound is synthesized through `useGameSounds` like every other
+  game's: the arcade's actual waka and death spiral are recordings and are Namco's.
+- **The bazooka is a rule, not a decoration.** Pac-Man here has a pickup the arcade
+  never had: it spawns in the maze, arms one shot, and destroys one ghost for a flat
+  300. Three decisions keep it from unbalancing the game. It sends the ghost to the
+  existing `eaten` mode rather than a new "destroyed" one, so it reuses a respawn path
+  that is already correct. It pays a **flat** rate and never touches
+  `ghostsEatenThisPower`, so a shot cannot inflate the next ghost chomped on a power
+  pellet — the 200/400/800/1600 ladder stays the reward for the riskier chase, which
+  also makes shooting a *frightened* ghost the poorer play. And ammunition **caps at
+  one**, with the cap in `collectBazooka` alone, so the pickup is a decision about when
+  to use it rather than a stockpile. The shell resolves tile by tile in
+  `stepProjectile` despite moving four tiles a tick: jumping the whole distance and
+  then testing would fly straight through anything in between, and the faster it got
+  the more it would miss.
 - **`user_id` carries no `REFERENCES sys_users` clause either** — and this one was a
   bug before it was a decision. It shipped with a real FK, and because
   `better-sqlite3` enables `PRAGMA foreign_keys` on every connection, deleting a user
@@ -1090,11 +1115,16 @@ and touch swipes.
 #### Arrow Clearing
 
 A logic puzzle, following the mechanic of the mobile game *Arrows – Puzzle Escape*. Each
-arrow is a **winding path** of up to eight cells with a head at the leading end; tap it
+arrow is a **winding path** of up to twelve cells with a head at the leading end; tap it
 and it snakes off the board along its own route — but only if the straight line from its
 head to the edge is clear. A blocked tap costs a life. Five lives, then the run ends.
 Rules in [game-arrows.ts](src/lib/games/game-arrows.ts), board in
 [game-arrows-view.tsx](src/app/(protected)/modules/[slug]/game-arrows-view.tsx).
+
+**Three tiers — Hard, Harder, Nightmare — behind one Arcade card,** picked inside the
+game as Sudoku and Minesweeper do. All three are 50x50 under identical rules; the ladder
+is entirely the *shape* of the pieces, set by `lengthWeights` and `straightBias` in
+`ARROW_DIFFICULTY_SETUP`.
 
 Decisions worth keeping:
 
@@ -1134,8 +1164,7 @@ Decisions worth keeping:
   arrows and no winding paths at all. Both terms are needed. Result: ~92% full, ~5 free
   at the start. A test guards the ratio.
 - **Arrow lengths come from a weighted distribution, sampled once per placement.** A
-  board wants a mix — many 1-2 cell pieces, a good number of 3-5, a handful of long 6-12
-  snakes — and `LENGTH_WEIGHTS` encodes that. Two ways this has been got wrong, both
+  board wants a mix, and each tier's `lengthWeights` encodes a different one. Two ways this has been got wrong, both
   measured: asking `growPath` for the maximum every time produced a **barbell** (6.3
   single-cell and 4.6 max-length arrows a board, nothing between), because a walk either
   found room and ran to the cap or was boxed in at one cell. Then rolling the length
@@ -1161,7 +1190,67 @@ Decisions worth keeping:
   the careful way and requires it to come out empty, and the loss panel states outright
   that the board had a solution.
 
-- **No single-cell arrows.** `MIN_ARROW_LENGTH` is 2 and `LENGTH_WEIGHTS[1]` is 0, so
+- **Harder tiers mean _longer and straighter_, not messier — which is backwards from the
+  intuition and so is spelled out in a test.** A knot of short tangled arrows is fiddly
+  rather than hard: each tap removes almost nothing, which is what made the original board
+  unsatisfying to clear. A long arrow crosses more of the grid, so it stands in front of
+  far more of its neighbours and the clearing *order* matters more — and clearing one
+  sweeps a whole run off the board. Measured across the ladder: mean length
+  **4.84 / 6.98 / 7.18** and turn density **73% / 47% / 40%**, with two-cell pieces
+  falling from 88 a board to 4. The top two tiers are close in *length* on purpose — see
+  the note on gaps below; what separates them is mostly how little Nightmare winds.
+- **A finished board has gaps in it because the remaining cells are _walled in_, not
+  because the generator stopped looking.** Every placement needs a clear straight exit
+  lane at the moment it is made, so free cells get enclosed as the board fills. Measured
+  on a finished 50x50 Nightmare board: **only 7 of 1166 free cells still had a clear line
+  to any edge.** An arrow in one of the other 1159 could never leave, so placing one would
+  break solvability outright. Boards therefore saturate around 70%, and that is a property
+  of the rules, not a tuning failure. Two fixes that look obvious and are not — both
+  measured, both rejected:
+  - **Raising `arrows`.** Generation already stops well short of the target; going from
+    900 to 2000 changed nothing at all.
+  - **Searching past the depth band in `findPlacement`.** Made boards *worse* — 205
+    arrows down to 151, with larger voids — because the wider pool returns short shallow
+    near-misses that burn a placement a better spot could have used. There is a note at
+    that code saying so.
+
+  What actually shrinks the holes is **arrow length**: a maximal arrow walls off far more
+  ground than it covers. Nightmare originally ramped its weights straight to the 12-cell
+  cap and left 42 fully-empty 5x5 patches a board, with gaps up to 24 cells wide — visible
+  enough to be reported from a screenshot. Peaking in the middle of the long range instead
+  cut that to ~17 while *keeping* the arrows long (mean 7.21 against 7.89) and fitting more
+  of them (244 against 221). A test pins the symptom rather than the tuning.
+- **Turn _density_ is the metric, not "does the piece bend at all".** The obvious version
+  cannot see `straightBias` working: it moved only 94% → 84% across the original ladder,
+  because a 12-cell run that bends once still counts as bent. Density separates the tiers
+  properly and is also what a player perceives.
+- **`straightBias` falls back to a random neighbour rather than stopping.** A walk that
+  could *only* go straight would halt at the first obstacle and come out short — the
+  opposite of what the setting is for. It is also never 1.0, so pieces can still route
+  around a blockage and reach their target length.
+- **Each tier keeps its own `gameKey`, but only the entry tier is a catalogue entry.**
+  A Nightmare clear is far more work than a Hard one, so ranking them together would be
+  meaningless — three scoreboards. But three *cards* is the shape migration 0077 withdrew,
+  so the tier keys deliberately have no catalogue row. That has two consequences, both of
+  which bit during the build and are now covered by tests:
+  - `isKnownGame` gates `recordScoreSchema`, so it must accept the tier keys or **every
+    Harder and Nightmare score is silently refused** while the game looks fine. It
+    enumerates the tiers rather than matching an `arrow-clearing-` prefix, which would let
+    a crafted request open a leaderboard nobody can play.
+  - The Scores table resolves a row through `scoreCardKey` / `scoreGameName` for its name
+    and icon (icon slot ids are derived from the key), otherwise a Nightmare row renders as
+    the bare string `arrow-clearing-nightmare`. The tier is appended to the name so the
+    three leaderboards stay distinguishable.
+- **Unlimited lives is a practice mode, and the "not scored" flag is sticky.** The five
+  lives exist to stop a board being brute-forced by tapping everything, so a run played
+  without them does not post a score. Turning the toggle back off part way through does
+  **not** make the run scoreable again — otherwise it would just be a way to take the
+  safety net through the hard part and hand in a clean score. Unscored rather than
+  scored-and-flagged because `gam_scores` has no column for the distinction; marking it on
+  the leaderboard would need a migration. Misses are still counted either way, so the end
+  panel can still say how cleanly a practice board was played.
+- **No single-cell arrows.** `MIN_ARROW_LENGTH` is 2 and every tier's `lengthWeights[1]`
+  is 0, so
   every piece has a head *and* a tail. A one-cell arrow draws as a bare arrowhead with no
   line behind it, which reads as a stray mark rather than part of the maze. `growPath` can
   still return a 1-cell run when a spot is cramped; those are refused outright, even as the

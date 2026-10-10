@@ -483,6 +483,202 @@ describe("generatePuzzle", () => {
   });
 });
 
+/**
+ * The difficulty ladder.
+ *
+ * Every tier is the same 50x50 grid under the same rules, so what makes one harder than
+ * the next is entirely the *shape* of its pieces — longer arrows, and less winding. That
+ * is tuning rather than logic, which is exactly the kind of thing that decays silently:
+ * a weight nudged here moves a histogram nobody is looking at. So the ordering is
+ * asserted as a property between tiers rather than as fixed numbers per tier, leaving the
+ * tuning free to move as long as the ladder still climbs.
+ */
+describe("generatePuzzle difficulty ladder", () => {
+  /** Mean arrow length, and how often a piece turns, over a few boards of one tier. */
+  function shapeOf(difficulty: (typeof ARROW_DIFFICULTIES)[number]) {
+    let pieces = 0;
+    let cells = 0;
+    let turnRatio = 0;
+    let eligible = 0;
+
+    for (let seed = 1; seed <= 3; seed += 1) {
+      for (const entry of generatePuzzle(difficulty, seededRandom(seed)).board.arrows) {
+        const length = entry.cells.length;
+        pieces += 1;
+        cells += length;
+
+        /*
+          Turn *density*, not "does it bend at all".
+
+          The naive version — counting a piece as bent if it turns anywhere — cannot see
+          this setting working: measured, it moved only 94% to 84% across the whole
+          ladder, because a 12-cell run that bends once still counts as bent. Density
+          separates them properly (73% / 47% / 40%), and it is also the thing the player
+          actually perceives: a long sweep that bends once reads as clean, a 5-cell piece
+          that bends three times reads as a knot.
+        */
+        if (length >= 3) {
+          let turns = 0;
+          for (let index = 2; index < length; index += 1) {
+            const a = entry.cells[index - 2];
+            const b = entry.cells[index - 1];
+            if ((a.row === b.row) !== (b.row === entry.cells[index].row)) turns += 1;
+          }
+          turnRatio += turns / (length - 2);
+          eligible += 1;
+        }
+      }
+    }
+
+    return { meanLength: cells / pieces, turnRate: turnRatio / eligible };
+  }
+
+  it("makes arrows longer at each step up the ladder", () => {
+    const hard = shapeOf("hard");
+    const harder = shapeOf("harder");
+    const nightmare = shapeOf("nightmare");
+
+    expect(harder.meanLength).toBeGreaterThan(hard.meanLength);
+    expect(nightmare.meanLength).toBeGreaterThan(harder.meanLength);
+
+    // A floor on the gap, not just an ordering: three tiers a tenth of a cell apart
+    // would satisfy the comparisons above while being indistinguishable to play.
+    //
+    // Measured 4.84 / 6.98 / 7.18, so this clears by ~0.34. The top two tiers are
+    // deliberately close in *length* — Nightmare stopped chasing the 12-cell cap because
+    // maximal arrows left visible holes in the board (see ARROW_DIFFICULTY_SETUP), and
+    // what separates it from Harder is mostly how little it winds.
+    expect(nightmare.meanLength - hard.meanLength).toBeGreaterThan(2);
+  });
+
+  it("makes arrows wind less at each step up the ladder", () => {
+    const hard = shapeOf("hard");
+    const harder = shapeOf("harder");
+    const nightmare = shapeOf("nightmare");
+
+    // The counter-intuitive half, and the reason it is spelled out in a test: harder
+    // means *less* tangled here. A knot of short pieces is fiddly; a board of long clean
+    // runs is harder to order, because each piece crosses more of the grid.
+    expect(harder.turnRate).toBeLessThan(hard.turnRate);
+    expect(nightmare.turnRate).toBeLessThan(harder.turnRate);
+
+    // Measured 73% / 47% / 40%.
+    expect(hard.turnRate - nightmare.turnRate).toBeGreaterThan(0.2);
+  });
+
+  it("starves the top tier of the two-cell pieces that make clearing unsatisfying", () => {
+    /*
+      The complaint this ladder was built for: a board of short arrows is unsatisfying to
+      clear, because each tap removes almost nothing. Asserted as a share of the board
+      rather than a raw count, since the higher tiers hold fewer (longer) pieces overall.
+
+      Measured per board: 88 of 358 two-cell pieces on Hard (25%), against 4 of 244 on
+      Nightmare (under 2%). Nightmare weights length 2 at zero outright, so the few that
+      appear are `growPath` returning short from a cramped late-generation spot.
+    */
+    const shortShare = (difficulty: (typeof ARROW_DIFFICULTIES)[number]) => {
+      const arrows = generatePuzzle(difficulty, seededRandom(4)).board.arrows;
+      const shorties = arrows.filter((entry) => entry.cells.length <= 2).length;
+      return shorties / arrows.length;
+    };
+
+    expect(shortShare("nightmare")).toBeLessThan(shortShare("hard"));
+    expect(shortShare("nightmare")).toBeLessThan(0.1);
+  });
+
+  it("leaves no large empty regions on the top tier", () => {
+    /*
+      Reported from a screenshot: Nightmare boards had obvious holes in them — wide
+      stretches of blank grid that read as an unfinished board rather than a hard one.
+
+      The cause is structural and is not fixable by searching harder: every placement
+      needs a clear exit lane when it is made, so free cells get walled in as the board
+      fills (on one measured board, only 7 of 1166 free cells still had a line to an
+      edge). What *does* control the hole size is arrow length — a maximal arrow walls
+      off much more ground than it covers — which is why Nightmare's weights peak in the
+      middle of the long range instead of ramping to the 12-cell cap.
+
+      So this asserts the symptom, not the tuning: no fully-empty 5x5 neighbourhood
+      should be common. Measured per board, the ramp-to-cap version left 42 of them and
+      gaps up to 24 cells wide; the shipped tuning leaves ~20 and a worst gap of 18.
+      Hard is included as the control — it never had this problem (1 a board), because
+      its pieces are short.
+    */
+    const emptyPatches = (difficulty: (typeof ARROW_DIFFICULTIES)[number], seed: number) => {
+      const board = generatePuzzle(difficulty, seededRandom(seed)).board;
+      const { size } = board;
+      const filled = Array.from({ length: size }, () => new Array<boolean>(size).fill(false));
+      for (const entry of board.arrows) {
+        for (const cell of entry.cells) filled[cell.row][cell.col] = true;
+      }
+
+      let patches = 0;
+      for (let row = 2; row < size - 2; row += 1) {
+        for (let col = 2; col < size - 2; col += 1) {
+          let clear = true;
+          for (let dr = -2; dr <= 2 && clear; dr += 1) {
+            for (let dc = -2; dc <= 2; dc += 1) {
+              if (filled[row + dr][col + dc]) {
+                clear = false;
+                break;
+              }
+            }
+          }
+          if (clear) patches += 1;
+        }
+      }
+      return patches;
+    };
+
+    // Averaged over a few boards: generation is random, so one loose board is fine and
+    // only the typical case is meaningful.
+    const seeds = [1, 2, 3, 4];
+    const average = (difficulty: (typeof ARROW_DIFFICULTIES)[number]) =>
+      seeds.reduce((sum, seed) => sum + emptyPatches(difficulty, seed), 0) / seeds.length;
+
+    // Generous against the measured ~20, so ordinary tuning drift does not fail this —
+    // it is here to catch a return to the 42-and-climbing regime.
+    expect(average("nightmare")).toBeLessThan(35);
+  }, 60000);
+
+  it("keeps every tier dense and worth a sitting", () => {
+    // The higher tiers settle at fewer pieces because each is longer, so the piece count
+    // is not comparable across tiers — coverage is. All three should still fill the board
+    // and still be a long sitting rather than a handful of taps.
+    for (const difficulty of ARROW_DIFFICULTIES) {
+      const { size } = ARROW_DIFFICULTY_SETUP[difficulty];
+      const board = generatePuzzle(difficulty, seededRandom(6)).board;
+      const covered = board.arrows.reduce((sum, entry) => sum + entry.cells.length, 0);
+
+      expect(covered / (size * size)).toBeGreaterThan(0.6);
+      expect(board.arrows.length).toBeGreaterThan(150);
+    }
+  }, 60000);
+
+  it("gives every tier its own scoreboard key", () => {
+    // The keys are stored in `gam_scores.game_key` and are permanent. A duplicate would
+    // silently merge two tiers' leaderboards, which is the thing separate keys exist to
+    // prevent.
+    const keys = ARROW_DIFFICULTIES.map((tier) => ARROW_DIFFICULTY_SETUP[tier].gameKey);
+    expect(new Set(keys).size).toBe(keys.length);
+
+    // The entry tier's key is load-bearing history: every score posted before the ladder
+    // existed is filed under it. Renaming it orphans them.
+    expect(ARROW_DIFFICULTY_SETUP.hard.gameKey).toBe("arrow-clearing-hard");
+  });
+
+  it("caps every tier's length weights at MAX_ARROW_LENGTH", () => {
+    // The view's layout and the generator's fallback are both sized against the cap, so
+    // a tier whose weights ran past it would ask for arrows that cannot be drawn.
+    for (const difficulty of ARROW_DIFFICULTIES) {
+      const { lengthWeights } = ARROW_DIFFICULTY_SETUP[difficulty];
+      expect(lengthWeights.length - 1).toBe(MAX_ARROW_LENGTH);
+      // A one-cell arrow draws as a bare arrowhead; no tier may ask for one.
+      expect(lengthWeights[1]).toBe(0);
+    }
+  });
+});
+
 describe("scoreBoard", () => {
   it("awards full marks for a flawless solve", () => {
     expect(scoreBoard(7, 0)).toBe(700);

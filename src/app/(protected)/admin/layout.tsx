@@ -78,6 +78,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
       tree={navTree.tree}
       expandedModules={navTree.expandedModules}
       adminTreeModule={navTree.adminTreeModule}
+      navTexture={navTree.navTexture}
       setExpandedModules={setExpandedModulesAction}
       currentUser={{
         id: currentUser.id,

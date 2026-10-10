@@ -281,6 +281,71 @@ export function JournalReviewView({
     }
   }
 
+  /**
+   * Bins one entry straight from its row — no confirm dialog, and **no reload**.
+   *
+   * Deliberately unconfirmed: the point of the badge is that clearing a stray
+   * second entry off a date takes one click, and a modal per row would make it
+   * slower than ticking the box and using Delete. What makes that safe is the
+   * destination — the same `recycleJournalSameDateEntriesAction` the bulk
+   * Delete calls, so the entry moves to the recycle bin and is restorable from
+   * Data Management → CSV Import → Correct. The notice says so every time,
+   * because an unconfirmed delete has to tell the reader where the thing went.
+   *
+   * This is the one path on this screen that does **not** take the server's
+   * regrouped list, and that is the whole requirement: the reader is working
+   * down a long list clearing strays, and adopting `result.groups` would
+   * re-sort and re-page under them, throwing away their position after every
+   * single click. So the deleted entry is spliced out of the groups locally and
+   * nothing else moves. `router.refresh()` is skipped for the same reason —
+   * it re-runs the server panel, which would remount this view with fresh
+   * props.
+   *
+   * The known cost, accepted: a date that had exactly two entries is left
+   * showing one row reading "1 of 1". It is no longer a group, so a genuine
+   * reload (the Log-only toggle, an edit, or revisiting the section) drops it.
+   * Leaving it is the lesser evil — making a row the reader did not touch
+   * vanish is exactly the kind of movement this change exists to prevent.
+   *
+   * The ticks are deliberately left alone too. A tick is keyed by row id, and
+   * the only id that has gone is the one just deleted; the bulk paths clear the
+   * selection because *other* rows leave with it, which cannot happen here.
+   */
+  async function runRowDelete(row: SameDateRow) {
+    // No `isScanning` overlay: dimming the page is how this screen announces a
+    // whole-list re-read, and the entire point here is that the list is not
+    // being re-read. `isBusy` alone still disables the badges and the toggle
+    // while the write is in flight.
+    setIsBusy(true);
+    setError(undefined);
+    setNotice(undefined);
+    try {
+      const result = await recycleJournalSameDateEntriesAction([row.id], logOnly);
+      if (!result.ok) {
+        setError(result.error ?? "That didn't work.");
+        return;
+      }
+      // Drop just this entry. `toSameDateRows` recomputes "n of m" from the
+      // group it is given, so the siblings renumber themselves correctly; a
+      // date emptied to nothing is removed, since it would render as no rows
+      // anyway. `result.groups` is intentionally ignored.
+      setGroups((current) =>
+        current
+          .map((group) => ({
+            ...group,
+            entries: group.entries.filter((entry) => entry.id !== row.id),
+          }))
+          .filter((group) => group.entries.length > 0),
+      );
+      setNotice(
+        `Moved that entry (${row.date}) to the recycle bin — restore it from ` +
+          "Data Management → CSV Import → Correct if you need it back.",
+      );
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   async function runDelete(pending: PendingDelete) {
     setIsBusy(true);
     setScanLabel({
@@ -400,10 +465,46 @@ export function JournalReviewView({
       // Sorting on this keeps one day's entries adjacent, which is what makes a
       // flat grid readable as groups. It is the order the rows arrive in.
       render: (row) => (
-        <span className="whitespace-nowrap">
+        <span className="flex items-center gap-2 whitespace-nowrap">
           {row.date}
-          <span className="ml-2 text-xs text-muted">
+          <span className="text-xs text-muted">
             {row.entryIndex} of {row.entryCount}
+          </span>
+          {/* Quick delete for this one row, as a badge rather than a column of
+              its own: a whole column would cost width on every row to repeat
+              one glyph, and the thing being deleted is the entry this date line
+              names. Bins immediately — see runRowDelete for why that is safe.
+
+              A `<span role="button">` and not a `<button>`: below 1024px the
+              DataGrid renders each row as a card wrapped in a real <button>,
+              and a nested button there is invalid HTML that browsers unnest,
+              which would detach this handler on exactly the layout where a
+              mis-tap is likeliest. `stopPropagation` keeps the click off the
+              row's own onRowClick, which would otherwise open the viewer on the
+              entry being deleted — the same guard the grid's checkbox cell uses. */}
+          <span
+            role="button"
+            tabIndex={isBusy ? -1 : 0}
+            aria-disabled={isBusy}
+            title="Delete this entry — moves it to the recycle bin"
+            aria-label={`Delete the entry on ${row.date}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (isBusy) return;
+              void runRowDelete(row);
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              event.stopPropagation();
+              if (isBusy) return;
+              void runRowDelete(row);
+            }}
+            className={`flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center rounded-full bg-red-500/15 font-mono text-[0.6rem] font-semibold leading-none text-red-400 transition-colors hover:bg-red-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 ${
+              isBusy ? "pointer-events-none opacity-40" : ""
+            }`}
+          >
+            ×
           </span>
         </span>
       ),

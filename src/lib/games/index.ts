@@ -96,6 +96,15 @@ export {
   MAHJONG_BASE_FAN,
   MAHJONG_FIGURES,
   MAHJONG_FLOWER_FAN,
+  BAZOOKA_GHOST_POINTS,
+  BAZOOKA_MIN_SPAWN_DISTANCE,
+  BAZOOKA_SPAWN_TICKS,
+  BAZOOKA_TTL_TICKS,
+  GHOST_HOUSE_DOOR,
+  GHOST_NAMES,
+  GHOST_PEN_TICKS,
+  GHOST_SCATTER_CORNERS,
+  GHOST_STARTS,
   MAHJONG_MATCH_DIFFICULTIES,
   MAHJONG_MATCH_HINT_PENALTY,
   MAHJONG_MATCH_MIN_SCORE,
@@ -109,6 +118,19 @@ export {
   MINESWEEPER_MIN_SCORE,
   MINESWEEPER_SETUP,
   MINESWEEPER_TIME_PENALTY,
+  PACMAN_COLS,
+  PACMAN_DIRECTIONS,
+  PACMAN_EXTRA_LIFE_AT,
+  PACMAN_FRIGHTENED_TICKS,
+  PACMAN_GHOST_POINTS,
+  PACMAN_LIVES,
+  PACMAN_MAZE,
+  PACMAN_PELLET_POINTS,
+  PACMAN_PHASES,
+  PACMAN_POWER_POINTS,
+  PACMAN_ROWS,
+  PACMAN_START,
+  PROJECTILE_SPEED,
   PARTNER_OF,
   PIECE_KINDS,
   PLAYFIELD_HEIGHT,
@@ -179,8 +201,18 @@ export {
   type MinesweeperDifficulty,
   type MinesweeperOutcome,
   type MinesweeperState,
+  type Bazooka,
+  type Ghost,
+  type GhostMode,
+  type GhostName,
   type MoveResult,
+  type PacmanDirection,
+  type PacmanOutcome,
+  type PacmanPoint,
+  type PacmanState,
+  type PacmanTile,
   type PieceCell,
+  type Projectile,
   type PieceKind,
   type Playfield,
   type Rank,
@@ -216,6 +248,7 @@ export {
 } from "./schema";
 export type { ScoreRepository } from "./ports";
 export {
+  arrowBestScores,
   formatScore,
   getGame,
   listAvailableGames,
@@ -223,6 +256,8 @@ export {
   listRecentScores,
   listTopScores,
   recordScore,
+  scoreCardKey,
+  scoreGameName,
   type GameSummary,
 } from "./games";
 export {
@@ -489,3 +524,35 @@ export {
   trumpOf,
   undertrickPenalty,
 } from "./game-bridge";
+
+// Pac-Man — the maze game, and the arcade's second real-time one after Tetris. The
+// collisions are the usual suspects: `startGame`, `scoreGame`, `tick` and `renderRows`
+// are all taken several times over by now, and `canEnter`/`collides`/`stepFrom` are
+// new. Aliased here for the reason every block above is: inside `game-pacman.ts` the
+// short names read best, and only this file, where every game's surface meets, needs
+// the qualifier. `Random` is already exported from `game-2048` and is the same
+// structural type, so it is not re-exported.
+export {
+  canEnter as canEnterMazeTile,
+  collectBazooka,
+  collides as pacmanCollides,
+  countPellets,
+  freshPellets,
+  frightenedTicksFor,
+  ghostTarget,
+  loseLife,
+  mazeTileAt,
+  nextLevel,
+  fireBazooka,
+  phaseAt,
+  queueDirection,
+  renderRows as renderPacmanRows,
+  scoreGame as scorePacman,
+  startGame as startPacman,
+  spawnBazooka,
+  stepFrom as stepFromTile,
+  stepGhost,
+  stepProjectile,
+  tick as tickPacman,
+  tickIntervalMs as pacmanTickIntervalMs,
+} from "./game-pacman";

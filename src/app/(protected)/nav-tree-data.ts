@@ -17,6 +17,14 @@ import { getUserPreferences } from "@/lib/user-preferences";
 import { getAccessibleModules } from "@/lib/user";
 import type { User } from "@/lib/user";
 import { listModules } from "@/lib/modules";
+import { listDashboardTextures } from "@/lib/dashboard-texture";
+import { getSetting } from "@/lib/settings";
+import {
+  NAV_TEXTURE_ID_KEY,
+  NAV_TEXTURE_OPACITY_KEY,
+  resolveNavTexture,
+  type ResolvedNavTexture,
+} from "@/lib/nav-texture";
 import { deps } from "@/lib/wiring";
 
 /**
@@ -48,6 +56,13 @@ export interface NavTreeData {
   adminTreeModule: TreeModule;
   /** The flat module list tier 1 still needs — the compact bar renders from it. */
   links: { slug: string; name: string; href: string; icon: string; hint?: string }[];
+  /**
+   * The navigation's optional background picture, or `undefined` for a plain
+   * column. Resolved here rather than in each shell for the same reason the tree
+   * is: ten shells each reading two settings and the texture library is ten
+   * copies of one fact, and they would drift.
+   */
+  navTexture?: ResolvedNavTexture;
 }
 
 /**
@@ -102,5 +117,15 @@ export function getNavTreeData(currentUser: User): NavTreeData {
       icon: appModule.icon,
       hint: appModule.description,
     })),
+    // Two settings rows and the texture library. The library read is the same
+    // cheap one the protected layout already does for personal toolbars — every
+    // row carries `hasImage`, never the picture's bytes (migration 0113).
+    navTexture: resolveNavTexture(
+      {
+        id: getSetting(deps.settingsRepo, NAV_TEXTURE_ID_KEY)?.value,
+        opacity: getSetting(deps.settingsRepo, NAV_TEXTURE_OPACITY_KEY)?.value,
+      },
+      listDashboardTextures(deps.dashboardTextureRepo),
+    ),
   };
 }

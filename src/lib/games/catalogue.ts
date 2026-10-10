@@ -1,4 +1,8 @@
-import type { CatalogueGame } from "./types";
+import {
+  ARROW_DIFFICULTIES,
+  ARROW_DIFFICULTY_SETUP,
+  type CatalogueGame,
+} from "./types";
 
 /**
  * The catalogue of games, in code rather than in a table.
@@ -24,15 +28,25 @@ export const GAME_CATALOGUE: readonly CatalogueGame[] = [
     status: "available",
     scoreUnit: "points",
   },
-  // One Arrow Clearing entry. It shipped as three (easy/medium/hard) and the two
-  // smaller boards were withdrawn in migration 0077 — the largest was already no
-  // challenge, so a ladder below it was pointless. The key still says `-hard` because
-  // it is stored in `gam_scores.game_key`: renaming it would orphan every score
+  // One Arrow Clearing entry covering all three tiers, with the difficulty picked
+  // inside the game — the same call Sudoku and Minesweeper make.
+  //
+  // It shipped as three *cards* (easy/medium/hard) and the two smaller boards were
+  // withdrawn in migration 0077, because three cards for one game meant three
+  // scoreboards. The tiers came back as a real ladder (longer, straighter arrows as it
+  // climbs); the one-card shape is what stayed.
+  //
+  // Unlike Sudoku and Minesweeper, each tier still posts to **its own** `gameKey` — a
+  // Nightmare clear is far more work than a Hard one and ranking them together would be
+  // meaningless. Those keys live in `ARROW_DIFFICULTY_SETUP`, not here, because only
+  // this entry is a *card*. The key below is the entry tier's and still says `-hard`
+  // because it is stored in `gam_scores.game_key`: renaming it would orphan every score
   // already posted against it, exactly as renaming an icon slot id orphans an upload.
   {
     key: "arrow-clearing-hard",
     name: "Arrow Clearing",
-    description: "A 9x9 maze of arrows. Clear every one off the board, in the right order.",
+    description:
+      "A 50x50 maze of arrows. Clear every one off the board, in the right order.",
     status: "available",
     scoreUnit: "points",
   },
@@ -126,6 +140,20 @@ export const GAME_CATALOGUE: readonly CatalogueGame[] = [
   // records 0 otherwise — the same rule Blackjack applies to a broke run and Mahjong to
   // a hand a bot won. A defeated contract the human declared cannot score a negative,
   // since the shared board ranks `score DESC`.
+  // Pac-Man. The arcade's second real-time game after Tetris, and the first where the
+  // *opponents* move on the clock rather than the board — which is why the ghosts'
+  // targeting rules are in the library and tested, not improvised in the view.
+  //
+  // Points, straight from the run: unlike Sudoku, Minesweeper and Mahjong Match, this
+  // game already scores in points, so `scoreGame` converts nothing. A run that is
+  // caught immediately records 0, the same rule Blackjack applies to a broke run.
+  {
+    key: "pacman",
+    name: "Pac-Man",
+    description: "Clear the maze of pellets. Four ghosts would rather you did not.",
+    status: "available",
+    scoreUnit: "points",
+  },
   {
     key: "bridge",
     name: "Bridge",
@@ -147,7 +175,21 @@ export function findGame(key: string): CatalogueGame | undefined {
  * scoreboard with rows for a game that does not exist.
  */
 export function isKnownGame(key: string): boolean {
-  return GAME_CATALOGUE.some((game) => game.key === key);
+  if (GAME_CATALOGUE.some((game) => game.key === key)) return true;
+
+  /*
+    Arrow Clearing's tiers are scoreboard keys without a catalogue entry of their own —
+    one card, three leaderboards. They are legitimate score keys and must pass here, or
+    `recordScoreSchema` rejects every Harder and Nightmare result.
+
+    Enumerated from `ARROW_DIFFICULTY_SETUP` rather than matched as a prefix: a prefix
+    test (`key.startsWith("arrow-clearing-")`) would let a crafted request invent
+    `arrow-clearing-trivial` and open a leaderboard nobody can play, which is the exact
+    thing this function exists to prevent.
+  */
+  return ARROW_DIFFICULTIES.some(
+    (tier) => ARROW_DIFFICULTY_SETUP[tier].gameKey === key,
+  );
 }
 
 /** Only the games that can actually be played, for the Arcade list. */

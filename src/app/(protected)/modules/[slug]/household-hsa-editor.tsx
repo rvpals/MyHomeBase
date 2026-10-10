@@ -6,7 +6,7 @@ import { Modal } from "@/components/modal";
 import { IconSelect, type IconSelectOption } from "@/components/icon-select";
 import { MultiFileDropzone } from "@/components/multi-file-dropzone";
 import { HSA_TYPES, type HsaType } from "@/lib/household/hsa-types";
-import { toLocalTimeLabel, todayIsoLocal } from "@/lib/shared/date";
+import { todayIsoLocal } from "@/lib/shared/date";
 import {
   HSA_RECEIPT_PICKABLE_MIME_TYPES,
 } from "@/lib/household/hsa-schema";
@@ -245,15 +245,16 @@ export function HsaEditor({
               // Read at the moment of the click, not when the dialog opened: on a form
               // left sitting, the stamp should be when you asked for it. Browser-side
               // for the reason the Journal's entry form is — the clock that matters is
-              // the writer's, not the server's.
-              set({ entryDate: todayIsoLocal(), entryTime: toLocalTimeLabel(new Date()) })
+              // the writer's, not the server's. Date only: the form no longer carries a
+              // time field, so an expense is identified by its day.
+              set({ entryDate: todayIsoLocal() })
             }
           >
-            Use current date &amp; time
+            Use current date
           </Button>
         </div>
 
-        {/* Date and time sit side by side on a desktop and stack on a phone. */}
+        {/* Two fields to a row on a desktop, stacked on a phone. */}
         <div className="grid grid-cols-2 gap-3 max-lg:grid-cols-1">
           <Field label="Date">
             <input
@@ -261,14 +262,6 @@ export function HsaEditor({
               type="date"
               value={form.entryDate}
               onChange={(event) => set({ entryDate: event.target.value })}
-            />
-          </Field>
-          <Field label="Time">
-            <input
-              className={INPUT_CLASS}
-              type="time"
-              value={form.entryTime}
-              onChange={(event) => set({ entryTime: event.target.value })}
             />
           </Field>
           <Field label="Amount (USD)">
