@@ -39,6 +39,8 @@ export const JOB_KEYS = {
   expenseAutoImport: "expense_auto_import",
   authEventPrune: "auth_event_prune",
   siteVisitPrune: "site_visit_prune",
+  dataBackup: "data_backup",
+  helloWorld: "hello_world",
 } as const;
 
 export type JobKey = (typeof JOB_KEYS)[keyof typeof JOB_KEYS];
@@ -98,6 +100,22 @@ export const JOB_DESCRIPTORS: readonly JobDescriptor[] = [
     configurable: false,
   },
   {
+    key: JOB_KEYS.dataBackup,
+    label: "Data backup",
+    description:
+      "Copies attachment files that have changed into the attachment backup folder, setting any older copy aside first, then writes a compressed archive of the database and deletes the oldest archives past the keep count.",
+    runnable: true,
+    configurable: true,
+  },
+  {
+    key: JOB_KEYS.helloWorld,
+    label: "Hello, world!",
+    description:
+      "Files the configured message into the message queue each time it runs, so the unread badge in the header moves whenever the scheduler fires. It exists to prove the scheduler is alive on this install — every other job is silent when it has nothing to do, which makes a stopped scheduler look exactly like an idle one.",
+    runnable: true,
+    configurable: true,
+  },
+  {
     key: JOB_KEYS.siteVisitPrune,
     label: "Site visit history prune",
     description:
@@ -116,4 +134,105 @@ export interface ScheduledJobView {
   descriptor: JobDescriptor;
   /** Undefined when the job has never run, which the screen states explicitly. */
   lastRun?: ScheduledRun;
+}
+
+/**
+ * One recorded pass, from `sys_scheduled_run_history` (migrations/0135).
+ *
+ * `finishedAt` and `status` are absent together and mean the pass started but never
+ * finished -- the process was killed mid-pass, or a deploy cycled the server while
+ * it was working. Reporting that honestly is the whole reason both are nullable.
+ */
+export interface ScheduledRunHistoryEntry {
+  id: number;
+  jobKey: string;
+  /** SQLite-style UTC timestamp. */
+  startedAt: string;
+  finishedAt?: string;
+  status?: ScheduledRunStatus;
+  detail?: string;
+}
+
+/**
+ * How many passes are kept per job. Pruned on every insert.
+ *
+ * 50 is a few days of an hourly job and months of a daily one, and across five jobs
+ * it is ~250 rows -- nothing against a database already past 100 MB.
+ */
+export const HISTORY_LIMIT_PER_JOB = 50;
+
+/**
+ * One history row as the dialog renders it: the stored facts plus the two things
+ * only a reader wants, computed rather than stored.
+ */
+export interface ScheduledRunHistoryView {
+  id: number;
+  startedAt: string;
+  /** `undefined` when the pass never finished. */
+  finishedAt?: string;
+  /** Milliseconds from start to finish, or `undefined` when it never finished. */
+  durationMs?: number;
+  /** `"interrupted"` where the stored status is absent -- never `"ok"`. */
+  status: ScheduledRunStatus | "interrupted";
+  detail?: string;
+}
+
+/**
+ * Why a job is not currently running, for the Inactive Tasks tab.
+ *
+ * Split from a plain boolean because "switched off" and "switched on but missing a
+ * folder" are different problems with different fixes, and a reader looking at an
+ * idle job needs to be told which one they have.
+ */
+export interface InactiveTaskRow {
+  key: JobKey;
+  label: string;
+  /** One sentence naming what is missing or switched off. */
+  reason: string;
+  /** Undefined when the job has never run. */
+  lastRunAt?: string;
+  status: ScheduledRunStatus | "interrupted" | "never";
+  detail?: string;
+}
+
+/**
+ * When a job is expected to run next.
+ *
+ * Three shapes rather than one nullable timestamp, because the three cases read
+ * differently to someone trying to work out whether a job is stuck:
+ *
+ *   * `at`      -- a real due time, computed from the last run plus the cadence.
+ *   * `within`  -- the window the run falls in, with no exact time available.
+ *                  The two prunes sit on a fixed 24h `setInterval` that is rearmed
+ *                  from zero on every boot, and nothing persists when that happened.
+ *                  On a NAS that restarts several times an hour, `lastRun + 24h`
+ *                  would read as precise while being routinely wrong, so the window
+ *                  is stated honestly instead.
+ *   * `pending` -- armed but never run, so the next heartbeat runs it.
+ */
+export type NextRun =
+  | { kind: "at"; atMs: number }
+  | { kind: "within"; windowMs: number; fromMs: number }
+  | { kind: "pending" };
+
+/**
+ * One row of the Active Tasks card: a job that is currently armed, and the four
+ * facts the card shows about it.
+ *
+ * Only armed jobs become rows -- a switched-off job is not an active task, so it
+ * is absent rather than listed as idle. `status` is the *last run's* outcome, not
+ * a live indicator: nothing in the app tracks in-flight state, and `sys_scheduled_runs`
+ * holds one row per job written at start and updated at finish.
+ */
+export interface ActiveTaskRow {
+  key: JobKey;
+  /** The job's catalogue label, so the card and the per-job card below agree. */
+  label: string;
+  nextRun: NextRun;
+  /** Undefined when the job has never run. */
+  lastRunAt?: string;
+  /** Absent `status` on a stored run means the process died mid-pass. */
+  status: ScheduledRunStatus | "interrupted" | "never";
+  /** The stored one-liner, e.g. "38 priced, 1 failed". */
+  detail?: string;
 }

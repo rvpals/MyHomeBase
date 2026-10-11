@@ -61,6 +61,15 @@ const FAMILIES = [
   { family: "IBM Plex Mono", slug: "ibm-plex-mono", weights: ["400", "500", "600"] },
   { family: "JetBrains Mono", slug: "jetbrains-mono", weights: ["400", "500"] },
   { family: "Great Vibes", slug: "great-vibes", weights: ["400"] },
+  // The five script faces added beside Great Vibes for the Script Fonts picker
+  // (Admin -> Display Settings). Caveat is a variable font covering 400-700;
+  // the rest are single-weight 400 designs with no bold cut at all, so asking
+  // for a range would return nothing.
+  { family: "Dancing Script", slug: "dancing-script", axis: "400..700" },
+  { family: "Caveat", slug: "caveat", axis: "400..700" },
+  { family: "Kalam", slug: "kalam", weights: ["400"] },
+  { family: "Parisienne", slug: "parisienne", weights: ["400"] },
+  { family: "Pinyon Script", slug: "pinyon-script", weights: ["400"] },
 ];
 
 function cssUrl(entry) {

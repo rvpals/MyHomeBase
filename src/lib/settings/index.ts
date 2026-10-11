@@ -25,6 +25,16 @@ export {
   type ColorTokenKey,
   type FontKey,
 } from "./themes";
+export {
+  SCRIPT_FONTS,
+  DEFAULT_SCRIPT_FONT,
+  SCRIPT_FONT_SETTING_KEYS,
+  getScriptFont,
+  resolveScriptFont,
+  scriptFontCssVar,
+  type ScriptFontId,
+  type ScriptFontInfo,
+} from "./script-fonts";
 export { ICON_SETS, DEFAULT_ICON_SET_ID, getIconSet, type IconSet } from "./icon-sets";
 export {
   CHROME_STYLES,

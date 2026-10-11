@@ -19,6 +19,7 @@ import {
   deleteSavedLocation,
   generateLocationTaxonomyIcon,
   generateMissingLocationTaxonomyIcons,
+  listEntriesUsingLocation,
   listLocationCategories,
   listLocationTags,
   promoteToSavedLocation,
@@ -27,6 +28,7 @@ import {
   searchSavedLocations,
   setLocationTaxonomyIcon,
   updateSavedLocation,
+  type EntryUsingLocation,
   type LocationIconFillSummary,
   type ImportBatchResult,
   type LocationSearchInput,
@@ -85,6 +87,31 @@ export async function searchSavedLocationsAction(
     return { ok: true, locations: searchSavedLocations(deps.savedLocationRepo, input) };
   } catch (error) {
     return toErrorResult(error, "Failed to search saved locations.");
+  }
+}
+
+export interface EntriesUsingLocationResult extends ActionResult {
+  entries?: EntryUsingLocation[];
+}
+
+/**
+ * The journal entries a saved place is the source for.
+ *
+ * An action rather than a page read because the manager fetches it on demand,
+ * when the reader clicks a row's usage count — loading every place's entries
+ * with the list would read the whole journal to fill a popup that is usually
+ * never opened.
+ *
+ * Read-only, so no `revalidateLocationScreens()`.
+ */
+export async function listEntriesUsingLocationAction(
+  id: number,
+): Promise<EntriesUsingLocationResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
+  try {
+    return { ok: true, entries: listEntriesUsingLocation(deps.savedLocationRepo, id) };
+  } catch (error) {
+    return toErrorResult(error, "Failed to load the entries for this location.");
   }
 }
 

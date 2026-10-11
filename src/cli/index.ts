@@ -44,6 +44,8 @@ import { refreshPositionsCommand } from "./refresh-positions";
 import { messagesCommand } from "./messages";
 import { tickerMonitorsCommand } from "./ticker-monitors";
 import { watchListsCommand } from "./watch-lists";
+import { runDataBackupCommand } from "./run-data-backup";
+import { runHelloWorldCommand } from "./run-hello-world";
 import { runScheduledRefreshCommand } from "./run-scheduled-refresh";
 import { setStartupMessageCommand } from "./set-startup-message";
 import { browseCsvCommand } from "./browse-csv";
@@ -72,6 +74,8 @@ const commands: Record<string, Command> = {
   "ticker-monitors": tickerMonitorsCommand,
   "watch-lists": watchListsCommand,
   messages: messagesCommand,
+  "run-data-backup": runDataBackupCommand,
+  "run-hello-world": runHelloWorldCommand,
   "run-scheduled-refresh": runScheduledRefreshCommand,
   "list-scheduled-jobs": listScheduledJobsCommand,
   "compute-analytics": computeAnalyticsCommand,

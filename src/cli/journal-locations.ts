@@ -6,6 +6,7 @@ import {
   deleteLocationTaxonomy,
   deleteSavedLocation,
   findLocationDuplicates,
+  listEntriesUsingLocation,
   listSavedLocations,
   mergeSavedLocations,
   promoteToSavedLocation,
@@ -30,6 +31,7 @@ import { parseFlags } from "./parse-flags";
  *   journal-locations --update 4 --name "Small World" --lat 40.35 --lon -74.66
  *   journal-locations --delete 4
  *   journal-locations --promote --lat 40.1 --lon -74.2 --name "Grandma's" --entry-location 42
+ *   journal-locations --entries 4
  *   journal-locations --find-duplicates
  *   journal-locations --find-duplicates 0.9
  *   journal-locations --find-duplicates --within 200
@@ -105,6 +107,34 @@ export async function journalLocationsCommand(args: string[]): Promise<void> {
     printLocations(
       searchSavedLocations(deps.savedLocationRepo, { query: flags.search, categories, tags }),
     );
+    return;
+  }
+
+  if (flags.entries !== undefined) {
+    const id = Number(flags.entries);
+    if (!Number.isInteger(id) || id <= 0) {
+      console.error(`--entries needs a location id, got "${flags.entries}".`);
+      process.exitCode = 1;
+      return;
+    }
+    const entries = listEntriesUsingLocation(deps.savedLocationRepo, id);
+    if (entries.length === 0) {
+      console.log("No journal entries use that location.");
+      return;
+    }
+    for (const entry of entries) {
+      // Mirrors what the popup shows: an encrypted title is unreadable here
+      // too, and a blank one is a real entry that was never titled.
+      const title = entry.isEncrypted
+        ? "(encrypted)"
+        : entry.title === ""
+          ? "(untitled)"
+          : entry.title;
+      const when = entry.entryTime === "" ? entry.entryDate : `${entry.entryDate} ${entry.entryTime}`;
+      const stops = entry.locationCount > 1 ? `  (${entry.locationCount} stops)` : "";
+      console.log(`  ${String(entry.entryId).padStart(4)}  ${when}  ${title}${stops}`);
+      if (entry.placeName !== "") console.log(`        ${entry.placeName}`);
+    }
     return;
   }
 

@@ -3,6 +3,7 @@
 
 export type {
   EntryLocationSource,
+  EntryUsingLocation,
   ImportBatchResult,
   ImportCandidate,
   LocationCategory,
@@ -80,6 +81,8 @@ export {
   isDuplicateLocation,
   type LocationPoint,
 } from "./duplicate-in-list";
+
+export { listEntriesUsingLocation } from "./entries-using-location";
 
 export { buildImportCandidates, existingLocationKey } from "./import-from-entries";
 

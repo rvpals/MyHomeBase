@@ -6,6 +6,7 @@ import type {
 import type { DecodedImage } from "@/lib/shared/image-upload";
 import type {
   EntryLocationSource,
+  EntryUsingLocation,
   LocationCategory,
   LocationTag,
   LocationTaxonomyCount,
@@ -76,6 +77,19 @@ export interface SavedLocationRepository {
    * in the journal's own reads or writes consults it — see migration 0101.
    */
   linkEntryLocation(entryLocationId: number, savedLocationId: number): void;
+
+  /**
+   * The journal entries using this place, newest first, one row per entry.
+   *
+   * The third method here that reads a table `lib/journal` owns, for the same
+   * reason as the two above: it follows the provenance column *into* the
+   * library, and routing it through the journal's repository would make two
+   * modules depend on each other.
+   *
+   * Grouped by entry, so an entry visiting the same place twice is one row
+   * carrying `locationCount: 2` rather than two identical ones.
+   */
+  listEntriesUsingLocation(id: number): EntryUsingLocation[];
 
   // --- Importing from existing entries -------------------------------------
 

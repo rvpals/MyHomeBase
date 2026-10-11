@@ -10,6 +10,7 @@ import {
 } from "./schema";
 import type {
   EntryLocationSource,
+  EntryUsingLocation,
   LocationCategory,
   LocationTag,
   LocationTaxonomyCount,
@@ -274,6 +275,49 @@ export class SqliteSavedLocationRepository implements SavedLocationRepository {
     this.db
       .prepare("UPDATE jrn_entry_locations SET saved_location_id = ? WHERE id = ?")
       .run(savedLocationId, entryLocationId);
+  }
+
+  listEntriesUsingLocation(id: number): EntryUsingLocation[] {
+    // Grouped by entry, so an entry that visited this place twice is one row
+    // rather than two identical ones — COUNT(*) is what tells them apart.
+    //
+    // INNER JOIN for the same reason as listEntryLocationsForImport: a location
+    // row whose entry is gone is not reachable in the app either. Newest first,
+    // because the reader opening this is checking recent use, and the id breaks
+    // the tie so the order is stable for entries sharing a date and time.
+    const rows = this.db
+      .prepare(
+        `SELECT e.id           AS entry_id,
+                e.entry_date   AS entry_date,
+                e.entry_time   AS entry_time,
+                e.title        AS title,
+                e.is_encrypted AS is_encrypted,
+                e.place_name   AS place_name,
+                COUNT(*)       AS location_count
+           FROM jrn_entry_locations el
+           JOIN jrn_entries e ON e.id = el.entry_id
+          WHERE el.saved_location_id = ?
+          GROUP BY e.id
+          ORDER BY e.entry_date DESC, e.entry_time DESC, e.id DESC`,
+      )
+      .all(id) as {
+      entry_id: number;
+      entry_date: string;
+      entry_time: string;
+      title: string;
+      is_encrypted: number;
+      place_name: string;
+      location_count: number;
+    }[];
+    return rows.map((row) => ({
+      entryId: row.entry_id,
+      entryDate: row.entry_date,
+      entryTime: row.entry_time,
+      title: row.title,
+      isEncrypted: row.is_encrypted === 1,
+      placeName: row.place_name,
+      locationCount: row.location_count,
+    }));
   }
 
   // --- Importing from existing entries ---------------------------------------

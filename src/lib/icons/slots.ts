@@ -1549,6 +1549,18 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    // `database` rather than a disk or shield: what is being configured is where the
+    // database and its attachments are copied to, and the same glyph already means
+    // "the database" on the admin SQL screens.
+    id: "admin_section_configuration_backup",
+    label: "Backup Data",
+    group: "Admin navigation",
+    where: "Admin → Configuration → Backup Data.",
+    defaultConcept: "database",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     id: "admin_section_display_settings",
     label: "Display Settings (group)",
     group: "Admin navigation",

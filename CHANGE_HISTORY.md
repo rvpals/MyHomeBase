@@ -1,5 +1,65 @@
 # Change History
 
+## 2026-10-10 — Data backup, Hello world job, run history, scheduler fix, script fonts, UTC + local times
+
+**Migrations 0134–0137 must be applied on the NAS.** 0135 creates `sys_scheduled_run_history`
+(without it Background Tasks fails with "no such table"); 0134, 0136 and 0137 are seed rows
+that the code reads as defaults when absent.
+
+### The scheduler was never armed — fixed
+
+- The Next hook was named `instrumentation-node.ts`, which Next never looks for, so
+  `register()` was never called from 2026-08-26 and **no background job ran** while the
+  admin screen still said "armed". New `src/instrumentation.ts` is the real hook; it
+  guards on `NEXT_RUNTIME === "nodejs"` and dynamically imports `instrumentation-node.ts`.
+  Do not rename it.
+
+### Background tasks
+
+- **Data backup** job and **Administration → Configuration → Backup Data**: copies changed
+  attachment files into a backup folder (older copy set aside first), writes a gzip'd
+  database archive, and prunes archives past the keep count. Preflight refuses a folder
+  that has gone away, even on a forced run. `FolderBrowser` picks the folders.
+- **Hello, world!** job — files a message into the queue each run, so the header badge
+  proves the scheduler is alive. Configured on Background Tasks → Configuration.
+- **Execution history** per job (start, finish, duration, outcome; kept per job and pruned on
+  insert). A pass that started and never finished is shown as such.
+- **Active Tasks** card: which jobs are truly armed (switch *and* folder *and* interval)
+  and when each runs next.
+- CLI: `run-data-backup` and `run-hello-world` (each with `--force` / `--status`);
+  `journal-locations --entries <id>`.
+
+### Journal
+
+- **Location Manager:** a place's usage count opens the list of journal entries that use it,
+  newest first, one row per entry.
+
+### Display
+
+- **Script Fonts** (Administration → Display Settings): pick the handwriting face for the Daily
+  Quote and, separately, for the Journal Content field, from six faces. Resolved server-side
+  so there is no flash of the wrong face.
+- **`UtcTime`**: Security visits, User Management last sign-in and similar columns show the
+  stored UTC stamp plus the reader's local time.
+
+### Files
+
+New: `src/instrumentation.ts`, `src/lib/backup/`, `src/lib/hello-world/`,
+`src/lib/zip/gzip.ts`, `src/lib/scheduled-jobs/{active-tasks,history}.{ts,test.ts}`,
+`src/lib/settings/script-fonts.{ts,test.ts}`, `src/lib/shared/utc-display.{ts,test.ts}`,
+`src/lib/journal-locations/entries-using-location.{ts,test.ts}`,
+`src/components/{folder-browser,utc-time}.tsx`, `src/cli/run-{data-backup,hello-world}.ts`,
+`admin/configuration/backup/`, `admin/display-settings/script-fonts/`,
+`journal-location-entries-view.tsx`, five `.woff2` fonts, migrations 0134–0137.
+Changed: `src/instrumentation-node.ts`, `src/lib/scheduled-jobs/*`, `src/lib/settings/*`,
+`src/lib/wiring.ts`, `src/lib/journal-locations/*`, `src/app/layout.tsx`, `globals.css`,
+Background Tasks, Admin nav, Security, User Management, Daily Quote, Journal entry form,
+Household configuration, and the docs (`CLI_registry.md`, `components.md`, `design.md`,
+`modules.md`).
+
+**Not verified:** nothing in this release was typechecked, linted, tested or run on screen
+before shipping.
+
 ## 2026-10-09 — Pac-Man, Arrow Clearing tiers, navigation texture, tree expand/collapse all
 
 **No migration.** The two new settings (`NAV_TEXTURE_ID`, `NAV_TEXTURE_OPACITY`) are

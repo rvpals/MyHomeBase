@@ -2,7 +2,7 @@
 
 Reference for driving MyHomeBase from a terminal.
 
-**Part 1** documents the 59 commands that work today.
+**Part 1** documents the 64 commands that work today.
 **Part 2** is the full inventory of library use-cases — what a command *could* call.
 **Part 3** summarises the coverage gap.
 
@@ -28,7 +28,7 @@ command list and exits 1. There is no `--help`.
 
 # Part 1 — Available commands
 
-Fifty-eight commands, registered in [src/cli/index.ts](src/cli/index.ts).
+Sixty-four commands, registered in [src/cli/index.ts](src/cli/index.ts).
 
 The table below is the index — every command links to its own section. Those sections
 are **not all contiguous**: the file grew by appending, so some sit after Part 2 and
@@ -65,6 +65,8 @@ alongside its row here.
 | [`refresh-positions`](#refresh-positions) | write | **yes** |
 | [`run-scheduled-refresh`](#run-scheduled-refresh) | write (read with `--status`) | **yes** (not with `--status`) |
 | [`list-scheduled-jobs`](#list-scheduled-jobs) | read | no |
+| [`run-data-backup`](#run-data-backup) | write (read with `--status`) | no |
+| [`run-hello-world`](#run-hello-world) | write (read with `--status`) | no |
 | [`compute-analytics`](#compute-analytics) | write | **yes** |
 | [`ticker-overview`](#ticker-overview) | read (`--refresh` writes cache) | with `--market` |
 | [`simulate-ticker`](#simulate-ticker) | read (writes nothing) | **yes** |
@@ -369,6 +371,7 @@ npm run cli -- journal-locations --add "Small World Coffee" --lat 40.3499 --lon 
 npm run cli -- journal-locations --update 4 --name "Small World" --lat 40.35 --lon -74.66
 npm run cli -- journal-locations --delete 4
 npm run cli -- journal-locations --promote --lat 40.1 --lon -74.2 --name "Grandma's" --entry-location 42
+npm run cli -- journal-locations --entries 4
 npm run cli -- journal-locations --find-duplicates
 npm run cli -- journal-locations --find-duplicates 0.9
 npm run cli -- journal-locations --merge 12 --into-from 34,56
@@ -385,6 +388,7 @@ npm run cli -- journal-locations --delete-tag "Weekend"
 |---|---|---|
 | `--list` | boolean | Every saved place, with its usage count |
 | `--search` | text | Matched against name, description **and** address. Pass `""` to filter by taxonomy alone |
+| `--entries` | id | The journal entries that place is the source for, newest first. One row per entry — an entry that visited it twice says "2 stops". Read-only |
 | `--categories` / `--tags` | boolean | The managed lists, with how many places carry each |
 | `--add` | name | Requires `--lat` and `--lon` |
 | `--update` | id | **Replaces the whole row**, as the web form does — resubmit every field |
@@ -925,6 +929,70 @@ scheduler ever fire?" with no browser, no session and no working web server. A r
 stamped with no status means the process died mid-pass, and it says `interrupted`
 rather than guessing.
 Source: [src/cli/list-scheduled-jobs.ts](src/cli/list-scheduled-jobs.ts)
+
+## `run-data-backup`
+
+Writes (except with `--status`). Runs one backup pass: attachment files that have
+changed are copied into the attachment backup folder, then a compressed archive of the
+database is written and the oldest archives past the keep count are deleted. The same
+pass the in-process scheduler runs on its heartbeat, and the same one Administration
+&rarr; Configuration &rarr; Backup Data's "Run backup now" triggers.
+
+```
+npm run cli -- run-data-backup
+npm run cli -- run-data-backup --force
+npm run cli -- run-data-backup --status
+```
+
+**Input** — `--force` ignores the switch and the interval, but **never the preflight**:
+a backup against a folder that has gone away refuses and names the folder either way.
+`--status` prints the settings, both folders, the readiness check and the last run.
+**Calls** — `runDataBackupNow({ force })`, `loadBackupSettings`, `loadLastBackupRun`,
+`loadAttachmentSourceRoot`, `checkBackupReady`.
+**Output** — `Backed up: 12 attachment(s) backed up, database myhomebase-2026-10-10.db.gz (84.2 MB)`,
+or `Nothing ran: <reason>`.
+**Exit** — 0 normally, 1 when a `--force`d run refused, or when the pass wholly failed.
+A `partial` — the archive landed but an attachment or two did not — is a success.
+
+Source: [src/cli/run-data-backup.ts](src/cli/run-data-backup.ts)
+
+## `run-hello-world`
+
+Writes (except with `--status`). Runs the "Hello, world!" job: files the configured
+message into the application-wide message queue, stamped with the moment it ran.
+
+```
+npm run cli -- run-hello-world
+npm run cli -- run-hello-world --force
+npm run cli -- run-hello-world --status
+```
+
+**Input** — `--force` ignores the switch and the cadence; `--status` prints the
+schedule, the message and the last run without doing anything.
+**Calls** — `runHelloWorldNow({ force })`, `loadHelloWorldSettings`,
+`loadLastHelloWorldRun`, `describeHelloWorldSchedule`.
+**Output** — `Ran: Hello, world! (queued as message #418)`, or `Nothing ran: <reason>`
+when the switch is off or the cadence hasn't elapsed.
+**Exit** — 0 normally, 1 when a `--force`d run refused or the pass failed.
+
+**This is the command for "is the scheduler wiring sound?"** Every other job is silent
+when it has nothing to do, so a scheduler that had stopped firing looks exactly like one
+with no work — which is how the instrumentation hook sat broken for six weeks (see the
+comment at the top of `src/instrumentation.ts`). `--force` writes a stamp and `--status`
+reads it back: if that round trip works, everything from the composition root through
+`sys_scheduled_runs` is sound, and anything still not happening on a timer is the
+*timer*.
+
+The cadence is a count plus a unit (`second`, `minute`, `hour`, `day`, `week`), set on
+Administration &rarr; Background Tasks &rarr; Configuration. The in-app scheduler is a
+60-second heartbeat, so a sub-minute cadence runs **once a minute** — this command has
+no such floor, and runs whenever it is invoked.
+
+⚠️ **Every run files a queue message, and nothing prunes that queue on a timer.** At
+"every 1 minute" that is ~1,440 messages a day. The messages carry
+`source = 'Hello, world!'`, so they are easy to pick out and purge by age on
+Administration &rarr; Message Queue.
+Source: [src/cli/run-hello-world.ts](src/cli/run-hello-world.ts)
 
 ## `export-portfolio`
 

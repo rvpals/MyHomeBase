@@ -43,10 +43,23 @@
   --font-sans: var(--font-body);
   --font-display: var(--font-display);
   --font-mono: var(--font-mono-code);
-  /* Decorative script face, fixed rather than theme-driven: it is not in
-     FONT_KEYS, so no theme can select it and it points straight at the loader
-     in layout.tsx. Used by the Daily Quote card only. */
+  /* The two decorative script faces. Not theme-driven — they are absent from
+     FONT_KEYS, so no theme can select handwriting as its body font — but as of
+     migrations/0137 they are no longer FIXED either: each is chosen on
+     Administration -> Display Settings -> Script Fonts and written into these
+     two variables by the server-rendered <style> block in layout.tsx, before
+     first paint.
+
+     The values here are the FALLBACK, not the live value. They are what a
+     surface gets if that block is ever missing — which is why they point at
+     Great Vibes, the face both surfaces wore before either was configurable.
+
+     Two variables rather than one because the surfaces want different things:
+     `--font-script` is the Daily Quote, a proclamation glanced at once;
+     `--font-script-journal` is the Journal's handwriting sheet, read back at
+     length. See design.md, "The two exceptions". */
   --font-script: var(--font-great-vibes);
+  --font-script-journal: var(--font-great-vibes);
 }
 
 body {

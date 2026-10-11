@@ -18,6 +18,7 @@ import { TreeIcon } from "@/components/tree-icons";
 import type { LocationTaxonomyKind, SavedLocationWithUsage } from "@/lib/journal-locations";
 import { JournalLocationField, type PickedLocation } from "./journal-location-field";
 import { JournalLocationDedupModal } from "./journal-location-dedup-view";
+import { JournalLocationEntriesModal } from "./journal-location-entries-view";
 import { JournalLocationImportModal } from "./journal-location-import-panel";
 import { reverseGeocodeAction } from "./journal-actions";
 import {
@@ -455,6 +456,10 @@ export function JournalLocationsView({
   const [isAdding, setIsAdding] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isDeduping, setIsDeduping] = useState(false);
+  /** The place whose entries the popup is showing, or undefined when it is closed. */
+  const [showingEntriesFor, setShowingEntriesFor] = useState<SavedLocationWithUsage | undefined>(
+    undefined,
+  );
   const [error, setError] = useState<string | undefined>(undefined);
   /**
    * Bumped after any write, to force the filtered list to refetch.
@@ -696,18 +701,36 @@ export function JournalLocationsView({
                   ))}
                 </span>
 
-                <span
-                  className="shrink-0 font-mono text-xs text-muted"
-                  title={`Used by ${place.usageCount} journal ${place.usageCount === 1 ? "entry" : "entries"}`}
+                {/* The count is the button: it is already exactly what the
+                    popup expands on, so a separate glyph would be a second
+                    affordance for one act. Disabled rather than hidden at zero,
+                    so the column stays a column. */}
+                <button
+                  type="button"
+                  onClick={() => setShowingEntriesFor(place)}
+                  disabled={place.usageCount === 0}
+                  aria-label={`Show the ${place.usageCount} journal ${place.usageCount === 1 ? "entry" : "entries"} at "${place.name || "this place"}"`}
+                  title={
+                    place.usageCount === 0
+                      ? "No journal entries use this place"
+                      : `Show the ${place.usageCount} journal ${place.usageCount === 1 ? "entry" : "entries"} at this place`
+                  }
+                  className="shrink-0 rounded-md border border-line px-2 py-0.5 font-mono text-xs text-muted transition-colors enabled:hover:border-brass enabled:hover:text-brass disabled:cursor-default disabled:opacity-40"
                 >
                   {place.usageCount}×
-                </span>
+                </button>
               </li>
             ))}
           </ul>
         </>
       )}
 
+      {showingEntriesFor && (
+        <JournalLocationEntriesModal
+          location={showingEntriesFor}
+          onClose={() => setShowingEntriesFor(undefined)}
+        />
+      )}
       {isImporting && (
         <JournalLocationImportModal
           onClose={() => {

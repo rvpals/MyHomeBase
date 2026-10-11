@@ -106,3 +106,20 @@ export function shouldRunNow(
   if (lastRunAtMs === undefined) return true; // first tick after startup
   return nowMs - lastRunAtMs >= intervalMinutes * 60_000;
 }
+
+/**
+ * When the next run is due, given the last one. `undefined` when the job isn't
+ * armed or has never run — there is no meaningful "next" in either case, and the
+ * Active Tasks card says "pending first tick" rather than inventing a time.
+ *
+ * The twin of `nextRunDueAtMs` in `src/lib/scheduled-refresh/settings.ts`, kept
+ * here rather than shared because the two jobs spell their cadence differently:
+ * this one stores minutes directly, that one a named interval.
+ */
+export function nextRunDueAtMs(
+  lastRunAtMs: number | undefined,
+  settings: ExpenseSettings,
+): number | undefined {
+  if (!isAutoImportEnabled(settings) || lastRunAtMs === undefined) return undefined;
+  return lastRunAtMs + settings.autoImportIntervalMinutes * 60_000;
+}

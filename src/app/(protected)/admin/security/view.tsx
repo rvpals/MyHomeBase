@@ -6,6 +6,7 @@ import { Button } from "@/components/button";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { SlotIcon } from "@/components/slot-icon";
 import { Tabs, type TabItem } from "@/components/tabs";
+import { UtcTime } from "@/components/utc-time";
 import { getIconSlot } from "@/lib/icons";
 // Imported from the leaf modules, not the `@/lib/auth-events` barrel: that barrel
 // re-exports the `deps`-backed prune runner, which would drag better-sqlite3 and
@@ -206,9 +207,11 @@ function LoginTab({
   const columns: DataGridColumn<AuthEvent>[] = [
     {
       key: "createdAt",
-      header: "When (UTC)",
+      header: "When",
+      // The raw UTC stamp, not the rendered text: this feeds sorting and the CSV
+      // export, both of which want one stable machine-readable instant.
       value: (row) => row.createdAt,
-      render: (row) => <span className="whitespace-nowrap text-muted">{row.createdAt}</span>,
+      render: (row) => <UtcTime stamp={row.createdAt} className="text-muted" />,
     },
     {
       key: "eventType",
@@ -305,7 +308,12 @@ function LoginTab({
           <p className="text-sm text-red-200">
             {summary.unreviewedFailures.toLocaleString()} failed sign-in
             {summary.unreviewedFailures === 1 ? "" : "s"} you haven&apos;t reviewed
-            {summary.latestFailureAt ? `, most recently ${summary.latestFailureAt} UTC` : ""}.
+            {summary.latestFailureAt && (
+              <>
+                , most recently <UtcTime stamp={summary.latestFailureAt} />
+              </>
+            )}
+            {"."}
           </p>
           <Button size="sm" onClick={handleMarkReviewed} disabled={isReviewing}>
             {isReviewing ? "Marking…" : "Mark all reviewed"}

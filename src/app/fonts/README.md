@@ -53,6 +53,19 @@ assuming.
 | `ibm-plex-mono-600.woff2` | IBM Plex Mono | 600 |
 | `jetbrains-mono-variable.woff2` | JetBrains Mono | 400, 500 |
 | `great-vibes-variable.woff2` | Great Vibes | 400 |
+| `dancing-script-variable.woff2` | Dancing Script | 400–700 |
+| `caveat-variable.woff2` | Caveat | 400–700 |
+| `kalam-variable.woff2` | Kalam | 400 |
+| `parisienne-variable.woff2` | Parisienne | 400 |
+| `pinyon-script-variable.woff2` | Pinyon Script | 400 |
+
+The last six are the **script faces** offered on Administration → Display Settings →
+Script Fonts. All six are declared on every page and the chosen two are selected by
+repointing `--font-script` / `--font-script-journal`, exactly as the theme faces above
+are — a browser downloads a face only when a glyph actually renders in it, so declaring
+six costs six `@font-face` blocks, not six downloads. Four of them are single-weight
+400 designs with no bold cut at all; their `localFont` entries must say `400` and not a
+range, or the browser synthesises a faux-bold that looks nothing like the face.
 
 All are the **`latin` subset only**, matching what every loader asked for
 (`subsets: ["latin"]`).
@@ -69,7 +82,7 @@ If you ever hand-download a replacement, check the same thing.
 
 ## Licences
 
-All ten files are open-licence and redistributable under the **SIL Open Font
+All fifteen files are open-licence and redistributable under the **SIL Open Font
 License 1.1**, which permits bundling them in an application:
 
 - Space Grotesk — OFL 1.1, © Florian Karsten
@@ -80,6 +93,11 @@ License 1.1**, which permits bundling them in an application:
 - IBM Plex Mono — OFL 1.1, © IBM Corp.
 - JetBrains Mono — OFL 1.1, © JetBrains s.r.o.
 - Great Vibes — OFL 1.1, © Robert Leuschke / TypeSETit
+- Dancing Script — OFL 1.1, © Impallari Type
+- Caveat — OFL 1.1, © Impallari Type
+- Kalam — OFL 1.1, © Indian Type Foundry
+- Parisienne — OFL 1.1, © Astigmatic (AOETI)
+- Pinyon Script — OFL 1.1, © Nicole Fally
 
 The OFL requires the licence and copyright notice be retained with the fonts;
 this file is that notice. Full text: <https://openfontlicense.org/>

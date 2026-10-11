@@ -3,12 +3,19 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
+import { runDataBackupNow } from "@/lib/backup/backup-runner";
 import { runExpenseAutoImport } from "@/lib/expense/auto-import-runner";
 import {
   EXPENSE_SETTING_KEYS,
   type ExpenseSettings,
 } from "@/lib/expense/settings";
 import type { AutoImportRunSummary } from "@/lib/expense/auto-import";
+import {
+  helloWorldSettingsInputSchema,
+  helloWorldSettingsToEntries,
+  runHelloWorldNow,
+  type HelloWorldSettingsInput,
+} from "@/lib/hello-world";
 import { saveModuleSettingsPartial } from "@/lib/module-settings";
 import { getModuleBySlug } from "@/lib/modules";
 import {
@@ -19,6 +26,8 @@ import {
   type ScheduledRefreshSettingsInput,
   type ScheduledRefreshSummary,
 } from "@/lib/scheduled-refresh";
+import { toHistoryViews, type ScheduledRunHistoryView } from "@/lib/scheduled-jobs";
+import { updateSettings } from "@/lib/settings";
 import { isAdmin } from "@/lib/user";
 import { deps } from "@/lib/wiring";
 
@@ -153,6 +162,95 @@ export async function runAutoImportNowAction(): Promise<RunAutoImportNowResult> 
     return { ok: true, summary };
   } catch (error) {
     return toErrorResult(error, "Failed to run the auto-import.");
+  }
+}
+
+export interface LoadRunHistoryResult extends ActionResult {
+  entries?: ScheduledRunHistoryView[];
+}
+
+/**
+ * One job's recorded passes, for the history dialog.
+ *
+ * Admin-only like the rest of this file. Reading a run log is harmless, but it names
+ * folder paths and failure messages in `detail`, which is not something to hand to
+ * any signed-in reader via an endpoint they could call directly.
+ */
+export async function loadRunHistoryAction(jobKey: string): Promise<LoadRunHistoryResult> {
+  try {
+    await requireAdmin();
+    return { ok: true, entries: toHistoryViews(deps.scheduledRunRepo.listHistory(jobKey)) };
+  } catch (error) {
+    return toErrorResult(error, "Could not read the run history.");
+  }
+}
+
+export interface RunDataBackupResult extends ActionResult {
+  detail?: string;
+}
+
+/**
+ * Runs one backup pass now.
+ *
+ * `force` skips the switch and the interval, like the two buttons above — but NOT
+ * the preflight. A manual backup against a folder that has gone away must refuse and
+ * name the folder, rather than reporting success having copied nothing.
+ */
+export async function runDataBackupNowAction(): Promise<RunDataBackupResult> {
+  try {
+    await requireAdmin();
+    const summary = await runDataBackupNow({ force: true });
+    revalidatePath(BACKGROUND_TASKS_PATH);
+    return summary.ran
+      ? { ok: true, detail: summary.detail }
+      : { ok: false, error: summary.reason ?? "The backup did not run." };
+  } catch (error) {
+    return toErrorResult(error, "Failed to run the backup.");
+  }
+}
+
+/**
+ * Persists the "Hello, world!" message and cadence.
+ *
+ * `updateSettings` rather than `saveModuleSettingsPartial`, because this job belongs
+ * to no module and its settings are app-wide rows in `sys_app_settings` — see
+ * migrations/0136. `updateSettings` upserts only the keys it is handed, so unlike
+ * the module-settings wholesale save there is nothing here that could wipe a
+ * neighbouring setting.
+ *
+ * The cadence is stored exactly as entered, including a sub-minute one the 60s
+ * heartbeat cannot honour. Clamping on save would silently rewrite the reader's
+ * input; the card says what will actually happen instead.
+ */
+export async function saveHelloWorldSettingsAction(
+  input: HelloWorldSettingsInput,
+): Promise<ActionResult> {
+  try {
+    await requireAdmin();
+    const validated = helloWorldSettingsInputSchema.parse(input);
+    updateSettings(deps.settingsRepo, helloWorldSettingsToEntries(validated));
+  } catch (error) {
+    return toErrorResult(error, "Failed to save the Hello, world! settings.");
+  }
+  revalidatePath(BACKGROUND_TASKS_PATH);
+  return { ok: true };
+}
+
+export interface RunHelloWorldResult extends ActionResult {
+  detail?: string;
+}
+
+/** Runs one pass now. `force`, so the switch and the cadence don't gate it. */
+export async function runHelloWorldNowAction(): Promise<RunHelloWorldResult> {
+  try {
+    await requireAdmin();
+    const summary = await runHelloWorldNow({ force: true });
+    revalidatePath(BACKGROUND_TASKS_PATH);
+    return summary.ran
+      ? { ok: true, detail: summary.detail }
+      : { ok: false, error: summary.reason ?? "The job did not run." };
+  } catch (error) {
+    return toErrorResult(error, "Failed to run Hello, world!.");
   }
 }
 

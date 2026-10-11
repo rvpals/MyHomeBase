@@ -7,6 +7,7 @@ import type {
 } from "./schema";
 import type {
   EntryLocationSource,
+  EntryUsingLocation,
   LocationCategory,
   LocationTag,
   LocationTaxonomyCount,
@@ -154,6 +155,54 @@ export class FakeSavedLocationRepository implements SavedLocationRepository {
 
   linkEntryLocation(entryLocationId: number, savedLocationId: number): void {
     this.linkedEntryLocations.set(entryLocationId, savedLocationId);
+  }
+
+  /**
+   * The entries a test wants `listEntriesUsingLocation` to see. Set directly,
+   * like `entryLocationSources` below.
+   *
+   * One element per *entry location* — the same grain the real table has — so
+   * the grouping below is exercised rather than assumed. `savedLocationId` is
+   * the provenance column the real query filters on.
+   */
+  entryLocationUsages: {
+    entryId: number;
+    entryDate: string;
+    entryTime: string;
+    title: string;
+    isEncrypted: boolean;
+    placeName: string;
+    savedLocationId: number;
+  }[] = [];
+
+  listEntriesUsingLocation(id: number): EntryUsingLocation[] {
+    // Mirrors the SQL: filter on the provenance column, collapse to one row per
+    // entry counting the rows that fed it, then newest first with the id as the
+    // tie-break.
+    const byEntry = new Map<number, EntryUsingLocation>();
+    for (const row of this.entryLocationUsages) {
+      if (row.savedLocationId !== id) continue;
+      const existing = byEntry.get(row.entryId);
+      if (existing) {
+        existing.locationCount += 1;
+        continue;
+      }
+      byEntry.set(row.entryId, {
+        entryId: row.entryId,
+        entryDate: row.entryDate,
+        entryTime: row.entryTime,
+        title: row.title,
+        isEncrypted: row.isEncrypted,
+        placeName: row.placeName,
+        locationCount: 1,
+      });
+    }
+    return [...byEntry.values()].sort(
+      (a, b) =>
+        b.entryDate.localeCompare(a.entryDate) ||
+        b.entryTime.localeCompare(a.entryTime) ||
+        b.entryId - a.entryId,
+    );
   }
 
   // --- Importing from existing entries ---------------------------------------

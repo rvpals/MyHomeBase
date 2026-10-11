@@ -32,7 +32,10 @@ import {
 import { SqliteGamesRepository } from "./games/repository";
 import { SqliteHouseholdRepository } from "./household/repository";
 import { SqliteHsaRepository } from "./household/hsa-repository";
+import { NodeBackupFileStore } from "./backup/file-store";
+import { SqliteDatabaseSnapshotter } from "./backup/sqlite-snapshotter";
 import { NodeReceiptFileStore } from "./household/receipt-store";
+import { buildGzippedZip } from "./zip/gzip";
 import { NominatimGeocodingClient } from "./geocoding/nominatim-client";
 import { OpenMeteoWeatherClient } from "./weather/open-meteo-client";
 import { SqliteInvestmentAccountRepository } from "./investment-accounts/repository";
@@ -252,6 +255,17 @@ export const deps = {
   // call rather than at construction: it is a setting, so correcting it takes effect on
   // the next save with no restart — the same reason photoFileStoreFor is a factory.
   receiptFileStore: new NodeReceiptFileStore(),
+  // The Data backup job (Administration → Configuration → Backup Data). Three
+  // collaborators rather than one: the file store is the only piece that touches the
+  // backup folders, the snapshotter is the only piece that needs the live database
+  // connection, and the compressor is swapped wholesale in the tests.
+  backupFileStore: new NodeBackupFileStore(),
+  databaseSnapshotter: new SqliteDatabaseSnapshotter(db),
+  backupCompressor: {
+    // The archive holds one entry, named for the database it came from rather than
+    // for the archive, so an extracted backup is obviously a `.db` and not a `.zip`.
+    compress: (data: Uint8Array) => buildGzippedZip("myhomebase.db", data),
+  },
   // The Floating Calculator's history tape (migrations/0095). Per-user, unlike the
   // games board above — a calculator tape is private working-out.
   calculatorHistoryRepo: new SqliteCalculatorHistoryRepository(db),

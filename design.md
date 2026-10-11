@@ -163,22 +163,46 @@ or `src/components`. Adding an eighth face means downloading it into `src/app/fo
 `src/app/layout.tsx`, plus a key in `FONT_KEYS`; miss any one and a theme naming it
 silently renders the browser fallback.
 
-### The one exception: `font-script`
+### The two exceptions: `font-script` and `font-script-journal`
 
-There is a fourth face, **Great Vibes** (copperplate calligraphy), exposed as
-`--font-script` in `globals.css` and reachable as the `font-script` Tailwind class. It is
-**not** a theme face and is deliberately absent from `FONT_KEYS`, so the theme builder
-never offers it — nobody can pick script as their body font. It points straight at its
-`localFont` loader in `src/app/layout.tsx` and does not change with the theme.
+There are two decorative faces beside the theme trio, each **chosen by an admin** on
+**Administration → Display Settings → Script Fonts** from a catalogue of six script
+faces (`src/lib/settings/script-fonts.ts`):
 
-It exists for decorative type — handwriting where handwriting is the point. Before using
-it anywhere else, ask whether that surface is genuinely decorative; script is much less
-legible than the theme trio, so it does not belong in anything a user has to read
-carefully or at length, and never below ~20px. Adding a second decorative face is a
-design decision, not a mechanical one — raise it rather than adding another `--font-*`
-var.
+| Token | Tailwind class | Drives |
+| --- | --- | --- |
+| `--font-script` | `font-script` | The Daily Quote card on the home screen |
+| `--font-script-journal` | `font-script-journal` | The Journal entry form's Content field, with **Handwriting** on |
 
-Two callers today:
+Neither is a theme face. Both are deliberately absent from `FONT_KEYS`, so the theme
+builder never offers them — nobody can pick handwriting as their body font. They are
+instead resolved per request from two settings rows (migrations/0137) and written into
+the server-rendered `<style>` block in `src/app/layout.tsx`, alongside the theme tokens
+and the border widths, so the chosen faces apply **before first paint**. The values in
+`globals.css` are the fallback, not the live value.
+
+All six faces are declared on every page and the chosen two are selected by repointing
+these variables — the same mechanism the seven theme faces use. A browser downloads a
+face only when a glyph renders in it, so declaring six costs six `@font-face` blocks,
+not six downloads.
+
+**Why two settings and not one.** Until migrations/0137 both surfaces shared a single
+`--font-script`, so they had no choice but to match. They are different kinds of writing:
+the quote is a proclamation glanced at once, where flourish costs nothing; the journal
+sheet is your own hand over a paragraph you read back, where it costs a lot. The split
+lets one be Pinyon Script and the other Kalam.
+
+**Script is still for decorative type only.** Before using either token anywhere else,
+ask whether that surface is genuinely decorative. Every face in the catalogue is less
+legible than the theme trio, so none belongs in anything read carefully or at length,
+and never below ~20px. **Adding a third script surface is a design decision, not a
+mechanical one — raise it rather than adding another `--font-*` var.** Adding a seventh
+*face* to the existing catalogue is mechanical by comparison: a row in `FAMILIES`
+(`scripts/fetch-fonts.mjs`), a committed `.woff2`, a `localFont` loader plus its
+`.variable` class in `layout.tsx`, an entry in `SCRIPT_FONTS`, and the licence noted in
+`src/app/fonts/README.md`.
+
+The two callers, and why each is allowed:
 
 - **The Daily Quote card** on the home screen, at `text-3xl` (30px), stepping down to
   `text-2xl` narrow. The original, and the straightforward case: a grace note you glance
@@ -193,6 +217,14 @@ Two callers today:
   is the least readable combination in the app, and an explicitly chosen size shouldn't be
   silently overridden on a narrow screen. A third caller wanting script for body copy is a
   design conversation, not a precedent this one sets.
+
+**The face and the size are separate settings, deliberately.** The face is app-wide and
+lives on Display Settings beside the theme and the icon set; the journal's handwriting
+*size* stays a preference inside the Journal module, because it is a reading-comfort
+choice about one field. The faces differ in apparent size at the same point size — Kalam
+and Caveat read noticeably larger than the copperplates — and the size is **not** scaled
+per face to compensate. Silently rescaling would override a number its owner can see and
+chose; the Script Fonts screen flags the interaction in a footnote instead.
 
   The floor is enforced by the **options table** (`HANDWRITING_SIZE_OPTIONS` in
   `src/lib/journal/preferences.ts`), not by a literal in a component: the type has no

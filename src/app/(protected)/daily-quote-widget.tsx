@@ -119,13 +119,16 @@ export function DailyQuoteWidget({
       <div className="scroll-roll" aria-hidden />
 
       <figure className="scroll-sheet paper-texture px-5 py-5 max-lg:px-4">
-        {/* Copperplate script (`font-script`), not the theme display face — the
-            quote is the one piece of decorative type in the app. No `italic`:
-            Great Vibes already slants, and italicising a script face double-
-            slants it. The quote marks are gone too; the calligraphy reads as a
-            quotation on its own. Sized down narrow because script is markedly
-            less legible small. Centred, because a sheet hung between two rolls
-            reads as a proclamation and ragged-right fights that. */}
+        {/* Script (`font-script`), not the theme display face. Which script is an
+            admin setting as of migrations/0137 — Administration → Display
+            Settings → Script Fonts — and `font-script` is THIS surface's face;
+            the Journal's handwriting sheet has its own, `font-script-journal`.
+            Both default to Great Vibes. No `italic`: every face offered already
+            slants, and italicising a script face double-slants it. The quote
+            marks are gone too; the calligraphy reads as a quotation on its own.
+            Sized down narrow because script is markedly less legible small.
+            Centred, because a sheet hung between two rolls reads as a
+            proclamation and ragged-right fights that. */}
         <blockquote className="text-center font-script text-3xl leading-snug text-ink max-lg:text-2xl">
           {quote.quote}
         </blockquote>

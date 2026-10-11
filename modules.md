@@ -303,11 +303,13 @@ The form itself is **two tabs over one state**, with a card for the content:
   reachable when the card is shut. **Full screen** mounts `FullscreenStage` — the real
   Fullscreen API, gated on `canGoFullscreen()` because iPhone Safari has no element
   fullscreen and a dead button is worse than none. **Handwriting** restyles the *same*
-  textarea in `font-script` on a `.paper-texture` sheet rather than swapping in a preview,
-  so the writer keeps typing in cursive instead of leaving the mode to edit. Both compose:
-  fullscreen + handwriting is a full-screen cursive sheet. See `design.md` →
-  *The one exception: `font-script`* for why 20px is a floor here and why this mode does
-  not step down on a phone.
+  textarea in `font-script-journal` on a `.paper-texture` sheet rather than swapping in a
+  preview, so the writer keeps typing in cursive instead of leaving the mode to edit. Both
+  compose: fullscreen + handwriting is a full-screen cursive sheet. **The face is an admin
+  setting** — Administration → Display Settings → Script Fonts — and is this module's own,
+  separate from the Daily Quote's. See `design.md` → *The two exceptions: `font-script` and
+  `font-script-journal`* for why 20px is a floor here, why this mode does not step down on
+  a phone, and why the size is not rescaled when the face changes.
 
 **Handwriting font size** is a preference (Preferences → *Handwriting font size*),
 stored as the `handwriting_size` module setting. Four named steps — Small 20px, Medium
@@ -324,7 +326,7 @@ install with no row resolves to Small. Four choices worth knowing:
   as literals so the scanner finds them.
 - **The floor lives in the type, not in a check.** `JournalHandwritingSize` has no member
   below `xl`, and `resolveJournalPreferences` clamps an unrecognised stored value back to
-  it, so a hand-edited settings row can't render the field below the 20px `font-script`
+  it, so a hand-edited settings row can't render the field below the 20px script
   minimum or with no size class at all.
 - **It sizes cursive only.** With Handwriting off the field stays the standard form-field
   size, so it still matches Title and Place name; a 36px plain textarea beside them would

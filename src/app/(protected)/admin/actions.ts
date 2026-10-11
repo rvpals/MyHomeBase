@@ -57,7 +57,10 @@ import {
   updateSettings,
   type BorderWidths,
   type ChromeStyle,
+  resolveScriptFont,
+  SCRIPT_FONT_SETTING_KEYS,
   type ColorThemeTokens,
+  type ScriptFontId,
   type Setting,
 } from "@/lib/settings";
 import {
@@ -75,6 +78,8 @@ export interface SaveAdminSettingsInput {
   colorThemeId: string;
   iconSetId: string;
   chromeStyle: ChromeStyle;
+  dailyQuoteFont: ScriptFontId;
+  journalHandwritingFont: ScriptFontId;
   borderWidths: BorderWidths;
   moduleSettings: { moduleId: number; entries: ModuleSettingEntry[] }[];
 }
@@ -91,6 +96,17 @@ export async function saveAdminSettingsAction(input: SaveAdminSettingsInput): Pr
     // unknown id lands on the default instead of persisting a value no CSS rule
     // matches, which would leave the chrome with no treatment at all.
     { key: "chrome_style", value: resolveChromeStyle(input.chromeStyle) },
+    // Re-resolved for the same boundary reason as `chrome_style` above: an
+    // unknown id would persist a face with no loader behind it, and the surface
+    // would fall back to a system cursive that is not in the catalogue at all.
+    {
+      key: SCRIPT_FONT_SETTING_KEYS.dailyQuote,
+      value: resolveScriptFont(input.dailyQuoteFont),
+    },
+    {
+      key: SCRIPT_FONT_SETTING_KEYS.journalHandwriting,
+      value: resolveScriptFont(input.journalHandwritingFont),
+    },
     // `borderWidthsToValue` clamps every axis to 1-4 on the way out, so a posted
     // 40 lands as 4 rather than putting a 40px rule on every card in the app.
     // Same boundary reasoning as `resolveChromeStyle` above.

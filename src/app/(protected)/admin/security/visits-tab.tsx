@@ -6,6 +6,7 @@ import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { SlotIcon } from "@/components/slot-icon";
+import { UtcTime } from "@/components/utc-time";
 import { getIconSlot } from "@/lib/icons";
 // Imported from the leaf modules, not the `@/lib/site-visits` barrel: that barrel
 // re-exports the `deps`-backed prune runner, which would drag better-sqlite3 and
@@ -197,9 +198,10 @@ export function VisitsTab({
   const columns: DataGridColumn<SiteVisit>[] = [
     {
       key: "createdAt",
-      header: "When (UTC)",
+      header: "When",
+      // Raw UTC drives sort and CSV export; the cell shows the reader's clock too.
       value: (row) => row.createdAt,
-      render: (row) => <span className="whitespace-nowrap text-muted">{row.createdAt}</span>,
+      render: (row) => <UtcTime stamp={row.createdAt} className="text-muted" />,
     },
     {
       key: "suspicion",
@@ -278,7 +280,12 @@ export function VisitsTab({
           <p className="text-sm text-red-200">
             {summary.unreviewedSuspicious.toLocaleString()} suspicious visit
             {summary.unreviewedSuspicious === 1 ? "" : "s"} you haven&apos;t reviewed
-            {summary.latestSuspiciousAt ? `, most recently ${summary.latestSuspiciousAt} UTC` : ""}.
+            {summary.latestSuspiciousAt && (
+              <>
+                , most recently <UtcTime stamp={summary.latestSuspiciousAt} />
+              </>
+            )}
+            {"."}
           </p>
           <Button size="sm" onClick={() => run(markVisitsReviewedAction)} disabled={isBusy}>
             {isBusy ? "Marking…" : "Mark all reviewed"}

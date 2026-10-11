@@ -7,6 +7,7 @@ import { Avatar } from "@/components/avatar";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
+import { UtcTime } from "@/components/utc-time";
 import type { Module } from "@/lib/modules";
 // From the leaf files, not the `@/lib/user` barrel: that barrel also re-exports
 // `./user`, which imports `node:crypto`, and a client component pulling it in
@@ -569,15 +570,14 @@ export function UserManagementView({
     },
     {
       key: "lastLoginAt",
-      header: "Last Sign-In (UTC)",
+      header: "Last Sign-In",
+      // Raw UTC drives sort and CSV export; the cell shows the reader's clock too.
       value: (user) => user.lastLoginAt ?? null,
-      render: (user) =>
-        user.lastLoginAt ? (
-          <span className="whitespace-nowrap text-muted">{user.lastLoginAt}</span>
-        ) : (
-          // Distinct from a blank cell: this account exists but has never signed in.
-          <span className="text-muted">Never</span>
-        ),
+      // "Never" rather than a dash: distinct from a blank cell, because this
+      // account exists and has simply never signed in.
+      render: (user) => (
+        <UtcTime stamp={user.lastLoginAt} fallback="Never" className="text-muted" />
+      ),
     },
     {
       key: "modules",

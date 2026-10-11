@@ -1,6 +1,9 @@
-// Next.js calls register() once when the server starts. This is where the
-// Expense CSV auto-import, the auth-event prune, and the Stocks auto-refresh are
-// armed.
+// Where every background job is armed: the Expense CSV auto-import, the Stocks
+// auto-refresh, the Data backup, "Hello, world!", and the two retention prunes.
+//
+// This file is NOT the Next hook -- `src/instrumentation.ts` is, and it reaches
+// this module through a `NEXT_RUNTIME === "nodejs"` guard and a dynamic import.
+// Arming happens as a side effect of that import (see the bottom of the file).
 //
 // Design notes, all of which matter for it behaving on a NAS:
 //   * The heartbeat is a fixed 60s tick that re-reads the module settings each
@@ -20,13 +23,22 @@
 //   * `unref()` lets the process exit normally instead of being held open by a
 //     pending timer.
 //   * Runs only in the Node runtime — Edge has no filesystem or SQLite. That is
-//     enforced by this file's *name*: Next loads `instrumentation-node.ts` only
-//     for the Node runtime, so the Edge build never traces this graph at all.
-//     A `NEXT_RUNTIME !== "nodejs"` guard inside a plain `instrumentation.ts` is
-//     not enough — it is a runtime check, and Turbopack still statically follows
-//     the `await import()`s below into the Edge graph, which fails the build with
-//     "A Node.js module is loaded ... not supported in the Edge Runtime" for
-//     better-sqlite3, node:fs and node:crypto. Don't rename this back.
+//     enforced by the `NEXT_RUNTIME` guard in `src/instrumentation.ts`, which is
+//     the documented pattern, plus the lazy `await import()`s below.
+//
+//     A PREVIOUS VERSION OF THIS COMMENT WAS WRONG, and the mistake cost six weeks
+//     of silently dead schedulers. It claimed the `-node` suffix was what scoped
+//     the file to the Node runtime and said "don't rename this back". Next
+//     discovers the hook by filename alone — `^instrumentation\.(ts|tsx|js|jsx)$`,
+//     built from `INSTRUMENTATION_HOOK_FILENAME` in next/dist/lib/constants.js —
+//     so from commit 473f2e3 (2026-08-26) the hook was simply never found and
+//     `register()` was never called. A missing hook logs nothing, so the only
+//     symptom was jobs that never ran while the admin screen still said "armed".
+//
+//     The original build failure that prompted the rename was real, but the Edge
+//     graph it avoided need not exist here: `next/dist/build/index.js` only emits
+//     an edge instrumentation chunk "if there are edge routes", and this app
+//     declares none — no `export const runtime = "edge"`, no middleware source.
 
 const HEARTBEAT_MS = 60_000;
 
@@ -47,6 +59,8 @@ const globalForAutoImport = globalThis as unknown as {
   __authEventPruneStarted?: boolean;
   __siteVisitPruneStarted?: boolean;
   __stockAutoRefreshStarted?: boolean;
+  __dataBackupStarted?: boolean;
+  __helloWorldStarted?: boolean;
 };
 
 /** Deletes auth events past their retention window. Armed on its own daily timer. */
@@ -177,12 +191,106 @@ async function armStockAutoRefresh() {
   console.log("[stock auto-refresh] scheduler armed (60s heartbeat).");
 }
 
-export async function register() {
-  // No NEXT_RUNTIME check needed: the `-node` filename already scopes this file
-  // to the Node runtime. See the note at the top of the file.
+/**
+ * The Data backup: attachment files first, then a compressed database archive.
+ *
+ * Shares the 60s heartbeat design of the two jobs above -- the tick re-reads the
+ * settings every time, so changing the folder, the cadence or the start time in the
+ * UI takes effect within a minute with no restart and no timer to rebuild.
+ *
+ * A backup pass is much slower than the others (it copies files and compresses a
+ * hundred-odd megabytes), which is exactly why `runDataBackupNow` stamps the run
+ * *before* doing the work: a pass still running when the next tick fires must not be
+ * started twice. See migrations/0061.
+ */
+async function armDataBackup() {
+  if (globalForAutoImport.__dataBackupStarted) return;
+  globalForAutoImport.__dataBackupStarted = true;
+
+  // Imported lazily so the Edge/build passes never pull in better-sqlite3 --
+  // same reason as the three blocks above.
+  const { runDataBackupNow } = await import("@/lib/backup/backup-runner");
+
+  const tick = async () => {
+    try {
+      const summary = await runDataBackupNow();
+      // Silent unless a pass actually ran, so an idle scheduler doesn't write a
+      // line a minute saying "not due yet".
+      if (summary.ran) {
+        const line = `[data backup] ${summary.detail}`;
+        if (summary.status === "failed") console.error(line);
+        else console.log(line);
+      }
+    } catch (error) {
+      // Belt and braces: the runner already swallows its own errors, but an
+      // unhandled rejection in a timer callback can take the server down.
+      console.error("[data backup] tick failed:", error);
+    }
+  };
+
+  const timer = setInterval(tick, HEARTBEAT_MS);
+  timer.unref?.();
+
+  console.log("[data backup] scheduler armed (60s heartbeat).");
+}
+
+/**
+ * The "Hello, world!" job: records its configured message and the moment it ran.
+ *
+ * Shares the 60s heartbeat design of the three jobs above -- the tick re-reads the
+ * settings every time, so changing the message or the cadence in the UI takes effect
+ * within a minute with no restart and no timer to rebuild.
+ *
+ * This job is the reason the heartbeat is now observable at all. Every other job is
+ * silent when it has nothing to do, so a scheduler that had stopped firing looked
+ * exactly like one with no work -- which is how the instrumentation hook sat broken
+ * for six weeks (see the comment at the top of `src/instrumentation.ts`). Arming this
+ * one and watching its last-run stamp advance answers that question directly.
+ */
+async function armHelloWorld() {
+  if (globalForAutoImport.__helloWorldStarted) return;
+  globalForAutoImport.__helloWorldStarted = true;
+
+  // Imported lazily so the Edge/build passes never pull in better-sqlite3 --
+  // same reason as the three blocks above.
+  const { runHelloWorldNow } = await import("@/lib/hello-world");
+
+  const tick = async () => {
+    try {
+      const summary = await runHelloWorldNow();
+      // Silent unless a pass actually ran, so an idle scheduler doesn't write a
+      // line a minute saying "not due yet".
+      if (summary.ran) {
+        const line = `[hello world] ${summary.detail}`;
+        if (summary.status === "failed") console.error(line);
+        else console.log(line);
+      }
+    } catch (error) {
+      // Belt and braces: the runner already swallows its own errors, but an
+      // unhandled rejection in a timer callback can take the server down.
+      console.error("[hello world] tick failed:", error);
+    }
+  };
+
+  const timer = setInterval(tick, HEARTBEAT_MS);
+  timer.unref?.();
+
+  console.log("[hello world] scheduler armed (60s heartbeat).");
+}
+
+/**
+ * Arms every job. Called by the side-effecting import at the bottom of this file.
+ *
+ * No `NEXT_RUNTIME` check here: `src/instrumentation.ts` has already made it, and
+ * this module is only ever reached through that guard's dynamic import. Checking
+ * again would imply this file is safe to import from anywhere, which it is not.
+ */
+async function armAll() {
   await armAuthEventPrune();
   await armSiteVisitPrune();
   await armStockAutoRefresh();
+  await armDataBackup();
+  await armHelloWorld();
 
   if (globalForAutoImport.__expenseAutoImportStarted) return;
   globalForAutoImport.__expenseAutoImportStarted = true;
@@ -224,3 +332,26 @@ export async function register() {
 
   console.log("[expense auto-import] scheduler armed (60s heartbeat).");
 }
+
+// Armed on import, because that is what importing this module MEANS -- there is no
+// exported `register` here any more. `src/instrumentation.ts` owns that name, and
+// having two of them is how the wrong one gets called.
+//
+// Not awaited: `register()` must return before the server accepts requests, and
+// every `arm*` function above only schedules a timer and returns. The `.catch` is
+// the safety net -- an unhandled rejection during startup would take the server
+// down before it ever served a page, and a job that fails to arm must not do that.
+void armAll().catch((error) => {
+  console.error("[instrumentation] failed to arm the background jobs:", error);
+});
+
+// Makes this file a MODULE rather than a global script, which it would otherwise
+// be: every import here is dynamic and inside a function, so there is no top-level
+// `import` or `export` to mark it as one. Without this, `tsc` rejects the
+// `await import("./instrumentation-node")` in `src/instrumentation.ts` with
+// "File ... is not a module" (TS2306).
+//
+// Deliberately an empty export and not a re-exported `register`: this module is
+// imported for its side effect, and a second `register` in the tree is exactly the
+// ambiguity that let the hook go unnoticed for six weeks.
+export {};

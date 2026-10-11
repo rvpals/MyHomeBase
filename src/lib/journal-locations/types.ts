@@ -131,3 +131,44 @@ export interface ImportBatchResult {
   /** Candidates still waiting after this batch. */
   remainingCount: number;
 }
+
+/**
+ * One journal entry that uses a saved place, for the Location Manager's
+ * "which entries is this from?" popup.
+ *
+ * A flat read shaped for that list rather than the `JournalEntry` domain type
+ * from `lib/journal`, for the same reason as `EntryLocationSource` above: this
+ * module must not depend on that one, and the list wants a field no entry
+ * carries — `locationCount`, which belongs to the join.
+ *
+ * **One row per entry, not per location.** An entry visiting the same place
+ * twice is one row saying "2 stops", so the popup reads as the entries this
+ * place appears in. That makes its length a *lower* bound on the manager's
+ * usage count, which counts location rows — the popup says so in words rather
+ * than leaving the two numbers to disagree silently.
+ */
+export interface EntryUsingLocation {
+  /** The `jrn_entries` row id — what the popup links to. */
+  entryId: number;
+  /** YYYY-MM-DD. */
+  entryDate: string;
+  /** HH:MM, or `""` when the entry has no time. */
+  entryTime: string;
+  /**
+   * The entry's title. Reads as `""` for an encrypted entry, whose real title
+   * lives in a column only its own password opens — see `isEncrypted`.
+   */
+  title: string;
+  /**
+   * True when the entry's title and content are encrypted (migration 0131), so
+   * the popup shows a placeholder instead of a blank where the title goes.
+   *
+   * The rest of the row — date, time, place — stays plaintext on an encrypted
+   * entry, which is why such an entry is still worth listing.
+   */
+  isEncrypted: boolean;
+  /** The entry's free-text `place_name`, shown as context. `""` when unset. */
+  placeName: string;
+  /** How many of this entry's locations were copied from this place (≥ 1). */
+  locationCount: number;
+}

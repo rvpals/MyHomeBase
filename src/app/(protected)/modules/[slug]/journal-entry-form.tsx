@@ -57,14 +57,26 @@ function nowIso(): string {
 
 // The handwriting sheet's type, for the in-card field and the fullscreen stage.
 //
-// `font-script` is the app's one decorative face (design.md → *The one exception*).
+// `font-script-journal`, NOT `font-script` — the two are different settings as of
+// migrations/0137 (design.md → *The two exceptions*). `font-script` is the Daily
+// Quote's face; this surface has its own, chosen on Administration → Display
+// Settings → Script Fonts, because a hand you read a paragraph back in wants to be
+// steadier than a hand for a line you glance at. Both default to Great Vibes, so
+// this renders exactly as it did before the split until somebody changes one.
+//
 // The size comes from the module's `handwritingSize` preference, whose smallest
-// offered value is the 20px floor that section sets — so the floor holds wherever
+// offered value is the 20px floor design.md sets — so the floor holds wherever
 // this is called without a check here. Deliberately no `max-lg:` step-down: 18px
 // script on a phone is the least readable combination in the app, and an explicitly
 // chosen size shouldn't be silently overridden on a narrow screen.
+//
+// Note the size is NOT adjusted per face, though the faces differ in how large
+// they look at the same size — Kalam and Caveat read bigger than the copperplates.
+// Left alone deliberately: the size is the writer's explicit choice in the module's
+// own Preferences, and silently scaling it to compensate would override a setting
+// its owner can see. The Script Fonts screen says so instead.
 function handwritingClass(size: JournalHandwritingSize): string {
-  return `font-script leading-relaxed ${handwritingSizeClass(size)}`;
+  return `font-script-journal leading-relaxed ${handwritingSizeClass(size)}`;
 }
 
 /**

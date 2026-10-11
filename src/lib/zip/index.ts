@@ -5,3 +5,8 @@
 // download per file. Store-only and dependency-free — see `zip.ts` for what that buys
 // and what it deliberately doesn't support.
 export { buildZip, crc32, MAX_ARCHIVE_BYTES, type ZipEntry } from "./zip";
+
+// The compressing, single-entry writer, for archives written to disk rather than
+// handed to a browser. Unlike `buildZip` this one imports `node:zlib`, so it is a
+// separate entry point and must not be pulled into a client component.
+export { buildGzippedZip } from "./gzip";

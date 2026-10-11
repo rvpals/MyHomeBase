@@ -7,14 +7,27 @@
 // `src/lib/scheduled-refresh/index.ts`.
 
 export type {
+  ActiveTaskRow,
+  InactiveTaskRow,
   JobDescriptor,
   JobKey,
+  NextRun,
   ScheduledJobView,
   ScheduledRun,
+  ScheduledRunHistoryEntry,
+  ScheduledRunHistoryView,
   ScheduledRunStatus,
 } from "./types";
-export { JOB_DESCRIPTORS, JOB_KEYS } from "./types";
+export { HISTORY_LIMIT_PER_JOB, JOB_DESCRIPTORS, JOB_KEYS } from "./types";
+export {
+  describeDuration,
+  describeHistoryEntry,
+  durationMsOf,
+  toHistoryViews,
+} from "./history";
 export { scheduledRunSchema, scheduledRunStatusSchema } from "./schema";
 export type { ScheduledRunRepository } from "./ports";
 export { SqliteScheduledRunRepository } from "./repository";
 export { describeLastRun, listScheduledJobs } from "./jobs";
+export type { ActiveTaskInputs, JobSettings } from "./active-tasks";
+export { isJobArmed, listActiveTasks, listInactiveTasks } from "./active-tasks";

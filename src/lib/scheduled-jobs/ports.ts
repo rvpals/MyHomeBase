@@ -1,4 +1,4 @@
-import type { ScheduledRun, ScheduledRunStatus } from "./types";
+import type { ScheduledRun, ScheduledRunHistoryEntry, ScheduledRunStatus } from "./types";
 
 /**
  * Last-run bookkeeping for background jobs. One row per job key.
@@ -17,4 +17,12 @@ export interface ScheduledRunRepository {
   start(jobKey: string, startedAt: string): void;
   /** Records how the run turned out. */
   finish(jobKey: string, status: ScheduledRunStatus, detail: string): void;
+  /**
+   * This job's recorded passes, newest first (migrations/0135).
+   *
+   * Implementations write the history themselves from `start`/`finish` -- the
+   * runners know nothing about it, which is what stops a new job being added that
+   * forgets to record itself.
+   */
+  listHistory(jobKey: string, limit?: number): ScheduledRunHistoryEntry[];
 }

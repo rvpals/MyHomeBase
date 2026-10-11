@@ -146,6 +146,29 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-10-10 — Release (Data backup, Hello world job, run history, scheduler fix, script fonts, UTC + local times)
+
+**Migrations 0134–0137 must be applied on the NAS first** (0135 creates a table). Test the scheduler items (1–3) first — the timers never fired before this release. Don't point Backup Data at anything but a scratch folder until 9–10 pass.
+
+- [ ] **1.** Background Tasks: with Hello, world! switched on at a short cadence, a message appears in the queue and the header unread badge moves without any manual run
+- [ ] **2.** Background Tasks: Hello, world! "Run now" files a message stamped with the run time
+- [ ] **3.** Background Tasks: after the server restarts, the Active Tasks card lists only jobs that are truly armed, each with a next-run time
+- [ ] **4.** Background Tasks: an Active Tasks entry is absent for a job switched on but missing its folder or interval
+- [ ] **5.** Background Tasks: each job shows an execution history with start, finish, duration and outcome
+- [ ] **6.** Background Tasks: Configuration saves the Hello, world! message and cadence
+- [ ] **7.** Administration → Configuration → Backup Data: the page loads with Backup Data in the nav
+- [ ] **8.** Backup Data: the folder picker browses server folders one level at a time and fills the path box
+- [ ] **9.** Backup Data: Check access reports a writable folder as OK and a missing one by name
+- [ ] **10.** Backup Data: Run backup now copies changed attachments and writes a .db.gz archive in the database folder
+- [ ] **11.** Backup Data: a second run copies only changed attachments, and old archives past the keep count are removed
+- [ ] **12.** Backup Data: pointing at a folder that no longer exists refuses and names it, even when forced
+- [ ] **13.** Administration → Display Settings → Script Fonts: choosing a face for the Daily Quote changes the home card with no flash of the old face
+- [ ] **14.** Script Fonts: the Journal Content field's face changes separately, with Handwriting on
+- [ ] **15.** Journal → Location Manager: a place's usage count opens the list of entries using it, newest first, one row per entry
+- [ ] **16.** Administration → Security → Visits: the When column shows UTC plus local time, and sorting still orders correctly
+- [ ] **17.** Administration → User Management: Last Sign-In shows UTC plus local time, and "Never" for an account that has not signed in
+- [ ] **18.** CLI: `run-hello-world --status` and `run-data-backup --status` print settings and last run (**CLI only**)
+
 ## 2026-10-09 — Release (Pac-Man, Arrow Clearing tiers, navigation texture, tree expand/collapse all)
 
 **No migration.** Item 15 is phone-only. Pac-Man (1–6) and the three Arrow Clearing tiers (7–10) are brand new, so test them first.

@@ -1,7 +1,9 @@
 import { listModuleSettingsFor } from "@/lib/module-settings";
 import { getModuleBySlug } from "@/lib/modules";
 import { resolveExpenseSettings } from "@/lib/expense/settings";
-import { listScheduledJobs } from "@/lib/scheduled-jobs";
+import { loadBackupSettings } from "@/lib/backup";
+import { loadHelloWorldSettings } from "@/lib/hello-world";
+import { listActiveTasks, listInactiveTasks, listScheduledJobs } from "@/lib/scheduled-jobs";
 import { resolveScheduledRefreshSettings } from "@/lib/scheduled-refresh";
 import { deps } from "@/lib/wiring";
 import { BackgroundTasksView } from "./view";
@@ -31,5 +33,30 @@ export default async function BackgroundTasksPage() {
     expenseModule ? listModuleSettingsFor(deps.moduleSettingsRepo, expenseModule.id) : [],
   );
 
-  return <BackgroundTasksView jobs={jobs} autoRefresh={autoRefresh} expense={expense} />;
+  // The Data backup's settings are app-wide, not a module's — see migrations/0134.
+  const backup = loadBackupSettings();
+
+  // Hello, world!'s are app-wide for the same reason — see migrations/0136.
+  const helloWorld = loadHelloWorldSettings();
+
+  // Computed here rather than in the view: which jobs are armed is logic, and the
+  // view is a client component that must not import the lib index (it re-exports a
+  // SQLite repository). The view renders these rows as given.
+  // Two complementary lists from the same inputs, so every job lands in exactly one
+  // of the card's two tabs — never both, never neither.
+  const taskInputs = { jobs, autoRefresh, expense, backup, helloWorld };
+  const activeTasks = listActiveTasks(taskInputs);
+  const inactiveTasks = listInactiveTasks(taskInputs);
+
+  return (
+    <BackgroundTasksView
+      jobs={jobs}
+      activeTasks={activeTasks}
+      inactiveTasks={inactiveTasks}
+      autoRefresh={autoRefresh}
+      expense={expense}
+      backup={backup}
+      helloWorld={helloWorld}
+    />
+  );
 }

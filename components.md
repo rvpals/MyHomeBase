@@ -60,6 +60,7 @@ pattern instead of inventing one.
 | [`CalculatorKeypad`](#calculatorkeypad) | A calculator's display and keypad — scientific keys, optional keyboard capture | [src/components/calculator-keypad.tsx](src/components/calculator-keypad.tsx) | yes |
 | [`Comments`](#comments) | A note/instruction parked beside a feature, behind a small accent glyph | [src/components/comments.tsx](src/components/comments.tsx) | yes |
 | [`CollapsibleCard`](#collapsiblecard) | A titled section that expands/collapses | [src/components/collapsible-card.tsx](src/components/collapsible-card.tsx) | yes |
+| [`FolderBrowser`](#folderbrowser) | **Picks a folder on the server** — modal, one level at a time | [src/components/folder-browser.tsx](src/components/folder-browser.tsx) | yes |
 | [`CustomizableCard`](#customizablecard) | **Redesign sandbox** — a clone of `CollapsibleCard`, free to restyle | [src/components/customizable-card.tsx](src/components/customizable-card.tsx) | yes |
 | [`Tabs`](#tabs) | One-of-N panels in the same space | [src/components/tabs.tsx](src/components/tabs.tsx) | yes |
 | [`TreeNav`](#treenav) | **Two-level tree** — expandable groups, selectable leaves | [src/components/tree-nav.tsx](src/components/tree-nav.tsx) | yes |
@@ -123,6 +124,7 @@ pattern instead of inventing one.
 | [`useGameSounds`](#usegamesounds) | Synthesized game sound effects — Web Audio tones, no files (hook) | [src/components/use-game-sounds.ts](src/components/use-game-sounds.ts) | yes |
 | [`AppVersionWatch`](#appversionwatch) | Prompts a stale installed PWA to reload after a deploy — mount in the layout | [src/components/app-version-watch.tsx](src/components/app-version-watch.tsx) | yes |
 | [`AudioSpectrum`](#audiospectrum) | **Audio visualizer** — frequency bars or a waveform, driven by an analyser | [src/components/audio-spectrum.tsx](src/components/audio-spectrum.tsx) | yes |
+| [`UtcTime`](#utctime) | **A stored UTC timestamp plus the reader's local time** — `2026-08-16 14:48:00 UTC (10:48 AM EDT)` | [src/components/utc-time.tsx](src/components/utc-time.tsx) | yes |
 
 Small helpers that are not full components: [see below](#unregistered-helpers).
 
@@ -1153,6 +1155,48 @@ rather than living in it, so they're available to `SectionPanel` and anything el
 `TreeIcon` and the app keeps exactly one glyph registry.
 
 ---
+
+## FolderBrowser
+
+A modal that picks a folder **on the server**, walking one level at a time.
+
+Use it beside a text box wherever a reader has to supply a server-side path — a receipt
+root, a backup destination. Pair it with a "Check access" button: a path that exists is
+not the same as a path the server can write to, and on an SMB share or a Synology ACL
+`access(W_OK)` can report writable for a folder that then refuses the write.
+
+**Why a custom dialog and not a file input:** a browser file dialog never hands the page a
+real path, and the folder being chosen has to be one the *server* can reach anyway. The
+reader's own filesystem is not the subject.
+
+- **Source:** [src/components/folder-browser.tsx](src/components/folder-browser.tsx)
+- **Import:** `import { FolderBrowser } from "@/components/folder-browser";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `startPath` | `string` | Where the dialog opens. Blank starts at the server's filesystem root. |
+| `onBrowse` | `(path: string) => Promise<FolderBrowserResult>` | Lists one folder. **Supplied by the caller** so the component is tied to no module — pass your screen's own server action, which keeps its `requireAdmin()` at the boundary. |
+| `onPick` | `(path: string) => void` | The chosen folder. The dialog does not close itself; the caller does. |
+| `onCancel` | `() => void` | Dismissed without choosing. |
+| `hint?` | `string` | One line under the list, for a caller that needs to say what *kind* of folder is wanted. Omit when the screen already makes it obvious. |
+
+```tsx
+{isBrowsing && (
+  <FolderBrowser
+    startPath={path}
+    onBrowse={browseBackupFoldersAction}
+    onCancel={() => setIsBrowsing(false)}
+    onPick={(picked) => {
+      setPath(picked);
+      setIsBrowsing(false);
+    }}
+  />
+)}
+```
+
+**Call sites:** Household → Configuration (the HSA receipt root) and Administration →
+Configuration → Backup Data (both backup folders).
 
 ## CollapsibleCard
 
@@ -4580,6 +4624,66 @@ Render a module glyph in the active icon set (`ModuleIcon`) or in an explicitly 
 
 **Notes:** falls back to the hand-drawn "classic" set for any missing glyph. Monochrome
 sets inherit `currentColor` from `className`; color sets carry their own fills.
+
+---
+
+## UtcTime
+
+A timestamp stored in UTC, shown as itself *and* on the reader's own clock:
+
+```
+2026-08-16 14:48:00 UTC (10:48 AM EDT)
+```
+
+- **Source:** [src/components/utc-time.tsx](src/components/utc-time.tsx)
+- **Import:** `import { UtcTime } from "@/components/utc-time";`
+- **Client component:** yes (it has to be — see *Why the local half appears late*)
+
+```tsx
+<UtcTime stamp={run.startedAt} />
+
+// A nullable column, with the word that belongs in an empty cell.
+<UtcTime stamp={user.lastLoginAt} fallback="Never" className="text-muted" />
+```
+
+| Prop | Type | Notes |
+| --- | --- | --- |
+| `stamp` | `string \| null \| undefined` | The stamp **as stored**: `YYYY-MM-DD HH:MM:SS`, UTC — what SQLite's `datetime('now')` writes. Nullable so a column passes straight through. |
+| `fallback?` | `string` | Shown when `stamp` is absent. Default `"—"`. |
+| `className?` | `string` | Merged last. |
+
+**Used by:** [admin/background-tasks/view.tsx](src/app/(protected)/admin/background-tasks/view.tsx)
+(last run, next run, and the history dialog's Started/Finished),
+[admin/configuration/backup/view.tsx](src/app/(protected)/admin/configuration/backup/view.tsx),
+[admin/security/view.tsx](src/app/(protected)/admin/security/view.tsx),
+[admin/security/visits-tab.tsx](src/app/(protected)/admin/security/visits-tab.tsx), and
+[admin/user-management/view.tsx](src/app/(protected)/admin/user-management/view.tsx).
+
+**Why the local half appears late.** This is a client component, so Next.js renders it on
+the server first — and the server is the NAS, in the NAS's timezone, while the reader is
+not. Formatting a local time on both passes yields two different strings for the same
+markup, which is a hydration mismatch: React warns, and does not reliably repair the text.
+So the parenthetical is computed in a `useEffect` and is absent from the server's markup
+by construction. It appears a frame after mount, which is invisible on a timestamp that
+isn't ticking. [`ClockFace`](#clockface) starts empty for the same reason.
+
+**In a `DataGrid` column, keep `value` raw.** `value` feeds sorting *and* the CSV export,
+both of which want one stable machine-readable instant — so pass the UTC string there and
+use `UtcTime` only in `render`. Exports stay UTC-only and sort correctly; the screen shows
+both. The column header should then read `"When"`, not `"When (UTC)"`, since the cell is no
+longer UTC alone.
+
+**The date tags along when it has moved.** A stamp near either end of the day falls on a
+different calendar date for most readers — `2026-08-16 02:30:00 UTC` is the 15th in New
+York. When the local day differs the label carries it (`Jan 15, 9:30 PM EST`); when it
+doesn't, it stays out of the way. Seconds are always dropped from the local half: the UTC
+stamp beside it already has them.
+
+**It needs a parseable stamp.** A string the parser rejects renders as itself with no
+parenthetical, rather than `(Invalid Date)`. If you are formatting an *epoch-ms* instant
+rather than a stored column, run it through `formatUtcStamp` from
+[src/lib/shared/utc-display.ts](src/lib/shared/utc-display.ts) first — that is what the
+Background Tasks "next run" line does.
 
 ---
 

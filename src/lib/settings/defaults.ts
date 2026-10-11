@@ -1,3 +1,21 @@
+// Imported from the settings/types files directly rather than from `@/lib/backup`:
+// that index re-exports the runner, which reaches into the composition root.
+import {
+  BACKUP_SETTING_KEYS,
+  DEFAULT_BACKUP_INTERVAL,
+  DEFAULT_KEEP_COUNT,
+  DEFAULT_START_TIME,
+} from "@/lib/backup/settings";
+import { NO_FOLDER } from "@/lib/backup/types";
+// Imported from the settings file directly rather than from `@/lib/hello-world`,
+// for the same reason as the backup keys above: that index re-exports the runner,
+// which reaches into the composition root.
+import {
+  DEFAULT_INTERVAL_COUNT,
+  DEFAULT_INTERVAL_UNIT,
+  DEFAULT_MESSAGE,
+  HELLO_WORLD_SETTING_KEYS,
+} from "@/lib/hello-world/settings";
 import {
   HOME_WIDGETS_SETTING_KEY,
   defaultHomeWidgets,
@@ -10,6 +28,7 @@ import {
   NO_NAV_TEXTURE,
 } from "@/lib/nav-texture";
 import { DEFAULT_BORDER_WIDTHS, borderWidthsToValue } from "./border-widths";
+import { DEFAULT_SCRIPT_FONT, SCRIPT_FONT_SETTING_KEYS } from "./script-fonts";
 import { DEFAULT_CHROME_STYLE } from "./chrome-style";
 import { DEFAULT_ICON_SET_ID } from "./icon-sets";
 import { DEFAULT_COLOR_THEME_ID } from "./themes";
@@ -83,6 +102,91 @@ export const DEFAULT_APP_SETTINGS: Setting[] = [
     key: NAV_TEXTURE_OPACITY_KEY,
     value: String(DEFAULT_NAV_TEXTURE_OPACITY),
     description: "How strongly the navigation's background picture is drawn, from 0 to 1.",
+  },
+  {
+    // The Data backup job — see migrations/0134. Off with no folders, so an install
+    // that upgrades into the feature never starts writing archives somewhere nobody
+    // chose. Unlike the nav-texture pair above, these MUST be listed here: a reader
+    // who presses "Reset to Default" with a backup configured should get the job
+    // switched off, not a table missing the switch entirely.
+    key: BACKUP_SETTING_KEYS.enabled,
+    value: "false",
+    description:
+      'Whether the scheduled Data backup runs. A manual "Run backup now" ignores this.',
+  },
+  {
+    // `NO_FOLDER`, not "": `settingUpdateSchema` rejects an empty value.
+    key: BACKUP_SETTING_KEYS.attachmentRoot,
+    value: NO_FOLDER,
+    description: 'Folder that attachment files are backed up into. "none" means not set.',
+  },
+  {
+    key: BACKUP_SETTING_KEYS.databaseRoot,
+    value: NO_FOLDER,
+    description:
+      'Folder that compressed database archives are written to. "none" means not set.',
+  },
+  {
+    key: BACKUP_SETTING_KEYS.keepCount,
+    value: String(DEFAULT_KEEP_COUNT),
+    description:
+      "How many database archives to keep. Older ones are deleted after a successful backup.",
+  },
+  {
+    key: BACKUP_SETTING_KEYS.interval,
+    value: DEFAULT_BACKUP_INTERVAL,
+    description: "How often the backup runs: hourly, daily, weekly or monthly.",
+  },
+  {
+    key: BACKUP_SETTING_KEYS.startTime,
+    value: DEFAULT_START_TIME,
+    description:
+      "The time of day the schedule is anchored to, as HH:MM in the server's local time.",
+  },
+  {
+    // The "Hello, world!" job — see migrations/0136. Off by default, for the same
+    // reason as the backup keys above: an install that upgrades into the job must
+    // not start writing run rows nobody asked for. Listed here so "Reset to
+    // Default" leaves the job switched off rather than dropping its keys.
+    key: HELLO_WORLD_SETTING_KEYS.enabled,
+    value: "false",
+    description:
+      'Whether the scheduled "Hello, world!" job runs. A manual "Run now" ignores this.',
+  },
+  {
+    key: HELLO_WORLD_SETTING_KEYS.message,
+    value: DEFAULT_MESSAGE,
+    description:
+      "Filed as the title of the message each run puts in the queue (sys_messages).",
+  },
+  {
+    // A count and a unit rather than resolved minutes: that is what the reader
+    // typed, and 60 minutes is equally "1 hour" and "60 minutes" on the way back.
+    key: HELLO_WORLD_SETTING_KEYS.intervalCount,
+    value: String(DEFAULT_INTERVAL_COUNT),
+    description: 'How many of the interval unit between runs. With the unit, "every 1 minute".',
+  },
+  {
+    key: HELLO_WORLD_SETTING_KEYS.intervalUnit,
+    value: DEFAULT_INTERVAL_UNIT,
+    description:
+      "The interval unit: second, minute, hour, day or week. Under a minute runs once a minute — the scheduler checks every 60s.",
+  },
+  {
+    // The two decorative script faces — see migrations/0137. Both default to
+    // Great Vibes, which is what the Daily Quote and the Journal's handwriting
+    // sheet both wore before either was configurable, so "Reset to Default"
+    // puts the app back to the look it shipped with rather than to no face.
+    key: SCRIPT_FONT_SETTING_KEYS.dailyQuote,
+    value: DEFAULT_SCRIPT_FONT,
+    description:
+      "The script face the Daily Quote card on the home screen is written in. One of the ids in src/lib/settings/script-fonts.ts.",
+  },
+  {
+    key: SCRIPT_FONT_SETTING_KEYS.journalHandwriting,
+    value: DEFAULT_SCRIPT_FONT,
+    description:
+      "The script face the Journal entry form uses when Handwriting is switched on. One of the ids in src/lib/settings/script-fonts.ts.",
   },
   {
     // Blank means "nothing to show" — see migrations/0041.

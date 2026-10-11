@@ -17,8 +17,11 @@ import {
   parseBorderWidth,
   resolveBorderWidths,
   resolveChromeStyle,
+  resolveScriptFont,
+  SCRIPT_FONT_SETTING_KEYS,
   type BorderWidths,
   type ChromeStyle,
+  type ScriptFontId,
   type Setting,
 } from "@/lib/settings";
 import { adminNav } from "./nav";
@@ -79,6 +82,10 @@ interface AdminContextValue {
   iconSetId: string;
   /** The chrome bevel draft — commits with the shell's Save button. */
   chromeStyle: ChromeStyle;
+  /** The Daily Quote's script face draft — commits with the shell's Save button. */
+  dailyQuoteFont: ScriptFontId;
+  /** The Journal handwriting sheet's script face draft — same Save button. */
+  journalHandwritingFont: ScriptFontId;
   /** The three border-weight drafts — commit with the shell's Save button. */
   borderWidths: BorderWidths;
   moduleSettings: Record<string, ModuleSettingDraft[]>;
@@ -94,6 +101,8 @@ interface AdminContextValue {
   setColorThemeId: (id: string) => void;
   setIconSetId: (id: string) => void;
   setChromeStyle: (id: ChromeStyle) => void;
+  setDailyQuoteFont: (id: ScriptFontId) => void;
+  setJournalHandwritingFont: (id: ScriptFontId) => void;
   setBorderWidth: (axis: keyof BorderWidths, value: number) => void;
   addModuleSetting: (slug: string) => void;
   updateModuleSetting: (
@@ -229,6 +238,23 @@ export function AdminShell({
       initialSettings.find((setting) => setting.key === "chrome_style")?.value,
     ),
   );
+  // Resolved rather than cast, for the same reason as `chromeStyle` above: a
+  // row naming a face that is no longer in the catalogue must land on Great
+  // Vibes rather than putting an unselectable id into the picker and saving it
+  // straight back.
+  const [dailyQuoteFont, setDailyQuoteFontState] = useState<ScriptFontId>(() =>
+    resolveScriptFont(
+      initialSettings.find((setting) => setting.key === SCRIPT_FONT_SETTING_KEYS.dailyQuote)
+        ?.value,
+    ),
+  );
+  const [journalHandwritingFont, setJournalHandwritingFontState] = useState<ScriptFontId>(() =>
+    resolveScriptFont(
+      initialSettings.find(
+        (setting) => setting.key === SCRIPT_FONT_SETTING_KEYS.journalHandwriting,
+      )?.value,
+    ),
+  );
   const [borderWidths, setBorderWidthsState] = useState<BorderWidths>(() =>
     resolveBorderWidths(
       initialSettings.find((setting) => setting.key === "border_widths")?.value,
@@ -276,6 +302,16 @@ export function AdminShell({
 
   function setChromeStyle(id: ChromeStyle) {
     setChromeStyleState(id);
+    setIsDirty(true);
+  }
+
+  function setDailyQuoteFont(id: ScriptFontId) {
+    setDailyQuoteFontState(id);
+    setIsDirty(true);
+  }
+
+  function setJournalHandwritingFont(id: ScriptFontId) {
+    setJournalHandwritingFontState(id);
     setIsDirty(true);
   }
 
@@ -332,6 +368,8 @@ export function AdminShell({
         colorThemeId,
         iconSetId,
         chromeStyle,
+        dailyQuoteFont,
+        journalHandwritingFont,
         borderWidths,
         moduleSettings: moduleSettingsPayload,
       });
@@ -367,6 +405,19 @@ export function AdminShell({
           result.settings.find((setting) => setting.key === "chrome_style")?.value,
         ),
       );
+      setDailyQuoteFontState(
+        resolveScriptFont(
+          result.settings.find((setting) => setting.key === SCRIPT_FONT_SETTING_KEYS.dailyQuote)
+            ?.value,
+        ),
+      );
+      setJournalHandwritingFontState(
+        resolveScriptFont(
+          result.settings.find(
+            (setting) => setting.key === SCRIPT_FONT_SETTING_KEYS.journalHandwriting,
+          )?.value,
+        ),
+      );
       setBorderWidthsState(
         resolveBorderWidths(
           result.settings.find((setting) => setting.key === "border_widths")?.value,
@@ -396,6 +447,8 @@ export function AdminShell({
         colorThemeId,
         iconSetId,
         chromeStyle,
+        dailyQuoteFont,
+        journalHandwritingFont,
         borderWidths,
         moduleSettings,
         textureLibrary,
@@ -408,6 +461,8 @@ export function AdminShell({
         setColorThemeId,
         setIconSetId,
         setChromeStyle,
+        setDailyQuoteFont,
+        setJournalHandwritingFont,
         setBorderWidth,
         addModuleSetting,
         updateModuleSetting,

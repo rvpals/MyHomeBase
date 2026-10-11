@@ -20,6 +20,13 @@ export const adminNav: SectionNode[] = [
         hint: "General settings that apply across the application",
         icon: "window",
       },
+      {
+        id: "configuration-backup",
+        label: "Backup Data",
+        href: "/admin/configuration/backup",
+        hint: "Where attachment files and database archives are backed up to",
+        icon: "database",
+      },
     ],
   },
   {
@@ -48,6 +55,22 @@ export const adminNav: SectionNode[] = [
         href: "/admin/configuration/icons",
         hint: "Change the module icon set for the application",
         icon: "shapes",
+      },
+      {
+        // Fresh and permanent -- `SectionPanel` derives this section's icon slot
+        // from the id, so renaming it later orphans any uploaded override.
+        //
+        // Sits immediately after Color Themes and Icons: those two decide the
+        // app's three theme faces and its glyphs, and this decides the two
+        // decorative faces no theme is allowed to pick. All three answer "what
+        // is the app drawn with".
+        id: "display-settings-script-fonts",
+        label: "Script Fonts",
+        href: "/admin/display-settings/script-fonts",
+        hint: "Choose the handwriting for the Daily Quote and for Journal entries",
+        // `palette`, as Color Themes and App Texture use: this is an appearance
+        // choice, and the baked icon sets draw no type or font concept.
+        icon: "palette",
       },
       {
         id: "configuration-texture",

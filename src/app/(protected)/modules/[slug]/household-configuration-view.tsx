@@ -4,9 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
-import { Modal } from "@/components/modal";
+import { FolderBrowser } from "@/components/folder-browser";
 import type { HsaCard } from "@/lib/household/hsa-types";
-import type { FolderListing } from "@/lib/household/receipt-store";
 import { PAGE_CONTAINER } from "../../page-container";
 import {
   browseFoldersAction,
@@ -148,6 +147,8 @@ export function HouseholdConfigurationView({
       {isBrowsing && (
         <FolderBrowser
           startPath={path}
+          onBrowse={browseFoldersAction}
+          hint="Pick the folder the year folders should sit in — not a year folder itself."
           onCancel={() => setIsBrowsing(false)}
           onPick={(picked) => {
             setPath(picked);
@@ -161,112 +162,3 @@ export function HouseholdConfigurationView({
   );
 }
 
-/**
- * Walks the server's folders one level at a time.
- *
- * The server's, not the reader's: a browser file dialog never hands the page a real
- * path, and this folder has to be one the server can write to anyway. Only folders are
- * listed — the choice being made is a folder.
- */
-function FolderBrowser({
-  startPath,
-  onCancel,
-  onPick,
-}: {
-  startPath: string;
-  onCancel: () => void;
-  onPick: (path: string) => void;
-}) {
-  const [listing, setListing] = useState<FolderListing>();
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string>();
-  // Loads on first render and on every navigation. `useState` + this flag rather than
-  // `useEffect`: there is exactly one load in flight and the dialog owns it.
-  const [requested, setRequested] = useState<string>();
-
-  async function open(path: string) {
-    setIsLoading(true);
-    setError(undefined);
-    const result = await browseFoldersAction(path);
-    setIsLoading(false);
-    if (!result.ok || !result.listing) {
-      setError(result.error ?? "Could not open that folder.");
-      return;
-    }
-    setListing(result.listing);
-  }
-
-  if (requested === undefined) {
-    setRequested(startPath);
-    void open(startPath);
-  }
-
-  return (
-    <Modal
-      title="Choose a folder"
-      description={listing?.path ?? "Loading…"}
-      size="lg"
-      onClose={onCancel}
-      footer={
-        <>
-          <Button variant="secondary" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            disabled={!listing || isLoading}
-            onClick={() => listing && onPick(listing.path)}
-          >
-            Use this folder
-          </Button>
-        </>
-      }
-    >
-      <div className="flex flex-col gap-2">
-        {error && (
-          <p role="alert" className="rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink">
-            {error}
-          </p>
-        )}
-
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={isLoading || !listing?.parent}
-            onClick={() => listing?.parent && open(listing.parent)}
-          >
-            ↑ Up one level
-          </Button>
-        </div>
-
-        {isLoading ? (
-          <p className="text-sm text-muted">Reading the folder…</p>
-        ) : (
-          <ul className="panel-inset flex max-h-80 flex-col overflow-auto rounded-md bg-paper">
-            {listing?.folders.length === 0 && (
-              <li className="px-3 py-2 text-sm text-muted">
-                No sub-folders here. &ldquo;Use this folder&rdquo; chooses it as it is.
-              </li>
-            )}
-            {listing?.folders.map((name) => (
-              <li key={name}>
-                <button
-                  type="button"
-                  className="w-full px-3 py-2 text-left text-sm text-ink hover:bg-paper-raised"
-                  onClick={() => open(`${listing.path.replace(/[/\\]+$/, "")}/${name}`)}
-                >
-                  {name}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <p className="text-xs text-muted">
-          Pick the folder the year folders should sit in — not a year folder itself.
-        </p>
-      </div>
-    </Modal>
-  );
-}

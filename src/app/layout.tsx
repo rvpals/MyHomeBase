@@ -23,6 +23,8 @@ import {
   getSetting,
   resolveBorderWidths,
   resolveChromeStyle,
+  SCRIPT_FONT_SETTING_KEYS,
+  scriptFontCssVar,
 } from "@/lib/settings";
 import { deps } from "@/lib/wiring";
 import "./globals.css";
@@ -99,13 +101,61 @@ const jetbrainsMono = localFont({
   display: "swap",
 });
 
-// Deliberately NOT a theme face: it is absent from FONT_KEYS, so the theme
-// builder never offers it and nobody can pick copperplate script as their body
-// font. It is exposed as its own `--font-script` token (globals.css) for the one
-// piece of decorative UI that wants handwriting — the Daily Quote card.
+// THE SIX DECORATIVE SCRIPT FACES.
+//
+// Deliberately NOT theme faces: they are absent from FONT_KEYS, so the theme
+// builder never offers them and nobody can pick handwriting as their body font.
+// They are instead selected on Administration → Display Settings → Script Fonts
+// and resolved into the `--font-script` / `--font-script-journal` tokens below.
+//
+// **All six load on every page, and that is the intended trade.** The pair of
+// settings is read per request, so the chosen faces are not known at module
+// scope where `localFont` has to be called — the loaders are a build-time
+// transform, not something that can be called conditionally. What this actually
+// costs is six `@font-face` DECLARATIONS, not six downloads: a browser fetches a
+// face only when something on the page renders a glyph in it, so each page pulls
+// the one or two faces it actually uses. Same shape as the seven theme faces
+// above, which are all declared and switched between by repointing a variable.
+//
+// Great Vibes is first because it is the default and what both surfaces wore
+// before either was configurable. Caveat and Dancing Script are variable files
+// covering 400–700; the other four are single-weight 400 designs with no bold
+// cut, so their entries must say "400" and not a range — claiming a range a file
+// does not cover is how you get a synthesised faux-bold that looks nothing like
+// the face. See ./fonts/README.md.
 const greatVibes = localFont({
   src: [{ path: "./fonts/great-vibes-variable.woff2", weight: "400", style: "normal" }],
   variable: "--font-great-vibes",
+  display: "swap",
+});
+
+const dancingScript = localFont({
+  src: [{ path: "./fonts/dancing-script-variable.woff2", weight: "400 700", style: "normal" }],
+  variable: "--font-dancing-script",
+  display: "swap",
+});
+
+const caveat = localFont({
+  src: [{ path: "./fonts/caveat-variable.woff2", weight: "400 700", style: "normal" }],
+  variable: "--font-caveat",
+  display: "swap",
+});
+
+const kalam = localFont({
+  src: [{ path: "./fonts/kalam-variable.woff2", weight: "400", style: "normal" }],
+  variable: "--font-kalam",
+  display: "swap",
+});
+
+const parisienne = localFont({
+  src: [{ path: "./fonts/parisienne-variable.woff2", weight: "400", style: "normal" }],
+  variable: "--font-parisienne",
+  display: "swap",
+});
+
+const pinyonScript = localFont({
+  src: [{ path: "./fonts/pinyon-script-variable.woff2", weight: "400", style: "normal" }],
+  variable: "--font-pinyon-script",
   display: "swap",
 });
 
@@ -241,7 +291,22 @@ export default async function RootLayout({
   // are not theme tokens — they come from their own setting, not from the theme —
   // but they belong to the same "render the admin's display choices before first
   // paint" job, and a second <style> tag for three numbers would be noise.
-  const themeCss = `:root{color-scheme:${colorScheme};--paper:${theme.tokens.paper};--paper-raised:${theme.tokens.paperRaised};--ink:${theme.tokens.ink};--line:${theme.tokens.line};--muted:${theme.tokens.muted};--muted-inverse:${theme.tokens.mutedInverse};--brass:${theme.tokens.brass};--brass-dark:${theme.tokens.brassDark};--brass-soft:${theme.tokens.brassSoft};--font-display:${FONT_VAR_MAP[theme.tokens.fonts.display]};--font-body:${FONT_VAR_MAP[theme.tokens.fonts.body]};--font-mono-code:${FONT_VAR_MAP[theme.tokens.fonts.mono]};--chrome-outline-width:${borderWidths.outline}px;--chrome-divider-width:${borderWidths.divider}px;--line-width:${borderWidths.line}px;}`;
+  //
+  // The two script faces ride in it for the same reason (migrations/0137). They
+  // are likewise not theme tokens: no theme can select a script face, and these
+  // come from their own two settings on Display Settings → Script Fonts. Writing
+  // them here rather than hard-coding `--font-script` in globals.css is what
+  // makes the pick apply before first paint — a quote that renders in Great
+  // Vibes and then swaps to Caveat one frame later is worse than either face.
+  // `scriptFontCssVar` falls back to Great Vibes for a missing or unrecognised
+  // row, so a fresh install with no seeded rows still gets a font-family.
+  const dailyQuoteFontVar = scriptFontCssVar(
+    getSetting(deps.settingsRepo, SCRIPT_FONT_SETTING_KEYS.dailyQuote)?.value,
+  );
+  const journalFontVar = scriptFontCssVar(
+    getSetting(deps.settingsRepo, SCRIPT_FONT_SETTING_KEYS.journalHandwriting)?.value,
+  );
+  const themeCss = `:root{color-scheme:${colorScheme};--paper:${theme.tokens.paper};--paper-raised:${theme.tokens.paperRaised};--ink:${theme.tokens.ink};--line:${theme.tokens.line};--muted:${theme.tokens.muted};--muted-inverse:${theme.tokens.mutedInverse};--brass:${theme.tokens.brass};--brass-dark:${theme.tokens.brassDark};--brass-soft:${theme.tokens.brassSoft};--font-display:${FONT_VAR_MAP[theme.tokens.fonts.display]};--font-body:${FONT_VAR_MAP[theme.tokens.fonts.body]};--font-mono-code:${FONT_VAR_MAP[theme.tokens.fonts.mono]};--chrome-outline-width:${borderWidths.outline}px;--chrome-divider-width:${borderWidths.divider}px;--line-width:${borderWidths.line}px;--font-script:var(${dailyQuoteFontVar});--font-script-journal:var(${journalFontVar});}`;
 
   return (
     <html
@@ -262,7 +327,7 @@ export default async function RootLayout({
       // and the tree are the worst surfaces on which to restyle themselves one
       // frame after hydration. globals.css selects on this attribute.
       data-chrome-style={chromeStyle}
-      className={`${spaceGrotesk.variable} ${sora.variable} ${familjenGrotesk.variable} ${manrope.variable} ${inter.variable} ${plexMono.variable} ${jetbrainsMono.variable} ${greatVibes.variable} h-full antialiased`}
+      className={`${spaceGrotesk.variable} ${sora.variable} ${familjenGrotesk.variable} ${manrope.variable} ${inter.variable} ${plexMono.variable} ${jetbrainsMono.variable} ${greatVibes.variable} ${dancingScript.variable} ${caveat.variable} ${kalam.variable} ${parisienne.variable} ${pinyonScript.variable} h-full antialiased`}
     >
       <head>
         <style>{themeCss}</style>
