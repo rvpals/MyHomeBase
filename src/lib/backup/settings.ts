@@ -8,14 +8,18 @@
 // these live in `sys_app_settings` as plain app-wide keys.
 
 import {
-  BACKUP_INTERVALS,
+  INTERVAL_UNITS,
+  MAX_INTERVAL_COUNT,
   MAX_KEEP_COUNT,
+  MIN_HEARTBEAT_MINUTES,
+  MIN_INTERVAL_COUNT,
   MIN_KEEP_COUNT,
   NO_FOLDER,
-  type BackupInterval,
+  unitToMinutes,
   type BackupPreflight,
   type BackupPreflightFailure,
   type BackupSettings,
+  type IntervalUnit,
 } from "./types";
 
 /**
@@ -30,30 +34,31 @@ export const BACKUP_SETTING_KEYS = {
   attachmentRoot: "backup_attachment_root",
   databaseRoot: "backup_database_root",
   keepCount: "backup_keep_count",
-  interval: "backup_interval",
+  intervalCount: "backup_interval_count",
+  intervalUnit: "backup_interval_unit",
   startTime: "backup_start_time",
 } as const;
 
-export const DEFAULT_BACKUP_INTERVAL: BackupInterval = "daily";
 export const DEFAULT_KEEP_COUNT = 7;
 export const DEFAULT_START_TIME = "02:00";
+export const DEFAULT_INTERVAL_COUNT = 1;
+export const DEFAULT_INTERVAL_UNIT: IntervalUnit = "day";
 
-const INTERVAL_MINUTES: Record<BackupInterval, number> = {
-  hourly: 60,
-  daily: 24 * 60,
-  weekly: 7 * 24 * 60,
-  // Calendar months vary; 30 days is the cadence this job means by "monthly", and
-  // saying so here is better than pretending to track month lengths for a backup.
-  monthly: 30 * 24 * 60,
-};
-
-/** How many minutes an interval means. The only place these numbers exist. */
-export function intervalToMinutes(interval: BackupInterval): number {
-  return INTERVAL_MINUTES[interval];
+/**
+ * The cadence in minutes: "every 90 seconds" is 1.5.
+ *
+ * Deliberately not rounded, and deliberately not clamped -- the heartbeat floor is
+ * applied in `shouldRunNow` and `nextRunDueAtMs`, where it belongs. A cadence of 1.5
+ * minutes is a true statement about what the reader asked for; conflating it with
+ * what the 60s timer can deliver here would hide the difference from both callers.
+ * Same split as `intervalToMinutes` in src/lib/hello-world/settings.ts.
+ */
+export function intervalToMinutes(settings: BackupSettings): number {
+  return settings.intervalCount * unitToMinutes(settings.intervalUnit);
 }
 
-function isBackupInterval(value: string | undefined): value is BackupInterval {
-  return value !== undefined && (BACKUP_INTERVALS as readonly string[]).includes(value);
+function isIntervalUnit(value: string | undefined): value is IntervalUnit {
+  return value !== undefined && (INTERVAL_UNITS as readonly string[]).includes(value);
 }
 
 /** Maps the stored sentinel back to a blank path. See `NO_FOLDER`. */
@@ -76,7 +81,8 @@ export function resolveBackupSettings(rows: { key: string; value: string }[]): B
 
   const rawEnabled = byKey.get(BACKUP_SETTING_KEYS.enabled);
   const rawKeep = Number(byKey.get(BACKUP_SETTING_KEYS.keepCount));
-  const rawInterval = byKey.get(BACKUP_SETTING_KEYS.interval)?.trim();
+  const rawCount = Number(byKey.get(BACKUP_SETTING_KEYS.intervalCount));
+  const rawUnit = byKey.get(BACKUP_SETTING_KEYS.intervalUnit)?.trim();
   const rawStart = byKey.get(BACKUP_SETTING_KEYS.startTime)?.trim();
 
   return {
@@ -87,7 +93,14 @@ export function resolveBackupSettings(rows: { key: string; value: string }[]): B
       Number.isFinite(rawKeep) && rawKeep >= MIN_KEEP_COUNT && rawKeep <= MAX_KEEP_COUNT
         ? Math.floor(rawKeep)
         : DEFAULT_KEEP_COUNT,
-    interval: isBackupInterval(rawInterval) ? rawInterval : DEFAULT_BACKUP_INTERVAL,
+    intervalCount:
+      Number.isFinite(rawCount) &&
+      Number.isInteger(rawCount) &&
+      rawCount >= MIN_INTERVAL_COUNT &&
+      rawCount <= MAX_INTERVAL_COUNT
+        ? rawCount
+        : DEFAULT_INTERVAL_COUNT,
+    intervalUnit: isIntervalUnit(rawUnit) ? rawUnit : DEFAULT_INTERVAL_UNIT,
     startTime: /^([01]\d|2[0-3]):[0-5]\d$/.test(rawStart ?? "")
       ? (rawStart as string)
       : DEFAULT_START_TIME,
@@ -115,7 +128,8 @@ export function backupSettingsToEntries(
       value: settings.databaseRoot.trim() === "" ? NO_FOLDER : settings.databaseRoot.trim(),
     },
     { key: BACKUP_SETTING_KEYS.keepCount, value: String(settings.keepCount) },
-    { key: BACKUP_SETTING_KEYS.interval, value: settings.interval },
+    { key: BACKUP_SETTING_KEYS.intervalCount, value: String(settings.intervalCount) },
+    { key: BACKUP_SETTING_KEYS.intervalUnit, value: settings.intervalUnit },
     { key: BACKUP_SETTING_KEYS.startTime, value: settings.startTime },
   ];
 }
@@ -164,7 +178,13 @@ export function shouldRunNow(
     const firstDue = firstRunAtOrAfter(installedAtMs ?? startOfToday.getTime(), settings.startTime);
     return nowMs >= firstDue;
   }
-  return nowMs - lastRunAtMs >= intervalToMinutes(settings.interval) * 60_000;
+  // Clamped to the heartbeat, like the "Hello, world!" job: the scheduler ticks
+  // once a minute, so a sub-minute cadence cannot fire faster than that whatever
+  // the stored value says. Comparing against the raw 0.5 minutes would return true
+  // on every tick -- the same answer, arrived at by accident. The stored value is
+  // left exactly as the reader typed it; the screen explains the floor.
+  const minutes = Math.max(intervalToMinutes(settings), MIN_HEARTBEAT_MINUTES);
+  return nowMs - lastRunAtMs >= minutes * 60_000;
 }
 
 /**
@@ -185,7 +205,10 @@ export function nextRunDueAtMs(
     startOfToday.setHours(0, 0, 0, 0);
     return firstRunAtOrAfter(startOfToday.getTime(), settings.startTime);
   }
-  return lastRunAtMs + intervalToMinutes(settings.interval) * 60_000;
+  // Same clamp as `shouldRunNow`, so the time the Active Tasks card shows is the
+  // time the job will actually fire rather than one the heartbeat cannot hit.
+  const minutes = Math.max(intervalToMinutes(settings), MIN_HEARTBEAT_MINUTES);
+  return lastRunAtMs + minutes * 60_000;
 }
 
 /**
@@ -233,4 +256,19 @@ export function describeBackupPreflight(failure: BackupPreflightFailure): string
     case "database-root-unusable":
       return `The server cannot write to the database backup folder ${failure.path} (${failure.reason}).`;
   }
+}
+
+/**
+ * How the cadence reads in a sentence: "every 1 day(s) at 02:00".
+ *
+ * Shared by the admin card and the CLI so the two never word it differently, and
+ * the single place the sub-minute caveat is appended. Mirrors `describeInterval`
+ * in src/lib/hello-world/settings.ts, plus the anchor time this job keeps.
+ */
+export function describeBackupInterval(settings: BackupSettings): string {
+  const base = `every ${settings.intervalCount} ${settings.intervalUnit}(s)`;
+  const anchored = `${base}, anchored to ${settings.startTime}`;
+  return intervalToMinutes(settings) < MIN_HEARTBEAT_MINUTES
+    ? `${anchored} — but the scheduler checks once a minute, so it runs once a minute`
+    : anchored;
 }

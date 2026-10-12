@@ -42,14 +42,14 @@ const MIN_VISIBLE_PERCENT = 2;
  * into the button vocabulary. So this is deliberately flat: a tinted track with a
  * filled portion, no shadow, no border, no animation.
  *
- * Used by the journal home screen's three ranked lists — Top Tags, Top
- * Categories and the most-used words.
+ * Used by the journal home screen's **Top 10 Words** list and by Admin → SQL
+ * Explorer's Table Usage. Top Tags and Top Categories drew one too until they
+ * became `TaxonomyIcon` tile grids, which carry their counts instead.
  *
- * The default `w-12` is sized for those: three lists abreast on a full screen
- * leaves each row about a third of the card, and the row already spends ~170px
- * on a rank number, an icon, a count badge and (for words) a dismiss button
- * before the name gets any width at all. Pass `className="w-24"` or wider where
- * the row has room.
+ * The default `w-12` is sized for that list: it sits in one cell of a 2x2 grid,
+ * and the row already spends ~170px on a rank number, a count badge and a
+ * dismiss button before the word gets any width at all. Pass `className="w-24"`
+ * or wider where the row has room.
  */
 export function RankBar({ value, max, ariaLabel, className = "" }: RankBarProps) {
   const percent =

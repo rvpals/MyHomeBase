@@ -1,6 +1,6 @@
 import {
-  BACKUP_INTERVAL_LABELS,
   checkBackupReady,
+  describeBackupInterval,
   describeBackupPreflight,
   loadAttachmentSourceRoot,
   loadBackupSettings,
@@ -31,7 +31,9 @@ export async function runDataBackupCommand(args: string[]): Promise<void> {
     const ready = await checkBackupReady(settings);
 
     console.log(`Scheduled:      ${settings.enabled ? "on" : "off"}`);
-    console.log(`Interval:       ${BACKUP_INTERVAL_LABELS[settings.interval]} at ${settings.startTime}`);
+    // `describeBackupInterval` rather than a local format: the admin card prints
+    // the same sentence, including the sub-minute caveat, so the two cannot drift.
+    console.log(`Interval:       ${describeBackupInterval(settings)}`);
     console.log(`Attachments:    ${source || "(no source folder set)"}`);
     console.log(`  backed up to: ${settings.attachmentRoot || "(not set)"}`);
     console.log(`Database to:    ${settings.databaseRoot || "(not set)"}`);

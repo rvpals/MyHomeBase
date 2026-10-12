@@ -209,7 +209,14 @@ export function JournalEntryForm({
   // rather than on every render.
   const [form, setForm] = useState(() => seededForm(initialValues));
   const [locations, setLocations] = useState<JournalLocationInput[]>([]);
-  const [weather, setWeather] = useState<EntryWeatherInput | null>(null);
+  // Weather is held as three strings, not an EntryWeatherInput, because these
+  // are text inputs: a half-typed temperature ("-", "1.") is not a number yet
+  // and the field still has to let the writer get there. `typedWeather` below
+  // folds them back into the object the action takes. The fetch buttons write
+  // through the same fields, so a fetched reading can be corrected by hand.
+  const [weatherTemp, setWeatherTemp] = useState("");
+  const [weatherUnit, setWeatherUnit] = useState("");
+  const [weatherDescription, setWeatherDescription] = useState("");
   const [error, setError] = useState<string | undefined>(undefined);
   const [isBusy, setIsBusy] = useState(false);
   const [isFetchingWeather, setIsFetchingWeather] = useState(false);
@@ -257,7 +264,9 @@ export function JournalEntryForm({
   function reset() {
     setForm(seededForm(initialValues));
     setLocations([]);
-    setWeather(null);
+    setWeatherTemp("");
+    setWeatherUnit("");
+    setWeatherDescription("");
     setTemplateId("");
     setIsHandwriting(false);
   }
@@ -316,8 +325,10 @@ export function JournalEntryForm({
         setError(result.error ?? "Failed to fetch weather.");
         return;
       }
-      const { temperature, unit, description, code } = result.weather;
-      setWeather({ temp: temperature, unit, description, code });
+      const { temperature, unit, description } = result.weather;
+      setWeatherTemp(String(temperature));
+      setWeatherUnit(unit);
+      setWeatherDescription(description);
     } finally {
       setIsFetchingWeather(false);
     }
@@ -353,19 +364,43 @@ export function JournalEntryForm({
         setError(result.error ?? "Got your location, but failed to fetch weather.");
         return;
       }
-      const { temperature, unit, description, code } = result.weather;
-      setWeather({ temp: temperature, unit, description, code });
+      const { temperature, unit, description } = result.weather;
+      setWeatherTemp(String(temperature));
+      setWeatherUnit(unit);
+      setWeatherDescription(description);
     } finally {
       setIsLocatingAndFetching(false);
     }
   }
 
+  // Mirrors the editor: the temperature is the anchor, so an empty one means the
+  // entry records no weather, and a non-numeric one is refused on save rather
+  // than silently dropping what was typed. `code` is 0 for anything typed by
+  // hand -- only a fetched reading carries a real WMO code, and the viewer hides
+  // the chip when it is 0.
+  const trimmedTemp = weatherTemp.trim();
+  const parsedTemp = trimmedTemp === "" ? undefined : Number(trimmedTemp);
+  const isTempValid = parsedTemp === undefined || Number.isFinite(parsedTemp);
+  const typedWeather: EntryWeatherInput | undefined =
+    parsedTemp === undefined || !Number.isFinite(parsedTemp)
+      ? undefined
+      : {
+          temp: parsedTemp,
+          unit: weatherUnit.trim(),
+          description: weatherDescription.trim(),
+          code: 0,
+        };
+
   async function handleSave() {
+    if (!isTempValid) {
+      setError("Temperature must be a number, or empty to record no weather.");
+      return;
+    }
     setIsBusy(true);
     onSavingChange?.(true);
     setError(undefined);
     try {
-      const result = await createJournalEntryAction({ ...form, locations, weather: weather ?? undefined });
+      const result = await createJournalEntryAction({ ...form, locations, weather: typedWeather });
       if (!result.ok) {
         setError(result.error);
         return;
@@ -396,12 +431,16 @@ export function JournalEntryForm({
    * isn't lost along with the draft.
    */
   async function handleSaveEncrypted(password: string, hint: string) {
+    if (!isTempValid) {
+      setError("Temperature must be a number, or empty to record no weather.");
+      return;
+    }
     setIsBusy(true);
     onSavingChange?.(true);
     setError(undefined);
     try {
       const result = await createEncryptedJournalEntryAction(
-        { ...form, locations, weather: weather ?? undefined },
+        { ...form, locations, weather: typedWeather },
         password,
         hint,
       );
@@ -552,22 +591,46 @@ export function JournalEntryForm({
         <Button size="sm" variant="secondary" onClick={handleFetchWeather} disabled={isFetchingWeather}>
           {isFetchingWeather ? "Fetching…" : "Fetch today's weather"}
         </Button>
-        {weather ? (
-          <span className="text-sm text-ink">
-            {weather.temp}
-            {weather.unit} · {weather.description}
-            <button
-              type="button"
-              onClick={() => setWeather(null)}
-              aria-label="Clear weather"
-              className="ml-2 text-muted hover:text-red-400"
-            >
-              &times;
-            </button>
-          </span>
-        ) : (
-          <span className="text-xs text-muted">Uses this entry&apos;s first location, or your default location.</span>
-        )}
+        <span className="text-xs text-muted">Uses this entry&apos;s first location, or your default location.</span>
+      </div>
+
+      {/* The same reading, typeable. The buttons above fill these fields rather
+          than writing somewhere the writer can't reach: an entry written up the
+          next morning, or one from a place the forecast never covered, still had
+          weather. Clearing the temperature clears the reading, matching the
+          editor and the repository, where temp is what makes weather exist. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[6rem_6rem_1fr]">
+        <label className="block text-sm">
+          <span className="mb-1 block text-xs text-muted">Temperature</span>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={weatherTemp}
+            onChange={(event) => setWeatherTemp(event.target.value)}
+            placeholder="18"
+            className={INPUT_CLASS}
+          />
+        </label>
+        <label className="block text-sm">
+          <span className="mb-1 block text-xs text-muted">Unit</span>
+          <input
+            type="text"
+            value={weatherUnit}
+            onChange={(event) => setWeatherUnit(event.target.value)}
+            placeholder="°C"
+            className={INPUT_CLASS}
+          />
+        </label>
+        <label className="block text-sm">
+          <span className="mb-1 block text-xs text-muted">Description</span>
+          <input
+            type="text"
+            value={weatherDescription}
+            onChange={(event) => setWeatherDescription(event.target.value)}
+            placeholder="Light rain"
+            className={INPUT_CLASS}
+          />
+        </label>
       </div>
     </div>
   );

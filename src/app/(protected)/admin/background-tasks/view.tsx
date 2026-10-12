@@ -33,7 +33,6 @@ import { UtcTime } from "@/components/utc-time";
 // indexes re-export SQLite repositories, and pulling one into a client component
 // drags better-sqlite3 into the browser bundle and breaks the build.
 import {
-  BACKUP_INTERVAL_LABELS,
   type BackupSettings,
 } from "@/lib/backup/types";
 import type { ExpenseSettings } from "@/lib/expense/settings";
@@ -75,6 +74,7 @@ import {
   runHelloWorldNowAction,
   saveAutoImportScheduleAction,
   saveAutoRefreshSettingsAction,
+  saveBackupScheduleAction,
   saveHelloWorldSettingsAction,
 } from "./actions";
 import { PAGE_CONTAINER } from "../../page-container";
@@ -498,6 +498,14 @@ export function BackgroundTasksView({
   const [helloCountText, setHelloCountText] = useState(String(helloWorld.intervalCount));
   const [helloUnit, setHelloUnit] = useState<IntervalUnit>(helloWorld.intervalUnit);
 
+  // Data backup schedule state. The cadence is the same count + unit pair as
+  // Hello, world! above — and held as text for the same reason — plus an anchor
+  // time this job keeps and that one has no use for.
+  const [backupEnabled, setBackupEnabled] = useState(backup.enabled);
+  const [backupCountText, setBackupCountText] = useState(String(backup.intervalCount));
+  const [backupUnit, setBackupUnit] = useState<IntervalUnit>(backup.intervalUnit);
+  const [backupStartTime, setBackupStartTime] = useState(backup.startTime);
+
   const [busy, setBusy] = useState<string | undefined>(undefined);
   const [message, setMessage] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -542,6 +550,24 @@ export function BackgroundTasksView({
   const helloRunsPerDay = helloCountValid
     ? runsPerDay(helloCount * unitToMinutes(helloUnit))
     : undefined;
+
+  const backupCount = Number(backupCountText);
+  // Same mirror of `intervalCountSchema` as the Hello, world! count above: the
+  // schema remains the authority, this only avoids a pointless round trip.
+  const backupCountValid =
+    Number.isInteger(backupCount) && backupCount >= 1 && backupCount <= 1000;
+  // Mirrors `startTimeSchema`. An `<input type="time">` can be left empty, and an
+  // empty anchor would be rejected server-side with a message about HH:MM.
+  const backupStartTimeValid = /^([01]\d|2[0-3]):[0-5]\d$/.test(backupStartTime);
+  const backupScheduleDirty =
+    backupEnabled !== backup.enabled ||
+    backupCount !== backup.intervalCount ||
+    backupUnit !== backup.intervalUnit ||
+    backupStartTime !== backup.startTime;
+  // The same 60s floor as Hello, world!. A sub-minute backup is a bad idea for
+  // reasons unrelated to the heartbeat, but the card states what will happen
+  // rather than silently refusing — see migrations/0138.
+  const backupSubMinute = backupCountValid && backupUnit === "second" && backupCount < 60;
 
   /** Every action funnels through here so one place owns the busy/message/error dance. */
   async function run(
@@ -849,25 +875,124 @@ export function BackgroundTasksView({
                 />
               </div>
 
-              <p className="mt-3 text-sm text-muted">
+              {/* The schedule, moved here from Backup Data so every job's switch is
+                  in one place. The folders above stay there — what to back up is
+                  the module's, when to back it up is administration's. */}
+              <label className="mt-4 flex items-start gap-3 rounded-md border border-line bg-paper p-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={backupEnabled}
+                  onChange={(event) => setBackupEnabled(event.target.checked)}
+                  className={CHECKBOX_CLASS}
+                />
+                <span>
+                  <span className="block font-medium text-ink">Run on a schedule</span>
+                  <span className="mt-1 block text-xs text-muted">
+                    Off means the backup never runs on its own, whatever the interval
+                    says. <strong className="text-ink">Run now</strong> still works.
+                  </span>
+                </span>
+              </label>
+
+              {/* The count and the unit are one control split in two, so they sit on
+                  one row and wrap together on a narrow screen — the same pairing as
+                  the Hello, world! cadence below. */}
+              <div className="mt-4 block text-sm sm:max-w-xs">
+                <span className="mb-1 block font-medium text-ink">Run every</span>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={backupCountText}
+                    onChange={(event) => setBackupCountText(event.target.value)}
+                    disabled={!backupEnabled}
+                    aria-label="How many"
+                    className={`${INPUT_CLASS} w-24 disabled:opacity-50`}
+                  />
+                  <select
+                    value={backupUnit}
+                    onChange={(event) => setBackupUnit(event.target.value as IntervalUnit)}
+                    disabled={!backupEnabled}
+                    aria-label="Interval unit"
+                    className={`${INPUT_CLASS} disabled:opacity-50`}
+                  >
+                    {INTERVAL_UNITS.map((unit) => (
+                      <option key={unit} value={unit}>
+                        {INTERVAL_UNIT_LABELS[unit]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {backupSubMinute && (
+                  // The honest version of a setting the scheduler cannot honour. The
+                  // value is saved as typed; this says what will actually happen.
+                  <span className="mt-1 block text-xs text-amber-300">
+                    The scheduler checks once a minute, so anything under a minute runs
+                    once a minute. A backup this often is almost certainly not what you
+                    want — each pass snapshots the database and writes an archive.
+                  </span>
+                )}
+              </div>
+
+              <label className="mt-4 block text-sm sm:max-w-xs">
+                <span className="mb-1 block font-medium text-ink">Start at</span>
+                <input
+                  type="time"
+                  value={backupStartTime}
+                  onChange={(event) => setBackupStartTime(event.target.value)}
+                  disabled={!backupEnabled}
+                  className={`${INPUT_CLASS} disabled:opacity-50`}
+                />
+                <span className="mt-1 block text-xs text-muted">
+                  The time of day the schedule is anchored to, in the server&rsquo;s local
+                  time. It sets when the <em>first</em> run happens; after that the
+                  interval is measured from the last run.
+                </span>
+              </label>
+
+              <p className="mt-4 text-sm text-muted">
                 {!backupConfigured ? (
                   <span className="text-amber-300">
                     Not configured: choose both folders on Backup Data before this can run.
                   </span>
                 ) : backup.enabled ? (
                   <>
-                    Armed — {BACKUP_INTERVAL_LABELS[backup.interval].toLowerCase()}, anchored to{" "}
-                    {backup.startTime}, keeping {backup.keepCount} archive(s).
+                    Armed — every {backup.intervalCount} {backup.intervalUnit}(s), anchored
+                    to {backup.startTime}, keeping {backup.keepCount} archive(s).
                   </>
                 ) : (
                   <>
                     Configured but switched off. &ldquo;Run now&rdquo; still works; turn the
-                    schedule on from Backup Data.
+                    schedule on above.
                   </>
                 )}
               </p>
 
-              <div className="mt-4 flex gap-2 max-lg:flex-col">
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button
+                  onClick={() =>
+                    run(
+                      "save-backup",
+                      () =>
+                        saveBackupScheduleAction({
+                          enabled: backupEnabled,
+                          intervalCount: backupCount,
+                          intervalUnit: backupUnit,
+                          startTime: backupStartTime,
+                        }),
+                      "Backup schedule saved.",
+                    )
+                  }
+                  disabled={
+                    busy !== undefined ||
+                    !backupScheduleDirty ||
+                    !backupCountValid ||
+                    !backupStartTimeValid
+                  }
+                >
+                  {busy === "save-backup" ? "Saving…" : "Save settings"}
+                </Button>
                 <Button
                   variant="secondary"
                   onClick={() =>
@@ -883,7 +1008,7 @@ export function BackgroundTasksView({
                   href="/admin/configuration/backup"
                   className="self-center text-xs text-brass hover:underline"
                 >
-                  Configure backup folders and schedule →
+                  Configure backup folders →
                 </Link>
               </div>
             </CollapsibleCard>

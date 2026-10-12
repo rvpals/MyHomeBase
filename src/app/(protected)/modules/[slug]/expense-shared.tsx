@@ -2,6 +2,7 @@
 // of the section views so importing a helper never drags a whole screen with it.
 
 import type { IconSelectOption } from "@/components/icon-select";
+import { TaxonomyIcon } from "@/components/taxonomy-icon";
 import type { CreditCardAccount, ExpenseCategory, ExpenseVendor } from "@/lib/expense";
 
 /** Cents to a signed currency string, e.g. -4500 → "-$45.00". */
@@ -53,24 +54,25 @@ export function categoryIconUrlsByName(categories: ExpenseCategory[]): Map<strin
   return urls;
 }
 
-/** A category's icon at label size, or nothing when it has none. */
+/**
+ * A category's icon at label size, or nothing when it has none.
+ *
+ * A thin wrapper over the shared `TaxonomyIcon` rather than its own `<img>`:
+ * this and `VendorIconThumbnail` used to be byte-for-byte identical copies of
+ * the same markup, which is what prompted the shared component. Kept as named
+ * wrappers because the call sites hold an `iconUrl` and no name to pass.
+ */
 export function CategoryIconThumbnail({
   iconUrl,
+  name = "",
   className = "",
 }: {
   iconUrl?: string;
+  /** Hover hint. Optional only because the older call sites have no name to hand. */
+  name?: string;
   className?: string;
 }) {
-  if (!iconUrl) return null;
-  return (
-    // eslint-disable-next-line @next/next/no-img-element -- icon bytes are served from our own DB-backed route, not a static asset next/image can optimize.
-    <img
-      src={iconUrl}
-      alt=""
-      loading="lazy"
-      className={`h-5 w-5 shrink-0 rounded border border-line object-cover ${className}`}
-    />
-  );
+  return <TaxonomyIcon url={iconUrl} name={name} className={className} />;
 }
 
 /**
@@ -125,24 +127,18 @@ export function vendorIconFor(urls: Map<string, string>, vendorName: string): st
   return urls.get(vendorName.trim().toUpperCase());
 }
 
-/** A vendor's icon at label size, or nothing when it has none. */
+/** A vendor's icon at label size, or nothing when it has none. Mirrors `CategoryIconThumbnail`. */
 export function VendorIconThumbnail({
   iconUrl,
+  name = "",
   className = "",
 }: {
   iconUrl?: string;
+  /** Hover hint. Optional only because the older call sites have no name to hand. */
+  name?: string;
   className?: string;
 }) {
-  if (!iconUrl) return null;
-  return (
-    // eslint-disable-next-line @next/next/no-img-element -- icon bytes are served from our own DB-backed route, not a static asset next/image can optimize.
-    <img
-      src={iconUrl}
-      alt=""
-      loading="lazy"
-      className={`h-5 w-5 shrink-0 rounded border border-line object-cover ${className}`}
-    />
-  );
+  return <TaxonomyIcon url={iconUrl} name={name} className={className} />;
 }
 
 /**

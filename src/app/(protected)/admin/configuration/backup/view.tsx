@@ -2,7 +2,13 @@
 
 // Administration → Configuration → Backup Data.
 //
-// Two folder panels and a schedule panel. Each folder is a text box plus Browse…
+// Two folder panels. The schedule — the switch, the cadence and the anchor time —
+// moved to Administration → Background Tasks → Configuration → Data backup, where
+// every other job's switch lives; this screen links to it rather than duplicating
+// it. What stays here is *what* the job operates on, which is the same split the
+// Expense importer's watched folder already follows.
+//
+// Each folder is a text box plus Browse…
 // plus Check access — the same trio as the HSA receipt root, and for the same
 // reason: the path is the *server's*, so a browser file dialog cannot supply it and
 // `access(W_OK)` cannot be trusted to say it is writable.
@@ -17,14 +23,12 @@ import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { FolderBrowser } from "@/components/folder-browser";
 import { UtcTime } from "@/components/utc-time";
+import Link from "next/link";
 // Types only, straight from the type module rather than the lib index: that index
 // re-exports the runner, which opens the SQLite connection.
 import {
-  BACKUP_INTERVALS,
-  BACKUP_INTERVAL_LABELS,
   MAX_KEEP_COUNT,
   MIN_KEEP_COUNT,
-  type BackupInterval,
   type BackupSettings,
 } from "@/lib/backup/types";
 import type { ScheduledRun } from "@/lib/scheduled-jobs/types";
@@ -32,7 +36,7 @@ import {
   browseBackupFoldersAction,
   checkBackupFolderAction,
   runBackupNowAction,
-  saveBackupSettingsAction,
+  saveBackupFoldersAction,
 } from "./actions";
 import { PAGE_CONTAINER } from "../../../page-container";
 
@@ -117,27 +121,21 @@ function FolderField({
 }
 
 export function BackupDataView({ settings, attachmentSourceRoot, lastRun }: BackupDataViewProps) {
-  const [enabled, setEnabled] = useState(settings.enabled);
   const [attachmentRoot, setAttachmentRoot] = useState(settings.attachmentRoot);
   const [databaseRoot, setDatabaseRoot] = useState(settings.databaseRoot);
   // A string, not a number: an empty box must stay empty while being retyped rather
   // than snapping to 0, and the schema coerces on save.
   const [keepCount, setKeepCount] = useState(String(settings.keepCount));
-  const [interval, setInterval] = useState<BackupInterval>(settings.interval);
-  const [startTime, setStartTime] = useState(settings.startTime);
 
   const [isBusy, setIsBusy] = useState(false);
   const [notice, setNotice] = useState<{ ok: boolean; text: string }>();
 
   async function save() {
     setIsBusy(true);
-    const result = await saveBackupSettingsAction({
-      enabled,
+    const result = await saveBackupFoldersAction({
       attachmentRoot,
       databaseRoot,
       keepCount: Number(keepCount),
-      interval,
-      startTime,
     });
     setIsBusy(false);
     setNotice({ ok: result.ok, text: result.ok ? (result.message ?? "") : (result.error ?? "") });
@@ -244,69 +242,36 @@ export function BackupDataView({ settings, attachmentSourceRoot, lastRun }: Back
         </CollapsibleCard>
       </div>
 
-      {/* --------------------------------------------------------------- Schedule */}
+      {/* ------------------------------------------------- Save, run, and schedule */}
+      {/* The buttons sit outside both cards because they act on both: one Save
+          writes the two folders and the keep count together. The schedule is not
+          here at all — it is a different screen's to own, and this links to it. */}
       <div className="mt-6">
-        <CollapsibleCard title="Schedule" defaultOpen>
-          <label className="flex items-start gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={enabled}
-              onChange={(event) => setEnabled(event.target.checked)}
-              className="mt-0.5 h-4 w-4 shrink-0 rounded border-line text-brass focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
-            />
-            <span>
-              <span className="block font-medium text-ink">Run on a schedule</span>
-              <span className="block text-xs text-muted">
-                Off means the backup never runs on its own. &ldquo;Run backup now&rdquo; still
-                works either way.
-              </span>
-            </span>
-          </label>
+        <div className="flex gap-2 max-lg:flex-col">
+          <Button variant="primary" disabled={isBusy} onClick={save}>
+            Save settings
+          </Button>
+          <Button variant="secondary" disabled={isBusy} onClick={runNow}>
+            {isBusy ? "Working…" : "Run backup now"}
+          </Button>
+        </div>
 
-          <label className="mt-4 block text-sm sm:max-w-xs">
-            <span className="mb-1 block font-medium text-ink">Backup interval</span>
-            <select
-              value={interval}
-              onChange={(event) => setInterval(event.target.value as BackupInterval)}
-              className={INPUT_CLASS}
-            >
-              {BACKUP_INTERVALS.map((option) => (
-                <option key={option} value={option}>
-                  {BACKUP_INTERVAL_LABELS[option]}
-                </option>
-              ))}
-            </select>
-          </label>
+        {lastRun && (
+          <p className="mt-3 text-xs text-muted">
+            Last run <UtcTime stamp={lastRun.lastRunAt} /> — {lastRun.status ?? "interrupted"}
+            {lastRun.detail ? ` (${lastRun.detail})` : ""}.
+          </p>
+        )}
 
-          <label className="mt-4 block text-sm sm:max-w-xs">
-            <span className="mb-1 block font-medium text-ink">Start at</span>
-            <input
-              type="time"
-              value={startTime}
-              onChange={(event) => setStartTime(event.target.value)}
-              className={INPUT_CLASS}
-            />
-            <span className="mt-1 block text-xs text-muted">
-              The time of day the schedule is anchored to, in the server&apos;s local time.
-            </span>
-          </label>
-
-          {lastRun && (
-            <p className="mt-4 text-xs text-muted">
-              Last run <UtcTime stamp={lastRun.lastRunAt} /> — {lastRun.status ?? "interrupted"}
-              {lastRun.detail ? ` (${lastRun.detail})` : ""}.
-            </p>
-          )}
-
-          <div className="mt-4 flex gap-2 max-lg:flex-col">
-            <Button variant="primary" disabled={isBusy} onClick={save}>
-              Save settings
-            </Button>
-            <Button variant="secondary" disabled={isBusy} onClick={runNow}>
-              {isBusy ? "Working…" : "Run backup now"}
-            </Button>
-          </div>
-        </CollapsibleCard>
+        <p className="mt-4 text-sm text-muted">
+          <span className="font-medium text-ink">When</span> the backup runs — the switch,
+          how often, and the time of day it is anchored to — is set on{" "}
+          <Link href="/admin/background-tasks" className="text-brass hover:underline">
+            Background Tasks
+          </Link>
+          , with every other scheduled job.{" "}
+          <span className="text-ink">Run backup now</span> works from here either way.
+        </p>
       </div>
     </div>
   );

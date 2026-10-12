@@ -48,7 +48,8 @@ import {
 } from "@/lib/journal";
 import { adjacentEntryDateAction } from "./journal-actions";
 import { JournalPhotosHost } from "./journal-photos-host";
-import { journalEntriesFilterHref, TaxonomyIconThumbnail } from "./journal-shared";
+import { TaxonomyChipRow } from "@/components/taxonomy-icon";
+import { journalEntriesFilterHref } from "./journal-shared";
 
 /**
  * What the photo dialog is currently showing — one day, or a whole period.
@@ -1055,14 +1056,20 @@ function DayEntriesPanel({
                     {entry.placeName}
                   </span>
                 )}
-                <span className="flex shrink-0 items-center gap-1">
-                  {entry.categories.map((name) => (
-                    <TaxonomyIconThumbnail key={name} name={name} url={categoryIcons[name]} />
-                  ))}
-                  {entry.tags.map((name) => (
-                    <TaxonomyIconThumbnail key={name} name={name} url={tagIcons[name]} />
-                  ))}
-                </span>
+                {/* Labelled chips rather than bare icons, so a glyph the reader
+                    doesn't recognise still names itself. Capped at 3 with a
+                    `+N`: a chip is much wider than the icon it replaced, and
+                    this row already competes with the title and the place name.
+                    No `href` — the whole row is a <button>, and a link nested in
+                    a button is invalid HTML; the entry it opens carries the
+                    full set anyway. */}
+                <TaxonomyChipRow
+                  className="shrink-0"
+                  items={[
+                    ...entry.categories.map((name) => ({ name, url: categoryIcons[name] })),
+                    ...entry.tags.map((name) => ({ name, url: tagIcons[name] })),
+                  ]}
+                />
               </button>
             </li>
           ))}

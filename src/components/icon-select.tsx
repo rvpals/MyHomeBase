@@ -5,6 +5,7 @@
 // the caller supplies the options (label + optional icon URL) and owns the value.
 
 import { useEffect, useId, useRef, useState } from "react";
+import { TaxonomyIcon } from "@/components/taxonomy-icon";
 
 export interface IconSelectOption {
   /** The value written back through `onChange`. */
@@ -49,17 +50,7 @@ const INPUT_CLASS =
 
 /** One option's icon, or a same-size spacer so every label lines up. */
 function OptionIcon({ iconUrl, label }: { iconUrl?: string; label: string }) {
-  if (!iconUrl) return <span aria-hidden="true" className="h-5 w-5 shrink-0" />;
-  return (
-    // eslint-disable-next-line @next/next/no-img-element -- icon bytes come from our own DB-backed route, not a static asset next/image can optimize.
-    <img
-      src={iconUrl}
-      alt=""
-      title={label}
-      loading="lazy"
-      className="h-5 w-5 shrink-0 rounded border border-line object-cover"
-    />
-  );
+  return <TaxonomyIcon url={iconUrl} name={label} fallback="spacer" />;
 }
 
 export function IconSelect({

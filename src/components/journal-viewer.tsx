@@ -22,6 +22,7 @@ import {
 } from "@/components/entry-encryption-explainer";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { SlotIcon } from "@/components/slot-icon";
+import { TaxonomyIcon } from "@/components/taxonomy-icon";
 import { getIconSlot } from "@/lib/icons";
 import { ENCRYPTED_TITLE_PLACEHOLDER } from "@/lib/journal";
 import type { EntryLocation, JournalEntry } from "@/lib/journal";
@@ -159,7 +160,17 @@ function TaxonomyLink({
   );
 }
 
-/** The icons for one entry's categories or tags, name-hinted, skipping any without one. */
+/**
+ * The icons for one entry's categories or tags, name-hinted, skipping any
+ * without one.
+ *
+ * Stays **bare icons, not `TaxonomyChip`**, even though chips were added for the
+ * calendar's entry rows. Two reasons: this strip sits beside the date, time and
+ * encryption badge, where full chips would push the date around; and the same
+ * names already appear as labelled chips in "Misc Info" lower down the page, so
+ * a label here would be the third rendering of one list. `alt="name"` carries
+ * the name for a screen reader, since the glyph is the only content of its link.
+ */
 function TaxonomyIconRow({
   names,
   icons,
@@ -176,14 +187,7 @@ function TaxonomyIconRow({
     <span className="flex items-center gap-1.5">
       {withIcons.map((name) => (
         <TaxonomyLink key={name} name={name} href={hrefFor?.(name)} className="shrink-0">
-          {/* eslint-disable-next-line @next/next/no-img-element -- icon bytes are served from our own DB-backed route, not a static asset next/image can optimize. */}
-          <img
-            src={icons[name]}
-            alt={name}
-            title={name}
-            loading="lazy"
-            className="h-6 w-6 shrink-0 rounded border border-line object-cover"
-          />
+          <TaxonomyIcon url={icons[name]} name={name} alt="name" />
         </TaxonomyLink>
       ))}
     </span>
@@ -407,8 +411,13 @@ export function JournalViewer({
             <Field label="Weather">
               <span>
                 {entry.weather.temp}
-                {entry.weather.unit} · {entry.weather.description}{" "}
-                <span className="font-mono text-xs text-muted">(code {entry.weather.code})</span>
+                {entry.weather.unit} · {entry.weather.description}
+                {/* Only a fetched reading carries a WMO code. A weather line
+                    typed by hand in the editor has code 0, which would read as
+                    a real forecast code it never came from. */}
+                {entry.weather.code !== 0 && (
+                  <> <span className="font-mono text-xs text-muted">(code {entry.weather.code})</span></>
+                )}
               </span>
             </Field>
           )}

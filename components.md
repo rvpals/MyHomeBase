@@ -105,6 +105,7 @@ pattern instead of inventing one.
 | [`UsageMeter`](#usagemeter) | A stat tile whose value is part of a known total | [src/components/usage-meter.tsx](src/components/usage-meter.tsx) | no |
 | [`Progress3D`](#progress3d) | **Any progress bar** — work underway, 0..max | [src/components/progress-3d.tsx](src/components/progress-3d.tsx) | no |
 | [`RankBar`](#rankbar) | **One row of a ranked list** — magnitude relative to the biggest | [src/components/rank-bar.tsx](src/components/rank-bar.tsx) | no |
+| [`TaxonomyIcon`](#taxonomyicon) | **A tag/category/vendor's uploaded icon** — plus `TaxonomyChip` and `TaxonomyChipRow` for the labelled forms | [src/components/taxonomy-icon.tsx](src/components/taxonomy-icon.tsx) | no |
 | [`JournalViewer`](#journalviewer) | Full detail sheet for one journal entry | [src/components/journal-viewer.tsx](src/components/journal-viewer.tsx) | yes |
 | [`EncryptionPrompt`](#encryptionprompt) | **Password prompt for an encrypted journal entry** — unlock, encrypt, or confirm-before-decrypting | [src/components/encryption-prompt.tsx](src/components/encryption-prompt.tsx) | yes |
 | [`EntryEncryptionExplainer`](#entryencryptionexplainer) | **The one account of how entry encryption works** — prose, rendered in three places | [src/components/entry-encryption-explainer.tsx](src/components/entry-encryption-explainer.tsx) | no |
@@ -3203,11 +3204,91 @@ with a filled portion, no shadow, no border, no animation.
 of 1 against a top count of 400 rounds to 0% and reads as missing data rather than as
 "very small".
 
-**Used by:** the journal home screen's three ranked lists — Top Tags, Top Categories and
-Top 10 Words —
-[journal-view.tsx](src/app/(protected)/modules/[slug]/journal-view.tsx); and Admin → SQL
+**Used by:** the journal home screen's **Top 10 Words** list
+([journal-view.tsx](src/app/(protected)/modules/[slug]/journal-view.tsx)); and Admin → SQL
 Explorer → **Table Usage**, where it ranks each table's size on disk against the largest
-([view.tsx](src/app/(protected)/admin/sql-explorer/view.tsx)).
+([view.tsx](src/app/(protected)/admin/sql-explorer/view.tsx)). Top Tags and Top Categories
+drew one too until they became [`TaxonomyIcon`](#taxonomyicon) tile grids.
+
+---
+
+## TaxonomyIcon
+
+**The one way this app draws a user-uploaded icon that stands for a named thing you
+classify by** — a journal tag or category, a journal location type, an expense category,
+an expense vendor. Before it existed the same `<img>` was copy-pasted in six places at
+three sizes, two of them (`CategoryIconThumbnail` and `VendorIconThumbnail`) byte-for-byte
+identical.
+
+**Not for pictures.** `Cover` in [music-player-bar.tsx](src/components/music-player-bar.tsx)
+is album art and carries its own `onError` fallback state; `CardThumbnail` in
+[expense-shared.tsx](src/app/(protected)/modules/[slug]/expense-shared.tsx) is `h-6 w-9`
+credit-card art. Those are photographs, not glyphs — folding them in would make this a
+generic image box.
+
+- **Source:** [src/components/taxonomy-icon.tsx](src/components/taxonomy-icon.tsx)
+- **Import:** `import { TaxonomyIcon, TaxonomyChip, TaxonomyChipRow } from "@/components/taxonomy-icon";`
+- **Client component:** no
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `url?` | `string` | The icon's bytes. Absent means this name has no icon — `fallback` decides what is drawn. |
+| `name` | `string` | Hover hint, and the `alt` text when `alt="name"`. |
+| `size?` | `"sm" \| "md" \| "lg"` | `sm` 28px (default, the compact size), `md` 32px, `lg` 40px (the full-layout size). |
+| `fallback?` | `"none" \| "spacer"` | `none` (default) renders nothing. **`spacer`** renders an invisible same-size box so a column of names beside a column of icons stays aligned when only some rows have one. |
+| `alt?` | `"none" \| "name"` | `none` (default) marks it decorative — correct when the row already prints the name. `name` when the icon is the only content of its link. |
+| `className?` | `string` | Merged last. |
+
+```tsx
+{/* In a grid tile: 40px, and a spacer keeps iconless tiles the same height. */}
+<TaxonomyIcon url={iconUrls[name]} name={name} size="lg" fallback="spacer" />
+```
+
+**`object-contain`, no border — both deliberate.** `cover` silently crops a non-square
+upload's edges off, and these are glyphs where the edge is often the artwork. The border
+gave a 20px image definition; at 28px and up it competes with the glyph's own outline.
+Neither is a prop: one answer for the whole app is the point of the component.
+
+**Sizes are a prop, not a `useViewport()` read.** Per
+[viewport-context.tsx](src/components/viewport-context.tsx) that hook is for when compact
+needs a *genuinely different component* — an icon at another size is not that. The
+tile-grid-vs-chip switch in Top Tags **is**, and reads the hook.
+
+### TaxonomyChip
+
+Icon *beside* its name, in a pill — for the places that render a bare icon and nothing
+else, where the reader has to already know what the glyph means.
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `url?` | `string` | A chip with no icon still renders; the label carries it. |
+| `name` | `string` | The chip's label. |
+| `size?` | `"sm" \| "md" \| "lg"` | Default `sm`. |
+| `href?` | `string` | Renders a real `next/link` so middle-click and ⌘-click work. **Omit inside a `<button>`** — a link nested in a button is invalid HTML. |
+| `title?` | `string` | Hover hint. Defaults to `name`. |
+| `className?` | `string` | Merged last. |
+
+### TaxonomyChipRow
+
+The first `limit` chips plus a `+N` marker titled with the names it stands for. The
+capping rule itself is [`splitChipOverflow`](src/lib/shared/chip-overflow.ts) in `lib`,
+where it is tested; this only draws.
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `items` | `{ name, url?, href? }[]` | Every chip the row *could* show, in display order. |
+| `limit?` | `number` | Default `3`. Floored at 1 — a row entirely behind a `+N` explains nothing. |
+| `size?` | `"sm" \| "md" \| "lg"` | Default `sm`. |
+| `className?` | `string` | Merged last. |
+
+**Used by:** Journal → Home → **Top Tags / Top Categories**, as a 40px tile grid on full
+and a row of chips on compact
+([journal-view.tsx](src/app/(protected)/modules/[slug]/journal-view.tsx)); Journal →
+Calendar entry rows, capped at 3 chips
+([journal-calendar-view.tsx](src/app/(protected)/modules/[slug]/journal-calendar-view.tsx));
+the entry viewer's header strip
+([journal-viewer.tsx](src/components/journal-viewer.tsx)); the taxonomy and location
+taxonomy managers; [`IconSelect`](#iconselect)'s options; and both expense icon wrappers.
 
 ---
 

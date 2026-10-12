@@ -812,55 +812,67 @@ function TaxonomyPanel({
       <p className="text-sm text-muted">{helpText}</p>
       {error && <p className="text-sm text-red-400">{error}</p>}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <label className="block text-sm">
-          <span className="mb-1 block font-medium text-ink">Name</span>
-          <input value={name} onChange={(event) => setName(event.target.value)} className={INPUT_CLASS} />
-        </label>
-        <label className="block text-sm">
-          <span className="mb-1 block font-medium text-ink">Description</span>
-          <input
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-            className={INPUT_CLASS}
-          />
-        </label>
-      </div>
+      {/* One box around the whole "add and tidy" half of the card, so it reads
+          as a unit distinct from the filter and the list below it. A real
+          `fieldset`/`legend` rather than a styled div — these controls are a
+          form group, and the legend names it for a screen reader too. Matches
+          the bordered group in account/view.tsx. */}
+      <fieldset className="rounded-md border border-line p-3">
+        <legend className="px-1 text-sm font-medium text-ink">
+          Add {kind === "category" ? "a category" : "a tag"}
+        </legend>
 
-      {/* Both buttons on one wrapping row: adding one by hand and filling in the
-          blanks for the whole list are the two things you do from here. */}
-      <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" onClick={handleCreate} disabled={name.trim() === ""}>
-          Add {kind === "category" ? "category" : "tag"}
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={handleAutopopulate}
-          disabled={autopopulating || missingIcons === 0}
-          title={
-            missingIcons === 0
-              ? `Every ${kind} already has an icon`
-              : `Draw an icon for the ${missingIcons} with none yet, leaving existing icons alone`
-          }
-        >
-          {autopopulating ? "Drawing…" : `Autopopulate icon for ${kind}`}
-        </Button>
-        {/* Finds the rows no entry uses and ticks them — it never deletes. Sits
-            with the other whole-list actions rather than by the Delete button,
-            because what it does is *select*, not destroy. */}
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={handleCleanUp}
-          disabled={cleaning || items.length === 0}
-          title={`Find ${plural} that no entry uses and tick them for review`}
-        >
-          {cleaning ? "Checking…" : "Clean up"}
-        </Button>
-        {autopopulateResult && <span className="text-sm text-muted">{autopopulateResult}</span>}
-        {cleanupResult && <span className="text-sm text-muted">{cleanupResult}</span>}
-      </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-ink">Name</span>
+            <input value={name} onChange={(event) => setName(event.target.value)} className={INPUT_CLASS} />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-ink">Description</span>
+            <input
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              className={INPUT_CLASS}
+            />
+          </label>
+        </div>
+
+        {/* All three buttons on one wrapping row: adding one by hand, filling in
+            the blanks for the whole list, and finding the unused ones are the
+            things you do from here. */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Button size="sm" onClick={handleCreate} disabled={name.trim() === ""}>
+            Add {kind === "category" ? "category" : "tag"}
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={handleAutopopulate}
+            disabled={autopopulating || missingIcons === 0}
+            title={
+              missingIcons === 0
+                ? `Every ${kind} already has an icon`
+                : `Draw an icon for the ${missingIcons} with none yet, leaving existing icons alone`
+            }
+          >
+            {autopopulating ? "Drawing…" : `Autopopulate icon for ${kind}`}
+          </Button>
+          {/* Finds the rows no entry uses and ticks them — it never deletes. Sits
+              with the other whole-list actions rather than by the Delete button,
+              because what it does is *select*, not destroy. */}
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={handleCleanUp}
+            disabled={cleaning || items.length === 0}
+            title={`Find ${plural} that no entry uses and tick them for review`}
+          >
+            {cleaning ? "Checking…" : "Clean up"}
+          </Button>
+          {autopopulateResult && <span className="text-sm text-muted">{autopopulateResult}</span>}
+          {cleanupResult && <span className="text-sm text-muted">{cleanupResult}</span>}
+        </div>
+      </fieldset>
 
       {/* Sits directly above the list it narrows, so it reads as belonging to the
           rows rather than to the Add form above it. Only worth showing once

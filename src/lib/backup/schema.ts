@@ -2,12 +2,18 @@
 // and the CLI can send passes through here before it reaches a use-case.
 
 import { z } from "zod";
-import { BACKUP_INTERVALS, MAX_KEEP_COUNT, MIN_KEEP_COUNT } from "./types";
+import { MAX_KEEP_COUNT, MIN_KEEP_COUNT } from "./types";
 
-// No cast: `BACKUP_INTERVALS` is an `as const` tuple, so `z.enum` keeps the literal
-// union and `backupSettingsInputSchema` infers `interval: BackupInterval` rather
-// than `string`. Casting it to `[string, ...string[]]` is what broke the build.
-export const backupIntervalSchema = z.enum(BACKUP_INTERVALS);
+// The cadence halves are the "Hello, world!" job's, re-exported rather than
+// redeclared -- the constraints are identical (a whole number 1..1000 and one of a
+// closed set of units), and a second copy would be a second thing to keep in step
+// with `INTERVAL_UNITS`. Same reasoning as the re-exports in `./types`.
+//
+// Imported as well as re-exported: the object schemas below compose them, and a
+// bare `export ... from` would not bring them into this module's own scope.
+import { intervalCountSchema, intervalUnitSchema } from "@/lib/hello-world/schema";
+
+export { intervalCountSchema, intervalUnitSchema };
 
 /**
  * How many archives to keep.
@@ -47,8 +53,37 @@ export const backupSettingsInputSchema = z.object({
   attachmentRoot: backupFolderSchema,
   databaseRoot: backupFolderSchema,
   keepCount: keepCountSchema,
-  interval: backupIntervalSchema,
+  intervalCount: intervalCountSchema,
+  intervalUnit: intervalUnitSchema,
   startTime: startTimeSchema,
 });
+
+/**
+ * Just the schedule half of the form, for the Background Tasks screen.
+ *
+ * A separate schema rather than a `.pick()` because the two screens now own
+ * disjoint halves of these settings: Backup Data owns the folders and the keep
+ * count, Background Tasks owns the switch and the cadence. Each saves only what it
+ * renders, so neither can blank a field it never showed.
+ */
+export const backupScheduleInputSchema = z.object({
+  enabled: z.boolean(),
+  intervalCount: intervalCountSchema,
+  intervalUnit: intervalUnitSchema,
+  startTime: startTimeSchema,
+});
+
+export type BackupScheduleInput = z.infer<typeof backupScheduleInputSchema>;
+
+/**
+ * The folder half, owned by Backup Data. The complement of `backupScheduleInput`.
+ */
+export const backupFoldersInputSchema = z.object({
+  attachmentRoot: backupFolderSchema,
+  databaseRoot: backupFolderSchema,
+  keepCount: keepCountSchema,
+});
+
+export type BackupFoldersInput = z.infer<typeof backupFoldersInputSchema>;
 
 export type BackupSettingsInput = z.infer<typeof backupSettingsInputSchema>;

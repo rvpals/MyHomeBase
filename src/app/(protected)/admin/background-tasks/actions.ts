@@ -3,6 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
+import {
+  BACKUP_SETTING_KEYS,
+  backupScheduleInputSchema,
+  type BackupScheduleInput,
+} from "@/lib/backup";
 import { runDataBackupNow } from "@/lib/backup/backup-runner";
 import { runExpenseAutoImport } from "@/lib/expense/auto-import-runner";
 import {
@@ -233,6 +238,38 @@ export async function saveHelloWorldSettingsAction(
     return toErrorResult(error, "Failed to save the Hello, world! settings.");
   }
   revalidatePath(BACKGROUND_TASKS_PATH);
+  return { ok: true };
+}
+
+/**
+ * Persists the Data backup's switch, cadence and anchor time — and only those.
+ *
+ * A partial save for the same reason as the Expense one above: the two backup
+ * folders and the keep count stay on Administration → Configuration → Backup Data,
+ * which is configuration of *what* to back up rather than of *when*. Writing the
+ * whole entry list from here would mean this form owned three fields it does not
+ * render, and would blank them.
+ *
+ * Both paths are revalidated because Backup Data still shows a last-run line and
+ * links here, so its cached render describes a schedule this call just changed.
+ */
+export async function saveBackupScheduleAction(
+  input: BackupScheduleInput,
+): Promise<ActionResult> {
+  try {
+    await requireAdmin();
+    const validated = backupScheduleInputSchema.parse(input);
+    updateSettings(deps.settingsRepo, [
+      { key: BACKUP_SETTING_KEYS.enabled, value: validated.enabled ? "true" : "false" },
+      { key: BACKUP_SETTING_KEYS.intervalCount, value: String(validated.intervalCount) },
+      { key: BACKUP_SETTING_KEYS.intervalUnit, value: validated.intervalUnit },
+      { key: BACKUP_SETTING_KEYS.startTime, value: validated.startTime },
+    ]);
+  } catch (error) {
+    return toErrorResult(error, "Failed to save the backup schedule.");
+  }
+  revalidatePath(BACKGROUND_TASKS_PATH);
+  revalidatePath("/admin/configuration/backup");
   return { ok: true };
 }
 

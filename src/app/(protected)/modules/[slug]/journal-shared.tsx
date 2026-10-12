@@ -2,6 +2,7 @@
 // one of the section views so importing a helper never drags a whole screen
 // with it. Mirrors expense-shared.tsx.
 
+import { TaxonomyIcon } from "@/components/taxonomy-icon";
 import type { JournalCategory, JournalTag } from "@/lib/journal";
 
 type TaxonomyKind = "category" | "tag";
@@ -72,7 +73,13 @@ export function journalEntriesFilterHref(kind: TaxonomyKind, name: string): stri
   return `${base}?filter=${encodeURIComponent(`${field} = ${name}`)}`;
 }
 
-/** A category's or tag's icon at label size, with its name as a hover hint. */
+/**
+ * A category's or tag's icon at label size, with its name as a hover hint.
+ *
+ * Now a thin wrapper over the shared `TaxonomyIcon` — the markup it used to own
+ * was one of six near-identical copies across the app. Kept as a named export
+ * because the journal call sites read `name`/`url` in that order.
+ */
 export function TaxonomyIconThumbnail({
   name,
   url,
@@ -82,15 +89,5 @@ export function TaxonomyIconThumbnail({
   url?: string;
   className?: string;
 }) {
-  if (!url) return null;
-  return (
-    // eslint-disable-next-line @next/next/no-img-element -- icon bytes are served from our own DB-backed route, not a static asset next/image can optimize.
-    <img
-      src={url}
-      alt={name}
-      title={name}
-      loading="lazy"
-      className={`h-5 w-5 shrink-0 rounded border border-line object-cover ${className}`}
-    />
-  );
+  return <TaxonomyIcon url={url} name={name} className={className} />;
 }

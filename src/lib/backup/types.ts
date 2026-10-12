@@ -4,25 +4,32 @@
 // The settings live in `sys_app_settings` rather than on a module, because this
 // job belongs to no module -- see the note on `BACKUP_SETTING_KEYS` in settings.ts.
 
+// Imported as well as re-exported below: `BackupSettings` names the type, and a
+// bare `export ... from` would not bring it into this module's own scope.
+import type { IntervalUnit } from "@/lib/hello-world/types";
+
 /**
- * How often a backup runs, in the order the admin screen offers them.
+ * The cadence vocabulary, borrowed whole from the "Hello, world!" job.
  *
- * The array is the source and the union is derived from it, not the other way
- * round. Annotating this `readonly BackupInterval[]` would widen each element back
- * to `string` as far as `z.enum` is concerned, and the schema would then infer
- * `interval: string` — which does not satisfy `BackupSettings`. Same shape as
- * `REFRESH_INTERVALS` in `src/lib/scheduled-refresh/types.ts`.
+ * Re-exported rather than redeclared: the unit list, the labels and the
+ * minutes-per-unit table are the same facts for every job that runs on a count plus
+ * a unit, and a second copy here would be a second thing to keep in step. The
+ * heartbeat floor matters just as much to a backup as to a heartbeat -- the
+ * scheduler ticks once a minute whatever either job asks for.
+ *
+ * This replaced a fixed `BACKUP_INTERVALS` enum of hourly/daily/weekly/monthly.
+ * The stored `backup_interval` key is superseded by `backup_interval_count` and
+ * `backup_interval_unit` (migrations/0138) and is no longer read.
  */
-export const BACKUP_INTERVALS = ["hourly", "daily", "weekly", "monthly"] as const;
-
-export type BackupInterval = (typeof BACKUP_INTERVALS)[number];
-
-export const BACKUP_INTERVAL_LABELS: Record<BackupInterval, string> = {
-  hourly: "Every hour",
-  daily: "Every day",
-  weekly: "Every week",
-  monthly: "Every month",
-};
+export {
+  INTERVAL_UNITS,
+  INTERVAL_UNIT_LABELS,
+  MAX_INTERVAL_COUNT,
+  MIN_HEARTBEAT_MINUTES,
+  MIN_INTERVAL_COUNT,
+  unitToMinutes,
+} from "@/lib/hello-world/types";
+export type { IntervalUnit } from "@/lib/hello-world/types";
 
 /** The fewest and most backups a reader may ask to keep. */
 export const MIN_KEEP_COUNT = 1;
@@ -46,8 +53,16 @@ export interface BackupSettings {
   databaseRoot: string;
   /** How many database archives to keep. Older ones are deleted after a good write. */
   keepCount: number;
-  interval: BackupInterval;
-  /** The time of day the schedule is anchored to, as `HH:MM` in 24h local time. */
+  /** The number half of the cadence: "every <count> <unit>". */
+  intervalCount: number;
+  intervalUnit: IntervalUnit;
+  /**
+   * The time of day the schedule is anchored to, as `HH:MM` in 24h local time.
+   *
+   * Kept when the fixed interval enum gave way to a count and a unit: it is what
+   * makes "every 1 day" mean 02:00 rather than "24h after whenever this was first
+   * armed". It anchors the *first* run only -- see `shouldRunNow`.
+   */
   startTime: string;
 }
 

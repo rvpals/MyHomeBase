@@ -10,14 +10,15 @@
 
 import { revalidatePath } from "next/cache";
 import {
-  backupSettingsInputSchema,
-  backupSettingsToEntries,
+  BACKUP_SETTING_KEYS,
+  NO_FOLDER,
+  backupFoldersInputSchema,
   describeBackupPreflight,
   loadBackupSettings,
   runDataBackupNow,
   checkBackupReady,
+  type BackupFoldersInput,
   type BackupRunSummary,
-  type BackupSettingsInput,
 } from "@/lib/backup";
 import { requireAdmin } from "@/app/(protected)/require-access";
 import { updateSettings } from "@/lib/settings";
@@ -35,14 +36,37 @@ function toErrorResult(error: unknown, fallback: string): ActionResult {
   return { ok: false, error: error instanceof Error ? error.message : fallback };
 }
 
-/** Saves the whole form. Validation is the schema's, so the boundary is one call. */
-export async function saveBackupSettingsAction(
-  input: BackupSettingsInput,
+/**
+ * Saves the two folders and the keep count — and only those three keys.
+ *
+ * A partial save, not a whole-form one. The schedule (the switch, the cadence and
+ * the anchor time) is owned by Administration → Background Tasks now, so writing
+ * the full entry list from here would blank three fields this screen does not
+ * render. Each screen saves exactly what it shows; that is what makes the split
+ * safe. Same reasoning as `saveAutoImportScheduleAction` leaving the Expense
+ * watched folder alone.
+ *
+ * `NO_FOLDER` is written for a blank path rather than `""`: `settingUpdateSchema`
+ * rejects an empty value, so a reader could otherwise never clear a path they had
+ * already set. `resolveBackupSettings` maps it back.
+ */
+export async function saveBackupFoldersAction(
+  input: BackupFoldersInput,
 ): Promise<ActionResult> {
   try {
     await requireAdmin();
-    const validated = backupSettingsInputSchema.parse(input);
-    updateSettings(deps.settingsRepo, backupSettingsToEntries(validated));
+    const validated = backupFoldersInputSchema.parse(input);
+    updateSettings(deps.settingsRepo, [
+      {
+        key: BACKUP_SETTING_KEYS.attachmentRoot,
+        value: validated.attachmentRoot.trim() === "" ? NO_FOLDER : validated.attachmentRoot.trim(),
+      },
+      {
+        key: BACKUP_SETTING_KEYS.databaseRoot,
+        value: validated.databaseRoot.trim() === "" ? NO_FOLDER : validated.databaseRoot.trim(),
+      },
+      { key: BACKUP_SETTING_KEYS.keepCount, value: String(validated.keepCount) },
+    ]);
     revalidatePath(BACKUP_PATH);
     revalidatePath("/admin/background-tasks");
     return { ok: true, message: "Backup settings saved." };

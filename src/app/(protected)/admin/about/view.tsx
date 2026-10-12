@@ -813,19 +813,12 @@ export function AboutView({
               ))}
             </div>
 
-            {/* Memory in two rows: system RAM on its own, then the two process
-                figures beside each other. Both collapse to one column on a phone. */}
-            <div className="mt-4 grid grid-cols-1 gap-4">
-              <UsageMeter
-                label={ramMeter.label}
-                used={ramMeter.usedBytes}
-                total={ramMeter.totalBytes}
-                caption={ramMeter.caption}
-                formatValue={formatBytes}
-              />
-            </div>
-            <div className="card-grid mt-4 gap-4">
-              {processMeters.map((meter) => (
+            {/* The three memory meters share one row: system RAM, then the two
+                process figures. An explicit 3-column grid rather than `card-grid`
+                — auto-fit would wrap the third meter onto its own line at this
+                card's width. `max-lg:grid-cols-1` stacks them on a phone. */}
+            <div className="mt-4 grid grid-cols-3 gap-4 max-lg:grid-cols-1">
+              {[ramMeter, ...processMeters].map((meter) => (
                 <UsageMeter
                   key={meter.label}
                   label={meter.label}

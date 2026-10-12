@@ -41,7 +41,8 @@ function backupSettings(overrides: Partial<BackupSettings> = {}): BackupSettings
     attachmentRoot: "D:/backup/attachments",
     databaseRoot: "D:/backup/db",
     keepCount: 7,
-    interval: "daily",
+    intervalCount: 1,
+    intervalUnit: "day",
     startTime: "17:00",
     ...overrides,
   };

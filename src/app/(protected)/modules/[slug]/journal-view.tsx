@@ -8,6 +8,8 @@ import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { RankBar } from "@/components/rank-bar";
 import { SlotIcon } from "@/components/slot-icon";
+import { TaxonomyChip, TaxonomyIcon } from "@/components/taxonomy-icon";
+import { useIsCompact } from "@/components/viewport-context";
 import { getIconSlot } from "@/lib/icons";
 import type {
   JournalEntry,
@@ -16,7 +18,7 @@ import type {
   JournalWordCount,
   JournalYearCount,
 } from "@/lib/journal";
-import { journalEntriesFilterHref, TaxonomyIconThumbnail } from "./journal-shared";
+import { journalEntriesFilterHref } from "./journal-shared";
 
 // Resolved once at module scope — `getIconSlot` reads the static registry, no I/O. The
 // non-null assertions are safe because slots.test.ts asserts each id is registered.
@@ -79,9 +81,19 @@ interface SqlResultRow {
   cells: unknown[];
 }
 
-// One ranked taxonomy list inside the Statistics card. Local to this view —
-// Top Tags and Top Categories are the only two, and they differ only in their
-// heading, glyph and the filter link each row points at.
+// One taxonomy summary inside the Statistics card. Local to this view — Top Tags
+// and Top Categories are the only two, and they differ only in their heading,
+// glyph and the filter link each entry points at.
+//
+// **Two genuinely different shapes, not one restyled.** Full draws a tile grid
+// (icon above name above count); compact draws a row of chips. That is why this
+// reads `useIsCompact()` rather than leaning on `max-lg:` variants — design.md
+// licenses the hook exactly when the small screen needs a different component.
+//
+// Both shapes deliberately drop the rank number and the `RankBar` the old list
+// carried: the count under each tile is the ranking signal now, and the entries
+// still arrive sorted, so reading order carries the rest. Confirmed with Min
+// before building — the tiles were chosen knowing the bars go away.
 function TaxonomyList({
   heading,
   icon,
@@ -100,10 +112,7 @@ function TaxonomyList({
   /** Name -> uploaded icon URL. Names without an icon are simply absent. */
   iconUrls: Record<string, string>;
 }) {
-  // Every bar is read against the first row, which is the largest because the
-  // top-N query returns them sorted. `?? 0` covers the empty list, where the
-  // early return below means no bar is drawn anyway.
-  const topCount = counts[0]?.entryCount ?? 0;
+  const isCompact = useIsCompact();
 
   return (
     <section>
@@ -113,41 +122,50 @@ function TaxonomyList({
       </h3>
       {counts.length === 0 ? (
         <p className="mt-2 text-sm text-muted">{emptyMessage}</p>
+      ) : isCompact ? (
+        // Chips wrap to as many lines as they need. No fixed column, so a long
+        // name costs its own width rather than widening every row.
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {counts.map((count) => (
+            <TaxonomyChip
+              key={count.name}
+              url={iconUrls[count.name]}
+              name={count.name}
+              href={hrefFor(count.name)}
+              title={titleFor(count.name)}
+            />
+          ))}
+        </div>
       ) : (
-        <ul className="mt-3 flex flex-col gap-2">
-          {counts.map((count, index) => (
-            <li key={count.name} className="flex items-center gap-2 text-sm">
-              <span className="w-5 shrink-0 text-right font-mono text-xs text-muted">
-                {index + 1}.
-              </span>
-              {/* The uploaded icon, if this tag/category has one. Rows without
-                  one still reserve the width, so the names stay in one column. */}
-              {iconUrls[count.name] ? (
-                <TaxonomyIconThumbnail name={count.name} url={iconUrls[count.name]} />
-              ) : (
-                <span aria-hidden="true" className="h-5 w-5 shrink-0" />
-              )}
+        // `auto-fill` rather than a fixed column count: this card is one cell of
+        // a 2x2 grid, so its width changes with the viewport and a hard
+        // `grid-cols-5` would either overflow or leave a gap.
+        <ul className="mt-3 grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(5rem,1fr))]">
+          {counts.map((count) => (
+            <li key={count.name}>
               {/* A real Link, so middle-click and ⌘-click open the filtered
                   list in a new tab like any other navigation. */}
               <Link
                 href={hrefFor(count.name)}
                 title={titleFor(count.name)}
-                className="min-w-0 flex-1 truncate text-ink hover:text-brass-dark hover:underline"
+                className="flex h-full flex-col items-center gap-1.5 rounded-xl border border-line px-1 py-2.5 transition-colors hover:border-brass"
               >
-                {count.name}
+                {/* `spacer` keeps a tile with no icon the same height as its
+                    neighbours, so the grid rows stay level. */}
+                <TaxonomyIcon
+                  url={iconUrls[count.name]}
+                  name={count.name}
+                  size="lg"
+                  fallback="spacer"
+                />
+                <span className="w-full truncate text-center text-xs text-ink">{count.name}</span>
+                <span
+                  title={`${count.entryCount} ${count.entryCount === 1 ? "entry" : "entries"}`}
+                  className="font-mono text-[0.625rem] font-semibold leading-none text-muted"
+                >
+                  {count.entryCount.toLocaleString("en-US")}
+                </span>
               </Link>
-              {/* Relative amount, measured against the most-used name in this
-                  list. Hidden narrow for the same reason as the word list's. */}
-              <RankBar value={count.entryCount} max={topCount} className="max-lg:hidden" />
-              {/* The count sits right beside the name rather than at the far
-                  edge — a fixed-size circle, so a 4-digit total doesn't stretch
-                  into a pill and break the column of dots. */}
-              <span
-                title={`${count.entryCount} ${count.entryCount === 1 ? "entry" : "entries"}`}
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brass-soft font-mono text-[0.625rem] font-semibold leading-none text-brass-dark"
-              >
-                {count.entryCount}
-              </span>
             </li>
           ))}
         </ul>

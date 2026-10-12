@@ -2,7 +2,8 @@
 // that index re-exports the runner, which reaches into the composition root.
 import {
   BACKUP_SETTING_KEYS,
-  DEFAULT_BACKUP_INTERVAL,
+  DEFAULT_INTERVAL_COUNT as DEFAULT_BACKUP_INTERVAL_COUNT,
+  DEFAULT_INTERVAL_UNIT as DEFAULT_BACKUP_INTERVAL_UNIT,
   DEFAULT_KEEP_COUNT,
   DEFAULT_START_TIME,
 } from "@/lib/backup/settings";
@@ -133,9 +134,20 @@ export const DEFAULT_APP_SETTINGS: Setting[] = [
       "How many database archives to keep. Older ones are deleted after a successful backup.",
   },
   {
-    key: BACKUP_SETTING_KEYS.interval,
-    value: DEFAULT_BACKUP_INTERVAL,
-    description: "How often the backup runs: hourly, daily, weekly or monthly.",
+    // The cadence is a count plus a unit since migrations/0138, replacing a fixed
+    // hourly/daily/weekly/monthly enum. The superseded `backup_interval` key is
+    // deliberately absent from this list: "Reset to Default" should not resurrect a
+    // key nothing reads.
+    key: BACKUP_SETTING_KEYS.intervalCount,
+    value: String(DEFAULT_BACKUP_INTERVAL_COUNT),
+    description:
+      'How many of the interval unit between backups. With the unit, "every 1 day".',
+  },
+  {
+    key: BACKUP_SETTING_KEYS.intervalUnit,
+    value: DEFAULT_BACKUP_INTERVAL_UNIT,
+    description:
+      "The interval unit: second, minute, hour, day or week. Under a minute runs once a minute -- the scheduler checks every 60s.",
   },
   {
     key: BACKUP_SETTING_KEYS.startTime,
