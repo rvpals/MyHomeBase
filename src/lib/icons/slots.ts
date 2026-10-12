@@ -602,17 +602,6 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
-    // Not in JOURNAL_SECTION_ICONS -- the shell synthesises this accordion heading to
-    // wrap the three Locations children, so it needs a slot of its own.
-    id: "journal_section_locations_group",
-    label: "Locations (group)",
-    group: "Journal sections",
-    where: "Journal → section panel → the Locations group header (wraps Location Manager, Location Map and Location Meta Data).",
-    defaultConcept: "map",
-    wired: true,
-    namespace: "tree",
-  },
-  {
     // Migration 0131. Marks the *place* an encrypted entry occupies, which is
     // why it is a slot rather than a bare glyph: the badge says "this entry is
     // sealed" wherever the entry appears.
@@ -633,33 +622,6 @@ export const ICON_SLOTS: IconSlot[] = [
     group: "Journal sections",
     where: "Journal → entry viewer → the Encrypt button in the footer toolbar.",
     defaultConcept: "lock",
-    wired: true,
-    namespace: "tree",
-  },
-  {
-    id: "journal_section_locations",
-    label: "Location Manager",
-    group: "Journal sections",
-    where: "Journal → section panel → Locations → Location Manager.",
-    defaultConcept: "pin",
-    wired: true,
-    namespace: "tree",
-  },
-  {
-    id: "journal_section_location_map",
-    label: "Location Map",
-    group: "Journal sections",
-    where: "Journal → section panel → Locations → Location Map.",
-    defaultConcept: "map",
-    wired: true,
-    namespace: "tree",
-  },
-  {
-    id: "journal_section_location_metadata",
-    label: "Location Meta Data",
-    group: "Journal sections",
-    where: "Journal → section panel → Locations → Location Meta Data.",
-    defaultConcept: "shapes",
     wired: true,
     namespace: "tree",
   },
@@ -1735,6 +1697,50 @@ export const ICON_SLOTS: IconSlot[] = [
     // `clipboard`, matching `tools_section_todo` -- the admin screen and the module
     // section administer the same thing and should read as the same thing.
     defaultConcept: "clipboard",
+    wired: true,
+    namespace: "tree",
+  },
+  // --- Admin -> Locations (migration 0140) ---------------------------------
+  //
+  // The application-wide saved-location library. These four ids replace the
+  // four `journal_section_location*` slots that migration 0141 retired with the
+  // journal's own library -- they are deliberately NOT the same ids, so an icon
+  // uploaded for the old journal sections does not silently reappear here.
+  {
+    // Not in any sections map -- the admin nav synthesises this heading to wrap
+    // the three children, so it needs a slot of its own.
+    id: "admin_section_locations",
+    label: "Locations (group)",
+    group: "Admin navigation",
+    where: "Admin → section panel → the Locations group header (wraps Location Manager, Location Map and Location Meta Data).",
+    defaultConcept: "pin",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "admin_section_locations_manager",
+    label: "Location Manager",
+    group: "Admin navigation",
+    where: "Admin → section panel → Locations → Location Manager.",
+    defaultConcept: "pin",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "admin_section_locations_map",
+    label: "Location Map",
+    group: "Admin navigation",
+    where: "Admin → section panel → Locations → Location Map.",
+    defaultConcept: "map",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "admin_section_locations_metadata",
+    label: "Location Meta Data",
+    group: "Admin navigation",
+    where: "Admin → section panel → Locations → Location Meta Data.",
+    defaultConcept: "shapes",
     wired: true,
     namespace: "tree",
   },

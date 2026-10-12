@@ -146,6 +146,41 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-10-12 — Release (application-wide saved locations, street address on entry pins, journal location library retired)
+
+**Migrations 0139–0141 must be applied on the NAS, in order.** 0141 deletes the journal's saved places and cannot be undone — the NAS DB was backed up first. Test 1–3 first (they prove the migrations landed); the phone-only check is 17.
+
+- [ ] **1.** Administration lists a **Locations** group with Location Manager, Location Map and Location Meta Data, and each opens
+- [ ] **2.** Location Meta Data shows the categories and tags carried over from the old journal library, with their icons
+- [ ] **3.** Location Manager starts empty (no places), and the filter chips show the carried-over categories and tags
+- [ ] **4.** Location Manager: Add a location (search a street address, pick a result, name it, save) and it appears in the list
+- [ ] **5.** Location Manager: edit a place, change its category and tag, save, and the row updates
+- [ ] **6.** Location Manager: delete a place and it goes without a usage warning
+- [ ] **7.** Location Map shows saved places as pins and narrows by category and tag
+- [ ] **8.** Merging & Dedup: two near-identical places at one spot are offered as a group, and merging leaves one with both sets of categories and tags
+- [ ] **9.** Location Meta Data: add, rename and delete a category and a tag, and upload, generate and clear an icon
+- [ ] **10.** Journal → Location Manager, Location Map and Location Meta Data are gone from the Journal navigation, and no Locations group remains
+- [ ] **11.** New Entry: the location picker has a **Street address** box with the hint "full street address"
+- [ ] **12.** New Entry: clicking the map fills the street address, and searching a street address then picking a result fills it too
+- [ ] **13.** New Entry: save with a pin, reopen the entry in Edit, and the coordinates and street address are both there
+- [ ] **14.** Edit Entry: change only the entry text, save, and the pin's street address is not cleared
+- [ ] **15.** New Entry and Edit Entry: **"+"** on a pin adds it to Administration → Locations → Location Manager with its coordinates, name and address, then shows a tick
+- [ ] **16.** New Entry and Edit Entry: **Add from the location database** lists saved places, filters by name, category and tag, and picking one fills coordinates, name and address
+- [ ] **17.** Phone width: the pin row (name, coordinates, address, "+", remove) wraps without overflowing, and the picker's filter chips scroll or wrap
+- [ ] **18.** Recycle Bin: delete an entry that has a street address and restore it. The pin comes back, **without** its address (known gap, migration 0139)
+- [ ] **19.** Existing entries with pins still open and show their coordinates after migration 0141
+
+## 2026-10-11 — Release (flexible backup cadence, TaxonomyIcon, capped chip rows)
+
+**Migration 0138 must be applied on the NAS first.** Don't point Backup Data at anything but a scratch folder.
+
+- [ ] **1.** Administration → Configuration → Backup Data: the interval is a number plus a unit (second to week), and saving 6 hours or 3 days sticks
+- [ ] **2.** Backup Data: an existing hourly, daily, weekly or monthly choice shows as the matching count and unit after the migration
+- [ ] **3.** Background Tasks: the Data backup's next run respects the start time for the first run, then the cadence from the last run
+- [ ] **4.** Journal home: Top Tags and Top Categories draw as tile grids with their icons, and Top 10 Words still draws as a rank bar
+- [ ] **5.** Journal Meta Data and Expense categories and vendors draw their uploaded icons through the same component, at a consistent size
+- [ ] **6.** A chip row with more chips than fit shows a **+N** marker, and the marker is absent when nothing overflows
+
 ## 2026-10-10 — Release (Data backup, Hello world job, run history, scheduler fix, script fonts, UTC + local times)
 
 **Migrations 0134–0137 must be applied on the NAS first** (0135 creates a table). Test the scheduler items (1–3) first — the timers never fired before this release. Don't point Backup Data at anything but a scratch folder until 9–10 pass.

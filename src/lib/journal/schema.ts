@@ -19,8 +19,8 @@ export const entryLocationSchema = z.object({
   latitude: z.number(),
   longitude: z.number(),
   locationName: z.string(),
+  streetAddress: z.string().optional(),
   sortOrder: z.number().int().nonnegative(),
-  savedLocationId: z.number().int().positive().optional(),
 });
 
 export const journalEntrySchema = z.object({
@@ -55,9 +55,10 @@ export const entryLocationInputSchema = z.object({
   latitude: z.number(),
   longitude: z.number(),
   locationName: z.string().default(""),
-  // Which library row this was picked from, when it was picked rather than
-  // dropped. Optional so the CSV and ICS importers need no change at all.
-  savedLocationId: z.number().int().positive().optional(),
+  // The full street address, when one was captured. Optional because a pin
+  // dropped on the map may have none, and so the CSV and ICS importers — which
+  // supply no address — need no change at all.
+  streetAddress: z.string().optional(),
 });
 
 export type EntryLocationInput = z.input<typeof entryLocationInputSchema>;

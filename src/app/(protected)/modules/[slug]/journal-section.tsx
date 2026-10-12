@@ -24,14 +24,10 @@ import {
   resolveJournalPreferences,
   type JournalPrefillField,
 } from "@/lib/journal";
-import {
-  countLocationsByCategory,
-  countLocationsByTag,
-  listLocationCategories,
-  listLocationTags,
-  listSavedLocations,
-  type LocationTaxonomyKind,
-} from "@/lib/journal-locations";
+// The entry form's location picker offers these names as filter chips. They
+// come from the application-wide library (migration 0140) now that the
+// journal's own jrn_location* tables are gone (0141).
+import { listLocationCategories, listLocationTags } from "@/lib/sys-locations";
 import {
   getReportWithDetails,
   listReports,
@@ -45,15 +41,12 @@ import { deps } from "@/lib/wiring";
 import { JOURNAL_SECTION_INFO, type JournalSection } from "./journal-sections";
 import { JournalCalendarPanel } from "./journal-calendar-panel";
 import { JournalEntriesPanel } from "./journal-entries-panel";
-import { journalTaxonomyIconUrlsByName, locationTaxonomyIconUrl } from "./journal-shared";
+import { journalTaxonomyIconUrlsByName } from "./journal-shared";
 import { JournalShell } from "./journal-shell";
 import { JournalHomeHeader } from "./journal-search-view";
 import { JournalCorrectPanel } from "./journal-correct-panel";
 import { JournalCalendarImportView } from "./journal-calendar-import-view";
 import { JournalImportView } from "./journal-import-view";
-import { JournalLocationMapView } from "./journal-location-map-view";
-import { JournalLocationTaxonomyView } from "./journal-location-taxonomy-view";
-import { JournalLocationsView } from "./journal-locations-view";
 import {
   JournalMetadataBackupButton,
   JournalMetadataRestoreCard,
@@ -74,28 +67,6 @@ const TOP_TAXONOMY_LIMIT = 10;
 // "Top 10 most frequently used words". Scanning every entry's text is the cost
 // of this figure — there is no cache, so it is recomputed per render.
 const TOP_WORD_LIMIT = 10;
-
-/**
- * Location category/tag name -> icon URL, for the screens that render a place's
- * taxonomy as bare strings (the Location Manager's chips, the map's pins).
- *
- * A plain record rather than a Map because it crosses the server/client boundary
- * into a client component, and a Map doesn't survive that serialization. Only
- * names that actually have an icon get an entry, so a lookup miss means "no
- * icon" without needing a second flag.
- */
-function locationIconMap(kind: LocationTaxonomyKind): Record<string, string> {
-  const rows =
-    kind === "category"
-      ? listLocationCategories(deps.savedLocationRepo)
-      : listLocationTags(deps.savedLocationRepo);
-  const urls: Record<string, string> = {};
-  for (const row of rows) {
-    const url = locationTaxonomyIconUrl(kind, row);
-    if (url) urls[row.name] = url;
-  }
-  return urls;
-}
 
 function SectionBody({
   section,
@@ -172,10 +143,10 @@ function SectionBody({
           tagOptions={listTags(deps.journalRepo).map((tag) => tag.name)}
           preferences={preferences}
           prefillTemplates={listEnabledPrefillTemplates(deps.journalRepo)}
-          locationCategoryOptions={listLocationCategories(deps.savedLocationRepo).map(
+          locationCategoryOptions={listLocationCategories(deps.sysLocationRepo).map(
             (row) => row.name,
           )}
-          locationTagOptions={listLocationTags(deps.savedLocationRepo).map((row) => row.name)}
+          locationTagOptions={listLocationTags(deps.sysLocationRepo).map((row) => row.name)}
         />
       );
     }
@@ -292,77 +263,6 @@ function SectionBody({
           templates={listPrefillTemplates(deps.journalRepo)}
           suggestions={suggestions}
         />
-      );
-    }
-
-    case "locations": {
-      // The counts feed the filter chips; the manager needs only the names, but
-      // reading them from the same two calls keeps this screen and the Meta Data
-      // one from disagreeing about which lists exist.
-      return (
-        <JournalLocationsView
-          locations={listSavedLocations(deps.savedLocationRepo)}
-          categoryOptions={countLocationsByCategory(deps.savedLocationRepo).map((row) => row.name)}
-          tagOptions={countLocationsByTag(deps.savedLocationRepo).map((row) => row.name)}
-          categoryIcons={locationIconMap("category")}
-          tagIcons={locationIconMap("tag")}
-        />
-      );
-    }
-
-    case "location-map":
-      // The same list the manager reads. The map filters it down client-side
-      // through the search action, so the server hands over the unfiltered set
-      // once rather than on every chip.
-      return (
-        <JournalLocationMapView
-          locations={listSavedLocations(deps.savedLocationRepo)}
-          categoryOptions={countLocationsByCategory(deps.savedLocationRepo).map((row) => row.name)}
-          tagOptions={countLocationsByTag(deps.savedLocationRepo).map((row) => row.name)}
-          categoryIcons={locationIconMap("category")}
-          tagIcons={locationIconMap("tag")}
-        />
-      );
-
-    case "location-metadata": {
-      // The editor wants both halves: the descriptions (from the taxonomy rows)
-      // and the usage counts (from the count queries). Joined here by name
-      // rather than in a third repository method, since this is the only screen
-      // that needs them together.
-      // iconMimeType and updatedAt ride along so the list can build each row's
-      // icon URL — the mime type says whether there *is* one, updatedAt busts
-      // the cache when it's replaced. The bytes stay behind the route.
-      const withCounts = (
-        rows: {
-          name: string;
-          description: string;
-          iconMimeType?: string;
-          updatedAt: string;
-        }[],
-        counts: { name: string; count: number }[],
-      ) =>
-        rows.map((row) => ({
-          name: row.name,
-          description: row.description,
-          iconMimeType: row.iconMimeType,
-          updatedAt: row.updatedAt,
-          count: counts.find((entry) => entry.name === row.name)?.count ?? 0,
-        }));
-      // In a card, open by default — the same presentation the entry-side
-      // Categories & Tags editor gets, since it is the same kind of screen.
-      return (
-        <CollapsibleCard title="Location categories & tags" defaultOpen>
-          <JournalLocationTaxonomyView
-            categories={withCounts(
-              listLocationCategories(deps.savedLocationRepo),
-              countLocationsByCategory(deps.savedLocationRepo),
-            )}
-            tags={withCounts(
-              listLocationTags(deps.savedLocationRepo),
-              countLocationsByTag(deps.savedLocationRepo),
-            )}
-          />
-        </CollapsibleCard>
       );
     }
 

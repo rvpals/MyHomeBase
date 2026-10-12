@@ -26,7 +26,6 @@ import { importJournalCsvCommand } from "./import-journal-csv";
 import { importRecipesCsvCommand } from "./import-recipes-csv";
 import { importJournalIcsCommand } from "./import-journal-ics";
 import { journalCalendarCommand } from "./journal-calendar";
-import { journalLocationsCommand } from "./journal-locations";
 import { journalBulkEditCommand } from "./journal-bulk-edit";
 import { journalSameDateCommand } from "./journal-same-date";
 import { journalTaxonomyCommand } from "./journal-taxonomy";
@@ -91,7 +90,6 @@ const commands: Record<string, Command> = {
   "import-journal-ics": importJournalIcsCommand,
   "journal-bulk-edit": journalBulkEditCommand,
   "journal-calendar": journalCalendarCommand,
-  "journal-locations": journalLocationsCommand,
   "journal-same-date": journalSameDateCommand,
   "journal-taxonomy": journalTaxonomyCommand,
   "journal-reports": journalReportsCommand,

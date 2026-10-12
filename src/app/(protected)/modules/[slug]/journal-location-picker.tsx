@@ -2,8 +2,11 @@
 
 import { useState } from "react";
 import { Button } from "@/components/button";
-import { isDuplicateLocation } from "@/lib/journal-locations";
-import type { JournalLocationInput } from "./journal-actions";
+import { isDuplicateLocation } from "@/lib/sys-locations";
+import {
+  addEntryLocationToLibraryAction,
+  type JournalLocationInput,
+} from "./journal-actions";
 import { JournalLocationField, type PickedLocation } from "./journal-location-field";
 import { JournalLocationLibraryPicker } from "./journal-location-library-picker";
 
@@ -46,6 +49,29 @@ export function JournalLocationPicker({
   // a row click *is* the add, so there is nothing to disable there, and one
   // mechanism for both tabs beats two.
   const [duplicateNotice, setDuplicateNotice] = useState<string | null>(null);
+  // Which rows have been pushed to the shared library this session, by index,
+  // and which one is in flight. Index rather than id: an entry location has no
+  // id until the entry is saved, and the list is short and stable while open.
+  //
+  // Not persisted: reopening the form forgets, which is the honest state —
+  // nothing links an entry pin to a library row (migration 0141), so the form
+  // cannot know whether a place is already there.
+  const [savedToLibrary, setSavedToLibrary] = useState<Set<number>>(new Set());
+  const [savingIndex, setSavingIndex] = useState<number | null>(null);
+
+  async function addToLibrary(index: number) {
+    setSavingIndex(index);
+    try {
+      const result = await addEntryLocationToLibraryAction(value[index]);
+      if (result.ok) {
+        setSavedToLibrary((previous) => new Set(previous).add(index));
+      } else {
+        window.alert(result.error);
+      }
+    } finally {
+      setSavingIndex(null);
+    }
+  }
 
   function addDraft() {
     if (!draft) return;
@@ -53,6 +79,9 @@ export function JournalLocationPicker({
       latitude: draft.latitude,
       longitude: draft.longitude,
       locationName: draft.name,
+      // Saved only when the lookup actually produced one — a hand-dropped pin
+      // with no answer stays address-less rather than storing a blank.
+      streetAddress: draft.streetAddress?.trim() || undefined,
     };
     // Coordinates decide it, not the name — see `isDuplicateLocation`. The draft
     // is deliberately left in place so it is obvious nothing was lost.
@@ -98,15 +127,34 @@ export function JournalLocationPicker({
                 <span className="ml-2 font-mono text-xs text-muted">
                   {formatCoords(location.latitude, location.longitude)}
                 </span>
-                {/* Says where this one came from, because the two are not
-                    interchangeable later: a saved place can be looked up and
-                    corrected in the manager, a dropped pin cannot. */}
-                {location.savedLocationId !== undefined && (
-                  <span className="ml-2 rounded-full border border-line px-2 py-0.5 text-xs text-muted">
-                    saved
+                {location.streetAddress && (
+                  <span className="mt-0.5 block text-xs text-muted">
+                    {location.streetAddress}
                   </span>
                 )}
               </span>
+              {/* Saves this pin into the shared library. A tick once it is in,
+                  rather than hiding the control: the row stays the same shape,
+                  and the state is only "this session added it" — nothing links
+                  a pin to a library row, so it cannot claim more than that. */}
+              <button
+                type="button"
+                onClick={() => addToLibrary(index)}
+                disabled={savingIndex !== null || savedToLibrary.has(index)}
+                aria-label={
+                  savedToLibrary.has(index)
+                    ? `"${location.locationName || "This location"}" was added to the location library`
+                    : `Add "${location.locationName || "this location"}" to the location library`
+                }
+                title={
+                  savedToLibrary.has(index)
+                    ? "Added to the location library"
+                    : "Add to the location library"
+                }
+                className="shrink-0 rounded-md border border-line px-2 py-0.5 text-sm text-muted transition-colors enabled:hover:border-brass enabled:hover:text-brass disabled:cursor-default disabled:opacity-40"
+              >
+                {savedToLibrary.has(index) ? "✓" : savingIndex === index ? "…" : "+"}
+              </button>
               <button
                 type="button"
                 onClick={() => removeLocation(index)}
@@ -150,7 +198,7 @@ export function JournalLocationPicker({
 
       {source === "map" ? (
         <>
-          <JournalLocationField value={draft} onChange={setDraft} />
+          <JournalLocationField value={draft} onChange={setDraft} showAddress />
           {draft && (
             <div>
               <Button size="sm" onClick={addDraft}>

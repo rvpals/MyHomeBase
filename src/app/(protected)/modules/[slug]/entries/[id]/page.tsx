@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { getEntry, getEntryNeighbors, listCategories, listTags } from "@/lib/journal";
-import { listLocationCategories, listLocationTags } from "@/lib/journal-locations";
+import { listLocationCategories, listLocationTags } from "@/lib/sys-locations";
 import { getModuleBySlug } from "@/lib/modules";
 import { userHasModuleAccess } from "@/lib/user";
 import { deps } from "@/lib/wiring";
@@ -63,10 +63,10 @@ export default async function JournalEntryPage({
           tagIcons={tagIcons}
           categoryOptions={categories.map((category) => category.name)}
           tagOptions={tags.map((tag) => tag.name)}
-          locationCategoryOptions={listLocationCategories(deps.savedLocationRepo).map(
+          locationCategoryOptions={listLocationCategories(deps.sysLocationRepo).map(
             (row) => row.name,
           )}
-          locationTagOptions={listLocationTags(deps.savedLocationRepo).map((row) => row.name)}
+          locationTagOptions={listLocationTags(deps.sysLocationRepo).map((row) => row.name)}
         />
       </div>
     </JournalShell>

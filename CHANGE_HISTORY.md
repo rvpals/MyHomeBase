@@ -1,5 +1,87 @@
 # Change History
 
+## 2026-10-12 — Application-wide saved locations, street address on entry pins, journal location library retired
+
+**Migrations 0139–0141 must be applied on the NAS, in order.** 0139 adds a column, 0140
+creates five tables, and **0141 is destructive and irreversible**: it drops the journal's
+saved places. The NAS database was backed up before this release.
+
+### Saved places are application-wide now (migration 0140)
+
+- New `sys_locations` family: `sys_locations`, `sys_location_categories`,
+  `sys_location_tags`, and the two link tables. `sys_` rather than `jrn_` because places
+  belong to no module and are meant to be picked from several.
+- New library `src/lib/sys-locations`, grown out of the journal's own. It reads no module's
+  tables: no importer, no "which entries use this?" list. `usageCount` is a constant 0 until
+  a module references places.
+- New screens under **Administration → Locations** (admin-only): Location Manager, Location
+  Map, Location Meta Data at `/admin/locations/{manager,map,metadata}`, plus the Merging &
+  Dedup dialog and icon routes at `/api/admin/locations/*`.
+- Migration 0140 copied the category and tag lists across **with their uploaded icons**.
+  The places themselves were not copied; the library starts empty by request.
+- Four new icon slots, `admin_section_locations` and `..._manager`, `..._map`,
+  `..._metadata`.
+
+### The journal's own location library is gone (migration 0141)
+
+- Dropped `jrn_locations`, `jrn_location_categories`, `jrn_location_tags` and both link
+  tables, and rebuilt `jrn_entry_locations` without `saved_location_id`.
+- Removed `src/lib/journal-locations` (18 files), the `journal-locations` CLI command, the
+  eight Journal location screens, the three Locations sections and group from the Journal's
+  navigation, and the four `journal_section_location*` icon slots.
+- **Anything uploaded for those four slots is orphaned.** The new admin slots are different
+  ids on purpose, so nothing reappears under a new screen.
+- An entry keeps its own copy of each pin (coordinates, name, address) and nothing links it
+  back to a library row, so retiring the library cannot change any entry.
+
+### Street address on an entry's pin (migration 0139)
+
+- `jrn_entry_locations.street_address`, nullable. NULL means no address was captured.
+- The entry picker has a **Street address** box (hint "full street address"), filled by a
+  map click or a search result and editable. Search accepts a street address.
+- Editing an entry round-trips the address.
+- **Recycle Bin does not carry it:** an entry deleted and restored comes back without
+  street addresses, because `jrn_recycled_entry_locations` has no such column.
+
+### Entry form ↔ library
+
+- **"+" on each pin** copies it (coordinates, name, address) into `sys_locations`. It does
+  not deduplicate; Merging & Dedup is where that call is made.
+- **Add from the location database** now reads `sys_locations`, filtered by name, category
+  and tag, and copies coordinates, name and address onto the entry.
+
+### Build fixes found on the way
+
+- A pure URL builder and a database read shared one file that a client component imported,
+  pulling `better-sqlite3` and `sharp` into the browser bundle. Split into `shared.tsx`
+  (pure) and `icon-map.ts` (server-only).
+- `FilterChip` and `formatCoords` moved to `admin/locations/filter-chip.tsx` so the entry
+  form no longer imports the whole Manager view for two helpers.
+
+## 2026-10-11 — Flexible backup cadence, TaxonomyIcon, capped chip rows
+
+**Migration 0138 must be applied on the NAS.** It seeds two `sys_app_settings` rows and
+rewrites one description; the code reads defaults when they are absent, so a missed
+migration degrades rather than breaks.
+
+### Data backup cadence is a count plus a unit (migration 0138)
+
+- The fixed interval enum (hourly, daily, weekly, monthly) is replaced by the same
+  count-plus-unit cadence Hello, world! uses, so a backup can run every 6 hours or every
+  3 days. Seeded as `backup_interval_count` = 1 and `backup_interval_unit` = `day`.
+- `backup_interval` is superseded, not removed, and an existing choice is mapped onto the
+  new pair. `backup_start_time` still anchors the first run.
+
+### One component for uploaded icons
+
+- New `TaxonomyIcon`, with `TaxonomyChip` and `TaxonomyChipRow`, replaces `<img>` markup
+  copy-pasted in six places (journal tags and categories, expense categories and vendors).
+  Registered in `components.md`.
+- New `src/lib/shared/chip-overflow.ts`, a pure "shown vs. hidden" split with a colocated
+  test, behind the `+N` marker on a capped chip row.
+- The journal home's Top Tags and Top Categories are tile grids now; the rank bar remains
+  for Top 10 Words.
+
 ## 2026-10-10 — Data backup, Hello world job, run history, scheduler fix, script fonts, UTC + local times
 
 **Migrations 0134–0137 must be applied on the NAS.** 0135 creates `sys_scheduled_run_history`

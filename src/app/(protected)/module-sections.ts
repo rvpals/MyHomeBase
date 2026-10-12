@@ -56,7 +56,6 @@ import {
 import {
   JOURNAL_CONFIGURATION_SECTIONS,
   JOURNAL_DATA_MANAGEMENT_SECTIONS,
-  JOURNAL_LOCATION_SECTIONS,
   JOURNAL_SECTIONS,
   JOURNAL_SECTION_ICONS,
   JOURNAL_SECTION_INFO,
@@ -114,7 +113,6 @@ function toSections<Slug extends string>(
  * `journal-shell.tsx` builds its accordion from, so the two can't drift.
  */
 const JOURNAL_GROUPS: Partial<Record<(typeof JOURNAL_SECTIONS)[number], string>> = {
-  ...Object.fromEntries(JOURNAL_LOCATION_SECTIONS.map((slug) => [slug, "Locations"])),
   ...Object.fromEntries(JOURNAL_DATA_MANAGEMENT_SECTIONS.map((slug) => [slug, "Data Management"])),
   ...Object.fromEntries(JOURNAL_CONFIGURATION_SECTIONS.map((slug) => [slug, "Configuration"])),
 };

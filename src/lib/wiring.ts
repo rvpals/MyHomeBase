@@ -42,7 +42,7 @@ import { SqliteInvestmentAccountRepository } from "./investment-accounts/reposit
 import { SharpIconImageProcessor } from "./icons/image-processor";
 import { SqliteIconOverridesRepository } from "./icons/repository";
 import { SqliteJournalRepository } from "./journal/repository";
-import { SqliteSavedLocationRepository } from "./journal-locations/repository";
+import { SqliteSavedLocationRepository as SqliteSysLocationRepository } from "./sys-locations/repository";
 import { SqliteJournalReportRepository } from "./journal-reports/repository";
 import { NodePhotoFileStore } from "./journal-photos/file-store";
 import { YahooFinanceClient } from "./market-data/yahoo-finance-client";
@@ -221,10 +221,11 @@ export const deps = {
   // lazily imported — see the class comment for why that matters on the NAS.
   carouselImageProcessor: new SharpCarouselImageProcessor(),
   journalRepo: new SqliteJournalRepository(db),
-  // The Journal's saved-location library (migration 0101). A repository of its
-  // own rather than more methods on journalRepo: the library owns its own five
-  // tables and nothing in the journal's reads consults them.
-  savedLocationRepo: new SqliteSavedLocationRepository(db),
+  // The application-wide saved-location library (migration 0140), behind
+  // Admin → Locations. These places belong to no module, which is why they are
+  // sys_ tables rather than a module's; the journal's own jrn_location* family
+  // was retired by migration 0141.
+  sysLocationRepo: new SqliteSysLocationRepository(db),
   // Journal Reports (migration 0132). Its own repository rather than more
   // methods on journalRepo: it owns jrn_reports and jrn_report_details, and the
   // journal's own reads never consult either.

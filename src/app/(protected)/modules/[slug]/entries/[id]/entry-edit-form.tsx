@@ -67,16 +67,54 @@ export function JournalEntryEditForm({
       longitude: location.longitude,
       locationName: location.locationName,
       // Carried through, because `updateEntry` rewrites the whole aggregate:
-      // a location not resubmitted with its provenance would come back as a
-      // hand-dropped pin after any edit to the text.
-      savedLocationId: location.savedLocationId,
+      // an edit that did not resubmit the address would silently clear it.
+      streetAddress: location.streetAddress,
     })),
   );
-  const [removeWeather, setRemoveWeather] = useState(false);
+  // Weather is edited as free text, not just kept or dropped. Held as three
+  // separate strings rather than a Weather object because a half-typed
+  // temperature ("-" or "") is not a number yet, and the field has to let the
+  // user get there. They are folded back into a Weather on save.
+  const [weatherTemp, setWeatherTemp] = useState(
+    entry.weather ? String(entry.weather.temp) : "",
+  );
+  const [weatherUnit, setWeatherUnit] = useState(entry.weather?.unit ?? "");
+  const [weatherDescription, setWeatherDescription] = useState(entry.weather?.description ?? "");
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
 
+  // The temperature is the anchor, matching the repository: an entry has weather
+  // only when it has a temperature. Clearing the field removes the reading, so
+  // the checkbox this replaced is no longer needed. A non-numeric temperature is
+  // rejected on save rather than silently dropping the whole reading.
+  const trimmedTemp = weatherTemp.trim();
+  const parsedTemp = trimmedTemp === "" ? undefined : Number(trimmedTemp);
+  const isTempValid = parsedTemp === undefined || Number.isFinite(parsedTemp);
+  const typedWeather =
+    parsedTemp === undefined || !Number.isFinite(parsedTemp)
+      ? undefined
+      : {
+          temp: parsedTemp,
+          unit: weatherUnit.trim(),
+          description: weatherDescription.trim(),
+          // Preserved only while this stays the reading that was fetched. Once
+          // the numbers are typed over, the old WMO code would describe weather
+          // that is no longer on the entry, so it goes back to 0 -- the same
+          // value the repository reads back for a row that never had one.
+          code:
+            entry.weather &&
+            parsedTemp === entry.weather.temp &&
+            weatherUnit.trim() === entry.weather.unit &&
+            weatherDescription.trim() === entry.weather.description
+              ? entry.weather.code
+              : 0,
+        };
+
   async function handleSave() {
+    if (!isTempValid) {
+      setError("Temperature must be a number, or empty to record no weather.");
+      return;
+    }
     setIsBusy(true);
     setError(undefined);
     try {
@@ -112,8 +150,7 @@ export function JournalEntryEditForm({
         categories,
         tags,
         locations,
-        // Carried through untouched unless the user asks to remove it.
-        weather: removeWeather ? undefined : entry.weather,
+        weather: typedWeather,
         isPinned,
       });
       if (!result.ok) {
@@ -181,16 +218,49 @@ export function JournalEntryEditForm({
         Pinned
       </label>
 
-      {entry.weather && (
-        <label className="flex flex-wrap items-center gap-2 text-sm text-ink">
-          <input type="checkbox" checked={removeWeather} onChange={(event) => setRemoveWeather(event.target.checked)} />
-          Remove the recorded weather
-          <span className="text-xs text-muted">
-            (currently {entry.weather.temp}
-            {entry.weather.unit} · {entry.weather.description})
-          </span>
-        </label>
-      )}
+      {/* Typed by hand, because an entry written up later -- or one from a place
+          the forecast API never covered -- still had weather. Three fields on one
+          row on desktop; they stack on a phone, where a narrow temperature box
+          beside a narrow description box would be unusable. */}
+      <fieldset className="flex flex-col gap-2">
+        <legend className="mb-1 text-sm font-medium text-ink">Weather</legend>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[6rem_6rem_1fr]">
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs text-muted">Temperature</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={weatherTemp}
+              onChange={(event) => setWeatherTemp(event.target.value)}
+              placeholder="18"
+              className={INPUT_CLASS}
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs text-muted">Unit</span>
+            <input
+              type="text"
+              value={weatherUnit}
+              onChange={(event) => setWeatherUnit(event.target.value)}
+              placeholder="°C"
+              className={INPUT_CLASS}
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs text-muted">Description</span>
+            <input
+              type="text"
+              value={weatherDescription}
+              onChange={(event) => setWeatherDescription(event.target.value)}
+              placeholder="Light rain"
+              className={INPUT_CLASS}
+            />
+          </label>
+        </div>
+        <p className="text-xs text-muted">
+          Clear the temperature to record no weather for this entry.
+        </p>
+      </fieldset>
 
       <JournalLocationPicker
         value={locations}

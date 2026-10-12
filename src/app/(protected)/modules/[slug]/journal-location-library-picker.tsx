@@ -1,20 +1,22 @@
 "use client";
 
-// "Add from the location database": searches the saved-location library by
-// name, description or address and adds the chosen place to the entry.
+// "Add from the location database": searches the application-wide
+// sys_locations library by name, description or address — narrowed by category
+// and tag chips — and adds the chosen place to the entry.
 //
-// The chosen place is *copied* onto the entry — coordinates and name — with
-// `savedLocationId` recorded as provenance. That is why editing a library row
-// later never moves an entry that already used it (migration 0101).
+// The chosen place is *copied* onto the entry: coordinates, name and street
+// address. No provenance id is kept (migration 0141 dropped
+// saved_location_id), so an entry is a standalone record of where you were and
+// editing the saved place later never moves it.
 //
-// Route-local rather than registered: only the Journal has a location library.
+// Route-local rather than registered: only the entry form renders this.
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
-import type { SavedLocationWithUsage } from "@/lib/journal-locations";
+import type { SavedLocationWithUsage } from "@/lib/sys-locations";
 import type { JournalLocationInput } from "./journal-actions";
-import { searchSavedLocationsAction } from "./journal-locations-actions";
-import { FilterChip, formatCoords } from "./journal-locations-view";
+import { searchSysLocationsAction } from "./journal-actions";
+import { FilterChip, formatCoords } from "@/app/(protected)/admin/locations/filter-chip";
 
 const INPUT_CLASS =
   "w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
@@ -52,7 +54,7 @@ export function JournalLocationLibraryPicker({
     const timer = setTimeout(async () => {
       if (cancelled) return;
       setIsLoading(true);
-      const result = await searchSavedLocationsAction({
+      const result = await searchSysLocationsAction({
         query,
         categories: activeCategories,
         tags: activeTags,
@@ -84,7 +86,9 @@ export function JournalLocationLibraryPicker({
       // The entry keeps the library's name at the time of writing. If the place
       // is renamed later, this entry still says what it was called that day.
       locationName: place.name,
-      savedLocationId: place.id,
+      // Copied now, like the name above: the entry keeps the address the place
+      // had on the day. Blank in the library means no address, not "".
+      streetAddress: place.address.trim() || undefined,
     });
   }
 
@@ -130,7 +134,7 @@ export function JournalLocationLibraryPicker({
 
       {places.length === 0 ? (
         <p className="text-sm text-muted">
-          {isLoading ? "Searching…" : "No saved places match. Add some under Locations → Location Manager."}
+          {isLoading ? "Searching…" : "No saved places match. Add some under Administration → Locations → Location Manager."}
         </p>
       ) : (
         <ul className="flex max-h-72 flex-col overflow-y-auto rounded-md border border-line">

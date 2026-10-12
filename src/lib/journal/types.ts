@@ -16,16 +16,15 @@ export interface EntryLocation {
   latitude: number;
   longitude: number;
   locationName: string;
-  sortOrder: number;
   /**
-   * The `jrn_locations` row this point was copied from, or undefined when the
-   * pin was dropped by hand (every location written before migration 0101).
+   * The full street address for this pin, or undefined when none was captured.
    *
-   * Provenance, not a join: the coordinates and name above are this entry's own
-   * copy and stay put even if the library row is edited or deleted. See the
-   * 0101 migration log for why history must not move.
+   * The entry's own copy, written when the pin was added — not a live read of
+   * `jrn_locations.address`. A library row corrected later does not change what
+   * an entry says. See migration 0139.
    */
-  savedLocationId?: number;
+  streetAddress?: string;
+  sortOrder: number;
 }
 
 // An entry is an aggregate: it carries its own categories, tags, and locations

@@ -59,6 +59,12 @@ import { getModuleBySlug } from "@/lib/modules";
 import { saveModuleSettings } from "@/lib/module-settings";
 import type { ImageUploadInput } from "@/lib/shared/image-upload";
 import { getCurrentWeather, type CurrentWeather, type TemperatureUnit } from "@/lib/weather";
+import {
+  createSavedLocation,
+  searchSavedLocations,
+  type LocationSearchInput,
+  type SavedLocationWithUsage,
+} from "@/lib/sys-locations";
 import { deps } from "@/lib/wiring";
 import { requireModuleAccess } from "../../require-access";
 import { diagnosePhotoArchive, type PhotoArchiveDiagnosis } from "@/lib/journal-photos";
@@ -121,11 +127,10 @@ export interface JournalLocationInput {
   longitude: number;
   locationName: string;
   /**
-   * Set when the point was picked from the saved-location library rather than
-   * dropped on the map. Recorded as provenance only — the coordinates and name
-   * above are the entry's own copy. See migration 0101.
+   * The full street address for this pin, when one was captured. The entry's
+   * own copy, not a live read of the library row. See migration 0139.
    */
-  savedLocationId?: number;
+  streetAddress?: string;
 }
 
 export interface EntryWeatherInput {
@@ -874,4 +879,72 @@ export async function adjacentEntryDateAction(
   } catch (error) {
     return toErrorResult(error, "Could not find a neighbouring entry.");
   }
+}
+
+// --- The shared location library -----------------------------------------------
+//
+// The entry form reads and writes sys_locations (migration 0140), the
+// application-wide library behind Admin → Locations. The Journal's own
+// jrn_location* family was retired by migration 0141.
+//
+// Both actions gate on the journal module, not on admin: they are called from
+// the entry form, so a reader who can write an entry can use them.
+
+export interface SysLocationsResult extends ActionResult {
+  locations?: SavedLocationWithUsage[];
+}
+
+/**
+ * The saved places matching a query and/or category and tag filters.
+ *
+ * An action rather than a page read because the picker narrows the list
+ * interactively — on every keystroke and on every chip.
+ */
+export async function searchSysLocationsAction(
+  input: LocationSearchInput,
+): Promise<SysLocationsResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
+  try {
+    return { ok: true, locations: searchSavedLocations(deps.sysLocationRepo, input) };
+  } catch (error) {
+    return toErrorResult(error, "Failed to search saved locations.");
+  }
+}
+
+/**
+ * Saves one of this entry's pins into the shared library — the "+" on a
+ * location row.
+ *
+ * The pin itself is untouched: this copies outward, so the entry keeps its own
+ * coordinates, name and address whatever happens to the library row afterwards.
+ * No link is recorded in either direction (migration 0141).
+ *
+ * Pressing "+" twice creates two places, as does adding a place that is already
+ * there under another name. Deliberate: coordinates alone cannot tell "the same
+ * place twice" from "two shops at one address", and the Location Manager's
+ * Merging & Dedup screen is where that judgement belongs.
+ */
+export async function addEntryLocationToLibraryAction(
+  location: JournalLocationInput,
+): Promise<ActionResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
+  try {
+    createSavedLocation(deps.sysLocationRepo, {
+      name: location.locationName,
+      latitude: location.latitude,
+      longitude: location.longitude,
+      address: location.streetAddress ?? "",
+      description: "",
+      categories: [],
+      tags: [],
+    });
+  } catch (error) {
+    return toErrorResult(error, "Failed to add this location to the library.");
+  }
+  // The three Admin screens, so a place added here shows up there without a
+  // reload. The entry form holds its own list in client state and does not
+  // re-read on this action.
+  revalidatePath("/admin/locations/manager");
+  revalidatePath("/admin/locations/map");
+  return { ok: true };
 }

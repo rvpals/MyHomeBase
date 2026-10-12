@@ -76,10 +76,10 @@ interface LocationRow {
   latitude: number;
   longitude: number;
   location_name: string;
+  // Migration 0139. NULL for every row written before it, and for any pin
+  // added without an address lookup.
+  street_address?: string | null;
   sort_order: number;
-  // Migration 0101. NULL for every row written before the location library
-  // existed, and for any pin still dropped by hand on the map.
-  saved_location_id?: number | null;
 }
 
 interface PairingRow {
@@ -180,8 +180,8 @@ function locationToDomain(row: LocationRow): EntryLocation {
     latitude: row.latitude,
     longitude: row.longitude,
     locationName: row.location_name,
+    streetAddress: row.street_address ?? undefined,
     sortOrder: row.sort_order,
-    savedLocationId: row.saved_location_id ?? undefined,
   });
 }
 
@@ -1578,7 +1578,7 @@ export class SqliteJournalRepository implements JournalRepository {
 
     const insertLocation = this.db.prepare(
       `INSERT INTO jrn_entry_locations
-         (entry_id, latitude, longitude, location_name, sort_order, saved_location_id)
+         (entry_id, latitude, longitude, location_name, street_address, sort_order)
        VALUES (?, ?, ?, ?, ?, ?)`,
     );
     input.locations.forEach((location, index) => {
@@ -1587,8 +1587,8 @@ export class SqliteJournalRepository implements JournalRepository {
         location.latitude,
         location.longitude,
         location.locationName,
+        location.streetAddress ?? null,
         index,
-        location.savedLocationId ?? null,
       );
     });
   }

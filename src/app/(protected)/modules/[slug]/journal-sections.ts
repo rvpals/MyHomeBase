@@ -20,12 +20,6 @@ export const JOURNAL_SECTIONS = [
   "configuration",
   "templates",
   "metadata",
-  // The Locations group. These three slugs are load-bearing: the section icon
-  // slots derive from them (`journal_section_locations` and friends), so
-  // renaming one silently orphans an uploaded icon override.
-  "locations",
-  "location-map",
-  "location-metadata",
 ] as const;
 
 export type JournalSection = (typeof JOURNAL_SECTIONS)[number];
@@ -99,18 +93,6 @@ export const JOURNAL_SECTION_INFO: Record<JournalSection, { label: string; descr
     label: "Meta Data",
     description: "Categories and tags, and the icons that stand for them.",
   },
-  locations: {
-    label: "Location Manager",
-    description: "Saved places you can pick from when writing an entry.",
-  },
-  "location-map": {
-    label: "Location Map",
-    description: "Every saved place on one map, filtered by category and tag.",
-  },
-  "location-metadata": {
-    label: "Location Meta Data",
-    description: "Categories and tags for places — what a place *is*.",
-  },
 };
 
 /**
@@ -153,22 +135,6 @@ export const JOURNAL_DATA_MANAGEMENT_SECTIONS: readonly JournalSection[] = [
   "recycle-bin",
 ];
 
-/**
- * The sections under the "Locations" group heading, in panel order.
- *
- * Same arrangement as the two groups above: the heading is synthesised in
- * `journal-shell.tsx` and has no route of its own, so "Locations" is a label
- * rather than a destination.
- *
- * The manager comes first because it is where places are created — the map and
- * the taxonomy editor both read what it writes.
- */
-export const JOURNAL_LOCATION_SECTIONS: readonly JournalSection[] = [
-  "locations",
-  "location-map",
-  "location-metadata",
-];
-
 /** Section → nav icon key, resolved by TreeIcon. */
 export const JOURNAL_SECTION_ICONS: Record<JournalSection, string> = {
   main: "grid",
@@ -203,13 +169,6 @@ export const JOURNAL_SECTION_ICONS: Record<JournalSection, string> = {
   // categories, which is the same idea this section edits, not a collision with
   // another destination.
   metadata: "shapes",
-  // A single pin — one saved place. The folded map beside it is many at once,
-  // which is exactly the choice the reader makes between these two rows.
-  locations: "pin",
-  "location-map": "map",
-  // `shapes`, echoing the entry Meta Data section: the same idea (the managed
-  // category and tag lists) applied to places rather than to writing.
-  "location-metadata": "shapes",
 };
 
 const BASE_PATH = "/modules/journal";

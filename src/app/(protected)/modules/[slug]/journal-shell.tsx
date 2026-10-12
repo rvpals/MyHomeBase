@@ -24,7 +24,6 @@ import { MessageQueueHost } from "../../message-queue-host";
 import {
   JOURNAL_CONFIGURATION_SECTIONS,
   JOURNAL_DATA_MANAGEMENT_SECTIONS,
-  JOURNAL_LOCATION_SECTIONS,
   JOURNAL_SECTIONS,
   JOURNAL_SECTION_ICONS,
   JOURNAL_SECTION_INFO,
@@ -88,20 +87,9 @@ export async function JournalShell({ children }: { children: ReactNode }) {
   const grouped = new Set<string>([
     ...JOURNAL_CONFIGURATION_SECTIONS,
     ...JOURNAL_DATA_MANAGEMENT_SECTIONS,
-    ...JOURNAL_LOCATION_SECTIONS,
   ]);
   const sections: SectionNode[] = [
     ...JOURNAL_SECTIONS.filter((section) => !grouped.has(section)).map(toNode),
-    {
-      // `locations-group`, not `locations` — the child section already owns that
-      // slug, and `SectionPanel` derives each node's icon slot from its id
-      // (`journal_section_locations_group` vs `journal_section_locations`).
-      id: "locations-group",
-      label: "Locations",
-      hint: "Places you save once and pick from later.",
-      icon: "map",
-      children: JOURNAL_LOCATION_SECTIONS.map(toNode),
-    },
     {
       id: "import-group",
       label: "Data Management",

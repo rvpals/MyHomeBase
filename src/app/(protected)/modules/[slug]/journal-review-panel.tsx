@@ -15,7 +15,7 @@ import {
   listTags,
   resolveJournalPreferences,
 } from "@/lib/journal";
-import { listLocationCategories, listLocationTags } from "@/lib/journal-locations";
+import { listLocationCategories, listLocationTags } from "@/lib/sys-locations";
 import { listModuleSettingsFor } from "@/lib/module-settings";
 import { getModuleBySlug } from "@/lib/modules";
 import { deps } from "@/lib/wiring";
@@ -51,10 +51,10 @@ export function JournalReviewPanel() {
       tagOptions={tags.map((tag) => tag.name)}
       preferences={preferences}
       prefillTemplates={listEnabledPrefillTemplates(deps.journalRepo)}
-      locationCategoryOptions={listLocationCategories(deps.savedLocationRepo).map(
+      locationCategoryOptions={listLocationCategories(deps.sysLocationRepo).map(
         (row) => row.name,
       )}
-      locationTagOptions={listLocationTags(deps.savedLocationRepo).map((row) => row.name)}
+      locationTagOptions={listLocationTags(deps.sysLocationRepo).map((row) => row.name)}
     />
   );
 }

@@ -46,9 +46,9 @@ Two things this table deliberately does *not* claim:
 | Area | Nodes |
 |---|---|
 | Top level (Home, Account) | 2 |
-| Module sections (10 modules) | 56 |
-| Administration | 22 |
-| **Total reachable nodes** | **80** |
+| Module sections (10 modules) | 53 |
+| Administration | 26 |
+| **Total reachable nodes** | **81** |
 
 Plus the 10 module landing headings themselves (`/modules/<slug>`), which are the same
 address as each module's `main` section — counted once, as the `main` row.
@@ -105,13 +105,13 @@ group becomes a label between rows rather than a second accordion.
 | Preferences | `configuration` | Configuration | `/modules/journal/configuration` | Preferences for how your journal works. |
 | Templates | `templates` | Configuration | `/modules/journal/templates` | Define different templates used in the journal module. |
 | Meta Data | `metadata` | Configuration | `/modules/journal/metadata` | Categories and tags, and the icons that stand for them. |
-| Location Manager | `locations` | Locations | `/modules/journal/locations` | Saved places you can pick from when writing an entry. |
-| Location Map | `location-map` | Locations | `/modules/journal/location-map` | Every saved place on one map, filtered by category and tag. |
-| Location Meta Data | `location-metadata` | Locations | `/modules/journal/location-metadata` | Categories and tags for places — what a place *is*. |
 
-The three Locations slugs and `new-entry` and `import` are load-bearing: the section icon
-slots derive from them (`journal_section_locations` and friends), so renaming one silently
-orphans an uploaded icon override.
+`new-entry` and `import` are load-bearing: the section icon slots derive from them, so
+renaming one silently orphans an uploaded icon override.
+
+Journal no longer has a Locations group. Its three sections and the `journal_section_location*`
+icon slots were retired with the journal's own location library (migration 0141); saved
+places now live under **Administration → Locations**.
 
 ## CSV Analysis — `/modules/csv-analysis`
 
@@ -230,7 +230,7 @@ Users, modules, appearance and diagnostics. Icon `shield`.
 **Not a module** — it has no `sys_modules` row, so `buildNavigationTree` cannot produce it
 from the module list. It is declared as `ADMIN_TREE_MODULE` and appended by `NavTree`.
 
-`Configuration` and `Display Settings` are **pure headings with no route of their own**;
+`Configuration`, `Display Settings` and `Locations` are **pure headings with no route of their own**;
 their boxes render an unclickable header. `Daily Quote` is the one group heading that also
 has its own page, which is why `All Quotes` exists as an explicit child — a group heading
 in `SectionPanel` renders as a disclosure button and drops its href, so without that child
@@ -248,6 +248,9 @@ the listing was reachable only from the home dashboard's Daily Quote widget.
 | Border Weight | Display Settings | `/admin/display-settings/borders` | Set how thick the application's borders are drawn |
 | Chrome Style | Display Settings | `/admin/display-settings/chrome` | Set the border treatment for the header and the navigation tree |
 | Scratchpad Categories | Display Settings | `/admin/display-settings/scratchpad` | Set the tabs the Scratchpad shows, for everyone |
+| Location Manager | Locations | `/admin/locations/manager` | Saved places you can pick from across the application |
+| Location Map | Locations | `/admin/locations/map` | Every saved place on one map, filtered by category and tag |
+| Location Meta Data | Locations | `/admin/locations/metadata` | Categories and tags for places -- what a place *is* |
 | User Management | — | `/admin/user-management` | Manage users, roles, and module access |
 | All Quotes | Daily Quote | `/admin/daily-quote` | Browse, edit and delete every quote in the collection |
 | Add Quote | Daily Quote | `/admin/daily-quote/add` | Add a single quote by hand |
@@ -272,7 +275,7 @@ Three kinds of id in this table are **permanent once shipped**, because somethin
 persisted derives from them:
 
 1. **Section slugs** — `SectionPanel` derives each section's icon slot id from the slug
-   (`journal_section_locations`), so renaming a slug orphans any uploaded icon override.
+   (e.g. `journal_section_templates`), so renaming a slug orphans any uploaded icon override.
 2. **`adminNav` node ids** — same derivation. This is why the Display Settings children
    keep `configuration-*` ids and routes under `/admin/configuration/` even though they
    are grouped under Display Settings: it was a regrouping of the nav, not a move of the

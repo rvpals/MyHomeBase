@@ -7,11 +7,17 @@ import type { GeoPlace } from "@/lib/geocoding";
 import { reverseGeocodeAction, searchPlacesAction } from "./journal-actions";
 import type { LatLng } from "@/components/location-map";
 
-// One picked point: coordinates plus an (optional) human-readable name.
+// One picked point: coordinates plus an (optional) human-readable name, and
+// the street address the lookup returned for it when there was one.
 export interface PickedLocation {
   latitude: number;
   longitude: number;
   name: string;
+  /**
+   * The full street address for this point, or undefined when no lookup has
+   * answered for it yet. Callers that only need a point ignore it.
+   */
+  streetAddress?: string;
 }
 
 // Leaflet touches `window`, so the map is loaded client-only.
@@ -40,9 +46,16 @@ function formatCoords(latitude: number, longitude: number): string {
 export function JournalLocationField({
   value,
   onChange,
+  showAddress = false,
 }: {
   value: PickedLocation | null;
   onChange: (next: PickedLocation | null) => void;
+  /**
+   * Shows the editable street-address box under the map. Off by default so the
+   * two existing callers — the location manager, which has its own Address
+   * field, and the Preferences card, which wants a point only — are unchanged.
+   */
+  showAddress?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<GeoPlace[]>([]);
@@ -72,7 +85,12 @@ export function JournalLocationField({
   }
 
   function selectResult(place: GeoPlace) {
-    onChange({ latitude: place.latitude, longitude: place.longitude, name: place.displayName });
+    onChange({
+      latitude: place.latitude,
+      longitude: place.longitude,
+      name: place.displayName,
+      streetAddress: place.displayName,
+    });
     setCenter({ latitude: place.latitude, longitude: place.longitude });
     setResults([]);
   }
@@ -81,7 +99,9 @@ export function JournalLocationField({
     onChange({ latitude, longitude, name: "" }); // drop the pin immediately
     const result = await reverseGeocodeAction(latitude, longitude);
     const name = result.ok && result.place ? result.place.displayName : "";
-    onChange({ latitude, longitude, name }); // then fill the suggested name
+    // The address rides along with the suggested name: both come from the same
+    // lookup, and asking again later would be a second request for one answer.
+    onChange({ latitude, longitude, name, streetAddress: name }); // then fill it in
   }
 
   return (
@@ -97,7 +117,7 @@ export function JournalLocationField({
               handleSearch();
             }
           }}
-          placeholder="Search a place, or click the map"
+          placeholder="Search a street address or place, or click the map"
           className={INPUT_CLASS}
         />
         <Button size="sm" variant="secondary" onClick={handleSearch} disabled={isSearching || query.trim() === ""}>
@@ -140,6 +160,19 @@ export function JournalLocationField({
               Clear
             </Button>
           </div>
+        </label>
+      )}
+
+      {value && showAddress && (
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-ink">Street address</span>
+          <input
+            type="text"
+            value={value.streetAddress ?? ""}
+            onChange={(event) => onChange({ ...value, streetAddress: event.target.value })}
+            placeholder="full street address"
+            className={INPUT_CLASS}
+          />
         </label>
       )}
     </div>

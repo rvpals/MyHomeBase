@@ -246,6 +246,45 @@ export const adminNav: SectionNode[] = [
     icon: "clipboard",
   },
   {
+    // A heading only, like `configuration` and `display-settings` above: the
+    // three screens live here and there is no Locations page to link to.
+    //
+    // All four ids are permanent -- `SectionPanel` derives each icon slot from
+    // the id, so renaming one later orphans any uploaded override.
+    //
+    // Administration rather than a module, because the places belong to no
+    // module: they are meant to be picked from several (migration 0140). The
+    // Journal keeps its own Location Manager until its tables are phased out.
+    id: "locations",
+    label: "Locations",
+    icon: "pin",
+    children: [
+      {
+        id: "locations-manager",
+        label: "Location Manager",
+        href: "/admin/locations/manager",
+        hint: "Saved places you can pick from across the application",
+        icon: "pin",
+      },
+      {
+        id: "locations-map",
+        label: "Location Map",
+        href: "/admin/locations/map",
+        hint: "Every saved place on one map, filtered by category and tag",
+        icon: "map",
+      },
+      {
+        id: "locations-metadata",
+        label: "Location Meta Data",
+        href: "/admin/locations/metadata",
+        hint: "Categories and tags for places -- what a place *is*",
+        // `shapes`, echoing the modules' Meta Data sections: the same idea (the
+        // managed category and tag lists) applied to places.
+        icon: "shapes",
+      },
+    ],
+  },
+  {
     id: "security",
     label: "Security",
     href: "/admin/security",

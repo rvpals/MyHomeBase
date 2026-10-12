@@ -648,7 +648,7 @@ function toWriteData(entry: JournalEntry) {
       latitude: location.latitude,
       longitude: location.longitude,
       locationName: location.locationName,
-      savedLocationId: location.savedLocationId,
+      streetAddress: location.streetAddress,
     })),
     source: entry.source,
     externalId: entry.externalId,
