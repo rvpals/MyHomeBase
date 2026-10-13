@@ -61,9 +61,16 @@ import type { ImageUploadInput } from "@/lib/shared/image-upload";
 import { getCurrentWeather, type CurrentWeather, type TemperatureUnit } from "@/lib/weather";
 import {
   createSavedLocation,
+  findLocationsAtCoordinates,
+  listSavedLocations,
+  saveLocationTaxonomy,
   searchSavedLocations,
   type LocationSearchInput,
+  type LocationTaxonomyKind,
+  type SaveLocationInput,
+  type SavedLocation,
   type SavedLocationWithUsage,
+  type UpsertLocationTaxonomyInput,
 } from "@/lib/sys-locations";
 import { deps } from "@/lib/wiring";
 import { requireModuleAccess } from "../../require-access";
@@ -912,39 +919,69 @@ export async function searchSysLocationsAction(
 }
 
 /**
- * Saves one of this entry's pins into the shared library — the "+" on a
- * location row.
+ * Saves a place into the shared library — what the "+" on an entry's location
+ * row ends up calling, through the location editor popup it opens.
  *
  * The pin itself is untouched: this copies outward, so the entry keeps its own
  * coordinates, name and address whatever happens to the library row afterwards.
  * No link is recorded in either direction (migration 0141).
  *
- * Pressing "+" twice creates two places, as does adding a place that is already
- * there under another name. Deliberate: coordinates alone cannot tell "the same
- * place twice" from "two shops at one address", and the Location Manager's
- * Merging & Dedup screen is where that judgement belongs.
+ * The caller decides whether to go ahead when something is already at the
+ * point — `findLocationsAtPointAction` below is a warning, not a gate.
  */
-export async function addEntryLocationToLibraryAction(
-  location: JournalLocationInput,
+export async function createLibraryLocationAction(
+  input: SaveLocationInput,
 ): Promise<ActionResult> {
   await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
-    createSavedLocation(deps.sysLocationRepo, {
-      name: location.locationName,
-      latitude: location.latitude,
-      longitude: location.longitude,
-      address: location.streetAddress ?? "",
-      description: "",
-      categories: [],
-      tags: [],
-    });
+    createSavedLocation(deps.sysLocationRepo, input);
   } catch (error) {
     return toErrorResult(error, "Failed to add this location to the library.");
   }
-  // The three Admin screens, so a place added here shows up there without a
-  // reload. The entry form holds its own list in client state and does not
-  // re-read on this action.
+  // The two Admin screens that list places, so one saved here shows up there
+  // without a reload. The entry form holds its own list in client state.
   revalidatePath("/admin/locations/manager");
   revalidatePath("/admin/locations/map");
+  return { ok: true };
+}
+
+export interface LocationsAtPointResult extends ActionResult {
+  locations?: SavedLocation[];
+}
+
+/** The saved places already at a point, for the editor's duplicate warning. */
+export async function findLocationsAtPointAction(
+  latitude: number,
+  longitude: number,
+  excludeId?: number,
+): Promise<LocationsAtPointResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
+  try {
+    return {
+      ok: true,
+      locations: findLocationsAtCoordinates(
+        listSavedLocations(deps.sysLocationRepo),
+        { latitude, longitude },
+        excludeId,
+      ),
+    };
+  } catch (error) {
+    return toErrorResult(error, "Failed to check for existing locations here.");
+  }
+}
+
+/** Defines a location category or tag from inside the editor popup. */
+export async function saveLibraryTaxonomyAction(
+  kind: LocationTaxonomyKind,
+  input: UpsertLocationTaxonomyInput,
+): Promise<ActionResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
+  try {
+    saveLocationTaxonomy(deps.sysLocationRepo, kind, input);
+  } catch (error) {
+    return toErrorResult(error, "Failed to save.");
+  }
+  revalidatePath("/admin/locations/manager");
+  revalidatePath("/admin/locations/metadata");
   return { ok: true };
 }

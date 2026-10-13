@@ -2965,16 +2965,19 @@ npm run cli -- messages read-all
 npm run cli -- messages file "Boiler serviced" "Next service due March."
 npm run cli -- messages list-all
 npm run cli -- messages delete 12 13
+npm run cli -- messages lock 12 13
+npm run cli -- messages unlock 12 13
 npm run cli -- messages prune 30
 ```
 
-**Input** — a positional action. `list` takes `unread` (the default) or `read`. `read` and
-`delete` take one or more ids. `file` takes a title and an optional body, and records `CLI`
-as the source. `prune` takes a whole number of days.
+**Input** — a positional action. `list` takes `unread` (the default) or `read`. `read`,
+`delete`, `lock` and `unlock` take one or more ids. `file` takes a title and an optional body,
+and records `CLI` as the source and `system` as the module. `prune` takes a whole number of
+days.
 
 **Calls** — `listMessages`, `listAllMessages`, `countMessages`, `markMessagesRead`,
-`markAllMessagesRead`, `createMessage`, `deleteMessages` and `pruneMessages` from
-`lib/messages`, on `deps.messageRepo`.
+`markAllMessagesRead`, `createMessage`, `setMessagesLocked`, `deleteMessages` and
+`pruneMessages` from `lib/messages`, on `deps.messageRepo`.
 
 **Output** — `list` prints one line per message, newest first, with `*` marking unread, then
 the body and source indented beneath. `list-all` prints both halves together, the way
@@ -2988,6 +2991,12 @@ the recent ones and clearing the backlog behind them. Both take read and unread 
 the only criterion for `prune`. Nothing calls either on a timer: unlike the sign-in log and the
 visit log, the queue has no scheduled prune, so it grows until somebody clears it. The day
 count is floored at 1, so `prune 0` is an error rather than a way to empty the table.
+
+**`lock` keeps a message through both.** A locked message is skipped by `delete` *and* by
+`prune`, however old it gets — that immunity is the point of the flag, so `unlock` is the only
+route to removing one and there is no force-delete. Both report how many rows actually
+flipped: re-locking an already-locked message counts 0 rather than erroring, the same
+tolerance `read` has. Added by migration 0142.
 
 **`file` is the point of this command.** A shell script or cron job can put a notice in front
 of the household without going through the web app, which is why the queue is a library

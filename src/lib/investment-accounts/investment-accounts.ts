@@ -83,12 +83,32 @@ export function addPerformanceRecord(
   return repo.addPerformanceRecord(validated);
 }
 
+/**
+ * Edits one recorded value. Moving a record onto a date the same account
+ * already reported is rejected here rather than left to the unique index, so
+ * the caller gets a sentence instead of a SQLITE_CONSTRAINT and the web form
+ * and the CLI refuse it identically — same reasoning as the journal's
+ * prefill-template name clash.
+ */
 export function updatePerformanceRecord(
   repo: InvestmentAccountRepository,
   id: number,
   input: UpdatePerformanceRecordInput,
 ): PerformanceRecord {
   const validated = updatePerformanceRecordSchema.parse(input);
+
+  const existing = repo.getPerformanceRecordById(id);
+  if (!existing) throw new Error(`No performance record with id ${id}.`);
+
+  // Only a *different* record on that date is a clash: saving a record onto
+  // its own unchanged date has to stay allowed.
+  const clash = repo
+    .listPerformanceRecords(existing.accountId)
+    .find((record) => record.recordDate === validated.recordDate && record.id !== id);
+  if (clash) {
+    throw new Error("already have a record with this account on this date.");
+  }
+
   return repo.updatePerformanceRecord(id, validated);
 }
 

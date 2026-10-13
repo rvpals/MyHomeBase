@@ -142,6 +142,9 @@ export function runMonitors(
         title: `${monitor.ticker}: monitor triggered`,
         body: evaluation.message,
         source: "Investments monitor",
+        // Same module as the watch list beside it, under a different `source`:
+        // two producers, one owner. That is the distinction the column exists for.
+        module: "investments",
       });
       repo.setTriggered(monitor.id, true, evaluation.message);
       result.triggered += 1;

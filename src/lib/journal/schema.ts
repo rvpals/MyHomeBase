@@ -253,6 +253,7 @@ export const journalFilterFieldSchema = z.enum([
   "tag",
   "isPinned",
   "isLocked",
+  "isEncrypted",
 ]);
 
 export const journalFilterOperatorSchema = z.enum([
@@ -284,9 +285,33 @@ export const journalFilterGroupSchema = z.object({
   conditions: z.array(journalFilterConditionSchema).default([]),
 });
 
+export const journalSortFieldSchema = z.enum([
+  "date",
+  "time",
+  "title",
+  "placeName",
+  "isPinned",
+  "createdAt",
+  "updatedAt",
+]);
+
+export const journalSortDirectionSchema = z.enum(["asc", "desc"]);
+
+export const journalSortTermSchema = z.object({
+  field: journalSortFieldSchema,
+  direction: journalSortDirectionSchema.default("desc"),
+});
+
 export const journalFilterSchema = z.object({
   join: journalFilterJoinSchema.default("AND"),
   groups: z.array(journalFilterGroupSchema).default([]),
+  // Optional, not `.default([])`: a default makes `sort` *required* on the
+  // schema's output type, which then disagrees with `JournalFilter` (where it is
+  // optional) everywhere the two meet — the metadata export and taxonomy merge
+  // both pass a `JournalFilter` into a schema-typed slot. Absent and empty mean
+  // the same thing to `buildOrderBy`, so there is nothing to gain by forcing the
+  // key to exist.
+  sort: z.array(journalSortTermSchema).optional(),
 });
 
 export type JournalFilterInput = z.input<typeof journalFilterSchema>;
@@ -320,7 +345,7 @@ export function parseStoredJournalFilter(json: string): z.output<typeof journalF
   try {
     raw = JSON.parse(json);
   } catch {
-    return { join: "AND", groups: [] };
+    return { join: "AND", groups: [], sort: [] };
   }
 
   // Tolerate a bare array of conditions — the shape a first cut might have
@@ -329,7 +354,11 @@ export function parseStoredJournalFilter(json: string): z.output<typeof journalF
     const conditions = raw.filter(
       (item) => journalFilterConditionSchema.safeParse(item).success,
     ) as z.output<typeof journalFilterConditionSchema>[];
-    return { join: "AND", groups: conditions.length > 0 ? [{ join: "AND", conditions }] : [] };
+    return {
+      join: "AND",
+      groups: conditions.length > 0 ? [{ join: "AND", conditions }] : [],
+      sort: [],
+    };
   }
 
   const parsed = journalFilterSchema.safeParse(raw);
@@ -354,10 +383,17 @@ export function parseStoredJournalFilter(json: string): z.output<typeof journalF
         group !== undefined,
       );
     const join = (raw as { join?: unknown }).join === "OR" ? ("OR" as const) : ("AND" as const);
-    return { join, groups };
+    // Same salvage rule as the conditions: keep the sort terms that parse,
+    // drop the rest. A bad term falls back to the default order, never throws.
+    const sort = Array.isArray((raw as { sort?: unknown }).sort)
+      ? ((raw as { sort: unknown[] }).sort.filter(
+          (item) => journalSortTermSchema.safeParse(item).success,
+        ) as z.output<typeof journalSortTermSchema>[])
+      : [];
+    return { join, groups, sort };
   }
 
-  return { join: "AND", groups: [] };
+  return { join: "AND", groups: [], sort: [] };
 }
 
 /** Cap for a category/tag icon — same as an expense category icon; both render tiny. */

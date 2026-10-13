@@ -16,13 +16,19 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { Modal } from "@/components/modal";
 import { TreeIcon } from "@/components/tree-icons";
-import type { LocationTaxonomyKind, SavedLocationWithUsage } from "@/lib/sys-locations";
+import type {
+  LocationTaxonomyKind,
+  SaveLocationInput,
+  SavedLocation,
+  SavedLocationWithUsage,
+} from "@/lib/sys-locations";
 import { LocationPickerField, type PickedLocation } from "../location-field";
 import { LocationDedupModal } from "../dedup-view";
 import { FilterChip, formatCoords } from "../filter-chip";
 import {
   createSavedLocationAction,
   deleteSavedLocationAction,
+  findLocationsAtPointAction,
   reverseGeocodeAction,
   saveLocationTaxonomyAction,
   searchSavedLocationsAction,
@@ -66,6 +72,7 @@ function TaxonomyChoices({
   onToggle,
   onCreated,
   icons,
+  onSaveTaxonomy,
 }: {
   kind: LocationTaxonomyKind;
   title: string;
@@ -75,6 +82,11 @@ function TaxonomyChoices({
   onCreated: (name: string) => void;
   /** Name -> icon URL. A missing entry just means that name has no icon. */
   icons: Record<string, string>;
+  /** Defines a new name. Injected — see the modal's `actions` prop. */
+  onSaveTaxonomy: (
+    kind: LocationTaxonomyKind,
+    input: { name: string; description: string },
+  ) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const [isAdding, setIsAdding] = useState(false);
   const [draft, setDraft] = useState("");
@@ -94,7 +106,7 @@ function TaxonomyChoices({
     }
     setIsBusy(true);
     try {
-      const result = await saveLocationTaxonomyAction(kind, { name, description: "" });
+      const result = await onSaveTaxonomy(kind, { name, description: "" });
       if (!result.ok) {
         setError(result.error);
         return;
@@ -178,17 +190,68 @@ function TaxonomyChoices({
   );
 }
 
+/**
+ * The server actions `EditSavedLocationModal` needs. See its `actions` prop for
+ * why they are injected.
+ */
+export interface EditLocationActions {
+  create: (input: SaveLocationInput) => Promise<{ ok: boolean; error?: string }>;
+  update?: (
+    input: SaveLocationInput & { id: number },
+  ) => Promise<{ ok: boolean; error?: string }>;
+  findAtPoint: (
+    latitude: number,
+    longitude: number,
+    excludeId?: number,
+  ) => Promise<{ ok: boolean; locations?: SavedLocation[]; error?: string }>;
+  reverseGeocode: (
+    latitude: number,
+    longitude: number,
+  ) => Promise<{ ok: boolean; place?: { displayName: string }; error?: string }>;
+  saveTaxonomy: (
+    kind: LocationTaxonomyKind,
+    input: { name: string; description: string },
+  ) => Promise<{ ok: boolean; error?: string }>;
+}
+
+/**
+ * The admin screens' bundle: every action behind `requireAdmin()`.
+ *
+ * Module-level so its identity is stable across renders — rebuilding it inline
+ * would hand the popup a new object on every keystroke.
+ */
+export const ADMIN_EDIT_LOCATION_ACTIONS: EditLocationActions = {
+  create: createSavedLocationAction,
+  update: updateSavedLocationAction,
+  findAtPoint: findLocationsAtPointAction,
+  reverseGeocode: reverseGeocodeAction,
+  saveTaxonomy: (kind, input) => saveLocationTaxonomyAction(kind, input),
+};
+
 /** Add/edit popup. `location` undefined means "new". */
-function EditSavedLocationModal({
+export function EditSavedLocationModal({
   location,
+  initial,
   categoryOptions,
   tagOptions,
   categoryIcons,
   tagIcons,
   onClose,
   onSaved,
+  actions,
 }: {
   location?: SavedLocationWithUsage;
+  /**
+   * Starting values for a *new* place, when something outside this screen
+   * already knows them — the journal entry form's "+" prefills the pin it is
+   * offering to save. Ignored when `location` is given, which is an edit.
+   */
+  initial?: {
+    name?: string;
+    latitude: number;
+    longitude: number;
+    address?: string;
+  };
   categoryOptions: string[];
   tagOptions: string[];
   categoryIcons: Record<string, string>;
@@ -203,20 +266,42 @@ function EditSavedLocationModal({
    * the reader edits a place and the old row stays on screen.
    */
   onSaved?: () => void;
+  /**
+   * The server actions this popup calls, injected rather than imported.
+   *
+   * It opens in two places with different gates: Admin → Locations (admin
+   * only) and the journal entry form's "+" (anyone who can write an entry).
+   * The actions are the same use-cases behind different `require*` calls, so
+   * the popup takes them as a parameter instead of picking one and locking the
+   * other caller out.
+   */
+  actions: EditLocationActions;
 }) {
   const router = useRouter();
-  const [name, setName] = useState(location?.name ?? "");
+  const [name, setName] = useState(location?.name ?? initial?.name ?? "");
   const [description, setDescription] = useState(location?.description ?? "");
-  const [address, setAddress] = useState(location?.address ?? "");
+  const [address, setAddress] = useState(location?.address ?? initial?.address ?? "");
   const [categories, setCategories] = useState<string[]>(location?.categories ?? []);
   const [tags, setTags] = useState<string[]>(location?.tags ?? []);
   const [point, setPoint] = useState<PickedLocation | null>(
     location
       ? { latitude: location.latitude, longitude: location.longitude, name: location.name }
-      : null,
+      : initial
+        ? { latitude: initial.latitude, longitude: initial.longitude, name: initial.name ?? "" }
+        : null,
   );
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
+  /**
+   * Places already at the point being saved, once a save has been attempted and
+   * refused. Null until then.
+   *
+   * Holding the rows rather than a boolean lets the warning name them, and
+   * makes "has the reader already been warned about *this* point?" answerable:
+   * nudging the pin clears it, so moving somewhere else re-checks rather than
+   * inheriting a stale "save anyway".
+   */
+  const [duplicates, setDuplicates] = useState<SavedLocation[] | null>(null);
   // Names defined by the "+" inside this popup. They are saved server-side
   // immediately, but the props come from the page's server render, which only
   // catches up on the next refresh — and refreshing now would throw away the
@@ -240,6 +325,10 @@ function EditSavedLocationModal({
    */
   function handlePointChange(next: PickedLocation | null) {
     setPoint(next);
+    // A new point is a new question: whatever was warned about belonged to the
+    // old one, and keeping it would let a "save anyway" carry over to a place
+    // nobody has checked.
+    setDuplicates(null);
     // Only seed the address when it is still blank, so a hand-corrected address
     // survives nudging the pin — Nominatim's answer for a rural point is often a
     // road rather than the place the reader means.
@@ -250,7 +339,7 @@ function EditSavedLocationModal({
     if (!point) return;
     setIsBusy(true);
     try {
-      const result = await reverseGeocodeAction(point.latitude, point.longitude);
+      const result = await actions.reverseGeocode(point.latitude, point.longitude);
       if (result.ok && result.place) setAddress(result.place.displayName);
       else setError(result.error ?? "No address found for that point.");
     } finally {
@@ -270,6 +359,22 @@ function EditSavedLocationModal({
     }
     setIsBusy(true);
     try {
+      // First attempt at this point: ask whether anything is already here, and
+      // stop to say so. `duplicates` being set means the reader has seen the
+      // warning for *this* point and pressed again, so the save goes through —
+      // the check is a prompt, never a rule.
+      if (duplicates === null) {
+        const found = await actions.findAtPoint(point.latitude, point.longitude, location?.id);
+        // A failed check must not block the save: the reader came here to
+        // store a place, and losing that to a lookup error would be worse than
+        // missing a warning. An empty array records "asked, nothing here".
+        if (found.ok && found.locations && found.locations.length > 0) {
+          setDuplicates(found.locations);
+          return;
+        }
+        setDuplicates([]);
+      }
+
       const input = {
         name,
         latitude: point.latitude,
@@ -279,9 +384,10 @@ function EditSavedLocationModal({
         categories,
         tags,
       };
-      const result = location
-        ? await updateSavedLocationAction({ ...input, id: location.id })
-        : await createSavedLocationAction(input);
+      const result =
+        location && actions.update
+          ? await actions.update({ ...input, id: location.id })
+          : await actions.create(input);
       if (!result.ok) {
         setError(result.error);
         return;
@@ -355,6 +461,7 @@ function EditSavedLocationModal({
             setExtraCategories((previous) => [...previous, created]);
             setCategories((previous) => [...previous, created]);
           }}
+          onSaveTaxonomy={actions.saveTaxonomy}
         />
 
         <TaxonomyChoices
@@ -368,13 +475,37 @@ function EditSavedLocationModal({
             setExtraTags((previous) => [...previous, created]);
             setTags((previous) => [...previous, created]);
           }}
+          onSaveTaxonomy={actions.saveTaxonomy}
         />
 
-        <LocationPickerField value={point} onChange={handlePointChange} />
+        <LocationPickerField value={point} onChange={handlePointChange} showName={false} />
+
+        {/* Inline rather than a window.confirm: it survives the re-render, it
+            is readable on a phone, and the rest of this dialog already reports
+            inline. The button below becomes "Save anyway", so the second press
+            is the confirmation — there is nothing extra to dismiss. */}
+        {duplicates !== null && duplicates.length > 0 && (
+          <p role="status" className="text-sm text-amber-400">
+            We already have {duplicates.length === 1 ? "this location" : "locations"} with
+            coordinates {formatCoords(duplicates[0].latitude, duplicates[0].longitude)}
+            {" as "}
+            {duplicates.map((place, index) => (
+              <span key={place.id}>
+                {index > 0 && ", "}
+                <span className="font-medium">{place.name || "an unnamed place"}</span>
+              </span>
+            ))}
+            . Are you sure you want to create a new location for the same GPS coordinate?
+          </p>
+        )}
 
         <div className="flex gap-2">
           <Button size="sm" onClick={handleSave} disabled={isBusy || !point}>
-            {isBusy ? "Saving…" : "Save location"}
+            {isBusy
+              ? "Saving…"
+              : duplicates !== null && duplicates.length > 0
+                ? "Save anyway"
+                : "Save location"}
           </Button>
           <Button size="sm" variant="secondary" onClick={onClose} disabled={isBusy}>
             Cancel
@@ -664,6 +795,7 @@ export function LocationManagerView({
           tagIcons={tagIcons}
           onClose={() => setIsAdding(false)}
           onSaved={reload}
+          actions={ADMIN_EDIT_LOCATION_ACTIONS}
         />
       )}
       {editing && (
@@ -675,6 +807,7 @@ export function LocationManagerView({
           tagIcons={tagIcons}
           onClose={() => setEditing(undefined)}
           onSaved={reload}
+          actions={ADMIN_EDIT_LOCATION_ACTIONS}
         />
       )}
     </div>

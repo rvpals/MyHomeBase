@@ -6,6 +6,7 @@ import {
   markMessagesReadSchema,
   messageReadStateSchema,
   messageRetentionDaysSchema,
+  setMessagesLockedSchema,
   type CreateMessageInput,
 } from "./schema";
 import type { MessageCounts, MessageReadState, SystemMessage } from "./types";
@@ -110,9 +111,35 @@ export function listAllMessages(repo: MessageRepository): SystemMessage[] {
  * deliberate act by an admin looking at a screen, so "you selected nothing" has to
  * reach them rather than being swallowed as a silent success. Same reasoning as
  * `deleteAuthEvents` and `deleteSiteVisits`.
+ *
+ * **Locked messages are skipped**, so the returned count can be lower than the
+ * number of ids passed — the caller must not read it as "all of them went". The
+ * admin screen counts the locked rows in the selection before calling and says so;
+ * see `MessagesView.handleDelete`.
  */
 export function deleteMessages(repo: MessageRepository, messageIds: number[]): number {
   return repo.deleteMessages(deleteMessagesSchema.parse(messageIds));
+}
+
+/**
+ * Locks or unlocks the given messages, returning how many rows actually changed.
+ *
+ * A locked message cannot be deleted — not by `deleteMessages`, and not by the age
+ * purge either. That immunity is the feature, so unlocking is the only way to
+ * remove one; there is no force-delete.
+ *
+ * Re-locking an already-locked message counts 0 rather than throwing, matching
+ * `markMessagesRead`: two tabs open on one queue is ordinary, and the second click
+ * should not error for doing what the first did. An **empty selection** does throw,
+ * like `deleteMessages` — it is an admin pressing a button with nothing ticked.
+ */
+export function setMessagesLocked(
+  repo: MessageRepository,
+  messageIds: number[],
+  locked: boolean,
+): number {
+  const input = setMessagesLockedSchema.parse({ messageIds, locked });
+  return repo.setLocked(input.messageIds, input.locked);
 }
 
 /**
@@ -120,6 +147,8 @@ export function deleteMessages(repo: MessageRepository, messageIds: number[]): n
  *
  * "Older than 30 days" means filed strictly before now-minus-30-days — the purge
  * keeps the recent ones and clears the backlog behind them.
+ *
+ * **Locked messages survive the purge** however old they are — see migration 0142.
  *
  * `now` is injectable so a test doesn't depend on the clock, following
  * `pruneAuthEvents` and `pruneSiteVisits`. Unlike those two, **nothing calls this

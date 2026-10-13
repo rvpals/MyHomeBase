@@ -9,6 +9,8 @@
 //   npm run cli -- messages file "Title" "Body text"
 //   npm run cli -- messages list-all
 //   npm run cli -- messages delete 12 13
+//   npm run cli -- messages lock 12 13
+//   npm run cli -- messages unlock 12 13
 //   npm run cli -- messages prune 30
 //
 // `file` exists so a shell script or a cron job can put a notice in front of the
@@ -24,6 +26,7 @@ import {
   markAllMessagesRead,
   markMessagesRead,
   pruneMessages,
+  setMessagesLocked,
   type SystemMessage,
 } from "@/lib/messages";
 import { deps } from "@/lib/wiring";
@@ -37,6 +40,8 @@ const USAGE = `Usage:
   messages read-all
   messages file <title> [body]
   messages delete <id> [id...]
+  messages lock <id> [id...]
+  messages unlock <id> [id...]
   messages prune <days>`;
 
 function printMessage(message: SystemMessage): void {
@@ -127,6 +132,22 @@ export async function messagesCommand(args: string[]): Promise<void> {
         // the count is how many rows actually went.
         const removed = deleteMessages(deps.messageRepo, ids);
         console.log(`Deleted ${removed} message(s).`);
+        return;
+      }
+
+      case "lock":
+      case "unlock": {
+        const ids = rest.map(Number);
+        if (ids.length === 0 || ids.some((id) => !Number.isInteger(id))) {
+          console.error(USAGE);
+          process.exitCode = 1;
+          return;
+        }
+        // A locked message survives both `delete` and `prune`. The count is how
+        // many rows actually flipped -- re-locking an already-locked one is 0.
+        const locked = action === "lock";
+        const changed = setMessagesLocked(deps.messageRepo, ids, locked);
+        console.log(`${locked ? "Locked" : "Unlocked"} ${changed} message(s).`);
         return;
       }
 

@@ -1,5 +1,109 @@
 # Change History
 
+## 2026-10-12 — Message ownership and locking, journal filter sorting, Encrypted filter field
+
+**Migration 0142 must be applied on the NAS.** It adds two columns to `sys_messages`
+with constant defaults — no table rebuild, no dropped or rewritten rows — so it is
+reversible by dropping the columns. The NAS database was backed up before this release.
+
+### Messages gain an owning module and a delete lock (migration 0142)
+
+- New `module` column on `sys_messages`, **beside `source` rather than replacing it**.
+  `source` names the thing that filed the message (`Investments monitor`, `Investments
+  watch list`); `module` names the module it belongs to. Two Investments producers file
+  under two `source` strings, so grouping the admin grid by `source` split them and by
+  `module` does not.
+- Not a foreign key to `sys_modules`, deliberately: a message outlives the thing that
+  wrote it, and a module deleted next week must not delete or orphan its own history.
+  The slug is validated at the boundary by `MESSAGE_MODULES`, a fixed enum in
+  `src/lib/messages/schema.ts`. **The cost is explicit — a new module cannot file a
+  message until its slug is added there**, which `modules.md` step 7 now lists.
+- Pre-0142 rows default to `''`, not `'system'`: `''` honestly encodes "nobody recorded
+  this", where `system` is a positive claim the app filed it. The repository maps the
+  legacy value on the way out so the domain type has one spelling.
+- New `is_locked` column. **A locked message survives both the admin screen's bulk
+  Delete and the age purge**, however old it gets — that immunity is the point, so
+  `unlock` is the only route to removing one and there is no force-delete.
+- Admin → Messages shows a Module column and Lock / Unlock buttons. Deleting a mixed
+  selection keeps the locked rows and says so in the confirmation rather than failing.
+- Two buttons stating an end state, not one toggle: a toggle over a mixed selection
+  would invert each row independently and leave the admin with the same mixture.
+- `npm run cli -- messages lock|unlock <ids>`, and `messages file` now records a module.
+  Both report how many rows actually flipped — re-locking an already-locked message
+  counts 0 rather than erroring.
+- The watch list and ticker monitors stamp `investments`; the Hello, world! job stamps
+  `system`. Each producer stamps its own, so nothing can file a message attributed to
+  another module's screen.
+- `npm run seed:messages` fills the queue with demo rows for working on the grid.
+
+### Saved journal filters can order their results
+
+- A filter now carries a **list** of sort terms, applied most significant first — "Place
+  then Date" and "Date then Place" are different lists, so the editor numbers the rows
+  and offers ↑/↓ to rearrange them.
+- Sortable on Date, Time, Title, Place, Pinned, Created and Updated. Deliberately *not*
+  the filterable fields: Category and Tag are multi-valued, so an entry carrying three
+  tags has no single sort key, and ordering by Content means nothing.
+- Directions are phrased per field — "oldest first", "A to Z", "pinned first" — rather
+  than ascending/descending, which takes a beat to map onto a date. `is_pinned` is 0/1,
+  so its direction is inverted internally to make "pinned first" true.
+- Every ordering ends on `e.id` so it is total. Without it, entries sharing a date (or a
+  blank title, which every encrypted entry has) can come back in either order between
+  runs, and a list that reshuffles on reload reads as a bug.
+- **No migration.** `sort` rides inside the existing `filter_json`, and a filter saved
+  before this release reads back with no sort and keeps the order it always had.
+- Sort fields index a literal allowlist, like the WHERE builder's columns — a
+  hand-edited `filter_json` cannot reach the ORDER BY.
+- The "Reads as" line now describes the ordering: `Locked is yes, sorted by Date (oldest
+  first), then Title (A to Z)`.
+
+### Journal filters can match encrypted entries
+
+- New **Encrypted** filter field, and `encrypted = yes` in the typed query. It exposes
+  *which* entries are sealed, never their contents — the ciphertext columns are not
+  filterable and search still refuses to match them.
+- Encrypted is its own flag, independent of Locked. The two were easy to confuse and an
+  entry can be either without the other.
+- A new `isBooleanField()` derives the yes/no fields from the column table instead of
+  three hand-maintained lists, which is how a flag field ends up rendering a text box in
+  one surface and a dropdown in another.
+
+### Fixed: a boolean filter condition read back inverted
+
+- Setting **Locked is yes** saved a filter that read "Locked is no" and returned
+  *unlocked* entries. Switching a condition's field carried the previous field's value
+  across, so the yes/no dropdown displayed its first option while the filter held an
+  empty string and compiled to `is_locked = 0`.
+- The builder now seeds the value when a field becomes a boolean, and both the
+  description and the compiler treat anything that is not an explicit "no" as yes — so
+  filters already saved with the empty value read and run the way they were displayed
+  when they were saved.
+
+### Fixed: the Home screen threw on every render
+
+- Daily Quote passed a function to the client widget grid so its ✕ could sit in the
+  scroll's bottom dowel rather than floating over the paper. The Home page is a server
+  component, so React refused it: *"Functions cannot be passed directly to Client
+  Components"*, three times per load.
+- The grid now publishes the close callback through context and the card sets a boolean
+  flag, so only serializable values cross the boundary. The ✕ stays where it was.
+
+### Locations: a duplicate warning when saving a place
+
+- Saving a place in the Location Manager now names the saved places already at that spot
+  — "… as CVS Pharmacy (Beekman corner)" — using the same distance rule as the Merging &
+  Dedup dialog, so the two cannot disagree about what a duplicate is.
+- **A warning, never a block.** Two shops can share an address, and a reader who means to
+  save both must be able to. The write actions do not consult it.
+- Checked at save time rather than as the pin moves: a lookup per frame would read the
+  whole library to answer a question nobody has asked yet.
+
+### Investments: editing a performance record checks its date
+
+- Moving a record onto a date the account already reported is now refused with a
+  sentence instead of a `SQLITE_CONSTRAINT`, and the web form and the CLI refuse it
+  identically. Saving a record onto its own unchanged date stays allowed.
+
 ## 2026-10-12 — Application-wide saved locations, street address on entry pins, journal location library retired
 
 **Migrations 0139–0141 must be applied on the NAS, in order.** 0139 adds a column, 0140

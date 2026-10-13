@@ -32,13 +32,25 @@ export interface MessageRepository {
    */
   listAllMessages(): SystemMessage[];
   /**
-   * Deletes the given messages permanently. Returns how many rows actually went,
-   * so an id already deleted in another tab counts 0 rather than throwing.
+   * Locks or unlocks the given messages. Returns how many rows actually changed,
+   * so re-locking an already-locked message counts 0 rather than throwing — the
+   * same tolerance `markRead` has, for the same two-tabs-open reason.
+   */
+  setLocked(messageIds: number[], locked: boolean): number;
+  /**
+   * Deletes the given messages permanently, **skipping locked ones**. Returns how
+   * many rows actually went, so an id already deleted in another tab counts 0
+   * rather than throwing — and so does a locked id, which is why the caller must
+   * not read the count as "all of them went". See migration 0142.
    */
   deleteMessages(messageIds: number[]): number;
   /**
-   * Deletes every message filed strictly before `cutoff` (a SQLite timestamp).
-   * Returns how many went. The age-based purge the admin screen drives.
+   * Deletes every message filed strictly before `cutoff` (a SQLite timestamp),
+   * **skipping locked ones**. Returns how many went. The age-based purge the
+   * admin screen drives.
+   *
+   * Purge immunity is the point of the lock, not a side effect: a locked message
+   * stays however old it gets.
    */
   deleteMessagesBefore(cutoff: string): number;
 }

@@ -16,7 +16,7 @@ import {
 } from "./schema";
 import type { DecodedImage } from "@/lib/shared/image-upload";
 import { displayEntryTitle } from "./encryption";
-import { buildFilterSql } from "./filters";
+import { buildFilterSql, buildOrderBy } from "./filters";
 import { LOG_CATEGORY_NAME } from "./journal";
 import { parseStoredJournalFilter, parseStoredPrefillFields } from "./schema";
 import type {
@@ -363,12 +363,15 @@ export class SqliteJournalRepository implements JournalRepository {
     // empty filter is a real state ("All entries") and this keeps the query the
     // planner sees identical to listRecentEntries in that case.
     const where = compiled ? `WHERE ${compiled.sql}` : "";
+    // Literal string from an allowlist, never interpolated input — see
+    // buildOrderBy. An empty sort yields the same clause this query always had.
+    const orderBy = buildOrderBy(filter.sort);
     const rows = this.db
       .prepare(
         `SELECT e.*
          FROM jrn_entries e
          ${where}
-         ORDER BY e.entry_date DESC, e.entry_time DESC, e.id DESC
+         ORDER BY ${orderBy}
          LIMIT @__limit`,
       )
       // Named params throughout: buildFilterSql generates its own keys, and

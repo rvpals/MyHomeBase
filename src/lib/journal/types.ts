@@ -141,7 +141,11 @@ export type JournalFilterField =
   | "category"
   | "tag"
   | "isPinned"
-  | "isLocked";
+  | "isLocked"
+  // Whether the entry is sealed, not what it says: `is_encrypted` is its own
+  // column, independent of `isLocked`. Filtering on it exposes which entries are
+  // encrypted, never their contents — the ciphertext columns aren't filterable.
+  | "isEncrypted";
 
 export type JournalFilterOperator =
   | "contains"
@@ -184,10 +188,52 @@ export interface JournalFilterGroup {
   conditions: JournalFilterCondition[];
 }
 
+/**
+ * The fields a filter can order by.
+ *
+ * Deliberately *not* `JournalFilterField`. Those two sets look alike and are not:
+ * `category`/`tag` are multi-valued, so an entry carrying three tags has no single
+ * sort key, and ordering by `content` is meaningless. `createdAt`/`updatedAt` run
+ * the other way — worth sorting on, nothing anyone filters by. Keeping them apart
+ * is what stops "sort by tag" typechecking into a query that can't mean anything.
+ */
+export type JournalSortField =
+  | "date"
+  | "time"
+  | "title"
+  | "placeName"
+  | "isPinned"
+  | "createdAt"
+  | "updatedAt";
+
+export const JOURNAL_SORT_FIELDS: readonly JournalSortField[] = [
+  "date",
+  "time",
+  "title",
+  "placeName",
+  "isPinned",
+  "createdAt",
+  "updatedAt",
+];
+
+export type JournalSortDirection = "asc" | "desc";
+
+/** One level of ordering. A filter holds a list; earlier terms win. */
+export interface JournalSortTerm {
+  field: JournalSortField;
+  direction: JournalSortDirection;
+}
+
 export interface JournalFilter {
   /** How the groups combine with each other. */
   join: JournalFilterJoin;
   groups: JournalFilterGroup[];
+  /**
+   * Ordering, most significant first. Empty means the default
+   * (newest entry_date, then entry_time, then id) — which is what every filter
+   * saved before sorting existed reads back as, so their results don't move.
+   */
+  sort?: JournalSortTerm[];
 }
 
 /** A named filter as stored. */

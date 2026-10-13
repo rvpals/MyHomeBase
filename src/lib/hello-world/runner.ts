@@ -106,6 +106,10 @@ export async function runHelloWorldNow(
       // for the reader's own clock.
       body: `Filed by the Hello, world! background task at ${toSqliteTimestampUtc(new Date())} UTC.`,
       source: HELLO_WORLD_MESSAGE_SOURCE,
+      // `system`, not a module: this is a scheduled job owned by Admin, and no
+      // module registry lists it. See `MESSAGE_MODULES` for why that is a real
+      // slug rather than a blank.
+      module: "system",
     });
 
     const detail = `${settings.message} (queued as message #${message.id})`;

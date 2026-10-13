@@ -146,6 +146,34 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-10-12 — Release (message ownership and locking, journal filter sorting, Encrypted filter field)
+
+**Migration 0142 must be applied on the NAS.** Test 1 first — it proves the migration landed; without it the Messages grid fails with "no such column". Item 14 is the one that needs a filter saved *before* this release, and 18 is phone-only.
+
+- [ ] **1.** Administration → Messages opens, and the grid shows a **Module** column
+- [ ] **2.** Messages filed before this release show as unattributed in the Module column, not as `system`
+- [ ] **3.** A watch-list message and a ticker-monitor message both show module `investments` under their own different Source values
+- [ ] **4.** The Hello, world! job files a message with module `system`
+- [ ] **5.** Messages: select rows and **Lock**, then confirm the rows show as locked
+- [ ] **6.** Messages: **Delete** a selection containing locked rows — the confirmation says how many will be kept, and the locked ones survive
+- [ ] **7.** Messages: a locked message survives the age purge ("Older than 7 days") however old it is
+- [ ] **8.** Messages: **Unlock** then Delete removes the row
+- [ ] **9.** CLI: `npm run cli -- messages lock 12` then `messages unlock 12` each report how many rows flipped, and re-locking an already-locked message reports 0 rather than erroring
+- [ ] **10.** `npm run seed:messages` fills the queue with demo rows
+- [ ] **11.** Journal → Entries → edit a filter: a **Sort by** block appears under Add group, saying "Newest first" when empty
+- [ ] **12.** Filter editor: add two sort fields, reorder with ↑/↓, and the "Reads as" line names them in order ("sorted by Place (A to Z), then Date (newest first)")
+- [ ] **13.** Save a filter with a sort, pick it on Entries, and the list comes back in that order
+- [ ] **14.** A filter saved **before** this release still opens, shows an empty Sort by, and lists entries newest-first as it always did
+- [ ] **15.** Filter editor: Sort by offers Date, Time, Title, Place, Pinned, Created, Updated — and a field already used is not offered twice
+- [ ] **16.** Filter editor: a new condition on **Locked** defaults to "yes", and "Reads as" says *Locked is yes* (not "no")
+- [ ] **17.** Journal filters: the **Encrypted** field returns sealed entries, and `encrypted = yes` in the typed query box does the same
+- [ ] **18.** Phone width: the filter editor's Sort by rows stack with Field/Direction labels and the ↑/↓/× buttons stay reachable
+- [ ] **19.** Home screen loads with the Daily Quote card present and no server error in the terminal
+- [ ] **20.** Home: the Daily Quote's ✕ is in the scroll's bottom dowel beside Edit and Refresh, and closing it asks for confirmation
+- [ ] **21.** Admin → Locations → Location Manager: saving a place at a spot that already has one warns and names the existing place, but still lets the save through
+- [ ] **22.** Location Manager: editing a place and re-saving it does not warn that it duplicates itself
+- [ ] **23.** Investments: editing a performance record onto a date the account already reported is refused with a sentence, and saving onto its own unchanged date still works
+
 ## 2026-10-12 — Release (application-wide saved locations, street address on entry pins, journal location library retired)
 
 **Migrations 0139–0141 must be applied on the NAS, in order.** 0141 deletes the journal's saved places and cannot be undone — the NAS DB was backed up first. Test 1–3 first (they prove the migrations landed); the phone-only check is 17.

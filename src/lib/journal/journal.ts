@@ -190,6 +190,10 @@ export function withLogCondition(filter: JournalFilter, scope: JournalLogScope):
   if (scope === "all") return filter;
   return {
     join: "AND",
+    // Carried through: this rebuilds the *conditions* to bolt the Log category on,
+    // and dropping the sort here would silently ignore the user's chosen order on
+    // every Log and non-Log list.
+    sort: filter.sort,
     groups: [
       ...filter.groups,
       {

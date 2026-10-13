@@ -10,7 +10,9 @@ import { revalidatePath } from "next/cache";
 import {
   deleteMessages,
   listAllMessages,
+  markMessagesRead,
   pruneMessages,
+  setMessagesLocked,
   type SystemMessage,
 } from "@/lib/messages";
 import { deps } from "@/lib/wiring";
@@ -52,6 +54,9 @@ export async function loadAllMessagesAction(): Promise<SystemMessage[]> {
  * Returns how many actually went — an id another tab already deleted counts 0
  * rather than throwing, but an *empty selection* does throw, because that is a
  * deliberate act with nothing selected and the admin needs to hear about it.
+ *
+ * **Locked rows are kept**, so the count can be lower than the number of ids
+ * passed. The view counts them before calling and says which were spared.
  */
 export async function deleteMessagesAction(ids: number[]): Promise<MessageAdminResult> {
   try {
@@ -65,10 +70,57 @@ export async function deleteMessagesAction(ids: number[]): Promise<MessageAdminR
 }
 
 /**
+ * Marks the ticked rows read.
+ *
+ * `requireAdmin`, not the `requireUser` the header bell's equivalent uses — not
+ * because reading is privileged, but because every endpoint on an admin screen
+ * should be guarded the same way, and this one sits beside two deletes. A reader
+ * who only wants to clear the badge has the bell.
+ *
+ * Tolerant of an id already read: the count is what actually changed.
+ */
+export async function markMessagesReadAction(ids: number[]): Promise<MessageAdminResult> {
+  try {
+    await requireAdmin();
+    const count = markMessagesRead(deps.messageRepo, ids);
+    revalidatePath(MESSAGES_PATH);
+    return { ok: true, count };
+  } catch (error) {
+    return toErrorResult(error, "Failed to mark the selected messages read.");
+  }
+}
+
+/**
+ * Locks or unlocks the ticked rows.
+ *
+ * A locked message survives both the bulk delete and the age purge, so this is
+ * the only thing standing between a kept message and the next purge window an
+ * admin picks. Unlocking is the only route to deleting one.
+ */
+export async function setMessagesLockedAction(
+  ids: number[],
+  locked: boolean,
+): Promise<MessageAdminResult> {
+  try {
+    await requireAdmin();
+    const count = setMessagesLocked(deps.messageRepo, ids, locked);
+    revalidatePath(MESSAGES_PATH);
+    return { ok: true, count };
+  } catch (error) {
+    return toErrorResult(
+      error,
+      locked ? "Failed to lock the selected messages." : "Failed to unlock them.",
+    );
+  }
+}
+
+/**
  * Deletes every message older than `retentionDays`, keeping the recent ones.
  *
  * Nothing calls this on a timer — there is no scheduled prune for the queue, by
  * choice. It runs when an admin picks a window and presses the button.
+ *
+ * Locked messages survive it however old they are.
  */
 export async function pruneMessagesAction(
   retentionDays: number,

@@ -9,6 +9,7 @@ import {
   deletePerformanceRecord,
   setAccountIcon,
   updateAccount,
+  updatePerformanceRecord,
 } from "@/lib/investment-accounts";
 import { dollarsToCents } from "@/lib/shared/money";
 import { deps } from "@/lib/wiring";
@@ -98,6 +99,24 @@ export async function addPerformanceRecordAction(
     });
   } catch (error) {
     return toErrorResult(error, "Failed to add performance record.");
+  }
+  revalidatePath(INVESTMENTS_MODULE_PATH);
+  return { ok: true };
+}
+
+export async function updatePerformanceRecordAction(
+  recordId: number,
+  input: PerformanceRecordFormInput,
+): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    updatePerformanceRecord(deps.investmentAccountRepo, recordId, {
+      totalValueCents: dollarsToCents(input.totalValue || "0"),
+      recordDate: input.recordDate,
+      note: input.note ?? "",
+    });
+  } catch (error) {
+    return toErrorResult(error, "Failed to update performance record.");
   }
   revalidatePath(INVESTMENTS_MODULE_PATH);
   return { ok: true };

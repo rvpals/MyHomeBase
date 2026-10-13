@@ -11,6 +11,7 @@ import {
   markAllMessagesRead,
   markMessagesRead,
   pruneMessages,
+  setMessagesLocked,
 } from "./messages";
 import { createMessageSchema, markMessagesReadSchema, MESSAGE_TITLE_MAX } from "./schema";
 import type { SystemMessage } from "./types";
@@ -190,13 +191,170 @@ describe("createMessageSchema", () => {
   });
 });
 
+
+describe("createMessage module", () => {
+  it("defaults to `system` when the caller names no module", () => {
+    const repo = new FakeMessageRepository();
+
+    // The CLI and one-off callers do not name one. `system` is a real slug, not a
+    // blank, so the admin grid can filter on it like any other value.
+    const message = createMessage(repo, { title: "One", body: "", source: "" });
+
+    expect(message.module).toBe("system");
+  });
+
+  it("stores the producer's own module", () => {
+    const repo = new FakeMessageRepository();
+
+    const message = createMessage(repo, {
+      title: "NVDA near your target",
+      body: "",
+      source: "Investments monitor",
+      module: "investments",
+    });
+
+    expect(message.module).toBe("investments");
+  });
+
+  it("rejects a slug that is not a known module", () => {
+    const repo = new FakeMessageRepository();
+
+    // The point of the fixed enum: a typo fails loudly at the boundary rather
+    // than writing a slug no filter will ever match. See migration 0142.
+    expect(() =>
+      createMessage(repo, {
+        title: "One",
+        body: "",
+        source: "",
+        module: "investmnets" as never,
+      }),
+    ).toThrow();
+  });
+
+  it("files every message unlocked, whatever the caller passes", () => {
+    const repo = new FakeMessageRepository();
+
+    // `isLocked` is absent from `createMessageSchema` by design: a producer must
+    // not be able to file something nobody can delete.
+    const message = createMessage(repo, {
+      title: "One",
+      body: "",
+      source: "",
+      isLocked: true,
+    } as never);
+
+    expect(message.isLocked).toBe(false);
+  });
+});
+
+describe("setMessagesLocked", () => {
+  it("locks the given messages and reports how many changed", () => {
+    const repo = new FakeMessageRepository([aged(1, "2026-03-01 09:00:00")]);
+
+    expect(setMessagesLocked(repo, [1], true)).toBe(1);
+    expect(getMessage(repo, 1)?.isLocked).toBe(true);
+  });
+
+  it("unlocks again", () => {
+    const repo = new FakeMessageRepository([
+      aged(1, "2026-03-01 09:00:00", { isLocked: true }),
+    ]);
+
+    expect(setMessagesLocked(repo, [1], false)).toBe(1);
+    expect(getMessage(repo, 1)?.isLocked).toBe(false);
+  });
+
+  it("counts only the rows it actually changed", () => {
+    const repo = new FakeMessageRepository([
+      aged(1, "2026-03-01 09:00:00", { isLocked: true }),
+      aged(2, "2026-03-01 09:00:00"),
+    ]);
+
+    // Already-locked rows are skipped, so a second click on a mixed selection
+    // reports the one it flipped rather than both. Same tolerance as markRead.
+    expect(setMessagesLocked(repo, [1, 2], true)).toBe(1);
+    expect(getMessage(repo, 2)?.isLocked).toBe(true);
+  });
+
+  it("tolerates an id that no longer exists", () => {
+    const repo = new FakeMessageRepository([aged(1, "2026-03-01 09:00:00")]);
+
+    // Two tabs open on one queue: the other one deleted #2 already.
+    expect(setMessagesLocked(repo, [1, 99], true)).toBe(1);
+  });
+
+  it("rejects an empty selection", () => {
+    // An admin pressing Lock with nothing ticked has to hear about it, exactly
+    // as deleteMessages throws rather than silently succeeding.
+    expect(() => setMessagesLocked(new FakeMessageRepository(), [], true)).toThrow();
+  });
+
+  it("rejects a non-positive id", () => {
+    expect(() => setMessagesLocked(new FakeMessageRepository(), [0], true)).toThrow();
+    expect(() => setMessagesLocked(new FakeMessageRepository(), [-3], true)).toThrow();
+  });
+});
+
+describe("the lock blocks deletion", () => {
+  // Local to this block: `pruneMessages`'s own `now` is scoped to its describe,
+  // and a shared one hoisted to the module would couple two unrelated suites.
+  const now = new Date("2026-03-31T12:00:00Z");
+
+  it("keeps a locked message through a bulk delete", () => {
+    const repo = new FakeMessageRepository([
+      aged(1, "2026-03-01 09:00:00", { isLocked: true }),
+      aged(2, "2026-03-01 09:00:00"),
+    ]);
+
+    // The count is 1, not 2: the caller must not read it as "all of them went".
+    expect(deleteMessages(repo, [1, 2])).toBe(1);
+    expect(listAllMessages(repo).map((message) => message.id)).toEqual([1]);
+  });
+
+  it("keeps a locked message through the age purge, however old", () => {
+    const repo = new FakeMessageRepository([
+      aged(1, "2020-01-01 09:00:00", { isLocked: true }),
+      aged(2, "2020-01-01 09:00:00"),
+    ]);
+
+    // Purge immunity is the point of the lock, not a side effect — a monitor
+    // that fired on the day something went wrong outlives the noise around it.
+    expect(pruneMessages(repo, 30, now)).toBe(1);
+    expect(listAllMessages(repo).map((message) => message.id)).toEqual([1]);
+  });
+
+  it("deletes it once it is unlocked", () => {
+    const repo = new FakeMessageRepository([
+      aged(1, "2026-03-01 09:00:00", { isLocked: true }),
+    ]);
+
+    // Unlocking is the only way to remove one; there is no force-delete.
+    expect(deleteMessages(repo, [1])).toBe(0);
+    setMessagesLocked(repo, [1], false);
+    expect(deleteMessages(repo, [1])).toBe(1);
+  });
+});
+
 /**
  * A message with an explicit `createdAt`, for the purge tests. The fake's own
  * `createMessage` stamps a fixed date, which is right for ordering tests and
  * useless for one about age.
  */
-function aged(id: number, createdAt: string): SystemMessage {
-  return { id, createdAt, title: `Message ${id}`, body: "", source: "test" };
+function aged(
+  id: number,
+  createdAt: string,
+  overrides: Partial<SystemMessage> = {},
+): SystemMessage {
+  return {
+    id,
+    createdAt,
+    title: `Message ${id}`,
+    body: "",
+    source: "test",
+    module: "system",
+    isLocked: false,
+    ...overrides,
+  };
 }
 
 describe("listAllMessages", () => {

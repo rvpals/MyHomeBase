@@ -47,6 +47,10 @@ export class FakeMessageRepository implements MessageRepository {
       title: input.title,
       body: input.body,
       source: input.source,
+      module: input.module,
+      // Always unlocked on arrival: `createMessageSchema` has no `isLocked`, so a
+      // producer cannot file something nobody can delete. Locking is an admin act.
+      isLocked: false,
     };
     this.messages.push(message);
     return message;
@@ -83,11 +87,27 @@ export class FakeMessageRepository implements MessageRepository {
     return [...this.messages].sort((a, b) => b.id - a.id);
   }
 
+  setLocked(messageIds: number[], locked: boolean): number {
+    let changed = 0;
+    for (const message of this.messages) {
+      // Rows already in the requested state are skipped, exactly as the SQL's
+      // `is_locked != ?` predicate does -- so the count means "how many changed".
+      if (messageIds.includes(message.id) && message.isLocked !== locked) {
+        message.isLocked = locked;
+        changed += 1;
+      }
+    }
+    return changed;
+  }
+
   deleteMessages(messageIds: number[]): number {
     let removed = 0;
     for (const id of new Set(messageIds)) {
       const index = this.messages.findIndex((message) => message.id === id);
-      if (index !== -1) {
+      // Locked rows are skipped, matching the SQL's `is_locked = 0`. A fake that
+      // deleted them would let a test pass against behaviour the real table
+      // refuses -- the one thing a hand-written fake must never do.
+      if (index !== -1 && !this.messages[index].isLocked) {
         this.messages.splice(index, 1);
         removed += 1;
       }
@@ -99,7 +119,11 @@ export class FakeMessageRepository implements MessageRepository {
     // String comparison, matching the SQL exactly -- both halves of this port have to
     // agree on strictly-before, or a test would pass against a fake the real table
     // disagrees with.
-    const doomed = this.messages.filter((message) => message.createdAt < cutoff);
+    // `!isLocked` as well: purge immunity is the lock's point, and both halves of
+    // this port have to agree on it.
+    const doomed = this.messages.filter(
+      (message) => !message.isLocked && message.createdAt < cutoff,
+    );
     for (const message of doomed) {
       this.messages.splice(this.messages.indexOf(message), 1);
     }

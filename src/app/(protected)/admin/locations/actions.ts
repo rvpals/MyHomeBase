@@ -38,6 +38,7 @@ import {
   type UpdateLocationInput,
   type UpsertLocationTaxonomyInput,
 } from "@/lib/sys-locations";
+import { findLocationsAtCoordinates, listSavedLocations, type SavedLocation } from "@/lib/sys-locations";
 import { reverseGeocode, searchPlaces, type GeoPlace } from "@/lib/geocoding";
 import { deps } from "@/lib/wiring";
 import { requireAdmin } from "@/app/(protected)/require-access";
@@ -310,5 +311,45 @@ export async function reverseGeocodeAction(
     return { ok: true, place: await reverseGeocode(deps.geocodingClient, { latitude, longitude }) };
   } catch (error) {
     return toErrorResult(error, "Reverse geocode failed.");
+  }
+}
+
+// --- The duplicate-coordinate warning ------------------------------------------
+
+export interface LocationsAtPointResult extends ActionResult {
+  locations?: SavedLocation[];
+}
+
+/**
+ * The saved places already at a point, for the editor's "we already have this
+ * location" warning.
+ *
+ * A warning, never a block: two shops can share an address, and a reader who
+ * means to save both must be able to. The write actions do not consult this —
+ * enforcing it there would turn a prompt into a rule.
+ *
+ * Checked at save time rather than as the pin moves: a lookup on every drag
+ * would read the whole library per frame to answer a question the reader has
+ * not asked yet.
+ *
+ * `excludeId` is the row being edited, so a place never warns about itself.
+ */
+export async function findLocationsAtPointAction(
+  latitude: number,
+  longitude: number,
+  excludeId?: number,
+): Promise<LocationsAtPointResult> {
+  await requireAdmin();
+  try {
+    return {
+      ok: true,
+      locations: findLocationsAtCoordinates(
+        listSavedLocations(deps.sysLocationRepo),
+        { latitude, longitude },
+        excludeId,
+      ),
+    };
+  } catch (error) {
+    return toErrorResult(error, "Failed to check for existing locations here.");
   }
 }

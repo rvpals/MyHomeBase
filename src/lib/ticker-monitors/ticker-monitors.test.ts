@@ -222,6 +222,9 @@ describe("runMonitors", () => {
     expect(messages.messages).toHaveLength(1);
     expect(messages.messages[0].title).toBe("NVDA: monitor triggered");
     expect(messages.messages[0].source).toBe("Investments monitor");
+    // Stamped by the producer, never by the caller -- a monitor cannot file a
+    // message attributed to another module.
+    expect(messages.messages[0].module).toBe("investments");
     expect(repo.getById(1)?.isTriggered).toBe(true);
     expect(repo.getById(1)?.lastMessage).toContain("$9,900.00");
   });

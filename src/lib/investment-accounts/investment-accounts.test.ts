@@ -407,6 +407,90 @@ describe("deletePerformanceRecord and updatePerformanceRecord re-sync last value
   });
 });
 
+describe("updatePerformanceRecord date clashes", () => {
+  it("rejects moving a record onto a date the same account already recorded", () => {
+    const repo = fakeRepo(sampleAccounts);
+    addPerformanceRecord(repo, {
+      accountId: 1,
+      totalValueCents: 1050000,
+      recordDate: "2026-01-05",
+      note: "",
+    });
+    const second = addPerformanceRecord(repo, {
+      accountId: 1,
+      totalValueCents: 1100000,
+      recordDate: "2026-01-15",
+      note: "",
+    });
+
+    expect(() =>
+      updatePerformanceRecord(repo, second.id, {
+        totalValueCents: 1100000,
+        recordDate: "2026-01-05",
+        note: "",
+      }),
+    ).toThrow("already have a record with this account on this date.");
+
+    // The rejected edit must leave both records exactly as they were.
+    expect(listPerformanceRecords(repo, 1)).toHaveLength(2);
+    expect(repo.getPerformanceRecordById(second.id)?.recordDate).toBe("2026-01-15");
+  });
+
+  it("allows saving a record onto its own unchanged date", () => {
+    const repo = fakeRepo(sampleAccounts);
+    const record = addPerformanceRecord(repo, {
+      accountId: 1,
+      totalValueCents: 1050000,
+      recordDate: "2026-01-05",
+      note: "",
+    });
+
+    const updated = updatePerformanceRecord(repo, record.id, {
+      totalValueCents: 1075000,
+      recordDate: "2026-01-05",
+      note: "corrected",
+    });
+
+    expect(updated.totalValueCents).toBe(1075000);
+    expect(updated.note).toBe("corrected");
+  });
+
+  it("allows a date another account already uses", () => {
+    const repo = fakeRepo(sampleAccounts);
+    addPerformanceRecord(repo, {
+      accountId: 2,
+      totalValueCents: 500000,
+      recordDate: "2026-01-05",
+      note: "",
+    });
+    const mine = addPerformanceRecord(repo, {
+      accountId: 1,
+      totalValueCents: 1050000,
+      recordDate: "2026-01-15",
+      note: "",
+    });
+
+    const updated = updatePerformanceRecord(repo, mine.id, {
+      totalValueCents: 1050000,
+      recordDate: "2026-01-05",
+      note: "",
+    });
+
+    expect(updated.recordDate).toBe("2026-01-05");
+  });
+
+  it("rejects an unknown record id", () => {
+    const repo = fakeRepo(sampleAccounts);
+    expect(() =>
+      updatePerformanceRecord(repo, 999, {
+        totalValueCents: 1,
+        recordDate: "2026-01-05",
+        note: "",
+      }),
+    ).toThrow("No performance record with id 999.");
+  });
+});
+
 describe("extractCsvAccountNames", () => {
   it("returns distinct, sorted account names from the mapped column", () => {
     const csv = "Account,Value\nRoth IRA,100\nBrokerage,200\nRoth IRA,150";

@@ -23,6 +23,9 @@ import type {
   JournalFilterField,
   JournalFilterGroup,
   JournalFilterOperator,
+  JournalSortDirection,
+  JournalSortField,
+  JournalSortTerm,
 } from "./types";
 
 /**
@@ -48,6 +51,7 @@ const FIELD_COLUMNS: Record<
   tag: { kind: "taxonomy", table: "jrn_entry_tags", nameColumn: "tag_name" },
   isPinned: { kind: "boolean", column: "e.is_pinned" },
   isLocked: { kind: "boolean", column: "e.is_locked" },
+  isEncrypted: { kind: "boolean", column: "e.is_encrypted" },
 };
 
 /** Which operators each field kind accepts. The UI reads this to build its dropdowns. */
@@ -63,6 +67,7 @@ export const OPERATORS_BY_FIELD: Record<JournalFilterField, JournalFilterOperato
   tag: ["hasAny", "hasNone"],
   isPinned: ["is"],
   isLocked: ["is"],
+  isEncrypted: ["is"],
 };
 
 /** Human labels for the builder's dropdowns and for describeFilter(). */
@@ -76,6 +81,7 @@ export const FIELD_LABELS: Record<JournalFilterField, string> = {
   tag: "Tag",
   isPinned: "Pinned",
   isLocked: "Locked",
+  isEncrypted: "Encrypted",
 };
 
 const OPERATOR_LABELS: Record<JournalFilterOperator, string> = {
@@ -113,9 +119,23 @@ export function isListOperator(operator: JournalFilterOperator): boolean {
   return LIST_OPERATORS.has(operator);
 }
 
+/**
+ * True for a field stored as a 0/1 flag, whose value is a yes/no choice rather
+ * than typed text.
+ *
+ * Derived from FIELD_COLUMNS rather than listed again: the builder, the English
+ * description and the compiler all have to agree on which fields are booleans,
+ * and three hand-maintained lists is how a new flag field ends up rendering a
+ * text box in one of them. Adding a `kind: "boolean"` entry above is now the
+ * only step.
+ */
+export function isBooleanField(field: JournalFilterField): boolean {
+  return FIELD_COLUMNS[field]?.kind === "boolean";
+}
+
 /** An empty filter, for a builder opening on "new". */
 export function emptyFilter(): JournalFilter {
-  return { join: "AND", groups: [{ join: "AND", conditions: [] }] };
+  return { join: "AND", groups: [{ join: "AND", conditions: [] }], sort: [] };
 }
 
 /**
@@ -173,9 +193,11 @@ function compileCondition(
   }
 
   if (spec.kind === "boolean") {
-    // Only `is` reaches here, and the stored value is 0/1.
+    // Only `is` reaches here, and the stored value is 0/1. Anything that isn't
+    // "false" means yes — filters saved before the builder seeded this field
+    // hold "", and the builder showed them as "yes" when they were saved.
     const key = paramPrefix;
-    return { sql: `${spec.column} = @${key}`, params: { [key]: condition.value === "true" ? 1 : 0 } };
+    return { sql: `${spec.column} = @${key}`, params: { [key]: condition.value === "false" ? 0 : 1 } };
   }
 
   if (VALUELESS_OPERATORS.has(operator)) {
@@ -275,6 +297,93 @@ export function buildFilterSql(filter: JournalFilter): CompiledSql | undefined {
   return { sql: compiled.map((item) => item.sql).join(join), params };
 }
 
+/**
+ * Sort field -> the column it orders on. Literals only, never anything derived
+ * from input — this is the same rule FIELD_COLUMNS follows, and for the same
+ * reason: a sort field arrives as a string from a JSON column.
+ */
+const SORT_COLUMNS: Record<JournalSortField, string> = {
+  date: "e.entry_date",
+  time: "e.entry_time",
+  title: "e.title",
+  placeName: "e.place_name",
+  isPinned: "e.is_pinned",
+  createdAt: "e.created_at",
+  updatedAt: "e.updated_at",
+};
+
+/** Human labels for the builder's sort dropdown and for describeFilter(). */
+export const SORT_FIELD_LABELS: Record<JournalSortField, string> = {
+  date: "Date",
+  time: "Time",
+  title: "Title",
+  placeName: "Place",
+  isPinned: "Pinned",
+  createdAt: "Created",
+  updatedAt: "Updated",
+};
+
+/**
+ * The default ordering, used when a filter carries no sort terms. Every filter
+ * saved before sorting existed reads back as `sort: []`, so this is what keeps
+ * their results where they were.
+ */
+const DEFAULT_ORDER_BY = "e.entry_date DESC, e.entry_time DESC, e.id DESC";
+
+/**
+ * The ORDER BY for a filter, as a literal string — safe to interpolate because
+ * every part of it is a literal written here.
+ *
+ * Both halves of each term index an allowlist rather than being interpolated: an
+ * unknown field is dropped, and the direction is one of two literals. So a
+ * hand-edited `filter_json` can't inject anything, the same guarantee
+ * `buildFilterSql` gives for the WHERE.
+ *
+ * Always ends with `e.id` so the order is total. Without it two entries sharing
+ * a date (or a blank title, which every encrypted entry has) can come back in
+ * either order between runs, and a list that reshuffles on reload reads as a bug.
+ *
+ * Pinned sorts the way a reader expects rather than the way the integer does:
+ * `is_pinned` is 0/1, so "pinned first" is DESC. `asc`/`desc` are flipped for it
+ * so that "Pinned, ascending" doesn't mean "unpinned first".
+ */
+export function buildOrderBy(sort: JournalSortTerm[] | undefined): string {
+  const terms = (sort ?? [])
+    .filter((term) => SORT_COLUMNS[term.field] !== undefined)
+    .map((term) => {
+      const ascending = term.field === "isPinned" ? term.direction !== "asc" : term.direction === "asc";
+      return `${SORT_COLUMNS[term.field]} ${ascending ? "ASC" : "DESC"}`;
+    });
+  if (terms.length === 0) return DEFAULT_ORDER_BY;
+  return `${terms.join(", ")}, e.id DESC`;
+}
+
+/** One sort term in English, e.g. `Date (newest first)`. */
+export function describeSortTerm(term: JournalSortTerm): string {
+  const field = SORT_FIELD_LABELS[term.field] ?? term.field;
+  return `${field} (${sortDirectionLabel(term.field, term.direction)})`;
+}
+
+/**
+ * What a direction *means* for a field, rather than the bare word. "Date,
+ * ascending" takes a beat to read; "Date (oldest first)" doesn't, and the
+ * builder and the English description both want the same phrasing.
+ */
+export function sortDirectionLabel(field: JournalSortField, direction: JournalSortDirection): string {
+  const isAsc = direction === "asc";
+  switch (field) {
+    case "date":
+    case "time":
+    case "createdAt":
+    case "updatedAt":
+      return isAsc ? "oldest first" : "newest first";
+    case "isPinned":
+      return isAsc ? "unpinned first" : "pinned first";
+    default:
+      return isAsc ? "A to Z" : "Z to A";
+  }
+}
+
 /** One condition in English, e.g. `Category is any of Travel, Work`. */
 export function describeCondition(condition: JournalFilterCondition): string {
   const field = FIELD_LABELS[condition.field] ?? condition.field;
@@ -296,8 +405,9 @@ export function describeCondition(condition: JournalFilterCondition): string {
     return `${field} ${operator} …`;
   }
 
-  if (condition.field === "isPinned" || condition.field === "isLocked") {
-    return `${field} ${operator} ${condition.value === "true" ? "yes" : "no"}`;
+  if (isBooleanField(condition.field)) {
+    // Matches compileCondition: only an explicit "false" is no.
+    return `${field} ${operator} ${condition.value === "false" ? "no" : "yes"}`;
   }
 
   const value = (condition.value ?? "").trim();
@@ -322,8 +432,20 @@ export function describeFilter(filter: JournalFilter): string {
     })
     .filter((text) => text !== "");
 
-  if (groups.length === 0) return "No conditions — matches every entry.";
-  return groups.join(filter.join === "OR" ? " OR " : " AND ");
+  // The sort reads as its own clause rather than being folded into the
+  // conditions: it doesn't change *which* entries match, only their order, and
+  // running the two together ("Locked is yes AND Date newest first") would imply
+  // it does.
+  const sorted = (filter.sort ?? []).filter((term) => SORT_FIELD_LABELS[term.field] !== undefined);
+  const sortText =
+    sorted.length === 0 ? "" : `, sorted by ${sorted.map(describeSortTerm).join(", then ")}`;
+
+  if (groups.length === 0) {
+    return sortText === ""
+      ? "No conditions — matches every entry."
+      : `No conditions — matches every entry${sortText}.`;
+  }
+  return `${groups.join(filter.join === "OR" ? " OR " : " AND ")}${sortText}`;
 }
 
 /** True when nothing in the filter would narrow the results. */

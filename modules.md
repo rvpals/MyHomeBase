@@ -2837,6 +2837,10 @@ module is a much smaller job with its own four-step recipe — see *Per-module d
 - [ ] `NNNN_create_*.sql` + `.md` log
 - [ ] `NNNN_seed_<slug>_module.sql` + `.md` log
 - [ ] `DEFAULT_MODULES` updated, with its comment naming the new seed migration
+- [ ] `MESSAGE_MODULES` in `src/lib/messages/schema.ts` extended **if the module files
+      messages** — the queue's `module` column is a fixed enum, not a lookup against
+      `sys_modules` (migration 0142 says why), so a slug missing here makes
+      `createMessage` throw at the boundary
 - [ ] Repository added to `deps` in `wiring.ts`
 - [ ] `<module>-sections.ts` (no `"use client"`), `-nav.tsx`, `-section.tsx`
 - [ ] Nav registered in `section-layout.tsx`

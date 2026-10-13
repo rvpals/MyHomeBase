@@ -4,9 +4,16 @@ import { useState } from "react";
 import { Button } from "@/components/button";
 import { isDuplicateLocation } from "@/lib/sys-locations";
 import {
-  addEntryLocationToLibraryAction,
+  createLibraryLocationAction,
+  findLocationsAtPointAction,
+  reverseGeocodeAction,
+  saveLibraryTaxonomyAction,
   type JournalLocationInput,
 } from "./journal-actions";
+import {
+  EditSavedLocationModal,
+  type EditLocationActions,
+} from "@/app/(protected)/admin/locations/manager/view";
 import { JournalLocationField, type PickedLocation } from "./journal-location-field";
 import { JournalLocationLibraryPicker } from "./journal-location-library-picker";
 
@@ -26,6 +33,23 @@ function formatCoords(latitude: number, longitude: number): string {
 type Source = "map" | "library";
 
 const TAB_CLASS = "rounded-md px-3 py-1.5 text-sm transition-colors";
+
+/**
+ * The entry form's bundle for the location editor: the same use-cases the Admin
+ * screens call, behind `requireModuleAccess("journal")` instead of
+ * `requireAdmin()`, so saving a place does not require an admin account.
+ *
+ * No `update` — this popup only ever creates from here. Omitting it means an
+ * edit cannot be reached by accident rather than failing at the call.
+ *
+ * Module-level so its identity is stable across renders.
+ */
+const ENTRY_EDIT_LOCATION_ACTIONS: EditLocationActions = {
+  create: createLibraryLocationAction,
+  findAtPoint: findLocationsAtPointAction,
+  reverseGeocode: reverseGeocodeAction,
+  saveTaxonomy: (kind, input) => saveLibraryTaxonomyAction(kind, input),
+};
 
 // Collects several locations for an entry: either pick a "draft" point on the
 // map and append it with "Add location", or add one straight from the saved
@@ -57,21 +81,8 @@ export function JournalLocationPicker({
   // nothing links an entry pin to a library row (migration 0141), so the form
   // cannot know whether a place is already there.
   const [savedToLibrary, setSavedToLibrary] = useState<Set<number>>(new Set());
-  const [savingIndex, setSavingIndex] = useState<number | null>(null);
-
-  async function addToLibrary(index: number) {
-    setSavingIndex(index);
-    try {
-      const result = await addEntryLocationToLibraryAction(value[index]);
-      if (result.ok) {
-        setSavedToLibrary((previous) => new Set(previous).add(index));
-      } else {
-        window.alert(result.error);
-      }
-    } finally {
-      setSavingIndex(null);
-    }
-  }
+  /** The row whose "+" opened the location editor, or null when it is closed. */
+  const [addingIndex, setAddingIndex] = useState<number | null>(null);
 
   function addDraft() {
     if (!draft) return;
@@ -139,8 +150,8 @@ export function JournalLocationPicker({
                   a pin to a library row, so it cannot claim more than that. */}
               <button
                 type="button"
-                onClick={() => addToLibrary(index)}
-                disabled={savingIndex !== null || savedToLibrary.has(index)}
+                onClick={() => setAddingIndex(index)}
+                disabled={savedToLibrary.has(index)}
                 aria-label={
                   savedToLibrary.has(index)
                     ? `"${location.locationName || "This location"}" was added to the location library`
@@ -153,7 +164,7 @@ export function JournalLocationPicker({
                 }
                 className="shrink-0 rounded-md border border-line px-2 py-0.5 text-sm text-muted transition-colors enabled:hover:border-brass enabled:hover:text-brass disabled:cursor-default disabled:opacity-40"
               >
-                {savedToLibrary.has(index) ? "✓" : savingIndex === index ? "…" : "+"}
+                {savedToLibrary.has(index) ? "✓" : "+"}
               </button>
               <button
                 type="button"
@@ -214,6 +225,30 @@ export function JournalLocationPicker({
           categoryOptions={libraryCategoryOptions}
           tagOptions={libraryTagOptions}
           onPick={addFromLibrary}
+        />
+      )}
+
+      {/* The same editor the Location Manager uses, prefilled from the pin, so
+          a place saved from an entry gets a name, a description and its labels
+          rather than landing bare. It writes to the library only — the entry's
+          own pin is untouched either way. */}
+      {addingIndex !== null && value[addingIndex] && (
+        <EditSavedLocationModal
+          initial={{
+            name: value[addingIndex].locationName,
+            latitude: value[addingIndex].latitude,
+            longitude: value[addingIndex].longitude,
+            address: value[addingIndex].streetAddress,
+          }}
+          categoryOptions={libraryCategoryOptions}
+          tagOptions={libraryTagOptions}
+          categoryIcons={{}}
+          tagIcons={{}}
+          onClose={() => setAddingIndex(null)}
+          onSaved={() =>
+            setSavedToLibrary((previous) => new Set(previous).add(addingIndex))
+          }
+          actions={ENTRY_EDIT_LOCATION_ACTIONS}
         />
       )}
     </div>

@@ -83,4 +83,9 @@ export {
   type LocationPoint,
 } from "./duplicate-in-list";
 
+export {
+  findLocationsAtCoordinates,
+  type CandidatePoint,
+} from "./find-at-coordinates";
+
 export { SqliteSavedLocationRepository } from "./repository";

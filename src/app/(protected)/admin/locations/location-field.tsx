@@ -47,6 +47,7 @@ export function LocationPickerField({
   value,
   onChange,
   showAddress = false,
+  showName = true,
 }: {
   value: PickedLocation | null;
   onChange: (next: PickedLocation | null) => void;
@@ -56,6 +57,15 @@ export function LocationPickerField({
    * field, and the Preferences card, which wants a point only — are unchanged.
    */
   showAddress?: boolean;
+  /**
+   * Shows the "Name for <coords>" box under the map.
+   *
+   * On by default, because the two pickers that compose this one *do* use the
+   * name. The location editor passes false: it has its own Name field at the
+   * top and ignores this one, so showing both meant a box that silently threw
+   * away whatever was typed into it.
+   */
+  showName?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<GeoPlace[]>([]);
@@ -145,7 +155,7 @@ export function LocationPickerField({
 
       <LocationMap marker={value} center={center} onPick={handleMapPick} />
 
-      {value && (
+      {value && showName && (
         <label className="block text-sm">
           <span className="mb-1 block font-medium text-ink">Name for {formatCoords(value.latitude, value.longitude)}</span>
           <div className="flex gap-2">
@@ -161,6 +171,20 @@ export function LocationPickerField({
             </Button>
           </div>
         </label>
+      )}
+
+      {/* With the name box hidden the Clear button would go with it, stranding
+          the pin: the map only ever *sets* a point. So the coordinates stand in
+          for the heading, and carry Clear themselves. */}
+      {value && !showName && (
+        <div className="flex items-center gap-2 text-sm">
+          <span className="flex-1 font-mono text-xs text-muted">
+            {formatCoords(value.latitude, value.longitude)}
+          </span>
+          <Button size="sm" variant="secondary" onClick={() => onChange(null)}>
+            Clear
+          </Button>
+        </div>
       )}
 
       {value && showAddress && (

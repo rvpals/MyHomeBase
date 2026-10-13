@@ -349,10 +349,11 @@ createMessage(deps.messageRepo, {
   title: "NVDA: monitor triggered",
   body: "NVDA unrealized gain is $9,900.00, approaching your $10,000.00 target.",
   source: "Investments monitor",
+  module: "investments",
 });
 ```
 
-Three things about it are worth knowing before adding a second writer.
+Four things about it are worth knowing before adding a second writer.
 
 **It is household-wide.** One queue, one read state — marking a message read
 marks it read for everyone. That matches what the app is, and it keeps the table
@@ -369,6 +370,22 @@ about an hour later. Filing both is how a queue becomes noise nobody reads.
 that wrote it: deleting a monitor next week must not delete the messages it
 filed, because the record that something was reported at a point in time is the
 whole value of the queue.
+
+**`module` names the owner; `source` names the writer** (migration 0142). They
+answer different questions, which is why both exist: two Investments producers
+file under two `source` strings, so grouping the admin grid by `source` splits
+them and by `module` it does not. It is **not** a foreign key either, for the
+reason above — it is validated against `MESSAGE_MODULES`, a fixed enum in
+`src/lib/messages/schema.ts`. The cost is explicit and `modules.md` step 7 lists
+it: **a new module cannot file a message until its slug is added to that enum.**
+Each producer stamps its own module, so nothing can file a message attributed to
+another module's screen. A scheduled job or CLI command stamps `system`.
+
+**A locked message (`is_locked`, migration 0142) survives bulk Delete *and* the
+age purge**, however old it gets. That immunity is the point — a monitor firing
+on the day something went wrong is worth keeping after the noise around it is
+gone — so `unlock` is the only route to removing one and there is no
+force-delete. Producers cannot file a locked message; an admin locks it after.
 
 The bell is `MessageQueue`, mounted by every shell through `MessageQueueHost`
 (see `components.md`). It is tier 3 — header, not floating — because it acts on

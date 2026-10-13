@@ -67,6 +67,11 @@ describe("parseFilterQuery — single conditions", () => {
     expect(parseFilterQuery("categories = x").groups[0].conditions[0].field).toBe("category");
     expect(parseFilterQuery("place ~ Rome").groups[0].conditions[0].field).toBe("placeName");
     expect(parseFilterQuery("pinned = yes").groups[0].conditions[0].field).toBe("isPinned");
+    expect(parseFilterQuery("encrypted = yes").groups[0].conditions[0]).toEqual({
+      field: "isEncrypted",
+      operator: "is",
+      value: "true",
+    });
   });
 
   it("is case-insensitive on field names and keywords", () => {

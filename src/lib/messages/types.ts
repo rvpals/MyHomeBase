@@ -1,3 +1,5 @@
+import type { MessageModule } from "./schema";
+
 /**
  * One message in the application-wide queue.
  *
@@ -20,6 +22,23 @@ export interface SystemMessage {
   body: string;
   /** Who filed it, e.g. "Investments monitor". Blank when unattributed. */
   source: string;
+  /**
+   * The module the producer belongs to, e.g. "investments". Never blank:
+   * "system" is the slug for the app's own producers (admin jobs, the CLI),
+   * and the repository maps a pre-0142 row's empty string onto it, so there is
+   * one spelling of "no module" everywhere above.
+   *
+   * Distinct from `source`, which names the producer itself. Two monitors and a
+   * watch list are three sources and one module.
+   */
+  module: MessageModule;
+  /**
+   * Locked against deletion — by the bulk delete *and* by the age purge.
+   *
+   * The queue's only protected state. Unlock it to delete it; there is no
+   * force-delete, by choice.
+   */
+  isLocked: boolean;
 }
 
 /** Which half of the queue — the screen's two tabs. */

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 import { Button } from "@/components/button";
 import { Modal } from "@/components/modal";
 import { TreeIcon } from "@/components/tree-icons";
@@ -15,16 +15,11 @@ import {
 } from "@/lib/home-layout";
 import { setHomeLayoutAction } from "./home-layout-actions";
 
-/**
- * One card the grid lays out. The page renders the card itself and hands it over
- * already built — this component never knows what a Daily Quote is, only that it is
- * a draggable block with an id and a label.
- */
-export interface HomeWidgetItem {
+/** What every card carries, however it chooses to draw its ✕. */
+interface HomeWidgetItemBase {
   id: HomeWidgetId;
   /** Names the card in the layout's accessible names. */
   label: string;
-  node: ReactNode;
   /**
    * Whether the card spans both columns instead of taking one.
    *
@@ -34,6 +29,42 @@ export interface HomeWidgetItem {
    * to the cards around it, and letting it be dragged would imply otherwise.
    */
   spansBothColumns?: boolean;
+}
+
+/**
+ * One card the grid lays out. The page renders the card itself and hands it over
+ * already built — this component never knows what a Daily Quote is, only that it is
+ * a draggable block with an id and a label.
+ *
+ * Every card supplies `node`. By default the grid draws its own ✕, a hover-revealed
+ * button in the wrapper's top-right corner — that suits a `CollapsibleCard`, whose
+ * corner is spare.
+ *
+ * `ownsClose` is for a card that already owns a control row and has somewhere better
+ * to put the ✕ — a floating corner button over such a row reads as a second, competing
+ * set of chrome. The grid then suppresses its own button, and the card reaches the same
+ * `close` callback through `useHomeWidgetClose()`. So the card decides only where the
+ * control sits: `close` still opens the same confirmation and writes the same hidden
+ * state.
+ *
+ * It's a boolean flag and a context rather than a `renderWithClose(close)` prop because
+ * `page.tsx` is a server component: a function can't cross that boundary, but an
+ * element and a boolean can.
+ */
+export type HomeWidgetItem = HomeWidgetItemBase & {
+  node: ReactNode;
+  /** The card renders its own close control via `useHomeWidgetClose()`. */
+  ownsClose?: boolean;
+};
+
+/**
+ * Supplies the grid's close callback to a card that sets `ownsClose`. Undefined
+ * anywhere a widget is drawn outside the grid, so the control simply isn't rendered.
+ */
+const HomeWidgetCloseContext = createContext<(() => void) | undefined>(undefined);
+
+export function useHomeWidgetClose(): (() => void) | undefined {
+  return useContext(HomeWidgetCloseContext);
 }
 
 /**
@@ -294,27 +325,31 @@ export function HomeWidgetGrid({
                 `draggable={false}` so a press on the ✕ starts a click, not a drag of
                 the card underneath it.
               */}
-              <button
-                type="button"
-                draggable={false}
-                onClick={() => setConfirmClose(item)}
-                aria-label={`Close ${item.label}`}
-                title={`Close ${item.label}`}
-                className="absolute right-3 top-3 z-10 hidden rounded-md bg-paper-raised/90 p-1 text-muted opacity-0 transition-opacity hover:bg-brass-soft hover:text-brass-dark focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none xl:block"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  className="h-4 w-4"
-                  aria-hidden="true"
+              {!item.ownsClose && (
+                <button
+                  type="button"
+                  draggable={false}
+                  onClick={() => setConfirmClose(item)}
+                  aria-label={`Close ${item.label}`}
+                  title={`Close ${item.label}`}
+                  className="absolute right-3 top-3 z-10 hidden rounded-md bg-paper-raised/90 p-1 text-muted opacity-0 transition-opacity hover:bg-brass-soft hover:text-brass-dark focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none xl:block"
                 >
-                  <path d="M6 6l12 12M18 6L6 18" />
-                </svg>
-              </button>
-              {item.node}
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    className="h-4 w-4"
+                    aria-hidden="true"
+                  >
+                    <path d="M6 6l12 12M18 6L6 18" />
+                  </svg>
+                </button>
+              )}
+              <HomeWidgetCloseContext.Provider value={() => setConfirmClose(item)}>
+                {item.node}
+              </HomeWidgetCloseContext.Provider>
             </div>
           );
         })}

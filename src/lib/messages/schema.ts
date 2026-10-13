@@ -9,6 +9,44 @@ import { z } from "zod";
 /** A title has to say something; an empty queue row would be unreadable. */
 export const MESSAGE_TITLE_MAX = 200;
 
+/**
+ * Every slug that may own a message, plus `system` for the app's own producers.
+ *
+ * A FIXED LIST, not a lookup against `sys_modules`. Migration 0142 records why:
+ * a message outlives the thing that wrote it, so the column is not a foreign
+ * key, and validating against the live table would both add a second repository
+ * to `createMessage` and orphan history when a module is deleted.
+ *
+ * The cost is explicit: **a newly created module cannot file a message until its
+ * slug is added here.** That is one line, and `modules.md` step 7 names it.
+ *
+ * Mirrors `DEFAULT_MODULES` in `lib/modules/defaults.ts` — keep both in sync.
+ */
+export const MESSAGE_MODULES = [
+  "investments",
+  "journal",
+  "csv-analysis",
+  "expense",
+  "attendance",
+  "music-library",
+  "games",
+  "picture-gallery",
+  "tools",
+  "household",
+  // Not a module. The app itself: scheduled jobs, the CLI, anything owned by
+  // Admin rather than by a module. Spelled out rather than left blank so the
+  // grid can filter on it like any other value.
+  "system",
+] as const;
+
+export const messageModuleSchema = z.enum(MESSAGE_MODULES);
+
+/** The slug of the module that owns a message's producer. */
+export type MessageModule = (typeof MESSAGE_MODULES)[number];
+
+/** What a pre-0142 row carries, and what it is read as. See migration 0142. */
+export const LEGACY_MESSAGE_MODULE = "system" satisfies MessageModule;
+
 export const systemMessageSchema = z.object({
   id: z.number().int().positive(),
   createdAt: z.string().min(1),
@@ -19,6 +57,8 @@ export const systemMessageSchema = z.object({
   title: z.string().min(1),
   body: z.string(),
   source: z.string(),
+  module: messageModuleSchema,
+  isLocked: z.boolean(),
 });
 
 /**
@@ -33,6 +73,11 @@ export const createMessageSchema = z.object({
   // column defaults to '' for exactly that. Not trimmed to empty and rejected.
   body: z.string().default(""),
   source: z.string().trim().default(""),
+  // Defaulted, not required, so the CLI and any one-off caller need not name a
+  // module. `isLocked` is deliberately absent: a message is filed unlocked and
+  // locked afterwards by an admin, so accepting it here would let a producer
+  // file something nobody can delete.
+  module: messageModuleSchema.default("system"),
 });
 
 /**
@@ -82,3 +127,26 @@ export const deleteMessagesSchema = z
  * timer. It is the age an admin picks on the screen, one purge at a time.
  */
 export const messageRetentionDaysSchema = z.number().int().min(1).max(3650);
+
+/**
+ * Ids to lock or unlock, and which way.
+ *
+ * Bounded and deduped like `deleteMessagesSchema`, and non-empty for the same
+ * reason: "lock nothing" is an admin pressing a button with no selection, which
+ * has to reach them rather than succeeding silently.
+ *
+ * `locked` is explicit rather than a toggle. A toggle over a mixed selection —
+ * some locked, some not — has no honest meaning: it would invert each row
+ * independently and leave the admin with the same mixture they started from.
+ * Two buttons, each stating the end state, is what the screen offers.
+ */
+export const setMessagesLockedSchema = z.object({
+  messageIds: z
+    .array(z.number().int().positive())
+    .min(1, "Select at least one message.")
+    .max(MAX_BULK_IDS)
+    .transform((ids) => [...new Set(ids)]),
+  locked: z.boolean(),
+});
+
+export type SetMessagesLockedInput = z.input<typeof setMessagesLockedSchema>;

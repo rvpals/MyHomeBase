@@ -312,6 +312,14 @@ export default async function Home({
                   {
                     id,
                     label: "Daily Quote",
+                    // `ownsClose`: the scroll's bottom dowel is already this widget's
+                    // control bar, so the ✕ joins Edit and Refresh there instead of
+                    // floating over the paper in the wrapper's corner. The widget picks
+                    // the callback up from the grid's context -- this is a server
+                    // component, so a function prop can't cross the boundary. The grid
+                    // still owns the confirmation and the hidden state; only the
+                    // button's position moves.
+                    ownsClose: true,
                     node: (
                       <DailyQuoteWidget
                         initialQuote={quote}

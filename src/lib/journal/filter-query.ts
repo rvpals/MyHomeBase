@@ -27,7 +27,7 @@ import type {
   JournalFilterJoin,
   JournalFilterOperator,
 } from "./types";
-import { OPERATORS_BY_FIELD } from "./filters";
+import { isBooleanField, OPERATORS_BY_FIELD } from "./filters";
 
 /**
  * Query field name -> the canonical field. Accepts a few natural aliases
@@ -53,6 +53,8 @@ const FIELD_ALIASES: Record<string, JournalFilterField> = {
   ispinned: "isPinned",
   locked: "isLocked",
   islocked: "isLocked",
+  encrypted: "isEncrypted",
+  isencrypted: "isEncrypted",
 };
 
 /**
@@ -102,6 +104,7 @@ const SUGGESTED_FIELD_NAMES = [
   "tags",
   "pinned",
   "locked",
+  "encrypted",
 ];
 
 function resolveField(raw: string): JournalFilterField {
@@ -167,7 +170,7 @@ function buildCondition(
     );
   }
 
-  if (field === "isPinned" || field === "isLocked") {
+  if (isBooleanField(field)) {
     const lowered = value.toLowerCase();
     if (!TRUE_WORDS.has(lowered) && !FALSE_WORDS.has(lowered)) {
       throw new FilterQueryError(`"${spelling}" takes yes or no, got "${value}".`);

@@ -14,6 +14,9 @@ export type {
   JournalFilterField,
   JournalFilterOperator,
   JournalFilterJoin,
+  JournalSortField,
+  JournalSortDirection,
+  JournalSortTerm,
   SavedJournalFilter,
   TodayInHistoryEntry,
   JournalEntryRef,
@@ -39,6 +42,7 @@ export type {
   IcsImportReviewEntry,
   IcsImportReviewEvent,
 } from "./types";
+export { JOURNAL_SORT_FIELDS } from "./types";
 export {
   resolveJournalPreferences,
   journalPreferencesToEntries,
@@ -138,13 +142,18 @@ export {
 } from "./filter-query";
 export {
   buildFilterSql,
+  buildOrderBy,
   describeFilter,
   describeCondition,
+  describeSortTerm,
+  sortDirectionLabel,
+  SORT_FIELD_LABELS,
   emptyFilter,
   isFilterEmpty,
   isRangeOperator,
   isValuelessOperator,
   isListOperator,
+  isBooleanField,
   OPERATORS_BY_FIELD,
   FIELD_LABELS,
 } from "./filters";

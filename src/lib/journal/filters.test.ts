@@ -3,7 +3,9 @@ import {
   buildFilterSql,
   describeCondition,
   describeFilter,
+  buildOrderBy,
   emptyFilter,
+  isBooleanField,
   isFilterEmpty,
 } from "./filters";
 import { parseStoredJournalFilter } from "./schema";
@@ -137,6 +139,28 @@ describe("buildFilterSql — operators", () => {
     expect(no.params).toEqual({ g0c0: 0 });
   });
 
+  it("compiles Encrypted against its own column, not is_locked", () => {
+    // `is_encrypted` and `is_locked` are independent flags — an entry can be
+    // either without the other, so this must not quietly compile to the lock.
+    const yes = buildFilterSql(oneCondition({ field: "isEncrypted", operator: "is", value: "true" }))!;
+    expect(yes.sql).toContain("e.is_encrypted");
+    expect(yes.sql).not.toContain("is_locked");
+    expect(yes.params).toEqual({ g0c0: 1 });
+    const no = buildFilterSql(oneCondition({ field: "isEncrypted", operator: "is", value: "false" }))!;
+    expect(no.params).toEqual({ g0c0: 0 });
+  });
+
+  it("treats an unset boolean value as yes, matching what the builder showed", () => {
+    // Switching a condition's field to Locked used to carry the previous
+    // field's "" across. The select displayed its first option ("yes") while
+    // this compiled to 0 — so a "Locked is yes" filter returned unlocked
+    // entries. Only an explicit "false" is no.
+    const blank = buildFilterSql(oneCondition({ field: "isLocked", operator: "is", value: "" }))!;
+    expect(blank.params).toEqual({ g0c0: 1 });
+    const missing = buildFilterSql(oneCondition({ field: "isLocked", operator: "is" }))!;
+    expect(missing.params).toEqual({ g0c0: 1 });
+  });
+
   it("compiles isEmpty / isNotEmpty without a parameter", () => {
     const empty = buildFilterSql(oneCondition({ field: "placeName", operator: "isEmpty" }))!;
     expect(empty.params).toEqual({});
@@ -236,6 +260,13 @@ describe("describeFilter", () => {
 
   it("renders booleans as yes/no and ranges readably", () => {
     expect(describeCondition({ field: "isPinned", operator: "is", value: "true" })).toBe("Pinned is yes");
+    expect(describeCondition({ field: "isLocked", operator: "is", value: "false" })).toBe("Locked is no");
+    expect(describeCondition({ field: "isEncrypted", operator: "is", value: "true" })).toBe(
+      "Encrypted is yes",
+    );
+    // The "Locked is yes" / "READS AS Locked is no" contradiction: an unset
+    // value must read the same way it compiles.
+    expect(describeCondition({ field: "isLocked", operator: "is", value: "" })).toBe("Locked is yes");
     expect(
       describeCondition({ field: "date", operator: "between", value: "2026-01-01", valueTo: "2026-06-30" }),
     ).toBe("Date is between 2026-01-01 and 2026-06-30");
@@ -254,8 +285,8 @@ describe("parseStoredJournalFilter", () => {
 
   it("returns an empty filter for unreadable JSON rather than throwing", () => {
     // A screen that still works beats a 500 on a hand-mangled row.
-    expect(parseStoredJournalFilter("{not json")).toEqual({ join: "AND", groups: [] });
-    expect(parseStoredJournalFilter("null")).toEqual({ join: "AND", groups: [] });
+    expect(parseStoredJournalFilter("{not json")).toEqual({ join: "AND", groups: [], sort: [] });
+    expect(parseStoredJournalFilter("null")).toEqual({ join: "AND", groups: [], sort: [] });
   });
 
   it("widens a bare condition array into a single AND group", () => {
@@ -284,5 +315,123 @@ describe("parseStoredJournalFilter", () => {
     expect(parsed.join).toBe("OR");
     expect(parsed.groups[0].conditions).toHaveLength(1);
     expect(parsed.groups[0].conditions[0].value).toBe("keep");
+  });
+});
+
+describe("isBooleanField", () => {
+  it("identifies exactly the 0/1 flag fields", () => {
+    // Derived from FIELD_COLUMNS, so this is the one place that has to be right
+    // for the builder, describeCondition and the query parser to agree.
+    expect(isBooleanField("isPinned")).toBe(true);
+    expect(isBooleanField("isLocked")).toBe(true);
+    expect(isBooleanField("isEncrypted")).toBe(true);
+    expect(isBooleanField("title")).toBe(false);
+    expect(isBooleanField("date")).toBe(false);
+    expect(isBooleanField("category")).toBe(false);
+  });
+});
+
+describe("buildOrderBy", () => {
+  it("falls back to the historic order when nothing is set", () => {
+    // Every filter saved before sorting existed reads back as sort: [], so this
+    // is what keeps their results where they were.
+    expect(buildOrderBy([])).toBe("e.entry_date DESC, e.entry_time DESC, e.id DESC");
+    expect(buildOrderBy(undefined)).toBe("e.entry_date DESC, e.entry_time DESC, e.id DESC");
+  });
+
+  it("orders by several fields, most significant first", () => {
+    expect(
+      buildOrderBy([
+        { field: "placeName", direction: "asc" },
+        { field: "date", direction: "desc" },
+      ]),
+    ).toBe("e.place_name ASC, e.entry_date DESC, e.id DESC");
+  });
+
+  it("always ends with e.id so the order is total", () => {
+    // Without it, entries sharing a title -- every encrypted entry has a blank
+    // one -- can come back in either order between runs.
+    expect(buildOrderBy([{ field: "title", direction: "asc" }])).toBe("e.title ASC, e.id DESC");
+  });
+
+  it("flips direction for Pinned so desc means pinned first", () => {
+    // is_pinned is 0/1, so the integer order is the opposite of what a reader
+    // means by "pinned first".
+    expect(buildOrderBy([{ field: "isPinned", direction: "desc" }])).toBe(
+      "e.is_pinned DESC, e.id DESC",
+    );
+    expect(buildOrderBy([{ field: "isPinned", direction: "asc" }])).toBe(
+      "e.is_pinned ASC, e.id DESC",
+    );
+  });
+
+  it("drops an unknown field rather than interpolating it", () => {
+    // The security property: a hand-edited filter_json can't reach the SQL.
+    const injected = [
+      { field: "title; DROP TABLE jrn_entries" as never, direction: "asc" as const },
+    ];
+    expect(buildOrderBy(injected)).toBe("e.entry_date DESC, e.entry_time DESC, e.id DESC");
+  });
+
+  it("emits only literal directions for an unknown direction", () => {
+    const order = buildOrderBy([{ field: "date", direction: "sideways" as never }]);
+    expect(order).toBe("e.entry_date DESC, e.id DESC");
+  });
+});
+
+describe("describeFilter with a sort", () => {
+  it("reads the sort as its own clause", () => {
+    const filter: JournalFilter = {
+      join: "AND",
+      groups: [{ join: "AND", conditions: [{ field: "isLocked", operator: "is", value: "true" }] }],
+      sort: [
+        { field: "date", direction: "asc" },
+        { field: "title", direction: "asc" },
+      ],
+    };
+    expect(describeFilter(filter)).toBe(
+      "Locked is yes, sorted by Date (oldest first), then Title (A to Z)",
+    );
+  });
+
+  it("describes a sort with no conditions", () => {
+    expect(
+      describeFilter({ join: "AND", groups: [], sort: [{ field: "isPinned", direction: "desc" }] }),
+    ).toBe("No conditions — matches every entry, sorted by Pinned (pinned first).");
+  });
+
+  it("says nothing about sorting when there is none", () => {
+    expect(describeFilter({ join: "AND", groups: [], sort: [] })).toBe(
+      "No conditions — matches every entry.",
+    );
+  });
+});
+
+describe("parseStoredJournalFilter with a sort", () => {
+  it("round-trips sort terms", () => {
+    const parsed = parseStoredJournalFilter(
+      JSON.stringify({ join: "AND", groups: [], sort: [{ field: "title", direction: "asc" }] }),
+    );
+    expect(parsed.sort).toEqual([{ field: "title", direction: "asc" }]);
+  });
+
+  it("reads a filter saved before sorting existed as the default order", () => {
+    // Absent rather than [], and buildOrderBy treats the two identically — the
+    // point is that it parses at all and orders the historic way.
+    const parsed = parseStoredJournalFilter(JSON.stringify({ join: "AND", groups: [] }));
+    expect(parsed.sort ?? []).toEqual([]);
+    expect(buildOrderBy(parsed.sort)).toBe("e.entry_date DESC, e.entry_time DESC, e.id DESC");
+  });
+
+  it("drops an unknown sort field rather than failing the whole filter", () => {
+    const parsed = parseStoredJournalFilter(
+      JSON.stringify({
+        join: "AND",
+        groups: [{ join: "AND", conditions: [{ field: "title", operator: "contains", value: "x" }] }],
+        sort: [{ field: "nonsense", direction: "asc" }],
+      }),
+    );
+    expect(parsed.sort).toEqual([]);
+    expect(parsed.groups[0].conditions).toHaveLength(1);
   });
 });

@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 import type { MessageRepository } from "./ports";
-import type { CreateMessage } from "./schema";
+import { LEGACY_MESSAGE_MODULE, messageModuleSchema, type CreateMessage } from "./schema";
 import type { MessageCounts, MessageReadState, SystemMessage } from "./types";
 
 interface MessageRow {
@@ -10,6 +10,8 @@ interface MessageRow {
   title: string;
   body: string;
   source: string;
+  module: string;
+  is_locked: number;
 }
 
 /**
@@ -24,7 +26,32 @@ function toMessage(row: MessageRow): SystemMessage {
     title: row.title,
     body: row.body,
     source: row.source,
+    // A pre-0142 row carries '' — the column's default, meaning "filed before
+    // anyone recorded a module". It reads as `system`, so the domain type has one
+    // spelling of "no module" and no screen handles two. See migration 0142.
+    //
+    // Parsed rather than cast: the column is TEXT with no FK, so a row written by
+    // hand (the SQL explorer, a migration) could hold anything. `safeParse` keeps
+    // a junk slug from reaching the grid as a value no filter will ever match.
+    module: row.module === "" ? LEGACY_MESSAGE_MODULE : readModule(row.module),
+    // SQLite has no boolean: the column is INTEGER 0/1. One `!== 0` here rather
+    // than a truthiness test at each reader.
+    isLocked: row.is_locked !== 0,
   };
+}
+
+/**
+ * A stored slug to the domain enum, falling back to `system` for anything
+ * unrecognised rather than throwing.
+ *
+ * A read of the queue must not fail because one row holds a slug the enum no
+ * longer lists — a module removed from `MESSAGE_MODULES` would otherwise take
+ * the whole admin screen down with it, which is exactly the orphaning migration
+ * 0142 avoided by keeping the column free of a foreign key.
+ */
+function readModule(value: string) {
+  const parsed = messageModuleSchema.safeParse(value);
+  return parsed.success ? parsed.data : LEGACY_MESSAGE_MODULE;
 }
 
 /** The message queue's storage. See migrations/0109. */
@@ -77,11 +104,11 @@ export class SqliteMessageRepository implements MessageRepository {
   createMessage(input: CreateMessage): SystemMessage {
     const row = this.db
       .prepare(
-        `INSERT INTO sys_messages (title, body, source)
-         VALUES (?, ?, ?)
+        `INSERT INTO sys_messages (title, body, source, module)
+         VALUES (?, ?, ?, ?)
          RETURNING *`,
       )
-      .get(input.title, input.body, input.source) as MessageRow;
+      .get(input.title, input.body, input.source, input.module) as MessageRow;
     return toMessage(row);
   }
 
@@ -120,12 +147,35 @@ export class SqliteMessageRepository implements MessageRepository {
     return rows.map(toMessage);
   }
 
+  setLocked(messageIds: number[], locked: boolean): number {
+    if (messageIds.length === 0) return 0;
+
+    // `is_locked != ?` in the predicate, not just the id list: a row already in
+    // the requested state is left alone, so `changes` means "how many this call
+    // actually flipped". Same shape, and the same reason, as `markRead` above —
+    // it is what lets the screen report a real number after a double-click.
+    const placeholders = messageIds.map(() => "?").join(", ");
+    const target = locked ? 1 : 0;
+    const result = this.db
+      .prepare(
+        `UPDATE sys_messages
+            SET is_locked = ?
+          WHERE is_locked != ? AND id IN (${placeholders})`,
+      )
+      .run(target, target, ...messageIds);
+    return result.changes;
+  }
+
   deleteMessages(messageIds: number[]): number {
     if (messageIds.length === 0) return 0;
 
+    // `is_locked = 0` is the lock. It lives here, in the predicate, rather than
+    // as a check above the call: the use-case, the CLI and the admin screen all
+    // reach this one statement, and a guard in any of them could be bypassed by
+    // the others. See migration 0142.
     const placeholders = messageIds.map(() => "?").join(", ");
     const result = this.db
-      .prepare(`DELETE FROM sys_messages WHERE id IN (${placeholders})`)
+      .prepare(`DELETE FROM sys_messages WHERE is_locked = 0 AND id IN (${placeholders})`)
       .run(...messageIds);
     return result.changes;
   }
@@ -138,8 +188,10 @@ export class SqliteMessageRepository implements MessageRepository {
     // A string comparison, which is why the cutoff must be SQLite's own
     // `YYYY-MM-DD HH:MM:SS` shape — see `toSqliteTimestampUtc`, whose doc comment
     // records what an ISO string with its "T" would silently do here.
+    // `is_locked = 0` again: purge immunity is the point of the lock, not a side
+    // effect. A locked message stays however old it gets.
     const result = this.db
-      .prepare(`DELETE FROM sys_messages WHERE created_at < ?`)
+      .prepare(`DELETE FROM sys_messages WHERE is_locked = 0 AND created_at < ?`)
       .run(cutoff);
     return result.changes;
   }

@@ -23,6 +23,7 @@ import {
   deletePerformanceRecordAction,
   saveAccountIconAction,
   updateAccountAction,
+  updatePerformanceRecordAction,
   type AccountFormInput,
   type PerformanceRecordFormInput,
 } from "./investment-accounts-actions";
@@ -228,17 +229,44 @@ function AccountForm({
   );
 }
 
+/**
+ * Add or edit one recorded value.
+ *
+ * `accountPicker` turns it into the standalone "Add Performance Record" card:
+ * without it the form sits under an account that's already chosen, so asking
+ * again would be a second place to get it wrong. On edit the account is fixed —
+ * moving a record between accounts is a delete and a re-add, not a field.
+ */
 function PerformanceRecordForm({
+  initialValue = EMPTY_RECORD_FORM,
+  submitLabel = "Add record",
+  clearOnSave = true,
+  accountPicker,
   onSave,
+  onCancel,
 }: {
+  initialValue?: PerformanceRecordFormInput;
+  submitLabel?: string;
+  /** Add forms empty themselves for the next entry; an edit form keeps its values. */
+  clearOnSave?: boolean;
+  accountPicker?: {
+    accounts: readonly InvestmentAccount[];
+    accountId: number | undefined;
+    onAccountChange: (accountId: number | undefined) => void;
+  };
   onSave: (input: PerformanceRecordFormInput) => Promise<string | undefined>;
+  onCancel?: () => void;
 }) {
-  const [form, setForm] = useState(EMPTY_RECORD_FORM);
+  const [form, setForm] = useState(initialValue);
   const [error, setError] = useState<string | undefined>(undefined);
   const [isSaving, setIsSaving] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (accountPicker && accountPicker.accountId === undefined) {
+      setError("Pick an account first.");
+      return;
+    }
     setIsSaving(true);
     setError(undefined);
     try {
@@ -247,7 +275,9 @@ function PerformanceRecordForm({
         setError(failure);
         return;
       }
-      setForm(EMPTY_RECORD_FORM);
+      // An edit closes on success, so resetting would blank the fields on the
+      // way out; only the add forms clear themselves for the next entry.
+      if (clearOnSave) setForm(EMPTY_RECORD_FORM);
     } finally {
       setIsSaving(false);
     }
@@ -255,6 +285,27 @@ function PerformanceRecordForm({
 
   return (
     <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      {accountPicker && (
+        <label className="block text-sm sm:col-span-3">
+          <span className="mb-1 block font-medium text-ink">Account</span>
+          <select
+            value={accountPicker.accountId ?? ""}
+            onChange={(event) =>
+              accountPicker.onAccountChange(
+                event.target.value === "" ? undefined : Number(event.target.value),
+              )
+            }
+            className="w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+          >
+            <option value="">Select an account…</option>
+            {accountPicker.accounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <label className="block text-sm">
         <span className="mb-1 block font-medium text-ink">Date</span>
         <input
@@ -281,17 +332,31 @@ function PerformanceRecordForm({
         />
       </label>
       {error && <p className="text-sm text-red-400 sm:col-span-3">{error}</p>}
-      <div className="sm:col-span-3">
+      <div className="flex gap-2 sm:col-span-3">
         <Button type="submit" disabled={isSaving}>
-          {isSaving ? "Saving…" : "Add record"}
+          {isSaving ? "Saving…" : submitLabel}
         </Button>
+        {onCancel && (
+          <Button type="button" variant="secondary" onClick={onCancel}>
+            Cancel
+          </Button>
+        )}
       </div>
     </form>
   );
 }
 
+function toRecordFormInput(record: PerformanceRecord): PerformanceRecordFormInput {
+  return {
+    recordDate: record.recordDate,
+    totalValue: centsToDollars(record.totalValueCents).toFixed(2),
+    note: record.note,
+  };
+}
+
 function AccountHistory({ entry }: { entry: AccountEntry }) {
   const router = useRouter();
+  const [editingRecordId, setEditingRecordId] = useState<number | undefined>(undefined);
 
   async function handleDeleteRecord(recordId: number) {
     if (!window.confirm("Delete this performance record?")) return;
@@ -307,6 +372,14 @@ function AccountHistory({ entry }: { entry: AccountEntry }) {
     return undefined;
   }
 
+  async function handleUpdateRecord(recordId: number, input: PerformanceRecordFormInput) {
+    const result = await updatePerformanceRecordAction(recordId, input);
+    if (!result.ok) return result.error ?? "Failed to update performance record.";
+    setEditingRecordId(undefined);
+    router.refresh();
+    return undefined;
+  }
+
   const columns: DataGridColumn<PerformanceRecord>[] = [
     { key: "recordDate", header: "Date", render: (record) => record.recordDate },
     { key: "totalValue", header: "Total Value", render: (record) => formatCents(record.totalValueCents) },
@@ -316,16 +389,27 @@ function AccountHistory({ entry }: { entry: AccountEntry }) {
       header: "Actions",
       excludeFromRecordView: true,
       render: (record) => (
-        <button
-          type="button"
-          onClick={() => handleDeleteRecord(record.id)}
-          className="text-xs font-medium text-red-400 hover:underline"
-        >
-          Delete
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setEditingRecordId(record.id)}
+            className="text-xs font-medium text-brass-dark hover:underline"
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDeleteRecord(record.id)}
+            className="text-xs font-medium text-red-400 hover:underline"
+          >
+            Delete
+          </button>
+        </div>
       ),
     },
   ];
+
+  const editingRecord = entry.history.find((record) => record.id === editingRecordId);
 
   return (
     <div className="mt-4 flex flex-col gap-4">
@@ -344,6 +428,23 @@ function AccountHistory({ entry }: { entry: AccountEntry }) {
         />
       )}
       <PerformanceRecordForm onSave={handleAddRecord} />
+      {editingRecord && (
+        <div className="rounded-lg border border-line p-4">
+          <p className="mb-3 text-sm font-medium text-ink">
+            Edit record from {editingRecord.recordDate}
+          </p>
+          <PerformanceRecordForm
+            // Keyed by record id so picking a different row refills the fields:
+            // without it the form keeps the first record's state.
+            key={editingRecord.id}
+            initialValue={toRecordFormInput(editingRecord)}
+            submitLabel="Save changes"
+            clearOnSave={false}
+            onSave={(input) => handleUpdateRecord(editingRecord.id, input)}
+            onCancel={() => setEditingRecordId(undefined)}
+          />
+        </div>
+      )}
       <DataGrid columns={columns} rows={entry.history} getRowKey={(record) => record.id} emptyMessage="No performance records yet." />
     </div>
   );
@@ -556,6 +657,11 @@ export function StockAccountsView({ entries }: { entries: AccountEntry[] }) {
   const router = useRouter();
   const [editingId, setEditingId] = useState<number | undefined>(undefined);
   const [expandedId, setExpandedId] = useState<number | undefined>(undefined);
+  // Which account the standalone record form writes to. Seeded with the only
+  // account when there is just one, so the common case needs no pick.
+  const [recordAccountId, setRecordAccountId] = useState<number | undefined>(
+    () => (entries.length === 1 ? entries[0].account.id : undefined),
+  );
   // Icon upload failures surface here rather than in a per-row alert: the file
   // picker is in a grid cell, and an alert() would interrupt a bulk tidy-up.
   const [error, setError] = useState<string | undefined>(undefined);
@@ -571,6 +677,14 @@ export function StockAccountsView({ entries }: { entries: AccountEntry[] }) {
     const result = await updateAccountAction(accountId, input);
     if (!result.ok) return result.error ?? "Failed to update account.";
     setEditingId(undefined);
+    router.refresh();
+    return undefined;
+  }
+
+  async function handleAddRecordForSelectedAccount(input: PerformanceRecordFormInput) {
+    if (recordAccountId === undefined) return "Pick an account first.";
+    const result = await addPerformanceRecordAction(recordAccountId, input);
+    if (!result.ok) return result.error ?? "Failed to add performance record.";
     router.refresh();
     return undefined;
   }
@@ -667,6 +781,26 @@ export function StockAccountsView({ entries }: { entries: AccountEntry[] }) {
           <AccountPerformanceOverTime entries={entries} />
         </CollapsibleCard>
       </div>
+
+      {entries.length > 0 && (
+        <div className="mt-4">
+          <CollapsibleCard title="Add Performance Record">
+            <PerformanceRecordForm
+              accountPicker={{
+                accounts: entries.map((entry) => entry.account),
+                accountId: recordAccountId,
+                onAccountChange: setRecordAccountId,
+              }}
+              onSave={handleAddRecordForSelectedAccount}
+            />
+            <p className="mt-3 text-xs text-muted">
+              Recording a value on a date this account already has replaces that day’s figure.
+              To change a past entry instead, open <span className="text-ink">History</span> on the
+              account below and edit the row.
+            </p>
+          </CollapsibleCard>
+        </div>
+      )}
 
       <div className="mt-4">
         <CollapsibleCard title="Add Account">

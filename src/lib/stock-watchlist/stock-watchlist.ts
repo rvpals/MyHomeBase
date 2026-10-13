@@ -205,6 +205,10 @@ export async function runWatchListWatches(deps: RunWatchesDeps): Promise<WatchRu
           title: `${item.ticker}: watch triggered`,
           body: evaluation.message,
           source: "Investments watch list",
+          // Stamped here, never passed in by a caller: the producer knows which
+          // module it belongs to, so a watch list cannot file a message
+          // attributed to another module's screen.
+          module: "investments",
         });
         deps.repo.setItemTriggered(item.id, true, evaluation.message, evaluation.eventDate);
         result.triggered += 1;

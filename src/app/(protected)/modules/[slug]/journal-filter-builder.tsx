@@ -16,7 +16,11 @@ import {
   OPERATORS_BY_FIELD,
   describeFilter,
   emptyFilter,
+  isBooleanField,
   isListOperator,
+  sortDirectionLabel,
+  JOURNAL_SORT_FIELDS,
+  SORT_FIELD_LABELS,
   isRangeOperator,
   isValuelessOperator,
   type JournalFilter,
@@ -24,11 +28,20 @@ import {
   type JournalFilterField,
   type JournalFilterJoin,
   type JournalFilterOperator,
+  type JournalSortDirection,
+  type JournalSortField,
+  type JournalSortTerm,
   type SavedJournalFilter,
 } from "@/lib/journal";
 
 const INPUT_CLASS =
   "w-full rounded-md border border-line bg-paper px-2 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
+
+// Row actions on a sort term — reorder and remove. Bare glyphs rather than
+// SlotIcon: these are row actions, not marks of a place, which coding-guide.md
+// deliberately keeps unslotted.
+const SORT_ACTION_CLASS =
+  "rounded-md border border-line px-2 py-1 text-sm text-muted transition-colors hover:bg-brass-soft hover:text-brass-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none";
 
 const FIELDS = Object.keys(FIELD_LABELS) as JournalFilterField[];
 
@@ -74,7 +87,7 @@ function ConditionRow({
   const operators = OPERATORS_BY_FIELD[condition.field] ?? [];
   const isTaxonomy = TAXONOMY_FIELDS.has(condition.field);
   const names = condition.field === "category" ? categoryOptions : tagOptions;
-  const isBoolean = condition.field === "isPinned" || condition.field === "isLocked";
+  const isBoolean = isBooleanField(condition.field);
 
   function changeField(field: JournalFilterField) {
     // Switching field usually invalidates the operator, so fall back to that
@@ -82,7 +95,18 @@ function ConditionRow({
     // and then realised they meant Place rather than Title shouldn't retype it.
     const nextOperators = OPERATORS_BY_FIELD[field] ?? [];
     const operator = nextOperators.includes(condition.operator) ? condition.operator : nextOperators[0];
-    onChange({ ...condition, field, operator });
+
+    // Booleans are the exception to keeping `value`: a carried-over "" (or a
+    // stray "Rome") is neither "true" nor "false", so the yes/no select would
+    // show its first option while the filter compiled — and read — as "no".
+    // Seed the value the select is about to display.
+    const nextIsBoolean = isBooleanField(field);
+    const value =
+      nextIsBoolean && condition.value !== "true" && condition.value !== "false"
+        ? "true"
+        : condition.value;
+
+    onChange({ ...condition, field, operator, value });
   }
 
   return (
@@ -148,7 +172,11 @@ function ConditionRow({
             </select>
           ) : isBoolean ? (
             <select
-              value={condition.value ?? "true"}
+              // Not `?? "true"`: a carried-over "" is not nullish, so the
+              // select would render a value matching no option and silently
+              // display "yes" while state said otherwise. Anything that isn't
+              // "false" shows — and means — yes.
+              value={condition.value === "false" ? "false" : "true"}
               onChange={(event) => onChange({ ...condition, value: event.target.value })}
               aria-label="Value"
               className={INPUT_CLASS}
@@ -263,6 +291,30 @@ export function JournalFilterBuilder({
       conditions: [...group.conditions, { field: "title", operator: "contains", value: "" }],
     });
   }
+
+  const sort = filter.sort ?? [];
+
+  function updateSort(next: JournalSortTerm[]) {
+    setFilter((current) => ({ ...current, sort: next }));
+  }
+
+  /**
+   * Moves a term one place up or down. Order is the whole point of a multi-field
+   * sort — "Place then Date" and "Date then Place" are different lists — so the
+   * rows have to be rearrangeable without deleting and re-adding them.
+   */
+  function moveSort(index: number, delta: number) {
+    const target = index + delta;
+    if (target < 0 || target >= sort.length) return;
+    const next = [...sort];
+    [next[index], next[target]] = [next[target], next[index]];
+    updateSort(next);
+  }
+
+  /** The fields not already used, so the same column can't be sorted on twice. */
+  const unusedSortFields = JOURNAL_SORT_FIELDS.filter(
+    (field) => !sort.some((term) => term.field === field),
+  );
 
   async function handleSave() {
     setError(undefined);
@@ -403,6 +455,135 @@ export function JournalFilterBuilder({
           >
             Add group
           </Button>
+        </div>
+
+        {/* Ordering, not matching — its own bordered block rather than another
+            group, because a sort term doesn't change which entries come back and
+            sitting it among the AND/OR groups would imply it does.
+
+            Same `max-lg:` restyle as the condition row: one line on desktop,
+            stacked and labelled below 1024px. Restyled, not a different
+            component — see design.md. */}
+        <div className="rounded-md border border-line bg-paper-raised p-3">
+          <span className="mb-2 block text-xs font-medium uppercase tracking-wide text-muted">
+            Sort by
+          </span>
+
+          {sort.length === 0 ? (
+            <p className="mb-2 text-sm text-muted">
+              Newest first — date, then time. Add a field to order the results differently.
+            </p>
+          ) : (
+            <div className="mb-2 flex flex-col gap-2">
+              {sort.map((term, index) => (
+                <div
+                  key={term.field}
+                  className="flex flex-wrap items-start gap-2 rounded-md border border-line bg-paper p-2 max-lg:flex-col max-lg:items-stretch"
+                >
+                  {/* Numbered because precedence is the point: the reader needs to
+                      see that row 1 wins before row 2 is consulted. */}
+                  <span className="mt-2 shrink-0 text-xs font-medium text-muted max-lg:mt-0">
+                    {index + 1}.
+                  </span>
+
+                  <label className="min-w-0 flex-1 max-lg:w-full">
+                    <span className="mb-1 hidden text-xs font-medium text-muted max-lg:block">Field</span>
+                    <select
+                      value={term.field}
+                      onChange={(event) =>
+                        updateSort(
+                          sort.map((item, itemIndex) =>
+                            itemIndex === index
+                              ? { ...item, field: event.target.value as JournalSortField }
+                              : item,
+                          ),
+                        )
+                      }
+                      aria-label={`Sort field ${index + 1}`}
+                      className={`${INPUT_CLASS} lg:w-40`}
+                    >
+                      {/* The current field plus the unused ones: without it the
+                          select would have no option matching its own value. */}
+                      {[term.field, ...unusedSortFields].map((field) => (
+                        <option key={field} value={field}>
+                          {SORT_FIELD_LABELS[field]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="min-w-0 flex-1 max-lg:w-full">
+                    <span className="mb-1 hidden text-xs font-medium text-muted max-lg:block">
+                      Direction
+                    </span>
+                    <select
+                      value={term.direction}
+                      onChange={(event) =>
+                        updateSort(
+                          sort.map((item, itemIndex) =>
+                            itemIndex === index
+                              ? { ...item, direction: event.target.value as JournalSortDirection }
+                              : item,
+                          ),
+                        )
+                      }
+                      aria-label={`Sort direction ${index + 1}`}
+                      className={`${INPUT_CLASS} lg:w-44`}
+                    >
+                      {/* Phrased per field — "oldest first" rather than "ascending",
+                          which takes a beat to map onto dates. */}
+                      <option value="desc">{sortDirectionLabel(term.field, "desc")}</option>
+                      <option value="asc">{sortDirectionLabel(term.field, "asc")}</option>
+                    </select>
+                  </label>
+
+                  <div className="flex shrink-0 items-center gap-1 max-lg:justify-end">
+                    <button
+                      type="button"
+                      onClick={() => moveSort(index, -1)}
+                      disabled={index === 0}
+                      aria-label={`Move ${SORT_FIELD_LABELS[term.field]} earlier`}
+                      title="Move earlier"
+                      className={SORT_ACTION_CLASS}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveSort(index, 1)}
+                      disabled={index === sort.length - 1}
+                      aria-label={`Move ${SORT_FIELD_LABELS[term.field]} later`}
+                      title="Move later"
+                      className={SORT_ACTION_CLASS}
+                    >
+                      ↓
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateSort(sort.filter((_, i) => i !== index))}
+                      aria-label={`Remove ${SORT_FIELD_LABELS[term.field]} from the sort`}
+                      title="Remove"
+                      className={SORT_ACTION_CLASS}
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {unusedSortFields.length > 0 && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() =>
+                updateSort([...sort, { field: unusedSortFields[0], direction: "desc" }])
+              }
+            >
+              Add sort field
+            </Button>
+          )}
         </div>
 
         {/* The same description the Entries screen shows, so what you're building

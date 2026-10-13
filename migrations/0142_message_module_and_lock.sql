@@ -1,0 +1,44 @@
+-- Two columns on the message queue: who filed it, and whether it may be deleted.
+--
+-- MODULE, BESIDE SOURCE, NOT INSTEAD OF IT. `source` is free text naming the
+-- thing that filed the message ('Investments monitor'); `module` names the
+-- module that thing belongs to ('investments'). Two monitors and a watch list
+-- all file from Investments, so the grid can group and filter by module where
+-- `source` would split them three ways.
+--
+-- NOT A FOREIGN KEY to sys_modules, for the same reason migration 0109 kept
+-- `source` unconstrained: a message outlives the thing that wrote it, and a
+-- module deleted next week must not delete, or orphan, its own history. The
+-- slug is validated at the application boundary instead -- `messageModuleSchema`
+-- in src/lib/messages/schema.ts is a fixed enum, so a typo fails loudly at the
+-- use-case rather than quietly writing a slug nothing will ever match.
+--
+-- Defaults to '' rather than 'system' deliberately. Every row that exists when
+-- this migration runs was filed before the column did, so '' is the honest
+-- encoding of "nobody recorded this" -- distinct from 'system', which is a
+-- positive claim that the app itself filed it. New rows always carry a real
+-- slug; the repository maps a legacy '' to 'system' on the way out so the
+-- domain type has one spelling, and the grid shows those rows as unattributed.
+ALTER TABLE sys_messages ADD COLUMN module TEXT NOT NULL DEFAULT '';
+
+-- A locked message cannot be deleted -- not by the admin screen's bulk Delete,
+-- and not by the age purge either. It is the one thing in the queue that
+-- survives "Older than 7 days", which is the point: a monitor firing on the
+-- day something went wrong is worth keeping after the noise around it is gone.
+--
+-- INTEGER 0/1, SQLite's boolean, rather than the nullable timestamp `read_at`
+-- uses. Being locked is a flag with no interesting moment attached -- nothing
+-- asks *when* it was locked -- where being read is an event, and 0109 wanted
+-- the partial index that NULL makes possible. Different questions, different
+-- shapes; don't read the inconsistency as an oversight.
+ALTER TABLE sys_messages ADD COLUMN is_locked INTEGER NOT NULL DEFAULT 0;
+
+-- Both ALTERs are ADD COLUMN with a constant default: SQLite rewrites no rows
+-- and the table is not rebuilt, so the two indexes from 0109 survive untouched.
+--
+-- No index on either column. `module` is read by a grid that already loads the
+-- whole queue and filters in the view, and `is_locked` is tested only inside
+-- the DELETE predicates, which are driven by an explicit id list or by a
+-- `created_at` range that `idx_messages_created_at` already covers. An index
+-- here would cost every INSERT -- and the Hello, world! job inserts a row a
+-- minute -- to speed up a scan nothing performs.

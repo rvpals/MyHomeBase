@@ -372,6 +372,8 @@ describe("runWatchListWatches", () => {
     expect(result.triggeredTickers).toEqual(["AAPL"]);
     expect(messages.messages).toHaveLength(1);
     expect(messages.messages[0].source).toBe("Investments watch list");
+    // Same module as the monitor beside it, under a different source.
+    expect(messages.messages[0].module).toBe("investments");
     expect(repo.getItemById(1)?.watchIsTriggered).toBe(true);
   });
 
