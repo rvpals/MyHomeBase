@@ -1,5 +1,72 @@
 # Change History
 
+## 2026-10-15 — Classroom module with Exam (Maker, Grader), IP blacklist, new ticker monitors, calendar-import duplicate handling
+
+**Migrations 0143–0148 must be applied on the NAS, in order.** 0143 renames the Attendance
+module and its seven `att_*` tables to Classroom / `cls_*` (renames only, no rows
+rewritten); 0144 and 0145 each create tables; 0146–0148 add columns or widen a type. The
+NAS database and its WAL/SHM files were backed up before this release.
+
+### Attendance becomes Classroom, with an Exam group (migrations 0143, 0145–0147)
+
+- The module slug is now `classroom` and its table prefix `cls_` (0143, with the
+  `att_` → `cls_` renames in `LEGACY_TABLE_RENAMES` in `scripts/migrate.ts`). Attendance
+  is one **section group** inside it; Exam is the second. They share the roster and
+  classes, so Exam reaches no module boundary for its most basic input.
+- A module cannot contain a module — the nav tree is two levels deep by design — so the
+  groups are a rendering of `TreeSection.group`, the same shape Household uses for Recipes
+  and HSA.
+- **Exam** (0145): new `cls_exams` and `cls_exam_questions`. Screens: Exams (home), Exam
+  Maker, Grader. Answer sheets print as bubble sheets with a QR code.
+- 0146 adds the answer-sheet options (pre-printed student names, signature line,
+  professor, declaration). It exists because 0145 was edited after it had been applied;
+  the migration log records the lesson — a numbered migration is immutable once applied.
+- 0147 adds the **student-ID bubble grid**, pre-shaded by the app, so a scanned sheet
+  identifies itself instead of relying on the file name.
+- `src/lib/exam/` holds the mark detection, grading, QR identity and sheet layout, each
+  with tests. New dependencies `jsqr` and `qrcode`. `OMR_method.md` documents the
+  bubble-reading method and its traps; `plan_exam.md` is the build plan.
+- `npm run cli -- exams` lists exams and can set an answer key.
+
+### Admin → Security: blocked addresses (migration 0144)
+
+- New `sys_ip_blacklist`, the mirror of the allowlist. A blacklisted address always scores
+  `suspicious`, and the reason is printed beside the visit.
+- **It marks, it does not block.** The address comes from `x-forwarded-for` and can be
+  forged, so real blocking belongs in the proxy on the NAS.
+- A **Blocked addresses** card with a typed-in address field, and a **Block these IPs**
+  bulk action on selected visits. An address cannot be on both lists; unblocking re-scores
+  its past visits. `npm run cli -- ip-lists` manages both lists.
+- `DataGrid`: the selection bar now renders when the toolbar is hidden, so ticking rows on
+  the Visit grid finally offers actions. The header cell uses `chrome-slab` instead of a
+  `shadow-[…]` value Tailwind could not parse, so it follows the Chrome Style setting.
+- `Button` gains `ariaPressed` for toggle buttons.
+
+### Investments: two more ticker monitors (migration 0148)
+
+- `price_near_amount` ("tell me when BMY gets back to $45") and `day_move_pct` ("tell me
+  when it moves 3% in a day, up or down"). Neither needs a new quote field — the previous
+  close falls out of what `refreshPosition` already stores. One new column, `direction`.
+
+### Journal calendar import
+
+- Card 4 asks what to do with an already-imported event: **refresh** (the old behaviour
+  and the default), **skip**, or **import again as a new entry**. The lock and encryption
+  guards still win over any choice.
+- The file picker is a real button plus a **drop zone** that only accepts `.ics`, and a
+  "please wait" dialog covers the parse.
+
+### Other
+
+- `scripts/publish-nas.mjs` and `next.config.ts`: `dist-nas` no longer nests inside itself
+  build after build until robocopy hit the 260-character path limit (the
+  "ERROR 123" publish failure). New `scripts/clean-nested-dist-nas.mjs` clears an
+  already-nested tree.
+- Home-layout schema: `.catch([])` now sits before the duplicate check, so a duplicated
+  card id is rejected instead of silently wiping the saved card order.
+- Icon slots registered for the Classroom sections and the Security blocklist.
+- Docs: `CLI_registry.md`, `coding-guide.md`, `components.md`, `design.md`, `modules.md`.
+
 ## 2026-10-12 — Message ownership and locking, journal filter sorting, Encrypted filter field
 
 **Migration 0142 must be applied on the NAS.** It adds two columns to `sys_messages`

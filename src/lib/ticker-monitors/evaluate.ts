@@ -1,5 +1,10 @@
 import { centsToDollars, formatCents } from "@/lib/shared/money";
-import type { MonitorEvaluation, TickerMonitor, TickerValuation } from "./types";
+import {
+  needsCostBasis,
+  type MonitorEvaluation,
+  type TickerMonitor,
+  type TickerValuation,
+} from "./types";
 
 /**
  * Deciding whether a monitor is "near" its target.
@@ -72,7 +77,51 @@ function resolveComparison(
         targetCents: Math.round((valuation.costCents * monitor.targetPct) / 100),
       };
     }
+
+    case "price_near_amount":
+      // The one new type that is still a band comparison, so it drops straight
+      // into the same machinery: price per share against a target price. A
+      // price of 0 is "unknown" rather than free, same convention as cost.
+      if (valuation.pricePerShareCents <= 0) return undefined;
+      return {
+        valueCents: valuation.pricePerShareCents,
+        targetCents: monitor.targetCents,
+      };
+
+    case "day_move_pct":
+      // Not a band comparison at all — a threshold on a percentage, judged in
+      // `evaluateMonitor`. Returning undefined here would read as "cannot be
+      // judged", so this case must never reach `resolveComparison`; the
+      // evaluator branches before calling it.
+      return undefined;
   }
+}
+
+/**
+ * Is a day-move monitor's threshold met?
+ *
+ * Separate from the band path because it is a different question: "has it moved
+ * at least this far", not "is it near this number". `targetPct` is positive and
+ * `direction` carries the sign (0148), so an 'up' monitor wants a move at or
+ * above +X and a 'down' one a move at or below -X.
+ *
+ * `undefined` when there is no baseline to measure against — not false, because
+ * "cannot be judged" and "judged and quiet" differ: the first must not clear a
+ * latch that a real move set.
+ */
+function isDayMoveMet(
+  monitor: TickerMonitor,
+  valuation: TickerValuation,
+): boolean | undefined {
+  if (valuation.dayChangePct === undefined) return undefined;
+  const threshold = Math.abs(monitor.targetPct);
+  // A 0% threshold would be met by every quiet day, which is the inert-monitor
+  // failure in reverse — permanently true says as little as never true. The
+  // schema refuses it; this is the evaluator refusing to guess.
+  if (threshold <= 0) return undefined;
+  return monitor.direction === "down"
+    ? valuation.dayChangePct <= -threshold
+    : valuation.dayChangePct >= threshold;
 }
 
 /** The sentence filed in the queue and shown in the warning modal. */
@@ -103,6 +152,21 @@ export function describeMonitor(
       const pct = valuation.costCents > 0 ? (gain / valuation.costCents) * 100 : 0;
       return `${valuation.ticker} unrealized gain is ${actual} — ${pct.toFixed(1)}% of a ${formatCents(valuation.costCents)} cost basis, approaching your ${monitor.targetPct}% target.`;
     }
+
+    case "price_near_amount":
+      // Reports the price, not the gain: this type never consulted the basis,
+      // so a sentence about unrealized gain would answer a different question.
+      return `${valuation.ticker} is trading at ${formatCents(valuation.pricePerShareCents)}, near your ${formatCents(monitor.targetCents)} target.`;
+
+    case "day_move_pct": {
+      const move = valuation.dayChangePct ?? 0;
+      const wayText = move < 0 ? "down" : "up";
+      const baseline =
+        valuation.previousClosePerShareCents !== undefined
+          ? ` from a ${formatCents(valuation.previousClosePerShareCents)} previous close`
+          : "";
+      return `${valuation.ticker} is ${wayText} ${Math.abs(move).toFixed(2)}% today at ${formatCents(valuation.pricePerShareCents)}${baseline} — past your ${monitor.targetPct}% ${monitor.direction || "up"} threshold.`;
+    }
   }
 }
 
@@ -130,10 +194,39 @@ export function evaluateMonitor(
   if (!monitor.isEnabled) return quiet;
 
   // No cost basis means no unrealized gain to speak of — `costCents` of 0 is
-  // "unknown", not "free" (see StockPosition), and every one of these monitors
-  // is measured against money actually put in. Firing here would report a gain
+  // "unknown", not "free" (see StockPosition), and the gain/loss monitors are
+  // measured against money actually put in. Firing one here would report a gain
   // equal to the whole market value.
-  if (valuation.costCents <= 0) return quiet;
+  //
+  // Per-type since 0148: a price target and a day move are facts about the
+  // security, true of a holding with no imported transactions. Guarding those
+  // too would accept a price monitor on a watch-list position and then never
+  // fire it — an inert alert, the failure mode the schema warns about.
+  if (needsCostBasis(monitor.monitorType) && valuation.costCents <= 0) return quiet;
+
+  // The threshold type, judged before the band machinery: "has it moved this
+  // far" is not "is it near this number", and `resolveComparison` has no
+  // meaningful pair of cents figures to answer it with.
+  if (monitor.monitorType === "day_move_pct") {
+    const isMet = isDayMoveMet(monitor, valuation);
+    // `undefined` is "cannot be judged" — no baseline, or no threshold set —
+    // and is treated the same as "not met": quiet.
+    //
+    // Note this DOES clear the latch, because `runMonitors` re-arms on
+    // `!isNear`. That is the right outcome rather than a missing distinction: a
+    // monitor whose baseline has gone is not sitting inside a condition any
+    // more, and re-arming means the next genuine move reports instead of being
+    // swallowed. The cost is one extra message if the baseline disappears and
+    // comes back while the move still qualifies, which is strictly better than
+    // a silent alert.
+    if (isMet !== true) return quiet;
+    return {
+      monitorId: monitor.id,
+      isNear: true,
+      shouldNotify: !monitor.isTriggered,
+      message: describeMonitor(monitor, valuation),
+    };
+  }
 
   const comparison = resolveComparison(monitor, valuation);
   if (!comparison) return quiet;
@@ -177,6 +270,12 @@ export function summarizeMonitor(monitor: TickerMonitor): string {
         : `Unrealized loss near ${formatCents(Math.abs(monitor.targetCents))}`;
     case "gain_near_pct_of_cost":
       return `Unrealized gain near ${monitor.targetPct}% of cost basis`;
+    case "price_near_amount":
+      return `Price per share near ${formatCents(monitor.targetCents)}`;
+    case "day_move_pct":
+      // Says "or more" because this one is a threshold, so the label does not
+      // read as the band the other four carry.
+      return `Price ${monitor.direction || "up"} ${monitor.targetPct}% or more in a day`;
   }
 }
 
@@ -194,17 +293,71 @@ export function summarizeMonitor(monitor: TickerMonitor): string {
  */
 export function valuationFromHoldings(
   ticker: string,
-  holdings: readonly { unrealizedGainLossCents: number; costCents: number }[],
+  holdings: readonly {
+    unrealizedGainLossCents: number;
+    costCents: number;
+    currentPriceCents?: number;
+    quantity?: number;
+    dayGainLossCents?: number;
+  }[],
 ): TickerValuation {
-  return holdings.reduce<TickerValuation>(
+  // The accumulator is annotated rather than inferred. Without it, TypeScript builds
+  // the accumulator's type from the callback's RETURN type, where `quantity` and
+  // `dayGainLossCents` are read off an optional field — so both widen to
+  // `number | undefined` even though the seed is 0 and `+` can never produce
+  // undefined. That is what made `totals.quantity` "possibly undefined" below.
+  const totals = holdings.reduce<{
+    unrealizedGainLossCents: number;
+    costCents: number;
+    quantity: number;
+    dayGainLossCents: number;
+  }>(
     (total, holding) => ({
-      ticker: total.ticker,
       unrealizedGainLossCents:
         total.unrealizedGainLossCents + (holding.costCents > 0 ? holding.unrealizedGainLossCents : 0),
       costCents: total.costCents + Math.max(0, holding.costCents),
+      // Summed across accounts so the previous close is derived from the same
+      // breadth of holdings as the move itself — one account's slice would give
+      // the right percentage only by coincidence.
+      quantity: total.quantity + Math.max(0, holding.quantity ?? 0),
+      dayGainLossCents: total.dayGainLossCents + (holding.dayGainLossCents ?? 0),
     }),
-    { ticker, unrealizedGainLossCents: 0, costCents: 0 },
+    { unrealizedGainLossCents: 0, costCents: 0, quantity: 0, dayGainLossCents: 0 },
   );
+
+  // PRICE IS NOT SUMMED. Two accounts holding NVDA hold it at one price; adding
+  // them would double it. The first holding that states a price wins, which is
+  // also why a stale 0 in one account cannot mask a real price in another.
+  const pricePerShareCents =
+    holdings.find((holding) => (holding.currentPriceCents ?? 0) > 0)?.currentPriceCents ?? 0;
+
+  // The previous close, recovered rather than stored — see TickerValuation.
+  // Needs shares to divide by and a price to subtract from; without either
+  // there is no baseline, and `undefined` says so rather than a 0 that would
+  // read as "closed at nothing" and make every move look like +infinity.
+  const hasBaseline = totals.quantity > 0 && pricePerShareCents > 0;
+  const previousClosePerShareCents = hasBaseline
+    ? pricePerShareCents - totals.dayGainLossCents / totals.quantity
+    : undefined;
+
+  // A previous close at or below 0 is not a baseline either: it means the stored
+  // day gain disagrees with the stored price (a half-applied refresh, or an
+  // imported row whose day figure came from elsewhere). Dividing by it would
+  // manufacture a vast percentage from bad data.
+  const dayChangePct =
+    previousClosePerShareCents !== undefined && previousClosePerShareCents > 0
+      ? ((pricePerShareCents - previousClosePerShareCents) / previousClosePerShareCents) * 100
+      : undefined;
+
+  return {
+    ticker,
+    unrealizedGainLossCents: totals.unrealizedGainLossCents,
+    costCents: totals.costCents,
+    pricePerShareCents,
+    previousClosePerShareCents:
+      dayChangePct === undefined ? undefined : previousClosePerShareCents,
+    dayChangePct,
+  };
 }
 
 /** Exported for the setup screen's preview line. */

@@ -14,6 +14,7 @@ import type { IpHistory, SiteVisitContext, SuspicionSignal } from "./types";
 function history(overrides: Partial<IpHistory> = {}): IpHistory {
   return {
     allowlisted: false,
+    blacklisted: false,
     recentVisits: 0,
     totalVisits: 1,
     authAttempts: 0,
@@ -150,6 +151,38 @@ describe("scoreSuspicion", () => {
     expect(result.level).toBe("normal");
     expect(result.signals).toEqual([]);
   });
+
+  it("short-circuits every signal for a blacklisted address", () => {
+    // The mirror of vouching. Even an unremarkable browser request scores suspicious,
+    // and the one reported reason is the honest one — an admin said so — rather than
+    // findings the heuristics never made.
+    const result = scoreSuspicion(visit(), history({ blacklisted: true }));
+
+    expect(result.level).toBe("suspicious");
+    expect(result.signals).toEqual(["blacklisted"]);
+  });
+
+  it("reports only the blacklist reason, not the heuristics underneath it", () => {
+    const result = scoreSuspicion(
+      visit({ userAgent: "curl/8.4.0" }),
+      history({ blacklisted: true, recentVisits: 500, totalVisits: 900, authFailures: 40 }),
+    );
+
+    expect(result.signals).toEqual(["blacklisted"]);
+  });
+
+  it("lets the blacklist win if an address is somehow on both lists", () => {
+    // Should never happen — blockIpAddress and allowIpAddress each clear the other
+    // list's entry (migrations/0144). Asserted anyway so the precedence is a stated
+    // decision rather than whichever `if` happens to be written first.
+    const result = scoreSuspicion(
+      visit(),
+      history({ allowlisted: true, blacklisted: true }),
+    );
+
+    expect(result.level).toBe("suspicious");
+    expect(result.signals).toEqual(["blacklisted"]);
+  });
 });
 
 describe("levelFromSignals", () => {
@@ -185,6 +218,22 @@ describe("levelFromSignals", () => {
 
   it("still reports suspicious when a damning signal accompanies the marker", () => {
     expect(levelFromSignals(["scanner_user_agent", "allowlist_removed"])).toBe("suspicious");
+  });
+
+  it("returns watch for a lone blacklist_removed marker", () => {
+    // "I stopped blocking this address" is a reason to keep it visible, not an
+    // accusation — the same reading `allowlist_removed` gets above.
+    expect(levelFromSignals(["blacklist_removed"])).toBe("watch");
+  });
+
+  it("does not let the blacklist_removed marker corroborate a weak signal", () => {
+    // Same regression as the allowlist marker's: counting an admin action as a
+    // second observation manufactures a "suspicious" out of one weak finding.
+    expect(levelFromSignals(["tool_user_agent", "blacklist_removed"])).toBe("watch");
+  });
+
+  it("still reports suspicious when a damning signal accompanies the blacklist marker", () => {
+    expect(levelFromSignals(["auth_failures", "blacklist_removed"])).toBe("suspicious");
   });
 });
 
@@ -229,6 +278,8 @@ describe("encodeSignals / decodeSignals", () => {
       "never_signs_in",
       "auth_failures",
       "allowlist_removed",
+      "blacklisted",
+      "blacklist_removed",
     ];
     for (const signal of every) expect(signal).not.toContain(",");
     expect(decodeSignals(encodeSignals(every))).toEqual(every);
@@ -245,6 +296,8 @@ describe("describeSignal / describeSuspicion", () => {
       "never_signs_in",
       "auth_failures",
       "allowlist_removed",
+      "blacklisted",
+      "blacklist_removed",
     ] as const;
 
     for (const signal of signals) {

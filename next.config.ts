@@ -17,8 +17,14 @@ const nextConfig: NextConfig = {
   // `**/` on the patterns — verified on Next 16.2. The publish step deletes them
   // from the assembled output instead (`scripts/publish-nas.mjs`), which is the
   // guarantee to rely on. Left in place in case a later Next honours it.
+  //
+  // "dist-nas/**" is the build output itself. Tracing it back into
+  // .next/standalone makes publish-nas.mjs copy it into the next build's output,
+  // nesting dist-nas/dist-nas/... one level per build until robocopy hits the
+  // 260-character path limit. Like the entries above this is NOT relied on; the
+  // guarantee is the `filter` on the standalone copy in scripts/publish-nas.mjs.
   outputFileTracingExcludes: {
-    "*": ["data/**", ".env", ".env.*"],
+    "*": ["data/**", ".env", ".env.*", "dist-nas/**"],
   },
   experimental: {
     serverActions: {

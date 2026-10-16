@@ -40,7 +40,22 @@ export type SuspicionSignal =
    * badge with no reason beside it. Records an admin action rather than an
    * observation, which is why it alone survives being applied after the fact.
    */
-  | "allowlist_removed";
+  | "allowlist_removed"
+  /**
+   * This address is on the blacklist (migrations/0144).
+   *
+   * The mirror of the allowlist short-circuit: `scoreSuspicion` returns this one
+   * signal and nothing else for a blacklisted address, because the reader's explicit
+   * judgement replaces the heuristics rather than joining them.
+   */
+  | "blacklisted"
+  /**
+   * This address was on the blacklist and an admin took it off (migrations/0144).
+   *
+   * A marker, like `allowlist_removed`, and non-corroborating for the same reason:
+   * it records a decision, not an observation.
+   */
+  | "blacklist_removed";
 
 /**
  * Request metadata the presentation layer gathers and passes in as plain data.
@@ -116,6 +131,13 @@ export interface SiteVisitSummary {
 export interface IpHistory {
   /** Is this address on the allowlist? Short-circuits every other signal. */
   allowlisted: boolean;
+  /**
+   * Is this address on the blacklist? Short-circuits every other signal, and is
+   * checked before `allowlisted` — though the two use-cases keep an address off both
+   * lists at once, so the precedence should never actually be exercised
+   * (migrations/0144).
+   */
+  blacklisted: boolean;
   /** Arrivals from this address inside the burst window, not counting this one. */
   recentVisits: number;
   /** Arrivals from this address over the whole retention period. */
@@ -171,6 +193,29 @@ export interface IpAllowlistEntry {
 
 /** An address to vouch for. */
 export interface NewIpAllowlistEntry {
+  ipAddress: string;
+  label?: string;
+  addedByUserId?: number;
+}
+
+/**
+ * An address the reader has explicitly distrusted (migrations/0144).
+ *
+ * Structurally identical to `IpAllowlistEntry` and deliberately kept as its own type
+ * rather than aliased: the two mean opposite things, and a function that takes "an
+ * entry" without saying which list would be a bug waiting to happen.
+ */
+export interface IpBlacklistEntry {
+  id: number;
+  ipAddress: string;
+  /** Why it is distrusted, in the reader's words. `undefined` when they didn't say. */
+  label?: string;
+  addedByUserId?: number;
+  createdAt: string;
+}
+
+/** An address to distrust. */
+export interface NewIpBlacklistEntry {
   ipAddress: string;
   label?: string;
   addedByUserId?: number;

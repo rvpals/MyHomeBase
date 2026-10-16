@@ -1,21 +1,30 @@
 import { describe, expect, it } from "vitest";
-import type { IpAllowlistRepository, SiteVisitRepository } from "./ports";
+import type {
+  IpAllowlistRepository,
+  IpBlacklistRepository,
+  SiteVisitRepository,
+} from "./ports";
 import {
   DEFAULT_RETENTION_DAYS,
   allowIpAddress,
+  blockIpAddress,
   deleteSiteVisits,
   disallowIpAddress,
+  listBlockedIps,
   listSiteVisits,
   listVisitsByWeek,
   markSuspiciousReviewed,
   pruneSiteVisits,
   recordSiteVisit,
   toSqliteTimestamp,
+  unblockIpAddress,
 } from "./site-visits";
 import type {
   IpAllowlistEntry,
+  IpBlacklistEntry,
   IpHistory,
   NewIpAllowlistEntry,
+  NewIpBlacklistEntry,
   NewSiteVisit,
   SiteVisit,
   SiteVisitFilter,
@@ -32,7 +41,7 @@ import type {
 class FakeVisitRepo implements SiteVisitRepository {
   recorded: NewSiteVisit[] = [];
   visits: SiteVisit[] = [];
-  ipHistory: Omit<IpHistory, "allowlisted"> = {
+  ipHistory: Omit<IpHistory, "allowlisted" | "blacklisted"> = {
     recentVisits: 0,
     totalVisits: 0,
     authAttempts: 0,
@@ -105,6 +114,7 @@ class FakeAllowlistRepo implements IpAllowlistRepository {
   added: NewIpAllowlistEntry[] = [];
   allowed = new Set<string>();
   removeSucceeds = true;
+  removedByAddress: string[] = [];
 
   add(entry: NewIpAllowlistEntry): boolean {
     this.added.push(entry);
@@ -124,6 +134,44 @@ class FakeAllowlistRepo implements IpAllowlistRepository {
   remove(): boolean {
     return this.removeSucceeds;
   }
+
+  removeByAddress(ipAddress: string): boolean {
+    this.removedByAddress.push(ipAddress);
+    return this.allowed.delete(ipAddress);
+  }
+}
+
+/** The blacklist double. A mirror of `FakeAllowlistRepo`, against the other list. */
+class FakeBlacklistRepo implements IpBlacklistRepository {
+  entries: IpBlacklistEntry[] = [];
+  added: NewIpBlacklistEntry[] = [];
+  blocked = new Set<string>();
+  removeSucceeds = true;
+  removedByAddress: string[] = [];
+
+  add(entry: NewIpBlacklistEntry): boolean {
+    this.added.push(entry);
+    if (this.blocked.has(entry.ipAddress)) return false;
+    this.blocked.add(entry.ipAddress);
+    return true;
+  }
+
+  list(): IpBlacklistEntry[] {
+    return this.entries;
+  }
+
+  isBlocked(ipAddress: string): boolean {
+    return this.blocked.has(ipAddress);
+  }
+
+  remove(): boolean {
+    return this.removeSucceeds;
+  }
+
+  removeByAddress(ipAddress: string): boolean {
+    this.removedByAddress.push(ipAddress);
+    return this.blocked.delete(ipAddress);
+  }
 }
 
 const BROWSER = "Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 Safari/604.1";
@@ -133,7 +181,7 @@ describe("recordSiteVisit", () => {
     const visits = new FakeVisitRepo();
     const allowlist = new FakeAllowlistRepo();
 
-    recordSiteVisit({ ipAddress: "203.0.113.7", userAgent: BROWSER }, visits, allowlist);
+    recordSiteVisit({ ipAddress: "203.0.113.7", userAgent: BROWSER }, visits, allowlist, new FakeBlacklistRepo());
 
     expect(visits.recorded).toHaveLength(1);
     expect(visits.recorded[0].suspicion).toBe("normal");
@@ -150,6 +198,7 @@ describe("recordSiteVisit", () => {
       { ipAddress: "203.0.113.7", userAgent: "sqlmap/1.7#stable" },
       visits,
       new FakeAllowlistRepo(),
+      new FakeBlacklistRepo(),
     );
 
     expect(visits.recorded[0].suspicion).toBe("suspicious");
@@ -165,7 +214,7 @@ describe("recordSiteVisit", () => {
       authFailures: 2,
     };
 
-    recordSiteVisit({ ipAddress: "203.0.113.7", userAgent: "curl/8.4.0" }, visits, new FakeAllowlistRepo());
+    recordSiteVisit({ ipAddress: "203.0.113.7", userAgent: "curl/8.4.0" }, visits, new FakeAllowlistRepo(), new FakeBlacklistRepo());
 
     expect(visits.recorded[0].signals).toEqual(
       expect.arrayContaining(["tool_user_agent", "burst", "auth_failures"]),
@@ -174,7 +223,7 @@ describe("recordSiteVisit", () => {
 
   it("records no reasons for an ordinary arrival", () => {
     const visits = new FakeVisitRepo();
-    recordSiteVisit({ ipAddress: "203.0.113.7", userAgent: BROWSER }, visits, new FakeAllowlistRepo());
+    recordSiteVisit({ ipAddress: "203.0.113.7", userAgent: BROWSER }, visits, new FakeAllowlistRepo(), new FakeBlacklistRepo());
 
     expect(visits.recorded[0].signals).toEqual([]);
   });
@@ -185,7 +234,7 @@ describe("recordSiteVisit", () => {
     const allowlist = new FakeAllowlistRepo();
     allowlist.allowed.add("192.168.1.50");
 
-    recordSiteVisit({ ipAddress: "192.168.1.50", userAgent: "sqlmap/1.7" }, visits, allowlist);
+    recordSiteVisit({ ipAddress: "192.168.1.50", userAgent: "sqlmap/1.7" }, visits, allowlist, new FakeBlacklistRepo());
 
     expect(visits.recorded).toHaveLength(1);
     expect(visits.recorded[0].suspicion).toBe("normal");
@@ -194,7 +243,7 @@ describe("recordSiteVisit", () => {
 
   it("defaults the path to the site root", () => {
     const visits = new FakeVisitRepo();
-    recordSiteVisit({ ipAddress: "203.0.113.7" }, visits, new FakeAllowlistRepo());
+    recordSiteVisit({ ipAddress: "203.0.113.7" }, visits, new FakeAllowlistRepo(), new FakeBlacklistRepo());
 
     expect(visits.recorded[0].path).toBe("/");
   });
@@ -205,6 +254,7 @@ describe("recordSiteVisit", () => {
       { ipAddress: "45.132.8.7", userAgent: "sqlmap/1.7" },
       visits,
       new FakeAllowlistRepo(),
+      new FakeBlacklistRepo(),
     );
 
     expect(visits.recorded[0].suspicion).toBe("suspicious");
@@ -220,6 +270,7 @@ describe("recordSiteVisit", () => {
       { ipAddress: "192.168.1.50", userAgent: "curl/8.4.0" },
       visits,
       allowlist,
+      new FakeBlacklistRepo(),
     );
 
     expect(visits.recorded).toHaveLength(1);
@@ -228,7 +279,7 @@ describe("recordSiteVisit", () => {
 
   it("skips the history lookup entirely when there is no address", () => {
     const visits = new FakeVisitRepo();
-    recordSiteVisit({ userAgent: BROWSER }, visits, new FakeAllowlistRepo());
+    recordSiteVisit({ userAgent: BROWSER }, visits, new FakeAllowlistRepo(), new FakeBlacklistRepo());
 
     expect(visits.historyQueriedWith).toBeUndefined();
     expect(visits.recorded).toHaveLength(1);
@@ -236,7 +287,7 @@ describe("recordSiteVisit", () => {
 
   it("passes the burst window to the history lookup", () => {
     const visits = new FakeVisitRepo();
-    recordSiteVisit({ ipAddress: "203.0.113.7" }, visits, new FakeAllowlistRepo());
+    recordSiteVisit({ ipAddress: "203.0.113.7" }, visits, new FakeAllowlistRepo(), new FakeBlacklistRepo());
 
     expect(visits.historyQueriedWith?.burstWindowMinutes).toBeGreaterThan(0);
   });
@@ -247,6 +298,7 @@ describe("recordSiteVisit", () => {
       { ipAddress: "203.0.113.7", userAgent: "x".repeat(9000) },
       visits,
       new FakeAllowlistRepo(),
+      new FakeBlacklistRepo(),
     );
 
     expect(visits.recorded).toHaveLength(1);
@@ -260,7 +312,12 @@ describe("recordSiteVisit", () => {
     visits.throwOnRecord = true;
 
     expect(() =>
-      recordSiteVisit({ ipAddress: "203.0.113.7" }, visits, new FakeAllowlistRepo()),
+      recordSiteVisit(
+        { ipAddress: "203.0.113.7" },
+        visits,
+        new FakeAllowlistRepo(),
+        new FakeBlacklistRepo(),
+      ),
     ).not.toThrow();
   });
 
@@ -272,6 +329,7 @@ describe("recordSiteVisit", () => {
         { ipAddress: 42 as unknown as string },
         visits,
         new FakeAllowlistRepo(),
+        new FakeBlacklistRepo(),
       ),
     ).not.toThrow();
     expect(visits.recorded).toHaveLength(0);
@@ -378,6 +436,7 @@ describe("allowIpAddress", () => {
       { ipAddress: "192.168.1.50", label: "my phone" },
       allowlist,
       visits,
+      new FakeBlacklistRepo(),
       new Date("2026-09-21T10:00:00Z"),
     );
 
@@ -397,21 +456,33 @@ describe("allowIpAddress", () => {
     const visits = new FakeVisitRepo();
     const allowlist = new FakeAllowlistRepo();
 
-    allowIpAddress({ ipAddress: "192.168.1.50" }, allowlist, visits);
-    expect(() => allowIpAddress({ ipAddress: "192.168.1.50" }, allowlist, visits)).not.toThrow();
+    allowIpAddress({ ipAddress: "192.168.1.50" }, allowlist, visits, new FakeBlacklistRepo());
+    expect(() =>
+      allowIpAddress({ ipAddress: "192.168.1.50" }, allowlist, visits, new FakeBlacklistRepo()),
+    ).not.toThrow();
     expect(visits.scoredWith).toHaveLength(2);
   });
 
   it("rejects a blank address", () => {
     // Vouching for "nothing" would allowlist every unattributable visit at once.
     expect(() =>
-      allowIpAddress({ ipAddress: "   " }, new FakeAllowlistRepo(), new FakeVisitRepo()),
+      allowIpAddress(
+        { ipAddress: "   " },
+        new FakeAllowlistRepo(),
+        new FakeVisitRepo(),
+        new FakeBlacklistRepo(),
+      ),
     ).toThrow(/address is required/);
   });
 
   it("keeps an unusual but real address shape", () => {
     const allowlist = new FakeAllowlistRepo();
-    allowIpAddress({ ipAddress: "fe80::1%eth0" }, allowlist, new FakeVisitRepo());
+    allowIpAddress(
+      { ipAddress: "fe80::1%eth0" },
+      allowlist,
+      new FakeVisitRepo(),
+      new FakeBlacklistRepo(),
+    );
 
     expect(allowlist.added[0].ipAddress).toBe("fe80::1%eth0");
   });
@@ -447,5 +518,175 @@ describe("disallowIpAddress", () => {
 describe("toSqliteTimestamp", () => {
   it("matches SQLite's datetime('now') shape in UTC", () => {
     expect(toSqliteTimestamp(new Date("2026-09-21T10:30:45.123Z"))).toBe("2026-09-21 10:30:45");
+  });
+});
+
+describe("blockIpAddress", () => {
+  it("distrusts the address and re-scores its past visits as suspicious", () => {
+    // The mirror of the allowlist's re-score, and the half that is easy to forget:
+    // without it the reader blocks an address and watches its grey rows sit there.
+    const visits = new FakeVisitRepo();
+    const blacklist = new FakeBlacklistRepo();
+
+    const rescored = blockIpAddress(
+      { ipAddress: "45.132.8.7", label: "scanning /wp-admin" },
+      blacklist,
+      visits,
+      new FakeAllowlistRepo(),
+    );
+
+    expect(rescored).toBe(3);
+    expect(blacklist.isBlocked("45.132.8.7")).toBe(true);
+    expect(visits.scoredWith[0]).toEqual({
+      ipAddress: "45.132.8.7",
+      level: "suspicious",
+      // One signal, replacing whatever was stored: the verdict now rests on the
+      // reader's judgement, so listing heuristic findings would misattribute it.
+      signals: ["blacklisted"],
+      // Deliberately NOT marked reviewed — see the next test.
+      reviewedAt: undefined,
+    });
+  });
+
+  it("leaves the visits unreviewed, unlike allowlisting", () => {
+    // The one place this deliberately diverges from its mirror. Vouching for an
+    // address IS the review; blocking one says "keep showing me this", so the
+    // unreviewed count must not drop and the home-screen alert must keep firing.
+    const visits = new FakeVisitRepo();
+
+    blockIpAddress(
+      { ipAddress: "45.132.8.7" },
+      new FakeBlacklistRepo(),
+      visits,
+      new FakeAllowlistRepo(),
+    );
+
+    expect(visits.scoredWith[0].reviewedAt).toBeUndefined();
+  });
+
+  it("removes the address from the allowlist, so it is never on both lists", () => {
+    // migrations/0144: "always trust" and "always suspect" are a contradiction, and
+    // the invariant spans two tables so it cannot be a database constraint.
+    const allowlist = new FakeAllowlistRepo();
+    allowlist.allowed.add("192.168.1.50");
+
+    blockIpAddress(
+      { ipAddress: "192.168.1.50" },
+      new FakeBlacklistRepo(),
+      new FakeVisitRepo(),
+      allowlist,
+    );
+
+    expect(allowlist.removedByAddress).toContain("192.168.1.50");
+    expect(allowlist.isAllowed("192.168.1.50")).toBe(false);
+  });
+
+  it("is harmless to call twice for the same address", () => {
+    // The bulk action ticks rows that routinely share an address.
+    const visits = new FakeVisitRepo();
+    const blacklist = new FakeBlacklistRepo();
+
+    blockIpAddress({ ipAddress: "45.132.8.7" }, blacklist, visits, new FakeAllowlistRepo());
+    expect(() =>
+      blockIpAddress({ ipAddress: "45.132.8.7" }, blacklist, visits, new FakeAllowlistRepo()),
+    ).not.toThrow();
+    expect(visits.scoredWith).toHaveLength(2);
+  });
+
+  it("rejects a blank address rather than distrusting every unknown visitor", () => {
+    // Blocking "nothing" would mark every visit whose address could not be
+    // determined — a different decision than the reader made.
+    expect(() =>
+      blockIpAddress(
+        { ipAddress: "   " },
+        new FakeBlacklistRepo(),
+        new FakeVisitRepo(),
+        new FakeAllowlistRepo(),
+      ),
+    ).toThrow(/address is required/i);
+  });
+
+  it("accepts an address shape that is not a bare IPv4 literal", () => {
+    // Deliberately not validated as an IP: the value echoes whatever the proxy put
+    // in the header, and rejecting an unusual-but-real shape would leave the reader
+    // unable to act on a row they can plainly see.
+    const blacklist = new FakeBlacklistRepo();
+
+    blockIpAddress(
+      { ipAddress: "fe80::1%eth0" },
+      blacklist,
+      new FakeVisitRepo(),
+      new FakeAllowlistRepo(),
+    );
+
+    expect(blacklist.isBlocked("fe80::1%eth0")).toBe(true);
+  });
+});
+
+describe("allowIpAddress and blockIpAddress are mutually exclusive", () => {
+  it("vouching for a blocked address clears the block", () => {
+    // The other direction of the 0144 invariant. A reader changing their mind must
+    // leave exactly one list holding the address.
+    const blacklist = new FakeBlacklistRepo();
+    blacklist.blocked.add("203.0.113.7");
+
+    allowIpAddress(
+      { ipAddress: "203.0.113.7" },
+      new FakeAllowlistRepo(),
+      new FakeVisitRepo(),
+      blacklist,
+    );
+
+    expect(blacklist.removedByAddress).toContain("203.0.113.7");
+    expect(blacklist.isBlocked("203.0.113.7")).toBe(false);
+  });
+});
+
+describe("unblockIpAddress", () => {
+  it("removes the entry and re-scores its visits as worth a look", () => {
+    // `watch`, not `normal`: the reader distrusted this address once, and silently
+    // greening its whole history would erase the reason they were looking at it.
+    const visits = new FakeVisitRepo();
+    const blacklist = new FakeBlacklistRepo();
+
+    expect(unblockIpAddress(1, "45.132.8.7", blacklist, visits)).toBe(3);
+    expect(visits.scoredWith[0]).toEqual({
+      ipAddress: "45.132.8.7",
+      level: "watch",
+      // The honest reason: it records what actually caused the re-score, rather than
+      // inventing a finding the scorer never made (migrations/0106, 0144).
+      signals: ["blacklist_removed"],
+      reviewedAt: undefined,
+    });
+  });
+
+  it("does nothing when the id was not there", () => {
+    const visits = new FakeVisitRepo();
+    const blacklist = new FakeBlacklistRepo();
+    blacklist.removeSucceeds = false;
+
+    expect(unblockIpAddress(99, "45.132.8.7", blacklist, visits)).toBe(0);
+    expect(visits.scoredWith).toHaveLength(0);
+  });
+});
+
+describe("listBlockedIps", () => {
+  it("returns what the repository holds", () => {
+    const blacklist = new FakeBlacklistRepo();
+    blacklist.entries = [
+      {
+        id: 1,
+        ipAddress: "45.132.8.7",
+        label: "scanning /wp-admin",
+        createdAt: "2026-10-13 10:00:00",
+      },
+    ];
+
+    expect(listBlockedIps(blacklist)).toHaveLength(1);
+    expect(listBlockedIps(blacklist)[0].ipAddress).toBe("45.132.8.7");
+  });
+
+  it("is empty when nothing is blocked", () => {
+    expect(listBlockedIps(new FakeBlacklistRepo())).toEqual([]);
   });
 });

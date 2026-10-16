@@ -129,6 +129,7 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
         await readSiteVisitContext(path),
         deps.siteVisitRepo,
         deps.ipAllowlistRepo,
+        deps.ipBlacklistRepo,
       );
     }
     redirect("/login");

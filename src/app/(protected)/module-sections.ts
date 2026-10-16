@@ -16,11 +16,13 @@
 
 import type { SectionSource, TreeSection } from "@/lib/navigation";
 import {
-  ATTENDANCE_SECTIONS,
-  ATTENDANCE_SECTION_ICONS,
-  ATTENDANCE_SECTION_INFO,
-  attendanceSectionHref,
-} from "./modules/[slug]/attendance-sections";
+  CLASSROOM_ATTENDANCE_SECTIONS,
+  CLASSROOM_EXAM_SECTIONS,
+  CLASSROOM_SECTIONS,
+  CLASSROOM_SECTION_ICONS,
+  CLASSROOM_SECTION_INFO,
+  classroomSectionHref,
+} from "./modules/[slug]/classroom-sections";
 import {
   CSV_SECTIONS,
   CSV_SECTION_ICONS,
@@ -129,6 +131,18 @@ const HOUSEHOLD_GROUP_LABELS: Partial<Record<(typeof HOUSEHOLD_SECTIONS)[number]
 };
 
 /**
+ * Classroom's two halves, flattened the same way Household's are.
+ *
+ * Derived from the same constants `classroom-shell.tsx` builds its tree nodes from,
+ * so the desktop labels and the compact groups cannot drift apart. `main` carries no
+ * group: it is the module root, which sits above both headings rather than in either.
+ */
+const CLASSROOM_GROUP_LABELS: Partial<Record<(typeof CLASSROOM_SECTIONS)[number], string>> = {
+  ...Object.fromEntries(CLASSROOM_ATTENDANCE_SECTIONS.map((slug) => [slug, "Attendance"])),
+  ...Object.fromEntries(CLASSROOM_EXAM_SECTIONS.map((slug) => [slug, "Exam"])),
+};
+
+/**
  * Module slug to its section list. Keyed by the slug in `sys_modules`, which is why
  * Investments appears as `investments` while its files are still named `stock-*` —
  * migration 0108 renamed the module, not the files.
@@ -148,12 +162,15 @@ const SECTION_BUILDERS: Record<string, () => TreeSection[]> = {
     toSections(CSV_SECTIONS, CSV_SECTION_INFO, CSV_SECTION_ICONS, csvSectionHref),
   expense: () =>
     toSections(EXPENSE_SECTIONS, EXPENSE_SECTION_INFO, EXPENSE_SECTION_ICONS, expenseSectionHref),
-  attendance: () =>
+  // Was `attendance` until migration 0143, which folded Attendance into Classroom
+  // as one of its two section groups.
+  classroom: () =>
     toSections(
-      ATTENDANCE_SECTIONS,
-      ATTENDANCE_SECTION_INFO,
-      ATTENDANCE_SECTION_ICONS,
-      attendanceSectionHref,
+      CLASSROOM_SECTIONS,
+      CLASSROOM_SECTION_INFO,
+      CLASSROOM_SECTION_ICONS,
+      classroomSectionHref,
+      CLASSROOM_GROUP_LABELS,
     ),
   "music-library": () =>
     toSections(MUSIC_SECTIONS, MUSIC_SECTION_INFO, MUSIC_SECTION_ICONS, musicSectionHref),

@@ -4,9 +4,13 @@
 import path from "node:path";
 import Database from "better-sqlite3";
 import { SqliteAttendanceRepository } from "./attendance/repository";
+import { SqliteExamRepository } from "./exam/repository";
+import { LibraryQrIdentity } from "./exam/qr-adapter";
+import { SharpSheetImageProcessor } from "./exam/sheet-image-processor";
 import { SqliteAuthEventRepository } from "./auth-events/repository";
 import {
   SqliteIpAllowlistRepository,
+  SqliteIpBlacklistRepository,
   SqliteSiteVisitRepository,
 } from "./site-visits/repository";
 import { SqliteSessionRepository } from "./auth/repository";
@@ -209,6 +213,11 @@ export const deps = {
   // is read on each of those writes to decide the verdict.
   siteVisitRepo: new SqliteSiteVisitRepository(db),
   ipAllowlistRepo: new SqliteIpAllowlistRepository(db),
+  // The other half of the same decision (migrations/0144): addresses the reader has
+  // explicitly distrusted. Read on each visit write alongside the allowlist, and it
+  // MARKS rather than blocks — nothing refuses a request on the strength of it, for
+  // the reasons that migration sets out at length.
+  ipBlacklistRepo: new SqliteIpBlacklistRepository(db),
   investmentAccountRepo: new SqliteInvestmentAccountRepository(db),
   // Per-slot icon overrides (migrations/0066). Read for the active icon set on every
   // page render; the raster BLOB is read only by src/app/api/icons/slots/[slot]/route.ts.
@@ -243,6 +252,18 @@ export const deps = {
   photoRootFromEnv,
   expenseRepo: new SqliteExpenseRepository(db),
   attendanceRepo: new SqliteAttendanceRepository(db),
+  // The Classroom module's Exam group (migrations/0145). Shares the module with
+  // attendance rather than owning one of its own: an exam is graded against the same
+  // cls_students and cls_classes, which is why both live under Classroom.
+  examRepo: new SqliteExamRepository(db),
+  // Decodes a scanned answer sheet. Behind a port and lazily loading `sharp`, for the
+  // reason the icons processor documents: `wiring.ts` is imported by every page, so a
+  // top-level native import would make grading's dependency the whole app's.
+  sheetImageProcessor: new SharpSheetImageProcessor(),
+  // Prints and reads the student-ID QR on an answer sheet. Lazy for the same reason
+  // as the image processor above: only the Exam Maker and the grader need it, and
+  // this file loads on every page.
+  qrIdentity: new LibraryQrIdentity(),
   // The Games module's shared high-score board (migrations/0074). There is no
   // repository for the games themselves — the catalogue is code, in
   // src/lib/games/catalogue.ts.

@@ -10,6 +10,7 @@ interface MonitorRow {
   target_cents: number;
   target_pct: number;
   band_pct: number;
+  direction: string;
   is_enabled: number;
   is_triggered: number;
   last_triggered_at: string | null;
@@ -29,6 +30,9 @@ function toMonitor(row: MonitorRow): TickerMonitor {
     targetCents: row.target_cents,
     targetPct: row.target_pct,
     bandPct: row.band_pct,
+    // Narrowed like `monitor_type` above, and for the same reason: the schema
+    // is what guarantees only '', 'up' or 'down' is ever written.
+    direction: row.direction as TickerMonitor["direction"],
     // SQLite has no boolean: 0/1 becomes a real boolean here so nothing above
     // this line tests an integer for truthiness.
     isEnabled: row.is_enabled === 1,
@@ -71,8 +75,8 @@ export class SqliteTickerMonitorRepository implements TickerMonitorRepository {
     const row = this.db
       .prepare(
         `INSERT INTO inv_ticker_monitors
-           (ticker, monitor_type, target_cents, target_pct, band_pct, is_enabled)
-         VALUES (?, ?, ?, ?, ?, ?)
+           (ticker, monitor_type, target_cents, target_pct, band_pct, direction, is_enabled)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
          RETURNING *`,
       )
       .get(
@@ -81,6 +85,7 @@ export class SqliteTickerMonitorRepository implements TickerMonitorRepository {
         input.targetCents,
         input.targetPct,
         input.bandPct,
+        input.direction,
         input.isEnabled ? 1 : 0,
       ) as MonitorRow;
     return toMonitor(row);
@@ -94,7 +99,7 @@ export class SqliteTickerMonitorRepository implements TickerMonitorRepository {
       .prepare(
         `UPDATE inv_ticker_monitors
             SET ticker = ?, monitor_type = ?, target_cents = ?, target_pct = ?,
-                band_pct = ?, is_enabled = ?, is_triggered = 0
+                band_pct = ?, direction = ?, is_enabled = ?, is_triggered = 0
           WHERE id = ?
          RETURNING *`,
       )
@@ -104,6 +109,7 @@ export class SqliteTickerMonitorRepository implements TickerMonitorRepository {
         input.targetCents,
         input.targetPct,
         input.bandPct,
+        input.direction,
         input.isEnabled ? 1 : 0,
         input.id,
       ) as MonitorRow | undefined;

@@ -91,6 +91,7 @@ alongside its row here.
 | [`saved-sql`](#saved-sql) | read (writes with `save`/`delete`) | no |
 | [`take-attendance`](#take-attendance) | write | no |
 | [`attendance-report`](#attendance-report) | read | no |
+| [`exams`](#exams) | read (writes with `--set-key`) | no |
 | [`journal-reports`](#journal-reports) | read | no |
 | [`scan-music`](#scan-music) | write | no (reads the music share) |
 | [`music-library`](#music-library) | read | no |
@@ -1171,6 +1172,36 @@ With no argument, uses `formatDeploymentMessage(new Date())`. Max 2000 character
 Source: [src/cli/set-startup-message.ts](src/cli/set-startup-message.ts)
 
 ---
+
+## `exams`
+
+Lists exams and their answer keys — the terminal counterpart of the Exam Home screen
+and the Exam Maker's answer card. Part of the Classroom module's Exam group
+(migrations 0143, 0145).
+
+```
+npm run cli -- exams
+npm run cli -- exams --class "Math 101"
+npm run cli -- exams --exam 3
+npm run cli -- exams --exam 3 --set-key "A,B,C,D"
+```
+
+**Input** — no flags lists every exam. `--class <name>` narrows to one class, matched
+case-insensitively. `--exam <id>` prints one exam with its full key and what is
+missing. `--set-key "A,B,C"` writes answers **in question order**; a blank entry
+leaves that question unkeyed, so `"A,,C"` keys questions 1 and 3 and clears 2 —
+exactly what the screen's blank option does.
+
+**Calls** — `listExams`, `getExamWithKey`, `keyCompleteness`, `saveAnswerKey` on
+`deps.examRepo`, and `listClasses` on `deps.attendanceRepo` to resolve `--class`.
+
+**Output** — one line per exam with its id, the teacher's exam ID, name, class,
+question count, choice set, points each, and key completeness. With `--exam`, the
+exam's details, its maximum score, which questions are unkeyed, and the key itself
+one question per line.
+
+**Exit code** — 1 for an unknown class, a non-numeric `--exam`, or an exam id that
+does not exist.
 
 ## `take-attendance`
 
@@ -2830,40 +2861,66 @@ Source: [src/cli/deployments.ts](src/cli/deployments.ts)
 
 ## `ticker-monitors`
 
-Per-ticker alert conditions on unrealized gain or loss — the same use-cases the ticker
-viewer's **Monitor** button drives.
+Per-ticker alert conditions — on unrealized gain or loss, on the share price, or on a
+one-day move — the same use-cases the ticker viewer's **Monitor** button drives.
 
 ```
 npm run cli -- ticker-monitors list NVDA
 npm run cli -- ticker-monitors add NVDA gain-amount 10000
 npm run cli -- ticker-monitors add INTC loss-amount 0
 npm run cli -- ticker-monitors add NVDA gain-pct 20 --band 3
+npm run cli -- ticker-monitors add BMY price 45 --band 1
+npm run cli -- ticker-monitors add BMY day-move 3 --down
 npm run cli -- ticker-monitors enable 4
 npm run cli -- ticker-monitors disable 4
 npm run cli -- ticker-monitors delete 4
 npm run cli -- ticker-monitors run
 ```
 
-**Input** — a positional action. `add` takes a ticker, a type and a target: `gain-amount`
-and `loss-amount` are **dollars** (converted to cents on the way in, as the web form does),
-`gain-pct` is a percentage of cost basis. `--band <pct>` sets how close counts as "near";
-omitted, the schema's default of 5% applies. `loss-amount 0` is break-even — the useful case,
-and the one where the band is taken against cost basis instead of the target.
+**Input** — a positional action. `add` takes a ticker, a type and a target:
+
+| Type | Target | Notes |
+|---|---|---|
+| `gain-amount` / `loss-amount` | dollars | Converted to cents on the way in, as the web form does |
+| `gain-pct` | percent of cost basis | |
+| `price` | dollars per share | A target price; **fires from either side of the band** |
+| `day-move` | percent moved in a day | Needs `--up` or `--down`; ignores `--band` |
+
+`--band <pct>` sets how close counts as "near"; omitted, the schema's default of 5% applies.
+`loss-amount 0` is break-even — the useful case, and the one where the band is taken against
+cost basis instead of the target.
+
+**The two price types need no cost basis** (0148). They are facts about the security, so they
+work on a holding with no imported transactions, where every gain/loss type stays silent.
+
+**`price` is a band, not a crossing.** `price 150 --band 5` is true anywhere from $142.50 to
+$157.50, climbing *or* falling, and stays latched until the price leaves that range. Use a
+tight band (`--band 0.5`) to catch it close to the target itself.
+
+**`day-move` is a threshold, not a band.** `day-move 3 --down` fires at −3% *or beyond*, and
+`--band` is ignored for it — a band either side of a 3% move would be true from −2% to +8%.
+The move is measured against the **previous close** (recovered from the stored day gain), so
+it is the same figure a quote screen calls today's % change, and it is only as current as the
+last price refresh. Without `--up` or `--down` the schema rejects the monitor rather than
+guessing a direction.
 
 **Calls** — `listMonitorsForTicker`, `createMonitor`, `setMonitorEnabled`, `deleteMonitor`,
 `valuationForTicker` and `runMonitors` from `lib/ticker-monitors`, on
 `deps.tickerMonitorRepo` plus `deps.stockPositionRepo` and `deps.messageRepo`.
 
-**Output** — `list` prints the ticker's current unrealized gain and cost basis, then one line
-per monitor: enabled marker, id, summary, band, and `[triggered]` if the latch is set. `run`
-reports how many were evaluated, fired and re-armed.
+**Output** — `list` prints the ticker's current unrealized gain and cost basis, then its
+share price and today's move, then one line per monitor: enabled marker, id, summary, band,
+and `[triggered]` if the latch is set. The band is omitted for `day-move`, which does not read
+one. An unknown price prints as `unknown` and a underivable move as `no previous close`,
+rather than as `$0.00` and `0.00%`. `run` reports how many were evaluated, fired and re-armed.
 
 **`run` does not fetch prices.** It evaluates against the figures already stored, so pair it
 with `refresh-positions` for a full pass — that ordering is what the dashboard button and the
 scheduled job both do.
 
 **Exit** — 0 normally. 1 for an unknown action or type, a non-numeric target, or a schema
-rejection (a `gain-amount` with no target, a band of 0%).
+rejection (a `gain-amount` with no target, a `price` of 0, a `day-move` with no direction or no
+size, a direction passed to a type that does not take one, a band of 0%).
 Source: [src/cli/ticker-monitors.ts](src/cli/ticker-monitors.ts)
 
 ---

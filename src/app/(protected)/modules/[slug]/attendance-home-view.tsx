@@ -149,8 +149,8 @@ export function AttendanceHomeView({
             onChange={(event) =>
               router.push(
                 event.target.value
-                  ? `/modules/attendance?classId=${event.target.value}`
-                  : "/modules/attendance",
+                  ? `/modules/classroom?classId=${event.target.value}`
+                  : "/modules/classroom",
               )
             }
             className={SELECT_CLASS}

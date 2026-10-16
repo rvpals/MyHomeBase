@@ -4,7 +4,7 @@
 // the shell) read these values directly. Exporting them from the client nav module
 // instead would hand the server client-reference proxies rather than the real
 // objects, so a lookup like MUSIC_SECTION_INFO[section] would come back undefined.
-// Same reasoning as attendance-sections.ts and journal-sections.ts.
+// Same reasoning as classroom-sections.ts and journal-sections.ts.
 
 export const MUSIC_SECTIONS = ["main", "magic", "player", "queue", "scan", "configuration"] as const;
 

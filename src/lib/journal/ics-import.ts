@@ -114,6 +114,7 @@ export function emptyIcsPresets(): IcsImportPresets {
     placeName: "",
     notePrefix: "",
     preserveLocalEdits: true,
+    duplicateAction: "refresh",
   };
 }
 
@@ -336,6 +337,30 @@ function walkIcsEvents(
         action: "skip",
         blockedReason: "Encrypted — remove encryption before re-importing",
       });
+      return;
+    }
+
+    // What the reader asked for on an already-imported event. Checked *after*
+    // the lock and encryption guards above, which are properties of the stored
+    // entry and override any preference -- "duplicate" must not become a way to
+    // write a second copy of an entry the reader locked.
+    const duplicateAction = presets.duplicateAction ?? "refresh";
+
+    if (duplicateAction === "skip") {
+      onRow({
+        ...base,
+        action: "skip",
+        blockedReason: "Already imported — set to leave existing entries alone",
+      });
+      return;
+    }
+
+    // A second entry, deliberately: no `entryId`, so the write path creates
+    // rather than updates. `externalId` still carries the UID, so the next run
+    // matches this copy too -- which is why the UI warns that repeating it keeps
+    // adding entries.
+    if (duplicateAction === "duplicate") {
+      onRow({ ...base, action: "create" }, icsEventToEntryInput(event, presets));
       return;
     }
 

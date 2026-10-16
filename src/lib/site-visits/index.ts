@@ -11,8 +11,10 @@
 
 export type {
   IpAllowlistEntry,
+  IpBlacklistEntry,
   IpHistory,
   NewIpAllowlistEntry,
+  NewIpBlacklistEntry,
   NewSiteVisit,
   ScoredVisit,
   SiteVisit,
@@ -27,17 +29,24 @@ export type {
 export {
   bulkIdsSchema,
   ipAllowlistEntrySchema,
+  ipBlacklistEntrySchema,
   newIpAllowlistEntrySchema,
+  newIpBlacklistEntrySchema,
   newSiteVisitSchema,
   retentionDaysSchema,
   siteVisitFilterSchema,
   siteVisitSchema,
   suspicionSignalSchema,
   type NewIpAllowlistEntryInput,
+  type NewIpBlacklistEntryInput,
   type NewSiteVisitInput,
   type SiteVisitFilterInput,
 } from "./schema";
-export type { IpAllowlistRepository, SiteVisitRepository } from "./ports";
+export type {
+  IpAllowlistRepository,
+  IpBlacklistRepository,
+  SiteVisitRepository,
+} from "./ports";
 export {
   PRUNE_INTERVAL_MINUTES,
   SITE_VISIT_PRUNE_JOB_KEY,
@@ -63,15 +72,18 @@ export {
 export {
   DEFAULT_RETENTION_DAYS,
   allowIpAddress,
+  blockIpAddress,
   deleteSiteVisits,
   disallowIpAddress,
   getSiteVisitSummary,
   hasUnreviewedSuspiciousVisits,
   listAllowedIps,
+  listBlockedIps,
   listSiteVisits,
   listVisitsByWeek,
   markSuspiciousReviewed,
   pruneSiteVisits,
   recordSiteVisit,
   toSqliteTimestamp,
+  unblockIpAddress,
 } from "./site-visits";

@@ -288,7 +288,7 @@ describe("renderReport", () => {
         generatedAt: AT,
       });
 
-      expect(rendered.html).toContain("0|0|no dated entries|||0|");
+      expect(rendered.html).toContain("0|0|no dated entries||||0|");
     });
 
     it("counts a streak across consecutive days only", () => {

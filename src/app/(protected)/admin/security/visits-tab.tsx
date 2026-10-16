@@ -15,6 +15,7 @@ import { getIconSlot } from "@/lib/icons";
 import { describeSignal, describeSuspicion } from "@/lib/site-visits/suspicion";
 import type {
   IpAllowlistEntry,
+  IpBlacklistEntry,
   SiteVisit,
   SiteVisitSummary,
   SuspicionLevel,
@@ -23,15 +24,19 @@ import type {
 } from "@/lib/site-visits/types";
 import {
   allowIpAddressesAction,
+  blockIpAddressesAction,
   deleteSiteVisitsAction,
   disallowIpAddressAction,
   markVisitsReviewedAction,
+  unblockIpAddressAction,
 } from "./actions";
 
 export interface VisitsTabProps {
   weeks: VisitWeekGroup[];
   summary: SiteVisitSummary;
   allowlist: IpAllowlistEntry[];
+  /** Addresses the reader has distrusted (migrations/0144). Always scored suspicious. */
+  blacklist: IpBlacklistEntry[];
   /** `YYYY-MM-DD` today, so the current day opens expanded. Resolved on the server. */
   todayIso: string;
   /** `YYYY-MM-DD` Monday of the current week, so this week opens expanded. */
@@ -39,7 +44,13 @@ export interface VisitsTabProps {
 }
 
 // Resolved once at module scope; the guard is for the registry, not the user.
+// Matches the per-screen `INPUT_CLASS` the other admin views declare locally, rather
+// than inventing a shared field component for one input (ARCHITECTURE.md: one-offs).
+const INPUT_CLASS =
+  "w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
+
 const ALLOWLIST_SLOT = getIconSlot("admin_security_allowlist");
+const BLOCKLIST_SLOT = getIconSlot("admin_security_blocklist");
 
 /**
  * Red for suspicious, amber for watch, muted for normal — the fixed-colour exception
@@ -125,11 +136,16 @@ export function VisitsTab({
   weeks,
   summary,
   allowlist,
+  blacklist,
   todayIso,
   thisWeekStart,
 }: VisitsTabProps) {
   const router = useRouter();
   const [isBusy, setIsBusy] = useState(false);
+  // The "add an address by hand" field on the Blocked addresses card. View state
+  // only — the address itself is validated by the lib schema on the way through.
+  const [newBlockAddress, setNewBlockAddress] = useState("");
+  const [newBlockLabel, setNewBlockLabel] = useState("");
 
   /** Every mutation here refreshes rather than patching local state — one source of truth. */
   async function run(work: () => Promise<{ ok: boolean; error?: string }>) {
@@ -193,6 +209,68 @@ export function VisitsTab({
       return;
     }
     await run(() => disallowIpAddressAction(entry.id, entry.ipAddress));
+  }
+
+  /**
+   * The bulk action's mirror of `handleAllow`. The reader is choosing ADDRESSES, so
+   * the confirm names the distinct ones rather than the row count.
+   */
+  async function handleBlock(rows: SiteVisit[], clearSelection: () => void) {
+    const addresses = [...new Set(rows.map((row) => row.ipAddress).filter(Boolean))] as string[];
+
+    if (addresses.length === 0) {
+      window.alert("None of the selected visits recorded an IP address.");
+      return;
+    }
+
+    const label =
+      window.prompt(
+        `Always treat ${addresses.length} address${addresses.length === 1 ? "" : "es"} as suspicious?\n\n${addresses.join("\n")}\n\nThis marks their visits, it does not block them — the address comes from a header that can be forged, so blocking on it would stop nothing and could lock you out.\n\nOptionally say why (e.g. "scanning /wp-admin all week"):`,
+        "",
+      ) ?? undefined;
+
+    // `prompt` returns null on Cancel, already flattened to undefined — so an empty
+    // string here means "OK with no label", which is allowed.
+    if (label === undefined) return;
+
+    await run(async () => {
+      const result = await blockIpAddressesAction(
+        addresses.map((ipAddress) => ({ ipAddress, label })),
+      );
+      if (result.ok) clearSelection();
+      return result;
+    });
+  }
+
+  /** The typed-in address on the Blocked addresses card, for one that hasn't visited yet. */
+  async function handleBlockTyped() {
+    const trimmed = newBlockAddress.trim();
+    if (trimmed === "") {
+      window.alert("Enter an address to block.");
+      return;
+    }
+
+    await run(async () => {
+      const result = await blockIpAddressesAction([
+        { ipAddress: trimmed, label: newBlockLabel.trim() || undefined },
+      ]);
+      if (result.ok) {
+        setNewBlockAddress("");
+        setNewBlockLabel("");
+      }
+      return result;
+    });
+  }
+
+  async function handleUnblock(entry: IpBlacklistEntry) {
+    if (
+      !window.confirm(
+        `Stop blocking ${entry.ipAddress}? Its past visits will be re-scored as "Worth a look".`,
+      )
+    ) {
+      return;
+    }
+    await run(() => unblockIpAddressAction(entry.id, entry.ipAddress));
   }
 
   const columns: DataGridColumn<SiteVisit>[] = [
@@ -332,6 +410,93 @@ export function VisitsTab({
         </CollapsibleCard>
       </div>
 
+      <div className="mt-3">
+        <CollapsibleCard
+          title={`Blocked addresses (${blacklist.length})`}
+          titleIcon={
+            BLOCKLIST_SLOT ? <SlotIcon slot={BLOCKLIST_SLOT} className="h-4 w-4" /> : undefined
+          }
+          defaultOpen={false}
+        >
+          <p className="text-sm text-muted">
+            Visits from these addresses are always marked suspicious, whatever the heuristics
+            would otherwise say. They stay unreviewed on purpose, so the home-screen alert keeps
+            pointing at them.
+          </p>
+          <p className="mt-2 text-sm text-muted">
+            <strong className="text-ink">This marks, it does not block.</strong> The address comes
+            from the reverse proxy and can be forged, so refusing a request on it would stop
+            nothing determined and could shut you out of your own site. Real blocking belongs in
+            the proxy on the NAS. An address here is also removed from Allowed addresses — it
+            cannot be on both lists.
+          </p>
+
+          {/* Typing an address by hand covers the case the bulk action can't: one you
+              read somewhere else, or one that hasn't visited yet. */}
+          <div className="mt-4 flex flex-wrap items-end gap-2">
+            <label className="block text-sm max-lg:w-full">
+              <span className="mb-1 block font-medium text-ink">Address</span>
+              <input
+                type="text"
+                value={newBlockAddress}
+                onChange={(event) => setNewBlockAddress(event.target.value)}
+                placeholder="203.0.113.7"
+                maxLength={100}
+                className={`${INPUT_CLASS} font-mono lg:w-56`}
+                disabled={isBusy}
+              />
+            </label>
+            <label className="block text-sm max-lg:w-full">
+              <span className="mb-1 block font-medium text-ink">Why (optional)</span>
+              <input
+                type="text"
+                value={newBlockLabel}
+                onChange={(event) => setNewBlockLabel(event.target.value)}
+                placeholder="scanning /wp-admin all week"
+                maxLength={120}
+                className={`${INPUT_CLASS} lg:w-72`}
+                disabled={isBusy}
+              />
+            </label>
+            <Button
+              size="sm"
+              variant="danger"
+              onClick={handleBlockTyped}
+              disabled={isBusy || newBlockAddress.trim() === ""}
+              className="max-lg:w-full"
+            >
+              Block address
+            </Button>
+          </div>
+
+          {blacklist.length === 0 ? (
+            <p className="mt-4 text-sm text-muted">
+              Nothing here yet. Add an address above, or tick a visit below and choose
+              &ldquo;Block these IPs&rdquo;.
+            </p>
+          ) : (
+            <ul className="mt-4 divide-y divide-line">
+              {blacklist.map((entry) => (
+                <li key={entry.id} className="flex flex-wrap items-center gap-3 py-2">
+                  <span className="font-mono text-xs text-ink">{entry.ipAddress}</span>
+                  {entry.label && <span className="text-xs text-muted">{entry.label}</span>}
+                  <span className="ml-auto">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => handleUnblock(entry)}
+                      disabled={isBusy}
+                    >
+                      Unblock
+                    </Button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CollapsibleCard>
+      </div>
+
       {weeks.length === 0 ? (
         <p className="mt-6 text-sm text-muted">No visits recorded yet.</p>
       ) : (
@@ -381,6 +546,14 @@ export function VisitsTab({
                             disabled={isBusy}
                           >
                             Always trust these IPs
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => handleBlock(selectedRows, clearSelection)}
+                            disabled={isBusy}
+                          >
+                            Block these IPs
                           </Button>
                           <Button
                             size="sm"

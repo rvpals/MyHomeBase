@@ -11,18 +11,31 @@ module is obvious from the name alone. New tables must follow this.
 
 | Prefix | Module | Example tables |
 |---|---|---|
-| `sys_` | Platform — not a feature module | `sys_modules`, `sys_app_settings`, `sys_module_settings`, `sys_user_preferences`, `sys_users`, `sys_user_module_access`, `sys_sessions`, `sys_schema_migrations`, `sys_daily_quotes`, `sys_scheduled_runs`, `sys_dashboard_texture`, `sys_dashboard_textures`, `sys_module_texture`, `sys_fav_photo`, `sys_deployments`, `sys_auth_events`, `sys_site_visits`, `sys_ip_allowlist`, `sys_messages`, `sys_saved_sql_queries`, `sys_locations`, `sys_location_categories`, `sys_location_tags`, `sys_location_category_links`, `sys_location_tag_links` |
+| `sys_` | Platform — not a feature module | `sys_modules`, `sys_app_settings`, `sys_module_settings`, `sys_user_preferences`, `sys_users`, `sys_user_module_access`, `sys_sessions`, `sys_schema_migrations`, `sys_daily_quotes`, `sys_scheduled_runs`, `sys_dashboard_texture`, `sys_dashboard_textures`, `sys_module_texture`, `sys_fav_photo`, `sys_deployments`, `sys_auth_events`, `sys_site_visits`, `sys_ip_allowlist`, `sys_ip_blacklist`, `sys_messages`, `sys_saved_sql_queries`, `sys_locations`, `sys_location_categories`, `sys_location_tags`, `sys_location_category_links`, `sys_location_tag_links` |
 | `inv_` | Investments (brokerage accounts **and** per-stock tables — one prefix) | `inv_investment_accounts`, `inv_stock_positions`, `inv_stock_transactions`, `inv_stock_watch_lists`, `inv_stock_volatility_cache`, `inv_ticker_risk_cache`, `inv_ticker_logos`, `inv_index_logos`, `inv_daily_snapshots`, `inv_tax_lots`, `inv_ticker_monitors` |
 | `csv_` | CSV Analysis (incl. user-generated per-entry tables from `buildTableName`) | `csv_analytics_entries`, `csv_chart_presets`, `csv_govee` |
 | `jrn_` | MyJournal | `jrn_entries`, `jrn_categories`, `jrn_tags`, `jrn_entry_categories`, `jrn_entry_tags`, `jrn_entry_locations`, `jrn_entry_images`, `jrn_saved_filters`, `jrn_reports`, `jrn_report_details` |
 | `exp_` | Expense tracker | `exp_transactions`, `exp_creditcard_accounts`, `exp_categories`, `exp_vendors`, `exp_post_import_rules`, `exp_post_import_rule_actions`, `exp_rule_types` |
-| `att_` | Attendance | `att_students`, `att_classes`, `att_class_enrollments`, `att_attendance_records`, `att_attendance_entries`, `att_student_actions`, `att_attendance_entry_actions` |
+| `cls_` | Classroom (Attendance **and** Exam — one prefix) | `cls_students`, `cls_classes`, `cls_class_enrollments`, `cls_attendance_records`, `cls_attendance_entries`, `cls_student_actions`, `cls_attendance_entry_actions`, `cls_exams`, `cls_exam_questions` |
 | `ico_` | Icon customisation — platform-wide, not a feature module | `ico_slot_overrides` |
 | `mus_` | Music Library | `mus_tracks`, `mus_albums`, `mus_scan_runs`, `mus_track_lyrics`, `mus_playlists`, `mus_playlist_tracks`, `mus_play_events`, `mus_magic_list`, `mus_magic_list_tracks`, `mus_play_queue`, `mus_play_queue_state` |
 | `gam_` | Games | `gam_scores` |
 | `pho_` | Picture Gallery | `pho_albums`, `pho_album_photos`, `pho_magic_list`, `pho_magic_list_photos`, `pho_photo_index`, `pho_magic_scan_run` |
 | `tol_` | Tools | `tol_uploaded_databases`, `tol_uploaded_csv_files`, `tol_todo_categories`, `tol_todo_items` |
 | `hsh_` | Household | `hsh_recipes`, `hsh_recipe_tags`, `hsh_hsa_expenses`, `hsh_hsa_cards` |
+
+**Attendance became Classroom in migration 0143**, and the prefix moved `att_` -> `cls_`
+with it. Attendance is now one of two *section groups* inside Classroom (the other is
+Exam), because the nav tree has no level between a module and a section — so the tables
+belong to Classroom and carry its namespace.
+
+Note `cls_` names the module's domain, not its first feature, which is the same rule that
+made Picture Gallery `pho_` rather than `alb_` and Tools `tol_` rather than `sql_`: Exam's
+tables land under `cls_` with no further rename. A compound `cla_att_` was considered and
+rejected — a prefix is three letters and one namespace, and encoding a hierarchy there
+would make prefix length variable and break every lookup that assumes three characters.
+Unlike the `stk_` -> `inv_` rename, the table *names* changed too (`att_students` ->
+`cls_students`), because they were short enough that the prefix carried no other meaning.
 
 The `rei_` prefix (Real Estate Investment) was retired when that module was
 removed — see migration `0026_drop_real_estate_module`.
@@ -457,9 +470,9 @@ thing to keep hold of:
 
 | | `inv_ticker_monitors` (0110) | Watch on a list row (0111) |
 |---|---|---|
-| Watches | Unrealized gain/loss on a position you **hold** | A ticker you are **considering** |
-| Baseline | Cost basis | `price_when_added_cents` |
-| Kinds | Three, all gain/loss | Six, incl. price, range, dividend, split |
+| Watches | A position you **hold** | A ticker you are **considering** |
+| Baseline | Cost basis, or the previous close for a day move | `price_when_added_cents` |
+| Kinds | Five: three on gain/loss, plus a price target and a one-day move (0148) | Six, incl. price, range, dividend, split |
 | Lives on | Its own table, keyed by ticker | The list row, and dies with it |
 
 A monitor has a cost basis to measure against; a watch-list row does not,

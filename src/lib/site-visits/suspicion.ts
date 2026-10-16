@@ -95,11 +95,14 @@ export function levelFromSignals(signals: readonly SuspicionSignal[]): Suspicion
   );
   if (damning) return "suspicious";
 
-  // `allowlist_removed` records an admin action, not an observation about the
-  // request, so it does not count as corroboration. Without this it would pair with
-  // any single weak signal to manufacture a "suspicious" — turning "I stopped
-  // trusting this address" into "this address attacked me", which it is not.
-  const observed = signals.filter((signal) => signal !== "allowlist_removed");
+  // `allowlist_removed` and `blacklist_removed` record admin actions, not
+  // observations about the request, so neither counts as corroboration. Without this
+  // they would pair with any single weak signal to manufacture a "suspicious" —
+  // turning "I changed my mind about this address" into "this address attacked me",
+  // which it is not.
+  const observed = signals.filter(
+    (signal) => signal !== "allowlist_removed" && signal !== "blacklist_removed",
+  );
   if (observed.length === 0) return "watch";
 
   return observed.length >= 2 ? "suspicious" : "watch";
@@ -121,6 +124,16 @@ export function levelFromSignals(signals: readonly SuspicionSignal[]): Suspicion
  * decide what the reader looks at first.
  */
 export function scoreSuspicion(context: SiteVisitContext, history: IpHistory): ScoredVisit {
+  // The blacklist short-circuits first, mirroring the allowlist below it: the
+  // reader's explicit judgement replaces the heuristics rather than joining them, so
+  // the row carries the one honest reason — an admin said so — instead of a list of
+  // findings the scorer did not actually make (migrations/0144).
+  //
+  // Checked ahead of the allowlist only to make the precedence deterministic if the
+  // two ever disagreed. They should not: `blockIpAddress` and `allowIpAddress` each
+  // clear the other list's entry for the address, so an address on both is a bug
+  // upstream of here, not a case this line is designed to serve.
+  if (history.blacklisted) return { level: "suspicious", signals: ["blacklisted"] };
   if (history.allowlisted) return { level: "normal", signals: [] };
 
   const signals: SuspicionSignal[] = [];
@@ -174,6 +187,10 @@ export function describeSignal(signal: SuspicionSignal): string {
       return "Also has failed sign-in attempts";
     case "allowlist_removed":
       return "Was trusted until an admin removed the address from the allowlist";
+    case "blacklisted":
+      return "Blocked by an admin — this address is on the blacklist";
+    case "blacklist_removed":
+      return "Was blocked until an admin removed the address from the blacklist";
   }
 }
 
@@ -194,6 +211,8 @@ const KNOWN_SIGNALS: ReadonlySet<string> = new Set<SuspicionSignal>([
   "never_signs_in",
   "auth_failures",
   "allowlist_removed",
+  "blacklisted",
+  "blacklist_removed",
 ]);
 
 /**

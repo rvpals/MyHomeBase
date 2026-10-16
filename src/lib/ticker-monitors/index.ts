@@ -1,9 +1,13 @@
 export {
   DEFAULT_BAND_PCT,
   MONITOR_TYPES,
+  MOVE_DIRECTIONS,
+  needsCostBasis,
+  usesBand,
   type MonitorEvaluation,
   type MonitorRunResult,
   type MonitorType,
+  type MoveDirection,
   type TickerMonitor,
   type TickerValuation,
 } from "./types";
@@ -11,6 +15,7 @@ export type { MonitorPositionReader, TickerMonitorRepository } from "./ports";
 export {
   bandPctSchema,
   createMonitorSchema,
+  directionSchema,
   monitorIdSchema,
   monitorTickerSchema,
   monitorTypeSchema,

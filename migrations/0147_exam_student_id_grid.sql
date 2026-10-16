@@ -1,0 +1,28 @@
+-- Adds the student-ID bubble grid option to cls_exams.
+--
+-- A new file rather than an edit to 0146, for the reason 0146's own log spells out:
+-- an already-applied migration is skipped forever, so editing one changes nothing on
+-- any database that has run it while the code ships expecting the new shape. 0146 may
+-- already have run on the live database; this file is the only way to move both
+-- forward identically.
+--
+--   fresh database:  0145 (10) -> 0146 (+6) -> 0147 (+1) = 17
+--   live database:   whatever it has already run -> 0147 (+1) = 17
+--
+-- Additive only. cls_exams holds real rows, so this must never drop or recreate the
+-- table; ALTER TABLE ADD COLUMN with a NOT NULL DEFAULT backfills every existing row,
+-- and 0 is the correct reading for an exam created before the option existed.
+
+-- Print a bubble grid encoding the student's ID, PRE-SHADED by the app rather than
+-- filled in by the student.
+--
+-- It identifies a sheet only alongside print_student_names, which is what makes the
+-- print run one sheet per student: that is where the app knows whose ID to shade.
+-- With it off a blank grid prints, which is a legitimate sheet that simply identifies
+-- nobody — the same way a blank name line is legitimate.
+--
+-- Digits come from cls_students.student_identifier, right-aligned into five columns
+-- and stripped of punctuation (see `idDigitsFor`). Read back by `detectStudentId`,
+-- which refuses rather than guesses when a column is unclear: a wrong ID silently
+-- attaches a grade to the wrong student, so "unreadable" is the only safe failure.
+ALTER TABLE cls_exams ADD COLUMN include_student_id INTEGER NOT NULL DEFAULT 0;

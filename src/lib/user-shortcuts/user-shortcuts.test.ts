@@ -203,7 +203,9 @@ describe("addShortcut", () => {
     const result = addShortcut(repo, USER, { ...urlDraft, url: "example.com" });
 
     expect(result.ok).toBe(true);
-    expect(result.shortcuts![0].url).toBe("https://example.com/");
+    expect(result.shortcuts![0].url).// No trailing slash: the schema stores the string it validated rather than
+      // `URL.href`, so what was checked and what is stored cannot drift apart.
+      toBe("https://example.com");
   });
 
   it("returns the new row's id, so a picture can be uploaded against it", () => {

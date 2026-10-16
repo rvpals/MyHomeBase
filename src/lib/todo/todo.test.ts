@@ -142,7 +142,14 @@ describe("createItem", () => {
 
     const result = createItem(deps, { categoryId: 1, title: "New" });
 
-    expect(result).toMatchObject({ ok: true, item: { isDone: false, doneAt: undefined } });
+    expect(result).toMatchObject({ ok: true, item: { isDone: false } });
+    // Asserted separately: `toMatchObject` requires the KEY to be present, and an
+    // unfinished item has no `doneAt` key at all — which is the intended shape.
+    //
+    // The `ok` check narrows the union so `item` is reachable; the result type has no
+    // `item` on its failure branch.
+    if (!result.ok) throw new Error(result.message);
+    expect(result.item.doneAt).toBeUndefined();
   });
 
   it("reports a missing list rather than orphaning the item", () => {

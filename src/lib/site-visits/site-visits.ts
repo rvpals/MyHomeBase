@@ -1,7 +1,12 @@
-import type { IpAllowlistRepository, SiteVisitRepository } from "./ports";
+import type {
+  IpAllowlistRepository,
+  IpBlacklistRepository,
+  SiteVisitRepository,
+} from "./ports";
 import {
   bulkIdsSchema,
   newIpAllowlistEntrySchema,
+  newIpBlacklistEntrySchema,
   newSiteVisitSchema,
   retentionDaysSchema,
   siteVisitFilterSchema,
@@ -9,7 +14,9 @@ import {
 import { SUSPICION_THRESHOLDS, scoreSuspicion } from "./suspicion";
 import type {
   IpAllowlistEntry,
+  IpBlacklistEntry,
   NewIpAllowlistEntry,
+  NewIpBlacklistEntry,
   SiteVisit,
   SiteVisitContext,
   SiteVisitFilter,
@@ -48,6 +55,7 @@ export function recordSiteVisit(
   context: SiteVisitContext,
   visitRepo: SiteVisitRepository,
   allowlistRepo: IpAllowlistRepository,
+  blacklistRepo: IpBlacklistRepository,
 ): void {
   try {
     const parsed = newSiteVisitSchema.safeParse(context);
@@ -60,10 +68,12 @@ export function recordSiteVisit(
     const history = ipAddress
       ? {
           allowlisted: allowlistRepo.isAllowed(ipAddress),
+          blacklisted: blacklistRepo.isBlocked(ipAddress),
           ...visitRepo.getIpHistory(ipAddress, SUSPICION_THRESHOLDS.burstWindowMinutes),
         }
       : {
           allowlisted: false,
+          blacklisted: false,
           recentVisits: 0,
           totalVisits: 0,
           authAttempts: 0,
@@ -160,9 +170,17 @@ export function allowIpAddress(
   entry: NewIpAllowlistEntry,
   allowlistRepo: IpAllowlistRepository,
   visitRepo: SiteVisitRepository,
+  blacklistRepo: IpBlacklistRepository,
   now: Date = new Date(),
 ): number {
   const parsed = newIpAllowlistEntrySchema.parse(entry);
+
+  // An address is never on both lists (migrations/0144). Vouching for one that was
+  // blacklisted is a change of mind, not a contradiction to refuse — so the blacklist
+  // entry goes, here, rather than leaving the Visit tab showing the address on two
+  // cards while the scorer quietly honours one of them.
+  blacklistRepo.removeByAddress(parsed.ipAddress);
+
   allowlistRepo.add(parsed);
   // Reasons are cleared along with the verdict: a grey "Normal" row listing why it
   // was once suspicious invites exactly the second-guessing vouching exists to end.
@@ -204,4 +222,86 @@ export function disallowIpAddress(
   // heuristic finding the scorer never made. Without it the amber badge would sit
   // there with an empty Why column, which reads like a bug (migrations/0106).
   return visitRepo.setSuspicionForIp(ipAddress, "watch", ["allowlist_removed"]);
+}
+
+/**
+ * Distrusts an address, and re-scores every visit it has already made.
+ *
+ * The mirror of `allowIpAddress`, and it inherits that function's hard-won lesson:
+ * the re-score is the half that is easy to forget and obvious when missing. Without
+ * it the reader blocks an address and watches its grey rows sit there unchanged,
+ * which reads as the feature not working.
+ *
+ * **Not marked reviewed**, and that is the one place this deliberately diverges from
+ * its mirror. Vouching for an address *is* the review — the reader is saying "stop
+ * showing me this". Blocking one says the opposite, so the unreviewed count must not
+ * drop when a block is added, and the home-screen alert must keep pointing at it.
+ *
+ * **This marks, it does not block.** Nothing here or downstream refuses a request;
+ * the address is served exactly as before. See migrations/0144 for why a blocking
+ * gate on a forgeable `x-forwarded-for` header would stop nothing determined and
+ * could lock the household out of its own site.
+ *
+ * Returns how many past visits were re-scored. Already-listed addresses are a no-op
+ * on the table and still re-score, so pressing the button twice is harmless.
+ */
+export function blockIpAddress(
+  entry: NewIpBlacklistEntry,
+  blacklistRepo: IpBlacklistRepository,
+  visitRepo: SiteVisitRepository,
+  allowlistRepo: IpAllowlistRepository,
+): number {
+  const parsed = newIpBlacklistEntrySchema.parse(entry);
+
+  // The other half of the mutual exclusion `allowIpAddress` enforces. Blocking an
+  // address that was vouched for is the reader changing their mind, which has to
+  // leave exactly one list holding it (migrations/0144).
+  allowlistRepo.removeByAddress(parsed.ipAddress);
+
+  blacklistRepo.add(parsed);
+
+  // One signal, replacing whatever was stored: the verdict now rests on the reader's
+  // judgement rather than on the heuristics, so listing findings the scorer made
+  // before would misattribute the decision. Matches `scoreSuspicion`, which returns
+  // this signal alone for a blacklisted address.
+  //
+  // No `reviewedAt` argument — see the doc comment. A blocked address stays
+  // unreviewed on purpose.
+  return visitRepo.setSuspicionForIp(parsed.ipAddress, "suspicious", ["blacklisted"]);
+}
+
+/** Every distrusted address, newest first. */
+export function listBlockedIps(repo: IpBlacklistRepository): IpBlacklistEntry[] {
+  return repo.list();
+}
+
+/**
+ * Stops distrusting an address, and re-scores its visits.
+ *
+ * Re-scored to `watch`, not `normal`, and for the symmetric reason `disallowIpAddress`
+ * re-scores to `watch` rather than leaving rows alone: the reader distrusted this
+ * address once: silently greening its whole history on removal would erase the reason
+ * they were looking at it in the first place. `watch` keeps it visible without
+ * claiming the heuristics found something they did not.
+ *
+ * Not a fresh heuristic score either — the stored row carries no history to re-run the
+ * scorer against. That is the same accepted limit migrations/0103 documents for the
+ * allowlist, and the rows are visible either way.
+ *
+ * Returns how many past visits were re-scored, or 0 if the id was not there.
+ */
+export function unblockIpAddress(
+  id: number,
+  ipAddress: string,
+  blacklistRepo: IpBlacklistRepository,
+  visitRepo: SiteVisitRepository,
+): number {
+  if (!blacklistRepo.remove(id)) return 0;
+
+  // `blacklist_removed` is the honest reason, exactly as `allowlist_removed` is on
+  // the way out of the allowlist: it records what actually caused the re-score — an
+  // admin decision — rather than inventing a finding the scorer never made. Without
+  // it the amber badge would sit there with an empty Why column, which reads like a
+  // bug (migrations/0106, 0144).
+  return visitRepo.setSuspicionForIp(ipAddress, "watch", ["blacklist_removed"]);
 }

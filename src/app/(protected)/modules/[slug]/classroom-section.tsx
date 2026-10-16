@@ -11,6 +11,7 @@ import {
   ATTENDANCE_REPORT_FORMATS,
   buildAttendanceDetailReport,
   getAttendanceReport,
+  formatStudentName,
   getAttendanceSheet,
   listClasses,
   listRecordDatesForClass,
@@ -33,18 +34,29 @@ import { AttendanceClassesView } from "./attendance-classes-view";
 import { AttendanceConfigurationView } from "./attendance-configuration-view";
 import { AttendanceEditView } from "./attendance-edit-view";
 import { AttendanceHomeView } from "./attendance-home-view";
-import { AttendanceShell } from "./attendance-shell";
+import { ClassroomShell } from "./classroom-shell";
+import { ExamHomeView } from "./exam-home-view";
+import { ExamGraderView } from "./exam-grader-view";
+import { ExamMakerView } from "./exam-maker-view";
 import { AttendanceInstructions } from "./attendance-instructions";
 import { AttendanceReportView } from "./attendance-report-view";
 import { AttendanceRostersView } from "./attendance-rosters-view";
-import { ATTENDANCE_SECTION_INFO, type AttendanceSection } from "./attendance-sections";
+import { CLASSROOM_SECTION_INFO, type ClassroomSection } from "./classroom-sections";
+import {
+  encodeStudentIdPayload,
+  getExamById,
+  getExamWithKey,
+  listExams,
+} from "@/lib/exam";
 
-const ATTENDANCE_MODULE_SLUG = "attendance";
+// Renamed by migration 0143: Attendance is now a section group inside Classroom.
+// Must match the module's FULL slug — `requireModuleAccess` compares exactly.
+const CLASSROOM_MODULE_SLUG = "classroom";
 
 function loadSettings() {
-  const attendanceModule = getModuleBySlug(deps.moduleRepo, ATTENDANCE_MODULE_SLUG);
+  const classroomModule = getModuleBySlug(deps.moduleRepo, CLASSROOM_MODULE_SLUG);
   return resolveAttendanceSettings(
-    attendanceModule ? listModuleSettingsFor(deps.moduleSettingsRepo, attendanceModule.id) : [],
+    classroomModule ? listModuleSettingsFor(deps.moduleSettingsRepo, classroomModule.id) : [],
   );
 }
 
@@ -93,17 +105,23 @@ function resolveSelectedClassId(
   return undefined;
 }
 
-function SectionBody({
+// Async because the Exam Maker renders every student's QR code server-side, and the
+// generator returns a promise. A server component may be async and React awaits it
+// where it is rendered; nothing else in here needs to change for that.
+async function SectionBody({
   section,
   requestedClassId,
   requestedDate,
   requestedFormat,
+  requestedExamEdit,
 }: {
-  section: AttendanceSection;
+  section: ClassroomSection;
   requestedClassId?: number;
   requestedDate?: string;
   /** Raw `?format=`; validated here rather than in the route. */
   requestedFormat?: string;
+  /** Raw `?edit=` — `new` for a fresh exam, else an id. Resolved here. */
+  requestedExamEdit?: string;
 }) {
   switch (section) {
     case "main": {
@@ -309,37 +327,130 @@ function SectionBody({
         />
       );
 
+    // The Exam group. Grades against this module's own roster and classes
+    // (`cls_students`, `cls_classes`), which is why Exam lives here rather than in a
+    // module of its own. See migrations/0143 and 0145.
+    case "exam":
+      return <ExamHomeView exams={listExams(deps.examRepo)} />;
+
+    case "exam-grader": {
+      // The grader needs each class's roster as {id, name} so a scan can be matched to
+      // a student by file name, and so a wrong match can be corrected from a picker.
+      const graderRoster: Record<number, { id: number; name: string }[]> = {};
+      for (const item of listClasses(deps.attendanceRepo)) {
+        graderRoster[item.id] = listStudentsInClass(deps.attendanceRepo, item.id).map(
+          (student) => ({ id: student.id, name: formatStudentName(student) }),
+        );
+      }
+
+      return (
+        <ExamGraderView exams={listExams(deps.examRepo)} rosterByClassId={graderRoster} />
+      );
+    }
+
+    case "exam-maker": {
+      const classList = listClasses(deps.attendanceRepo);
+      const classes = classList.map((item) => ({ id: item.id, name: item.name }));
+
+      // Each class's roster as names, so the Exam Maker's preview can say how many
+      // sheets "print each student's name" will produce without a round trip when the
+      // class picker changes. Names only — the sheet prints a name and nothing else,
+      // and sending whole Student records would be a wider projection than the screen
+      // needs.
+      const rosterByClassId: Record<
+        number,
+        { name: string; studentIdentifier: string }[]
+      > = {};
+      for (const item of classList) {
+        rosterByClassId[item.id] = listStudentsInClass(deps.attendanceRepo, item.id).map(
+          (student) => ({
+            name: formatStudentName(student),
+            // Encoded into the sheet's QR when the exam prints one. Blank is fine —
+            // it prints no code rather than failing.
+            studentIdentifier: student.studentIdentifier,
+          }),
+        );
+      }
+
+      // Every student's ID as a QR, rendered here because generating one is async and
+      // the Maker's preview render is not. Keyed by identifier, so a student with no
+      // id simply has no entry and their sheet prints without a code.
+      //
+      // Done for the whole roster rather than the selected class: the class picker
+      // changes without a round trip, and a few hundred small SVGs is cheaper than a
+      // fetch on every change. Deduplicated because one student may sit in two classes.
+      const qrSvgByIdentifier: Record<string, string> = {};
+      const identifiers = new Set(
+        Object.values(rosterByClassId)
+          .flat()
+          .map((student) => student.studentIdentifier),
+      );
+      for (const identifier of identifiers) {
+        const payload = encodeStudentIdPayload(identifier);
+        if (!payload) continue;
+        qrSvgByIdentifier[identifier] = await deps.qrIdentity.encodeSvg(payload);
+      }
+
+      // `?edit=new` (or nothing) is a fresh exam; otherwise load the one asked for.
+      // An id that no longer resolves falls back to the create form rather than
+      // 404ing — a stale link or a deleted exam should land somewhere usable, the
+      // same choice the Journal report editor makes.
+      //
+      // The existence check is `getExamById` rather than a try/catch around
+      // `getExamWithKey`, which throws for a missing exam: a stale URL is an ordinary
+      // event here, not an exception.
+      const examId =
+        requestedExamEdit && requestedExamEdit !== "new" ? Number(requestedExamEdit) : undefined;
+      const exists =
+        examId !== undefined &&
+        Number.isFinite(examId) &&
+        getExamById(deps.examRepo, examId) !== undefined;
+      const loaded = exists ? getExamWithKey(deps.examRepo, examId as number) : undefined;
+
+      return (
+        <ExamMakerView
+          classes={classes}
+          rosterByClassId={rosterByClassId}
+          qrSvgByIdentifier={qrSvgByIdentifier}
+          loaded={loaded}
+        />
+      );
+    }
+
     default:
       return null;
   }
 }
 
-export async function AttendanceSection({
+export async function ClassroomSection({
   section,
   requestedClassId,
   requestedDate,
   requestedFormat,
+  requestedExamEdit,
 }: {
-  section: AttendanceSection;
+  section: ClassroomSection;
   /** From ?classId= — which class the home screen and report open on. */
   requestedClassId?: number;
   /** From ?date= — which day the report shows. A date identifies one register. */
   requestedDate?: string;
   /** Raw `?format=`; validated here rather than in the route. */
   requestedFormat?: string;
+  /** Raw `?edit=`, for Exam Maker. */
+  requestedExamEdit?: string;
 }) {
   // Defensive: an unknown section would otherwise crash on info.label. The route
   // already validates, so this only catches a future caller getting it wrong.
-  const info = ATTENDANCE_SECTION_INFO[section] ?? ATTENDANCE_SECTION_INFO.main;
+  const info = CLASSROOM_SECTION_INFO[section] ?? CLASSROOM_SECTION_INFO.main;
 
   return (
     // The two-tier shell: a module rail, a section panel and a utility header,
-    // all placed by `AttendanceShell`. See design.md, "Navigation: the two-tier
+    // all placed by `ClassroomShell`. See design.md, "Navigation: the two-tier
     // shell".
     //
     // `async` because the shell reads cookies for the session and the pinned
     // layout, which `next/headers` only exposes as a promise.
-    <AttendanceShell>
+    <ClassroomShell>
       <h2 className="flex items-center gap-2 font-display text-2xl font-semibold text-ink">
         {info.label}
         {/* On the home screen the instruction rides beside the title as a chip
@@ -375,8 +486,9 @@ export async function AttendanceSection({
           requestedClassId={requestedClassId}
           requestedDate={requestedDate}
           requestedFormat={requestedFormat}
+          requestedExamEdit={requestedExamEdit}
         />
       </div>
-    </AttendanceShell>
+    </ClassroomShell>
   );
 }

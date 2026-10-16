@@ -117,7 +117,27 @@ rmSync(OUT, { recursive: true, force: true });
 // folder leaves Windows, and the server dies at startup with
 // "Cannot find module 'better-sqlite3-<hash>'". Materialising it also means the
 // arm64 patch below can actually see the binary inside.
-cpSync(path.join(ROOT, ".next", "standalone"), OUT, { recursive: true, dereference: true });
+//
+// The `filter` is load-bearing. `dist-nas` sits in the repo root, so Next's file
+// tracing sweeps it into `.next/standalone/dist-nas` -- and this copy would then
+// carry that folder straight back into OUT. Each build nests one level deeper
+// (`dist-nas/dist-nas/dist-nas/...`) until robocopy in REBUILD_PUBLISH_NAS.bat
+// hits the 260-character path limit and the publish dies with "ERROR 123 ... The
+// filename, directory name, or volume label syntax is incorrect", naming a path a
+// thousand characters long.
+//
+// `rmSync(OUT)` above does NOT prevent this: it clears the destination, but the
+// poison is in the *source* -- `.next/standalone/dist-nas` survives from the
+// previous build. The symlink guard below does not catch it either, because these
+// are real directories, not links, and it runs after this copy has already made
+// them. Skipping the entry here is the fix; the removal step further down is a
+// second line of defence.
+const STANDALONE = path.join(ROOT, ".next", "standalone");
+cpSync(STANDALONE, OUT, {
+  recursive: true,
+  dereference: true,
+  filter: (src) => path.resolve(src) !== path.join(STANDALONE, "dist-nas"),
+});
 // Next does not copy these two into standalone; they have to be placed by hand.
 cpSync(path.join(ROOT, ".next", "static"), path.join(OUT, ".next", "static"), {
   recursive: true,
@@ -174,7 +194,10 @@ step("Removing what the build should never have included");
 // The database matters more than the size: `wiring.ts` falls back to
 // `./data/myhomebase.db` when MYHOMEBASE_DB is unset, so shipping one means a
 // misconfigured deploy silently serves stale data instead of failing loudly.
-for (const unwanted of ["data", ".env", ".env.local", ".env.production"]) {
+// "dist-nas" is the recursion guard's second line of defence -- see the `filter`
+// on the standalone copy above. If a stale nested copy ever reaches OUT by some
+// other route, this removes it before robocopy can trip over the path length.
+for (const unwanted of ["data", ".env", ".env.local", ".env.production", "dist-nas"]) {
   const target = path.join(OUT, unwanted);
   if (existsSync(target)) {
     rmSync(target, { recursive: true, force: true });

@@ -38,10 +38,16 @@ export const homeColumnCountSchema = z.coerce
 export const homeWidgetOrderSchema = z
   .array(homeWidgetIdSchema)
   .max(HOME_WIDGET_IDS.length)
+  // `.catch([])` sits BEFORE the duplicate check, not after it. Ordering is
+  // load-bearing: `.catch` swallows every failure of the schema it wraps, so with it
+  // last a duplicated id did not throw — it silently resolved to `[]`, which WIPED
+  // the reader's saved card order. Verified against this repo's zod: catch-after
+  // yields `[]` for a duplicate, catch-before rejects it and still absorbs a garbled
+  // value from an older client, which is the only thing `.catch` is here for.
+  .catch([])
   .refine((ids) => new Set(ids).size === ids.length, {
     message: "A widget is listed more than once.",
-  })
-  .catch([]);
+  });
 
 /**
  * The cards a reader has closed.
@@ -57,10 +63,16 @@ export const homeWidgetOrderSchema = z
 export const homeWidgetHiddenSchema = z
   .array(homeWidgetIdSchema)
   .max(HOME_WIDGET_IDS.length)
+  // `.catch([])` sits BEFORE the duplicate check, not after it. Ordering is
+  // load-bearing: `.catch` swallows every failure of the schema it wraps, so with it
+  // last a duplicated id did not throw — it silently resolved to `[]`, which WIPED
+  // the reader's saved card order. Verified against this repo's zod: catch-after
+  // yields `[]` for a duplicate, catch-before rejects it and still absorbs a garbled
+  // value from an older client, which is the only thing `.catch` is here for.
+  .catch([])
   .refine((ids) => new Set(ids).size === ids.length, {
     message: "A widget is listed more than once.",
-  })
-  .catch([]);
+  });
 
 /** The whole personal layout — the boundary for a save that sets all three. */
 export const homeLayoutUpdateSchema = z.object({

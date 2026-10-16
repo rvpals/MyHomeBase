@@ -123,7 +123,12 @@ function buildPayload(options: ExifFixtureOptions): number[] {
     bytes.push(...uint16(TAG_GPS_SUB_IFD), ...uint16(4), ...uint32(1), ...uint32(gpsOffset));
   }
   bytes.push(...uint32(0)); // no next IFD
-  for (const entry of ifd0Tags) bytes.push(...dataBytes(entry, uint16, uint32));
+// Only OUT-OF-LINE values belong in the data area. `dataSize` returns 0 for a
+  // value of <=4 bytes, which `entryBytes` stores inline in the entry's own value
+  // field and which `cursor` therefore does not advance past — so emitting it here
+  // too wrote it twice and shifted every later offset. That is what made the GPS
+  // rationals decode as 40.00119 and 77049.08.
+  for (const entry of ifd0Tags) if (dataSize(entry) > 0) bytes.push(...dataBytes(entry, uint16, uint32));
 
   // --- Exif sub-IFD ---
   if (hasExif) {
@@ -134,7 +139,7 @@ function buildPayload(options: ExifFixtureOptions): number[] {
       cursor += dataSize(entry);
     }
     bytes.push(...uint32(0));
-    for (const entry of exifTags) bytes.push(...dataBytes(entry, uint16, uint32));
+    for (const entry of exifTags) if (dataSize(entry) > 0) bytes.push(...dataBytes(entry, uint16, uint32));
   }
 
   // --- GPS sub-IFD ---
@@ -146,7 +151,7 @@ function buildPayload(options: ExifFixtureOptions): number[] {
       cursor += dataSize(entry);
     }
     bytes.push(...uint32(0));
-    for (const entry of gpsTags) bytes.push(...dataBytes(entry, uint16, uint32));
+    for (const entry of gpsTags) if (dataSize(entry) > 0) bytes.push(...dataBytes(entry, uint16, uint32));
   }
 
   return bytes;

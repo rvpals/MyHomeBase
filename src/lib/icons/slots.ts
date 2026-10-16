@@ -1226,99 +1226,175 @@ export const ICON_SLOTS: IconSlot[] = [
   },
 
   /* ---------------------------------------------------------------------------------
-     Attendance — nav sections.
+     Classroom — nav sections.
+
+     Renamed from `attendance_*` by migration 0143, which folded Attendance into
+     Classroom as one of its two section groups. `SectionPanel` derives each id from
+     `sectionSlotId(iconNamespace, section.id)`, and the shell now passes
+     `iconNamespace="classroom"` — so these ids and the section slugs in
+     `classroom-sections.ts` are locked together, and renaming either without the
+     other silently stops matching and orphans any uploaded override.
+
+     The two `*_group` ids are the group headings. They take the `-group` suffix
+     because a heading and a section must not share an id: `attendance-group` vs the
+     Attendance group's own child sections. Journal's `locations-group` and
+     Household's `recipes-group` record the same collision.
   --------------------------------------------------------------------------------- */
   {
-    id: "attendance_section_main",
+    id: "classroom_section_main",
     label: "Home screen",
-    group: "Attendance sections",
-    where: "Attendance → section panel → Home screen.",
+    group: "Classroom sections",
+    where: "Classroom → section panel → Home screen.",
     defaultConcept: "grid",
     wired: true,
     namespace: "tree",
   },
   {
-    id: "attendance_section_rosters",
+    id: "classroom_section_rosters",
     label: "Rosters",
-    group: "Attendance sections",
-    where: "Attendance → section panel → Rosters.",
+    group: "Classroom sections",
+    where: "Classroom → section panel → Rosters.",
     defaultConcept: "users",
     wired: true,
     namespace: "tree",
   },
   {
-    id: "attendance_section_classes",
+    id: "classroom_section_classes",
     label: "Classes",
-    group: "Attendance sections",
-    where: "Attendance → section panel → Classes.",
+    group: "Classroom sections",
+    where: "Classroom → section panel → Classes.",
     defaultConcept: "classroom",
     wired: true,
     namespace: "tree",
   },
   {
-    id: "attendance_section_actions",
+    id: "classroom_section_actions",
     label: "Student actions",
-    group: "Attendance sections",
-    where: "Attendance → section panel → Student actions.",
+    group: "Classroom sections",
+    where: "Classroom → section panel → Student actions.",
     defaultConcept: "sliders",
     wired: true,
     namespace: "tree",
   },
   {
-    id: "attendance_section_edit",
+    id: "classroom_section_edit",
     label: "Edit records",
-    group: "Attendance sections",
-    where: "Attendance → section panel → Edit records.",
+    group: "Classroom sections",
+    where: "Classroom → section panel → Edit records.",
     defaultConcept: "pencil",
     wired: true,
     namespace: "tree",
   },
   {
-    id: "attendance_section_report",
+    id: "classroom_section_report",
     label: "Report",
-    group: "Attendance sections",
-    where: "Attendance → section panel → Report.",
+    group: "Classroom sections",
+    where: "Classroom → section panel → Report.",
     defaultConcept: "chart",
     wired: true,
     namespace: "tree",
   },
   {
-    id: "attendance_section_configuration",
+    id: "classroom_section_configuration",
     label: "Configuration",
-    group: "Attendance sections",
-    where: "Attendance → section panel → Configuration.",
+    group: "Classroom sections",
+    where: "Classroom → section panel → Configuration.",
     defaultConcept: "gear",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "classroom_section_exam",
+    label: "Exams",
+    group: "Classroom sections",
+    where: "Classroom → section panel → Exam group → Exams.",
+    // `clipboard`, a test paper on a board. Deliberately not `pencil` (Edit records
+    // holds that) nor `chart` (Report does). There is no `check` or `exam` tree
+    // concept — an unknown key renders nothing rather than falling back.
+    defaultConcept: "clipboard",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "classroom_section_exam_maker",
+    label: "Exam Maker",
+    group: "Classroom sections",
+    where: "Classroom → section panel → Exam group → Exam Maker.",
+    // `note`, "a jotting you start from" — which is what the maker is. Keeps the
+    // exam LIST (clipboard) and the exam EDITOR distinct in one nav.
+    defaultConcept: "note",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "classroom_section_exam_grader",
+    label: "Grader",
+    group: "Classroom sections",
+    where: "Classroom → section panel → Exam group → Grader.",
+    // `magic`: a stack of scans in, grades out. Shared with Music Magic and the
+    // gallery's Magic List, which is what makes it read as one idea across modules.
+    defaultConcept: "magic",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    // The Attendance group's heading. `-group` because the heading and its child
+    // sections must not share an id.
+    id: "classroom_section_attendance_group",
+    label: "Attendance",
+    group: "Classroom sections",
+    where: "Classroom → section panel → Attendance group heading.",
+    // `calendar`: attendance is a per-day register. Not `roster` (a MODULE icon name,
+    // which nothing here resolves against) and not `classroom` (the Classes section
+    // owns it, drawn precisely so Classes and Rosters don't read alike).
+    defaultConcept: "calendar",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "classroom_section_exam_group",
+    label: "Exam",
+    group: "Classroom sections",
+    where: "Classroom → section panel → Exam group heading.",
+    defaultConcept: "clipboard",
     wired: true,
     namespace: "tree",
   },
 
   /* ---------------------------------------------------------------------------------
-     Attendance — cards.
+     Classroom — cards.
   --------------------------------------------------------------------------------- */
   {
-    id: "attendance_card_add_class",
+    id: "classroom_card_add_class",
     label: "Add a class",
-    group: "Attendance cards",
-    where: "Attendance → Classes section → Add a class card header.",
+    group: "Classroom cards",
+    where: "Classroom → Classes section → Add a class card header.",
     defaultConcept: "users",
     wired: true,
     namespace: "tree",
   },
   {
-    id: "attendance_card_add_student",
+    id: "classroom_card_add_student",
     label: "Add a student",
-    group: "Attendance cards",
-    where: "Attendance → Rosters section → Add a student card header.",
-    defaultConcept: "person",
+    group: "Classroom cards",
+    where: "Classroom → Rosters section → Add a student card header.",
+    // `users`, the roster glyph. NOT `person`, which is not a registered tree concept
+    // at all — an unknown key renders nothing, so this card's icon was silently
+    // missing. Caught by the slots test, which checks every concept resolves.
+    defaultConcept: "users",
     wired: true,
     namespace: "tree",
   },
   {
-    id: "attendance_card_import_roster",
+    id: "classroom_card_import_roster",
     label: "Import a roster",
-    group: "Attendance cards",
-    where: "Attendance → Rosters section → Import a roster (CSV) card header.",
-    defaultConcept: "download",
+    group: "Classroom cards",
+    where: "Classroom → Rosters section → Import a roster (CSV) card header.",
+    // `upload`, the tree set's file-transfer glyph. NOT `download`, which is not a
+    // registered tree concept — an unknown key renders nothing, so this card's icon
+    // was silently missing. (Importing a roster is a file going INTO the app, which
+    // `upload` reads as from the app's side.)
+    defaultConcept: "upload",
     wired: true,
     namespace: "tree",
   },
@@ -1639,6 +1715,33 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    // Registered late, the same way Border Weight and Chrome Style above were: the
+    // row shipped with its feature (d78b10c) and was missed here, so its position was
+    // the one Display Settings row nobody could replace. `menu-item-source.test.ts`
+    // is what caught it, by resolving every derived id against this registry.
+    //
+    // `palette` matches what `admin/nav.ts` already draws for this row, so
+    // registering it changes nothing on screen — it only makes the slot replaceable.
+    // Registered late for the same reason as Script Fonts below it. `window` matches
+    // what `admin/nav.ts` already draws, so this changes nothing on screen.
+    id: "admin_section_display_settings_card_frames",
+    label: "Card Frames",
+    group: "Admin navigation",
+    where: "Admin → Display Settings → Card Frames.",
+    defaultConcept: "window",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "admin_section_display_settings_script_fonts",
+    label: "Script Fonts",
+    group: "Admin navigation",
+    where: "Admin → Display Settings → Script Fonts.",
+    defaultConcept: "palette",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     id: "admin_section_user_management",
     label: "User Management",
     group: "Admin navigation",
@@ -1779,6 +1882,15 @@ export const ICON_SLOTS: IconSlot[] = [
     label: "Allowed addresses",
     group: "Admin navigation",
     where: "Admin → Security → Visit → the Allowed addresses card.",
+    defaultConcept: "shield",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "admin_security_blocklist",
+    label: "Blocked addresses",
+    group: "Admin navigation",
+    where: "Admin → Security → Visit → the Blocked addresses card.",
     defaultConcept: "shield",
     wired: true,
     namespace: "tree",
@@ -1929,7 +2041,11 @@ export const ICON_SLOTS: IconSlot[] = [
     label: "Home (navigation tree)",
     group: "Shared chrome",
     where: "The navigation tree → the Home row at the very top, above the modules.",
-    defaultConcept: "home",
+    // `grid`, the dashboard glyph — the Home row leads to the module grid. NOT
+    // `home`: there is no such tree concept, so this row's icon was silently
+    // missing. (`home` IS a MODULE icon name, which is the collision that makes this
+    // easy to get wrong; the two namespaces are checked separately.)
+    defaultConcept: "grid",
     wired: true,
     namespace: "tree",
   },

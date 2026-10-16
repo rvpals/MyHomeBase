@@ -34,7 +34,7 @@ are the `snake_case` equivalents.
 | `journal` | Journal | My Journal | A place to keep a journal with daily recordings. | 3 | `journal` | `jrn_` |
 | `csv-analysis` | CSV Analysis | CSV Data Analysis | Import a CSV file for analytics. | 4 | `folder` | `csv_` |
 | `expense` | Expense | Expense Tracker | Track credit-card spending by category. | 5 | `wallet` | `exp_` |
-| `attendance` | Attendance | Class Attendance | Take daily attendance for a class. | 6 | `roster` | `att_` |
+| `classroom` | Classroom | Classroom | Attendance registers and exams. | 6 | `roster` | `cls_` |
 | `music-library` | Music Library | My Music Library | Browse and stream your music collection. | 7 | `music` | `mus_` |
 | `games` | Games | Games & Puzzles | Play a quick game and keep a high-score board. | 8 | `game` | `gam_` |
 | `picture-gallery` | Picture Gallery | My Picture Gallery | Browse the photo archive and the pictures you have kept. | 9 | `photo` | `pho_` |
@@ -55,7 +55,7 @@ tables. Everything else it shows still belongs to other modules; see its entry u
 Short name is what the UI shows (home grid, app bar, nav badge). Long name is the
 fuller title for admin screens. Both are **admin-editable at runtime**, so no
 component may hardcode either — read them from the module row, as
-[attendance-section.tsx](src/app/(protected)/modules/[slug]/attendance-section.tsx)
+[classroom-section.tsx](src/app/(protected)/modules/[slug]/classroom-section.tsx)
 does before badging the nav.
 
 ### Per-module detail
@@ -864,14 +864,34 @@ is one table looked at differently, not five screens. The rollup itself is pure
 Cycles are measured by **posting date, falling back to transaction date** — a statement is
 assembled from posting dates, but plenty of card exports omit the column.
 
-**Attendance** (`attendance`) — students, classes, enrollment, and daily
+**Classroom** (`classroom`) — students, classes, enrollment, daily
+registers, and (not yet built) exams.
+
+Renamed from **Attendance** in migration 0143, which folded Attendance into it as
+one of two **section groups**; the other is Exam. The driver was data sharing: an
+exam is graded against the same roster and classes attendance is taken for, so
+`cls_students` / `cls_classes` / `cls_class_enrollments` belong to both. As two
+sibling modules, Exam would have had to reach across a module boundary for its most
+basic input.
+
+Attendance is a group rather than a nested module because the nav tree has no level
+between a module and a section — `TreeSection.group` is a flat string that `NavTree`
+*renders* as a nested box. Household (Recipes + HSA Tracker) is the same shape, and
+0143's log records the whole reasoning. The files are still named `attendance-*`
+(views, actions, instructions) and the library module is still `src/lib/attendance`:
+migration 0108 set that precedent by renaming Stocks & ETFs to Investments while
+leaving its `stock-*` files alone, because renaming the module is not renaming its
+code.
+
+**Attendance** (the group) — students, classes, enrollment, and daily
 registers with a printable report. A class may be registered several times a day;
 each save is its own timestamped session. A teacher-editable catalog of **student
 actions** (Late, Extra Credit, …) is recorded per student per session and printed
 on the report — the actions carry their own small glyph set
 (`ATTENDANCE_ACTION_ICONS`), deliberately outside the user-selectable icon sets;
-`migrations/0051_create_attendance_student_actions.md` records why. The newest
-module and the cleanest template to copy. Library: `src/lib/attendance`.
+`migrations/0051_create_attendance_student_actions.md` records why. Library:
+`src/lib/attendance` — still under that name, since 0143 renamed the module and not
+its code.
 
 **Edit records** is where a day already taken gets corrected. Editing was almost
 entirely already there: `saveAttendance` has updated a day's record in place
@@ -2660,7 +2680,7 @@ named `<module>-*`:
   file: server components read these as real values, and a client module would
   hand them client-reference proxies instead, so `INFO[section]` would come back
   `undefined`. This has bitten before — the comment at the top of
-  [attendance-sections.ts](src/app/(protected)/modules/[slug]/attendance-sections.ts)
+  [classroom-sections.ts](src/app/(protected)/modules/[slug]/classroom-sections.ts)
   records it.
 - **`<module>-section.tsx`** — a **server** component. Reads `deps`, loads only
   the data the requested section needs, renders `SectionLayout` with the heading,

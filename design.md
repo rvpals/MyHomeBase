@@ -613,6 +613,16 @@ in `src/app/globals.css` — don't hand-roll print CSS per view:
 column per day of a term) fit one sheet; see `AttendanceReportView`'s
 `DetailSheet`.
 
+**Draw rules and filled marks with a `border`, never a `background`.** The print
+block forces `background: #fff !important` on `.print-sheet *`, so a line drawn as a
+1px-tall `bg-black` div shows on screen and then **vanishes on paper**. A border is a
+color rather than a background, so it survives. This is easy to miss precisely
+because the screen looks right — the exam answer sheet's grid lines and OMR anchor
+bars were all drawn as backgrounds at first and printed blank. Note also that
+`border-*-width` does **not** accept a percentage: a bar sized `borderLeftWidth:
+"1.2%"` is silently dropped to zero. Use `pt` for anything that has to be a known
+physical size on paper.
+
 The caller triggers printing itself (`window.print()`), so a reusable component
 takes an `onPrint` callback rather than reaching for the browser API. See
 `JournalViewer` and `/modules/[slug]/entries/[id]`.

@@ -21,10 +21,15 @@ import type {
 } from "@/lib/auth-events/types";
 import type {
   IpAllowlistEntry,
+  IpBlacklistEntry,
   SiteVisitSummary,
   VisitWeekGroup,
 } from "@/lib/site-visits/types";
-import { deleteAuthEventsAction, markFailuresReviewedAction } from "./actions";
+import {
+  blockIpAddressesAction,
+  deleteAuthEventsAction,
+  markFailuresReviewedAction,
+} from "./actions";
 import { VisitsTab } from "./visits-tab";
 import { PAGE_CONTAINER } from "../../page-container";
 
@@ -36,6 +41,8 @@ export interface SecurityViewProps {
   visitWeeks: VisitWeekGroup[];
   visitSummary: SiteVisitSummary;
   allowlist: IpAllowlistEntry[];
+  /** Addresses the reader has distrusted (migrations/0144). Always scored suspicious. */
+  blacklist: IpBlacklistEntry[];
   /** `YYYY-MM-DD` today, so the current day opens expanded. Resolved on the server. */
   todayIso: string;
   /** `YYYY-MM-DD` Monday of the current week, so this week opens expanded. */
@@ -102,6 +109,7 @@ export function SecurityView({
   visitWeeks,
   visitSummary,
   allowlist,
+  blacklist,
   todayIso,
   thisWeekStart,
 }: SecurityViewProps) {
@@ -131,6 +139,7 @@ export function SecurityView({
           weeks={visitWeeks}
           summary={visitSummary}
           allowlist={allowlist}
+          blacklist={blacklist}
           todayIso={todayIso}
           thisWeekStart={thisWeekStart}
         />
@@ -163,6 +172,7 @@ function LoginTab({
   const router = useRouter();
   const [isReviewing, setIsReviewing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isBlocking, setIsBlocking] = useState(false);
 
   async function handleMarkReviewed() {
     setIsReviewing(true);
@@ -194,6 +204,46 @@ function LoginTab({
       }
     } finally {
       setIsDeleting(false);
+    }
+  }
+
+  /**
+   * Blocks the addresses behind the ticked sign-in attempts.
+   *
+   * Here as well as on the Visit tab because a run of failed passwords is the single
+   * most common reason to want an address marked, and making the reader copy it
+   * across to the other tab to act on it is the kind of friction that stops a
+   * security screen being used. Same action, same mutual exclusion with the
+   * allowlist — only the rows it reads the addresses off differ.
+   */
+  async function handleBlock(rows: AuthEvent[], clearSelection: () => void) {
+    const addresses = [...new Set(rows.map((row) => row.ipAddress).filter(Boolean))] as string[];
+
+    if (addresses.length === 0) {
+      window.alert("None of the selected attempts recorded an IP address.");
+      return;
+    }
+
+    const label =
+      window.prompt(
+        `Always treat ${addresses.length} address${addresses.length === 1 ? "" : "es"} as suspicious?\n\n${addresses.join("\n")}\n\nThis marks their visits on the Visit tab, it does not block them — the address comes from a header that can be forged.\n\nOptionally say why (e.g. "guessing passwords"):`,
+        "",
+      ) ?? undefined;
+
+    if (label === undefined) return;
+
+    setIsBlocking(true);
+    try {
+      const result = await blockIpAddressesAction(
+        addresses.map((ipAddress) => ({ ipAddress, label })),
+      );
+      if (!result.ok) window.alert(result.error);
+      else {
+        clearSelection();
+        router.refresh();
+      }
+    } finally {
+      setIsBlocking(false);
     }
   }
 
@@ -330,14 +380,24 @@ function LoginTab({
           getRowKey={(row) => row.id}
           enableSelection
           renderSelectionActions={(selectedRows, clearSelection) => (
-            <Button
-              size="sm"
-              variant="danger"
-              onClick={() => handleDelete(selectedRows, clearSelection)}
-              disabled={isDeleting}
-            >
-              Delete
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => handleBlock(selectedRows, clearSelection)}
+                disabled={isBlocking}
+              >
+                Block these IPs
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={() => handleDelete(selectedRows, clearSelection)}
+                disabled={isDeleting}
+              >
+                Delete
+              </Button>
+            </div>
           )}
           emptyMessage="No sign-in activity recorded yet."
           exportFileName="sign-in-activity"

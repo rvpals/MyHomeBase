@@ -22,7 +22,7 @@ const MODULE_SLUG_BY_PREFIX: Record<string, string> = {
   jrn_: "journal",
   csv_: "csv-analysis",
   exp_: "expense",
-  att_: "attendance",
+  cls_: "classroom",
   mus_: "music-library",
   gam_: "games",
   pho_: "picture-gallery",

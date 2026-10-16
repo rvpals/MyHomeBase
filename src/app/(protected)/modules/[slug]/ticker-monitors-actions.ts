@@ -45,6 +45,10 @@ export interface TickerMonitorScreen {
   /** The figures the monitors are judged against, so the screen can show them. */
   unrealizedGainLossCents: number;
   costCents: number;
+  /** Price per share, 0 when unknown — what a price target is set against. */
+  pricePerShareCents: number;
+  /** Today's signed move, `undefined` when no previous close can be derived. */
+  dayChangePct?: number;
 }
 
 export async function loadTickerMonitorsAction(ticker: string): Promise<TickerMonitorScreen> {
@@ -67,6 +71,8 @@ export async function loadTickerMonitorsAction(ticker: string): Promise<TickerMo
     })),
     unrealizedGainLossCents: valuation.unrealizedGainLossCents,
     costCents: valuation.costCents,
+    pricePerShareCents: valuation.pricePerShareCents,
+    dayChangePct: valuation.dayChangePct,
   };
 }
 

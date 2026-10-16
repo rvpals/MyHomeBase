@@ -161,10 +161,12 @@ describe("resetModulesToDefaults", () => {
       "journal",
       "csv-analysis",
       "expense",
-      "attendance",
+      "classroom",
       "music-library",
       "games",
       "picture-gallery",
+      "tools",
+      "household",
     ]);
   });
 

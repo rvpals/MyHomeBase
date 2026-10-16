@@ -343,15 +343,18 @@ const DEFAULT_ORDER_BY = "e.entry_date DESC, e.entry_time DESC, e.id DESC";
  * a date (or a blank title, which every encrypted entry has) can come back in
  * either order between runs, and a list that reshuffles on reload reads as a bug.
  *
- * Pinned sorts the way a reader expects rather than the way the integer does:
- * `is_pinned` is 0/1, so "pinned first" is DESC. `asc`/`desc` are flipped for it
- * so that "Pinned, ascending" doesn't mean "unpinned first".
+ * Pinned needs no special case, despite the temptation. `is_pinned` is 0/1, so a
+ * plain DESC already puts the 1s first — which is exactly what `sortDirectionLabel`
+ * calls "pinned first" for `desc`. An earlier version flipped `asc`/`desc` for this
+ * one field on the reasoning that a 0/1 column reads backwards; it does not, and the
+ * flip inverted the result, so choosing "Pinned (pinned first)" listed the UNPINNED
+ * entries first. The label and the SQL now agree.
  */
 export function buildOrderBy(sort: JournalSortTerm[] | undefined): string {
   const terms = (sort ?? [])
     .filter((term) => SORT_COLUMNS[term.field] !== undefined)
     .map((term) => {
-      const ascending = term.field === "isPinned" ? term.direction !== "asc" : term.direction === "asc";
+      const ascending = term.direction === "asc";
       return `${SORT_COLUMNS[term.field]} ${ascending ? "ASC" : "DESC"}`;
     });
   if (terms.length === 0) return DEFAULT_ORDER_BY;

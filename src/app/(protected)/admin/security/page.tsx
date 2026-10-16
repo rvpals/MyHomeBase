@@ -1,6 +1,11 @@
 import { getAuthEventSummary, listAuthEvents } from "@/lib/auth-events";
 import { startOfWeekIso, todayIsoLocal } from "@/lib/shared/date";
-import { getSiteVisitSummary, listAllowedIps, listVisitsByWeek } from "@/lib/site-visits";
+import {
+  getSiteVisitSummary,
+  listAllowedIps,
+  listBlockedIps,
+  listVisitsByWeek,
+} from "@/lib/site-visits";
 import { listUsers } from "@/lib/user";
 import { deps } from "@/lib/wiring";
 import { SecurityView } from "./view";
@@ -22,6 +27,7 @@ export default async function SecurityPage() {
   const visitWeeks = listVisitsByWeek({}, deps.siteVisitRepo);
   const visitSummary = getSiteVisitSummary(deps.siteVisitRepo);
   const allowlist = listAllowedIps(deps.ipAllowlistRepo);
+  const blacklist = listBlockedIps(deps.ipBlacklistRepo);
 
   // Which groups start expanded. Computed on the server so the first HTML already has
   // the right sections open — a tree that rearranges one frame after hydration reads
@@ -36,6 +42,7 @@ export default async function SecurityPage() {
       visitWeeks={visitWeeks}
       visitSummary={visitSummary}
       allowlist={allowlist}
+      blacklist={blacklist}
       todayIso={todayIso}
       thisWeekStart={startOfWeekIso(todayIso)}
     />

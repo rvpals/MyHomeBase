@@ -228,6 +228,7 @@ switch. **Every** clickable action uses this — do not hand-roll a `<button cla
 | `title?` | `string` | Native tooltip. Use it when the label is an icon or glyph. |
 | `ariaLabel?` | `string` | **Required when `children` is only an icon or glyph** — a screen reader has nothing else to read. |
 | `ariaExpanded?` / `ariaControls?` | `boolean` / `string` | For a button that opens a panel: its state, and the `id` it controls. `ChartToolbar`'s gear uses both. |
+| `ariaPressed?` | `boolean` | For a two-state toggle rather than an action — a label that carries the state ("Will save locked") otherwise reads to a screen reader as a button that performs it. The New Journal form's lock toggle uses it. Ignored with `href`. |
 | `className?` | `string` | Merged last. |
 
 ```tsx

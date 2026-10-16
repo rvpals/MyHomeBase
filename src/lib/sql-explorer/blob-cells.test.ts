@@ -141,7 +141,7 @@ describe("blobDownloadFileName", () => {
       { tableName: 'a"/../b', columnName: "c d;e", rowId: 7 },
       "image/jpeg",
     );
-    expect(name).toBe("a____.._b-c_d_e-7.jpg");
+    expect(name).toBe("a_____b-c_d_e-7.jpg");
     expect(name).not.toMatch(/[/"';]/);
   });
 });

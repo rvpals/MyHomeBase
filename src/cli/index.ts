@@ -41,6 +41,7 @@ import { playQueueCommand } from "./play-queue";
 import { musicLibraryCommand, scanMusicCommand } from "./scan-music";
 import { refreshPositionsCommand } from "./refresh-positions";
 import { messagesCommand } from "./messages";
+import { ipListsCommand } from "./ip-lists";
 import { tickerMonitorsCommand } from "./ticker-monitors";
 import { watchListsCommand } from "./watch-lists";
 import { runDataBackupCommand } from "./run-data-backup";
@@ -55,6 +56,7 @@ import { toolbarsCommand } from "./toolbars";
 import { tableUsageCommand } from "./table-usage";
 import { hsaCommand } from "./hsa";
 import { recipesCommand } from "./recipes";
+import { examsCommand } from "./exams";
 import { takeAttendanceCommand } from "./take-attendance";
 import { todoCommand } from "./todo";
 import { taxLotsCommand } from "./tax-lots";
@@ -73,6 +75,7 @@ const commands: Record<string, Command> = {
   "ticker-monitors": tickerMonitorsCommand,
   "watch-lists": watchListsCommand,
   messages: messagesCommand,
+  "ip-lists": ipListsCommand,
   "run-data-backup": runDataBackupCommand,
   "run-hello-world": runHelloWorldCommand,
   "run-scheduled-refresh": runScheduledRefreshCommand,
@@ -117,6 +120,7 @@ const commands: Record<string, Command> = {
   hsa: hsaCommand,
   todo: todoCommand,
   "take-attendance": takeAttendanceCommand,
+  exams: examsCommand,
   "attendance-report": attendanceReportCommand,
   "scan-music": scanMusicCommand,
   "music-library": musicLibraryCommand,

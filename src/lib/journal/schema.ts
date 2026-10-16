@@ -550,6 +550,9 @@ export const icsImportPresetsSchema = z.object({
   // Defaults to true: the safe behaviour is the default, and a full replace is
   // the deliberate act. See 0089.
   preserveLocalEdits: z.boolean().default(true),
+  // Defaults to "refresh", which is what the importer did before this setting
+  // existed — an older caller that omits it gets exactly the old behaviour.
+  duplicateAction: z.enum(["refresh", "skip", "duplicate"]).default("refresh"),
 });
 
 export type IcsImportPresetsInput = z.input<typeof icsImportPresetsSchema>;

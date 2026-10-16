@@ -752,6 +752,8 @@ describe("computePortfolioSummary", () => {
       totalCostCents: 0,
       totalUnrealizedGainLossCents: 0,
       totalReturnPct: 0,
+      volatility30DayPct: 0,
+      volatility52WeekPct: 0,
     });
   });
 });

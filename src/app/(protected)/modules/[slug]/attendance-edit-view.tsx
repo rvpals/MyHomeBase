@@ -84,7 +84,7 @@ export function AttendanceEditView({
     if (nextClassId) params.set("classId", String(nextClassId));
     if (nextDate) params.set("date", nextDate);
     const query = params.toString();
-    router.push(`/modules/attendance/edit${query ? `?${query}` : ""}`);
+    router.push(`/modules/classroom/edit${query ? `?${query}` : ""}`);
   }
 
   const columns: DataGridColumn<AttendanceSessionSummary>[] = [

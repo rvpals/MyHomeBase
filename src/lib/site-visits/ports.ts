@@ -1,7 +1,9 @@
 import type {
   IpAllowlistEntry,
+  IpBlacklistEntry,
   IpHistory,
   NewIpAllowlistEntry,
+  NewIpBlacklistEntry,
   NewSiteVisit,
   SiteVisit,
   SiteVisitFilter,
@@ -25,11 +27,14 @@ export interface SiteVisitRepository {
   /** Counts for the tab header, in one round trip. */
   getSummary(): SiteVisitSummary;
   /**
-   * What the scorer needs to know about an address, minus the allowlist — that is
-   * the allowlist repository's business, and `scoreSuspicion` receives the two
-   * merged. `burstWindowMinutes` bounds the `recentVisits` count.
+   * What the scorer needs to know about an address, minus the two lists — those are
+   * the allowlist and blacklist repositories' business, and `scoreSuspicion` receives
+   * all three merged. `burstWindowMinutes` bounds the `recentVisits` count.
    */
-  getIpHistory(ipAddress: string, burstWindowMinutes: number): Omit<IpHistory, "allowlisted">;
+  getIpHistory(
+    ipAddress: string,
+    burstWindowMinutes: number,
+  ): Omit<IpHistory, "allowlisted" | "blacklisted">;
   /**
    * Stamps `reviewed_at` on every unreviewed suspicious visit up to and including
    * `asOf`. Bounded by a timestamp rather than "all", so a visit arriving while an
@@ -76,4 +81,37 @@ export interface IpAllowlistRepository {
   isAllowed(ipAddress: string): boolean;
   /** Removes one entry by id. Returns whether a row went. */
   remove(id: number): boolean;
+  /**
+   * Removes the entry for an address, whatever its id. Returns whether a row went.
+   *
+   * Exists so `blockIpAddress` can clear a contradicting entry without first looking
+   * the id up — the two lists are kept mutually exclusive by the use-cases
+   * (migrations/0144), and that enforcement reads better as one call than as a
+   * list-scan-then-remove.
+   */
+  removeByAddress(ipAddress: string): boolean;
+}
+
+export interface IpBlacklistRepository {
+  /**
+   * Adds an address if it is not already there, and returns whether a row was
+   * created. Idempotent for the same reason the allowlist's `add` is: the bulk
+   * action ticks rows that often share an address.
+   */
+  add(entry: NewIpBlacklistEntry): boolean;
+  /** Every distrusted address, newest first. Expected to be a handful of rows. */
+  list(): IpBlacklistEntry[];
+  /**
+   * Is this address distrusted? Read on every visit write, before the insert.
+   *
+   * NOT an authorisation check, and no caller may use it as one (migrations/0144):
+   * the address comes from a forgeable header, so this only ever decides a colour.
+   * A blacklist is the shape of thing somebody will be tempted to gate a request on
+   * — don't. That belongs in the reverse proxy, where the connection is real.
+   */
+  isBlocked(ipAddress: string): boolean;
+  /** Removes one entry by id. Returns whether a row went. */
+  remove(id: number): boolean;
+  /** Removes the entry for an address. The mirror of the allowlist's, same reason. */
+  removeByAddress(ipAddress: string): boolean;
 }

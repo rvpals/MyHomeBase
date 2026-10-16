@@ -1,0 +1,92 @@
+-- Two more kinds of ticker monitor: a price target, and a one-day move.
+--
+-- The three kinds from 0110 are all about unrealized gain or loss, on the
+-- reasoning that "a price target means nothing without knowing what you paid".
+-- That holds for a decision about *this holding* and is too narrow for a
+-- decision about *this security*: "tell me when BMY gets back to $45" and
+-- "tell me when it drops 3% in a day" are both questions about the symbol, and
+-- neither one is answerable from the gain figures.
+--
+--   price_near_amount   price per share near $X
+--   day_move_pct        price up (or down) X% or more against the previous close
+--
+-- Both read figures inv_stock_positions already stores. Neither needs a new
+-- quote field, a price history table, or an extra API call.
+--
+-- NO NEW TABLE. These are two more values in monitor_type, so every monitor
+-- stays one row in one place and the evaluator keeps its single switch.
+
+-- Which way a day_move_pct monitor watches: 'up' or 'down'.
+--
+-- Empty string for the other four types, which never read it -- the same
+-- blank-string sentinel the rest of the schema uses for "not applicable" (see
+-- sys_ip_blacklist.label, 0144) rather than a NULL that every read would have
+-- to coalesce. Existing rows take the default and are untouched.
+--
+-- A column rather than folding the direction into monitor_type as a pair of
+-- values ('day_move_up' / 'day_move_down'): the direction is a parameter of the
+-- condition, like the target is, and the two spellings would duplicate every
+-- case that handles the type. monitor_type stays "what is watched"; this stays
+-- "which way".
+ALTER TABLE inv_ticker_monitors ADD COLUMN direction TEXT NOT NULL DEFAULT '';
+
+-- WHAT THE TARGET COLUMNS MEAN FOR THE NEW TYPES
+--
+-- Both reuse the existing columns rather than adding a third and a fourth,
+-- because each new type reads exactly one of them and the units already match:
+--
+--   price_near_amount  target_cents = the price per share to watch for.
+--                      band_pct applies, as it does for the amount types: the
+--                      monitor is true while the price is within band_pct of
+--                      the target. NOTE this fires on approach from EITHER
+--                      side -- $150 within 5% is true anywhere from $142.50 to
+--                      $157.50, climbing or falling. A tight band (0.5%) is
+--                      the way to ask for something close to a crossing. This
+--                      was a deliberate choice to keep one "near" rule across
+--                      every type that has a target, not an oversight.
+--
+--   day_move_pct       target_pct = the size of the move, ALWAYS POSITIVE, with
+--                      `direction` carrying the sign. "down 3%" is stored as
+--                      target_pct 3 + direction 'down', never as -3, for the
+--                      same reason loss_near_amount stores a positive figure
+--                      for a negative quantity (0110): one condition must not
+--                      have two spellings.
+--
+--                      band_pct is IGNORED by this type, and the setup screen
+--                      hides it. A band around a move threshold is nonsense --
+--                      5% either side of a 3% target would be true from -2% to
+--                      +8%, i.e. always. This one is a threshold: fire at 3% or
+--                      beyond, not "near 3%".
+--
+-- THE BASELINE for day_move_pct is the PREVIOUS CLOSE, which is what
+-- inv_stock_positions can actually produce. refreshPosition stores
+-- day_gain_loss_cents as (price - previousClose) * quantity, so the previous
+-- close per share comes back out as price - (dayGainLoss / quantity) with no
+-- new storage. That makes this "today's % change" in the sense every quote site
+-- means it -- measured from yesterday's close, not from today's open, which is
+-- not stored anywhere. A position with quantity 0 has no derivable baseline and
+-- is skipped rather than divided by zero.
+--
+-- It is therefore only as current as the last price refresh: a move that
+-- happens and reverses between two refreshes is never seen. Accepted -- these
+-- monitors run on refresh by construction (0110).
+
+-- COST BASIS IS NOT REQUIRED BY THE NEW TYPES.
+--
+-- evaluateMonitor refuses to judge anything when cost_cents <= 0, because every
+-- 0110 type is measured against money actually put in. A price target and a day
+-- move are facts about the security and hold for a holding with no imported
+-- transactions, so that guard is now per-type rather than blanket. The three
+-- gain/loss types keep it exactly as it was.
+
+-- REVERSAL
+--
+-- Delete the rows of the two new types, then drop the column:
+--
+--   DELETE FROM inv_ticker_monitors
+--    WHERE monitor_type IN ('price_near_amount', 'day_move_pct');
+--   ALTER TABLE inv_ticker_monitors DROP COLUMN direction;
+--
+-- Dropping the column alone would leave day_move_pct rows that no longer know
+-- which way they watch. Rows of the original three types are unaffected either
+-- way: they have never read the column.

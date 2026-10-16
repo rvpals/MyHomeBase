@@ -34,6 +34,7 @@ export function TrackList({
   onToggleSelected,
   onRemove,
   onMove,
+  numbered = false,
 }: {
   rows: TrackListRow[];
   emptyMessage: string;
@@ -52,6 +53,17 @@ export function TrackList({
    * the Stocks configuration screen.
    */
   onMove?: (row: TrackListRow, direction: "up" | "down") => void;
+  /**
+   * Position badges, each track's duration as a badge, and alternating row tints --
+   * the "this is an ordered programme" treatment.
+   *
+   * Opt-in rather than the default because the eight browsing views are *not* ordered
+   * in any meaningful sense: their order is whatever the query returned, so numbering
+   * All Songs 1..50 would assert a sequence that resorting silently invalidates. The
+   * Magic Playlist is the one view whose order is the product -- it was generated to
+   * be played top to bottom -- so it is the one view that earns the numbers.
+   */
+  numbered?: boolean;
 }) {
   const player = useMusicPlayer();
 
@@ -78,7 +90,18 @@ export function TrackList({
       {rows.map((row, index) => {
         const isCurrent = player?.current?.id === row.id;
         return (
-          <li key={`${row.id}-${row.displayTitle}`} className="flex items-center gap-2 pr-2">
+          // The tint goes on the `li` so it spans the whole row including the move
+          // arrows and Remove, not just the play button. `bg-paper-raised` on odd rows
+          // only -- the even rows keep the card's own background rather than both rows
+          // being painted, so the banding reads as a stripe rather than a second card.
+          // The current track's `bg-brass-soft` is painted on the button above this, so
+          // it still wins where it matters.
+          <li
+            key={`${row.id}-${row.displayTitle}`}
+            className={`flex items-center gap-2 pr-2 ${
+              numbered && index % 2 === 1 ? "bg-paper-raised" : ""
+            }`}
+          >
             {onMove !== undefined && (
               <span className="ml-2 flex shrink-0 flex-col gap-0.5">
                 <button
@@ -118,6 +141,14 @@ export function TrackList({
                 isCurrent ? "bg-brass-soft" : ""
               }`}
             >
+              {numbered && (
+                // `min-w-*` rather than a fixed `w-*`: a three-digit position in a long
+                // playlist must widen the pill instead of spilling out of it. Centred
+                // and tabular so the numbers line up down the column regardless.
+                <span className="inline-flex min-w-7 shrink-0 justify-center rounded-full bg-brass-soft px-2 py-0.5 text-xs font-semibold tabular-nums text-brass-dark">
+                  {index + 1}
+                </span>
+              )}
               {showPlayCount && (
                 <span className="w-10 shrink-0 text-right font-mono text-xs text-brass-dark">
                   {row.playCount ?? 0}x
@@ -133,9 +164,19 @@ export function TrackList({
               <span className="font-mono text-xs uppercase text-muted max-lg:hidden">
                 {row.extension}
               </span>
-              <span className="w-12 shrink-0 text-right font-mono text-xs text-muted">
-                {formatDuration(row.durationSeconds)}
-              </span>
+              {numbered ? (
+                // An empty string from `formatDuration` (unknown length) must not paint
+                // an empty pill, so the badge is conditional on there being a figure.
+                formatDuration(row.durationSeconds) !== "" && (
+                  <span className="shrink-0 rounded-full bg-brass-soft px-2 py-0.5 text-xs font-semibold tabular-nums text-brass-dark">
+                    {formatDuration(row.durationSeconds)}
+                  </span>
+                )
+              ) : (
+                <span className="w-12 shrink-0 text-right font-mono text-xs text-muted">
+                  {formatDuration(row.durationSeconds)}
+                </span>
+              )}
             </button>
             {onRemove !== undefined && (
               <button

@@ -13,7 +13,13 @@ import { Button } from "@/components/button";
 import { Modal } from "@/components/modal";
 import { TreeIcon } from "@/components/tree-icons";
 import { centsToDollars, dollarsToCents, formatCents } from "@/lib/shared/money";
-import { DEFAULT_BAND_PCT, type MonitorType } from "@/lib/ticker-monitors";
+import {
+  DEFAULT_BAND_PCT,
+  needsCostBasis,
+  usesBand,
+  type MonitorType,
+  type MoveDirection,
+} from "@/lib/ticker-monitors";
 import {
   createMonitorAction,
   deleteMonitorAction,
@@ -27,7 +33,11 @@ import {
 const INPUT_CLASS =
   "rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
 
-/** The three monitors, in the order the request listed them. */
+/**
+ * The monitors, gain/loss ones first and the two security-level ones (0148)
+ * after — the order groups them by what they are measured against, which is
+ * also the order the cost-basis guard applies in.
+ */
 const MONITOR_CHOICES: { value: MonitorType; label: string; hint: string }[] = [
   {
     value: "gain_near_amount",
@@ -44,7 +54,34 @@ const MONITOR_CHOICES: { value: MonitorType; label: string; hint: string }[] = [
     label: "Unrealized gain near a % of cost basis",
     hint: "Tell me when the gain approaches a share of what I paid.",
   },
+  {
+    value: "price_near_amount",
+    label: "Price per share reaches an amount",
+    hint: "Fires while the price is within the band of your target — approaching from either side. Use a small band (0.5%) to catch it close to the target itself.",
+  },
+  {
+    value: "day_move_pct",
+    label: "Price moves up or down % in a day",
+    hint: "Measured against the previous close, like the % change on a quote screen. Only as current as your last price refresh.",
+  },
 ];
+
+/** The two directions, for the day-move type. */
+const DIRECTION_CHOICES: { value: MoveDirection; label: string }[] = [
+  { value: "up", label: "Up" },
+  { value: "down", label: "Down" },
+];
+
+/**
+ * Which box holds this type's target: the percent one, or the dollar one.
+ *
+ * Two types read `targetPct` — the cost-basis share and the day move — so this
+ * is a predicate rather than a comparison against a single value. Getting it
+ * wrong shows the reader an empty field and silently saves a 0.
+ */
+function usesPercentTarget(monitorType: MonitorType): boolean {
+  return monitorType === "gain_near_pct_of_cost" || monitorType === "day_move_pct";
+}
 
 export interface TickerMonitorDialogProps {
   ticker: string;
@@ -69,6 +106,7 @@ export function TickerMonitorDialog({
   const [amountDollars, setAmountDollars] = useState("");
   const [percent, setPercent] = useState("");
   const [bandPct, setBandPct] = useState(String(DEFAULT_BAND_PCT));
+  const [direction, setDirection] = useState<MoveDirection>("up");
 
   const load = useCallback(async () => {
     try {
@@ -88,33 +126,39 @@ export function TickerMonitorDialog({
     setAmountDollars("");
     setPercent("");
     setBandPct(String(DEFAULT_BAND_PCT));
+    setDirection("up");
   }
 
   function startEditing(row: TickerMonitorScreen["rows"][number]) {
     setEditingId(row.monitor.id);
     setMonitorType(row.monitor.monitorType);
-    setAmountDollars(
-      row.monitor.monitorType === "gain_near_pct_of_cost"
-        ? ""
-        : String(centsToDollars(row.monitor.targetCents)),
-    );
-    setPercent(
-      row.monitor.monitorType === "gain_near_pct_of_cost" ? String(row.monitor.targetPct) : "",
-    );
+    // Which field holds this type's target decides which one is repopulated.
+    // `usesPercentTarget` rather than a test against one type: `day_move_pct`
+    // also carries its target in `targetPct`, and reading it back into the
+    // amount box would blank the threshold on every edit.
+    const isPercent = usesPercentTarget(row.monitor.monitorType);
+    setAmountDollars(isPercent ? "" : String(centsToDollars(row.monitor.targetCents)));
+    setPercent(isPercent ? String(row.monitor.targetPct) : "");
     setBandPct(String(row.monitor.bandPct));
+    setDirection(row.monitor.direction === "down" ? "down" : "up");
   }
 
   async function save() {
     setError(undefined);
     setIsSaving(true);
     try {
-      const isPercentType = monitorType === "gain_near_pct_of_cost";
+      const isPercentType = usesPercentTarget(monitorType);
       // A blank amount is 0, which is meaningful for the loss type (break-even)
       // and refused by the schema for the gain type — so the message the reader
       // gets comes from `lib`, not from a second copy of the rule here.
       const targetCents = isPercentType ? 0 : dollarsToCents(amountDollars.trim() || "0");
       const targetPct = isPercentType ? Number(percent.trim() || "0") : 0;
-      const band = Number(bandPct.trim() || String(DEFAULT_BAND_PCT));
+      // The band is stored for every type that reads one. `day_move_pct` ignores
+      // it, so it is sent as the default rather than as whatever the hidden box
+      // last held — a stored band nothing reads should at least not look edited.
+      const band = usesBand(monitorType)
+        ? Number(bandPct.trim() || String(DEFAULT_BAND_PCT))
+        : DEFAULT_BAND_PCT;
 
       const input = {
         ticker,
@@ -122,6 +166,9 @@ export function TickerMonitorDialog({
         targetCents,
         targetPct,
         bandPct: band,
+        // Only the day-move type may carry one; the schema refuses it on the
+        // rest rather than blanking it silently.
+        direction: monitorType === "day_move_pct" ? direction : ("" as const),
         isEnabled: true,
       };
 
@@ -164,8 +211,12 @@ export function TickerMonitorDialog({
     }
   }
 
-  const isPercentType = monitorType === "gain_near_pct_of_cost";
+  const isPercentType = usesPercentTarget(monitorType);
+  const isDayMove = monitorType === "day_move_pct";
+  const showBand = usesBand(monitorType);
   const activeChoice = MONITOR_CHOICES.find((choice) => choice.value === monitorType);
+  // The basis warning only applies to the types actually measured against it.
+  const basisBlocks = screen !== undefined && screen.costCents <= 0 && needsCostBasis(monitorType);
 
   return (
     <Modal
@@ -203,13 +254,38 @@ export function TickerMonitorDialog({
               </p>
               <p className="font-display text-xl text-ink">{formatCents(screen.costCents)}</p>
             </div>
+            {/* The two figures the new types are set against, shown for the
+                same reason as the first pair: a reader typing a price target
+                needs to see where the price is now. */}
+            <div className="rounded-xl border border-line p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted">
+                Price per share
+              </p>
+              <p className="font-display text-xl text-ink">
+                {screen.pricePerShareCents > 0 ? formatCents(screen.pricePerShareCents) : "—"}
+              </p>
+            </div>
+            <div className="rounded-xl border border-line p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted">
+                Today&rsquo;s move
+              </p>
+              <p className="font-display text-xl text-ink">
+                {screen.dayChangePct === undefined
+                  ? "—"
+                  : `${screen.dayChangePct >= 0 ? "+" : ""}${screen.dayChangePct.toFixed(2)}%`}
+              </p>
+            </div>
           </div>
         )}
 
-        {screen && screen.costCents <= 0 && (
+        {/* Shown only while a basis-dependent type is selected: a price target
+            on a holding with no transactions is perfectly valid (0148), and
+            warning about it unconditionally would say the opposite. */}
+        {basisBlocks && (
           <p className="rounded-md border border-line bg-paper p-3 text-sm text-muted">
-            This ticker has no recorded cost basis, so no monitor can be judged against it.
-            Import or enter your transactions first.
+            This ticker has no recorded cost basis, so a gain or loss monitor cannot be judged
+            against it. Import or enter your transactions first — or watch the share price
+            instead, which needs no basis.
           </p>
         )}
 
@@ -231,7 +307,12 @@ export function TickerMonitorDialog({
               <span className={`text-sm ${row.monitor.isEnabled ? "text-ink" : "text-muted"}`}>
                 {row.summary}
               </span>
-              <span className="text-xs text-muted">within {row.monitor.bandPct}%</span>
+              {/* The threshold type stores a band nothing reads, so printing
+                  "within 5%" beside it would describe behaviour it does not
+                  have. */}
+              {usesBand(row.monitor.monitorType) && (
+                <span className="text-xs text-muted">within {row.monitor.bandPct}%</span>
+              )}
               {!row.monitor.isEnabled && (
                 <span className="rounded bg-line/60 px-1.5 py-0.5 text-xs text-muted">Off</span>
               )}
@@ -294,10 +375,31 @@ export function TickerMonitorDialog({
           </label>
 
           <div className="flex flex-wrap gap-3">
+            {/* Only the day-move type has a direction, and it is meaningless
+                without one — so it leads, before the size of the move. */}
+            {isDayMove && (
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted">
+                  Direction
+                </span>
+                <select
+                  value={direction}
+                  onChange={(event) => setDirection(event.target.value as MoveDirection)}
+                  className={`${INPUT_CLASS} w-40`}
+                >
+                  {DIRECTION_CHOICES.map((choice) => (
+                    <option key={choice.value} value={choice.value}>
+                      {choice.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
             {isPercentType ? (
               <label className="flex flex-col gap-1">
                 <span className="text-xs font-medium uppercase tracking-wide text-muted">
-                  Percent of cost basis
+                  {isDayMove ? "Move size (%)" : "Percent of cost basis"}
                 </span>
                 <input
                   type="number"
@@ -306,14 +408,19 @@ export function TickerMonitorDialog({
                   step="0.1"
                   value={percent}
                   onChange={(event) => setPercent(event.target.value)}
-                  placeholder="20"
+                  placeholder={isDayMove ? "3" : "20"}
                   className={`${INPUT_CLASS} w-40`}
                 />
+                {isDayMove && (
+                  <span className="text-xs text-muted">
+                    Fires at this move or beyond, not near it.
+                  </span>
+                )}
               </label>
             ) : (
               <label className="flex flex-col gap-1">
                 <span className="text-xs font-medium uppercase tracking-wide text-muted">
-                  Amount ($)
+                  {monitorType === "price_near_amount" ? "Target price ($)" : "Amount ($)"}
                 </span>
                 <input
                   type="number"
@@ -328,24 +435,30 @@ export function TickerMonitorDialog({
               </label>
             )}
 
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium uppercase tracking-wide text-muted">
-                &ldquo;Near&rdquo; band (%)
-              </span>
-              <input
-                type="number"
-                inputMode="decimal"
-                min="0.1"
-                max="100"
-                step="0.5"
-                value={bandPct}
-                onChange={(event) => setBandPct(event.target.value)}
-                className={`${INPUT_CLASS} w-40`}
-              />
-              <span className="text-xs text-muted">
-                How close counts as near. 5% of $10,000 fires from $9,500.
-              </span>
-            </label>
+            {/* Hidden for the threshold type, which ignores it: a band either
+                side of a 3% move would be true from -2% to +8%, i.e. always. */}
+            {showBand && (
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted">
+                  &ldquo;Near&rdquo; band (%)
+                </span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="0.1"
+                  max="100"
+                  step="0.5"
+                  value={bandPct}
+                  onChange={(event) => setBandPct(event.target.value)}
+                  className={`${INPUT_CLASS} w-40`}
+                />
+                <span className="text-xs text-muted">
+                  {monitorType === "price_near_amount"
+                    ? "How close counts as near, either side. 5% of $150 fires from $142.50."
+                    : "How close counts as near. 5% of $10,000 fires from $9,500."}
+                </span>
+              </label>
+            )}
           </div>
 
           <div className="flex gap-2">

@@ -30,7 +30,7 @@ const INPUT_CLASS =
 
 const LABEL_CLASS = "text-xs font-medium uppercase tracking-wide text-muted";
 
-const ADD_CLASS_CARD_SLOT = getIconSlot("attendance_card_add_class")!;
+const ADD_CLASS_CARD_SLOT = getIconSlot("classroom_card_add_class")!;
 
 function studentName(student: Student): string {
   return `${student.firstName} ${student.lastName}`.trim();

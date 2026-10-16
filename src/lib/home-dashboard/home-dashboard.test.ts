@@ -48,13 +48,16 @@ describe("resolveHomeWidgets", () => {
       "myShortcuts",
       "dailyQuote",
       "todayInHistory",
+      // `todo` is absent too, and is last in the catalogue, so nothing follows it to
+      // anchor before — it is appended.
+      "todo",
     ]);
     expect(widgets.every((widget) => widget.visible)).toBe(true);
   });
 
   it("reads a hyphen prefix as hidden", () => {
     const widgets = resolveHomeWidgets(
-      "carousel,-dailyQuote,todayInHistory,stockGlance",
+      "carousel,myShortcuts,-dailyQuote,todayInHistory,stockGlance,todo",
     );
     expect(widgets.find((widget) => widget.id === "dailyQuote")?.visible).toBe(false);
     expect(widgets.find((widget) => widget.id === "carousel")?.visible).toBe(true);
@@ -89,14 +92,15 @@ describe("resolveHomeWidgets", () => {
       "dailyQuote",
       "todayInHistory",
       "stockGlance",
+      "todo",
     ]);
     expect(widgets.find((widget) => widget.id === "carousel")?.visible).toBe(true);
   });
 
   it("appends a missing card when nothing in the catalogue follows it", () => {
-    // `stockGlance` is last in the catalogue, so it has no successor to anchor before.
-    const widgets = resolveHomeWidgets("carousel,dailyQuote,todayInHistory");
-    expect(widgets.at(-1)?.id).toBe("stockGlance");
+    // `todo` is last in the catalogue, so it has no successor to anchor before.
+    const widgets = resolveHomeWidgets("carousel,dailyQuote,todayInHistory,stockGlance");
+    expect(widgets.at(-1)?.id).toBe("todo");
   });
 
   it("keeps a deliberate reorder when adding a missing card back", () => {
@@ -122,7 +126,7 @@ describe("homeWidgetsToValue", () => {
 
   it("marks hidden cards with a hyphen and leaves visible ones bare", () => {
     expect(homeWidgetsToValue(toggleHomeWidget(defaultHomeWidgets(), "dailyQuote"))).toBe(
-      "carousel,-dailyQuote,todayInHistory,stockGlance",
+      "carousel,myShortcuts,-dailyQuote,todayInHistory,stockGlance,todo",
     );
   });
 
@@ -146,10 +150,12 @@ describe("homeWidgetsToValue", () => {
 describe("moveHomeWidget", () => {
   it("moves a card up and down by one place", () => {
     const moved = moveHomeWidget(defaultHomeWidgets(), "dailyQuote", "up");
+    // `dailyQuote` is third in the catalogue, so moving it up swaps it with
+    // `myShortcuts` — not with `carousel`, which is two places above.
     expect(moved.map((widget) => widget.id).slice(0, 3)).toEqual([
-      "dailyQuote",
       "carousel",
-      "todayInHistory",
+      "dailyQuote",
+      "myShortcuts",
     ]);
     expect(moveHomeWidget(moved, "dailyQuote", "down").map((widget) => widget.id)).toEqual([
       ...HOME_WIDGET_IDS,
@@ -159,13 +165,14 @@ describe("moveHomeWidget", () => {
   it("returns the list unchanged at either edge rather than wrapping", () => {
     const widgets = defaultHomeWidgets();
     expect(moveHomeWidget(widgets, "carousel", "up")).toEqual(widgets);
-    expect(moveHomeWidget(widgets, "stockGlance", "down")).toEqual(widgets);
+    expect(moveHomeWidget(widgets, "todo", "down")).toEqual(widgets);
   });
 
   it("carries visibility with the card it moves", () => {
     const hidden = toggleHomeWidget(defaultHomeWidgets(), "dailyQuote");
     const moved = moveHomeWidget(hidden, "dailyQuote", "up");
-    expect(moved[0]).toEqual({ id: "dailyQuote", visible: false });
+    // Third in the catalogue, so moving up lands it at index 1, not index 0.
+    expect(moved[1]).toEqual({ id: "dailyQuote", visible: false });
   });
 
   it("returns the list unchanged for an id that is not in it", () => {
@@ -196,8 +203,10 @@ describe("visibleHomeWidgets", () => {
     );
     expect(visibleHomeWidgets(widgets)).toEqual([
       "carousel",
+      "myShortcuts",
       "stockGlance",
       "todayInHistory",
+      "todo",
     ]);
   });
 

@@ -147,8 +147,13 @@ describe("coerceCellValue", () => {
     expect(coerceCellValue("not a date", "date")).toBeNull();
   });
 
-  it("datetime returns a full ISO string, null when unparseable", () => {
-    expect(coerceCellValue("2026-03-15T10:30:00Z", "datetime")).toBe("2026-03-15T10:30:00.000Z");
+  it("datetime keeps the wall-clock time the file stated, null when unparseable", () => {
+    // Deliberately NOT a UTC instant. A device export carries no timezone, so reading
+    // a naive timestamp as local and writing it back as `...Z` shifted every reading
+    // by the machine's offset — and inconsistently across a DST boundary. The input
+    // here has no timezone either, so this asserts the contract without depending on
+    // the runner's TZ.
+    expect(coerceCellValue("2026-03-15 10:30:00", "datetime")).toBe("2026-03-15T10:30:00");
     expect(coerceCellValue("not a date", "datetime")).toBeNull();
   });
 });

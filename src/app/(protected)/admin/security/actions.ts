@@ -6,9 +6,11 @@ import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { deleteAuthEvents, markFailuresReviewed } from "@/lib/auth-events";
 import {
   allowIpAddress,
+  blockIpAddress,
   deleteSiteVisits,
   disallowIpAddress,
   markSuspiciousReviewed,
+  unblockIpAddress,
 } from "@/lib/site-visits";
 import { isAdmin } from "@/lib/user";
 import { deps } from "@/lib/wiring";
@@ -141,6 +143,9 @@ export async function allowIpAddressesAction(
         { ipAddress: trimmed, label: address.label, addedByUserId: currentUser.id },
         deps.ipAllowlistRepo,
         deps.siteVisitRepo,
+        // Vouching clears any blacklist entry for the address — the two lists are
+        // mutually exclusive (migrations/0144), and the use-case enforces it.
+        deps.ipBlacklistRepo,
       );
     }
 
@@ -170,6 +175,76 @@ export async function disallowIpAddressAction(
       ok: false,
       count: 0,
       error: error instanceof Error ? error.message : "Failed to remove the address.",
+    };
+  }
+}
+
+/**
+ * Distrusts one or more addresses, and re-scores their past arrivals.
+ *
+ * Takes a list for the same reason `allowIpAddressesAction` does: it is driven by a
+ * bulk action over ticked rows that routinely share an address, and `blockIpAddress`
+ * is idempotent so the duplicates collapse rather than erroring.
+ *
+ * Serves all three entry points — the Visit tab's bulk action, the Login tab's bulk
+ * action over failed sign-ins, and the "add an address" field on the Blocked
+ * addresses card. One action, because all three are the same decision arriving by
+ * different routes.
+ *
+ * **This marks, it does not block.** No request is refused as a result of calling
+ * this; see migrations/0144.
+ *
+ * Returns how many addresses were processed, not how many rows were re-scored — the
+ * screen reports "3 addresses blocked", which is what the reader chose.
+ */
+export async function blockIpAddressesAction(
+  addresses: { ipAddress: string; label?: string }[],
+): Promise<CountResult> {
+  try {
+    const currentUser = await requireAdminUser();
+
+    const seen = new Set<string>();
+    for (const address of addresses) {
+      const trimmed = address.ipAddress.trim();
+      if (trimmed === "" || seen.has(trimmed)) continue;
+      seen.add(trimmed);
+
+      blockIpAddress(
+        { ipAddress: trimmed, label: address.label, addedByUserId: currentUser.id },
+        deps.ipBlacklistRepo,
+        deps.siteVisitRepo,
+        // Blocking clears any allowlist entry for the address, the mirror of what
+        // `allowIpAddressesAction` does above.
+        deps.ipAllowlistRepo,
+      );
+    }
+
+    revalidateSecurity();
+    return { ok: true, count: seen.size };
+  } catch (error) {
+    return {
+      ok: false,
+      count: 0,
+      error: error instanceof Error ? error.message : "Failed to block the selected addresses.",
+    };
+  }
+}
+
+/** Stops distrusting an address, and re-scores its arrivals to `watch`. */
+export async function unblockIpAddressAction(
+  id: number,
+  ipAddress: string,
+): Promise<CountResult> {
+  try {
+    await requireAdminUser();
+    const count = unblockIpAddress(id, ipAddress, deps.ipBlacklistRepo, deps.siteVisitRepo);
+    revalidateSecurity();
+    return { ok: true, count };
+  } catch (error) {
+    return {
+      ok: false,
+      count: 0,
+      error: error instanceof Error ? error.message : "Failed to unblock the address.",
     };
   }
 }

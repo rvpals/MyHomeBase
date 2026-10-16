@@ -146,6 +146,36 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-10-15 — Release (Classroom with Exam, IP blacklist, new ticker monitors, calendar-import duplicate handling)
+
+**Migrations 0143–0148 must be applied on the NAS, in order.** Test 1 and 2 first — they prove 0143 landed; without it every Classroom screen fails with "no such table". Items 13–15 need 0144, 18–19 need 0148, and 24 is phone-only.
+
+- [ ] **1.** The module formerly called Attendance now appears as **Classroom** in the nav tree, at `/modules/classroom`
+- [ ] **2.** Classroom → Attendance: existing students, classes, and past attendance records are all still there after the table rename
+- [ ] **3.** Classroom shows two groups, Attendance and Exam, each with its own heading and icon, and every section under both opens
+- [ ] **4.** The old `/modules/attendance` URL is gone (or redirects) and nothing links to it
+- [ ] **5.** Exam → Exams: create an exam and it appears on the home list
+- [ ] **6.** Exam Maker: add questions, set the answer key, save, and reopen — the key is kept
+- [ ] **7.** Exam Maker: toggle pre-printed student names, signature line, professor and declaration — the preview sheet follows each option
+- [ ] **8.** Exam Maker: turning an option off and back on keeps the professor name and declaration text typed earlier
+- [ ] **9.** Exam: print an answer sheet — it shows a QR code and the bubble grid
+- [ ] **10.** Exam: with the student-ID grid on, each sheet shows the student's ID pre-shaded
+- [ ] **11.** Exam Grader: a scanned sheet named after a student is graded and matched to that student
+- [ ] **12.** Exam Grader: a scanned sheet with the ID grid or QR code is identified without relying on its file name; a blank row and a double-marked row are flagged
+- [ ] **13.** Admin → Security → Visit: tick visits and use **Block these IPs** — the confirmation names the distinct addresses, and the rows turn suspicious
+- [ ] **14.** Admin → Security: **Blocked addresses** card lists them; type an address by hand and Block it; **Unblock** re-scores its past visits as "Worth a look"
+- [ ] **15.** Blocking an address that is on the allowlist removes it from Allowed addresses (it cannot be on both)
+- [ ] **16.** Admin → Security → Visit: ticking rows shows the "N selected" bar with actions, and the grid header has a raised bevel
+- [ ] **17.** CLI: `npm run cli -- ip-lists` shows both lists, and `npm run cli -- exams` lists the exams
+- [ ] **18.** Investments → ticker monitors: add a **price near amount** monitor and see it fire (or not) against the current price
+- [ ] **19.** Investments → ticker monitors: add a **day move** monitor with direction up and with direction down, and see each respond only to its own direction
+- [ ] **20.** Journal → Calendar import: card 4 offers refresh / skip / import again, with refresh selected by default
+- [ ] **21.** Journal → Calendar import: re-importing the same file under **skip** writes nothing new, and under **import again** writes a second copy of each event
+- [ ] **22.** Journal → Calendar import: drop a `.ics` file on the drop zone and it parses; dropping a photo is refused with a message
+- [ ] **23.** Journal → Calendar import: a "please wait" dialog shows while the file parses and goes away afterwards
+- [ ] **24.** Phone width: Classroom navigation, Exam Maker and the Blocked addresses card lay out without horizontal scroll
+- [ ] **25.** Home screen: the saved card order survives a reload (not wiped to the default)
+
 ## 2026-10-12 — Release (message ownership and locking, journal filter sorting, Encrypted filter field)
 
 **Migration 0142 must be applied on the NAS.** Test 1 first — it proves the migration landed; without it the Messages grid fails with "no such column". Item 14 is the one that needs a filter saved *before* this release, and 18 is phone-only.

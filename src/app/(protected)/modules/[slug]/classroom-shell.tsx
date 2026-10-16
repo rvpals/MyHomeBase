@@ -1,9 +1,12 @@
-// Attendance on the two-tier shell — the third module migrated off `TreeNav`.
+// Classroom on the two-tier shell.
 //
 // A server component, so it can read `deps` for the things the shell needs and
 // that only the server knows: the module list the reader can actually reach, the
-// current user, and whether they're an admin. Mirrors `stock-shell.tsx` and
-// `journal-shell.tsx`; the only differences are the slug and the section list.
+// current user, and whether they're an admin. Mirrors `household-shell.tsx`,
+// which is the other module with a grouped section list.
+//
+// Was `attendance-shell.tsx` until migration 0143, which renamed the module to
+// Classroom and made Attendance one of its two section groups.
 
 import { cookies } from "next/headers";
 import type { CSSProperties, ReactNode } from "react";
@@ -22,15 +25,19 @@ import { getNavTreeData } from "../../nav-tree-data";
 import { setExpandedModulesAction } from "../../nav-tree-actions";
 import { MessageQueueHost } from "../../message-queue-host";
 import {
-  ATTENDANCE_SECTIONS,
-  ATTENDANCE_SECTION_ICONS,
-  ATTENDANCE_SECTION_INFO,
-  attendanceSectionHref,
-} from "./attendance-sections";
+  CLASSROOM_ATTENDANCE_SECTIONS,
+  CLASSROOM_EXAM_SECTIONS,
+  CLASSROOM_GROUPS,
+  CLASSROOM_SECTIONS,
+  CLASSROOM_SECTION_ICONS,
+  CLASSROOM_SECTION_INFO,
+  classroomSectionHref,
+  type ClassroomSection,
+} from "./classroom-sections";
 
-const ATTENDANCE_MODULE_SLUG = "attendance";
+const CLASSROOM_MODULE_SLUG = "classroom";
 
-export async function AttendanceShell({ children }: { children: ReactNode }) {
+export async function ClassroomShell({ children }: { children: ReactNode }) {
   const cookieStore = await cookies();
   const sessionId = cookieStore.get(SESSION_COOKIE_NAME)?.value;
   const currentUser = getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo);
@@ -61,15 +68,43 @@ export async function AttendanceShell({ children }: { children: ReactNode }) {
   const navTree = getNavTreeData(currentUser);
 
   // Both fields are admin-editable, so they're read rather than hardcoded.
-  const appModule = getModuleBySlug(deps.moduleRepo, ATTENDANCE_MODULE_SLUG);
+  const appModule = getModuleBySlug(deps.moduleRepo, CLASSROOM_MODULE_SLUG);
 
-  const sections: SectionNode[] = ATTENDANCE_SECTIONS.map((section) => ({
+  const toNode = (section: ClassroomSection): SectionNode => ({
     id: section,
-    label: ATTENDANCE_SECTION_INFO[section].label,
-    href: attendanceSectionHref(section),
-    hint: ATTENDANCE_SECTION_INFO[section].description,
-    icon: ATTENDANCE_SECTION_ICONS[section],
-  }));
+    label: CLASSROOM_SECTION_INFO[section].label,
+    href: classroomSectionHref(section),
+    hint: CLASSROOM_SECTION_INFO[section].description,
+    icon: CLASSROOM_SECTION_ICONS[section],
+  });
+
+  // One level of nesting, and two groups — the module's two halves. This is what
+  // "submodules" means here: there is no level between a module and a section, so
+  // Attendance and Exam are group headings carrying their own sections, exactly as
+  // Household's Recipes and HSA Tracker are.
+  //
+  // Neither heading carries an `href` — `SectionPanel` renders a node with children
+  // as a label rather than a link, and drops it from the compact sheet entirely, so
+  // giving one a route would be a destination nothing reaches.
+  //
+  // `main` is the only ungrouped section and comes first: it is the module root,
+  // which belongs above both headings rather than inside either. Configuration sits
+  // inside the Attendance group rather than after both, as Household places its own —
+  // every preference it holds (default class, report start date, surname-first cards)
+  // configures attendance specifically, so it would read as module-wide if it floated
+  // outside the group.
+  const grouped = new Set<string>([
+    ...CLASSROOM_ATTENDANCE_SECTIONS,
+    ...CLASSROOM_EXAM_SECTIONS,
+  ]);
+  const sections: SectionNode[] = [
+    ...CLASSROOM_SECTIONS.filter((section) => !grouped.has(section)).map(toNode),
+    {
+      ...CLASSROOM_GROUPS.attendance,
+      children: CLASSROOM_ATTENDANCE_SECTIONS.map(toNode),
+    },
+    { ...CLASSROOM_GROUPS.exam, children: CLASSROOM_EXAM_SECTIONS.map(toNode) },
+  ];
 
   // This module's background (migrations 0064, 0116, 0117): its own upload, a
   // picture chosen from the app library, nothing, or — the default — the
@@ -78,7 +113,7 @@ export async function AttendanceShell({ children }: { children: ReactNode }) {
   // All three reads are cheap: each derives `image IS NOT NULL` in SQL, so no
   // picture bytes reach this render. The library lookup happens only when this
   // module actually points at one.
-  const moduleTexture = getModuleTexture(deps.moduleTextureRepo, ATTENDANCE_MODULE_SLUG);
+  const moduleTexture = getModuleTexture(deps.moduleTextureRepo, CLASSROOM_MODULE_SLUG);
   const libraryId = moduleTextureLibraryId(moduleTexture);
   const texture = resolveAppTexture(
     getDashboardTexture(deps.dashboardTextureRepo),
@@ -97,11 +132,13 @@ export async function AttendanceShell({ children }: { children: ReactNode }) {
     <TwoTierShell
       links={links}
       sections={sections}
-      iconNamespace="attendance"
+      iconNamespace="classroom"
       module={{
-        name: appModule?.shortName ?? "Attendance",
+        name: appModule?.shortName ?? "Classroom",
+        // `roster` — a class register. There is no `classroom` MODULE icon, and
+        // adding one would mean naming it in all eleven icon sets. See 0143's log.
         icon: appModule?.icon ?? "roster",
-        href: `/modules/${ATTENDANCE_MODULE_SLUG}`,
+        href: `/modules/${CLASSROOM_MODULE_SLUG}`,
       }}
       currentUser={{
         id: currentUser.id,

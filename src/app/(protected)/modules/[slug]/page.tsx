@@ -1,11 +1,11 @@
 import { cookies } from "next/headers";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { getModuleBySlug } from "@/lib/modules";
 import { isAdmin, userHasModuleAccess } from "@/lib/user";
 import { deps } from "@/lib/wiring";
 import { PAGE_CONTAINER } from "../../page-container";
-import { AttendanceSection } from "./attendance-section";
+import { ClassroomSection } from "./classroom-section";
 import { CsvSection } from "./csv-section";
 import { ExpenseSection } from "./expense-section";
 import { GallerySection } from "./gallery-section";
@@ -20,7 +20,13 @@ const INVESTMENTS_MODULE_SLUG = "investments";
 const CSV_ANALYSIS_MODULE_SLUG = "csv-analysis";
 const JOURNAL_MODULE_SLUG = "journal";
 const EXPENSE_MODULE_SLUG = "expense";
-const ATTENDANCE_MODULE_SLUG = "attendance";
+const CLASSROOM_MODULE_SLUG = "classroom";
+/**
+ * The slug Classroom carried until migration 0143. Kept only to redirect: a
+ * bookmark of the old module root, and anyone whose startup module the migration
+ * did not reach, would otherwise get a 404 from `getModuleBySlug`.
+ */
+const RETIRED_ATTENDANCE_SLUG = "attendance";
 const MUSIC_LIBRARY_MODULE_SLUG = "music-library";
 const GAMES_MODULE_SLUG = "games";
 const PICTURE_GALLERY_MODULE_SLUG = "picture-gallery";
@@ -55,8 +61,8 @@ function ModuleBody({
     return <ExpenseSection section="main" />;
   }
 
-  if (slug === ATTENDANCE_MODULE_SLUG) {
-    return <AttendanceSection section="main" requestedClassId={requestedClassId} />;
+  if (slug === CLASSROOM_MODULE_SLUG) {
+    return <ClassroomSection section="main" requestedClassId={requestedClassId} />;
   }
 
   if (slug === MUSIC_LIBRARY_MODULE_SLUG) {
@@ -92,7 +98,7 @@ export default async function ModulePage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  // `classId` picks the Attendance module's class, so a teacher can bookmark
+  // `classId` picks the Classroom module's class, so a teacher can bookmark
   // their first-period register and land straight on it.
   searchParams: Promise<{ classId?: string | string[] }>;
 }) {
@@ -101,6 +107,11 @@ export default async function ModulePage({
   // A repeated ?classId= yields an array; take the first rather than joining.
   const rawClassId = Array.isArray(classId) ? classId[0] : classId;
   const requestedClassId = Number(rawClassId) || undefined;
+
+  // Before the lookup, because this slug no longer resolves to a module row.
+  if (slug === RETIRED_ATTENDANCE_SLUG) {
+    redirect(rawClassId ? `/modules/classroom?classId=${rawClassId}` : "/modules/classroom");
+  }
 
   const appModule = getModuleBySlug(deps.moduleRepo, slug);
 

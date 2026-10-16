@@ -295,6 +295,8 @@ describe("parseStoredJournalFilter", () => {
     expect(parseStoredJournalFilter(legacy)).toEqual({
       join: "AND",
       groups: [{ join: "AND", conditions: [{ field: "title", operator: "contains", value: "trip" }] }],
+      // The parser fills in an empty sort, same as every other branch.
+      sort: [],
     });
   });
 

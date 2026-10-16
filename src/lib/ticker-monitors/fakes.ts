@@ -34,6 +34,7 @@ export class FakeTickerMonitorRepository implements TickerMonitorRepository {
       targetCents: input.targetCents,
       targetPct: input.targetPct,
       bandPct: input.bandPct,
+      direction: input.direction,
       isEnabled: input.isEnabled,
       isTriggered: false,
       lastMessage: "",
@@ -53,6 +54,7 @@ export class FakeTickerMonitorRepository implements TickerMonitorRepository {
       targetCents: input.targetCents,
       targetPct: input.targetPct,
       bandPct: input.bandPct,
+      direction: input.direction,
       isEnabled: input.isEnabled,
       // Matches the SQL: an edit re-arms, so the first crossing of a new target
       // is not swallowed by the old one's latch.
@@ -82,12 +84,25 @@ export class FakeTickerMonitorRepository implements TickerMonitorRepository {
   }
 }
 
-/** A two-line stand-in for the positions side. */
+/**
+ * A two-line stand-in for the positions side.
+ *
+ * The price fields are optional here exactly as they are on the port: a test
+ * about gain/loss states a basis and nothing else, and one about a price target
+ * states a price. Omitting them is "unknown", which is what the evaluator is
+ * supposed to do something sensible with.
+ */
 export class FakePositionReader implements MonitorPositionReader {
   constructor(
     private readonly byTicker: Record<
       string,
-      { unrealizedGainLossCents: number; costCents: number }[]
+      {
+        unrealizedGainLossCents: number;
+        costCents: number;
+        currentPriceCents?: number;
+        quantity?: number;
+        dayGainLossCents?: number;
+      }[]
     > = {},
   ) {}
 
@@ -105,6 +120,7 @@ export function makeMonitor(overrides: Partial<TickerMonitor> = {}): TickerMonit
     targetCents: 1_000_000,
     targetPct: 0,
     bandPct: DEFAULT_BAND_PCT,
+    direction: "",
     isEnabled: true,
     isTriggered: false,
     lastMessage: "",

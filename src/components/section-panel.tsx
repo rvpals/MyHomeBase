@@ -92,7 +92,7 @@ export interface SectionNode {
 export interface SectionPanelProps {
   sections: SectionNode[];
   /**
-   * The module's icon-slot namespace ("expense", "journal", "stock", "attendance",
+   * The module's icon-slot namespace ("expense", "journal", "stock", "classroom",
    * "music", "admin"), used to derive a slot id per section via `sectionSlotId`.
    *
    * Optional: omit it and every section icon resolves exactly as it did before slots

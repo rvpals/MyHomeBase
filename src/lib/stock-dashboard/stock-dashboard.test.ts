@@ -40,7 +40,9 @@ describe("resolveDashboardWidgets", () => {
 
   it("reads a saved order", () => {
     const widgets = resolveDashboardWidgets(settings("summary,indexes"));
-    expect(widgets.map((widget) => widget.id)).toEqual(["summary", "indexes"]);
+    // `currencies` is absent from the saved value, so the resolver restores it at its
+    // catalogue position — which is before `summary`.
+    expect(widgets.map((widget) => widget.id)).toEqual(["currencies", "summary", "indexes"]);
   });
 
   it("reads a '-' prefix as hidden", () => {
@@ -64,7 +66,7 @@ describe("resolveDashboardWidgets", () => {
    */
   it("inserts a new widget at its catalogue position, not at the end", () => {
     const widgets = resolveDashboardWidgets(settings("summary"));
-    expect(widgets.map((widget) => widget.id)).toEqual(["indexes", "summary"]);
+    expect(widgets.map((widget) => widget.id)).toEqual(["indexes", "currencies", "summary"]);
   });
 
   /**
@@ -78,7 +80,7 @@ describe("resolveDashboardWidgets", () => {
    */
   it("keeps a deliberate hide while placing the new widget by its neighbour", () => {
     const widgets = resolveDashboardWidgets(settings("-summary"));
-    expect(widgets.map((widget) => widget.id)).toEqual(["indexes", "summary"]);
+    expect(widgets.map((widget) => widget.id)).toEqual(["indexes", "currencies", "summary"]);
     expect(widgets.find((widget) => widget.id === "summary")?.visible).toBe(false);
     expect(widgets.find((widget) => widget.id === "indexes")?.visible).toBe(true);
   });
@@ -86,7 +88,7 @@ describe("resolveDashboardWidgets", () => {
   /** Nothing follows a catalogue-final widget, so it lands at the end. */
   it("appends a new widget that is last in the catalogue", () => {
     const widgets = resolveDashboardWidgets(settings("indexes"));
-    expect(widgets.map((widget) => widget.id)).toEqual(["indexes", "summary"]);
+    expect(widgets.map((widget) => widget.id)).toEqual(["indexes", "currencies", "summary"]);
   });
 
   it("drops an id that is no longer a widget", () => {
@@ -154,7 +156,7 @@ describe("resolveDashboardWidgets", () => {
     expect(ids).not.toContain("statistics");
     expect(ids).not.toContain("allocation");
     // The two surviving widgets keep the order the layout gave them.
-    expect(ids).toEqual(["summary", "indexes"]);
+    expect(ids).toEqual(["currencies", "summary", "indexes"]);
   });
 
   /**
@@ -178,6 +180,7 @@ describe("resolveDashboardWidgets", () => {
   it("tolerates stray whitespace and empty entries", () => {
     const widgets = resolveDashboardWidgets(settings(" summary , , -indexes ,"));
     expect(widgets).toEqual([
+      { id: "currencies", visible: true },
       { id: "summary", visible: true },
       { id: "indexes", visible: false },
     ]);
@@ -222,9 +225,13 @@ describe("dashboardWidgetsToEntries", () => {
 
   it("rejects a duplicated widget, which would render it twice", () => {
     const layout = defaultDashboardWidgets();
-    // Overwrite the last widget with a second "summary": still a full-length list,
+    // Overwrite the FIRST widget with a second "summary": still a full-length list,
     // but one widget appears twice and another not at all.
-    layout[layout.length - 1] = { id: "summary", visible: true };
+    //
+    // The first, not the last: `summary` is last in the catalogue, so overwriting the
+    // last entry replaced it with itself and produced no duplicate at all. This test
+    // passed only while the catalogue had two entries and `summary` led it.
+    layout[0] = { id: "summary", visible: true };
     expect(() => dashboardWidgetsToEntries(layout)).toThrow();
   });
 });
@@ -232,12 +239,12 @@ describe("dashboardWidgetsToEntries", () => {
 describe("moveDashboardWidget", () => {
   it("swaps a widget with the one above it", () => {
     const moved = moveDashboardWidget(defaultDashboardWidgets(), "summary", "up");
-    expect(moved.map((widget) => widget.id)).toEqual(["summary", "indexes"]);
+    expect(moved.map((widget) => widget.id)).toEqual(["indexes", "summary", "currencies"]);
   });
 
   it("swaps a widget with the one below it", () => {
     const moved = moveDashboardWidget(defaultDashboardWidgets(), "indexes", "down");
-    expect(moved.map((widget) => widget.id)).toEqual(["summary", "indexes"]);
+    expect(moved.map((widget) => widget.id)).toEqual(["currencies", "indexes", "summary"]);
   });
 
   it("does nothing at the ends rather than wrapping around", () => {
@@ -256,7 +263,8 @@ describe("moveDashboardWidget", () => {
   it("carries visibility along with the move", () => {
     const hidden = toggleDashboardWidget(defaultDashboardWidgets(), "summary");
     const moved = moveDashboardWidget(hidden, "summary", "up");
-    expect(moved[0]).toEqual({ id: "summary", visible: false });
+    // `summary` is last in the catalogue, so moving it up lands it at index 1.
+    expect(moved[1]).toEqual({ id: "summary", visible: false });
   });
 });
 
@@ -278,6 +286,6 @@ describe("toggleDashboardWidget", () => {
 describe("visibleDashboardWidgets", () => {
   it("returns the visible ids in order", () => {
     const layout = toggleDashboardWidget(defaultDashboardWidgets(), "summary");
-    expect(visibleDashboardWidgets(layout)).toEqual(["indexes"]);
+    expect(visibleDashboardWidgets(layout)).toEqual(["indexes", "currencies"]);
   });
 });

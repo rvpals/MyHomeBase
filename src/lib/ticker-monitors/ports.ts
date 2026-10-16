@@ -41,5 +41,18 @@ export interface MonitorPositionReader {
   listPositionsByTicker(ticker: string): readonly {
     unrealizedGainLossCents: number;
     costCents: number;
+    /**
+     * The three fields the price and day-move types read (0148). Optional so an
+     * older fake still satisfies the port, and because a holding genuinely may
+     * not have a price — `valuationFromHoldings` treats a missing one as
+     * unknown rather than as zero.
+     *
+     * `dayGainLossCents` is what the previous close is recovered from; it is
+     * only meaningful alongside `quantity`, which is why neither is read
+     * without the other.
+     */
+    currentPriceCents?: number;
+    quantity?: number;
+    dayGainLossCents?: number;
   }[];
 }

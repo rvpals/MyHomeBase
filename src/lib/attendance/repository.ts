@@ -171,14 +171,14 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
 
   listStudents(): Student[] {
     const rows = this.db
-      .prepare(`SELECT ${STUDENT_COLUMNS} FROM att_students s ${STUDENT_ORDER}`)
+      .prepare(`SELECT ${STUDENT_COLUMNS} FROM cls_students s ${STUDENT_ORDER}`)
       .all() as StudentRow[];
     return rows.map(toStudent);
   }
 
   getStudentById(id: number): Student | undefined {
     const row = this.db
-      .prepare(`SELECT ${STUDENT_COLUMNS} FROM att_students s WHERE s.id = ?`)
+      .prepare(`SELECT ${STUDENT_COLUMNS} FROM cls_students s WHERE s.id = ?`)
       .get(id) as StudentRow | undefined;
     return row ? toStudent(row) : undefined;
   }
@@ -186,7 +186,7 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
   createStudent(input: StudentWriteData): Student {
     const result = this.db
       .prepare(
-        `INSERT INTO att_students (first_name, last_name, student_identifier, email, note)
+        `INSERT INTO cls_students (first_name, last_name, student_identifier, email, note)
          VALUES (@firstName, @lastName, @studentIdentifier, @email, @note)`,
       )
       .run(input);
@@ -199,7 +199,7 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
   updateStudent(id: number, input: StudentWriteData): Student {
     this.db
       .prepare(
-        `UPDATE att_students
+        `UPDATE cls_students
          SET first_name = @firstName,
              last_name = @lastName,
              student_identifier = @studentIdentifier,
@@ -218,8 +218,8 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
     // Enrollments go with the student; saved attendance entries deliberately do
     // not, because they carry the name as it was and are a historical record.
     const removeStudent = this.db.transaction((studentId: number) => {
-      this.db.prepare("DELETE FROM att_class_enrollments WHERE student_id = ?").run(studentId);
-      this.db.prepare("DELETE FROM att_students WHERE id = ?").run(studentId);
+      this.db.prepare("DELETE FROM cls_class_enrollments WHERE student_id = ?").run(studentId);
+      this.db.prepare("DELETE FROM cls_students WHERE id = ?").run(studentId);
     });
     removeStudent(id);
   }
@@ -233,12 +233,12 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
       for (const chunk of chunkIds(studentIds)) {
         const marks = placeholders(chunk.length);
         this.db
-          .prepare(`DELETE FROM att_class_enrollments WHERE student_id IN (${marks})`)
+          .prepare(`DELETE FROM cls_class_enrollments WHERE student_id IN (${marks})`)
           .run(chunk);
         // `changes` counts students actually removed, so an id that no longer
         // exists doesn't inflate the total the caller reports.
         deleted += this.db
-          .prepare(`DELETE FROM att_students WHERE id IN (${marks})`)
+          .prepare(`DELETE FROM cls_students WHERE id IN (${marks})`)
           .run(chunk).changes;
       }
       return deleted;
@@ -255,8 +255,8 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
     // would have to be kept in step with every enroll and delete for no gain.
     return `
       SELECT c.id, c.name, c.description, c.class_weekday, c.created_at, c.updated_at,
-             (SELECT COUNT(*) FROM att_class_enrollments e WHERE e.class_id = c.id) AS enrolled_count
-      FROM att_classes c
+             (SELECT COUNT(*) FROM cls_class_enrollments e WHERE e.class_id = c.id) AS enrolled_count
+      FROM cls_classes c
       ${where}
     `;
   }
@@ -287,7 +287,7 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
   createClass(input: ClassWriteData): AttendanceClass {
     const result = this.db
       .prepare(
-        `INSERT INTO att_classes (name, description, class_weekday)
+        `INSERT INTO cls_classes (name, description, class_weekday)
            VALUES (@name, @description, @classWeekday)`,
       )
       .run(input);
@@ -300,7 +300,7 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
   updateClass(id: number, input: ClassWriteData): AttendanceClass {
     this.db
       .prepare(
-        `UPDATE att_classes
+        `UPDATE cls_classes
             SET name = @name, description = @description, class_weekday = @classWeekday
           WHERE id = @id`,
       )
@@ -315,8 +315,8 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
     // Saved attendance records are left alone: they carry the class name as it
     // was, so a deleted class's history stays readable.
     const removeClass = this.db.transaction((classId: number) => {
-      this.db.prepare("DELETE FROM att_class_enrollments WHERE class_id = ?").run(classId);
-      this.db.prepare("DELETE FROM att_classes WHERE id = ?").run(classId);
+      this.db.prepare("DELETE FROM cls_class_enrollments WHERE class_id = ?").run(classId);
+      this.db.prepare("DELETE FROM cls_classes WHERE id = ?").run(classId);
     });
     removeClass(id);
   }
@@ -329,8 +329,8 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
     const rows = this.db
       .prepare(
         `SELECT ${STUDENT_COLUMNS}
-         FROM att_students s
-         JOIN att_class_enrollments e ON e.student_id = s.id
+         FROM cls_students s
+         JOIN cls_class_enrollments e ON e.student_id = s.id
          WHERE e.class_id = ?
          ${STUDENT_ORDER}`,
       )
@@ -343,7 +343,7 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
     // already-enrolled student is a no-op. `changes` then reports how many rows
     // actually landed, which is what the caller shows the teacher.
     const insert = this.db.prepare(
-      `INSERT OR IGNORE INTO att_class_enrollments (class_id, student_id) VALUES (?, ?)`,
+      `INSERT OR IGNORE INTO cls_class_enrollments (class_id, student_id) VALUES (?, ?)`,
     );
 
     const enrollAll = this.db.transaction((ids: number[]) => {
@@ -359,7 +359,7 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
 
   removeStudentFromClass(classId: number, studentId: number): void {
     this.db
-      .prepare("DELETE FROM att_class_enrollments WHERE class_id = ? AND student_id = ?")
+      .prepare("DELETE FROM cls_class_enrollments WHERE class_id = ? AND student_id = ?")
       .run(classId, studentId);
   }
 
@@ -371,7 +371,7 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
     const rows = this.db
       .prepare(
         `SELECT ${STUDENT_ACTION_COLUMNS}
-         FROM att_student_actions
+         FROM cls_student_actions
          ${includeRetired ? "" : "WHERE is_active = 1"}
          ${STUDENT_ACTION_ORDER}`,
       )
@@ -381,7 +381,7 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
 
   getStudentActionById(id: number): StudentAction | undefined {
     const row = this.db
-      .prepare(`SELECT ${STUDENT_ACTION_COLUMNS} FROM att_student_actions WHERE id = ?`)
+      .prepare(`SELECT ${STUDENT_ACTION_COLUMNS} FROM cls_student_actions WHERE id = ?`)
       .get(id) as StudentActionRow | undefined;
     return row ? toStudentAction(row) : undefined;
   }
@@ -391,7 +391,7 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
     // duplicate check has to agree with what the database will reject.
     const row = this.db
       .prepare(
-        `SELECT ${STUDENT_ACTION_COLUMNS} FROM att_student_actions WHERE code = ? COLLATE NOCASE`,
+        `SELECT ${STUDENT_ACTION_COLUMNS} FROM cls_student_actions WHERE code = ? COLLATE NOCASE`,
       )
       .get(code) as StudentActionRow | undefined;
     return row ? toStudentAction(row) : undefined;
@@ -400,7 +400,7 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
   createStudentAction(input: StudentActionWriteData): StudentAction {
     const result = this.db
       .prepare(
-        `INSERT INTO att_student_actions (name, code, description, icon, sequence, is_active)
+        `INSERT INTO cls_student_actions (name, code, description, icon, sequence, is_active)
          VALUES (@name, @code, @description, @icon, @sequence, @isActive)`,
       )
       .run({ ...input, isActive: input.isActive ? 1 : 0 });
@@ -413,7 +413,7 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
   updateStudentAction(id: number, input: StudentActionWriteData): StudentAction {
     this.db
       .prepare(
-        `UPDATE att_student_actions
+        `UPDATE cls_student_actions
          SET name = @name,
              code = @code,
              description = @description,
@@ -432,7 +432,7 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
   countRecordedUsesOfAction(id: number): number {
     const row = this.db
       .prepare(
-        "SELECT COUNT(*) AS used FROM att_attendance_entry_actions WHERE action_id = ?",
+        "SELECT COUNT(*) AS used FROM cls_attendance_entry_actions WHERE action_id = ?",
       )
       .get(id) as { used: number };
     return row.used;
@@ -442,12 +442,12 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
     // Only ever called for an unused action — the use-case checks
     // countRecordedUsesOfAction first and retires a used one instead. Recorded
     // rows are left alone regardless: they carry their own code and name.
-    this.db.prepare("DELETE FROM att_student_actions WHERE id = ?").run(id);
+    this.db.prepare("DELETE FROM cls_student_actions WHERE id = ?").run(id);
   }
 
   getStudentActionIcon(id: number): AttendanceActionIconRef | undefined {
     const row = this.db
-      .prepare("SELECT icon_image, icon_image_mime_type FROM att_student_actions WHERE id = ?")
+      .prepare("SELECT icon_image, icon_image_mime_type FROM cls_student_actions WHERE id = ?")
       .get(id) as { icon_image: Buffer | null; icon_image_mime_type: string | null } | undefined;
     if (!row || !row.icon_image || !row.icon_image_mime_type) return undefined;
     return { data: row.icon_image, mimeType: row.icon_image_mime_type };
@@ -458,7 +458,7 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
     // dangling mime type that would make the row look like it has an upload.
     this.db
       .prepare(
-        "UPDATE att_student_actions SET icon_image = ?, icon_image_mime_type = ? WHERE id = ?",
+        "UPDATE cls_student_actions SET icon_image = ?, icon_image_mime_type = ? WHERE id = ?",
       )
       .run(icon?.data ?? null, icon?.mimeType ?? null, id);
   }
@@ -483,8 +483,8 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
     const rows = this.db
       .prepare(
         `SELECT a.student_id, a.action_id, a.action_code, a.action_name
-         FROM att_attendance_entry_actions a
-         LEFT JOIN att_student_actions c ON c.id = a.action_id
+         FROM cls_attendance_entry_actions a
+         LEFT JOIN cls_student_actions c ON c.id = a.action_id
          WHERE a.attendance_record_id = ?
          ORDER BY COALESCE(c.sequence, 0), a.action_name COLLATE NOCASE, a.id`,
       )
@@ -508,7 +508,7 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
     const entryRows = this.db
       .prepare(
         `SELECT student_id, student_name, status
-         FROM att_attendance_entries
+         FROM cls_attendance_entries
          WHERE attendance_record_id = ?
          ORDER BY student_name COLLATE NOCASE, student_id`,
       )
@@ -539,7 +539,7 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
 
   getAttendanceRecordById(recordId: number): AttendanceRecord | undefined {
     const row = this.db
-      .prepare(`SELECT ${RECORD_COLUMNS} FROM att_attendance_records WHERE id = ?`)
+      .prepare(`SELECT ${RECORD_COLUMNS} FROM cls_attendance_records WHERE id = ?`)
       .get(recordId) as RecordRow | undefined;
     return row ? this.toRecord(row) : undefined;
   }
@@ -559,7 +559,7 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
     const recordRows = this.db
       .prepare(
         `SELECT ${RECORD_COLUMNS}
-         FROM att_attendance_records
+         FROM cls_attendance_records
          WHERE class_id = ?
          ORDER BY attendance_date, recorded_at, id`,
       )
@@ -572,8 +572,8 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
     const entryRows = this.db
       .prepare(
         `SELECT e.attendance_record_id, e.student_id, e.student_name, e.status
-         FROM att_attendance_entries e
-         JOIN att_attendance_records r ON r.id = e.attendance_record_id
+         FROM cls_attendance_entries e
+         JOIN cls_attendance_records r ON r.id = e.attendance_record_id
          WHERE r.class_id = ?
          ORDER BY e.attendance_record_id, e.student_name COLLATE NOCASE, e.student_id`,
       )
@@ -584,9 +584,9 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
     const actionRows = this.db
       .prepare(
         `SELECT a.attendance_record_id, a.student_id, a.action_id, a.action_code, a.action_name
-         FROM att_attendance_entry_actions a
-         JOIN att_attendance_records r ON r.id = a.attendance_record_id
-         LEFT JOIN att_student_actions c ON c.id = a.action_id
+         FROM cls_attendance_entry_actions a
+         JOIN cls_attendance_records r ON r.id = a.attendance_record_id
+         LEFT JOIN cls_student_actions c ON c.id = a.action_id
          WHERE r.class_id = ?
          ORDER BY a.attendance_record_id, COALESCE(c.sequence, 0),
                   a.action_name COLLATE NOCASE, a.id`,
@@ -631,7 +631,7 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
     const rows = this.db
       .prepare(
         `SELECT ${RECORD_COLUMNS}
-         FROM att_attendance_records
+         FROM cls_attendance_records
          WHERE class_id = ? AND attendance_date = ?
          ORDER BY recorded_at DESC, id DESC`,
       )
@@ -643,7 +643,7 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
     const row = this.db
       .prepare(
         `SELECT ${RECORD_COLUMNS}
-         FROM att_attendance_records
+         FROM cls_attendance_records
          WHERE class_id = ? AND attendance_date = ?`,
       )
       .get(classId, attendanceDate) as RecordRow | undefined;
@@ -676,7 +676,7 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
     const write = this.db.transaction(() => {
       const existing = this.db
         .prepare(
-          `SELECT id FROM att_attendance_records WHERE class_id = ? AND attendance_date = ?`,
+          `SELECT id FROM cls_attendance_records WHERE class_id = ? AND attendance_date = ?`,
         )
         .get(input.classId, input.attendanceDate) as { id: number } | undefined;
 
@@ -689,7 +689,7 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
         // time so the label says when the register was last touched.
         this.db
           .prepare(
-            `UPDATE att_attendance_records
+            `UPDATE cls_attendance_records
              SET class_name = @className, recorded_at = @recordedAt,
                  session_label = @sessionLabel, recorded_by_user_id = @recordedByUserId
              WHERE id = @recordId`,
@@ -707,15 +707,15 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
         // their `present`, and an action un-noted must disappear. Neither table
         // declares a FOREIGN KEY, so nothing cascades -- both deletes are explicit.
         this.db
-          .prepare(`DELETE FROM att_attendance_entry_actions WHERE attendance_record_id = ?`)
+          .prepare(`DELETE FROM cls_attendance_entry_actions WHERE attendance_record_id = ?`)
           .run(recordId);
         this.db
-          .prepare(`DELETE FROM att_attendance_entries WHERE attendance_record_id = ?`)
+          .prepare(`DELETE FROM cls_attendance_entries WHERE attendance_record_id = ?`)
           .run(recordId);
       } else {
         const result = this.db
           .prepare(
-            `INSERT INTO att_attendance_records
+            `INSERT INTO cls_attendance_records
                (class_id, class_name, attendance_date, recorded_at, session_label, recorded_by_user_id)
              VALUES (@classId, @className, @attendanceDate, @recordedAt, @sessionLabel, @recordedByUserId)`,
           )
@@ -732,7 +732,7 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
       }
 
       const insertEntry = this.db.prepare(
-        `INSERT INTO att_attendance_entries
+        `INSERT INTO cls_attendance_entries
            (attendance_record_id, student_id, student_name, status)
          VALUES (?, ?, ?, ?)`,
       );
@@ -741,7 +741,7 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
       // use-case resolved — so renaming "Extra Credit" later doesn't rewrite a
       // report that has already been printed.
       const insertEntryAction = this.db.prepare(
-        `INSERT INTO att_attendance_entry_actions
+        `INSERT INTO cls_attendance_entry_actions
            (attendance_record_id, student_id, action_id, action_code, action_name)
          VALUES (?, ?, ?, ?, ?)`,
       );
@@ -788,16 +788,16 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
         // strand entry rows that `listAttendanceRecordsForClass` still joins on.
         this.db
           .prepare(
-            `DELETE FROM att_attendance_entry_actions WHERE attendance_record_id IN (${marks})`,
+            `DELETE FROM cls_attendance_entry_actions WHERE attendance_record_id IN (${marks})`,
           )
           .run(chunk);
         this.db
-          .prepare(`DELETE FROM att_attendance_entries WHERE attendance_record_id IN (${marks})`)
+          .prepare(`DELETE FROM cls_attendance_entries WHERE attendance_record_id IN (${marks})`)
           .run(chunk);
         // `changes` counts registers actually removed, so an id that no longer
         // exists doesn't inflate the total the caller reports back to a teacher.
         deleted += this.db
-          .prepare(`DELETE FROM att_attendance_records WHERE id IN (${marks})`)
+          .prepare(`DELETE FROM cls_attendance_records WHERE id IN (${marks})`)
           .run(chunk).changes;
       }
       return deleted;
@@ -815,8 +815,8 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
                 r.session_label,
                 COALESCE(SUM(CASE WHEN e.status = 'present' THEN 1 ELSE 0 END), 0) AS present_count,
                 COALESCE(SUM(CASE WHEN e.status = 'absent'  THEN 1 ELSE 0 END), 0) AS absent_count
-         FROM att_attendance_records r
-         LEFT JOIN att_attendance_entries e ON e.attendance_record_id = r.id
+         FROM cls_attendance_records r
+         LEFT JOIN cls_attendance_entries e ON e.attendance_record_id = r.id
          WHERE r.class_id = ?
          GROUP BY r.id
          ORDER BY r.attendance_date DESC, r.recorded_at DESC, r.id DESC`,

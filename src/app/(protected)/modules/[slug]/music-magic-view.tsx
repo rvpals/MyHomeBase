@@ -29,6 +29,7 @@ import {
   hasAnyFilter,
   isFolderWithin,
   pruneRedundantFolders,
+  shuffle,
   type MagicCriteria,
   type MagicFolderOption,
   type MagicGenerationStats,
@@ -634,6 +635,16 @@ export function MusicMagicView() {
     setError(undefined);
   };
 
+  // Reorders what is already here; it never re-queries. That is the whole distinction
+  // from Regenerate, which throws these tracks away and draws a fresh set from the
+  // criteria -- so a playlist you are happy with can be re-sequenced without risking
+  // losing it. Fisher-Yates from @/lib/shared/random rather than a sort comparator,
+  // which is biased; `Math.random` is injected here because the decision of *which*
+  // randomness is the caller's, per that module's port-shaped signature.
+  const shuffleTracks = () => {
+    setTracks((previous) => shuffle(previous, Math.random));
+  };
+
   const rows: TrackListRow[] = tracks.map((track) => ({
     id: track.id,
     displayTitle: track.title,
@@ -934,15 +945,42 @@ export function MusicMagicView() {
       {/* Last on the page and open by default: it is the output, so it reads after the
           controls that produce it, and hiding a freshly generated playlist behind a
           shut card would bury the thing the reader just pressed Generate for. */}
+      {/* Two badges rather than one muted string on the right: the count says what the
+          card *is* ("The Playlist (34 tracks)"), so it belongs beside the title where it
+          reads as part of the name, while the running time is a secondary fact and stays
+          out at the right edge. Both use design.md's `brass-soft` chip. Empty playlist,
+          empty slots -- `undefined`, not an empty span, so the header keeps its old
+          spacing before anything is generated. */}
       <CollapsibleCard
         title="The Playlist"
         defaultOpen
+        titleAction={
+          tracks.length === 0 ? undefined : (
+            <span className="rounded-full bg-brass-soft px-2 py-0.5 text-xs font-semibold tabular-nums text-brass-dark">
+              {tracks.length} tracks
+            </span>
+          )
+        }
         headerAction={
-          <span className="text-sm text-muted">
-            {tracks.length === 0
-              ? ""
-              : `${tracks.length} tracks · ${formatRunningTime(storedRunningTime)}`}
-          </span>
+          tracks.length === 0 ? undefined : (
+            // Shuffle lives here rather than in the Criteria card's action bar because
+            // it acts on *this* card's contents -- it is meaningless until something
+            // has been generated, and grouping it with Generate/Regenerate would read
+            // as a third way to produce a playlist rather than a way to reorder one.
+            <span className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                onClick={shuffleTracks}
+                disabled={isBusy || tracks.length < 2}
+                className="!px-2 !py-0.5 !text-xs"
+              >
+                Shuffle
+              </Button>
+              <span className="rounded-full bg-brass-soft px-2 py-0.5 text-xs font-semibold tabular-nums text-brass-dark">
+                {formatRunningTime(storedRunningTime)}
+              </span>
+            </span>
+          )
         }
       >
         <div className="flex flex-col gap-3">
@@ -957,6 +995,7 @@ export function MusicMagicView() {
 
           <TrackList
             rows={rows}
+            numbered
             emptyMessage="Nothing generated yet. Pick some criteria and press Generate."
           />
         </div>

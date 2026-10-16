@@ -32,6 +32,14 @@ export interface ButtonProps {
   ariaExpanded?: boolean;
   /** `id` of the element this button controls, paired with `ariaExpanded`. */
   ariaControls?: string;
+  /**
+   * For a button that is a two-state toggle rather than an action: whether it
+   * is currently on. Without it a screen reader announces only the label, so a
+   * toggle whose state lives in its text ("Will save locked") reads as a button
+   * that performs that action. Ignored when `href` is set — a link isn't a
+   * toggle.
+   */
+  ariaPressed?: boolean;
   /** Caller-supplied classes, merged last so they win. */
   className?: string;
 }
@@ -68,6 +76,7 @@ export function Button({
   ariaLabel,
   ariaExpanded,
   ariaControls,
+  ariaPressed,
   className = "",
 }: ButtonProps) {
   const classes = `${baseClasses} ${sizeClasses[size]} ${variantClasses[variant]} ${className}`;
@@ -90,6 +99,7 @@ export function Button({
       aria-label={ariaLabel}
       aria-expanded={ariaExpanded}
       aria-controls={ariaControls}
+      aria-pressed={ariaPressed}
     >
       {children}
     </button>

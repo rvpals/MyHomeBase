@@ -25,8 +25,8 @@ const INPUT_CLASS =
 
 const LABEL_CLASS = "text-xs font-medium uppercase tracking-wide text-muted";
 
-const ADD_STUDENT_CARD_SLOT = getIconSlot("attendance_card_add_student")!;
-const IMPORT_ROSTER_CARD_SLOT = getIconSlot("attendance_card_import_roster")!;
+const ADD_STUDENT_CARD_SLOT = getIconSlot("classroom_card_add_student")!;
+const IMPORT_ROSTER_CARD_SLOT = getIconSlot("classroom_card_import_roster")!;
 
 interface StudentFormState {
   firstName: string;

@@ -42,8 +42,11 @@ import { deps } from "@/lib/wiring";
 import { requireModuleAccess } from "../../require-access";
 
 
-const ATTENDANCE_MODULE_PATH = "/modules/attendance";
-const ATTENDANCE_MODULE_SLUG = "attendance";
+const CLASSROOM_MODULE_PATH = "/modules/classroom";
+/** The module these actions belong to, matched exactly by `requireModuleAccess`.
+ *  Renamed from `attendance` by migration 0143 — a prefix or a route path would not
+ *  match, and a miss makes only this action throw, only when someone uses it. */
+const CLASSROOM_MODULE_SLUG = "classroom";
 
 export interface ActionResult {
   ok: boolean;
@@ -52,12 +55,12 @@ export interface ActionResult {
 
 /** Every section route, so a write on one screen refreshes the others. */
 function revalidateAttendance(): void {
-  revalidatePath(ATTENDANCE_MODULE_PATH);
-  revalidatePath(`${ATTENDANCE_MODULE_PATH}/rosters`);
-  revalidatePath(`${ATTENDANCE_MODULE_PATH}/classes`);
-  revalidatePath(`${ATTENDANCE_MODULE_PATH}/actions`);
-  revalidatePath(`${ATTENDANCE_MODULE_PATH}/edit`);
-  revalidatePath(`${ATTENDANCE_MODULE_PATH}/report`);
+  revalidatePath(CLASSROOM_MODULE_PATH);
+  revalidatePath(`${CLASSROOM_MODULE_PATH}/rosters`);
+  revalidatePath(`${CLASSROOM_MODULE_PATH}/classes`);
+  revalidatePath(`${CLASSROOM_MODULE_PATH}/actions`);
+  revalidatePath(`${CLASSROOM_MODULE_PATH}/edit`);
+  revalidatePath(`${CLASSROOM_MODULE_PATH}/report`);
 }
 
 function toMessage(error: unknown, fallback: string): string {
@@ -65,7 +68,7 @@ function toMessage(error: unknown, fallback: string): string {
 }
 
 export async function addStudentAction(input: CreateStudentInput): Promise<ActionResult> {
-  await requireModuleAccess(ATTENDANCE_MODULE_SLUG);
+  await requireModuleAccess(CLASSROOM_MODULE_SLUG);
   try {
     addStudent(deps.attendanceRepo, input);
     revalidateAttendance();
@@ -79,7 +82,7 @@ export async function updateStudentAction(
   id: number,
   input: CreateStudentInput,
 ): Promise<ActionResult> {
-  await requireModuleAccess(ATTENDANCE_MODULE_SLUG);
+  await requireModuleAccess(CLASSROOM_MODULE_SLUG);
   try {
     updateStudent(deps.attendanceRepo, id, input);
     revalidateAttendance();
@@ -90,7 +93,7 @@ export async function updateStudentAction(
 }
 
 export async function deleteStudentAction(id: number): Promise<ActionResult> {
-  await requireModuleAccess(ATTENDANCE_MODULE_SLUG);
+  await requireModuleAccess(CLASSROOM_MODULE_SLUG);
   try {
     deleteStudent(deps.attendanceRepo, id);
     revalidateAttendance();
@@ -113,7 +116,7 @@ export interface BulkActionResult extends ActionResult {
  * so a partial failure can't leave half the selection gone.
  */
 export async function deleteStudentsAction(ids: number[]): Promise<BulkActionResult> {
-  await requireModuleAccess(ATTENDANCE_MODULE_SLUG);
+  await requireModuleAccess(CLASSROOM_MODULE_SLUG);
   try {
     const count = deleteStudents(deps.attendanceRepo, ids);
     revalidateAttendance();
@@ -124,7 +127,7 @@ export async function deleteStudentsAction(ids: number[]): Promise<BulkActionRes
 }
 
 export async function createClassAction(input: CreateClassInput): Promise<ActionResult> {
-  await requireModuleAccess(ATTENDANCE_MODULE_SLUG);
+  await requireModuleAccess(CLASSROOM_MODULE_SLUG);
   try {
     createClass(deps.attendanceRepo, input);
     revalidateAttendance();
@@ -138,7 +141,7 @@ export async function updateClassAction(
   id: number,
   input: CreateClassInput,
 ): Promise<ActionResult> {
-  await requireModuleAccess(ATTENDANCE_MODULE_SLUG);
+  await requireModuleAccess(CLASSROOM_MODULE_SLUG);
   try {
     updateClass(deps.attendanceRepo, id, input);
     revalidateAttendance();
@@ -149,7 +152,7 @@ export async function updateClassAction(
 }
 
 export async function deleteClassAction(id: number): Promise<ActionResult> {
-  await requireModuleAccess(ATTENDANCE_MODULE_SLUG);
+  await requireModuleAccess(CLASSROOM_MODULE_SLUG);
   try {
     deleteClass(deps.attendanceRepo, id);
     revalidateAttendance();
@@ -168,7 +171,7 @@ export async function enrollStudentsAction(
   classId: number,
   studentIds: number[],
 ): Promise<EnrollResult> {
-  await requireModuleAccess(ATTENDANCE_MODULE_SLUG);
+  await requireModuleAccess(CLASSROOM_MODULE_SLUG);
   try {
     const { addedCount, skippedCount } = enrollStudents(deps.attendanceRepo, {
       classId,
@@ -185,7 +188,7 @@ export async function removeStudentFromClassAction(
   classId: number,
   studentId: number,
 ): Promise<ActionResult> {
-  await requireModuleAccess(ATTENDANCE_MODULE_SLUG);
+  await requireModuleAccess(CLASSROOM_MODULE_SLUG);
   try {
     removeStudentFromClass(deps.attendanceRepo, classId, studentId);
     revalidateAttendance();
@@ -210,7 +213,7 @@ export interface SaveAttendanceResult extends ActionResult {
 export async function saveAttendanceAction(
   input: Omit<SaveAttendanceInput, "recordedByUserId">,
 ): Promise<SaveAttendanceResult> {
-  await requireModuleAccess(ATTENDANCE_MODULE_SLUG);
+  await requireModuleAccess(CLASSROOM_MODULE_SLUG);
   try {
     const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
     const currentUser = getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo);
@@ -247,7 +250,7 @@ export interface DeleteAttendanceRecordsResult extends ActionResult {
 export async function deleteAttendanceRecordsAction(
   recordIds: number[],
 ): Promise<DeleteAttendanceRecordsResult> {
-  await requireModuleAccess(ATTENDANCE_MODULE_SLUG);
+  await requireModuleAccess(CLASSROOM_MODULE_SLUG);
   try {
     const deleted = deleteAttendanceRecords(deps.attendanceRepo, recordIds);
     revalidateAttendance();
@@ -260,7 +263,7 @@ export async function deleteAttendanceRecordsAction(
 export async function createStudentActionAction(
   input: CreateStudentActionInput,
 ): Promise<ActionResult> {
-  await requireModuleAccess(ATTENDANCE_MODULE_SLUG);
+  await requireModuleAccess(CLASSROOM_MODULE_SLUG);
   try {
     createStudentAction(deps.attendanceRepo, input);
     revalidateAttendance();
@@ -274,7 +277,7 @@ export async function updateStudentActionAction(
   id: number,
   input: CreateStudentActionInput,
 ): Promise<ActionResult> {
-  await requireModuleAccess(ATTENDANCE_MODULE_SLUG);
+  await requireModuleAccess(CLASSROOM_MODULE_SLUG);
   try {
     updateStudentActionUseCase(deps.attendanceRepo, id, input);
     revalidateAttendance();
@@ -288,7 +291,7 @@ export async function setStudentActionActiveAction(
   id: number,
   isActive: boolean,
 ): Promise<ActionResult> {
-  await requireModuleAccess(ATTENDANCE_MODULE_SLUG);
+  await requireModuleAccess(CLASSROOM_MODULE_SLUG);
   try {
     setStudentActionActive(deps.attendanceRepo, id, isActive);
     revalidateAttendance();
@@ -310,7 +313,7 @@ export interface DeleteStudentActionResult extends ActionResult {
 export async function deleteStudentActionAction(
   id: number,
 ): Promise<DeleteStudentActionResult> {
-  await requireModuleAccess(ATTENDANCE_MODULE_SLUG);
+  await requireModuleAccess(CLASSROOM_MODULE_SLUG);
   try {
     const { deleted, recordedUses } = deleteStudentActionUseCase(deps.attendanceRepo, id);
     revalidateAttendance();
@@ -342,7 +345,7 @@ export async function setStudentActionIconAction(
   mimeType: string,
   base64Data: string,
 ): Promise<ActionResult> {
-  await requireModuleAccess(ATTENDANCE_MODULE_SLUG);
+  await requireModuleAccess(CLASSROOM_MODULE_SLUG);
   try {
     setStudentActionIcon(deps.attendanceRepo, id, { mimeType, base64Data } as ImageUploadInput);
     revalidateAttendance();
@@ -353,7 +356,7 @@ export async function setStudentActionIconAction(
 }
 
 export async function clearStudentActionIconAction(id: number): Promise<ActionResult> {
-  await requireModuleAccess(ATTENDANCE_MODULE_SLUG);
+  await requireModuleAccess(CLASSROOM_MODULE_SLUG);
   try {
     clearStudentActionIcon(deps.attendanceRepo, id);
     revalidateAttendance();
@@ -366,9 +369,9 @@ export async function clearStudentActionIconAction(id: number): Promise<ActionRe
 export async function saveAttendanceSettingsAction(
   settings: AttendanceSettings,
 ): Promise<ActionResult> {
-  await requireModuleAccess(ATTENDANCE_MODULE_SLUG);
+  await requireModuleAccess(CLASSROOM_MODULE_SLUG);
   try {
-    const attendanceModule = getModuleBySlug(deps.moduleRepo, ATTENDANCE_MODULE_SLUG);
+    const attendanceModule = getModuleBySlug(deps.moduleRepo, CLASSROOM_MODULE_SLUG);
     if (!attendanceModule) return { ok: false, error: "Attendance module not found." };
 
     saveModuleSettings(deps.moduleSettingsRepo, {

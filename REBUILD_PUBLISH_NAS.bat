@@ -101,7 +101,17 @@ REM launcher safe. Same pattern REBUILD_PUBLISH.bat relies on.
 REM
 REM deploy.trigger stays in /XF: it was just written above, and letting /MIR
 REM consider it would delete it again (it does not exist in staging).
-robocopy "%STAGING%" "%NAS_PATH%" /MIR /XD data /XF .env start.sh app.log app.pid fallback.pid deploy.trigger /R:2 /W:2 >nul
+REM Output flags, so the publish shows what it is actually doing instead of
+REM sitting silent for a minute:
+REM   /NP  no per-file percentage (it spams the console with carriage returns)
+REM   /NDL no directory headers      /NJH no job header      /NJS no summary
+REM   /NC  no "New File"/"Newer" class column
+REM   /NS  no size column
+REM The result is one plain line per file copied or deleted. Drop /NC /NS to get
+REM the class and size columns back, or drop the whole group for the full report.
+echo Copying files...
+echo.
+robocopy "%STAGING%" "%NAS_PATH%" /MIR /XD data /XF .env start.sh app.log app.pid fallback.pid deploy.trigger /R:2 /W:2 /NP /NDL /NJH /NJS /NC /NS
 if errorlevel 8 goto :robocopy_failed
 
 echo.

@@ -35,6 +35,7 @@ export type {
   IcsImportFilter,
   IcsImportPresets,
   IcsImportAction,
+  IcsDuplicateAction,
   IcsImportPlan,
   IcsImportPlanRow,
   IcsImportReview,

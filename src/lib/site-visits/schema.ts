@@ -31,6 +31,8 @@ export const suspicionSignalSchema = z.enum([
   "never_signs_in",
   "auth_failures",
   "allowlist_removed",
+  "blacklisted",
+  "blacklist_removed",
 ]);
 
 /**
@@ -129,6 +131,40 @@ export type NewIpAllowlistEntryInput = z.infer<typeof newIpAllowlistEntrySchema>
 
 /** A stored allowlist row, validated on the way out of the database. */
 export const ipAllowlistEntrySchema = z.object({
+  id: z.number().int().positive(),
+  ipAddress: z.string().min(1),
+  label: z.string().min(1).optional(),
+  addedByUserId: z.number().int().positive().optional(),
+  createdAt: z.string().min(1),
+});
+
+/**
+ * An address to distrust (migrations/0144).
+ *
+ * Same shape and same reasoning as `newIpAllowlistEntrySchema`, including the
+ * deliberate absence of IPv4/IPv6 literal validation: the value echoes whatever the
+ * proxy put in the header, and rejecting an unusual-but-real shape would leave the
+ * reader unable to act on a row they can plainly see. The column is a label, not an
+ * address type.
+ *
+ * `ipAddress` is required and non-blank for the mirror of the allowlist's reason —
+ * distrusting "nothing" would mark every visit whose address could not be determined
+ * as suspicious, which is a different decision than the reader made.
+ */
+export const newIpBlacklistEntrySchema = z.object({
+  ipAddress: z
+    .string()
+    .trim()
+    .min(1, "An address is required.")
+    .max(MAX_IP_LENGTH),
+  label: boundedText(120),
+  addedByUserId: z.number().int().positive().optional(),
+});
+
+export type NewIpBlacklistEntryInput = z.infer<typeof newIpBlacklistEntrySchema>;
+
+/** A stored blacklist row, validated on the way out of the database. */
+export const ipBlacklistEntrySchema = z.object({
   id: z.number().int().positive(),
   ipAddress: z.string().min(1),
   label: z.string().min(1).optional(),

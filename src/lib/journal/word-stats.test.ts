@@ -55,7 +55,7 @@ describe("tokenizeWords", () => {
 
   it("keeps an apostrophe inside a word but strips the possessive", () => {
     // Without the internal-apostrophe rule this would split into "don"+"t".
-    expect(tokenizeWords("don't touch mum's cake")).toEqual(["don't", "mum", "cake"]);
+    expect(tokenizeWords("don't touch mum's cake")).toEqual(["don't", "touch", "mum", "cake"]);
   });
 
   it("strips surrounding quotes without eating the word", () => {

@@ -350,3 +350,192 @@ describe("activeWarningsForTicker", () => {
     expect(activeWarningsForTicker(repo, nearTargetPositions(), "NVDA")).toEqual([]);
   });
 });
+
+/**
+ * BMY: 100 shares at $38.42, down $1.15 a share today, no recorded basis.
+ *
+ * The screenshot's holding, and deliberately basis-free: it is the case the
+ * price types exist for, and the one every 0110 monitor refuses to judge.
+ */
+function bmyPositions() {
+  return new FakePositionReader({
+    BMY: [
+      {
+        unrealizedGainLossCents: 0,
+        costCents: 0,
+        currentPriceCents: 3_842,
+        quantity: 100,
+        // (38.42 - 39.57) * 100 shares, in cents.
+        dayGainLossCents: -11_500,
+      },
+    ],
+  });
+}
+
+describe("createMonitor - the price and day-move types", () => {
+  it("stores a price target", () => {
+    const repo = new FakeTickerMonitorRepository();
+
+    const monitor = createMonitor(repo, {
+      ticker: "bmy",
+      monitorType: "price_near_amount",
+      targetCents: 4_500,
+      bandPct: 1,
+    });
+
+    expect(monitor.ticker).toBe("BMY");
+    expect(monitor.targetCents).toBe(4_500);
+    expect(monitor.bandPct).toBe(1);
+    // Not a directional type, so the column holds its sentinel.
+    expect(monitor.direction).toBe("");
+  });
+
+  it("refuses a price target of zero - a forgotten field", () => {
+    const repo = new FakeTickerMonitorRepository();
+
+    expect(() =>
+      createMonitor(repo, {
+        ticker: "BMY",
+        monitorType: "price_near_amount",
+        targetCents: 0,
+      }),
+    ).toThrow();
+    expect(repo.monitors).toHaveLength(0);
+  });
+
+  it("stores a day-move monitor with its direction", () => {
+    const repo = new FakeTickerMonitorRepository();
+
+    const monitor = createMonitor(repo, {
+      ticker: "BMY",
+      monitorType: "day_move_pct",
+      targetPct: 3,
+      direction: "down",
+    });
+
+    expect(monitor.targetPct).toBe(3);
+    expect(monitor.direction).toBe("down");
+  });
+
+  it("refuses a day-move monitor with no direction", () => {
+    // Defaulting to "up" would store the opposite of what someone who meant
+    // "down" and forgot the flag asked for.
+    const repo = new FakeTickerMonitorRepository();
+
+    expect(() =>
+      createMonitor(repo, {
+        ticker: "BMY",
+        monitorType: "day_move_pct",
+        targetPct: 3,
+      }),
+    ).toThrow();
+    expect(repo.monitors).toHaveLength(0);
+  });
+
+  it("refuses a day-move monitor with no move size", () => {
+    const repo = new FakeTickerMonitorRepository();
+
+    expect(() =>
+      createMonitor(repo, {
+        ticker: "BMY",
+        monitorType: "day_move_pct",
+        targetPct: 0,
+        direction: "up",
+      }),
+    ).toThrow();
+  });
+
+  it("refuses a direction on a type that does not read one", () => {
+    // Storing it would leave a row whose column disagrees with how it is read.
+    const repo = new FakeTickerMonitorRepository();
+
+    expect(() =>
+      createMonitor(repo, {
+        ticker: "NVDA",
+        monitorType: "gain_near_amount",
+        targetCents: TEN_K,
+        direction: "up",
+      }),
+    ).toThrow();
+  });
+});
+
+describe("runMonitors - the price types on a holding with no basis", () => {
+  it("fires a price monitor and files a message", () => {
+    const repo = new FakeTickerMonitorRepository([
+      makeMonitor({
+        id: 1,
+        ticker: "BMY",
+        monitorType: "price_near_amount",
+        // $38.50, with the price at $38.42 - inside a 1% band.
+        targetCents: 3_850,
+        bandPct: 1,
+      }),
+    ]);
+    const messages = new FakeMessageRepository();
+
+    const result = runMonitors(repo, bmyPositions(), messages);
+
+    expect(result.triggered).toBe(1);
+    expect(result.triggeredTickers).toEqual(["BMY"]);
+    expect(repo.getById(1)?.isTriggered).toBe(true);
+    expect(messages.messages).toHaveLength(1);
+    expect(messages.messages[0].body).toContain("$38.42");
+  });
+
+  it("fires a down-move monitor on the day's drop", () => {
+    // -1.15 against a 39.57 close is about -2.91%, so a 2% threshold is met
+    // and a 3% one is not.
+    const repo = new FakeTickerMonitorRepository([
+      makeMonitor({
+        id: 1,
+        ticker: "BMY",
+        monitorType: "day_move_pct",
+        targetCents: 0,
+        targetPct: 2,
+        direction: "down",
+      }),
+      makeMonitor({
+        id: 2,
+        ticker: "BMY",
+        monitorType: "day_move_pct",
+        targetCents: 0,
+        targetPct: 3,
+        direction: "down",
+      }),
+    ]);
+    const messages = new FakeMessageRepository();
+
+    const result = runMonitors(repo, bmyPositions(), messages);
+
+    expect(result.evaluated).toBe(2);
+    expect(result.triggered).toBe(1);
+    expect(repo.getById(1)?.isTriggered).toBe(true);
+    expect(repo.getById(2)?.isTriggered).toBe(false);
+  });
+
+  it("still refuses a gain monitor on the same basis-free holding", () => {
+    // The guard became per-type, not absent: this is the half that must not
+    // have changed.
+    const repo = new FakeTickerMonitorRepository([
+      makeMonitor({ id: 1, ticker: "BMY", targetCents: TEN_K }),
+    ]);
+    const messages = new FakeMessageRepository();
+
+    const result = runMonitors(repo, bmyPositions(), messages);
+
+    expect(result.triggered).toBe(0);
+    expect(messages.messages).toHaveLength(0);
+  });
+});
+
+describe("valuationForTicker - the price figures", () => {
+  it("reports the price and today's move", () => {
+    const valuation = valuationForTicker(bmyPositions(), "bmy");
+
+    expect(valuation.ticker).toBe("BMY");
+    expect(valuation.pricePerShareCents).toBe(3_842);
+    expect(valuation.previousClosePerShareCents).toBe(3_957);
+    expect(valuation.dayChangePct).toBeCloseTo(-2.906, 2);
+  });
+});

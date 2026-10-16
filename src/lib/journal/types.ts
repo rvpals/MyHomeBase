@@ -524,7 +524,37 @@ export interface IcsImportPresets {
    * `false` restores the pre-0089 behaviour: a matched event is replaced whole.
    */
   preserveLocalEdits?: boolean;
+  /**
+   * What to do when an event has already been imported. Default `"refresh"`,
+   * which is what this importer did before the setting existed.
+   *
+   * Distinct from `preserveLocalEdits`, which is a question about *how* to
+   * refresh — this one decides whether to refresh at all. With `"skip"` or
+   * `"duplicate"` the stored entry is never updated, so `preserveLocalEdits`
+   * has nothing to act on and is ignored.
+   */
+  duplicateAction?: IcsDuplicateAction;
 }
+
+/**
+ * What to do with an event whose UID is already on an imported entry.
+ *
+ * Only ever consulted for a *matched* event — an event the journal has never
+ * seen is created whatever this says, because there is no duplicate to have an
+ * opinion about.
+ *
+ * - `refresh` — update that entry in place. The default, and what this importer
+ *   did before the setting existed: a calendar event renamed or moved should
+ *   carry its entry with it rather than leaving a stale copy behind.
+ * - `skip` — leave the stored entry entirely alone. For re-running an export to
+ *   pick up only what is new, without touching anything already imported.
+ * - `duplicate` — write a second entry anyway. Deliberately *not* idempotent:
+ *   running the same file twice under this setting yields two entries, then
+ *   three. It exists because a reader who has deleted an imported entry's
+ *   content and wants a clean copy back has no other route, but it is the one
+ *   option that can grow the journal without bound, so the UI says so.
+ */
+export type IcsDuplicateAction = "refresh" | "skip" | "duplicate";
 
 /** What an import would do with one event. */
 export type IcsImportAction = "create" | "update" | "skip";

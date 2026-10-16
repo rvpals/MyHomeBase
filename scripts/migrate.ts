@@ -57,6 +57,26 @@ const LEGACY_TABLE_RENAMES: ReadonlyArray<readonly [oldName: string, newName: st
   ["stk_index_logos", "inv_index_logos"],
   ["stk_daily_snapshots", "inv_daily_snapshots"],
   ["stk_tax_lots", "inv_tax_lots"],
+
+  // Attendance became a section group inside Classroom (see migrations/0143). The
+  // prefix moved att_ -> cls_, because Classroom owns these tables now and a module
+  // owns one namespace.
+  //
+  // Here rather than in the numbered migration for the reason 0108 and 0024 both
+  // record: migrations/0047, 0051, 0080, 0082, 0092 already CREATE and ALTER the
+  // att_ names, so a numbered `ALTER TABLE ... RENAME` would run against tables a
+  // fresh database never had under the old name.
+  //
+  // Unlike the stk_ block above there is no two-hop trap to avoid: Attendance
+  // arrived at migration 0047, *after* the 0024 prefixing, so these tables were
+  // born prefixed and no pre-prefix entry above targets them.
+  ["att_students", "cls_students"],
+  ["att_classes", "cls_classes"],
+  ["att_class_enrollments", "cls_class_enrollments"],
+  ["att_attendance_records", "cls_attendance_records"],
+  ["att_attendance_entries", "cls_attendance_entries"],
+  ["att_student_actions", "cls_student_actions"],
+  ["att_attendance_entry_actions", "cls_attendance_entry_actions"],
 ];
 
 function tableExists(db: Database.Database, name: string): boolean {

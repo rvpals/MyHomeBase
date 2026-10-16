@@ -5,6 +5,8 @@
 //   npm run cli -- ticker-monitors add NVDA gain-amount 10000
 //   npm run cli -- ticker-monitors add INTC loss-amount 0
 //   npm run cli -- ticker-monitors add NVDA gain-pct 20 --band 3
+//   npm run cli -- ticker-monitors add BMY price 45 --band 1
+//   npm run cli -- ticker-monitors add BMY day-move 3 --down
 //   npm run cli -- ticker-monitors enable 4
 //   npm run cli -- ticker-monitors disable 4
 //   npm run cli -- ticker-monitors delete 4
@@ -23,8 +25,10 @@ import {
   runMonitors,
   setMonitorEnabled,
   summarizeMonitor,
+  usesBand,
   valuationForTicker,
   type MonitorType,
+  type MoveDirection,
   type TickerMonitor,
 } from "@/lib/ticker-monitors";
 import { deps } from "@/lib/wiring";
@@ -32,7 +36,8 @@ import { messageOf } from "./error-message";
 
 const USAGE = `Usage:
   ticker-monitors list <ticker>
-  ticker-monitors add <ticker> <gain-amount|loss-amount|gain-pct> <target> [--band <pct>]
+  ticker-monitors add <ticker> <gain-amount|loss-amount|gain-pct|price|day-move> <target>
+                     [--band <pct>] [--up|--down]
   ticker-monitors enable <id>
   ticker-monitors disable <id>
   ticker-monitors delete <id>
@@ -40,20 +45,33 @@ const USAGE = `Usage:
 
 Targets:
   gain-amount / loss-amount  dollars, e.g. 10000   (loss-amount 0 = break-even)
-  gain-pct                   percent of cost basis, e.g. 20`;
+  gain-pct                   percent of cost basis, e.g. 20
+  price                      dollars per share, e.g. 45   (fires either side of the band)
+  day-move                   percent moved in a day, e.g. 3; needs --up or --down,
+                             ignores --band (it is a threshold, not a band)`;
 
-/** The CLI's kebab names for the three types, kept out of the stored values. */
+/** The CLI's kebab names for the types, kept out of the stored values. */
 const TYPE_BY_NAME: Record<string, MonitorType> = {
   "gain-amount": "gain_near_amount",
   "loss-amount": "loss_near_amount",
   "gain-pct": "gain_near_pct_of_cost",
+  price: "price_near_amount",
+  "day-move": "day_move_pct",
 };
+
+/** Which types read `targetPct` rather than `targetCents`. Mirrors the dialog. */
+function usesPercentTarget(monitorType: MonitorType): boolean {
+  return monitorType === "gain_near_pct_of_cost" || monitorType === "day_move_pct";
+}
 
 function printMonitor(monitor: TickerMonitor): void {
   const state = monitor.isEnabled ? " " : "-";
   const latched = monitor.isTriggered ? " [triggered]" : "";
+  // No ± for the threshold type: it stores a band nothing reads, and printing
+  // one would describe behaviour the monitor does not have.
+  const band = usesBand(monitor.monitorType) ? `  ±${monitor.bandPct}%` : "";
   console.log(
-    `${state} [${monitor.id}] ${monitor.ticker}  ${summarizeMonitor(monitor)}  ±${monitor.bandPct}%${latched}`,
+    `${state} [${monitor.id}] ${monitor.ticker}  ${summarizeMonitor(monitor)}${band}${latched}`,
   );
   if (monitor.lastMessage !== "") console.log(`         last: ${monitor.lastMessage}`);
 }
@@ -76,6 +94,17 @@ export async function tickerMonitorsCommand(args: string[]): Promise<void> {
         console.log(
           `${valuation.ticker}: unrealized ${formatCents(valuation.unrealizedGainLossCents)} on a ${formatCents(valuation.costCents)} basis.`,
         );
+        // The figures the price types are judged against. "unknown" rather than
+        // a 0 or a 0.00%, which would read as a real price and a flat day.
+        const priceText =
+          valuation.pricePerShareCents > 0
+            ? formatCents(valuation.pricePerShareCents)
+            : "unknown";
+        const moveText =
+          valuation.dayChangePct === undefined
+            ? "no previous close"
+            : `${valuation.dayChangePct >= 0 ? "+" : ""}${valuation.dayChangePct.toFixed(2)}% today`;
+        console.log(`${" ".repeat(valuation.ticker.length)}  ${priceText} per share, ${moveText}.`);
         if (monitors.length === 0) {
           console.log("No monitors set.");
           return;
@@ -102,7 +131,15 @@ export async function tickerMonitorsCommand(args: string[]): Promise<void> {
           return;
         }
 
-        const isPercent = monitorType === "gain_near_pct_of_cost";
+        // --up / --down, for the day-move type. Defaulting to "up" would
+        // silently store the opposite of what someone who forgot --down meant,
+        // so an absent flag stays absent and the schema refuses it by name.
+        const isDayMove = monitorType === "day_move_pct";
+        let direction: MoveDirection | "" = "";
+        if (rest.includes("--down")) direction = "down";
+        else if (rest.includes("--up")) direction = "up";
+
+        const isPercent = usesPercentTarget(monitorType);
         const monitor = createMonitor(deps.tickerMonitorRepo, {
           ticker,
           monitorType,
@@ -110,8 +147,10 @@ export async function tickerMonitorsCommand(args: string[]): Promise<void> {
           targetCents: isPercent ? 0 : Math.round(amount * 100),
           targetPct: isPercent ? amount : 0,
           // Left to the schema's default when the flag is absent, rather than
-          // repeating the number here where it could drift.
-          ...(bandPct === undefined ? {} : { bandPct }),
+          // repeating the number here where it could drift. The threshold type
+          // reads no band, so --band is not passed on for it at all.
+          ...(bandPct === undefined || isDayMove ? {} : { bandPct }),
+          direction,
           isEnabled: true,
         });
         console.log(`Added monitor ${monitor.id}: ${summarizeMonitor(monitor)}`);

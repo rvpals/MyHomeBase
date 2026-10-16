@@ -59,7 +59,11 @@ function place(state: PacmanState, row: number, col: number): PacmanState {
 function banishGhosts(state: PacmanState): PacmanState {
   return {
     ...state,
-    ghosts: state.ghosts.map((ghost) => ({ ...ghost, row: 1, col: 1, penTicks: 999 })),
+    // A far corner, NOT (1,1): six call sites place Pac-Man there, and a ghost
+      // sharing his tile is a catch — which respawned him mid-test and made these
+      // read as movement bugs. `penTicks` does not help; `resolveCollisions` only
+      // skips ghosts in `eaten` mode.
+      ghosts: state.ghosts.map((ghost) => ({ ...ghost, row: 26, col: 26, penTicks: 999 })),
   };
 }
 
@@ -273,13 +277,17 @@ describe("tick: eating", () => {
   });
 
   it("does not score the same pellet twice", () => {
+    // Walk right twice, THEN turn back — so the tile re-entered is one this run
+    // actually cleared. Turning back after a single step lands on the start tile,
+    // whose pellet `place()` never removed: it teleports Pac-Man and nothing else,
+    // so that tile still scored and the test was measuring the wrong thing.
     let state = banishGhosts(place(startGame(), 1, 1));
     state = queueDirection(state, "right");
-    state = tick(state, alwaysFirst);
+    state = tick(state, alwaysFirst); // -> (1,2), eats it
+    state = tick(state, alwaysFirst); // -> (1,3), eats it
     const score = state.score;
-    // Turn back onto the tile just cleared.
     state = queueDirection(state, "left");
-    state = tick(state, alwaysFirst);
+    state = tick(state, alwaysFirst); // back onto (1,2), already empty
     expect(state.score).toBe(score);
   });
 

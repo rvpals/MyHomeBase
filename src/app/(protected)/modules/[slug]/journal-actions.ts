@@ -158,6 +158,17 @@ export interface NewJournalEntryInput {
   locations: JournalLocationInput[];
   weather?: EntryWeatherInput;
   isPinned?: boolean;
+  /**
+   * Save the entry already locked — the New Entry form's lock toggle. Optional
+   * and defaulted to false below, so every existing caller (the CSV importer,
+   * the CLI, the merge dialog) keeps writing unlocked entries exactly as before.
+   *
+   * Only `createJournalEntryAction` honours it. `updateJournalEntryAction`
+   * ignores it on purpose: `updateEntry` refuses a locked entry outright and
+   * carries the stored lock through, so a lock is changed only via
+   * `setEntryLockAction` once the entry exists.
+   */
+  isLocked?: boolean;
 }
 
 export async function createJournalEntryAction(input: NewJournalEntryInput): Promise<ActionResult> {
@@ -174,6 +185,7 @@ export async function createJournalEntryAction(input: NewJournalEntryInput): Pro
       locations: input.locations,
       weather: input.weather,
       isPinned: input.isPinned ?? false,
+      isLocked: input.isLocked ?? false,
     });
   } catch (error) {
     return toErrorResult(error, "Failed to save entry.");

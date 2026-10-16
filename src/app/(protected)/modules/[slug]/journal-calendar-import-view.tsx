@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
@@ -15,6 +15,7 @@ import {
 } from "@/lib/journal";
 import { formatDurationShort } from "@/lib/shared/date";
 import type {
+  IcsDuplicateAction,
   IcsImportFilter,
   IcsImportPresets,
   IcsImportReview,
@@ -50,6 +51,43 @@ const DEFAULT_CATEGORY = "Log";
  * reason to differ per install.
  */
 const REVIEW_PAGE_SIZE = 10;
+
+/**
+ * The choices card 4 offers for an already-imported event.
+ *
+ * A table rather than three hand-written blocks so the labels and their
+ * explanations stay together, and the radio list is one map. The values are the
+ * library's `IcsDuplicateAction`, so a typo here is a typecheck failure rather
+ * than a silently ignored setting.
+ */
+const DUPLICATE_ACTION_OPTIONS: {
+  value: IcsDuplicateAction;
+  label: string;
+  description: string;
+}[] = [
+  {
+    value: "refresh",
+    label: "Refresh the existing entry",
+    description:
+      "The entry follows the calendar: its title, date, time and place are updated in place. " +
+      "This is the default, and keeps one entry per event however many times you re-import.",
+  },
+  {
+    value: "skip",
+    label: "Leave the existing entry alone",
+    description:
+      "Already-imported events are skipped entirely, so only events new to this journal are " +
+      "written. Use this to pick up additions to a calendar without disturbing what you have.",
+  },
+  {
+    value: "duplicate",
+    label: "Import it again as a new entry",
+    description:
+      "Writes a second entry rather than touching the first. Repeating this keeps adding " +
+      "entries — two runs give you two copies, three give you three — so reach for it only " +
+      "when you want a fresh copy of something you have changed beyond use.",
+  },
+];
 
 
 export interface JournalCalendarImportViewProps {
@@ -129,6 +167,17 @@ export function JournalCalendarImportView({
   const router = useRouter();
 
   const [fileName, setFileName] = useState("");
+  /**
+   * The real `<input type="file">`, kept hidden and clicked by the button.
+   *
+   * A file dialog can only be opened by a genuine user gesture on an input, so
+   * the button forwards its click here rather than the input being restyled —
+   * `::file-selector-button` can't be made to match `Button`, and a `<label>`
+   * dressed as a button loses the disabled state while a parse is running.
+   */
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  /** Whether a drag is currently over the drop zone — purely the highlight. */
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
   /** The chosen file itself, re-sent on import as a FormData blob. */
   const [file, setFile] = useState<File | undefined>(undefined);
   const [calendarName, setCalendarName] = useState("");
@@ -157,6 +206,9 @@ export function JournalCalendarImportView({
     // Ticked by default: keeping your own writing is the safe behaviour, and a
     // full replace is the deliberate act. See migration 0089.
     preserveLocalEdits: true,
+    // The importer's long-standing behaviour, stated rather than left to the
+    // schema's default so card 4 opens with a radio visibly selected.
+    duplicateAction: "refresh",
   });
   // Categories and tags are edited as delimited text, matching the entry form's
   // own inputs — the split happens once, on submit.
@@ -165,6 +217,16 @@ export function JournalCalendarImportView({
 
   const [rows, setRows] = useState<IcsPreviewRow[]>([]);
   const [isBusy, setIsBusy] = useState(false);
+  /**
+   * Whether the file is being parsed right now — drives the "please wait"
+   * dialog over step 4.
+   *
+   * A flag of its own rather than reusing `isBusy`, which is also raised by the
+   * import write, the review check and the quick-edit save: keyed off that, the
+   * dialog would claim it was parsing a calendar while saving one entry's title.
+   * Set only inside `readFile`, which is the one path that actually parses.
+   */
+  const [isParsing, setIsParsing] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -288,6 +350,9 @@ export function JournalCalendarImportView({
    */
   async function readFile(chosenFile: File, nextFilter: IcsImportFilter) {
     setIsBusy(true);
+    // Raised before the await, so the dialog covers the whole call rather than
+    // flashing up as it returns.
+    setIsParsing(true);
     setError("");
     setNotice("");
     try {
@@ -317,6 +382,9 @@ export function JournalCalendarImportView({
     } catch (caught) {
       setError(describeUploadFailure(caught, chosenFile));
     } finally {
+      // Cleared in `finally` for the reason the import's is: a file that throws
+      // mid-parse must not leave the dialog up with nothing running behind it.
+      setIsParsing(false);
       setIsBusy(false);
     }
   }
@@ -324,6 +392,30 @@ export function JournalCalendarImportView({
   async function onFileChosen(chosen: File | undefined) {
     if (!chosen) return;
     await readFile(chosen, filter);
+  }
+
+  /**
+   * Accepts a dropped file, refusing anything that isn't a calendar.
+   *
+   * The extension is checked rather than the MIME type: a `.ics` dropped from
+   * Windows Explorer routinely arrives as `""` or `application/octet-stream`
+   * depending on what is registered to open it, so trusting `file.type` would
+   * reject perfectly good files. The parser is the real validator — this only
+   * catches the obvious mistake of dropping a photo, and says so rather than
+   * letting the reader wait for a parse that was never going to work.
+   */
+  async function onFileDropped(dropped: File | undefined) {
+    if (!dropped) return;
+
+    if (!dropped.name.toLowerCase().endsWith(".ics")) {
+      setError(
+        `“${dropped.name}” isn’t a calendar file. Drop the .ics file from your ` +
+          "Google Calendar export (unzip it first).",
+      );
+      return;
+    }
+
+    await readFile(dropped, filter);
   }
 
   /** Re-applies the filter, or the presets, to the file already loaded. */
@@ -441,6 +533,27 @@ export function JournalCalendarImportView({
    */
   function decideDate(date: string, decision: "import" | "skip") {
     setDecisions((current) => ({ ...current, [date]: decision }));
+  }
+
+  /**
+   * Records the same decision for every date on the current page.
+   *
+   * "The batch on screen" is exactly `visibleGroups`, so this deliberately does
+   * *not* touch a date on another page — a reader who marks a page as Import has
+   * said something about the ten dates in front of them, not about forty they
+   * haven't read. Working through the review a page at a time is the whole point
+   * of the paging, and `Commit reviewed` already writes only decided dates.
+   *
+   * Overwrites an existing answer on those dates rather than filling in only the
+   * blanks: the buttons read as "mark this batch", and a reader correcting a
+   * mis-set page expects the second press to win.
+   */
+  function decideVisibleDates(decision: "import" | "skip") {
+    setDecisions((current) => {
+      const next = { ...current };
+      for (const group of visibleGroups) next[group.date] = decision;
+      return next;
+    });
   }
 
   function toggleExpandedDate(date: string) {
@@ -695,13 +808,61 @@ export function JournalCalendarImportView({
         }
       >
         <div className="flex flex-col gap-3">
+          {/* The input itself is never seen: it carries the file dialog, and the
+              button below opens it. `hidden` rather than `sr-only` — it is not
+              a control a screen reader should land on separately, since the
+              button is the labelled affordance for the same action.
+
+              Reset to "" on every change so choosing the *same* file twice in a
+              row still fires `onChange`; without it the second pick is silently
+              ignored, which reads as the screen having frozen. */}
           <input
+            ref={fileInputRef}
             type="file"
             accept=".ics,text/calendar"
-            disabled={isBusy}
-            onChange={(changeEvent) => void onFileChosen(changeEvent.target.files?.[0])}
-            className="text-sm text-ink"
+            hidden
+            onChange={(changeEvent) => {
+              const chosen = changeEvent.target.files?.[0];
+              changeEvent.target.value = "";
+              void onFileChosen(chosen);
+            }}
           />
+
+          {/* The drop zone doubles as the button's surround: one target, so
+              there is no gap between "click here" and "drop here" that does
+              nothing. A plain div rather than a label — the button inside it
+              would otherwise open the dialog twice per click, once itself and
+              once through the label. */}
+          <div
+            onDragOver={(dragEvent) => {
+              // Both required: without the preventDefault the browser navigates
+              // to the dropped file instead of letting the handler run.
+              dragEvent.preventDefault();
+              if (!isBusy) setIsDraggingOver(true);
+            }}
+            onDragLeave={() => setIsDraggingOver(false)}
+            onDrop={(dropEvent) => {
+              dropEvent.preventDefault();
+              setIsDraggingOver(false);
+              if (isBusy) return;
+              void onFileDropped(dropEvent.dataTransfer.files?.[0]);
+            }}
+            className={`flex flex-col items-center gap-2 rounded-md border-2 border-dashed px-4 py-6 text-center transition-colors ${
+              isDraggingOver ? "border-brass bg-brass-soft/40" : "border-line bg-paper"
+            } ${isBusy ? "opacity-60" : ""}`}
+          >
+            <Button
+              size="sm"
+              disabled={isBusy}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              Choose file
+            </Button>
+            <p className="text-xs text-muted">
+              or drag a <span className="text-ink">.ics</span> file here
+            </p>
+          </div>
+
           {fileName !== "" && (
             <p className="text-xs text-muted">
               <span className="text-ink">{fileName}</span>
@@ -898,7 +1059,58 @@ export function JournalCalendarImportView({
         </div>
       </CollapsibleCard>
 
-      <CollapsibleCard title="4. Pick what to import" defaultOpen>
+      <CollapsibleCard title="4. Default options for import" defaultOpen>
+        <div className="flex flex-col gap-3">
+          <p className="text-xs text-muted">
+            What to do with an event this journal has{" "}
+            <span className="text-ink">already imported</span> — matched by the event&apos;s
+            calendar ID, so a renamed or moved event is still recognised as the same one. An
+            event that has never been imported is always created, whichever of these is chosen.
+          </p>
+
+          <fieldset className="flex flex-col gap-2">
+            <legend className="sr-only">Action for already-imported events</legend>
+            {DUPLICATE_ACTION_OPTIONS.map((option) => (
+              <label key={option.value} className="flex items-start gap-2 text-xs text-ink">
+                <input
+                  type="radio"
+                  name="journal-ics-duplicate-action"
+                  className="mt-0.5"
+                  value={option.value}
+                  checked={(presets.duplicateAction ?? "refresh") === option.value}
+                  onChange={() =>
+                    setPresets({ ...presets, duplicateAction: option.value })
+                  }
+                />
+                <span>
+                  {option.label}
+                  <span className="mt-0.5 block text-muted">{option.description}</span>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+
+          {/* Only "refresh" writes to an existing entry, so the note about
+              keeping your own edits is only true under that option. Said here
+              rather than silently, because the checkbox lives in card 3 and a
+              reader who set "skip" could otherwise wonder why it stopped
+              mattering. */}
+          {(presets.duplicateAction ?? "refresh") !== "refresh" && (
+            <p className="text-xs text-muted">
+              <span className="text-ink">Keep my own notes and edits</span> in card 3 only
+              applies when refreshing, so it has no effect on this setting.
+            </p>
+          )}
+
+          <div>
+            <Button size="sm" disabled={isBusy || !file} onClick={() => void applyFilter()}>
+              Apply these options
+            </Button>
+          </div>
+        </div>
+      </CollapsibleCard>
+
+      <CollapsibleCard title="5. Pick which entries to import" defaultOpen>
         <div className="flex flex-col gap-3">
           {rows.length === 0 ? (
             <p className="text-sm text-muted">
@@ -1029,6 +1241,13 @@ export function JournalCalendarImportView({
                   by Commit.
                 </p>
                 <p>
+                  <strong className="text-ink">Mark batch as Import</strong> and{" "}
+                  <strong className="text-ink">Mark batch Don&apos;t import</strong> set every
+                  date <em>on this page</em> at once — dates on other pages are left alone. Either
+                  one overwrites answers already given on this page, and a single date can still
+                  be changed afterwards with its own two buttons.
+                </p>
+                <p>
                   <strong className="text-ink">Commit reviewed</strong> writes just the dates you
                   kept, then clears every date you&apos;ve decided and leaves the rest here — so
                   a long calendar can be worked through {REVIEW_PAGE_SIZE} dates at a time instead
@@ -1051,35 +1270,72 @@ export function JournalCalendarImportView({
 
             {/* Only shown when there is more than one page: a short review
                 should not have to read past paging chrome it doesn't need. */}
-            {pageCount > 1 && (
-              <div className="flex items-center justify-between gap-3 rounded-md border border-line bg-paper px-3 py-2 max-lg:flex-col max-lg:items-stretch">
-                <p className="text-xs text-muted">
-                  Showing {pageStart + 1}–{pageStart + visibleGroups.length} of{" "}
-                  {reviewedGroups.length} dates · page {safePage + 1} of {pageCount}
-                  {decidedCount > 0 && (
-                    <span className="text-brass-dark"> · {decidedCount} decided</span>
-                  )}
-                </p>
-                <div className="flex shrink-0 gap-2 max-lg:w-full">
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={isBusy || safePage === 0}
-                    onClick={() => setReviewPage(Math.max(0, safePage - 1))}
-                  >
-                    Back
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={isBusy || safePage >= pageCount - 1}
-                    onClick={() => setReviewPage(Math.min(pageCount - 1, safePage + 1))}
-                  >
-                    Next
-                  </Button>
-                </div>
+            {/* The bar renders whatever the page count is, because the two bulk
+                buttons are useful on a single-page review too — it was the
+                paging *chrome* that a short review didn't need, not a way to
+                clear the list in one press. Back and Next stay gated on there
+                being somewhere to go.
+
+                Wraps below 1024px: four small buttons and the count don't fit on
+                one phone line, so the row becomes a column and each group goes
+                full width. */}
+            <div className="flex items-center justify-between gap-3 rounded-md border border-line bg-paper px-3 py-2 max-lg:flex-col max-lg:items-stretch">
+              <p className="text-xs text-muted">
+                Showing {pageStart + 1}–{pageStart + visibleGroups.length} of{" "}
+                {reviewedGroups.length} dates
+                {pageCount > 1 && <> · page {safePage + 1} of {pageCount}</>}
+                {decidedCount > 0 && (
+                  <span className="text-brass-dark"> · {decidedCount} decided</span>
+                )}
+              </p>
+              <div className="flex shrink-0 flex-wrap gap-2 max-lg:w-full">
+                {/* Act on the dates on screen only — see `decideVisibleDates`.
+                    Labelled "this page" rather than "batch" when there is more
+                    than one, so it can't be read as "all 40 dates". */}
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={isBusy || visibleGroups.length === 0}
+                  onClick={() => decideVisibleDates("import")}
+                  title={`Mark all ${visibleGroups.length} date${
+                    visibleGroups.length === 1 ? "" : "s"
+                  } on this page as Import`}
+                >
+                  Mark batch as Import
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={isBusy || visibleGroups.length === 0}
+                  onClick={() => decideVisibleDates("skip")}
+                  title={`Mark all ${visibleGroups.length} date${
+                    visibleGroups.length === 1 ? "" : "s"
+                  } on this page as Don't import`}
+                >
+                  Mark batch Don&apos;t import
+                </Button>
+                {pageCount > 1 && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={isBusy || safePage === 0}
+                      onClick={() => setReviewPage(Math.max(0, safePage - 1))}
+                    >
+                      Back
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={isBusy || safePage >= pageCount - 1}
+                      onClick={() => setReviewPage(Math.min(pageCount - 1, safePage + 1))}
+                    >
+                      Next
+                    </Button>
+                  </>
+                )}
               </div>
-            )}
+            </div>
 
             {visibleGroups.map((group) => {
               const decision = decisions[group.date];
@@ -1372,6 +1628,38 @@ export function JournalCalendarImportView({
           ) : (
             <p className="text-sm text-muted">Reading the entry…</p>
           )}
+        </Modal>
+      )}
+
+      {/* While the file is being parsed. Same shape as the import dialog below
+          and for the same reasons: a large export takes a noticeable moment on
+          the server, and until this existed the screen simply sat there with a
+          disabled file input and four unchanged cards.
+
+          Suppressed while a write is in flight so it can't stack on the import
+          dialog — `runImport` raises `isBusy` too, but never `isParsing`, so the
+          two are already exclusive; this is belt and braces for a future caller.
+
+          The bar is indeterminate for the reason the import's is: parsing is one
+          server action that returns only when it's done, so a percentage here
+          would be invented. */}
+      {isParsing && importingCount === undefined && (
+        <Modal
+          title="Reading the calendar"
+          size="sm"
+          isBusy
+          onClose={() => {
+            /* Not dismissable while parsing — the read owns this dialog. */
+          }}
+        >
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-ink">Please wait, parsing the ics file...</p>
+            <Progress3D value={undefined} ariaLabel="Calendar parse progress" />
+            <p className="text-xs text-muted">
+              A calendar export covering years can hold thousands of events. The list below
+              fills in once the file has been read.
+            </p>
+          </div>
         </Modal>
       )}
 

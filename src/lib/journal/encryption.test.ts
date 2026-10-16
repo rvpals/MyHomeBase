@@ -49,7 +49,10 @@ describe("encryptEntryText / decryptEntryText", () => {
     expect(decryptEntryText(second, PASSWORD)).toBe("same text");
   });
 
-  it("never repeats a salt or an IV across many encryptions", () => {
+  // 20s: this runs scryptSync 200 times, and scrypt is slow BY DESIGN (N=16384).
+  // ~9s on a dev machine, which overruns vitest's 5s default. The loop count is the
+  // point of the test, so the timeout moves rather than the loop.
+  it("never repeats a salt or an IV across many encryptions", { timeout: 20_000 }, () => {
     const salts = new Set<string>();
     const ivs = new Set<string>();
     for (let i = 0; i < 200; i += 1) {

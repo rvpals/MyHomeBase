@@ -1,11 +1,17 @@
 import type Database from "better-sqlite3";
-import type { IpAllowlistRepository, SiteVisitRepository } from "./ports";
-import { ipAllowlistEntrySchema, siteVisitSchema } from "./schema";
+import type {
+  IpAllowlistRepository,
+  IpBlacklistRepository,
+  SiteVisitRepository,
+} from "./ports";
+import { ipAllowlistEntrySchema, ipBlacklistEntrySchema, siteVisitSchema } from "./schema";
 import { decodeSignals, encodeSignals } from "./suspicion";
 import type {
   IpAllowlistEntry,
+  IpBlacklistEntry,
   IpHistory,
   NewIpAllowlistEntry,
+  NewIpBlacklistEntry,
   NewSiteVisit,
   SiteVisit,
   SiteVisitFilter,
@@ -26,7 +32,8 @@ interface SiteVisitRow {
   created_at: string;
 }
 
-interface AllowlistRow {
+/** Both lists have identical columns (migrations/0103, 0144), so one row shape serves. */
+interface IpListRow {
   id: number;
   ip_address: string;
   label: string;
@@ -55,8 +62,19 @@ function toDomain(row: SiteVisitRow): SiteVisit {
   });
 }
 
-function toAllowlistDomain(row: AllowlistRow): IpAllowlistEntry {
+function toAllowlistDomain(row: IpListRow): IpAllowlistEntry {
   return ipAllowlistEntrySchema.parse({
+    id: row.id,
+    ipAddress: row.ip_address,
+    label: blankToUndefined(row.label),
+    addedByUserId: row.added_by_user_id ?? undefined,
+    createdAt: row.created_at,
+  });
+}
+
+/** Parsed through its own schema, not the allowlist's — the two types are distinct. */
+function toBlacklistDomain(row: IpListRow): IpBlacklistEntry {
+  return ipBlacklistEntrySchema.parse({
     id: row.id,
     ipAddress: row.ip_address,
     label: blankToUndefined(row.label),
@@ -165,7 +183,7 @@ export class SqliteSiteVisitRepository implements SiteVisitRepository {
   getIpHistory(
     ipAddress: string,
     burstWindowMinutes: number,
-  ): Omit<IpHistory, "allowlisted"> {
+  ): Omit<IpHistory, "allowlisted" | "blacklisted"> {
     const visits = this.db
       .prepare(
         `SELECT
@@ -280,7 +298,7 @@ export class SqliteIpAllowlistRepository implements IpAllowlistRepository {
          FROM sys_ip_allowlist
          ORDER BY created_at DESC, id DESC`,
       )
-      .all() as AllowlistRow[];
+      .all() as IpListRow[];
 
     return rows.map(toAllowlistDomain);
   }
@@ -295,6 +313,69 @@ export class SqliteIpAllowlistRepository implements IpAllowlistRepository {
 
   remove(id: number): boolean {
     const result = this.db.prepare("DELETE FROM sys_ip_allowlist WHERE id = ?").run(id);
+    return result.changes > 0;
+  }
+
+  removeByAddress(ipAddress: string): boolean {
+    const result = this.db
+      .prepare("DELETE FROM sys_ip_allowlist WHERE ip_address = ?")
+      .run(ipAddress);
+    return result.changes > 0;
+  }
+}
+
+/**
+ * The blacklist. A line-for-line mirror of the allowlist above, against its own table.
+ *
+ * Kept as a separate class rather than one parameterised by table name: the two are
+ * read in different places for opposite reasons, and a shared implementation would
+ * make "which list is this" a runtime argument on a call that must never get it wrong.
+ */
+export class SqliteIpBlacklistRepository implements IpBlacklistRepository {
+  constructor(private db: Database.Database) {}
+
+  add(entry: NewIpBlacklistEntry): boolean {
+    // OR IGNORE against the UNIQUE index (migrations/0144), which is what makes this
+    // idempotent — the bulk action ticks rows that often share an address.
+    const result = this.db
+      .prepare(
+        `INSERT OR IGNORE INTO sys_ip_blacklist (ip_address, label, added_by_user_id)
+         VALUES (?, ?, ?)`,
+      )
+      .run(entry.ipAddress, entry.label ?? "", entry.addedByUserId ?? null);
+
+    return result.changes > 0;
+  }
+
+  list(): IpBlacklistEntry[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, ip_address, label, added_by_user_id, created_at
+         FROM sys_ip_blacklist
+         ORDER BY created_at DESC, id DESC`,
+      )
+      .all() as IpListRow[];
+
+    return rows.map(toBlacklistDomain);
+  }
+
+  isBlocked(ipAddress: string): boolean {
+    const row = this.db
+      .prepare("SELECT 1 AS hit FROM sys_ip_blacklist WHERE ip_address = ? LIMIT 1")
+      .get(ipAddress) as { hit: number } | undefined;
+
+    return row !== undefined;
+  }
+
+  remove(id: number): boolean {
+    const result = this.db.prepare("DELETE FROM sys_ip_blacklist WHERE id = ?").run(id);
+    return result.changes > 0;
+  }
+
+  removeByAddress(ipAddress: string): boolean {
+    const result = this.db
+      .prepare("DELETE FROM sys_ip_blacklist WHERE ip_address = ?")
+      .run(ipAddress);
     return result.changes > 0;
   }
 }

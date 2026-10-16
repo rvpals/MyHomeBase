@@ -16,7 +16,9 @@ import type { ModuleSeed } from "./types";
 // migrations/0085_picture_gallery_photo_icon.sql (which moved Picture Gallery off
 // the borrowed `heart` onto a real photo glyph), and
 // migrations/0098_seed_tools_module.sql, and
-// migrations/0119_seed_household_module.sql.
+// migrations/0119_seed_household_module.sql, and
+// migrations/0143_rename_attendance_to_classroom.sql (which renamed the Attendance
+// module to Classroom, folding Attendance into it as a section group).
 // "Reset to Default" restores the table to exactly this list — keep both in sync.
 export const DEFAULT_MODULES: ModuleSeed[] = [
   {
@@ -56,10 +58,14 @@ export const DEFAULT_MODULES: ModuleSeed[] = [
     icon: "wallet",
   },
   {
-    slug: "attendance",
-    shortName: "Attendance",
-    longName: "Class Attendance",
-    description: "Take daily attendance for a class.",
+    // Was Attendance until migration 0143, which made Attendance a section group
+    // inside Classroom and added a second group for Exam. Keeps sequence 6 and the
+    // `roster` glyph — there is no `classroom` module icon, and `roster` is already
+    // "a class register".
+    slug: "classroom",
+    shortName: "Classroom",
+    longName: "Classroom",
+    description: "Attendance registers and exams.",
     sequence: 6,
     isVisible: true,
     icon: "roster",

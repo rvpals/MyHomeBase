@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DEFAULT_BAND_PCT, MONITOR_TYPES } from "./types";
+import { DEFAULT_BAND_PCT, MONITOR_TYPES, MOVE_DIRECTIONS } from "./types";
 
 /**
  * The boundary for ticker monitors. The web actions and the CLI both parse
@@ -17,6 +17,15 @@ export const monitorTickerSchema = z
   .transform((value) => value.toUpperCase());
 
 export const monitorTypeSchema = z.enum(MONITOR_TYPES);
+
+/**
+ * Which way a `day_move_pct` monitor watches.
+ *
+ * Empty string is valid and is what every other type stores — the column's
+ * "not applicable" sentinel (0148). Defaulted so a caller setting one of the
+ * four non-directional types need not mention a direction at all.
+ */
+export const directionSchema = z.enum(["", ...MOVE_DIRECTIONS]).default("");
 
 /**
  * The band has a floor and a ceiling.
@@ -58,6 +67,7 @@ const monitorFieldsSchema = z.object({
   targetPct: targetPctSchema.default(0),
   bandPct: bandPctSchema,
   isEnabled: z.boolean().default(true),
+  direction: directionSchema,
 });
 
 /**
@@ -72,7 +82,12 @@ const monitorFieldsSchema = z.object({
  * `loss_near_amount` is deliberately exempt: 0 is its most useful target.
  */
 function requireTargetForType(
-  value: { monitorType: string; targetCents: number; targetPct: number },
+  value: {
+    monitorType: string;
+    targetCents: number;
+    targetPct: number;
+    direction: string;
+  },
   ctx: z.RefinementCtx,
 ): void {
   if (value.monitorType === "gain_near_amount" && value.targetCents <= 0) {
@@ -87,6 +102,46 @@ function requireTargetForType(
       code: z.ZodIssueCode.custom,
       path: ["targetPct"],
       message: "Set the percentage of cost basis to watch for.",
+    });
+  }
+
+  // A price target of 0 is the forgotten-field case, as it is for the gain
+  // type. Unlike `loss_near_amount` there is no reading under which it means
+  // something: a share does not approach being worth nothing on purpose.
+  if (value.monitorType === "price_near_amount" && value.targetCents <= 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["targetCents"],
+      message: "Set the share price to watch for.",
+    });
+  }
+
+  if (value.monitorType === "day_move_pct") {
+    if (value.targetPct <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["targetPct"],
+        message: "Set how big a one-day move to watch for.",
+      });
+    }
+    // Without a direction this type cannot be evaluated at all — the evaluator
+    // would have to guess which way, and guessing "up" would silently store a
+    // monitor that watches the opposite of what a reader picking "down" meant.
+    if (value.direction !== "up" && value.direction !== "down") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["direction"],
+        message: "Choose whether to watch for an up move or a down move.",
+      });
+    }
+  } else if (value.direction !== "") {
+    // Refused rather than quietly blanked: a direction on a gain monitor means
+    // the caller believes it does something, and storing it would leave a row
+    // whose column disagrees with how it is read.
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["direction"],
+      message: "Only a one-day move monitor takes a direction.",
     });
   }
 }

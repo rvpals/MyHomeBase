@@ -34,7 +34,7 @@ describe("buildReceiptPath", () => {
 
 describe("sanitizeNameSegment", () => {
   it("drops characters a filesystem forbids and hyphenates spaces", () => {
-    expect(sanitizeNameSegment('Bob\'s <Pharmacy>: "Main/St"')).toBe("Bob's-PharmacyMainSt");
+    expect(sanitizeNameSegment('Bob\'s <Pharmacy>: "Main/St"')).toBe("Bob's-Pharmacy-MainSt");
   });
 
   it("trims trailing dots, which Windows silently strips", () => {

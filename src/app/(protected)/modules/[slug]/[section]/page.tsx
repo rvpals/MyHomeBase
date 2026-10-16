@@ -1,12 +1,12 @@
 import { cookies } from "next/headers";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { getModuleBySlug } from "@/lib/modules";
 import { isAdmin, userHasModuleAccess } from "@/lib/user";
 import { deps } from "@/lib/wiring";
 import { PAGE_CONTAINER } from "../../../page-container";
-import { AttendanceSection } from "../attendance-section";
-import { isAttendanceSection } from "../attendance-sections";
+import { ClassroomSection } from "../classroom-section";
+import { isClassroomSection } from "../classroom-sections";
 import { CsvSection } from "../csv-section";
 import { isCsvSection } from "../csv-sections";
 import { ExpenseSection } from "../expense-section";
@@ -26,7 +26,13 @@ import { isToolsSection } from "../tools-sections";
 import { HouseholdSection } from "../household-section";
 import { isHouseholdSection } from "../household-sections";
 
-const ATTENDANCE_MODULE_SLUG = "attendance";
+const CLASSROOM_MODULE_SLUG = "classroom";
+/**
+ * The slug Classroom carried until migration 0143. Kept only to redirect: every
+ * attendance section kept its own slug, so `/modules/attendance/report` maps
+ * one-for-one onto `/modules/classroom/report` and a bookmark survives.
+ */
+const RETIRED_ATTENDANCE_SLUG = "attendance";
 const CSV_ANALYSIS_MODULE_SLUG = "csv-analysis";
 const EXPENSE_MODULE_SLUG = "expense";
 const GAMES_MODULE_SLUG = "games";
@@ -75,13 +81,16 @@ function renderSection(
   requestedReportEdit: string | undefined,
   requestedReportRun: string | undefined,
 ) {
-  if (slug === ATTENDANCE_MODULE_SLUG && isAttendanceSection(section)) {
+  if (slug === CLASSROOM_MODULE_SLUG && isClassroomSection(section)) {
     return (
-      <AttendanceSection
+      <ClassroomSection
         section={section}
         requestedClassId={requestedClassId}
         requestedDate={requestedDate}
         requestedFormat={requestedFormat}
+        // The same ?edit= the Journal report editor uses — one param meaning "open
+        // this record for editing", not a second one spelled differently.
+        requestedExamEdit={requestedReportEdit}
       />
     );
   }
@@ -114,7 +123,7 @@ function renderSection(
         requestedTab={requestedTab}
         calendarScope={calendarScope}
         calendarAnchor={calendarAnchor}
-        // ?date= is shared with the Attendance report rather than given a second
+        // ?date= is shared with the Classroom attendance report rather than given a second
         // name: both mean "the day this screen is showing".
         selectedDate={requestedDate}
         requestedReportEdit={requestedReportEdit}
@@ -164,7 +173,7 @@ export default async function ModuleSectionPage({
   // `filter` carries a journal filter query, so a filtered entry list is a real
   // URL — linkable, shareable, and surviving a refresh or a back button. That's
   // why the Top Tags/Categories cards link here rather than pushing client state.
-  // `classId`/`date` do the same job for the Attendance report, and `date` is
+  // `classId`/`date` do the same job for the Classroom attendance report, and `date` is
   // reused by the Journal calendar for the day whose entries are listed.
   // `scope`/`anchor` carry which calendar period is on screen, so a month (or a
   // year, or one week) is a bookmarkable URL.
@@ -294,6 +303,19 @@ export default async function ModuleSectionPage({
   // Same first-element rule. Raw again: an unknown tab key is ignored by the
   // strip rather than 404ing a link that was valid before a tab was renamed.
   const requestedTab = Array.isArray(tab) ? tab[0] : tab;
+
+  // Before the lookup, because this slug no longer resolves to a module row. The
+  // section slugs are unchanged, so the path maps one-for-one; only the three
+  // params the attendance screens read are carried over, which is all any old
+  // link can have held.
+  if (slug === RETIRED_ATTENDANCE_SLUG) {
+    const carried = new URLSearchParams();
+    if (rawClassId) carried.set("classId", rawClassId);
+    if (requestedDate) carried.set("date", requestedDate);
+    if (requestedFormat) carried.set("format", requestedFormat);
+    const query = carried.toString();
+    redirect(`/modules/classroom/${section}${query ? `?${query}` : ""}`);
+  }
 
   const appModule = getModuleBySlug(deps.moduleRepo, slug);
   if (!appModule) notFound();

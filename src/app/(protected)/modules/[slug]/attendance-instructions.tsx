@@ -1,10 +1,10 @@
-// Per-section guidance for the Attendance module. Each section gets only the
+// Per-section guidance for the Classroom module. Each section gets only the
 // text that applies to it — the whole document above every screen is noise
 // between the heading and the content.
 
-import type { AttendanceSection } from "./attendance-sections";
+import type { ClassroomSection } from "./classroom-sections";
 
-export function AttendanceInstructions({ section }: { section: AttendanceSection }) {
+export function AttendanceInstructions({ section }: { section: ClassroomSection }) {
   switch (section) {
     case "main":
       return (
@@ -126,6 +126,74 @@ export function AttendanceInstructions({ section }: { section: AttendanceSection
           Set the class the home screen opens on, whether the report starts on today&apos;s date,
           and whether the home screen&apos;s cards name a student surname-first.
         </p>
+      );
+
+    case "exam":
+      return (
+        <div className="flex flex-col gap-2 text-sm text-muted">
+          <p>
+            Every exam you have built. <strong className="text-ink">Edit</strong> reopens one
+            in the Exam Maker; <strong className="text-ink">Create a new exam</strong> starts a
+            fresh one.
+          </p>
+          <p>
+            The <strong className="text-ink">Answer key</strong> column is the one to watch. An
+            exam with a partial key can still be printed, but it cannot be graded until every
+            question has an answer.
+          </p>
+        </div>
+      );
+
+    case "exam-maker":
+      return (
+        <div className="flex flex-col gap-2 text-sm text-muted">
+          <p>
+            <strong className="text-ink">New Exam</strong> sets what the exam is: which class
+            sits it, your own exam ID (it prints on the answer sheet), how many questions, and
+            which letters each question offers. Save it before entering answers — the key
+            attaches to the saved exam.
+          </p>
+          <p>
+            <strong className="text-ink">New Answer</strong> records the correct answer for each
+            question. Leave one blank to come back to it later; a partial key saves fine.
+          </p>
+          <p>
+            Two edits reach backwards into answers you have already entered: reducing the
+            question count discards the answers beyond it, and narrowing the choices (ABCDE to
+            ABCD) clears any answer of E. Both are reported when you save rather than happening
+            quietly.
+          </p>
+        </div>
+      );
+
+    case "exam-grader":
+      return (
+        <div className="flex flex-col gap-2 text-sm text-muted">
+          <p>
+            Pick the exam, drop in the scanned answer sheets, and press{" "}
+            <strong className="text-ink">Grade</strong>. Each sheet is read against that
+            exam&apos;s answer key and the results appear below, one row per sheet, with
+            every answer in question order.
+          </p>
+          <p>
+            <strong className="text-ink">Name each file after the student</strong> —
+            <code> alice-chen.jpg</code> — and the grader matches it to the class roster.
+            Anything it cannot match confidently is left blank for you to pick, rather than
+            guessed at.
+          </p>
+          <p>
+            A dashed box around an answer means the read was unclear: nothing shaded, two
+            circles shaded, or a mark too faint to be sure of. Those are advisory — the
+            grade is still calculated — so check them against the sheet before trusting a
+            score. &ldquo;No anchors&rdquo; in the Flags column means the two black bars
+            beside the answers were not found, which usually means a crooked or cropped
+            scan.
+          </p>
+          <p>
+            Nothing is saved yet. This screen reads and scores; storing results is still to
+            come.
+          </p>
+        </div>
       );
 
     default:

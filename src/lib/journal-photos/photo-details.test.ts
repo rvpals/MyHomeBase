@@ -62,7 +62,11 @@ describe("readPhotoDetails", () => {
     });
 
     return readPhotoDetails(store, { relativePath: path }).then((details) => {
-      expect(details).toEqual({
+      // `toMatchObject`, not `toEqual`: `readPhotoDetails` also returns `exifTags`
+      // from the same header read ("ONE read, both answers"), and pinning the exact
+      // shape here would couple this use-case test to EXIF tag-table formatting that
+      // `exif-all.test.ts` already owns.
+      expect(details).toMatchObject({
         relativePath: path,
         takenAtDate: "2019-06-09",
         takenAtTime: "14:35:01",

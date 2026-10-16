@@ -132,14 +132,23 @@ describe("sectionSlotId", () => {
         "main", "new-entry", "entries", "calendar", "views", "report", "import",
         "calendar-import", "review-data", "recycle-bin",
         "configuration", "templates", "metadata",
-        "locations", "location-map", "location-metadata",
+        // No location sections: migration 0141 retired the journal's own location
+        // library and moved it to Admin, where the three screens now live under
+        // `admin_section_location*`. Deliberately different ids, so an icon uploaded
+        // for the old journal sections does not silently reappear there.
         "configuration-group", "import-group",
       ],
       expense: [
         "main", "transactions", "meta-data", "charts",
         "import", "transaction-rules", "settings",
       ],
-      attendance: ["main", "rosters", "classes", "actions", "edit", "report", "configuration"],
+      // The two `-group` ids are the tree's group headings (Attendance, Exam), which
+      // `SectionPanel` derives a slot for exactly as it does for a real row. Renamed
+      // from `attendance` by migration 0143.
+      classroom: [
+        "main", "rosters", "classes", "actions", "edit", "report", "configuration",
+        "exam", "exam-maker", "exam-grader", "attendance-group", "exam-group",
+      ],
       csv: ["main", "configuration"],
       games: ["main", "scores", "configuration"],
       music: ["main", "magic", "player", "queue", "scan", "configuration"],

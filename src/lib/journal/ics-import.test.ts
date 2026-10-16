@@ -750,3 +750,108 @@ describe("importIcsEvents — keeping the reader's own fields", () => {
     expect(entry.content).toBe("From Family calendar\n\nBring a towel\n\nmy note");
   });
 });
+
+// The `duplicateAction` preset: what happens to an event the journal has
+// already imported. Both the plan and the write are checked for each option,
+// because the screen shows the plan and the import must not disagree with it.
+describe("importIcsEvents — duplicateAction", () => {
+  function presetsWith(duplicateAction: "refresh" | "skip" | "duplicate") {
+    return { ...emptyIcsPresets(), duplicateAction };
+  }
+
+  it("refreshes a matched event by default", () => {
+    const repo = fakeRepo();
+    importIcsEvents(repo, [event({ uid: "a", summary: "Old name" })]);
+
+    const summary = importIcsEvents(repo, [event({ uid: "a", summary: "New name" })]);
+
+    expect(summary.updatedCount).toBe(1);
+    expect(listEntries(repo)).toHaveLength(1);
+    expect(listEntries(repo)[0].title).toBe("New name");
+  });
+
+  it("leaves the stored entry alone when set to skip", () => {
+    const repo = fakeRepo();
+    importIcsEvents(repo, [event({ uid: "a", summary: "Old name" })]);
+
+    const summary = importIcsEvents(
+      repo,
+      [event({ uid: "a", summary: "New name" })],
+      presetsWith("skip"),
+    );
+
+    expect(summary.updatedCount).toBe(0);
+    expect(summary.importedCount).toBe(0);
+    expect(summary.skippedCount).toBe(1);
+    // The decisive assertion: the title did not follow the calendar.
+    expect(listEntries(repo)).toHaveLength(1);
+    expect(listEntries(repo)[0].title).toBe("Old name");
+  });
+
+  it("plans a matched event as skip, with a reason, when set to skip", () => {
+    const repo = fakeRepo();
+    importIcsEvents(repo, [event({ uid: "a" })]);
+
+    const plan = planIcsImport(repo, [event({ uid: "a" })], presetsWith("skip"));
+
+    expect(plan.skipCount).toBe(1);
+    expect(plan.updateCount).toBe(0);
+    expect(plan.rows[0].blockedReason).toContain("Already imported");
+  });
+
+  it("writes a second entry when set to duplicate", () => {
+    const repo = fakeRepo();
+    importIcsEvents(repo, [event({ uid: "a", summary: "Swim" })]);
+
+    const summary = importIcsEvents(
+      repo,
+      [event({ uid: "a", summary: "Swim" })],
+      presetsWith("duplicate"),
+    );
+
+    expect(summary.importedCount).toBe(1);
+    expect(summary.updatedCount).toBe(0);
+    expect(listEntries(repo)).toHaveLength(2);
+  });
+
+  it("plans a matched event as create, carrying no entryId, when set to duplicate", () => {
+    const repo = fakeRepo();
+    importIcsEvents(repo, [event({ uid: "a" })]);
+
+    const plan = planIcsImport(repo, [event({ uid: "a" })], presetsWith("duplicate"));
+
+    expect(plan.createCount).toBe(1);
+    expect(plan.updateCount).toBe(0);
+    // No entryId is what makes the write path create rather than update.
+    expect(plan.rows[0].entryId).toBeUndefined();
+  });
+
+  it("still honours a lock, which outranks duplicate", () => {
+    const repo = fakeRepo();
+    importIcsEvents(repo, [event({ uid: "a" })]);
+    setLocked(repo, 1, true);
+
+    const summary = importIcsEvents(
+      repo,
+      [event({ uid: "a" })],
+      presetsWith("duplicate"),
+    );
+
+    // A lock means "do not touch this entry at all", so it must not become a
+    // route to writing a second copy of it.
+    expect(summary.importedCount).toBe(0);
+    expect(summary.skippedCount).toBe(1);
+    expect(listEntries(repo)).toHaveLength(1);
+  });
+
+  it("creates a never-seen event whatever the setting says", () => {
+    const repo = fakeRepo();
+
+    const summary = importIcsEvents(repo, [event({ uid: "new" })], presetsWith("skip"));
+
+    // "skip" is about duplicates only — an event with no match has no duplicate
+    // to have an opinion about.
+    expect(summary.importedCount).toBe(1);
+    expect(listEntries(repo)).toHaveLength(1);
+  });
+});

@@ -27,7 +27,7 @@ export const MESSAGE_MODULES = [
   "journal",
   "csv-analysis",
   "expense",
-  "attendance",
+  "classroom",
   "music-library",
   "games",
   "picture-gallery",

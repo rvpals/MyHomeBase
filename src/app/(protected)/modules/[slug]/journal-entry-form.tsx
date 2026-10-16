@@ -226,6 +226,15 @@ export function JournalEntryForm({
   // password lives inside EncryptionPrompt and is handed straight to the action
   // -- this form never holds it, and a cancelled dialog leaves the draft alone.
   const [isEncryptPromptOpen, setIsEncryptPromptOpen] = useState(false);
+  // Whether "Save entry" writes the entry already locked. A decision about the
+  // save that hasn't happened yet, not a lock being applied now — hence the
+  // outcome-stating label on the toggle rather than the viewer's "Lock".
+  //
+  // Deliberately not wired to "Save entry encrypted": that flow has no undo and
+  // its own dialog, and adding a second seal to it from a control outside the
+  // dialog would make an irreversible button mean two things. An encrypted
+  // entry can still be locked afterwards from its own page.
+  const [saveLocked, setSaveLocked] = useState(false);
   // Content-card view state. Both are transient: a mode you put the field into
   // for this sitting, not a stored preference, so they reset with the form.
   const [isHandwriting, setIsHandwriting] = useState(false);
@@ -269,6 +278,10 @@ export function JournalEntryForm({
     setWeatherDescription("");
     setTemplateId("");
     setIsHandwriting(false);
+    // Back to unlocked for the next entry of the sitting: locking is a choice
+    // made per entry, and a toggle that stayed on would quietly lock entries
+    // the writer never asked to lock.
+    setSaveLocked(false);
   }
 
   // Fills the blank fields from a saved template. The merge itself is
@@ -400,7 +413,12 @@ export function JournalEntryForm({
     onSavingChange?.(true);
     setError(undefined);
     try {
-      const result = await createJournalEntryAction({ ...form, locations, weather: typedWeather });
+      const result = await createJournalEntryAction({
+        ...form,
+        locations,
+        weather: typedWeather,
+        isLocked: saveLocked,
+      });
       if (!result.ok) {
         setError(result.error);
         return;
@@ -684,6 +702,33 @@ export function JournalEntryForm({
           of two tabs is a trap, and the error line above has to stay readable
           from Main even when a Misc action raised it. */}
       <div className="flex flex-wrap gap-2">
+        {/* Sits before Save because it modifies what Save does. It is a toggle,
+            not an action: nothing is locked until the entry is saved, so the
+            label names the outcome ("Will save locked") instead of borrowing
+            the viewer's "Lock", which on a page with no entry yet would read as
+            a command. `aria-pressed` is what tells a screen reader this is a
+            two-state control rather than a button that does something.
+
+            Hidden on the merge dialog (`saveLabel` set) for the same reason the
+            encrypt button is: that flow saves one assembled entry and has its
+            own controls, and locking it there would block the edit it exists to
+            allow. Same row as Save/Clear, so on a phone it wraps onto its own
+            line with them — no layout of its own. */}
+        {saveLabel === undefined && (
+          <Button
+            variant="secondary"
+            onClick={() => setSaveLocked((current) => !current)}
+            disabled={isBusy}
+            ariaPressed={saveLocked}
+            title={
+              saveLocked
+                ? "This entry will be saved locked — unlock it from the entry to edit it."
+                : "This entry will be saved unlocked, and can be edited normally."
+            }
+          >
+            {saveLocked ? "🔒 Will save locked" : "🔓 Will save unlocked"}
+          </Button>
+        )}
         <Button onClick={handleSave} disabled={isBusy || form.date === ""}>
           {isBusy ? "Saving…" : (saveLabel ?? "Save entry")}
         </Button>

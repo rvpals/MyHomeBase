@@ -40,7 +40,10 @@ describe("assertReadOnlyFragment", () => {
     ["DROP TABLE jrn_entries", /DROP/],
     ["ATTACH DATABASE 'other.db' AS other", /ATTACH/],
     ["PRAGMA journal_mode = DELETE", /PRAGMA|DELETE/],
-    ["CREATE TRIGGER t AFTER INSERT ON jrn_entries BEGIN SELECT 1; END", /CREATE|INSERT|BEGIN/],
+    // No semicolon: the guard checks for `;` BEFORE the keyword loop, so a fixture
+    // containing one is rejected as a multi-statement attempt and never reaches the
+    // CREATE check this row exists to prove. The semicolon rule has its own test above.
+    ["CREATE TRIGGER t AFTER INSERT ON jrn_entries BEGIN SELECT 1 END", /CREATE|INSERT|BEGIN/],
   ])("rejects %s", (fragment, message) => {
     expect(() => assertReadOnlyFragment(fragment)).toThrow(message);
   });

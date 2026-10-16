@@ -25,9 +25,9 @@ import { deps } from "@/lib/wiring";
 import { requireModuleAccess } from "../../require-access";
 
 /** The module these actions belong to, matched exactly by `requireModuleAccess`. */
-const ACCESS_MODULE_SLUG = "attendance";
+const ACCESS_MODULE_SLUG = "classroom";
 
-const ATTENDANCE_MODULE_PATH = "/modules/attendance";
+const CLASSROOM_MODULE_PATH = "/modules/classroom";
 const ROSTER_IMPORT_TYPE = "Roster" as const;
 
 export interface ActionResult {
@@ -41,9 +41,9 @@ function toErrorResult(error: unknown, fallback: string): ActionResult {
 
 /** Every section a roster import touches: the roster itself, and Classes. */
 function revalidateAttendance(): void {
-  revalidatePath(ATTENDANCE_MODULE_PATH);
-  revalidatePath(`${ATTENDANCE_MODULE_PATH}/rosters`);
-  revalidatePath(`${ATTENDANCE_MODULE_PATH}/classes`);
+  revalidatePath(CLASSROOM_MODULE_PATH);
+  revalidatePath(`${CLASSROOM_MODULE_PATH}/rosters`);
+  revalidatePath(`${CLASSROOM_MODULE_PATH}/classes`);
 }
 
 export interface RosterPreviewResult extends ActionResult {
@@ -87,7 +87,7 @@ export async function saveRosterMappingAction(
   } catch (error) {
     return toErrorResult(error, "Failed to save mapping.");
   }
-  revalidatePath(`${ATTENDANCE_MODULE_PATH}/rosters`);
+  revalidatePath(`${CLASSROOM_MODULE_PATH}/rosters`);
   return { ok: true };
 }
 
@@ -103,7 +103,7 @@ export async function updateRosterMappingAction(
   } catch (error) {
     return toErrorResult(error, "Failed to update mapping.");
   }
-  revalidatePath(`${ATTENDANCE_MODULE_PATH}/rosters`);
+  revalidatePath(`${CLASSROOM_MODULE_PATH}/rosters`);
   return { ok: true };
 }
 
@@ -114,7 +114,7 @@ export async function deleteRosterMappingAction(id: number): Promise<ActionResul
   } catch (error) {
     return toErrorResult(error, "Failed to delete mapping.");
   }
-  revalidatePath(`${ATTENDANCE_MODULE_PATH}/rosters`);
+  revalidatePath(`${CLASSROOM_MODULE_PATH}/rosters`);
   return { ok: true };
 }
 

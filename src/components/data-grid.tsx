@@ -737,7 +737,15 @@ function DataGridFull<T>({
   const leadingColumnCount = (enableSelection ? 1 : 0) + (enableRecordView ? 1 : 0);
   const columnCount = visibleColumns.length + leadingColumnCount;
   const pad = densityClasses[density];
-  const headerCellClass = `relative z-10 border border-line bg-brass-soft ${pad.header} text-center font-bold text-brass-dark shadow-[inset_0_1px_0_rgba(255,255,255,0.18),inset_0_-1px_0_rgba(0,0,0,0.10),0_8px_20px_-6px_rgba(0,0,0,0.65),0_2px_8px_-2px_rgba(0,0,0,0.45)] ${
+  // `chrome-slab` is the decoration hook and carries the raised bevel; everything
+  // else here is layout (position, z-index, padding, sticky). Keep them separate —
+  // hanging the bevel on the layout classes is what `style-hooks` warns against.
+  //
+  // This replaced a `shadow-[a,b,c,d]` arbitrary value. Tailwind can't parse the
+  // bare commas between layers, so that class generated no `box-shadow` at all and
+  // the header had been rendering flat. `chrome-slab` also follows the user's
+  // Chrome Style setting (inset / outset / emboss) instead of hardcoding one look.
+  const headerCellClass = `chrome-slab relative z-10 border border-line bg-brass-soft ${pad.header} text-center font-bold text-brass-dark ${
     stickyHeader ? "sticky top-0" : ""
   }`;
 
@@ -747,9 +755,17 @@ function DataGridFull<T>({
 
   // The filter row and the column panel are only reachable from the toolbar, so
   // hiding it hides them too — otherwise one left open would have no way back.
+  //
+  // `enableSelection` is deliberately NOT in this list. Bulk actions are not a
+  // toolbar control: a grid can hide the search/filter strip and still need its
+  // "3 selected — Delete" bar, which is exactly what `showToolbar={false}` plus
+  // `enableSelection` means. Counting selection here made the whole strip exist
+  // only when the toolbar did, so Admin → Security → Visit ticked rows and got no
+  // actions at all — the selection bar had nowhere to render.
   const hasToolbar =
-    showToolbar &&
-    (showSearch || enableColumnFilters || enableColumnPicker || enableDensity || enableSelection);
+    showToolbar && (showSearch || enableColumnFilters || enableColumnPicker || enableDensity);
+  // Its own strip when the toolbar is hidden, so the actions survive either way.
+  const hasSelectionBar = enableSelection && selectedRows.length > 0;
   const showFilters = hasToolbar && enableColumnFilters;
   const showColumnPicker = hasToolbar && enableColumnPicker;
 
@@ -814,7 +830,7 @@ function DataGridFull<T>({
               Clear filters
             </button>
           )}
-          {enableSelection && selectedRows.length > 0 && (
+          {hasSelectionBar && (
             <span className="ml-auto flex flex-wrap items-center gap-2">
               <span className="text-xs text-muted">{selectedRows.length} selected</span>
               {renderSelectionActions?.(selectedRows, () => setSelectedKeys(new Set()))}
@@ -827,6 +843,23 @@ function DataGridFull<T>({
               </button>
             </span>
           )}
+        </div>
+      )}
+
+      {/* The same bar, on its own, when there is no toolbar to sit in. Styled to
+          match the toolbar strip so a grid with `showToolbar={false}` reads as one
+          surface rather than growing a differently-shaped header. */}
+      {!hasToolbar && hasSelectionBar && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-line bg-paper-raised px-3 py-2">
+          <span className="text-xs text-muted">{selectedRows.length} selected</span>
+          {renderSelectionActions?.(selectedRows, () => setSelectedKeys(new Set()))}
+          <button
+            type="button"
+            onClick={() => setSelectedKeys(new Set())}
+            className="text-xs text-brass-dark hover:underline"
+          >
+            Clear selection
+          </button>
         </div>
       )}
 

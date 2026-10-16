@@ -106,6 +106,9 @@ describe("getModuleTexture", () => {
 
     expect(texture).toEqual({
       moduleSlug: SLUG,
+      // Added by migration 0117, alongside the library-picked textures.
+      source: "inherit",
+      textureId: undefined,
       hasImage: false,
       opacity: 0.1,
       mode: "cover",

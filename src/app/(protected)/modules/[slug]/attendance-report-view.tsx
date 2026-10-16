@@ -63,7 +63,7 @@ export function AttendanceReportView({
     // Omitted when brief so the default shape keeps a clean, shareable URL —
     // ?format=brief and no param at all mean the same thing.
     if (nextFormat !== "brief") params.set("format", nextFormat);
-    router.push(`/modules/attendance/report?${params.toString()}`);
+    router.push(`/modules/classroom/report?${params.toString()}`);
   }
 
   /**
