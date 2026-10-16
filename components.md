@@ -291,7 +291,7 @@ enough that a changed button label isn't enough — a bulk edit, a merge, a batc
   which owns its own busy flag and only *reports* it out through the optional
   `onSavingChange` prop. The New Entry screen leaves that prop off and is
   unaffected — it's a page, not a dialog, so its Save button label is signal enough.
-- Journal → Entries, the Main tab
+- Journal → Entries, the All Entries and Unlocked Entries tabs
   ([journal-entries-view.tsx](<src/app/(protected)/modules/[slug]/journal-entries-view.tsx>)) —
   the selection **Encrypt**, which is the slowest write on that screen (one scrypt
   derivation per entry) and the one that must not be interrupted partway. It is
@@ -425,8 +425,8 @@ Row-click navigation:
 - Investments simulation — [stock-simulation-view.tsx](src/app/(protected)/modules/[slug]/stock-simulation-view.tsx) *(a fixed ten-row table: `showToolbar={false}` with `defaultPageSize="ALL"`, keeping sort and the status bar's CSV export)*
 - CSV Analysis — [csv-analytics-view.tsx](src/app/(protected)/modules/[slug]/csv-analytics-view.tsx) *(row selection + bulk edit over an **arbitrary** schema: the dialog's fields are the dataset's own columns, so the grid is keyed by the table's real SQLite `rowid` rather than by row position)*
 - MyJournal Calendar Import — [journal-calendar-import-view.tsx](src/app/(protected)/modules/[slug]/journal-calendar-import-view.tsx) *(selection as a **pick-what-to-import** list: the ticked rows are the import's input, and rows the plan marked unimportable are filtered out of the action rather than disabled)*
-- MyJournal Entries — [journal-entries-view.tsx](src/app/(protected)/modules/[slug]/journal-entries-view.tsx) *(the **Main** tab; row selection + bulk edit/lock/unlock/encrypt/delete — the Lock and Unlock pair confirm through [`BulkConfirm`](#bulkconfirm), as Delete does; **Encrypt** goes through [`EncryptionPrompt`](#encryptionprompt) in `encrypt` mode with a `count`, behind a [`BusyOverlay`](#busyoverlay). The bulk edit is [journal-entries-bulk-edit.tsx](src/app/(protected)/modules/[slug]/journal-entries-bulk-edit.tsx), shared with the Log tab; unlike Expense’s single-valued fields it offers **Add / Remove / Replace** per field, because an entry holds several categories and tags)*
-- MyJournal Log — [journal-log-view.tsx](src/app/(protected)/modules/[slug]/journal-log-view.tsx) *(the **Log** tab of Entries, not a section of its own; row click opens `JournalViewer` in a `Modal`; the same bulk edit as Main, plus bulk delete to the recycle bin)*
+- MyJournal Entries — [journal-entries-view.tsx](src/app/(protected)/modules/[slug]/journal-entries-view.tsx) *(the **All Entries** and **Unlocked Entries** tabs, one `EntriesTab` rendered twice with a `lockScope`; row selection + bulk edit/lock/unlock/encrypt/delete — the Lock and Unlock pair confirm through [`BulkConfirm`](#bulkconfirm), as Delete does; **Encrypt** goes through [`EncryptionPrompt`](#encryptionprompt) in `encrypt` mode with a `count`, behind a [`BusyOverlay`](#busyoverlay). The bulk edit is [journal-entries-bulk-edit.tsx](src/app/(protected)/modules/[slug]/journal-entries-bulk-edit.tsx), shared with the Log tab; unlike Expense’s single-valued fields it offers **Add / Remove / Replace** per field, because an entry holds several categories and tags)*
+- MyJournal Log — [journal-log-view.tsx](src/app/(protected)/modules/[slug]/journal-log-view.tsx) *(the **Log** tab of Entries, not a section of its own; row click opens `JournalViewer` in a `Modal`; the same bulk edit as the other tabs, plus bulk delete to the recycle bin)*
 - SQL Explorer, Investments (accounts / positions / watchlist / analytics / next-day actions)
 
 **Filter operators.** A column filter box is a substring match by default, and also
@@ -1501,6 +1501,11 @@ One active panel at a time. Owns its own active-tab state.
 Uncontrolled by default. Pass `activeKey` + `onActiveKeyChange` only when
 something *outside* the strip has to switch tabs.
 
+The strip wraps (`flex-wrap`), so three or four long labels fold onto a second
+row on a phone instead of overflowing. Wide screens are unaffected — it only
+wraps when it has to — but a strip of many long labels is still worth checking
+narrow.
+
 ```tsx
 const tabs: TabItem[] = [
   { key: "positions", label: "Positions", content: <PositionsGrid rows={positions} /> },
@@ -1525,7 +1530,7 @@ Explorer's SQL Query / Tables Explorer / Modules split
 — the table list's "Open" jumps to the query tab to show the result)*; the Music Library
 player's Lyrics / Story split
 [music-player-view.tsx](src/app/(protected)/modules/[slug]/music-player-view.tsx); the
-Journal module's Entries Main / Log split
+Journal module's Entries All Entries / Unlocked Entries / Log split
 [journal-entries-view.tsx](src/app/(protected)/modules/[slug]/journal-entries-view.tsx)
 *(the Log tab's label carries a `SlotIcon`)*; the Security screen's Login / Visit split
 [admin/security/view.tsx](src/app/(protected)/admin/security/view.tsx) *(both labels

@@ -83,7 +83,7 @@ function SectionBody({
   isAdmin: boolean;
   /** From ?filter= — an ad-hoc filter query for the Entries section. */
   filterQuery?: string;
-  /** From ?tab= — which Entries tab to open on, "main" or "log". */
+  /** From ?tab= — which Entries tab to open on: "main", "unlocked" or "log". */
   requestedTab?: string;
   /** From ?scope=/?anchor=/?date= — which period the Calendar shows, and the
    *  day whose entries are listed under it. */
@@ -154,8 +154,9 @@ function SectionBody({
     case "entries":
       // ?filter= (set by the Top Tags/Categories cards) pre-selects a slice;
       // without it this lists everything and the reader picks from the dropdown.
-      // ?tab=log (set by the Statistics card's Log tile) opens on the Log tab
-      // instead of Main — ?filter= only ever narrows Main.
+      // ?tab=log (set by the Statistics card's Log tile) opens on the Log tab,
+      // ?tab=unlocked on Unlocked Entries, anything else on All Entries —
+      // ?filter= only ever narrows the two grid tabs.
       return <JournalEntriesPanel filterQuery={filterQuery} initialTab={requestedTab} />;
 
     case "calendar":

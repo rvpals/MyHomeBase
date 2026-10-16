@@ -223,6 +223,8 @@ export {
   listNonLogEntries,
   withLogCondition,
   type JournalLogScope,
+  withLockedCondition,
+  type JournalLockScope,
 } from "./journal";
 // Which managed categories/tags no entry uses — the Meta Data section's
 // "Clean up" button and the breakdown its bulk Delete confirms with.

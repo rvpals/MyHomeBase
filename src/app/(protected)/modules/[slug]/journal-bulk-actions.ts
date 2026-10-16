@@ -25,6 +25,7 @@ import {
   findEntries,
   listLogEntries,
   recycleEntries,
+  withLockedCondition,
   withLogCondition,
   type BulkEntryEditInput,
   type JournalEntry,
@@ -44,11 +45,17 @@ const ENTRIES_LIMIT = 500;
 /**
  * Which list the caller wants handed back after the write.
  *
- * The Main tab re-queries its current filter (so a row edited out of the filter
- * disappears, which is the honest result); the Log tab re-reads the Log list.
+ * The All Entries tab re-queries its current filter (so a row edited out of the
+ * filter disappears, which is the honest result); the Log tab re-reads the Log
+ * list; the Unlocked Entries tab re-queries its filter **with the lock condition
+ * re-applied**, so a row that was just locked from that tab leaves the list.
+ *
+ * `"unlocked"` is its own arm rather than a flag on `"main"` so the existing
+ * `scope.tab === "log"` test and every present caller stay untouched.
  */
 export type BulkRefreshScope =
   | { tab: "main"; filter: JournalFilter }
+  | { tab: "unlocked"; filter: JournalFilter }
   | { tab: "log" };
 
 export interface BulkActionResult {
@@ -66,10 +73,21 @@ function toErrorResult(error: unknown, fallback: string): BulkActionResult {
 
 function refresh(scope: BulkRefreshScope): JournalEntry[] {
   if (scope.tab === "log") return listLogEntries(deps.journalRepo, ENTRIES_LIMIT);
-  // `"all"` — the Main tab shows every entry, logged activities included. Same
-  // scope findJournalEntriesAction applies, so the refreshed list matches what a
-  // filter change would have produced.
-  return findEntries(deps.journalRepo, withLogCondition(scope.filter, "all"), ENTRIES_LIMIT);
+  // `"all"` for the Log scope — both grid tabs show every entry, logged
+  // activities included. The lock scope is what separates them, and it is
+  // re-applied here rather than assumed unchanged: Lock on the Unlocked tab
+  // writes rows that no longer belong in the list it hands back.
+  //
+  // Same two scopes findJournalEntriesAction applies, so the refreshed list
+  // matches what a filter change would have produced.
+  return findEntries(
+    deps.journalRepo,
+    withLockedCondition(
+      withLogCondition(scope.filter, "all"),
+      scope.tab === "unlocked" ? "unlocked" : "all",
+    ),
+    ENTRIES_LIMIT,
+  );
 }
 
 /**

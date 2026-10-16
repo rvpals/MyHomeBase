@@ -49,7 +49,10 @@ export function Tabs({
 
   return (
     <div className={className}>
-      <div className="flex gap-1 border-b border-line" role="tablist">
+      {/* `flex-wrap` so a strip of several long labels folds onto a second row
+          on a phone rather than overflowing the viewport. Wide screens are
+          unaffected — the row only wraps when it has to. */}
+      <div className="flex flex-wrap gap-1 border-b border-line" role="tablist">
         {items.map((item) => (
           <button
             key={item.key}

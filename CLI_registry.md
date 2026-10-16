@@ -410,7 +410,7 @@ Source: [src/cli/journal-calendar.ts](src/cli/journal-calendar.ts)
 ## `journal-bulk-edit`
 
 The Journal → Entries screen's bulk actions from the terminal: the same selection edit and
-selection delete the grid's tick-boxes drive, on both the Main and Log tabs.
+selection delete the grid's tick-boxes drive, on all three tabs (All Entries, Unlocked Entries and Log).
 
 The three modes are three flag prefixes rather than one `--mode` switch, so a single
 command can add tags *and* replace categories in one pass — exactly what the dialog's two

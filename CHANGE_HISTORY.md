@@ -1,5 +1,34 @@
 # Change History
 
+## 2026-10-16 — Journal Entries: All Entries / Unlocked Entries / Log tabs and a Filtering card
+
+**No migration.** `jrn_entries.is_locked` and the `isLocked` filter field already existed.
+The NAS database and its WAL/SHM files were backed up before this release.
+
+- **Entries is now three tabs:** **All Entries** (the old *Main*, renamed), **Unlocked
+  Entries** (new, second) and **Log** (unchanged). Unlocked Entries is the same screen as
+  All Entries — filter dropdown, bulk edit/lock/unlock/encrypt/delete, export — showing only
+  entries that aren't locked. "Unlocked" means `is_locked = 0` only; an encrypted but
+  unlocked entry still appears.
+- **The restriction is applied on the server**, never by a client-side `.filter()`:
+  new `withLockedCondition(filter, "all" | "locked" | "unlocked")` in `src/lib/journal`
+  adds the condition as its **own AND group**, mirroring `withLogCondition`, so an
+  OR-joined saved filter can't pull a locked entry in. It is applied on first load
+  (`JournalEntriesPanel` reads the unlocked page separately, so the 500-row cap holds per
+  tab), on every filter change (`findJournalEntriesAction` gains an optional `lockScope`),
+  and after every bulk write (`BulkRefreshScope` gains a `{ tab: "unlocked" }` arm), so a row
+  locked from the Unlocked tab leaves the list.
+- **`MainTab` became `EntriesTab`**, rendered once per grid tab with a `lockScope` prop and
+  its own state. Both tabs share one grid `storageKey`, so column layout carries across.
+- **New "Filtering" collapsible card** holds every filter control — the saved-filter
+  dropdown, New / Edit / Delete, and the conditions readout that used to be its own "Filter
+  conditions" card. Errors and bulk-result notices stay outside it so they show while it is
+  collapsed. The icon slot (`journal_card_entry_filters`) is unchanged.
+- **`?tab=unlocked`** opens the Unlocked tab (nothing links to it yet).
+- **`Tabs` strip now wraps** (`flex-wrap`) so three long labels fold onto a second row on a
+  phone instead of overflowing.
+- Tests: new `withLockedCondition` block in `journal.test.ts`.
+
 ## 2026-10-16 — Uploaded module icons, ticker-monitor Popup, Exam QR diagnostics, journal and texture polish
 
 **Migrations 0149–0150 must be applied on the NAS, in order.** Both are `ADD COLUMN`s

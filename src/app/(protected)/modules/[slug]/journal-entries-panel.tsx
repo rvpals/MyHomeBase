@@ -14,10 +14,11 @@
 // A supplied filter is **pre-selected, not locked**: the dropdown stays live so
 // the reader can switch away from it.
 //
-// Two tabs, both read here: **Main** (everything that isn't a Log entry, which
-// the filter above narrows) and **Log** (the logged activities, unfiltered). A
-// supplied `filterName`/`filterQuery` applies to Main — the tab a deep link from
-// the Top Tags/Categories cards lands on.
+// Three tabs, all read here: **All Entries** (every entry, which the filter above
+// narrows), **Unlocked Entries** (the same, minus the locked ones) and **Log**
+// (the logged activities, unfiltered). A supplied `filterName`/`filterQuery`
+// applies to both grid tabs — All Entries is the one a deep link from the Top
+// Tags/Categories cards lands on.
 
 import {
   describeFilter,
@@ -28,6 +29,7 @@ import {
   listLogEntries,
   listTags,
   tryParseFilterQuery,
+  withLockedCondition,
   withLogCondition,
   type JournalFilter,
 } from "@/lib/journal";
@@ -52,9 +54,10 @@ export interface JournalEntriesPanelProps {
    */
   filterQuery?: string;
   /**
-   * Which tab to open on — "log" for the Log tab, anything else (or nothing)
-   * for Main. Not validated here: `Tabs` falls back to its first tab on a key
-   * it doesn't recognise, so a stale `?tab=` lands on Main rather than 404ing.
+   * Which tab to open on — "log" for the Log tab, "unlocked" for Unlocked
+   * Entries, anything else (or nothing) for All Entries. Not validated here:
+   * `Tabs` falls back to its first tab on a key it doesn't recognise, so a stale
+   * `?tab=` lands on All Entries rather than 404ing.
    */
   initialTab?: string;
   /** Optional heading, for embedding outside the Entries section. */
@@ -105,14 +108,27 @@ export function JournalEntriesPanel({
   // alternative — falling back to every entry — is indistinguishable from a
   // filter that matched everything, which is the failure most likely to mislead.
   //
-  // The Main tab's rows: the reader's filter with **no Log condition** — Main is
-  // every entry, logged activities included. It used to exclude them, which made
-  // a deep link from the Statistics card dead for any tag carried only by Log
-  // entries: the card counted them and this list was defined not to show them.
-  // The Log tab is now the one that narrows, rather than the two partitioning.
-  const entries = queryError
+  // The All Entries tab's rows: the reader's filter with **no Log condition** —
+  // it is every entry, logged activities included. It used to exclude them,
+  // which made a deep link from the Statistics card dead for any tag carried
+  // only by Log entries: the card counted them and this list was defined not to
+  // show them. The Log tab is now the one that narrows, rather than partitioning.
+  const scopedFilter = withLogCondition(filter, "all");
+  const entries = queryError ? [] : findEntries(deps.journalRepo, scopedFilter, ENTRIES_LIMIT);
+
+  // The Unlocked tab's first page: a read of its own, **not** `entries` filtered
+  // down. Both lists are capped at ENTRIES_LIMIT, so narrowing the All Entries
+  // page here would drop any unlocked entry that fell past the cap — the list
+  // would silently be the unlocked subset of the first 500, not the first 500
+  // unlocked. The condition is the same one findJournalEntriesAction and the
+  // bulk refresh re-apply, so all three agree.
+  const unlockedEntries = queryError
     ? []
-    : findEntries(deps.journalRepo, withLogCondition(filter, "all"), ENTRIES_LIMIT);
+    : findEntries(
+        deps.journalRepo,
+        withLockedCondition(scopedFilter, "unlocked"),
+        ENTRIES_LIMIT,
+      );
 
   // The Log tab is the section that used to live at /modules/journal/log, moved
   // in whole: the same unfiltered list, and the same two icon maps its viewer
@@ -123,6 +139,7 @@ export function JournalEntriesPanel({
   return (
     <JournalEntriesView
       initialEntries={entries}
+      initialUnlockedEntries={unlockedEntries}
       initialFilters={savedFilters}
       categoryOptions={categories.map((category) => category.name)}
       tagOptions={tags.map((tag) => tag.name)}

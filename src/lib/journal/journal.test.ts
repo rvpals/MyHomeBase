@@ -23,6 +23,7 @@ import {
   listLogEntries,
   listNonLogEntries,
   withLogCondition,
+  withLockedCondition,
   listRecentEntries,
   searchEntries,
   listTags,
@@ -1165,6 +1166,123 @@ describe("withLogCondition", () => {
     expect(result.groups).toHaveLength(2);
     // The top-level join is forced to AND — that is what makes the tab airtight.
     expect(result.join).toBe("AND");
+  });
+});
+
+describe("withLockedCondition", () => {
+  it("narrows a reader's filter rather than replacing it", () => {
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2026-01-01", title: "Rome trip", isLocked: true });
+    createEntry(repo, { date: "2026-01-02", title: "Rome trip" });
+    createEntry(repo, { date: "2026-01-03", title: "groceries" });
+
+    const titleFilter = {
+      join: "AND" as const,
+      groups: [
+        { join: "AND" as const, conditions: [{ field: "title" as const, operator: "contains" as const, value: "trip" }] },
+      ],
+    };
+
+    // The Unlocked Entries tab: the reader's filter AND not-locked.
+    expect(findEntries(repo, withLockedCondition(titleFilter, "unlocked"))).toHaveLength(1);
+    expect(findEntries(repo, withLockedCondition(titleFilter, "locked"))).toHaveLength(1);
+    // All Entries: the filter untouched, so both "Rome trip" entries match
+    // whether or not they are locked.
+    expect(findEntries(repo, withLockedCondition(titleFilter, "all"))).toHaveLength(2);
+  });
+
+  it("cannot leak a locked entry into the Unlocked tab through an OR-joined filter", () => {
+    // The regression this guards, and the whole reason the condition goes in as
+    // its own group: folded in beside OR-joined conditions it would become one
+    // more alternative, and `title ~ beach OR isLocked is false` matches every
+    // unlocked entry in the journal plus the locked "beach" one.
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2026-01-01", title: "beach day", isLocked: true });
+    createEntry(repo, { date: "2026-01-02", title: "Oslo", isLocked: true });
+
+    const orFilter = {
+      join: "AND" as const,
+      groups: [
+        {
+          join: "OR" as const,
+          conditions: [
+            { field: "title" as const, operator: "contains" as const, value: "beach" },
+            { field: "title" as const, operator: "contains" as const, value: "Oslo" },
+          ],
+        },
+      ],
+    };
+
+    expect(findEntries(repo, withLockedCondition(orFilter, "unlocked"))).toEqual([]);
+    expect(findEntries(repo, withLockedCondition(orFilter, "locked"))).toHaveLength(2);
+  });
+
+  it("returns the filter untouched for the \"all\" scope", () => {
+    const original = {
+      join: "OR" as const,
+      groups: [
+        { join: "AND" as const, conditions: [{ field: "title" as const, operator: "contains" as const, value: "x" }] },
+      ],
+    };
+    expect(withLockedCondition(original, "all")).toBe(original);
+    // The reader's own join survives, unlike the two narrowing scopes which
+    // force AND.
+    expect(withLockedCondition(original, "all").join).toBe("OR");
+  });
+
+  it("adds a group rather than mutating the filter it was given", () => {
+    const original = {
+      join: "OR" as const,
+      groups: [
+        { join: "AND" as const, conditions: [{ field: "title" as const, operator: "contains" as const, value: "x" }] },
+      ],
+    };
+    const result = withLockedCondition(original, "unlocked");
+
+    expect(original.groups).toHaveLength(1);
+    expect(result.groups).toHaveLength(2);
+    // Forced to AND — that is what makes the tab airtight.
+    expect(result.join).toBe("AND");
+  });
+
+  it("carries the reader's sort through", () => {
+    const original = {
+      join: "AND" as const,
+      groups: [],
+      sort: [{ field: "title" as const, direction: "asc" as const }],
+    };
+    expect(withLockedCondition(original, "unlocked").sort).toEqual(original.sort);
+  });
+
+  it("composes with withLogCondition to the same set either way round", () => {
+    // Both append a group and both force AND, so the Unlocked tab's rows are the
+    // same whichever order the panel applies them in.
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2026-01-01", title: "locked log", categories: ["Log"], isLocked: true });
+    createEntry(repo, { date: "2026-01-02", title: "open log", categories: ["Log"] });
+    createEntry(repo, { date: "2026-01-03", title: "locked written", isLocked: true });
+    createEntry(repo, { date: "2026-01-04", title: "open written" });
+
+    const everything = { join: "AND" as const, groups: [] };
+    // "all" log scope + "unlocked" lock scope is exactly what the Unlocked tab
+    // asks for: every unlocked entry, logged activities included.
+    const unlocked = findEntries(repo, withLockedCondition(withLogCondition(everything, "all"), "unlocked"));
+    expect(unlocked).toHaveLength(2);
+    expect(unlocked.map((entry) => entry.title).sort()).toEqual(["open log", "open written"]);
+
+    const otherOrder = findEntries(repo, withLogCondition(withLockedCondition(everything, "unlocked"), "only"));
+    expect(otherOrder.map((entry) => entry.title)).toEqual(["open log"]);
+  });
+
+  it("lists locked and unlocked entries together under \"all\"", () => {
+    const repo = fakeRepo();
+    createEntry(repo, { date: "2026-01-01", title: "sealed", isLocked: true });
+    createEntry(repo, { date: "2026-01-02", title: "open" });
+
+    const everything = { join: "AND" as const, groups: [] };
+    expect(findEntries(repo, withLockedCondition(everything, "all"))).toHaveLength(2);
+    expect(findEntries(repo, withLockedCondition(everything, "unlocked"))).toHaveLength(1);
+    expect(findEntries(repo, withLockedCondition(everything, "locked"))).toHaveLength(1);
   });
 });
 

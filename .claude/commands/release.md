@@ -58,14 +58,16 @@ Bring any stale root `.md` file into line with the app. Base this on `git status
 
 Update what's actually out of date. Say which files were checked and what changed.
 
-## 3. Add this release's changes to `TEST_LIST.md`
+## 3. Add this release's changes to `Testing_List.md`
 
-`CHANGE_HISTORY.md` records what was *written*; `TEST_LIST.md` records what has been
-*tried*, and only the second survives the gap between sessions. Add items to the top
-under a heading for this release's date, from the same evidence as step 3:
+`CHANGE_HISTORY.md` records what was *written*; `Testing_List.md` records what has been
+*tried*, and only the second survives the gap between sessions. The file opens with a
+*How to test* guide, then the releases under **What to test — Features by Release**,
+newest first. Add this release's heading directly above the previous release's heading —
+not at the top of the file — from the same evidence as step 2:
 
 ```markdown
-## 2026-09-23 — Release
+## 2026-09-23 — Release (short name for this release)
 
 - [ ] **1.** Investments: the module formerly called Stocks & ETFs
 - [ ] **2.** Investments: every section loads under the new /modules/investments URL
@@ -75,8 +77,8 @@ under a heading for this release's date, from the same evidence as step 3:
   a doc catch-up, a lint fix — because there is nothing to click.
 - **Leave every item unticked.** They're tested after the release is on the NAS; ticking
   one here records a test that never happened.
-- **Renumber the whole file.** Items are numbered newest-first, so inserting at the top
-  shifts everything below.
+- **Number from 1 within the section.** Each release heading restarts its own numbering,
+  so adding one never renumbers the sections below it.
 - **Name the risky ones** — needs a migration applied, phone-only — in one line under
   the release heading.
 
@@ -98,7 +100,7 @@ head -3 //NAS_DS223/app/myhomebase/CHANGE_HISTORY.md
 
 - Review `git status` / `git diff` once more so nothing unexpected (secrets, debug files,
   scratch scripts) is staged.
-- Stage everything — code, `CHANGE_HISTORY.md`, `TEST_LIST.md`, the step 3 docs — so code
+- Stage everything — code, `CHANGE_HISTORY.md`, `Testing_List.md`, the step 3 docs — so code
   and docs land together.
 - Commit with a message summarising the release, sourced from the new changelog entry. If
   the tree holds several unrelated bodies of work, ask whether to split them first.

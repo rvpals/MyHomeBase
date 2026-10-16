@@ -1,22 +1,26 @@
 "use client";
 
-// The My Journal "Entries" browser, in two tabs:
+// The My Journal "Entries" browser, in three tabs:
 //
-//   **Main** — a saved-filter dropdown, the selected filter's criteria shown
-//   back as readable text, and the matching entries below. Everything *except*
-//   logged activities.
-//   **Log**  — the logged activities on their own. This was its own section at
-//   /modules/journal/log until the two became tabs of one screen; `JournalLogView`
-//   moved here unchanged, which is why the Log tab still has its own grid,
-//   bulk delete and viewer modal rather than sharing Main's.
+//   **All Entries**      — a saved-filter dropdown, the selected filter's criteria
+//   shown back as readable text, and the matching entries below. Every entry,
+//   logged activities included.
+//   **Unlocked Entries** — the same screen, narrowed to entries that aren't
+//   locked. Same component (`EntriesTab`), one extra server-side condition.
+//   **Log**              — the logged activities on their own. This was its own
+//   section at /modules/journal/log until they became tabs of one screen;
+//   `JournalLogView` moved here unchanged, which is why the Log tab still has
+//   its own grid, bulk delete and viewer modal rather than sharing the others'.
 //
 // Which entries belong to which tab is decided on the server (see
-// journal-entries-panel.tsx) and re-decided on every filter change by
-// `findJournalEntriesAction`, not here — a client-side split could be bypassed
-// by a saved filter and would disagree with the row counts.
+// journal-entries-panel.tsx), re-decided on every filter change by
+// `findJournalEntriesAction`, and re-decided again after every bulk write by
+// `refresh()` in journal-bulk-actions.ts — never here. A client-side `.filter()`
+// would be bypassable by a saved filter and would disagree with all three.
 //
-// Main is **every** entry (scope `"all"`) and Log is the Log-only view, so the
-// two deliberately overlap rather than partitioning the journal.
+// The three overlap rather than partitioning the journal: All Entries is
+// everything (scope `"all"`), Unlocked is the unlocked subset of it, and Log is
+// the Log-only view, which contains locked and unlocked entries alike.
 //
 // Route-local. The filter tree, its SQL compilation and its English description
 // all live in src/lib/journal/filters.ts — this file only presents them.
@@ -39,6 +43,7 @@ import {
   emptyFilter,
   type JournalEntry,
   type JournalFilter,
+  type JournalLockScope,
   type SavedJournalFilter,
 } from "@/lib/journal";
 import {
@@ -106,6 +111,7 @@ const ALL_ENTRIES = "";
 
 export function JournalEntriesView({
   initialEntries,
+  initialUnlockedEntries,
   initialFilters,
   categoryOptions,
   tagOptions,
@@ -132,16 +138,38 @@ export function JournalEntriesView({
 
       <Tabs
         // Uncontrolled still — the tab is a starting point, not state the URL
-        // keeps in step. `Tabs` ignores a key it doesn't know and shows Main,
-        // so no validation is needed on the way in.
-        defaultActiveKey={initialTab === "log" ? "log" : "main"}
+        // keeps in step. `Tabs` ignores a key it doesn't know and shows the
+        // first tab, so no validation is needed on the way in.
+        defaultActiveKey={
+          initialTab === "log" || initialTab === "unlocked" ? initialTab : "main"
+        }
         items={[
           {
             key: "main",
-            label: "Main",
+            label: "All Entries",
             content: (
-              <MainTab
+              <EntriesTab
+                lockScope="all"
                 initialEntries={initialEntries}
+                initialFilters={initialFilters}
+                categoryOptions={categoryOptions}
+                tagOptions={tagOptions}
+                initialFilterId={initialFilterId}
+                appliedQuery={appliedQuery}
+                queryError={queryError}
+              />
+            ),
+          },
+          {
+            key: "unlocked",
+            label: "Unlocked Entries",
+            content: (
+              // The same component, its own state. Rendering it twice rather
+              // than sharing one instance is what keeps a filter chosen on one
+              // tab from silently re-querying the other.
+              <EntriesTab
+                lockScope="unlocked"
+                initialEntries={initialUnlockedEntries}
                 initialFilters={initialFilters}
                 categoryOptions={categoryOptions}
                 tagOptions={tagOptions}
@@ -178,6 +206,14 @@ export function JournalEntriesView({
 export interface JournalEntriesViewProps {
   /** The first page of rows, already filtered if the caller supplied a filter. */
   initialEntries: JournalEntry[];
+  /**
+   * The Unlocked Entries tab's first page — the same filter with the lock
+   * condition added, read separately by the caller rather than derived from
+   * `initialEntries`. Both lists are capped at 500 rows, so filtering the All
+   * Entries page in the client would hide unlocked entries that fell outside
+   * that cap.
+   */
+  initialUnlockedEntries: JournalEntry[];
   initialFilters: SavedJournalFilter[];
   categoryOptions: string[];
   tagOptions: string[];
@@ -196,9 +232,9 @@ export interface JournalEntriesViewProps {
   /** Why a supplied filterName/filterQuery couldn't be used. */
   queryError?: string;
   /**
-   * Which tab to open on — only "log" does anything, everything else lands on
-   * Main. The Statistics card's "Total Log Entries" tile is what sets it;
-   * `?filter=` can't reach the Log tab, since it only ever narrows Main.
+   * Which tab to open on — "log" or "unlocked"; everything else lands on All
+   * Entries. The Statistics card's "Total Log Entries" tile is what sets "log";
+   * `?filter=` can't reach the Log tab, since it only ever narrows the other two.
    */
   initialTab?: string;
   /** Overrides for the heading above the grid, when embedded outside the section. */
@@ -206,7 +242,7 @@ export interface JournalEntriesViewProps {
   description?: string;
   /**
    * The Log tab's rows — every entry carrying the Log category, read whole by
-   * the caller. Not filtered by the Main tab's dropdown: the Log tab is the old
+   * the caller. Not filtered by the other tabs' dropdown: the Log tab is the old
    * Log section, which never had one.
    */
   logEntries: JournalEntry[];
@@ -216,14 +252,21 @@ export interface JournalEntriesViewProps {
 }
 
 /**
- * The Main tab: the filter controls and the non-Log entries they narrow.
+ * The grid tabs — All Entries and Unlocked Entries: the filter controls and the
+ * entries they narrow.
  *
  * Split out of `JournalEntriesView` when the Log tab arrived so that all the
  * filter state — selection, the builder, the applied-query banner — stays owned
  * by the tab that uses it, rather than sitting a level up where the Log tab
- * would re-render on every change it has no interest in.
+ * would re-render on every change it has no interest in. Rendered once per grid
+ * tab, so each keeps its own selection and its own ticked rows.
+ *
+ * `lockScope` is the *only* difference between the two instances. It is passed
+ * to the server on every re-query and every bulk refresh rather than filtering
+ * rows here — see the note at the top of the file.
  */
-function MainTab({
+function EntriesTab({
+  lockScope,
   initialEntries,
   initialFilters,
   categoryOptions,
@@ -231,7 +274,13 @@ function MainTab({
   initialFilterId,
   appliedQuery,
   queryError,
-}: Omit<JournalEntriesViewProps, "title" | "description" | "logEntries" | "categoryIcons" | "tagIcons">) {
+}: Omit<
+  JournalEntriesViewProps,
+  "title" | "description" | "logEntries" | "categoryIcons" | "tagIcons" | "initialUnlockedEntries"
+> & {
+  /** `"all"` for the All Entries tab, `"unlocked"` for Unlocked Entries. */
+  lockScope: JournalLockScope;
+}) {
   const router = useRouter();
   const [filters, setFilters] = useState(initialFilters);
   const [selectedId, setSelectedId] = useState<string>(
@@ -269,25 +318,32 @@ function MainTab({
   const [isBulkBusy, setIsBulkBusy] = useState(false);
   const [notice, setNotice] = useState("");
 
+  /** Shorthand for the copy below, which differs between the two grid tabs. */
+  const isUnlocked = lockScope === "unlocked";
+
   const selected = filters.find((candidate) => String(candidate.id) === selectedId);
 
-  const applyFilter = useCallback(async (filter: JournalFilter) => {
-    setIsLoading(true);
-    setError(undefined);
-    try {
-      // `"all"` — Main shows every entry, logged activities included, so no Log
-      // condition is added. The scope is still decided on the server; see
-      // findJournalEntriesAction.
-      const result = await findJournalEntriesAction(filter, "all");
-      if (!result.ok) {
-        setError(result.error);
-        return;
+  const applyFilter = useCallback(
+    async (filter: JournalFilter) => {
+      setIsLoading(true);
+      setError(undefined);
+      try {
+        // `"all"` for the Log scope — both grid tabs show every entry, logged
+        // activities included, so no Log condition is added. `lockScope` is what
+        // separates them. Both are still applied on the server; see
+        // findJournalEntriesAction.
+        const result = await findJournalEntriesAction(filter, "all", lockScope);
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+        setEntries(result.entries ?? []);
+      } finally {
+        setIsLoading(false);
       }
-      setEntries(result.entries ?? []);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+    },
+    [lockScope],
+  );
 
   // Changing the dropdown is an event, not external state to synchronize, so the
   // re-query happens here rather than in an effect keyed on the selection. The
@@ -315,14 +371,20 @@ function MainTab({
   }
 
   /**
-   * The filter the grid currently reflects, so a bulk action can re-query the
-   * same rows. An ad-hoc `appliedQuery` isn't reconstructable here — only its
+   * The filter the grid currently reflects, plus which tab is asking, so a bulk
+   * action can re-query the same rows — the lock condition is re-applied there,
+   * which is what makes a row leave the Unlocked tab when it is locked from it.
+   *
+   * An ad-hoc `appliedQuery` isn't reconstructable here — only its
    * text was passed down, not its parsed tree — so that case falls back to the
    * unfiltered list rather than guessing. The rows a reader then sees are a
    * superset of what they had, which is the safe direction to be wrong in.
    */
   function currentScope(): BulkRefreshScope {
-    return { tab: "main", filter: selected?.filter ?? emptyFilter() };
+    return {
+      tab: lockScope === "unlocked" ? "unlocked" : "main",
+      filter: selected?.filter ?? emptyFilter(),
+    };
   }
 
   /** Shared by both bulk actions: swap in the server's rows, say what happened. */
@@ -437,82 +499,104 @@ function MainTab({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="min-w-0 text-sm">
-          <span className="mb-1 block font-medium text-ink">Filter</span>
-          <select
-            value={selectedId}
-            onChange={(event) => handleSelect(event.target.value)}
-            className="w-64 rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass max-lg:w-full"
-          >
-            <option value={ALL_ENTRIES}>All entries</option>
-            {filters.map((filter) => (
-              <option key={filter.id} value={String(filter.id)}>
-                {filter.name}
-              </option>
-            ))}
-          </select>
-        </label>
+      {/* Every filter control lives in here — the saved-filter dropdown, the
+          New/Edit/Delete buttons and the readout of what the selection actually
+          means. They were three separate blocks stacked above the grid; one card
+          keeps them together and lets the reader fold the whole apparatus away
+          once they have the list they wanted.
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            size="sm"
-            onClick={() => {
-              setEditing(undefined);
-              setIsBuilderOpen(true);
-            }}
-          >
-            New filter
-          </Button>
-          {selected && (
-            <>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => {
-                  setEditing(selected);
-                  setIsBuilderOpen(true);
-                }}
-              >
-                Edit
-              </Button>
-              <Button size="sm" variant="danger" onClick={() => handleDelete(selected)}>
-                Delete
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {error && <p className="text-sm text-red-400">{error}</p>}
-      {notice && <p className="text-sm text-muted">{notice}</p>}
-
+          Uncontrolled, so the card remembers per route whether the reader left
+          it open (see CollapsibleCard). `defaultOpen` only decides the first
+          visit: a filter arriving from a deep link opens it, because the rows on
+          screen are narrowed and the reason should be visible. */}
       <CollapsibleCard
-        title="Filter conditions"
+        title="Filtering"
         titleIcon={<SlotIcon slot={FILTERS_SLOT} className="h-4 w-4" />}
         defaultOpen={Boolean(selected) || showAppliedQuery}
       >
-        {selected ? (
-          <div className="flex flex-col gap-2">
-            <p className="text-sm text-ink">{describeFilter(selected.filter)}</p>
-            <p className="text-xs text-muted">
-              Saved as &ldquo;{selected.name}&rdquo; · last updated {selected.updatedAt}
-            </p>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="min-w-0 text-sm">
+              <span className="mb-1 block font-medium text-ink">Filter</span>
+              <select
+                value={selectedId}
+                onChange={(event) => handleSelect(event.target.value)}
+                className="w-64 rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass max-lg:w-full"
+              >
+                <option value={ALL_ENTRIES}>All entries</option>
+                {filters.map((filter) => (
+                  <option key={filter.id} value={String(filter.id)}>
+                    {filter.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                onClick={() => {
+                  setEditing(undefined);
+                  setIsBuilderOpen(true);
+                }}
+              >
+                New filter
+              </Button>
+              {selected && (
+                <>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      setEditing(selected);
+                      setIsBuilderOpen(true);
+                    }}
+                  >
+                    Edit
+                  </Button>
+                  <Button size="sm" variant="danger" onClick={() => handleDelete(selected)}>
+                    Delete
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
-        ) : showAppliedQuery && appliedQuery ? (
-          <div className="flex flex-col gap-2">
-            <p className="text-sm text-ink">{appliedQuery.description}</p>
-            <p className="font-mono text-xs text-muted">{appliedQuery.text}</p>
-            <p className="text-xs text-muted">
-              Applied by the screen, not saved. Pick a saved filter above to replace it.
-            </p>
+
+          {/* What the current selection means, in words. Was its own "Filter
+              conditions" card directly below the controls; now the lower half of
+              this one, separated by a rule rather than a card edge. */}
+          <div className="border-t border-line pt-4">
+            {selected ? (
+              <div className="flex flex-col gap-2">
+                <p className="text-sm text-ink">{describeFilter(selected.filter)}</p>
+                <p className="text-xs text-muted">
+                  Saved as &ldquo;{selected.name}&rdquo; · last updated {selected.updatedAt}
+                </p>
+              </div>
+            ) : showAppliedQuery && appliedQuery ? (
+              <div className="flex flex-col gap-2">
+                <p className="text-sm text-ink">{appliedQuery.description}</p>
+                <p className="font-mono text-xs text-muted">{appliedQuery.text}</p>
+                <p className="text-xs text-muted">
+                  Applied by the screen, not saved. Pick a saved filter above to replace it.
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-muted">
+                No filter selected —{" "}
+                {isUnlocked ? "every unlocked entry is listed" : "every entry is listed"}. Pick a
+                saved filter above, or create one.
+              </p>
+            )}
           </div>
-        ) : (
-          <p className="text-sm text-muted">
-            No filter selected — every entry is listed. Pick a saved filter above, or create one.
-          </p>
-        )}
+        </div>
       </CollapsibleCard>
+
+      {/* Outside the card deliberately: an error from a filter that failed to
+          apply, or the result line from a bulk action, must stay visible when
+          the card is collapsed. */}
+      {error && <p className="text-sm text-red-400">{error}</p>}
+      {notice && <p className="text-sm text-muted">{notice}</p>}
 
       <section>
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
@@ -525,7 +609,7 @@ function MainTab({
                   {entries.length}
                 </span>
                 <span>
-                  {`${entries.length === 1 ? "entry" : "entries"}${
+                  {`${isUnlocked ? "unlocked " : ""}${entries.length === 1 ? "entry" : "entries"}${
                     selected
                       ? ` matching "${selected.name}"`
                       : showAppliedQuery
@@ -542,10 +626,18 @@ function MainTab({
           rows={entries}
           getRowKey={(entry) => entry.id}
           emptyMessage={
-            selected || showAppliedQuery ? "No entries match this filter." : "No entries yet."
+            selected || showAppliedQuery
+              ? isUnlocked
+                ? "No unlocked entries match this filter."
+                : "No entries match this filter."
+              : isUnlocked
+                ? "No unlocked entries."
+                : "No entries yet."
           }
           enableExport
-          exportFileName="journal-entries"
+          exportFileName={isUnlocked ? "journal-unlocked-entries" : "journal-entries"}
+          // Deliberately one key for both grid tabs: same columns, same rows,
+          // so a column width or order set on one should hold on the other.
           storageKey="myhomebase:journal-entries-grid"
           onRowClick={(entry) => router.push(`/modules/journal/entries/${entry.id}`)}
           enableSelection

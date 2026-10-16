@@ -146,6 +146,26 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-10-16 — Release (Journal Entries: All / Unlocked / Log tabs, Filtering card)
+
+No migration. Phone-width items are marked (phone).
+
+- [ ] **1.** Journal → Entries shows three tabs in order: All Entries, Unlocked Entries, Log (the old "Main" label is gone)
+- [ ] **2.** All Entries lists every entry, locked and unlocked, exactly as Main did
+- [ ] **3.** Unlocked Entries lists only unlocked entries; a locked entry never appears
+- [ ] **4.** Unlocked Entries with an OR-joined saved filter selected still shows no locked entries
+- [ ] **5.** On Unlocked Entries, tick rows and Lock them — the rows disappear from the list and the result line says so
+- [ ] **6.** On All Entries, Unlock a locked row, then switch to Unlocked Entries after a reload — it is there
+- [ ] **7.** The Log tab still works as before, including bulk delete and the viewer modal
+- [ ] **8.** A "Filtering" card sits above the grid on both grid tabs, holding the filter dropdown, New filter / Edit / Delete and the conditions text
+- [ ] **9.** Collapsing the Filtering card keeps a filter error or a bulk-action result line visible
+- [ ] **10.** Picking a saved filter on one grid tab does not change the other tab's selection
+- [ ] **11.** Unlocked Entries shows its own wording: "unlocked entries" in the count line, and the empty-state messages
+- [ ] **12.** Export from Unlocked Entries downloads `journal-unlocked-entries`; All Entries still downloads `journal-entries`
+- [ ] **13.** Opening `/modules/journal/entries?tab=unlocked` lands on Unlocked Entries; `?tab=log` still lands on Log
+- [ ] **14.** (phone) The three tabs fit or wrap onto a second row without horizontal scrolling; the Filtering card is usable
+- [ ] **15.** Another screen that uses the shared Tabs strip (e.g. About) looks unchanged on desktop
+
 ## 2026-10-16 — Release (uploaded module icons, ticker-monitor Popup, Exam QR diagnostics, journal and texture polish)
 
 **Migrations 0149–0150 must be applied on the NAS.** Items 1–9 need 0150, items 10–15 need 0149 — without them the affected screens fail with "no such column". Items 21 and 22 are phone-only.

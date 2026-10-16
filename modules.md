@@ -468,7 +468,9 @@ Five choices worth knowing:
   only the calendar's other fields update. Untick it (CLI: `--replace`) for the old
   replace-the-whole-entry behaviour.
 
-**Entries** is two tabs. **Main** is the filter dropdown and the entries it narrows;
+**Entries** is three tabs. **All Entries** is the filter dropdown and the entries it narrows;
+**Unlocked Entries** is the same screen with a server-side `isLocked is false` condition
+(`withLockedCondition`, its own AND group so an OR-joined filter can't leak a locked row);
 **Log** lists every entry carrying the `Log` category — logged activities rather than
 written entries, which is where calendar imports land. The Log tab is one `DataGrid`
 with search, filters, CSV export and a bulk delete that moves rows to the **recycle

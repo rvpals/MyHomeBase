@@ -211,6 +211,64 @@ export function withLogCondition(filter: JournalFilter, scope: JournalLogScope):
 }
 
 /**
+ * Which lock population a list is scoped to — the condition behind the Entries
+ * browser's "All Entries" and "Unlocked Entries" tabs.
+ *
+ * Deliberately a separate three-state scope from `JournalLogScope` rather than a
+ * boolean, for the same reason: "add no lock condition at all" is what the All
+ * Entries tab needs, and that is not either value of an `unlocked` flag.
+ */
+export type JournalLockScope = "all" | "locked" | "unlocked";
+
+/**
+ * `filter` scoped to one lock population.
+ *
+ * Mirrors `withLogCondition` exactly, and for the same reasons — read the note
+ * there first. The condition goes in as its **own group** combined with a
+ * top-level AND, never as one more condition inside the reader's groups: a saved
+ * filter may join its conditions with OR, and pushing `isLocked is false` in
+ * beside them would make it one more *alternative*, so `category hasAny Trip OR
+ * title ~ beach` would come back as `... OR isLocked is false` and pull in
+ * locked entries the tab is defined to exclude. A separate AND group is the only
+ * arrangement that holds for both joins, and it means the Unlocked tab cannot
+ * leak a locked entry however the reader's filter is built.
+ *
+ * `"all"` returns the filter **unchanged** — it adds nothing to combine, so the
+ * reader's own join is preserved.
+ *
+ * Composes with `withLogCondition` in either order: both append a group and both
+ * force AND, so the result is the same set of groups either way.
+ */
+export function withLockedCondition(
+  filter: JournalFilter,
+  scope: JournalLockScope,
+): JournalFilter {
+  if (scope === "all") return filter;
+  return {
+    join: "AND",
+    // Carried through for the same reason as withLogCondition: this rebuilds the
+    // *conditions*, and dropping the sort would silently ignore the reader's
+    // chosen order on every scoped list.
+    sort: filter.sort,
+    groups: [
+      ...filter.groups,
+      {
+        join: "AND",
+        conditions: [
+          {
+            field: "isLocked",
+            operator: "is",
+            // Boolean fields compare against the strings "true"/"false"; see the
+            // `kind: "boolean"` branch of compileCondition in filters.ts.
+            value: scope === "locked" ? "true" : "false",
+          },
+        ],
+      },
+    ],
+  };
+}
+
+/**
  * Every entry carrying the Log category, newest journal date first — the Entries
  * browser's Log tab.
  *

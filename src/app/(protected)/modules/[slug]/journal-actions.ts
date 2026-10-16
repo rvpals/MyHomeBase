@@ -25,6 +25,8 @@ import {
   findEntries,
   withLogCondition,
   type JournalLogScope,
+  withLockedCondition,
+  type JournalLockScope,
   generateCategoryIcon,
   generateMissingTaxonomyIcons,
   type GenerateIconsSummary,
@@ -671,14 +673,19 @@ export interface JournalEntriesResult extends ActionResult {
 /**
  * Runs a filter and returns the matching entries for the Entries browser.
  *
- * `scope` is which tab is asking, and the Log condition is applied here, on the
- * server, rather than trusted from the filter the client sent — so a re-query
- * can't be widened by a hand-shaped saved filter. Main passes `"all"`, the Log
- * tab `"only"`.
+ * `scope` is which tab is asking, and both the Log and the lock conditions are
+ * applied here, on the server, rather than trusted from the filter the client
+ * sent — so a re-query can't be widened by a hand-shaped saved filter. All
+ * Entries passes `"all"`/`"all"`, the Log tab `"only"`, and Unlocked Entries
+ * `"all"` with `lockScope: "unlocked"`.
+ *
+ * `lockScope` defaults to `"all"` so the two tabs that don't care about the lock
+ * call this unchanged.
  */
 export async function findJournalEntriesAction(
   filter: JournalFilter,
   scope: JournalLogScope,
+  lockScope: JournalLockScope = "all",
 ): Promise<JournalEntriesResult> {
   await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
@@ -686,7 +693,7 @@ export async function findJournalEntriesAction(
       ok: true,
       entries: findEntries(
         deps.journalRepo,
-        withLogCondition(filter, scope),
+        withLockedCondition(withLogCondition(filter, scope), lockScope),
         ENTRIES_RESULT_LIMIT,
       ),
     };
