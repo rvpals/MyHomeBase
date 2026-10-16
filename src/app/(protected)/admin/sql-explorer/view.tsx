@@ -507,7 +507,14 @@ function ModulesExplorer({
             {selectedGroup && (
               <p className="flex items-center gap-2 text-xs text-muted">
                 {selectedGroup.icon && (
-                  <ModuleIcon name={selectedGroup.icon} className="h-4 w-4 shrink-0 text-brass-dark" />
+                  <ModuleIcon
+                    // `key` IS the module slug here (see ModuleTableGroup), but
+                    // only for a real module — "non-modules" is a leftovers
+                    // bucket with no row to upload an icon against.
+                    slug={selectedGroup.isModule ? selectedGroup.key : undefined}
+                    name={selectedGroup.icon}
+                    className="h-4 w-4 shrink-0 text-brass-dark"
+                  />
                 )}
                 {selectedGroup.label}
               </p>

@@ -135,6 +135,7 @@ export async function HouseholdShell({ children }: { children: ReactNode }) {
         name: appModule?.shortName ?? "Household",
         icon: appModule?.icon ?? "household",
         href: `/modules/${HOUSEHOLD_MODULE_SLUG}`,
+        slug: HOUSEHOLD_MODULE_SLUG,
       }}
       currentUser={{
         id: currentUser.id,

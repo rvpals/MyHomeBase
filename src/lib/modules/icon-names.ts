@@ -33,6 +33,21 @@ export const MODULE_ICON_NAMES = [
   // gen-icon-glyphs.mjs), so unlike Music Library and Picture Gallery this one
   // needs no follow-up migration. See migrations/0119_seed_household_module.md.
   "household",
+  // A schoolhouse — the Classroom module. Deliberately a *building*, not the cap or
+  // board you might reach for first: `roster` (a class register) already carries the
+  // "this is a class" idea in this same list, and the tree registry's `classroom` is a
+  // presentation board that renders two rows below the module header in the same nav.
+  // A building is the one shape neither of those can be confused with.
+  //
+  // Note this name also exists in TREE_ICON_NAMES as a different drawing. That is legal
+  // and `photo`/`chart`/`shield`/`heart` already do it, but see modules.md -> Icons: the
+  // two registries are separate and a name in one resolves nothing in the other.
+  //
+  // Named in all twelve generated sets up front (a missing module concept is fatal in
+  // gen-icon-glyphs.mjs), so unlike Music Library and Picture Gallery this one needs no
+  // follow-up migration. Three sets have no schoolhouse and take the nearest civic
+  // building or academic cap instead -- recorded at their entries in the candidate map.
+  "classroom",
 ] as const;
 
 export type ModuleIconName = (typeof MODULE_ICON_NAMES)[number];

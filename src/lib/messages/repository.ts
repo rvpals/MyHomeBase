@@ -12,6 +12,7 @@ interface MessageRow {
   source: string;
   module: string;
   is_locked: number;
+  is_popup: number;
 }
 
 /**
@@ -37,6 +38,9 @@ function toMessage(row: MessageRow): SystemMessage {
     // SQLite has no boolean: the column is INTEGER 0/1. One `!== 0` here rather
     // than a truthiness test at each reader.
     isLocked: row.is_locked !== 0,
+    // Same 0/1 convention. A pre-0149 row holds the column default, 0 — it was
+    // filed before anything could ask to interrupt, which is the honest answer.
+    isPopup: row.is_popup !== 0,
   };
 }
 
@@ -104,12 +108,43 @@ export class SqliteMessageRepository implements MessageRepository {
   createMessage(input: CreateMessage): SystemMessage {
     const row = this.db
       .prepare(
-        `INSERT INTO sys_messages (title, body, source, module)
-         VALUES (?, ?, ?, ?)
+        `INSERT INTO sys_messages (title, body, source, module, is_popup)
+         VALUES (?, ?, ?, ?, ?)
          RETURNING *`,
       )
-      .get(input.title, input.body, input.source, input.module) as MessageRow;
+      .get(
+        input.title,
+        input.body,
+        input.source,
+        input.module,
+        // Boolean to SQLite's 0/1, the same conversion the monitor repository
+        // makes. better-sqlite3 refuses a JS boolean as a bound parameter.
+        input.isPopup ? 1 : 0,
+      ) as MessageRow;
     return toMessage(row);
+  }
+
+  listPendingPopups(): SystemMessage[] {
+    // "Unread AND asked to interrupt" — see migration 0149. There is no
+    // dismissed column: `read_at` is the latch, because clicking OK marks these
+    // read, which is also what clears them from the bell badge.
+    //
+    // `read_at IS NULL` leads the predicate so SQLite can use
+    // `idx_messages_unread`, the partial index from 0109 whose predicate is
+    // exactly that. What is left is a flag test over the unread rows alone.
+    //
+    // Oldest first, unlike every other read here: the dialog lists them in one
+    // body, and a reader scanning a stack of notices wants them in the order
+    // they happened. `id` breaks the tie because `created_at` is only
+    // second-resolution and one refresh files several at once.
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM sys_messages
+          WHERE read_at IS NULL AND is_popup = 1
+          ORDER BY created_at ASC, id ASC`,
+      )
+      .all() as MessageRow[];
+    return rows.map(toMessage);
   }
 
   markRead(messageIds: number[]): number {

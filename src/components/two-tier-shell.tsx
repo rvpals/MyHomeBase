@@ -50,8 +50,14 @@ export interface TwoTierShellProps {
    * the icons resolve exactly as they did before slots existed.
    */
   iconNamespace?: string;
-  /** The current module, badged in the panel and named in the breadcrumb. */
-  module: { name: string; icon: string; href: string };
+  /**
+   * The current module, badged in the panel and named in the breadcrumb.
+   *
+   * `slug` is what lets the badge show an icon uploaded under Module
+   * Configuration. Optional because Administration has no row in `sys_modules`
+   * — its badge goes through the `chrome_admin_identity` icon slot instead.
+   */
+  module: { name: string; icon: string; href: string; slug?: string };
   currentUser: { id: number; fullName: string; avatarMimeType?: string; updatedAt?: string };
   /**
    * Administrator? Shows the Administration gear in the rail's bottom zone and
@@ -198,7 +204,7 @@ export function TwoTierShell({
   };
 
   const crumbs: Breadcrumb[] = [
-    { label: module.name, href: module.href, icon: module.icon },
+    { label: module.name, href: module.href, icon: module.icon, slug: module.slug },
     ...(activeSection ? [{ label: activeSection.label, href: activeSection.href }] : []),
     ...(extraCrumbs ?? []),
   ];

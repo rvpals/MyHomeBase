@@ -145,6 +145,11 @@ export function runMonitors(
         // Same module as the watch list beside it, under a different `source`:
         // two producers, one owner. That is the distinction the column exists for.
         module: "investments",
+        // Carried onto the message rather than looked up from the monitor
+        // later: the message outlives the monitor, and a monitor whose Popup
+        // box is unticked this afternoon still filed a popup this morning.
+        // See migration 0149.
+        isPopup: monitor.isPopup,
       });
       repo.setTriggered(monitor.id, true, evaluation.message);
       result.triggered += 1;

@@ -118,7 +118,7 @@ export function ModuleMenu({ links, isActive }: { links: NavLink[]; isActive: (h
               onClick={() => setIsOpen(false)}
               className={`${menuItem} ${isActive(link.href) ? menuItemActive : menuItemIdle}`}
             >
-              <ModuleIcon name={link.icon} className="h-4 w-4 shrink-0" />
+              <ModuleIcon slug={link.slug} name={link.icon} className="h-4 w-4 shrink-0" />
               {link.name}
             </Link>
           ))}

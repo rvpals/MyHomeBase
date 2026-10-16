@@ -26,6 +26,7 @@ import {
   updateExam,
   updateExamSchema,
   type GradedScan,
+  type QrStatus,
 } from "@/lib/exam";
 import { formatStudentName, listStudentsInClass } from "@/lib/attendance";
 import { deps } from "@/lib/wiring";
@@ -194,6 +195,7 @@ export async function gradeScanAction(
     // back to matching on the file name, which is how every sheet was attributed
     // before the code existed.
     let scannedIdentifier: string | undefined;
+    let qrStatus: QrStatus = "not-printed";
     if (exam.includeStudentId && qrTopFraction !== undefined) {
       try {
         // Map through the ANCHOR BARS, not the image edges.
@@ -215,13 +217,29 @@ export async function gradeScanAction(
           mapping.toPixelX,
           mapping.toPixelY,
         );
-        if (region) {
-          scannedIdentifier = decodeStudentIdPayload(
-            await deps.qrIdentity.decode(region),
-          );
+
+        if (!region) {
+          // The crop fell outside the image entirely.
+          qrStatus = "not-found";
+        } else {
+          const payload = await deps.qrIdentity.decode(region);
+          if (payload === undefined) {
+            // Nothing in the crop looked like a code. Either it is not there, or the
+            // crop is in the wrong place -- which is why the screen says "not found"
+            // rather than "unreadable": those point at different fixes.
+            qrStatus = "not-found";
+          } else {
+            scannedIdentifier = decodeStudentIdPayload(payload);
+            // A payload that decoded but is not ours, or is malformed, is ink that
+            // would not resolve into a student id.
+            qrStatus = scannedIdentifier === undefined ? "unreadable" : "decoded";
+          }
         }
       } catch {
-        // Left undefined: fall back to the file name.
+        // The decoder itself failed -- a missing module, a corrupt buffer. Reported
+        // as unreadable rather than swallowed, so the screen never implies the sheet
+        // simply had no code.
+        qrStatus = "unreadable";
       }
     }
     const graded = gradeScan(
@@ -232,6 +250,7 @@ export async function gradeScanAction(
       gridTop,
       roster,
       scannedIdentifier,
+      qrStatus,
     );
 
     return { ok: true, graded };

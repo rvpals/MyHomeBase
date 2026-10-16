@@ -7,6 +7,7 @@
 //   npm run cli -- ticker-monitors add NVDA gain-pct 20 --band 3
 //   npm run cli -- ticker-monitors add BMY price 45 --band 1
 //   npm run cli -- ticker-monitors add BMY day-move 3 --down
+//   npm run cli -- ticker-monitors add BMY price 45 --band 1 --popup
 //   npm run cli -- ticker-monitors enable 4
 //   npm run cli -- ticker-monitors disable 4
 //   npm run cli -- ticker-monitors delete 4
@@ -37,7 +38,7 @@ import { messageOf } from "./error-message";
 const USAGE = `Usage:
   ticker-monitors list <ticker>
   ticker-monitors add <ticker> <gain-amount|loss-amount|gain-pct|price|day-move> <target>
-                     [--band <pct>] [--up|--down]
+                     [--band <pct>] [--up|--down] [--popup]
   ticker-monitors enable <id>
   ticker-monitors disable <id>
   ticker-monitors delete <id>
@@ -48,7 +49,11 @@ Targets:
   gain-pct                   percent of cost basis, e.g. 20
   price                      dollars per share, e.g. 45   (fires either side of the band)
   day-move                   percent moved in a day, e.g. 3; needs --up or --down,
-                             ignores --band (it is a threshold, not a band)`;
+                             ignores --band (it is a threshold, not a band)
+
+Options:
+  --popup                    also interrupt the home screen when this fires,
+                             on top of the message it files either way`;
 
 /** The CLI's kebab names for the types, kept out of the stored values. */
 const TYPE_BY_NAME: Record<string, MonitorType> = {
@@ -67,11 +72,12 @@ function usesPercentTarget(monitorType: MonitorType): boolean {
 function printMonitor(monitor: TickerMonitor): void {
   const state = monitor.isEnabled ? " " : "-";
   const latched = monitor.isTriggered ? " [triggered]" : "";
+  const popup = monitor.isPopup ? " [popup]" : "";
   // No ± for the threshold type: it stores a band nothing reads, and printing
   // one would describe behaviour the monitor does not have.
   const band = usesBand(monitor.monitorType) ? `  ±${monitor.bandPct}%` : "";
   console.log(
-    `${state} [${monitor.id}] ${monitor.ticker}  ${summarizeMonitor(monitor)}${band}${latched}`,
+    `${state} [${monitor.id}] ${monitor.ticker}  ${summarizeMonitor(monitor)}${band}${popup}${latched}`,
   );
   if (monitor.lastMessage !== "") console.log(`         last: ${monitor.lastMessage}`);
 }
@@ -152,6 +158,9 @@ export async function tickerMonitorsCommand(args: string[]): Promise<void> {
           ...(bandPct === undefined || isDayMove ? {} : { bandPct }),
           direction,
           isEnabled: true,
+          // Delivery, not condition — so it applies to every type and takes no
+          // part in the target handling above (migrations/0149).
+          isPopup: rest.includes("--popup"),
         });
         console.log(`Added monitor ${monitor.id}: ${summarizeMonitor(monitor)}`);
         return;

@@ -59,6 +59,7 @@ export const systemMessageSchema = z.object({
   source: z.string(),
   module: messageModuleSchema,
   isLocked: z.boolean(),
+  isPopup: z.boolean(),
 });
 
 /**
@@ -78,6 +79,14 @@ export const createMessageSchema = z.object({
   // locked afterwards by an admin, so accepting it here would let a producer
   // file something nobody can delete.
   module: messageModuleSchema.default("system"),
+  // Accepted here, unlike `isLocked`, and the difference is the point: locking
+  // is an admin's later judgement about a message, where interrupting is the
+  // *producer's* decision at the moment of filing and cannot be made by anyone
+  // else afterwards. A monitor with Popup ticked passes true (migrations/0149).
+  //
+  // Defaulted false so every existing caller — the watch list, the CLI, the
+  // scheduled jobs — keeps filing quietly without naming the field.
+  isPopup: z.boolean().default(false),
 });
 
 /**

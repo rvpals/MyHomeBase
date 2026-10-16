@@ -3,16 +3,21 @@ import type { DecodedImage } from "@/lib/shared/image-upload";
 import {
   getModuleBySlug,
   getModuleCarouselImage,
+  getModuleCustomIcon,
+  getModuleCustomIconMap,
   listModules,
   removeModuleCarouselImage,
+  removeModuleCustomIcon,
   resetModulesToDefaults,
   setModuleCarouselImage,
+  setModuleCustomIcon,
   setModuleIcon,
   updateModules,
 } from "./modules";
+import type { IconImageProcessor } from "@/lib/icons/ports";
 import type { CarouselImageProcessor, ModuleRepository } from "./ports";
-import { MAX_CAROUSEL_IMAGE_BYTES } from "./schema";
-import type { Module } from "./types";
+import { MAX_CAROUSEL_IMAGE_BYTES, MAX_MODULE_ICON_BYTES } from "./schema";
+import type { Module, ModuleCustomIcon } from "./types";
 
 // Hand-written fake — no mocking framework, reusable across tests.
 function fakeRepo(seed: Module[]): ModuleRepository {
@@ -21,7 +26,41 @@ function fakeRepo(seed: Module[]): ModuleRepository {
   // Images live beside the rows, as they do in the real table — but `Module`
   // only ever carries the boolean, which is the whole point of the design.
   const images = new Map<string, DecodedImage>();
+  // Same split again for the custom icon: the payload sits beside the row and
+  // `Module` carries only the two flags.
+  const icons = new Map<string, ModuleCustomIcon>();
   return {
+    getCustomIcon(slug) {
+      return icons.get(slug);
+    },
+    listCustomIcons() {
+      return [...icons.entries()]
+        .map(([slug, icon]) =>
+          icon.svgBody
+            ? {
+                slug,
+                kind: "svg" as const,
+                svgBody: icon.svgBody,
+                svgWidth: icon.svgWidth,
+                svgHeight: icon.svgHeight,
+              }
+            : { slug, kind: "image" as const, version: "2026-10-16T00:00:00Z" },
+        )
+        .sort((a, b) => a.slug.localeCompare(b.slug));
+    },
+    setCustomIcon(slug, icon) {
+      if (icon) icons.set(slug, icon);
+      else icons.delete(slug);
+      state = state.map((module) =>
+        module.slug === slug
+          ? {
+              ...module,
+              hasCustomIcon: Boolean(icon),
+              customIconKind: icon ? (icon.svgBody ? "svg" : "image") : undefined,
+            }
+          : module,
+      );
+    },
     getCarouselImage(slug) {
       return images.get(slug);
     },
@@ -77,6 +116,10 @@ function fakeRepo(seed: Module[]): ModuleRepository {
           // artwork, matching the real repository's upsert (which never touches
           // the image columns).
           hasCarouselImage: existing?.hasCarouselImage ?? false,
+          // Same again for the uploaded icon: the real upsert lists only the
+          // seeded columns, so a reset leaves custom_icon* alone.
+          hasCustomIcon: existing?.hasCustomIcon ?? false,
+          customIconKind: existing?.customIconKind,
         };
       });
     },
@@ -93,6 +136,7 @@ const sample: Module[] = [
     isVisible: true,
     icon: "building",
     hasCarouselImage: false,
+    hasCustomIcon: false,
   },
   {
     id: 2,
@@ -103,6 +147,7 @@ const sample: Module[] = [
     isVisible: false,
     icon: "folder",
     hasCarouselImage: false,
+    hasCustomIcon: false,
   },
 ];
 
@@ -181,6 +226,7 @@ describe("resetModulesToDefaults", () => {
         isVisible: true,
         icon: "chart",
         hasCarouselImage: false,
+        hasCustomIcon: false,
       },
     ]);
     const result = resetModulesToDefaults(repo);
@@ -352,5 +398,263 @@ describe("the carousel image", () => {
       }),
     ).rejects.toThrow(/no-such-module/);
     expect(() => removeModuleCarouselImage(repo, "no-such-module")).toThrow(/no-such-module/);
+  });
+});
+
+describe("the custom icon", () => {
+  /** A base64 payload of a given decoded byte length. */
+  function payload(bytes: number): string {
+    return Buffer.alloc(bytes, 1).toString("base64");
+  }
+
+  /** Stands in for sharp: decodes to a solid square and encodes short bytes. */
+  const processor: IconImageProcessor = {
+    decode: async () => ({ data: Buffer.alloc(4 * 8 * 8, 200), width: 8, height: 8 }),
+    encodePng: async () => Buffer.from("tiny-png-bytes"),
+  };
+
+  it("stores an SVG as a sanitized inner body, flipping hasCustomIcon", async () => {
+    const repo = fakeRepo(sample);
+    expect(getModuleBySlug(repo, "real-estate-investment")?.hasCustomIcon).toBe(false);
+
+    await setModuleCustomIcon(repo, {
+      slug: "real-estate-investment",
+      kind: "svg",
+      source: '<svg viewBox="0 0 32 32"><path d="M1 1h30v30H1z" /></svg>',
+    });
+
+    const appModule = getModuleBySlug(repo, "real-estate-investment");
+    expect(appModule?.hasCustomIcon).toBe(true);
+    expect(appModule?.customIconKind).toBe("svg");
+
+    const stored = getModuleCustomIcon(repo, "real-estate-investment");
+    // The outer <svg> is stripped so the body can be inlined under a viewBox the
+    // renderer controls — that is what lets it inherit `currentColor`.
+    expect(stored?.svgBody).toContain("<path");
+    expect(stored?.svgBody).not.toContain("<svg");
+    expect(stored?.svgWidth).toBe(32);
+    expect(stored?.svgHeight).toBe(32);
+  });
+
+  it("strips script out of an uploaded SVG rather than refusing the file", async () => {
+    const repo = fakeRepo(sample);
+
+    await setModuleCustomIcon(repo, {
+      slug: "real-estate-investment",
+      kind: "svg",
+      source:
+        '<svg viewBox="0 0 24 24"><script>alert(1)</script><circle cx="12" cy="12" r="9" /></svg>',
+    });
+
+    const stored = getModuleCustomIcon(repo, "real-estate-investment");
+    // These bytes are inlined into every page that shows the nav, so this is the
+    // property that matters most in this file.
+    expect(stored?.svgBody).not.toMatch(/script/i);
+    expect(stored?.svgBody).toContain("<circle");
+  });
+
+  it("normalises a raster through the processor and stores PNG", async () => {
+    const repo = fakeRepo(sample);
+
+    await setModuleCustomIcon(
+      repo,
+      {
+        slug: "real-estate-investment",
+        kind: "raster",
+        mimeType: "image/jpeg",
+        base64Data: payload(2048),
+      },
+      processor,
+    );
+
+    const appModule = getModuleBySlug(repo, "real-estate-investment");
+    expect(appModule?.customIconKind).toBe("image");
+
+    const stored = getModuleCustomIcon(repo, "real-estate-investment");
+    expect(stored?.mimeType).toBe("image/png");
+    expect(stored?.data).toHaveLength("tiny-png-bytes".length);
+  });
+
+  it("keeps the original bytes when one image is unreadable", async () => {
+    const repo = fakeRepo(sample);
+    const broken: IconImageProcessor = {
+      decode: async () => {
+        throw new Error("unsupported image format");
+      },
+      encodePng: async () => Buffer.from("never"),
+    };
+
+    // A file the decoder chokes on should cost a less tidy icon, not the upload.
+    await setModuleCustomIcon(
+      repo,
+      {
+        slug: "real-estate-investment",
+        kind: "raster",
+        mimeType: "image/png",
+        base64Data: payload(64),
+      },
+      broken,
+    );
+
+    expect(getModuleBySlug(repo, "real-estate-investment")?.hasCustomIcon).toBe(true);
+    expect(getModuleCustomIcon(repo, "real-estate-investment")?.mimeType).toBe("image/png");
+  });
+
+  it("propagates an unavailable processor instead of storing a bad icon", async () => {
+    const repo = fakeRepo(sample);
+    const missing: IconImageProcessor = {
+      decode: async () => {
+        throw new Error("Image processing is unavailable on this platform.");
+      },
+      encodePng: async () => Buffer.from("never"),
+    };
+
+    // An install problem, not a bad file: storing the raw upload would quietly
+    // produce the muddy icon the pipeline exists to prevent, on every upload.
+    await expect(
+      setModuleCustomIcon(
+        repo,
+        {
+          slug: "real-estate-investment",
+          kind: "raster",
+          mimeType: "image/png",
+          base64Data: payload(64),
+        },
+        missing,
+      ),
+    ).rejects.toThrow(/unavailable/i);
+    expect(getModuleBySlug(repo, "real-estate-investment")?.hasCustomIcon).toBe(false);
+  });
+
+  it("replaces one payload kind with the other, never leaving both", async () => {
+    const repo = fakeRepo(sample);
+
+    await setModuleCustomIcon(repo, {
+      slug: "real-estate-investment",
+      kind: "svg",
+      source: '<svg viewBox="0 0 24 24"><path d="M2 2h20v20H2z" /></svg>',
+    });
+    await setModuleCustomIcon(
+      repo,
+      {
+        slug: "real-estate-investment",
+        kind: "raster",
+        mimeType: "image/png",
+        base64Data: payload(64),
+      },
+      processor,
+    );
+
+    const stored = getModuleCustomIcon(repo, "real-estate-investment");
+    expect(stored?.svgBody).toBeUndefined();
+    expect(stored?.mimeType).toBe("image/png");
+    expect(getModuleBySlug(repo, "real-estate-investment")?.customIconKind).toBe("image");
+  });
+
+  it("clears the icon so the module falls back to its picked glyph", async () => {
+    const repo = fakeRepo(sample);
+    await setModuleCustomIcon(
+      repo,
+      {
+        slug: "real-estate-investment",
+        kind: "raster",
+        mimeType: "image/png",
+        base64Data: payload(64),
+      },
+      processor,
+    );
+
+    removeModuleCustomIcon(repo, "real-estate-investment");
+
+    const appModule = getModuleBySlug(repo, "real-estate-investment");
+    expect(appModule?.hasCustomIcon).toBe(false);
+    expect(appModule?.customIconKind).toBeUndefined();
+    // The glyph name is untouched — it is what renders again.
+    expect(appModule?.icon).toBe("building");
+    expect(getModuleCustomIcon(repo, "real-estate-investment")).toBeUndefined();
+  });
+
+  it("rejects a raster over the cap, and accepts one just under it", async () => {
+    const repo = fakeRepo(sample);
+
+    await expect(
+      setModuleCustomIcon(repo, {
+        slug: "real-estate-investment",
+        kind: "raster",
+        mimeType: "image/png",
+        base64Data: payload(MAX_MODULE_ICON_BYTES + 1),
+      }),
+    ).rejects.toThrow(/too large/i);
+
+    await expect(
+      setModuleCustomIcon(repo, {
+        slug: "real-estate-investment",
+        kind: "raster",
+        mimeType: "image/png",
+        base64Data: payload(MAX_MODULE_ICON_BYTES),
+      }),
+    ).resolves.not.toThrow();
+  });
+
+  it("refuses an SVG posted down the raster path", async () => {
+    const repo = fakeRepo(sample);
+
+    // SVG has its own branch precisely because it must be sanitized as markup;
+    // arriving as base64 would bypass that and store script-bearing bytes.
+    await expect(
+      setModuleCustomIcon(repo, {
+        slug: "real-estate-investment",
+        kind: "raster",
+        // @ts-expect-error — the point of the test is that the enum rejects it.
+        mimeType: "image/svg+xml",
+        base64Data: payload(32),
+      }),
+    ).rejects.toThrow();
+    expect(getModuleBySlug(repo, "real-estate-investment")?.hasCustomIcon).toBe(false);
+  });
+
+  it("rejects an unknown slug rather than silently updating nothing", async () => {
+    const repo = fakeRepo(sample);
+
+    await expect(
+      setModuleCustomIcon(repo, {
+        slug: "no-such-module",
+        kind: "svg",
+        source: '<svg viewBox="0 0 24 24"><path d="M2 2h20v20H2z" /></svg>',
+      }),
+    ).rejects.toThrow(/no-such-module/);
+    expect(() => removeModuleCustomIcon(repo, "no-such-module")).toThrow(/no-such-module/);
+  });
+
+  it("indexes uploads by slug for the nav, and omits modules without one", async () => {
+    const repo = fakeRepo(sample);
+    await setModuleCustomIcon(repo, {
+      slug: "real-estate-investment",
+      kind: "svg",
+      source: '<svg viewBox="0 0 24 24"><path d="M2 2h20v20H2z" /></svg>',
+    });
+
+    const map = getModuleCustomIconMap(repo);
+    expect(Object.keys(map)).toEqual(["real-estate-investment"]);
+    expect(map["real-estate-investment"].kind).toBe("svg");
+    // The map is what every nav row looks itself up in; a module with no upload
+    // must be absent rather than present-and-empty, or it draws nothing.
+    expect(map["hidden-module"]).toBeUndefined();
+  });
+
+  it("survives a reset to defaults, which only rewrites the seeded fields", async () => {
+    const repo = fakeRepo(sample);
+    await setModuleCustomIcon(repo, {
+      slug: "real-estate-investment",
+      kind: "svg",
+      source: '<svg viewBox="0 0 24 24"><path d="M2 2h20v20H2z" /></svg>',
+    });
+
+    resetModulesToDefaults(repo);
+
+    // Matches the real upsert, which lists only the seeded columns — and matches
+    // what a reset already does to carousel artwork.
+    const appModule = getModuleBySlug(repo, "real-estate-investment");
+    if (appModule) expect(appModule.hasCustomIcon).toBe(true);
   });
 });

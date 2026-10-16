@@ -31,6 +31,18 @@ export function getMessage(repo: MessageRepository, id: number): SystemMessage |
   return repo.getMessageById(id);
 }
 
+/**
+ * The messages still waiting to interrupt — filed by a producer that asked to
+ * pop up (a ticker monitor with Popup ticked) and not yet read.
+ *
+ * Read-only and safe to call on every home-screen render: showing a popup
+ * changes nothing, and what dismisses it is `markMessagesRead` on the ids this
+ * returns. That is the whole latch — see migration 0149.
+ */
+export function listPendingPopupMessages(repo: MessageRepository): SystemMessage[] {
+  return repo.listPendingPopups();
+}
+
 /** Unread and read together — the header badge and the tab labels in one read. */
 export function countMessages(repo: MessageRepository): MessageCounts {
   return repo.countMessages();

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { CollapsibleCardScope } from "@/components/collapsible-card-scope";
 import { MusicPlayerBar } from "@/components/music-player-bar";
 import { MusicPlayerProvider } from "@/components/music-player-provider";
+import { ModuleCustomIconProvider } from "@/components/module-icon-context";
 import { CompactNavStyleProvider } from "@/components/nav-style-context";
 import { FloatingHost } from "@/components/floating-host";
 import { PersonalToolbars } from "@/components/personal-toolbar";
@@ -19,7 +20,7 @@ import { describeClock } from "@/lib/clock";
 import { getEnabledFloating } from "@/lib/floating";
 import { getScratchpad } from "@/lib/scratchpad";
 import { listMenuItems } from "@/lib/menu-items";
-import { listModules } from "@/lib/modules";
+import { getModuleCustomIconMap, listModules } from "@/lib/modules";
 import {
   listToolbars,
   parseHiddenToolbars,
@@ -259,6 +260,15 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
     }
   }
 
+  // The uploaded module icons, keyed by slug, for `ModuleIcon` to resolve
+  // against. Read here rather than in the root layout because only authenticated
+  // pages draw module chrome — /login has no nav to put an icon in.
+  //
+  // One query, returning no rows unless somebody has actually uploaded
+  // something: the two payload columns stay out of `MODULE_COLUMNS` for exactly
+  // this reason (migrations/0150_module_custom_icon.md).
+  const moduleCustomIcons = getModuleCustomIconMap(deps.moduleRepo);
+
   return (
     <div className="min-h-screen">
       {/* No top bar: navigation is `TwoTierShell`, which each module's own shell
@@ -272,74 +282,79 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
           Library module: an <audio> element stops when it unmounts, so keeping the
           one instance above `children` is what lets a track keep playing while you
           navigate between modules. The bar renders nothing until something plays. */}
-      <CompactNavStyleProvider value={compactNavStyle}>
-        <MusicPlayerProvider actions={musicQueueActions}>
-          {/* The texture attaches to `.app-main` itself rather than to a nested
-              div: its `::before` is `fixed` so it covers the viewport either
-              way, but the wrapper must be a stacking context that contains the
-              page's content, and adding another element here would change the
-              padding `.app-main` reserves for the nav tiers. The attribute is
-              absent unless there is a picture to draw. */}
-          <main
-            className="app-main min-h-screen pb-8"
-            data-app-texture={appTexture.vars ? "" : undefined}
-            // "on" / "off" rather than a bare attribute: the value tells the
-            // CSS whether the frame paints the card's middle, which is a
-            // change to the `border-image-slice` syntax rather than to a value
-            // inside it and so cannot ride on a custom property.
-            data-card-frame={cardFrame?.["--card-frame-center"]}
-            // Both sets of custom properties ride on this one element. They
-            // share no names, so the merge is a plain spread; `undefined`
-            // stays undefined when neither is set, which keeps the `style`
-            // attribute off the element entirely.
-            style={
-              appTexture.vars || cardFrame
-                ? ({ ...appTexture.vars, ...cardFrame } as CSSProperties)
-                : undefined
-            }
-          >
-            {/* Gives every `CollapsibleCard` under a route its ordinal, so the
-                cards remember whether the reader left them open. Wraps
-                `children` only — deliberately not the floating layer below,
-                whose windows outlive navigation and would otherwise consume
-                ordinals that belong to the page. */}
-            <CollapsibleCardScope>{children}</CollapsibleCardScope>
-          </main>
-          <MusicPlayerBar />
-          {/* Docked shortcut bars. **Additive** — this renders nothing at all for a
-              reader with no toolbars, and it never replaces a navigation tier: the
-              tree and the compact bottom bar are untouched. Placed after the player
-              because its CSS stacks above `--music-player-height`, so the player
-              keeps the bottom edge and a bottom toolbar sits on top of it. */}
-          {/* `canEdit` offers the ✎ shortcut into each bar's editor. Admins only —
-              the screen it links to calls `requireAdmin()` itself, so this decides
-              whether the control is *offered*, never whether it is allowed. */}
-          <PersonalToolbars toolbars={toolbars} canEdit={isAdmin(currentUser)} />
-          {/* Below the player so the layer's pucks stack above the player's own,
-              and inside both providers so a floating component can read either. */}
-          <FloatingHost
-            enabled={enabledFloating}
-            initialStates={preferences.floating}
-            initialCorners={preferences.floatingCorners}
-            actions={floatingActions}
-            clockReading={clockReading}
-            clockOptions={preferences.clock}
-            clockWeather={
-              forecast && weatherLocation ? (
-                <ClockWeather forecast={forecast} placeName={weatherLocation.name} />
-              ) : undefined
-            }
-            calculatorActions={calculatorActions}
-            calculatorAngleMode={preferences.calculator.angleMode}
-            calculatorLastResult={preferences.calculator.lastResult}
-            calculatorHistory={calculatorHistory}
-            scratchpadActions={scratchpadActions}
-            scratchpadCategories={scratchpad.categories}
-            scratchpadNotes={scratchpad.notes}
-            scratchpadCategoryId={scratchpad.activeCategoryId}
-          />
-        </MusicPlayerProvider>
-      </CompactNavStyleProvider>
+      {/* Outside the nav components rather than threaded through them: a
+          module's icon is drawn in nine places fed by eleven module shells, and
+          every one of them already knows the slug. See the provider's own note. */}
+      <ModuleCustomIconProvider value={moduleCustomIcons}>
+        <CompactNavStyleProvider value={compactNavStyle}>
+          <MusicPlayerProvider actions={musicQueueActions}>
+            {/* The texture attaches to `.app-main` itself rather than to a nested
+                div: its `::before` is `fixed` so it covers the viewport either
+                way, but the wrapper must be a stacking context that contains the
+                page's content, and adding another element here would change the
+                padding `.app-main` reserves for the nav tiers. The attribute is
+                absent unless there is a picture to draw. */}
+            <main
+              className="app-main min-h-screen pb-8"
+              data-app-texture={appTexture.vars ? "" : undefined}
+              // "on" / "off" rather than a bare attribute: the value tells the
+              // CSS whether the frame paints the card's middle, which is a
+              // change to the `border-image-slice` syntax rather than to a value
+              // inside it and so cannot ride on a custom property.
+              data-card-frame={cardFrame?.["--card-frame-center"]}
+              // Both sets of custom properties ride on this one element. They
+              // share no names, so the merge is a plain spread; `undefined`
+              // stays undefined when neither is set, which keeps the `style`
+              // attribute off the element entirely.
+              style={
+                appTexture.vars || cardFrame
+                  ? ({ ...appTexture.vars, ...cardFrame } as CSSProperties)
+                  : undefined
+              }
+            >
+              {/* Gives every `CollapsibleCard` under a route its ordinal, so the
+                  cards remember whether the reader left them open. Wraps
+                  `children` only — deliberately not the floating layer below,
+                  whose windows outlive navigation and would otherwise consume
+                  ordinals that belong to the page. */}
+              <CollapsibleCardScope>{children}</CollapsibleCardScope>
+            </main>
+            <MusicPlayerBar />
+            {/* Docked shortcut bars. **Additive** — this renders nothing at all for a
+                reader with no toolbars, and it never replaces a navigation tier: the
+                tree and the compact bottom bar are untouched. Placed after the player
+                because its CSS stacks above `--music-player-height`, so the player
+                keeps the bottom edge and a bottom toolbar sits on top of it. */}
+            {/* `canEdit` offers the ✎ shortcut into each bar's editor. Admins only —
+                the screen it links to calls `requireAdmin()` itself, so this decides
+                whether the control is *offered*, never whether it is allowed. */}
+            <PersonalToolbars toolbars={toolbars} canEdit={isAdmin(currentUser)} />
+            {/* Below the player so the layer's pucks stack above the player's own,
+                and inside both providers so a floating component can read either. */}
+            <FloatingHost
+              enabled={enabledFloating}
+              initialStates={preferences.floating}
+              initialCorners={preferences.floatingCorners}
+              actions={floatingActions}
+              clockReading={clockReading}
+              clockOptions={preferences.clock}
+              clockWeather={
+                forecast && weatherLocation ? (
+                  <ClockWeather forecast={forecast} placeName={weatherLocation.name} />
+                ) : undefined
+              }
+              calculatorActions={calculatorActions}
+              calculatorAngleMode={preferences.calculator.angleMode}
+              calculatorLastResult={preferences.calculator.lastResult}
+              calculatorHistory={calculatorHistory}
+              scratchpadActions={scratchpadActions}
+              scratchpadCategories={scratchpad.categories}
+              scratchpadNotes={scratchpad.notes}
+              scratchpadCategoryId={scratchpad.activeCategoryId}
+            />
+          </MusicPlayerProvider>
+        </CompactNavStyleProvider>
+      </ModuleCustomIconProvider>
     </div>
   );
 }

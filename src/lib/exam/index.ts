@@ -84,6 +84,7 @@ export {
   updateExam,
   type ExamUpdateResult,
   type GradedScan,
+  type QrStatus,
 } from "./exam";
 export {
   BUBBLE_HEIGHT,

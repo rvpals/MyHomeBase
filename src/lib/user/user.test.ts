@@ -161,6 +161,7 @@ function makeModule(id: number, slug: string): Module {
     isVisible: true,
     icon: "home",
     hasCarouselImage: false,
+    hasCustomIcon: false,
   };
 }
 

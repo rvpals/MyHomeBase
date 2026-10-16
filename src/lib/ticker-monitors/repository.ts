@@ -12,6 +12,7 @@ interface MonitorRow {
   band_pct: number;
   direction: string;
   is_enabled: number;
+  is_popup: number;
   is_triggered: number;
   last_triggered_at: string | null;
   last_message: string;
@@ -36,6 +37,10 @@ function toMonitor(row: MonitorRow): TickerMonitor {
     // SQLite has no boolean: 0/1 becomes a real boolean here so nothing above
     // this line tests an integer for truthiness.
     isEnabled: row.is_enabled === 1,
+    // Same 0/1 convention as the two flags either side of it. A pre-0149 row
+    // holds the column default, 0 — it was made before a monitor could ask to
+    // interrupt, so "no" is the honest answer rather than a missing one.
+    isPopup: row.is_popup === 1,
     isTriggered: row.is_triggered === 1,
     lastTriggeredAt: row.last_triggered_at ?? undefined,
     lastMessage: row.last_message,
@@ -75,8 +80,8 @@ export class SqliteTickerMonitorRepository implements TickerMonitorRepository {
     const row = this.db
       .prepare(
         `INSERT INTO inv_ticker_monitors
-           (ticker, monitor_type, target_cents, target_pct, band_pct, direction, is_enabled)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+           (ticker, monitor_type, target_cents, target_pct, band_pct, direction, is_enabled, is_popup)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          RETURNING *`,
       )
       .get(
@@ -87,6 +92,7 @@ export class SqliteTickerMonitorRepository implements TickerMonitorRepository {
         input.bandPct,
         input.direction,
         input.isEnabled ? 1 : 0,
+        input.isPopup ? 1 : 0,
       ) as MonitorRow;
     return toMonitor(row);
   }
@@ -99,7 +105,7 @@ export class SqliteTickerMonitorRepository implements TickerMonitorRepository {
       .prepare(
         `UPDATE inv_ticker_monitors
             SET ticker = ?, monitor_type = ?, target_cents = ?, target_pct = ?,
-                band_pct = ?, direction = ?, is_enabled = ?, is_triggered = 0
+                band_pct = ?, direction = ?, is_enabled = ?, is_popup = ?, is_triggered = 0
           WHERE id = ?
          RETURNING *`,
       )
@@ -111,6 +117,7 @@ export class SqliteTickerMonitorRepository implements TickerMonitorRepository {
         input.bandPct,
         input.direction,
         input.isEnabled ? 1 : 0,
+        input.isPopup ? 1 : 0,
         input.id,
       ) as MonitorRow | undefined;
     if (!row) throw new Error(`No monitor with id ${input.id}.`);

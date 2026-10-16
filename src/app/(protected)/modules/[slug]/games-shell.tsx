@@ -103,6 +103,7 @@ export async function GamesShell({ children }: { children: ReactNode }) {
         name: appModule?.shortName ?? "Games",
         icon: appModule?.icon ?? "game",
         href: `/modules/${GAMES_MODULE_SLUG}`,
+        slug: GAMES_MODULE_SLUG,
       }}
       currentUser={{
         id: currentUser.id,

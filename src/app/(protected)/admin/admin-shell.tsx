@@ -48,8 +48,17 @@ export interface ModuleDraft {
    */
   hasCarouselImage: boolean;
   /**
-   * Read-only here too, and the carousel image's cache-buster: the serving route
-   * sends `immutable`, so the upload control needs a `?v=` that changes with the
+   * Read-only here as well, and for the same reason as the two above: the icon
+   * upload saves on pick. Carried so the control can show whether a module is
+   * on uploaded artwork rather than on one of the seventeen glyphs, and which
+   * kind of upload it is — a raster can't follow the theme colour, which the
+   * control says before a reader wonders why.
+   */
+  hasCustomIcon: boolean;
+  customIconKind?: "svg" | "image";
+  /**
+   * Read-only here too, and the cache-buster for *both* uploads: the serving
+   * routes send `immutable`, so each control needs a `?v=` that changes with the
    * bytes rather than a counter local to itself.
    */
   updatedAt?: string;
@@ -136,6 +145,8 @@ function toDraft(module: Module): ModuleDraft {
     isVisible: module.isVisible,
     icon: module.icon,
     hasCarouselImage: module.hasCarouselImage,
+    hasCustomIcon: module.hasCustomIcon,
+    customIconKind: module.customIconKind,
     updatedAt: module.updatedAt,
   };
 }

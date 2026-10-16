@@ -54,6 +54,35 @@ interface ResultRow extends GradedScan {
   overriddenStudentId?: number;
 }
 
+/**
+ * What to tell the reader about the QR search on one sheet.
+ *
+ * Returns undefined when there is nothing useful to say -- a sheet that has no code
+ * printed, and a code that decoded and matched, both speak for themselves through the
+ * line above. A note here always means something a human might act on.
+ *
+ * The wording names the likely FIX, not the internal state. "not found" and
+ * "unreadable" look similar on screen and point at completely different problems:
+ * the first is usually a sheet printed before codes existed or a scan that cut the
+ * header, the second is a code that is there but too small, blurred or damaged.
+ */
+function qrNote(row: ResultRow): string | undefined {
+  switch (row.qrStatus) {
+    case "not-printed":
+      return undefined;
+    case "decoded":
+      return undefined;
+    case "unknown-student":
+      // The code read perfectly. This is a roster problem, not a scanning one, and
+      // saying "QR unreadable" here would send the reader to the wrong place.
+      return `QR read "${row.scannedIdentifier ?? ""}" — not a student in this class`;
+    case "not-found":
+      return "No QR found on this sheet — an older printout, or the scan cut the header";
+    case "unreadable":
+      return "QR found but could not be read — rescan at a higher resolution";
+  }
+}
+
 export function ExamGraderView({
   exams,
   rosterByClassId,
@@ -149,11 +178,53 @@ export function ExamGraderView({
               // provenance would caption a name the operator typed with evidence that
               // did not produce it.
               identifiedBy: "none" as const,
+              // `qrStatus` is deliberately NOT reset. It records what the scan
+              // contained, which does not change because a human picked a name --
+              // and a batch where every code failed is exactly the thing worth still
+              // knowing after the rows have been corrected by hand.
             }
           : row,
       ),
     );
   }
+
+  // The batch QR verdict, computed once rather than per row.
+  //
+  // Reports the SHAPE of the failure, because that is what tells the reader where to
+  // look. All sheets failing points at the print or the scan; some failing points at
+  // individual pages. Silent on a batch where every code read, since a working
+  // feature does not need announcing.
+  const qrSummary = (() => {
+    const considered = rows.filter((row) => row.qrStatus !== "not-printed");
+    if (considered.length === 0) return undefined;
+
+    const decoded = considered.filter((row) => row.qrStatus === "decoded").length;
+    const unknown = considered.filter((row) => row.qrStatus === "unknown-student").length;
+    const failed = considered.length - decoded - unknown;
+
+    if (failed === 0 && unknown === 0) {
+      return {
+        tone: "good" as const,
+        message: `Student ID QR read on all ${decoded} sheet${decoded === 1 ? "" : "s"}.`,
+      };
+    }
+
+    if (decoded === 0 && unknown === 0) {
+      return {
+        tone: "bad" as const,
+        message:
+          `No student ID QR could be read on any of the ${considered.length} sheets. ` +
+          "Every sheet fell back to matching on its file name. If the codes are " +
+          "printed on these sheets, check that the scan includes the full header and " +
+          "is at least 200 dpi.",
+      };
+    }
+
+    const parts = [`${decoded} of ${considered.length} sheets read their QR`];
+    if (unknown > 0) parts.push(`${unknown} carried an id not on this roster`);
+    if (failed > 0) parts.push(`${failed} could not be read`);
+    return { tone: "mixed" as const, message: parts.join(", ") + "." };
+  })();
 
   const columns: DataGridColumn<ResultRow>[] = [
     {
@@ -195,19 +266,26 @@ export function ExamGraderView({
               </option>
             ))}
           </select>
-            {/* How this name was arrived at. A QR read came off the sheet itself and
-                was generated from the roster; a file-name match is a fuzzy guess at
-                whatever the scanner called the file. The operator is about to commit
-                grades against these names, so the two must not look alike. */}
-            {row.identifiedBy === "qr" ? (
-              <span className="mt-0.5 block text-[0.65rem] text-muted">
-                matched by QR code
-              </span>
-            ) : row.identifiedBy === "file-name" ? (
-              <span className="mt-0.5 block text-[0.65rem] text-muted">
-                guessed from file name &mdash; check this
-              </span>
-            ) : null}
+            {/* How this name was arrived at, and what the QR search found.
+
+                Two separate facts, deliberately. A code can decode perfectly and
+                still leave the student unidentified, when the id it carries is not on
+                this roster -- reporting that as "no QR" would send the operator to
+                look at the printer when the problem is the roster. */}
+            <span className="mt-0.5 block text-[0.65rem] leading-tight">
+              {row.identifiedBy === "qr" ? (
+                <span className="text-muted">matched by QR code</span>
+              ) : row.identifiedBy === "file-name" ? (
+                <span className="text-muted">
+                  guessed from file name &mdash; check this
+                </span>
+              ) : (
+                <span className="text-danger">not identified &mdash; pick a student</span>
+              )}
+              {qrNote(row) && (
+                <span className="block text-muted">{qrNote(row)}</span>
+              )}
+            </span>
         </>
       ),
     },
@@ -273,6 +351,12 @@ export function ExamGraderView({
         const notes: string[] = [];
         if (!row.anchorsFound) notes.push("no anchors");
         if (row.needsStudent) notes.push("no student");
+        // A QR that failed is worth flagging even when the file name rescued the
+        // student: it is the difference between "this batch is fine" and "the sheets
+        // are printing or scanning wrong", which only shows up across several rows.
+        if (row.qrStatus === "not-found") notes.push("no QR");
+        if (row.qrStatus === "unreadable") notes.push("QR unreadable");
+        if (row.qrStatus === "unknown-student") notes.push("QR id not on roster");
         if (row.sheet.flaggedCount > 0) notes.push(`${row.sheet.flaggedCount} unclear`);
         return notes.length === 0 ? (
           <span className="text-xs text-muted">—</span>
@@ -376,6 +460,27 @@ export function ExamGraderView({
               {rows.length} sheet{rows.length === 1 ? "" : "s"} graded. Nothing is saved —
               this is a read of the scans as they are.
             </p>
+            {/* Batch-level QR verdict.
+
+                One row reading "no QR" is ambiguous -- an old printout, a cut header.
+                Every row reading it is a printing or scanning fault, and that pattern
+                is invisible when the information lives only per-row. This is also the
+                line that would have caught the crop bug immediately: the codes were
+                printing fine and not one sheet decoded. */}
+            {qrSummary && (
+              <p
+                className={[
+                  "rounded-md border px-3 py-2 text-sm",
+                  qrSummary.tone === "bad"
+                    ? "border-danger/40 text-danger"
+                    : qrSummary.tone === "mixed"
+                      ? "border-line text-ink"
+                      : "border-line text-muted",
+                ].join(" ")}
+              >
+                {qrSummary.message}
+              </p>
+            )}
             <DataGrid
               columns={columns}
               rows={rows}

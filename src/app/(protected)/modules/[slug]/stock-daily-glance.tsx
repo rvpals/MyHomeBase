@@ -337,7 +337,7 @@ export function StockDailyGlance({
         GLANCE_SLOT ? (
           <SlotIcon slot={GLANCE_SLOT} className="h-4 w-4" />
         ) : (
-          icon && <ModuleIcon name={icon} className="h-4 w-4" />
+          icon && <ModuleIcon slug="investments" name={icon} className="h-4 w-4" />
         )
       }
       // Beside the title, not in `headerAction` with the Explanation note and the

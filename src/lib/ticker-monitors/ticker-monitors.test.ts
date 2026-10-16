@@ -36,6 +36,22 @@ describe("createMonitor", () => {
     expect(monitor.bandPct).toBe(5);
     expect(monitor.isEnabled).toBe(true);
     expect(monitor.isTriggered).toBe(false);
+    // Opt-in, unlike `isEnabled`: a monitor nobody asked to be interrupted by
+    // must not interrupt them (migrations/0149).
+    expect(monitor.isPopup).toBe(false);
+  });
+
+  it("stores the popup option when asked for it", () => {
+    const repo = new FakeTickerMonitorRepository();
+
+    const monitor = createMonitor(repo, {
+      ticker: "nvda",
+      monitorType: "gain_near_amount",
+      targetCents: TEN_K,
+      isPopup: true,
+    });
+
+    expect(monitor.isPopup).toBe(true);
   });
 
   it("refuses a gain monitor with no target — that is a forgotten field", () => {
@@ -265,6 +281,54 @@ describe("runMonitors", () => {
     const again = runMonitors(repo, nearTargetPositions(), messages);
     expect(again.triggered).toBe(1);
     expect(messages.messages).toHaveLength(2);
+  });
+
+  it("marks the filed message as a popup when the monitor asks to interrupt", () => {
+    const repo = new FakeTickerMonitorRepository([
+      makeMonitor({ id: 1, targetCents: TEN_K, isPopup: true }),
+    ]);
+    const messages = new FakeMessageRepository();
+
+    runMonitors(repo, nearTargetPositions(), messages);
+
+    // The flag rides the message, which is what the home screen reads — see
+    // migration 0149. Nothing else about the firing changes.
+    expect(messages.messages[0].isPopup).toBe(true);
+    expect(messages.messages[0].title).toBe("NVDA: monitor triggered");
+  });
+
+  it("files an ordinary queue-only message when the monitor is not a popup", () => {
+    const repo = new FakeTickerMonitorRepository([
+      makeMonitor({ id: 1, targetCents: TEN_K }),
+    ]);
+    const messages = new FakeMessageRepository();
+
+    runMonitors(repo, nearTargetPositions(), messages);
+
+    // The default, and what every monitor made before 0149 keeps doing.
+    expect(messages.messages[0].isPopup).toBe(false);
+  });
+
+  it("leaves an already-filed popup alone when the monitor's option is unticked", () => {
+    const repo = new FakeTickerMonitorRepository([
+      makeMonitor({ id: 1, targetCents: TEN_K, isPopup: true }),
+    ]);
+    const messages = new FakeMessageRepository();
+
+    runMonitors(repo, nearTargetPositions(), messages);
+    // The reader changes their mind after it fired.
+    updateMonitor(repo, {
+      id: 1,
+      ticker: "NVDA",
+      monitorType: "gain_near_amount",
+      targetCents: TEN_K,
+      isPopup: false,
+    });
+
+    // The message records what was true when it was filed. This is why 0149
+    // copies the flag instead of joining back to the monitor.
+    expect(messages.messages[0].isPopup).toBe(true);
+    expect(repo.getById(1)?.isPopup).toBe(false);
   });
 
   it("skips disabled monitors entirely", () => {

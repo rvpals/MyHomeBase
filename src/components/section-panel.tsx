@@ -57,11 +57,20 @@ const SectionNamespaceContext = createContext<string | undefined>(undefined);
  * one value. Administration is the exception: it has no row in `sys_modules`, so its glyph
  * is a hardcoded constant with no other way to change it, and it gets a slot.
  */
-function ModuleIdentityIcon({ icon, className }: { icon: string; className?: string }) {
+function ModuleIdentityIcon({
+  icon,
+  slug,
+  className,
+}: {
+  icon: string;
+  /** Absent for Administration, which has no row in `sys_modules` to upload against. */
+  slug?: string;
+  className?: string;
+}) {
   const namespace = useContext(SectionNamespaceContext);
   const slot = namespace === "admin" ? getIconSlot("chrome_admin_identity") : undefined;
   if (slot) return <SlotIcon slot={slot} className={className} />;
-  return <ModuleIcon name={icon} className={className} />;
+  return <ModuleIcon slug={slug} name={icon} className={className} />;
 }
 
 function SectionIcon({ icon, id, className }: { icon?: string; id?: string; className?: string }) {
@@ -101,7 +110,7 @@ export interface SectionPanelProps {
    */
   iconNamespace?: string;
   /** Badged at the head of the panel and the sheet — it's what keeps the icon-only rail honest. */
-  module: { name: string; icon: string };
+  module: { name: string; icon: string; slug?: string };
   /** Which href is currently open, for the active state. */
   activeHref: string;
   isCompact: boolean;
@@ -315,7 +324,7 @@ function CompactModuleList({
                   : "text-ink hover:bg-line/60"
               }`}
             >
-              <ModuleIcon name={link.icon} className="h-4 w-4 shrink-0" />
+              <ModuleIcon slug={link.slug} name={link.icon} className="h-4 w-4 shrink-0" />
               <span className="truncate">{link.name}</span>
             </Link>
           </li>
@@ -544,7 +553,11 @@ function SectionPanelBody({
             {...textureProps}
             className={`shell-trigger flex items-center gap-2 border-t border-line bg-paper-raised px-4 py-3 text-left transition-colors hover:bg-line/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${className}`}
           >
-            <ModuleIdentityIcon icon={module.icon} className="h-5 w-5 shrink-0 shell-accent-text" />
+            <ModuleIdentityIcon
+              icon={module.icon}
+              slug={module.slug}
+              className="h-5 w-5 shrink-0 shell-accent-text"
+            />
             <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
               {module.name}
             </span>
@@ -619,7 +632,11 @@ function SectionPanelBody({
                 aria-label={`${module.name} — switch module`}
                 className="flex shrink-0 items-center gap-1.5 border-r border-line px-4 transition-colors hover:bg-line/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brass"
               >
-                <ModuleIdentityIcon icon={module.icon} className="h-5 w-5 shell-accent-text" />
+                <ModuleIdentityIcon
+                  icon={module.icon}
+                  slug={module.slug}
+                  className="h-5 w-5 shell-accent-text"
+                />
                 <span className="text-[0.625rem] text-muted" aria-hidden>
                   &#9650;
                 </span>
@@ -658,7 +675,11 @@ function SectionPanelBody({
             {...textureProps}
             className={`shell-trigger flex items-center gap-2 border-t border-line bg-paper-raised px-4 py-3 text-left transition-colors hover:bg-line/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${className}`}
           >
-            <ModuleIdentityIcon icon={module.icon} className="h-5 w-5 shrink-0 shell-accent-text" />
+            <ModuleIdentityIcon
+              icon={module.icon}
+              slug={module.slug}
+              className="h-5 w-5 shrink-0 shell-accent-text"
+            />
             <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm">
               <span className="max-w-[40%] shrink truncate text-muted">{module.name}</span>
               <span className="shrink-0 text-muted" aria-hidden>
@@ -718,6 +739,7 @@ function SectionPanelBody({
                   <>
                     <ModuleIdentityIcon
                       icon={module.icon}
+                      slug={module.slug}
                       className="h-5 w-5 shrink-0 shell-accent-text"
                     />
                     <span className="truncate font-display text-sm font-semibold text-ink">
@@ -772,7 +794,11 @@ function SectionPanelBody({
       <div className="flex items-center gap-2 border-b border-line px-3 py-2.5">
         {/* The module named in words. This is what makes the icon-only rail
             defensible — the glyph is never the only thing saying where you are. */}
-        <ModuleIdentityIcon icon={module.icon} className="h-5 w-5 shrink-0 text-brass-dark" />
+        <ModuleIdentityIcon
+          icon={module.icon}
+          slug={module.slug}
+          className="h-5 w-5 shrink-0 text-brass-dark"
+        />
         <span className="truncate font-display text-sm font-semibold text-ink">
           {module.name}
         </span>

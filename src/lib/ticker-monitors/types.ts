@@ -104,6 +104,16 @@ export interface TickerMonitor {
   direction: MoveDirection | "";
   isEnabled: boolean;
   /**
+   * Also interrupt the home screen when this fires, instead of only filing a
+   * message — see migrations/0149.
+   *
+   * **Delivery, not condition.** It changes nothing about what is watched or
+   * when the monitor is true, so the evaluator never reads it; only
+   * `runMonitors` does, when it decides how to report. Any of the five types
+   * can carry it.
+   */
+  isPopup: boolean;
+  /**
    * The fire-once latch. True while the condition has already been reported and
    * not yet cleared — see migrations/0110. Distinct from "is true right now",
    * which is derived live by the evaluator.

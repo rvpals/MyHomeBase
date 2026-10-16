@@ -54,7 +54,7 @@ export function TodayInHistoryWidget({
     <CollapsibleCard
       title="Today In History"
       // Badged with the module the entries come from, matching Daily Glance.
-      titleIcon={icon && <ModuleIcon name={icon} className="h-4 w-4" />}
+      titleIcon={icon && <ModuleIcon slug="journal" name={icon} className="h-4 w-4" />}
       className={className}
       // Beside the title rather than out in `headerAction` with the About note: it acts
       // on the card's name — "open the module these entries came from" — and reads as

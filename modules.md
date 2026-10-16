@@ -2304,7 +2304,7 @@ bulk actions with it.
 `icon` must be one of `MODULE_ICON_NAMES` in
 [src/lib/modules/icon-names.ts](src/lib/modules/icon-names.ts): `building`,
 `home`, `briefcase`, `wallet`, `chart`, `folder`, `shield`, `heart`, `book`,
-`tool`, `journal`, `roster`, `music`, `game`, `photo`.
+`tool`, `journal`, `roster`, `music`, `game`, `photo`, `household`, `classroom`.
 
 **Prefer the closest existing fit.** Adding a concept is not a one-line change: it
 has to be drawn by hand for the "classic" set *and* named in `TREE_CAND`-style
@@ -2330,7 +2330,9 @@ Admin → Configuration → Module Configuration carries a glyph grid per module
 than on the page's Save button — the same trade the carousel graphic makes, and for
 the same reason: this one value draws the rail, the home grid and the admin card, so
 an unsaved choice would leave them disagreeing. The grid previews in whichever icon
-set is active under Display Settings → Icons.
+set is active under Display Settings → Icons. The same control also takes an
+**uploaded icon**, which overrides the grid entirely — see *A custom uploaded icon*
+below.
 
 Two things that still belong in a migration. **Seeding a new module's icon** — that's
 part of its `INSERT`. And **retiring a name from `MODULE_ICON_NAMES`**, which has to
@@ -2339,10 +2341,77 @@ so it doesn't stomp a hand-picked choice). Keep `DEFAULT_MODULES` in step either
 it is what "Reset to Default" writes, so a default left stale will put the old icon
 back over an admin's pick.
 
+### A custom uploaded icon
+
+The seventeen names are a closed list, and adding one is expensive (above). So a
+module can also carry **uploaded artwork**, which replaces its glyph everywhere:
+migration 0150 added `custom_icon`, `custom_icon_mime_type`, `custom_icon_svg`,
+`custom_icon_width` and `custom_icon_height` to `sys_modules`.
+
+It is uploaded in the same control as the glyph grid — Admin → Configuration →
+Module Configuration, under a divider reading *"Or upload your own"* — because it
+answers the same question. While an upload exists the grid dims and is ignored;
+**Remove** drops back to the picked glyph, which is never overwritten.
+
+**SVG and raster behave differently and the control says so.** An SVG is stored
+as sanitized inner markup and inlined by `ModuleIcon`, so it inherits
+`currentColor` and still goes brass in an active nav row. A raster is normalised
+to a 256px PNG (`normalizeIconImage`, the same pipeline slot overrides use),
+served from `/api/modules/<slug>/icon`, and **never tints** — it keeps its own
+colours while the label beside it changes.
+
+**Why this is not an icon slot.** The obvious objection, since `ICON_SLOTS`
+already does "replace one icon with an upload". `slots.ts` rules this case out in
+its own header: a module's icon is *already* user-configurable, and a slot would
+be a second, competing way to set one value. More practically, a module's icon is
+not one position — it is one value drawn in nine of them, so slotting it would
+mean nine ids and nine uploads per module. It is also **not keyed by icon set**,
+unlike a slot override: a module's icon is its identity rather than a note in a
+visual style, so switching sets leaves an upload alone.
+
+**How it reaches the nine call sites.** `ModuleIcon` gained an optional `slug`
+prop and resolves, in order: the module's upload → the active set's glyph for
+`name` → the hand-drawn classic glyph. The last two are what it always did, so a
+module with no upload renders exactly as before and omitting `slug` keeps the old
+behaviour outright.
+
+The upload itself comes from `ModuleCustomIconProvider`
+([src/components/module-icon-context.tsx](src/components/module-icon-context.tsx)),
+mounted in the `(protected)` layout beside the other chrome providers and keyed by
+slug — a context rather than a prop because those nine positions are fed by eleven
+module shells plus the home and admin layouts, and threading two more fields
+through all of them would have been ~25 edits carrying one value that is identical
+everywhere, with a silently-missing icon as the failure mode for every future nav.
+Pass `slug` wherever the icon stands for *that module*; omit it where the icon is a
+sample (the glyph grid) or a slot's default concept.
+
+**The payload never rides on an ordinary module read.** `MODULE_COLUMNS` selects
+`custom_icon IS NOT NULL` and `custom_icon_svg IS NOT NULL`, nothing more — the
+domain `Module` carries `hasCustomIcon` and `customIconKind`. The markup comes
+from `listCustomIcons()`, one query per authenticated render that returns no rows
+until somebody uploads something; the bytes come from the serving route alone.
+`sys_modules` is read on every page, so this is the same obligation migration 0040
+spelled out for the carousel image, and it applies with the same force.
+
+**A reset does not clear an upload.** `resetToDefaults` upserts by slug and lists
+only the seeded columns, so a reset restores a module's name, description,
+visibility and glyph *name* while leaving uploaded artwork alone — exactly as it
+already treats the carousel image. The Remove button is the only thing that
+clears one.
+
 Section icons in a tree nav are a **different, larger set**, resolved by
 `TreeIcon` ([src/components/tree-icons.tsx](src/components/tree-icons.tsx)) and
 keyed by plain strings — `grid`, `users`, `classroom`, `chart`, `gear`. Don't
 confuse the two lists.
+
+**`classroom` is in both lists, as two different drawings.** The module concept is a
+schoolhouse (a building); the tree concept is a presentation board. That is legal —
+`photo`, `chart`, `shield` and `heart` already span both registries — and the two never
+resolve against each other: a module's `icon` is looked up only in `MODULE_ICON_GLYPHS`
+and a section's concept only in `TREE_ICON_GLYPHS`. It matters because both render in
+the *same* Classroom nav, the module header above its own sections, so the pair were
+deliberately drawn as different subjects rather than two takes on one. `roster` (a class
+register) remains a separate module concept again, and is what Classroom shipped on.
 
 ### Icon slots — replacing the icon in one specific place
 

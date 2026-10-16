@@ -111,6 +111,9 @@ export default function ModuleConfigurationPage() {
               slug={module.slug}
               moduleName={module.longName}
               icon={module.icon}
+              hasCustomIcon={module.hasCustomIcon}
+              customIconKind={module.customIconKind}
+              iconVersion={module.updatedAt}
             />
 
             <CarouselImageControl

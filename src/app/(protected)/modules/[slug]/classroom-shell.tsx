@@ -139,6 +139,7 @@ export async function ClassroomShell({ children }: { children: ReactNode }) {
         // adding one would mean naming it in all eleven icon sets. See 0143's log.
         icon: appModule?.icon ?? "roster",
         href: `/modules/${CLASSROOM_MODULE_SLUG}`,
+        slug: CLASSROOM_MODULE_SLUG,
       }}
       currentUser={{
         id: currentUser.id,

@@ -243,6 +243,17 @@ export function DashboardTextureControl({
 
   function handleRename(id: number) {
     const name = draftName;
+
+    // Blur fires on every way out of the field, including Escape and a click
+    // elsewhere, so an unchanged name would otherwise cost a round trip and
+    // flash "Name saved." at someone who changed nothing. A blank name still
+    // goes to the server: the schema owns that message, and the field stays
+    // open because `run` only clears `renamingId` on success.
+    if (name.trim() === items.find((item) => item.id === id)?.name) {
+      setRenamingId(undefined);
+      return;
+    }
+
     void run(
       () => renameDashboardTextureAction(id, name),
       () => {
@@ -328,7 +339,8 @@ export function DashboardTextureControl({
             <p className="text-sm font-medium text-ink">Texture library</p>
             <p className="mt-0.5 text-xs text-muted">
               PNG, JPEG, WebP or GIF, up to {MAX_MB}&nbsp;MB each. A wide picture around
-              2560&times;1440 covers a desktop without being upscaled.
+              2560&times;1440 covers a desktop without being upscaled. Click a picture&apos;s
+              name to rename it — &ldquo;Texture 1&rdquo; is only a starting point.
             </p>
           </div>
           <p className="font-mono text-xs text-muted">
@@ -396,19 +408,30 @@ export function DashboardTextureControl({
                       onBlur={() => handleRename(item.id)}
                       onKeyDown={(event) => {
                         if (event.key === "Enter") handleRename(item.id);
-                        if (event.key === "Escape") setRenamingId(undefined);
+                        if (event.key === "Escape") {
+                          // Reset the draft before closing: the field blurs on
+                          // its way out, and a blur carrying an edited draft
+                          // would save the name Escape was meant to discard.
+                          setDraftName(item.name);
+                          setRenamingId(undefined);
+                        }
                       }}
                       className="w-full rounded border border-brass bg-paper px-1 py-0.5 text-xs text-ink"
                     />
                   ) : (
+                    /* Dotted underline rather than a pencil glyph: an icon here
+                       would mark a *place* and so need a registered slot, and
+                       this screen uses no icons at all. The underline is the
+                       affordance — without it the name reads as a caption and
+                       nobody discovers the rename. */
                     <button
                       type="button"
                       onClick={() => {
                         setRenamingId(item.id);
                         setDraftName(item.name);
                       }}
-                      title="Rename"
-                      className="block w-full truncate text-left text-xs font-medium text-ink hover:text-brass"
+                      title={`Rename "${item.name}" — click to type your own name`}
+                      className="block w-full truncate text-left text-xs font-medium text-ink decoration-dotted decoration-from-font underline-offset-4 hover:text-brass hover:underline"
                     >
                       {item.name}
                     </button>

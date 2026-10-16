@@ -121,6 +121,7 @@ pattern instead of inventing one.
 | [`ModuleIcon`](#moduleicon--moduleiconpreview) / `ModuleIconPreview` | Render a module glyph | [src/components/module-icons.tsx](src/components/module-icons.tsx) | yes |
 | [`SlotIcon`](#sloticon) | Render the icon for a named place in the app, honouring per-slot overrides | [src/components/slot-icon.tsx](src/components/slot-icon.tsx) | yes |
 | [`IconOverrideProvider`](#iconoverrideprovider--useiconoverrides) / `useIconOverrides` | Per-slot icon overrides for the active set (context) | [src/components/icon-override-context.tsx](src/components/icon-override-context.tsx) | yes |
+| [`ModuleCustomIconProvider`](#modulecustomiconprovider--usemodulecustomicons) / `useModuleCustomIcons` | Per-module uploaded icons, keyed by slug (context) | [src/components/module-icon-context.tsx](src/components/module-icon-context.tsx) | yes |
 | [`useCurrentPosition`](#usecurrentposition) | Read the device's GPS coordinates (hook) | [src/components/use-current-position.ts](src/components/use-current-position.ts) | yes |
 | [`useGameSounds`](#usegamesounds) | Synthesized game sound effects — Web Audio tones, no files (hook) | [src/components/use-game-sounds.ts](src/components/use-game-sounds.ts) | yes |
 | [`AppVersionWatch`](#appversionwatch) | Prompts a stale installed PWA to reload after a deploy — mount in the layout | [src/components/app-version-watch.tsx](src/components/app-version-watch.tsx) | yes |
@@ -4697,15 +4698,28 @@ Render a module glyph in the active icon set (`ModuleIcon`) or in an explicitly 
 - **Client component:** yes
 
 ```tsx
-<ModuleIcon name={module.icon} className="h-6 w-6 text-brass" />
+// Pass `slug` wherever the icon stands for THAT module — it is what lets an
+// uploaded icon show. Omit it for a sample or a preview.
+<ModuleIcon slug={module.slug} name={module.icon} className="h-6 w-6 text-brass" />
 <ModuleIconPreview setId="classic" name="building" className="h-5 w-5" />
 ```
 
-**Used by:** `ModuleCarousel`, `ModuleRail`, and the icon picker at
+**Used by:** `ModuleCarousel`, `ModuleRail`, `NavTree`, `SectionPanel`, `AppHeader`'s
+breadcrumb, the Daily Glance and Today in History card badges, the SQL Explorer group
+header, and the icon picker at
 [admin/configuration/icons/page.tsx](src/app/(protected)/admin/configuration/icons/page.tsx).
 
-**Notes:** falls back to the hand-drawn "classic" set for any missing glyph. Monochrome
-sets inherit `currentColor` from `className`; color sets carry their own fills.
+**Notes:** resolves in three steps — the module's uploaded icon (when `slug` is given and
+one exists) → the active set's glyph for `name` → the hand-drawn "classic" glyph. The last
+two are what it always did, so a module with no upload renders exactly as before, and
+omitting `slug` keeps the old behaviour outright. Monochrome sets inherit `currentColor`
+from `className`; color sets carry their own fills, and so does an uploaded raster — only
+an uploaded *SVG* tints.
+
+Uploads come from [`ModuleCustomIconProvider`](#modulecustomiconprovider--usemodulecustomicons),
+and are configured per module in Admin → Configuration → Module Configuration. Don't pass
+`slug` in the glyph grid on that screen: every square would show the upload instead of the
+choice it offers.
 
 ---
 
@@ -4839,6 +4853,40 @@ Context supplying the per-slot icon overrides that apply to the *active* icon se
 **Notes:** the map is read server-side scoped to the selected set, so it only holds
 overrides that can actually apply. Empty outside a provider, so a `SlotIcon` rendered
 standalone still draws its default glyph.
+
+---
+
+## ModuleCustomIconProvider / useModuleCustomIcons
+
+Context supplying the icons an admin has **uploaded** for individual modules, keyed by
+slug. `ModuleIcon` resolves against it when given a `slug`.
+
+- **Source:** [src/components/module-icon-context.tsx](src/components/module-icon-context.tsx)
+- **Import:** `import { ModuleCustomIconProvider, useModuleCustomIcons } from "@/components/module-icon-context";`
+- **Client component:** yes
+
+```tsx
+// Mounted once in the (protected) layout, outside the nav providers:
+<ModuleCustomIconProvider value={moduleCustomIcons}>{children}</ModuleCustomIconProvider>
+```
+
+**Used by:** [src/app/(protected)/layout.tsx](src/app/(protected)/layout.tsx) (provider);
+`ModuleIcon` (consumer).
+
+**Notes:** a context rather than a prop because a module's icon is drawn in nine places
+— the nav tree, the module rail, the modules menu, the breadcrumb, the compact section
+panel, the home grid, the carousel fallback, the Daily Glance and Today in History card
+badges, and the SQL Explorer group header — fed by eleven module shells plus the home
+and admin layouts. Threading two more fields through all of them would be ~25 edits
+carrying one value that is identical everywhere, and every future nav would have to
+remember to carry it, with a silently-missing icon as the failure mode.
+
+Mounted in the `(protected)` layout, **not** the root one: only authenticated pages draw
+module chrome, and /login has no nav to put an icon in.
+
+SVG markup is in the map (it must be inlined to inherit `currentColor`); raster bytes
+are **not** — the browser fetches those from `/api/modules/<slug>/icon`. Empty outside a
+provider, so a `ModuleIcon` rendered standalone still draws its glyph.
 
 ---
 

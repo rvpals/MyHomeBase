@@ -8,6 +8,7 @@ import {
   getMessageQueue,
   listAllMessages,
   listMessages,
+  listPendingPopupMessages,
   markAllMessagesRead,
   markMessagesRead,
   pruneMessages,
@@ -353,6 +354,7 @@ function aged(
     source: "test",
     module: "system",
     isLocked: false,
+    isPopup: false,
     ...overrides,
   };
 }
@@ -482,5 +484,57 @@ describe("pruneMessages", () => {
   it("rejects a negative or fractional window", () => {
     expect(() => pruneMessages(new FakeMessageRepository(), -1, now)).toThrow();
     expect(() => pruneMessages(new FakeMessageRepository(), 2.5, now)).toThrow();
+  });
+});
+
+describe("listPendingPopupMessages", () => {
+  it("returns only unread messages that asked to interrupt", () => {
+    const repo = new FakeMessageRepository();
+    createMessage(repo, { title: "Quiet one", source: "Watch list" });
+    createMessage(repo, { title: "NVDA hit $150", source: "Investments monitor", isPopup: true });
+
+    const pending = listPendingPopupMessages(repo);
+
+    expect(pending.map((message) => message.title)).toEqual(["NVDA hit $150"]);
+  });
+
+  it("drops a popup once it has been read", () => {
+    const repo = new FakeMessageRepository();
+    const popup = createMessage(repo, { title: "NVDA hit $150", isPopup: true });
+
+    markMessagesRead(repo, [popup.id]);
+
+    // `read_at` IS the dismissal latch — clicking OK marks these read, which is
+    // what stops them reappearing on the next home visit. See migration 0149.
+    expect(listPendingPopupMessages(repo)).toHaveLength(0);
+  });
+
+  it("is cleared by Mark all read, like any other unread message", () => {
+    const repo = new FakeMessageRepository();
+    createMessage(repo, { title: "NVDA hit $150", isPopup: true });
+    createMessage(repo, { title: "BMY back at $45", isPopup: true });
+
+    markAllMessagesRead(repo);
+
+    // The popup and the queue entry are one record, so emptying the unread half
+    // from the bell necessarily dismisses the popups too.
+    expect(listPendingPopupMessages(repo)).toHaveLength(0);
+  });
+
+  it("lists several pending popups oldest first", () => {
+    const repo = new FakeMessageRepository();
+    createMessage(repo, { title: "First", isPopup: true });
+    createMessage(repo, { title: "Second", isPopup: true });
+
+    // One dialog lists them all, in the order they happened — the opposite of
+    // the queue's newest-first reads.
+    expect(listPendingPopupMessages(repo).map((message) => message.title)).toEqual([
+      "First",
+      "Second",
+    ]);
+  });
+
+  it("returns nothing on an empty queue", () => {
+    expect(listPendingPopupMessages(new FakeMessageRepository())).toEqual([]);
   });
 });

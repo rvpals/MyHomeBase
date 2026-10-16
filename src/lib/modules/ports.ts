@@ -1,7 +1,12 @@
 import type { DecodedImage } from "@/lib/shared/image-upload";
 import type { ModuleIconName } from "./icon-names";
 import type { ModuleUpdate } from "./schema";
-import type { Module, ModuleSeed } from "./types";
+import type {
+  Module,
+  ModuleCustomIcon,
+  ModuleCustomIconSummary,
+  ModuleSeed,
+} from "./types";
 
 // The use-cases depend on THIS interface, not on a concrete database.
 // That is what lets the web app, the CLI, and tests each supply their own.
@@ -28,6 +33,30 @@ export interface ModuleRepository {
   getCarouselImage(slug: string): DecodedImage | undefined;
   /** Replaces the image, or clears it when given `undefined`. */
   setCarouselImage(slug: string, image: DecodedImage | undefined): void;
+  /**
+   * The custom icon payload — raster bytes or sanitized SVG markup.
+   *
+   * **The only read that touches either column.** Like `getCarouselImage`, call
+   * it from the serving route and the admin screen's preview, and nowhere that
+   * renders a list: `Module` carries `hasCustomIcon`/`customIconKind`, which is
+   * everything a renderer needs to pick an element.
+   */
+  getCustomIcon(slug: string): ModuleCustomIcon | undefined;
+  /** Replaces the custom icon, or clears it when given `undefined`. */
+  setCustomIcon(slug: string, icon: ModuleCustomIcon | undefined): void;
+  /**
+   * Every module that has an uploaded icon, with the SVG markup but **never the
+   * raster bytes**.
+   *
+   * Read once per authenticated page render, to build the map the nav resolves
+   * against. That is why it is its own query rather than a column on
+   * `MODULE_COLUMNS`: the markup is a few KB and only modules that actually have
+   * an upload appear, so the usual case — nobody has uploaded anything — costs
+   * one query returning no rows. Raster icons appear here as a kind and a
+   * version only; the browser fetches those from the serving route.
+   */
+  listCustomIcons(): ModuleCustomIconSummary[];
+
   /**
    * Every stored carousel image, bytes included. **For the resize backfill CLI
    * only** — like `getCarouselImage`, this reads the BLOB, so anything that

@@ -1,0 +1,74 @@
+-- The "Popup" option on a ticker monitor: file the message AND interrupt.
+--
+-- Every monitor from 0110 and 0148 reports the same way -- it files a row in
+-- sys_messages and marks the ticker. That is the right default: a monitor is a
+-- standing question, and the answer can wait until the reader opens the bell.
+--
+-- Some answers cannot wait. "BMY is back at $45" is only useful while it is
+-- still true, and a message sitting unread behind a badge is indistinguishable
+-- from no message at all. So: a per-monitor opt-in that makes the next home
+-- screen visit *stop* and say so, dismissed with OK like the deployment notice.
+--
+-- OPT-IN, DEFAULT OFF. Existing rows take the default and keep filing quietly,
+-- which is what their owner asked for when they made them. A popup that nobody
+-- chose would be the app shouting about a 3% move at every page load.
+
+-- Which monitors interrupt. Read only by runMonitors, when it files.
+--
+-- INTEGER 0/1, SQLite's boolean, matching is_enabled and is_triggered beside it
+-- rather than the nullable timestamp read_at uses. Being a popup is a setting
+-- with no interesting moment attached -- nothing asks *when* it was ticked --
+-- where being read is an event. Same distinction 0142 drew for is_locked.
+ALTER TABLE inv_ticker_monitors ADD COLUMN is_popup INTEGER NOT NULL DEFAULT 0;
+
+-- THE SAME FLAG, COPIED ONTO THE MESSAGE THE MONITOR FILES.
+--
+-- Deliberately duplicated rather than derived by joining a message back to its
+-- monitor, and there is no monitor_id column here to join on by design:
+--
+--   1. A MESSAGE OUTLIVES THE MONITOR THAT WROTE IT. This is 0109's rule for
+--      `source` and 0142's for `module`, and it applies unchanged. A monitor
+--      deleted an hour after it fired must not strand a popup that can no
+--      longer explain itself, nor silently stop one that was already pending.
+--
+--   2. A MONITOR'S SETTINGS MOVE. Untick Popup this afternoon and the message
+--      filed this morning was still a popup when it was filed. The flag records
+--      what was true at the moment of firing, which is the only reading under
+--      which a pending popup is ever correct.
+--
+-- So this column is a fact about the message, not a lookup of a fact about
+-- something else. The two drift on purpose.
+ALTER TABLE sys_messages ADD COLUMN is_popup INTEGER NOT NULL DEFAULT 0;
+
+-- NO NEW INDEX, and no new table for dismissals.
+--
+-- WHAT STOPS A POPUP REAPPEARING is read_at -- the column the queue already
+-- has. Clicking OK marks those messages read, which both dismisses the popup
+-- and clears them from the bell badge, because they are one record and not two.
+-- A separate dismissal table would have let the two disagree, and would have
+-- had to answer "read but not dismissed" for no one's benefit.
+--
+-- The pending-popup query is therefore:
+--
+--   SELECT * FROM sys_messages WHERE read_at IS NULL AND is_popup = 1
+--
+-- and idx_messages_unread (0109) is a PARTIAL index on exactly `read_at IS
+-- NULL`. The expensive half of that predicate is already covered; what remains
+-- is a flag test over the unread rows alone, which on this queue is a handful.
+-- An index on is_popup would cost every INSERT -- and the Hello, world! job
+-- inserts a row a minute (see LESSONS_LEARNED) -- to speed up a scan that is
+-- already reading the small half of the table.
+--
+-- Both ALTERs are ADD COLUMN with a constant default, so SQLite rewrites no
+-- rows and neither table is rebuilt: 0109's two indexes and 0110's
+-- idx_ticker_monitors_ticker all survive untouched.
+
+-- REVERSAL
+--
+--   ALTER TABLE inv_ticker_monitors DROP COLUMN is_popup;
+--   ALTER TABLE sys_messages        DROP COLUMN is_popup;
+--
+-- Safe in either order and loses nothing but the opt-in: every message stays
+-- exactly where it is, in the half it is in, and every monitor keeps filing.
+-- Unlike 0148's reversal there are no rows to delete first -- no row's *kind*
+-- depends on this column, only its delivery.

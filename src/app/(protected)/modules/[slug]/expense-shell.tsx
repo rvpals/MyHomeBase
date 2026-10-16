@@ -102,6 +102,7 @@ export async function ExpenseShell({ children }: { children: ReactNode }) {
         name: appModule?.shortName ?? "Expense",
         icon: appModule?.icon ?? "wallet",
         href: `/modules/${EXPENSE_MODULE_SLUG}`,
+        slug: EXPENSE_MODULE_SLUG,
       }}
       currentUser={{
         id: currentUser.id,

@@ -206,7 +206,7 @@ export function ModuleCarousel({ modules, initialIndex = 0, className = "" }: Mo
                       className="h-full w-full object-cover"
                     />
                   ) : (
-                    <ModuleIcon name={appModule.icon} className="h-16 w-16" />
+                    <ModuleIcon slug={appModule.slug} name={appModule.icon} className="h-16 w-16" />
                   )}
                 </span>
                 <div className="text-center">
@@ -323,6 +323,7 @@ export function ModuleCarousel({ modules, initialIndex = 0, className = "" }: Mo
                   />
                 ) : (
                   <ModuleIcon
+                    slug={appModule.slug}
                     name={appModule.icon}
                     className="h-24 w-24 sm:h-28 sm:w-28 max-lg:h-16 max-lg:w-16"
                   />

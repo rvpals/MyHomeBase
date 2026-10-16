@@ -51,9 +51,21 @@ export class FakeMessageRepository implements MessageRepository {
       // Always unlocked on arrival: `createMessageSchema` has no `isLocked`, so a
       // producer cannot file something nobody can delete. Locking is an admin act.
       isLocked: false,
+      // Carried from the input, unlike `isLocked`: interrupting is the
+      // producer's decision at the moment of filing (migrations/0149).
+      isPopup: input.isPopup,
     };
     this.messages.push(message);
     return message;
+  }
+
+  listPendingPopups(): SystemMessage[] {
+    // Oldest first, matching the SQL's `(created_at ASC, id ASC)`. Sorted by id
+    // alone because the fake stamps every row with the same fixed date, which
+    // is the tie the real query's second key breaks.
+    return this.messages
+      .filter((message) => message.isPopup && !message.readAt)
+      .sort((a, b) => a.id - b.id);
   }
 
   markRead(messageIds: number[]): number {

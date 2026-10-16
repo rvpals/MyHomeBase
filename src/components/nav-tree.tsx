@@ -449,7 +449,11 @@ function ModuleGroup({
             the heading and its sections below; collapsed, it is a closed box. A
             glyph repeating that is a second answer to a question already answered,
             and `aria-expanded` above carries it for anyone not reading the shape. */}
-        <ModuleIcon name={module.icon} className="h-[1.125rem] w-[1.125rem] shrink-0" />
+        <ModuleIcon
+          slug={module.slug}
+          name={module.icon}
+          className="h-[1.125rem] w-[1.125rem] shrink-0"
+        />
         <span className="flex-1 truncate">{module.name}</span>
       </button>
       {expanded && sections.length > 0 && (

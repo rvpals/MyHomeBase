@@ -102,6 +102,7 @@ export async function ToolsShell({ children }: { children: ReactNode }) {
         name: appModule?.shortName ?? "Tools",
         icon: appModule?.icon ?? "tool",
         href: `/modules/${TOOLS_MODULE_SLUG}`,
+        slug: TOOLS_MODULE_SLUG,
       }}
       currentUser={{
         id: currentUser.id,

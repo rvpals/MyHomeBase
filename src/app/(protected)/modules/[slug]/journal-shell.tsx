@@ -137,6 +137,7 @@ export async function JournalShell({ children }: { children: ReactNode }) {
         name: appModule?.shortName ?? "My Journal",
         icon: appModule?.icon ?? "journal",
         href: `/modules/${JOURNAL_MODULE_SLUG}`,
+        slug: JOURNAL_MODULE_SLUG,
       }}
       currentUser={{
         id: currentUser.id,

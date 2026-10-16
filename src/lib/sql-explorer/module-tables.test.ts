@@ -13,6 +13,7 @@ function moduleRow(slug: string, shortName: string, sequence: number): Module {
     isVisible: true,
     icon: "chart",
     hasCarouselImage: false,
+    hasCustomIcon: false,
   };
 }
 

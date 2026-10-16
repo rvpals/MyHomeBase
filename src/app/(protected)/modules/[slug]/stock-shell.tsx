@@ -111,6 +111,7 @@ export async function StockShell({ children }: { children: ReactNode }) {
         name: appModule?.shortName ?? "Investments",
         icon: appModule?.icon ?? "chart",
         href: `/modules/${INVESTMENTS_MODULE_SLUG}`,
+        slug: INVESTMENTS_MODULE_SLUG,
       }}
       currentUser={{
         id: currentUser.id,

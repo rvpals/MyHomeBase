@@ -102,6 +102,7 @@ export async function CsvShell({ children }: { children: ReactNode }) {
         name: appModule?.shortName ?? "CSV Analysis",
         icon: appModule?.icon ?? "folder",
         href: `/modules/${CSV_ANALYSIS_MODULE_SLUG}`,
+        slug: CSV_ANALYSIS_MODULE_SLUG,
       }}
       currentUser={{
         id: currentUser.id,

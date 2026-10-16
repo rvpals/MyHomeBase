@@ -39,6 +39,21 @@ export interface SystemMessage {
    * force-delete, by choice.
    */
   isLocked: boolean;
+  /**
+   * Filed by a producer that asked to interrupt — a ticker monitor with its
+   * Popup option ticked (migrations/0149). The home screen shows every such
+   * message that is still unread, in one dialog, and clicking OK marks them
+   * read.
+   *
+   * **A fact about the message, not a lookup of its producer's current
+   * setting.** Untick Popup this afternoon and the message filed this morning
+   * was still a popup when it was filed. See migration 0149 for why it is
+   * copied here rather than joined back to the monitor.
+   *
+   * So "is a popup pending" is `isPopup && !readAt` — there is no separate
+   * dismissed flag, because `readAt` already is one.
+   */
+  isPopup: boolean;
 }
 
 /** Which half of the queue — the screen's two tabs. */

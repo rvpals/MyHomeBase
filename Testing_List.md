@@ -146,6 +146,35 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-10-16 — Release (uploaded module icons, ticker-monitor Popup, Exam QR diagnostics, journal and texture polish)
+
+**Migrations 0149–0150 must be applied on the NAS.** Items 1–9 need 0150, items 10–15 need 0149 — without them the affected screens fail with "no such column". Items 21 and 22 are phone-only.
+
+- [ ] **1.** Admin → Configuration → Module Configuration: upload an SVG for a module — it shows in the nav tree, breadcrumb, modules menu and home grid
+- [ ] **2.** An uploaded SVG icon turns brass on the active nav row, like a built-in glyph
+- [ ] **3.** Upload a PNG for a module — it shows in the same places, keeps its own colours, and the control warns it will not tint
+- [ ] **4.** The glyph grid dims while an upload exists, and **Remove** returns the picked glyph
+- [ ] **5.** Daily Glance, Today in History and the SQL Explorer group header show the uploaded icon for their module
+- [ ] **6.** Changing the icon set (Display Settings → Icons) leaves an uploaded module icon unchanged
+- [ ] **7.** Module Configuration → **Reset to Default** does not remove an uploaded icon
+- [ ] **8.** A module with no upload looks exactly as before on every screen
+- [ ] **9.** Phone width: the compact section panel and breadcrumb show the uploaded icon without overflow
+- [ ] **10.** Investments → ticker monitor dialog: a **Popup** option is present, and it stays ticked when switching monitor type
+- [ ] **11.** A monitor with Popup ticked fires and the home screen shows one dialog naming it
+- [ ] **12.** Several popup monitors firing together show **one** dialog listing them all
+- [ ] **13.** Clicking **OK** on the popup clears it and the same messages leave the bell badge
+- [ ] **14.** A monitor without Popup still only files a message — no dialog
+- [ ] **15.** CLI: `ticker-monitors add BMY price 45 --band 1 --popup` creates the monitor, and `list` shows `[popup]`
+- [ ] **16.** Exam Grader: a sheet whose QR reads and matches shows no extra note
+- [ ] **17.** Exam Grader: a sheet whose QR reads but is not on the class roster says so, rather than "QR unreadable"
+- [ ] **18.** Exam Grader: a batch where every QR failed says so once; hand-picking a student does not erase the QR note
+- [ ] **19.** Journal → Calendar import: card 3 Categories and Tags are chip pickers, and a new name can be typed in and added
+- [ ] **20.** Journal → New Entry: the lock toggle shows closed and open padlocks, and **Save entry encrypted** shows a key
+- [ ] **21.** Phone width: the calendar-import chip pickers and the New Entry lock/key buttons fit without horizontal scroll
+- [ ] **22.** Phone width: the popup dialog fits the screen and OK is reachable
+- [ ] **23.** Dashboard texture: click a texture's name to rename it; Enter saves, Escape discards, and an unchanged name shows no "Name saved"
+- [ ] **24.** The installed-app manifest (`/manifest.webmanifest`) still loads with the app name and visible modules
+
 ## 2026-10-15 — Release (Classroom with Exam, IP blacklist, new ticker monitors, calendar-import duplicate handling)
 
 **Migrations 0143–0148 must be applied on the NAS, in order.** Test 1 and 2 first — they prove 0143 landed; without it every Classroom screen fails with "no such table". Items 13–15 need 0144, 18–19 need 0148, and 24 is phone-only.

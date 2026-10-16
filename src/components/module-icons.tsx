@@ -3,6 +3,7 @@
 import type { ReactElement, SVGProps } from "react";
 import type { ModuleIconName } from "@/lib/modules";
 import { useIconSet } from "./icon-set-context";
+import { useModuleCustomIcons } from "./module-icon-context";
 import { MODULE_ICON_GLYPHS, type ModuleIconSetId } from "./module-icon-sets.generated";
 
 type IconComponent = (props: SVGProps<SVGSVGElement>) => ReactElement;
@@ -189,6 +190,41 @@ const Household: IconComponent = (props) => (
   </svg>
 );
 
+// A schoolhouse — the Classroom module.
+//
+// This list already holds three buildings (`Building`, `Home`, `Household`), so the
+// difficulty here is not drawing a school, it is drawing one that is not mistaken for
+// those at 16px. Interior detail is no help at that size; only the SILHOUETTE is. So
+// the distinguishing marks both break the outline:
+//
+//   the CUPOLA (bell tower) sits on the roof's centre, where `Household` puts its
+//   chimney off to one side — a centred peak above a flat roof reads as civic, not
+//   domestic, and nothing else in this list has anything above the roofline centre;
+//   the ROOF is a shallow pediment over the full width rather than the steep pitched
+//   roof `Home` and `Household` share, which is the other half of the "institution,
+//   not house" read.
+//
+// The double door is centred and full-height — schools have entrances, not front
+// doors — and flanked by two windows. A flagpole was drawn beside the cupola first
+// and removed after rendering: at app-bar size it is a stray hairline tick that reads
+// as a rendering artefact, the same reason `Household` lost its smoke curls.
+const Classroom: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    {/* The cupola, centred above the roofline — the civic giveaway. */}
+    <path d="M12 2.25v2" />
+    <path d="M10.6 6.5V5.1a1.4 1.4 0 0 1 2.8 0V6.5" />
+    {/* Shallow pediment roof across the full width. */}
+    <path d="M3.25 10.25 12 6.75l8.75 3.5" />
+    <path d="M5.5 10.6V20h13v-9.4" />
+    {/* Centred double door, floor to lintel. */}
+    <path d="M9.9 20v-5.4h4.2V20" />
+    <path d="M12 14.6V20" />
+    {/* A window either side of the entrance. */}
+    <rect x="6.9" y="12.6" width="1.9" height="1.9" />
+    <rect x="15.2" y="12.6" width="1.9" height="1.9" />
+  </svg>
+);
+
 const ICONS: Record<ModuleIconName, IconComponent> = {
   building: Building,
   home: Home,
@@ -206,6 +242,7 @@ const ICONS: Record<ModuleIconName, IconComponent> = {
   game: Game,
   photo: Photo,
   household: Household,
+  classroom: Classroom,
 };
 
 // The original hand-drawn set, kept as the "classic" option and the fallback for any
@@ -220,9 +257,73 @@ function ClassicModuleIcon({ name, className }: { name: string; className?: stri
  * "classic" (and any missing glyph) falls back to the hand-drawn set above; every other
  * set is a baked SVG body from `module-icon-sets.generated.ts`. Monochrome sets inherit
  * `currentColor` from `className`; color sets carry their own fills.
+ *
+ * Pass `slug` wherever the icon stands for *that module* — a nav row, a breadcrumb, a
+ * card badge. An admin can upload artwork per module in Admin > Configuration > Module
+ * Configuration, and the upload is only found by slug.
+ *
+ * Resolution order:
+ *   1. the module's uploaded icon, if `slug` is given and one exists,
+ *   2. the active set's glyph for `name`,
+ *   3. the hand-drawn classic glyph.
+ *
+ * Steps 2 and 3 are what this component always did, so **a module with no upload renders
+ * exactly as before, and omitting `slug` keeps the old behaviour outright.** That is what
+ * made it safe to add `slug` to the call sites one at a time.
+ *
+ * Unlike a slot override, a custom module icon is *not* keyed by icon set: it is the
+ * module's identity rather than a note in a visual style, so switching sets leaves it
+ * alone. See migrations/0150_module_custom_icon.md.
  */
-export function ModuleIcon({ name, className }: { name: string; className?: string }) {
+export function ModuleIcon({
+  name,
+  className,
+  slug,
+}: {
+  name: string;
+  className?: string;
+  /** The module this icon stands for. Omit where the icon is a sample or a preview. */
+  slug?: string;
+}) {
   const { id } = useIconSet();
+  const customIcons = useModuleCustomIcons();
+  const custom = slug ? customIcons[slug] : undefined;
+
+  if (custom?.kind === "svg" && custom.svgBody) {
+    return (
+      <svg
+        viewBox={`0 0 ${custom.svgWidth ?? 24} ${custom.svgHeight ?? 24}`}
+        className={className}
+        aria-hidden="true"
+        // Sanitized on write by `sanitizeSvg` — an allowlist of drawing elements and
+        // presentation attributes, so there is no script or external reference left to
+        // inline. Inlining (rather than an <img>) is the point: the markup inherits
+        // `currentColor`, so a custom glyph still goes brass in an active nav row.
+        dangerouslySetInnerHTML={{ __html: custom.svgBody }}
+      />
+    );
+  }
+
+  // `slug` is narrowed rather than asserted: `custom` is only ever set when `slug`
+  // was, but the compiler can't see that through the lookup, and an assertion here
+  // would be a claim a later edit could quietly falsify.
+  if (slug && custom?.kind === "image") {
+    return (
+      // Raster can't inherit `currentColor`, so this never tints — the admin control
+      // warns about that at upload time. `?v=` busts the route's immutable cache when
+      // the icon is replaced.
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={`/api/modules/${encodeURIComponent(slug)}/icon${
+          custom.version ? `?v=${encodeURIComponent(custom.version)}` : ""
+        }`}
+        alt=""
+        aria-hidden="true"
+        className={`object-contain ${className ?? ""}`}
+      />
+    );
+  }
+
   return <ModuleIconPreview setId={id} name={name} className={className} />;
 }
 

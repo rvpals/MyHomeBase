@@ -105,6 +105,7 @@ export async function MusicShell({ children }: { children: ReactNode }) {
         name: appModule?.shortName ?? "Music Library",
         icon: appModule?.icon ?? "music",
         href: `/modules/${MUSIC_LIBRARY_SLUG}`,
+        slug: MUSIC_LIBRARY_SLUG,
       }}
       currentUser={{
         id: currentUser.id,

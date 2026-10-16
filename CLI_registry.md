@@ -2870,6 +2870,7 @@ npm run cli -- ticker-monitors add NVDA gain-amount 10000
 npm run cli -- ticker-monitors add INTC loss-amount 0
 npm run cli -- ticker-monitors add NVDA gain-pct 20 --band 3
 npm run cli -- ticker-monitors add BMY price 45 --band 1
+npm run cli -- ticker-monitors add BMY price 45 --band 1 --popup
 npm run cli -- ticker-monitors add BMY day-move 3 --down
 npm run cli -- ticker-monitors enable 4
 npm run cli -- ticker-monitors disable 4
@@ -2885,6 +2886,8 @@ npm run cli -- ticker-monitors run
 | `gain-pct` | percent of cost basis | |
 | `price` | dollars per share | A target price; **fires from either side of the band** |
 | `day-move` | percent moved in a day | Needs `--up` or `--down`; ignores `--band` |
+
+`--popup` (0149) also interrupts the home screen when the monitor fires, on top of the message it files either way; it applies to every type, and `list` marks such monitors `[popup]`.
 
 `--band <pct>` sets how close counts as "near"; omitted, the schema's default of 5% applies.
 `loss-amount 0` is break-even — the useful case, and the one where the band is taken against

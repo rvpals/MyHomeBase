@@ -27,6 +27,11 @@
 // control can't become full-colour artwork. **A module's own icon.** That is already
 // user-configurable in Admin > Configuration > Module Configuration, backed by
 // `sys_modules.icon`; a slot for it would be a second, competing way to set one value.
+// Uploading *artwork* for a module goes the same way, for a second reason: a module's
+// icon is not one position but one value drawn in nine of them, so slotting it would
+// mean nine ids and nine uploads per module. It extends the value instead
+// (`sys_modules.custom_icon*`, migration 0150), which also makes it set-independent —
+// unlike everything in this file.
 // That last rule is why the Today in History and Daily Glance cards are absent — both
 // deliberately badge themselves with their module's icon.
 //

@@ -68,6 +68,13 @@ const monitorFieldsSchema = z.object({
   bandPct: bandPctSchema,
   isEnabled: z.boolean().default(true),
   direction: directionSchema,
+  // Delivery, not condition — so it takes no part in `requireTargetForType`
+  // below and every type may carry it (migrations/0149).
+  //
+  // Defaults false, unlike `isEnabled`: a monitor the reader did not ask to be
+  // interrupted by must not interrupt them, and the CLI's `--popup` flag is
+  // the opt-in. Same reasoning the column's DEFAULT 0 records.
+  isPopup: z.boolean().default(false),
 });
 
 /**

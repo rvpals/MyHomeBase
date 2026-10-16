@@ -140,7 +140,7 @@ export function ModuleRail({
                   aria-hidden
                 />
               )}
-              <ModuleIcon name={link.icon} className="h-5 w-5" />
+              <ModuleIcon slug={link.slug} name={link.icon} className="h-5 w-5" />
             </Link>
           );
         })}

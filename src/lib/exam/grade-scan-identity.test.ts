@@ -161,3 +161,62 @@ describe("gradeScan student identity", () => {
     expect(result.needsStudent).toBe(true);
   });
 });
+
+describe("gradeScan qrStatus", () => {
+  it("keeps a decoded status when the id matched a student", () => {
+    const result = gradeScan(
+      repoFor(EXAM), 1, "scan_0007.jpg", blankBitmap(), 0.45, ROSTER, "20194", "decoded",
+    );
+
+    expect(result.qrStatus).toBe("decoded");
+    expect(result.identifiedBy).toBe("qr");
+  });
+
+  it("upgrades decoded to unknown-student when the id is not on the roster", () => {
+    // The case worth getting right: the code read PERFECTLY. Reporting this as a
+    // scanning failure would send the reader to check the printer or rescan, when
+    // the actual problem is a sheet from another class or a changed roster.
+    const result = gradeScan(
+      repoFor(EXAM), 1, "scan_0007.jpg", blankBitmap(), 0.45, ROSTER, "99999", "decoded",
+    );
+
+    expect(result.qrStatus).toBe("unknown-student");
+    expect(result.scannedIdentifier).toBe("99999");
+    expect(result.identifiedBy).toBe("none");
+  });
+
+  it("passes a not-found status through untouched", () => {
+    const result = gradeScan(
+      repoFor(EXAM), 1, "scan_0007.jpg", blankBitmap(), 0.45, ROSTER, undefined, "not-found",
+    );
+
+    expect(result.qrStatus).toBe("not-found");
+  });
+
+  it("passes an unreadable status through untouched", () => {
+    // Must NOT become not-found: the two point at different fixes, one at the crop
+    // position and one at scan quality.
+    const result = gradeScan(
+      repoFor(EXAM), 1, "scan_0007.jpg", blankBitmap(), 0.45, ROSTER, undefined, "unreadable",
+    );
+
+    expect(result.qrStatus).toBe("unreadable");
+  });
+
+  it("defaults to not-printed when the caller says nothing", () => {
+    const result = gradeScan(repoFor(EXAM), 1, "x.jpg", blankBitmap(), 0.45, ROSTER);
+
+    expect(result.qrStatus).toBe("not-printed");
+  });
+
+  it("reports not-printed even when a file name identified the student", () => {
+    // A sheet with no code is not a QR failure. Flagging it as one would put a
+    // warning on every sheet of an exam that simply does not print codes.
+    const result = gradeScan(
+      repoFor(EXAM), 1, "Acocella_Alexander_Scott.jpg", blankBitmap(), 0.45, ROSTER,
+    );
+
+    expect(result.identifiedBy).toBe("file-name");
+    expect(result.qrStatus).toBe("not-printed");
+  });
+});

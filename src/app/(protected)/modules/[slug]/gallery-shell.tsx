@@ -107,6 +107,7 @@ export async function GalleryShell({ children }: { children: ReactNode }) {
         name: appModule?.shortName ?? "Picture Gallery",
         icon: appModule?.icon ?? "photo",
         href: `/modules/${PICTURE_GALLERY_MODULE_SLUG}`,
+        slug: PICTURE_GALLERY_MODULE_SLUG,
       }}
       currentUser={{
         id: currentUser.id,

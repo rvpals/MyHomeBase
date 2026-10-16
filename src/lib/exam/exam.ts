@@ -217,6 +217,32 @@ export function keyCompleteness(repo: ExamRepository, examId: number): KeyComple
   };
 }
 
+/**
+ * What happened when the sheet was searched for a student-ID QR code.
+ *
+ * Deliberately separate from `identifiedBy`, because the two answer different
+ * questions and can disagree: a code can decode perfectly and still leave the student
+ * unidentified, when the id it carries is not on this class roster. Collapsing them
+ * would report that as "no QR", sending the operator to look at the printer when the
+ * problem is the roster.
+ *
+ * The distinction between `not-found` and `unreadable` is the one that matters for
+ * diagnosis: the first means the crop landed on blank paper (wrong position, or the
+ * sheet genuinely has no code), the second means ink was there and would not resolve
+ * (too small, too blurred, too faint, damaged).
+ */
+export type QrStatus =
+  /** This exam does not print a code, so none was looked for. */
+  | "not-printed"
+  /** A code was found and decoded, and the id was on the roster. */
+  | "decoded"
+  /** Decoded, but the id it carries is not a student in this class. */
+  | "unknown-student"
+  /** Searched where the code should be and found nothing resembling one. */
+  | "not-found"
+  /** Something was there but would not decode. */
+  | "unreadable";
+
 /** One scan, graded. */
 export interface GradedScan {
   /** The uploaded file's name, which is also how the student is identified. */
@@ -235,6 +261,15 @@ export interface GradedScan {
    * The screen shows the difference because they do not deserve equal trust.
    */
   identifiedBy: "qr" | "file-name" | "none";
+  /**
+   * What the QR search found, for the result screen to report.
+   *
+   * Set by the caller, which is the layer that actually ran the decode -- this
+   * use-case only sees the id that came out of it.
+   */
+  qrStatus: QrStatus;
+  /** The id the code carried, even when it matched nobody. Lets the screen show it. */
+  scannedIdentifier?: string;
   sheet: GradedSheet;
 }
 
@@ -270,6 +305,15 @@ export function gradeScan(
    * or not at all.
    */
   scannedIdentifier?: string,
+  /**
+   * What the caller’s decode attempt produced, before any roster check.
+   *
+   * Passed in rather than inferred from `scannedIdentifier`, because "no id" has
+   * several causes the caller can tell apart and this function cannot: a sheet with
+   * no code printed, a crop that found blank paper, and ink that would not resolve.
+   * This function upgrades it to `unknown-student` when a decoded id matches nobody.
+   */
+  qrStatus: QrStatus = "not-printed",
 ): GradedScan {
   const exam = requireExam(repo, examId);
   const key = repo.listQuestions(examId);
@@ -298,6 +342,12 @@ export function gradeScan(
     anchorsFound: detection.anchorsFound,
     // How this sheet was attributed, so the screen can say so rather than leaving the
     // operator to guess whether a name came from a printed code or from a file name.
+    // A decoded id that matches nobody is its own diagnosis, and only this function
+    // can make it -- the caller has no roster. Without this the screen would report
+    // a perfectly readable code as if the scan had failed.
+    qrStatus:
+      qrStatus === "decoded" && !fromQr ? "unknown-student" : qrStatus,
+    scannedIdentifier,
     identifiedBy: fromQr
       ? ("qr" as const)
       : match.studentId === undefined

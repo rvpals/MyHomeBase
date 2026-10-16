@@ -16,6 +16,15 @@ import { deps } from "@/lib/wiring";
 // see INSTRUCTION_SETUP_SYNOLOGY.md for the DSM certificate and reverse proxy.
 // On iOS, "Add to Home Screen" works regardless and uses apple-touch-icon.png
 // plus the `appleWebApp` metadata in layout.tsx.
+
+// Rendered per request, never prerendered. Everything below is read from the
+// database — the app name, the active theme, the visible modules — so a manifest
+// baked at build time would ship the *build machine's* settings and then never
+// change, which defeats the point of generating it at all. It also made the
+// build itself depend on a reachable, migrated database: a build box whose copy
+// predates a migration failed at export with "no such column".
+export const dynamic = "force-dynamic";
+
 export default function manifest(): MetadataRoute.Manifest {
   const appName = getSetting(deps.settingsRepo, "application_name")?.value ?? "MyHomeBase";
   // Reads the stored theme (migrations/0076) so a user-BUILT theme tints the splash

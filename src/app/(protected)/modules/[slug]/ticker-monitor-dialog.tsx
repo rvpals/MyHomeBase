@@ -107,6 +107,9 @@ export function TickerMonitorDialog({
   const [percent, setPercent] = useState("");
   const [bandPct, setBandPct] = useState(String(DEFAULT_BAND_PCT));
   const [direction, setDirection] = useState<MoveDirection>("up");
+  // Delivery, not condition — so it is not cleared or hidden by the type
+  // switch below the way the target fields are (migrations/0149).
+  const [isPopup, setIsPopup] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -127,6 +130,7 @@ export function TickerMonitorDialog({
     setPercent("");
     setBandPct(String(DEFAULT_BAND_PCT));
     setDirection("up");
+    setIsPopup(false);
   }
 
   function startEditing(row: TickerMonitorScreen["rows"][number]) {
@@ -141,6 +145,7 @@ export function TickerMonitorDialog({
     setPercent(isPercent ? String(row.monitor.targetPct) : "");
     setBandPct(String(row.monitor.bandPct));
     setDirection(row.monitor.direction === "down" ? "down" : "up");
+    setIsPopup(row.monitor.isPopup);
   }
 
   async function save() {
@@ -170,6 +175,7 @@ export function TickerMonitorDialog({
         // rest rather than blanking it silently.
         direction: monitorType === "day_move_pct" ? direction : ("" as const),
         isEnabled: true,
+        isPopup,
       };
 
       if (editingId === undefined) {
@@ -312,6 +318,12 @@ export function TickerMonitorDialog({
                   have. */}
               {usesBand(row.monitor.monitorType) && (
                 <span className="text-xs text-muted">within {row.monitor.bandPct}%</span>
+              )}
+              {/* Shown on the row so the option is legible without opening
+                  Edit — it changes how this monitor behaves, which the summary
+                  sentence beside it does not say. */}
+              {row.monitor.isPopup && (
+                <span className="rounded bg-line/60 px-1.5 py-0.5 text-xs text-muted">Popup</span>
               )}
               {!row.monitor.isEnabled && (
                 <span className="rounded bg-line/60 px-1.5 py-0.5 text-xs text-muted">Off</span>
@@ -460,6 +472,25 @@ export function TickerMonitorDialog({
               </label>
             )}
           </div>
+
+          {/* Outside the fields row above: that row holds the parameters of the
+              *condition*, which change with the type. This is how the monitor
+              reports, which every type carries the same way. */}
+          <label className="flex max-w-md items-start gap-3">
+            <input
+              type="checkbox"
+              checked={isPopup}
+              onChange={(event) => setIsPopup(event.target.checked)}
+              className="mt-1"
+            />
+            <span>
+              <span className="block text-sm text-ink">Popup</span>
+              <span className="block text-sm text-muted">
+                Also interrupt the home screen when this fires, with a notice to dismiss.
+                It still files a message either way.
+              </span>
+            </span>
+          </label>
 
           <div className="flex gap-2">
             <Button variant="primary" onClick={save} disabled={isSaving}>

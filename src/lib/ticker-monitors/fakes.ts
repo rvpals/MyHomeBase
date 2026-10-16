@@ -36,6 +36,7 @@ export class FakeTickerMonitorRepository implements TickerMonitorRepository {
       bandPct: input.bandPct,
       direction: input.direction,
       isEnabled: input.isEnabled,
+      isPopup: input.isPopup,
       isTriggered: false,
       lastMessage: "",
       createdAt: "2026-01-01 00:00:00",
@@ -56,6 +57,7 @@ export class FakeTickerMonitorRepository implements TickerMonitorRepository {
       bandPct: input.bandPct,
       direction: input.direction,
       isEnabled: input.isEnabled,
+      isPopup: input.isPopup,
       // Matches the SQL: an edit re-arms, so the first crossing of a new target
       // is not swallowed by the old one's latch.
       isTriggered: false,
@@ -122,6 +124,8 @@ export function makeMonitor(overrides: Partial<TickerMonitor> = {}): TickerMonit
     bandPct: DEFAULT_BAND_PCT,
     direction: "",
     isEnabled: true,
+    // Off by default, like the column: a test about popups says so explicitly.
+    isPopup: false,
     isTriggered: false,
     lastMessage: "",
     createdAt: "2026-01-01 00:00:00",

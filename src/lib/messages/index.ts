@@ -29,6 +29,7 @@ export {
   getMessageQueue,
   listAllMessages,
   listMessages,
+  listPendingPopupMessages,
   markAllMessagesRead,
   markMessagesRead,
   pruneMessages,

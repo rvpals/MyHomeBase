@@ -13,6 +13,15 @@ export interface MessageRepository {
    */
   listMessages(state: MessageReadState): SystemMessage[];
   getMessageById(id: number): SystemMessage | undefined;
+  /**
+   * Every message still waiting to interrupt: `isPopup` and not yet read, in
+   * the order they were filed. What the home screen's popup dialog renders.
+   *
+   * Its own method rather than `listMessages("unread").filter(...)` so the
+   * predicate rides `idx_messages_unread` in SQL and a reader with a long
+   * unread queue does not load all of it to show two notices.
+   */
+  listPendingPopups(): SystemMessage[];
   /** Unread and read in one read — what the header badge needs. */
   countMessages(): MessageCounts;
   /** Takes the **validated** shape — the use-case parses before calling. */

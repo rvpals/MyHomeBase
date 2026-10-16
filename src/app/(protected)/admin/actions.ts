@@ -40,9 +40,12 @@ import {
   type ModuleSettingEntry,
 } from "@/lib/module-settings";
 import {
+  MAX_MODULE_ICON_BYTES,
   removeModuleCarouselImage,
+  removeModuleCustomIcon,
   resetModulesToDefaults,
   setModuleCarouselImage,
+  setModuleCustomIcon,
   setModuleIcon,
   updateModules,
   type Module,
@@ -194,6 +197,92 @@ export async function saveModuleIconAction(
     return {
       ok: false,
       error: error instanceof Error ? error.message : "Could not save the icon.",
+    };
+  }
+}
+
+/**
+ * Uploads a module's custom icon, replacing whatever glyph it was showing.
+ *
+ * **Takes `FormData`, not a base64 string**, for the reason
+ * `saveModuleCarouselImageAction` spells out above: Next serialises long string
+ * arguments into nested arrays and rejects anything sizeable. An icon is only
+ * 256 KB so it would probably survive as an argument, but `saveIconOverrideAction`
+ * already takes `FormData` for the identical job and two shapes for one upload is
+ * how the next person picks the wrong one.
+ *
+ * Applied on upload rather than folded into the Save button's batch, exactly as
+ * the glyph picker and the carousel graphic are, and for the same reason: this
+ * one value draws the nav, the breadcrumb and the home grid, so an upload held
+ * in form state would leave the page disagreeing with the chrome around it.
+ */
+export async function saveModuleCustomIconAction(formData: FormData): Promise<ModuleImageResult> {
+  try {
+    await requireAdmin();
+
+    const slug = String(formData.get("slug") ?? "");
+    const file = formData.get("icon");
+    if (!(file instanceof File)) return { ok: false, error: "No file was received." };
+    if (file.size > MAX_MODULE_ICON_BYTES) {
+      return {
+        ok: false,
+        error: `That file is ${Math.round(file.size / 1024)} KB — keep it under ${Math.round(
+          MAX_MODULE_ICON_BYTES / 1024,
+        )} KB.`,
+      };
+    }
+
+    // An SVG is markup, so it is read as text and sanitized; everything else is
+    // bytes. Some browsers report an empty type for .svg, hence the filename
+    // check — copied deliberately from `saveIconOverrideAction`, which hit it.
+    const isSvg = file.type === "image/svg+xml" || file.name.toLowerCase().endsWith(".svg");
+
+    if (isSvg) {
+      await setModuleCustomIcon(deps.moduleRepo, {
+        slug,
+        kind: "svg",
+        source: await file.text(),
+      });
+    } else {
+      await setModuleCustomIcon(
+        deps.moduleRepo,
+        {
+          slug,
+          kind: "raster",
+          // Cast because the value came off a File and is unvalidated until the
+          // lib schema narrows it to the allowed set.
+          mimeType: file.type as never,
+          base64Data: Buffer.from(await file.arrayBuffer()).toString("base64"),
+        },
+        // Strips a flattened checkerboard, trims dead margin and downscales to a
+        // 256px PNG. Passed only on this branch: an SVG needs none of it.
+        deps.iconImageProcessor,
+      );
+    }
+
+    // "layout" because the icon renders outside this form — the protected layout
+    // reads the custom-icon map for every nav on the page.
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not save that icon.",
+    };
+  }
+}
+
+/** Removes the upload so the module falls back to its picked glyph. */
+export async function removeModuleCustomIconAction(slug: string): Promise<ModuleImageResult> {
+  try {
+    await requireAdmin();
+    removeModuleCustomIcon(deps.moduleRepo, slug);
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not remove that icon.",
     };
   }
 }

@@ -8,6 +8,7 @@ import { Comments } from "@/components/comments";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { Modal } from "@/components/modal";
 import { Progress3D } from "@/components/progress-3d";
+import { TokenPicker } from "@/components/token-picker";
 import {
   ENCRYPTED_TITLE_PLACEHOLDER,
   excerptContent,
@@ -210,10 +211,6 @@ export function JournalCalendarImportView({
     // schema's default so card 4 opens with a radio visibly selected.
     duplicateAction: "refresh",
   });
-  // Categories and tags are edited as delimited text, matching the entry form's
-  // own inputs — the split happens once, on submit.
-  const [categoryText, setCategoryText] = useState(DEFAULT_CATEGORY);
-  const [tagText, setTagText] = useState("");
 
   const [rows, setRows] = useState<IcsPreviewRow[]>([]);
   const [isBusy, setIsBusy] = useState(false);
@@ -296,20 +293,13 @@ export function JournalCalendarImportView({
   /** Entry ids the reader has edited from this dialog — the "edited" badge. */
   const [editedEntryIds, setEditedEntryIds] = useState<number[]>([]);
 
-  function splitNames(value: string): string[] {
-    return value
-      .split(",")
-      .map((part) => part.trim())
-      .filter((part) => part !== "");
-  }
-
-  /** The presets as the library wants them, with the two text fields split. */
+  /**
+   * The presets as the library wants them. `presets` already holds the chosen
+   * names as arrays — the TokenPickers in card 3 write them straight in — so
+   * there is nothing left to split here.
+   */
   function currentPresets(): IcsImportPresets {
-    return {
-      ...presets,
-      categories: splitNames(categoryText),
-      tags: splitNames(tagText),
-    };
+    return presets;
   }
 
   /**
@@ -973,37 +963,25 @@ export function JournalCalendarImportView({
           </p>
 
           <div className="grid grid-cols-2 gap-3 max-lg:grid-cols-1">
-            <label className="flex flex-col gap-1 text-xs text-muted">
-              Categories (comma-separated)
-              <input
-                type="text"
-                value={categoryText}
-                list="journal-ics-categories"
-                onChange={(changeEvent) => setCategoryText(changeEvent.target.value)}
-                className={INPUT_CLASS}
-              />
-              <datalist id="journal-ics-categories">
-                {categories.map((category) => (
-                  <option key={category.name} value={category.name} />
-                ))}
-              </datalist>
-            </label>
-            <label className="flex flex-col gap-1 text-xs text-muted">
-              Tags (comma-separated)
-              <input
-                type="text"
-                value={tagText}
-                list="journal-ics-tags"
-                placeholder="Skylar, swimming"
-                onChange={(changeEvent) => setTagText(changeEvent.target.value)}
-                className={INPUT_CLASS}
-              />
-              <datalist id="journal-ics-tags">
-                {tags.map((tag) => (
-                  <option key={tag.name} value={tag.name} />
-                ))}
-              </datalist>
-            </label>
+            {/* The same chip pickers the New Entry form uses, so a name is
+                chosen from the managed list rather than retyped — and a
+                comma in a category name can no longer split it in two. */}
+            <TokenPicker
+              label="Categories"
+              value={presets.categories}
+              onChange={(names) => setPresets({ ...presets, categories: names })}
+              options={categories.map((category) => category.name)}
+              allowCreate
+              createPlaceholder="Filter or add a category…"
+            />
+            <TokenPicker
+              label="Tags"
+              value={presets.tags}
+              onChange={(names) => setPresets({ ...presets, tags: names })}
+              options={tags.map((tag) => tag.name)}
+              allowCreate
+              createPlaceholder="Filter or add a tag…"
+            />
             <label className="flex flex-col gap-1 text-xs text-muted">
               Place name (overrides the event&apos;s location)
               <input

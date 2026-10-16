@@ -16,6 +16,7 @@ import {
 } from "@/lib/home-dashboard";
 import { DEFAULT_HOME_COLUMNS } from "@/lib/home-layout";
 import { listTodayInHistory } from "@/lib/journal";
+import { listPendingPopupMessages } from "@/lib/messages";
 import { listModules } from "@/lib/modules";
 import { getSetting, getStartupMessage } from "@/lib/settings";
 import { todayIsoLocal } from "@/lib/shared/date";
@@ -40,6 +41,7 @@ import { MyShortcutsWidget } from "./my-shortcuts-widget";
 import { getNavTreeData } from "./nav-tree-data";
 import { StockDailyGlance } from "./modules/[slug]/stock-daily-glance";
 import { PAGE_CONTAINER } from "./page-container";
+import { MonitorPopup } from "./monitor-popup";
 import { StartupMessage } from "./startup-message";
 import { SuspiciousVisitAlert } from "./suspicious-visit-alert";
 import { TodayInHistoryWidget } from "./today-in-history-widget";
@@ -130,6 +132,15 @@ export default async function Home({
   // in the layout so it appears on the home screen specifically.
   const startupMessage = getStartupMessage(deps.settingsRepo);
 
+  // Ticker monitors that fired with "Popup" ticked and have not been read yet
+  // (migrations/0149). Read here for the same reason as the line above: this is
+  // the screen the reader lands on, and interrupting them anywhere else would
+  // mean a dialog over whatever they had deliberately navigated to.
+  //
+  // Cheap: `read_at IS NULL` rides the partial index from 0109, so this reads
+  // the small half of the queue even after a year of messages.
+  const popupNotices = listPendingPopupMessages(deps.messageRepo);
+
   // Admins only: a non-admin can't reach the sign-in log, so warning them would be a
   // message they can't act on. Counted rather than read as a stored message, so it
   // clears only when the failures are actually reviewed — see migrations/0045.
@@ -218,6 +229,20 @@ export default async function Home({
             clears itself once acknowledged, and the failed sign-in alert is a
             security signal an admin shouldn't be able to tick away for good. */}
         {startupMessage && <StartupMessage message={startupMessage} />}
+        {/* Not an arrangeable card either, and for the deployment notice's
+            reason: a monitor the reader asked to be interrupted by is a
+            one-shot notice that clears itself once acknowledged. Plain data
+            across the boundary — the dialog is a client island and can't be
+            handed the message records themselves. */}
+        {popupNotices.length > 0 && (
+          <MonitorPopup
+            notices={popupNotices.map((notice) => ({
+              id: notice.id,
+              title: notice.title,
+              body: notice.body,
+            }))}
+          />
+        )}
         {unreviewedFailures > 0 && <BadLoginAlert count={unreviewedFailures} />}
         {unreviewedSuspiciousVisits > 0 && (
           <SuspiciousVisitAlert count={unreviewedSuspiciousVisits} />

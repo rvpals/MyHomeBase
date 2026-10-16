@@ -32,6 +32,73 @@ import {
 } from "./journal-actions";
 import { JournalLocationPicker } from "./journal-location-picker";
 
+// The lock toggle's two faces. Inline stroked SVGs rather than an emoji padlock:
+// an emoji renders in the font's own colours and sizing, so it can't follow the
+// theme's ink colour or sit on the Button's baseline the way every other glyph
+// in the app does. Same shape and stroke weight as the viewer's icons.
+//
+// The two differ only in the shackle — closed sits on the body, open is lifted
+// and hinged to one side — so the state reads at a glance without the colour
+// being the only cue.
+function LockClosedIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <rect x="4" y="10" width="16" height="11" rx="2" />
+      <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+    </svg>
+  );
+}
+
+function LockOpenIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <rect x="4" y="10" width="16" height="11" rx="2" />
+      <path d="M8 10V7a4 4 0 0 1 7.5-1.9" />
+    </svg>
+  );
+}
+
+// "Save entry encrypted", as a glyph. A key, deliberately *not* another padlock:
+// it sits inches from the lock toggle above and the two mean entirely different
+// things — that one is an edit guard you can undo, this one seals the text under
+// a password and cannot be undone without it. Two padlocks side by side would
+// read as two strengths of the same thing.
+function KeyIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <circle cx="8" cy="8" r="4.5" />
+      <path d="M11.2 11.2L20 20M17 17l-2 2M14 14l-2 2" />
+    </svg>
+  );
+}
+
 const INPUT_CLASS =
   "w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
 
@@ -703,30 +770,37 @@ export function JournalEntryForm({
           from Main even when a Misc action raised it. */}
       <div className="flex flex-wrap gap-2">
         {/* Sits before Save because it modifies what Save does. It is a toggle,
-            not an action: nothing is locked until the entry is saved, so the
-            label names the outcome ("Will save locked") instead of borrowing
-            the viewer's "Lock", which on a page with no entry yet would read as
-            a command. `aria-pressed` is what tells a screen reader this is a
-            two-state control rather than a button that does something.
+            not an action: nothing is locked until the entry is saved. Icon only,
+            so the state has to carry entirely in the glyph and the fill —
+            `primary` (filled brass) when it will save locked, `secondary` when
+            it won't, on top of the open/closed shackle. `title` and `ariaLabel`
+            both spell the outcome out, since there is no visible text, and
+            `aria-pressed` is what makes a screen reader announce it as a
+            two-state control rather than a button that locks something now.
 
             Hidden on the merge dialog (`saveLabel` set) for the same reason the
             encrypt button is: that flow saves one assembled entry and has its
             own controls, and locking it there would block the edit it exists to
-            allow. Same row as Save/Clear, so on a phone it wraps onto its own
-            line with them — no layout of its own. */}
+            allow. Same row as Save/Clear, so on a phone it wraps with them —
+            no layout of its own. */}
         {saveLabel === undefined && (
           <Button
-            variant="secondary"
+            variant={saveLocked ? "primary" : "secondary"}
             onClick={() => setSaveLocked((current) => !current)}
             disabled={isBusy}
             ariaPressed={saveLocked}
             title={
               saveLocked
-                ? "This entry will be saved locked — unlock it from the entry to edit it."
-                : "This entry will be saved unlocked, and can be edited normally."
+                ? "Will save locked — click to save unlocked instead."
+                : "Will save unlocked — click to save this entry locked."
             }
+            ariaLabel={saveLocked ? "Save this entry locked" : "Save this entry unlocked"}
           >
-            {saveLocked ? "🔒 Will save locked" : "🔓 Will save unlocked"}
+            {saveLocked ? (
+              <LockClosedIcon className="h-5 w-5" />
+            ) : (
+              <LockOpenIcon className="h-5 w-5" />
+            )}
           </Button>
         )}
         <Button onClick={handleSave} disabled={isBusy || form.date === ""}>
@@ -738,7 +812,13 @@ export function JournalEntryForm({
             choice with no undo. Offered only on a genuinely new entry -- a
             caller that passes `saveLabel` (Review Data's merge dialog) has its
             own one-entry flow, and that entry can be encrypted afterwards from
-            its own page like any other. */}
+            its own page like any other.
+
+            Icon only, like the lock toggle, so the row stays a row of controls
+            rather than a wall of sentences — but it opens the confirm dialog
+            rather than acting, so nothing irreversible happens on a misread
+            glyph. The `Comments` explainer immediately after it is what carries
+            the words now that the button doesn't. */}
         {saveLabel === undefined && (
           <Button
             variant="secondary"
@@ -747,8 +827,10 @@ export function JournalEntryForm({
               setIsEncryptPromptOpen(true);
             }}
             disabled={isBusy || form.date === ""}
+            title="Save entry encrypted"
+            ariaLabel="Save entry encrypted"
           >
-            Save entry encrypted
+            <KeyIcon className="h-5 w-5" />
           </Button>
         )}
         {/* The explanation, reachable without opening the dialog -- someone

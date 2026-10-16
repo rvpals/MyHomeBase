@@ -25,6 +25,14 @@ export interface Breadcrumb {
   /** A crumb with no href is the current page — the last one, normally. */
   href?: string;
   icon?: string;
+  /**
+   * The module this crumb names, when it names one.
+   *
+   * Only the first crumb has it — that is the one badged with the module's icon,
+   * and the slug is what lets an uploaded icon show here too. Section and record
+   * crumbs carry no icon at all.
+   */
+  slug?: string;
 }
 
 export interface AppHeaderProps {
@@ -119,7 +127,11 @@ export function AppHeader({
                 </span>
               )}
               {crumb.icon && (
-                <ModuleIcon name={crumb.icon} className="h-4 w-4 shrink-0 text-brass-dark" />
+                <ModuleIcon
+                  slug={crumb.slug}
+                  name={crumb.icon}
+                  className="h-4 w-4 shrink-0 text-brass-dark"
+                />
               )}
               {crumb.href && !isLast ? (
                 <Link

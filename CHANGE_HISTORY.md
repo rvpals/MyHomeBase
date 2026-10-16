@@ -1,5 +1,76 @@
 # Change History
 
+## 2026-10-16 — Uploaded module icons, ticker-monitor Popup, Exam QR diagnostics, journal and texture polish
+
+**Migrations 0149–0150 must be applied on the NAS, in order.** Both are `ADD COLUMN`s
+with constant defaults, so no rows are rewritten and no table is rebuilt: 0149 adds
+`is_popup` to `inv_ticker_monitors` and `sys_messages`; 0150 adds five nullable
+`custom_icon*` columns to `sys_modules`. The NAS database and its WAL/SHM files were
+backed up before this release.
+
+### Uploaded module icons (migration 0150)
+
+- Admin → Configuration → Module Configuration can now take **uploaded artwork** for a
+  module, under an *"Or upload your own"* divider beneath the glyph grid. It replaces the
+  glyph everywhere the module identifies itself: nav tree, module rail, breadcrumb,
+  modules menu, compact section panel, home grid, carousel fallback, the Daily Glance and
+  Today in History badges, and the SQL Explorer group header. **Remove** drops back to the
+  picked glyph, which is never overwritten.
+- **SVG is stored as sanitized inner markup and inlined**, so it still tints to the theme
+  and to the brass of an active row. A **raster is normalised to a 256px PNG** (the slot
+  overrides' `normalizeIconImage`), served from `/api/modules/<slug>/icon`, and keeps its
+  own colours — the control says so before the upload.
+- **Not an icon slot**, deliberately: a module's icon is one value drawn in nine places,
+  and `slots.ts` rules that case out. It is also set-independent — switching icon sets
+  leaves it alone. Reasoning is in `migrations/0150_module_custom_icon.md`.
+- `sys_modules` is read on every page, so `MODULE_COLUMNS` reads only *presence*
+  (`custom_icon IS NOT NULL`); the payload comes from `listCustomIcons()` (layout, no rows
+  until something is uploaded) and `getCustomIcon(slug)` (the route).
+- New `ModuleCustomIconProvider` / `useModuleCustomIcons` context, mounted in the
+  `(protected)` layout; `ModuleIcon` takes an optional `slug` and resolves upload → set
+  glyph → classic glyph. Eleven module shells and the nav components pass `slug`.
+  Registered in `components.md`; the recipe is in `modules.md`.
+- **Reset to Default does not clear an upload**, same as the carousel image.
+- `scripts/gen-icon-glyphs.mjs` and the generated icon-set files were regenerated.
+
+### Ticker monitors: Popup (migration 0149)
+
+- A monitor can opt in to **Popup**: when it fires it still files a message and marks the
+  ticker, and also interrupts the home screen with one dialog listing everything pending.
+  Clicking **OK** marks those messages read, so the popup and the bell entry are one
+  record. A re-fire files a fresh message and pops up again.
+- It is a column, not a sixth monitor type — it changes *how* a monitor reports, not what
+  it watches — and the flag is copied onto the message because a message outlives its
+  monitor. No new index; the partial unread index from 0109 already covers it.
+- Household-wide, like the queue. CLI: `ticker-monitors add … --popup`; `list` marks
+  popup monitors `[popup]`.
+- New `monitor-popup.tsx` and `monitor-popup-actions.ts` beside the home page.
+
+### Exam Grader: QR diagnostics
+
+- Each graded sheet now reports what the QR search found — *not printed*, *read and
+  matched*, *read but not on this roster*, *not found*, or *unreadable* — and the batch
+  summarises the **shape** of any failure, because all sheets failing points at the print
+  or scan and a few failing points at individual pages. Silent when every code read.
+- `identifiedBy` and the QR verdict are separate on purpose: a code can decode and still
+  not match the roster. The verdict is not reset when a human picks the student by hand.
+
+### Journal
+
+- Calendar import card 3: Categories and Tags use the same **chip pickers** as the New
+  Entry form instead of comma-separated text boxes, so a comma in a name can't split it.
+- New Entry: the lock toggle and **Save entry encrypted** are stroked SVG glyphs (open /
+  closed padlock, and a key for encryption) instead of an emoji.
+
+### Other
+
+- Dashboard textures can be **renamed in place** (click the name; Enter or blur saves,
+  Escape discards, an unchanged name makes no round trip).
+- `manifest.ts` is rendered per request instead of prerendered, so a build no longer
+  depends on a reachable, migrated database.
+- `messages` gained the repository support the popup needs; every new library path has
+  colocated tests (`modules`, `messages`, `ticker-monitors`, `exam`).
+
 ## 2026-10-15 — Classroom module with Exam (Maker, Grader), IP blacklist, new ticker monitors, calendar-import duplicate handling
 
 **Migrations 0143–0148 must be applied on the NAS, in order.** 0143 renames the Attendance
