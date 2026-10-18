@@ -24,8 +24,13 @@
 import { useState } from "react";
 import { Button } from "@/components/button";
 import { Modal } from "@/components/modal";
+import { Tabs } from "@/components/tabs";
 import { TokenPicker } from "@/components/token-picker";
+import { isDuplicateLocation } from "@/lib/sys-locations";
 import type { BulkEntryEditInput, BulkNameMode, JournalEntry } from "@/lib/journal";
+import { LocationPickerField, type PickedLocation } from "@/app/(protected)/admin/locations/location-field";
+import { JournalLocationLibraryPicker } from "./journal-location-library-picker";
+import type { JournalLocationInput } from "./journal-actions";
 import { bulkEditJournalEntriesAction, type BulkRefreshScope } from "./journal-bulk-actions";
 
 const INPUT_CLASS =
@@ -42,6 +47,14 @@ export interface JournalEntriesBulkEditProps {
   selected: JournalEntry[];
   categoryOptions: string[];
   tagOptions: string[];
+  /**
+   * The saved-location library's own category/tag names, for the chips on the
+   * "From your saved places" tab. Deliberately separate from the two above:
+   * a *place* category ("Trailhead") and an *entry* category are unrelated rows
+   * in unrelated tables.
+   */
+  locationCategoryOptions: string[];
+  locationTagOptions: string[];
   /** Which list the caller wants back after the write. */
   scope: BulkRefreshScope;
   onCancel: () => void;
@@ -53,6 +66,8 @@ export function JournalEntriesBulkEdit({
   selected,
   categoryOptions,
   tagOptions,
+  locationCategoryOptions,
+  locationTagOptions,
   scope,
   onCancel,
   onApplied,
@@ -68,22 +83,32 @@ export function JournalEntriesBulkEdit({
   const [editPlaceName, setEditPlaceName] = useState(false);
   const [placeName, setPlaceName] = useState("");
 
+  const [editLocations, setEditLocations] = useState(false);
+  const [locationMode, setLocationMode] = useState<BulkNameMode>("add");
+  /** The pins to apply. Assembled from either tab; the dialog does not care which. */
+  const [locations, setLocations] = useState<JournalLocationInput[]>([]);
+  /** The address-search tab's working point, before it is added to the list. */
+  const [picked, setPicked] = useState<PickedLocation | null>(null);
+
   const [error, setError] = useState<string | undefined>(undefined);
   const [isSaving, setIsSaving] = useState(false);
 
-  const nothingEnabled = !editCategories && !editTags && !editPlaceName;
+  const nothingEnabled = !editCategories && !editTags && !editPlaceName && !editLocations;
 
   // Replace is the only mode that means something with an empty list ("clear
   // this field"), so it is the only one that may be applied without names.
   const categoriesIncomplete =
     editCategories && categoryMode !== "replace" && categories.length === 0;
   const tagsIncomplete = editTags && tagMode !== "replace" && tags.length === 0;
+  const locationsIncomplete =
+    editLocations && locationMode !== "replace" && locations.length === 0;
 
   async function handleApply() {
     const changes: BulkEntryEditInput = {};
     if (editCategories) changes.categories = { mode: categoryMode, names: categories };
     if (editTags) changes.tags = { mode: tagMode, names: tags };
     if (editPlaceName) changes.placeName = placeName;
+    if (editLocations) changes.locations = { mode: locationMode, locations };
 
     setIsSaving(true);
     setError(undefined);
@@ -117,7 +142,13 @@ export function JournalEntriesBulkEdit({
             Cancel
           </Button>
           <Button
-            disabled={isSaving || nothingEnabled || categoriesIncomplete || tagsIncomplete}
+            disabled={
+              isSaving ||
+              nothingEnabled ||
+              categoriesIncomplete ||
+              tagsIncomplete ||
+              locationsIncomplete
+            }
             onClick={() => void handleApply()}
           >
             {isSaving ? "Applying…" : "Apply"}
@@ -168,6 +199,136 @@ export function JournalEntriesBulkEdit({
               Left empty, this <span className="text-ink">clears</span> the place on every
               selected entry.
             </p>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <FieldToggle
+            label="Locations"
+            enabled={editLocations}
+            onEnabledChange={setEditLocations}
+          />
+          <div className="flex flex-wrap gap-1.5">
+            {MODES.map((option) => (
+              <Button
+                key={option.value}
+                variant={locationMode === option.value ? "primary" : "secondary"}
+                disabled={!editLocations}
+                onClick={() => setLocationMode(option.value)}
+              >
+                {option.label}
+              </Button>
+            ))}
+          </div>
+
+          {editLocations && (
+            <>
+              {/* Two ways in, one list out. The dialog does not care which tab a
+                  pin came from -- only a library pick carries a
+                  `savedLocationId`, and that is what decides whether it counts
+                  in Journal -> Saved Locations. */}
+              <Tabs
+                defaultActiveKey="library"
+                items={[
+                  {
+                    key: "library",
+                    label: "From your saved places",
+                    content: (
+                      <JournalLocationLibraryPicker
+                        categoryOptions={locationCategoryOptions}
+                        tagOptions={locationTagOptions}
+                        onPick={(location) => {
+                          // The same guard the entry form runs: refuse a place
+                          // already in this list, whatever it is named there.
+                          setLocations((previous) =>
+                            isDuplicateLocation(previous, location)
+                              ? previous
+                              : [...previous, location],
+                          );
+                        }}
+                      />
+                    ),
+                  },
+                  {
+                    key: "address",
+                    label: "Search an address",
+                    content: (
+                      <div className="flex flex-col gap-2">
+                        <LocationPickerField
+                          value={picked}
+                          onChange={setPicked}
+                          showAddress
+                          mapHeightClassName="h-64 max-lg:h-48"
+                        />
+                        <div>
+                          <Button
+                            variant="secondary"
+                            disabled={picked === null}
+                            onClick={() => {
+                              if (!picked) return;
+                              const location: JournalLocationInput = {
+                                latitude: picked.latitude,
+                                longitude: picked.longitude,
+                                locationName: picked.name,
+                                streetAddress: picked.streetAddress,
+                                // No savedLocationId on purpose: this pin is not
+                                // a library row, so it links to nothing and
+                                // counts nowhere. Save it in Admin -> Locations
+                                // first if you want it counted.
+                              };
+                              setLocations((previous) =>
+                                isDuplicateLocation(previous, location)
+                                  ? previous
+                                  : [...previous, location],
+                              );
+                              setPicked(null);
+                            }}
+                          >
+                            Add this point
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted">
+                          A point added this way is <span className="text-ink">not</span>{" "}
+                          linked to a saved place, so it will not be counted in Saved
+                          Locations. Add it in Admin → Locations first if you want it
+                          counted.
+                        </p>
+                      </div>
+                    ),
+                  },
+                ]}
+              />
+
+              {locations.length > 0 && (
+                <ul className="flex flex-col gap-1">
+                  {locations.map((location, index) => (
+                    <li
+                      key={`${location.latitude},${location.longitude}`}
+                      className="flex items-center justify-between gap-2 rounded-md border border-line px-2 py-1 text-sm"
+                    >
+                      <span className="min-w-0 truncate text-ink">
+                        {location.locationName.trim() ||
+                          location.streetAddress ||
+                          `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`}
+                        {location.savedLocationId === undefined && (
+                          <span className="ml-2 text-xs text-muted">(not linked)</span>
+                        )}
+                      </span>
+                      <Button
+                        variant="secondary"
+                        onClick={() =>
+                          setLocations((previous) => previous.filter((_, i) => i !== index))
+                        }
+                      >
+                        Remove
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <p className="text-xs text-muted">{hintForLocations(locationMode)}</p>
+            </>
           )}
         </div>
 
@@ -267,6 +428,24 @@ function NameField({
       </div>
     </div>
   );
+}
+
+/**
+ * The same three sentences the name fields get, worded for pins.
+ *
+ * `add` says "already there" explicitly because the duplicate rule is by
+ * *coordinates*, not by name: an entry pinned at the playground under another
+ * name is not given a second row, and a reader who does not know that would read
+ * the skip as a bug.
+ */
+function hintForLocations(mode: BulkNameMode): string {
+  if (mode === "add") {
+    return "Appended to the locations each entry already has. An entry already pinned at one of these places keeps its own record of it, and gets no second row.";
+  }
+  if (mode === "remove") {
+    return "Stripped from the selection, matched by coordinates whatever the entry names them. Other locations are left alone.";
+  }
+  return "Replaces every location on each selected entry. Left empty, this clears them.";
 }
 
 function hintFor(label: string, mode: BulkNameMode): string {

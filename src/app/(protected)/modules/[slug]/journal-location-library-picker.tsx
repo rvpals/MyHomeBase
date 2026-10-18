@@ -5,9 +5,14 @@
 // and tag chips — and adds the chosen place to the entry.
 //
 // The chosen place is *copied* onto the entry: coordinates, name and street
-// address. No provenance id is kept (migration 0141 dropped
-// saved_location_id), so an entry is a standalone record of where you were and
-// editing the saved place later never moves it.
+// address. An entry stays a standalone record of where you were, so editing the
+// saved place later never moves it and deleting it never blanks the entry.
+//
+// Migration 0151 added one field that is not a copy: `savedLocationId`, a
+// pointer back at the library row. It is what Journal -> Locations counts, and
+// it changes nothing about what an entry displays -- every field on screen is
+// still the entry's own. (0141 had dropped a column of that name, but only
+// because its target table was being deleted; sys_locations is a real target.)
 //
 // Route-local rather than registered: only the entry form renders this.
 
@@ -16,7 +21,8 @@ import { Button } from "@/components/button";
 import type { SavedLocationWithUsage } from "@/lib/sys-locations";
 import type { JournalLocationInput } from "./journal-actions";
 import { searchSysLocationsAction } from "./journal-actions";
-import { FilterChip, formatCoords } from "@/app/(protected)/admin/locations/filter-chip";
+import { formatCoords } from "@/app/(protected)/admin/locations/filter-chip";
+import { LocationFilterChips } from "@/components/location-filter-chips";
 
 const INPUT_CLASS =
   "w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
@@ -75,10 +81,6 @@ export function JournalLocationLibraryPicker({
     };
   }, [query, activeCategories, activeTags]);
 
-  function toggleFilter(list: string[], value: string, set: (next: string[]) => void) {
-    set(list.includes(value) ? list.filter((item) => item !== value) : [...list, value]);
-  }
-
   function handlePick(place: SavedLocationWithUsage) {
     onPick({
       latitude: place.latitude,
@@ -89,6 +91,10 @@ export function JournalLocationLibraryPicker({
       // Copied now, like the name above: the entry keeps the address the place
       // had on the day. Blank in the library means no address, not "".
       streetAddress: place.address.trim() || undefined,
+      // The one field that is *not* a copy (migration 0151): a pointer home, so
+      // Journal -> Locations can count the entries written at this place. The
+      // copied fields above remain what the entry actually displays.
+      savedLocationId: place.id,
     });
   }
 
@@ -102,33 +108,20 @@ export function JournalLocationLibraryPicker({
         className={INPUT_CLASS}
       />
 
-      {categoryOptions.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-xs font-medium text-muted">Categories</span>
-          {categoryOptions.map((option) => (
-            <FilterChip
-              key={option}
-              label={option}
-              isActive={activeCategories.includes(option)}
-              onToggle={() => toggleFilter(activeCategories, option, setActiveCategories)}
-            />
-          ))}
-        </div>
-      )}
-
-      {tagOptions.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-xs font-medium text-muted">Tags</span>
-          {tagOptions.map((option) => (
-            <FilterChip
-              key={option}
-              label={option}
-              isActive={activeTags.includes(option)}
-              onToggle={() => toggleFilter(activeTags, option, setActiveTags)}
-            />
-          ))}
-        </div>
-      )}
+      {/* No icons passed, unlike the admin screens: this list sits inside the
+          entry form, where a column of uploaded glyphs would compete with the
+          form's own controls for attention. The rows below stay hand-rolled —
+          each is a *pick* button, a different job from the admin screens'
+          read-and-edit rows, and bending `SavedLocationRow` to cover it would
+          grow it props it has no other use for. */}
+      <LocationFilterChips
+        categoryOptions={categoryOptions}
+        tagOptions={tagOptions}
+        activeCategories={activeCategories}
+        activeTags={activeTags}
+        onCategoriesChange={setActiveCategories}
+        onTagsChange={setActiveTags}
+      />
 
       {error && <p className="text-xs text-red-400">{error}</p>}
 

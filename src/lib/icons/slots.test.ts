@@ -132,10 +132,16 @@ describe("sectionSlotId", () => {
         "main", "new-entry", "entries", "calendar", "views", "report", "import",
         "calendar-import", "review-data", "recycle-bin",
         "configuration", "templates", "metadata",
-        // No location sections: migration 0141 retired the journal's own location
-        // library and moved it to Admin, where the three screens now live under
-        // `admin_section_location*`. Deliberately different ids, so an icon uploaded
-        // for the old journal sections does not silently reappear there.
+        // Migration 0141 retired the journal's own location library and moved it
+        // to Admin, where the three screens live under `admin_section_location*`
+        // -- deliberately different ids, so an icon uploaded for the old journal
+        // sections does not silently reappear there.
+        //
+        // "saved-locations" (migration 0151) is a *reader* of that Admin library,
+        // not a return of it: it lists the saved places and counts the entries
+        // written at each. Its slug is deliberately not "locations" for the same
+        // id-collision reason -- it derives `journal_section_saved_locations`.
+        "saved-locations",
         "configuration-group", "import-group",
       ],
       expense: [

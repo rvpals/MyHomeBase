@@ -140,6 +140,15 @@ export interface JournalLocationInput {
    * own copy, not a live read of the library row. See migration 0139.
    */
   streetAddress?: string;
+  /**
+   * The `sys_locations` row this was picked from, when it came from the saved
+   * place library (migration 0151). Omitted for a pin dropped on the map and by
+   * both importers, which resolve nothing against the library.
+   *
+   * Carried *alongside* the copied fields above, never instead of them — the
+   * entry stays a standalone record and this only says where it came from.
+   */
+  savedLocationId?: number;
 }
 
 export interface EntryWeatherInput {
@@ -957,10 +966,10 @@ export async function createLibraryLocationAction(
   } catch (error) {
     return toErrorResult(error, "Failed to add this location to the library.");
   }
-  // The two Admin screens that list places, so one saved here shows up there
+  // The Admin screen that lists places, so one saved here shows up there
   // without a reload. The entry form holds its own list in client state.
+  // (Was two paths until Location Map merged into the Manager.)
   revalidatePath("/admin/locations/manager");
-  revalidatePath("/admin/locations/map");
   return { ok: true };
 }
 

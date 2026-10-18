@@ -146,6 +146,31 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-10-17 — Release (Journal Saved Locations, Location Manager Venn/Graph, bulk location edit, nav feedback, draggable dialogs)
+
+**Needs migration 0151 applied on the NAS first.** Phone-width items are marked (phone).
+
+- [ ] **1.** Journal shows a Saved Locations section in the tree and compact bar, with a pin icon
+- [ ] **2.** Saved Locations lists every saved place with an entry count, and says counts start from the day of the release
+- [ ] **3.** Add an entry, pick a pin from the library picker, save — that place's count goes to 1
+- [ ] **4.** Clicking a count opens `/modules/journal/saved-locations/<id>` listing the entries written there
+- [ ] **5.** A pin dropped on the map directly (not from the library) does not change any count
+- [ ] **6.** Delete a saved place in Admin → Locations — its entries still open, and the drill-down lists them under "no longer in your saved places"
+- [ ] **7.** The entry form's library picker has category and tag filter chips that narrow the list
+- [ ] **8.** Admin → Locations no longer lists Location Map, and `/admin/locations/map` is gone
+- [ ] **9.** Location Manager has a Map size control — Compact, Tall, Hidden — and each lays out as described
+- [ ] **10.** Location Manager Venn view: pick 2–3 tags, regions show the right places; switch the basis to Categories
+- [ ] **11.** Location Manager Graph view joins places that share a tag, and the nodes settle rather than jitter
+- [ ] **12.** Location Manager List and Card views render each place with the numbered badge, coordinates and address
+- [ ] **13.** Journal → Entries bulk edit: enable Locations, Add a place to several entries — existing pins are kept
+- [ ] **14.** Bulk edit Locations with Replace swaps the pins; Add with nothing picked is refused with a message
+- [ ] **15.** Clicking a nav row on a heavy screen shows a wait cursor, a spinner in place of its icon, and a progress bar over the content
+- [ ] **16.** (phone) The compact bottom bar rows show the same feedback and the sheet still closes on tap
+- [ ] **17.** Any dialog (e.g. a Modal from Admin) can be dragged by its header on desktop; a full-screen one cannot
+- [ ] **18.** (phone) Dialogs do not drag and the header still scrolls with the page
+- [ ] **19.** The floating accessories (clock, calculator) still work and sit over the live page without a scrim
+- [ ] **20.** Home → Today in History shows the About note beside the title next to the launch button
+
 ## 2026-10-16 — Release (Journal Entries: All / Unlocked / Log tabs, Filtering card)
 
 No migration. Phone-width items are marked (phone).

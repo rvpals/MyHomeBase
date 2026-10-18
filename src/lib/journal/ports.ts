@@ -123,6 +123,26 @@ export interface JournalRepository {
    */
   searchEntries(term: string, limit: number): JournalEntry[];
   /**
+   * How many entries link to each saved place, keyed by `sys_locations.id`.
+   *
+   * One grouped read rather than a count per place: the Locations section lists
+   * the whole library at once, and a query per row would be one round trip per
+   * saved place on every render.
+   *
+   * Places with no entries are **absent from the map**, not present with a zero
+   * — the journal cannot list the library (it does not own it), so the caller
+   * holds the places and reads counts out of this. Missing means zero.
+   */
+  countEntriesBySavedLocation(): Map<number, number>;
+  /**
+   * Every entry with at least one pin pointing at `savedLocationId`, newest
+   * journal date first.
+   *
+   * An entry carrying two pins at the same saved place is returned once: the
+   * question is which entries happened there, not how many pins they hold.
+   */
+  listEntriesBySavedLocation(savedLocationId: number): JournalEntry[];
+  /**
    * Entries matching a structured filter, newest journal date first, up to
    * `limit`. An empty filter (nothing that narrows) returns the same thing
    * `listRecentEntries` would.

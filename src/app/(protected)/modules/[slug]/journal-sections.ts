@@ -11,6 +11,12 @@ export const JOURNAL_SECTIONS = [
   "new-entry",
   "entries",
   "calendar",
+  // Slug is "saved-locations", not "locations": `sectionSlotId` derives the
+  // icon-slot id from this string, and `locations` would derive
+  // `journal_section_locations` -- an id the journal's own retired location
+  // library owned (migration 0141), so an icon uploaded for that would silently
+  // reappear here.
+  "saved-locations",
   "views",
   "report",
   "import",
@@ -49,6 +55,10 @@ export const JOURNAL_SECTION_INFO: Record<JournalSection, { label: string; descr
   calendar: {
     label: "Calendar",
     description: "See your journal entries on a calendar.",
+  },
+  "saved-locations": {
+    label: "Saved Locations",
+    description: "Your saved places, and the entries written at each one.",
   },
   views: {
     label: "Views",
@@ -144,6 +154,10 @@ export const JOURNAL_SECTION_ICONS: Record<JournalSection, string> = {
   "new-entry": "new-journal",
   entries: "list",
   calendar: "history",
+  // `pin` — the mark the application-wide location library already wears in the
+  // Admin nav. The same idea in two places should read the same way, and no
+  // other Journal section claims it.
+  "saved-locations": "pin",
   views: "window",
   report: "chart",
   // `upload` — the same glyph Expense and Stock give their Import sections.

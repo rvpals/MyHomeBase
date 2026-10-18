@@ -34,6 +34,10 @@ import {
   type JournalFilter,
 } from "@/lib/journal";
 import { deps } from "@/lib/wiring";
+// The bulk-edit dialog's "From your saved places" tab filters by these. They are
+// the *place* taxonomy from the application-wide library, unrelated to the entry
+// categories/tags above.
+import { listLocationCategories, listLocationTags } from "@/lib/sys-locations";
 import { JournalEntriesView } from "./journal-entries-view";
 import { journalTaxonomyIconUrlsByName } from "./journal-shared";
 
@@ -143,6 +147,10 @@ export function JournalEntriesPanel({
       initialFilters={savedFilters}
       categoryOptions={categories.map((category) => category.name)}
       tagOptions={tags.map((tag) => tag.name)}
+      locationCategoryOptions={listLocationCategories(deps.sysLocationRepo).map(
+        (row) => row.name,
+      )}
+      locationTagOptions={listLocationTags(deps.sysLocationRepo).map((row) => row.name)}
       initialFilterId={initialFilterId}
       appliedQuery={appliedQuery}
       queryError={queryError}

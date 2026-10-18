@@ -70,6 +70,7 @@ pattern instead of inventing one.
 | [`NavTree`](#navtree) | **Desktop navigation** — the 260px tree: Home, every module, every section, filtered | [src/components/nav-tree.tsx](src/components/nav-tree.tsx) | yes |
 | [`ModuleRail`](#modulerail) | ~~Tier 1 — the 48px module icon rail~~ **no call site; pending deletion** | [src/components/module-rail.tsx](src/components/module-rail.tsx) | yes |
 | [`SectionPanel`](#sectionpanel) | Compact navigation — the bottom bar and its sheet (desktop column replaced by `NavTree`) | [src/components/section-panel.tsx](src/components/section-panel.tsx) | yes |
+| [`NavPending`](#navpending) | **Navigation feedback** — wait cursor, row spinner and the loading bar between a nav click and the new screen | [src/components/nav-pending.tsx](src/components/nav-pending.tsx) | yes |
 | [`AppHeader`](#appheader) | Tier 3 — the utility bar: breadcrumb, global actions, profile | [src/components/app-header.tsx](src/components/app-header.tsx) | yes |
 | [`NavMenus`](#navmenus) | The shared module switcher and profile dropdowns | [src/components/nav-menus.tsx](src/components/nav-menus.tsx) | yes |
 | [`NavStylePreview`](#navstylepreview) | A thumbnail of a phone navigation style, for the picker | [src/components/nav-style-preview.tsx](src/components/nav-style-preview.tsx) | no |
@@ -113,6 +114,10 @@ pattern instead of inventing one.
 | [`PhotoExifDialog`](#photoexifdialog) | **One photograph's EXIF data** — Common / GPS / Misc tabs, with a map button | [src/components/photo-exif-dialog.tsx](src/components/photo-exif-dialog.tsx) | yes |
 | [`PhotoMapDialog`](#photomapdialog) | Where a photograph was taken, as a modal map | [src/components/photo-map-dialog.tsx](src/components/photo-map-dialog.tsx) | yes |
 | [`LocationMap`](#locationmap) | **THE map** — one pin or many, read-only or pickable, on OpenStreetMap tiles | [src/components/location-map.tsx](src/components/location-map.tsx) | yes |
+| [`SavedLocationRow`](#savedlocationrow) | **One saved place**, as a dense row or a roomier card | [src/components/saved-location-row.tsx](src/components/saved-location-row.tsx) | yes |
+| [`LocationFilterChips`](#locationfilterchips) | Categories + Tags filter block above any list of saved places | [src/components/location-filter-chips.tsx](src/components/location-filter-chips.tsx) | yes |
+| [`LocationVenn`](#locationvenn) | **Saved places as a Venn diagram** — where they overlap by tag or category | [src/components/location-venn.tsx](src/components/location-venn.tsx) | yes |
+| [`LocationGraphView`](#locationgraphview) | **Saved places as a force-directed graph** — joined wherever they share a tag | [src/components/location-graph-view.tsx](src/components/location-graph-view.tsx) | yes |
 | [`PhotoOfTheDay`](#photooftheday--photoofthedaybutton) / `PhotoOfTheDayButton` | **Photos for a date or a date range**, as a closable dialog | [src/components/photo-of-the-day.tsx](src/components/photo-of-the-day.tsx) | yes |
 | [`TickerViewer`](#tickerviewer) | Full record dialog for one ticker — 3 tabs of cards | [src/components/ticker-viewer.tsx](src/components/ticker-viewer.tsx) | yes |
 | [`MessageQueue`](#messagequeue--monitorwarningdialog) / `MonitorWarningDialog` | **The app-wide message queue** — header bell with an unread badge, and the Unread / Read message window | [src/components/message-queue.tsx](src/components/message-queue.tsx) | yes |
@@ -775,9 +780,14 @@ fits a 390px screen, and the footer's two buttons sit in `Modal`'s own action ro
 
 ## Modal
 
-**Any dialog.** The dimmed overlay, the centred panel, the title, and the keyboard and
-focus behaviour every dialog needs. Do not hand-roll another `fixed inset-0` overlay —
-that's what this was extracted from.
+**Any dialog.** The dimmed overlay, the centred panel, the title, the window frame, and
+the keyboard and focus behaviour every dialog needs. Do not hand-roll another
+`fixed inset-0` overlay — that's what this was extracted from.
+
+**Every dialog is draggable by its header** (desktop only — see below). This used to be
+a `size="window"` exclusive; the drag was already written and gated for no reason that
+survived use, so it now applies at `sm`, `md`, `lg` and `window` alike. No prop, no call
+site change: a `Modal` you already render picks it up.
 
 - **Source:** [src/components/modal.tsx](src/components/modal.tsx)
 - **Import:** `import { Modal } from "@/components/modal";`
@@ -792,10 +802,10 @@ that's what this was extracted from.
 | `children` | `ReactNode` | The body. The only part that scrolls. |
 | `footer?` | `ReactNode` | Bottom-right action bar; pass `Button`s in reading order. |
 | `onClose` | `() => void` | Fired by Escape, an overlay click, and the ✕. |
-| `size?` | `"sm" \| "md" \| "lg" \| "full" \| "window"` | Default `"md"` (`max-w-2xl`). `"full"` fills the viewport edge to edge; `"window"` is the draggable floating variant, **sized to its content** and capped at 56rem / 85vh (below). |
+| `size?` | `"sm" \| "md" \| "lg" \| "full" \| "window"` | Default `"md"` (`max-w-2xl`). `"full"` fills the viewport edge to edge and is the one size that neither drags nor takes the frame; `"window"` is the floating variant, **sized to its content** and capped at 56rem / 85vh (below). |
 | `isBusy?` | `boolean` | Suppresses Escape / overlay-click / ✕ while a write is in flight. |
 | `onMinimize?` | `() => void` | When given, the header grows a `_` button left of maximize — the window-chrome trio `_ ▢ ✕`. For a dialog that shrinks rather than closes; see [`FloatingWindow`](#floatinglayer). Omitted for most dialogs on purpose: a confirmation you can park is one you can lose. |
-| `isNonModal?` | `boolean` | Drops the scrim, the scroll lock and the focus trap, so the page behind stays visible **and usable**, and the panel takes `.card-raised` to separate itself. For the floating layer only — a floating accessory is not a dialog you answer and dismiss. Escape and the ✕ still close it. |
+| `isNonModal?` | `boolean` | Drops the scrim, the scroll lock and the focus trap, so the page behind stays visible **and usable**, and the panel takes `.dialog-frame-floating` (a deeper cast than the usual `.dialog-frame`) to separate itself. For the floating layer only — a floating accessory is not a dialog you answer and dismiss. Escape and the ✕ still close it. |
 | `className?` | `string` | Applied to the panel, merged last. |
 
 ```tsx
@@ -828,22 +838,45 @@ shows around it. It is still a dialog — Escape, the ✕, the focus trap and th
 lock all behave identically — so it returns the reader to the screen underneath rather than
 being a route they have to navigate back from. Don't use it for a form.
 
-**`size="window"` — the floating variant.** 80vw × 80vh, centred, rounded, **draggable by
-its header**, with a maximize button beside the ✕ that swaps it to the `full` treatment and
-back. This is the one to reach for on a whole-record viewer (`TickerViewer`): a reader
-comparing the dialog against the page behind it can now shove it aside instead of closing
-and reopening.
+### Dragging, and the frame
 
-It is **still a modal** — the dimmed overlay, Escape, the focus trap, `aria-modal` and the
-scroll lock are all unchanged, so the page behind stays visible but inert. Three details
-worth knowing before reusing it:
+**The header is the handle at every size but `full`.** Press anywhere on the title bar
+that isn't a control and the panel moves with the pointer.
 
 - **The drag is clamped** so at least 140px of the panel and the full height of the header
-  stay on screen, and the header can never go above the top edge. The header is the only
-  handle, so a window dragged clean off the viewport would be unrecoverable.
-- **Position and maximized-ness reset every time it mounts.** Nothing is persisted.
-- **Presses on the header's buttons aren't drags** — the handler ignores any pointerdown
-  landing on a `button`/`a`/input, so put header controls in freely.
+  stay on screen, and the header can never go above the top edge — a panel dragged clean
+  off the viewport would be unrecoverable, the handle having gone with it.
+- **Position resets every time the dialog mounts.** Nothing is persisted, by choice: a
+  confirmation that reopened where you last shoved it is a confirmation you can miss.
+- **A viewport resize re-centres it.** Blunt, but always recoverable — clamping to a rect
+  that may itself have changed size is not.
+- **Presses on header buttons aren't drags** — the handler ignores any pointerdown landing
+  on a `button`/`a`/input, so put header controls (`titleAction`) in freely.
+- **It's a transform, not `left`/`top`**, so dragging never triggers layout. Panels here
+  hold tables and charts; reflowing those on every pointer move would crawl.
+
+**Below 1024px nothing drags.** `useIsCompact()` turns it off wholesale, and the panel
+renders exactly as it did before this existed. A compact panel is near enough full-width
+that the clamp would bite on the first pixel, and `touch-none` on the header would eat the
+scroll a phone reader expects. This is the genuine component fork `design.md` sanctions —
+a `max-lg:` restyle cannot remove a drag.
+
+**The frame** is `.dialog-frame` in `globals.css` (`.dialog-frame-floating` when
+`isNonModal`): a 2px ring stacked *outside* the border, a brighter inset highlight and a
+deeper cast. It is a **style hook** — no width, no padding, no radius, no position — so it
+decorates the panel without moving it a pixel. The ring sits outside rather than thickening
+`border border-line`, because that token is theme-driven and must keep inverting; a thicker
+literal border would both freeze the colour and change the box. `size="full"` doesn't take
+it: no rounding, no gutter, and nothing behind it to lift away from.
+
+**`size="window"` — the floating variant.** Content-sized, centred, rounded, with a maximize
+button beside the ✕ that swaps it to the `full` treatment and back. It no longer has a
+monopoly on the drag; what still makes it distinct is the content sizing and that chrome.
+This is the one to reach for on a whole-record viewer (`TickerViewer`).
+
+It is **still a modal** — the dimmed overlay, Escape, the focus trap, `aria-modal` and the
+scroll lock are all unchanged, so the page behind stays visible but inert. Its drag and
+reset behaviour is the shared behaviour above; **maximized-ness** resets on mount too.
 
 ```tsx
 <Modal title={ticker} size="window" onClose={onClose}>
@@ -1646,6 +1679,13 @@ convey the state to a screen reader.
 **Used by:** Expense — the Transactions screen's All / Account / Billing cycle / Vendor /
 Category switcher
 [expense-transactions-view.tsx](src/app/(protected)/modules/[slug]/expense-transactions-view.tsx).
+Admin → Locations → Location Manager — **twice on one screen**
+[manager/view.tsx](src/app/(protected)/admin/locations/manager/view.tsx): a **Map**
+switcher (Compact / Tall / Hidden) and a **View** switcher (List / Card), each persisted
+per device in `localStorage` (`myhomebase:admin-location-manager-map` and
+`…-manager-view`). Two instances rather than one five-way control, because they answer
+different questions — how big the map is, and how a row is drawn — and the combinations
+are all meaningful.
 
 ---
 
@@ -1871,6 +1911,50 @@ Administration therefore reaches compact only through `UserMenu`, which keeps it
 Administration row for exactly that reason.
 
 ---
+
+## NavPending
+
+Navigation feedback: what the app shows between a nav click and the new screen.
+
+Every nav row links to a **server-rendered** route, so the click starts an RSC fetch and
+React keeps the *old* screen up until the payload lands. On a light section that is
+invisible; on a heavy one the app reads as hung, and the reader clicks again. These four
+say the click was heard.
+
+- **Source:** [src/components/nav-pending.tsx](src/components/nav-pending.tsx)
+- **Import:** `import { NavLinkRow, NavRowPending, NavPendingProvider, NavProgressBar } from "@/components/nav-pending";`
+- **Client component:** yes
+
+| Export | What it is |
+|--------|-----------|
+| `NavLinkRow` | A nav `<Link>` that takes the wait cursor (`cursor-progress`) and dims while its own navigation is in flight. Nav rows use this **instead of** a bare `<Link>`. |
+| `NavRowPending` | Wraps a row's icon; swaps it for a spinner while that row is loading. Sized by the `className` you pass, so the row never changes width. |
+| `NavPendingProvider` | Collects "a row is loading" from every nav surface. Wraps the shell. |
+| `NavProgressBar` | One sweep across the top of the content area while any row is loading. Renders nothing outside the provider. |
+
+**The constraint that shapes all of this:** `useLinkStatus()` reads context that `Link`
+itself provides, so it only works *inside* a `<Link>`. A component cannot read the status
+of a link it is rendering — which is why `NavLinkRow` renders the link and puts the row's
+classes on an inner element, and why `NavProgressBar` reads the provider rather than the
+link. Next holds `pending` false for ~100ms, so a fast navigation never flashes.
+
+**Call sites:** [`NavTree`](#navtree) (section rows, group headers, Home) and
+[`SectionPanel`](#sectionpanel) (sheet section rows, sheet module rows). The provider and
+the bar are in [`TwoTierShell`](#twotiershell). The compact rows matter most: a phone has
+no cursor, so the spinner and the bar are the *only* feedback there.
+
+Styles (`.nav-pending-spinner`, `.nav-progress-track`, `.nav-progress-fill`) live in
+`globals.css`, with a `prefers-reduced-motion` branch that keeps both visible — they are
+the only signal a click landed, so neither switches off.
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `href` | `string` | `NavLinkRow`. Doubles as the row's id in the provider. |
+| `id` | `string` | `NavRowPending`. The row's href. |
+| `active` | `boolean?` | `NavLinkRow`. Sets `aria-current="page"`. |
+| `onClick` | `() => void` | `NavLinkRow`. Closes the compact sheet, etc. |
+| `className` | `string?` | The row's normal classes (`NavLinkRow`), or the icon's size classes (`NavRowPending`). |
+| `wrapperClassName` | `string?` | `NavLinkRow`. Classes for the `<a>` itself — margins and anything else positioning the row in its parent, which cannot move onto the inner element. |
 
 ## SectionPanel
 
@@ -4403,6 +4487,210 @@ z-index scale (panes at 200–700, controls at 1000) painting *through* the app'
 belt and braces with the cap in [src/app/globals.css](src/app/globals.css). It was
 `JournalLocationMap` in the Journal until the photo viewer needed the same thing; nothing
 about it was Journal-specific, so it moved and lost the prefix rather than being copied.
+
+---
+
+## SavedLocationRow
+
+**One saved place from the location library**, drawn either as a dense row (`list`) or a
+roomier card (`card`). Same fields either way — name, description, address, coordinates,
+category and tag chips — so the two shapes are one component rather than two that drift.
+
+The shape is a **prop, not a breakpoint**: the screens using it disagree on purpose. The
+Map's legend is a narrow rail beside a tall map; the Manager's list is the full width.
+Neither is "the compact one".
+
+**Each field is marked by its own treatment**, identically in both shapes, so a place reads
+the same whichever view is on:
+
+| Field | Treatment |
+|---|---|
+| `#n` | A **circle** badge in `bg-brass-soft` — a fixed `size-6` box with the digits centred, so a two-digit number doesn't stretch it into a pill |
+| Coordinates | A **rounded-square** badge in the same token — deliberately a different shape from the circle above, so the two marks never read as the same kind of thing |
+| `description` | Smaller and *italic* — the reader's own words, set apart from the factual address |
+| `address` | Underlined (`decoration-line underline-offset-2`), reading as the postal address rather than as more muted prose |
+
+- **Source:** [src/components/saved-location-row.tsx](src/components/saved-location-row.tsx)
+- **Import:** `import { SavedLocationRow } from "@/components/saved-location-row";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `place` | `SavedLocation` | Deliberately the narrow type, not `SavedLocationWithUsage` — nothing here reads a usage count, and asking for the wider one would turn away a caller that only has a plain place. `WithUsage` extends it, so both pass. |
+| `shape?` | `"list" \| "card"` | Default `"list"`. In `card`, the address wraps instead of truncating and the name takes `font-display`. |
+| `number?` | `number` | The `#n` badge tying the row to its numbered map pin. **Omit on a screen with no map** — a number pointing at nothing is noise. |
+| `actions?` | `ReactNode` | Controls acting on this place. A node, not `onEdit`/`onDelete`, so the component never learns verbs it doesn't perform — the Manager passes two icon buttons, the Map passes nothing. |
+| `onClick?` | `() => void` | Makes the whole row a `<button>`, for a picker. **Not combinable with `actions`** — a button inside a button is invalid HTML and ambiguous to a keyboard. |
+| `className?` | `string` | |
+
+**The caller owns the grid.** `card` shape expects `.card-grid` on the `<ul>`; `list`
+expects `flex flex-col`. The component draws one place and nothing about the collection:
+
+```tsx
+<ul className={view === "card" ? "card-grid gap-4" : "flex flex-col gap-1"}>
+  {places.map((place, index) => (
+    <li key={place.id}>
+      <SavedLocationRow place={place} shape={view} number={index + 1} />
+    </li>
+  ))}
+</ul>
+```
+
+**Used by:** Admin → Locations → Location Manager, in both shapes and in every map mode
+[manager/view.tsx](src/app/(protected)/admin/locations/manager/view.tsx) — as the full-width
+list under a Compact map, and as the rail beside a Tall one (the shape the retired Location
+Map screen had).
+
+**Not** used by the journal entry form's location picker, which keeps its own row on
+purpose: each of its rows is a *pick* button, a different job, and stretching this
+component to cover it would grow props nothing else wants.
+
+---
+
+## LocationFilterChips
+
+**The Categories + Tags filter block** that sits above every list of saved places. Renders
+two labelled rows of [`FilterChip`](#filterchip)s and owns the add-if-missing /
+drop-if-present toggle, which three screens had each written for themselves.
+
+Draws nothing at all when both option lists are empty, so callers don't guard it.
+
+- **Source:** [src/components/location-filter-chips.tsx](src/components/location-filter-chips.tsx)
+- **Import:** `import { LocationFilterChips } from "@/components/location-filter-chips";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `categoryOptions` / `tagOptions` | `string[]` | Every name that can be filtered on, in display order. |
+| `activeCategories` / `activeTags` | `string[]` | The current selection. Controlled — the caller owns the state. |
+| `onCategoriesChange` / `onTagsChange` | `(next: string[]) => void` | Raised with the **full next array**, not the one name that changed, so a caller can hand it straight to `setState`. |
+| `categoryIcons?` / `tagIcons?` | `Record<string, string>` | Name → icon URL, optional and independent per list. The admin screens pass the uploaded taxonomy icons; the journal picker passes neither, so its chips stay plain. A name with no entry just draws without a glyph. |
+| `className?` | `string` | |
+
+```tsx
+<LocationFilterChips
+  categoryOptions={categoryOptions}
+  tagOptions={tagOptions}
+  categoryIcons={categoryIcons}
+  tagIcons={tagIcons}
+  activeCategories={activeCategories}
+  activeTags={activeTags}
+  onCategoriesChange={setActiveCategories}
+  onTagsChange={setActiveTags}
+/>
+```
+
+**Used by:** Admin → Locations → Location Manager
+[manager/view.tsx](src/app/(protected)/admin/locations/manager/view.tsx); the journal entry
+form's location picker
+[journal-location-library-picker.tsx](src/app/(protected)/modules/[slug]/journal-location-library-picker.tsx).
+
+`FilterChip` itself stays in
+[admin/locations/filter-chip.tsx](src/app/(protected)/admin/locations/filter-chip.tsx)
+alongside `formatCoords` — this composes it rather than replacing it.
+
+---
+
+## LocationVenn
+
+**Saved places as a Venn diagram.** Two or three overlapping circles, with each place's
+*name* sitting in the region its tags (or categories) put it in. The third shape of the
+Location Manager's View switch, beside List and Card — the same rows re-cut by what they
+have in common.
+
+Only the name is drawn, deliberately: a region is a small hole in a fixed picture, and an
+address or a chip row would not fit one. A region past six names folds the rest into a
+`+N more` that opens the full list as a modal, so nothing is hidden.
+
+Pure presentation — it is handed a layout and renders it. The set math lives in
+[`lib/sys-locations/venn-regions`](src/lib/sys-locations/venn-regions.ts); build one with
+`buildVennLayout(places, names, kind)`.
+
+- **Source:** [src/components/location-venn.tsx](src/components/location-venn.tsx)
+- **Import:** `import { LocationVenn } from "@/components/location-venn";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `layout` | `VennLayout<P>` | The regions to draw, from `buildVennLayout`. Fewer than two names renders a "pick at least two" prompt rather than a lone circle. |
+| `onSelect?` | `(place: P) => void` | Raised with the place whose name was clicked. Omit it and the names render as plain text. Generic, so a caller holding `SavedLocationWithUsage` gets that row back rather than the base type. |
+| `className?` | `string` | |
+
+```tsx
+const layout = buildVennLayout(shown, activeVennNames, "tag");
+<LocationVenn layout={layout} onSelect={setEditing} />
+```
+
+**Compact forks to labelled groups** (`useIsCompact()`, not a `max-lg:` variant): three
+overlapping discs with readable names inside cannot fit a 390px phone at any font size,
+which is design.md's test for a genuine fork. The regions are identical either way — only
+their arrangement differs.
+
+**Three sets is a hard ceiling** (`MAX_VENN_SETS`), and `buildVennLayout` throws above it
+rather than silently dropping one. Four sets cannot be drawn with circles at all.
+
+The circles take their colours from `--brass` mixed toward `--ink` and `--paper-raised`,
+never literal hues, so all three stay on-theme across the eight built-in themes
+(design.md → the token system). They are **not** area-proportional: the circles are
+containers for names, so sizing a region by its count would shrink the very lens whose
+names most need the room.
+
+**Used by:** Admin → Locations → Location Manager
+[manager/view.tsx](src/app/(protected)/admin/locations/manager/view.tsx), as the `venn`
+view mode. Its `VennPicker` (which taxonomy, which names) stays route-local there — this
+component draws the diagram and nothing else.
+
+---
+
+## LocationGraphView
+
+**Saved places as a force-directed graph**, in the shape of a Logseq graph view. Every
+place is a dot; two dots are joined wherever the places share a tag (or a category); the
+arrangement falls out of a physics simulation rather than being authored. Drag a node,
+scroll to zoom, drag the background to pan, hover to light up a neighbourhood, click to
+open the editor.
+
+The companion to [`LocationVenn`](#locationvenn), not a replacement: the Venn is exact
+about two or three names, the graph is approximate about all of them, so clusters appear
+without having to be named first.
+
+- **Source:** [src/components/location-graph-view.tsx](src/components/location-graph-view.tsx)
+- **Import:** `import { LocationGraphView } from "@/components/location-graph-view";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `places` | `readonly P[]` | The places to graph. The graph rebuilds (and the layout re-settles) when this changes identity, so pass a memoised array. |
+| `kind` | `LocationTaxonomyKind` | Which taxonomy joins them — `"tag"` or `"category"`. |
+| `onSelect?` | `(place: P) => void` | Raised with the place whose node was clicked. Generic, so a caller holding `SavedLocationWithUsage` gets that row back. |
+| `className?` | `string` | |
+
+```tsx
+<LocationGraphView places={shown} kind="tag" onSelect={setEditing} />
+```
+
+**Canvas, not SVG.** At a few hundred nodes plus their edges, SVG means thousands of DOM
+elements re-laid-out every frame; a canvas redraw is one call. The cost is that nothing
+drawn is in the accessibility tree, so the component renders a **real list of the same
+places underneath**, sorted most-connected first — that is the keyboard and screen-reader
+path, and it doubles as a "which places are hubs" readout.
+
+**The simulation is not in this file.** `lib/sys-locations/location-graph.ts` owns
+`buildLocationGraph` (nodes and edges) and `stepSimulation` / `settleGraph` (the physics),
+all pure and tested without rendering anything. This component owns pixels, pointers and
+the animation loop.
+
+**The loop stops.** Once kinetic energy falls below `REST_ENERGY` the layout has settled
+and animation halts — a force simulation left running redraws an identical picture sixty
+times a second forever. Dragging a node wakes it again.
+
+Colours are read off `:root` at runtime (canvas takes no CSS classes) and **re-read on
+theme change** via a `MutationObserver`, so the graph never keeps drawing in the previous
+theme's accent. An **unconnected place draws hollow** — in the library but sharing nothing.
+
+**Used by:** Admin → Locations → Location Manager
+[manager/view.tsx](src/app/(protected)/admin/locations/manager/view.tsx), as the `graph`
+view mode.
 
 ---
 

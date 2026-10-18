@@ -96,6 +96,7 @@ group becomes a label between rows rather than a second accordion.
 | New Journal Entry | `new-entry` | — | `/modules/journal/new-entry` | Write a new journal entry. |
 | Entries | `entries` | — | `/modules/journal/entries` | Browse and manage all journal entries, written and logged. |
 | Calendar | `calendar` | — | `/modules/journal/calendar` | See your journal entries on a calendar. |
+| Saved Locations | `saved-locations` | — | `/modules/journal/saved-locations` | Your saved places, and the entries written at each one. |
 | Views | `views` | — | `/modules/journal/views` | Custom views of your journal data. |
 | Report | `report` | — | `/modules/journal/report` | Summaries and reports from your journal. |
 | CSV Import | `import` | Data Management | `/modules/journal/import` | Import a CSV file, reset the journal, and bulk-correct entries. |
@@ -249,7 +250,6 @@ the listing was reachable only from the home dashboard's Daily Quote widget.
 | Chrome Style | Display Settings | `/admin/display-settings/chrome` | Set the border treatment for the header and the navigation tree |
 | Scratchpad Categories | Display Settings | `/admin/display-settings/scratchpad` | Set the tabs the Scratchpad shows, for everyone |
 | Location Manager | Locations | `/admin/locations/manager` | Saved places you can pick from across the application |
-| Location Map | Locations | `/admin/locations/map` | Every saved place on one map, filtered by category and tag |
 | Location Meta Data | Locations | `/admin/locations/metadata` | Categories and tags for places -- what a place *is* |
 | User Management | — | `/admin/user-management` | Manage users, roles, and module access |
 | All Quotes | Daily Quote | `/admin/daily-quote` | Browse, edit and delete every quote in the collection |

@@ -479,6 +479,19 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    // Deliberately NOT `journal_section_locations`. That id belonged to the
+    // journal's own location library, retired by migration 0141, and reusing it
+    // would make an icon uploaded for that old section silently reappear here --
+    // the same trap the `admin_section_locations*` ids were named around.
+    id: "journal_section_saved_locations",
+    label: "Saved Locations",
+    group: "Journal sections",
+    where: "Journal → section panel → Saved Locations, and the heading of the section's page.",
+    defaultConcept: "pin",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     id: "journal_section_views",
     label: "Views",
     group: "Journal sections",

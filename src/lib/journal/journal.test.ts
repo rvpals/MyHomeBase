@@ -74,6 +74,9 @@ function fakeRepo(recycledCount = 0): JournalRepository {
       latitude: location.latitude,
       longitude: location.longitude,
       locationName: location.locationName,
+      // Carried through, or `countEntriesBySavedLocation` below would only ever
+      // see undefined and its tests would pass without proving anything.
+      savedLocationId: location.savedLocationId,
       sortOrder: index,
     }));
   }
@@ -128,6 +131,27 @@ function fakeRepo(recycledCount = 0): JournalRepository {
       return direction === "prev"
         ? dates.reverse().find((date) => date < fromDate)
         : dates.find((date) => date > fromDate);
+    },
+    countEntriesBySavedLocation() {
+      const counts = new Map<number, number>();
+      for (const entry of entries) {
+        // Distinct per entry, matching the SQL: two pins at one place is one
+        // entry that happened there.
+        const seen = new Set<number>();
+        for (const location of entry.locations) {
+          if (location.savedLocationId === undefined) continue;
+          seen.add(location.savedLocationId);
+        }
+        for (const id of seen) counts.set(id, (counts.get(id) ?? 0) + 1);
+      }
+      return counts;
+    },
+    listEntriesBySavedLocation(savedLocationId) {
+      return entries
+        .filter((entry) =>
+          entry.locations.some((location) => location.savedLocationId === savedLocationId),
+        )
+        .sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
     },
     searchEntries(term, limit) {
       const needle = term.toLowerCase();

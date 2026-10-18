@@ -266,13 +266,10 @@ export const adminNav: SectionNode[] = [
         hint: "Saved places you can pick from across the application",
         icon: "pin",
       },
-      {
-        id: "locations-map",
-        label: "Location Map",
-        href: "/admin/locations/map",
-        hint: "Every saved place on one map, filtered by category and tag",
-        icon: "map",
-      },
+      // No "Location Map" section: it was this same library, the same filters
+      // and the same rows, differing only in that the map led. It folded into
+      // the Manager as a Map size control (Compact / Tall / Hidden) rather than
+      // staying a route that re-listed the same places.
       {
         id: "locations-metadata",
         label: "Location Meta Data",

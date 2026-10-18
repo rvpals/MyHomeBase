@@ -20,6 +20,9 @@ export const entryLocationSchema = z.object({
   longitude: z.number(),
   locationName: z.string(),
   streetAddress: z.string().optional(),
+  // Migration 0151. Optional because most pins have no library row behind them,
+  // and because every row written before that migration has none.
+  savedLocationId: z.number().int().positive().optional(),
   sortOrder: z.number().int().nonnegative(),
 });
 
@@ -59,9 +62,22 @@ export const entryLocationInputSchema = z.object({
   // dropped on the map may have none, and so the CSV and ICS importers — which
   // supply no address — need no change at all.
   streetAddress: z.string().optional(),
+  // The saved place this was picked from (migration 0151). Optional for exactly
+  // the same reason as the address above: only the library picker sets it, and
+  // every other caller keeps working untouched.
+  savedLocationId: z.number().int().positive().optional(),
 });
 
 export type EntryLocationInput = z.input<typeof entryLocationInputSchema>;
+/**
+ * A location **after** parsing, where `locationName` has taken its default.
+ *
+ * Distinct from `EntryLocationInput` because the two genuinely differ: a caller
+ * may omit the name, a parsed location always has one. Anything working with
+ * already-validated data (the bulk-edit fold, the repository write) wants this
+ * one, or it would have to re-handle an `undefined` the schema already resolved.
+ */
+export type EntryLocationData = z.output<typeof entryLocationInputSchema>;
 
 // entry_date is the anchor field, so its format is enforced (it drives sorting
 // and the date index). Category/tag arrays accept raw strings here — the
@@ -121,11 +137,17 @@ export type EntryWriteData = z.output<typeof createEntrySchema>;
 //
 // A selection edit is deliberately NOT `updateEntrySchema`: that one replaces the
 // whole aggregate, so driving a bulk edit through it would need every untouched
-// field resent per row and would clobber locations. This schema instead names the
-// *few* fields a selection may change, and every one is optional — only what the
-// caller sends is written. Date, time and title are absent on purpose: they
-// identify an entry, and setting one across a selection would collapse rows the
-// importer's duplicate check treats as distinct.
+// field resent per row and would silently clobber the locations a caller did not
+// resend. This schema instead names the *few* fields a selection may change, and
+// every one is optional — only what the caller sends is written. Date, time and
+// title are absent on purpose: they identify an entry, and setting one across a
+// selection would collapse rows the importer's duplicate check treats as
+// distinct.
+//
+// `locations` IS one of the named fields. That is not a reversal of the above:
+// the danger there is the *silent* rewrite, and this writes an entry's pins only
+// when the reader ticks the field on. Its `add` mode leaves every pin an entry
+// already holds exactly as it was, spelling and `savedLocationId` included.
 
 /** How a bulk edit folds a name list into what each entry already carries. */
 export const bulkNameModeSchema = z.enum(["add", "remove", "replace"]);
@@ -151,11 +173,39 @@ export const bulkNameChangeSchema = z
 export type BulkNameChangeInput = z.input<typeof bulkNameChangeSchema>;
 export type BulkNameChangeData = z.output<typeof bulkNameChangeSchema>;
 
+/**
+ * One location-list change: the same three modes a name list takes, over pins
+ * instead of strings.
+ *
+ * Locations are a *list* per entry, exactly like categories and tags, so this
+ * follows `bulkNameChangeSchema` rather than inventing a second vocabulary. The
+ * element is the full `entryLocationInputSchema` — every field an entry's pin
+ * carries, `savedLocationId` included, so a location added in bulk from the
+ * library counts in Journal → Saved Locations just as one picked on the entry
+ * form does.
+ *
+ * `locations` may be empty only for `replace`, for the same reason names may:
+ * "replace with nothing" clears the field, while "add nothing" and "remove
+ * nothing" are almost certainly a forgotten pick.
+ */
+export const bulkLocationChangeSchema = z
+  .object({
+    mode: bulkNameModeSchema,
+    locations: z.array(entryLocationInputSchema).default([]),
+  })
+  .refine((change) => change.mode === "replace" || change.locations.length > 0, {
+    message: "Pick at least one location, or switch the mode to Replace.",
+  });
+
+export type BulkLocationChangeInput = z.input<typeof bulkLocationChangeSchema>;
+export type BulkLocationChangeData = z.output<typeof bulkLocationChangeSchema>;
+
 export const bulkEntryEditSchema = z
   .object({
     categories: bulkNameChangeSchema.optional(),
     tags: bulkNameChangeSchema.optional(),
     placeName: z.string().trim().optional(),
+    locations: bulkLocationChangeSchema.optional(),
   })
   .refine((changes) => Object.values(changes).some((value) => value !== undefined), {
     message: "Enable at least one field to change.",

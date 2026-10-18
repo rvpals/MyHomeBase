@@ -883,6 +883,43 @@ html[data-viewport="compact"] {
     0 4px 12px -4px rgba(0, 0, 0, 0.3);
 }
 
+/* The window frame for a draggable dialog — `Modal` at every size but `full`.
+
+   Decoration only: no width, no padding, no position, no radius. `Modal` keeps
+   owning its geometry (`rounded-xl border border-line` and the per-size box), so
+   this can be added to or dropped from a panel without moving anything by a
+   pixel — the rule design.md calls style hooks, not layout classes.
+
+   The job is to say "this panel is an object you can pick up" slightly louder
+   than a hairline border does, without becoming the switch treatment cards are
+   barred from. It is `.card-raised` one step heavier:
+     1. inset top highlight at 0.14, a touch brighter than `.card-raised`'s 0.1
+     2. the ring at 0.26 and 2px rather than 0.22 and 1px — this is the "slightly
+        thicker border". Stacked *outside* the border, so `border-line` stays the
+        theme's token and still inverts; thickening the border itself would have
+        meant a literal color, and it also positions.
+     3. a deeper cast, 18px at -6px, lifting the panel further off the scrim than
+        a card sits off the page — a dialog is nearer the reader than a card.
+
+   Black at 0.14–0.38 stays in design.md's safe range for either polarity. */
+.dialog-frame {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 0 0 2px rgba(0, 0, 0, 0.26),
+    0 10px 18px -6px rgba(0, 0, 0, 0.38);
+}
+
+/* The same frame for a panel that is also non-modal (the floating layer). With
+   no scrim behind it the panel has to separate itself from live page content,
+   so the cast goes deeper still rather than stacking with `.card-raised`, which
+   would paint two rings at two different alphas. */
+.dialog-frame-floating {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 0 0 2px rgba(0, 0, 0, 0.3),
+    0 16px 28px -8px rgba(0, 0, 0, 0.45);
+}
+
 /* Paper tooth for a card that should read as a physical sheet — the journal's
    New Journal card, where you're "writing" something.
 
@@ -4332,5 +4369,112 @@ html[data-music-player="minimized"] {
 
   .pacman-bazooka-fading {
     animation: pacman-bazooka-blink 400ms steps(1, end) infinite alternate;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Navigation pending: the feedback between a nav click and the new screen.
+
+   Every nav row links to a server-rendered route, so the click starts an RSC
+   fetch and the *old* screen stays up until it lands. These two say that the
+   click was heard. Driven by `NavRowPending` / `NavProgressBar` — see
+   `src/components/nav-pending.tsx`.
+   --------------------------------------------------------------------------- */
+
+/* The spinner that stands in for a row's icon while that row is loading. Sized
+   entirely by the icon classes the row passes in, so it occupies exactly the
+   space the icon did and the label beside it never shifts. */
+.nav-pending-spinner {
+  display: inline-block;
+  border-radius: 9999px;
+  border: 2px solid var(--line);
+  border-top-color: var(--brass);
+  animation: nav-pending-spin 600ms linear infinite;
+}
+
+@keyframes nav-pending-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* The sweep above the page content.
+
+   `fixed` rather than `absolute`: the shell renders a fragment, so there is no
+   positioned content wrapper to anchor to, and `.app-main` belongs to a server
+   layout this client component must not restyle. Being fixed, it then has to
+   clear the navigation column itself — hence the `data-shell` rules below, which
+   are the *same* selectors `.app-main`'s own padding uses, so the two cannot
+   drift apart. It sits above the content band but below the tree's own z-band.
+
+   `top` clears the notch for the same reason `.app-main` does. */
+.nav-progress-track {
+  position: fixed;
+  top: env(safe-area-inset-top);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  height: 2px;
+  overflow: hidden;
+  background-color: var(--line);
+  pointer-events: none;
+}
+
+/* Starts where the content starts, not under the tree. Mirrors the `.app-main`
+   padding rules above, compact exceptions included: on compact the navigation is
+   the bottom bar, so the full width is content. */
+html[data-shell="tree"] .nav-progress-track {
+  left: var(--nav-tree-width);
+}
+
+@media (max-width: 1023.98px) {
+  html[data-shell="tree"] .nav-progress-track {
+    left: 0;
+  }
+}
+
+html[data-shell="tree"][data-viewport="compact"] .nav-progress-track {
+  left: 0;
+}
+
+.nav-progress-fill {
+  height: 100%;
+  width: 40%;
+  background-image: linear-gradient(
+    to right,
+    transparent 0%,
+    var(--brass) 50%,
+    transparent 100%
+  );
+  animation: nav-progress-sweep 1.1s ease-in-out infinite;
+}
+
+@keyframes nav-progress-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(350%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Neither one switches off. Both are the *only* signal that a click landed —
+     the screen is deliberately unchanged until the route resolves, so removing
+     the motion would leave a reader who asked for less motion looking at a page
+     that appears to have ignored them. The travel and the spin go; a steady
+     presence stays, which is the same call the arrow bump makes. */
+  .nav-pending-spinner {
+    animation: none;
+    border-top-color: var(--brass);
+    border-right-color: var(--brass);
+  }
+
+  .nav-progress-fill {
+    animation: none;
+    width: 100%;
+    background-image: none;
+    background-color: var(--brass);
+    opacity: 0.6;
   }
 }

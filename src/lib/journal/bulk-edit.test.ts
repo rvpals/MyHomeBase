@@ -1,6 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { applyNameChange, bulkEditEntries, describeBulkEditResult } from "./bulk-edit";
+import {
+  applyLocationChange,
+  applyNameChange,
+  bulkEditEntries,
+  describeBulkEditResult,
+} from "./bulk-edit";
 import type { BulkEntryEditData, BulkEntryEditOutcome, JournalRepository } from "./index";
+import type { EntryLocation } from "./types";
+
+/** An entry's existing pin. Only the fields the fold reads are meaningful. */
+function held(
+  latitude: number,
+  longitude: number,
+  overrides: Partial<EntryLocation> = {},
+): EntryLocation {
+  return {
+    id: 1,
+    entryId: 1,
+    latitude,
+    longitude,
+    locationName: "",
+    sortOrder: 0,
+    ...overrides,
+  };
+}
 
 /**
  * A fake standing in for the one repository method this use-case calls.
@@ -223,5 +246,162 @@ describe("describeBulkEditResult", () => {
     expect(
       describeBulkEditResult({ updatedCount: 0, skippedLockedCount: 1, missingCount: 0 }),
     ).toBe("Updated 0 entries. 1 was locked and skipped.");
+  });
+});
+
+describe("applyLocationChange", () => {
+  // Far enough apart that `isDuplicateLocation` sees two places, not one.
+  const PLAYGROUND = { latitude: 40.5, longitude: -74.5, locationName: "Playground" };
+  const LIBRARY = { latitude: 41.2, longitude: -73.9, locationName: "Library" };
+
+  it("appends a location an entry does not have", () => {
+    const next = applyLocationChange([held(41.2, -73.9, { locationName: "Library" })], {
+      mode: "add",
+      locations: [PLAYGROUND],
+    });
+    expect(next.map((l) => l.locationName)).toEqual(["Library", "Playground"]);
+  });
+
+  it("adds to an entry with no locations at all", () => {
+    const next = applyLocationChange([], { mode: "add", locations: [PLAYGROUND] });
+    expect(next).toHaveLength(1);
+    expect(next[0].locationName).toBe("Playground");
+  });
+
+  it("does not add a place the entry already has", () => {
+    const next = applyLocationChange([held(40.5, -74.5, { locationName: "The park" })], {
+      mode: "add",
+      locations: [PLAYGROUND],
+    });
+    expect(next).toHaveLength(1);
+  });
+
+  it("keeps the entry's own record when the place is already held", () => {
+    // The entry's name, address and id survive — a bulk add is not a reason to
+    // rewrite what an older entry says about where it was.
+    const existing = held(40.5, -74.5, {
+      locationName: "The park",
+      streetAddress: "1 Old Road",
+      savedLocationId: 9,
+    });
+    const next = applyLocationChange([existing], {
+      mode: "add",
+      locations: [{ ...PLAYGROUND, streetAddress: "2 New Road", savedLocationId: 42 }],
+    });
+    expect(next).toEqual([
+      {
+        latitude: 40.5,
+        longitude: -74.5,
+        locationName: "The park",
+        streetAddress: "1 Old Road",
+        savedLocationId: 9,
+      },
+    ]);
+  });
+
+  it("carries savedLocationId onto a newly added pin", () => {
+    const next = applyLocationChange([], {
+      mode: "add",
+      locations: [{ ...PLAYGROUND, savedLocationId: 42 }],
+    });
+    expect(next[0].savedLocationId).toBe(42);
+  });
+
+  it("removes a held place by coordinates, whatever it is named", () => {
+    const next = applyLocationChange(
+      [held(40.5, -74.5, { locationName: "The park" }), held(41.2, -73.9)],
+      { mode: "remove", locations: [PLAYGROUND] },
+    );
+    expect(next).toHaveLength(1);
+    expect(next[0].latitude).toBe(41.2);
+  });
+
+  it("leaves other places alone on remove", () => {
+    const next = applyLocationChange([held(41.2, -73.9, { locationName: "Library" })], {
+      mode: "remove",
+      locations: [PLAYGROUND],
+    });
+    expect(next.map((l) => l.locationName)).toEqual(["Library"]);
+  });
+
+  it("replaces the whole list", () => {
+    const next = applyLocationChange([held(41.2, -73.9), held(40.5, -74.5)], {
+      mode: "replace",
+      locations: [LIBRARY],
+    });
+    expect(next).toHaveLength(1);
+    expect(next[0].locationName).toBe("Library");
+  });
+
+  it("clears every location on replace with nothing", () => {
+    const next = applyLocationChange([held(41.2, -73.9)], { mode: "replace", locations: [] });
+    expect(next).toEqual([]);
+  });
+
+  it("preserves the order of what the entry already held", () => {
+    const next = applyLocationChange(
+      [held(41.2, -73.9, { locationName: "First" }), held(42.9, -72.1, { locationName: "Second" })],
+      { mode: "add", locations: [PLAYGROUND] },
+    );
+    expect(next.map((l) => l.locationName)).toEqual(["First", "Second", "Playground"]);
+  });
+});
+
+describe("bulkEditEntries — locations", () => {
+  const PLAYGROUND = { latitude: 40.5, longitude: -74.5, locationName: "Playground" };
+
+  it("passes a location change through to the repository", () => {
+    const { repo, calls } = fakeRepo();
+    bulkEditEntries(repo, [1, 2], { locations: { mode: "add", locations: [PLAYGROUND] } });
+    expect(calls.bulkEdit[0].changes.locations).toEqual({
+      mode: "add",
+      locations: [PLAYGROUND],
+    });
+  });
+
+  it("folds two picks at the same place down to one before writing", () => {
+    const { repo, calls } = fakeRepo();
+    bulkEditEntries(repo, [1], {
+      locations: {
+        mode: "add",
+        // Same spot, different name — the case isDuplicateLocation exists for.
+        locations: [PLAYGROUND, { ...PLAYGROUND, locationName: "The park" }],
+      },
+    });
+    expect(calls.bulkEdit[0].changes.locations?.locations).toHaveLength(1);
+  });
+
+  it("registers no categories or tags for a locations-only change", () => {
+    const { repo, calls } = fakeRepo();
+    bulkEditEntries(repo, [1], { locations: { mode: "add", locations: [PLAYGROUND] } });
+    expect(calls.registeredCategories).toEqual([]);
+    expect(calls.registeredTags).toEqual([]);
+  });
+
+  it("rejects an add with no locations", () => {
+    const { repo } = fakeRepo();
+    expect(() => bulkEditEntries(repo, [1], { locations: { mode: "add", locations: [] } })).toThrow();
+  });
+
+  it("rejects a remove with no locations", () => {
+    const { repo } = fakeRepo();
+    expect(() =>
+      bulkEditEntries(repo, [1], { locations: { mode: "remove", locations: [] } }),
+    ).toThrow();
+  });
+
+  it("allows a replace with no locations — that clears the field", () => {
+    const { repo, calls } = fakeRepo();
+    bulkEditEntries(repo, [1], { locations: { mode: "replace", locations: [] } });
+    expect(calls.bulkEdit[0].changes.locations).toEqual({ mode: "replace", locations: [] });
+  });
+
+  it("still skips locked entries and counts them", () => {
+    const { repo } = fakeRepo({ locked: [2] });
+    const result = bulkEditEntries(repo, [1, 2, 3], {
+      locations: { mode: "add", locations: [PLAYGROUND] },
+    });
+    expect(result.updatedCount).toBe(2);
+    expect(result.skippedLockedCount).toBe(1);
   });
 });

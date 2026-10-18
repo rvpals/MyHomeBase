@@ -24,6 +24,20 @@ export interface EntryLocation {
    * an entry says. See migration 0139.
    */
   streetAddress?: string;
+  /**
+   * The `sys_locations` row this pin was copied from, when it came from the
+   * saved-location library. Undefined for a pin dropped on the map, imported
+   * from a CSV or an .ics, or written before migration 0151.
+   *
+   * A pointer *beside* the copy above, never instead of it: the fields stay the
+   * entry's own record of the day, and this answers the different question of
+   * which entries happened at one saved place.
+   *
+   * **May point at a row that no longer exists.** There is no foreign key (see
+   * migration 0151), so a reader must treat "not found" as ordinary rather than
+   * as corruption — the entry itself is unaffected either way.
+   */
+  savedLocationId?: number;
   sortOrder: number;
 }
 

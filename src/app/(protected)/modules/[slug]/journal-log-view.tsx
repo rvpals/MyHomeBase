@@ -20,6 +20,9 @@ export interface JournalLogViewProps {
   tagIcons: Record<string, string>;
   /** The managed lists, for the bulk-edit dialog's pickers. */
   categoryOptions: string[];
+  /** The *place* taxonomy, for the bulk-edit dialog's location picker. */
+  locationCategoryOptions: string[];
+  locationTagOptions: string[];
   tagOptions: string[];
 }
 
@@ -46,6 +49,8 @@ export function JournalLogView({
   categoryIcons,
   tagIcons,
   categoryOptions,
+  locationCategoryOptions,
+  locationTagOptions,
   tagOptions,
 }: JournalLogViewProps) {
   const router = useRouter();
@@ -232,6 +237,8 @@ export function JournalLogView({
         <JournalEntriesBulkEdit
           selected={bulkEdit.rows}
           categoryOptions={categoryOptions}
+          locationCategoryOptions={locationCategoryOptions}
+          locationTagOptions={locationTagOptions}
           tagOptions={tagOptions}
           // The Log tab's list is the unfiltered Log read, so that is what it
           // asks for back — an entry bulk-edited out of the Log category

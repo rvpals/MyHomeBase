@@ -16,7 +16,6 @@
 // next to the 48px icon rail for *modules* is two ambiguous glyph columns side
 // by side, which reads worse than either extreme.
 
-import Link from "next/link";
 import {
   createContext,
   useContext,
@@ -29,6 +28,7 @@ import { getIconSlot, sectionSlotId } from "@/lib/icons";
 import { navTextureVars, type ResolvedNavTexture } from "@/lib/nav-texture";
 import type { CompactNavStyle } from "@/lib/user-preferences";
 import { ModuleIcon } from "./module-icons";
+import { NavLinkRow, NavRowPending } from "./nav-pending";
 import { SlotIcon } from "./slot-icon";
 import { TreeIcon } from "./tree-icons";
 
@@ -197,10 +197,10 @@ function SectionRow({
   }
 
   return (
-    <Link
+    <NavLinkRow
       href={section.href}
       title={section.hint ?? section.label}
-      aria-current={active ? "page" : undefined}
+      active={active}
       onClick={onNavigate}
       // `py-2.5` on compact is a ~44px touch target; the desktop panel's
       // `py-1.5` is tighter because a pointer doesn't need the slack.
@@ -215,9 +215,14 @@ function SectionRow({
       {/* Lines a leaf up with the chevron column on a group row. Only on
           desktop, where groups exist at all. */}
       {!compact && !nested && <span className="w-3 shrink-0" aria-hidden />}
-      <SectionIcon icon={section.icon} id={section.id} className="h-4 w-4 shrink-0" />
+      {/* The sheet closes on navigate, so this row unmounts while its fetch is
+          still in flight — the spinner is brief here, and the progress bar over
+          the content is what the reader actually watches. */}
+      <NavRowPending id={section.href} className="h-4 w-4 shrink-0">
+        <SectionIcon icon={section.icon} id={section.id} className="h-4 w-4 shrink-0" />
+      </NavRowPending>
       <span className="truncate">{section.label}</span>
-    </Link>
+    </NavLinkRow>
   );
 }
 
@@ -313,10 +318,10 @@ function CompactModuleList({
         const active = link.slug === activeSlug;
         return (
           <li key={link.slug}>
-            <Link
+            <NavLinkRow
               href={link.href}
               title={link.hint ?? link.name}
-              aria-current={active ? "page" : undefined}
+              active={active}
               onClick={onNavigate}
               className={`flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
                 active
@@ -324,9 +329,11 @@ function CompactModuleList({
                   : "text-ink hover:bg-line/60"
               }`}
             >
-              <ModuleIcon slug={link.slug} name={link.icon} className="h-4 w-4 shrink-0" />
+              <NavRowPending id={link.href} className="h-4 w-4 shrink-0">
+                <ModuleIcon slug={link.slug} name={link.icon} className="h-4 w-4 shrink-0" />
+              </NavRowPending>
               <span className="truncate">{link.name}</span>
-            </Link>
+            </NavLinkRow>
           </li>
         );
       })}

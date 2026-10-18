@@ -1,5 +1,60 @@
 # Change History
 
+## 2026-10-17 — Journal Saved Locations, Location Manager Venn/Graph views, bulk location edit, navigation feedback, draggable dialogs
+
+**Migration 0151 must be applied on the NAS.** It adds nullable
+`jrn_entry_locations.saved_location_id` plus an index — an `ADD COLUMN`, no rows rewritten.
+Without it the Journal entry screens fail with "no such column". The NAS database and its
+WAL/SHM files were backed up before this release.
+
+### Journal → Saved Locations (migration 0151)
+
+- **New Journal section, Saved Locations** (`/modules/journal/saved-locations`): the
+  application-wide location library with a count of entries written at each place; each
+  count links to `/modules/journal/saved-locations/<id>`, a bookmarkable drill-down listing
+  those entries. Read-only — the places stay Admin → Locations' to edit.
+- **`saved_location_id` links an entry's pin back to its place.** Written only when a pin is
+  picked from the library picker; the entry still stores its own copy of coordinates, name
+  and street address, so renaming or deleting a place never rewrites an entry.
+- **Counts start at 0 for everything** — nothing is backfilled, and the screen says so.
+  Map-dropped pins, CSV and .ics imports link nothing. A deleted place leaves a dangling id
+  by design (no foreign key); the drill-down lists those entries under a "no longer in your
+  saved places" heading rather than 404ing.
+- Counting is a journal-side query (`src/lib/journal/entry-locations.ts`), keeping
+  `sys-locations` ignorant of the journal's tables.
+- New icon slot `journal_section_saved_locations` (default `pin`) — deliberately not the
+  retired `journal_section_locations` id, so an old upload cannot reappear.
+- The library picker in the entry form gains `LocationFilterChips` (category/tag filters).
+
+### Location Manager (Admin → Locations)
+
+- **Venn and Graph views** join List and Card: Venn shows where places overlap by tag or
+  category (2–3 sets; Tags/Categories basis switch), Graph is a force-directed graph joining
+  places that share a tag. Set math and physics are pure `lib/sys-locations` modules
+  (`venn-regions.ts`, `location-graph.ts`) with tests.
+- **The Location Map section is gone** (`/admin/locations/map` deleted, nav entry removed).
+  The map is now part of the Manager with a **Map size** control: Compact / Tall / Hidden.
+- New reusable components: `SavedLocationRow`, `LocationFilterChips`, `LocationVenn`,
+  `LocationGraphView` (registered in `components.md`).
+
+### Journal bulk edit
+
+- **Locations are now a bulk-editable field** (add / replace, explicitly enabled). Pins are
+  folded to one per place with `isDuplicateLocation`; `add` leaves existing pins alone, and
+  an empty add/remove is refused with a message. Tests extended in `bulk-edit.test.ts`.
+
+### Shell
+
+- **Navigation feedback** (`NavPending`): nav rows show a wait cursor and a spinner in place
+  of their icon, and a progress bar sweeps the content area, while a server-rendered route
+  loads. Wired into `NavTree` and `SectionPanel`.
+- **Every `Modal` now drags by its header on desktop** (not just `size="window"`), except
+  `full` and compact. Panels get a `.dialog-frame` window frame; non-modal floating panels
+  take `.dialog-frame-floating`. Docs in `design.md` updated.
+- Today in History: the About note moved beside the title, next to the launch button.
+- Docs: `TO_TEST.md` removed (superseded by `Testing_List.md`); `components.md`,
+  `design.md`, `modules.md`, `menu_items.md` brought in line.
+
 ## 2026-10-16 — Journal Entries: All Entries / Unlocked Entries / Log tabs and a Filtering card
 
 **No migration.** `jrn_entries.is_locked` and the `isLocked` filter field already existed.

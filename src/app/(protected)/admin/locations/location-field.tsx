@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { Button } from "@/components/button";
 import type { GeoPlace } from "@/lib/geocoding";
@@ -48,9 +48,25 @@ export function LocationPickerField({
   onChange,
   showAddress = false,
   showName = true,
+  mapHeightClassName,
+  searchAction,
 }: {
   value: PickedLocation | null;
   onChange: (next: PickedLocation | null) => void;
+  /**
+   * Rendered immediately right of the Search button — for a `Comments` mark
+   * explaining how to use the search and the map. A slot rather than the copy
+   * itself, because the three callers here want different wording (or none),
+   * and this component should not know which screen it is on.
+   */
+  searchAction?: ReactNode;
+  /**
+   * Height for the map box, passed straight through to `LocationMap`. Omitted
+   * means that component's own default (`h-64`), so the callers that were here
+   * before this prop are untouched. The location manager passes a taller one:
+   * its map is the screen's working surface, not a thumbnail beside a form.
+   */
+  mapHeightClassName?: string;
   /**
    * Shows the editable street-address box under the map. Off by default so the
    * two existing callers — the location manager, which has its own Address
@@ -116,7 +132,9 @@ export function LocationPickerField({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex gap-2">
+      {/* `items-center` so a bare glyph in `searchAction` sits on the button's
+          midline rather than stretching to the row's height. */}
+      <div className="flex items-center gap-2">
         <input
           type="text"
           value={query}
@@ -133,6 +151,7 @@ export function LocationPickerField({
         <Button size="sm" variant="secondary" onClick={handleSearch} disabled={isSearching || query.trim() === ""}>
           {isSearching ? "…" : "Search"}
         </Button>
+        {searchAction}
       </div>
 
       {error && <p className="text-xs text-red-400">{error}</p>}
@@ -153,7 +172,12 @@ export function LocationPickerField({
         </ul>
       )}
 
-      <LocationMap marker={value} center={center} onPick={handleMapPick} />
+      <LocationMap
+        marker={value}
+        center={center}
+        onPick={handleMapPick}
+        {...(mapHeightClassName ? { heightClassName: mapHeightClassName } : {})}
+      />
 
       {value && showName && (
         <label className="block text-sm">

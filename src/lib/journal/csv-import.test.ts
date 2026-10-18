@@ -31,6 +31,12 @@ function fakeRepo(): JournalRepository {
     searchEntries: () => {
       throw new Error("not used");
     },
+    countEntriesBySavedLocation: () => {
+      throw new Error("not used");
+    },
+    listEntriesBySavedLocation: () => {
+      throw new Error("not used");
+    },
     getEntryById: (id) => entries.find((entry) => entry.id === id),
     getEntryNeighbors: () => ({}),
     createEntry(input) {

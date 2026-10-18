@@ -17,7 +17,6 @@
 // belongs to a server layout that reserves the same space, and two places agreeing
 // on a number by hand is how the two drift.
 
-import Link from "next/link";
 import {
   useEffect,
   useLayoutEffect,
@@ -43,6 +42,7 @@ import {
 import { getIconSlot, sectionSlotId } from "@/lib/icons";
 import { navTextureVars, type ResolvedNavTexture } from "@/lib/nav-texture";
 import { ModuleIcon } from "./module-icons";
+import { NavLinkRow, NavRowPending } from "./nav-pending";
 import { SlotIcon } from "./slot-icon";
 import { TreeIcon } from "./tree-icons";
 
@@ -168,15 +168,17 @@ function SectionRow({
   match?: [number, number];
 }) {
   return (
-    <Link
+    <NavLinkRow
       href={section.href}
       title={section.hint ?? section.label}
-      aria-current={active ? "page" : undefined}
+      active={active}
       className={`flex w-full items-center gap-2 rounded-md py-1.5 pl-2 pr-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
         active ? "bg-brass-soft font-medium text-brass-dark" : "text-ink hover:bg-line/60"
       }`}
     >
-      <SectionIcon moduleSlug={moduleSlug} section={section} className="h-4 w-4 shrink-0" />
+      <NavRowPending id={section.href} className="h-4 w-4 shrink-0">
+        <SectionIcon moduleSlug={moduleSlug} section={section} className="h-4 w-4 shrink-0" />
+      </NavRowPending>
       <span className="truncate">
         {match ? (
           <>
@@ -190,7 +192,7 @@ function SectionRow({
           section.label
         )}
       </span>
-    </Link>
+    </NavLinkRow>
   );
 }
 
@@ -369,17 +371,26 @@ function SectionGroupBox({
   return (
     <li className="nav-group overflow-hidden rounded-md border-line bg-paper">
       {run.groupHref ? (
-        <Link
+        <NavLinkRow
           href={run.groupHref}
-          aria-current={isHeaderActive ? "page" : undefined}
+          active={isHeaderActive}
           className={`${headerClass} nav-group-head border-line transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brass ${
             isHeaderActive
               ? "bg-brass-soft text-brass-dark"
               : "text-muted hover:bg-line/50 hover:text-ink"
           }`}
         >
-          {headerContent}
-        </Link>
+          {/* The group icon is optional. When there is one the spinner takes its
+              place; when there is none it appears beside the label, because a
+              clickable heading with no feedback at all is the case this whole
+              component exists to remove. */}
+          <NavRowPending id={run.groupHref} className="h-3.5 w-3.5 shrink-0">
+            {run.groupIcon ? (
+              <TreeIcon name={run.groupIcon} className="h-3.5 w-3.5 shrink-0" />
+            ) : null}
+          </NavRowPending>
+          <span className="truncate">{run.group}</span>
+        </NavLinkRow>
       ) : (
         <span className={`${headerClass} nav-group-head border-line text-muted`}>{headerContent}</span>
       )}
@@ -748,23 +759,26 @@ export function NavTree({
         {/* Home sits above the modules and outside the filter: it is one row that
             every reader knows by position, and dropping it on a non-matching query
             would move the one fixed landmark in the column. */}
-        <Link
+        <NavLinkRow
           href={tree.home.href}
           title={tree.home.hint ?? tree.home.label}
-          aria-current={isHomeActive ? "page" : undefined}
+          active={isHomeActive}
+          wrapperClassName="mb-2"
           // Sized and faced like a module heading, because that is what it is at
           // this level — a top-level destination, not a section. Left as a plain row
           // rather than a slab: a slab is a container for children, and Home has
           // none, so an empty one would promise something that never opens.
-          className={`mb-2 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 font-display text-base tracking-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
+          className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 font-display text-base tracking-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
             isHomeActive
               ? "bg-brass-soft font-semibold text-brass-dark"
               : "text-ink hover:bg-line/60"
           }`}
         >
-          <SlotIcon slot={HOME_SLOT} className="h-[1.125rem] w-[1.125rem] shrink-0" />
+          <NavRowPending id={tree.home.href} className="h-[1.125rem] w-[1.125rem] shrink-0">
+            <SlotIcon slot={HOME_SLOT} className="h-[1.125rem] w-[1.125rem] shrink-0" />
+          </NavRowPending>
           <span className="truncate">{tree.home.label}</span>
-        </Link>
+        </NavLinkRow>
 
         {/* `gap-2`, not `gap-0.5`: each module is now a raised slab with its own
             cast shadow, and slabs stacked flush read as one box with lines across

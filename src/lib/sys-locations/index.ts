@@ -88,4 +88,29 @@ export {
   type CandidatePoint,
 } from "./find-at-coordinates";
 
+export {
+  DEFAULT_FORCES,
+  buildLocationGraph,
+  findNodeAt,
+  graphBounds,
+  neighbourIndices,
+  settleGraph,
+  stepSimulation,
+  type ForceSettings,
+  type GraphEdge,
+  type GraphNode,
+  type LocationGraph,
+} from "./location-graph";
+
+export {
+  MAX_VENN_SETS,
+  MIN_VENN_SETS,
+  buildVennLayout,
+  defaultVennNames,
+  findVennRegion,
+  rankTaxonomyNames,
+  type VennLayout,
+  type VennRegion,
+} from "./venn-regions";
+
 export { SqliteSavedLocationRepository } from "./repository";

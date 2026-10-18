@@ -1059,6 +1059,19 @@ rather than inventing a fifth surface.
   publishes `0px`: floating over the last line of a page is the point of minimising.
   The layer mirrors `html[data-floating]` for anything that needs to know it's there.
 
+### Dragging is not what makes a window floating
+
+**Every `Modal` drags by its header on desktop**, at `sm`, `md`, `lg` and `window` alike
+— only `full` (which has nowhere to go) and compact (below 1024px, which turns it off
+wholesale) sit still. The drag lived on `size="window"` for a while and that read as the
+floating layer's own trick; it never was one. Panels also carry a window frame,
+`.dialog-frame`, a style hook with no geometry of its own.
+
+So what makes a floating component floating is **the puck, the corner, the persisted
+state and `isNonModal`** — the page behind staying *usable* — not the ability to shove
+the panel aside. A dialog you can move is still a dialog: it scrims, it traps focus, you
+answer it and it goes away. Don't reach for the floating layer because you want a drag.
+
 ### A floating window sizes to its content
 
 `Modal size="window"` is `h-auto w-auto`, capped at `56rem` / `85vh` with a `20rem`
@@ -1082,18 +1095,23 @@ forecast rendered ~2000px wide with the content huddled at the edges.
 
 ### What compact does differently
 
-A draggable 80vw window is a *worse* full-screen sheet on a 390px phone: there is
-nowhere to drag it to, and the drag fights the page's own scroll. So `FloatingWindow`
-forks on `useIsCompact()` and hands compact `Modal size="full"` — the edge-to-edge
-treatment that already exists — while `full` gets the content-sized window. That is a
-genuine component fork, per *Fork a component only when restyling genuinely can't do
-it*: no `max-lg:` variant can switch off a drag.
+A floating window is a *worse* full-screen sheet on a 390px phone: there is nowhere to
+drag it to, and the drag fights the page's own scroll. So `FloatingWindow` forks on
+`useIsCompact()` and hands compact `Modal size="full"` — the edge-to-edge treatment that
+already exists — while `full` gets the content-sized window. That is a genuine component
+fork, per *Fork a component only when restyling genuinely can't do it*: no `max-lg:`
+variant can switch off a drag.
+
+`Modal` now makes the same call internally for *every* dialog, so the drag is already off
+on compact before `FloatingWindow` chooses a size. The fork here is still doing work — it
+is what turns a content-sized window into a full-bleed sheet, and what keeps the scrim.
 
 The window is **non-modal on desktop only** (`Modal`'s `isNonModal`): no scrim, no scroll
 lock, no focus trap, because you are meant to keep using the page underneath. Compact
 keeps the scrim — the sheet covers the screen anyway, and the scrim is what separates it
-from the page behind. With no scrim, the panel takes `.card-raised`: a hairline border
-alone doesn't separate a floating card from the content it floats over.
+from the page behind. With no scrim, the panel takes `.dialog-frame-floating` rather than
+the usual `.dialog-frame` — a deeper cast, because a panel floating over *live* content
+has to separate itself from it without a scrim's help.
 
 ### The window chrome is `_ ▢ ✕`, in that order
 

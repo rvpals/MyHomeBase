@@ -26,6 +26,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { ModuleMenu, UserMenu, type NavLink } from "./nav-menus";
 import { AppHeader, type Breadcrumb } from "./app-header";
 import { ModuleRail } from "./module-rail";
+import { NavPendingProvider, NavProgressBar } from "./nav-pending";
 import { NavTree } from "./nav-tree";
 import { SectionPanel, type SectionNode } from "./section-panel";
 import type { NavigationTree, TreeModule } from "@/lib/navigation";
@@ -210,7 +211,13 @@ export function TwoTierShell({
   ];
 
   return (
-    <>
+    // Every nav surface below links to a server-rendered route, so a click shows
+    // nothing until the payload lands. The provider lets each row report that it
+    // is loading and lets `NavProgressBar` draw one bar for all of them — see
+    // `nav-pending.tsx`. It wraps `children` too, so the bar outlives the compact
+    // sheet that closes the moment the row is tapped.
+    <NavPendingProvider>
+      <NavProgressBar />
       {/* Tier 1. Renders only on the full layout — on compact the same list
           lives in the bottom bar `SectionPanel` draws, on every screen including
           the sectionless ones. `showAdmin` puts the Administration gear in the
@@ -326,6 +333,6 @@ export function TwoTierShell({
       )}
 
       {children}
-    </>
+    </NavPendingProvider>
   );
 }

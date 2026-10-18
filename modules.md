@@ -345,6 +345,32 @@ week, month or year — with the range, the period and the clicked day all in th
 by one `listEntriesInDateRange` call bounded by the visible period rather than by
 filtering the whole table in memory.
 
+The **Saved Locations** section lists the application-wide location library
+(`sys_locations`, migration 0140) with a count of how many entries were written at each
+place, and links each count to `/modules/journal/saved-locations/<id>` — a real route, not
+a dialog, because "every entry at the playground" is worth bookmarking. It **adds no
+table**: the places are Admin → Locations' to own and this screen creates, edits and
+deletes nothing.
+
+The link it counts is `jrn_entry_locations.saved_location_id` (migration 0151), written
+only when a pin is picked from the library. An entry still stores its **own copy** of the
+coordinates, name and street address, exactly as before — the id sits beside that copy and
+changes nothing about what an entry displays. Three consequences worth knowing:
+
+- **Counts start at 0 for everything** the day 0151 runs. Nothing is backfilled, so only
+  entries written afterwards link, and the screen says so until the first one appears.
+- **A map-dropped pin, a CSV import and an .ics import all link nothing**, correctly —
+  none of them resolves against the library.
+- **Deleting a saved place leaves its entries pointing at a row that is gone.** There is no
+  foreign key on purpose (the module must not be blocked by a platform table), so the
+  drill-down treats a missing place as ordinary and lists the entries under a heading that
+  says so rather than 404ing them.
+
+The counting is a **journal-side** query (`src/lib/journal/entry-locations.ts`), not a
+subquery in `lib/sys-locations`: the journal may read the library, but the library may name
+no module's table. `SavedLocationWithUsage.usageCount` is therefore still always 0 and is
+not what this screen shows.
+
 The date arithmetic lives in `src/lib/journal/calendar.ts` as pure functions over ISO
 strings — grid shape and padding, the ‹ › stepping, the 30-character title elision, the
 year view's heat scale, and parsing a typed date. Nothing about a calendar is computed in
@@ -647,8 +673,9 @@ three sections. The journal's saved places were deleted, not migrated; the categ
 tag lists (icons included) were copied across by 0140.
 
 The library now lives in `src/lib/sys-locations` over five `sys_` tables, and is managed
-under **Administration → Locations** (Location Manager, Location Map, Location Meta
-Data — `/admin/locations/{manager,map,metadata}`, admin-only). It is `sys_` rather than
+under **Administration → Locations** (Location Manager, Location Meta Data —
+`/admin/locations/{manager,metadata}`, admin-only; the former Location Map folded into the
+Manager as a Map size control). It is `sys_` rather than
 `jrn_` because the places belong to no module and are meant to be picked from several.
 It is deliberately ignorant of any module's tables: no importer, no "which entries use
 this?" list, and `usageCount` is a constant 0 until a module starts referencing places.

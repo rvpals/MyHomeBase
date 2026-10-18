@@ -12,6 +12,8 @@
 
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 
+import { useIsCompact } from "@/components/viewport-context";
+
 type Size = "sm" | "md" | "lg" | "full" | "window";
 
 /**
@@ -156,7 +158,16 @@ export function Modal({
   const [offset, setOffset] = useState({ x: 0, y: 0 });
 
   const isFloating = size === "window";
-  const isDraggable = isFloating && !isMaximized;
+  // Every dialog is draggable, not just the floating variant — the drag was
+  // already built here and gated to `window` for no reason that survived use.
+  // Two exceptions, both because there is nowhere to drag *to*:
+  //   - `full` (and a maximized window) fills the viewport edge to edge.
+  //   - compact, below 1024px, where a panel is near enough full-width that the
+  //     clamp bites immediately, and `touch-none` on the header would eat the
+  //     scroll a phone reader expects. This is the component fork design.md
+  //     sanctions: a restyle can't remove a drag.
+  const isCompact = useIsCompact();
+  const isDraggable = size !== "full" && !isMaximized && !isCompact;
   // A maximized floating window *is* the full-bleed treatment, reusing it rather
   // than approximating it.
   const effectiveSize: Size = isFloating && isMaximized ? "full" : size;
@@ -242,13 +253,15 @@ export function Modal({
   // Re-centring is blunt but always recoverable, which clamping to a rect that
   // may itself have changed size is not.
   useEffect(() => {
-    if (!isFloating) return;
+    // Not `isDraggable`: a panel dragged aside and *then* maximized still holds
+    // a stale offset, and crossing into compact mid-session must drop it too.
+    if (size === "full") return;
     function recentre() {
       setOffset({ x: 0, y: 0 });
     }
     window.addEventListener("resize", recentre);
     return () => window.removeEventListener("resize", recentre);
-  }, [isFloating]);
+  }, [size]);
 
   // Move focus into the panel on open and put it back where it was on close —
   // without this, dismissing a dialog drops the caret at the top of the page.
@@ -332,15 +345,22 @@ export function Modal({
         // triggers layout — the panel holds tables and a chart, and reflowing
         // those on every pointer move would crawl.
         style={
-          offset.x !== 0 || offset.y !== 0
+          isDraggable && (offset.x !== 0 || offset.y !== 0)
             ? { transform: `translate(${offset.x}px, ${offset.y}px)` }
             : undefined
         }
         className={`flex ${sizeClasses[effectiveSize]} flex-col overflow-hidden rounded-xl border border-line bg-paper-raised focus-visible:outline-none ${
-          // The panel takes pointer events back from the see-through container, and
-          // a non-modal panel gets a real lift: with no scrim behind it, a hairline
-          // border alone doesn't separate it from the page it's floating over.
-          isNonModal ? "pointer-events-auto card-raised" : ""
+          // The window frame: a slightly thicker edge and a deeper cast, so a
+          // panel you can pick up looks like one. Decoration only — the geometry
+          // above is untouched, so this can't shift the layout.
+          //
+          // Full-bleed is the one size that doesn't take it: it has no rounding
+          // and no gutter, so a frame would draw a ring hard against the viewport
+          // edge, and there is nothing behind it to lift away from.
+          effectiveSize === "full" ? "" : isNonModal ? "dialog-frame-floating" : "dialog-frame"
+        } ${
+          // The panel takes pointer events back from the see-through container.
+          isNonModal ? "pointer-events-auto" : ""
         } ${className}`}
       >
         <div

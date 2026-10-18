@@ -17,10 +17,12 @@
 // live in the repository, next to the statements they run. Same division as
 // recycle.ts.
 
+import { isDuplicateLocation } from "@/lib/sys-locations";
 import type { JournalRepository } from "./ports";
 import type { BulkEntryEditOutcome } from "./ports";
 import { bulkEntryEditSchema, entryIdsSchema, type BulkEntryEditInput } from "./schema";
-import type { BulkNameChangeData } from "./schema";
+import type { BulkLocationChangeData, BulkNameChangeData, EntryLocationData } from "./schema";
+import type { EntryLocation } from "./types";
 
 export interface BulkEditResult {
   /** How many entries were actually written. */
@@ -35,9 +37,16 @@ export interface BulkEditResult {
  * Applies one change to every selected entry.
  *
  * Only the fields named in `changes` are touched; everything else on each row —
- * its content, its date, its locations — is left exactly as it was. Which fields
- * are eligible is decided by `bulkEntryEditSchema`, so the rule holds for the CLI
- * as much as for the web app.
+ * its content, its date, its title — is left exactly as it was. Which fields are
+ * eligible is decided by `bulkEntryEditSchema`, so the rule holds for the CLI as
+ * much as for the web app.
+ *
+ * **Locations are eligible now**, as an explicitly enabled field. That does not
+ * contradict the note in `schema.ts` about `updateEntry` clobbering them: the
+ * danger there is a path that rewrites the whole aggregate and *silently* drops
+ * the pins a caller did not resend. This writes an entry's locations only when
+ * the reader ticks the field on, and `add` leaves every pin already held exactly
+ * as it was.
  *
  * Any category or tag named here joins the managed lists first, exactly as
  * `createEntry`/`updateEntry` do it, so a bulk add can introduce a new name
@@ -56,6 +65,7 @@ export function bulkEditEntries(
     categories: normalizeChange(validated.categories),
     tags: normalizeChange(validated.tags),
     placeName: validated.placeName,
+    locations: normalizeLocationChange(validated.locations),
   };
 
   // The schema's own refine runs *before* trimming, so a list of whitespace
@@ -64,6 +74,7 @@ export function bulkEditEntries(
   // report every row as updated.
   assertNamesPresent(normalized.categories, "category");
   assertNamesPresent(normalized.tags, "tag");
+  assertLocationsPresent(normalized.locations);
 
   if (normalized.categories && normalized.categories.mode !== "remove") {
     repo.registerCategoriesIfMissing(normalized.categories.names);
@@ -131,6 +142,82 @@ export function applyNameChange(current: string[], change: BulkNameChangeData): 
   const held = new Set(current.map((name) => name.toLowerCase()));
   const added = change.names.filter((name) => !held.has(name.toLowerCase()));
   return [...current, ...added];
+}
+
+/**
+ * Folds a picked list down to one pin per *place*, keeping the first.
+ *
+ * The same coordinate rule the entry form's picker uses, so a reader cannot
+ * assemble a bulk change this app would refuse one pin at a time. Two rows for
+ * the same spot under different names is exactly what `isDuplicateLocation`
+ * exists to stop — see its header on why the name and the id are not consulted.
+ */
+function normalizeLocations(locations: EntryLocationData[]): EntryLocationData[] {
+  const kept: EntryLocationData[] = [];
+  for (const location of locations) {
+    if (isDuplicateLocation(kept, location)) continue;
+    kept.push(location);
+  }
+  return kept;
+}
+
+function normalizeLocationChange(
+  change: BulkLocationChangeData | undefined,
+): BulkLocationChangeData | undefined {
+  if (!change) return undefined;
+  return { mode: change.mode, locations: normalizeLocations(change.locations) };
+}
+
+function assertLocationsPresent(change: BulkLocationChangeData | undefined): void {
+  if (!change || change.mode === "replace" || change.locations.length > 0) return;
+  throw new Error("Pick at least one location to " + change.mode + ", or switch the mode to Replace.");
+}
+
+/**
+ * The locations an entry ends up with. Exported for the same reason
+ * `applyNameChange` is: the repository applies it per row, and the fold is the
+ * actual behaviour worth testing without a database in the way.
+ *
+ * **`add` appends, and never disturbs a pin the entry already has.** An entry
+ * already pinned at the playground keeps *its* row — its own name, its own
+ * street address, its own `savedLocationId` — rather than being overwritten by
+ * the one being added. That matters because an entry's location is its record of
+ * the day (see migration 0139): a bulk add is not a reason to rewrite what an
+ * older entry says about where it was.
+ *
+ * `remove` drops every pin at a named place, by coordinates. `replace` swaps the
+ * whole list, which is the only mode that discards what an entry already held.
+ */
+export function applyLocationChange(
+  current: EntryLocation[],
+  change: BulkLocationChangeData,
+): EntryLocationData[] {
+  // An EntryLocation always has a name (the column is NOT NULL DEFAULT ''), so
+  // this lands in the parsed shape directly -- no default to re-apply.
+  const asData = (location: EntryLocation): EntryLocationData => ({
+    latitude: location.latitude,
+    longitude: location.longitude,
+    locationName: location.locationName,
+    streetAddress: location.streetAddress,
+    savedLocationId: location.savedLocationId,
+  });
+
+  if (change.mode === "replace") return [...change.locations];
+
+  if (change.mode === "remove") {
+    return current
+      .filter((held) => !isDuplicateLocation(change.locations, held))
+      .map(asData);
+  }
+
+  // add: keep every existing pin untouched, append only what is not already
+  // there by coordinates.
+  const kept = current.map(asData);
+  for (const location of change.locations) {
+    if (isDuplicateLocation(kept, location)) continue;
+    kept.push(location);
+  }
+  return kept;
 }
 
 function toResult(outcome: BulkEntryEditOutcome): BulkEditResult {

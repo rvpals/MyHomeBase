@@ -1,0 +1,369 @@
+// The Location Manager's graph view: saved places as a force-directed node
+// graph, joined wherever they share a tag (or a category).
+//
+// Two halves, both pure:
+//
+//   1. `buildLocationGraph` turns places into nodes and edges — who connects to
+//      whom, and how strongly.
+//   2. `stepSimulation` advances the physics one frame.
+//
+// Neither knows about canvas, React or the DOM. The component owns the pixels
+// and the animation loop; this file owns *where things are*, which is what makes
+// the layout testable without rendering anything.
+//
+// Hand-rolled rather than d3-force: the simulation below is three forces and a
+// Verlet integrator, it is readable in one sitting, and it keeps the dependency
+// list where it is. The trade is that the tuning constants are ours to get
+// right — see `DEFAULT_FORCES`.
+
+import type { LocationTaxonomyKind, SavedLocation } from "./types";
+
+/**
+ * One place in the graph.
+ *
+ * Position and velocity are mutable and updated in place by `stepSimulation`:
+ * a frame allocating a new node object per particle would churn the heap sixty
+ * times a second for no benefit, since nothing outside the simulation holds a
+ * reference across frames.
+ */
+export interface GraphNode<P extends SavedLocation = SavedLocation> {
+  /** The place this node stands for. */
+  place: P;
+  x: number;
+  y: number;
+  /** Velocity, in units per step. Zero at rest. */
+  vx: number;
+  vy: number;
+  /**
+   * How many edges touch this node. Drives its drawn radius — a place sharing
+   * tags with many others is a hub and should read as one.
+   */
+  degree: number;
+  /**
+   * Pinned nodes ignore every force and stay where they are put. Set while a
+   * node is being dragged, so the cursor wins over the physics.
+   */
+  isPinned: boolean;
+}
+
+/** A link between two places that have something in common. */
+export interface GraphEdge {
+  /** Index into the nodes array. Always less than `target`. */
+  source: number;
+  /** Index into the nodes array. */
+  target: number;
+  /** The taxonomy names both places carry, in the source's order. */
+  shared: string[];
+  /**
+   * How strongly this edge pulls, 0–1. More shared names means a shorter, more
+   * insistent spring, so the tightest clusters are the places with most in
+   * common rather than merely the places with most connections.
+   */
+  strength: number;
+}
+
+export interface LocationGraph<P extends SavedLocation = SavedLocation> {
+  nodes: GraphNode<P>[];
+  edges: GraphEdge[];
+  /** The largest `shared.length` on any edge, for scaling line widths. */
+  maxShared: number;
+}
+
+/**
+ * Tuning for the simulation. One object so a caller can nudge a single force
+ * without restating the rest, and so the defaults have one obvious home.
+ *
+ * The values are the result of balancing three things against each other:
+ * repulsion has to beat attraction at short range or nodes collapse onto one
+ * point, attraction has to beat centering at medium range or clusters never
+ * form, and damping has to be low enough to settle but high enough not to
+ * oscillate. Changing one in isolation usually means re-checking the others.
+ */
+export interface ForceSettings {
+  /** How hard every node pushes every other node apart. */
+  repulsion: number;
+  /** How hard a shared tag pulls two places together. */
+  attraction: number;
+  /** The length a spring is happy at, in simulation units. */
+  springLength: number;
+  /** Pull toward the origin, keeping the graph from drifting off screen. */
+  centering: number;
+  /** Velocity retained each step. Below 1 or it never comes to rest. */
+  damping: number;
+  /**
+   * Nodes closer than this are treated as this far apart.
+   *
+   * Without it, two coincident nodes produce a division by a near-zero distance
+   * and fling each other to infinity — the classic way a hand-rolled force
+   * layout explodes on its first frame.
+   */
+  minDistance: number;
+}
+
+export const DEFAULT_FORCES: ForceSettings = {
+  repulsion: 6000,
+  attraction: 0.08,
+  springLength: 90,
+  centering: 0.015,
+  damping: 0.82,
+  minDistance: 12,
+};
+
+/** The taxonomy values a place carries, for whichever list we're reading. */
+function valuesOf(place: SavedLocation, kind: LocationTaxonomyKind): string[] {
+  return kind === "tag" ? place.tags : place.categories;
+}
+
+/**
+ * Names are compared case-insensitively, matching the repository's `COLLATE
+ * NOCASE` — "hiking" and "Hiking" are one tag, so they must make one edge.
+ */
+function sharedNames(a: SavedLocation, b: SavedLocation, kind: LocationTaxonomyKind): string[] {
+  const other = new Set(valuesOf(b, kind).map((name) => name.toLowerCase()));
+  return valuesOf(a, kind).filter((name) => other.has(name.toLowerCase()));
+}
+
+/**
+ * Seeds a node's starting position on a circle rather than at random.
+ *
+ * A deterministic start matters more than it looks: `Math.random()` would give
+ * a different layout on every render and make the simulation untestable. The
+ * golden angle spreads successive nodes evenly instead of clumping them, which
+ * is what stops the first few frames from being a violent explosion out of one
+ * spot.
+ */
+function seedPosition(index: number, total: number): { x: number; y: number } {
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+  const angle = index * goldenAngle;
+  // Spread over a disc, not a ring: sqrt keeps the density even toward the edge.
+  const radius = 160 * Math.sqrt((index + 0.5) / Math.max(total, 1));
+  return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+}
+
+/**
+ * Builds the graph: every place a node, an edge wherever two places share at
+ * least one name.
+ *
+ * O(n²) in the number of places, because every pair must be considered. Fine at
+ * the scale a hand-maintained location library reaches — a few hundred places is
+ * tens of thousands of cheap set lookups, done once per rebuild and not per
+ * frame.
+ */
+export function buildLocationGraph<P extends SavedLocation>(
+  places: readonly P[],
+  kind: LocationTaxonomyKind,
+): LocationGraph<P> {
+  const nodes: GraphNode<P>[] = places.map((place, index) => ({
+    place,
+    ...seedPosition(index, places.length),
+    vx: 0,
+    vy: 0,
+    degree: 0,
+    isPinned: false,
+  }));
+
+  const edges: GraphEdge[] = [];
+  let maxShared = 0;
+
+  for (let i = 0; i < places.length; i += 1) {
+    for (let j = i + 1; j < places.length; j += 1) {
+      const shared = sharedNames(places[i], places[j], kind);
+      if (shared.length === 0) continue;
+
+      maxShared = Math.max(maxShared, shared.length);
+      edges.push({ source: i, target: j, shared, strength: shared.length });
+      nodes[i].degree += 1;
+      nodes[j].degree += 1;
+    }
+  }
+
+  // Normalise strength to 0–1 now that the maximum is known, so the renderer
+  // and the physics both read one scale rather than each dividing again.
+  for (const edge of edges) {
+    edge.strength = maxShared === 0 ? 0 : edge.strength / maxShared;
+  }
+
+  return { nodes, edges, maxShared };
+}
+
+/**
+ * Advances the simulation one frame, mutating node positions in place.
+ *
+ * Returns the total kinetic energy left in the system. A caller can stop
+ * animating once it falls below a threshold — the layout has settled and
+ * further frames would burn battery redrawing the same picture.
+ */
+export function stepSimulation<P extends SavedLocation>(
+  graph: LocationGraph<P>,
+  forces: ForceSettings = DEFAULT_FORCES,
+): number {
+  const { nodes, edges } = graph;
+
+  // --- Repulsion: every node pushes every other away -----------------------
+  //
+  // The O(n²) pass. A quadtree would make this O(n log n), which is what
+  // d3-force does and why it scales to thousands; at the few hundred nodes a
+  // location library reaches, the direct sum is faster than building the tree.
+  for (let i = 0; i < nodes.length; i += 1) {
+    for (let j = i + 1; j < nodes.length; j += 1) {
+      const a = nodes[i];
+      const b = nodes[j];
+      let dx = b.x - a.x;
+      let dy = b.y - a.y;
+      let distance = Math.sqrt(dx * dx + dy * dy);
+
+      // Coincident nodes have no direction to separate along, so invent one.
+      // Deterministic (derived from the indices) to keep the layout stable.
+      if (distance < 0.001) {
+        dx = Math.cos(i * 1.7 + j);
+        dy = Math.sin(i * 1.7 + j);
+        distance = 0.001;
+      }
+
+      const effective = Math.max(distance, forces.minDistance);
+      const push = forces.repulsion / (effective * effective);
+      const ux = dx / distance;
+      const uy = dy / distance;
+
+      a.vx -= ux * push;
+      a.vy -= uy * push;
+      b.vx += ux * push;
+      b.vy += uy * push;
+    }
+  }
+
+  // --- Attraction: a spring along every edge -------------------------------
+  for (const edge of edges) {
+    const a = nodes[edge.source];
+    const b = nodes[edge.target];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const distance = Math.max(Math.sqrt(dx * dx + dy * dy), forces.minDistance);
+
+    // More in common means a shorter rest length, so the strongest pairs end up
+    // closest together rather than merely connected.
+    const rest = forces.springLength * (1 - 0.4 * edge.strength);
+    const pull = (distance - rest) * forces.attraction * (0.4 + edge.strength);
+    const ux = dx / distance;
+    const uy = dy / distance;
+
+    a.vx += ux * pull;
+    a.vy += uy * pull;
+    b.vx -= ux * pull;
+    b.vy -= uy * pull;
+  }
+
+  // --- Centering, damping, integration -------------------------------------
+  let energy = 0;
+  for (const node of nodes) {
+    if (node.isPinned) {
+      // A dragged node holds its place and keeps no momentum, so it does not
+      // fly off when released.
+      node.vx = 0;
+      node.vy = 0;
+      continue;
+    }
+
+    node.vx -= node.x * forces.centering;
+    node.vy -= node.y * forces.centering;
+
+    node.vx *= forces.damping;
+    node.vy *= forces.damping;
+
+    node.x += node.vx;
+    node.y += node.vy;
+
+    energy += node.vx * node.vx + node.vy * node.vy;
+  }
+
+  return energy;
+}
+
+/**
+ * Runs the simulation to rest, or until `maxSteps`.
+ *
+ * For a static first paint and for tests, which need a settled layout without an
+ * animation loop. `maxSteps` is a guard: a pathological graph can oscillate
+ * without ever crossing the energy threshold, and a test that hangs is worse
+ * than one that asserts on an imperfect layout.
+ */
+export function settleGraph<P extends SavedLocation>(
+  graph: LocationGraph<P>,
+  forces: ForceSettings = DEFAULT_FORCES,
+  maxSteps = 300,
+  restEnergy = 0.01,
+): number {
+  for (let step = 0; step < maxSteps; step += 1) {
+    if (stepSimulation(graph, forces) < restEnergy) return step + 1;
+  }
+  return maxSteps;
+}
+
+/**
+ * The node under a point, or undefined. Searched back to front so the node
+ * drawn on top is the one picked, matching what the reader sees.
+ */
+export function findNodeAt<P extends SavedLocation>(
+  graph: LocationGraph<P>,
+  x: number,
+  y: number,
+  radius: number,
+): GraphNode<P> | undefined {
+  for (let i = graph.nodes.length - 1; i >= 0; i -= 1) {
+    const node = graph.nodes[i];
+    const dx = node.x - x;
+    const dy = node.y - y;
+    if (dx * dx + dy * dy <= radius * radius) return node;
+  }
+  return undefined;
+}
+
+/**
+ * Every node index directly connected to `index`, plus the node itself.
+ *
+ * For the hover highlight: the neighbourhood stays lit and everything else dims.
+ */
+export function neighbourIndices<P extends SavedLocation>(
+  graph: LocationGraph<P>,
+  index: number,
+): Set<number> {
+  const found = new Set<number>([index]);
+  for (const edge of graph.edges) {
+    if (edge.source === index) found.add(edge.target);
+    else if (edge.target === index) found.add(edge.source);
+  }
+  return found;
+}
+
+/**
+ * The bounding box of the laid-out nodes, padded.
+ *
+ * The component uses it to fit the graph to the canvas on first paint, so a
+ * settled layout is framed rather than arbitrarily cropped.
+ */
+export function graphBounds<P extends SavedLocation>(
+  graph: LocationGraph<P>,
+  padding = 40,
+): { minX: number; minY: number; maxX: number; maxY: number } {
+  if (graph.nodes.length === 0) {
+    return { minX: -padding, minY: -padding, maxX: padding, maxY: padding };
+  }
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const node of graph.nodes) {
+    if (node.x < minX) minX = node.x;
+    if (node.y < minY) minY = node.y;
+    if (node.x > maxX) maxX = node.x;
+    if (node.y > maxY) maxY = node.y;
+  }
+
+  return {
+    minX: minX - padding,
+    minY: minY - padding,
+    maxX: maxX + padding,
+    maxY: maxY + padding,
+  };
+}

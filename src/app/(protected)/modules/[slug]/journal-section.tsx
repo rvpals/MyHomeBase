@@ -11,6 +11,8 @@ import {
   JOURNAL_PREFILL_FIELDS,
   countAllEntries,
   countEntriesByYearAndMonth,
+  countEntriesPerSavedLocation,
+  hasLinkedEntries,
   listCategories,
   listEntries,
   listEnabledPrefillTemplates,
@@ -27,7 +29,11 @@ import {
 // The entry form's location picker offers these names as filter chips. They
 // come from the application-wide library (migration 0140) now that the
 // journal's own jrn_location* tables are gone (0141).
-import { listLocationCategories, listLocationTags } from "@/lib/sys-locations";
+import {
+  listLocationCategories,
+  listLocationTags,
+  listSavedLocations,
+} from "@/lib/sys-locations";
 import {
   getReportWithDetails,
   listReports,
@@ -42,6 +48,10 @@ import { JOURNAL_SECTION_INFO, type JournalSection } from "./journal-sections";
 import { JournalCalendarPanel } from "./journal-calendar-panel";
 import { JournalEntriesPanel } from "./journal-entries-panel";
 import { journalTaxonomyIconUrlsByName } from "./journal-shared";
+// The same name -> icon-URL map the Location Manager builds, reused rather than
+// rebuilt: these are the same taxonomy rows behind the same icon routes.
+import { locationTaxonomyIconMap } from "@/app/(protected)/admin/locations/icon-map";
+import { JournalSavedLocationsView } from "./journal-saved-locations-view";
 import { JournalShell } from "./journal-shell";
 import { JournalHomeHeader } from "./journal-search-view";
 import { JournalCorrectPanel } from "./journal-correct-panel";
@@ -158,6 +168,37 @@ function SectionBody({
       // ?tab=unlocked on Unlocked Entries, anything else on All Entries —
       // ?filter= only ever narrows the two grid tabs.
       return <JournalEntriesPanel filterQuery={filterQuery} initialTab={requestedTab} />;
+
+    case "saved-locations": {
+      // The library is Admin -> Locations' to own; this screen only reads it.
+      // `listSavedLocations` returns SavedLocationWithUsage, whose usageCount is
+      // still the hardcoded 0 -- the real count comes from the journal's own
+      // read below, because the library may not name a module's tables.
+      const savedPlaces = listSavedLocations(deps.sysLocationRepo);
+      const usage = countEntriesPerSavedLocation(
+        deps.journalRepo,
+        savedPlaces.map((place) => place.id),
+      );
+      const entryCounts = Object.fromEntries(
+        usage.map((row) => [row.savedLocationId, row.entryCount]),
+      );
+
+      const locationCategories = listLocationCategories(deps.sysLocationRepo);
+      const locationTags = listLocationTags(deps.sysLocationRepo);
+
+      return (
+        <JournalSavedLocationsView
+          places={savedPlaces}
+          entryCounts={entryCounts}
+          hasLinkedEntries={hasLinkedEntries(deps.journalRepo)}
+          categoryOptions={locationCategories.map((item) => item.name)}
+          tagOptions={locationTags.map((item) => item.name)}
+          categoryIcons={locationTaxonomyIconMap("category")}
+          tagIcons={locationTaxonomyIconMap("tag")}
+          basePath="/modules/journal/saved-locations"
+        />
+      );
+    }
 
     case "calendar":
       // Unvalidated params by design: the panel degrades a bad one to the

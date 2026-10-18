@@ -7,7 +7,7 @@ import type {
   JournalEntryMatchKey,
   JournalRepository,
 } from "./ports";
-import { applyNameChange } from "./bulk-edit";
+import { applyLocationChange, applyNameChange } from "./bulk-edit";
 import {
   entryLocationSchema,
   journalCategorySchema,
@@ -79,6 +79,9 @@ interface LocationRow {
   // Migration 0139. NULL for every row written before it, and for any pin
   // added without an address lookup.
   street_address?: string | null;
+  // Migration 0151. NULL for every row written before it, and for any pin not
+  // picked from the saved-location library.
+  saved_location_id?: number | null;
   sort_order: number;
 }
 
@@ -181,6 +184,7 @@ function locationToDomain(row: LocationRow): EntryLocation {
     longitude: row.longitude,
     locationName: row.location_name,
     streetAddress: row.street_address ?? undefined,
+    savedLocationId: row.saved_location_id ?? undefined,
     sortOrder: row.sort_order,
   });
 }
@@ -353,6 +357,43 @@ export class SqliteJournalRepository implements JournalRepository {
          LIMIT ?`,
       )
       .all(pattern, pattern, pattern, pattern, pattern, pattern, pattern, limit) as EntryRow[];
+
+    return this.hydrateEntries(rows);
+  }
+
+  countEntriesBySavedLocation(): Map<number, number> {
+    // COUNT(DISTINCT entry_id), not COUNT(*): an entry carrying two pins at the
+    // same saved place is one entry that happened there, not two.
+    //
+    // The NOT NULL is what lets this ride idx_jrn_entry_locations_saved_location_id
+    // rather than scanning every pin ever written -- and every pin predating
+    // migration 0151, plus every map-dropped and imported one, is NULL.
+    const rows = this.db
+      .prepare(
+        `SELECT saved_location_id AS id, COUNT(DISTINCT entry_id) AS total
+         FROM jrn_entry_locations
+         WHERE saved_location_id IS NOT NULL
+         GROUP BY saved_location_id`,
+      )
+      .all() as { id: number; total: number }[];
+
+    return new Map(rows.map((row) => [row.id, row.total]));
+  }
+
+  listEntriesBySavedLocation(savedLocationId: number): JournalEntry[] {
+    // EXISTS rather than a JOIN: an entry with two pins at this place must come
+    // back once, and a join would duplicate the row before hydration ever saw it.
+    const rows = this.db
+      .prepare(
+        `SELECT e.*
+         FROM jrn_entries e
+         WHERE EXISTS (
+           SELECT 1 FROM jrn_entry_locations l
+           WHERE l.entry_id = e.id AND l.saved_location_id = ?
+         )
+         ORDER BY e.entry_date DESC, e.entry_time DESC, e.id DESC`,
+      )
+      .all(savedLocationId) as EntryRow[];
 
     return this.hydrateEntries(rows);
   }
@@ -1135,6 +1176,18 @@ export class SqliteJournalRepository implements JournalRepository {
     const insertTag = this.db.prepare(
       "INSERT INTO jrn_entry_tags (entry_id, tag_name) VALUES (?, ?)",
     );
+    const deleteLocations = this.db.prepare(
+      "DELETE FROM jrn_entry_locations WHERE entry_id = ?",
+    );
+    // The same column list `writeChildRows` inserts, `saved_location_id`
+    // included -- a pin added in bulk from the library must count in Journal ->
+    // Saved Locations exactly as one picked on the entry form does.
+    const insertLocation = this.db.prepare(
+      `INSERT INTO jrn_entry_locations
+         (entry_id, latitude, longitude, location_name, street_address,
+          saved_location_id, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    );
 
     this.db.transaction(() => {
       for (const id of ids) {
@@ -1159,6 +1212,28 @@ export class SqliteJournalRepository implements JournalRepository {
           const next = applyNameChange(this.tagNamesFor(id), changes.tags);
           deleteTags.run(id);
           for (const name of next) insertTag.run(id, name);
+        }
+        if (changes.locations) {
+          // Delete-and-reinsert, like the two lists above. The rows carry no
+          // identity worth preserving -- `sort_order` is the array position and
+          // `id` is never referenced -- so rewriting the set is simpler than
+          // diffing it, and `applyLocationChange` has already decided which pins
+          // survive.
+          const next = applyLocationChange(this.locationsFor(id), changes.locations);
+          deleteLocations.run(id);
+          next.forEach((location, index) => {
+            insertLocation.run(
+              id,
+              location.latitude,
+              location.longitude,
+              // Already a string: applyLocationChange returns parsed locations,
+              // where the schema's default has been applied.
+              location.locationName,
+              location.streetAddress ?? null,
+              location.savedLocationId ?? null,
+              index,
+            );
+          });
         }
         if (changes.placeName !== undefined) setPlaceName.run(changes.placeName, id);
         else touch.run(id);
@@ -1581,8 +1656,9 @@ export class SqliteJournalRepository implements JournalRepository {
 
     const insertLocation = this.db.prepare(
       `INSERT INTO jrn_entry_locations
-         (entry_id, latitude, longitude, location_name, street_address, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+         (entry_id, latitude, longitude, location_name, street_address,
+          saved_location_id, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     );
     input.locations.forEach((location, index) => {
       insertLocation.run(
@@ -1591,6 +1667,7 @@ export class SqliteJournalRepository implements JournalRepository {
         location.longitude,
         location.locationName,
         location.streetAddress ?? null,
+        location.savedLocationId ?? null,
         index,
       );
     });

@@ -56,32 +56,34 @@ export function TodayInHistoryWidget({
       // Badged with the module the entries come from, matching Daily Glance.
       titleIcon={icon && <ModuleIcon slug="journal" name={icon} className="h-4 w-4" />}
       className={className}
-      // Beside the title rather than out in `headerAction` with the About note: it acts
-      // on the card's name — "open the module these entries came from" — and reads as
-      // another card control if it drifts to the right edge. `href` makes it a real
-      // link, so it middle-clicks and ⌘-clicks like the rows do. No icon slot: `rocket`
-      // is a button and lives in `ALWAYS_CLASSIC`.
+      // Both controls sit beside the title rather than out at the card's right edge in
+      // `headerAction`: the launch button acts on the card's name — "open the module
+      // these entries came from" — and reads as another card control if it drifts away
+      // from it, and the About note belongs with them. `href` makes the launch button a
+      // real link, so it middle-clicks and ⌘-clicks like the rows do. No icon slot:
+      // `rocket` is a button and lives in `ALWAYS_CLASSIC`.
       titleAction={
-        <Button
-          size="sm"
-          variant="secondary"
-          href="/modules/journal"
-          title="Launch My Journal"
-          ariaLabel="Launch My Journal"
-        >
-          <TreeIcon name="rocket" className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Beside the title rather than out at the right edge: the card starts
+              collapsed when there's nothing from earlier years, which is exactly when
+              a reader is most likely to wonder what it's for — so the note sits where
+              the eye already is, ahead of the launch button. */}
+          <Comments
+            title="About"
+            content="This card displays what happened # number of years ago on the same month and date of today. Click any entry to open it — the entry page also shows the pictures taken on that date."
+          />
+          <Button
+            size="sm"
+            variant="secondary"
+            href="/modules/journal"
+            title="Launch My Journal"
+            ariaLabel="Launch My Journal"
+          >
+            <TreeIcon name="rocket" className="h-4 w-4" />
+          </Button>
+        </div>
       }
       defaultOpen={todayInHistory.length > 0}
-      // In the header slot rather than the body: the card starts collapsed when
-      // there's nothing from earlier years, which is exactly when a reader is
-      // most likely to wonder what it's for.
-      headerAction={
-        <Comments
-          title="About"
-          content="This card displays what happened # number of years ago on the same month and date of today. Click any entry to open it — the entry page also shows the pictures taken on that date."
-        />
-      }
     >
       <DataGrid
         columns={TODAY_IN_HISTORY_COLUMNS}

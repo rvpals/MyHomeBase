@@ -45,6 +45,12 @@ export type {
 } from "./types";
 export { JOURNAL_SORT_FIELDS } from "./types";
 export {
+  countEntriesPerSavedLocation,
+  hasLinkedEntries,
+  listEntriesAtSavedLocation,
+  type SavedLocationUsage,
+} from "./entry-locations";
+export {
   resolveJournalPreferences,
   journalPreferencesToEntries,
   handwritingSizeClass,
@@ -82,6 +88,7 @@ export {
   type JournalCalendarView,
   type CreateEntryInput,
   type UpdateEntryInput,
+  type EntryLocationData,
   type EntryLocationInput,
   type UpsertCategoryInput,
   type UpsertTagInput,
@@ -383,7 +390,12 @@ export type { PurgeResult, RecycleResult, RestoreResult } from "./recycle";
 // Bulk edit for a ticked selection on the Entries screen — the companion to the
 // recycle bin above. That one is the selection delete, this one the selection
 // change; they differ on locked entries and bulk-edit.ts explains why.
-export { applyNameChange, bulkEditEntries, describeBulkEditResult } from "./bulk-edit";
+export {
+  applyLocationChange,
+  applyNameChange,
+  bulkEditEntries,
+  describeBulkEditResult,
+} from "./bulk-edit";
 export type { BulkEditResult } from "./bulk-edit";
 
 // Bulk lock/unlock for that same selection. The third selection action, and the

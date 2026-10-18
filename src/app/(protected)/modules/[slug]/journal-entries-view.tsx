@@ -115,6 +115,8 @@ export function JournalEntriesView({
   initialFilters,
   categoryOptions,
   tagOptions,
+  locationCategoryOptions,
+  locationTagOptions,
   initialFilterId,
   appliedQuery,
   queryError,
@@ -154,6 +156,8 @@ export function JournalEntriesView({
                 initialFilters={initialFilters}
                 categoryOptions={categoryOptions}
                 tagOptions={tagOptions}
+                locationCategoryOptions={locationCategoryOptions}
+                locationTagOptions={locationTagOptions}
                 initialFilterId={initialFilterId}
                 appliedQuery={appliedQuery}
                 queryError={queryError}
@@ -173,6 +177,8 @@ export function JournalEntriesView({
                 initialFilters={initialFilters}
                 categoryOptions={categoryOptions}
                 tagOptions={tagOptions}
+                locationCategoryOptions={locationCategoryOptions}
+                locationTagOptions={locationTagOptions}
                 initialFilterId={initialFilterId}
                 appliedQuery={appliedQuery}
                 queryError={queryError}
@@ -194,6 +200,8 @@ export function JournalEntriesView({
                 tagIcons={tagIcons}
                 categoryOptions={categoryOptions}
                 tagOptions={tagOptions}
+                locationCategoryOptions={locationCategoryOptions}
+                locationTagOptions={locationTagOptions}
               />
             ),
           },
@@ -217,6 +225,14 @@ export interface JournalEntriesViewProps {
   initialFilters: SavedJournalFilter[];
   categoryOptions: string[];
   tagOptions: string[];
+  /**
+   * The saved-location library's own category/tag names, for the bulk-edit
+   * dialog's location picker. Separate from the two above on purpose: a *place*
+   * category ("Trailhead") and an *entry* category are unrelated rows in
+   * unrelated tables.
+   */
+  locationCategoryOptions: string[];
+  locationTagOptions: string[];
   /**
    * A saved filter to start on, resolved by the caller (looking a name up needs a
    * DB read, which a client component can't do). Pre-selected but **not** locked:
@@ -271,6 +287,8 @@ function EntriesTab({
   initialFilters,
   categoryOptions,
   tagOptions,
+  locationCategoryOptions,
+  locationTagOptions,
   initialFilterId,
   appliedQuery,
   queryError,
@@ -700,6 +718,8 @@ function EntriesTab({
           selected={bulkEdit.rows}
           categoryOptions={categoryOptions}
           tagOptions={tagOptions}
+          locationCategoryOptions={locationCategoryOptions}
+          locationTagOptions={locationTagOptions}
           scope={currentScope()}
           onCancel={() => setBulkEdit(undefined)}
           onApplied={(nextEntries, message) =>
