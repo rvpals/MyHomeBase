@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/button";
+import { JournalPinButton } from "@/components/journal-pin-button";
 import { TokenPicker } from "@/components/token-picker";
 import type { JournalEntry } from "@/lib/journal";
 import {
@@ -69,6 +70,11 @@ export function JournalEntryEditForm({
       // Carried through, because `updateEntry` rewrites the whole aggregate:
       // an edit that did not resubmit the address would silently clear it.
       streetAddress: location.streetAddress,
+      // Same reason, for the library link (migration 0151). Without it, saving
+      // an edit dropped the pin's `saved_location_id` while leaving the copied
+      // name intact — the entry still read "PF Chang's" but vanished from that
+      // place's count on Journal → Saved Locations.
+      savedLocationId: location.savedLocationId,
     })),
   );
   // Weather is edited as free text, not just kept or dropped. Held as three
@@ -165,7 +171,16 @@ export function JournalEntryEditForm({
 
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-line bg-paper-raised p-6">
-      <h2 className="font-display text-xl text-ink">Edit entry</h2>
+      {/* The pin rides on the card title rather than sitting in the field grid below.
+          Pinning is a property of the whole entry — "keep this one to hand" — not one
+          more field to fill in, and on the title line it is visible without scrolling
+          past the content box. It still saves with the form: every other field on this
+          card waits for Save changes, and a pin that wrote immediately would be the one
+          control that behaved differently. */}
+      <div className="flex items-start justify-between gap-3">
+        <h2 className="font-display text-xl text-ink">Edit entry</h2>
+        <JournalPinButton isPinned={isPinned} onToggle={() => setIsPinned(!isPinned)} disabled={isBusy} />
+      </div>
 
       {error && <p className="text-sm text-red-400">{error}</p>}
 
@@ -212,11 +227,6 @@ export function JournalEntryEditForm({
           <textarea value={content} onChange={(event) => setContent(event.target.value)} rows={10} className={`${INPUT_CLASS} resize-y`} />
         </label>
       </div>
-
-      <label className="flex items-center gap-2 text-sm text-ink">
-        <input type="checkbox" checked={isPinned} onChange={(event) => setIsPinned(event.target.checked)} />
-        Pinned
-      </label>
 
       {/* Typed by hand, because an entry written up later -- or one from a place
           the forecast API never covered -- still had weather. Three fields on one

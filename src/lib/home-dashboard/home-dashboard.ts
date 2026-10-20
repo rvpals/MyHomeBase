@@ -115,6 +115,27 @@ export function moveHomeWidget(
   return next;
 }
 
+/**
+ * Moves one card to the position another currently occupies, returning a new list —
+ * a drag-and-drop, expressed as data. Unchanged for the same card or an unknown id.
+ */
+export function reorderHomeWidget(
+  preferences: HomeWidgetPreference[],
+  id: HomeWidgetId,
+  targetId: HomeWidgetId,
+): HomeWidgetPreference[] {
+  if (id === targetId) return preferences;
+
+  const from = preferences.findIndex((preference) => preference.id === id);
+  const to = preferences.findIndex((preference) => preference.id === targetId);
+  if (from === -1 || to === -1) return preferences;
+
+  const next = [...preferences];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
+}
+
 /** Flips one card's visibility, returning a new list. */
 export function toggleHomeWidget(
   preferences: HomeWidgetPreference[],

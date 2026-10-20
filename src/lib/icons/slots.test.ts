@@ -131,7 +131,7 @@ describe("sectionSlotId", () => {
       journal: [
         "main", "new-entry", "entries", "calendar", "views", "report", "import",
         "calendar-import", "review-data", "recycle-bin",
-        "configuration", "templates", "metadata",
+        "configuration", "templates", "metadata", "home-screen",
         // Migration 0141 retired the journal's own location library and moved it
         // to Admin, where the three screens live under `admin_section_location*`
         // -- deliberately different ids, so an icon uploaded for the old journal

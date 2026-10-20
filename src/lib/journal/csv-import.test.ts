@@ -179,6 +179,9 @@ function fakeRepo(): JournalRepository {
     listFilters: () => {
       throw new Error("not used");
     },
+    listFilterCategories: () => {
+      throw new Error("not used");
+    },
     getFilterById: () => {
       throw new Error("not used");
     },

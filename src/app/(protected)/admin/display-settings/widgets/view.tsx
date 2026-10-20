@@ -5,19 +5,19 @@
 // Route-local rather than a registered component: it's one admin control bound to this
 // screen's action, and `components.md` keeps page-specific UI out of the registry.
 //
-// Reorder is up/down buttons rather than drag-and-drop — five rows don't need a drag
-// library, and buttons are keyboard-operable and screen-reader-legible for free. The
-// arrow markup matches Configuration -> Module Configuration, its nearest neighbour in
-// this section, rather than the Stocks module's slightly different hand-roll.
+// The row list is the registered `DesktopWidgetsConfig` (drag the handle to reorder,
+// arrow keys on the focused handle for the keyboard); this view owns only the draft,
+// the save, and the copy around it.
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
+import { DesktopWidgetsConfig } from "@/components/desktop-widgets-config";
 import {
   HOME_WIDGET_INFO,
   defaultHomeWidgets,
-  moveHomeWidget,
+  reorderHomeWidget,
   toggleHomeWidget,
   type HomeWidgetPreference,
 } from "@/lib/home-dashboard";
@@ -62,8 +62,8 @@ export function DashboardWidgetsView({ widgets }: { widgets: HomeWidgetPreferenc
   return (
     <CollapsibleCard className="mt-8" title="Home screen cards">
       <p className="text-sm text-muted">
-        Untick a card to keep it off the home screen, and use the arrows to set the order
-        they appear in. Hiding a card changes only what the home screen draws — nothing
+        Untick a card to keep it off the home screen, and drag a card's handle to set
+        the order they appear in. Hiding a card changes only what the home screen draws — nothing
         stops being recorded, and every card is still reachable from its own module.
       </p>
       <p className="mt-2 text-sm text-muted">
@@ -72,55 +72,18 @@ export function DashboardWidgetsView({ widgets }: { widgets: HomeWidgetPreferenc
         least one quote — ticking either can&apos;t conjure data that isn&apos;t there.
       </p>
 
-      <ul className="mt-4 flex flex-col gap-2">
-        {draft.map((widget, index) => {
-          const info = HOME_WIDGET_INFO[widget.id];
-          return (
-            <li
-              key={widget.id}
-              className={`flex items-start gap-3 rounded-md border border-line p-3 ${
-                widget.visible ? "" : "opacity-60"
-              }`}
-            >
-              <span className="mt-0.5 flex shrink-0 flex-col gap-1">
-                <button
-                  type="button"
-                  onClick={() => update(moveHomeWidget(draft, widget.id, "up"))}
-                  disabled={index === 0}
-                  aria-label={`Move ${info.label} up`}
-                  className="h-7 w-7 rounded border border-line text-xs text-brass-dark hover:bg-paper-raised disabled:opacity-30"
-                >
-                  &uarr;
-                </button>
-                <button
-                  type="button"
-                  onClick={() => update(moveHomeWidget(draft, widget.id, "down"))}
-                  disabled={index === draft.length - 1}
-                  aria-label={`Move ${info.label} down`}
-                  className="h-7 w-7 rounded border border-line text-xs text-brass-dark hover:bg-paper-raised disabled:opacity-30"
-                >
-                  &darr;
-                </button>
-              </span>
-
-              <span className="mt-1.5 shrink-0 font-mono text-xs text-muted">{index + 1}</span>
-
-              <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-2">
-                <input
-                  type="checkbox"
-                  checked={widget.visible}
-                  onChange={() => update(toggleHomeWidget(draft, widget.id))}
-                  className="mt-1"
-                />
-                <span className="min-w-0">
-                  <span className="block text-sm font-medium text-ink">{info.label}</span>
-                  <span className="block text-xs text-muted">{info.description}</span>
-                </span>
-              </label>
-            </li>
-          );
-        })}
-      </ul>
+      <DesktopWidgetsConfig
+        className="mt-4"
+        disabled={isSaving}
+        widgets={draft.map((widget) => ({
+          id: widget.id,
+          label: HOME_WIDGET_INFO[widget.id].label,
+          description: HOME_WIDGET_INFO[widget.id].description,
+          visible: widget.visible,
+        }))}
+        onReorder={(id, targetId) => update(reorderHomeWidget(draft, id, targetId))}
+        onToggle={(id) => update(toggleHomeWidget(draft, id))}
+      />
 
       {hiddenCount === draft.length && (
         <p className="mt-3 text-sm text-brass-dark">

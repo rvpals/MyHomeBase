@@ -19,6 +19,12 @@ export type {
 export { buildTableReference, describeTable } from "./table-reference";
 export { groupTablesByModule } from "./module-tables";
 export {
+  expectsTableName,
+  fragmentBeforeCaret,
+  suggestTableNames,
+  type TableFragment,
+} from "./table-suggestions";
+export {
   TABLE_PAGE_LIMIT,
   listSchemaObjectGroups,
   findSchemaObject,

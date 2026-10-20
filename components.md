@@ -60,6 +60,7 @@ pattern instead of inventing one.
 | [`CalculatorKeypad`](#calculatorkeypad) | A calculator's display and keypad — scientific keys, optional keyboard capture | [src/components/calculator-keypad.tsx](src/components/calculator-keypad.tsx) | yes |
 | [`Comments`](#comments) | A note/instruction parked beside a feature, behind a small accent glyph | [src/components/comments.tsx](src/components/comments.tsx) | yes |
 | [`CollapsibleCard`](#collapsiblecard) | A titled section that expands/collapses | [src/components/collapsible-card.tsx](src/components/collapsible-card.tsx) | yes |
+| [`DesktopWidgetsConfig`](#desktopwidgetsconfig) | **Choosing which cards a screen shows, and their order** — a row per widget with a drag handle and a visibility checkbox | [src/components/desktop-widgets-config.tsx](src/components/desktop-widgets-config.tsx) | yes |
 | [`FolderBrowser`](#folderbrowser) | **Picks a folder on the server** — modal, one level at a time | [src/components/folder-browser.tsx](src/components/folder-browser.tsx) | yes |
 | [`CustomizableCard`](#customizablecard) | **Redesign sandbox** — a clone of `CollapsibleCard`, free to restyle | [src/components/customizable-card.tsx](src/components/customizable-card.tsx) | yes |
 | [`Tabs`](#tabs) | One-of-N panels in the same space | [src/components/tabs.tsx](src/components/tabs.tsx) | yes |
@@ -84,6 +85,7 @@ pattern instead of inventing one.
 | [`CardHand`](#cardhand) | A row of cards with a title, total and badge | [src/components/card-hand.tsx](src/components/card-hand.tsx) | no |
 | [`MahjongTile`](#mahjongtile) | **One mahjong tile** — face, back, or empty slot | [src/components/mahjong-tile.tsx](src/components/mahjong-tile.tsx) | no |
 | [`MahjongWall`](#mahjongwall) | A rack, wall or discard pool of tiles, with a title and count | [src/components/mahjong-wall.tsx](src/components/mahjong-wall.tsx) | no |
+| [`JournalPinButton`](#journalpinbutton) | **Pin a journal entry** — the pushpin toggle on both entry forms | [src/components/journal-pin-button.tsx](src/components/journal-pin-button.tsx) | yes |
 | [`Avatar`](#avatar) | A user's picture, or initials fallback | [src/components/avatar.tsx](src/components/avatar.tsx) | no |
 | [`TickerLogo`](#tickerlogo) | A stock/ETF logo, or a monogram fallback | [src/components/ticker-logo.tsx](src/components/ticker-logo.tsx) | yes |
 | [`FileDropzone`](#filedropzone) | Drag-and-drop file picker — **one** file | [src/components/file-dropzone.tsx](src/components/file-dropzone.tsx) | yes |
@@ -430,7 +432,7 @@ Row-click navigation:
 - Investments simulation — [stock-simulation-view.tsx](src/app/(protected)/modules/[slug]/stock-simulation-view.tsx) *(a fixed ten-row table: `showToolbar={false}` with `defaultPageSize="ALL"`, keeping sort and the status bar's CSV export)*
 - CSV Analysis — [csv-analytics-view.tsx](src/app/(protected)/modules/[slug]/csv-analytics-view.tsx) *(row selection + bulk edit over an **arbitrary** schema: the dialog's fields are the dataset's own columns, so the grid is keyed by the table's real SQLite `rowid` rather than by row position)*
 - MyJournal Calendar Import — [journal-calendar-import-view.tsx](src/app/(protected)/modules/[slug]/journal-calendar-import-view.tsx) *(selection as a **pick-what-to-import** list: the ticked rows are the import's input, and rows the plan marked unimportable are filtered out of the action rather than disabled)*
-- MyJournal Entries — [journal-entries-view.tsx](src/app/(protected)/modules/[slug]/journal-entries-view.tsx) *(the **All Entries** and **Unlocked Entries** tabs, one `EntriesTab` rendered twice with a `lockScope`; row selection + bulk edit/lock/unlock/encrypt/delete — the Lock and Unlock pair confirm through [`BulkConfirm`](#bulkconfirm), as Delete does; **Encrypt** goes through [`EncryptionPrompt`](#encryptionprompt) in `encrypt` mode with a `count`, behind a [`BusyOverlay`](#busyoverlay). The bulk edit is [journal-entries-bulk-edit.tsx](src/app/(protected)/modules/[slug]/journal-entries-bulk-edit.tsx), shared with the Log tab; unlike Expense’s single-valued fields it offers **Add / Remove / Replace** per field, because an entry holds several categories and tags)*
+- MyJournal Entries — [journal-entries-view.tsx](src/app/(protected)/modules/[slug]/journal-entries-view.tsx) *(the **All Entries**, **Unlocked Entries** and **Substantial Entries** tabs, one `EntriesTab` rendered three times with a `lockScope` and a `bodyScope` — Substantial is bodies over ten words, decided in SQL by [body-length.ts](src/lib/journal/body-length.ts), never client-side — each tab needs its own `key` or React reuses one instance and they all show the first-mounted tab's rows. Substantial alone swaps **Place** for a **Body Length** word count, drops the record-view eye and keeps its own grid `storageKey`; row selection + bulk edit/lock/unlock/encrypt/delete — the Lock and Unlock pair confirm through [`BulkConfirm`](#bulkconfirm), as Delete does; **Encrypt** goes through [`EncryptionPrompt`](#encryptionprompt) in `encrypt` mode with a `count`, behind a [`BusyOverlay`](#busyoverlay). The bulk edit is [journal-entries-bulk-edit.tsx](src/app/(protected)/modules/[slug]/journal-entries-bulk-edit.tsx), shared with the Log tab; unlike Expense’s single-valued fields it offers **Add / Remove / Replace** per field, because an entry holds several categories and tags)*
 - MyJournal Log — [journal-log-view.tsx](src/app/(protected)/modules/[slug]/journal-log-view.tsx) *(the **Log** tab of Entries, not a section of its own; row click opens `JournalViewer` in a `Modal`; the same bulk edit as the other tabs, plus bulk delete to the recycle bin)*
 - SQL Explorer, Investments (accounts / positions / watchlist / analytics / next-day actions)
 
@@ -830,8 +832,14 @@ site change: a `Modal` you already render picks it up.
 **Used by:** `DataGrid`'s record view and "Show SQL" dialog
 [data-grid.tsx](src/components/data-grid.tsx), the Expense bulk-edit dialog
 [expense-transactions-view.tsx](src/app/(protected)/modules/[slug]/expense-transactions-view.tsx),
-and the ticker viewer [ticker-viewer.tsx](src/components/ticker-viewer.tsx) — the only
-caller of `size="window"`.
+the ticker viewer [ticker-viewer.tsx](src/components/ticker-viewer.tsx) — the only
+caller of `size="window"` — and the Journal Calendar day list's per-row **Delete**
+confirmation
+[journal-calendar-view.tsx](src/app/(protected)/modules/[slug]/journal-calendar-view.tsx),
+which names the one entry rather than counting a selection, so it is a plain `Modal` and
+not [`BulkConfirm`](#bulkconfirm). That row delete recycles (it is restorable from Data
+Management → Correct) rather than hard-deleting as the entry screen's own Delete does, and
+stays enabled for a locked entry because the bin keeps the lock.
 
 `size="full"` drops the overlay's gutter and the panel's rounding so nothing of the page
 shows around it. It is still a dialog — Escape, the ✕, the focus trap and the body-scroll
@@ -1234,6 +1242,35 @@ reader's own filesystem is not the subject.
 **Call sites:** Household → Configuration (the HSA receipt root) and Administration →
 Configuration → Backup Data (both backup folders).
 
+## DesktopWidgetsConfig
+
+The list editor for a screen's cards: one row per widget with a grip handle, its position
+number and a checkbox that switches it on or off. Pure presentation — it raises
+`onReorder` / `onToggle` and the parent applies them with the owning module's own functions
+(e.g. `reorderJournalHomeWidget`, `toggleJournalHomeWidget`) and passes the new list back.
+
+Reorder is **drag the handle** (Pointer Events — mouse, pen and touch; the row moves live as
+the pointer crosses its neighbours). The handle is also a focusable button: ArrowUp /
+ArrowDown move the row one place, so there is a keyboard path with no drag.
+
+- **Source:** [src/components/desktop-widgets-config.tsx](src/components/desktop-widgets-config.tsx)
+- **Import:** `import { DesktopWidgetsConfig } from "@/components/desktop-widgets-config";`
+- **Client component:** yes
+- **Narrow screens:** one column of rows, already phone-friendly — no compact variant; the handle uses `touch-none` so a finger drags it instead of scrolling.
+- **Used by:** Journal → Configuration → Home screen layout. Admin → Display Settings →
+  Dashboard Widgets (`reorderHomeWidget` / `toggleHomeWidget`).
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `widgets` | `DesktopWidgetItem[]` | `{ id, label, description?, visible }`, in draw order. |
+| `onReorder` | `(id, targetId) => void` | `id` should now sit where `targetId` is. Fires repeatedly during one drag. The component never reorders itself. |
+| `onToggle` | `(id) => void` | Checkbox flipped. |
+| `disabled?` | `boolean` | Disables every control, e.g. while saving. |
+| `renderIcon?` | `(id) => ReactNode` | Optional icon before each label. |
+| `className?` | `string` | Merged last. |
+
+---
+
 ## CollapsibleCard
 
 A titled card whose body expands/collapses. The standard wrapper for a secondary section
@@ -1565,7 +1602,12 @@ player's Lyrics / Story split
 [music-player-view.tsx](src/app/(protected)/modules/[slug]/music-player-view.tsx); the
 Journal module's Entries All Entries / Unlocked Entries / Log split
 [journal-entries-view.tsx](src/app/(protected)/modules/[slug]/journal-entries-view.tsx)
-*(the Log tab's label carries a `SlotIcon`)*; the Security screen's Login / Visit split
+*(the Log tab's label carries a `SlotIcon`)*; the Journal home screen's Pinned &
+Recently Edited card
+[journal-view.tsx](src/app/(protected)/modules/[slug]/journal-view.tsx) *(two entry
+shortlists in one card; both labels carry a `SlotIcon`, and the per-tab "View all"
+button sits in the tab body rather than the card header because each tab links
+somewhere different)*; the Security screen's Login / Visit split
 [admin/security/view.tsx](src/app/(protected)/admin/security/view.tsx) *(both labels
 carry a `SlotIcon`)*; Household → Recipes' category filter
 [household-recipes-view.tsx](src/app/(protected)/modules/[slug]/household-recipes-view.tsx)
@@ -2177,6 +2219,58 @@ music player on published heights, and a transient bar shouldn't join that contr
 under the Dynamic Island. Responsive via `max-lg:` (centred on desktop, label-and-actions
 spread on a phone). Dismissible on purpose: an unskippable reload prompt mid-edit would
 lose what was being typed, and it returns on the next foreground.
+
+---
+
+## JournalPinButton
+
+The pinned toggle for one journal entry — a thumbtack that fills in when the entry is
+pinned. A pinned entry appears on the Journal home screen's **Pinned Entries** card and
+matches the `pinned = yes` filter.
+
+Shared because both entry forms carry it: **New Journal Entry** and the inline editor on
+an entry's own screen. The two must not drift into a solid peg on one and a hollow one
+on the other.
+
+- **Source:** [src/components/journal-pin-button.tsx](src/components/journal-pin-button.tsx)
+- **Import:** `import { JournalPinButton } from "@/components/journal-pin-button";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `isPinned` | `boolean` | Drives the fill (`pushpin-filled` vs `pushpin`) and the label. The component holds no state of its own. |
+| `onToggle` | `() => void` | Raised on click. The caller flips its own state — this never decides the outcome. |
+| `disabled?` | `boolean` | Default `false`. Grey it out while the form it sits on is saving. |
+| `className?` | `string` | Merged last, so it wins. |
+
+```tsx
+<JournalPinButton isPinned={isPinned} onToggle={() => setIsPinned(!isPinned)} disabled={isBusy} />
+```
+
+**Why `pushpin` and not `pin`.** `pin` is a map pin — the mark for a saved *place* —
+and the location picker draws it on the very same entry form. One glyph meaning both
+"this entry is kept" and "this is where it happened" on one screen is the collision this
+pair was drawn to avoid. It is also not `star`/`heart`: both are taken by favourites
+elsewhere, while the column, the filter and the button all say *pinned*.
+
+**A clothespin was drawn first and rejected — don't retry it.** Six peg variants were
+rendered at 16/24/48px; at 16px every one collapsed into an "H" or an upside-down "T",
+and the filled twin became a solid block with no peg left in it. An angled peg on a
+washing line was the best of them and still failed below 24px. The metaphor is good and
+simply does not survive icon size.
+
+**Outline vs solid carries the state**, exactly as the favourite star does, so both
+glyphs are the same silhouette — the press reads as a fill, not a swap. Both are in
+`ALWAYS_CLASSIC`, so a themed icon set can't redraw them and lose the distinction, and
+**no icon slot points at either**: this is a state toggle on a button, not a place.
+(The Pinned Entries *card header* is a place, and does have a slot —
+`journal_card_pinned_entries`.)
+
+**It does not write.** Both callers hold the pin in form state until Save, so pinning
+behaves like every other field on the form rather than being the one control that saves
+itself. The New Entry form uses the same `Button` shell as its lock toggle instead of
+this component, because there the control has to sit on the baseline with Save and Clear
+and wrap with them on a phone.
 
 ---
 

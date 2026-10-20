@@ -13,6 +13,7 @@ import { CollapsibleCard } from "@/components/collapsible-card";
 import { FullscreenStage, canGoFullscreen } from "@/components/fullscreen-stage";
 import { Tabs } from "@/components/tabs";
 import { TokenPicker } from "@/components/token-picker";
+import { TreeIcon } from "@/components/tree-icons";
 import { useCurrentPosition } from "@/components/use-current-position";
 import {
   applyPrefillTemplate,
@@ -302,6 +303,11 @@ export function JournalEntryForm({
   // dialog would make an irreversible button mean two things. An encrypted
   // entry can still be locked afterwards from its own page.
   const [saveLocked, setSaveLocked] = useState(false);
+  // Whether "Save entry" writes the entry already pinned, so it lands on the Journal
+  // home screen's Pinned Entries card. Same shape as `saveLocked` above and for the
+  // same reason: a decision about the save that hasn't happened yet, not a pin being
+  // applied now — so it is a toggle beside Save, not a write.
+  const [savePinned, setSavePinned] = useState(false);
   // Content-card view state. Both are transient: a mode you put the field into
   // for this sitting, not a stored preference, so they reset with the form.
   const [isHandwriting, setIsHandwriting] = useState(false);
@@ -349,6 +355,9 @@ export function JournalEntryForm({
     // made per entry, and a toggle that stayed on would quietly lock entries
     // the writer never asked to lock.
     setSaveLocked(false);
+    // Unpinned again for the next entry, on the same rule: a toggle left on would
+    // quietly pin every entry of the sitting to the home screen.
+    setSavePinned(false);
   }
 
   // Fills the blank fields from a saved template. The merge itself is
@@ -485,6 +494,7 @@ export function JournalEntryForm({
         locations,
         weather: typedWeather,
         isLocked: saveLocked,
+        isPinned: savePinned,
       });
       if (!result.ok) {
         setError(result.error);
@@ -525,7 +535,7 @@ export function JournalEntryForm({
     setError(undefined);
     try {
       const result = await createEncryptedJournalEntryAction(
-        { ...form, locations, weather: typedWeather },
+        { ...form, locations, weather: typedWeather, isPinned: savePinned },
         password,
         hint,
       );
@@ -803,6 +813,31 @@ export function JournalEntryForm({
             )}
           </Button>
         )}
+        {/* The pin, beside the lock and on exactly the same rule: it modifies what
+            Save does rather than acting now, so it is a toggle in this row and not a
+            write. Same `Button` shell as the lock — `primary` when it will save
+            pinned, `secondary` when it won't — rather than the bare icon button the
+            edit form uses on its card title, because here it has to sit on the
+            baseline with Save and Clear and wrap with them on a phone.
+
+            Shown on the merge dialog too, unlike the lock and encrypt buttons: those
+            two are hidden there because locking blocks the edit the dialog exists to
+            allow and encrypting has no undo, whereas pinning a merged entry is just a
+            pin, and the entry it writes is as pin-able as any other. */}
+        <Button
+          variant={savePinned ? "primary" : "secondary"}
+          onClick={() => setSavePinned((current) => !current)}
+          disabled={isBusy}
+          ariaPressed={savePinned}
+          title={
+            savePinned
+              ? "Will save pinned — click to save unpinned instead."
+              : "Will save unpinned — click to save this entry pinned."
+          }
+          ariaLabel={savePinned ? "Save this entry pinned" : "Save this entry unpinned"}
+        >
+          <TreeIcon name={savePinned ? "pushpin-filled" : "pushpin"} className="h-5 w-5" />
+        </Button>
         <Button onClick={handleSave} disabled={isBusy || form.date === ""}>
           {isBusy ? "Saving…" : (saveLabel ?? "Save entry")}
         </Button>

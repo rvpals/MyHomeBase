@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import { BlobCell } from "@/components/blob-cell";
 import { Button } from "@/components/button";
 import { DataGrid, type CellValue, type DataGridColumn } from "@/components/data-grid";
@@ -14,7 +21,10 @@ import { getIconSlot } from "@/lib/icons";
 import {
   buildTableReference,
   describeTable,
+  expectsTableName,
   formatByteSize,
+  fragmentBeforeCaret,
+  suggestTableNames,
   isBlobCell,
   type BlobCellSource,
   type ModuleTableGroup,
@@ -953,6 +963,119 @@ function SavedQueriesCard({
   );
 }
 
+/**
+ * The query textarea with a table-name dropdown under it.
+ *
+ * One-off to this screen, so it lives here rather than in components/. The
+ * matching is lib's `suggestTableNames`; this only tracks the caret and draws.
+ * Enter/Tab only pick while the list is open, so an ordinary newline is untouched.
+ */
+function SqlEditor({
+  value,
+  onChange,
+  tableNames,
+}: {
+  value: string;
+  onChange: (sql: string) => void;
+  tableNames: string[];
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const pendingCaret = useRef<number | undefined>(undefined);
+  const [caret, setCaret] = useState(0);
+  const [isDismissed, setIsDismissed] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+
+  const fragment = fragmentBeforeCaret(value, caret);
+  const suggestions =
+    isDismissed || !expectsTableName(value, fragment.start)
+      ? []
+      : suggestTableNames(tableNames, fragment.text);
+  const isOpen = suggestions.length > 0;
+
+  // Moving the caret into the inserted name has to wait for the new value to render.
+  useLayoutEffect(() => {
+    if (pendingCaret.current === undefined) return;
+    textareaRef.current?.setSelectionRange(pendingCaret.current, pendingCaret.current);
+    pendingCaret.current = undefined;
+  });
+
+  function pick(name: string) {
+    const next = value.slice(0, fragment.start) + name + value.slice(caret);
+    pendingCaret.current = fragment.start + name.length;
+    setCaret(pendingCaret.current);
+    onChange(next);
+    setHighlightedIndex(0);
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (!isOpen) return;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const step = event.key === "ArrowDown" ? 1 : suggestions.length - 1;
+      setHighlightedIndex((index) => (index + step) % suggestions.length);
+    } else if (event.key === "Enter" || event.key === "Tab") {
+      event.preventDefault();
+      pick(suggestions[Math.min(highlightedIndex, suggestions.length - 1)]);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      setIsDismissed(true);
+    }
+  }
+
+  return (
+    <div className="relative">
+      <textarea
+        ref={textareaRef}
+        value={value}
+        onChange={(event) => {
+          onChange(event.target.value);
+          setCaret(event.target.selectionStart);
+          setIsDismissed(false);
+          setHighlightedIndex(0);
+        }}
+        onKeyDown={handleKeyDown}
+        // Arrow keys and clicks move the caret without a change event.
+        onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
+        onBlur={() => setIsDismissed(true)}
+        rows={6}
+        role="combobox"
+        aria-expanded={isOpen}
+        aria-autocomplete="list"
+        aria-label="SQL statement"
+        autoComplete="off"
+        spellCheck={false}
+        placeholder="SELECT * FROM inv_stock_positions"
+        className="w-full rounded-md border border-line bg-paper px-3 py-2 font-mono text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+      />
+      {isOpen && (
+        <ul
+          role="listbox"
+          className="absolute z-30 mt-1 max-h-60 w-full overflow-auto rounded-md border border-line bg-paper-raised py-1 shadow-[0_6px_16px_rgba(0,0,0,0.35)] lg:w-96"
+        >
+          {suggestions.map((name, index) => (
+            <li key={name}>
+              <button
+                type="button"
+                role="option"
+                aria-selected={index === highlightedIndex}
+                // Keeps focus in the textarea so blur doesn't close the list before the click lands.
+                onMouseDown={(event) => event.preventDefault()}
+                onMouseEnter={() => setHighlightedIndex(index)}
+                onClick={() => pick(name)}
+                className={`block w-full px-3 py-1.5 text-left font-mono text-sm ${
+                  index === highlightedIndex ? "bg-brass-soft text-brass-dark" : "text-ink"
+                }`}
+              >
+                {name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function SqlExplorerView({
   tables,
   schemaGroups,
@@ -994,13 +1117,7 @@ export function SqlExplorerView({
 
   const queryTab = (
     <div className="flex flex-col gap-4">
-      <textarea
-        value={sql}
-        onChange={(event) => setSql(event.target.value)}
-        rows={6}
-        placeholder="SELECT * FROM inv_stock_positions"
-        className="w-full rounded-md border border-line bg-paper px-3 py-2 font-mono text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
-      />
+      <SqlEditor value={sql} onChange={setSql} tableNames={tables.map((table) => table.name)} />
       {/* Wraps to two full-width buttons on a phone; side by side from 1024px. */}
       <div className="flex gap-2 max-lg:flex-col">
         <Button onClick={() => handleExecute(sql)} disabled={isRunning || sql.trim() === ""}>

@@ -546,6 +546,15 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    id: "journal_section_home_screen",
+    label: "Home screen layout",
+    group: "Journal sections",
+    where: "Journal → section panel → Configuration → Home screen layout.",
+    defaultConcept: "home",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     id: "journal_section_calendar_import",
     label: "Calendar Import",
     group: "Journal sections",
@@ -711,6 +720,46 @@ export const ICON_SLOTS: IconSlot[] = [
     group: "Journal cards",
     where: "Journal → Home screen → inside the Statistics card, the Top Categories sub-heading.",
     defaultConcept: "shapes",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "journal_card_pinned_entries",
+    label: "Pinned tab",
+    group: "Journal cards",
+    // Demoted from a card header to a tab label when Pinned Entries and Recently
+    // Edited became one card — the same move `journal_heading_top_tags` made when the
+    // two taxonomy cards merged, and for the same reason: the id is persisted in
+    // `ico_slot_overrides`, so it is re-pointed at the heading that replaced the card
+    // rather than retired, and an existing upload keeps working where the reader
+    // expects it. Still wired, just to a tab instead of a card.
+    where: "Journal → Home screen → the Pinned & Recently Edited card, the Pinned tab.",
+    // The pushpin on the entry forms is deliberately NOT slotted: that one is a toggle
+    // button carrying a state, which is what `ALWAYS_CLASSIC` is for.
+    defaultConcept: "pushpin",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "journal_card_recently_edited_entries",
+    label: "Recently Edited tab",
+    group: "Journal cards",
+    where:
+      "Journal → Home screen → the Pinned & Recently Edited card, the Recently Edited tab.",
+    defaultConcept: "pencil",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "journal_card_pinned_and_recently_edited",
+    label: "Pinned & Recently Edited card",
+    group: "Journal cards",
+    where: "Journal → Home screen → the Pinned & Recently Edited card header.",
+    // The card header, distinct from the two tab slots above it: this marks the *place*
+    // on the home screen, they mark the two lists within it. Keeps the pushpin the
+    // Pinned Entries card header used, so a reader who never customised it sees no
+    // change on the card itself.
+    defaultConcept: "pushpin",
     wired: true,
     namespace: "tree",
   },

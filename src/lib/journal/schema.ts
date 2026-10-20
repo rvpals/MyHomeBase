@@ -369,6 +369,11 @@ export type JournalFilterInput = z.input<typeof journalFilterSchema>;
 /** Saving a filter is an upsert by name — see migration 0043. */
 export const saveJournalFilterSchema = z.object({
   name: z.string().min(1, "Give the filter a name."),
+  // Both default to '' so a caller that predates migration 0152 — the CLI, or a
+  // saved payload being replayed — still parses. Trimmed because the category is
+  // grouped on: " CAR" and "CAR" must not become two groups.
+  category: z.string().trim().default(""),
+  description: z.string().trim().default(""),
   filter: journalFilterSchema,
 });
 

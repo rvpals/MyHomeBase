@@ -1,5 +1,64 @@
 # Change History
 
+## 2026-10-20 — Journal home-screen cards, Substantial Entries tab, saved-filter categories, calendar Delete, SQL Explorer table suggestions
+
+**Migration 0152 must be applied on the NAS.** It adds `category_name` and `description` to
+`jrn_saved_filters` plus an index — two `ADD COLUMN`s with defaults, no rows rewritten.
+Without it the Entries screen's Filtering card fails with "no such column". The NAS database
+and its WAL/SHM files were backed up before this release (`npm run backup:nas`, stamp
+`2026-10-20T00-05-04`).
+
+### Journal → Calendar: Delete on the day list
+
+- **Each entry in the clicked day's list now has a Delete button.** It opens a confirmation
+  naming the entry, its date and time. Confirming **moves it to the recycle bin** — restorable
+  from Data Management → Correct → Recycled Entries — rather than hard-deleting.
+- **A locked entry can be deleted from here too**: the bin stores the lock, so a restore brings
+  it back locked (the entry screen's own Delete still refuses locked entries and hard-deletes).
+- New server action `recycleJournalEntryAction` (gated on the journal module) over the existing
+  `recycleEntries` use-case; no new library logic. The row's clickable region and the button
+  are siblings, because the old row was one `<button>` and nesting a second is invalid HTML.
+
+### Journal → home screen cards (no migration)
+
+- **New section, Home screen layout** (`/modules/journal/home-screen`, slug `home-screen`):
+  choose which cards the Journal home screen draws and in what order. Stored per reader in
+  `user_preferences` (`journal_home_widgets`); a layout saved before a card existed still loads.
+- **New cards: Pinned and Recently Edited** (10 and 20 entries). `pinned-entries.ts` and
+  `recently-edited.ts` are library modules with tests.
+- **Pin toggle (`JournalPinButton`)** in the entry editor.
+- **`DesktopWidgetsConfig`** is the shared drag-to-reorder list (pointer drag, plus arrow keys
+  on the focused handle). Admin → Display Settings → Widgets now uses it too, replacing its
+  up/down buttons. A move-to-another-card's-position helper was added to `lib/home-dashboard`.
+- New icon slots: `journal_section_home_screen`, `journal_card_pinned_entries`,
+  `journal_card_recently_edited_entries`, `journal_card_pinned_and_recently_edited`.
+
+### Journal → Entries
+
+- **Substantial Entries tab**: entries whose body runs past ten words, decided in SQL by
+  `src/lib/journal/body-length.ts` and re-applied after every bulk write, so a row edited below
+  the threshold leaves the list. It has a Body Length column in place of Place.
+- **Saved filters get a category and a description** (migration 0152). The Filtering card has a
+  "Show filters by: Filter name / category first" mode; the default is unchanged. Category is
+  free text with a datalist of existing values — no catalog table, and **no rename**: changing
+  `CAR` to `Vehicle` means editing each filter. Filter names stay globally unique. Taxonomy
+  merge and metadata export/import carry both fields through, and a bundle exported before 0152
+  still restores.
+- Location picker: picking a library place that clashes with a pin already in the list now asks
+  before overwriting, replacing the row in place.
+- Entry viewer: external-map link for an entry's locations.
+
+### Admin → SQL Explorer
+
+- **Table-name suggestions** after `FROM` / `JOIN` as you type, with arrow-key selection. The
+  matching is `suggestTableNames` in `lib/sql-explorer` (tested); the view only tracks the caret.
+
+### Not verified
+
+No typecheck, lint, test, build or browser run was made for any of this. Items in the
+home-screen, Substantial and saved-filter groups were written in earlier sessions and were not
+re-inspected on screen when this entry was written.
+
 ## 2026-10-17 — Journal Saved Locations, Location Manager Venn/Graph views, bulk location edit, navigation feedback, draggable dialogs
 
 **Migration 0151 must be applied on the NAS.** It adds nullable

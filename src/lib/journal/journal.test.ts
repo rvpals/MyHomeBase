@@ -15,6 +15,7 @@ import {
   getFilter,
   listFilters,
   saveFilter,
+  listFilterCategories,
   getEntry,
   getEntryNeighbors,
   getTagIcon,
@@ -218,6 +219,17 @@ function fakeRepo(recycledCount = 0): JournalRepository {
     listFilters() {
       return [...savedFilters].sort((a, b) => a.name.localeCompare(b.name));
     },
+    listFilterCategories() {
+      // Distinct non-blank categories, case-insensitively, like the real
+      // GROUP BY ... COLLATE NOCASE.
+      const seen = new Map<string, string>();
+      for (const saved of savedFilters) {
+        if (saved.category === "") continue;
+        const key = saved.category.toLowerCase();
+        if (!seen.has(key)) seen.set(key, saved.category);
+      }
+      return [...seen.values()].sort((a, b) => a.localeCompare(b));
+    },
     getFilterById(id) {
       return savedFilters.find((saved) => saved.id === id);
     },
@@ -226,11 +238,17 @@ function fakeRepo(recycledCount = 0): JournalRepository {
       const existing = savedFilters.find((saved) => saved.name === input.name);
       if (existing) {
         existing.filter = input.filter;
+        // Assigned unconditionally, like the real ON CONFLICT: clearing a
+        // category on edit has to actually clear it.
+        existing.category = input.category;
+        existing.description = input.description;
         return existing;
       }
       const created = {
         id: nextFilterId++,
         name: input.name,
+        category: input.category,
+        description: input.description,
         filter: input.filter,
         createdAt: now,
         updatedAt: now,
@@ -1351,6 +1369,78 @@ describe("saved filter management", () => {
     deleteFilter(repo, saved.id);
     expect(listFilters(repo)).toHaveLength(0);
     expect(getFilter(repo, saved.id)).toBeUndefined();
+  });
+
+  // --- Category and description (migration 0152) ---
+
+  it("saves a category and description, and reads them back", () => {
+    const repo = fakeRepo();
+    const saved = saveFilter(repo, {
+      name: "Service due",
+      category: "CAR",
+      description: "Anything about servicing.",
+      filter,
+    });
+
+    expect(saved.category).toBe("CAR");
+    expect(saved.description).toBe("Anything about servicing.");
+    expect(getFilter(repo, saved.id)?.category).toBe("CAR");
+  });
+
+  it("defaults both to blank when the caller omits them", () => {
+    const repo = fakeRepo();
+    // The CLI and any pre-0152 caller save without these; the schema's defaults
+    // are what keep that working rather than throwing on a missing field.
+    const saved = saveFilter(repo, { name: "Trips", filter });
+
+    expect(saved.category).toBe("");
+    expect(saved.description).toBe("");
+  });
+
+  it("trims a category so it cannot fork into two groups", () => {
+    const repo = fakeRepo();
+    const saved = saveFilter(repo, { name: "Trips", category: "  CAR  ", filter });
+
+    // " CAR" and "CAR" grouping separately would put two CAR buckets in the
+    // dropdown, which is the failure the trim in the schema exists to prevent.
+    expect(saved.category).toBe("CAR");
+  });
+
+  it("clears a category when an edit blanks it", () => {
+    const repo = fakeRepo();
+    saveFilter(repo, { name: "Trips", category: "CAR", description: "Was filed.", filter });
+
+    const updated = saveFilter(repo, { name: "Trips", category: "", description: "", filter });
+
+    // The upsert assigns unconditionally rather than coalescing: un-filing a
+    // filter in the editor has to actually un-file it.
+    expect(updated.category).toBe("");
+    expect(updated.description).toBe("");
+  });
+
+  it("lists the distinct categories in use, ignoring blanks and casing", () => {
+    const repo = fakeRepo();
+    saveFilter(repo, { name: "Service due", category: "CAR", filter });
+    saveFilter(repo, { name: "Fuel log", category: "Car", filter });
+    saveFilter(repo, { name: "Roof", category: "HOUSE", filter });
+    saveFilter(repo, { name: "Loose ends", filter });
+
+    // One CAR bucket, not two, and no entry for the uncategorised filter — the
+    // view shows that one under its own sentinel option instead.
+    expect(listFilterCategories(repo)).toEqual(["CAR", "HOUSE"]);
+  });
+
+  it("stops listing a category once its last filter is re-labelled", () => {
+    const repo = fakeRepo();
+    saveFilter(repo, { name: "Service due", category: "CAR", filter });
+    expect(listFilterCategories(repo)).toEqual(["CAR"]);
+
+    saveFilter(repo, { name: "Service due", category: "VEHICLE", filter });
+
+    // Nothing owns the category list — it is derived from the filters — so this
+    // is the documented cost of free text: renaming is per-filter, and the old
+    // label disappears when the last one carrying it moves off.
+    expect(listFilterCategories(repo)).toEqual(["VEHICLE"]);
   });
 });
 

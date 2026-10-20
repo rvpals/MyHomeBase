@@ -120,6 +120,12 @@ export interface JournalViewerProps {
   className?: string;
 }
 
+// `Button` has no target prop (its `href` is a same-app next/link), so external
+// links open from its onClick instead.
+function openInNewTab(url: string) {
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1 sm:flex-row sm:gap-4">
@@ -322,7 +328,7 @@ export function JournalViewer({
   const hasLocations = entry.locations.length > 0;
   // One location needs no "all" button — its own "Map" button is the same thing.
   const hasManyLocations = entry.locations.length > 1;
-  const hasDetails = hasPlaceName || Boolean(entry.weather) || hasLocations;
+  const hasDetails = hasPlaceName || Boolean(entry.weather);
 
   return (
     <article className={`print-sheet rounded-xl border border-line bg-paper-raised p-6 ${className}`}>
@@ -421,45 +427,76 @@ export function JournalViewer({
               </span>
             </Field>
           )}
-          {hasLocations && (
-            <Field label="Locations">
-              <ul className="flex flex-col gap-1">
-                {entry.locations.map((location, index) => (
-                  <li key={location.id} className="flex flex-wrap items-center gap-2">
-                    {/* The same 1-based number the map pins carry, so the list
-                        and the pins can be read against each other. */}
-                    <span className="font-mono text-xs font-semibold text-brass-dark">
-                      #{index + 1}
-                    </span>
-                    <span className="font-mono text-xs text-muted">
-                      {location.latitude.toFixed(5)}, {location.longitude.toFixed(5)}
-                    </span>
-                    {location.locationName !== "" && <span>{location.locationName}</span>}
-                    {onShowLocation && (
-                      <button
-                        type="button"
-                        onClick={() => onShowLocation(location)}
-                        className="no-print text-xs text-brass-dark hover:underline"
-                      >
-                        Map
-                      </button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-              {hasManyLocations && onShowAllLocations && (
+        </dl>
+      )}
+
+      {hasLocations && (
+        <CollapsibleCard title="Locations" defaultOpen className="my-4">
+          <ul className="flex flex-col gap-1 text-sm text-ink">
+            {entry.locations.map((location, index) => (
+              <li key={location.id} className="flex flex-wrap items-center gap-2">
+                {/* The same 1-based number the map pins carry, so the list
+                    and the pins can be read against each other. */}
+                <span className="font-mono text-xs font-semibold text-brass-dark">
+                  #{index + 1}
+                </span>
+                <span className="font-mono text-xs text-muted">
+                  {location.latitude.toFixed(5)}, {location.longitude.toFixed(5)}
+                </span>
+                {location.locationName !== "" && <span>{location.locationName}</span>}
+                {onShowLocation && (
+                  <button
+                    type="button"
+                    onClick={() => onShowLocation(location)}
+                    className="no-print text-xs text-brass-dark hover:underline"
+                  >
+                    Map
+                  </button>
+                )}
                 <Button
                   size="sm"
                   variant="secondary"
-                  className="no-print mt-2"
-                  onClick={onShowAllLocations}
+                  className="no-print"
+                  onClick={() =>
+                    openInNewTab(
+                      `https://www.google.com/maps?q=${location.latitude},${location.longitude}`,
+                    )
+                  }
                 >
-                  Map All Locations
+                  Google Map
                 </Button>
-              )}
-            </Field>
+              </li>
+            ))}
+          </ul>
+          {hasManyLocations && onShowAllLocations && (
+            <Button
+              size="sm"
+              variant="secondary"
+              className="no-print mt-2"
+              onClick={onShowAllLocations}
+            >
+              Map All Locations
+            </Button>
           )}
-        </dl>
+          {hasManyLocations && (
+            // Google's URL scheme has no "drop N pins" form without an API key;
+            // the /dir/ form lists every point as a stop, in entry order.
+            <Button
+              size="sm"
+              variant="secondary"
+              className="no-print mt-2 ml-2"
+              onClick={() =>
+                openInNewTab(
+                  `https://www.google.com/maps/dir/${entry.locations
+                    .map((location) => `${location.latitude},${location.longitude}`)
+                    .join("/")}`,
+                )
+              }
+            >
+              Google Map All Locations
+            </Button>
+          )}
+        </CollapsibleCard>
       )}
 
       {/* A sealed entry says so where its text would be. Without this the body

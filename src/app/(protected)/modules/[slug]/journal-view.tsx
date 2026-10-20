@@ -8,9 +8,18 @@ import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { RankBar } from "@/components/rank-bar";
 import { SlotIcon } from "@/components/slot-icon";
+import { Tabs } from "@/components/tabs";
 import { TaxonomyChip, TaxonomyIcon } from "@/components/taxonomy-icon";
 import { useIsCompact } from "@/components/viewport-context";
 import { getIconSlot } from "@/lib/icons";
+import {
+  PINNED_ENTRY_LIMIT,
+  RECENTLY_EDITED_ENTRY_LIMIT,
+  defaultJournalHomeWidgets,
+  visibleJournalHomeWidgets,
+  type JournalHomeWidgetId,
+  type JournalHomeWidgetPreference,
+} from "@/lib/journal";
 import type {
   JournalEntry,
   JournalEntryTally,
@@ -26,6 +35,10 @@ const STATS_SLOT = getIconSlot("journal_card_statistics")!;
 const TOP_TAGS_SLOT = getIconSlot("journal_heading_top_tags")!;
 const TOP_CATEGORIES_SLOT = getIconSlot("journal_heading_top_categories")!;
 const RECENT_SLOT = getIconSlot("journal_card_recent_entries")!;
+// The combined card's header, then the two tab labels inside it.
+const PINNED_AND_EDITED_SLOT = getIconSlot("journal_card_pinned_and_recently_edited")!;
+const PINNED_SLOT = getIconSlot("journal_card_pinned_entries")!;
+const RECENTLY_EDITED_SLOT = getIconSlot("journal_card_recently_edited_entries")!;
 import { runJournalSqlAction } from "./journal-actions";
 import { excludeWordAction } from "./journal-word-actions";
 
@@ -51,6 +64,36 @@ const COLUMNS: DataGridColumn<JournalEntry>[] = [
     header: "Locations",
     value: (entry) => entry.locations.length,
     render: (entry) => (entry.locations.length > 0 ? String(entry.locations.length) : ""),
+  },
+];
+
+// Just date and title for the Pinned Entries card. Deliberately far narrower than the
+// recent-entries grid: this card sits in one half of a two-column layout, and it is a
+// shortlist you scan rather than a table you read. Everything else about an entry —
+// place, categories, tags, locations — is one click away, because the row opens it.
+const PINNED_COLUMNS: DataGridColumn<JournalEntry>[] = [
+  { key: "date", header: "Date", value: (entry) => entry.date, render: (entry) => entry.date },
+  { key: "title", header: "Title", value: (entry) => entry.title, render: (entry) => entry.title },
+];
+
+/**
+ * The Recently Edited tab carries one column the Pinned tab doesn't: when it was
+ * edited, which is the whole reason the list is in that order. `date` stays too —
+ * they answer different questions ("when it happened" vs "when I last touched it"),
+ * and an entry dated years ago that you edited this morning is exactly the row this
+ * tab exists to surface.
+ */
+const RECENTLY_EDITED_COLUMNS: DataGridColumn<JournalEntry>[] = [
+  { key: "date", header: "Date", value: (entry) => entry.date, render: (entry) => entry.date },
+  { key: "title", header: "Title", value: (entry) => entry.title, render: (entry) => entry.title },
+  {
+    key: "updatedAt",
+    header: "Edited",
+    // Sorts on the raw ISO timestamp but shows the date part: the time of day is
+    // noise in a shortlist, while the stored string is what makes the column sort
+    // correctly if the reader clicks the header.
+    value: (entry) => entry.updatedAt,
+    render: (entry) => entry.updatedAt.slice(0, 10),
   },
 ];
 
@@ -94,17 +137,20 @@ interface SqlResultRow {
 // carried: the count under each tile is the ranking signal now, and the entries
 // still arrive sorted, so reading order carries the rest. Confirmed with Min
 // before building — the tiles were chosen knowing the bars go away.
+/**
+ * One ranked taxonomy list — the body of a tab, not a card of its own.
+ *
+ * No heading: the two lists live in a tabbed card now, and the tab's own label
+ * carries the name and the slot icon. A heading here would say "Top Tags"
+ * directly under a selected tab reading "Top Tags".
+ */
 function TaxonomyList({
-  heading,
-  icon,
   counts,
   emptyMessage,
   hrefFor,
   titleFor,
   iconUrls,
 }: {
-  heading: string;
-  icon: ReactNode;
   counts: JournalTaxonomyCount[];
   emptyMessage: string;
   hrefFor: (name: string) => string;
@@ -116,16 +162,12 @@ function TaxonomyList({
 
   return (
     <section>
-      <h3 className="flex items-center gap-2 font-display text-sm text-brass-dark">
-        <span className="shrink-0">{icon}</span>
-        {heading}
-      </h3>
       {counts.length === 0 ? (
-        <p className="mt-2 text-sm text-muted">{emptyMessage}</p>
+        <p className="text-sm text-muted">{emptyMessage}</p>
       ) : isCompact ? (
         // Chips wrap to as many lines as they need. No fixed column, so a long
         // name costs its own width rather than widening every row.
-        <div className="mt-3 flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1.5">
           {counts.map((count) => (
             <TaxonomyChip
               key={count.name}
@@ -137,10 +179,19 @@ function TaxonomyList({
           ))}
         </div>
       ) : (
-        // `auto-fill` rather than a fixed column count: this card is one cell of
-        // a 2x2 grid, so its width changes with the viewport and a hard
-        // `grid-cols-5` would either overflow or leave a gap.
-        <ul className="mt-3 grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(5rem,1fr))]">
+        // `auto-FIT`, not `auto-fill`: both collapse to the same thing when the
+        // tiles fill the row, but `auto-fill` keeps generating empty 5rem tracks
+        // past the last tile. Once Top Tags and Top Categories were combined into
+        // one full-width card each list got roughly double its old width, and those
+        // phantom tracks showed up as a wide blank band between the two lists —
+        // pushing the divider far from where the tiles actually ended. `auto-fit`
+        // collapses the empty tracks so the list ends at its last tile.
+        //
+        // The max is `6rem`, not `1fr`: with `auto-fit` a `1fr` max would stretch
+        // the surviving tiles to swallow the collapsed tracks, turning ten tiles
+        // into ten wide rectangles. Capping it keeps a tile roughly square and
+        // lets the row simply end.
+        <ul className="grid justify-start gap-2 [grid-template-columns:repeat(auto-fit,minmax(5rem,6rem))]">
           {counts.map((count) => (
             <li key={count.name}>
               {/* A real Link, so middle-click and ⌘-click open the filtered
@@ -273,12 +324,27 @@ function TopWordsList({ words }: { words: JournalWordCount[] }) {
             <span className="w-5 shrink-0 text-right font-mono text-xs text-muted">
               {index + 1}.
             </span>
-            <span className="min-w-0 flex-1 truncate text-ink">{row.word}</span>
+            {/* `shrink-0`, not `flex-1`: stretching the word pushed the bar, the
+                count and the ✕ out to the right edge and left a gulf after a short
+                word like "the". The bar below takes the slack instead, which is the
+                element that actually wants the width. `max-w-[9rem]` still truncates
+                a pathological word rather than squeezing the bar to nothing. */}
+            <span className="min-w-0 max-w-[9rem] shrink-0 truncate text-ink">{row.word}</span>
 
-            {/* Relative amount, measured against the most-used word. Hidden on a
-                phone, where the row has no width to spare and the count beside
-                it already carries the number. */}
-            <RankBar value={row.count} max={topCount} className="max-lg:hidden" />
+            {/* Relative amount, measured against the most-used word. Takes the row's
+                spare width, so the bar grows instead of a gap. Hidden on a phone,
+                where the row has no width to spare and the count beside it already
+                carries the number — `flex-1` there would reintroduce the gulf, so
+                the spacer after this picks the slack up once the bar is gone. */}
+            {/* `w-auto grow` overrides RankBar's own `w-12 shrink-0` defaults, which
+                are sized for a narrow cell — its className is merged last, so the
+                width has to be restated rather than just adding `flex-1`. */}
+            <RankBar
+              value={row.count}
+              max={topCount}
+              className="min-w-0 w-auto grow max-lg:hidden"
+            />
+            <span aria-hidden className="hidden min-w-0 flex-1 max-lg:block" />
 
             {/* The same fixed-size brass circle the taxonomy rows use for their
                 counts, so the two lists in this card read as one system. */}
@@ -358,7 +424,15 @@ function CountByYears({ yearCounts }: { yearCounts: JournalYearCount[] }) {
   }
 
   return (
-    <div className="mt-3 flex flex-col gap-2.5">
+    // Years pack into as many columns as the card's width allows rather than one
+    // tall stack: a year row is intrinsically ~9rem wide, so a single column left
+    // most of this half-width card empty. `auto-fill` rather than a fixed count
+    // because the content area differs between a laptop and a wide monitor — this
+    // gives 2 columns on one and 3-4 on the other with no breakpoint to tune.
+    // `items-start` stops a collapsed year stretching to match an expanded
+    // neighbour; an expanded year grows in place, so clicking one never relays out
+    // the rest of the card. A phone stays the single stack it already was.
+    <div className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] items-start gap-2.5 max-lg:grid-cols-1">
       {yearCounts.map((yearCount) => {
         const isExpanded = expandedYears.has(yearCount.year);
 
@@ -380,15 +454,22 @@ function CountByYears({ yearCounts }: { yearCounts: JournalYearCount[] }) {
                   ▶
                 </span>
               </button>
+              {/* The year and its count sit together. Neither grows: the row is a
+                  ~9rem grid cell now, so there is no leftover width to distribute
+                  and no gulf to open up between a four-character year and a
+                  one-character count. */}
               <button
                 type="button"
                 onClick={() => navigateToYearEntries(yearCount.year)}
-                className="min-w-0 flex-1 truncate text-left transition-colors hover:text-brass-dark hover:underline"
+                className="min-w-0 shrink-0 truncate text-left transition-colors hover:text-brass-dark hover:underline"
                 title={`Show all entries from ${yearCount.year}`}
               >
                 {yearCount.year}
               </button>
-              <span className="shrink-0 font-mono text-xs font-normal text-muted">
+              {/* The house chip: `rounded-full bg-brass-soft … text-brass-dark`
+                  (design.md → brassSoft is the tinted chip/badge background).
+                  `tabular-nums` keeps the oval from jumping width between rows. */}
+              <span className="shrink-0 rounded-full bg-brass-soft px-2 py-0.5 text-xs font-semibold tabular-nums text-brass-dark">
                 {yearCount.entryCount}
               </span>
             </div>
@@ -436,6 +517,21 @@ function cellToText(value: unknown): string {
   return value === null || value === undefined ? "" : String(value);
 }
 
+// The cards that take the whole row on desktop; the other four are half-width.
+// `topTaxonomy` stays full-width now that its two lists are tabs rather than
+// columns: the tile grid is the reason, not the old side-by-side layout. Tiles are
+// capped at 6rem, so a full-width row fits roughly twice as many before wrapping,
+// and the ten of them read as a block instead of a narrow strip.
+const FULL_WIDTH_WIDGETS = new Set<JournalHomeWidgetId>([
+  "counters",
+  "topTaxonomy",
+  // Full-width for the same reason `topTaxonomy` is: two tabbed lists in one card.
+  // The Recently Edited tab carries three columns and up to 20 rows, which in a
+  // half-width cell would truncate titles against the Edited column.
+  "pinnedAndRecentlyEdited",
+  "recentEntries",
+]);
+
 export function JournalView({
   entries,
   tally,
@@ -443,9 +539,12 @@ export function JournalView({
   topTags,
   topCategories,
   yearAndMonthCounts = [],
+  pinnedEntries = [],
+  recentlyEditedEntries = [],
   categoryIcons = {},
   tagIcons = {},
   canRunSql = false,
+  widgets = defaultJournalHomeWidgets(),
 }: {
   entries: JournalEntry[];
   /**
@@ -465,11 +564,27 @@ export function JournalView({
   topCategories: JournalTaxonomyCount[];
   /** Entry counts grouped by year and month. */
   yearAndMonthCounts?: JournalYearCount[];
+  /**
+   * The pinned entries for the Pinned tab, newest first and already capped by
+   * `listPinnedEntries`. Separate from `entries`, which is the recent slice — a
+   * pinned entry is often an old one, so it would not be in that list.
+   */
+  pinnedEntries?: JournalEntry[];
+  /**
+   * The recently-edited entries for the other tab of the same card, newest edit
+   * first and already capped by `listRecentlyEditedEntries`. Also separate from
+   * `entries`: that list is ordered by the date an entry is *about*, this one by
+   * when it was last touched, so an old entry edited today appears here and not
+   * there.
+   */
+  recentlyEditedEntries?: JournalEntry[];
   /** Name -> icon URL for the Statistics lists; absent names just show no icon. */
   categoryIcons?: Record<string, string>;
   tagIcons?: Record<string, string>;
   /** Only admins may run SQL; the server action re-checks this. */
   canRunSql?: boolean;
+  /** This reader's card order and visibility. Defaults to every card, catalogue order. */
+  widgets?: JournalHomeWidgetPreference[];
 }) {
   const router = useRouter();
   const [sqlResult, setSqlResult] = useState<{ columns: string[]; rows: unknown[][] } | undefined>(undefined);
@@ -507,28 +622,20 @@ export function JournalView({
     }),
   );
 
-  return (
-    <div className="flex flex-col gap-8">
-      {/* `defaultOpen` covers anything the card can show. It was tags-or-categories
-          only; the counters and the word list live here now, and a journal with
-          entries but no taxonomy would have hidden them behind a closed card. */}
-      <CollapsibleCard
-        title="Statistics"
-        titleIcon={<SlotIcon slot={STATS_SLOT} className="h-4 w-4" />}
-        defaultOpen={
-          tally.totalCount > 0 ||
-          topWords.length > 0 ||
-          topTags.length > 0 ||
-          topCategories.length > 0 ||
-          yearAndMonthCounts.length > 0
-        }
-      >
-        {/* Four counters in the house stat-tile shape (design.md -> "Stat tiles
-            / summary numbers"). `max-lg:grid-cols-1` stacks them on a phone and
-            leaves the desktop columns untouched — the same arrangement the
-            attendance report's tiles use. Four across on desktop rather than
-            three-plus-an-orphan on a second row. */}
-        <div className="mb-8 grid grid-cols-4 gap-4 max-lg:grid-cols-1">
+  // One node per card, drawn in the reader's saved order (Configuration -> Home screen
+  // layout) and skipping the ones they switched off. Each is the quiet card treatment
+  // — `border border-line`, no shadow (design.md -> "cards are calm").
+  const cards: Record<JournalHomeWidgetId, ReactNode> = {
+    counters: (
+      <div className="rounded-xl border border-line p-4">
+        <h3 className="mb-3 flex items-center gap-2 font-display text-sm text-brass-dark">
+          <SlotIcon slot={STATS_SLOT} className="h-4 w-4 shrink-0" />
+          Statistics
+        </h3>
+        {/* Four counters in the house stat-tile shape (design.md -> "Stat tiles /
+            summary numbers"). `max-lg:grid-cols-1` stacks them on a phone and leaves
+            the desktop columns untouched. */}
+        <div className="grid grid-cols-4 gap-4 max-lg:grid-cols-1">
           <StatTile label="Total Entries" value={tally.totalCount} />
           <StatTile
             label="Total Locked Entries"
@@ -542,11 +649,8 @@ export function JournalView({
           <StatTile
             label="Total Log Entries"
             value={tally.logCount}
-            // The Log tab, not a Main filtered to `category = Log`. Main does
-            // include Log entries (the panel reads it with scope "all"), so that
-            // filter would work — but the Log tab IS the old Log section, with
-            // the grid and viewer built for these rows. The tile says "Log
-            // Entries"; it should land on the screen of that name.
+            // The Log tab, not a Main filtered to `category = Log`: the tab IS the old
+            // Log section, with the grid and viewer built for these rows.
             href="/modules/journal/entries?tab=log"
             title="Show the Log tab"
           />
@@ -557,61 +661,209 @@ export function JournalView({
             title="Show the recycle bin"
           />
         </div>
+      </div>
+    ),
+    // Tags and categories share one card and one space, a tab each. Side by side they
+    // each got half the width, which on a `minmax(5rem,6rem)` tile grid is a visible
+    // cost — a tab gets the whole card. They are two cuts of the same question ("what
+    // do I write about most"), read one at a time, which is what tabs are for
+    // (components.md → Tabs vs ViewModeSwitch).
+    //
+    // The tab label carries each list's name and slot icon, so `TaxonomyList` no
+    // longer draws a heading of its own. Same strip on a phone: two short labels fit
+    // a narrow screen, and `Tabs` wraps them if they ever don't.
+    topTaxonomy: (
+      <div className="rounded-xl border border-line p-4">
+        <Tabs
+          items={[
+            {
+              key: "tags",
+              label: (
+                <span className="flex items-center gap-2">
+                  <SlotIcon slot={TOP_TAGS_SLOT} className="h-4 w-4 shrink-0" />
+                  Top Tags
+                </span>
+              ),
+              content: (
+                <TaxonomyList
+                  counts={topTags}
+                  emptyMessage="No tags yet."
+                  hrefFor={(name) => journalEntriesFilterHref("tag", name)}
+                  titleFor={(name) => `Show entries tagged "${name}"`}
+                  iconUrls={tagIcons}
+                />
+              ),
+            },
+            {
+              key: "categories",
+              label: (
+                <span className="flex items-center gap-2">
+                  <SlotIcon slot={TOP_CATEGORIES_SLOT} className="h-4 w-4 shrink-0" />
+                  Top Categories
+                </span>
+              ),
+              content: (
+                <TaxonomyList
+                  counts={topCategories}
+                  emptyMessage="No categories yet."
+                  hrefFor={(name) => journalEntriesFilterHref("category", name)}
+                  titleFor={(name) => `Show entries in "${name}"`}
+                  iconUrls={categoryIcons}
+                />
+              ),
+            },
+          ]}
+        />
+      </div>
+    ),
+    topWords: (
+      <div className="rounded-xl border border-line p-4">
+        <h3 className="flex items-center gap-2 font-display text-sm text-brass-dark">
+          <span aria-hidden="true" className="h-4 w-4 shrink-0" />
+          Top 10 Words
+        </h3>
+        <TopWordsList words={topWords} />
+      </div>
+    ),
+    countByYears: (
+      <div className="rounded-xl border border-line p-4">
+        <h3 className="flex items-center gap-2 font-display text-sm text-brass-dark">
+          <span aria-hidden="true" className="h-4 w-4 shrink-0" />
+          Count by Years
+        </h3>
+        <CountByYears yearCounts={yearAndMonthCounts} />
+      </div>
+    ),
+    // Two shortlists of entries in one card, as tabs: the ones the reader pinned, and
+    // the ones they edited most recently. Neither is a second Entries list — each is
+    // capped and links to the full filtered list for the rest, which is why they carry
+    // no toolbar and no export.
+    //
+    // One card rather than two because they answer the same kind of question ("which
+    // entries do I want to get back to") and halve the vertical room doing it. Same
+    // arrangement as the Statistics card, which holds Top Tags and Top Categories.
+    pinnedAndRecentlyEdited: (
+      <CollapsibleCard
+        title="Pinned & Recently Edited"
+        titleIcon={<SlotIcon slot={PINNED_AND_EDITED_SLOT} className="h-4 w-4" />}
+        // Open when either tab has something to show, shut when neither does — the
+        // same rule Today In History uses, so an empty card costs a line, not a hole.
+        defaultOpen={pinnedEntries.length > 0 || recentlyEditedEntries.length > 0}
+      >
+        <Tabs
+          items={[
+            {
+              key: "pinned",
+              label: (
+                <span className="flex items-center gap-1.5">
+                  <SlotIcon slot={PINNED_SLOT} className="h-4 w-4" />
+                  Pinned
+                </span>
+              ),
+              content: (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm text-muted">
+                      {pinnedEntries.length === 0
+                        ? "Nothing pinned yet. Open an entry and press the pin to keep it here."
+                        : `Showing ${pinnedEntries.length === PINNED_ENTRY_LIMIT ? `the first ${PINNED_ENTRY_LIMIT}` : `${pinnedEntries.length}`} pinned ${pinnedEntries.length === 1 ? "entry" : "entries"}, newest first. Click a row to open it.`}
+                    </p>
+                    {/* Moved out of the card header and into the tab body: the two tabs
+                        go to different lists, so a single header action could only ever
+                        be right for whichever tab happened to be open. */}
+                    {pinnedEntries.length > 0 && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        // `pinned = yes` is the filter grammar's own spelling
+                        // (filter-query.ts maps `pinned` → `isPinned`), so this is the
+                        // same link the reader could have typed into the Entries
+                        // filter box themselves.
+                        href={`/modules/journal/entries?filter=${encodeURIComponent("pinned = yes")}`}
+                        title="Show every pinned entry"
+                      >
+                        View all
+                      </Button>
+                    )}
+                  </div>
 
-        {/* The ranked lists and count by years, 2x2 grid on desktop and single
-            stacked column compact. `lg:grid-cols-2` with `max-lg:grid-cols-1`
-            keeps the compact case a plain stack — two 10-row lists side by side
-            on a phone would each be too narrow to read a name in.
+                  <div className="mt-3">
+                    {/* No `compactLayout="record"` here, unlike the recent-entries
+                        grid: that exists because seven columns can't fit a phone, and
+                        two comfortably can. A date beside a title is the same shape on
+                        both screens. */}
+                    <DataGrid
+                      columns={PINNED_COLUMNS}
+                      rows={pinnedEntries}
+                      getRowKey={(entry) => entry.id}
+                      emptyMessage="No pinned entries."
+                      showStatusBar={false}
+                      // A shortlist on a dashboard card: search, filters, the column
+                      // picker and density are all chrome here. Same call as Today In
+                      // History.
+                      showToolbar={false}
+                      onRowClick={(entry) => openEntry(entry.id)}
+                      // No record-view eye. It opens a modal listing every column,
+                      // which on a two-column card would read out the date and title
+                      // already on screen — and the row click opens the entry itself,
+                      // which is the fuller answer to the same question.
+                      enableRecordView={false}
+                    />
+                  </div>
+                </>
+              ),
+            },
+            {
+              key: "recently-edited",
+              label: (
+                <span className="flex items-center gap-1.5">
+                  <SlotIcon slot={RECENTLY_EDITED_SLOT} className="h-4 w-4" />
+                  Recently Edited
+                </span>
+              ),
+              content: (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm text-muted">
+                      {recentlyEditedEntries.length === 0
+                        ? "No entries yet. Once you write or edit one it will show up here."
+                        : `Showing the ${recentlyEditedEntries.length === RECENTLY_EDITED_ENTRY_LIMIT ? `last ${RECENTLY_EDITED_ENTRY_LIMIT} entries` : `${recentlyEditedEntries.length} ${recentlyEditedEntries.length === 1 ? "entry" : "entries"}`} you edited, most recent first. Click a row to open it.`}
+                    </p>
+                    {/* No "View all" on this tab, unlike Pinned. The Entries section
+                        reads `?filter=` only, and the filter grammar has no sort
+                        syntax (filter-query.ts parses conditions, not ordering), so
+                        there is no URL that means "every entry, newest edit first".
+                        A link to the default-sorted list would quietly land the
+                        reader on a *differently ordered* list than the one they
+                        clicked from, which is worse than no link. Sorting in the
+                        Entries filter builder is the way there until a `?sort=`
+                        param exists. */}
+                  </div>
 
-            Each section is boxed rather than separated by a rule. The box is the
-            quiet card treatment (`border border-line`, no shadow — design.md →
-            "cards are calm"), not a nested `CollapsibleCard`. */}
-        <div className="grid gap-4 lg:grid-cols-2 max-lg:grid-cols-1">
-          <div className="rounded-xl border border-line p-4">
-            <TaxonomyList
-              heading="Top Tags"
-              icon={<SlotIcon slot={TOP_TAGS_SLOT} className="h-4 w-4" />}
-              counts={topTags}
-              emptyMessage="No tags yet."
-              hrefFor={(name) => journalEntriesFilterHref("tag", name)}
-              titleFor={(name) => `Show entries tagged "${name}"`}
-              iconUrls={tagIcons}
-            />
-          </div>
-          <div className="rounded-xl border border-line p-4">
-            <TaxonomyList
-              heading="Top Categories"
-              icon={<SlotIcon slot={TOP_CATEGORIES_SLOT} className="h-4 w-4" />}
-              counts={topCategories}
-              emptyMessage="No categories yet."
-              hrefFor={(name) => journalEntriesFilterHref("category", name)}
-              titleFor={(name) => `Show entries in "${name}"`}
-              iconUrls={categoryIcons}
-            />
-          </div>
-          <div className="rounded-xl border border-line p-4">
-            <h3 className="flex items-center gap-2 font-display text-sm text-brass-dark">
-              <span aria-hidden="true" className="h-4 w-4 shrink-0" />
-              Top 10 Words
-            </h3>
-            <TopWordsList words={topWords} />
-          </div>
-          <div className="rounded-xl border border-line p-4">
-            <h3 className="flex items-center gap-2 font-display text-sm text-brass-dark">
-              <span aria-hidden="true" className="h-4 w-4 shrink-0" />
-              Count by Years
-            </h3>
-            <CountByYears yearCounts={yearAndMonthCounts} />
-          </div>
-        </div>
+                  <div className="mt-3">
+                    <DataGrid
+                      columns={RECENTLY_EDITED_COLUMNS}
+                      rows={recentlyEditedEntries}
+                      getRowKey={(entry) => entry.id}
+                      emptyMessage="No entries yet."
+                      showStatusBar={false}
+                      showToolbar={false}
+                      onRowClick={(entry) => openEntry(entry.id)}
+                      enableRecordView={false}
+                    />
+                  </div>
+                </>
+              ),
+            },
+          ]}
+        />
       </CollapsibleCard>
-
-      {/* The latest-entries grid and its "Show SQL" re-run live in a card of
-          their own, so the home screen is a column of collapsibles rather than
-          one card plus a loose section. Starts expanded — it's the thing most
-          visits to the home screen are here for. The card keeps its "Recent
-          entries" title even while a re-run's result is showing; the body says
-          which of the two you're looking at. */}
+    ),
+    // The latest-entries grid and its "Show SQL" re-run live in a collapsible card of
+    // their own. Starts expanded — it's the thing most visits here are for. The card
+    // keeps its "Recent entries" title even while a re-run's result is showing; the
+    // body says which of the two you're looking at.
+    recentEntries: (
       <CollapsibleCard
         title="Recent entries"
         titleIcon={<SlotIcon slot={RECENT_SLOT} className="h-4 w-4" />}
@@ -660,6 +912,22 @@ export function JournalView({
           )}
         </div>
       </CollapsibleCard>
+    ),
+  };
+
+  return (
+    // Two columns on desktop so the ranked lists sit side by side as they did inside
+    // the old Statistics card; the counters and the entries grid span both. A phone is
+    // always one stack. `items-start` keeps a short card from stretching to its row.
+    <div className="grid grid-cols-2 items-start gap-6 max-lg:grid-cols-1">
+      {visibleJournalHomeWidgets(widgets).map((id) => (
+        <div
+          key={id}
+          className={`min-w-0 ${FULL_WIDTH_WIDGETS.has(id) ? "col-span-2 max-lg:col-span-1" : ""}`}
+        >
+          {cards[id]}
+        </div>
+      ))}
     </div>
   );
 }

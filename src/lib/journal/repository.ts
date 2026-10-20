@@ -16,6 +16,7 @@ import {
 } from "./schema";
 import type { DecodedImage } from "@/lib/shared/image-upload";
 import { displayEntryTitle } from "./encryption";
+import { buildBodyLengthSql, type JournalBodyScope } from "./body-length";
 import { buildFilterSql, buildOrderBy } from "./filters";
 import { LOG_CATEGORY_NAME } from "./journal";
 import { parseStoredJournalFilter, parseStoredPrefillFields } from "./schema";
@@ -153,10 +154,21 @@ function prefillTemplateToDomain(row: PrefillTemplateRow): JournalPrefillTemplat
 interface SavedFilterRow {
   id: number;
   name: string;
+  category_name: string;
+  description: string;
   filter_json: string;
   created_at: string;
   updated_at: string;
 }
+
+/**
+ * Every saved-filter read names the same columns. One constant so the four of
+ * them cannot drift — adding migration 0152's two columns to three of four
+ * SELECTs would have left `saveFilter`'s read-back returning a filter whose
+ * category was undefined.
+ */
+const SAVED_FILTER_COLUMNS =
+  "id, name, category_name, description, filter_json, created_at, updated_at";
 
 // parseStoredJournalFilter is deliberately forgiving (see its doc): a row whose
 // JSON can't be read comes back as an empty filter rather than throwing, so one
@@ -165,6 +177,11 @@ function savedFilterToDomain(row: SavedFilterRow): SavedJournalFilter {
   return {
     id: row.id,
     name: row.name,
+    // `?? ""` on both: the columns are NOT NULL DEFAULT '' so SQLite cannot
+    // return null, but a row hand-edited in the SQL Explorer can, and the UI
+    // groups on this value rather than null-checking it.
+    category: row.category_name ?? "",
+    description: row.description ?? "",
     filter: parseStoredJournalFilter(row.filter_json),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -398,12 +415,27 @@ export class SqliteJournalRepository implements JournalRepository {
     return this.hydrateEntries(rows);
   }
 
-  findEntries(filter: JournalFilter, limit: number): JournalEntry[] {
+  findEntries(
+    filter: JournalFilter,
+    limit: number,
+    bodyScope: JournalBodyScope = "all",
+  ): JournalEntry[] {
     const compiled = buildFilterSql(filter);
+    // The body-length term, when the Substantial Entries tab is asking. ANDed on
+    // as its own parenthesised term rather than merged into the filter's
+    // conditions — the reader's filter may join with OR, and adding this beside
+    // those conditions would make it one more *alternative* instead of a
+    // narrowing. Same arrangement, and the same reason, as withLockedCondition.
+    const body = buildBodyLengthSql(bodyScope);
     // No WHERE at all when nothing narrows, rather than a synthetic `1=1` — an
     // empty filter is a real state ("All entries") and this keeps the query the
     // planner sees identical to listRecentEntries in that case.
-    const where = compiled ? `WHERE ${compiled.sql}` : "";
+    const terms: string[] = [];
+    // Parenthesised: the filter's own groups may be joined with OR, and ANDing
+    // the body-length term onto a bare `a OR b` would bind to `b` alone.
+    if (compiled) terms.push(`(${compiled.sql})`);
+    if (body) terms.push(body.sql);
+    const where = terms.length > 0 ? `WHERE ${terms.join(" AND ")}` : "";
     // Literal string from an allowlist, never interpolated input — see
     // buildOrderBy. An empty sort yields the same clause this query always had.
     const orderBy = buildOrderBy(filter.sort);
@@ -416,38 +448,74 @@ export class SqliteJournalRepository implements JournalRepository {
          LIMIT @__limit`,
       )
       // Named params throughout: buildFilterSql generates its own keys, and
-      // `__limit` is prefixed so it can't collide with one of them.
-      .all({ ...(compiled?.params ?? {}), __limit: limit }) as EntryRow[];
+      // `__limit` and the body-length threshold are prefixed so they can't
+      // collide with one of them.
+      .all({ ...(compiled?.params ?? {}), ...(body?.params ?? {}), __limit: limit }) as EntryRow[];
 
     return this.hydrateEntries(rows);
   }
 
   listFilters(): SavedJournalFilter[] {
+    // Ordered by category then name, so the grouped mode's options come out in
+    // the order it renders them and the flat mode still sees each category's
+    // filters alphabetically within it. The flat dropdown re-sorts by name in
+    // the view, which is cheap for a list this size.
     const rows = this.db
-      .prepare("SELECT id, name, filter_json, created_at, updated_at FROM jrn_saved_filters ORDER BY name ASC")
+      .prepare(
+        `SELECT ${SAVED_FILTER_COLUMNS} FROM jrn_saved_filters
+         ORDER BY category_name COLLATE NOCASE ASC, name ASC`,
+      )
       .all() as SavedFilterRow[];
     return rows.map(savedFilterToDomain);
   }
 
+  listFilterCategories(): string[] {
+    // Distinct non-blank categories, case-insensitively, keeping the spelling of
+    // whichever row sorts first. MIN(name) is not what we want here — GROUP BY on
+    // the NOCASE collation collapses "CAR"/"Car" to one group, and MIN picks a
+    // stable representative rather than an arbitrary one.
+    const rows = this.db
+      .prepare(
+        `SELECT MIN(category_name) AS name FROM jrn_saved_filters
+         WHERE category_name <> ''
+         GROUP BY category_name COLLATE NOCASE
+         ORDER BY name COLLATE NOCASE ASC`,
+      )
+      .all() as { name: string }[];
+    return rows.map((row) => row.name);
+  }
+
   getFilterById(id: number): SavedJournalFilter | undefined {
     const row = this.db
-      .prepare("SELECT id, name, filter_json, created_at, updated_at FROM jrn_saved_filters WHERE id = ?")
+      .prepare(`SELECT ${SAVED_FILTER_COLUMNS} FROM jrn_saved_filters WHERE id = ?`)
       .get(id) as SavedFilterRow | undefined;
     return row ? savedFilterToDomain(row) : undefined;
   }
 
   saveFilter(input: JournalFilterWriteData): SavedJournalFilter {
     // Upsert by name — UNIQUE (name) makes this one statement instead of a
-    // create/update pair. See migration 0043.
+    // create/update pair. See migration 0043. The category and description are
+    // part of what a re-save replaces: editing a filter and clearing its category
+    // has to actually clear it, so these are assigned unconditionally rather
+    // than being coalesced with what is already stored.
     this.db
       .prepare(
-        `INSERT INTO jrn_saved_filters (name, filter_json) VALUES (@name, @filterJson)
-         ON CONFLICT(name) DO UPDATE SET filter_json = excluded.filter_json`,
+        `INSERT INTO jrn_saved_filters (name, category_name, description, filter_json)
+         VALUES (@name, @category, @description, @filterJson)
+         ON CONFLICT(name) DO UPDATE SET
+           category_name = excluded.category_name,
+           description   = excluded.description,
+           filter_json   = excluded.filter_json`,
       )
-      .run({ name: input.name, filterJson: JSON.stringify(input.filter) });
+      .run({
+        name: input.name,
+        category: input.category,
+        description: input.description,
+        filterJson: JSON.stringify(input.filter),
+      });
 
     const saved = this.db
-      .prepare("SELECT id, name, filter_json, created_at, updated_at FROM jrn_saved_filters WHERE name = ?")
+      .prepare(`SELECT ${SAVED_FILTER_COLUMNS} FROM jrn_saved_filters WHERE name = ?`)
       .get(input.name) as SavedFilterRow | undefined;
     if (!saved) throw new Error(`Failed to read back saved filter "${input.name}".`);
     return savedFilterToDomain(saved);

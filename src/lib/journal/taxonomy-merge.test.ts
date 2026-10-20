@@ -132,8 +132,24 @@ function fakeRepo(initial: Partial<FakeState> = {}): {
     listFilters: () => state.filters.map((saved) => ({ ...saved })),
     saveFilter: (input) => {
       const existing = state.filters.find((saved) => saved.name === input.name);
-      if (existing) existing.filter = input.filter;
-      return existing ?? { id: 1, name: input.name, filter: input.filter, createdAt: "", updatedAt: "" };
+      if (existing) {
+        existing.filter = input.filter;
+        // The merge rewrite passes these straight back through; assigning them
+        // here is what lets a test assert the merge did not un-file a filter.
+        existing.category = input.category;
+        existing.description = input.description;
+      }
+      return (
+        existing ?? {
+          id: 1,
+          name: input.name,
+          category: input.category,
+          description: input.description,
+          filter: input.filter,
+          createdAt: "",
+          updatedAt: "",
+        }
+      );
     },
     listPrefillTemplates: () => state.templates.map((template) => ({ ...template })),
     savePrefillTemplate: (input) => {
@@ -169,6 +185,10 @@ function filterOn(name: string, values: string[]): SavedJournalFilter {
   return {
     id: 1,
     name,
+    // Non-blank so the merge tests can prove the rewrite carries these through
+    // rather than quietly blanking them — a default of "" would pass either way.
+    category: "CAR",
+    description: "Set by the fixture.",
     filter: {
       join: "AND",
       groups: [{ join: "AND", conditions: [{ field: "category", operator: "hasAny", values }] }],
@@ -458,6 +478,8 @@ describe("mergeTaxonomy — saved filters", () => {
         {
           id: 1,
           name: "Tagged",
+          category: "CAR",
+          description: "Set by the fixture.",
           filter: {
             join: "AND",
             groups: [

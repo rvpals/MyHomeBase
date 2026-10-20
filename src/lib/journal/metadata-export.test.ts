@@ -79,6 +79,8 @@ function fakeRepo(seed?: {
     filters.push({
       id: nextId++,
       name,
+      category: "",
+      description: "",
       filter: { join: "AND", groups: [] },
       createdAt: now,
       updatedAt: now,
@@ -164,12 +166,19 @@ function fakeRepo(seed?: {
     },
 
     listFilters: () => [...filters],
-    saveFilter(input: { name: string; filter: SavedJournalFilter["filter"] }) {
+    saveFilter(input: {
+      name: string;
+      category: string;
+      description: string;
+      filter: SavedJournalFilter["filter"];
+    }) {
       // UNIQUE (name) — an upsert, matching migration 0043.
       const existing = filters.find((f) => f.name === input.name);
       const row: SavedJournalFilter = {
         id: existing?.id ?? nextId++,
         name: input.name,
+        category: input.category,
+        description: input.description,
         filter: input.filter,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
@@ -242,7 +251,7 @@ describe("buildMetadataBundle", () => {
       { name: "Morning", description: "Daily", isEnabled: false, fields: [] },
     ]);
     expect(bundle.filters).toEqual([
-      { name: "Pinned only", filter: { join: "AND", groups: [] } },
+      { name: "Pinned only", category: "", description: "", filter: { join: "AND", groups: [] } },
     ]);
     expect(bundle.preferences).toEqual({
       defaultLocation: { latitude: 40.7128, longitude: -74.006, name: "New York" },
@@ -337,7 +346,9 @@ describe("planMetadataImport", () => {
           { name: "Morning", description: "", isEnabled: true, fields: [] },
           { name: "Evening", description: "", isEnabled: true, fields: [] },
         ],
-        filters: [{ name: "Pinned only", filter: { join: "AND", groups: [] } }],
+        filters: [
+          { name: "Pinned only", category: "", description: "", filter: { join: "AND", groups: [] } },
+        ],
       }),
     );
 
@@ -514,6 +525,11 @@ describe("applyMetadataImport", () => {
         filters: [
           {
             name: "Pinned only",
+            // Non-blank so the restore assertion below proves these ride along
+            // rather than being silently dropped — which is what the import did
+            // before migration 0152 added them.
+            category: "CAR",
+            description: "Only the pinned ones.",
             filter: {
               join: "AND",
               groups: [
@@ -521,14 +537,18 @@ describe("applyMetadataImport", () => {
               ],
             },
           },
-          { name: "Locked", filter: { join: "AND", groups: [] } },
+          { name: "Locked", category: "", description: "", filter: { join: "AND", groups: [] } },
         ],
       }),
     );
 
     const stored = repo.listFilters();
     expect(stored).toHaveLength(2);
-    expect(stored.find((f) => f.name === "Pinned only")?.filter.groups).toHaveLength(1);
+    const pinned = stored.find((f) => f.name === "Pinned only");
+    expect(pinned?.filter.groups).toHaveLength(1);
+    // A restore that dropped these would un-file every filter it touched.
+    expect(pinned?.category).toBe("CAR");
+    expect(pinned?.description).toBe("Only the pinned ones.");
   });
 
   it("rejects an icon that busts the size cap, naming the item", () => {

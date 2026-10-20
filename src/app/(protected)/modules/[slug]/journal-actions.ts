@@ -26,6 +26,7 @@ import {
   withLogCondition,
   type JournalLogScope,
   withLockedCondition,
+  type JournalBodyScope,
   type JournalLockScope,
   generateCategoryIcon,
   generateMissingTaxonomyIcons,
@@ -34,6 +35,7 @@ import {
   findUnusedTaxonomy,
   taxonomyInUseAmong,
   type TaxonomyUsage,
+  recycleEntries,
   mergeTaxonomy,
   planTaxonomyMerge,
   type TaxonomyMergePlan,
@@ -395,6 +397,37 @@ export async function deleteJournalEntryAction(id: number): Promise<ActionResult
   return { ok: true };
 }
 
+/**
+ * Moves one entry to the recycle bin — the Calendar day-list's row delete.
+ *
+ * Deliberately NOT `deleteJournalEntryAction` above: that one hard-deletes and
+ * refuses a locked entry. A row in the calendar's day list is a single stray
+ * click away from a reader who was only browsing, so this one recycles, and the
+ * entry comes back from Data Management → Correct → Recycled Entries.
+ *
+ * Also not the Entries screen's `deleteJournalEntriesAction`, which recycles but
+ * demands a `BulkRefreshScope` and hands back a 500-row grid list — the calendar
+ * has no filter and no grid to refresh; it re-reads its range on router.refresh().
+ *
+ * Locked entries move too, with `isLocked` stored alongside so a restore brings
+ * the lock back. That is `recycleEntries`' documented contract, not a bypass.
+ */
+export async function recycleJournalEntryAction(id: number): Promise<ActionResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
+  try {
+    const { movedCount } = recycleEntries(deps.journalRepo, [id]);
+    // Zero means the id was already gone — deleted in another tab, say.
+    // Reported rather than swallowed, because the row is still on this screen.
+    if (movedCount === 0) {
+      return { ok: false, error: "That entry no longer exists." };
+    }
+  } catch (error) {
+    return toErrorResult(error, "Failed to delete the entry.");
+  }
+  revalidatePath(JOURNAL_MODULE_PATH);
+  return { ok: true };
+}
+
 // --- categories --------------------------------------------------------------
 
 export async function saveJournalCategoryAction(input: UpsertCategoryInput): Promise<ActionResult> {
@@ -682,19 +715,21 @@ export interface JournalEntriesResult extends ActionResult {
 /**
  * Runs a filter and returns the matching entries for the Entries browser.
  *
- * `scope` is which tab is asking, and both the Log and the lock conditions are
- * applied here, on the server, rather than trusted from the filter the client
- * sent — so a re-query can't be widened by a hand-shaped saved filter. All
- * Entries passes `"all"`/`"all"`, the Log tab `"only"`, and Unlocked Entries
- * `"all"` with `lockScope: "unlocked"`.
+ * `scope` is which tab is asking, and the Log, lock and body-length conditions
+ * are all applied here, on the server, rather than trusted from the filter the
+ * client sent — so a re-query can't be widened by a hand-shaped saved filter.
+ * All Entries passes `"all"`/`"all"`, the Log tab `"only"`, Unlocked Entries
+ * `"all"` with `lockScope: "unlocked"`, and Substantial Entries `"all"` with
+ * `bodyScope: "substantial"`.
  *
- * `lockScope` defaults to `"all"` so the two tabs that don't care about the lock
- * call this unchanged.
+ * `lockScope` and `bodyScope` both default to `"all"` so the tabs that don't
+ * care about either call this unchanged.
  */
 export async function findJournalEntriesAction(
   filter: JournalFilter,
   scope: JournalLogScope,
   lockScope: JournalLockScope = "all",
+  bodyScope: JournalBodyScope = "all",
 ): Promise<JournalEntriesResult> {
   await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
@@ -704,6 +739,9 @@ export async function findJournalEntriesAction(
         deps.journalRepo,
         withLockedCondition(withLogCondition(filter, scope), lockScope),
         ENTRIES_RESULT_LIMIT,
+        // Not a filter condition — it rides alongside, because the filter schema
+        // would drop it. See body-length.ts.
+        bodyScope,
       ),
     };
   } catch (error) {
@@ -711,14 +749,22 @@ export async function findJournalEntriesAction(
   }
 }
 
-/** Saves a named filter, replacing any existing one with the same name. */
+/**
+ * Saves a named filter, replacing any existing one with the same name.
+ *
+ * `category` and `description` are optional at this boundary so an older caller
+ * (the CLI) still compiles; the schema defaults both to ''. Passing them
+ * explicitly is what the builder does, including passing '' to clear one.
+ */
 export async function saveJournalFilterAction(
   name: string,
   filter: JournalFilter,
+  category = "",
+  description = "",
 ): Promise<JournalFilterListResult> {
   await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
-    saveFilter(deps.journalRepo, { name, filter });
+    saveFilter(deps.journalRepo, { name, category, description, filter });
     // The caller re-renders the dropdown from this, so hand back the new list
     // rather than making it round-trip again.
     const filters = listFilters(deps.journalRepo);

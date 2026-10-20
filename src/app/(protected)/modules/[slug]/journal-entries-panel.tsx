@@ -14,11 +14,12 @@
 // A supplied filter is **pre-selected, not locked**: the dropdown stays live so
 // the reader can switch away from it.
 //
-// Three tabs, all read here: **All Entries** (every entry, which the filter above
-// narrows), **Unlocked Entries** (the same, minus the locked ones) and **Log**
-// (the logged activities, unfiltered). A supplied `filterName`/`filterQuery`
-// applies to both grid tabs — All Entries is the one a deep link from the Top
-// Tags/Categories cards lands on.
+// Four tabs, all read here: **All Entries** (every entry, which the filter above
+// narrows), **Unlocked Entries** (the same, minus the locked ones),
+// **Substantial Entries** (the same, minus the short and the encrypted) and
+// **Log** (the logged activities, unfiltered). A supplied
+// `filterName`/`filterQuery` applies to all three grid tabs — All Entries is the
+// one a deep link from the Top Tags/Categories cards lands on.
 
 import {
   describeFilter,
@@ -59,7 +60,8 @@ export interface JournalEntriesPanelProps {
   filterQuery?: string;
   /**
    * Which tab to open on — "log" for the Log tab, "unlocked" for Unlocked
-   * Entries, anything else (or nothing) for All Entries. Not validated here:
+   * Entries, "substantial" for Substantial Entries, anything else (or nothing)
+   * for All Entries. Not validated here:
    * `Tabs` falls back to its first tab on a key it doesn't recognise, so a stale
    * `?tab=` lands on All Entries rather than 404ing.
    */
@@ -134,6 +136,15 @@ export function JournalEntriesPanel({
         ENTRIES_LIMIT,
       );
 
+  // The Substantial tab's first page — a read of its own, for the same reason
+  // the unlocked list is: narrowing `entries` here would give the substantial
+  // subset of the first 500 rather than the first 500 substantial. The
+  // body-length condition rides beside the filter rather than inside it,
+  // because the filter schema would drop it; see src/lib/journal/body-length.ts.
+  const substantialEntries = queryError
+    ? []
+    : findEntries(deps.journalRepo, scopedFilter, ENTRIES_LIMIT, "substantial");
+
   // The Log tab is the section that used to live at /modules/journal/log, moved
   // in whole: the same unfiltered list, and the same two icon maps its viewer
   // modal renders an entry's categories and tags with.
@@ -144,6 +155,7 @@ export function JournalEntriesPanel({
     <JournalEntriesView
       initialEntries={entries}
       initialUnlockedEntries={unlockedEntries}
+      initialSubstantialEntries={substantialEntries}
       initialFilters={savedFilters}
       categoryOptions={categories.map((category) => category.name)}
       tagOptions={tags.map((tag) => tag.name)}

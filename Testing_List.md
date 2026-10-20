@@ -146,6 +146,28 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-10-20 — Release (Journal home-screen cards, Substantial Entries tab, saved-filter categories, calendar Delete, SQL Explorer suggestions)
+
+Needs migration 0152 applied on the NAS (Entries → Filtering card). Calendar row layout is the one to check on a phone.
+
+- [ ] **1.** Journal → Calendar: click a day with entries — every row has a Delete button
+- [ ] **2.** Journal → Calendar: Delete opens a dialog naming the entry, date and time; Cancel closes it and deletes nothing
+- [ ] **3.** Journal → Calendar: confirming Delete removes the row, the calendar cell title and the count
+- [ ] **4.** Journal → Calendar: the deleted entry appears in Data Management → Correct → Recycled Entries and Restore brings it back
+- [ ] **5.** Journal → Calendar: deleting a locked entry shows the lock note, and its restore comes back locked
+- [ ] **6.** Journal → Calendar on a phone: the day list row with a long title, place and chips still reads cleanly beside Delete
+- [ ] **7.** Journal → Home screen layout: the section appears in the tree and loads
+- [ ] **8.** Journal → Home screen layout: drag a card by its handle (mouse and touch) and use arrow keys on a focused handle; Save persists the order
+- [ ] **9.** Journal home: Pinned and Recently Edited cards show the right entries and respect on/off in the layout
+- [ ] **10.** Journal entry editor: the pin toggle fills when pinned and the pin persists after Save
+- [ ] **11.** Admin → Display Settings → Widgets: reorder by drag handle still saves
+- [ ] **12.** Journal → Entries: the Substantial Entries tab lists only entries over ten words and shows Body Length
+- [ ] **13.** Journal → Entries → Substantial: shorten a body below ten words via bulk edit and the row leaves the list
+- [ ] **14.** Journal → Entries → Filtering card: save a filter with a category and description, then switch to "category first" and find it under its category
+- [ ] **15.** Journal → Entries: filters saved before this release show under Uncategorised in category-first mode
+- [ ] **16.** Journal → Entry form: picking a library place that clashes with an existing pin asks before overwriting
+- [ ] **17.** Admin → SQL Explorer: typing after FROM / JOIN suggests table names; arrows and Enter pick one
+
 ## 2026-10-17 — Release (Journal Saved Locations, Location Manager Venn/Graph, bulk location edit, nav feedback, draggable dialogs)
 
 **Needs migration 0151 applied on the NAS first.** Phone-width items are marked (phone).

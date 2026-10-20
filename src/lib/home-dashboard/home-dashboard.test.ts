@@ -4,6 +4,7 @@ import {
   homeWidgetsToValue,
   isHomeWidgetVisible,
   moveHomeWidget,
+  reorderHomeWidget,
   resolveHomeWidgets,
   toggleHomeWidget,
   visibleHomeWidgets,
@@ -144,6 +145,21 @@ describe("homeWidgetsToValue", () => {
 
   it("rejects an unknown id", () => {
     expect(() => homeWidgetsSchema.parse([{ id: "notACard", visible: true }])).toThrow();
+  });
+});
+
+describe("reorderHomeWidget", () => {
+  it("moves a card onto another's position and carries its visibility", () => {
+    const hidden = toggleHomeWidget(defaultHomeWidgets(), "todo");
+    const moved = reorderHomeWidget(hidden, "todo", "carousel");
+    expect(moved[0]).toEqual({ id: "todo", visible: false });
+    expect(moved).toHaveLength(HOME_WIDGET_IDS.length);
+  });
+
+  it("returns the list unchanged for the same card or an unknown id", () => {
+    const widgets = defaultHomeWidgets();
+    expect(reorderHomeWidget(widgets, "carousel", "carousel")).toBe(widgets);
+    expect(reorderHomeWidget(widgets, "carousel", "nope" as never)).toBe(widgets);
   });
 });
 

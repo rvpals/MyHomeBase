@@ -26,6 +26,10 @@ export const JOURNAL_SECTIONS = [
   "configuration",
   "templates",
   "metadata",
+  // Slug is "home-screen", not "main": `main` is the module root and is already
+  // labelled "Home screen". This one is the editor for that screen's cards, so its
+  // label says "layout"; the slug derives `journal_section_home_screen`.
+  "home-screen",
 ] as const;
 
 export type JournalSection = (typeof JOURNAL_SECTIONS)[number];
@@ -48,8 +52,9 @@ export const JOURNAL_SECTION_INFO: Record<JournalSection, { label: string; descr
   },
   entries: {
     label: "Entries",
-    // Two tabs since the Log section was folded in here: Main (everything
-    // written) and Log (the logged activities).
+    // Four tabs: All Entries (everything written), Unlocked Entries,
+    // Substantial Entries (bodies over ten words) and Log (the logged
+    // activities, folded in when that section was retired).
     description: "Browse and manage all journal entries, written and logged.",
   },
   calendar: {
@@ -103,6 +108,10 @@ export const JOURNAL_SECTION_INFO: Record<JournalSection, { label: string; descr
     label: "Meta Data",
     description: "Categories and tags, and the icons that stand for them.",
   },
+  "home-screen": {
+    label: "Home screen layout",
+    description: "Choose which cards your home screen shows, and in what order.",
+  },
 };
 
 /**
@@ -120,6 +129,7 @@ export const JOURNAL_CONFIGURATION_SECTIONS: readonly JournalSection[] = [
   "configuration",
   "templates",
   "metadata",
+  "home-screen",
 ];
 
 /**
@@ -183,6 +193,9 @@ export const JOURNAL_SECTION_ICONS: Record<JournalSection, string> = {
   // categories, which is the same idea this section edits, not a collision with
   // another destination.
   metadata: "shapes",
+  // `home` — the screen it configures. Free as a Journal section glyph: `main`, the
+  // screen itself, wears `grid`.
+  "home-screen": "home",
 };
 
 const BASE_PATH = "/modules/journal";

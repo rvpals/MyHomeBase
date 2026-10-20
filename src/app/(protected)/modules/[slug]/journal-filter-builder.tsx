@@ -262,6 +262,7 @@ export function JournalFilterBuilder({
   existing,
   categoryOptions,
   tagOptions,
+  filterCategoryOptions,
   onClose,
   onSave,
 }: {
@@ -269,10 +270,23 @@ export function JournalFilterBuilder({
   existing?: SavedJournalFilter;
   categoryOptions: string[];
   tagOptions: string[];
+  /**
+   * The categories other saved filters already use — the datalist's suggestions.
+   * Distinct from `categoryOptions`, which is the *entry* category list: a filter's
+   * category is a free-text label with no catalog behind it (migration 0152).
+   */
+  filterCategoryOptions: string[];
   onClose: () => void;
-  onSave: (name: string, filter: JournalFilter) => Promise<void>;
+  onSave: (
+    name: string,
+    filter: JournalFilter,
+    category: string,
+    description: string,
+  ) => Promise<void>;
 }) {
   const [name, setName] = useState(existing?.name ?? "");
+  const [category, setCategory] = useState(existing?.category ?? "");
+  const [description, setDescription] = useState(existing?.description ?? "");
   const [filter, setFilter] = useState<JournalFilter>(existing?.filter ?? emptyFilter());
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -324,7 +338,7 @@ export function JournalFilterBuilder({
     }
     setIsBusy(true);
     try {
-      await onSave(name.trim(), filter);
+      await onSave(name.trim(), filter, category.trim(), description.trim());
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Failed to save the filter.");
     } finally {
@@ -367,6 +381,47 @@ export function JournalFilterBuilder({
             Saving with an existing name replaces that filter.
           </span>
         </label>
+
+        {/* Category and description sit together, below the name: both describe
+            the filter rather than what it matches, so they belong above the
+            condition groups and apart from them. Two columns on a wide screen,
+            stacked on a phone. */}
+        <div className="grid grid-cols-2 gap-3 max-lg:grid-cols-1">
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-ink">Category</span>
+            {/* A `datalist`, not a `<select>` plus an "other" box: one control that
+                offers every category already in use and takes a new one typed
+                straight in. Same pattern as the recipe editor's category field. */}
+            <input
+              value={category}
+              onChange={(event) => setCategory(event.target.value)}
+              list="journal-filter-categories"
+              placeholder="CAR, HOUSE…"
+              className={INPUT_CLASS}
+            />
+            <datalist id="journal-filter-categories">
+              {filterCategoryOptions.map((option) => (
+                <option key={option} value={option} />
+              ))}
+            </datalist>
+            <span className="mt-1 block text-xs text-muted">
+              Groups this filter under &ldquo;by category first&rdquo;. Leave blank for none.
+            </span>
+          </label>
+
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-ink">Description</span>
+            <input
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="What this filter is for"
+              className={INPUT_CLASS}
+            />
+            <span className="mt-1 block text-xs text-muted">
+              Shown beside the filter when it&rsquo;s selected. Optional.
+            </span>
+          </label>
+        </div>
 
         {filter.groups.length > 1 && (
           <JoinToggle

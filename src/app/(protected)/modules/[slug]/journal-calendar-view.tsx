@@ -46,7 +46,7 @@ import {
   type JournalDateFormat,
   type JournalEntry,
 } from "@/lib/journal";
-import { adjacentEntryDateAction } from "./journal-actions";
+import { adjacentEntryDateAction, recycleJournalEntryAction } from "./journal-actions";
 import { JournalPhotosHost } from "./journal-photos-host";
 import { TaxonomyChipRow } from "@/components/taxonomy-icon";
 import { journalEntriesFilterHref } from "./journal-shared";
@@ -1001,6 +1001,36 @@ function DayEntriesPanel({
   onOpenEntry: (id: number) => void;
   onClose: () => void;
 }) {
+  const router = useRouter();
+  /** The row whose Delete was pressed, if the confirmation is open. */
+  const [deleting, setDeleting] = useState<JournalEntry | undefined>(undefined);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  /**
+   * Recycles the entry, then re-reads the period from the server.
+   *
+   * `router.refresh()` rather than dropping the row from a local copy: this
+   * view holds no entry state of its own — the grid cells, the counts in the
+   * toolbar and this list are all derived from the `entries` prop — so patching
+   * one list would leave the deleted entry's title sitting in its calendar cell.
+   */
+  async function handleDelete(entry: JournalEntry) {
+    setIsDeleting(true);
+    setError(undefined);
+    try {
+      const result = await recycleJournalEntryAction(entry.id);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setDeleting(undefined);
+      router.refresh();
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
   return (
     <div className="rounded-xl border border-line bg-paper-raised p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -1026,14 +1056,19 @@ function DayEntriesPanel({
         </div>
       </div>
 
+      {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+
       {entries.length > 0 ? (
         <ul className="mt-3 flex flex-col divide-y divide-line border-t border-line">
           {entries.map((entry) => (
-            <li key={entry.id}>
+            <li key={entry.id} className="flex items-center gap-2">
+              {/* The row's clickable region and Delete are siblings, not nested:
+                  a <button> inside a <button> is invalid HTML and the inner one
+                  would not reliably receive the click. */}
               <button
                 type="button"
                 onClick={() => onOpenEntry(entry.id)}
-                className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-1 py-2.5 text-left hover:bg-paper max-lg:py-3"
+                className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 px-1 py-2.5 text-left hover:bg-paper max-lg:py-3"
               >
                 <span className="w-12 shrink-0 font-mono text-xs text-muted">
                   {entry.time === "" ? "—" : entry.time.slice(0, 5)}
@@ -1071,10 +1106,79 @@ function DayEntriesPanel({
                   ]}
                 />
               </button>
+              {/* A labelled button, not a bare trash glyph: row actions stay as
+                  they are per coding-guide.md, and a word needs no icon slot.
+                  Enabled for a locked entry — recycling keeps the lock, unlike
+                  the entry screen's hard delete, which refuses one. */}
+              <Button
+                size="sm"
+                variant="danger"
+                disabled={isDeleting}
+                onClick={() => {
+                  setError(undefined);
+                  setDeleting(entry);
+                }}
+                ariaLabel={`Delete the entry ${
+                  entry.isEncrypted || entry.title.trim() === "" ? "on this day" : entry.title
+                }`}
+              >
+                Delete
+              </Button>
             </li>
           ))}
         </ul>
       ) : null}
+
+      {deleting && (
+        <Modal
+          title="Delete this entry?"
+          // The title an encrypted entry can't show is replaced by the
+          // placeholder: naming the row is the point of this dialog, and a
+          // blank description would leave the reader guessing which one.
+          description={
+            deleting.isEncrypted
+              ? ENCRYPTED_TITLE_PLACEHOLDER
+              : deleting.title.trim() === ""
+                ? "(untitled)"
+                : deleting.title
+          }
+          isBusy={isDeleting}
+          onClose={() => setDeleting(undefined)}
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                disabled={isDeleting}
+                onClick={() => setDeleting(undefined)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                disabled={isDeleting}
+                onClick={() => void handleDelete(deleting)}
+              >
+                {isDeleting ? "Deleting…" : "Delete"}
+              </Button>
+            </>
+          }
+        >
+          <p className="text-sm text-ink">
+            {formatCalendarDayHeading(deleting.date)}
+            {deleting.time === "" ? "" : ` at ${deleting.time.slice(0, 5)}`}
+          </p>
+          <p className="mt-2 text-sm text-muted">
+            It moves to the recycle bin and can be restored from Data Management → Correct →
+            Recycled Entries.
+          </p>
+          {deleting.isLocked && (
+            <p className="mt-2 text-sm text-muted">
+              This entry is <span className="text-ink">locked</span>. It moves to the bin with the
+              lock intact, so restoring it brings it back locked.
+            </p>
+          )}
+        </Modal>
+      )}
     </div>
   );
 }

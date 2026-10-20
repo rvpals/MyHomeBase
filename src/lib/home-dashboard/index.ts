@@ -17,6 +17,7 @@ export {
   resolveHomeWidgets,
   homeWidgetsToValue,
   moveHomeWidget,
+  reorderHomeWidget,
   toggleHomeWidget,
   visibleHomeWidgets,
   isHomeWidgetVisible,

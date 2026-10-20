@@ -729,6 +729,47 @@ const MapPin: IconComponent = (props) => (
   </svg>
 );
 
+/* A thumbtack seen side-on: the flat head, the collar flaring down to the skirt, and
+   the needle below it. Journal's pinned-entry toggle.
+
+   Deliberately NOT `pin` (a map pin). That teardrop means a saved *place* and is drawn
+   on this same entry form by the location picker, so reusing it would make one glyph
+   mean two things on one screen.
+
+   A CLOTHESPIN WAS DRAWN FIRST AND REJECTED, which is worth recording so it isn't
+   retried: at 16px two parallel legs and a spring collapse into an "H" or an upside-down
+   "T", and the filled twin becomes a solid block with no peg left in it. Six peg
+   variants were rendered at 16/24/48 before this was abandoned — the metaphor is lovely
+   and simply does not survive icon size. An angled peg on a washing line was the best of
+   them and still failed below 24px.
+
+   THE SKIRT IS DELIBERATELY WIDE. A narrower flare (the first tack drawn) thins to
+   almost nothing at 16px and reads as a nail. The wide skirt is what keeps the tack
+   legible, and it is what makes the filled twin differ unmistakably from the outline. */
+const Pushpin: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    {/* The flat head, pressed by a thumb. */}
+    <path d="M7 3.6h10" />
+    {/* The collar down from the head, flaring out to the skirt. */}
+    <path d="M9.6 3.6v4.9L6 13.2h12L14.4 8.5V3.6" />
+    {/* The needle. */}
+    <path d="M12 13.4v7.2" />
+  </svg>
+);
+
+/* The filled twin of `Pushpin`, for the on state of the pinned toggle. Outline vs solid
+   carries the state, so the silhouette must stay identical — a different shape would
+   read as a different concept rather than the same one switched on. Only the body
+   fills; the head bar and the needle stay strokes, so the tack keeps its outline at
+   16px instead of becoming one lozenge. */
+const PushpinFilled: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <path d="M7 3.6h10" />
+    <path d="M9.6 3.6v4.9L6 13.2h12L14.4 8.5V3.6Z" fill="currentColor" />
+    <path d="M12 13.4v7.2" />
+  </svg>
+);
+
 // A folded paper map: three panels, the fold lines between them, and the
 // zig-zag top and bottom edges the folds make. Journal's Location Map -- many
 // places at once, which is the whole distinction from `pin`.
@@ -842,6 +883,8 @@ const TREE_ICONS = {
   "game-mahjong": GameMahjongMatch,
   "game-pacman": GamePacman,
   pin: MapPin,
+  pushpin: Pushpin,
+  "pushpin-filled": PushpinFilled,
   map: FoldedMap,
   recipe: ChefHat,
   receipt: Receipt,
@@ -924,6 +967,13 @@ const ALWAYS_CLASSIC = new Set<TreeIconName>([
   // that reads as decoration, which would quietly turn a warning into a badge.
   // It is also a button, not a place, so no icon slot points at it.
   "warning",
+  // The journal's pinned-entry toggle, on exactly the same rule as `star` and `lock`:
+  // a *state* the reader flips by hand, carried by outline vs solid at 16px beside an
+  // entry's title. A themed set redrawing one or both would lose that distinction — and
+  // a themed "pin" is very often a map pin, which is the collision this pair was drawn
+  // to avoid in the first place. A button, so no icon slot points at either.
+  "pushpin",
+  "pushpin-filled",
 ]);
 
 /**

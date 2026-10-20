@@ -405,8 +405,16 @@ function rewriteSavedFilters(
   for (const saved of repo.listFilters() as SavedJournalFilter[]) {
     const next = rewriteFilter(saved.filter, field, sources, target);
     if (!next) continue;
-    // saveFilter upserts by name, so this updates the row in place.
-    repo.saveFilter({ name: saved.name, filter: next });
+    // saveFilter upserts by name, so this updates the row in place. The category
+    // and description are carried through unchanged: this rewrite is about the
+    // *conditions* naming a merged taxonomy term, and re-saving without them
+    // would un-file and un-describe every filter a merge touched.
+    repo.saveFilter({
+      name: saved.name,
+      category: saved.category,
+      description: saved.description,
+      filter: next,
+    });
     rewritten += 1;
   }
   return rewritten;

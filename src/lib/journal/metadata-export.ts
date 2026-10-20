@@ -80,6 +80,13 @@ const metadataTemplateSchema = z.object({
 
 const metadataFilterSchema = z.object({
   name: z.string().min(1),
+  // Both default to '' so a bundle exported before migration 0152 still restores
+  // — it simply has no category or description to carry, which is the same state
+  // a filter saved back then was in. The format version is deliberately not
+  // bumped for this: an older reader ignores two unknown string fields, and a
+  // newer reader defaults them, so both directions already work.
+  category: z.string().trim().default(""),
+  description: z.string().trim().default(""),
   filter: journalFilterSchema,
 });
 
@@ -216,6 +223,8 @@ export function buildMetadataBundle(
 
   const filters = repo.listFilters().map((saved) => ({
     name: saved.name,
+    category: saved.category,
+    description: saved.description,
     filter: saved.filter,
   }));
 
@@ -475,8 +484,15 @@ export function applyMetadataImport(
   }
 
   for (const filter of bundle.filters) {
-    // `saveFilter` is itself an upsert by name, so no id is needed.
-    repo.saveFilter({ name: filter.name, filter: filter.filter });
+    // `saveFilter` is itself an upsert by name, so no id is needed. The category
+    // and description ride along: a restore that dropped them would quietly
+    // un-file every filter it touched.
+    repo.saveFilter({
+      name: filter.name,
+      category: filter.category,
+      description: filter.description,
+      filter: filter.filter,
+    });
   }
 
   return {

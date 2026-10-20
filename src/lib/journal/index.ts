@@ -182,6 +182,7 @@ export {
   searchEntries,
   findEntries,
   listFilters,
+  listFilterCategories,
   getFilter,
   saveFilter,
   deleteFilter,
@@ -233,6 +234,15 @@ export {
   withLockedCondition,
   type JournalLockScope,
 } from "./journal";
+// The Entries browser's "Substantial Entries" tab — entries whose body runs to
+// more than ten words. Not a filter-language field; see body-length.ts on why.
+export {
+  SUBSTANTIAL_MIN_WORDS,
+  buildBodyLengthSql,
+  countBodyWords,
+  isSubstantialBody,
+  type JournalBodyScope,
+} from "./body-length";
 // Which managed categories/tags no entry uses — the Meta Data section's
 // "Clean up" button and the breakdown its bulk Delete confirms with.
 export {
@@ -435,3 +445,28 @@ export {
   encryptEntryText,
   isEncryptedBlob,
 } from "./encryption";
+
+// The Journal home screen's per-reader card layout (Configuration -> Home screen layout).
+export {
+  JOURNAL_HOME_WIDGETS_KEY,
+  JOURNAL_HOME_WIDGET_IDS,
+  JOURNAL_HOME_WIDGET_INFO,
+  journalHomeWidgetsSchema,
+  defaultJournalHomeWidgets,
+  resolveJournalHomeWidgets,
+  journalHomeWidgetsToValue,
+  moveJournalHomeWidget,
+  reorderJournalHomeWidget,
+  toggleJournalHomeWidget,
+  visibleJournalHomeWidgets,
+  getJournalHomeWidgets,
+  saveJournalHomeWidgets,
+} from "./home-widgets";
+export type { JournalHomeWidgetId, JournalHomeWidgetPreference } from "./home-widgets";
+
+// The Pinned Entries card's read.
+export { PINNED_ENTRY_LIMIT, listPinnedEntries } from "./pinned-entries";
+export {
+  RECENTLY_EDITED_ENTRY_LIMIT,
+  listRecentlyEditedEntries,
+} from "./recently-edited";

@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { Button } from "@/components/button";
-import { isDuplicateLocation } from "@/lib/sys-locations";
+import { Modal } from "@/components/modal";
+import { findDuplicateLocationIndex, isDuplicateLocation } from "@/lib/sys-locations";
 import {
   createLibraryLocationAction,
   findLocationsAtPointAction,
@@ -73,6 +74,16 @@ export function JournalLocationPicker({
   // a row click *is* the add, so there is nothing to disable there, and one
   // mechanism for both tabs beats two.
   const [duplicateNotice, setDuplicateNotice] = useState<string | null>(null);
+  // A library pick that landed on a place already in the list, held until the
+  // reader says whether to overwrite. Only the library tab raises this: the
+  // incoming row carries a `savedLocationId` and the library's curated name and
+  // address, so replacing a hand-dropped pin with it is an upgrade. The map tab
+  // keeps the flat refusal, because going the other way would trade a library
+  // link for nothing.
+  const [pendingOverwrite, setPendingOverwrite] = useState<{
+    candidate: JournalLocationInput;
+    index: number;
+  } | null>(null);
   // Which rows have been pushed to the shared library this session, by index,
   // and which one is in flight. Index rather than id: an entry location has no
   // id until the entry is saved, and the list is short and stable while open.
@@ -106,19 +117,50 @@ export function JournalLocationPicker({
   }
 
   function addFromLibrary(location: JournalLocationInput) {
-    if (isDuplicateLocation(value, location)) {
-      setDuplicateNotice(
-        `${location.locationName || "That location"} is already on this entry.`,
-      );
+    // Which row it clashed with, not just whether — the dialog has to show the
+    // reader what they would be overwriting.
+    const clashIndex = findDuplicateLocationIndex(value, location);
+    if (clashIndex !== -1) {
+      setDuplicateNotice(null);
+      setPendingOverwrite({ candidate: location, index: clashIndex });
       return;
     }
     onChange([...value, location]);
     setDuplicateNotice(null);
   }
 
+  /**
+   * Replaces the clashing row with the library pick, in place.
+   *
+   * Spliced at the original index rather than removed-and-appended so the list
+   * does not reorder under the reader, and wholesale rather than field-by-field
+   * so what they confirmed in the dialog is exactly what they get — a merge
+   * that quietly kept the old street address would contradict the preview.
+   *
+   * `savedToLibrary` is re-keyed because it is indexed by position: the
+   * replaced row is no longer the thing that was pushed to the library, and a
+   * stale tick there would claim a place is saved when it is not.
+   */
+  function confirmOverwrite() {
+    if (!pendingOverwrite) return;
+    const { candidate, index } = pendingOverwrite;
+    onChange(value.map((existing, i) => (i === index ? candidate : existing)));
+    setSavedToLibrary((previous) => {
+      const next = new Set(previous);
+      next.delete(index);
+      return next;
+    });
+    setPendingOverwrite(null);
+    setDuplicateNotice(null);
+  }
+
   function removeLocation(index: number) {
     // Clears the notice too: the row it complained about may be the one going.
     setDuplicateNotice(null);
+    // And any held overwrite, whose `index` would otherwise point at whatever
+    // shifted into that slot. Unreachable while the dialog's scrim is up — kept
+    // so this stays correct if it ever stops being modal.
+    setPendingOverwrite(null);
     onChange(value.filter((_, i) => i !== index));
   }
 
@@ -228,6 +270,42 @@ export function JournalLocationPicker({
         />
       )}
 
+      {/* Raised when a library pick lands on a place already on the entry.
+          Both rows are shown in full because the replace is wholesale: the
+          street address and the name on the left are what gets dropped, and
+          that has to be visible before it happens, not discovered afterwards. */}
+      {pendingOverwrite && value[pendingOverwrite.index] && (
+        <Modal
+          title="Overwrite this location?"
+          description="This entry already has a location at the same spot. Replacing it keeps the library version, including its saved-location link."
+          size="sm"
+          onClose={() => setPendingOverwrite(null)}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setPendingOverwrite(null)}>
+                Cancel
+              </Button>
+              <Button onClick={confirmOverwrite}>Overwrite</Button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-3 text-sm">
+            <div>
+              <span className="block text-xs uppercase tracking-wide text-muted">
+                On this entry now
+              </span>
+              <LocationSummary location={value[pendingOverwrite.index]} />
+            </div>
+            <div>
+              <span className="block text-xs uppercase tracking-wide text-muted">
+                From the location database
+              </span>
+              <LocationSummary location={pendingOverwrite.candidate} />
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {/* The same editor the Location Manager uses, prefilled from the pin, so
           a place saved from an entry gets a name, a description and its labels
           rather than landing bare. It writes to the library only — the entry's
@@ -250,6 +328,30 @@ export function JournalLocationPicker({
           }
           actions={ENTRY_EDIT_LOCATION_ACTIONS}
         />
+      )}
+    </div>
+  );
+}
+
+/**
+ * One location rendered for the overwrite dialog's before/after pair.
+ *
+ * Local rather than shared: it exists to make two rows comparable at a glance
+ * inside this one dialog, and the list rows above have different needs (they
+ * carry the save and remove controls). If a third caller wants it, that is the
+ * point to give it a name and move it to `src/components/`.
+ */
+function LocationSummary({ location }: { location: JournalLocationInput }) {
+  return (
+    <div className="mt-1 rounded-md border border-line bg-paper px-3 py-2">
+      <span className="block text-ink">
+        {location.locationName || <span className="text-muted">(no name)</span>}
+      </span>
+      <span className="mt-0.5 block font-mono text-xs text-muted">
+        {formatCoords(location.latitude, location.longitude)}
+      </span>
+      {location.streetAddress && (
+        <span className="mt-0.5 block text-xs text-muted">{location.streetAddress}</span>
       )}
     </div>
   );

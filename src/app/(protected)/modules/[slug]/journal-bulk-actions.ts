@@ -50,12 +50,19 @@ const ENTRIES_LIMIT = 500;
  * list; the Unlocked Entries tab re-queries its filter **with the lock condition
  * re-applied**, so a row that was just locked from that tab leaves the list.
  *
- * `"unlocked"` is its own arm rather than a flag on `"main"` so the existing
- * `scope.tab === "log"` test and every present caller stay untouched.
+ * The Substantial Entries tab works the same way with the **body-length
+ * condition re-applied**: a bulk edit that trims a body below the word count
+ * drops the row from the list it hands back, which is the same honesty as a row
+ * edited out of a filter.
+ *
+ * `"unlocked"` and `"substantial"` are each their own arm rather than flags on
+ * `"main"` so the existing `scope.tab === "log"` test and every present caller
+ * stay untouched.
  */
 export type BulkRefreshScope =
   | { tab: "main"; filter: JournalFilter }
   | { tab: "unlocked"; filter: JournalFilter }
+  | { tab: "substantial"; filter: JournalFilter }
   | { tab: "log" };
 
 export interface BulkActionResult {
@@ -73,12 +80,13 @@ function toErrorResult(error: unknown, fallback: string): BulkActionResult {
 
 function refresh(scope: BulkRefreshScope): JournalEntry[] {
   if (scope.tab === "log") return listLogEntries(deps.journalRepo, ENTRIES_LIMIT);
-  // `"all"` for the Log scope — both grid tabs show every entry, logged
-  // activities included. The lock scope is what separates them, and it is
-  // re-applied here rather than assumed unchanged: Lock on the Unlocked tab
-  // writes rows that no longer belong in the list it hands back.
+  // `"all"` for the Log scope — all three grid tabs show every entry, logged
+  // activities included. The lock and body-length scopes are what separate
+  // them, and both are re-applied here rather than assumed unchanged: Lock on
+  // the Unlocked tab, and an edit that shortens a body on the Substantial tab,
+  // each write rows that no longer belong in the list being handed back.
   //
-  // Same two scopes findJournalEntriesAction applies, so the refreshed list
+  // Same three scopes findJournalEntriesAction applies, so the refreshed list
   // matches what a filter change would have produced.
   return findEntries(
     deps.journalRepo,
@@ -87,6 +95,7 @@ function refresh(scope: BulkRefreshScope): JournalEntry[] {
       scope.tab === "unlocked" ? "unlocked" : "all",
     ),
     ENTRIES_LIMIT,
+    scope.tab === "substantial" ? "substantial" : "all",
   );
 }
 

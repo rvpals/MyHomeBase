@@ -3,6 +3,7 @@ import {
   type DecodedImage,
   type ImageUploadInput,
 } from "@/lib/shared/image-upload";
+import type { JournalBodyScope } from "./body-length";
 import { decryptEntryText, encryptEntryText } from "./encryption";
 import { isSafeGeneratedIconSvg } from "./generated-icons";
 import { fetchIconSvg } from "./icon-fetch";
@@ -121,11 +122,16 @@ export function findEntries(
   repo: JournalRepository,
   filter: JournalFilter,
   limit = 200,
+  bodyScope: JournalBodyScope = "all",
 ): JournalEntry[] {
   if (!Number.isInteger(limit) || limit <= 0) {
     throw new Error(`findEntries: limit must be a positive integer, got ${limit}.`);
   }
-  return repo.findEntries(journalFilterSchema.parse(filter), limit);
+  // `bodyScope` is passed straight through rather than folded into `filter`:
+  // the parse below drops any condition outside the schema's allowlist, so a
+  // body-length condition inside the filter would vanish here without a word.
+  // See the note at the top of body-length.ts.
+  return repo.findEntries(journalFilterSchema.parse(filter), limit, bodyScope);
 }
 
 /**
@@ -305,6 +311,15 @@ export function listFilters(repo: JournalRepository): SavedJournalFilter[] {
 
 export function getFilter(repo: JournalRepository, id: number): SavedJournalFilter | undefined {
   return repo.getFilterById(id);
+}
+
+/**
+ * The categories saved filters are currently labelled with — the grouped mode's
+ * option list and the builder's suggestions. No catalog backs this, so it is
+ * exactly "what is in use right now".
+ */
+export function listFilterCategories(repo: JournalRepository): string[] {
+  return repo.listFilterCategories();
 }
 
 /** Saves a named filter, replacing any existing one with the same name. */

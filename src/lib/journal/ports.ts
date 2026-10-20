@@ -21,6 +21,7 @@ import type {
   RecycledJournalEntry,
   SavedJournalFilter,
 } from "./types";
+import type { JournalBodyScope } from "./body-length";
 import type { DecodedImage } from "@/lib/shared/image-upload";
 
 /**
@@ -146,8 +147,14 @@ export interface JournalRepository {
    * Entries matching a structured filter, newest journal date first, up to
    * `limit`. An empty filter (nothing that narrows) returns the same thing
    * `listRecentEntries` would.
+   *
+   * `bodyScope` narrows further, to entries whose body runs past a word count —
+   * the Entries browser's "Substantial Entries" tab. It is a separate argument
+   * rather than a condition inside `filter` because the filter schema drops
+   * fields outside its allowlist; see the note at the top of body-length.ts.
+   * Omitted or `"all"` adds nothing.
    */
-  findEntries(filter: JournalFilter, limit: number): JournalEntry[];
+  findEntries(filter: JournalFilter, limit: number, bodyScope?: JournalBodyScope): JournalEntry[];
   getEntryById(id: number): JournalEntry | undefined;
   /**
    * The entries immediately older and newer than `entryId` in (entry_date,
@@ -292,6 +299,13 @@ export interface JournalRepository {
   // Saved entry filters for the Entries browser. `saveFilter` is an upsert by
   // name (UNIQUE (name) — migration 0043), so there's no separate create/update.
   listFilters(): SavedJournalFilter[];
+  /**
+   * The distinct categories in use, for the Filtering card's grouped mode and
+   * the builder's datalist. Derived from the filters themselves — there is no
+   * catalog table (migration 0152) — so a category stops existing when the last
+   * filter carrying it is deleted or re-labelled.
+   */
+  listFilterCategories(): string[];
   getFilterById(id: number): SavedJournalFilter | undefined;
   saveFilter(input: JournalFilterWriteData): SavedJournalFilter;
   deleteFilter(id: number): void;

@@ -254,6 +254,14 @@ export interface JournalFilter {
 export interface SavedJournalFilter {
   id: number;
   name: string;
+  /**
+   * Free-text label the Filtering card groups by, e.g. "CAR". `''` means
+   * uncategorised, which every filter saved before migration 0152 is. There is
+   * no catalog table behind this — see that migration's log for why.
+   */
+  category: string;
+  /** The reader's own words about what the filter is for. `''` means none. */
+  description: string;
   filter: JournalFilter;
   createdAt: string;
   updatedAt: string;

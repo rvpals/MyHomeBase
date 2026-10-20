@@ -113,6 +113,23 @@ export const TREE_ICON_NAMES = [
   // you", and the lock is a toggle the reader sets by hand. A *state* glyph, so
   // it is in `ALWAYS_CLASSIC` and no icon slot points at it.
   "lock",
+  // Journal's pinned-entry toggle. A thumbtack seen side-on, filled and unfilled,
+  // exactly as `star` and `heart` are.
+  //
+  // Deliberately NOT `pin`: that is a map pin, the mark for a saved *place*, and it
+  // already appears on the very same entry form in the location picker. One glyph
+  // meaning both "this entry is kept" and "this is where it happened", on one screen,
+  // is the collision this pair exists to avoid. Also not `star`/`heart`: both are
+  // taken by favourites elsewhere, and the stored column, the filter (`pinned = yes`)
+  // and the button all say *pinned*.
+  //
+  // A clothespin was drawn first and rejected — at 16px a peg collapses into an "H",
+  // and filled it becomes a solid block. See the glyph comment in `tree-icons.tsx`.
+  //
+  // A *state* glyph carried by outline vs solid, so both are in `ALWAYS_CLASSIC` and
+  // no icon slot points at either.
+  "pushpin",
+  "pushpin-filled",
 ] as const;
 
 /** One concept `TreeIcon` can draw. */

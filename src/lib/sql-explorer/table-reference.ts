@@ -88,7 +88,7 @@ const GROUPS: TableReferenceGroup[] = [
       ["jrn_entry_categories", "Join table pairing an entry with a category."],
       ["jrn_entry_tags", "Join table pairing an entry with a tag."],
       ["jrn_entry_locations", "GPS coordinates attached to an entry, with an optional readable place name."],
-      ["jrn_saved_filters", "Named, reusable filters for the entry browser. The condition tree is JSON, compiled to a WHERE clause in code."],
+      ["jrn_saved_filters", "Named, reusable filters for the entry browser. The condition tree is JSON, compiled to a WHERE clause in code. `category_name` is a free-text label the Entries screen groups the filter list by ('' = uncategorised); there is no catalog table behind it."],
       ["jrn_prefill_templates", "Named sets of starting values for a new entry, each field either a literal or \"now\"."],
       ["jrn_recycled_entries", "Recycle bin for deleted journal entries (0079). entry_id remembers the id it had, so a restore can go back where it was."],
       ["jrn_recycled_entry_categories", "Categories of a recycled entry, keyed on the bin row so a restore is lossless."],

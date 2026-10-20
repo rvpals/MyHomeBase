@@ -18,10 +18,14 @@ import {
   listEnabledPrefillTemplates,
   listPrefillSuggestions,
   listPrefillTemplates,
+  listPinnedEntries,
   listRecentEntries,
+  listRecentlyEditedEntries,
   listTags,
   listTopCategories,
   listTopTags,
+  getJournalHomeWidgets,
+  visibleJournalHomeWidgets,
   topWords,
   resolveJournalPreferences,
   type JournalPrefillField,
@@ -44,6 +48,7 @@ import {
 import { listModuleSettingsFor } from "@/lib/module-settings";
 import { getModuleBySlug } from "@/lib/modules";
 import { deps } from "@/lib/wiring";
+import { requireUser } from "../../require-access";
 import { JOURNAL_SECTION_INFO, type JournalSection } from "./journal-sections";
 import { JournalCalendarPanel } from "./journal-calendar-panel";
 import { JournalEntriesPanel } from "./journal-entries-panel";
@@ -61,6 +66,7 @@ import {
   JournalMetadataBackupButton,
   JournalMetadataRestoreCard,
 } from "./journal-metadata-transfer-view";
+import { JournalHomeScreenView } from "./journal-home-screen-view";
 import { JournalNewEntryView } from "./journal-new-entry-view";
 import { JournalPreferencesView } from "./journal-preferences-view";
 import { JournalReportEditor } from "./journal-report-editor";
@@ -81,6 +87,7 @@ const TOP_WORD_LIMIT = 10;
 function SectionBody({
   section,
   isAdmin,
+  userId,
   filterQuery,
   requestedTab,
   calendarScope,
@@ -91,6 +98,8 @@ function SectionBody({
 }: {
   section: JournalSection;
   isAdmin: boolean;
+  /** The signed-in reader — whose home screen layout the main and home-screen sections read. */
+  userId: number;
   /** From ?filter= — an ad-hoc filter query for the Entries section. */
   filterQuery?: string;
   /** From ?tab= — which Entries tab to open on: "main", "unlocked" or "log". */
@@ -119,6 +128,10 @@ function SectionBody({
       const homePreferences = resolveJournalPreferences(
         homeModule ? listModuleSettingsFor(deps.moduleSettingsRepo, homeModule.id) : [],
       );
+      // Read once and reused below, so the Pinned Entries card can skip its own query
+      // when the reader has switched that card off — the same rule the app home screen
+      // applies to its cards.
+      const homeWidgets = getJournalHomeWidgets(deps.userPreferencesRepo, userId);
       return (
         <JournalView
           entries={listRecentEntries(deps.journalRepo, RECENT_JOURNAL_ENTRY_LIMIT)}
@@ -131,12 +144,27 @@ function SectionBody({
           topTags={listTopTags(deps.journalRepo, TOP_TAXONOMY_LIMIT)}
           topCategories={listTopCategories(deps.journalRepo, TOP_TAXONOMY_LIMIT)}
           yearAndMonthCounts={countEntriesByYearAndMonth(deps.journalRepo)}
+          pinnedEntries={
+            visibleJournalHomeWidgets(homeWidgets).includes("pinnedAndRecentlyEdited")
+              ? listPinnedEntries(deps.journalRepo)
+              : []
+          }
+          recentlyEditedEntries={
+            // Both tabs live in one card, so one visibility check gates both reads.
+            visibleJournalHomeWidgets(homeWidgets).includes("pinnedAndRecentlyEdited")
+              ? listRecentlyEditedEntries(deps.journalRepo)
+              : []
+          }
           categoryIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("category", categories))}
           tagIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("tag", tags))}
           canRunSql={isAdmin}
+          widgets={homeWidgets}
         />
       );
     }
+
+    case "home-screen":
+      return <JournalHomeScreenView widgets={getJournalHomeWidgets(deps.userPreferencesRepo, userId)} />;
 
     case "new-entry": {
       // The form needs the managed category and tag names for its dropdowns, the
@@ -413,6 +441,7 @@ export async function JournalSection({
   // Defensive: an unknown section would otherwise crash on info.label. The route
   // already validates, so this only catches a future caller getting it wrong.
   const info = JOURNAL_SECTION_INFO[section] ?? JOURNAL_SECTION_INFO.main;
+  const currentUser = await requireUser();
 
   return (
     // The two-tier shell: a module rail, a section panel and a utility header,
@@ -448,6 +477,7 @@ export async function JournalSection({
         <SectionBody
           section={section}
           isAdmin={isAdmin}
+          userId={currentUser.id}
           filterQuery={filterQuery}
           requestedTab={requestedTab}
           calendarScope={calendarScope}
