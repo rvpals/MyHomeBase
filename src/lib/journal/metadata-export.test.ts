@@ -203,6 +203,14 @@ const PREFERENCES: JournalPreferences = {
   // Likewise not the default.
   reviewBeforeCalendarImport: true,
   excludedWords: [],
+  // Set, and deliberately not null, so the export assertion proves the colour
+  // is carried. The texture pointer stays null: it is machine-specific and is
+  // not part of a metadata bundle at all.
+  contentTextColor: "#1A2B3C",
+  contentTextureId: null,
+  // Neither the pointer nor its strength is part of a bundle: the strength
+  // only means anything alongside a picture, and the picture doesn't travel.
+  contentTextureOpacity: 0.1,
 };
 
 function bundleOf(overrides: Partial<JournalMetadataBundle> = {}): JournalMetadataBundle {
@@ -259,6 +267,7 @@ describe("buildMetadataBundle", () => {
       photoRoot: "//NAS_DS223/photos",
       handwritingSize: "2xl",
       reviewBeforeCalendarImport: true,
+      contentTextColor: "#1A2B3C",
     });
   });
 
@@ -657,10 +666,68 @@ describe("metadataPreferenceEntries", () => {
       { key: "temperature_unit", value: "celsius" },
       { key: "handwriting_size", value: "2xl" },
       { key: "review_before_calendar_import", value: "true" },
+      { key: "content_text_color", value: "#1A2B3C" },
       { key: "default_latitude", value: "40.7128" },
       { key: "default_longitude", value: "-74.006" },
       { key: "default_location_name", value: "New York" },
     ]);
+  });
+
+  it("restores the content text colour, but never the texture pointer", () => {
+    const entries = metadataPreferenceEntries(
+      bundleOf({
+        preferences: {
+          defaultLocation: null,
+          temperatureUnit: "celsius",
+          photoRoot: "",
+          handwritingSize: "xl",
+          reviewBeforeCalendarImport: false,
+          contentTextColor: "#ABCDEF",
+        },
+      }),
+    );
+
+    // The colour travels: it is a reading preference, like the size.
+    expect(entries).toContainEqual({ key: "content_text_color", value: "#ABCDEF" });
+    // The pointer does not, and there is no bundle field for it to come from —
+    // it is a row id in *this* install's texture library, so restoring it
+    // elsewhere would select an unrelated picture. Same rule as the photo root.
+    expect(entries.map((entry) => entry.key)).not.toContain("content_texture_id");
+    // Nor its strength, which only means something alongside a picture.
+    expect(entries.map((entry) => entry.key)).not.toContain("content_texture_opacity");
+  });
+
+  it("omits the colour row when the bundle has none, rather than writing a blank", () => {
+    // A bundle written before the colour existed. The schema has to accept it,
+    // and the restore has to leave this machine's own choice alone rather than
+    // clearing it — the additive rule the rest of the restore follows.
+    const parsed = journalMetadataBundleSchema.parse({
+      format: JOURNAL_METADATA_FORMAT,
+      version: JOURNAL_METADATA_FORMAT_VERSION,
+      exportedAt: new Date().toISOString(),
+      preferences: { defaultLocation: null, temperatureUnit: "celsius", photoRoot: "" },
+    });
+    const entries = metadataPreferenceEntries(parsed);
+    expect(entries.map((entry) => entry.key)).not.toContain("content_text_color");
+    expect(entries.every((entry) => entry.value !== "")).toBe(true);
+  });
+
+  it("rejects a bundle whose content colour is not #RRGGBB", () => {
+    // The value reaches the DOM as a CSS colour, so a hand-edited bundle must
+    // fail the parse rather than restore something nobody chose.
+    expect(() =>
+      journalMetadataBundleSchema.parse({
+        format: JOURNAL_METADATA_FORMAT,
+        version: JOURNAL_METADATA_FORMAT_VERSION,
+        exportedAt: new Date().toISOString(),
+        preferences: {
+          defaultLocation: null,
+          temperatureUnit: "celsius",
+          photoRoot: "",
+          contentTextColor: "red",
+        },
+      }),
+    ).toThrow();
   });
 
   it("omits a blank location name rather than storing an empty value", () => {

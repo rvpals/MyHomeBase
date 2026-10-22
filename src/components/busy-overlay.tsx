@@ -23,6 +23,7 @@
 // owns the busy flag, because the caller is the one awaiting the work.
 
 import { type ReactNode } from "react";
+import { Progress3D } from "./progress-3d";
 
 /** How heavily the screen is dimmed. */
 type Tone = "default" | "subtle";
@@ -37,6 +38,30 @@ export interface BusyOverlayProps {
    * — "Don't close this window". Omit when there is nothing to warn about.
    */
   detail?: ReactNode;
+  /**
+   * Shows a progress bar under the message.
+   *
+   * `"indeterminate"` is the common case here and the honest one for most work this
+   * overlay covers: a server action returns once, so a caller awaiting one knows the
+   * job is running but cannot know how far along it is. A sweeping bar says "still
+   * working" where a spinner alone can read as a stalled page on a job that runs for a
+   * minute.
+   *
+   * Pass `{ value, max }` only when something genuinely counts the work -- a client-side
+   * loop, or a polled run row. Inventing a fraction the caller cannot measure would be
+   * worse than no bar.
+   */
+  progress?: "indeterminate" | { value: number; max: number };
+  /**
+   * Lets the reader stop the work.
+   *
+   * Only offer it when pressing it ACTUALLY STOPS SOMETHING -- a loop the client drives,
+   * or a chunked series of requests. A button that merely hides the overlay while the
+   * server keeps working is worse than none: it claims a power the page does not have.
+   */
+  onCancel?: () => void;
+  /** The cancel button's label. Defaults to "Cancel". */
+  cancelLabel?: string;
   /** `subtle` dims less, when the work is quick enough that a heavy scrim jars. */
   tone?: Tone;
   /** Caller-supplied classes, merged last so they win. */
@@ -55,6 +80,9 @@ export function BusyOverlay({
   isBusy,
   message,
   detail,
+  progress,
+  onCancel,
+  cancelLabel = "Cancel",
   tone = "default",
   className = "",
 }: BusyOverlayProps) {
@@ -79,7 +107,30 @@ export function BusyOverlay({
       <div className="mx-4 flex max-w-sm flex-col items-center gap-3 rounded-xl border border-line bg-paper px-6 py-5 shadow-lg">
         <Spinner />
         <p className="text-center text-sm font-medium text-ink">{message}</p>
+
+        {/* Full width of the card, so it reads as the job's own bar rather than a
+            decoration beside the spinner. */}
+        {progress !== undefined && (
+          <Progress3D
+            value={progress === "indeterminate" ? undefined : progress.value}
+            max={progress === "indeterminate" ? undefined : progress.max}
+            size="sm"
+            ariaLabel={message}
+            className="w-full"
+          />
+        )}
+
         {detail && <p className="text-center text-xs text-muted">{detail}</p>}
+
+        {onCancel !== undefined && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="mt-1 rounded-full border border-line bg-paper-raised px-4 py-1.5 text-sm font-semibold text-ink transition-colors hover:bg-paper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+          >
+            {cancelLabel}
+          </button>
+        )}
       </div>
     </div>
   );

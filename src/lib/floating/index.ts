@@ -18,7 +18,24 @@ export {
   puckCornerKey,
   puckCornerKeyFor,
 } from "./corners";
-export { enabledFloatingSchema, type EnabledFloatingInput } from "./schema";
+export {
+  enabledFloatingSchema,
+  floatingPositionSchema,
+  floatingPositionResetSchema,
+  type EnabledFloatingInput,
+  type FloatingPositionInput,
+  type FloatingPositionResetInput,
+} from "./schema";
+export {
+  FLOATING_POSITIONS_PREFERENCE_KEY,
+  KEEP_PUCK_VISIBLE,
+  parsePuckPositions,
+  serializePuckPositions,
+  setPuckPosition,
+  clearPuckPosition,
+  clampPuckPosition,
+  resolvePuckPositions,
+} from "./position";
 export {
   resolvePuckSlots,
   minimizeState,
@@ -39,4 +56,5 @@ export type {
   PuckSlot,
   PuckCorner,
   PuckCornerInfo,
+  PuckPosition,
 } from "./types";

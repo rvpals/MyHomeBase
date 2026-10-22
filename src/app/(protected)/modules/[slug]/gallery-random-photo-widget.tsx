@@ -26,6 +26,7 @@ import {
   listAllPhotosInFolderAction,
   readPhotoDetailsAction,
 } from "../../photos-viewer-actions";
+import { cullGalleryPhotosAction } from "./gallery-culling-actions";
 import {
   drawRandomPhotoAction,
   listFavPhotosAction,
@@ -480,6 +481,9 @@ export function RandomPhotoWidget({
             initialPhotoPath={pick.relativePath}
             folderLabel={pick.folderName}
             onListFolder={listAllPhotosInFolderAction}
+            // Folder mode only: the single-photo form below has one picture, and
+            // culling a set of one would answer nothing.
+            onCull={cullGalleryPhotosAction}
             photoUrl={photoUrl}
             onPhotoDetails={readPhotoDetailsAction}
             isFavorite={isPhotoFavorited}

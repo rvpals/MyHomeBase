@@ -36,6 +36,7 @@ import { listScheduledJobsCommand } from "./list-scheduled-jobs";
 import { listUsersCommand } from "./list-users";
 import { magicPlaylistCommand } from "./magic-playlist";
 import { marketIndexesCommand } from "./market-indexes";
+import { cullingCommand } from "./culling";
 import { photoMagicCommand } from "./photo-magic";
 import { playQueueCommand } from "./play-queue";
 import { musicLibraryCommand, scanMusicCommand } from "./scan-music";
@@ -126,6 +127,7 @@ const commands: Record<string, Command> = {
   "music-library": musicLibraryCommand,
   "magic-playlist": magicPlaylistCommand,
   "photo-magic": photoMagicCommand,
+  culling: cullingCommand,
   "play-queue": playQueueCommand,
   "tax-lots": taxLotsCommand,
   "browse-sqlite": browseSqliteCommand,

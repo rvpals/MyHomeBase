@@ -13,6 +13,7 @@
 // heading every other journal section's body has.
 
 import { CollapsibleCard } from "@/components/collapsible-card";
+import type { DashboardTextureItem } from "@/lib/dashboard-texture";
 import type {
   JournalPreferences,
   JournalPrefillTemplate,
@@ -23,6 +24,7 @@ export function JournalNewEntryView({
   categoryOptions,
   tagOptions,
   preferences,
+  contentTextures = [],
   prefillTemplates = [],
   locationCategoryOptions = [],
   locationTagOptions = [],
@@ -30,6 +32,8 @@ export function JournalNewEntryView({
   categoryOptions: string[];
   tagOptions: string[];
   preferences: JournalPreferences;
+  /** The app texture library, so the Content field's chosen picture resolves. */
+  contentTextures?: DashboardTextureItem[];
   /** Enabled prefill templates, for the form's picker. */
   prefillTemplates?: JournalPrefillTemplate[];
   /** The location library's taxonomy, for the picker's library tab. */
@@ -45,6 +49,7 @@ export function JournalNewEntryView({
         categoryOptions={categoryOptions}
         tagOptions={tagOptions}
         preferences={preferences}
+        contentTextures={contentTextures}
         prefillTemplates={prefillTemplates}
         locationCategoryOptions={locationCategoryOptions}
         locationTagOptions={locationTagOptions}

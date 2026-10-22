@@ -145,10 +145,11 @@ cpSync(path.join(ROOT, ".next", "static"), path.join(OUT, ".next", "static"), {
 if (existsSync(path.join(ROOT, "public"))) {
   cpSync(path.join(ROOT, "public"), path.join(OUT, "public"), { recursive: true });
 }
-// Needed on the NAS: migrations to apply, and the changelog the About page reads
-// from process.cwd().
+// Needed on the NAS: migrations to apply, and the two markdown documents the About
+// page reads from process.cwd() -- the changelog and the feature catalogue.
 cpSync(path.join(ROOT, "migrations"), path.join(OUT, "migrations"), { recursive: true });
 cpSync(path.join(ROOT, "CHANGE_HISTORY.md"), path.join(OUT, "CHANGE_HISTORY.md"));
+cpSync(path.join(ROOT, "MyHomeBase_feature.md"), path.join(OUT, "MyHomeBase_feature.md"));
 
 step("Materialising symlinks");
 // `cpSync`'s `dereference` does not expand Windows *directory* symlinks, and

@@ -21,6 +21,8 @@ import { AccountView } from "./view";
 import {
   changeOwnPasswordAction,
   removeOwnAvatarAction,
+  resetToolbarPositionAction,
+  resetFloatingPositionAction,
   saveFloatingCornerAction,
   saveFloatingStateAction,
   saveOwnPreferencesAction,
@@ -76,6 +78,9 @@ export default async function AccountPage() {
           savePreferences: saveOwnPreferencesAction,
           saveFloatingState: saveFloatingStateAction,
           saveFloatingCorner: saveFloatingCornerAction,
+          // Assigned directly, never wrapped — a `"use server"` function crosses to
+          // a client component only as itself.
+          resetFloatingPosition: resetFloatingPositionAction,
         }}
         viewport={resolveViewport({ cookieValue: cookieStore.get(VIEWPORT_COOKIE)?.value })}
         viewportPinned={cookieStore.get(VIEWPORT_PINNED_COOKIE)?.value === "1"}
@@ -88,6 +93,10 @@ export default async function AccountPage() {
         // — see the prop's own note on `AccountView`.
         toolbars={toolbars}
         onToggleToolbar={saveToolbarVisibilityAction}
+        // "Put that floating bar back" (migration 0153). Assigned directly, never
+        // wrapped — a `"use server"` function crosses to a client component only
+        // as itself, which is why this action takes just the id.
+        onResetToolbarPosition={resetToolbarPositionAction}
         // Plain data across the boundary — the view is a client island and can't
         // be handed the module records themselves.
         modules={accessibleModules.map((appModule) => ({

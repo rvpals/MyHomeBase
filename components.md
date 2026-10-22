@@ -60,6 +60,7 @@ pattern instead of inventing one.
 | [`CalculatorKeypad`](#calculatorkeypad) | A calculator's display and keypad — scientific keys, optional keyboard capture | [src/components/calculator-keypad.tsx](src/components/calculator-keypad.tsx) | yes |
 | [`Comments`](#comments) | A note/instruction parked beside a feature, behind a small accent glyph | [src/components/comments.tsx](src/components/comments.tsx) | yes |
 | [`CollapsibleCard`](#collapsiblecard) | A titled section that expands/collapses | [src/components/collapsible-card.tsx](src/components/collapsible-card.tsx) | yes |
+| [`CullControls`](#cullcontrols) | **Photo culling controls** — the Cull button, keep-best-N, the keeper/set-aside counts and the dim toggle | [src/components/cull-controls.tsx](src/components/cull-controls.tsx) | yes |
 | [`DesktopWidgetsConfig`](#desktopwidgetsconfig) | **Choosing which cards a screen shows, and their order** — a row per widget with a drag handle and a visibility checkbox | [src/components/desktop-widgets-config.tsx](src/components/desktop-widgets-config.tsx) | yes |
 | [`FolderBrowser`](#folderbrowser) | **Picks a folder on the server** — modal, one level at a time | [src/components/folder-browser.tsx](src/components/folder-browser.tsx) | yes |
 | [`CustomizableCard`](#customizablecard) | **Redesign sandbox** — a clone of `CollapsibleCard`, free to restyle | [src/components/customizable-card.tsx](src/components/customizable-card.tsx) | yes |
@@ -77,7 +78,7 @@ pattern instead of inventing one.
 | [`NavStylePreview`](#navstylepreview) | A thumbnail of a phone navigation style, for the picker | [src/components/nav-style-preview.tsx](src/components/nav-style-preview.tsx) | no |
 | [`MusicPlayerProvider`](#musicplayerprovider) | Owns the single `<audio>` element and playback state — mount in the layout | [src/components/music-player-provider.tsx](src/components/music-player-provider.tsx) | yes |
 | [`MusicPlayerBar`](#musicplayerbar) | The persistent "what's playing" strip, above the section nav on every page | [src/components/music-player-bar.tsx](src/components/music-player-bar.tsx) | yes |
-| [`PersonalToolbars`](#personaltoolbars) | Admin-configured shortcut bars docked to a screen edge — **beside** the navigation, never replacing it | [src/components/personal-toolbar.tsx](src/components/personal-toolbar.tsx) | yes |
+| [`PersonalToolbars`](#personaltoolbars) | Admin-configured shortcut bars, docked to a screen edge or floating where the reader drags them — **beside** the navigation, never replacing it | [src/components/personal-toolbar.tsx](src/components/personal-toolbar.tsx) | yes |
 | [`MusicSleepTimer`](#musicsleeptimer) | **Stop the music after a while** — preset/custom duration picker plus a live countdown | [src/components/music-sleep-timer.tsx](src/components/music-sleep-timer.tsx) | yes |
 | [`SelectionBar`](#selectionbar) | Tick several rows, then send them somewhere (with `useSelection`) | [src/components/selection-bar.tsx](src/components/selection-bar.tsx) | yes |
 | [`ViewportSwitch`](#viewportswitch) | The global compact/full switch | [src/components/viewport-switch.tsx](src/components/viewport-switch.tsx) | yes |
@@ -118,6 +119,7 @@ pattern instead of inventing one.
 | [`LocationMap`](#locationmap) | **THE map** — one pin or many, read-only or pickable, on OpenStreetMap tiles | [src/components/location-map.tsx](src/components/location-map.tsx) | yes |
 | [`SavedLocationRow`](#savedlocationrow) | **One saved place**, as a dense row or a roomier card | [src/components/saved-location-row.tsx](src/components/saved-location-row.tsx) | yes |
 | [`LocationFilterChips`](#locationfilterchips) | Categories + Tags filter block above any list of saved places | [src/components/location-filter-chips.tsx](src/components/location-filter-chips.tsx) | yes |
+| [`FilterTile`](#filtertile) | **One category or tag** as a square, toggleable filter tile | [src/components/filter-tile.tsx](src/components/filter-tile.tsx) | yes |
 | [`LocationVenn`](#locationvenn) | **Saved places as a Venn diagram** — where they overlap by tag or category | [src/components/location-venn.tsx](src/components/location-venn.tsx) | yes |
 | [`LocationGraphView`](#locationgraphview) | **Saved places as a force-directed graph** — joined wherever they share a tag | [src/components/location-graph-view.tsx](src/components/location-graph-view.tsx) | yes |
 | [`PhotoOfTheDay`](#photooftheday--photoofthedaybutton) / `PhotoOfTheDayButton` | **Photos for a date or a date range**, as a closable dialog | [src/components/photo-of-the-day.tsx](src/components/photo-of-the-day.tsx) | yes |
@@ -270,6 +272,7 @@ enough that a changed button label isn't enough — a bulk edit, a merge, a batc
 | `isBusy` | `boolean` | — | Renders nothing at all when false. |
 | `message` | `string` | — | What is happening, e.g. `"Merging…"`. Short — it sits under a spinner. |
 | `detail?` | `ReactNode` | — | A second line for the consequence rather than the action. Omit when there's nothing to add. |
+| `progress?` | `"indeterminate" \| { value, max }` | — | A [`Progress3D`](#progress3d) under the message. Use `"indeterminate"` when awaiting a server action — it returns once, so nothing can count the work. Pass a fraction only when something genuinely measures it. |
 | `tone?` | `"default" \| "subtle"` | `"default"` | `subtle` dims less, when a heavy scrim would jar for quick work. |
 | `className?` | `string` | — | Merged last. |
 
@@ -322,6 +325,56 @@ the work must not be abandoned. This component covers the screen, swallows stray
 and says what is happening. A real navigation guard (intercepting `next/link` clicks and
 `beforeunload`) was built and then dropped: `beforeunload` can only raise the browser's
 own unworded dialog, and dimming turned out to cover the realistic case.
+---
+
+## CullControls
+
+**The photo-culling controls.** A `Cull` button, a keep-best-N box, the counts the cull
+produced, and a toggle that dims or undims what was set aside. Pure presentation — it
+holds no cull state and performs no cull; the view owns the request and the verdicts.
+
+- **Source:** [src/components/cull-controls.tsx](src/components/cull-controls.tsx)
+- **Import:** `import { CullControls } from "@/components/cull-controls";`
+- **Client component:** yes
+
+| Prop | Type | Default | Notes |
+|------|------|---------|-------|
+| `total` | `number` | — | How many photographs are on offer. Disables the button at 0. |
+| `isCulling` | `boolean` | — | Replaces the controls with a progress line. |
+| `keeperCount?` | `number` | — | How many survived. `undefined` before the first cull, which is what switches the label to "Cull". |
+| `requested?` / `examined?` | `number` | — | Asked about vs. actually scored; they differ only after truncation. |
+| `wasTruncated?` | `boolean` | `false` | Set exceeded the ceiling; draws the "first N of M" line. |
+| `unreadableCount?` | `number` | `0` | Files that could not be decoded. |
+| `isShowingCull` | `boolean` | — | Whether the grid is dimming right now. |
+| `error?` | `string` | — | A failed cull, shown in place. |
+| `keepCount?` | `number` | — | The best-N limit. `undefined` means duplicates-only. |
+| `onKeepCountChange` | `(n?: number) => void` | — | A blank box reports `undefined`. |
+| `onCull` / `onToggleCullView` | `() => void` | — | |
+| `className?` | `string` | — | Merged last. |
+
+**Used by:** the three Picture Gallery sections that hold a set of photographs —
+[gallery-magic-view.tsx](src/app/(protected)/modules/[slug]/gallery-magic-view.tsx),
+[gallery-albums-view.tsx](src/app/(protected)/modules/[slug]/gallery-albums-view.tsx)
+and
+[gallery-fav-photos-list.tsx](src/app/(protected)/modules/[slug]/gallery-fav-photos-list.tsx).
+All three pair it with a [`BusyOverlay`](#busyoverlay), because culling is the slowest
+thing those screens do.
+
+**Notes worth knowing before reusing it:**
+
+- **The dimming is NOT in here.** Each grid has its own markup, so each view applies
+  `opacity-40 grayscale` itself from the verdict map. Only the controls and the wording
+  are shared — that is what keeps three copies of "12 images · 5 keepers" from drifting.
+- **It is not used by the journal's photo dialog**, which renders its own inline version
+  in [photo-of-the-day.tsx](src/components/photo-of-the-day.tsx). That dialog is a
+  `Modal` with several folders open at once, each culling independently, so its controls
+  belong per folder row rather than once per screen. **The two are deliberately
+  different shapes — don't "fix" the inconsistency.**
+- **Keep-best-N is off by default.** Culling always groups duplicates; discarding on a
+  score threshold nobody chose is hard to trust, so a blank box means duplicates-only.
+- **Favorites dims the thumbnail cell, not the row.** `DataGrid` has no row-class hook
+  and it has 62 call sites — widening it for one screen was not worth it.
+
 
 ---
 
@@ -3164,7 +3217,12 @@ gives no way to explore a hue.
 ```
 
 **Used by:** the theme builder's nine colour tokens,
-[theme-builder.tsx](src/app/(protected)/admin/configuration/themes/theme-builder.tsx).
+[theme-builder.tsx](src/app/(protected)/admin/configuration/themes/theme-builder.tsx);
+Journal → Configuration → Preferences, for the entry form's content text colour
+([journal-preferences-view.tsx](src/app/(protected)/modules/[slug]/journal-preferences-view.tsx)) —
+which pairs it with a **"use the theme's text colour"** button, because
+`<input type="color">` has no empty state and a token-backed default therefore
+needs its own way back.
 
 **Notes:** the component **does not validate** — it raises whatever is typed and
 shows whatever `error` you hand back, so one schema governs the form and the
@@ -4643,9 +4701,14 @@ component to cover it would grow props nothing else wants.
 
 ## LocationFilterChips
 
-**The Categories + Tags filter block** that sits above every list of saved places. Renders
-two labelled rows of [`FilterChip`](#filterchip)s and owns the add-if-missing /
-drop-if-present toggle, which three screens had each written for themselves.
+**The Categories + Tags filter block** that sits above every list of saved places. Draws
+one **group box** (`.panel-inset` over `bg-paper`) holding two labelled sections of
+[`FilterTile`](#filtertile)s, and owns the add-if-missing / drop-if-present toggle, which
+three screens had each written for themselves.
+
+One box rather than two loose strips: both lists ask the same question — *narrow this to
+places marked X* — so they read as one control surface the results flow out of. The tiles
+are square rather than pills so an uploaded taxonomy icon has room to be recognised.
 
 Draws nothing at all when both option lists are empty, so callers don't guard it.
 
@@ -4658,7 +4721,7 @@ Draws nothing at all when both option lists are empty, so callers don't guard it
 | `categoryOptions` / `tagOptions` | `string[]` | Every name that can be filtered on, in display order. |
 | `activeCategories` / `activeTags` | `string[]` | The current selection. Controlled — the caller owns the state. |
 | `onCategoriesChange` / `onTagsChange` | `(next: string[]) => void` | Raised with the **full next array**, not the one name that changed, so a caller can hand it straight to `setState`. |
-| `categoryIcons?` / `tagIcons?` | `Record<string, string>` | Name → icon URL, optional and independent per list. The admin screens pass the uploaded taxonomy icons; the journal picker passes neither, so its chips stay plain. A name with no entry just draws without a glyph. |
+| `categoryIcons?` / `tagIcons?` | `Record<string, string>` | Name → icon URL, optional and independent per list. The admin screens pass the uploaded taxonomy icons; the journal picker passes neither. A name with no entry draws its **monogram** instead, so every tile stays the same size and the grid stays even. |
 | `className?` | `string` | |
 
 ```tsx
@@ -4674,14 +4737,58 @@ Draws nothing at all when both option lists are empty, so callers don't guard it
 />
 ```
 
-**Used by:** Admin → Locations → Location Manager
+**Used by:** Journal → Saved Locations
+[journal-saved-locations-view.tsx](src/app/(protected)/modules/[slug]/journal-saved-locations-view.tsx);
+Admin → Locations → Location Manager
 [manager/view.tsx](src/app/(protected)/admin/locations/manager/view.tsx); the journal entry
 form's location picker
 [journal-location-library-picker.tsx](src/app/(protected)/modules/[slug]/journal-location-library-picker.tsx).
 
-`FilterChip` itself stays in
+`FilterChip` is **not** used here any more, and is deliberately still alive: it remains the
+right shape for its two other jobs in the Location Manager — the Venn diagram's chips and
+the per-location category/tag editor, where a grid of squares inside a form row would be
+far too heavy. It stays in
 [admin/locations/filter-chip.tsx](src/app/(protected)/admin/locations/filter-chip.tsx)
-alongside `formatCoords` — this composes it rather than replacing it.
+alongside `formatCoords`.
+
+---
+
+## FilterTile
+
+**One category or tag, as a square toggleable tile.** The unit
+[`LocationFilterChips`](#locationfilterchips) is built from: a fixed 40px square holding the
+uploaded taxonomy icon, with the full name beneath it.
+
+- **Source:** [src/components/filter-tile.tsx](src/components/filter-tile.tsx)
+- **Import:** `import { FilterTile } from "@/components/filter-tile";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `label` | `string` | The name. Also the accessible name and the `title`. |
+| `iconUrl?` | `string` | The uploaded taxonomy icon, when this name has one. Omitted → monogram, see below. |
+| `isActive` | `boolean` | Whether this name is currently part of the filter. Emitted as `aria-pressed`. |
+| `onToggle` | `() => void` | Raised on click; the caller owns the selection. |
+| `className?` | `string` | Merged last, so it wins. |
+
+**A name with no uploaded icon draws its monogram** — the first character, upper-cased, in
+the accent colour — rather than falling back to a pill. The square is a fixed size either
+way, so a list where only some names have uploads still renders an even grid. The initial
+is taken with `Array.from`, not `label[0]`, because a name may begin with an emoji or an
+astral character that string indexing would cut in half.
+
+**It takes `Button`'s switch mechanic, not a card's lift.** The whole square is one
+clickable target, which is exactly the test in [design.md](design.md) → *The signature* — so
+it carries `.shortcut-tile` and borrows the same hard offset My Shortcuts' tiles do. Don't
+read this as licence for a card that merely contains a link.
+
+**Why not `FilterChip`?** The chip is still correct for its two other jobs in the Location
+Manager (the Venn diagram's chips, the per-location category/tag editor), where a grid of
+squares inside a form row would be far too heavy. Two shapes for two jobs, deliberately.
+
+**Used by:** [`LocationFilterChips`](#locationfilterchips) — and so, through it, Journal →
+Saved Locations, Admin → Locations → Location Manager, and the journal entry form's
+location picker.
 
 ---
 
@@ -4857,6 +4964,15 @@ route.
 - **Nothing is scanned until a folder is opened.** The folder list is names and counts
   only, which is what keeps an eight-month range instant to open even though scanning it
   whole would read thousands of JPEG headers over SMB.
+- **`onCullFolder` is optional, and the Cull button only appears when it is passed.** A
+  caller that omits it gets exactly the dialog it had before. It scores the photos the
+  grid is *currently showing* — not the folder — because a month is usually already
+  filtered to one day and culling decodes every file **whole**, where the date scan
+  reads only a header. Expect tens of seconds on a large set; the use-case refuses more
+  than `MAX_CULL_IMAGES` (300) rather than appearing to hang.
+- **Culling never changes the archive.** It dims the photos it set aside and reports
+  counts; it does not move, delete or rewrite anything. The verdicts are kept beside the
+  photo list, so "Undim all" is a flag flip rather than a re-fetch.
 - **Responsive:** the dialog is a `Modal` (already responsive); its thumbnail grid is five
   columns wide, three below 1024px and two below 640px, via `max-lg:` / `max-sm:`. The
   button is 24px square and is meant to sit inside a larger tap target — resize it with
@@ -5774,6 +5890,8 @@ Renders every personal toolbar a reader should currently see, and mirrors the
 |---|---|---|
 | `toolbars` | `ResolvedToolbar[]` | Already filtered and resolved by `resolveToolbarsFor` on the server. The component applies only `fullModeOnly`. |
 | `canEdit?` | `boolean` | Offers the ✎ shortcut into each bar's editor. **Admins only** — pass `isAdmin(currentUser)`. Defaults to `false`, so forgetting it hides an admin control rather than exposing one. A convenience, not a permission: the screen calls `requireAdmin()` itself. |
+| `positions?` | `Record<number, ToolbarPosition>` | Where **this reader** has dragged each floating bar (migration 0153), by toolbar id. Absent means every floating bar opens at its default. A plain object, not the `Map` `parseToolbarPositions` returns — a `Map` is not serialisable across the server/client boundary. |
+| `onMoveToolbar?` | `(id, position \| null) => Promise<unknown>` | Persists a drop. **Assign `saveToolbarPositionAction` directly — never wrap it in an arrow**, or serialising the closure fails at request time. Absent means a drag works for the session but is not remembered. |
 
 **It is additive.** The navigation tree and the compact bottom bar are untouched;
 this renders *beside* them and returns `null` when there is nothing to show, which
@@ -5797,9 +5915,43 @@ on touch, where hover never fires. It links to
 Deliberately **not** a floating component — it is a control on an existing surface
 scoped to one bar, not a new floating thing needing a reader-facing switch.
 
+**A toolbar can float instead of docking** (migration 0153). The admin picks
+`Floating` as the bar's Position, and from then on each reader drags it wherever they
+like by the grip at its left end; where it lands is saved per reader, never per
+household. Five things worth knowing before touching it:
+
+- **A floating bar reserves no page space.** `occupiedEdges` never returns
+  `floating`, so no `data-toolbar-floating` is set and `.app-main` pads for nothing —
+  the bar is over the content by design. The filter in this component mirrors the one
+  in `lib` and the two must agree, or the shell pads for an edge the server never
+  reserved.
+- **Only the grip starts a drag.** A press anywhere else on the bar is a press on a
+  shortcut; a bar that moved when you reached for a link would be unusable. The grip
+  carries `touch-none` so the browser does not claim the gesture for scrolling.
+- **Position is a reader preference, not a column.** It lives in
+  `sys_user_preferences` under `toolbar_positions`, beside the `toolbars_hidden` list
+  and for the same reason — see migration 0153. Two readers on different screens
+  cannot share one pixel position.
+- **The drop does not revalidate.** The bar is already where the reader let go, so
+  `saveToolbarPositionAction` only persists it; revalidating would re-render the
+  layout per drop and make the bar jump. That is why the component keeps the dragged
+  position locally and releases it only once the server's value agrees — don't
+  "simplify" that into comparing the prop to the local value, which disagree by
+  design after every drop.
+- **It is still not a floating component.** It does not register in
+  `FLOATING_COMPONENTS`: that list is for accessories owning a window and a puck, each
+  with its own reader-facing switch, and a toolbar already has one in Account. Nothing
+  about *where you are* may float, which is unchanged — a toolbar carries shortcuts.
+
+The reader's escape hatch is **Account → Toolbars → Reset position**, which forgets
+the saved spot so the bar opens at its default again.
+
 **Border Weight and Chrome Style apply automatically**, from `globals.css` — the bar
 is part of the app's frame, so it thickens and bevels with the header and the
-navigation column. Nothing is set on the component for either. Two things not to
+navigation column. A floating bar borders on all four sides and casts a drop shadow,
+because it has no edge to sit against; each chrome style's floating rule **restates
+that shadow**, since `box-shadow` is one property and a bevel declaring it alone would
+silently erase the lift. Nothing is set on the component for either. Two things not to
 undo: don't add a `nav-raised-*` class (it fights the admin's bevel with a second
 cast shadow), and don't set `background` — the admin's colour goes to
 `--toolbar-surface` so the embossed gradient can tint it rather than being wiped.

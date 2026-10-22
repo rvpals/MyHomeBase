@@ -20,6 +20,10 @@
 import { useCallback, useMemo, useState } from "react";
 import { Button } from "@/components/button";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
+import { BusyOverlay } from "@/components/busy-overlay";
+import { CullControls } from "@/components/cull-controls";
+import { useCulling, type CullVerdict } from "@/components/use-culling";
+import { cullGalleryPhotosAction } from "./gallery-culling-actions";
 import { PhotoViewer } from "@/components/photo-viewer";
 import { TreeIcon } from "@/components/tree-icons";
 import type { FavPhoto } from "@/lib/fav-photos";
@@ -124,6 +128,16 @@ export function FavPhotosList({
   const [error, setError] = useState<string | undefined>(undefined);
   const [notice, setNotice] = useState<string | undefined>(undefined);
   const [isBulkBusy, setIsBulkBusy] = useState(false);
+
+  // Culling the kept photographs.
+  //
+  // Dimming happens in the THUMBNAIL CELL rather than on the row: `DataGrid` has no
+  // row-class hook, and adding one would touch a component with 62 call sites across
+  // the app for the sake of one screen. A greyed thumbnail reads clearly enough.
+  const cullRun = useCulling(cullGalleryPhotosAction);
+  const [isShowingCull, setIsShowingCull] = useState(false);
+  const [keepCount, setKeepCount] = useState<number | undefined>();
+
   // Which photo the viewer OPENS on; `-1` means closed. Only the opening index, not the
   // current one -- `PhotoViewer` owns the index once it is up, so this is not kept in
   // step as the reader arrows through.
@@ -324,17 +338,36 @@ export function FavPhotosList({
       header: "Photo",
       // No `value`: an image sorts, searches and exports as nothing useful. The name
       // column carries the sortable text for this row.
-      render: (row) => (
-        /* eslint-disable-next-line @next/next/no-img-element -- the bytes come from our
-           own session-guarded route over an SMB share, not a static asset next/image
-           can optimize. */
-        <img
-          src={photoUrl(row.relativePath)}
-          alt=""
-          loading="lazy"
-          className="h-16 w-16 rounded object-cover max-lg:h-12 max-lg:w-12"
-        />
-      ),
+      render: (row) => {
+        const verdict = isShowingCull ? cullRun.verdicts?.[row.relativePath] : undefined;
+        const isDimmed = verdict !== undefined && !verdict.isKeeper;
+        return (
+          /* eslint-disable-next-line @next/next/no-img-element -- the bytes come from our
+             own session-guarded route over an SMB share, not a static asset next/image
+             can optimize. */
+          <img
+            src={photoUrl(row.relativePath)}
+            alt=""
+            loading="lazy"
+            title={
+              verdict === undefined
+                ? undefined
+                : `${verdict.score.toFixed(2)} — ${verdict.reason}` +
+                  (verdict.isKeeper
+                    ? ""
+                    : `
+Set aside: ${verdict.rejectReason}` +
+                      (verdict.duplicateOf === undefined
+                        ? ""
+                        : `
+duplicate of ${fileNameOf(verdict.duplicateOf)}`))
+            }
+            className={`h-16 w-16 rounded object-cover max-lg:h-12 max-lg:w-12 ${
+              isDimmed ? "opacity-40 grayscale" : ""
+            }`}
+          />
+        );
+      },
       className: "w-24 max-lg:w-16",
     },
     {
@@ -417,6 +450,25 @@ export function FavPhotosList({
         )}
       </div>
 
+      {favorites.length > 0 && (
+        <CullControls
+          className="mb-3"
+          total={favorites.length}
+          isCulling={cullRun.isCulling}
+          keeperCount={cullRun.keeperCount}
+          requested={cullRun.progressTotal}
+          examined={cullRun.examined}
+          wasTruncated={false}
+          unreadableCount={cullRun.unreadableCount}
+          isShowingCull={isShowingCull}
+          error={cullRun.error}
+          keepCount={keepCount}
+          onKeepCountChange={setKeepCount}
+          onCull={() => void cullRun.start(favorites.map((favorite) => favorite.relativePath), keepCount)}
+          onToggleCullView={() => setIsShowingCull((current) => !current)}
+        />
+      )}
+
       <DataGrid
         columns={columns}
         rows={favorites}
@@ -481,6 +533,7 @@ export function FavPhotosList({
         <PhotoViewer
           key={openIndex}
           photos={viewerPhotos}
+          onCull={cullGalleryPhotosAction}
           initialIndex={openIndex}
           autoPlay={openPlaying}
           photoUrl={photoUrl}
@@ -489,6 +542,16 @@ export function FavPhotosList({
           onClose={closeViewer}
         />
       )}
+
+      {/* A sibling of the viewer, not a child: `BusyOverlay` is z-[60] where the
+          viewer's own chrome sits lower, so the thing being waited on dims too. */}
+      <BusyOverlay
+        isBusy={cullRun.isCulling}
+        progress={{ value: cullRun.progressDone, max: cullRun.progressTotal }}
+        onCancel={cullRun.cancel}
+        message={`Culled ${cullRun.progressDone} of ${cullRun.progressTotal} photographs…`}
+        detail="Every photograph is opened and measured. Nothing is moved, deleted or unstarred."
+      />
     </div>
   );
 }

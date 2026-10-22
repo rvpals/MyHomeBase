@@ -1,5 +1,5 @@
 import { resolveClockFaceOptions } from "@/lib/clock";
-import { resolvePuckCorners, resolveFloatingStates } from "@/lib/floating";
+import { resolvePuckCorners, resolveFloatingStates, resolvePuckPositions } from "@/lib/floating";
 import {
   homeWidgetOrderToValue,
   hiddenHomeWidgetsToValue,
@@ -140,6 +140,14 @@ export function resolveUserPreferences(preferences: UserPreference[]): UserPrefe
     // Each component's docked corner. Derived from the registry the same way the
     // states are, so a new floating component needs no change here either.
     floatingCorners: resolvePuckCorners(byKey),
+    // Where this reader has dragged each puck. A plain object rather than the Map
+    // `resolvePuckPositions` returns, because this crosses into client components as
+    // a prop and a Map is not serialisable — the same conversion the protected layout
+    // makes for the toolbar positions, done here so every caller gets it right.
+    //
+    // Sparse, unlike the two above: a puck that has never been dragged has no entry,
+    // and that absence is what tells the renderer to use the corner instead.
+    floatingPositions: Object.fromEntries(resolvePuckPositions(byKey)),
     calculator: {
       // `.catch`-style clamping via the module's own guard: an unrecognised mode reads
       // as degrees rather than throwing on a page that has to render.
@@ -162,11 +170,12 @@ export function resolveUserPreferences(preferences: UserPreference[]): UserPrefe
  * than omitted: these are per-key upserts, so omitting the key would leave the
  * previous favorite in place and "clear my favorite" would silently do nothing.
  *
- * The **floating states and the calculator's state are deliberately absent**. Both are
- * written one key at a time by their own use-cases (`saveFloatingState`,
- * `saveCalculatorState`) as the reader opens a window or finishes a sum — not by the
- * Preferences form. Folding them in here would mean saving an unrelated form reset
- * whatever shape their clock was in and forgot their last answer.
+ * The **floating states, the dragged puck positions and the calculator's state are
+ * deliberately absent**. Each is written one key at a time by its own use-case
+ * (`saveFloatingState`, `saveFloatingPosition`, `saveCalculatorState`) as the reader
+ * opens a window, drops a puck or finishes a sum — not by the Preferences form.
+ * Folding them in here would mean saving an unrelated form reset whatever shape their
+ * clock was in, shoved every puck back to its corner, and forgot their last answer.
  */
 export function userPreferencesToEntries(
   // `Omit` rather than the whole object: neither the floating states nor the
@@ -178,7 +187,10 @@ export function userPreferencesToEntries(
   // mean "leave what is stored" rather than "write the default". A caller that omits
   // it (the Account form saving a theme) gets no home-layout keys in the result at
   // all, so a drag made on the home screen survives a save made elsewhere.
-  preferences: Omit<UserPreferences, "floating" | "floatingCorners" | "calculator" | "homeLayout"> &
+  preferences: Omit<
+    UserPreferences,
+    "floating" | "floatingCorners" | "floatingPositions" | "calculator" | "homeLayout"
+  > &
     Partial<Pick<UserPreferences, "homeLayout">>,
 ): { key: string; value: string }[] {
   const homeLayoutEntries = preferences.homeLayout

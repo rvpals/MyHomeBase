@@ -146,6 +146,37 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-10-21 — Release (Journal entry-screen preferences, photo culling, floating toolbars and draggable pucks, Features tab)
+
+Needs migration 0153 applied on the NAS (Display Settings → Toolbars, *Floating*). Phone-only checks: items 12, 20 and 25. Items 1–5 were tried by Min before release; everything else is untried.
+
+- [ ] **1.** Journal → Configuration → Preferences: three cards — Location Preference, Preferences, Journal Entry screen (with its one-line comment)
+- [ ] **2.** Journal → Configuration: Save preferences persists changes from all three cards after a reload
+- [ ] **3.** Journal Entry screen card: pick a texture and the Content field shows it behind the text, Handwriting on and off
+- [ ] **4.** Journal Entry screen card: the Strength slider changes the preview and the real field; "None" removes the texture
+- [ ] **5.** Journal Entry screen card: pick a text colour and the Content text uses it; "Use the theme's text colour" returns to the theme ink
+- [ ] **6.** Journal → New Entry → Full screen: the same texture, strength and colour appear on the fullscreen sheet
+- [ ] **7.** Journal: delete the chosen picture in Admin → App Texture — the Content field falls back to the plain sheet with no broken layer
+- [ ] **8.** Picture Gallery → Magic List: Cull ranks the photos, shows keeper / set-aside counts, dims the rejects; Undim all restores them
+- [ ] **9.** Picture Gallery → Albums and Favorite Photos: the same Cull controls work and dim in the thumbnail cell
+- [ ] **10.** Photo viewer: the Culling toggle dims set-aside photos across a multi-folder set
+- [ ] **11.** Journal entry → photos dialog: each folder row culls on its own
+- [ ] **12.** Picture Gallery cull on a phone: the controls row wraps cleanly and the progress line reads
+- [ ] **13.** Admin → Configuration → Application: the culling ceiling saves with the page's Save button; a cull respects it
+- [ ] **14.** CLI: `npm run cli -- culling "<folder>"` prints a ranking and `--out` writes one JSON file; the archive is untouched
+- [ ] **15.** Admin → Display Settings → Toolbars: set a toolbar's placement to Floating; it floats over the page and reserves no space
+- [ ] **16.** A floating toolbar: drag it, reload — it stays where you left it; another user's position is unaffected
+- [ ] **17.** Account: reset a floating toolbar's position — it returns to its default
+- [ ] **18.** Floating pucks (clock, calculator, scratchpad): a short press restores the window, a longer drag moves the puck, and the puck stays on screen
+- [ ] **19.** Account: reset a dragged puck — it docks in its corner again
+- [ ] **20.** A floating toolbar on a phone: with Full mode only off it is draggable and parks above the section trigger and music player
+- [ ] **21.** Existing docked toolbars still dock and still reserve page space after migration 0153; hide lists still point at the right bars
+- [ ] **22.** Admin → About: a Features tab renders the feature catalogue; it says so when the file is missing
+- [ ] **23.** Journal → Saved Locations and the Location Manager: category and tag filters show as square tiles; clicking toggles them
+- [ ] **24.** Location Manager: the Venn diagram and per-location editor still use the pill chips
+- [ ] **25.** Location filter tiles on a phone: the tile grid fits without horizontal scroll
+- [ ] **26.** Any BusyOverlay with an indeterminate bar shows a sweeping bar under its message
+
 ## 2026-10-20 — Release (Journal home-screen cards, Substantial Entries tab, saved-filter categories, calendar Delete, SQL Explorer suggestions)
 
 Needs migration 0152 applied on the NAS (Entries → Filtering card). Calendar row layout is the one to check on a phone.

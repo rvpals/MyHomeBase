@@ -52,10 +52,14 @@ export {
 } from "./entry-locations";
 export {
   resolveJournalPreferences,
+  resolveJournalContentTexture,
+  resolveJournalContentTextureOpacity,
   journalPreferencesToEntries,
   handwritingSizeClass,
+  DEFAULT_JOURNAL_CONTENT_TEXTURE_OPACITY,
   HANDWRITING_SIZE_OPTIONS,
   JOURNAL_SETTING_KEYS,
+  NO_JOURNAL_CONTENT_TEXTURE,
 } from "./preferences";
 export {
   journalEntrySchema,

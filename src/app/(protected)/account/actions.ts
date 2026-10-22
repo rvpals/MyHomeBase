@@ -9,6 +9,10 @@ import {
   recordCalculation,
   type CalculationEntry,
 } from "@/lib/calculator";
+import type {
+  FloatingPositionInput,
+  FloatingPositionResetInput,
+} from "@/lib/floating";
 import { searchPlaces, type GeoPlace } from "@/lib/geocoding";
 import {
   createNote,
@@ -19,15 +23,22 @@ import {
 } from "@/lib/scratchpad";
 import { listModules } from "@/lib/modules";
 import {
+  clearToolbarPosition,
   parseHiddenToolbars,
+  parseToolbarPositions,
   serializeHiddenToolbars,
+  serializeToolbarPositions,
   setToolbarHidden,
+  setToolbarPosition,
+  TOOLBAR_POSITIONS_PREFERENCE_KEY,
   TOOLBARS_HIDDEN_PREFERENCE_KEY,
 } from "@/lib/toolbars";
 import { clearUserAvatar, getAccessibleModules, setUserAvatar, setUserPassword } from "@/lib/user";
 import {
+  resetFloatingPosition,
   saveCalculatorState,
   saveFloatingCorner,
+  saveFloatingPosition,
   saveFloatingState,
   saveUserPreferences,
   type CalculatorStateUpdate,
@@ -425,6 +436,143 @@ export async function saveToolbarVisibilityAction(
     revalidatePath("/", "layout");
   } catch (error) {
     return toErrorResult(error, "Failed to save the toolbar's visibility.");
+  }
+  return { ok: true };
+}
+
+/**
+ * Records where this reader has dragged one floating toolbar (migration 0153).
+ *
+ * `requireUser()` on the first line, same category as the visibility toggle above
+ * and for the same reason: a toolbar is whole-app chrome no module owns, and the
+ * session decides whose preference this is — so this cannot be used to rearrange
+ * someone else's screen.
+ *
+ * Written with `setValue` — ONE key — for the reason `saveToolbarVisibilityAction`
+ * records: the preferences form writes every key it carries, so folding this in
+ * would let pressing Save on an unrelated field reset every bar's position.
+ *
+ * ## Deliberately NO `revalidatePath`
+ *
+ * This is the one place this action differs from the visibility toggle beside it,
+ * and it is the important difference. Visibility has to come back from the server
+ * because the set of rendered bars changes. A position does not: the component has
+ * already moved the bar on screen — the reader is *looking at* the result of their
+ * own drag — and this call only persists it for the next page load.
+ *
+ * Revalidating here would re-render the entire protected layout on every drop,
+ * which is both wasted work and visibly worse: the bar would jump as the server's
+ * value replaced the local one.
+ *
+ * Passing `null` clears the entry, which is the Account screen's "Reset position".
+ * Clearing rather than storing the default is what lets the default itself change —
+ * see `clearToolbarPosition`.
+ */
+export async function saveToolbarPositionAction(
+  toolbarId: number,
+  position: { x: number; y: number } | null,
+): Promise<ActionResult> {
+  try {
+    const currentUser = await requireUser();
+    const stored = deps.userPreferencesRepo
+      .listByUserId(currentUser.id)
+      .find((row) => row.key === TOOLBAR_POSITIONS_PREFERENCE_KEY)?.value;
+
+    const positions = parseToolbarPositions(stored);
+    const next = position
+      ? setToolbarPosition(positions, toolbarId, position)
+      : clearToolbarPosition(positions, toolbarId);
+
+    deps.userPreferencesRepo.setValue(
+      currentUser.id,
+      TOOLBAR_POSITIONS_PREFERENCE_KEY,
+      serializeToolbarPositions(next),
+    );
+  } catch (error) {
+    return toErrorResult(error, "Failed to save the toolbar's position.");
+  }
+  return { ok: true };
+}
+
+/**
+ * Forgets where this reader dragged one floating toolbar — the Account screen's
+ * "Reset position", which puts the bar back at its default.
+ *
+ * A separate exported action rather than the Account view calling
+ * `saveToolbarPositionAction(id, null)`, and that is not duplication for its own
+ * sake: a `"use server"` function reaches a client component only as *itself*, so
+ * a view wanting `(id) => …` cannot wrap one in an arrow — the closure fails to
+ * serialise at request time. The signature the caller needs is the signature the
+ * action has to have. Same rule the protected layout records for the floating and
+ * queue action props.
+ *
+ * `requireUser()` on the first line, same category as the two actions above — the
+ * session decides whose preference this is.
+ *
+ * `revalidatePath` here, unlike the drag it undoes: this is pressed on the Account
+ * screen, a different page from the bar, so nothing has moved on screen locally and
+ * the layout genuinely has to re-render for the reset to be visible.
+ */
+export async function resetToolbarPositionAction(toolbarId: number): Promise<ActionResult> {
+  const result = await saveToolbarPositionAction(toolbarId, null);
+  if (!result.ok) return result;
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+/**
+ * Records where this reader dropped one floating component's puck.
+ *
+ * `requireUser()` on the first line, same category as the state and the corner above:
+ * a floating component is a whole-app accessory no module owns, so there is no slug to
+ * check — and an action is its own POST endpoint whatever guards the page that calls
+ * it. The session decides *whose* screen this is, so it cannot be used to shove
+ * somebody else's puck around.
+ *
+ * Flat `x`/`y` rather than a nested point, because the client port assigns this action
+ * directly: a `"use server"` function crosses to a client component only as itself, and
+ * an adapter arrow that reshaped the argument would fail to serialize at request time.
+ *
+ * No `revalidatePath`, and this one matters more than for the corner. The puck is
+ * already where the reader dropped it; re-rendering the protected layout on every drop
+ * would re-resolve the whole floating layer — forecast, tape and all — and the puck
+ * would visibly jump as the server's older position arrived. `FloatingPuck` holds the
+ * dropped position locally until the server's value agrees with it.
+ */
+export async function saveFloatingPositionAction(
+  input: FloatingPositionInput,
+): Promise<ActionResult> {
+  try {
+    const currentUser = await requireUser();
+    saveFloatingPosition(deps.userPreferencesRepo, currentUser.id, input);
+  } catch (error) {
+    return toErrorResult(error, "Failed to save the puck's position.");
+  }
+  return { ok: true };
+}
+
+/**
+ * Forgets where this reader dragged one puck, so it docks in its corner again.
+ *
+ * `requireUser()` on the first line, for the reason above.
+ *
+ * **This one does revalidate**, unlike the save. It is called from the Account screen,
+ * which is a different page from the puck: without re-rendering the layout the reader
+ * would press "Reset position" and watch nothing happen until their next full reload.
+ * The layout is also where `initialPositions` is resolved, which is what releases the
+ * provider's local override — see the effect in `FloatingLayerProvider`.
+ */
+export async function resetFloatingPositionAction(
+  input: FloatingPositionResetInput,
+): Promise<ActionResult> {
+  try {
+    const currentUser = await requireUser();
+    resetFloatingPosition(deps.userPreferencesRepo, currentUser.id, input);
+    // "layout" because the floating layer is mounted by the protected layout, which
+    // every page shares — not by the Account route that called this.
+    revalidatePath("/", "layout");
+  } catch (error) {
+    return toErrorResult(error, "Failed to reset the puck's position.");
   }
   return { ok: true };
 }

@@ -17,13 +17,17 @@
 // album's photo grid is `.tile-grid` for the same reason. Everything else is restyled
 // with `max-lg:` variants, so the desktop classes provably cannot regress.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Button } from "@/components/button";
 import { Modal } from "@/components/modal";
 import { PhotoViewer } from "@/components/photo-viewer";
 import { TreeIcon } from "@/components/tree-icons";
 import type { AlbumSummary, AlbumWithPhotos } from "@/lib/albums";
 import { readPhotoDetailsAction } from "../../photos-viewer-actions";
+import { BusyOverlay } from "@/components/busy-overlay";
+import { CullControls } from "@/components/cull-controls";
+import { useCulling, type CullVerdict } from "@/components/use-culling";
+import { cullGalleryPhotosAction } from "./gallery-culling-actions";
 import {
   createAlbumAction,
   deleteAlbumAction,
@@ -155,6 +159,20 @@ export function AlbumsView({ initialAlbums }: { initialAlbums: AlbumSummary[] })
   // Which photo the viewer OPENS on; -1 means closed, and `playing` opens it running.
   const [openAtIndex, setOpenAtIndex] = useState(-1);
   const [isPlaying, setIsPlaying] = useState(false);
+
+  // Culling the open album. Verdicts sit beside the photo list, so "Undim all" is a
+  // flag flip rather than a re-read of the album.
+  const cullRun = useCulling(cullGalleryPhotosAction);
+  const [isShowingCull, setIsShowingCull] = useState(false);
+  const [keepCount, setKeepCount] = useState<number | undefined>();
+
+  // Verdicts belong to ONE album. Dropped when a different album is opened or the list
+  // returns, keyed on the album's identity rather than patched into each handler.
+  useEffect(() => {
+    cullRun.reset();
+    setIsShowingCull(false);
+  }, [openAlbum?.id]);
+
 
   // The viewer's "add to album" plumbing, so a picture opened from inside one album can
   // be filed into another without leaving the stage.
@@ -450,6 +468,24 @@ export function AlbumsView({ initialAlbums }: { initialAlbums: AlbumSummary[] })
           album={openAlbum}
           selected={selected}
           isBusy={isBusy}
+          culled={isShowingCull ? cullRun.verdicts : undefined}
+          cullControls={
+            <CullControls
+              total={openAlbum.photos.length}
+              isCulling={cullRun.isCulling}
+              keeperCount={cullRun.keeperCount}
+              requested={cullRun.progressTotal}
+              examined={cullRun.examined}
+              wasTruncated={false}
+              unreadableCount={cullRun.unreadableCount}
+              isShowingCull={isShowingCull}
+              error={cullRun.error}
+              keepCount={keepCount}
+              onKeepCountChange={setKeepCount}
+              onCull={() => void cullRun.start((openAlbum?.photos ?? []).map((photo) => photo.relativePath), keepCount)}
+              onToggleCullView={() => setIsShowingCull((current) => !current)}
+            />
+          }
           onBack={() => {
             setOpenAlbum(undefined);
             setSelected(new Set());
@@ -530,6 +566,7 @@ export function AlbumsView({ initialAlbums }: { initialAlbums: AlbumSummary[] })
         <PhotoViewer
           key={openIndex}
           photos={viewerPhotos}
+          onCull={cullGalleryPhotosAction}
           initialIndex={openIndex}
           autoPlay={isPlaying}
           photoUrl={photoUrl}
@@ -541,6 +578,18 @@ export function AlbumsView({ initialAlbums }: { initialAlbums: AlbumSummary[] })
           }}
         />
       )}
+
+      {/* A sibling of the modals above, not a child of one: `BusyOverlay` is z-[60]
+          where `Modal` is z-50, so the dialog dims along with the page rather than
+          staying the brightest thing on screen. Says plainly that nothing is removed --
+          a dimmed page during "culling" otherwise invites exactly that worry. */}
+      <BusyOverlay
+        isBusy={cullRun.isCulling}
+        progress={{ value: cullRun.progressDone, max: cullRun.progressTotal }}
+        onCancel={cullRun.cancel}
+        message={`Culled ${cullRun.progressDone} of ${cullRun.progressTotal} photographs…`}
+        detail="Every photograph is opened and measured. Nothing is moved or deleted."
+      />
     </div>
   );
 }
@@ -666,6 +715,8 @@ function OpenAlbum({
   album,
   selected,
   isBusy,
+  culled,
+  cullControls,
   onBack,
   onToggleSelected,
   onSelectAll,
@@ -679,6 +730,10 @@ function OpenAlbum({
   album: AlbumWithPhotos;
   selected: Set<string>;
   isBusy: boolean;
+  /** Verdicts by path, when the grid should dim what was set aside. */
+  culled?: Record<string, CullVerdict>;
+  /** The culling row, built by the parent that owns the cull state. */
+  cullControls?: ReactNode;
   onBack: () => void;
   onToggleSelected: (relativePath: string) => void;
   onSelectAll: () => void;
@@ -767,6 +822,8 @@ function OpenAlbum({
         </div>
       ) : (
         <>
+          {cullControls !== undefined && <div className="mb-3">{cullControls}</div>}
+
           <div className="mb-2 flex justify-end">
             <button
               type="button"
@@ -782,8 +839,16 @@ function OpenAlbum({
           <div className="tile-grid gap-2">
             {album.photos.map((photo, index) => {
               const isSelected = selected.has(photo.relativePath);
+              const verdict = culled?.[photo.relativePath];
+              // Opacity and grayscale only -- the BORDER already means "selected" on
+              // this grid, so a cull that also coloured borders would give one tile two
+              // conflicting signals.
+              const isDimmed = verdict !== undefined && !verdict.isKeeper;
               return (
-                <div key={photo.relativePath} className="relative">
+                <div
+                  key={photo.relativePath}
+                  className={`relative transition-opacity ${isDimmed ? "opacity-40 grayscale" : ""}`}
+                >
                   <button
                     type="button"
                     onClick={() => onOpenPhoto(index)}
@@ -791,6 +856,19 @@ function OpenAlbum({
                       isSelected ? "border-brass ring-2 ring-brass" : "border-line"
                     }`}
                     aria-label={`Open ${fileNameOf(photo.relativePath)}`}
+                    title={
+                      verdict === undefined
+                        ? undefined
+                        : `${verdict.score.toFixed(2)} — ${verdict.reason}` +
+                          (verdict.isKeeper
+                            ? ""
+                            : `
+Set aside: ${verdict.rejectReason}` +
+                              (verdict.duplicateOf === undefined
+                                ? ""
+                                : `
+duplicate of ${fileNameOf(verdict.duplicateOf)}`))
+                    }
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element -- our own
                         session-gated route over a NAS share. */}

@@ -1,4 +1,17 @@
-import { FLOATING_STATE_KEYS, floatingStateToValue, puckCornerKey } from "@/lib/floating";
+import {
+  FLOATING_POSITIONS_PREFERENCE_KEY,
+  FLOATING_STATE_KEYS,
+  clearPuckPosition,
+  floatingPositionResetSchema,
+  floatingPositionSchema,
+  floatingStateToValue,
+  parsePuckPositions,
+  puckCornerKey,
+  serializePuckPositions,
+  setPuckPosition,
+  type FloatingPositionInput,
+  type FloatingPositionResetInput,
+} from "@/lib/floating";
 import {
   homeLayoutPartialUpdateSchema,
   homeWidgetOrderToValue,
@@ -205,4 +218,68 @@ export function resolveStartupDestination(
   const slug = preferences.favoriteModuleSlug;
   if (!slug) return undefined;
   return accessibleModuleSlugs.includes(slug) ? slug : undefined;
+}
+
+/**
+ * Records where one reader has dragged one puck.
+ *
+ * **Read-modify-write, unlike every other save in this file.** The others own a key
+ * each, so they can set it blind. Every puck's position shares the single
+ * `floating_positions` row (see `src/lib/floating/position.ts` for why the storage is
+ * one key), so writing one without first reading the rest would drop the others.
+ *
+ * The read is of this reader's own rows, which the caller has usually just loaded
+ * anyway — but it is done here rather than taken as a parameter so a caller cannot
+ * pass a stale map and silently erase a puck they were not touching.
+ *
+ * Still a single-key `setValue`, never `userPreferencesToEntries`: that writes every
+ * key it carries, which would let a drag clobber a favorite the reader changed in
+ * another tab. Same rule `saveFloatingState` and `setToolbarPosition` both follow.
+ */
+export function saveFloatingPosition(
+  repo: UserPreferencesRepository,
+  userId: number,
+  input: FloatingPositionInput,
+): FloatingPositionInput {
+  const validated = floatingPositionSchema.parse(input);
+  const current = parsePuckPositions(
+    repo
+      .listByUserId(userId)
+      .find((row) => row.key === FLOATING_POSITIONS_PREFERENCE_KEY)?.value,
+  );
+  const next = setPuckPosition(current, validated.id, {
+    x: validated.x,
+    y: validated.y,
+  });
+  repo.setValue(userId, FLOATING_POSITIONS_PREFERENCE_KEY, serializePuckPositions(next));
+  return validated;
+}
+
+/**
+ * Forgets where one puck was dragged, so it docks in its corner again.
+ *
+ * The recovery route, and the reason it exists: a puck dropped somewhere awkward on a
+ * screen the reader no longer has — a second monitor, a window since resized — is
+ * otherwise only reachable by dragging it back on that same screen. `clampPuckPosition`
+ * keeps a grabbable strip on screen so this is belt-and-braces rather than the only way
+ * out, but "put it back" should not require a gesture.
+ *
+ * Removing the entry rather than storing a default is deliberate — see
+ * `clearPuckPosition`. It is also what returns the puck to the corner queue, so it
+ * starts clearing the music bar and the section panel again.
+ */
+export function resetFloatingPosition(
+  repo: UserPreferencesRepository,
+  userId: number,
+  input: FloatingPositionResetInput,
+): FloatingPositionResetInput {
+  const validated = floatingPositionResetSchema.parse(input);
+  const current = parsePuckPositions(
+    repo
+      .listByUserId(userId)
+      .find((row) => row.key === FLOATING_POSITIONS_PREFERENCE_KEY)?.value,
+  );
+  const next = clearPuckPosition(current, validated.id);
+  repo.setValue(userId, FLOATING_POSITIONS_PREFERENCE_KEY, serializePuckPositions(next));
+  return validated;
 }

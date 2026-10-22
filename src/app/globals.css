@@ -655,6 +655,79 @@ html[data-toolbar-bottom] .app-main {
   width: var(--toolbar-right-width);
 }
 
+/* The floating placement (migration 0153): a bar the reader drags around.
+   -------------------------------------------------------------------------
+   The one placement that does NOT reserve page space. `occupiedEdges` never
+   returns `floating`, so no `data-toolbar-floating` is ever set on <html> and
+   `.app-main` pads for nothing -- the bar is over the content by design, at a
+   spot the reader chose, exactly as a dragged dialog is.
+
+   `--toolbar-x`/`--toolbar-y` are written inline by `PersonalToolbars` from the
+   reader's own saved position. They are consumed HERE rather than being set as
+   `left`/`top` at the call site, so every placement's pixels stay in this file
+   next to each other -- the same split the four edge rules keep, where `lib`
+   owns which placement and CSS owns the geometry. The `0px` fallbacks matter:
+   a bar rendered before its position is known lands in the corner rather than
+   at `left: ;`, which would drop the declaration and leave it `static`.
+
+   WIDTH IS `max-content`, NOT A FIXED THICKNESS. A docked bar spans its edge
+   and takes `--toolbar-<edge>-height/width` across. A floating bar is bounded
+   by nothing, so it is exactly as wide as its shortcuts need and no wider --
+   a full-width floating bar would be a docked bar that forgot to dock.
+   `max-width` keeps it from outgrowing a narrow screen; past that it scrolls,
+   which is what `overflow: auto` on the base class already does.
+
+   ALWAYS HORIZONTAL. There is no vertical variant and that is deliberate: a
+   vertical strip reads as attached to an edge, and this one is attached to
+   nothing. Confirmed with the feature's design rather than left to the CSS. */
+.personal-toolbar[data-edge="floating"] {
+  left: var(--toolbar-x, 0px);
+  top: var(--toolbar-y, 0px);
+  height: 2.75rem;
+  width: max-content;
+  max-width: calc(100vw - 1rem);
+  padding-inline: 0.25rem;
+  border-radius: 0.75rem;
+  /* All four sides, unlike a docked bar's single content-facing edge: this one
+     has no edge to sit against, so it needs a complete outline to read as a
+     separate object over the page. Still `--chrome-outline-width`, so it
+     thickens with the rest of the frame. */
+  border-width: var(--chrome-outline-width);
+  /* A floating bar casts a shadow and a docked one does not, which is the
+     honest difference between a surface attached to the frame and one hovering
+     over the content. Matches the dialog treatment for the same reason -- both
+     are things the reader has positioned themselves. */
+  box-shadow: 0 8px 24px -8px rgb(0 0 0 / 0.35);
+  /* Eased so a programmatic move (the resize pull-back) glides, then switched
+     off mid-drag by `[data-dragging]` below so the bar tracks the pointer
+     exactly instead of lagging behind it. */
+  transition: left 120ms ease, top 120ms ease;
+}
+
+/* A drag must be frame-exact: any easing here reads as the bar sliding out
+   from under the pointer. `left`/`top` only -- the colour and opacity
+   transitions the bar's children carry are unaffected. */
+.personal-toolbar[data-dragging] {
+  transition: none;
+}
+
+/* The grip the bar is dragged by. Quiet at rest so it does not compete with the
+   shortcuts, and fully present once the pointer is on the bar -- the same
+   reveal the ✎ beside it uses, and for the same reason.
+
+   NOT hidden at rest, unlike the ✎: the ✎ is an admin shortcut to a screen
+   that is reachable anyway, while this is the ONLY way to move the bar. A
+   control that is the sole route to its function stays visible. */
+.personal-toolbar-grip {
+  opacity: 0.45;
+  transition: opacity 120ms ease;
+}
+
+.personal-toolbar:hover .personal-toolbar-grip,
+.personal-toolbar[data-dragging] .personal-toolbar-grip {
+  opacity: 0.9;
+}
+
 /* How much of the left edge the navigation shell is already using. Mirrors the
    two `.app-main` padding-left rules above, so the toolbar and the content
    column agree about where the navigation ends. Both default to `0px`, which is
@@ -1655,6 +1728,50 @@ html[data-viewport="compact"] {
     inset 1px 0 0 rgba(0, 0, 0, 0.3);
 }
 
+/* --- The floating bar's bevels (migration 0153) --------------------------- */
+
+/* The one placement lit from ABOVE on all four sides rather than on a single
+   content-facing edge, because it has no edge to sit against -- it is an object
+   over the page, like a dialog, so it is lit like one.
+
+   EVERY RULE HERE RESTATES THE DROP SHADOW. `box-shadow` is one property, not a
+   list that cascades: `.personal-toolbar[data-edge="floating"]` sets the cast
+   shadow that separates the bar from the content, and a bevel rule declaring
+   `box-shadow` alone would REPLACE it, not add to it -- the bar would keep its
+   bevel and silently lose its lift. The same trap `globals.css` records for
+   `background` over `--toolbar-surface`, in a different property.
+
+   `background-color` is still never set, so an administrator's chosen colour
+   survives all three styles exactly as it does on a docked bar. */
+
+[data-chrome-style="inset"] .personal-toolbar[data-edge="floating"] {
+  box-shadow:
+    0 8px 24px -8px rgb(0 0 0 / 0.35),
+    inset 0 2px 4px -1px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(0, 0, 0, 0.16),
+    inset 0 -1px 0 color-mix(in srgb, var(--edge-lit-soft) 16%, transparent);
+}
+
+[data-chrome-style="outset"] .personal-toolbar[data-edge="floating"] {
+  box-shadow:
+    0 8px 24px -8px rgb(0 0 0 / 0.35),
+    inset 0 1px 0 color-mix(in srgb, var(--edge-lit) 34%, transparent),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.26);
+}
+
+[data-chrome-style="emboss"] .personal-toolbar[data-edge="floating"] {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--toolbar-surface) 96%, var(--paper)) 0%,
+    var(--toolbar-surface) 50%,
+    color-mix(in srgb, var(--toolbar-surface) 90%, var(--ink)) 100%
+  );
+  box-shadow:
+    0 8px 24px -8px rgb(0 0 0 / 0.35),
+    inset 0 1px 0 color-mix(in srgb, var(--edge-lit) 30%, transparent),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.3);
+}
+
 
 /* ============================================================================
    Border weights -- Administration > Display Settings > Border Weight, stored
@@ -1744,6 +1861,13 @@ html[data-viewport="compact"] {
 .personal-toolbar[data-edge="right"] {
   border-left-width: var(--chrome-outline-width);
 }
+
+/* The floating bar is the exception: it borders on ALL FOUR sides, because it
+   has no edge to sit against and needs a complete outline to read as an object
+   over the page. That `border-width` is declared with its geometry above rather
+   than here, since unlike the four single-side rules in this block there is no
+   choice of side to make -- but it uses the same `--chrome-outline-width`, so a
+   floating bar thickens with the frame exactly as a docked one does. */
 
 /* --- The navigation column's inner rules --------------------------------- */
 
@@ -3377,6 +3501,44 @@ html[data-music-player="minimized"] {
   --floating-puck-offset: calc(
     var(--floating-puck-index, 0) * (var(--floating-puck-size) + var(--floating-puck-gap))
   );
+}
+
+/* A puck the reader has dragged somewhere of their own choosing.
+   -------------------------------------------------------------------------
+   `--floating-puck-x`/`-y` are written inline by `FloatingPuck` from the
+   reader's saved position, and consumed HERE rather than being set as
+   `left`/`top` at the call site -- the same split the four corner rules keep,
+   where the component owns WHICH placement and this file owns the pixels.
+
+   WHY THIS NEEDS NO `!important` AND NO EXTRA SPECIFICITY. A freely-placed
+   puck drops its `data-corner` attribute entirely (see `FloatingPuck`), so
+   none of the four rules below match it and there is nothing to override.
+   That is also why the two sets of custom properties never both apply: a puck
+   is positioned by its corner or by its point, never by a mix of the two.
+
+   NO `right`/`bottom`. The stored point is the puck's top-left in viewport
+   coordinates, which is what `getBoundingClientRect()` gives the drag handler
+   and what `clampPuckPosition` reasons about. Anchoring from the far edges
+   instead would mean converting on every read and every write, with a window
+   resize silently changing what the stored number meant.
+
+   The `0px` fallbacks matter: a puck rendered for one frame before its
+   position is known lands in the corner of the viewport rather than at
+   `left: ;`, which would drop the declaration and leave it `static` -- in the
+   middle of the page content, having lost its `fixed`. */
+.floating-puck[data-floating-pos] {
+  left: var(--floating-puck-x, 0px);
+  top: var(--floating-puck-y, 0px);
+  /* Eased so the resize pull-back glides rather than teleporting, then switched
+     off mid-drag below so the puck tracks the pointer exactly. */
+  transition: left 120ms ease, top 120ms ease;
+}
+
+/* A drag must be frame-exact: any easing here reads as the puck sliding out
+   from under the pointer. `left`/`top` only -- the button's own transform
+   transition is untouched, so the press still feels responsive. */
+.floating-puck[data-dragging] {
+  transition: none;
 }
 
 /* The four corners, chosen per component on the Account screen.

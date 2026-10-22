@@ -34,6 +34,8 @@ export {
   saveUserPreferences,
   saveFloatingState,
   saveFloatingCorner,
+  saveFloatingPosition,
+  resetFloatingPosition,
   saveCalculatorState,
   saveHomeLayout,
   resolveStartupDestination,

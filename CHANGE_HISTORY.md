@@ -1,5 +1,95 @@
 # Change History
 
+## 2026-10-21 — Journal entry-screen preferences, photo culling, draggable floating toolbars and pucks, Features tab
+
+**Migration 0153 must be applied on the NAS.** It rebuilds `sys_toolbars` (copy-rename-drop) to
+widen the `edge` CHECK with a fifth value, `floating`. No rows are deleted or converted, and `id`
+is carried across explicitly so every reader's hide list and saved position keeps pointing at the
+same bar. Without it, choosing *Floating* for a toolbar fails on the CHECK. Everything else in
+this release is code only. The NAS database and its WAL/SHM files were backed up before this
+release (`npm run backup:nas`, stamp `2026-10-21T21-56-46`).
+
+### Journal → Configuration → Preferences (no migration)
+
+- **The screen is now three cards**: **Location Preference** (default location + temperature
+  unit), **Preferences** (handwriting size, calendar import, photo folder + Check Access,
+  excluded words) and a new **Journal Entry screen**. One *Save preferences* writes all three;
+  the excluded-word ✕ buttons still save on their own.
+- **Content background texture**: pick any picture from the app texture library as the backdrop
+  of the entry form's Content field, with its own **Strength** slider and a live preview that
+  also shows the chosen text colour. Draws with Handwriting on or off, and replaces the
+  hand-drawn `.paper-texture` sheet rather than stacking on it. Default strength 0.10.
+- **Colour for content text**: a `ColorField` plus a *Use the theme's text colour* button. Unset
+  means the theme's `--ink`, not literal black, so a dark theme stays readable.
+- Both apply to the in-card field **and** the fullscreen stage, from one resolved value.
+- Stored as three module-settings rows on the journal module (`content_texture_id`,
+  `content_texture_opacity`, `content_text_color`). The texture is a pointer into the library,
+  never bytes; a pointer at a deleted picture falls back to the plain sheet. `"0"` is the
+  "no texture" sentinel because settings values must be non-empty.
+- **Metadata backups carry the text colour but not the texture or its strength** — the pointer
+  is a row id in this install's library, and a strength means nothing without its picture.
+- Library: `resolveJournalContentTexture`, `resolveJournalContentTextureOpacity`; tests in
+  `preferences.test.ts` and `metadata-export.test.ts`. `ColorField` is now also used here.
+
+### Picture Gallery and Journal → photo culling (no migration)
+
+- **A Cull action ranks a folder's photographs** by sharpness, exposure and contrast, groups
+  near-duplicates (a perceptual hash) so a burst contributes one keeper, and dims what was set
+  aside. New library module `src/lib/culling/` with tests. **Read-only throughout** — nothing is
+  deleted, moved or written into the archive.
+- **Where it appears**: Picture Gallery → Magic List, Albums and Favorite Photos (through the new
+  shared `CullControls` row), the photo viewer's own Culling toggle, and the journal photo
+  dialog (inline, per folder). *Undim all* is a flag flip; no photograph is re-read.
+- **Admin → Configuration → Application → culling ceiling** (`CullCapControl`): how many images
+  one cull may read, default 300, between 10 and 2000. Stored as a `picture-gallery`
+  module setting and saved with the page's existing Save button.
+- **CLI**: `npm run cli -- culling "2019/2019-06" [--out results.json] [--keep N] [--distance N]`.
+- Reads the photo root from the Journal's `photo_root`; uses the existing `sharp` dependency.
+
+### Floating toolbars and draggable pucks (migration 0153)
+
+- **A personal toolbar can be Floating** (Admin → Display Settings → Toolbars): it sits over the
+  page, reserves no page space, and each reader drags it to where they want it. The position is
+  per reader (`toolbar_positions` in `user_preferences`), never a column on `sys_toolbars`,
+  because the table is the administrator's.
+- **The floating-layer pucks (the clock, calculator and scratchpad, at least — the three components touched) are draggable too**,
+  with a 4px threshold separating a tap (restores the window) from a drag. Clamping lives in
+  `lib/floating/position.ts` and `lib/toolbars/position.ts`, both tested.
+- **Account → reset buttons** put a dragged puck back in its corner and a floating bar back at
+  its default — the recovery route for a bar left on a screen the reader no longer has.
+- New server actions `saveToolbarPositionAction`, `resetToolbarPositionAction`,
+  `saveFloatingPositionAction`, `resetFloatingPositionAction`, each authorised on its first line.
+- A floating bar obeys *full mode only* like a docked one; on compact it stays draggable and
+  parks above the section trigger and the music player.
+
+### Admin → About → Features
+
+- **New Features tab** renders `MyHomeBase_feature.md` — a catalogue of what exists, by module —
+  through the change-history renderer. Read through the new `lib/feature-list` (a file-backed
+  repository wired in `wiring.ts`); the tab says so when the file is absent.
+
+### Smaller changes
+
+- **Location filter chips are now square tiles** in one group box (`FilterTile`, a new
+  component), so an uploaded category or tag icon is large enough to recognise. The pill chip
+  stays in the Location Manager's Venn diagram and per-location editor.
+- **`BusyOverlay` can show a progress bar** — indeterminate by default, or `{ value, max }` when
+  something genuinely counts the work.
+- `scripts/publish-nas.mjs` and `.claude/commands/release.md` were edited; `release.md` is the
+  command that produced this entry.
+
+### Not verified
+
+No typecheck, lint, test, build or browser run was made for any of this.
+
+- **Seen on screen and reported working** (by Min): the three Preferences cards, the content
+  texture picker with its Strength slider, and the content text colour.
+- **Written in earlier sessions and not re-inspected on screen when this entry was written**:
+  photo culling (library, controls, ceiling, CLI), floating toolbars and draggable pucks, the
+  Account reset buttons, the Features tab, the location filter tiles and the `BusyOverlay`
+  progress bar. Their descriptions above come from the diff and its comments, not from use.
+- **Migration 0153** has not been run against any copy of the database.
+
 ## 2026-10-20 — Journal home-screen cards, Substantial Entries tab, saved-filter categories, calendar Delete, SQL Explorer table suggestions
 
 **Migration 0152 must be applied on the NAS.** It adds `category_name` and `description` to

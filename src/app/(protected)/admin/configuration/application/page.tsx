@@ -2,6 +2,7 @@
 
 import { useAdminSettings } from "../../admin-shell";
 import { PAGE_CONTAINER } from "../../../page-container";
+import { CullCapControl } from "./cull-cap-control";
 import { UploadCapControl } from "./upload-cap-control";
 
 export default function ApplicationConfigurationPage() {
@@ -28,6 +29,7 @@ export default function ApplicationConfigurationPage() {
         </label>
 
         <UploadCapControl />
+        <CullCapControl />
       </div>
     </div>
   );

@@ -10,6 +10,7 @@ import { JournalViewer } from "@/components/journal-viewer";
 import { Modal } from "@/components/modal";
 import { SlotIcon } from "@/components/slot-icon";
 import { TreeIcon } from "@/components/tree-icons";
+import type { DashboardTextureItem } from "@/lib/dashboard-texture";
 import { getIconSlot } from "@/lib/icons";
 import {
   ENCRYPTED_TITLE_PLACEHOLDER,
@@ -45,6 +46,8 @@ export interface JournalReviewViewProps {
   categoryOptions: string[];
   tagOptions: string[];
   preferences: JournalPreferences;
+  /** The app texture library, so the Content field's chosen picture resolves. */
+  contentTextures?: DashboardTextureItem[];
   prefillTemplates: JournalPrefillTemplate[];
   locationCategoryOptions: string[];
   locationTagOptions: string[];
@@ -74,6 +77,7 @@ export function JournalReviewView({
   categoryOptions,
   tagOptions,
   preferences,
+  contentTextures = [],
   prefillTemplates,
   locationCategoryOptions,
   locationTagOptions,
@@ -766,6 +770,7 @@ export function JournalReviewView({
             categoryOptions={categoryOptions}
             tagOptions={tagOptions}
             preferences={preferences}
+            contentTextures={contentTextures}
             prefillTemplates={prefillTemplates}
             locationCategoryOptions={locationCategoryOptions}
             locationTagOptions={locationTagOptions}

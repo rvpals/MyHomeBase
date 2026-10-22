@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_JOURNAL_CONTENT_TEXTURE_OPACITY,
   HANDWRITING_SIZE_OPTIONS,
   JOURNAL_SETTING_KEYS,
+  NO_JOURNAL_CONTENT_TEXTURE,
   handwritingSizeClass,
   journalPreferencesToEntries,
+  resolveJournalContentTexture,
+  resolveJournalContentTextureOpacity,
   resolveJournalPreferences,
 } from "./preferences";
+import type { DashboardTextureItem } from "@/lib/dashboard-texture";
 import type { ModuleSetting } from "@/lib/module-settings";
 import type { JournalHandwritingSize } from "./types";
 
@@ -22,6 +27,9 @@ describe("resolveJournalPreferences", () => {
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
       excludedWords: [],
+      contentTextureId: null,
+      contentTextureOpacity: 0.1,
+      contentTextColor: null,
     });
   });
 
@@ -39,6 +47,9 @@ describe("resolveJournalPreferences", () => {
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
       excludedWords: [],
+      contentTextureId: null,
+      contentTextureOpacity: 0.1,
+      contentTextColor: null,
     });
   });
 
@@ -65,6 +76,9 @@ describe("journalPreferencesToEntries", () => {
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
       excludedWords: ["Beach", "picnic"],
+      contentTextureId: null,
+      contentTextureOpacity: 0.1,
+      contentTextColor: null,
     });
     const row = entries.find((entry) => entry.key === JOURNAL_SETTING_KEYS.excludedWords);
     expect(row?.value).toBe("beach,picnic");
@@ -78,6 +92,9 @@ describe("journalPreferencesToEntries", () => {
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
       excludedWords: [],
+      contentTextureId: null,
+      contentTextureOpacity: 0.1,
+      contentTextColor: null,
     });
     // A blank value would be rejected by the module-settings schema, so the
     // empty list has to mean "no row".
@@ -93,6 +110,9 @@ describe("journalPreferencesToEntries", () => {
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
       excludedWords: [],
+      contentTextureId: null,
+      contentTextureOpacity: 0.1,
+      contentTextColor: null,
     });
     expect(entries.some((entry) => entry.key === JOURNAL_SETTING_KEYS.defaultLocationName)).toBe(false);
     expect(entries.every((entry) => entry.value !== "")).toBe(true);
@@ -114,6 +134,12 @@ describe("journalPreferencesToEntries", () => {
       // would prove nothing. Two words rather than one so the serializer's
       // separator handling is exercised as well.
       excludedWords: ["the", "and"],
+      // Non-default for the same reason as the three above: a round-trip
+      // through `null` would also pass if the field were dropped entirely.
+      contentTextureId: 7,
+      // Not the default, so the round-trip proves it is carried.
+      contentTextureOpacity: 0.45,
+      contentTextColor: "#1A2B3C",
     };
     const rebuilt = resolveJournalPreferences(
       journalPreferencesToEntries(original).map((entry, index) => ({
@@ -137,6 +163,9 @@ describe("journalPreferencesToEntries", () => {
         handwritingSize: "xl",
         reviewBeforeCalendarImport: false,
         excludedWords: [],
+        contentTextureId: null,
+        contentTextureOpacity: 0.1,
+        contentTextColor: null,
       }).some((entry) => entry.key === JOURNAL_SETTING_KEYS.photoRoot),
     ).toBe(false);
 
@@ -149,6 +178,9 @@ describe("journalPreferencesToEntries", () => {
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
       excludedWords: [],
+      contentTextureId: null,
+      contentTextureOpacity: 0.1,
+      contentTextColor: null,
     });
     expect(entries.find((entry) => entry.key === JOURNAL_SETTING_KEYS.photoRoot)?.value).toBe(
       "/volume1/MEDIA/PHOTO/BY YEAR",
@@ -213,6 +245,9 @@ describe("handwriting size", () => {
       handwritingSize: "2xl",
       reviewBeforeCalendarImport: false,
       excludedWords: [],
+      contentTextureId: null,
+      contentTextureOpacity: 0.1,
+      contentTextColor: null,
     });
     expect(entries.find((entry) => entry.key === JOURNAL_SETTING_KEYS.handwritingSize)?.value).toBe(
       "2xl",
@@ -258,6 +293,9 @@ describe("review before calendar import", () => {
         // Empty: this test is about the review flag's row, and an irrelevant
         // non-empty value here would only add noise to what it asserts.
         excludedWords: [],
+        contentTextureId: null,
+        contentTextureOpacity: 0.1,
+        contentTextColor: null,
       });
       expect(
         entries.find((entry) => entry.key === JOURNAL_SETTING_KEYS.reviewBeforeCalendarImport)
@@ -265,5 +303,189 @@ describe("review before calendar import", () => {
         `enabled ${enabled}`,
       ).toBe(enabled ? "true" : "false");
     }
+  });
+});
+
+describe("content background texture", () => {
+  // A library row shaped like the real thing. Only `id`, `hasImage`, `opacity`
+  // and `updatedAt` are read by the resolver; the rest are here so the fixture
+  // type-checks against DashboardTextureItem.
+  function texture(id: number, over: Partial<DashboardTextureItem> = {}): DashboardTextureItem {
+    return {
+      id,
+      name: `Texture ${id}`,
+      hasImage: true,
+      opacity: 0.1,
+      mode: "cover",
+      blur: 0,
+      updatedAt: "2026-10-21T00:00:00Z",
+      ...over,
+    };
+  }
+
+  it("reads a stored pointer back as the id", () => {
+    const prefs = resolveJournalPreferences([
+      setting(JOURNAL_SETTING_KEYS.contentTextureId, "12"),
+    ]);
+    expect(prefs.contentTextureId).toBe(12);
+  });
+
+  it("reads the no-texture sentinel, and anything malformed, as null", () => {
+    // `"0"` is the sentinel the screen writes to clear the choice. The rest is
+    // what a hand-edited row looks like — none of it may become a pointer, or
+    // the field would render a layer whose URL 404s.
+    for (const stored of [NO_JOURNAL_CONTENT_TEXTURE, "", "   ", "-1", "abc", "1.5", "NaN"]) {
+      const prefs = resolveJournalPreferences([
+        setting(JOURNAL_SETTING_KEYS.contentTextureId, stored),
+      ]);
+      expect(prefs.contentTextureId, `stored ${JSON.stringify(stored)}`).toBeNull();
+    }
+  });
+
+  it("writes the sentinel rather than omitting the row when no texture is chosen", () => {
+    const entries = journalPreferencesToEntries({
+      defaultLocation: null,
+      temperatureUnit: "fahrenheit",
+      photoRoot: "",
+      handwritingSize: "xl",
+      reviewBeforeCalendarImport: false,
+      excludedWords: [],
+      contentTextureId: null,
+      contentTextureOpacity: 0.1,
+      contentTextColor: null,
+    });
+    const row = entries.find((entry) => entry.key === JOURNAL_SETTING_KEYS.contentTextureId);
+    expect(row?.value).toBe(NO_JOURNAL_CONTENT_TEXTURE);
+    // The schema rejects blanks, which is why the sentinel exists at all.
+    expect(entries.every((entry) => entry.value !== "")).toBe(true);
+  });
+
+  it("resolves a chosen picture to its URL and the journal's own opacity", () => {
+    const resolved = resolveJournalContentTexture(
+      4,
+      [texture(3), texture(4, { opacity: 0.35 })],
+      0.6,
+    );
+    expect(resolved?.backgroundImage).toBe(
+      'url("/api/dashboard/texture?id=4&v=2026-10-21T00%3A00%3A00Z")',
+    );
+    // The journal's value wins over the library row's 0.35: a picture tuned
+    // for whatever surface it last sat on is not tuned for this one.
+    expect(resolved?.opacity).toBe(0.6);
+  });
+
+  it("clamps an out-of-range opacity handed straight to the resolver", () => {
+    // The read path clamps too, but a caller can pass a raw number -- a slider
+    // mid-drag, or a value from somewhere other than resolveJournalPreferences.
+    expect(resolveJournalContentTexture(1, [texture(1)], 4)?.opacity).toBe(1);
+    expect(resolveJournalContentTexture(1, [texture(1)], -2)?.opacity).toBe(0);
+  });
+
+  it("falls back to the default strength when the caller omits one", () => {
+    expect(resolveJournalContentTexture(1, [texture(1)])?.opacity).toBe(
+      DEFAULT_JOURNAL_CONTENT_TEXTURE_OPACITY,
+    );
+  });
+
+  it("resolves to undefined when nothing is chosen", () => {
+    expect(resolveJournalContentTexture(null, [texture(1)])).toBeUndefined();
+  });
+
+  it("resolves a stale pointer to undefined rather than a broken layer", () => {
+    // The failure path that matters: there is no foreign key, so deleting a
+    // library picture leaves this pointer behind. It has to fall through to the
+    // plain sheet, not to a background-image that 404s.
+    expect(resolveJournalContentTexture(99, [texture(1), texture(2)])).toBeUndefined();
+    // Same for a row that exists but carries no image.
+    expect(resolveJournalContentTexture(1, [texture(1, { hasImage: false })])).toBeUndefined();
+  });
+});
+
+describe("content text color", () => {
+  it("reads a stored hex back, normalized to upper case", () => {
+    const prefs = resolveJournalPreferences([
+      setting(JOURNAL_SETTING_KEYS.contentTextColor, "  #1a2b3c  "),
+    ]);
+    expect(prefs.contentTextColor).toBe("#1A2B3C");
+  });
+
+  it("falls back to the theme's ink for anything that is not #RRGGBB", () => {
+    // The value reaches the DOM as a CSS color. A shorthand or a named color
+    // would often *work*, which is worse than failing: the stored value would
+    // no longer be the one shape the picker can round-trip.
+    for (const bogus of ["", "   ", "#FFF", "red", "1A2B3C", "#12345G", "rgb(0,0,0)"]) {
+      const prefs = resolveJournalPreferences([
+        setting(JOURNAL_SETTING_KEYS.contentTextColor, bogus),
+      ]);
+      expect(prefs.contentTextColor, `stored ${JSON.stringify(bogus)}`).toBeNull();
+    }
+  });
+
+  it("omits the row when unset, since an absent row means 'use the theme's ink'", () => {
+    const entries = journalPreferencesToEntries({
+      defaultLocation: null,
+      temperatureUnit: "fahrenheit",
+      photoRoot: "",
+      handwritingSize: "xl",
+      reviewBeforeCalendarImport: false,
+      excludedWords: [],
+      contentTextureId: null,
+      contentTextureOpacity: 0.1,
+      contentTextColor: null,
+    });
+    expect(entries.some((entry) => entry.key === JOURNAL_SETTING_KEYS.contentTextColor)).toBe(
+      false,
+    );
+    expect(entries.every((entry) => entry.value !== "")).toBe(true);
+  });
+});
+
+describe("content texture strength", () => {
+  it("reads a stored strength back as a number", () => {
+    const prefs = resolveJournalPreferences([
+      setting(JOURNAL_SETTING_KEYS.contentTextureOpacity, "0.45"),
+    ]);
+    expect(prefs.contentTextureOpacity).toBe(0.45);
+  });
+
+  it("falls back to the default for a blank or unparseable row", () => {
+    // Free-form text with no CHECK behind it, so this is the only thing between
+    // a hand-edited row and a Content field drawn at the wrong strength.
+    for (const bogus of ["", "   ", "abc", "NaN"]) {
+      expect(
+        resolveJournalContentTextureOpacity(bogus),
+        `stored ${JSON.stringify(bogus)}`,
+      ).toBe(DEFAULT_JOURNAL_CONTENT_TEXTURE_OPACITY);
+    }
+    expect(resolveJournalContentTextureOpacity(undefined)).toBe(
+      DEFAULT_JOURNAL_CONTENT_TEXTURE_OPACITY,
+    );
+  });
+
+  it("clamps a stored strength to 0..1 rather than erroring", () => {
+    // A bad preference must not break the form you write entries in.
+    expect(resolveJournalContentTextureOpacity("40")).toBe(1);
+    expect(resolveJournalContentTextureOpacity("-3")).toBe(0);
+    // The edges themselves stay reachable.
+    expect(resolveJournalContentTextureOpacity("0")).toBe(0);
+    expect(resolveJournalContentTextureOpacity("1")).toBe(1);
+  });
+
+  it("always writes a strength row, and clamps it on the way out", () => {
+    const entries = journalPreferencesToEntries({
+      defaultLocation: null,
+      temperatureUnit: "fahrenheit",
+      photoRoot: "",
+      handwritingSize: "xl",
+      reviewBeforeCalendarImport: false,
+      excludedWords: [],
+      contentTextureId: null,
+      contentTextureOpacity: 2.5,
+      contentTextColor: null,
+    });
+    // Written even with no texture chosen: the value has no "unset" member, so
+    // a row is never ambiguous -- the same call the size and review flag make.
+    expect(entries.find((entry) => entry.key === JOURNAL_SETTING_KEYS.contentTextureOpacity)
+      ?.value).toBe("1");
   });
 });

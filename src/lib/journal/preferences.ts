@@ -1,3 +1,4 @@
+import type { DashboardTextureItem } from "@/lib/dashboard-texture";
 import type { ModuleSetting } from "@/lib/module-settings";
 import type {
   JournalHandwritingSize,
@@ -16,7 +17,55 @@ export const JOURNAL_SETTING_KEYS = {
   handwritingSize: "handwriting_size",
   reviewBeforeCalendarImport: "review_before_calendar_import",
   excludedWords: "excluded_words",
+  contentTextureId: "content_texture_id",
+  contentTextureOpacity: "content_texture_opacity",
+  contentTextColor: "content_text_color",
 } as const;
+
+/**
+ * The strength the Content background draws at when it has not been tuned.
+ *
+ * 0.10, the full-page figure rather than the 0.15 a navigation column or a
+ * personal toolbar uses. A Content textarea is 18 rows tall and fills most of
+ * the card, so it shows as much of a picture as a page background does — the
+ * reason a narrow strip needs a stronger default doesn't apply here.
+ *
+ * This is what a library picture's own opacity would most often have been, so
+ * the default keeps the look the picker had before the slider existed.
+ */
+export const DEFAULT_JOURNAL_CONTENT_TEXTURE_OPACITY = 0.1;
+
+/**
+ * What `content_texture_id` holds when no picture is chosen.
+ *
+ * `"0"` and not `""`, for the reason `NO_NAV_TEXTURE` documents: module-setting
+ * values must be non-empty, so the screen cannot clear the choice by writing a
+ * blank through the same path every other preference uses. Library ids are
+ * AUTOINCREMENT rowids and start at 1, so this sentinel can never collide with
+ * a real picture.
+ */
+export const NO_JOURNAL_CONTENT_TEXTURE = "0";
+
+/** The one shape `<input type="color">` emits and the only one we store. */
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+
+/**
+ * Clamp a stored strength to 0..1, falling back to the default.
+ *
+ * Module-setting values are free-form text with no CHECK behind them, so this
+ * is the only thing between a hand-edited row and a Content field drawn at
+ * opacity 40. A blank, a word and a number out of range all resolve to the
+ * default rather than erroring — a bad preference should not break the form
+ * you write entries in. Same contract as `resolveNavTextureOpacity`.
+ */
+export function resolveJournalContentTextureOpacity(value?: string): number {
+  if (value === undefined || value.trim() === "") {
+    return DEFAULT_JOURNAL_CONTENT_TEXTURE_OPACITY;
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return DEFAULT_JOURNAL_CONTENT_TEXTURE_OPACITY;
+  return Math.min(1, Math.max(0, parsed));
+}
 
 const DEFAULT_TEMPERATURE_UNIT: JournalTemperatureUnit = "fahrenheit";
 
@@ -104,6 +153,30 @@ export function resolveJournalPreferences(settings: ModuleSetting[]): JournalPre
   // casing and duplicates a hand-edited value could carry.
   const excludedWords = parseExcludedWords(byKey.get(JOURNAL_SETTING_KEYS.excludedWords) ?? "");
 
+  // Only a whole number >= 1 is a real library id. `"0"` is the "no texture"
+  // sentinel, and a blank, a word or a negative is what a hand-edited row looks
+  // like — all of them mean "draw the plain sheet" rather than erroring. Note
+  // this does NOT check the picture still exists: that needs the library, which
+  // this function doesn't take. `resolveJournalContentTexture` does it.
+  const storedTextureId = Number(byKey.get(JOURNAL_SETTING_KEYS.contentTextureId));
+  const contentTextureId =
+    Number.isInteger(storedTextureId) && storedTextureId >= 1 ? storedTextureId : null;
+
+  // Validated rather than cast, for the same reason the handwriting size is:
+  // the value reaches the DOM as a CSS color, and an unrecognised one would
+  // either be ignored silently or — worse — be a value the browser does accept
+  // but nobody chose. Only the exact `#RRGGBB` an `<input type="color">` emits
+  // reads as set; anything else falls back to the theme's ink.
+  const storedColor = (byKey.get(JOURNAL_SETTING_KEYS.contentTextColor) ?? "").trim();
+  const contentTextColor = HEX_COLOR.test(storedColor) ? storedColor.toUpperCase() : null;
+
+  // Always a number, never null: unlike the pointer and the colour there is no
+  // "unset" state worth distinguishing — a texture always draws at *some*
+  // strength, and the default is one of the legal values.
+  const contentTextureOpacity = resolveJournalContentTextureOpacity(
+    byKey.get(JOURNAL_SETTING_KEYS.contentTextureOpacity),
+  );
+
   return {
     defaultLocation,
     temperatureUnit,
@@ -111,6 +184,56 @@ export function resolveJournalPreferences(settings: ModuleSetting[]): JournalPre
     handwritingSize,
     reviewBeforeCalendarImport,
     excludedWords,
+    contentTextureId,
+    contentTextureOpacity,
+    contentTextColor,
+  };
+}
+
+/**
+ * The CSS the Content field draws its chosen picture with, or `undefined` for
+ * the hand-drawn `.paper-texture` sheet.
+ *
+ * Separate from `resolveJournalPreferences` because it needs the texture
+ * library, which the settings rows alone can't supply. Same split
+ * `resolveNavTexture` keeps, and for the same reason: the preference is a
+ * pointer, and only something holding the library can say whether it still
+ * points at anything.
+ *
+ * Resolves to `undefined` for a stale pointer — an admin deleting a library
+ * picture leaves this setting behind, and there is no foreign key to cascade.
+ * Falling through to the plain sheet is what stops that from rendering as a
+ * layer whose URL 404s: a Content field with no visible background at all,
+ * rather than the one it had before the picture was deleted.
+ *
+ * The **journal's own** opacity is used, not the library row's — the same
+ * divergence `resolveNavTexture` and `resolveToolbar` make. A library picture's
+ * opacity was tuned for whatever surface it was last used on, and the Content
+ * field is a surface you stare at while writing, so it gets its own knob rather
+ * than inheriting one. The picture's mode and blur are not read at all: this
+ * draws `bg-cover`, so a `tile` row would have nothing to say here.
+ */
+export function resolveJournalContentTexture(
+  contentTextureId: number | null,
+  textures: readonly DashboardTextureItem[],
+  opacity: number = DEFAULT_JOURNAL_CONTENT_TEXTURE_OPACITY,
+): { backgroundImage: string; opacity: number } | undefined {
+  if (contentTextureId === null) return undefined;
+
+  const picture = textures.find((texture) => texture.id === contentTextureId);
+  if (!picture?.hasImage) return undefined;
+
+  return {
+    // `?v=<updatedAt>` because the serving route sends a 5-minute max-age —
+    // without it, replacing the picture in the library would appear to do
+    // nothing here. The same cache-buster the other resolvers build.
+    backgroundImage: `url("/api/dashboard/texture?id=${picture.id}&v=${encodeURIComponent(
+      picture.updatedAt,
+    )}")`,
+    // Clamped on the way out as well as on the way in, so a caller passing a
+    // raw number (a slider mid-drag, a value from somewhere other than
+    // `resolveJournalPreferences`) can't put an out-of-range opacity on screen.
+    opacity: Math.min(1, Math.max(0, opacity)),
   };
 }
 
@@ -134,7 +257,46 @@ export function journalPreferencesToEntries(
       key: JOURNAL_SETTING_KEYS.reviewBeforeCalendarImport,
       value: preferences.reviewBeforeCalendarImport ? "true" : "false",
     },
+    // Always written, including the "none" case, as the sentinel rather than a
+    // missing row — the same call `handwritingSize` and
+    // `reviewBeforeCalendarImport` make just above.
+    //
+    // Clearing would survive either way: this screen saves through
+    // `saveModuleSettings`, which replaces a module's rows wholesale, so an
+    // omitted key is deleted rather than left behind. The sentinel is here
+    // because an explicit "no texture" and a never-configured journal should
+    // not be the same row state — a stored `"0"` is a choice somebody made,
+    // and keeping it visible in the settings table is worth one row.
+    {
+      key: JOURNAL_SETTING_KEYS.contentTextureId,
+      value:
+        preferences.contentTextureId === null
+          ? NO_JOURNAL_CONTENT_TEXTURE
+          : String(preferences.contentTextureId),
+    },
+    // Always written, like the size and the review flag: the value has no
+    // "unset" member, so a row is never ambiguous. Clamped here as well as on
+    // read, so the stored value is always one the resolver would accept.
+    {
+      key: JOURNAL_SETTING_KEYS.contentTextureOpacity,
+      value: String(Math.min(1, Math.max(0, preferences.contentTextureOpacity))),
+    },
   ];
+
+  // Omitted when unset rather than stored as "": the schema requires a
+  // non-empty value, and an absent row is what "use the theme's ink" means on
+  // read — the same shape `photoRoot` and `excludedWords` use below.
+  //
+  // No sentinel here, unlike the texture above, because an unset color already
+  // has a name: the theme's own `--ink`. There is nothing for a reader to
+  // distinguish between "never picked a color" and "deliberately chose the
+  // theme's", since both render identically and both follow a theme switch.
+  if (preferences.contentTextColor !== null) {
+    entries.push({
+      key: JOURNAL_SETTING_KEYS.contentTextColor,
+      value: preferences.contentTextColor,
+    });
+  }
 
   // Omitted when blank rather than stored as "": moduleSettingEntrySchema requires a
   // non-empty value, and an absent row is what "not configured" means on read.

@@ -1,6 +1,7 @@
 import { getAppVersion } from "@/lib/app-version";
 import { getChangeHistory } from "@/lib/change-history";
 import { listDeployments } from "@/lib/deployments";
+import { getFeatureList } from "@/lib/feature-list";
 import { formatBytes, getSystemInfo } from "@/lib/system-info";
 import { deps } from "@/lib/wiring";
 import packageJson from "../../../../../package.json";
@@ -18,6 +19,7 @@ export default function AboutPage() {
   const changeHistory = getChangeHistory(deps.changeHistoryRepo);
   const appVersion = getAppVersion(deps.buildIdRepo);
   const deployments = listDeployments(deps.deploymentRepo);
+  const featureList = getFeatureList(deps.featureListRepo);
 
   const stats = [
     { label: "Hostname", value: systemInfo.server.hostname },
@@ -103,6 +105,7 @@ export default function AboutPage() {
       deployments={deploymentRows}
       changeHistoryMarkdown={changeHistory.markdown}
       changeHistorySummary={changeHistory.summary}
+      featureListMarkdown={featureList.markdown}
     />
   );
 }

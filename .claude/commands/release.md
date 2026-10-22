@@ -1,5 +1,5 @@
 ---
-description: Release MyHomeBase to NAS — back up the production DB, sync the docs, ship the changelog, then commit and push.
+description: Release MyHomeBase to NAS — back up the production DB, sync the docs, ship the changelog and feature catalogue, then commit and push.
 model: sonnet
 ---
 
@@ -84,7 +84,7 @@ not at the top of the file — from the same evidence as step 2:
 
 Phrase each item as the behaviour a person would go and look at, not the code changed.
 
-## 4. Ship the changelog to NAS
+## 4. Ship the changelog and the feature catalogue to NAS
 
 The About page reads `CHANGE_HISTORY.md` from the running app's working directory, so the
 deployed copy needs refreshing after step 3. `REBUILD_PUBLISH_NAS.bat` includes it, so a
@@ -96,12 +96,41 @@ ls -la //NAS_DS223/app/myhomebase/CHANGE_HISTORY.md
 head -3 //NAS_DS223/app/myhomebase/CHANGE_HISTORY.md
 ```
 
+### 4a. Update `MyHomeBase_feature.md`, then copy it too
+
+`MyHomeBase_feature.md` answers *what exists*, where `CHANGE_HISTORY.md` answers *what
+changed* — so it only needs touching when this release added, removed or reshaped a
+**feature a person can see**. A bug fix, a refactor or a doc catch-up leaves it alone.
+
+From the same evidence as step 2, fold this release's user-visible changes into the
+existing prose:
+
+- **Edit in place, don't append.** It's organised by module (`## Platform`,
+  `## Journal`, …) and within a module by section heading, following each module's live
+  navigation — a new capability joins the bullet list it belongs to, and a changed one
+  rewrites the bullet that's now wrong.
+- **A new module gets its own `##` section**, with `###` headings matching its sections.
+- **Describe the capability, not the release.** No dates, no "new in this release" — the
+  dated record is `CHANGE_HISTORY.md`, and this file is read on its own.
+- Refresh the commit count and date range in the opening paragraph if they're stale.
+
+Then copy it to the NAS the same way:
+
+```bash
+cp MyHomeBase_feature.md //NAS_DS223/app/myhomebase/MyHomeBase_feature.md
+ls -la //NAS_DS223/app/myhomebase/MyHomeBase_feature.md
+head -3 //NAS_DS223/app/myhomebase/MyHomeBase_feature.md
+```
+
+Say whether the file needed changing, and what changed if so. It's committed in step 5
+along with everything else.
+
 ## 5. Commit and push
 
 - Review `git status` / `git diff` once more so nothing unexpected (secrets, debug files,
   scratch scripts) is staged.
-- Stage everything — code, `CHANGE_HISTORY.md`, `Testing_List.md`, the step 3 docs — so code
-  and docs land together.
+- Stage everything — code, `CHANGE_HISTORY.md`, `Testing_List.md`, `MyHomeBase_feature.md`,
+  the step 2 docs — so code and docs land together.
 - Commit with a message summarising the release, sourced from the new changelog entry. If
   the tree holds several unrelated bodies of work, ask whether to split them first.
 - Push to `origin/main` (`https://github.com/rvpals/MyHomeBase.git`).

@@ -72,6 +72,9 @@ describe("resolveUserPreferences", () => {
         calculator: "bottom-right",
         scratchpad: "bottom-right",
       },
+      // Sparse by design: a reader who has never dragged a puck has no entries, and
+      // that absence is what keeps every puck docked in its corner.
+      floatingPositions: {},
       calculator: { angleMode: "deg", lastResult: undefined },
     });
   });
@@ -110,6 +113,9 @@ describe("resolveUserPreferences", () => {
         calculator: "bottom-right",
         scratchpad: "bottom-right",
       },
+      // Sparse by design: a reader who has never dragged a puck has no entries, and
+      // that absence is what keeps every puck docked in its corner.
+      floatingPositions: {},
       calculator: { angleMode: "deg", lastResult: undefined },
     });
   });
@@ -178,6 +184,9 @@ describe("userPreferencesToEntries", () => {
         calculator: "bottom-right",
         scratchpad: "bottom-right",
       },
+      // Sparse by design: a reader who has never dragged a puck has no entries, and
+      // that absence is what keeps every puck docked in its corner.
+      floatingPositions: {},
       calculator: { angleMode: "deg", lastResult: undefined },
       // Added by the resolver but not serialized here, for the same reason as
       // `floating`: `original` omits `homeLayout`, so no home-layout keys were
@@ -400,6 +409,9 @@ describe("getUserPreferences", () => {
         calculator: "bottom-right",
         scratchpad: "bottom-right",
       },
+      // Sparse by design: a reader who has never dragged a puck has no entries, and
+      // that absence is what keeps every puck docked in its corner.
+      floatingPositions: {},
       calculator: { angleMode: "deg", lastResult: undefined },
     });
   });
@@ -441,6 +453,9 @@ describe("saveUserPreferences", () => {
         calculator: "bottom-right",
         scratchpad: "bottom-right",
       },
+      // Sparse by design: a reader who has never dragged a puck has no entries, and
+      // that absence is what keeps every puck docked in its corner.
+      floatingPositions: {},
       calculator: { angleMode: "deg", lastResult: undefined },
     });
     expect(getUserPreferences(repo, 7)).toEqual(saved);
@@ -479,6 +494,9 @@ describe("saveUserPreferences", () => {
         calculator: "bottom-right",
         scratchpad: "bottom-right",
       },
+      // Sparse by design: a reader who has never dragged a puck has no entries, and
+      // that absence is what keeps every puck docked in its corner.
+      floatingPositions: {},
       calculator: { angleMode: "deg", lastResult: undefined },
     });
   });
@@ -555,6 +573,9 @@ describe("resolveStartupDestination", () => {
         calculator: "bottom-right",
         scratchpad: "bottom-right",
       },
+      // Sparse by design: a reader who has never dragged a puck has no entries, and
+      // that absence is what keeps every puck docked in its corner.
+      floatingPositions: {},
       calculator: { angleMode: "deg", lastResult: undefined },
       ...partial,
     };

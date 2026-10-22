@@ -219,6 +219,9 @@ export function FloatingCalculator({
         index={puck?.index ?? 0}
         // The reader's docked corner, defaulting when the slot is somehow missing.
         corner={puck?.corner ?? "bottom-right"}
+        // Where this reader dragged it, if they have. Absent leaves it corner-docked.
+        position={layer.positions.calculator}
+        onMove={(position) => layer.setPosition("calculator", position)}
         onRestore={() => layer.restore("calculator")}
         onClose={() => layer.close("calculator")}
       >

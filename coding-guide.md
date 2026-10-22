@@ -787,10 +787,11 @@ unnamed row in the navigation tree would be unidentifiable in the one screen you
 go to in order to fix it. A blank *hint* is a real value, since plenty of sections
 ship with no description.
 
-## Personal toolbars: shortcut bars docked to an edge
+## Personal toolbars: shortcut bars docked to an edge, or floating
 
-A **personal toolbar** is an admin-configured strip of shortcuts pinned to one of
-the four screen edges, pointing at the menu items above.
+A **personal toolbar** is an admin-configured strip of shortcuts pointing at the menu
+items above, either pinned to one of the four screen edges or **floating** where each
+reader drags it (migration 0153).
 
 **It is additive, and that is the rule to hold onto.** The navigation tree (full
 layout) and the two-tier bottom bar (compact) are untouched by this feature — a
@@ -802,16 +803,17 @@ starts to look like "the toolbar replaces X", it is the wrong change.
 | Piece | Where | What it owns |
 |---|---|---|
 | `resolveToolbar` / `resolveToolbarsFor` | [src/lib/toolbars](src/lib/toolbars) | Which bars a reader sees, and which rows still resolve |
-| `occupiedEdges` | the same folder | Which edges are taken — an **edge**, never a pixel |
+| `occupiedEdges` | the same folder | Which edges are taken — an **edge**, never a pixel. **Never returns `floating`** |
 | `parseHiddenToolbars` | [visibility.ts](src/lib/toolbars/visibility.ts) | One reader's hide list |
+| `parseToolbarPositions` / `clampToolbarPosition` | [position.ts](src/lib/toolbars/position.ts) | One reader's dragged positions, and pulling a stale one back on screen |
 | `PersonalToolbars` | [src/components/personal-toolbar.tsx](src/components/personal-toolbar.tsx) | Rendering, and mirroring `data-toolbar-<edge>` |
 | `.personal-toolbar` | `globals.css` | The offset arithmetic |
 
 ### Ownership is split, like the floating layer's
 
 An **administrator** decides which bars exist and how each looks; each **reader**
-decides whether a given bar is on their own screen (`toolbars_hidden`, one
-preference key). Same split `floating_enabled` makes, and for the same reason: "put
+decides whether a given bar is on their own screen (`toolbars_hidden`, one preference
+key) and, for a floating bar, **where it sits** (`toolbar_positions`, one more). Same split `floating_enabled` makes, and for the same reason: "put
 that bar away" is a personal gesture, and an admin-only switch would leave a reader
 unable to undo their own screen.
 
@@ -836,6 +838,46 @@ pressing Save on an unrelated field reset the hide list.
 - **`fullModeOnly` is applied on the client**, not the server, because a reader can
   pin the compact layout on a wide window. Every *other* visibility rule is applied
   server-side so the first HTML is already right.
+
+### The floating placement (migration 0153)
+
+`edge: "floating"` is the fifth placement: a bar over the page at a position each
+reader drags for themselves. Five things to know before changing it.
+
+- **It reserves no page space, and two places must agree about that.**
+  `occupiedEdges` filters `floating` out in `lib`, and `PersonalToolbars` filters it
+  again when mirroring `data-toolbar-<edge>` onto `<html>`. Change one without the
+  other and the shell pads for an edge the server never reserved. `isFloatingEdge`
+  exists so both ask the same question.
+- **A position is a reader preference, never a column.** It lives in
+  `sys_user_preferences` under `toolbar_positions`, parsed by `parseToolbarPositions`.
+  A column on `sys_toolbars` would mean one person's drag moved everyone's bar, and
+  two readers on different screens cannot share one pixel position anyway. Written
+  with `setValue` — one key — exactly like the hide list beside it.
+- **The drop deliberately does not `revalidatePath`.** The bar is already where the
+  reader let go; revalidating would re-render the whole protected layout per drop and
+  make it jump. The consequence is that after a drag the prop and the on-screen
+  position legitimately **disagree**, so the component tracks what it last committed
+  and releases its local value only once the server's matches. Do not "simplify" that
+  into comparing the prop to the local value — that comparison is false by design
+  after every drop, and the bar would snap back on the next unrelated revalidation.
+  `resetToolbarPositionAction` *does* revalidate, because it is pressed on a different
+  screen from the bar.
+- **Only the grip starts a drag.** `handlePointerDown` returns unless the press landed
+  on `.personal-toolbar-grip`. A bar that moved when you reached for a shortcut would
+  be unusable, and the grip carries `touch-none` so a touchscreen does not claim the
+  gesture for scrolling first.
+- **Every chrome-style rule for a floating bar restates its drop shadow.**
+  `box-shadow` is a single property, not a cascading list: the floating geometry sets
+  the cast shadow that lifts the bar off the page, so a bevel rule declaring
+  `box-shadow` on its own replaces it and the bar silently loses the lift. Same class
+  of trap as setting `background` over `--toolbar-surface`.
+
+The clamp (`clampToolbarPosition`) lives in `lib` and is tested there; the component
+only measures the DOM and hands it numbers. It is asymmetric on purpose — a bar may
+overhang either side edge as long as a grabbable strip remains, but may **never** go
+above the viewport top, because the bar is its own handle and losing it upward is
+unrecoverable.
 
 ### A stale row is dropped, not rendered
 
@@ -1010,13 +1052,15 @@ The pieces, and which layer each belongs to:
 | `resolveFloatingStates` | [src/lib/floating/state.ts](src/lib/floating/state.ts) | One reader's stored states, keys derived from the registry |
 | `FloatingLayerProvider` | [src/components/floating-layer.tsx](src/components/floating-layer.tsx) | The current value; mounted **once**, in the protected layout |
 | `FloatingWindow` / `FloatingPuck` | [src/components/floating-window.tsx](src/components/floating-window.tsx) | The two shapes |
+| `clampPuckPosition` + the parse/serialize pair | [src/lib/floating/position.ts](src/lib/floating/position.ts) | A dragged puck's stored point, and pulling it back on screen |
 | `.floating-puck` | `globals.css` | The offset arithmetic |
 
 ### Adding one
 
 1. Add the id to `FloatingId` ([types.ts](src/lib/floating/types.ts)) and an entry to
    `FLOATING_COMPONENTS`.
-2. Add the id to `enabledFloatingSchema` ([schema.ts](src/lib/floating/schema.ts)) and to
+2. Add the id to `enabledFloatingSchema` and to `floatingPositionSchema` /
+   `floatingPositionResetSchema` ([schema.ts](src/lib/floating/schema.ts)), and to
    `floatingStateUpdateSchema` in `user-preferences`. These are the one place the
    registry isn't the single source — the type error if you forget is deliberate.
 3. Build the component itself: read `useFloatingLayer()`, return `null` when `closed`,
@@ -1042,6 +1086,22 @@ screen as a switch that does nothing, so do all four together.
   (`PUCK_CORNERS`), so each corner queues independently and only bottom-right reserves
   a slot for the music puck. Adding a corner means a `PUCK_CORNERS` entry *and* a
   `.floating-puck[data-corner=…]` rule — the type error if you forget one is the point.
+- **A dragged puck opts out of all of the above.** On desktop the reader may drag any
+  puck anywhere. The point is stored per reader in the single `floating_positions`
+  preference (`clock:320,180;calculator:900,420`) and **overrides the corner**: the
+  element drops `data-corner` for `data-floating-pos`, and `resolvePuckSlots` skips it
+  so it takes no slot and pushes nothing along. It therefore **stops clearing the music
+  bar, the section trigger and the shell's columns** — that is the trade free placement
+  makes, not a bug. *Reset position* on Account deletes the entry and returns it to the
+  queue. The clamp is `lib`'s and tested; the hook only measures the DOM.
+- **One preference key, so the write is read-modify-write.** Every puck's position
+  shares `floating_positions`, unlike the per-component state and corner keys. Writing
+  one without reading the rest would drop the others — `saveFloatingPosition` does the
+  read itself rather than trusting a caller's map. Still `setValue`, never
+  `userPreferencesToEntries`.
+- **Dragging is desktop-only and the puck is its own handle.** `Modal`'s fork, for the
+  same reasons. A 4px threshold separates the drag from the tap that restores, and the
+  shoulder ✕ is excluded from the gesture by `data-puck-close`.
 - **Stay at `z-30`.** `Modal` owns `z-50` so a dialog still covers a puck, and
   `design.md` caps chrome at `z-40`.
 - **A window is `Modal size="window"`, not a second draggable panel.** That variant

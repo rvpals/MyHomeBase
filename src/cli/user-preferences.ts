@@ -241,7 +241,16 @@ function printPreferences(
     }`,
   );
   for (const component of FLOATING_COMPONENTS) {
-    console.log(`  ${component.label}: ${preferences.floating[component.id]}`);
+    // The dragged position when there is one, else the corner it docks in. Shown
+    // this way round because that is the precedence the renderer applies: a position
+    // overrides the corner entirely rather than adjusting it.
+    const position = preferences.floatingPositions[component.id];
+    const placement = position
+      ? `dragged to ${position.x},${position.y}`
+      : `docked ${preferences.floatingCorners[component.id]}`;
+    console.log(
+      `  ${component.label}: ${preferences.floating[component.id]} (${placement})`,
+    );
   }
 
   const destination = resolveStartupDestination(preferences, accessibleSlugs);

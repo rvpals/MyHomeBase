@@ -66,6 +66,27 @@ export interface PuckSlot {
 }
 
 /**
+ * Where a reader has dragged one puck, in CSS pixels from the viewport's top left.
+ *
+ * **Free placement, and it overrides the corner.** A puck with a stored position is no
+ * longer docked: it sits exactly where it was dropped, and `resolvePuckSlots` leaves it
+ * out of the corner queue entirely. That is the deliberate trade free dragging makes —
+ * a hand-placed puck stops clearing the music bar and the section panel automatically,
+ * because the reader has said where they want it. Clearing the position (Account →
+ * "Reset position") hands it back to its corner and to the queue.
+ *
+ * Viewport coordinates rather than an offset from the docked corner: the corner rules
+ * resolve against live values (`--section-panel-width`, `env(safe-area-inset-*)`), so
+ * an offset would move on its own whenever the panel opened. A point does not.
+ *
+ * See `src/lib/floating/position.ts` for the storage shape and the clamp.
+ */
+export interface PuckPosition {
+  x: number;
+  y: number;
+}
+
+/**
  * Which screen corner a minimized puck docks in.
  *
  * A per-component reader preference. Four corners rather than a boolean pair because

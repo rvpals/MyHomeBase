@@ -698,6 +698,9 @@ export function FloatingScratchpad({
         }
         index={puck?.index ?? 0}
         corner={puck?.corner ?? "bottom-right"}
+        // Where this reader dragged it, if they have. Absent leaves it corner-docked.
+        position={layer.positions.scratchpad}
+        onMove={(position) => layer.setPosition("scratchpad", position)}
         onRestore={() => layer.restore("scratchpad")}
         onClose={() => layer.close("scratchpad")}
       >

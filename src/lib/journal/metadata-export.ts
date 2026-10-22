@@ -124,6 +124,23 @@ const metadataPreferencesSchema = z.object({
    * off — which is what the module does when the setting has never been saved.
    */
   reviewBeforeCalendarImport: z.boolean().default(false),
+  /**
+   * Nullable and defaulted for the same reason as the two above. `null` means
+   * "follow the theme's ink", which is what an older bundle restores to.
+   *
+   * There is deliberately NO `contentTextureId` beside this, and no
+   * `contentTextureOpacity` either. The pointer is a row id in *this* install's
+   * app texture library, and the library is not part of a journal metadata
+   * backup — restoring it on another machine would point the Content field at
+   * an unrelated picture, or at nothing. The strength goes with it, because it
+   * only means something alongside a picture: restoring a strength for a
+   * texture that didn't travel would tune nothing. Same rule the photo root
+   * follows — machine facts don't travel, reading preferences do.
+   */
+  contentTextColor: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, "Expected a #RRGGBB colour.")
+    .nullish(),
 });
 
 /**
@@ -242,6 +259,7 @@ export function buildMetadataBundle(
       photoRoot: preferences.photoRoot,
       handwritingSize: preferences.handwritingSize,
       reviewBeforeCalendarImport: preferences.reviewBeforeCalendarImport,
+      contentTextColor: preferences.contentTextColor,
     },
   };
 }
@@ -405,6 +423,14 @@ export function metadataPreferenceEntries(
       value: preferences.reviewBeforeCalendarImport ? "true" : "false",
     },
   ];
+
+  // Omitted when unset rather than written blank -- the settings schema rejects
+  // an empty value, and an absent row is what "use the theme's ink" means. So a
+  // bundle with no colour leaves this machine's own choice alone, which is the
+  // additive rule the rest of this function follows.
+  if (preferences.contentTextColor) {
+    entries.push({ key: "content_text_color", value: preferences.contentTextColor });
+  }
 
   const location = preferences.defaultLocation;
   if (location) {

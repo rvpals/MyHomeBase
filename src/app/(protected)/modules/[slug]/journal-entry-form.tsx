@@ -15,9 +15,11 @@ import { Tabs } from "@/components/tabs";
 import { TokenPicker } from "@/components/token-picker";
 import { TreeIcon } from "@/components/tree-icons";
 import { useCurrentPosition } from "@/components/use-current-position";
+import type { DashboardTextureItem } from "@/lib/dashboard-texture";
 import {
   applyPrefillTemplate,
   handwritingSizeClass,
+  resolveJournalContentTexture,
   type JournalHandwritingSize,
   type JournalPreferences,
   type JournalPrefillFormValues,
@@ -219,6 +221,7 @@ export function JournalEntryForm({
   categoryOptions,
   tagOptions,
   preferences,
+  contentTextures = [],
   prefillTemplates = [],
   locationCategoryOptions = [],
   locationTagOptions = [],
@@ -230,6 +233,16 @@ export function JournalEntryForm({
   categoryOptions: string[];
   tagOptions: string[];
   preferences: JournalPreferences;
+  /**
+   * The app texture library, so `preferences.contentTextureId` — a pointer, not
+   * bytes — can be resolved to a picture.
+   *
+   * Defaults to empty, which resolves to the hand-drawn `.paper-texture` sheet.
+   * That keeps the form renderable by a caller that hasn't read the library:
+   * the preference degrades to the look the field had before it existed, rather
+   * than the form refusing to mount.
+   */
+  contentTextures?: DashboardTextureItem[];
   /** Enabled templates only — the server filters, so anything here is offerable. */
   prefillTemplates?: JournalPrefillTemplate[];
   /**
@@ -562,6 +575,45 @@ export function JournalEntryForm({
   // on the fullscreen stage — so they can't drift to different sizes.
   const cursiveClass = handwritingClass(preferences.handwritingSize);
 
+  // The chosen Content background, or `undefined` for the hand-drawn
+  // `.paper-texture` sheet. Resolved here for the same reason as the size: two
+  // copies of the field, one answer.
+  //
+  // Unlike the cursive sheet this draws whether Handwriting is on or off — it
+  // is the Content field's background, not a handwriting affordance.
+  const contentTexture = resolveJournalContentTexture(
+    preferences.contentTextureId,
+    contentTextures,
+    preferences.contentTextureOpacity,
+  );
+
+  // The picture goes on an absolutely-positioned underlay rather than on the
+  // wrapper itself, because the library's opacity has to fade *the picture* and
+  // not the text sitting on it. `opacity` on the wrapper would take the
+  // textarea with it. Same reason the app-texture CSS rules use a layer.
+  //
+  // A function rather than one element reused twice: the two call sites round
+  // their corners differently (the card's field is `rounded-md`, the fullscreen
+  // sheet `rounded-lg`), and that is the only thing they disagree on. The URL
+  // and the opacity come from one resolved value either way.
+  const contentTextureLayer = (radiusClass: string) =>
+    contentTexture ? (
+      <span
+        aria-hidden
+        className={`pointer-events-none absolute inset-0 bg-cover bg-center ${radiusClass}`}
+        style={{
+          backgroundImage: contentTexture.backgroundImage,
+          opacity: contentTexture.opacity,
+        }}
+      />
+    ) : undefined;
+
+  // `undefined` leaves the `text-ink` class to do its job, which is what an
+  // unset preference means — the theme's own ink, following a theme switch.
+  const contentColorStyle = preferences.contentTextColor
+    ? { color: preferences.contentTextColor }
+    : undefined;
+
   // The two tab bodies, built here rather than inline in the `items` array so
   // the JSX below stays readable. Both close over the one `form` state above.
   const mainTab = (
@@ -638,16 +690,43 @@ export function JournalEntryForm({
             typing in cursive rather than having to leave the mode to edit. The
             sheet texture goes on the wrapper and the field turns transparent so
             it sits *on* the paper instead of stacking a second surface over it. */}
-        <div className={isHandwriting ? "rounded-md paper-texture" : ""}>
+        {/* `relative` so the texture underlay can be absolutely positioned
+            against this wrapper. A chosen picture replaces `.paper-texture`
+            rather than stacking on it — two fibre layers read as noise — and
+            draws in both modes, while the hand-drawn sheet stays tied to
+            Handwriting as it always was. */}
+        {/* With a texture and Handwriting off, the border moves from the field
+            to this wrapper: the field has to go transparent for the picture to
+            show through, and a transparent field keeping `INPUT_CLASS` would
+            draw its border *inside* the textured area rather than around it.
+            Handwriting mode has never drawn a border here, textured or not. */}
+        <div
+          className={`relative ${
+            contentTexture
+              ? `rounded-md ${isHandwriting ? "" : "border border-line"}`
+              : isHandwriting
+                ? "rounded-md paper-texture"
+                : ""
+          }`}
+        >
+          {contentTextureLayer("rounded-md")}
           <textarea
             value={form.content}
             onChange={(event) => update("content", event.target.value)}
             placeholder="What happened today…"
             aria-label="Content"
             rows={18}
+            // `relative` lifts the field above the texture underlay; without a
+            // position it would paint under the picture.
+            style={contentColorStyle}
             className={
-              isHandwriting
-                ? `w-full resize-y border-0 bg-transparent px-3 py-2 text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${cursiveClass}`
+              isHandwriting || contentTexture
+                ? `relative w-full resize-y border-0 bg-transparent px-3 py-2 text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
+                    // Cursive carries its own size; a textured field with
+                    // Handwriting off keeps the ordinary form-field size, so it
+                    // still matches Title and Place name.
+                    isHandwriting ? cursiveClass : "text-sm"
+                  }`
                 : `${INPUT_CLASS} resize-y`
             }
           />
@@ -921,18 +1000,25 @@ export function JournalEntryForm({
               stage is black but `--ink` follows the theme, so a light theme's
               dark ink directly on black would be unreadable. The sheet gives the
               text the same surface it has on the page. */}
+          {/* The same two preferences as the in-card field, from the same
+              resolved values — so the sheet a writer sees here is the one they
+              configured, and the two copies can't drift. `relative` anchors the
+              texture underlay; `bg-paper-raised` stays underneath it either
+              way, for the reason above. */}
           <div
-            className={`h-full w-full max-w-4xl overflow-hidden rounded-lg bg-paper-raised p-8 ${
-              isHandwriting ? "paper-texture" : ""
+            className={`relative h-full w-full max-w-4xl overflow-hidden rounded-lg bg-paper-raised p-8 ${
+              !contentTexture && isHandwriting ? "paper-texture" : ""
             }`}
           >
+            {contentTextureLayer("rounded-lg")}
             <textarea
               value={form.content}
               onChange={(event) => update("content", event.target.value)}
               placeholder="What happened today…"
               autoFocus
               aria-label="Content"
-              className={`h-full w-full resize-none border-0 bg-transparent p-4 text-ink focus-visible:outline-none ${
+              style={contentColorStyle}
+              className={`relative h-full w-full resize-none border-0 bg-transparent p-4 text-ink focus-visible:outline-none ${
                 isHandwriting ? cursiveClass : "text-base"
               }`}
             />

@@ -428,6 +428,37 @@ describe("occupiedEdges", () => {
 
     expect(occupiedEdges(resolved).sort()).toEqual(["left", "top"]);
   });
+
+  it("never reports a floating bar, which reserves no page space", () => {
+    // Migration 0153. A floating bar sits OVER the content at a position the reader
+    // dragged it to, so there is no edge for `.app-main` to pad against — reserving
+    // one would indent the page for a bar that is not at its edge.
+    const bars = [
+      toolbar({
+        id: 1,
+        edge: "floating",
+        items: [item({ id: 1, menuItemId: "journal_section_main" })],
+      }),
+      toolbar({ id: 2, edge: "top", items: [item({ id: 2, menuItemId: "journal_section_main" })] }),
+    ];
+    const resolved = resolveToolbarsFor(bars, MENU_ITEMS, VISIBLE);
+
+    // Both bars still RENDER — only the reservation is skipped.
+    expect(resolved).toHaveLength(2);
+    expect(occupiedEdges(resolved)).toEqual(["top"]);
+  });
+
+  it("reports nothing when every bar floats", () => {
+    const bars = [
+      toolbar({
+        id: 1,
+        edge: "floating",
+        items: [item({ id: 1, menuItemId: "journal_section_main" })],
+      }),
+    ];
+
+    expect(occupiedEdges(resolveToolbarsFor(bars, MENU_ITEMS, VISIBLE))).toEqual([]);
+  });
 });
 
 describe("createToolbar", () => {

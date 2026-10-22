@@ -28,6 +28,8 @@ import {
   listPhotosInFolderAction,
   listPhotosInFolderForRangeAction,
 } from "./entries/[id]/journal-photos-actions";
+import { cullPhotosAction } from "./entries/[id]/culling-actions";
+import { cullGalleryPhotosAction } from "./gallery-culling-actions";
 import { listFavPhotosAction, toggleFavPhotoAction } from "./gallery-photo-actions";
 import { useAlbumFiling } from "./use-album-filing";
 
@@ -134,6 +136,12 @@ export function JournalPhotosHost({ date, range, onClose, autoLookup }: JournalP
           ? listPhotosInFolderAction(query.date, relativePath, includeAll)
           : listPhotosInFolderForRangeAction(query.from, query.to, relativePath, includeAll)
       }
+      // Takes the names the grid is showing rather than the folder: a month folder is
+      // usually already filtered to one day, and culling decodes every file whole.
+      onCullFolder={(relativePath, names) => cullPhotosAction(relativePath, names)}
+      // The viewer's own Culling toggle. Path-shaped rather than folder-shaped, and
+      // it goes through the GALLERY action because the viewer's set can span folders.
+      onCullPhotos={cullGalleryPhotosAction}
     />
   );
 }

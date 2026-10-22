@@ -376,6 +376,48 @@ export interface JournalPreferences {
    */
   reviewBeforeCalendarImport: boolean;
   /**
+   * The app-texture-library picture drawn behind the entry form's Content
+   * field, or `null` for the hand-drawn `.paper-texture` sheet the field used
+   * before this was configurable.
+   *
+   * A **pointer** into `sys_dashboard_textures` (migration 0113), never bytes —
+   * the same trade `nav-texture` and the personal toolbars made, and the reason
+   * this feature ships without a migration. The pointer resolves through that
+   * library's own serving route, which is already session-gated and already
+   * cache-busted.
+   *
+   * There is no foreign key (the schema has none anywhere), so deleting a
+   * library picture leaves this pointer stale rather than cascading into the
+   * journal. The resolver treats a stale pointer as "no texture" — see
+   * `resolveJournalContentTexture`.
+   */
+  contentTextureId: number | null;
+  /**
+   * 0..1 — how strongly the Content background picture is drawn.
+   *
+   * The journal's **own** value, not the library row's, the same split
+   * `nav_texture_opacity` and a personal toolbar's opacity make: a library
+   * picture's opacity was tuned for whatever surface it last sat on, and the
+   * Content field is a surface you write on, so it gets its own knob.
+   *
+   * Always a number rather than `number | null`, because unlike the pointer
+   * and the colour there is no meaningful "unset" — a texture always draws at
+   * some strength, and the default is a legal value rather than a fallback
+   * standing in for an absent one.
+   */
+  contentTextureOpacity: number;
+  /**
+   * `#RRGGBB` for the Content field's text, or `null` to keep the theme's
+   * `--ink`.
+   *
+   * Null rather than a stored `"#000000"` default, because design.md's rule is
+   * that colors are theme tokens and not literal values: unset has to mean
+   * "whatever this theme's ink is", or every dark theme would render the
+   * Content field as black text on a dark sheet until somebody noticed. A
+   * reader who wants literal black can still pick it.
+   */
+  contentTextColor: string | null;
+  /**
    * Words the reader dismissed from the home screen's "most frequently used
    * words" ranking, via the (x) on each row.
    *

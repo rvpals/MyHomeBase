@@ -19,7 +19,10 @@
 // leave a reader unable to undo their own screen.
 
 /**
- * The four edges, in the order the admin form offers them.
+ * The five placements, in the order the admin form offers them.
+ *
+ * Four are screen edges. The fifth, `floating`, is a bar that sits **over** the
+ * page at a position each reader drags for themselves — see `isFloatingEdge`.
  *
  * A `const` tuple rather than a `readonly ToolbarEdge[]`, and the type is derived
  * from it rather than declared alongside. That is what lets `z.enum(TOOLBAR_EDGES)`
@@ -27,13 +30,36 @@
  * `string`, and every downstream consumer needs an unsound cast to get the union
  * back. One list, one source of truth, no casts.
  */
-export const TOOLBAR_EDGES = ["top", "bottom", "left", "right"] as const;
+export const TOOLBAR_EDGES = ["top", "bottom", "left", "right", "floating"] as const;
 
-/** Which screen edge a toolbar docks to. */
+/**
+ * Where a toolbar lives: one of the four screen edges, or floating over the page.
+ *
+ * Still called an "edge" after migration 0153 added `floating`, which is a
+ * deliberate choice not to rename. The column, the CHECK, the `data-edge`
+ * attribute and every CSS rule keyed off it are all named this, and a rename
+ * would touch all of them to improve one word. Read it as "placement".
+ */
 export type ToolbarEdge = (typeof TOOLBAR_EDGES)[number];
 
 export function isToolbarEdge(value: string): value is ToolbarEdge {
   return (TOOLBAR_EDGES as readonly string[]).includes(value);
+}
+
+/**
+ * Whether this placement floats over the page rather than docking to an edge.
+ *
+ * A named predicate rather than `edge === "floating"` at each call site, for the
+ * same reason `isOrnamentalKind` exists: several places test for exactly this —
+ * the renderer, `occupiedEdges`, the drag gate and the admin form — and a second
+ * floating placement (were one ever added) would otherwise be silently treated as
+ * docked by all of them.
+ *
+ * The load-bearing consequence is `occupiedEdges`: a floating bar reserves **no**
+ * page space, because it is over the content by design rather than beside it.
+ */
+export function isFloatingEdge(edge: ToolbarEdge): boolean {
+  return edge === "floating";
 }
 
 /**

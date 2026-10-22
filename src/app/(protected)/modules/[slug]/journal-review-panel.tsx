@@ -15,6 +15,7 @@ import {
   listTags,
   resolveJournalPreferences,
 } from "@/lib/journal";
+import { listDashboardTextures } from "@/lib/dashboard-texture";
 import { listLocationCategories, listLocationTags } from "@/lib/sys-locations";
 import { listModuleSettingsFor } from "@/lib/module-settings";
 import { getModuleBySlug } from "@/lib/modules";
@@ -50,6 +51,7 @@ export function JournalReviewPanel() {
       categoryOptions={categories.map((category) => category.name)}
       tagOptions={tags.map((tag) => tag.name)}
       preferences={preferences}
+      contentTextures={listDashboardTextures(deps.dashboardTextureRepo)}
       prefillTemplates={listEnabledPrefillTemplates(deps.journalRepo)}
       locationCategoryOptions={listLocationCategories(deps.sysLocationRepo).map(
         (row) => row.name,

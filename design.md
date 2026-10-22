@@ -500,6 +500,7 @@ covers the responsive and safe-area idioms. Full reasoning under "Phone and desk
 | `.shell-rail` / `.shell-panel` | Tier 1 and tier 2 as fixed columns, insets included |
 | `.shell-trigger` | The compact section trigger pinned to the bottom edge |
 | `.floating-puck` + `[data-corner]` | A floating component's minimized puck, in one of four corners; stacks outward by `--floating-puck-index`, clearing the section trigger, the music player and (docked left) the shell's two columns |
+| `.floating-puck[data-floating-pos]` | The same puck after the reader has dragged it: positioned from `--floating-puck-x/y` instead of a corner, and out of the stacking queue. `[data-dragging]` drops the easing mid-gesture |
 | `.clock-hand` | One hand of an analog clock face, rotated by `--hand-angle` |
 | `.calc-key` (+ `-operator` / `-function` / `-action` / `-danger`) | One key of the calculator's keypad — a low-bevelled slab, **not** `Button`'s offset |
 
@@ -963,9 +964,9 @@ sections, and so no bottom bar) and
 
 ## Personal toolbars: a fifth surface, beside the navigation
 
-A **personal toolbar** is an admin-configured strip of shortcuts docked to one of the
-four screen edges. Full mechanics in `coding-guide.md` → *Personal toolbars*; this
-section is the layout contract.
+A **personal toolbar** is an admin-configured strip of shortcuts, either docked to one
+of the four screen edges or **floating** where each reader drags it. Full mechanics in
+`coding-guide.md` → *Personal toolbars*; this section is the layout contract.
 
 **It does not replace a navigation tier, and must never be made to.** The tree
 (desktop) and the two-tier bottom bar (compact) render exactly as they did. A toolbar
@@ -978,11 +979,29 @@ So when you add a control, the table in *Adding a UI element to the shell* still
 decides the tier. A toolbar is not an escape hatch from it; it is a place for a
 shortcut to a destination that already has a proper home in the tree.
 
-- **It reserves space; it does not float.** Every edge composes with what is already
-  there — a bottom bar stacks above the compact section trigger and the music player,
-  a left bar starts after the tree. The page's content column shrinks to match, so a
-  toolbar can never cover what you were reading. This is the one thing that makes it
-  different in kind from the floating layer, which deliberately overlays.
+- **A docked bar reserves space.** Every edge composes with what is already there — a
+  bottom bar stacks above the compact section trigger and the music player, a left bar
+  starts after the tree. The page's content column shrinks to match, so a docked
+  toolbar can never cover what you were reading.
+- **A floating bar reserves nothing, and that is the whole difference** (migration
+  0153). It sits over the content at a spot the reader dragged it to, exactly as a
+  dragged dialog does, so it is as wide as its shortcuts need rather than spanning an
+  edge, it borders and casts a shadow on all four sides, and `occupiedEdges` never
+  reports it. Choosing it is choosing to cover some of the page; that is the trade an
+  admin makes for a bar that can be put anywhere.
+  - **Where it sits is each reader's**, saved under `toolbar_positions` in their
+    preferences beside their hide list. An admin picks *that the bar floats*, never
+    *where it floats* — one person's drag must not move everyone's bar, and two
+    readers on different screens cannot share a pixel position.
+  - **It is still not a floating component.** It does not join `FLOATING_COMPONENTS`
+    — that list is for accessories owning a window and a puck, each with its own
+    reader-facing switch, and a toolbar already has one in Account. The rule that
+    *nothing about where you are may float* is untouched: a toolbar carries shortcuts,
+    never location, so a floating one is no more a navigation tier than a docked one.
+  - **Reset is on Account**, not on the bar: *Toolbars → Reset position* forgets the
+    saved spot. The renderer also clamps a stored position back onto the viewport, so
+    a bar dragged on a desktop and reopened on a phone always keeps a grabbable strip
+    on screen.
 - **The four `--toolbar-*` variables are `0px`** until a bar is rendered on that edge,
   so an install with no toolbars is byte-identical in layout to one before the feature.
 - **Side edges widen `--app-gutter`**, never `padding-left` — the shell rules already
@@ -990,12 +1009,18 @@ shortcut to a destination that already has a proper home in the tree.
 - **`z-30`**, level with the tree and the music puck; chrome stays under `z-40` and
   `Modal` owns `z-50`.
 - **44px thick**, which is the minimum comfortable tap target. A horizontal bar is one
-  row of buttons; a vertical one is a column.
+  row of buttons; a vertical one is a column. **A floating bar is always horizontal** —
+  a vertical strip reads as attached to an edge, and this one is attached to nothing.
 - **Say what compact does.** The honest answer for most bars is *don't show one* —
   the bottom edge is already claimed and the side edges are ~390px apart. That is what
   the **Full mode only** switch is for, and it is the right default for a bar with more
   than a few items. A toolbar is not exempt from the "every UI change works on a phone"
   rule; it just gets to answer it by staying off the phone.
+  **A floating bar obeys the same switch**, and when it *is* shown on compact it stays
+  draggable and opens near the **top**, never at a y measured from the bottom: the
+  bottom edge there is already claimed by the section trigger and the music player, so
+  a bar opening low could land underneath the player — behind the one control you would
+  need to touch in order to drag it out.
 - **Colours are admin-chosen literals** — the one sanctioned exception to *colours are
   theme tokens*. Leaving them unset is the default and keeps the bar themed, which is
   what you want unless the point is a bar that stands out.
@@ -1058,6 +1083,21 @@ rather than inventing a fifth surface.
 - **A puck reserves no page padding**, exactly as `html[data-music-player="minimized"]`
   publishes `0px`: floating over the last line of a page is the point of minimising.
   The layer mirrors `html[data-floating]` for anything that needs to know it's there.
+- **A dragged puck leaves the corner system entirely.** On desktop a reader may drag
+  any puck anywhere; the point is stored per reader per component
+  (`floating_positions`) and **overrides the corner**. Such a puck drops its
+  `data-corner`, takes `data-floating-pos` instead, and `resolvePuckSlots` skips it —
+  so it takes no slot, pushes nothing along, and **stops clearing the music bar, the
+  section trigger and the shell's columns automatically**. That is the deliberate
+  trade of free placement: the reader said where they want it. Account → Floating
+  Components offers *Reset position* on a dragged puck, which deletes the entry and
+  hands it back to its corner and to the queue.
+- **Dragging is desktop-only**, the same fork `Modal` makes: below 1024px a 56px
+  target over the page with `touch-none` would eat the scroll a phone reader expects,
+  and there is nowhere to drag to. A compact reader still moves pucks between the
+  four corners on Account. The puck is **its own handle and its own button**, since a
+  circle that size has no room for a separate grip — so a 4px movement threshold
+  separates a drag from the tap that restores the window.
 
 ### Dragging is not what makes a window floating
 

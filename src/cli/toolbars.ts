@@ -25,7 +25,7 @@ import { createMenuItemSource } from "@/app/(protected)/menu-item-source";
 
 const USAGE = `Usage:
   toolbars list
-  toolbars add --name <text> [--edge top|bottom|left|right] [--background <colour>]
+  toolbars add --name <text> [--edge top|bottom|left|right|floating] [--background <colour>]
                [--border <colour>] [--text <colour>] [--full-mode-only] [--hidden]
   toolbars set <id> [--name <text>] [--edge <edge>] [--background <colour>]
                [--border <colour>] [--text <colour>] [--full-mode-only <0|1>]
@@ -84,7 +84,9 @@ function listCommand(): void {
       toolbar.isVisible ? "visible" : "hidden",
       toolbar.fullModeOnly ? "full mode only" : undefined,
     ].filter(Boolean);
-    console.log(`\n#${toolbar.id} ${toolbar.name} — ${toolbar.edge} edge (${flags.join(", ")})`);
+    // "floating edge" would be a contradiction — it docks to no edge at all.
+    const placement = toolbar.edge === "floating" ? "floating" : `${toolbar.edge} edge`;
+    console.log(`\n#${toolbar.id} ${toolbar.name} — ${placement} (${flags.join(", ")})`);
 
     if (toolbar.items.length === 0) {
       console.log("    (empty)");
@@ -127,7 +129,11 @@ function addCommand(args: string[]): void {
     // finding nothing on screen would read as a failure.
     isVisible: !args.includes("--hidden"),
   });
-  console.log(`Created toolbar #${created.id} "${created.name}" on the ${created.edge} edge.`);
+  console.log(
+    created.edge === "floating"
+      ? `Created floating toolbar #${created.id} "${created.name}".`
+      : `Created toolbar #${created.id} "${created.name}" on the ${created.edge} edge.`,
+  );
 }
 
 function setCommand(args: string[]): void {

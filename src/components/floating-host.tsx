@@ -13,7 +13,7 @@ import { FloatingLayerProvider, type FloatingActions } from "@/components/floati
 import { FloatingScratchpad, type ScratchpadActions } from "@/components/floating-scratchpad";
 import type { AngleMode, CalculationEntry } from "@/lib/calculator";
 import type { ClockFaceOptions, ClockReading } from "@/lib/clock";
-import type { FloatingId, FloatingState, PuckCorner } from "@/lib/floating";
+import type { FloatingId, FloatingState, PuckCorner, PuckPosition } from "@/lib/floating";
 import type { Note, NoteCategory } from "@/lib/scratchpad";
 
 /**
@@ -50,6 +50,7 @@ export function FloatingHost({
   enabled,
   initialStates,
   initialCorners,
+  initialPositions,
   actions,
   clockReading,
   clockOptions,
@@ -69,6 +70,8 @@ export function FloatingHost({
   initialStates: Partial<Record<FloatingId, FloatingState>>;
   /** This reader's docked corner per component. */
   initialCorners: Partial<Record<FloatingId, PuckCorner>>;
+  /** This reader's dragged position per component — sparse; absent means docked. */
+  initialPositions: Partial<Record<FloatingId, PuckPosition>>;
   actions: FloatingActions;
   /** The Clock's server-side inputs, passed straight through. */
   clockReading: ClockReading;
@@ -94,6 +97,7 @@ export function FloatingHost({
       enabled={enabled}
       initialStates={initialStates}
       initialCorners={initialCorners}
+      initialPositions={initialPositions}
       actions={actions}
       musicPuckUp={musicPuckUp}
     >

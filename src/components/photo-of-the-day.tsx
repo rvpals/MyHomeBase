@@ -19,7 +19,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/button";
 import { Modal } from "@/components/modal";
-import { PhotoViewer, type PhotoViewerProps, type ViewerPhoto } from "@/components/photo-viewer";
+import {
+  PhotoViewer,
+  type PhotoViewerProps,
+  type ViewerCullOutcome,
+  type ViewerPhoto,
+} from "@/components/photo-viewer";
 import { SlotIcon } from "@/components/slot-icon";
 import { getIconSlot } from "@/lib/icons";
 import type { PhotoFile, PhotoFolder } from "@/lib/journal-photos";
@@ -73,6 +78,32 @@ export interface PhotoContentsOutcome {
   isEmptyAfterFilter?: boolean;
 }
 
+/** One photo's verdict from a cull, as the caller's action reports it. */
+export interface CulledPhotoOutcome {
+  /** The file's name — how the grid identifies a photo. */
+  name: string;
+  /** 0–1, higher is better. */
+  score: number;
+  /** The human-readable summary — "sharp, well exposed, low contrast". */
+  reason: string;
+  /** Whether this one survived. */
+  isKeeper: boolean;
+  /** Why it was set aside. Absent on a keeper. */
+  rejectReason?: string;
+  /** The file name of the keeper it duplicates, when it lost to one. */
+  duplicateOf?: string;
+}
+
+/** What the caller's cull returns. */
+export interface CullOutcome {
+  ok: boolean;
+  error?: string;
+  photos?: CulledPhotoOutcome[];
+  examined?: number;
+  keeperCount?: number;
+  unreadable?: string[];
+}
+
 export interface PhotoOfTheDayProps {
   /**
    * A single day, `YYYY-MM-DD`. Mutually exclusive with `range` — pass exactly one.
@@ -98,6 +129,26 @@ export interface PhotoOfTheDayProps {
     relativePath: string,
     includeAll: boolean,
   ) => Promise<PhotoContentsOutcome>;
+  /**
+   * Scores an open folder's photos and says which are worth keeping.
+   *
+   * OPTIONAL, and the Cull button only appears when it is supplied — a caller with no
+   * culling action gets exactly the dialog it had before.
+   *
+   * Expensive by contract, and more so than `onListPhotos`: culling decodes every file
+   * WHOLE, where the date scan reads only a header. It is passed the names the grid is
+   * currently showing rather than the folder, so a month already filtered to one day
+   * costs that day and not the month.
+   */
+  onCullFolder?: (relativePath: string, names: string[]) => Promise<CullOutcome>;
+  /**
+   * Culls an arbitrary set of paths, for the VIEWER's own Culling toggle.
+   *
+   * Separate from `onCullFolder` above, which culls one folder's listing for the
+   * dialog's per-folder controls. The viewer holds a set the reader opened, so it needs
+   * the path-shaped call. Both optional; supplying one does not oblige the other.
+   */
+  onCullPhotos?: (relativePaths: string[]) => Promise<ViewerCullOutcome>;
   /** Builds the URL for one photo's bytes from its archive-relative path. */
   photoUrl: (relativePath: string) => string;
   /** Raised by Escape, the ✕, and an overlay click. Returns the reader to the caller. */
@@ -151,6 +202,24 @@ interface FolderState {
   error?: string;
   /** How many of `photos` the grid is currently rendering. */
   visibleCount: number;
+  /** True while a cull of this folder is in flight. */
+  isCulling?: boolean;
+  /** A cull that failed, reported in place rather than replacing the grid. */
+  cullError?: string;
+  /**
+   * The verdicts from the last cull, keyed by file name.
+   *
+   * Kept beside `photos` rather than replacing it, so dropping the cull is just
+   * forgetting this map — the grid's own list never changes and no photo has to be
+   * re-fetched to go back.
+   */
+  culled?: Record<string, CulledPhotoOutcome>;
+  /** How many of the culled photos survived. */
+  keeperCount?: number;
+  /** How many files the cull could not decode at all. */
+  unreadableCount?: number;
+  /** Whether the grid is dimming rejects right now. */
+  isShowingCull?: boolean;
 }
 
 type LookupState =
@@ -170,6 +239,8 @@ export function PhotoOfTheDay({
   range,
   onFindFolders,
   onListPhotos,
+  onCullFolder,
+  onCullPhotos,
   photoUrl,
   onClose,
   autoLookup = false,
@@ -267,6 +338,82 @@ export function PhotoOfTheDay({
     },
     [onListPhotos, query],
   );
+
+  /**
+   * Culls one open folder, scoring the photos the grid is currently holding.
+   *
+   * The verdicts are merged into that folder's state rather than replacing its photo
+   * list, so "show everything again" is a flag flip and nothing is re-fetched.
+   */
+  const cullFolderPhotos = useCallback(
+    async (folder: PhotoFolder) => {
+      if (onCullFolder === undefined) return;
+
+      const photos = folderStates[folder.relativePath]?.photos ?? [];
+      if (photos.length === 0) return;
+
+      setFolderStates((current) => ({
+        ...current,
+        [folder.relativePath]: {
+          ...current[folder.relativePath],
+          isCulling: true,
+          cullError: undefined,
+        },
+      }));
+
+      const result = await onCullFolder(
+        folder.relativePath,
+        photos.map((photo) => photo.name),
+      );
+
+      setFolderStates((current) => {
+        const existing = current[folder.relativePath];
+        if (existing === undefined) return current;
+
+        if (!result.ok) {
+          return {
+            ...current,
+            [folder.relativePath]: {
+              ...existing,
+              isCulling: false,
+              cullError: result.error ?? "Culling failed.",
+            },
+          };
+        }
+
+        const culled: Record<string, CulledPhotoOutcome> = {};
+        for (const photo of result.photos ?? []) culled[photo.name] = photo;
+
+        return {
+          ...current,
+          [folder.relativePath]: {
+            ...existing,
+            isCulling: false,
+            culled,
+            keeperCount: result.keeperCount ?? 0,
+            unreadableCount: result.unreadable?.length ?? 0,
+            isShowingCull: true,
+            // Every photo is shown after a cull: the counts describe the whole set, so
+            // a grid still truncated to the first 24 would contradict them.
+            visibleCount: existing.photos?.length ?? existing.visibleCount,
+          },
+        };
+      });
+    },
+    [folderStates, onCullFolder],
+  );
+
+  /** Puts the grid back to undimmed, keeping the verdicts so re-showing is free. */
+  function toggleCullView(folder: PhotoFolder) {
+    setFolderStates((current) => {
+      const existing = current[folder.relativePath];
+      if (existing === undefined) return current;
+      return {
+        ...current,
+        [folder.relativePath]: { ...existing, isShowingCull: !existing.isShowingCull },
+      };
+    });
+  }
 
   function toggleFolder(folder: PhotoFolder) {
     const isOpen = openFolders.includes(folder.relativePath);
@@ -402,6 +549,9 @@ export function PhotoOfTheDay({
                       })
                     }
                     onOpenPhoto={(photos, index) => openViewer(folder, photos, index)}
+                    canCull={onCullFolder !== undefined}
+                    onCull={() => void cullFolderPhotos(folder)}
+                    onToggleCullView={() => toggleCullView(folder)}
                   />
                 ))}
 
@@ -429,6 +579,7 @@ export function PhotoOfTheDay({
           key={viewer.index}
           photos={viewer.photos}
           initialIndex={viewer.index}
+          onCull={onCullPhotos}
           photoUrl={photoUrl}
           isFavorite={isFavorite}
           onToggleFavorite={onToggleFavorite}
@@ -585,6 +736,9 @@ function FolderRow({
   onShowWholeMonth,
   onShowMore,
   onOpenPhoto,
+  canCull,
+  onCull,
+  onToggleCullView,
 }: {
   folder: PhotoFolder;
   matchLabel: string;
@@ -596,6 +750,10 @@ function FolderRow({
   onShowWholeMonth: () => void;
   onShowMore: () => void;
   onOpenPhoto: (photos: PhotoFile[], index: number) => void;
+  /** Whether the dialog's caller supplied a culling action. */
+  canCull: boolean;
+  onCull: () => void;
+  onToggleCullView: () => void;
 }) {
   const isMonth = folder.kind === "month";
   const photos = state?.photos ?? [];
@@ -686,17 +844,101 @@ function FolderRow({
                     : `${photos.length} photos.`}
               </p>
 
+              {/* The cull controls. Only rendered when the caller supplied an action,
+                  so a dialog without one is exactly what it was before. */}
+              {canCull && (
+                <div className="flex flex-wrap items-center gap-2">
+                  {state?.isCulling ? (
+                    <p className="text-xs text-muted">
+                      Culling {photos.length} photo{photos.length === 1 ? "" : "s"}…
+                      {/* Culling decodes every file WHOLE, where the date scan reads
+                          only a header — so this is slower than the scan that got us
+                          here, and says so rather than looking stuck. */}
+                      {photos.length > 50 && (
+                        <span className="mt-1 block">
+                          Every photo is opened and measured; this can take a minute.
+                        </span>
+                      )}
+                    </p>
+                  ) : (
+                    <>
+                      <Button size="sm" variant="secondary" onClick={onCull}>
+                        {state?.culled === undefined ? "Cull" : "Cull again"}
+                      </Button>
+
+                      {state?.culled !== undefined && (
+                        <>
+                          <span className="text-xs text-muted">
+                            {state.examined !== undefined && state.isShowingAll
+                              ? `${photos.length} images`
+                              : `${photos.length} image${photos.length === 1 ? "" : "s"}`}
+                            {" · "}
+                            <span className="font-semibold text-ink">
+                              {state.keeperCount} keeper
+                              {state.keeperCount === 1 ? "" : "s"}
+                            </span>
+                            {photos.length - (state.keeperCount ?? 0) > 0 &&
+                              ` · ${photos.length - (state.keeperCount ?? 0)} set aside`}
+                          </span>
+                          <Button size="sm" variant="secondary" onClick={onToggleCullView}>
+                            {state.isShowingCull ? "Undim all" : "Dim set-aside"}
+                          </Button>
+                        </>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {state?.cullError && <p className="text-xs text-red-400">{state.cullError}</p>}
+
+              {state?.culled !== undefined && (state.unreadableCount ?? 0) > 0 && (
+                <p className="text-xs text-muted">
+                  {state.unreadableCount} file
+                  {state.unreadableCount === 1 ? " was" : "s were"} unreadable and could not
+                  be scored.
+                </p>
+              )}
+
               {/* Two columns on a phone, up to five on a wide screen. Desktop classes
                   are the base; the narrow case is the max-lg override, so a wide
                   screen can't regress. */}
               <ul className="grid grid-cols-5 gap-2 max-lg:grid-cols-3 max-sm:grid-cols-2">
-                {visible.map((photo, index) => (
+                {visible.map((photo, index) => {
+                  const verdict = state?.culled?.[photo.name];
+                  // Dimmed only while the cull view is on, so "Undim all" restores the
+                  // grid without discarding the verdicts.
+                  const isDimmed =
+                    (state?.isShowingCull ?? false) &&
+                    verdict !== undefined &&
+                    !verdict.isKeeper;
+
+                  return (
                   <li key={photo.relativePath}>
                     <button
                       type="button"
                       onClick={() => onOpenPhoto(photos, index)}
-                      title={photo.name}
-                      className="block w-full overflow-hidden rounded-md border border-line focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+                      // The verdict rides on the tooltip rather than a badge: a grid of
+                      // five columns on a phone has no room for a label, and the reason
+                      // is what tells you whether the cull got it right.
+                      title={
+                        verdict === undefined
+                          ? photo.name
+                          : `${photo.name}\n${verdict.score.toFixed(2)} — ${verdict.reason}` +
+                            (verdict.isKeeper
+                              ? ""
+                              : `\nSet aside: ${verdict.rejectReason}` +
+                                (verdict.duplicateOf === undefined
+                                  ? ""
+                                  : ` of ${verdict.duplicateOf}`))
+                      }
+                      className={`block w-full overflow-hidden rounded-md border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
+                        isDimmed
+                          ? "border-line opacity-40 grayscale"
+                          : verdict?.isKeeper && (state?.isShowingCull ?? false)
+                            ? "border-brass"
+                            : "border-line"
+                      }`}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element -- the bytes
                           come from our own session-gated route over a NAS share, not a
@@ -712,7 +954,8 @@ function FolderRow({
                       />
                     </button>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
 
               {visible.length < photos.length && (

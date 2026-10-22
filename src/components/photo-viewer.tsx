@@ -31,6 +31,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { BusyOverlay } from "./busy-overlay";
+import { useCulling } from "./use-culling";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CollapsibleCard } from "@/components/collapsible-card";
@@ -82,6 +84,34 @@ export interface ViewerFolderOutcome {
   ok: boolean;
   photos?: ViewerPhoto[];
   error?: string;
+}
+
+/**
+ * What `onCull` resolves to.
+ *
+ * Declared here rather than imported from the action, so `src/components/` keeps no
+ * dependency on `src/app/`. The gallery action's result is structurally assignable.
+ */
+export interface ViewerCullVerdict {
+  relativePath: string;
+  /** 0–1, higher is better. */
+  score: number;
+  /** The human-readable summary — "sharp, well exposed, low contrast". */
+  reason: string;
+  isKeeper: boolean;
+  /** Why it was set aside. Absent on a keeper. */
+  rejectReason?: string;
+  /** The path of the keeper it duplicates, when it lost to one. */
+  duplicateOf?: string;
+}
+
+export interface ViewerCullOutcome {
+  ok: boolean;
+  error?: string;
+  photos?: ViewerCullVerdict[];
+  keeperCount?: number;
+  examined?: number;
+  wasTruncated?: boolean;
 }
 
 /**
@@ -247,6 +277,21 @@ interface PhotoViewerCommonProps {
     name: string,
     relativePath: string,
   ) => Promise<{ ok: true; album: ViewerAlbum } | { ok: false; error: string }>;
+  /**
+   * Scores the photographs in view and says which are worth keeping.
+   *
+   * OPTIONAL, and the Culling toggle appears only when it is supplied — a caller
+   * without one gets exactly the viewer it had before.
+   *
+   * Expensive by contract: culling opens and decodes every file WHOLE, unlike the strip
+   * which only rescales bytes the browser already fetched. On a large folder expect tens
+   * of seconds, which is why switching the toggle on raises a busy overlay.
+   *
+   * Set-aside photographs are DIMMED IN THE STRIP, never removed from it. The arrows,
+   * the counter and the slideshow still walk the whole set, so culling changes what the
+   * strip LOOKS like and not what browsing means.
+   */
+  onCull?: (relativePaths: string[]) => Promise<ViewerCullOutcome>;
   /** Caller-supplied classes, merged last so they win. */
   className?: string;
 }
@@ -311,6 +356,15 @@ const THUMBNAIL_WINDOW = 24;
 const SELECT_CLASS =
   "rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
 
+/**
+ * Stands in for `onCull` when the caller supplied none.
+ *
+ * Module scope, so it is a STABLE reference -- `useCulling` holds it in a `useCallback`
+ * dependency, and an inline arrow would give that a new identity every render. Never
+ * called: the toggle that would start a run is not rendered without a real `onCull`.
+ */
+const noCull = async () => ({ ok: false, error: "Culling is not available here." });
+
 /** The header's pill controls share this, so the row reads as one family. */
 const PILL_CLASS =
   "grid h-10 w-10 place-items-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white";
@@ -332,6 +386,7 @@ export function PhotoViewer({
   albumIdsFor,
   onAddToAlbum,
   onCreateAlbum,
+  onCull,
   className = "",
 }: PhotoViewerProps) {
   // The folder read's result. Unused when the caller supplied a set — `photos` below
@@ -384,6 +439,15 @@ export function PhotoViewer({
   // effect has not yet come back through the caller's own state.
   const [favoriteOverrides, setFavoriteOverrides] = useState<Record<string, boolean>>({});
   const [isTogglingFavorite, setIsTogglingFavorite] = useState(false);
+
+  // Culling. A TOGGLE rather than a one-shot button: "Culling" is a way of looking at
+  // the strip, which a reader turns on to see what is redundant and off to see the
+  // folder as it is. The verdicts survive turning it off, so switching back on is free
+  // -- only the first turn-on pays for the decode.
+  const [isCullOn, setIsCullOn] = useState(false);
+  // The chunked runner: real progress and a cancel that stops actual work.
+  // `onCull` is optional, so a caller without one gets a runner that is never started.
+  const cullRun = useCulling(onCull ?? noCull);
 
   // The `+` menu: whether it is open, which albums this viewer has just filed the photo
   // into, and what to say if a write failed.
@@ -468,6 +532,35 @@ export function PhotoViewer({
   const photos = useMemo(() => suppliedPhotos ?? loadedPhotos, [suppliedPhotos, loadedPhotos]);
 
   const photo = photos[index];
+
+  /**
+   * Flips the Culling toggle.
+   *
+   * Turning it ON culls, but ONLY THE FIRST TIME -- the verdicts are kept when it is
+   * turned off, so comparing the culled view against the plain one costs no second
+   * decode of the folder. A cancelled run keeps whatever it judged, so turning the
+   * toggle on again resumes nothing and re-shows what there is.
+   */
+  const toggleCull = useCallback(async () => {
+    if (onCull === undefined) return;
+
+    if (isCullOn) {
+      setIsCullOn(false);
+      return;
+    }
+
+    if (cullRun.verdicts !== undefined) {
+      setIsCullOn(true);
+      return;
+    }
+
+    if (photos.length === 0) return;
+
+    // Shown as soon as the first chunk lands, rather than waiting for the whole run:
+    // a reader who cancels partway still sees what was judged.
+    setIsCullOn(true);
+    await cullRun.start(photos.map((candidate) => candidate.relativePath));
+  }, [cullRun, isCullOn, onCull, photos]);
   const hasPrevious = index > 0;
   const hasNext = index < photos.length - 1;
 
@@ -969,7 +1062,32 @@ export function PhotoViewer({
                 `z-50`. It therefore needs no z-index of its own and cannot fight the
                 app's shell surfaces or a Modal -- see design.md, "Adding a UI element to
                 the shell". */}
-            {canFileIntoAlbum && (
+            {/* The Culling toggle. A pressed-state pill rather than a one-shot button,
+                because "Culling" is a WAY OF LOOKING at the strip that stays on until
+                it is turned off -- `aria-pressed` is what tells a screen reader that. */}
+            {onCull !== undefined && (
+              <button
+                type="button"
+                onClick={() => void toggleCull()}
+                disabled={cullRun.isCulling || photos.length === 0}
+                aria-pressed={isCullOn}
+                aria-label={isCullOn ? "Stop culling" : "Cull these photographs"}
+                title={
+                  isCullOn
+                    ? cullRun.keeperCount === undefined
+                      ? "Culling"
+                      : `${cullRun.keeperCount} of ${cullRun.examined} worth keeping — click to show all`
+                    : "Dim the photographs not worth keeping"
+                }
+                className={`${PILL_CLASS} disabled:opacity-60 ${
+                  isCullOn ? "bg-white/90 text-black hover:bg-white" : ""
+                }`}
+              >
+                <TreeIcon name="magic" className="h-5 w-5" />
+              </button>
+            )}
+
+            {canFileIntoAlbum && (
               <div data-album-menu className="relative">
                 <button
                   type="button"
@@ -1239,8 +1357,21 @@ export function PhotoViewer({
             />
           )}
 
+          {cullRun.error !== undefined && (
+            <p role="alert" className="mb-2 text-sm text-red-300">
+              {cullRun.error}
+            </p>
+          )}
+
+          {isCullOn && cullRun.wasCancelled && (
+            <p className="mb-2 text-sm text-white/70">
+              Stopped after {cullRun.examined} of {cullRun.progressTotal} photographs. The
+              rest are shown undimmed because they were never judged.
+            </p>
+          )}
+
           {photos.length > 1 && (
-            <div
+            <div
               ref={stripRef}
               // A single scrolling row, not a wrapping grid: the strip's job is "where am I
               // in this set", which a line preserves and a block of rows loses.
@@ -1251,7 +1382,13 @@ export function PhotoViewer({
                 // Every photo gets a slot so the scrollbar reflects the real set size, but
                 // only those near the reader hold an image. See THUMBNAIL_WINDOW.
                 const isInWindow = Math.abs(candidateIndex - index) <= THUMBNAIL_WINDOW / 2;
-                const thumbLabel = candidate.caption ?? candidate.name;
+                const verdict = isCullOn ? cullRun.verdicts?.[candidate.relativePath] : undefined;
+                const isSetAside = verdict !== undefined && !verdict.isKeeper;
+                const thumbLabel =
+                  verdict === undefined
+                    ? (candidate.caption ?? candidate.name)
+                    : `${candidate.caption ?? candidate.name} — ${verdict.score.toFixed(2)} ${verdict.reason}` +
+                      (verdict.isKeeper ? "" : ` · set aside: ${verdict.rejectReason}`);
 
                 return (
                   <button
@@ -1262,8 +1399,14 @@ export function PhotoViewer({
                     title={thumbLabel}
                     aria-label={thumbLabel}
                     aria-current={isActive}
-                    className={`h-16 w-16 shrink-0 overflow-hidden rounded-md border-2 transition-colors max-lg:h-12 max-lg:w-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white ${
+                    className={`h-16 w-16 shrink-0 overflow-hidden rounded-md border-2 transition-all max-lg:h-12 max-lg:w-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white ${
                       isActive ? "border-white" : "border-white/20 hover:border-white/50"
+                    } ${
+                      // Dimmed, never removed: the arrows and the counter still walk the
+                      // whole set, so the ACTIVE thumbnail stays legible even when it was
+                      // set aside — otherwise the photo on the stage would have no
+                      // visible marker in the strip.
+                      isSetAside && !isActive ? "opacity-30 grayscale" : ""
                     }`}
                   >
                     {isInWindow ? (
@@ -1387,6 +1530,20 @@ export function PhotoViewer({
           onClose={() => setIsExifOpen(false)}
         />
       )}
+
+      {/* Inside the portal, as a sibling of the stage. `BusyOverlay` is z-[60] where the
+          stage is z-50, so the photograph dims along with everything else rather than
+          staying the brightest thing behind the message.
+
+          Says plainly that nothing is removed: a blacked-out viewer during an operation
+          called "culling" otherwise invites exactly that worry. */}
+      <BusyOverlay
+        isBusy={cullRun.isCulling}
+        progress={{ value: cullRun.progressDone, max: cullRun.progressTotal }}
+        onCancel={cullRun.cancel}
+        message={`Culled ${cullRun.progressDone} of ${cullRun.progressTotal} photographs…`}
+        detail="Every photograph is opened and measured. Nothing is moved or deleted."
+      />
     </>,
     document.body,
   );

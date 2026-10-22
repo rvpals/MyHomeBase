@@ -24,7 +24,9 @@ import { getModuleCustomIconMap, listModules } from "@/lib/modules";
 import {
   listToolbars,
   parseHiddenToolbars,
+  parseToolbarPositions,
   resolveToolbarsFor,
+  TOOLBAR_POSITIONS_PREFERENCE_KEY,
   TOOLBARS_HIDDEN_PREFERENCE_KEY,
 } from "@/lib/toolbars";
 import { recordSiteVisit } from "@/lib/site-visits";
@@ -43,8 +45,10 @@ import {
   recordCalculationAction,
   saveCalculatorStateAction,
   saveFloatingCornerAction,
+  saveFloatingPositionAction,
   saveFloatingStateAction,
   saveScratchpadNoteAction,
+  saveToolbarPositionAction,
 } from "./account/actions";
 import {
   advanceQueueAction,
@@ -74,6 +78,7 @@ import {
 const floatingActions: FloatingActions = {
   saveState: saveFloatingStateAction,
   saveCorner: saveFloatingCornerAction,
+  savePosition: saveFloatingPositionAction,
 };
 
 const calculatorActions: CalculatorActions = {
@@ -154,10 +159,24 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
   // switch, this reader's hide list, and dropping rows whose menu item no longer
   // exists — so the first HTML is already correct. `fullModeOnly` is the client's,
   // because the reader can pin the compact layout on a wide window.
+  const toolbarPreferenceRows = deps.userPreferencesRepo.listByUserId(currentUser.id);
   const hiddenToolbars = parseHiddenToolbars(
-    deps.userPreferencesRepo
-      .listByUserId(currentUser.id)
-      .find((row) => row.key === TOOLBARS_HIDDEN_PREFERENCE_KEY)?.value,
+    toolbarPreferenceRows.find((row) => row.key === TOOLBARS_HIDDEN_PREFERENCE_KEY)?.value,
+  );
+
+  // Where this reader has dragged each floating bar (migration 0153). Read on the
+  // server beside the hide list, and for the same reason: a bar that drew at its
+  // default and then jumped to the saved spot one frame after hydration would be a
+  // visible rearrangement of chrome, which is the thing resolving here avoids.
+  //
+  // A plain object rather than the Map `parseToolbarPositions` returns, because this
+  // crosses the server/client boundary into `PersonalToolbars` — a Map is not
+  // serialisable as a prop, and failing on an un-draggable bar at runtime is a worse
+  // way to find that out than converting here.
+  const toolbarPositions = Object.fromEntries(
+    parseToolbarPositions(
+      toolbarPreferenceRows.find((row) => row.key === TOOLBAR_POSITIONS_PREFERENCE_KEY)?.value,
+    ),
   );
   const toolbars = resolveToolbarsFor(
     listToolbars(deps.toolbarRepo),
@@ -328,13 +347,26 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
             {/* `canEdit` offers the ✎ shortcut into each bar's editor. Admins only —
                 the screen it links to calls `requireAdmin()` itself, so this decides
                 whether the control is *offered*, never whether it is allowed. */}
-            <PersonalToolbars toolbars={toolbars} canEdit={isAdmin(currentUser)} />
+            {/* `positions` and `onMoveToolbar` are the floating placement (0153):
+                where THIS reader has dragged each floating bar, and how a drop is
+                remembered. Both are per-reader — a position is never an admin
+                setting, for the reason the migration records. */}
+            <PersonalToolbars
+              toolbars={toolbars}
+              canEdit={isAdmin(currentUser)}
+              positions={toolbarPositions}
+              onMoveToolbar={saveToolbarPositionAction}
+            />
             {/* Below the player so the layer's pucks stack above the player's own,
                 and inside both providers so a floating component can read either. */}
             <FloatingHost
               enabled={enabledFloating}
               initialStates={preferences.floating}
               initialCorners={preferences.floatingCorners}
+              // Sparse: only the pucks this reader has dragged. Already a plain
+              // object (`resolveUserPreferences` converts the Map), because a Map is
+              // not serialisable across the server/client boundary.
+              initialPositions={preferences.floatingPositions}
               actions={floatingActions}
               clockReading={clockReading}
               clockOptions={preferences.clock}

@@ -27,6 +27,7 @@ import {
   type FloatingId,
   type FloatingState,
   type PuckCorner,
+  type PuckPosition,
 } from "@/lib/floating";
 
 /**
@@ -65,6 +66,23 @@ export interface FloatingActions {
     id: FloatingId;
     corner: PuckCorner;
   }) => Promise<{ ok: boolean; error?: string }>;
+  /**
+   * Persists where this reader dropped one puck. Same exact-signature rule as above.
+   *
+   * Separate from `saveCorner` for the reason the two placements are separate at all:
+   * a corner is a standing choice that survives a reset, while a position is the
+   * override on top of it. One combined write would make "reset my position" and
+   * "dock me bottom-left" the same request, which they are not.
+   *
+   * Flat `x`/`y` rather than a nested point, matching how the action receives them —
+   * a port here mirrors its action exactly so the mount site can assign the action
+   * itself rather than wrapping it in an arrow that would fail to serialize.
+   */
+  savePosition: (input: {
+    id: FloatingId;
+    x: number;
+    y: number;
+  }) => Promise<{ ok: boolean; error?: string }>;
 }
 
 export interface FloatingLayerValue {
@@ -78,6 +96,13 @@ export interface FloatingLayerValue {
   corners: Partial<Record<FloatingId, PuckCorner>>;
   /** Moves a component's puck to another corner, and remembers it. */
   setCorner: (id: FloatingId, corner: PuckCorner) => void;
+  /**
+   * Where each puck has been dragged. Sparse — a puck with no entry is still docked
+   * in its corner, and that absence is what the renderer branches on.
+   */
+  positions: Partial<Record<FloatingId, PuckPosition>>;
+  /** Remembers where a puck was dropped. */
+  setPosition: (id: FloatingId, position: PuckPosition) => void;
   open: (id: FloatingId) => void;
   minimize: (id: FloatingId) => void;
   close: (id: FloatingId) => void;
@@ -106,6 +131,7 @@ export function FloatingLayerProvider({
   enabled,
   initialStates,
   initialCorners,
+  initialPositions,
   actions,
   musicPuckUp = false,
 }: {
@@ -116,6 +142,11 @@ export function FloatingLayerProvider({
   initialStates: Partial<Record<FloatingId, FloatingState>>;
   /** Each component's stored corner, resolved on the server. */
   initialCorners: Partial<Record<FloatingId, PuckCorner>>;
+  /**
+   * Each puck's dragged position, resolved on the server. Sparse: only the pucks this
+   * reader has actually moved appear, and the rest stay with their corners.
+   */
+  initialPositions: Partial<Record<FloatingId, PuckPosition>>;
   actions: FloatingActions;
   /**
    * Whether the music player is itself minimized to its puck, so a floating puck
@@ -200,9 +231,49 @@ export function FloatingLayerProvider({
     [actions],
   );
 
+  // Where each puck has been dragged. Local so a drop is reflected at once, seeded
+  // from the server-resolved values — the same shape `corners` above takes.
+  const [positions, setPositions] = useState<Partial<Record<FloatingId, PuckPosition>>>(
+    () => ({ ...initialPositions }),
+  );
+
+  const setPosition = useCallback(
+    (id: FloatingId, position: PuckPosition) => {
+      setPositions((current) => {
+        const previous = current[id];
+        if (previous && previous.x === position.x && previous.y === position.y) {
+          return current;
+        }
+        void actions.savePosition({ id, x: position.x, y: position.y });
+        return { ...current, [id]: position };
+      });
+    },
+    [actions],
+  );
+
+  // A reset from the Account screen arrives as a new `initialPositions` after that
+  // page's `router.refresh()`. Without this the provider would keep the dropped
+  // position in local state for the rest of the session and "Reset position" would
+  // appear to do nothing until a full reload.
+  //
+  // Seeding state from a prop and then syncing it is the pattern React warns about,
+  // but the alternatives are worse here: lifting the position to the server would
+  // make every drag a round trip before the puck moved, and keying the provider on
+  // the positions would remount the whole floating layer — closing any open window —
+  // every time a puck was dropped.
+  //
+  // Keyed on the serialized value, NOT on the object: the layout rebuilds
+  // `initialPositions` on every render, so depending on the reference would clobber a
+  // just-dropped position with the stale server one on any unrelated re-render —
+  // which is exactly the snap-back this effect exists to avoid causing.
+  const initialPositionsKey = JSON.stringify(initialPositions);
+  useEffect(() => {
+    setPositions(JSON.parse(initialPositionsKey) as Partial<Record<FloatingId, PuckPosition>>);
+  }, [initialPositionsKey]);
+
   const puckSlots = useMemo(
-    () => resolvePuckSlots(states, corners, musicPuckUp),
-    [states, corners, musicPuckUp],
+    () => resolvePuckSlots(states, corners, musicPuckUp, positions),
+    [states, corners, musicPuckUp, positions],
   );
 
   // Mirror the layer's presence onto `<html>`, the same seam `SectionPanel` and the
@@ -230,12 +301,26 @@ export function FloatingLayerProvider({
       puckSlots,
       corners,
       setCorner,
+      positions,
+      setPosition,
       open,
       minimize,
       close,
       restore,
     }),
-    [states, enabledSet, puckSlots, corners, setCorner, open, minimize, close, restore],
+    [
+      states,
+      enabledSet,
+      puckSlots,
+      corners,
+      setCorner,
+      positions,
+      setPosition,
+      open,
+      minimize,
+      close,
+      restore,
+    ],
   );
 
   return <FloatingLayerContext.Provider value={value}>{children}</FloatingLayerContext.Provider>;

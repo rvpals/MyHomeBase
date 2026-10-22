@@ -47,6 +47,10 @@ const EDGE_LABELS: Record<ToolbarEdge, string> = {
   bottom: "Bottom",
   left: "Left",
   right: "Right",
+  // Migration 0153. A `Record<ToolbarEdge, …>` rather than a partial map, so adding
+  // a placement to `TOOLBAR_EDGES` without a label here is a type error rather than
+  // an option that renders blank in the picker below.
+  floating: "Floating",
 };
 
 /** The editable shape of a toolbar, before it is saved. */
@@ -459,7 +463,8 @@ export function ToolbarsView({
     <>
       <CollapsibleCard className="mt-8" title="Toolbars">
         <p className="text-sm text-muted">
-          Each toolbar docks to one edge. <strong className="text-ink">ON</strong> means
+          Each toolbar docks to one edge, or floats over the page for each person to
+          drag where they like. <strong className="text-ink">ON</strong> means
           it exists for the household — switch it off and it leaves everyone&apos;s
           screen. Each person can still hide an ON toolbar from their own Account page.
         </p>
@@ -493,7 +498,12 @@ export function ToolbarsView({
                     ) : null}
                   </p>
                   <p className="mt-0.5 text-xs text-muted">
-                    {EDGE_LABELS[toolbar.edge]} edge · {toolbar.items.length} item
+                    {/* "Floating edge" would be a contradiction — it is the one
+                        placement that docks to no edge at all. */}
+                    {toolbar.edge === "floating"
+                      ? "Floating"
+                      : `${EDGE_LABELS[toolbar.edge]} edge`}{" "}
+                    · {toolbar.items.length} item
                     {toolbar.items.length === 1 ? "" : "s"}
                   </p>
                 </div>
@@ -559,6 +569,15 @@ export function ToolbarsView({
                   </option>
                 ))}
               </select>
+              {/* Said here rather than only in the docs, because the difference is
+                  not guessable from the word "Floating" and it is the one choice on
+                  this form whose consequence an admin cannot undo for someone else:
+                  each reader's dragged position is their own. */}
+              <p className="mt-1 text-xs text-muted">
+                {draft.edge === "floating"
+                  ? "Floats over the page — each person drags it where they want and it stays there for them. It reserves no space, so it sits on top of the content."
+                  : "Docked to this edge, with the page making room for it."}
+              </p>
             </div>
           </div>
 

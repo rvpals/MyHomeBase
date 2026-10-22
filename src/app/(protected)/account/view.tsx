@@ -11,8 +11,10 @@ import {
   FLOATING_COMPONENTS,
   PUCK_CORNERS,
   type FloatingId,
+  type FloatingPositionResetInput,
   type FloatingState,
   type PuckCorner,
+  type PuckPosition,
 } from "@/lib/floating";
 import type { User } from "@/lib/user";
 import {
@@ -58,6 +60,14 @@ export interface AccountViewActions {
   savePreferences: (input: UserPreferencesUpdate) => Promise<ActionResult>;
   saveFloatingState: (input: FloatingStateUpdate) => Promise<ActionResult>;
   saveFloatingCorner: (input: FloatingCornerUpdate) => Promise<ActionResult>;
+  /**
+   * Forgets where this reader dragged one puck, so it docks in its corner again.
+   *
+   * Optional so the admin screen — which renders this view for somebody else's
+   * account — can leave it out: resetting another person's puck from a screen that
+   * cannot show them where it is would be a control with no feedback.
+   */
+  resetFloatingPosition?: (input: FloatingPositionResetInput) => Promise<ActionResult>;
 }
 
 /** A module the user may pick as their favorite. Plain data from the page. */
@@ -485,9 +495,22 @@ function NavStyleField({
 function ToolbarsSection({
   toolbars,
   onToggle,
+  onResetPosition,
 }: {
   toolbars: readonly AccountToolbarOption[];
   onToggle: (id: number, hidden: boolean) => Promise<ActionResult>;
+  /**
+   * Forgets where this reader dragged a floating bar (migration 0153), so it opens
+   * at its default again.
+   *
+   * This is the recovery route, and it is the reason the control exists at all: a
+   * bar dragged somewhere awkward on a screen the reader no longer has — a second
+   * monitor, a window since resized — is otherwise only reachable by dragging it
+   * back on that same screen. The renderer's clamp keeps a grabbable strip on
+   * screen, so this is belt-and-braces rather than the only way out, but "put it
+   * back" should not require a gesture.
+   */
+  onResetPosition?: (id: number) => Promise<ActionResult>;
 }) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<number | undefined>(undefined);
@@ -510,13 +533,32 @@ function ToolbarsSection({
     }
   }
 
+  async function resetPosition(id: number) {
+    if (!onResetPosition) return;
+    setBusyId(id);
+    setError(undefined);
+    try {
+      const result = await onResetPosition(id);
+      if (!result.ok) {
+        setError(result.error ?? "Failed to reset the position.");
+        return;
+      }
+      // Unlike a drag — which the bar has already applied on screen — this change
+      // happens on a different page from the bar, so the layout has to re-render
+      // for it to be visible at all.
+      router.refresh();
+    } finally {
+      setBusyId(undefined);
+    }
+  }
+
   return (
     <section className="mt-8">
       <h2 className="font-display text-lg text-ink">Toolbars</h2>
       <p className="mt-1 text-sm text-muted">
-        Strips of shortcuts docked to the edge of the screen. These are extra — the
-        normal navigation is unchanged, so hiding one costs you nothing but the
-        shortcuts.
+        Strips of shortcuts — docked to an edge of the screen, or floating where you
+        drag them. These are extra — the normal navigation is unchanged, so hiding one
+        costs you nothing but the shortcuts.
       </p>
 
       {error ? <p className="mt-3 text-sm text-red-400">{error}</p> : null}
@@ -539,10 +581,25 @@ function ToolbarsSection({
               <label htmlFor={`toolbar-${toolbar.id}`}>
                 {toolbar.name}
                 <span className="ml-2 text-xs text-muted">
-                  {toolbar.edge} edge
+                  {/* "floating edge" would be a contradiction — it docks to none. */}
+                  {toolbar.edge === "floating" ? "floating" : `${toolbar.edge} edge`}
                   {toolbar.fullModeOnly ? " · full mode only" : ""}
                 </span>
               </label>
+
+              {/* Only a floating bar has a position to forget. Offered even when the
+                  bar is hidden, because "hide it, then put it back where it was" is
+                  a perfectly ordinary pair of steps. */}
+              {toolbar.edge === "floating" && onResetPosition ? (
+                <button
+                  type="button"
+                  disabled={busyId === toolbar.id}
+                  onClick={() => void resetPosition(toolbar.id)}
+                  className="text-xs text-muted underline underline-offset-2 transition-colors hover:text-ink disabled:opacity-50"
+                >
+                  Reset position
+                </button>
+              ) : null}
             </li>
           ))}
         </ul>
@@ -570,6 +627,7 @@ export function AccountView({
   enabledFloating,
   toolbars,
   onToggleToolbar,
+  onResetToolbarPosition,
   actions,
   heading = "My Account",
   banner,
@@ -600,6 +658,15 @@ export function AccountView({
    */
   toolbars?: readonly AccountToolbarOption[];
   onToggleToolbar?: (id: number, hidden: boolean) => Promise<ActionResult>;
+  /**
+   * Forgets where this reader dragged a floating toolbar (migration 0153).
+   *
+   * Separate from `onToggleToolbar` rather than folded into one "toolbar actions"
+   * object, to match how this view already takes its other per-row actions — and
+   * because each must be passed to the client as the server action ITSELF, never
+   * wrapped in an arrow, which an object of adapters would invite.
+   */
+  onResetToolbarPosition?: (id: number) => Promise<ActionResult>;
   /** The writes, injected — see `AccountViewActions`. */
   actions: AccountViewActions;
   /** The `h1`. The admin screen names the account it is editing instead. */
@@ -627,6 +694,8 @@ export function AccountView({
           enabled={enabledFloating}
           states={preferences.floating}
           corners={preferences.floatingCorners}
+          positions={preferences.floatingPositions}
+          onResetPosition={actions.resetFloatingPosition}
           actions={actions}
         />
 
@@ -634,7 +703,11 @@ export function AccountView({
             toggle writes the session's own preference. Same reasoning as the
             Layout note below. */}
         {toolbars && onToggleToolbar ? (
-          <ToolbarsSection toolbars={toolbars} onToggle={onToggleToolbar} />
+          <ToolbarsSection
+            toolbars={toolbars}
+            onToggle={onToggleToolbar}
+            onResetPosition={onResetToolbarPosition}
+          />
         ) : null}
 
         {/* Read-only here. The switch itself lives in the top bar, because it
@@ -762,11 +835,16 @@ function FloatingComponentsSection({
   enabled,
   states,
   corners,
+  positions,
+  onResetPosition,
   actions,
 }: {
   enabled: readonly FloatingId[];
   states: Record<FloatingId, FloatingState>;
   corners: Record<FloatingId, PuckCorner>;
+  /** Sparse — only the pucks this reader has dragged out of their corner. */
+  positions: Partial<Record<FloatingId, PuckPosition>>;
+  onResetPosition?: (input: FloatingPositionResetInput) => Promise<ActionResult>;
   actions: AccountViewActions;
 }) {
   const router = useRouter();
@@ -814,6 +892,31 @@ function FloatingComponentsSection({
       if (!result.ok) {
         setCornerDraft((current) => ({ ...current, [id]: corners[id] }));
         setError(result.error ?? "Failed to save the corner.");
+        return;
+      }
+      router.refresh();
+    } finally {
+      setPending(undefined);
+    }
+  }
+
+  /**
+   * Puts one puck back in its corner.
+   *
+   * Not optimistic, unlike the two above, and the difference is where the change
+   * shows: a shape or a corner is reflected by this panel's own controls, but a
+   * position lives on the puck, which is on a different part of the screen and fed by
+   * the protected layout. So this waits for the write and then refreshes — the action
+   * revalidates the layout, which is what actually moves the puck back.
+   */
+  async function resetPosition(id: FloatingId) {
+    if (!onResetPosition) return;
+    setPending(id);
+    setError(undefined);
+    try {
+      const result = await onResetPosition({ id });
+      if (!result.ok) {
+        setError(result.error ?? "Failed to reset the position.");
         return;
       }
       router.refresh();
@@ -891,6 +994,26 @@ function FloatingComponentsSection({
                   ))}
                 </select>
               </label>
+
+              {/* Only for a puck that has actually been dragged — there is nothing to
+                  reset otherwise, and an always-present control that usually does
+                  nothing reads as broken. This is the recovery route for a puck
+                  dropped on a screen the reader no longer has; the renderer's clamp
+                  keeps a grabbable strip on screen, so it is belt-and-braces rather
+                  than the only way back. */}
+              {positions[component.id] && onResetPosition ? (
+                <p className="mt-2 text-xs text-muted">
+                  Dragged out of its corner.{" "}
+                  <button
+                    type="button"
+                    disabled={pending === component.id}
+                    onClick={() => void resetPosition(component.id)}
+                    className="underline underline-offset-2 transition-colors hover:text-ink disabled:opacity-50"
+                  >
+                    Reset position
+                  </button>
+                </p>
+              ) : null}
             </li>
           ))}
         </ul>

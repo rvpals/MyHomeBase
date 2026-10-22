@@ -1,6 +1,6 @@
 import { DEFAULT_PUCK_CORNER } from "./corners";
 import { FLOATING_COMPONENTS } from "./registry";
-import type { FloatingId, FloatingState, PuckCorner, PuckSlot } from "./types";
+import type { FloatingId, FloatingState, PuckCorner, PuckPosition, PuckSlot } from "./types";
 
 /**
  * Which minimized pucks park where, and in what order.
@@ -22,20 +22,32 @@ import type { FloatingId, FloatingState, PuckCorner, PuckSlot } from "./types";
  * puck occupies has to make room for it. That is the whole reason this takes the corner
  * map rather than assuming one corner.
  *
+ * **A freely-placed puck is not in the queue.** A reader who has dragged a puck
+ * somewhere has said where they want it, so it is left out of this entirely — it takes
+ * no slot, and it pushes nothing else along. That is the trade free dragging makes: a
+ * hand-placed puck no longer clears the music bar or the section panel automatically.
+ * Clearing its position (Account → "Reset position") puts it back in the queue, which
+ * is why the renderer must pass `positions` rather than resolving them itself.
+ *
  * @param states       each component's current state, by id
  * @param corners      each component's docked corner, by id
  * @param musicPuckUp  whether the music player is *itself* minimized to its puck
+ * @param positions    the pucks this reader has dragged, which are skipped
  */
 export function resolvePuckSlots(
   states: Readonly<Partial<Record<FloatingId, FloatingState>>>,
   corners: Readonly<Partial<Record<FloatingId, PuckCorner>>>,
   musicPuckUp: boolean,
+  positions: Readonly<Partial<Record<FloatingId, PuckPosition>>> = {},
 ): PuckSlot[] {
   // Registry order, so two pucks sharing a corner never swap places just because the
   // reader happened to minimize them in the other order. A puck that moves on its own
   // is harder to hit than one that is simply further from the corner.
   const minimized = FLOATING_COMPONENTS.filter(
-    (component) => states[component.id] === "minimized",
+    (component) =>
+      states[component.id] === "minimized" &&
+      // Dragged pucks are placed by hand and take no slot — see the note above.
+      positions[component.id] === undefined,
   );
 
   // How many pucks are already parked in each corner. The music puck holds index 0 of

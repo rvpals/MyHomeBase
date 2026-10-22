@@ -373,6 +373,26 @@ function ChangeHistoryTab({
   );
 }
 
+// The Features tab. `MyHomeBase_feature.md` is a catalogue of what the app does,
+// organised by module, as against the change log's dated record of what moved.
+// It reuses `renderChangeHistory` rather than growing a second markdown renderer:
+// that function is a general block renderer, and the kind badges it can draw simply
+// never fire here because this document carries no `[Added]`-style tags.
+function FeaturesTab({ markdown }: { markdown: string | null }) {
+  if (!markdown) {
+    return (
+      <div className="rounded-xl border border-dashed border-line p-8 text-center">
+        <p className="font-display text-lg text-ink">No feature list yet</p>
+        <p className="mt-1 text-sm text-muted">
+          Add <code className="font-mono">MyHomeBase_feature.md</code> to the project root.
+        </p>
+      </div>
+    );
+  }
+
+  return <div className="space-y-2">{renderChangeHistory(markdown)}</div>;
+}
+
 function inferModuleFromContent(h3Title: string, followingContent: string): string {
   // Pattern 1: "Module Name: Feature" format
   const colonIndex = h3Title.indexOf(":");
@@ -519,6 +539,7 @@ export function AboutView({
   deployments,
   changeHistoryMarkdown,
   changeHistorySummary,
+  featureListMarkdown,
 }: {
   appName: string;
   appVersion: string;
@@ -534,6 +555,8 @@ export function AboutView({
   deployments: DeploymentRow[];
   changeHistoryMarkdown: string | null;
   changeHistorySummary: ChangeHistorySummary | null;
+  /** `MyHomeBase_feature.md`, or null when the checkout has no such file. */
+  featureListMarkdown: string | null;
 }) {
   // The Server Log tab. Fetched from the client rather than passed down from
   // page.tsx on purpose: the log is the one thing on this screen you want to
@@ -868,6 +891,11 @@ export function AboutView({
       key: "change-history",
       label: "Change History",
       content: <ChangeHistoryTab markdown={changeHistoryMarkdown} summary={changeHistorySummary} />,
+    },
+    {
+      key: "features",
+      label: "Features",
+      content: <FeaturesTab markdown={featureListMarkdown} />,
     },
     {
       key: "deployments",

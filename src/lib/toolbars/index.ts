@@ -2,6 +2,16 @@
 // inside this folder.
 
 export type { ToolbarItemWrite, ToolbarRepository, ToolbarWrite } from "./ports";
+export {
+  clampToolbarPosition,
+  clearToolbarPosition,
+  KEEP_TOOLBAR_VISIBLE,
+  parseToolbarPositions,
+  serializeToolbarPositions,
+  setToolbarPosition,
+  TOOLBAR_POSITIONS_PREFERENCE_KEY,
+  type ToolbarPosition,
+} from "./position";
 export { SqliteToolbarRepository } from "./repository";
 export {
   MAX_TOOLBAR_LABEL_LENGTH,
@@ -33,6 +43,7 @@ export {
   TOOLBARS_HIDDEN_PREFERENCE_KEY,
 } from "./visibility";
 export {
+  isFloatingEdge,
   isOrnamentalKind,
   isToolbarEdge,
   isToolbarItemKind,

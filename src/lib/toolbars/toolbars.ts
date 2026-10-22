@@ -4,7 +4,7 @@ import type { DashboardTextureItem } from "@/lib/dashboard-texture";
 import type { MenuItem } from "@/lib/menu-items";
 import type { ToolbarRepository } from "./ports";
 import { toolbarItemSchema, toolbarSchema, type ToolbarInput, type ToolbarItemInput } from "./schema";
-import { isOrnamentalKind } from "./types";
+import { isFloatingEdge, isOrnamentalKind } from "./types";
 import type {
   ResolvedToolbar,
   ResolvedToolbarItem,
@@ -274,9 +274,18 @@ function trimEdgeOrnament<T extends { kind: ToolbarItem["kind"] }>(items: T[]): 
  * Returned as data rather than as pixels: `lib` owns *which* edges are occupied and
  * CSS owns how wide they are, the same split `resolvePuckSlots` makes for the
  * floating layer.
+ *
+ * **A floating bar is never returned** (migration 0153). The whole point of the
+ * placement is that it sits *over* the content at a position the reader chose, so
+ * there is no edge to reserve and nothing for `.app-main` to pad against. Letting
+ * one through here would set a `data-toolbar-floating` attribute that no CSS rule
+ * reads, and — worse, if one were ever added to match — would indent the page for a
+ * bar that is not at its edge.
  */
 export function occupiedEdges(toolbars: readonly ResolvedToolbar[]): Toolbar["edge"][] {
-  const edges = new Set(toolbars.map((toolbar) => toolbar.edge));
+  const edges = new Set(
+    toolbars.map((toolbar) => toolbar.edge).filter((edge) => !isFloatingEdge(edge)),
+  );
   return [...edges];
 }
 

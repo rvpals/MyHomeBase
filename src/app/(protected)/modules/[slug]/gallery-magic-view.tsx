@@ -4,6 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { PhotoViewer, type ViewerPhoto } from "@/components/photo-viewer";
+import { BusyOverlay } from "@/components/busy-overlay";
+import { CullControls } from "@/components/cull-controls";
+import { useCulling, type CullVerdict } from "@/components/use-culling";
+import { cullGalleryPhotosAction } from "./gallery-culling-actions";
 import { Progress3D } from "@/components/progress-3d";
 import {
   MAX_LIST_PHOTOS,
@@ -162,6 +166,12 @@ export function MagicListView({
 
   const [viewerIndex, setViewerIndex] = useState<number | undefined>();
   const [viewerAutoPlay, setViewerAutoPlay] = useState(false);
+
+  // Culling. Kept BESIDE the photo list rather than replacing it, so "Undim all" is a
+  // flag flip and no photograph has to be re-fetched to go back.
+  const cullRun = useCulling(cullGalleryPhotosAction);
+  const [isShowingCull, setIsShowingCull] = useState(false);
+  const [keepCount, setKeepCount] = useState<number | undefined>();
 
   const criteria = useMemo(() => criteriaFromForm(form), [form]);
 
@@ -366,6 +376,17 @@ export function MagicListView({
   // the viewer's photo list and the export handler rebuild each time.
   const photos = useMemo(() => generation?.photos ?? [], [generation]);
 
+  // Verdicts belong to ONE set of photographs, so they are dropped whenever the set
+  // changes -- a regenerate, a reload, a cleared result. Keyed on `generation` identity
+  // rather than patched into all five `setGeneration` call sites: an effect cannot miss
+  // a site a future edit adds, and stale verdicts shown against new photographs would
+  // be worse than none.
+  useEffect(() => {
+    cullRun.reset();
+    setIsShowingCull(false);
+  }, [generation]);
+
+
   const viewerPhotos: ViewerPhoto[] = useMemo(
     () =>
       photos.map((photo) => ({
@@ -561,12 +582,47 @@ export function MagicListView({
             )}
           </header>
 
-          <PhotoGrid photos={photos} onOpen={(index) => {
-            setViewerAutoPlay(false);
-            setViewerIndex(index);
-          }} />
+          {photos.length > 0 && (
+            <CullControls
+              className="mb-3"
+              total={photos.length}
+              isCulling={cullRun.isCulling}
+              keeperCount={cullRun.keeperCount}
+              requested={cullRun.progressTotal}
+              examined={cullRun.examined}
+              wasTruncated={false}
+              unreadableCount={cullRun.unreadableCount}
+              isShowingCull={isShowingCull}
+              error={cullRun.error}
+              keepCount={keepCount}
+              onKeepCountChange={setKeepCount}
+              onCull={() => void cullRun.start(photos.map((photo) => photo.relativePath), keepCount)}
+              onToggleCullView={() => setIsShowingCull((current) => !current)}
+            />
+          )}
+
+          <PhotoGrid
+            photos={photos}
+            culled={isShowingCull ? cullRun.verdicts : undefined}
+            onOpen={(index) => {
+              setViewerAutoPlay(false);
+              setViewerIndex(index);
+            }}
+          />
         </section>
       )}
+
+      {/* A full-screen scrim, because culling a large set is the slowest thing this
+          screen does and a changed button label is not enough. Says plainly that
+          nothing is being removed -- a dimmed page during an operation called "culling"
+          otherwise invites exactly that worry. */}
+      <BusyOverlay
+        isBusy={cullRun.isCulling}
+        progress={{ value: cullRun.progressDone, max: cullRun.progressTotal }}
+        onCancel={cullRun.cancel}
+        message={`Culled ${cullRun.progressDone} of ${cullRun.progressTotal} photographs…`}
+        detail="Every photograph is opened and measured. Nothing is moved or deleted."
+      />
 
       {/* Saving and reloading. Below the result, because naming a list is what you do
           once you like what came back. */}
@@ -593,6 +649,7 @@ export function MagicListView({
         // (with options)" needed no new UI here.
         <PhotoViewer
           photos={viewerPhotos}
+          onCull={cullGalleryPhotosAction}
           initialIndex={viewerIndex}
           autoPlay={viewerAutoPlay}
           photoUrl={photoUrl}
@@ -823,9 +880,17 @@ function Field({
  */
 function PhotoGrid({
   photos,
+  culled,
   onOpen,
 }: {
   photos: MagicPhotoView[];
+  /**
+   * Verdicts by path, when the grid should dim what was set aside.
+   *
+   * `undefined` means "show everything plainly" -- which is both the state before a
+   * cull and the state after "Undim all", so the grid needs no separate flag.
+   */
+  culled?: Record<string, CullVerdict>;
   onOpen: (index: number) => void;
 }) {
   if (photos.length === 0) {
@@ -834,15 +899,44 @@ function PhotoGrid({
 
   return (
     <ul className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(140px,1fr))] max-lg:[grid-template-columns:repeat(auto-fill,minmax(104px,1fr))]">
-      {photos.map((photo, index) => (
+      {photos.map((photo, index) => {
+        const verdict = culled?.[photo.relativePath];
+        const isDimmed = verdict !== undefined && !verdict.isKeeper;
+
+        return (
         <li key={photo.relativePath}>
           <button
             type="button"
             onClick={() => onOpen(index)}
-            className="group block w-full text-left"
-            title={photo.relativePath}
+            className={`group block w-full text-left transition-opacity ${
+              isDimmed ? "opacity-40" : ""
+            }`}
+            // The verdict rides on the tooltip: the grid is already dense, and the
+            // reason is what tells a reader whether the cull judged it rightly.
+            title={
+              verdict === undefined
+                ? photo.relativePath
+                : `${photo.name}
+${verdict.score.toFixed(2)} — ${verdict.reason}` +
+                  (verdict.isKeeper
+                    ? ""
+                    : `
+Set aside: ${verdict.rejectReason}` +
+                      (verdict.duplicateOf === undefined
+                        ? ""
+                        : `
+duplicate of ${verdict.duplicateOf.split("/").pop()}`))
+            }
           >
-            <span className="block aspect-square overflow-hidden rounded-md border border-line bg-paper-2">
+            <span
+              className={`block aspect-square overflow-hidden rounded-md border bg-paper-2 ${
+                isDimmed
+                  ? "border-line grayscale"
+                  : verdict?.isKeeper
+                    ? "border-brass"
+                    : "border-line"
+              }`}
+            >
               <img
                 src={photoUrl(photo.relativePath)}
                 alt={photo.name}
@@ -862,7 +956,8 @@ function PhotoGrid({
             </span>
           </button>
         </li>
-      ))}
+        );
+      })}
     </ul>
   );
 }

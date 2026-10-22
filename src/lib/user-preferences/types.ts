@@ -1,6 +1,6 @@
 import type { AngleMode } from "@/lib/calculator";
 import type { ClockFaceOptions } from "@/lib/clock";
-import type { FloatingId, FloatingState, PuckCorner } from "@/lib/floating";
+import type { FloatingId, FloatingState, PuckCorner, PuckPosition } from "@/lib/floating";
 import type { HomeLayoutPreference } from "@/lib/home-layout";
 import type { TemperatureUnit } from "@/lib/weather";
 
@@ -112,6 +112,15 @@ export interface UserPreferences {
    * the Account screen, while a state changes every time a window is minimized.
    */
   floatingCorners: Record<FloatingId, PuckCorner>;
+  /**
+   * Where this reader has dragged each puck, for the ones they have moved.
+   *
+   * **Sparse, unlike `floating` and `floatingCorners` above**, and the absence carries
+   * meaning rather than being an oversight: a puck with no entry has never been
+   * dragged, so it docks in its corner and queues with the others. An entry means the
+   * reader has placed it by hand, and it sits exactly there instead. See `PuckPosition`.
+   */
+  floatingPositions: Partial<Record<FloatingId, PuckPosition>>;
   /**
    * The Floating Calculator's remembered state.
    *

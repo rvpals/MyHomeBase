@@ -138,6 +138,9 @@ export function FloatingClock({
         index={puck?.index ?? 0}
         // The reader's docked corner, defaulting when the slot is somehow missing.
         corner={puck?.corner ?? "bottom-right"}
+        // Where this reader dragged it, if they have. Absent leaves it corner-docked.
+        position={layer.positions.clock}
+        onMove={(position) => layer.setPosition("clock", position)}
         onRestore={() => layer.restore("clock")}
         onClose={() => layer.close("clock")}
       >

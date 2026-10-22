@@ -45,6 +45,9 @@ import {
   reportFileName,
   runReport,
 } from "@/lib/journal-reports";
+// The entry form's Content background is a pointer into the app texture
+// library, so the Preferences screen needs the library to draw its picker.
+import { listDashboardTextures } from "@/lib/dashboard-texture";
 import { listModuleSettingsFor } from "@/lib/module-settings";
 import { getModuleBySlug } from "@/lib/modules";
 import { deps } from "@/lib/wiring";
@@ -180,6 +183,7 @@ function SectionBody({
           categoryOptions={listCategories(deps.journalRepo).map((category) => category.name)}
           tagOptions={listTags(deps.journalRepo).map((tag) => tag.name)}
           preferences={preferences}
+          contentTextures={listDashboardTextures(deps.dashboardTextureRepo)}
           prefillTemplates={listEnabledPrefillTemplates(deps.journalRepo)}
           locationCategoryOptions={listLocationCategories(deps.sysLocationRepo).map(
             (row) => row.name,
@@ -292,7 +296,12 @@ function SectionBody({
       const preferences = resolveJournalPreferences(
         journalModule ? listModuleSettingsFor(deps.moduleSettingsRepo, journalModule.id) : [],
       );
-      return <JournalPreferencesView preferences={preferences} />;
+      return (
+        <JournalPreferencesView
+          preferences={preferences}
+          textures={listDashboardTextures(deps.dashboardTextureRepo)}
+        />
+      );
     }
 
     case "metadata":
