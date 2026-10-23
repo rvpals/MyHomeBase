@@ -2,9 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   CONTENT_SIZE_OPTIONS,
   DEFAULT_JOURNAL_CONTENT_TEXTURE_OPACITY,
+  DEFAULT_TOP_WORD_LIMIT,
   HANDWRITING_SIZE_OPTIONS,
   JOURNAL_SETTING_KEYS,
+  MIN_TOP_WORD_LIMIT,
+  MAX_TOP_WORD_LIMIT,
   NO_JOURNAL_CONTENT_TEXTURE,
+  clampTopWordLimit,
   contentFontFamily,
   contentSizeClass,
   handwritingSizeClass,
@@ -33,6 +37,7 @@ describe("resolveJournalPreferences", () => {
       topicMatchBody: false,
       topicEpisodeGapDays: 14,
       excludedWords: [],
+      topWordLimit: 10,
       contentTextureId: null,
       contentTextureOpacity: 0.1,
       contentTextColor: null,
@@ -57,6 +62,7 @@ describe("resolveJournalPreferences", () => {
       topicMatchBody: false,
       topicEpisodeGapDays: 14,
       excludedWords: [],
+      topWordLimit: 10,
       contentTextureId: null,
       contentTextureOpacity: 0.1,
       contentTextColor: null,
@@ -90,6 +96,7 @@ describe("journalPreferencesToEntries", () => {
       topicMatchBody: false,
       topicEpisodeGapDays: 14,
       excludedWords: ["Beach", "picnic"],
+      topWordLimit: 10,
       contentTextureId: null,
       contentTextureOpacity: 0.1,
       contentTextColor: null,
@@ -110,6 +117,7 @@ describe("journalPreferencesToEntries", () => {
       topicMatchBody: false,
       topicEpisodeGapDays: 14,
       excludedWords: [],
+      topWordLimit: 10,
       contentTextureId: null,
       contentTextureOpacity: 0.1,
       contentTextColor: null,
@@ -132,6 +140,7 @@ describe("journalPreferencesToEntries", () => {
       topicMatchBody: false,
       topicEpisodeGapDays: 14,
       excludedWords: [],
+      topWordLimit: 10,
       contentTextureId: null,
       contentTextureOpacity: 0.1,
       contentTextColor: null,
@@ -160,6 +169,7 @@ describe("journalPreferencesToEntries", () => {
       // would prove nothing. Two words rather than one so the serializer's
       // separator handling is exercised as well.
       excludedWords: ["the", "and"],
+      topWordLimit: 10,
       // Non-default for the same reason as the three above: a round-trip
       // through `null` would also pass if the field were dropped entirely.
       contentTextureId: 7,
@@ -198,6 +208,7 @@ describe("journalPreferencesToEntries", () => {
         topicMatchBody: false,
         topicEpisodeGapDays: 14,
         excludedWords: [],
+        topWordLimit: 10,
         contentTextureId: null,
         contentTextureOpacity: 0.1,
         contentTextColor: null,
@@ -217,6 +228,7 @@ describe("journalPreferencesToEntries", () => {
       topicMatchBody: false,
       topicEpisodeGapDays: 14,
       excludedWords: [],
+      topWordLimit: 10,
       contentTextureId: null,
       contentTextureOpacity: 0.1,
       contentTextColor: null,
@@ -288,6 +300,7 @@ describe("handwriting size", () => {
       topicMatchBody: false,
       topicEpisodeGapDays: 14,
       excludedWords: [],
+      topWordLimit: 10,
       contentTextureId: null,
       contentTextureOpacity: 0.1,
       contentTextColor: null,
@@ -371,6 +384,7 @@ describe("topic episode gap days", () => {
       topicMatchBody: false,
       topicEpisodeGapDays: 30,
       excludedWords: [],
+      topWordLimit: 10,
       contentTextureId: null,
       contentTextureOpacity: 0.1,
       contentTextColor: null,
@@ -384,6 +398,139 @@ describe("topic episode gap days", () => {
     expect(
       entries.find((entry) => entry.key === JOURNAL_SETTING_KEYS.topicEpisodeGapDays)?.value,
     ).toBe("30");
+  });
+});
+
+describe("top word limit", () => {
+  it("defaults to ten when no row is stored", () => {
+    expect(resolveJournalPreferences([]).topWordLimit).toBe(DEFAULT_TOP_WORD_LIMIT);
+    expect(DEFAULT_TOP_WORD_LIMIT).toBe(10);
+  });
+
+  it("reads a stored whole number", () => {
+    const prefs = resolveJournalPreferences([setting(JOURNAL_SETTING_KEYS.topWordLimit, "25")]);
+    expect(prefs.topWordLimit).toBe(25);
+  });
+
+  // The same trap the episode gap has: `Number("")` is 0, which is an integer
+  // and clamps to 1, so a blank row would read as a one-word card rather than
+  // as "never configured".
+  it("falls back to the default for a blank or unparseable row", () => {
+    for (const stored of ["", "   ", "all", "12.5"]) {
+      const prefs = resolveJournalPreferences([
+        setting(JOURNAL_SETTING_KEYS.topWordLimit, stored),
+      ]);
+      expect(prefs.topWordLimit, `stored ${JSON.stringify(stored)}`).toBe(DEFAULT_TOP_WORD_LIMIT);
+    }
+  });
+
+  it("clamps a hand-edited value into range", () => {
+    const zero = resolveJournalPreferences([setting(JOURNAL_SETTING_KEYS.topWordLimit, "0")]);
+    expect(zero.topWordLimit).toBe(MIN_TOP_WORD_LIMIT);
+
+    const negative = resolveJournalPreferences([setting(JOURNAL_SETTING_KEYS.topWordLimit, "-5")]);
+    expect(negative.topWordLimit).toBe(MIN_TOP_WORD_LIMIT);
+
+    const high = resolveJournalPreferences([setting(JOURNAL_SETTING_KEYS.topWordLimit, "9999")]);
+    expect(high.topWordLimit).toBe(MAX_TOP_WORD_LIMIT);
+    expect(MAX_TOP_WORD_LIMIT).toBe(100);
+  });
+
+  it("writes the row at every value, including the default, so a change sticks", () => {
+    for (const limit of [DEFAULT_TOP_WORD_LIMIT, 1, 100]) {
+      const entries = journalPreferencesToEntries({
+        defaultLocation: null,
+        temperatureUnit: "fahrenheit",
+        photoRoot: "",
+        handwritingSize: "xl",
+        reviewBeforeCalendarImport: false,
+        topicMatchBody: false,
+        topicEpisodeGapDays: 14,
+        excludedWords: [],
+        topWordLimit: limit,
+        contentTextureId: null,
+        contentTextureOpacity: 0.1,
+        contentTextColor: null,
+        contentFont: null,
+        contentFontSize: "sm",
+      });
+      expect(
+        entries.find((entry) => entry.key === JOURNAL_SETTING_KEYS.topWordLimit)?.value,
+        `limit ${limit}`,
+      ).toBe(String(limit));
+    }
+  });
+
+  // The write path is clamped as well as the read path, so the stored row is
+  // always one the resolver would hand back unchanged — a caller passing an
+  // out-of-range number can't park a value that silently resets on next read.
+  it("clamps on the way out as well as on the way in", () => {
+    const stored = (limit: number) =>
+      journalPreferencesToEntries({
+        defaultLocation: null,
+        temperatureUnit: "fahrenheit",
+        photoRoot: "",
+        handwritingSize: "xl",
+        reviewBeforeCalendarImport: false,
+        topicMatchBody: false,
+        topicEpisodeGapDays: 14,
+        excludedWords: [],
+        topWordLimit: limit,
+        contentTextureId: null,
+        contentTextureOpacity: 0.1,
+        contentTextColor: null,
+        contentFont: null,
+        contentFontSize: "sm",
+      }).find((entry) => entry.key === JOURNAL_SETTING_KEYS.topWordLimit)?.value;
+
+    expect(stored(0)).toBe("1");
+    expect(stored(500)).toBe("100");
+    // Never "NaN" or "10.5" — the row has to parse back as a whole number.
+    expect(stored(10.9)).toBe("10");
+    expect(stored(Number.NaN)).toBe(String(DEFAULT_TOP_WORD_LIMIT));
+  });
+
+  it("round-trips a saved value back through the resolver", () => {
+    const entries = journalPreferencesToEntries({
+      defaultLocation: null,
+      temperatureUnit: "fahrenheit",
+      photoRoot: "",
+      handwritingSize: "xl",
+      reviewBeforeCalendarImport: false,
+      topicMatchBody: false,
+      topicEpisodeGapDays: 14,
+      excludedWords: [],
+      topWordLimit: 42,
+      contentTextureId: null,
+      contentTextureOpacity: 0.1,
+      contentTextColor: null,
+      contentFont: null,
+      contentFontSize: "sm",
+    });
+    const settings = entries.map((entry) => setting(entry.key, entry.value));
+    expect(resolveJournalPreferences(settings).topWordLimit).toBe(42);
+  });
+});
+
+describe("clampTopWordLimit", () => {
+  it("keeps a legal whole number untouched", () => {
+    for (const limit of [1, 10, 42, 100]) {
+      expect(clampTopWordLimit(limit), `limit ${limit}`).toBe(limit);
+    }
+  });
+
+  it("pulls anything out of range to the nearest bound", () => {
+    expect(clampTopWordLimit(0)).toBe(MIN_TOP_WORD_LIMIT);
+    expect(clampTopWordLimit(-20)).toBe(MIN_TOP_WORD_LIMIT);
+    expect(clampTopWordLimit(101)).toBe(MAX_TOP_WORD_LIMIT);
+  });
+
+  // Truncates rather than rounding, so a stray keystroke reads as the number
+  // the typist already had instead of stepping up to the next one.
+  it("truncates a fraction and defaults for a non-number", () => {
+    expect(clampTopWordLimit(10.9)).toBe(10);
+    expect(clampTopWordLimit(Number.NaN)).toBe(DEFAULT_TOP_WORD_LIMIT);
+    expect(clampTopWordLimit(Number.POSITIVE_INFINITY)).toBe(DEFAULT_TOP_WORD_LIMIT);
   });
 });
 
@@ -427,6 +574,7 @@ describe("review before calendar import", () => {
         // Empty: this test is about the review flag's row, and an irrelevant
         // non-empty value here would only add noise to what it asserts.
         excludedWords: [],
+        topWordLimit: 10,
         contentTextureId: null,
         contentTextureOpacity: 0.1,
         contentTextColor: null,
@@ -488,6 +636,7 @@ describe("content background texture", () => {
       topicMatchBody: false,
       topicEpisodeGapDays: 14,
       excludedWords: [],
+      topWordLimit: 10,
       contentTextureId: null,
       contentTextureOpacity: 0.1,
       contentTextColor: null,
@@ -579,6 +728,7 @@ describe("content text color", () => {
       topicMatchBody: false,
       topicEpisodeGapDays: 14,
       excludedWords: [],
+      topWordLimit: 10,
       contentTextureId: null,
       contentTextureOpacity: 0.1,
       contentTextColor: null,
@@ -633,6 +783,7 @@ describe("content texture strength", () => {
       topicMatchBody: false,
       topicEpisodeGapDays: 14,
       excludedWords: [],
+      topWordLimit: 10,
       contentTextureId: null,
       contentTextureOpacity: 2.5,
       contentTextColor: null,
@@ -689,6 +840,7 @@ describe("content font and size", () => {
       topicMatchBody: false,
       topicEpisodeGapDays: 14,
       excludedWords: [],
+      topWordLimit: 10,
       contentTextureId: null,
       contentTextureOpacity: 0.1,
       contentTextColor: null,

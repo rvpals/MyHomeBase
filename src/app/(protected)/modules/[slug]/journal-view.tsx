@@ -13,6 +13,7 @@ import { TaxonomyChip, TaxonomyIcon } from "@/components/taxonomy-icon";
 import { useIsCompact } from "@/components/viewport-context";
 import { getIconSlot } from "@/lib/icons";
 import {
+  DEFAULT_TOP_WORD_LIMIT,
   PINNED_ENTRY_LIMIT,
   RECENTLY_EDITED_ENTRY_LIMIT,
   defaultJournalHomeWidgets,
@@ -536,6 +537,7 @@ export function JournalView({
   entries,
   tally,
   topWords,
+  topWordLimit = DEFAULT_TOP_WORD_LIMIT,
   topTags,
   topCategories,
   yearAndMonthCounts = [],
@@ -560,6 +562,14 @@ export function JournalView({
   tally: JournalEntryTally;
   /** The most-used words across every entry, already ranked and trimmed. */
   topWords: JournalWordCount[];
+  /**
+   * The reader's chosen length for that list — what the card's heading names.
+   *
+   * Only ever the *asked-for* figure, never `topWords.length`: a journal with
+   * fewer distinct words than this returns a shorter list, and a heading
+   * derived from the array would rename the card to whatever happened to fit.
+   */
+  topWordLimit?: number;
   topTags: JournalTaxonomyCount[];
   topCategories: JournalTaxonomyCount[];
   /** Entry counts grouped by year and month. */
@@ -720,7 +730,7 @@ export function JournalView({
       <div className="rounded-xl border border-line p-4">
         <h3 className="flex items-center gap-2 font-display text-sm text-brass-dark">
           <span aria-hidden="true" className="h-4 w-4 shrink-0" />
-          Top 10 Words
+          Top {topWordLimit} Words
         </h3>
         <TopWordsList words={topWords} />
       </div>

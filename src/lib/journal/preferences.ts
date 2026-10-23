@@ -24,6 +24,7 @@ export const JOURNAL_SETTING_KEYS = {
   topicMatchBody: "topic_match_body",
   topicEpisodeGapDays: "topic_episode_gap_days",
   excludedWords: "excluded_words",
+  topWordLimit: "top_word_limit",
   contentTextureId: "content_texture_id",
   contentTextureOpacity: "content_texture_opacity",
   contentTextColor: "content_text_color",
@@ -60,6 +61,42 @@ export const DEFAULT_TOPIC_EPISODE_GAP_DAYS = 14;
 /** A gap of 0 would make every entry its own episode — the timeline switched off. */
 export const MIN_TOPIC_EPISODE_GAP_DAYS = 1;
 export const MAX_TOPIC_EPISODE_GAP_DAYS = 365;
+
+/**
+ * How many words the home screen's Top Words card ranks when nobody has set a
+ * number.
+ *
+ * Ten, because that is what the card showed for its whole life as the fixed
+ * "Top 10 Words" — making the setting configurable shouldn't change what an
+ * existing journal looks like on the next render.
+ */
+export const DEFAULT_TOP_WORD_LIMIT = 10;
+/** A limit of 0 would render an empty card that looks broken rather than configured. */
+export const MIN_TOP_WORD_LIMIT = 1;
+/**
+ * The ceiling is about reading, not cost: `topWords` tokenizes every entry's
+ * text whatever the limit, so a hundred rows costs the same scan as ten and
+ * only changes the final slice. A hundred is simply well past the point a
+ * ranked list stops summarising anything.
+ */
+export const MAX_TOP_WORD_LIMIT = 100;
+
+/**
+ * Forces any number into a storable word limit: whole, 1..100, default for
+ * anything that isn't a finite number at all.
+ *
+ * Exported so the Preferences screen clamps with *this* rather than with its
+ * own copy of the bounds — the episode-gap field above repeats `1` and `365` at
+ * its call site, and a second copy of a bound is how a form ends up saving a
+ * value the resolver silently rejects on the way back in.
+ *
+ * `Math.trunc` rather than `Math.round`, so a stray `10.9` reads as the ten the
+ * typist had before the keystroke rather than jumping to eleven.
+ */
+export function clampTopWordLimit(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_TOP_WORD_LIMIT;
+  return Math.min(Math.max(Math.trunc(value), MIN_TOP_WORD_LIMIT), MAX_TOP_WORD_LIMIT);
+}
 
 /**
  * What `content_texture_id` holds when no picture is chosen.
@@ -279,6 +316,17 @@ export function resolveJournalPreferences(settings: ModuleSetting[]): JournalPre
   // casing and duplicates a hand-edited value could carry.
   const excludedWords = parseExcludedWords(byKey.get(JOURNAL_SETTING_KEYS.excludedWords) ?? "");
 
+  // Clamped rather than trusted, exactly like the episode gap above and for the
+  // same reason: `Number("")` is 0, an integer that clamps into range, so a
+  // blank or missing row would otherwise read as a one-word list rather than as
+  // "unset". The blank test has to come before the integer test, not after.
+  const rawWordLimit = byKey.get(JOURNAL_SETTING_KEYS.topWordLimit) ?? "";
+  const storedWordLimit = Number(rawWordLimit);
+  const topWordLimit =
+    rawWordLimit.trim() !== "" && Number.isInteger(storedWordLimit)
+      ? Math.min(Math.max(storedWordLimit, MIN_TOP_WORD_LIMIT), MAX_TOP_WORD_LIMIT)
+      : DEFAULT_TOP_WORD_LIMIT;
+
   // Only a whole number >= 1 is a real library id. `"0"` is the "no texture"
   // sentinel, and a blank, a word or a negative is what a hand-edited row looks
   // like — all of them mean "draw the plain sheet" rather than erroring. Note
@@ -327,6 +375,7 @@ export function resolveJournalPreferences(settings: ModuleSetting[]): JournalPre
     handwritingSize,
     reviewBeforeCalendarImport,
     excludedWords,
+    topWordLimit,
     contentTextureId,
     contentTextureOpacity,
     contentTextColor,
@@ -427,6 +476,15 @@ export function journalPreferencesToEntries(
     {
       key: JOURNAL_SETTING_KEYS.topicEpisodeGapDays,
       value: String(preferences.topicEpisodeGapDays),
+    },
+    // Always written, at the default as well, for the reason the gap above is:
+    // this save replaces the module's rows wholesale, so only writing a
+    // non-default would make "put it back to 10" a no-op that leaves the old
+    // row standing. Clamped here as well as on read, so the stored value is
+    // always one the resolver would accept back unchanged.
+    {
+      key: JOURNAL_SETTING_KEYS.topWordLimit,
+      value: String(clampTopWordLimit(preferences.topWordLimit)),
     },
     // Always written, including the "none" case, as the sentinel rather than a
     // missing row — the same call `handwritingSize` and

@@ -499,8 +499,8 @@ Row-click navigation:
 - Investments simulation — [stock-simulation-view.tsx](src/app/(protected)/modules/[slug]/stock-simulation-view.tsx) *(a fixed ten-row table: `showToolbar={false}` with `defaultPageSize="ALL"`, keeping sort and the status bar's CSV export)*
 - CSV Analysis — [csv-analytics-view.tsx](src/app/(protected)/modules/[slug]/csv-analytics-view.tsx) *(row selection + bulk edit over an **arbitrary** schema: the dialog's fields are the dataset's own columns, so the grid is keyed by the table's real SQLite `rowid` rather than by row position)*
 - MyJournal Calendar Import — [journal-calendar-import-view.tsx](src/app/(protected)/modules/[slug]/journal-calendar-import-view.tsx) *(selection as a **pick-what-to-import** list: the ticked rows are the import's input, and rows the plan marked unimportable are filtered out of the action rather than disabled)*
-- MyJournal Entries — [journal-entries-view.tsx](src/app/(protected)/modules/[slug]/journal-entries-view.tsx) *(the **All Entries**, **Unlocked Entries** and **Substantial Entries** tabs, one `EntriesTab` rendered three times with a `lockScope` and a `bodyScope` — Substantial is bodies over ten words, decided in SQL by [body-length.ts](src/lib/journal/body-length.ts), never client-side — each tab needs its own `key` or React reuses one instance and they all show the first-mounted tab's rows. Substantial alone swaps **Place** for a **Body Length** word count, drops the record-view eye and keeps its own grid `storageKey`; row selection + bulk edit/lock/unlock/encrypt/delete — the Lock and Unlock pair confirm through [`BulkConfirm`](#bulkconfirm), as Delete does; **Encrypt** goes through [`EncryptionPrompt`](#encryptionprompt) in `encrypt` mode with a `count`, behind a [`BusyOverlay`](#busyoverlay). The bulk edit is [journal-entries-bulk-edit.tsx](src/app/(protected)/modules/[slug]/journal-entries-bulk-edit.tsx), shared with the Log tab; unlike Expense’s single-valued fields it offers **Add / Remove / Replace** per field, because an entry holds several categories and tags)*
-- MyJournal Log — [journal-log-view.tsx](src/app/(protected)/modules/[slug]/journal-log-view.tsx) *(the **Log** tab of Entries, not a section of its own; row click opens `JournalViewer` in a `Modal`; the same bulk edit as the other tabs, plus bulk delete to the recycle bin)*
+- MyJournal Entries — [journal-entries-view.tsx](src/app/(protected)/modules/[slug]/journal-entries-view.tsx) *(the **All Entries**, **Unlocked Entries** and **Substantial Entries** tabs, one `EntriesTab` rendered three times with a `lockScope` and a `bodyScope` — Substantial is bodies over ten words, decided in SQL by [body-length.ts](src/lib/journal/body-length.ts), never client-side — each tab needs its own `key` or React reuses one instance and they all show the first-mounted tab's rows. Substantial alone swaps **Place** for a **Body Length** word count, drops the record-view eye and keeps its own grid `storageKey`; row selection + bulk edit/lock/unlock/encrypt/delete — the Lock and Unlock pair confirm through [`BulkConfirm`](#bulkconfirm), as Delete does; **Encrypt** goes through [`EncryptionPrompt`](#encryptionprompt) in `encrypt` mode with a `count`, behind a [`BusyOverlay`](#busyoverlay). The bulk edit is [journal-entries-bulk-edit.tsx](src/app/(protected)/modules/[slug]/journal-entries-bulk-edit.tsx), shared with the Log tab; unlike Expense’s single-valued fields it offers **Add / Remove / Replace** per field, because an entry holds several categories and tags. **Bulk overwrite** is a second dialog, [journal-entries-bulk-overwrite.tsx](src/app/(protected)/modules/[slug]/journal-entries-bulk-overwrite.tsx), also shared with the Log tab — the same fields and the same action with every mode pinned to `replace`, so overwriting is the premise rather than one of three modes; a ticked field left empty clears that field and is the one path there that confirms, through [`BulkConfirm`](#bulkconfirm))*
+- MyJournal Log — [journal-log-view.tsx](src/app/(protected)/modules/[slug]/journal-log-view.tsx) *(the **Log** tab of Entries, not a section of its own; row click opens `JournalViewer` in a `Modal`; the same bulk edit and bulk overwrite as the other tabs, plus bulk delete to the recycle bin)*
 - MyJournal Entries, all three grid tabs — *("Show SQL" showing the **real** statement the
   rows came from, not a hand-written equivalent: `findEntries` and the dialog both read
   [entries-sql.ts](src/lib/journal/entries-sql.ts), so they cannot drift. Admin-only, and
@@ -3466,7 +3466,7 @@ with a filled portion, no shadow, no border, no animation.
 of 1 against a top count of 400 rounds to 0% and reads as missing data rather than as
 "very small".
 
-**Used by:** the journal home screen's **Top 10 Words** list
+**Used by:** the journal home screen's **Top Words** list
 ([journal-view.tsx](src/app/(protected)/modules/[slug]/journal-view.tsx)); and Admin → SQL
 Explorer → **Table Usage**, where it ranks each table's size on disk against the largest
 ([view.tsx](src/app/(protected)/admin/sql-explorer/view.tsx)). Top Tags and Top Categories
@@ -4964,6 +4964,23 @@ Everything said about `LocationGraphView` applies here too: **canvas not SVG**, 
 real list underneath as the keyboard and screen-reader path; **the loop stops** once the
 layout settles; and colours are read off `:root` and re-read on theme change, because
 canvas takes no CSS classes and design.md forbids literal colour values.
+
+**Zoom, pan and fullscreen are built in.** Four controls sit over the top-right of the
+canvas — zoom in, zoom out, fit-to-view, and fullscreen — as plain `<button>`s rather
+than [`Button`](#button), because design.md reserves that hard offset shadow for
+discrete page-level actions and these are small repeatable controls sitting on the
+artwork (the same call the calculator keypad makes). Zoom is also on the **wheel** and
+on a **two-finger pinch**; the pinch matters because a touch screen has no wheel, so
+without it the buttons would be the only way in. Every path scales about a point —
+the pointer, the pinch midpoint, or the canvas centre for a button — so whatever is
+under it stays put.
+
+Fullscreen goes through [`FullscreenStage`](#fullscreenstage), gated on
+`canGoFullscreen()` read after mount, and the canvas is rendered in **one place or the
+other, never both**: two `<canvas>` elements would each claim the ref on mount and the
+second would win, leaving the visible one unpainted. Entering or leaving does not fire
+a window resize, so the view is refitted explicitly one frame later, once the browser
+has laid the new size out.
 
 **Not rendered on a phone.** A force graph at phone width is a hairball nobody can tap.
 Callers are expected to branch on `useIsCompact()` and show something else — Journal →

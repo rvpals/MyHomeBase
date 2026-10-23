@@ -20,7 +20,8 @@
 // tree, which is why the keyboard path is a real list and not a focus ring on a
 // dot — see `GraphList` at the bottom.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { FullscreenStage, canGoFullscreen } from "@/components/fullscreen-stage";
 import {
   buildTaxonomyGraph,
   findNodeAt,
@@ -191,6 +192,13 @@ export function TaxonomyGraphView<S extends GraphSubject>({
   const colors = useThemeColors();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [hovered, setHovered] = useState<number | undefined>(undefined);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Read after mount, never during render: `document.fullscreenEnabled` does
+  // not exist on the server, and iOS Safari on iPhone has no element
+  // fullscreen at all. A control that cannot work is worse than no control.
+  const [canFullscreen, setCanFullscreen] = useState(false);
+  useEffect(() => setCanFullscreen(canGoFullscreen()), []);
 
   // The largest weight in the set, so every radius is relative to it. Computed
   // once per subject list rather than per frame.
@@ -338,6 +346,19 @@ export function TaxonomyGraphView<S extends GraphSubject>({
     return () => window.removeEventListener("resize", onResize);
   }, [fit, draw]);
 
+  // Entering or leaving fullscreen changes the canvas size without firing a
+  // window resize, so the view has to be refitted explicitly — otherwise the
+  // graph keeps the old zoom and sits in a corner of the stage. One frame
+  // later, because the browser has not laid the new size out yet when the
+  // state flips.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      fit();
+      draw();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [isFullscreen, fit, draw]);
+
   /** Canvas pixels -> graph units. */
   const toGraph = useCallback((clientX: number, clientY: number) => {
     const canvas = canvasRef.current;
@@ -382,8 +403,38 @@ export function TaxonomyGraphView<S extends GraphSubject>({
   >(undefined);
   const lastRef = useRef({ x: 0, y: 0 });
 
+  /**
+   * Live pointers, for pinch.
+   *
+   * A touch screen has no wheel, so without this the only zoom on a phone or
+   * tablet would be the buttons. Two fingers is what people already try.
+   */
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchRef = useRef<number | undefined>(undefined);
+
+  /** Distance between the two live pointers, or undefined when there aren't two. */
+  const pinchDistance = (): number | undefined => {
+    const points = [...pointersRef.current.values()];
+    if (points.length !== 2) return undefined;
+    const dx = points[0].x - points[1].x;
+    const dy = points[0].y - points[1].y;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
   const handlePointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     event.currentTarget.setPointerCapture(event.pointerId);
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    // A second finger turns whatever was happening into a pinch: drop the drag
+    // so the node being held does not fly across the canvas with the gesture.
+    if (pointersRef.current.size === 2) {
+      const drag = dragRef.current;
+      if (drag?.kind === "node") graph.nodes[drag.index].isPinned = false;
+      dragRef.current = undefined;
+      pinchRef.current = pinchDistance();
+      return;
+    }
+
     lastRef.current = { x: event.clientX, y: event.clientY };
     const point = toGraph(event.clientX, event.clientY);
     const node = findNodeAt(graph, point.x, point.y, MAX_RADIUS);
@@ -398,6 +449,31 @@ export function TaxonomyGraphView<S extends GraphSubject>({
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (pointersRef.current.has(event.pointerId)) {
+      pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    }
+
+    // Two fingers: scale by how much the gap changed, about the midpoint
+    // between them — the same anchoring rule the wheel uses.
+    if (pointersRef.current.size === 2) {
+      const next = pinchDistance();
+      const previous = pinchRef.current;
+      if (next !== undefined && previous !== undefined && previous > 0) {
+        const canvas = canvasRef.current;
+        const points = [...pointersRef.current.values()];
+        if (canvas) {
+          const rect = canvas.getBoundingClientRect();
+          zoomAbout(
+            next / previous,
+            (points[0].x + points[1].x) / 2 - rect.left,
+            (points[0].y + points[1].y) / 2 - rect.top,
+          );
+        }
+        pinchRef.current = next;
+      }
+      return;
+    }
+
     const drag = dragRef.current;
     const dx = event.clientX - lastRef.current.x;
     const dy = event.clientY - lastRef.current.y;
@@ -426,6 +502,12 @@ export function TaxonomyGraphView<S extends GraphSubject>({
   };
 
   const handlePointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    pointersRef.current.delete(event.pointerId);
+    // Lifting one finger of a pinch must not resume a drag with the other:
+    // the gesture ends, and the remaining finger does nothing until it is
+    // lifted and put down again.
+    if (pointersRef.current.size < 2) pinchRef.current = undefined;
+
     const drag = dragRef.current;
     dragRef.current = undefined;
     if (!drag) return;
@@ -440,40 +522,137 @@ export function TaxonomyGraphView<S extends GraphSubject>({
     event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
-  const handleWheel = (event: React.WheelEvent<HTMLCanvasElement>) => {
-    const view = viewRef.current;
-    const factor = event.deltaY < 0 ? 1.1 : 1 / 1.1;
-    const next = Math.min(Math.max(view.zoom * factor, MIN_ZOOM), MAX_ZOOM);
+  /**
+   * Scales about a point in canvas pixels, so whatever is under it stays put.
+   *
+   * The wheel passes the pointer; the buttons pass the canvas centre, which is
+   * what makes a button press feel like zooming *the view* rather than
+   * dragging the picture toward a corner.
+   */
+  const zoomAbout = useCallback(
+    (factor: number, px: number, py: number) => {
+      const view = viewRef.current;
+      const next = Math.min(Math.max(view.zoom * factor, MIN_ZOOM), MAX_ZOOM);
+      if (next === view.zoom) return;
 
-    // Zoom about the pointer rather than the origin, so the thing under the
-    // cursor stays under the cursor.
+      view.x = px - ((px - view.x) / view.zoom) * next;
+      view.y = py - ((py - view.y) / view.zoom) * next;
+      view.zoom = next;
+      draw();
+    },
+    [draw],
+  );
+
+  /** Zoom from a button: about the middle of the canvas. */
+  const zoomByButton = useCallback(
+    (factor: number) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      zoomAbout(factor, canvas.clientWidth / 2, canvas.clientHeight / 2);
+    },
+    [zoomAbout],
+  );
+
+  const handleWheel = (event: React.WheelEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
-    const px = event.clientX - rect.left;
-    const py = event.clientY - rect.top;
-    view.x = px - ((px - view.x) / view.zoom) * next;
-    view.y = py - ((py - view.y) / view.zoom) * next;
-    view.zoom = next;
-    draw();
+    zoomAbout(
+      event.deltaY < 0 ? 1.1 : 1 / 1.1,
+      event.clientX - rect.left,
+      event.clientY - rect.top,
+    );
   };
 
-  return (
-    <div className={className}>
+  const canvasBlock = (
+    // `h-full` in fullscreen so the canvas has a height to fill — a bare
+    // `relative` div is content-sized, and `h-full` on the canvas inside it
+    // would resolve against nothing.
+    <div className={isFullscreen ? "relative h-full w-full" : "relative"}>
       <canvas
         ref={canvasRef}
-        className="w-full cursor-grab touch-none rounded-lg border border-line bg-paper active:cursor-grabbing"
-        style={{ height }}
+        className={`w-full cursor-grab touch-none border-line bg-paper active:cursor-grabbing ${
+          isFullscreen ? "block h-full border-0" : "rounded-lg border"
+        }`}
+        style={isFullscreen ? undefined : { height }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
         onPointerLeave={() => setHovered(undefined)}
         onWheel={handleWheel}
       />
+      {/* Over the canvas rather than beside it, so the picture keeps the full
+          width — and so the same controls work on the fullscreen stage, which
+          has nothing else on it. */}
+      <div className="absolute right-2 top-2 flex flex-col gap-1">
+        <GraphControl label="Zoom in" onClick={() => zoomByButton(1.25)}>
+          +
+        </GraphControl>
+        <GraphControl label="Zoom out" onClick={() => zoomByButton(1 / 1.25)}>
+          −
+        </GraphControl>
+        <GraphControl
+          label="Fit to view"
+          onClick={() => {
+            fit();
+            draw();
+          }}
+        >
+          ⤢
+        </GraphControl>
+        {canFullscreen && !isFullscreen && (
+          <GraphControl label="Full screen" onClick={() => setIsFullscreen(true)}>
+            ⛶
+          </GraphControl>
+        )}
+      </div>
+    </div>
+  );
+
+  // One canvas, in one place or the other — never both. Two elements would
+  // each claim `canvasRef` on mount and the second would win, leaving the
+  // visible one unpainted.
+  return (
+    <div className={className}>
+      {isFullscreen ? (
+        <FullscreenStage onExit={() => setIsFullscreen(false)} label="Relationship graph">
+          <div className="h-full w-full">{canvasBlock}</div>
+        </FullscreenStage>
+      ) : (
+        canvasBlock
+      )}
       <p className="mt-2 text-xs text-ink/50">
-        Drag a dot to move it, drag the background to pan, scroll to zoom. Dots sitting
-        together share {kind === "tag" ? "tags" : "categories"}.
+        Drag a dot to move it, drag the background to pan, pinch or scroll to zoom. Dots
+        sitting together share {kind === "tag" ? "tags" : "categories"}.
       </p>
       <GraphList graph={graph} onSelect={onSelect} />
     </div>
+  );
+}
+
+/** One of the square controls layered over the canvas. */
+function GraphControl({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      // Deliberately not `Button`: design.md reserves that hard offset shadow
+      // for discrete page-level actions, and these are a cluster of small
+      // repeatable controls sitting on the artwork — the same call the
+      // calculator keypad makes.
+      className="flex h-7 w-7 items-center justify-center rounded border border-line bg-paper/90 text-sm text-ink/70 hover:border-brass hover:text-ink"
+    >
+      {children}
+    </button>
   );
 }
 

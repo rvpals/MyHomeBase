@@ -1,5 +1,6 @@
 // Word frequency across the journal's own prose — what the home screen's
-// "Top 10 Words" list ranks, beside Top Tags and Top Categories.
+// "Top Words" list ranks, beside Top Tags and Top Categories. How many words it
+// shows is the reader's own `topWordLimit` preference, passed in as `limit`.
 //
 // Pure functions over entries that are already in memory: no repository, no I/O,
 // no cache. The caller reads the entries and hands them in, which is what lets

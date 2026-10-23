@@ -545,6 +545,25 @@ export interface JournalPreferences {
    * tokenizer compares against — see `normalizeExcludedWord`.
    */
   excludedWords: string[];
+  /**
+   * How many words the home screen's Top Words card ranks.
+   *
+   * 1..100, ten by default — what the card showed when its title was the fixed
+   * "Top 10 Words". A number rather than `number | null` for the reason
+   * `contentTextureOpacity` is: there is no meaningful "unset" state, since the
+   * list always shows *some* number of rows and the default is itself a legal
+   * value rather than a fallback standing in for an absent one.
+   *
+   * The ceiling is a readability limit, not a performance one: `topWords`
+   * already tokenizes every entry's text whatever the limit, so raising it only
+   * changes the final slice. A hundred rows is already far past the point the
+   * card stops being a summary.
+   *
+   * Independent of {@link excludedWords} even though both govern the same card —
+   * excluding a word changes *which* words rank, this changes how many of them
+   * are shown.
+   */
+  topWordLimit: number;
 }
 
 // --- Prefill templates -------------------------------------------------------

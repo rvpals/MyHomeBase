@@ -9,6 +9,9 @@ import type { DashboardTextureItem } from "@/lib/dashboard-texture";
 import {
   CONTENT_SIZE_OPTIONS,
   HANDWRITING_SIZE_OPTIONS,
+  MIN_TOP_WORD_LIMIT,
+  MAX_TOP_WORD_LIMIT,
+  clampTopWordLimit,
   type JournalContentSize,
   type JournalHandwritingSize,
   type JournalPreferences,
@@ -95,6 +98,10 @@ export function JournalPreferencesView({
   // Held in state rather than read straight from the prop so a restore updates
   // the list immediately; the server action hands back the new list.
   const [excludedWords, setExcludedWords] = useState(preferences.excludedWords);
+  // A string for the same reason the episode gap above is one: a number-typed
+  // state turns a box cleared mid-edit into NaN, or snaps it back to the value
+  // the typist is replacing. Parsed and clamped on save.
+  const [topWordLimit, setTopWordLimit] = useState(String(preferences.topWordLimit));
   const [restoring, setRestoring] = useState<string | undefined>(undefined);
   const [restoreError, setRestoreError] = useState<string | undefined>(undefined);
   const [isBusy, setIsBusy] = useState(false);
@@ -163,6 +170,14 @@ export function JournalPreferencesView({
         // is *wholesale*, so omitting the field here would delete every stored
         // exclusion the moment anyone pressed Save.
         excludedWords,
+        // Same shape as the gap above — a cleared or nonsense box keeps what is
+        // already stored rather than erroring — but clamped with the library's
+        // own helper instead of repeating 1 and 100 here, so this screen can't
+        // save a figure the resolver would reject on the way back in.
+        topWordLimit:
+          topWordLimit.trim() === "" || !Number.isFinite(Number(topWordLimit))
+            ? preferences.topWordLimit
+            : clampTopWordLimit(Number(topWordLimit)),
         contentTextureId,
         contentTextureOpacity,
         // Narrowed back to the typed union on the way out; `""` is the
@@ -372,16 +387,38 @@ export function JournalPreferencesView({
           {report && <AccessReportPanel report={report} />}
         </div>
 
-        {/* Its own group, and the one block here that writes immediately rather
-            than on Save: each (x) is its own action, so there is nothing to keep. */}
+        {/* One group for the home screen's Top Words card, holding both knobs
+            that govern it: how many words rank, and which ones never do.
+
+            Mixed save behaviour, deliberately. The count below saves with the
+            button at the foot of the card like every other field here; the word
+            chips write immediately, because each (x) is its own server action
+            and there is nothing left to keep. */}
         <div className="flex flex-col gap-2 border-t border-line pt-4">
-          <span className="block text-sm font-medium text-ink">Excluded words</span>
-          <p className="text-xs text-muted">
-            Words dismissed from the home screen&apos;s{" "}
-            <span className="text-ink">Top 10 most frequently used words</span> with the ✕ beside
-            them. These are on top of a built-in list of common English words (the, this, was) that
-            is never ranked and can&apos;t be edited here. Removing a word from this list starts
-            counting it again.
+          <span className="block text-sm font-medium text-ink">Top Words</span>
+
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-ink">Words to rank</span>
+            <input
+              type="number"
+              min={MIN_TOP_WORD_LIMIT}
+              max={MAX_TOP_WORD_LIMIT}
+              value={topWordLimit}
+              onChange={(event) => setTopWordLimit(event.target.value)}
+              className={INPUT_CLASS}
+            />
+            <span className="mt-0.5 block text-xs text-muted">
+              How many words the home screen&apos;s Top Words card lists, and the number in its
+              heading. Between {MIN_TOP_WORD_LIMIT} and {MAX_TOP_WORD_LIMIT}; 10 by default. A
+              journal with fewer distinct words than this shows all it has.
+            </span>
+          </label>
+
+          <p className="mt-2 text-xs text-muted">
+            <span className="text-ink">Excluded words</span> — the ones dismissed from that card
+            with the ✕ beside them. These are on top of a built-in list of common English words
+            (the, this, was) that is never ranked and can&apos;t be edited here. Removing a word
+            from this list starts counting it again.
           </p>
 
           {restoreError && <p className="text-sm text-red-400">{restoreError}</p>}

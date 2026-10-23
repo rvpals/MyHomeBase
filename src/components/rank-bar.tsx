@@ -42,7 +42,7 @@ const MIN_VISIBLE_PERCENT = 2;
  * into the button vocabulary. So this is deliberately flat: a tinted track with a
  * filled portion, no shadow, no border, no animation.
  *
- * Used by the journal home screen's **Top 10 Words** list and by Admin → SQL
+ * Used by the journal home screen's **Top Words** list and by Admin → SQL
  * Explorer's Table Usage. Top Tags and Top Categories drew one too until they
  * became `TaxonomyIcon` tile grids, which carry their counts instead.
  *

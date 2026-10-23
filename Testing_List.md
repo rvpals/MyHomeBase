@@ -146,6 +146,24 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-10-23 — Release (Journal Bulk overwrite, configurable Top Words, zoomable topic graph)
+
+No migration. Phone-only checks: items 7 and 13. The earlier items for Top Words and the graph were written in earlier sessions and have never been seen on screen.
+
+- [ ] **1.** Journal → Entries (all four tabs): tick rows and a **Bulk overwrite** button sits beside Bulk edit
+- [ ] **2.** Bulk overwrite: tick Categories, pick CAR and FINANCE, Overwrite — every selected entry ends with exactly those two, whatever it had before
+- [ ] **3.** Bulk overwrite: Tags and Place are replaced the same way; Locations replaced by a saved place and by an address search
+- [ ] **4.** Bulk overwrite: a ticked field with nothing picked shows a red hint, and Overwrite asks *Clear these fields?* before emptying it; Cancel returns to the form with the picks intact
+- [ ] **5.** Bulk overwrite: locked entries are skipped and counted in the result line; only the ticked fields change
+- [ ] **6.** Journal → Entries → Log tab: Bulk overwrite works there too, and an entry overwritten out of the Log category leaves the list
+- [ ] **7.** Bulk overwrite on a phone: the dialog scrolls, the map fits, and the buttons stay reachable
+- [ ] **8.** Journal → Configuration → Preferences: a *Top Words* group has a *Words to rank* box (1–100); Save stores it
+- [ ] **9.** Journal home screen: the Top Words card lists that many words and its heading shows the number; a blank box keeps the stored value
+- [ ] **10.** Journal home-card settings: the toggle reads *Top Words* and an existing saved layout still shows the card
+- [ ] **11.** Journal → Topics map: zoom in, zoom out and fit buttons work, and the wheel zooms about the pointer
+- [ ] **12.** Journal → Topics map: fullscreen opens and exits, and the graph is not blank afterwards
+- [ ] **13.** Journal → Topics map on a phone: two-finger pinch zooms, and the layout still has no horizontal scroll
+
 ## 2026-10-22 — Release (Journal Topics section, entry Clone, Show SQL, single-photo measurements, shared taxonomy graph)
 
 No migration. The Journal section *Views* became *Topics* (new icon slot id — an old *Views* icon upload no longer applies). Admin-only: items 15 and 21. Phone-only checks: items 8 and 22. Everything is untried.

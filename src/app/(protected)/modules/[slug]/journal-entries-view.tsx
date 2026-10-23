@@ -75,6 +75,7 @@ import {
   type BulkRefreshScope,
 } from "./journal-bulk-actions";
 import { JournalEntriesBulkEdit } from "./journal-entries-bulk-edit";
+import { JournalEntriesBulkOverwrite } from "./journal-entries-bulk-overwrite";
 import { JournalFilterBuilder } from "./journal-filter-builder";
 import { JournalLogView } from "./journal-log-view";
 
@@ -520,6 +521,12 @@ function EntriesTab({
   const [bulkEdit, setBulkEdit] = useState<
     { rows: JournalEntry[]; clearSelection: () => void } | undefined
   >();
+  // The overwrite dialog is its own state rather than a flag on `bulkEdit`: the
+  // two are different dialogs over the same action, and a shared slot would let
+  // a stale `mode` decide which one a reader is looking at.
+  const [bulkOverwrite, setBulkOverwrite] = useState<
+    { rows: JournalEntry[]; clearSelection: () => void } | undefined
+  >();
   const [confirmDelete, setConfirmDelete] = useState<
     { rows: JournalEntry[]; clearSelection: () => void } | undefined
   >();
@@ -743,6 +750,7 @@ function EntriesTab({
     setError(undefined);
     clearSelection();
     setBulkEdit(undefined);
+    setBulkOverwrite(undefined);
     setConfirmDelete(undefined);
     setConfirmLock(undefined);
     setConfirmEncrypt(undefined);
@@ -1140,6 +1148,14 @@ function EntriesTab({
                   size="sm"
                   variant="secondary"
                   disabled={isBulkBusy}
+                  onClick={() => setBulkOverwrite({ rows: selectedRows, clearSelection })}
+                >
+                  Bulk overwrite
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={isBulkBusy}
                   onClick={() =>
                     setConfirmLock({ rows: selectedRows, clearSelection, isLocked: true })
                   }
@@ -1193,6 +1209,21 @@ function EntriesTab({
           onCancel={() => setBulkEdit(undefined)}
           onApplied={(nextEntries, message) =>
             applyBulkResult(nextEntries, message, bulkEdit.clearSelection)
+          }
+        />
+      )}
+
+      {bulkOverwrite && (
+        <JournalEntriesBulkOverwrite
+          selected={bulkOverwrite.rows}
+          categoryOptions={categoryOptions}
+          tagOptions={tagOptions}
+          locationCategoryOptions={locationCategoryOptions}
+          locationTagOptions={locationTagOptions}
+          scope={currentScope()}
+          onCancel={() => setBulkOverwrite(undefined)}
+          onApplied={(nextEntries, message) =>
+            applyBulkResult(nextEntries, message, bulkOverwrite.clearSelection)
           }
         />
       )}

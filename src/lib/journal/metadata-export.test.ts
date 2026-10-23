@@ -205,6 +205,7 @@ const PREFERENCES: JournalPreferences = {
   topicMatchBody: false,
   topicEpisodeGapDays: 14,
   excludedWords: [],
+  topWordLimit: 10,
   // Set, and deliberately not null, so the export assertion proves the colour
   // is carried. The texture pointer stays null: it is machine-specific and is
   // not part of a metadata bundle at all.

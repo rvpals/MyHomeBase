@@ -1,7 +1,7 @@
 # MyHomeBase — Features
 
 A catalogue of what this application does, organised by module, compiled from the
-project's git history (199 commits, 2026-07-12 to 2026-10-22) and `CHANGE_HISTORY.md`.
+project's git history (200 commits, 2026-07-12 to 2026-10-23) and `CHANGE_HISTORY.md`.
 
 Sections below follow each module's live navigation. For the dated record of *when*
 something shipped, read **Admin → About → Change History**; this document answers
@@ -142,6 +142,8 @@ The largest module — fifteen sections.
   library at a strength you tune, and its text can take a colour of your choosing (the
   theme's own ink by default). Configuration is split into Location, general and
   entry-screen cards.
+- **Home-screen Top Words** card whose length — 1 to 100 words, ten by default — is a
+  Preferences setting, alongside the words you have excluded from it.
 - **Calendar** view with per-day entry lists, Delete (to the recycle bin) from the day
   list, and **jump to the next day that has an entry**.
 
@@ -149,7 +151,9 @@ The largest module — fifteen sections.
 
 Tabs for **Unlocked Entries**, **Substantial Entries** (body past ten words),
 **All Entries** and **Log**, with a **Filtering card** of saved filters that carry a category and
-a description. **Bulk tools** — Lock / Unlock / Encrypt, delete, merge — and a grid
+a description. **Bulk tools** — Bulk edit (add, remove or replace categories, tags, place and
+locations), **Bulk overwrite** (replace those fields outright, with a confirmation when a field would be
+cleared), Lock / Unlock / Encrypt, delete, merge — and a grid
 status bar. Administrators get **Show SQL** on each grid: the real statement behind the
 rows, which can be edited and re-run.
 
@@ -166,7 +170,8 @@ rows, which can be edited and re-run.
 Pick a subject — a tag, a category or any word, fuzzy-matched so `HSA` finds `Health
 Savings Account` — and see the entries about it grouped into **episodes**, plus the tags
 and categories that travel with it. The section opens on a **force-directed map** of every
-subject, with a line between names that share entries. Preferences choose whether entry
+subject, with a line between names that share entries; it zooms (buttons, wheel, pinch) and goes
+fullscreen. Preferences choose whether entry
 bodies are searched and how many quiet days start a new episode. Encrypted entries match
 on their tags only. Also available from the terminal as `journal-topics`.
 

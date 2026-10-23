@@ -13,6 +13,7 @@ import { getJournalEntryAction } from "./journal-correct-actions";
 import { journalEntriesFilterHref } from "./journal-shared";
 import { deleteLogEntriesAction } from "./journal-log-actions";
 import { JournalEntriesBulkEdit } from "./journal-entries-bulk-edit";
+import { JournalEntriesBulkOverwrite } from "./journal-entries-bulk-overwrite";
 
 export interface JournalLogViewProps {
   entries: JournalEntry[];
@@ -59,6 +60,11 @@ export function JournalLogView({
   const [viewing, setViewing] = useState<JournalEntry | undefined>();
   const [confirm, setConfirm] = useState<{ ids: number[]; clearSelection: () => void } | undefined>();
   const [bulkEdit, setBulkEdit] = useState<
+    { rows: JournalEntry[]; clearSelection: () => void } | undefined
+  >();
+  // Its own slot, not a flag on `bulkEdit` — see the note in
+  // journal-entries-view.tsx.
+  const [bulkOverwrite, setBulkOverwrite] = useState<
     { rows: JournalEntry[]; clearSelection: () => void } | undefined
   >();
   const [isBusy, setIsBusy] = useState(false);
@@ -221,6 +227,14 @@ export function JournalLogView({
             </Button>
             <Button
               size="sm"
+              variant="secondary"
+              disabled={isBusy}
+              onClick={() => setBulkOverwrite({ rows: selectedRows, clearSelection })}
+            >
+              Bulk overwrite
+            </Button>
+            <Button
+              size="sm"
               variant="danger"
               disabled={isBusy}
               onClick={() =>
@@ -251,6 +265,29 @@ export function JournalLogView({
             setError("");
             bulkEdit.clearSelection();
             setBulkEdit(undefined);
+            router.refresh();
+          }}
+        />
+      )}
+
+      {bulkOverwrite && (
+        <JournalEntriesBulkOverwrite
+          selected={bulkOverwrite.rows}
+          categoryOptions={categoryOptions}
+          locationCategoryOptions={locationCategoryOptions}
+          locationTagOptions={locationTagOptions}
+          tagOptions={tagOptions}
+          // Same unfiltered Log read the bulk edit asks for back, for the same
+          // reason: an entry overwritten out of the Log category disappears
+          // from this tab, which is the honest result.
+          scope={{ tab: "log" }}
+          onCancel={() => setBulkOverwrite(undefined)}
+          onApplied={(nextEntries, message) => {
+            setEntries(nextEntries);
+            setNotice(message);
+            setError("");
+            bulkOverwrite.clearSelection();
+            setBulkOverwrite(undefined);
             router.refresh();
           }}
         />

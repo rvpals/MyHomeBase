@@ -97,9 +97,10 @@ import { JournalView } from "./journal-view";
 const JOURNAL_MODULE_SLUG = "journal";
 const RECENT_JOURNAL_ENTRY_LIMIT = 25;
 const TOP_TAXONOMY_LIMIT = 10;
-// "Top 10 most frequently used words". Scanning every entry's text is the cost
-// of this figure — there is no cache, so it is recomputed per render.
-const TOP_WORD_LIMIT = 10;
+// The Top Words figure is the reader's own, from `topWordLimit` in the module's
+// preferences — no constant here. Scanning every entry's text is the cost of the
+// card either way: there is no cache, so it is recomputed per render, and the
+// limit only decides how much of the ranking survives the final slice.
 
 /**
  * How many tags and how many categories the Topics picker offers.
@@ -178,15 +179,22 @@ function SectionBody({
       // when the reader has switched that card off — the same rule the app home screen
       // applies to its cards.
       const homeWidgets = getJournalHomeWidgets(deps.userPreferencesRepo, userId);
+      // `topWordLimit` is passed as well as applied to `topWords` below,
+      // because the card names its own figure in the heading. The ranked list
+      // can be shorter than the limit — a small journal may not have that many
+      // distinct words — so the heading has to come from the setting rather
+      // than from `topWords.length`, or it would quietly rename itself on a
+      // thin journal.
       return (
         <JournalView
           entries={listRecentEntries(deps.journalRepo, RECENT_JOURNAL_ENTRY_LIMIT)}
           tally={countAllEntries(deps.journalRepo)}
           topWords={topWords(
             listEntries(deps.journalRepo),
-            TOP_WORD_LIMIT,
+            homePreferences.topWordLimit,
             homePreferences.excludedWords,
           )}
+          topWordLimit={homePreferences.topWordLimit}
           topTags={listTopTags(deps.journalRepo, TOP_TAXONOMY_LIMIT)}
           topCategories={listTopCategories(deps.journalRepo, TOP_TAXONOMY_LIMIT)}
           yearAndMonthCounts={countEntriesByYearAndMonth(deps.journalRepo)}

@@ -1,5 +1,49 @@
 # Change History
 
+## 2026-10-23 — Journal Bulk overwrite, configurable Top Words, zoomable topic graph
+
+**No migration in this release** (0153 is still the last). The new `top_word_limit` preference is a
+row in the module's settings table, written on first Save. The NAS database and its WAL/SHM files
+were backed up before this release (`npm run backup:nas`, stamp `2026-10-23T13-22-01`).
+
+### Journal → Entries: Bulk overwrite
+
+- **A second bulk dialog beside Bulk edit**, on all four tabs (Unlocked, Substantial, All, Log). Tick
+  Categories, Tags, Place and/or Locations, pick what you want, and each ticked field is **replaced
+  outright** on every selected entry — what they held before is discarded, listed or not. CAR →
+  CAR + FINANCE is one tick and two chips, not Add, Remove and Replace per field.
+- **Same action underneath** (`bulkEditJournalEntriesAction`) with every mode pinned to `replace`, so
+  no library change and no new test: `replace` and its empty-list behaviour already existed in
+  `bulk-edit.ts`.
+- **Warnings**: the dialog states that nothing is added to, a callout points at Bulk edit for
+  add/remove, and each field's hint says what is discarded.
+- **A ticked field with nothing picked clears it.** That case turns the hint red and Overwrite
+  routes through a *Clear these fields?* confirmation (`BulkConfirm`). A populated overwrite applies
+  straight away. Locked entries are skipped, as in Bulk edit.
+
+### Journal → Preferences: Top Words count
+
+- **How many words the home screen's Top Words card ranks is now a preference** (1–100, default 10,
+  `top_word_limit`), set under a new *Top Words* group beside the excluded words. The card's heading
+  names the chosen number instead of the fixed "Top 10 Words"; the home-card toggle label is now
+  *Top Words*. The card's id (`topWords`) is unchanged, so saved layouts keep it.
+- Library: `clampTopWordLimit`, `DEFAULT_/MIN_/MAX_TOP_WORD_LIMIT` in `preferences.ts`, with tests.
+
+### Taxonomy graph: zoom, pan and fullscreen
+
+- The shared force graph (Journal → Topics map) gains zoom in / out / fit buttons, wheel zoom, a
+  two-finger pinch, and fullscreen through `FullscreenStage`. Zoom scales about the pointer, pinch
+  midpoint or canvas centre. The canvas renders in one place at a time.
+
+### Files
+
+- New: `journal-entries-bulk-overwrite.tsx`.
+- Changed: `journal-entries-view.tsx`, `journal-log-view.tsx`, `journal-preferences-view.tsx`,
+  `journal-section.tsx`, `journal-view.tsx`, `taxonomy-graph-view.tsx`, `rank-bar.tsx`,
+  `src/lib/journal/{preferences,types,index,home-widgets,word-stats}.ts` and their tests,
+  `components.md`.
+- Not verified when written: no typecheck, lint, tests or browser run were made for this release.
+
 ## 2026-10-22 — Journal Topics section, entry Clone, Show SQL, single-photo measurements, shared taxonomy graph
 
 **No migration in this release** (0153 was the last, applied last release). The NAS database and its

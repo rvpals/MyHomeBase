@@ -62,9 +62,15 @@ export const JOURNAL_HOME_WIDGET_INFO: Record<
     description:
       "The tags and the categories you use most, side by side, each linking to its entries.",
   },
+  // The label carries no number, unlike the card's own heading: how many words
+  // rank is a preference now, and a fixed "Top 10" here would be wrong for
+  // anyone who changed it. The id stays `topWords` — it is persisted in the
+  // ordering string, so renaming it would drop the card from every reader's
+  // saved layout.
   topWords: {
-    label: "Top 10 Words",
-    description: "The words you write most often across every entry.",
+    label: "Top Words",
+    description:
+      "The words you write most often across every entry. How many are ranked is set in Journal → Preferences.",
   },
   countByYears: {
     label: "Count by Years",
